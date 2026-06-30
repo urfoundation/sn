@@ -11,7 +11,7 @@ The payout from the subnet contract is weighted by the payment of the network op
 
 Network operator: runs the servers. Each network operator has a mining slot and a validator slot on the BitTensor subnet, which are pooled rewards for their attached miners and validators. The network operator determines the payout from their mining slots. The network operator pays into the subnet contract per used GB and active user (per month) based on the global fixed rate. 
 Miner: connects to one or more network operators simultaneously. Providers provide egress and ingress traffic. Miners accumulate contracts, issued by the network operator. Miners accumulate reliability, issues by the network operator.
-Validator: connects to one or more network operators. Follows the validation protocol described in VERIFIER.md. Accumulates signed validated paths from the network operator.
+Validator: connects to one or more network operators. Follows the validation protocol described in VALIDATOR.md. Accumulates signed validated paths from the network operator.
 
 The only mechanism that keeps the components coordinating are the incentives below.
 

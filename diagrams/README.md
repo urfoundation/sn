@@ -5,10 +5,20 @@ Visual companions to `WHITEPAPER.md`.
 ## `mechanism.*` — "Mechanism at a glance" (§1)
 
 A detailed, color-coded layout of the components and money flows described in
-**§1. Summary of the mechanism**: the three coupled channels (deposits, emission via Yuma,
-settlement by Merkle claim), the ST contract internals (deposit ledger, contract-owned
-miner-pool UIDs, Merkle payout roots, FeePool), independent validators + Yuma consensus,
-the effort bounty, and the off-chain `VERIFIER.md` measurement trails.
+**§1. Summary of the mechanism** (the v0.2 **two-tier miner side**). The 41% miner emission now
+splits by a governance share **θ** into two tiers of miner UIDs inside **one** mechanism:
+
+- **TAIL / pool** (`1−θ`): the contract-owned **miner-pool UID per NO** (weight `deposit × Qn`),
+  settled to the 100k+ providers by **per-NO Merkle claim** — the low-barrier on-ramp / baseline.
+- **HEAD / top-level miners** (`θ`): the top ~200 providers as **their own UIDs** (weight `Qp` —
+  pure quality, no deposit), paid by **native** emission straight to their own hotkey — no contract
+  custody, no Merkle claim, no take; identity via the `client_id ⇄ hotkey` binding (§11.4).
+
+Independent validators score **both** tiers into one commit-reveal weight vector (split by θ) → Yuma.
+The diagram also shows the ST contract internals (deposit ledger, pool UIDs, Merkle payout roots,
+FeePool), the provider lifecycle (start in a pool → graduate to a top slot → fall back if quality
+slips), native validator dividends + the fee-funded effort bounty, and the off-chain `VALIDATOR.md`
+measurement trails.
 
 | File | Use |
 |---|---|
@@ -29,21 +39,22 @@ Requires `cairosvg` (`pip install cairosvg`). The script has no other dependenci
 - Layout is driven by named coordinates near the top of `generate.py`; colors are in the
   `palette` block (one tuple per channel: deposits/blue, emission/teal, settlement/purple,
   evaluation/amber, bounty/rose, off-chain/slate).
-- A few glyphs (`∝`, `→`, subscripts, `①`, `◀`) don't render in cairosvg's default font, so the
-  scripts draw circled numbers and arrowheads themselves and use `Dn`/`Qn`/`wn` in place of
-  subscripts (and words like "drives" in place of `→`). Keep that in mind when adding labels.
+- A few glyphs (`∝`, `→`, subscripts, `①`, `◀`, `⊕`, `⊥`, `⇄`) don't render in cairosvg's default
+  font, so the scripts draw circled numbers and arrowheads themselves and use `Dn`/`Qn`/`wn`/`Qp` in
+  place of subscripts (and words like "drives", or `<->` for `⇄`, in place of arrows). Glyphs that
+  **do** render and are used freely: `θ  α φ ω  × · Σ  § − – ≈ ≥ ≤`. Keep that in mind when adding labels.
 
 ## `comparison_matrix.*` — design-decision alignment matrix
 
 Companion to `COMPARISON.md`. A color-coded, at-a-glance matrix of the major design decisions
 with the **Bittensor majority pattern** and **UR Subnet direction** side by side, each row tagged
 **ALIGNED** (green) / **DIVERGENT** (amber) / **NOVEL** (purple). The visual story: a large green
-block (we follow the Bittensor core), a small amber block (intentional divergences), one purple
-row (the novel deposit-weighting bet).
+block (we follow the Bittensor core), a small amber block (intentional divergences), and **two** purple
+rows (the novel **demand-coupling** and **head/tail-tiering** bets). Tally: **11 aligned · 3 divergent · 2 novel** (16 rows).
 
 | File | Use |
 |---|---|
-| `comparison_matrix.png` | Raster export, 3800×2656 (2×). |
+| `comparison_matrix.png` | Raster export, 3800×2920 (2×). |
 | `comparison_matrix.svg` | Vector source — import into Figma. |
 | `comparison_matrix.py` | Generator — `python3 comparison_matrix.py`. |
 

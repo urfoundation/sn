@@ -2,7 +2,13 @@
 
 **A Bittensor subnet for a decentralized privacy network.**
 
-Version 0.1 (design). Target chain: Bittensor / Subtensor mainnet (finney), dTAO era.
+Version 0.2 (design). Target chain: Bittensor / Subtensor mainnet (finney), dTAO era.
+
+> **v0.2 — two-tier miner side.** The miner side now runs **two channels in parallel**: the per-NO
+> **pool** (the on-ramp — `deposit × quality`, Merkle claim, *unchanged* from v0.1) *and* **top-level
+> miners** (the merit apex — the top ~200 providers each hold their own UID, steered directly by
+> validators on pure measured quality and paid natively). See §8.4–8.5, §10, §11.4, §14; rationale and
+> the decision log in `WHITEPAPER_DISCUSS.md` D16–D20.
 
 ---
 
@@ -10,7 +16,7 @@ Version 0.1 (design). Target chain: Bittensor / Subtensor mainnet (finney), dTAO
 
 The **UR Subnet** runs a **decentralized privacy/VPN network** entirely through on‑chain incentives.
 **Network Operators (NOs)** run the servers; independent **providers** carry ingress/egress traffic; and
-independent **validators** run the `VERIFIER.md` cryptographic routing‑verification protocol — walking
+independent **validators** run the `VALIDATOR.md` cryptographic routing‑verification protocol — walking
 server‑assigned chains of providers to prove real‑time transit and measure **which providers are the
 weakest links**. That measurement is the core: each tempo, validators score every NO's pool
 **`deposit × quality`**, and Bittensor's **Yuma Consensus** turns those scores into the miners'
@@ -27,10 +33,20 @@ directly from the contract with cryptographic proofs**, so a NO *directs* where 
 accuracy) **plus a fee‑funded effort bounty** (∝ verified trail volume) — the engine that keeps the
 failure data flowing.
 
+**Two miner tiers, in parallel.** The pool above is the **on-ramp** — a place to start, with a **baseline
+reward** and a low barrier (no UID, no registration burn). Above it sits the **merit apex**: the **top
+~200 providers each claim their own miner UID** ("**top-level miners**") and are **steered emission
+directly by validators on pure measured quality** (`weight = Q_p`, no deposit term), paid **natively** to
+their own hotkey — no contract custody, no Merkle claim, no operator in the loop. A provider is matched to
+its UID by a **signed `client_id → hotkey` binding** the validators read (§11.4); it **starts in a pool,
+graduates to a direct slot, and falls back to the pool if it slips**, with the chain's own deregistration
+churn running that tournament. Both tiers share **one** mechanism's 256-UID metagraph (§14); a governance
+split **θ** sets how much of the 41% miner emission flows to the head vs. the pools (§8.4–8.5).
+
 The subnet **launches centralized‑but‑bounded** — an owner multisig behind an upgradeable contract, with
 **finalized claims made un‑clawback‑able from day one** — and hardens to a **timelocked,
 guardian‑protected** contract, then broader governance. v1 rewards independently *measured liveness*;
-closing the gap to honest‑relay, payout‑grade verification is the `VERIFIER.md` §10 roadmap.
+closing the gap to honest‑relay, payout‑grade verification is the `VALIDATOR.md` §10 roadmap.
 
 **At a glance**
 - **Bittensor‑aligned:** validators evaluate miners (pools) → Yuma Consensus → emission; standard
@@ -39,6 +55,9 @@ closing the gap to honest‑relay, payout‑grade verification is the `VERIFIER.
   network's unit of account is the subnet's **α**.
 - **Scales to 100k+ providers:** pool UIDs + off‑chain **Merkle** payout claims (providers and validators
   inside a pool are *not* UIDs).
+- **Two miner tiers:** a per-NO **pool** (on-ramp — `deposit × quality`, Merkle claim) *and* **top-level
+  miners** (the top ~200 providers as direct UIDs, steered on pure quality, paid natively), split by a
+  governed share **θ** (§8.4–8.5).
 - **Trust‑minimized custody:** no operator holds others' emission; everyone is paid by direct on‑chain
   claim against a committed Merkle root.
 - **Validator data, strongly incentivized:** native dividends **+** a coverage‑weighted **effort bounty**
@@ -54,9 +73,9 @@ This document specifies, in implementable detail, a Bittensor subnet that coordi
 decentralized privacy/VPN network through on‑chain incentives. It is the synthesis of three
 inputs:
 
-- **`INCENTIVES.md`** — the economic intent (network operators, miners, validators; deposit‑weighted
+- **`seed/INCENTIVES.md`** — the economic intent (network operators, miners, validators; deposit‑weighted
   payouts; the validator prisoner's dilemma; the 7‑day block).
-- **`VERIFIER.md`** — the off‑chain routing‑verification protocol (`/verify`) that produces the
+- **`VALIDATOR.md`** — the off‑chain routing‑verification protocol (`/verify`) that produces the
   signed **validated paths** this subnet pays for.
 - **Current Bittensor mechanics** (Yuma Consensus, dTAO, the Subtensor EVM, the commitments pallet,
   the precompiles) as they exist on the `opentensor/subtensor` `main` branch in mid‑2026.
@@ -65,14 +84,14 @@ It is written so that an engineer can build the smart contract, the off‑chain 
 software, and the chain configuration from it. Where a parameter or chain default is load‑bearing
 and time‑sensitive, it is flagged; verify against a live chain before launch (see §15).
 
-**Four design decisions are fixed up front** (these were chosen deliberately; §13 records the
+**Five design decisions are fixed up front** (these were chosen deliberately; §13 records the
 alternatives):
 
 1. **Settlement = EVM contract + native Yuma.** A Solidity contract on the Subtensor EVM (the **ST
    contract**) custodies deposits and the captured pool emission and settles payouts by Merkle claim;
    protocol **emissions** are delivered through the chain's coinbase. We do **not** fight the coinbase.
 2. **Everything is denominated in the subnet's α (alpha) token.** Deposits, validation fees, and
-   payouts are α. This is why `INCENTIVES.md` calls it the **ST (subnet‑token) contract**.
+   payouts are α. This is why `seed/INCENTIVES.md` calls it the **ST (subnet‑token) contract**.
 3. **Miner pools, scored by real Yuma consensus.** Each NO is **one miner‑pool UID**; its 100k+
    providers are paid *inside* the pool by Merkle claim. **Many independent validators** (no NO owns
    them) score the pools `deposit × measured‑quality` — so **validators' evaluation drives the miner
@@ -81,6 +100,11 @@ alternatives):
 4. **Two clocks.** The chain's native **tempo** (~360 blocks ≈ 72 min) drives weight‑setting and
    emission; a **7‑day epoch** (≈ 50 400 blocks) is the application‑layer accounting/settlement
    period.
+5. **Two miner tiers in one mechanism.** Alongside the per-NO pools (the on-ramp), the **top ~200
+   providers hold their own miner UIDs** and are steered **directly** by validators on pure measured
+   quality, paid **natively** (§8.4). Both tiers live in **one** mechanism — a second mechanism would
+   halve the 256-UID space below 200 (§14) — and a governance split **θ** divides the 41% miner emission
+   between the head and the pools (§8.5).
 
 ---
 
@@ -88,7 +112,7 @@ alternatives):
 
 A **Network Operator (NO)** runs privacy servers. Independent **providers** (miners) attach to one
 or more NOs and carry ingress/egress traffic. Independent **verifiers** (validators) attach to one
-or more NOs and run the `VERIFIER.md` trail protocol, producing cryptographically signed
+or more NOs and run the `VALIDATOR.md` trail protocol, producing cryptographically signed
 **validated paths** that prove provider liveness.
 
 Money flows in three coupled channels, all in α:
@@ -98,13 +122,15 @@ Money flows in three coupled channels, all in α:
    on‑chain **signal of real demand**. It is the single quantity that weights everything else.
 
 2. **Emission (Yuma consensus over NO pools).** Every NO has **one contract‑custodied miner‑pool UID**
-   (all its providers). **Independent validators** — anyone who stakes α and runs `VERIFIER.md` trails —
+   (all its providers). **Independent validators** — anyone who stakes α and runs `VALIDATOR.md` trails —
    score **every** NO's miner pool `deposit × measured‑quality` and submit those weights, so the
    **validators' evaluation drives the miner emission — the Bittensor way**. With many independent
    validators, **Yuma Consensus does real work**: stake‑weighted median + **clipping**, so no NO can
    inflate its own pool or knife a rival. Miner emission (41%) lands on the miner‑pool UIDs ∝
    `deposit × consensus‑quality`, **owned by the contract's coldkey** — no emission ever touches a NO's
-   keys. Validator emission (41%) flows **natively** to the independent validators ∝ stake × vtrust.
+   keys. **The 41% miner emission now splits across two tiers** (§8.4–8.5): a governance share **θ** to
+   **top-level miners** (the top ~200 providers as their own UIDs, weighted on pure quality `Q_p`, paid
+   **natively** to their own hotkeys), and `1−θ` to the NO pools above. Validator emission (41%) flows **natively** to the independent validators ∝ stake × vtrust.
 
 3. **Settlement (contract).** Over a 7‑day epoch the contract holds the deposit balance **and the
    captured miner emission**, then distributes it. A NO's **miner pool** (its UID's earned α + the
@@ -113,8 +139,11 @@ Money flows in three coupled channels, all in α:
    payout root and every provider **claims its α directly from the contract** with an O(log N) proof. The
    NO directs the split but never holds the α.
 
+Top-level miners need **no settlement** — Yuma pays their UID natively each tempo (§8.4); the contract
+holds and settles only the **pool tier** (the tail), exactly as above.
+
 Validators earn a **second** stream for the work that produces the subnet's core data — *which providers
-are the weakest links* (`VERIFIER.md` §7). On top of native dividends, the contract pays an **effort
+are the weakest links* (`VALIDATOR.md` §7). On top of native dividends, the contract pays an **effort
 bounty** ∝ each validator's verified, coverage‑weighted completed trails, funded from a **fee pool** (the
 non‑refundable deposit fraction `φ` + a slice of the owner cut). The bounty pulls validators to run more
 trails through under‑sampled providers — the more it is funded, the more complete the failure data (§9).
@@ -130,22 +159,29 @@ validator set and data mature (§12.3) — so quality is on the payout path from
 sample wildly misallocating.
 
 ```
-  customers ($)        INDEPENDENT VALIDATORS (stake α, run /verify trails)   Bittensor coinbase (α)
-        │                       │  score every NO pool: deposit × quality           │ 41% miner
-        │ NO deposits α          ▼  commit-reveal → Yuma: median + clip + vtrust     ▼ 41% validator
-        ▼                ┌──────────────────────────────────────────────┐          │
- ┌──────────────────┐    │  CONTRACT-OWNED miner-pool UID, one per NO    │◀── 41% miner emission
- │ Network Operator │─DT▶│  weight = deposit × consensus-quality (Q_n)   │    accrues to CONTRACT
- │ (server; /verify)│    └───────────────────────────────┬──────────────┘
- │ holds NO α only  │                                    │                 41% validator emission
- └───────┬──────────┘                                    ▼                 → validators NATIVELY (∝ stake×vtrust)
-         │ runs /verify server (co-signs trails)  ┌──────────────────────────────────────────────┐
-         ▼                                        │ ST CONTRACT (Subtensor EVM)                  │
- providers (100k+, inside the pool)               │  custodies deposits + miner emission          │
-         │                                        │  per-NO pool → Merkle payout roots             │
-         │   ┌── effort bounty (∝ verified ───────│  FeePool (φ·D + ω·ownerCut) → ∝ trail effort   │
-         ▼   ▼   coverage-weighted trails)        └───────────────────────────────┬──────────────┘
- claim α (Merkle proof) ◀───────────────────────── providers + validators claim ──┘
+                     INDEPENDENT VALIDATORS  (stake α, run /verify trails)
+         each tempo → score BOTH tiers → commit-reveal → Yuma (stake-median + clip + vtrust)
+             pools (tail):  weight = deposit_n × quality Q_n
+             top miners:    weight = quality Q_p        combined into ONE weight vector,
+                                       │                split by governance share θ
+                                       ▼  drives 41% miner emission
+                        ┌──────────────┴───────────────┐
+                  (1−θ) │ TAIL                     HEAD │ θ
+                        ▼                               ▼
+ ┌──────────────────┐   ┌───────────────────────────┐  ┌───────────────────────────────┐
+ │ Network Operator │   │ ST CONTRACT (Subtensor EVM)│  │ TOP-LEVEL MINER UIDs  (~200)   │
+ │ runs servers +   │DT │  owns one POOL UID per NO  │  │  client_id ⇄ hotkey  (§11.4)   │
+ │ /verify; commits │──▶│  custodies deposits +      │  │  weight = Q_p                  │
+ │ payout root;     │   │  miner emission + FeePool  │  │  NATIVE emission → own hotkey  │
+ │ holds NO α only  │   │  → per-NO Merkle roots     │  │  (no take, not shared, no      │
+ └────────┬─────────┘   └─────────────┬──────────────┘  │   contract custody)            │
+          │ commits root              ▼ claim α          └───────────────┬───────────────┘
+          ▼ (never holds α)   providers (100k+, TAIL)                    ▼ direct, trust-minimized
+   customers ($) ──▶ revenue         (Merkle proof)          a top provider's own coldkey
+          └────────── start in a pool ─▶ graduate to a top slot ─▶ fall back if quality slips ──┘
+
+ Bittensor coinbase: 18% owner · 41% miner (Yuma, split θ / 1−θ above) · 41% validator (NATIVE ∝ stake×vtrust)
+ effort bounty (φ·ΣD + ω·OwnerCut, ∝ coverage-weighted /verify trails) → validators, on top of dividends
 ```
 
 ---
@@ -230,7 +266,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   | `0x…0802` | **Metagraph** | `getEmission`, `getDividends`, `getIncentive`, `getVtrust`, `getValidatorStatus`, `getHotkey`/`getColdkey`, `getStake` (read consensus results) |
   | `0x…0808` | **Alpha** | `getAlphaPrice`/`getMovingAlphaPrice`, `getAlphaOutEmission`, pool reserves, `simSwapAlphaForTao` (α price / emission / slippage reads) |
   | `0x…0800` | **BalanceTransfer** | move TAO EVM↔Substrate (`transfer(bytes32 ss58)`) |
-  | `0x…0402` | **Ed25519Verify** | `verify(message, pubkey, r, s)` — **verify `VERIFIER.md` Ed25519 proofs on‑chain** for disputes |
+  | `0x…0402` | **Ed25519Verify** | `verify(message, pubkey, r, s)` — **verify `VALIDATOR.md` Ed25519 proofs on‑chain** for disputes |
   | `0x…0807` | **StorageQuery** | raw reads of e.g. `Commitments.CommitmentOf` if the contract must read a commitment (brittle; prefer passing roots in directly) |
 
   > Precompile ABIs are **not formally versioned** (issue #2455). Pin a Subtensor release tag, target
@@ -240,12 +276,13 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
 
 ## 3. Roles and on‑chain identity
 
-| Design role (`INCENTIVES.md`) | On‑chain identity | Notes |
+| Design role (`seed/INCENTIVES.md`) | On‑chain identity | Notes |
 |---|---|---|
 | **Subnet owner** (UR Foundation) | owner coldkey + owner hotkey at **UID 0** (immune); deploys & governs the ST contract | receives the 18% owner cut (a slice `ω` of which **co‑funds the validator effort bounty**, §9.3); the governance **referee** (§9.6). |
 | **Network Operator (NO)** | a contract registration (`noId`) with **one miner‑pool UID** (its providers, contract‑owned). Holds **no emission**; runs no validator. | a per‑NO *pool operator*: deposits; runs the `/verify` server (co‑signs trails); commits the Merkle payout root that splits its miner pool. Directs flow; the contract holds and pays. |
-| **Provider (miner)** | a `client_id` **inside** a NO's miner pool — **not a UID** (100k+ providers can't each be a UID) | carries traffic; **claims its α directly from the contract** with a Merkle proof against its NO's payout root. |
-| **Validator** (was "verifier") | an **independent** Bittensor validator UID; stakes its **own** α; binds its `VERIFIER.md` Ed25519 `vpk` in the contract | runs `/verify` trails (the failure‑data signal), scores pools `deposit × Q_n` under commit‑reveal (§10). Earns **native dividends** (∝ stake × vtrust) **+ an effort bounty** (∝ verified trails, §9.3). No NO, no pool. |
+| **Provider (miner)** | a `client_id` **inside** a NO's miner pool — **not a UID** (100k+ providers can't each be a UID) | carries traffic; **claims its α directly from the contract** with a Merkle proof against its NO's payout root. The **on-ramp / tail** tier; can **graduate** to a top-level slot (§8.4). |
+| **Top-level miner (head)** | **its own miner UID**; its `client_id` is **bound to its hotkey** (§11.4) | the **merit apex**: the top ~200 providers by measured quality, steered **directly** by validators (`weight = Q_p`); **native** emission to its own coldkey — no contract custody, no Merkle claim; maintained by deregistration churn (§8.4). |
+| **Validator** (was "verifier") | an **independent** Bittensor validator UID; stakes its **own** α; binds its `VALIDATOR.md` Ed25519 `vpk` in the contract | runs `/verify` trails (the failure‑data signal), scores pools `deposit × Q_n` under commit‑reveal (§10). Earns **native dividends** (∝ stake × vtrust) **+ an effort bounty** (∝ verified trails, §9.3). No NO, no pool. |
 | **ST contract** | a coldkey (mapped SS58) that **owns each NO's miner‑pool UID** and holds the **fee pool** | custodies **miner** emission + deposits; pays the validator **effort bounty**; settles every pool by Merkle claim. Does **not** custody validator emission (it is native). |
 
 **Why pools (miner side only).** A NO has up to 100k providers — they cannot be UIDs (subnet cap ≈ 256),
@@ -256,8 +293,16 @@ Bittensor validator UIDs (own hotkey, own stake, native dividends), which is bot
 **independence** the measurement needs (§9.5). This removes the per‑NO validator pool, the take‑0 custody
 binding, the intersection split, and the VT of earlier drafts (§13.6).
 
-**Binding the validator identity.** `INCENTIVES.md` says a validator "uses their wallet PK as their
-validation path key," while `VERIFIER.md` signs trails with an Ed25519 `vpk`. We bind them:
+**Why also a head tier (top-level miners).** Pools solve *scale* (100k+ providers), but inside a pool a
+provider trusts its NO's discretionary payout split and is one of thousands. The **top ~200 providers**
+therefore *also* get the canonical Bittensor treatment — **their own UID, steered directly by validators,
+paid natively** (§8.4) — so the best providers compete head-to-head on merit, trust-minimized, while the
+pool stays the low-barrier on-ramp everyone starts in. A provider is in **exactly one** tier at a time
+(promoted out of its pool's payout list once it holds a UID — no double-pay, §8.4). The two tiers share one
+256-UID metagraph (§14).
+
+**Binding the validator identity.** `seed/INCENTIVES.md` says a validator "uses their wallet PK as their
+validation path key," while `VALIDATOR.md` signs trails with an Ed25519 `vpk`. We bind them:
 `registerValidator(vpk, sig)` proves control of `vpk` (an Ed25519 signature checked via the `0x402`
 precompile) from the validator's BT wallet, so its submitted **completed‑trail proofs** (for the effort
 bounty, §9.3) are attributable to that wallet and vice‑versa. (Reusing the BT wallet key directly as
@@ -277,8 +322,11 @@ bounty, §9.3) are attributable to that wallet and vice‑versa. (Reusing the BT
 | `w_n` | deposit weight of NO `n` = `D_n / Σ_m D_m` |
 | `E_mine, E_val, E_own` | α emission to the miner / validator / owner pools over the epoch (41/41/18% of subnet α emission) |
 | `B_DT` | contract deposit balance from DTs over the epoch (= `Σ_n D_n`) |
-| `Q_n` | NO `n`'s consensus‑measured pool quality (from validators' `VERIFIER.md` trails) |
-| `ŵ_n` | NO `n`'s consensus weight ∝ `deposit_n × Q_n` |
+| `Q_n` | NO `n`'s consensus‑measured pool quality (from validators' `VALIDATOR.md` trails) |
+| `ŵ_n` | NO `n`'s consensus weight ∝ `deposit_n × Q_n` (pool / tail tier) |
+| `Q_p` | top-level miner `p`'s consensus-measured quality (per-provider, from `VALIDATOR.md` trails) — **is** its head weight |
+| `θ` | governance **head share**: fraction of the 41% miner emission steered to top-level miners; `1−θ` goes to the pools (§8.5) |
+| `client_id ⇄ hotkey` | the signed binding mapping a measured `client_id` to a top-level miner's UID (§11.4) |
 | `φ` / `ω` | non‑refundable deposit fraction / owner‑cut slice — both fund the effort bounty |
 | `FeePool` | the epoch's effort‑bounty pool = `φ·Σ_n D_n + ω·OwnerCut` |
 | `effort_v` | validator `v`'s verified, coverage‑weighted completed‑trail effort |
@@ -294,7 +342,7 @@ Two cadences run concurrently.
 
 Each tempo (~72 min) the chain runs Yuma and drains α emission. Weight‑setting is **decentralized across
 independent validators** — the change that makes Yuma do real work. Each tempo every validator (§9)
-scores **every NO pool** from its own `VERIFIER.md` trails and submits it under commit‑reveal:
+scores **every NO pool** from its own `VALIDATOR.md` trails and submits it under commit‑reveal:
 
 ```
 each tempo, every independent validator v:
@@ -317,7 +365,7 @@ standard Bittensor validator software.
 
 ### 5.2 Epoch cadence (application‑layer; settlement)
 
-The 7‑day epoch is the unit `INCENTIVES.md` calls a "block." It is tracked by the contract as an
+The 7‑day epoch is the unit `seed/INCENTIVES.md` calls a "block." It is tracked by the contract as an
 incrementing counter with a fixed block length `T_epoch`. The epoch lifecycle (timeline from
 `README.md`):
 
@@ -343,6 +391,13 @@ custodian** (it owns the miner‑pool UIDs and captures their incentive), the **
 fee‑funded validator effort reward), and the **settlement/claims** engine. It is **not** the subnet's
 validator — **independent validators** (§9) set the weights and earn dividends natively; the contract
 holds and pays out the miner emission + the bounty.
+
+**No-custody is a v1 must-have — in spirit, not immutability (D21).** The *foundation and NOs never hold or
+distribute α*: the contract is the sole custodian of in-transit α and every payout is a **direct on-chain
+pull claim** (`transferStake`), with the **head paid natively** (§8.4). All α moves on-chain; no person ever
+holds participants' α in an off-chain wallet. This property is required at v1 — but it does **not** mean the
+contract is frozen: for v1 the contract stays **upgradeable + owner-multisig + guardian** (normal bug-fix
+latitude) and is progressively locked down (§6.4).
 
 ### 6.1 State (essential)
 
@@ -453,7 +508,7 @@ authority** (the proxy admin), **admission** (`registerOperator` gating), **disp
 **treasury** (the owner cut, less the `ω` slice that funds the bounty). We launch with these centralized
 but *bounded* (Phase 0), then harden custody (Phase 1). Deeper decentralization —
 trustless inputs, on‑chain governance, immutability, and handing off the Bittensor subnet‑owner role —
-is deferred (§6.4.3) until the mechanism is proven (notably the `VERIFIER.md` §10 defenses).
+is deferred (§6.4.3) until the mechanism is proven (notably the `VALIDATOR.md` §10 defenses).
 
 **Invariant across every phase — earned claims are sacrosanct.** Once `finalizeEpoch(e)` writes the
 claim roots for epoch `e`, the α backing those claims is committed: **no upgrade, pause, or admin action
@@ -512,7 +567,7 @@ rewrite.
 
 ### 7.1 No on‑chain oracle — NOs simply deposit α
 
-`INCENTIVES.md` frames deposits as "per used GB and active user … based on the global fixed rate set by
+`seed/INCENTIVES.md` frames deposits as "per used GB and active user … based on the global fixed rate set by
 an oracle." We **drop the on‑chain oracle entirely**: per‑GB / per‑user usage is **self‑reported and
 unverifiable on‑chain**, so pricing it on‑chain buys nothing — the only quantity the protocol can act on
 is *the α actually deposited*. A NO just calls `deposit(α)`; `SUM(DT)_n = D_n` is the signal, full stop.
@@ -529,12 +584,12 @@ The deposit *is* the claim: `D_n` (α) is the NO's costly, on‑chain bid for em
 never verifies GB — infeasible and a non‑goal. The deposit is a **costly signal** funded by the NO's
 **real customer revenue**, and a **non‑refundable fraction `φ`** of every deposit is taken as a true
 cost (§12.1) so the signal cannot be cheaply round‑tripped through self‑dealing. The constraint is the
-one `INCENTIVES.md` names — *deposit cost is bounded by the NO's revenue, which reflects real usage* —
+one `seed/INCENTIVES.md` names — *deposit cost is bounded by the NO's revenue, which reflects real usage* —
 and its load‑bearing **independence assumptions** are stated explicitly in §12.
 
 ### 7.3 Publishing deposits
 
-`INCENTIVES.md`: "NO publishes list of their deposits and signs with wallet." No extra commitment is
+`seed/INCENTIVES.md`: "NO publishes list of their deposits and signs with wallet." No extra commitment is
 needed: each DT is already an **on‑chain event** (`Deposit(epoch, noId, amount)`) signed by the
 operator's tx, so `D_n` is publicly and authoritatively summable straight from chain state — that *is*
 the signed, published deposit list. (Earlier drafts also committed a `depositSummaryHash`; redundant with
@@ -547,7 +602,7 @@ the events, now dropped.)
 ### 8.1 Across operators — Yuma emits to the miner pools ∝ deposit × quality
 
 Independent validators (§9–§10) score each NO miner‑pool UID `deposit_n × Q_n`, where `Q_n` is the
-pool's aggregate provider quality from their `VERIFIER.md` trails; Yuma medians/clips the scores and
+pool's aggregate provider quality from their `VALIDATOR.md` trails; Yuma medians/clips the scores and
 emits to the pool UIDs — so the miners' reward *is* the validators' evaluation. NO `n`'s miner‑pool UID
 accrues over the epoch
 
@@ -563,7 +618,7 @@ earns less even at high deposit (with the swing capped at bootstrap, §12.3). Th
 ### 8.2 Within an operator — the payout list (the NO's lever, but auditable)
 
 The NO does not hold the pool; it only **says how its pool splits** among its 100k+ providers —
-`INCENTIVES.md`: "The network operator determines the payout from their mining slots." The natural basis
+`seed/INCENTIVES.md`: "The network operator determines the payout from their mining slots." The natural basis
 (not mandated by the protocol) is
 
 ```
@@ -571,7 +626,7 @@ s_{n,p}  ∝  contracts_{n,p} · reliability_{n,p},        Σ_p s_{n,p} = 1
 ```
 
 where `contracts_{n,p}` is the usage provider `p` served for NO `n` and `reliability_{n,p}` is the **same
-`VERIFIER.md` per‑provider signal** the validators aggregate into the pool quality `Q_n` (§9.4, §10). The
+`VALIDATOR.md` per‑provider signal** the validators aggregate into the pool quality `Q_n` (§9.4, §10). The
 NO commits `payoutRoot` = a Merkle root over its `(provider_coldkey, share)` leaves (§11). Because the
 validated paths are public, the list is **auditable**: a NO that pays idle providers over live ones is
 detectable and bleeds quality consensus (lower `Q_n` → less emission, §8.1). This commitment is the NO's
@@ -608,18 +663,115 @@ operator holds none of it.**
 > on‑chain miner (one UID per NO) and the providers are paid *inside* it by Merkle claim. Yuma operates
 > at the pool granularity (§10); the within‑pool split is §8.2.
 
+### 8.4 Top-level miners — the direct head channel
+
+The pool tier scales to 100k+ providers but pays them by a NO-directed Merkle split. The **top ~200
+providers** *also* get the **canonical Bittensor treatment**: each claims **its own miner UID**, is
+**steered directly by validators on pure measured quality**, and is **paid natively**. This is the merit
+apex of §1 — and it is *more* trust-minimized than the pool (no operator in the payout path).
+
+**Identity — the `client_id ⇄ hotkey` binding (§11.4).** Validators measure providers by `client_id` (the
+`VALIDATOR.md` proof's hops, server-derived from the unspoofable source IP, `VALIDATOR.md` §8.1). To steer
+the head they need `client_id → UID`. A provider that wants a top slot publishes a **dual-signed binding**
+(§11.4) proving it controls **both** the `client_id` (its `VALIDATOR.md` Ed25519 key) **and** the hotkey
+(its BT key); validators read it as a free state query and **fail-closed** if the hotkey is not a live UID.
+This is the standard Bittensor "signed proof → registered hotkey" pattern (Epistula / ORO-AI
+`bittensor-auth`); the dual signature (cf. SN51 Celium's `associate_evm_key`) stops a miner from claiming
+a `client_id` it does not operate and stealing another provider's measured quality.
+
+**Weight — pure quality, no deposit.** A top-level miner `p`'s weight is its **per-provider quality** `Q_p`
+straight from `VALIDATOR.md` §7 — Wilson-scored step-completion (liveness) + latency percentiles,
+**EMA-smoothed across epochs** (α ≈ 0.1) so a single noisy epoch doesn't thrash emission. There is **no
+`deposit` term** — the head is a meritocracy; demand-coupling stays in the pool tier (§8.5). This also
+**resolves the pool-quality-aggregation open question (§17) for the head**: per-provider `Q_p` *is* the
+weight, so no roll-up to a pool scalar is needed (the `Q_n` aggregation question now bites only the tail).
+
+```
+for top-level-miner UID u (with bound client_id c):
+    Q_p(u) = EMA_e( VALIDATOR.md §7 stats for c )      # Wilson liveness + latency percentiles, normalized
+    head_weight[u] = Q_p(u)                            # no deposit factor
+```
+
+**Emission — native, direct to the provider.** Yuma credits a miner's incentive as **α stake on its own
+hotkey under its own coldkey — no take, not shared with nominators** (verified against `run_coinbase.rs`).
+So a top-level miner is paid **directly**: no contract custody, no Merkle claim, no NO middleman. (Child
+hotkeys **cannot** route miner incentive — *"only the validation emission is split amongst parents"* — so
+each top miner is genuinely its own UID; there is no native way to pool *miner* emission other than the
+contract-Merkle machinery the pool tier already is.)
+
+**Promotion / demotion — the chain's native tournament.** There is **no native "top-N keeps the slot"**
+primitive; the only on-chain UID reallocation is **deregistration of the lowest-*emission* neuron** (tie →
+oldest `reg_block` → lowest UID; owner/immune skipped) when a new `burned_register` hits the full subnet.
+That *is* the tournament, driven by the weights validators set:
+
+- **Promote.** A provider whose measured `Q_p` would out-earn the eviction floor `burned_register`s a UID;
+  validators weight it on `Q_p`; it is **removed from its NO's `payoutRoot`** (promoted out — **no
+  double-pay**; a provider is in exactly one tier at a time).
+- **Demote.** A top miner whose `Q_p` decays earns the lowest emission, is pruned on the next registration,
+  and **falls back to earning via its NO's pool** — the baseline catches it.
+- **Quality-dip protection (a real risk).** Pruning reads only *current* emission rank, no history, so once
+  a UID's `immunity_period` expires one bad stretch can evict a good provider. Mitigations, all
+  owner-tunable: a **high `immunity_period`** (a full measurement ramp for new top miners), the **`Q_p`
+  EMA** (above), and a **θ large enough that the lowest top miner clears the highest pool provider** (else
+  the head thrashes against the tail, §8.5). Each (re-)registration pays the continuous burn auction
+  (≈ ×1.26 / registration), so churn has a real, tunable cost — and a per-UID burn makes the head **more**
+  Sybil-resistant than one pool UID per NO.
+
+**Weight shaping (best practice for ~200 concurrent providers).** Steer **proportionally** to `Q_p`, *not*
+winner-take-all (that suits single-best-answer contests, e.g. Apex SN1); **set `max_weight_limit`** to a
+real cap (the chain default is *no cap*, so one provider could dominate the head); and sample/schedule
+`VALIDATOR.md` trails so every top UID gets regular coverage (so honest-but-idle UIDs don't stale-decay).
+This matches the strongest DePIN precedents — FileTAO's Wilson-interval scoring and TPN's robust latency
+statistics.
+
+### 8.5 The head/tail emission split θ
+
+Both tiers are miner UIDs in **one** mechanism (§14), so the 41% miner emission is divided by the
+**weights validators set** — and to make that a controllable policy rather than an accident, validators run
+common software that **reserves a governance share θ to the head and `1−θ` to the pools**, exactly as Data
+Universe (SN13) reserves a fixed share to one UID by rewriting weights before `set_weights`:
+
+```
+head[]  =  { Q_p(u) }            normalized so Σ head = θ
+pool[]  =  { deposit_n × Q_n }   normalized so Σ pool = 1 − θ
+w       =  head ⊕ pool           # one vector over all miner UIDs; commit-reveal; apply max_weight_limit
+```
+
+Both shares go to **real recipients** (top miners; contract-owned pool UIDs), so the **June-2026
+`(1 − miner_burned)` penalty does *not* apply** — that penalty only bites emission *withheld to an
+owner/immune key* (Spec 421, subtensor PR #2781). **Do not "reserve baseline" by burning to an owner UID** —
+it would shrink the subnet's whole cross-subnet allocation. Because Yuma clips to the κ-stake-weighted
+median, θ takes effect only if a **stake-majority of validators run the same θ** — so θ is a *published
+governance parameter*, not per-validator discretion.
+
+**θ is the load-bearing new decision, because it trades the two bets against each other.** Demand-coupling
+(`deposit × quality`, the headline bet of `COMPARISON.md`) lives entirely in the **`1−θ` tail**; the head is
+pure merit, *decoupled* from deposits.
+- **Large θ (head-heavy):** a big, trust-minimized meritocracy — but most emission is demand-*de*coupled,
+  and a NO's best providers then earn from the subnet-funded head, not the NO's deposit-funded pool, so NO
+  **deposit incentives weaken**.
+- **Small θ (tail-heavy):** demand-coupling stays dominant and deposits stay meaningful — but the apex is a
+  small carrot, and graduating can be a *pay cut* (breaking the ladder).
+
+**Recommendation:** govern θ; **start tail-weighted (θ ≈ 0.3)** — the pool is the stated on-ramp/baseline
+and demand-coupling is the strategic edge — **instrument realized per-tier pay**, and **widen θ as the
+top-miner set and the independent-validator quality consensus mature** (the same "ramp the strength, not the
+mechanism" posture as the bootstrap quality-swing cap, §12.3 / D14). Hard constraint: size θ so the
+**lowest-paid top miner ≥ the highest-paid pool provider**, or graduation is a pay cut and the head thrashes
+against the tail.
+
 ---
 
 ## 9. Validator channel: independent validators, native dividends + an effort bounty
 
 Validators are **independent** — no NO owns or pools them (the per‑NO validator pool, the NO↔V
 intersection split, and the per‑path VT of earlier drafts are gone, §13.6). A validator is the source of
-the subnet's core data — **which providers are the weakest links** (`VERIFIER.md` §7) — so it is paid
+the subnet's core data — **which providers are the weakest links** (`VALIDATOR.md` §7) — so it is paid
 for *both* accurate scoring **and** trail effort. ("Verifier" and "validator" are now one role.)
 
 ### 9.1 What a "validated path" is
 
-A completed `VERIFIER.md` trail yields a **published proof** `{header, hops[(client_id, time)],
+A completed `VALIDATOR.md` trail yields a **published proof** `{header, hops[(client_id, time)],
 final_sig (NO server), verifier_sig (vpk)}`, with identity
 
 ```
@@ -670,15 +822,15 @@ bounty_v  =  FeePool · effort_v / Σ_w effort_w
 
 with three deliberate weightings:
 
-- **Server‑assigned hops only** — exclude the validator‑chosen seed (`VERIFIER.md` §7.6); the server
-  assigns the trail's hops at random (`VERIFIER.md` §5.1), so a validator **cannot farm the bounty
+- **Server‑assigned hops only** — exclude the validator‑chosen seed (`VALIDATOR.md` §7.6); the server
+  assigns the trail's hops at random (`VALIDATOR.md` §5.1), so a validator **cannot farm the bounty
   through providers it favors**.
 - **Coverage‑weighted by under‑sampling** — a hop through an **under‑sampled** provider (few recent
-  samples, `VERIFIER.md` §5.3) pays more, so effort is pulled toward the **gaps in coverage**, not raw
-  volume. (Failures are read as the *byproduct* of this maximal effort, `VERIFIER.md` §7.1 — we never
+  samples, `VALIDATOR.md` §5.3) pays more, so effort is pulled toward the **gaps in coverage**, not raw
+  volume. (Failures are read as the *byproduct* of this maximal effort, `VALIDATOR.md` §7.1 — we never
   pay for failures directly.)
 - **Crypto‑verified (by sample + dispute)** — a trail credits effort only if its signatures verify, so
-  effort **cannot be fabricated** without real trail‑walking (bounded by `VERIFIER.md` §5.4).
+  effort **cannot be fabricated** without real trail‑walking (bounded by `VALIDATOR.md` §5.4).
 
 The bounty needs **no claim root**: `effort[e][valId]` is on‑chain (after the sample + dispute), so
 `claimValidator(e, valId)` pays `feePool[e] · effort[e][valId] / totalEffort[e]` computed on‑chain
@@ -686,7 +838,7 @@ The bounty needs **no claim root**: `effort[e][valId]` is on‑chain (after the 
 
 ### 9.4 The failure data — what we derive (the point)
 
-The completed and failed trails, aggregated with `VERIFIER.md` §7 (per‑transition attribution,
+The completed and failed trails, aggregated with `VALIDATOR.md` §7 (per‑transition attribution,
 Wilson‑smoothed liveness, latency percentiles), yield **per‑provider** liveness/latency/failure
 attribution — *which providers are the weakest links*. This feeds **(a)** each NO's within‑pool payout
 list (`reliability_{n,p}`, §8.2) **and (b)** each pool's cross‑operator quality `Q_n` (§8.1, §10) — i.e.
@@ -701,43 +853,48 @@ more the bounty is funded*, which is the whole reason to keep the validator ince
   own NO at all; **commit‑reveal** stops it copying fresh consensus.
 - **Honest effort** — §9.3: crypto‑verified (sample + dispute), server‑assigned, under‑sampling‑weighted
   trails can't be faked or farmed.
-- **Independence** — because most validators run no NO, the κ‑median tracks ground truth (`VERIFIER.md`
+- **Independence** — because most validators run no NO, the κ‑median tracks ground truth (`VALIDATOR.md`
   §1) — the structural defense against a NO colluding with a validator to fake its own `Q_n` (further
-  bounded by `VERIFIER.md` §5.4).
+  bounded by `VALIDATOR.md` §5.4).
 
 ### 9.6 The owner's role
 
 The owner is the governance **referee**, not a party to a per‑path split (the old "disagreement → owner"
 went away with the intersection split). It **co‑funds the bounty** — the slice `ω` of its 18% cut, its
 *skin in the data* — and tunes `φ`, `ω`, the coverage weighting, and the §12.3 caps. It reviews the
-**statistical** disputes (`VERIFIER.md` §7.7) that the on‑chain crypto layer can't decide (self‑dealing
-patterns, adversarial abandonment) and drives the `VERIFIER.md` §10 roadmap. Per `INCENTIVES.md`, the
+**statistical** disputes (`VALIDATOR.md` §7.7) that the on‑chain crypto layer can't decide (self‑dealing
+patterns, adversarial abandonment) and drives the `VALIDATOR.md` §10 roadmap. Per `seed/INCENTIVES.md`, the
 residual "how much the owners mistrust the NOs / NOs mistrust each other" is now read from **consensus
 divergence + the disputes**, not from a contested‑value pot.
 
 ### 9.7 Validators are permissionless and Bittensor‑native
 
 Entry is the standard path: **stake α, earn a permit (top‑k by stake), validate** — no NO, no owner
-approval, no pool. Most validators run no NO, which is exactly the **independence** `VERIFIER.md` §1
+approval, no pool. Most validators run no NO, which is exactly the **independence** `VALIDATOR.md` §1
 needs and the structural defense against self‑dealing (§9.5, §12.3). Cultivating a broad, independent
 validator set — and weighting that independence in governance — is a primary v1 goal and a down payment
-on the `VERIFIER.md` §10 roadmap. (Earlier drafts split validators into "NO pools" vs "community"; there
+on the `VALIDATOR.md` §10 roadmap. (Earlier drafts split validators into "NO pools" vs "community"; there
 is now **one** kind — independent — so the distinction is gone.)
 
 ---
 
-## 10. Setting weights: deposit × quality, by validator consensus
+## 10. Setting weights: two channels (deposit × quality + pure quality), by validator consensus
 
-Each tempo **every independent validator** (§9) scores **every NO miner pool** from its own
-`VERIFIER.md` trails and submits the vector under commit‑reveal — so the validators' evaluation is what
+Each tempo **every independent validator** (§9) scores **both miner tiers** — the NO pools *and* the top-level miners (§8.4–8.5) — from its own
+`VALIDATOR.md` trails and submits the vector under commit‑reveal — so the validators' evaluation is what
 moves the miner emission (the Bittensor mechanism):
 
 ```
-for validator v, for each NO pool p (miner-pool UID of NO n):
-    quality_v(p) = aggregate of v's VERIFIER.md trail stats through n's providers   // §9.4, normalized
-    score_v(p)   = deposit_p · quality_v(p)             // deposit (objective, on-chain) × quality (measured)
-    if v also operates NO n:  score_v(p) = 0            // self-weight mask (anti self-dealing)
-    w_v = normalize(score_v) to u16
+for validator v:
+    # TAIL — NO pools (unchanged): deposit × quality
+    for each NO pool p (miner-pool UID of NO n):
+        pool[p] = deposit_p · quality_v(p)              // §9.4 aggregate; = 0 if v operates NO n (self-mask)
+    # HEAD — top-level miners: pure quality (§8.4)
+    for each top-level-miner UID u (client_id c bound to u, §11.4):
+        head[u] = Q_p,v(u) = EMA( v's VALIDATOR.md §7 stats for c )   // no deposit term; = 0 for v's own UID
+    # split by governance share θ, into ONE vector (§8.5)
+    normalize head so Σ head = θ ;   normalize pool so Σ pool = 1 − θ
+    w_v = (head ⊕ pool) to u16 ;   apply max_weight_limit
     commit / reveal w_v   (Neuron 0x804, drand timelock — §2.4)
 ```
 
@@ -751,7 +908,9 @@ Yuma combines the validators' vectors with their stake:
   tracks `deposit_p × consensus‑quality_p`: **deposits anchor it to revenue‑backed demand (§7), and the
   measured pool quality modulates it** — a NO with poor providers earns less even at high deposit (swing
   capped at bootstrap, §12.3). The *within*‑pool split to providers is the separate per‑provider step
-  (§8.2).
+  (§8.2). **Head:** `incentive_u ∝ Σ_v stake_v · clipped Q_p,v(u)`, so a top-level miner's emission tracks
+  its **consensus quality** alone (no deposit), paid **natively** to its own hotkey (§8.4); the θ split
+  (§8.5) sets how the 41% divides between the head and the pools.
 - **Validator rewards = dividends + bounty.** Native dividends grow with bonds on pools consensus later
   rewards (Liquid Alpha) and with vtrust (accurate scoring) — the **Bittensor‑native** reward for good
   evaluation — **plus the §9.3 effort bounty** for the trail volume that scoring requires. Accurate
@@ -760,7 +919,7 @@ Yuma combines the validators' vectors with their stake:
   from current quality and loses vtrust (§5.1).
 
 Hyperparameters: `commit_reveal_weights_enabled = true`, `liquid_alpha_enabled = true` (reward early
-pool discovery), `max_weight_limit` capped so no single pool dominates, `weights_version_key` bumped to
+pool discovery), `max_weight_limit` set to a real cap (chain default is *no cap*) so no single UID dominates either tier, `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), `weights_version_key` bumped to
 force validator‑software upgrades (§15.1).
 
 > **Why this is real Yuma.** With a sole validator the consensus would be inert; with **many independent
@@ -782,7 +941,7 @@ force validator‑software upgrades (§15.1).
 | payout‑share leaves, completed‑trail proof blobs | **off‑chain** (IPFS/HTTPS, pointer in `off`); trails go to `submitTrails` | bulk data; only the roots / verified effort are trusted |
 | public mirror of roots | **commitments pallet** (optional, free) | SDK‑native public audit without touching the contract |
 
-This directly answers `INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
+This directly answers `seed/INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
 payout table (fractional shares) so every provider verifies *its own* payout with an `O(log N)` proof,
 with no bulk data on chain. The contract holds each NO's payout root and the on‑chain pool total, and
 derives the α at claim time (§8.3) — there is **no global, off‑chain‑computed claim root**.
@@ -828,9 +987,48 @@ and cheap**:
   `payoutRoot`; the per‑pool cap (`claimedMiner ≤ poolTotal`) means a NO whose shares sum to > 1 only
   drains its own pool. (Validator bounties need no proof — the amount is on‑chain.)
 
-Statistical disputes (a validator's trails look self‑dealt or coverage‑gamed, `VERIFIER.md` §7.7) are
+Statistical disputes (a validator's trails look self‑dealt or coverage‑gamed, `VALIDATOR.md` §7.7) are
 **not** resolved on‑chain in v1; they inform governance (validator de‑listing, stake forfeiture). The
 on‑chain layer handles only what is cryptographically decidable.
+
+### 11.4 The `client_id ⇄ hotkey` binding (top-level miners)
+
+To steer the head (§8.4), a validator must map each measured `client_id` to a top-level miner's UID. The
+binding is **published, signed, and cheap to read**, using the standard Bittensor "signed proof →
+registered hotkey" pattern (Epistula / ORO-AI `bittensor-auth`) — with a **dual signature** so a miner
+cannot claim a `client_id` it does not operate.
+
+**Dual-signed association.** A provider claiming a top slot proves control of **both** keys:
+
+```
+msg        = "urnetwork/bind/v1" ‖ client_id(16) ‖ hotkey_ss58(32)
+sig_client = Ed25519.Sign(client_sk, msg)   // client_sk = the per-client key (VALIDATOR.md §2 vpk/ckey) → proves client_id ownership
+sig_hotkey = sr25519.Sign(hotkey_sk, msg)   // proves UID / hotkey ownership
+```
+
+This is the shape of SN51 Celium's anti-theft `associate_evm_key` (both keys sign the linkage); a *single*
+hotkey signature would let a miner **steal another provider's measured quality** by claiming its `client_id`.
+
+**Where it lives.**
+- **Commitments pallet** (free, `Pays::No`, keyed `(netuid, hotkey)`, §2.4): the miner hotkey commits its
+  `client_id`(s) — a short list, or a Merkle root if it runs several. Validators read it as a **free state
+  query** and build `client_id → UID`, **failing closed** if the hotkey is not a live UID (a stale-snapshot
+  guard).
+- **ST-contract anchor** (for disputes): the contract stores the binding (or its hash) and adjudicates a
+  contested/stolen binding on-chain — verifying `sig_client` via the **`0x402` Ed25519 precompile** and
+  hotkey ownership via a metagraph read — reusing the §11.3 dispute rail. A bad binding is slashable.
+
+**Identity ⊥ quality.** The binding proves *ownership* only; `VALIDATOR.md` proves *quality*. They stay
+separate (as every comparable subnet does — Targon deliberately keeps the hotkey out of its TEE
+attestation): a validator attributes a trail to a UID via the binding, then scores that UID via
+`VALIDATOR.md` §7.
+
+**Privacy — opt-in self-deanonymization.** Publishing `client_id → hotkey` (→ egress IP, `VALIDATOR.md`
+§8.1) **does** deanonymize, so it is **voluntary and only for providers claiming a public top slot** —
+claiming the public UID *is* the consent. The long tail stays `client_id`-pseudonymous inside the pools.
+(Optionally the NO `/verify` server — which already co-signs trails and authoritatively knows
+`client_id ⇄ egress-IP` — can add a third attesting signature; it strengthens the binding at the cost of
+NO-trust, and is not required.)
 
 ---
 
@@ -863,7 +1061,7 @@ and **(3)** what remains is bounded by `0.41·E·(D/ΣD) − φ·D − (real inf
 owner tunes via `φ`, `E` (TAO inflow), and the bootstrap cap on the quality swing. Pure wash deposits
 with no real, independently‑verified service are unprofitable once `φ` and the independent‑validator
 baseline are non‑trivial. The honest residual (a determined self‑dealer with real infra *and* stake) is
-the `VERIFIER.md` §10 class, exactly what a broad independent validator set + that roadmap close (§12.3).
+the `VALIDATOR.md` §10 class, exactly what a broad independent validator set + that roadmap close (§12.3).
 
 ### 12.2 Validator equilibrium
 
@@ -888,7 +1086,7 @@ routing the validator emission itself through the effort split (§13.6).
   so governance **caps the quality swing** early (closer to deposit‑weighted) and widens it as the
   independent‑validator stake share grows. Quality is on the payout path from day one; its *magnitude*
   ramps up safely.
-- **Not fully secured in v1 (inherited from `VERIFIER.md` §10):** per‑hop self‑dealing, adversarial
+- **Not fully secured in v1 (inherited from `VALIDATOR.md` §10):** per‑hop self‑dealing, adversarial
   abandonment, and "teaching to the test" — *to the degree the validator population is not yet
   independent.* Much weaker than a sole‑validator design but not eliminated. Rewards stay **provisional**
   until the §10 structural defenses (proof‑of‑routing, destination diversity, validator Sybil resistance)
@@ -904,15 +1102,16 @@ routing the validator emission itself through the effort split (§13.6).
 
 ### 13.1 Settlement: contract custodies the miner pools; validators are independent (chosen)
 
-The contract **owns each NO's miner‑pool UID** outright, so the **41% miner emission** accrues to the
-contract and is paid out by direct Merkle claim — *a network operator never custodies emission destined
+The contract **owns each NO's miner‑pool UID** outright, so the **tail's share of the 41% miner emission**
+accrues to the contract and is paid out by direct Merkle claim (the **head is native** — top-level miners
+own their UIDs and are paid to their own coldkey, §8.4) — *a network operator never custodies emission destined
 for its providers* (the hard requirement). The **weights are set by independent validators** (§9, §10),
 not the contract, so Yuma consensus does real work; their **41% dividends are native** (no middleman to
 remove), and their *effort* is paid by the fee‑funded bounty (§9.3, §13.6). Implications: the contract is
 **custody‑critical** for the miner emission + deposits + fee pool (audited code; §6.4 timelock/guardian
 governance), and it owns **one miner‑pool UID per NO**, so budget `max_allowed_uids` and registration
 burns to the **NO count** — providers are *not* UIDs, they live inside the pools. No α→TAO→α churn.
-*Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason for pools); letting emission land on
+*Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason for pools, though the **top ~200 do get their own UID** — the head tier, §8.4); letting emission land on
 NO hotkeys (violates no‑custody); a **single** contract miner UID with the contract as sole validator
 (collapses Yuma); and the earlier **per‑NO validator pool with a take‑0 custody hack** (fragile, and
 redundant with crypto‑validity — replaced by independent validators + the §9.3 bounty, §13.6).
@@ -976,6 +1175,32 @@ verified useful trails → more pay*. The intersection split was in any case red
 (a valid path is co‑signed = agreed by construction; an invalid one is caught by the `0x402` check, §11.3)
 and was a weak effort proxy; the bounty is a direct, stronger one.
 
+### 13.7 Two miner tiers: pool on-ramp + direct top-level miners (chosen)
+
+The miner side runs **both** a per-NO pool (§8.1–8.3) *and* a direct top-level-miner channel (§8.4), in
+parallel. *Why both:* a new provider needs a low-barrier **place to start with a baseline reward** (the
+pool — no UID, no burn), while the best providers deserve the **canonical, trust-minimized** Bittensor
+treatment (their own UID, steered directly, paid natively). A provider **starts in a pool and graduates**
+to a top slot, the chain's deregistration churn running the tournament. This is **novel** on Bittensor: the
+field has the pool pattern (ComputeHorde, TPN, Vanta) *and* the direct-UID pattern, but **no subnet tiers
+them** — the norm is the opposite, *consolidate* behind one UID (Chutes: "never register more than one
+UID"); and every pooled tail elsewhere is paid **off-chain at operator discretion**, where ours is
+trustless (`COMPARISON.md`). *Rejected:* head-only (discards the 100k-provider on-ramp and the demand
+signal); pool-only (the v0.1 design — leaves the best providers trusting a NO's split, one of thousands);
+and making top-level miners *contract-pooled* too (redundant — that is just another NO pool, and child
+hotkeys **cannot** route miner emission to sub-workers anyway, §8.4).
+
+### 13.8 Head/tail split θ in one mechanism (chosen); not two mechanisms, not owner-burn
+
+The two tiers share **one mechanism's** 256-UID metagraph, and the 41% miner emission divides between them
+by a governance share **θ** baked into validator software (SN13-style weight reservation, §8.5).
+*Rejected:* **two sub-mechanisms** (mechanism 0 = pools, mechanism 1 = top miners) split by
+`mechanism_emission_split` — clean in theory, but `mechanism_count × max_UIDs < 256` would **halve the UID
+space to ~127**, too few for ~200 top miners (so mechanisms stay reserved for the product-line split, §14);
+and **reserving the split by burning to an owner/immune UID** — post-Spec-421 the `(1 − miner_burned)` term
+would shrink the subnet's whole cross-subnet allocation (§8.5). θ trades demand-coupling (in the tail)
+against the merit apex (the head); it is a governed dial, started tail-weighted and ramped (§8.5, §12.3).
+
 ---
 
 ## 14. Multi‑pool structure (Pool 0 / Pool 1)
@@ -994,6 +1219,16 @@ The ST contract namespaces all per‑epoch state by `(poolId, epoch, …)`; ever
 per pool. v1 launches Pool 0; Pool 1 is added by registering the second mechanism and enabling its
 accounting — no new mechanism design required.
 
+**Tiers ≠ mechanisms — and the UID budget.** The two *miner tiers* (pool on-ramp + top-level miners,
+§8.4–8.5) live **within one mechanism**, divided by the weight-level share θ — *not* by
+`mechanism_emission_split`. Mechanisms are reserved for the **product-line** split (Pool 0 core / Pool 1
+VPN factory), because `mechanism_count × max_UIDs < 256` means a 2nd mechanism halves the per-mechanism UID
+space to ~127 — too few for ~200 top miners. So within Pool 0's one mechanism the **256 UIDs are shared**:
+`256 ≥ (top-level miners ~200) + (one pool UID per NO) + (validator UIDs)`. Reserve `V` validator slots and
+`P` NO-pool slots; the head is `256 − V − P` (e.g. V=36, P=20 → 200). Validators are not a fixed partition
+— they are the UIDs holding a permit (top-k by stake), so stand up far fewer than `max_allowed_validators`
+and the rest of the 256 are miners.
+
 ---
 
 ## 15. Concrete parameters
@@ -1003,12 +1238,14 @@ accounting — no new mechanism design required.
 | Hyperparameter | Value | Rationale |
 |---|---|---|
 | `tempo` | **360** | native ~72‑min weight/emission cadence (§5.1) |
-| `max_allowed_uids` | **256** (raise via governance as NOs grow) | **1 miner‑pool UID per NO** + the validator UIDs; providers are NOT UIDs (§3) |
-| `max_allowed_validators` | **64** (raise as the validator set grows) | the **independent validator** permits; root‑only to change (§9.7) |
+| `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
+| `max_allowed_validators` | **128** default, root-only; reserve **≤ 56** so ~200 miner slots fit | permit count (top-k by stake, §9.7) — *not* a slot partition; unused permit slots are miner UIDs |
+| `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
+| `max_weight_limit` | **set a real cap** (e.g. low single-digit %) | chain default is *no cap* (65535); without it one UID could dominate the head (§8.4) |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
-| `immunity_period` | **≥ 5000 blocks**, and **> reveal interval** | protect new NO pools; must exceed `commit_reveal_period × tempo` |
-| `min_allowed_weights` | **1** | a validator scores all NO pools; avoid the 1024 default |
+| `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 quality-dip risk); must exceed `commit_reveal_period × tempo` |
+| `min_allowed_weights` | **1** | a validator scores all miner UIDs (pools + top-level miners); avoid the 1024 default |
 | `weights_version_key` | bump on scoring‑logic upgrades | force validator‑software upgrades (§10) |
 | `serving_rate_limit` | default 50 | axons optional (custom HTTP protocol, §16) |
 | `registration` | burn‑based, `min_burn`/`max_burn` tuned | Sybil cost on miner‑pool UIDs + validators |
@@ -1028,6 +1265,7 @@ accounting — no new mechanism design required.
 | Dispute window | — | +24 h…+48 h | §11.3 |
 | Non‑refundable deposit fraction | `φ` | governance (e.g. 0.1–0.5) | self‑dealing floor **+ funds the effort bounty** (§9.3, §12.1) |
 | Owner‑cut slice to bounty | `ω` | governance (e.g. 0–0.5) | owner co‑funds the failure‑data bounty (§9.3, §9.6) |
+| **Head share** | `θ` | governance; start ~0.3, ramp | fraction of the 41% miner emission to top-level miners; `1−θ` to pools — **the load-bearing new dial** (§8.5) |
 | Coverage weighting | — | governance curve | up‑weights under‑sampled / weak providers (§9.3) |
 | Validator min stake | — | governance | permit qualifier + Sybil ante (§9.7) |
 | Global fixed rate (USD/GB, USD/user) | — | governance, **off‑chain reference** | NOs price customers + size deposits; not consumed on‑chain (§7.1) |
@@ -1040,7 +1278,9 @@ accounting — no new mechanism design required.
 α emission ≈ 1 α/block participant reward (subnet‑uniform), split **18% owner / 41% miners / 41%
 validators**, 21M α cap with halvings. The contract does **not** set these (the owner cut is
 governance‑settable, the 41/41 is hard‑coded); it steers the *distribution within* the miner pools and
-pays validators the §9.3 effort bounty — validator **dividends flow natively**.
+pays validators the §9.3 effort bounty — validator **dividends flow natively**. The 41% miner share is split **head/tail by θ** (§8.5) — steered by
+validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never withheld to an owner key
+(which would trigger the post-Spec-421 `miner_burned` penalty).
 
 ---
 
@@ -1054,18 +1294,20 @@ pays validators the §9.3 effort bounty — validator **dividends flow natively*
 2. **Subnet bootstrap.** `register_network`; set hyperparameters (§15.1); as each NO onboards, the
    contract `burnedRegister`s its **miner‑pool UID** (owned outright); stand up an initial set of
    **independent validators** (owner‑run at first) so consensus has measurement from day one; register
-   mechanism 1 for Pool 1 later.
-3. **Validator software (independent).** Stake α; run `VERIFIER.md` trails; each tempo score every NO
-   pool `deposit × quality` and submit commit‑reveal weights (standard Bittensor validator loop → native
-   dividends); submit completed‑trail proofs to `submitTrails` for the effort bounty — **no central
+   mechanism 1 for Pool 1 later. **Top-level miners self-`burnedRegister`** their own (provider-owned, not
+   contract-owned) UIDs and publish the §11.4 binding.
+3. **Validator software (independent).** Stake α; run `VALIDATOR.md` trails; each tempo score **both tiers** (pools `deposit × quality`,
+   top-level miners `Q_p`), read the `client_id ⇄ hotkey` binding (§11.4), split by θ, and submit
+   commit-reveal weights (standard Bittensor validator loop → native dividends); submit completed‑trail proofs to `submitTrails` for the effort bounty — **no central
    keeper sets weights**. A separate **permissionless settlement poke** triggers `finalizeEpoch` after
    the +48h window.
-4. **Network‑Operator software.** Runs the privacy servers + the `VERIFIER.md` `/verify` server
+4. **Network‑Operator software.** Runs the privacy servers + the `VALIDATOR.md` `/verify` server
    (SEED/EXTEND/FINAL, poisoning, idempotency, the four Ed25519 signatures, the egress‑IP index);
    `deposit`s DT each epoch; computes provider reliability + payout list; commits the **`payoutRoot`**
    (fractional shares); serves leaves. (No validator pool — it co‑signs trails as the `/verify` server.)
 5. **Provider software.** Carries ingress/egress; registers a `client_id`; verifies its payout leaf
-   against `payoutRoot`; `claimMiner`s.
+   against `payoutRoot`; `claimMiner`s. **If it reaches the top ~200:** `burnedRegister`s its own UID,
+   publishes the dual-signed `client_id ⇄ hotkey` binding (§11.4), and earns **natively** (no claim, §8.4).
 6. **Validator client (was "verifier").** `registerValidator(vpk)`; stake α; run `/verify` trails;
    submit commit‑reveal pool scores (native dividends) **and** completed‑trail proofs to `submitTrails`
    (effort bounty); `claimValidator`s the bounty; participates in disputes.
@@ -1077,7 +1319,7 @@ pays validators the §9.3 effort bounty — validator **dividends flow natively*
 
 Per current Bittensor practice, **`serve_axon` is optional**: the runtime stores but never interprets
 the axon protocol, and Yuma consumes only weights + stake. The UR network's transport is the custom
-`VERIFIER.md` HTTP protocol; participants discover each other out‑of‑band (the NO directory in
+`VALIDATOR.md` HTTP protocol; participants discover each other out‑of‑band (the NO directory in
 `README.md`) or via the commitments pallet, and touch the chain only for **registration, the contract,
 weights, and emission**. This is a supported, common pattern (model‑commit subnets, orchestrator
 subnets) — no Synapse/dendrite required.
@@ -1090,19 +1332,21 @@ subnets) — no Synapse/dendrite required.
 2. **M1 — Deposit + multi‑validator emission.** `deposit`; **≥ 2 validators** score pools
    `deposit × quality`; verify miner emission **accrues to the contract** via the contract‑owned
    miner‑pool UIDs and that consensus/clipping/vtrust behave; **per‑NO** `claimMiner` against
-   `payoutRoot` × `poolTotal` end‑to‑end (providers claim directly) with a mock payout list.
-3. **M2 — Validator rail + effort bounty.** Integrate `VERIFIER.md` proofs; `registerValidator`;
+   `payoutRoot` × `poolTotal` end‑to‑end (providers claim directly) with a mock payout list. **Head:** register a
+   provider-owned **top-level-miner UID**, publish the §11.4 binding, and verify a validator steers it on
+   `Q_p` with **native** emission to the provider's hotkey (no contract custody), split from the pools by θ.
+3. **M2 — Validator rail + effort bounty.** Integrate `VALIDATOR.md` proofs; `registerValidator`;
    `submitTrails` → coverage‑weighted `effort`; `feePool` = `φ·ΣD + ω·OwnerCut`; `claimValidator` pays
    `feePool·effort/Σeffort` **on‑chain (no root)**; on‑chain Ed25519 verification via `0x402`.
 4. **M3 — 7‑day settlement.** Full epoch lifecycle with the +4h/+24h/+48h
    windows; settlement‑poke automation; the **append‑only finalized‑claims invariant** (§6.4).
 5. **M4 — Mainnet Pool 0 (Phase 0 governance, §6.4.1).** Mainnet (chain 964) launch under the owner
    multisig + upgradeable proxy, conservative parameters, **quality‑factor swing capped until the
-   independent‑validator stake share is healthy** and `VERIFIER.md` §10 advances (§12.3).
+   independent‑validator stake share is healthy** and `VALIDATOR.md` §10 advances (§12.3).
 6. **M5 — Harden custody (Phase 1, §6.4.2):** timelock (≥ 1 epoch) on upgrades/params + a pause‑only
    guardian; then **Pool 1 (VPN factory)** via mechanism 1.
 7. **M6 — Decentralize further (deferred, §6.4.3):** trustless oracle (§13.5), permissionless bonded
-   admission, on‑chain governance; advance the `VERIFIER.md` §10 roadmap.
+   admission, on‑chain governance; advance the `VALIDATOR.md` §10 roadmap.
 
 ### 16.4 Pre‑launch verification checklist (load‑bearing live values)
 
@@ -1116,16 +1360,22 @@ subnets) — no Synapse/dendrite required.
 - Confirm an **independent validator** earns a permit at expected stake and that its **native
   dividends** accrue to its own hotkey (no contract capture under (X)); confirm `submitTrails` → `0x402`
   verification credits coverage‑weighted effort correctly.
+- Confirm **`max_allowed_uids` = 256 is a hard ceiling** and `mechanism_count = 1` (a 2nd mechanism halves
+  UID space, §14); confirm a **provider-owned top-level-miner UID** earns **native** emission to its own
+  coldkey (no take, not shared) and that the §11.4 `client_id ⇄ hotkey` binding verifies via `0x402`.
+- Confirm contract-owned **pool UIDs are not treated as owner/immune**, so the head/tail θ split does **not**
+  trigger the post-Spec-421 `(1 − miner_burned)` penalty (§8.5); set `max_weight_limit` and a high
+  `immunity_period` to protect the head from quality-dip eviction.
 
 ---
 
-## 17. Open questions from `INCENTIVES.md` — resolved
+## 17. Open questions from `seed/INCENTIVES.md` — resolved
 
 | Question | Resolution |
 |---|---|
 | **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Commit a 32‑byte Merkle root per NO per epoch; the contract stores roots that gate claims and the **free** commitments pallet can mirror them; bulk leaves are served off‑chain; each provider verifies its own payout with an `O(log N)` proof (§11). (No on‑chain oracle: the global rate is an off‑chain reference, §7.1.) |
 | **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24, chain 964, permissionless deploy. With Subtensor‑specific **precompiles**, validators set commit‑reveal weights and the contract stakes/transfers α, reads the metagraph/α‑price, and verifies Ed25519 — everything this design needs (§2.5). |
-| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= deposit × quality` on the per‑NO miner‑pool UIDs; the chain's incentive/dividend split delivers emission ∝ `deposit × consensus‑quality` to the **miner pools** (which the contract owns → re‑splits to providers per Merkle payout roots, §§8, 11) and ∝ stake × vtrust to **validators natively**. Validator *effort* is paid by a fee‑funded bounty (§9.3). No deviation from standard Yuma — it *is* Yuma, with many independent validators (§9). |
+| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= deposit × quality` on the per‑NO miner‑pool UIDs; the chain's incentive/dividend split delivers emission ∝ `deposit × consensus‑quality` to the **miner pools** (which the contract owns → re‑splits to providers per Merkle payout roots, §§8, 11) and ∝ stake × vtrust to **validators natively**. Validator *effort* is paid by a fee‑funded bounty (§9.3). No deviation from standard Yuma — it *is* Yuma, with many independent validators (§9). **Plus a second tier:** the top ~200 providers hold their own UIDs, steered on pure `Q_p` with native emission, split from the pools by θ (§8.4–8.5). |
 
 ---
 
@@ -1136,10 +1386,18 @@ subnets) — no Synapse/dendrite required.
   providers. No validator.
 - **Miner‑pool UID** — the on‑chain miner: one per NO, contract‑owned. The 100k+ providers are **inside**
   it (not UIDs) and are paid by Merkle claim.
-- **Provider / miner** — carries traffic; inside a NO's miner pool; **claims its α directly from the
-  contract** per the NO payout root.
+- **Provider / miner (tail)** — carries traffic; inside a NO's miner pool (the on-ramp tier); **claims its
+  α directly from the contract** per the NO payout root. Can **graduate** to a top-level slot (§8.4).
+- **Top-level miner (head)** — a top ~200 provider that holds **its own miner UID**, steered **directly** by
+  validators on pure quality `Q_p` and paid **natively** (no contract custody, no Merkle claim); matched to
+  its UID by the §11.4 binding; maintained by deregistration churn (§8.4).
+- **`client_id ⇄ hotkey` binding** — the dual-signed (client Ed25519 + hotkey sr25519) association a
+  top-level miner publishes (commitments pallet + contract anchor) so validators attribute its measured
+  `client_id` to its UID (§11.4).
+- **θ (head share)** — the governed fraction of the 41% miner emission steered to top-level miners; `1−θ`
+  goes to the pools (§8.5).
 - **Validator** (was "verifier") — an **independent** Bittensor validator UID: stakes α, runs
-  `VERIFIER.md` trails, scores pools, and earns **native dividends + a fee‑funded effort bounty** (§9).
+  `VALIDATOR.md` trails, scores pools, and earns **native dividends + a fee‑funded effort bounty** (§9).
   No NO, no pool — the disinterested consensus baseline.
 - **DT / φ / ω** — deposit transaction (NO, ∝ usage); `φ`·DT (non‑refundable) + `ω`·OwnerCut fund the
   validator **effort bounty** (§9.3).
@@ -1149,11 +1407,11 @@ subnets) — no Synapse/dendrite required.
   settlement + bounty payer. **Not** the validator (§9–§10).
 - **`SUM(DT)` / `Q_n` / `ŵ_n`** — NO's epoch deposit total / its consensus‑measured pool quality / its
   resulting consensus weight (∝ `deposit × quality`).
-- **Validated path** — a completed `VERIFIER.md` trail proof, id `keccak256(trail_id‖vpk‖server_key_id)`;
+- **Validated path** — a completed `VALIDATOR.md` trail proof, id `keccak256(trail_id‖vpk‖server_key_id)`;
   self‑proving (NO `FINAL` + validator `vpk` sigs), verified via `0x402`.
 - **Epoch (7 d)** — application settlement period; **tempo (360 blk)** — chain weight/emission cadence.
 
 ---
 
-*End of WHITEPAPER.md v0.1. This document fixes the architecture and the formulas; the next artifacts
-are the contract source, the chain‑config script, and the operator/verifier reference daemons (§16).*
+*End of WHITEPAPER.md v0.2 — two-tier miner side (pool on-ramp + direct top-level miners; §8.4–8.5, §10, §11.4, §14; decisions D16–D20 in `WHITEPAPER_DISCUSS.md`). This document fixes the architecture and the formulas; the next artifacts
+are the contract source, the chain‑config script, and the operator/validator reference daemons (§16).*

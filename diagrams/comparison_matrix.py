@@ -50,7 +50,7 @@ DATA=[
    "Standard 18 / 41 / 41 — “we do not fight the coinbase”"),
   ("Consensus engine","what moves the money",
    "Validators score miners; Yuma Consensus drives emission",
-   "Independent validators score pools; Yuma drives miner emission"),
+   "Independent validators score pools + head; Yuma drives emission"),
   ("Anti-gaming stack","",
    "Always-on Yuma core; commit-reveal & Liquid Alpha are opt-in",
    "Full stack ON: commit-reveal, clip+vtrust, self-mask, bonds"),
@@ -68,29 +68,35 @@ DATA=[
    "Pool 0 (core) / Pool 1 (VPN factory) via sub-mechanisms"),
   ("Scaling past the 256-UID cap","",
    "1 UID fronts many off-chain workers (ComputeHorde, TPN, Vanta)",
-   "1 operator = 1 pool-UID; up to 100k providers inside it"),
+   "Pool UIDs (tail) + top ~200 direct UIDs (head) in one 256-UID metagraph"),
   ("Real-world / DePIN output","",
    "Respected minority: compute, storage, VPN / bandwidth",
    "Privacy / VPN — providers carry ingress & egress traffic"),
   ("Verification rigor","",
    "Trending crypto/deterministic; heuristic for real-world work",
    "Cryptographic routing-verification (signed proof-of-transit)"),
+  ("Off-chain-worker identity binding","",
+   "Signed proof + ss58 + metagraph-membership check, fail-closed (Epistula / ORO-AI)",
+   "Celium-style dual-signed client_id-hotkey association; same fail-closed check"),
  ]),
  ("DIVERGENT",[
-  ("Reward settlement & custody","",
+  ("Reward settlement & custody","partial — head native",
    "Pure native emission to hotkeys; no contract in the reward loop",
-   "EVM contract custodies emission + deposits, then settles payouts"),
+   "Head: pure native emission, no contract. Tail: contract custodies + Merkle-settles"),
   ("Worker payout trust model","",
    "Operator pays its off-chain workers at its own discretion",
-   "Trustless on-chain Merkle claim; operator never holds the α"),
+   "Head = native direct (canonical); tail = trustless on-chain Merkle claim"),
   ("Validator effort reward","",
    "Native dividends only (stake × vtrust) — effort-agnostic",
    "Dividends + explicit fee-funded, coverage-weighted effort bounty"),
  ]),
  ("NOVEL",[
-  ("Miner reward basis / demand coupling","the headline bet",
+  ("Miner reward basis / demand coupling","headline bet (now in the tail)",
    "Pure measured work; emission decoupled from real paying demand",
-   "deposit × quality — costly, revenue-backed demand weights pay"),
+   "deposit × quality (tail) — costly, revenue-backed demand weights pay"),
+  ("Miner tiering (head / tail)","the second novel bet",
+   "Consolidate behind one UID (Chutes: “never register more than one”); pool the tail",
+   "Top-N promoted to own native UID (head) above a trustless pooled tail — tiered"),
  ]),
 ]
 
@@ -117,7 +123,7 @@ rect(10,10,W-20,H-20,16,fill="none",stroke="#eef2f7",sw=2)
 
 # ---------- title ----------
 T(MX,y_title,"UR Subnet vs. the Bittensor norm — design-decision alignment matrix",30,"bold",INK)
-T(MX,y_sub,"Where we follow prevailing practice, where we diverge in direction, and our one novel bet. Direction shown side by side; divergence is intentional, not deficiency.",14.5,"normal",SUB)
+T(MX,y_sub,"Where we follow prevailing practice, where we diverge in direction, and our two novel bets. Direction shown side by side; divergence is intentional, not deficiency.",14.5,"normal",SUB)
 
 # ---------- column headers ----------
 def colhead(x,w,label):
@@ -176,7 +182,7 @@ for v in ("ALIGNED","DIVERGENT","NOVEL"):
     rect(lx,ly-13,18,18,4,fill=light,stroke=mid,sw=1.6)
     T(lx+26,ly,f"{v} — {GROUP_BLURB[v]}",12.5,"normal",SUB)
     lx+=26+ (len(v)+len(GROUP_BLURB[v]))*7.0 + 40
-T(W-MX,ly,"10 aligned   ·   3 divergent   ·   1 novel",13,"bold","#334155",anchor="end")
+T(W-MX,ly,"11 aligned   ·   3 divergent   ·   2 novel",13,"bold","#334155",anchor="end")
 
 # ---------- render ----------
 svg='<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">%s</svg>'%(W,H,W,H,"".join(S))
