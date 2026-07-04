@@ -455,6 +455,32 @@ aggregation**: per-provider `Q_p` *is* the top-level miner's weight (D17, §8.4)
 - **(v0.2) Demotion grace.** Beyond `immunity_period` + the `Q_p` EMA, is an explicit "recently-top" buffer
   wanted, or is native lowest-emission churn acceptable? (§8.4.)
 
+**From the July-2026 comparison pass (Hippius SN75, BlockMachine SN19 — `COMPARISON.md` §8.5):**
+- **(v0.5) STRESS-TEST the "bandwidth can't be metered" premise — the load-bearing one.** BlockMachine (SN19)
+  couples emission to **metered priced usage** (`RU_served × self-declared USD/RU`, verified by re-execution)
+  with **no costly deposit at all** — the protocol-operated gateway meters usage AND routes customers by
+  price, so the market disciplines the price for free. Our costly deposit exists **only because** we assume
+  VPN bandwidth can't be metered/billed through a trustless gateway (privacy + NO-as-independent-business +
+  no honest party in the path). If that premise is even partly false, BlockMachine's design dominates ours
+  (no pay-to-play surface, no wash-deposit worry, no `deposit ≤ revenue` assumption). **This is the
+  assumption to red-team hardest before mainnet** — the deposit is a *substitute for unattainable
+  usage-verification*, not an end in itself.
+- **(v0.5) Partial usage meter as a deposit CROSS-CHECK (candidate, not v1).** Borrow BlockMachine's instinct
+  without the gateway: have the NO `/verify` server attest per-provider served-byte counts (it already knows
+  `client_id ⇄ traffic`), validator-sample them, and use them to **bound** deposits (flag a NO depositing
+  ≫ its attested usage). Stays NO-trusted so it can't *replace* the deposit, but narrows the wash-deposit
+  surface (our headline risk, §12.1). Explore post-launch.
+- **(v0.5) Own-L1 escape hatch + head soft-tier fallback (Hippius).** Hippius (SN75) sidesteps the 256-cap by
+  running its **own Substrate L1** (storage miners aren't UIDs) and soft-tiers on the Bittensor side via
+  **"family / top-10 / 80% geometric decay"**. Our in-metagraph choice (inherit BT security + α liquidity,
+  no second chain to secure) is deliberate and probably right for our resourcing — but if the ~200-UID head
+  ever over-pressures the metagraph, Hippius proves both (a) the own-L1 route and (b) a UID-cheap soft-tier
+  are viable. Note them as named levers; the soft-tier costs us native-direct head pay (reintroduces an
+  operator in the payout path), so keep per-UID head unless the cap actually binds.
+- **(v0.5) CONFIRMED, not open — the buyback.** BlockMachine's 1:1 α buyback → Protocol Stability Reserve and
+  Chutes' buy-and-lock independently corroborate our conviction-stake reserve (§7.4, §12.4). Confidence up;
+  lean into the narrative (the §8.4 "sell the story" execution risk).
+
 ---
 
 ## 4. Load-bearing research facts + verify-before-launch flags

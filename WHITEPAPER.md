@@ -2,7 +2,17 @@
 
 **A Bittensor subnet for a decentralized privacy network.**
 
-Version 0.4 (design). Target chain: Bittensor / Subtensor — **testnet first, then mainnet** (D28).
+Version 0.5 (design). Target chain: Bittensor / Subtensor — **testnet first, then mainnet** (D28).
+
+> **v0.5 — validator effort bounty removed from scope (D29).** The fee‑funded validator effort bounty is
+> **no longer a committed deferred phase** — it is **out of v1 scope entirely**, and whether to add any
+> validator‑effort incentive at all (and in what shape) is a **post‑launch open question**, to be decided
+> from what the live network shows about independent‑validator coverage. v1 pays validators **native Yuma
+> dividends only** (∝ stake × vtrust) — the plain Bittensor norm. The `(X)` fee‑funded / `(Y)`
+> emission‑routed designs of §9.3/§13.6 are retained below as **parked reference** (the formulas and the
+> already‑built machinery are not lost), but they are **candidates a future iteration might explore, not a
+> roadmap**. This supersedes the "deferred, ships with the independent‑validator phase" framing of v0.3
+> (D23) wherever it appears below.
 
 > **v0.4 — conviction staking, validator-computed weights, IP-breadth head.** Simplification pass
 > (`WHITEPAPER_DISCUSS.md` D25–D28): the **contract stops weighting/validating deposits** — deposits are
@@ -35,9 +45,9 @@ Because one NO may serve **100k+ providers — far beyond a subnet's ~256 UID ca
 **Subtensor EVM** (the **ST contract**, denominated in the subnet's **α** token) is the ledger, the
 emission custodian, and the **7‑day settlement** engine: providers **claim their α directly from the
 contract with cryptographic proofs**, so a NO *directs* where its pool's rewards go but **never holds
-anyone else's funds**. Validators earn Bittensor‑native **dividends** (∝ stake × scoring accuracy); the
-fee‑funded effort bounty of earlier drafts is **deferred** to the independent‑validator phase (§9.3,
-§13.6).
+anyone else's funds**. Validators earn Bittensor‑native **dividends** (∝ stake × scoring accuracy) —
+**v1's only validator reward**; the fee‑funded effort bounty of earlier drafts is **out of scope** (D29), a
+post‑launch open question, its spec parked in §9.3/§13.6 as a future‑iteration candidate.
 
 **Deposits are conviction stake — never distributed.** The contract moves each deposit into a **buyback
 reserve** — α staked on the owner's validator hotkey, where it compounds native dividends — and **no code
@@ -81,8 +91,8 @@ closing the gap to honest‑relay, payout‑grade verification is the `VALIDATOR
 - **Trust‑minimized custody:** no operator holds others' emission; everyone is paid by direct on‑chain
   claim against a committed Merkle root.
 - **Validator data:** native dividends reward consensus‑accurate scoring; at launch the owner is the
-  majority validator (by α holdings + the reserve) and runs the trail volume itself. The
-  coverage‑weighted **effort bounty** ships with the independent‑validator phase (§9.3, §13.6).
+  majority validator (by α holdings + the reserve) and runs the trail volume itself. A coverage‑weighted
+  **effort bounty** is **out of v1 scope** (D29) — a possible future iteration, not a committed phase.
 - **Progressive decentralization:** multisig + upgradeable → timelock + pause‑only guardian → broader
   governance.
 
@@ -117,9 +127,10 @@ alternatives):
 3. **Miner pools, scored by real Yuma consensus.** Each NO is **one miner‑pool UID**; its 100k+
    providers are paid *inside* the pool by Merkle claim. **Many independent validators** (no NO owns
    them) score the pools `deposit × measured‑quality` — so **validators' evaluation drives the miner
-   emission, the Bittensor way** — and Yuma's median/clipping/vtrust/bonds do real work. (The fee‑funded
-   **effort bounty** for third‑party trail volume is specified but **deferred**; at launch the owner is
-   the majority validator and runs the trails itself, §9.2–§9.3.)
+   emission, the Bittensor way** — and Yuma's median/clipping/vtrust/bonds do real work. (Validators earn
+   **native dividends only**; a fee‑funded **effort bounty** for third‑party trail volume is **out of scope**
+   — the owner is the majority validator at launch and runs the trails itself, §9.2; the bounty is a parked
+   future‑iteration candidate, §9.3, D29.)
 4. **Two clocks.** The chain's native **tempo** (~360 blocks ≈ 72 min) drives weight‑setting and
    emission; a **7‑day epoch** (≈ 50 400 blocks) is the application‑layer accounting/settlement
    period.
@@ -170,11 +181,12 @@ Money flows in three coupled channels, all in α:
 Top-level miners need **no settlement** — Yuma pays their UID natively each tempo (§8.4); the contract
 holds and settles only the **pool tier** (the tail), exactly as above.
 
-In v1 validators earn **native dividends only**. The subnet owner — holding the majority of α and
-therefore the majority validator seat in the early network, a position further compounded by the buyback
+In v1 validators earn **native dividends only** — full stop. The subnet owner — holding the majority of α
+and therefore the majority validator seat in the early network, a position further compounded by the buyback
 reserve staked to its hotkey (§7.4) — runs the trail volume itself, so the failure data does not need a
-protocol‑level subsidy yet. The **effort bounty** (∝ verified, coverage‑weighted completed trails) is
-fully specified and **deferred** to the phase where owner‑independent validators are wanted (§9.3, §13.6).
+protocol‑level subsidy. Whether a validator **effort bounty** (∝ verified, coverage‑weighted completed
+trails) is ever worth adding is an **open post‑launch question**, not a committed phase (D29); its design is
+parked in §9.3/§13.6 as a future‑iteration candidate.
 
 Because the weights carry a *subjective* signal — measured provider quality — the standard Bittensor
 anti‑gaming stack applies and is **switched on**: **commit‑reveal** (a lazy validator can't copy fresh
@@ -313,7 +325,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
 | **Network Operator (NO)** | a contract registration (`noId`) with **one miner‑pool UID** (its providers, contract‑owned). Holds **no emission**; runs no validator. | a per‑NO *pool operator*: deposits; runs the `/verify` server (co‑signs trails); commits the Merkle payout root that splits its miner pool. Directs flow; the contract holds and pays. |
 | **Provider (miner)** | a `client_id` **inside** a NO's miner pool — **not a UID** (100k+ providers can't each be a UID) | carries traffic; **claims its α directly from the contract** with a Merkle proof against its NO's payout root. The **on-ramp / tail** tier; can **graduate** to a top-level slot (§8.4). |
 | **Top-level miner (head)** | **its own miner UID**; a **fleet** — its `client_id`s **bound to its hotkey** (§11.4) | the **supply apex**: the top ~200 fleets by **split-adjusted distinct routable egress-IP count**, steered **directly** by validators (`weight = score`); **native** emission to its own coldkey — no contract custody, no Merkle claim; maintained by deregistration churn (§8.4). |
-| **Validator** (was "verifier") | an **independent** Bittensor validator UID; stakes its **own** α | runs `/verify` trails (the failure‑data signal), scores pools `deposit × Q_n` under commit‑reveal (§10). Earns **native dividends** (∝ stake × vtrust); the effort bounty (and its contract `vpk` registry) is **deferred** (§9.3). No NO, no pool. |
+| **Validator** (was "verifier") | an **independent** Bittensor validator UID; stakes its **own** α | runs `/verify` trails (the failure‑data signal), scores pools `implied_usage × Q_n` under commit‑reveal (§10). Earns **native dividends** (∝ stake × vtrust) — its **only** reward; a validator effort bounty is **out of scope** (D29, parked in §9.3). No NO, no pool. |
 | **ST contract** | a coldkey (mapped SS58) that **owns each NO's miner‑pool UID** and the **buyback reserve** | custodies **miner** emission and stakes every deposit into the locked reserve (§7.4); settles every pool by Merkle claim. Does **not** custody validator emission (it is native). |
 
 **Why pools (miner side only).** A NO has up to 100k providers — they cannot be UIDs (subnet cap ≈ 256),
@@ -335,10 +347,10 @@ in. A provider (`client_id`) is in **exactly one** tier at a time
 
 **Binding the validator identity.** `seed/INCENTIVES.md` says a validator "uses their wallet PK as their
 validation path key," while `VALIDATOR.md` signs trails with an Ed25519 `vpk`. The on‑chain binding —
-`registerValidator(vpk, sig)`, an Ed25519 signature checked via the `0x402` precompile — exists to make
-submitted **completed‑trail proofs** attributable for the effort bounty, so it ships **with the bounty
-phase** (§9.3); v1 deploys no contract validator registry. (Reusing the BT wallet key directly as `vpk`
-also works but couples key rotation to the wallet; binding is preferred.)
+`registerValidator(vpk, sig)`, an Ed25519 signature checked via the `0x402` precompile — exists only to make
+submitted **completed‑trail proofs** attributable for an effort bounty, so it belongs to the **parked
+bounty design** (§9.3, D29); v1 deploys no contract validator registry. (Reusing the BT wallet key directly
+as `vpk` also works but couples key rotation to the wallet; binding is preferred.)
 
 ---
 
@@ -361,7 +373,7 @@ also works but couples key rotation to the wallet; binding is preferred.)
 | `θ` | governance **head share**: fraction of the 41% miner emission steered to top-level miners; `1−θ` goes to the pools (§8.5) |
 | `client_id`s ⇄ hotkey | the signed binding mapping a fleet's `client_id`s to a top-level miner's UID (§11.4) |
 | `R` | the **buyback reserve**: cumulative locked deposits + voluntary conviction + their compounded dividends (§7.4) |
-| `φ` / `ω` / `FeePool` / `effort_v` | effort‑bounty quantities — **deferred with the bounty** (§9.3, §13.6) |
+| `φ` / `ω` / `FeePool` / `effort_v` | effort‑bounty quantities — **out of scope** (parked, §9.3/§13.6, D29) |
 | `s_{n,p}` | NO `n`'s payout share for provider `p` (Σ_p s_{n,p} = 1) |
 
 ---
@@ -406,7 +418,7 @@ incrementing counter with a fixed block length `T_epoch`. The epoch lifecycle (t
   t < +48h      Audit window: committed roots are public; a bad head binding is disputable on-chain (§11.3).
   +48h          contract.finalizeEpoch(e): snapshot per-NO poolTotal (emission-only, §8.3). Claims open (no global root).
                 Unclaimed α rolls into epoch e+1 (or a grace pool) after a TTL.
-                (The +24h effort-claim step and its challenge window return with the bounty phase, §9.3.)
+                (The +24h effort-claim step + challenge window belong to the parked bounty design, §9.3/D29 — not in v1.)
 ```
 
 Deposits, emission weighting, and dividend capture happen continuously across the epoch at tempo
@@ -421,7 +433,7 @@ Subtensor EVM. It is simultaneously: a **coldkey** custodying α, the **deposit 
 reserve** (every deposit staked and locked, §7.4), the **emission custodian** (it owns the miner‑pool
 UIDs and captures their incentive), and the **settlement/claims** engine. It is **not** the subnet's
 validator — **independent validators** (§9) set the weights and earn dividends natively; the contract
-holds and pays out the miner emission (and, in the bounty phase, the effort bounty, §9.3).
+holds and pays out the **miner emission only** (an effort bounty is out of scope, §9.3/D29).
 
 **No-custody is a v1 must-have — in spirit, not immutability (D21).** The *foundation and NOs never hold or
 distribute α*: the contract is the sole custodian of in-transit α and every payout is a **direct on-chain
@@ -447,7 +459,7 @@ struct Operator {
     bool    active;
 }
 mapping(uint256 => Operator) public operators;              // noId -> Operator
-// (validator effort registry, trailsRoot/effort/feePool: DEFERRED with the bounty phase, §9.3)
+// (validator effort registry, trailsRoot/effort/feePool: OUT OF SCOPE — parked bounty design, §9.3/D29)
 
 // --- deposits: NO on-chain weighting ledger (D25) ---
 // DT[e][noId] / totalDT are GONE — the contract does no deposit weighting or
@@ -475,7 +487,7 @@ mapping(uint256 => mapping(bytes32 => bool)) public minerClaimedBy; // epoch -> 
 ```solidity
 // --- registration ---
 function registerOperator(uint256 noId, bytes32 coldkey, bytes32 minerHotkey) external; // owner-gated v1; contract burnedRegisters the miner-pool UID (owns it)
-// (registerValidator / the vpk registry: deferred with the effort bounty, §9.3)
+// (registerValidator / the vpk registry: out of scope — parked bounty design, §9.3/D29)
 
 // --- deposits (α held as stake; see §6.3) ---
 function deposit(uint256 noId, uint256 alphaAmount) external;   // DT: credits the steering signal (gb/users optional
@@ -494,7 +506,7 @@ function claimMiner(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, 
 
 // --- governance ---
 function setHyperparam(...) external;                          // owner relays to subnet precompile
-// (setFeeParams(φ, ω): deferred with the bounty, §9.3. reserveHotkey is set once at initialize — §7.4)
+// (setFeeParams(φ, ω): out of scope — parked bounty design, §9.3/D29. reserveHotkey is set once at initialize — §7.4)
 ```
 
 ### 6.3 How the contract holds and moves α
@@ -506,8 +518,8 @@ function setHyperparam(...) external;                          // owner relays t
   to build settlement (§8).
 - **Validator emission is native.** Independent validators stake their **own** α and earn their **41%
   dividends natively** to their own hotkeys ∝ stake × vtrust — the contract neither stakes for them nor
-  custodies their dividends. (The fee‑funded effort bounty **(X)** that would reward trail effort on top
-  is deferred, §9.2–§9.3, §13.6.)
+  custodies their dividends. (Native dividends are the **whole** validator reward; a fee‑funded effort
+  bounty **(X)** is out of scope, §9.3/§13.6/D29.)
 - **Custody as stake, on two hotkeys.** All α the contract holds is staked under its coldkey (no AMM
   exposure; α stays α), split across **two hotkeys with different jobs**: `treasuryHotkey` is the
   **claims escrow** (swept pool emission awaiting `claimMiner`, its balance exactly tracked by the
@@ -882,12 +894,14 @@ against the tail.
 
 ---
 
-## 9. Validator channel: native dividends (v1); the effort bounty is a deferred phase
+## 9. Validator channel: native dividends only (v1)
 
 Validators are **independent** — no NO owns or pools them (the per‑NO validator pool, the NO↔V
 intersection split, and the per‑path VT of earlier drafts are gone, §13.6). A validator is the source of
-the subnet's core data — **which providers are the weakest links** (`VALIDATOR.md` §7) — so it is paid
-for *both* accurate scoring **and** trail effort. ("Verifier" and "validator" are now one role.)
+the subnet's core data — **which providers are the weakest links** (`VALIDATOR.md` §7). In v1 it is paid
+**only** for accurate, consensus‑aligned scoring, via **native Yuma dividends** — the plain Bittensor
+norm; there is **no** separate protocol reward for trail *effort* (D29 — the effort bounty is out of scope,
+its design parked in §9.3 as a future‑iteration candidate). ("Verifier" and "validator" are now one role.)
 
 ### 9.1 What a "validated path" is
 
@@ -900,32 +914,37 @@ pathId = keccak256(trail_id ‖ vpk ‖ server_key_id)
 
 Because it carries **both** the NO server's `FINAL` signature and the validator's `vpk` signature, a
 path that verifies is **self‑proving** — anyone checks it with the `0x402` precompile (§11.3). This is
-what the failure statistics are built from (§9.4) — and, in the deferred bounty phase, what the
-contract counts as effort (§9.3).
+what the failure statistics are built from (§9.4) — and what the parked bounty design would count as
+effort, were it ever built (§9.3, D29).
 
 ### 9.2 The v1 reward stream: native dividends, owner‑majority
 
 A validator stakes its **own** α (the Sybil ante + the Bittensor permit qualifier — this absorbs the old
-"verifier bond"), runs `/verify` trails, and each tempo scores every NO miner pool `deposit × Q_n` under
-commit‑reveal (§10). In v1 it earns **one** stream: **native Yuma dividends** (∝ stake × **vtrust**) —
+"verifier bond"), runs `/verify` trails, and each tempo scores every NO miner pool `implied_usage × Q_n`
+under commit‑reveal (§10). It earns **exactly one** stream: **native Yuma dividends** (∝ stake × **vtrust**) —
 its share of the 41% validator emission, flowing **natively** to its own hotkey (the contract does
 **not** custody it). Dividends reward **accurate, consensus‑aligned scoring**, and commit‑reveal makes
 that scoring require *running real trails* — copying stale consensus loses vtrust (§5.1/§10).
 
-**Why no effort subsidy in v1.** The owner is expected to be the **majority validator** in the early
-network — it holds the majority of α, and the buyback reserve staked to its hotkey (§7.4) compounds that
-position every tempo — and it has an *intrinsic* motive to run trail volume: the failure data is the
-product its network runs on. A protocol‑level effort reward exists to pay for verification the owner
-does **not** control; it becomes load‑bearing exactly when independent validators are wanted, and it
-ships then (§9.3, §13.6). Until that phase, independent validators are welcome (§9.7) but must clear the
-same bar as in any subnet: dividends must cover their measurement costs.
+**Why no effort subsidy — and why it is out of scope, not merely deferred.** The owner is expected to be the
+**majority validator** in the early network — it holds the majority of α, and the buyback reserve staked to
+its hotkey (§7.4) compounds that position every tempo — and it has an *intrinsic* motive to run trail
+volume: the failure data is the product its network runs on. A protocol‑level effort reward would only pay
+for verification the owner does **not** control, so it has no customer until a broad independent validator
+set exists. Earlier drafts (D23) kept a *committed* bounty phase in reserve; **D29 removes that commitment**:
+whether independent‑validator coverage is even thin enough to need an effort subsidy — and if so, what shape
+it should take — is a question we will **answer from the live launch**, not pre‑commit before the network
+exists. Independent validators are welcome from day one (§9.7) on the same bar as any subnet: dividends must
+cover their measurement costs.
 
-### 9.3 The effort bounty — specified, deferred (the independent‑validator phase)
+### 9.3 The effort bounty — parked design (out of v1 scope; a future‑iteration candidate)
 
-> **Status: deferred out of v1** (decision D23). Everything in this subsection is the design that ships
-> **with the independent‑validator phase** — the trigger is governance wanting owner‑independent trail
-> coverage (the §12.3 quality‑swing ramp needs an independent baseline as it widens). v1 deploys no fee
-> pool, no `submitTrails`/effort claims, no contract validator registry, and no `claimValidator`.
+> **Status: OUT OF SCOPE for v1, and no longer a committed future phase (D29).** This subsection is retained
+> as **parked reference** — the formulas and the already‑built machinery (coverage‑bound digests, sampled
+> proofs, HF‑2 reseed caps, `snclaim`) are preserved so a future iteration *could* pick them up — but it is
+> **not a roadmap item**. v1 deploys no fee pool, no `submitTrails`/effort claims, no contract validator
+> registry, and no `claimValidator`, and there is **no committed trigger** to add them; a validator‑effort
+> incentive would be designed (in this or another shape) only if the launched network shows it is needed.
 
 The bounty pool each epoch is
 
@@ -969,17 +988,17 @@ Wilson‑smoothed liveness, latency percentiles), yield **per‑provider** liven
 attribution — *which providers are the weakest links*. This feeds **(a)** each NO's within‑pool payout
 list (`reliability_{n,p}`, §8.2) **and (b)** each pool's cross‑operator quality `Q_n` (§8.1, §10) — i.e.
 it drives the miner emission — and is published as a public good. In v1 the majority of this data is
-produced by the owner‑validator, whose business runs on it (§9.2); the deferred §9.3 bounty pays
-validators **precisely for producing it** — weighted toward the coverage gaps — so that when
-owner‑independent coverage matters, funding the bounty makes the data *more complete*.
+produced by the owner‑validator, whose business runs on it (§9.2). If a future iteration ever finds
+independent‑validator coverage too thin, the parked §9.3 bounty is one lever that would pay validators
+**precisely for producing this data** — weighted toward the coverage gaps — but v1 does not include it (D29).
 
 ### 9.5 Anti‑gaming for validators
 
 - **Honest scoring** — on‑chain Yuma: a validator inflating a pool (or knifing a rival) is **clipped** to
   the κ‑median and **loses vtrust → loses dividends**; the **self‑weight mask** (§10) stops it scoring its
   own NO at all; **commit‑reveal** stops it copying fresh consensus.
-- **Honest effort** — §9.3: crypto‑verified (sample + dispute), server‑assigned, under‑sampling‑weighted
-  trails can't be faked or farmed.
+- **Honest effort** — not an on‑chain concern in v1 (no effort reward to game); the parked §9.3 bounty, if
+  ever built, would make effort crypto‑verified (sample + dispute), server‑assigned, under‑sampling‑weighted.
 - **Independence** — because most validators run no NO, the κ‑median tracks ground truth (`VALIDATOR.md`
   §1) — the structural defense against a NO colluding with a validator to fake its own `Q_n` (further
   bounded by `VALIDATOR.md` §5.4).
@@ -989,7 +1008,7 @@ owner‑independent coverage matters, funding the bounty makes the data *more co
 The owner is the governance **referee**, not a party to a per‑path split (the old "disagreement → owner"
 went away with the intersection split). In v1 it is also the **majority validator** (§9.2) — it runs the
 trail volume and the steering that depends on it — and it tunes θ, the reference rate, and the §12.3
-caps (plus `φ`/`ω`/the coverage weighting when the bounty phase ships). It reviews the
+caps. It reviews the
 **statistical** disputes (`VALIDATOR.md` §7.7) that the on‑chain crypto layer can't decide (self‑dealing
 patterns, adversarial abandonment) and drives the `VALIDATOR.md` §10 roadmap. Per `seed/INCENTIVES.md`, the
 residual "how much the owners mistrust the NOs / NOs mistrust each other" is now read from **consensus
@@ -1000,10 +1019,11 @@ divergence + the disputes**, not from a contested‑value pot.
 Entry is the standard path: **stake α, earn a permit (top‑k by stake), validate** — no NO, no owner
 approval, no pool. Most validators run no NO, which is exactly the **independence** `VALIDATOR.md` §1
 needs and the structural defense against self‑dealing (§9.5, §12.3). In v1 the owner is the majority
-validator by construction (§9.2, §7.4); cultivating a broad, independent validator set is the stated
-goal of the **next** phase — the effort bounty (§9.3) and re‑delegating reserve slices (§6.4.3) are its
-levers — and a down payment on the `VALIDATOR.md` §10 roadmap. (Earlier drafts split validators into
-"NO pools" vs "community"; there is now **one** kind — independent — so the distinction is gone.)
+validator by construction (§9.2, §7.4); cultivating a broad, independent validator set is a stated goal of
+a **later** phase — **re‑delegating reserve slices** (§6.4.3) is the committed lever, and a
+validator‑effort incentive (the parked §9.3 bounty, or another shape) is a *possible* addition if launch
+shows coverage is thin (D29) — and a down payment on the `VALIDATOR.md` §10 roadmap. (Earlier drafts split
+validators into "NO pools" vs "community"; there is now **one** kind — independent — so the distinction is gone.)
 
 ---
 
@@ -1042,10 +1062,10 @@ Yuma combines the validators' vectors with their stake:
   per‑provider step (§8.2). **Head:** `incentive_u ∝ Σ_v stake_v · clipped score_v(u)`, so a top-level
   miner's emission tracks its **consensus routable-IP breadth** (§8.4), paid **natively** to its own
   hotkey; the θ split (§8.5) sets how the 41% divides between the head and the pools.
-- **Validator rewards = dividends.** Native dividends grow with bonds on pools consensus later
-  rewards (Liquid Alpha) and with vtrust (accurate scoring) — the **Bittensor‑native** reward for good
-  evaluation. Commit‑reveal makes accurate scoring require real trail volume; the explicit §9.3 effort
-  bounty is deferred to the independent‑validator phase.
+- **Validator rewards = dividends, and only dividends.** Native dividends grow with bonds on pools
+  consensus later rewards (Liquid Alpha) and with vtrust (accurate scoring) — the **Bittensor‑native**
+  reward for good evaluation, and v1's **whole** validator reward. Commit‑reveal makes accurate scoring
+  require real trail volume; there is no separate effort reward (the §9.3 bounty is out of scope, D29).
 - **Anti‑copying.** Commit‑reveal hides fresh scores, so a lazy validator copying stale consensus drifts
   from current quality and loses vtrust (§5.1).
 
@@ -1070,7 +1090,7 @@ force validator‑software upgrades (§15.1).
 |---|---|---|
 | `D_n`, deposit events, `buybackTotal`, `poolTotal[e][n]` | contract storage | the demand signal, the reserve, and claim *amounts* — all on‑chain |
 | `payoutRoot[e][noId]` (fractional shares, Σ = 1) | contract storage (in `commitOperator`) | the contract verifies each provider's *share* against it at claim time |
-| payout‑share leaves, completed‑trail proof blobs | **off‑chain** (IPFS/HTTPS, pointer in `off`) | bulk data; only the committed roots are trusted (trail proofs go on‑chain only in the bounty phase, §9.3) |
+| payout‑share leaves, completed‑trail proof blobs | **off‑chain** (IPFS/HTTPS, pointer in `off`) | bulk data; only the committed roots are trusted (trail proofs would go on‑chain only under the parked bounty design, §9.3/D29 — not in v1) |
 | public mirror of roots | **commitments pallet** (optional, free) | SDK‑native public audit without touching the contract |
 
 This directly answers `seed/INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
@@ -1096,7 +1116,7 @@ function claimMiner(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, 
 Claims are pull‑based, so settlement is `O(1)` on‑chain regardless of participant count. The **miner**
 amount is `share × poolTotal` (share proven against the NO's committed root, pool total read from
 on‑chain state) — **no global claim root is computed off‑chain**. (`claimValidator` — the bounty claim,
-`feePool · effort / Σ effort`, also pure on‑chain arithmetic — ships with the bounty phase, §9.3.)
+`feePool · effort / Σ effort` — is part of the parked bounty design, not in v1, §9.3/D29.)
 
 ### 11.3 Disputes
 
@@ -1108,7 +1128,7 @@ dispute), pool amounts are read from chain state, and effort claims do not exist
   drains its own pool.
 - **Bad `client_id ⇄ hotkey` binding.** A contested/stolen head binding is adjudicated on‑chain via the
   `0x402` Ed25519 check + a metagraph read (§11.4).
-- **(Bounty phase, deferred — §9.3.)** Effort claims are **optimistic**: a validator commits a Merkle
+- **(Parked bounty design, not in v1 — §9.3/D29.)** Effort claims would be **optimistic**: a validator commits a Merkle
   root of its trails + a claimed effort total; the contract `0x402`‑verifies a **random sample** of the
   committed leaves (`FINAL` against the NO's server key, `verifier_sig` against the validator's `vpk`),
   and during the +24h…+48h window **anyone may dispute any leaf** with the same check — a single failing
@@ -1204,9 +1224,9 @@ In v1 a validator earns **native dividends** (∝ stake × vtrust — the Bitten
 accurate scoring); its profit is `dividends_v − (cost of running trails)`. Commit‑reveal makes stale
 copying lose vtrust, so accurate scoring (hence trails) is needed to hold dividends (§5.1). The
 **majority validator is the owner** (§9.2), whose measurement cost is already sunk in operating the
-network — so v1 needs no protocol‑level effort subsidy. When owner‑independent coverage is wanted, the
-explicit effort lever ships: the **(X)** fee‑funded bounty, escalating to **(Y)** — routing the
-validator emission itself through the effort split — if coverage stays thin (§9.3, §13.6).
+network — so v1 needs no protocol‑level effort subsidy, and does not include one (D29). Whether a future
+iteration ever adds a validator‑effort lever (the parked **(X)** fee‑funded bounty / **(Y)** emission‑routed
+designs, §9.3/§13.6) is an open post‑launch question, not a committed roadmap.
 
 ### 12.3 What this does and does not secure
 
@@ -1224,11 +1244,12 @@ validator emission itself through the effort split — if coverage stays thin (�
   independent.* Much weaker than a sole‑validator design but not eliminated. Rewards stay **provisional**
   until the §10 structural defenses (proof‑of‑routing, destination diversity, validator Sybil resistance)
   land; a broad independent validator set is the primary lever (§9.7).
-- **Effort‑incentive posture (v1 starts light by choice):** native dividends are ∝ stake×vtrust, which
+- **Effort‑incentive posture (v1 is dividends‑only, by choice):** native dividends are ∝ stake×vtrust, which
   is effort‑agnostic — a high‑stake validator could in principle under‑measure and coast. v1 accepts
   this because the high‑stake validator **is the owner** (§9.2), whose business depends on the
-  measurement; the moment owner‑independent coverage matters, the **(X)** bounty (and the **(Y)**
-  escalation) is the specified fix (§9.3, §13.6).
+  measurement. Whether owner‑independent coverage ever becomes thin enough to need an effort fix — and if
+  so, whether the parked **(X)**/**(Y)** designs are the right one — is left to a post‑launch iteration
+  (D29), not pre‑committed here.
 
 ### 12.4 The buyback reserve and the demand crossover
 
@@ -1266,8 +1287,8 @@ the old deposit‑funded floor is gone, §7.4). **(2)** The reserve is a **growi
 an upgradeable contract — the §6.4 phases (timelock → immutabilization) carry real weight. **(3)** The
 lock is **governance‑credible, not physical**: dTAO stake has no unbonding (§2.3), so credibility = no
 exit path in code + the upgrade process around it (§6.4). **(4)** Reserve‑as‑consensus‑stake
-concentrates Yuma power with the owner **by design** (§7.4); the independent‑validator phase must be a
-deliberate, budgeted step (§9.3, §6.4.3).
+concentrates Yuma power with the owner **by design** (§7.4); decentralizing the validator set later must be
+a deliberate, budgeted step, its committed lever **re‑delegating reserve slices** (§6.4.3).
 
 ---
 
@@ -1280,14 +1301,14 @@ accrues to the contract and is paid out by direct Merkle claim (the **head is na
 own their UIDs and are paid to their own coldkey, §8.4) — *a network operator never custodies emission destined
 for its providers* (the hard requirement). The **weights are set by independent validators** (§9, §10),
 not the contract, so Yuma consensus does real work; their **41% dividends are native** (no middleman to
-remove; the fee‑funded effort bounty is deferred, §9.3/§13.6). Implications: the contract is
+remove; a fee‑funded effort bounty is out of scope, §9.3/§13.6/D29). Implications: the contract is
 **custody‑critical** for the miner emission + the buyback reserve (audited code; §6.4 timelock/guardian
 governance), and it owns **one miner‑pool UID per NO**, so budget `max_allowed_uids` and registration
 burns to the **NO count** — providers are *not* UIDs, they live inside the pools. No α→TAO→α churn.
 *Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason for pools, though the **top ~200 do get their own UID** — the head tier, §8.4); letting emission land on
 NO hotkeys (violates no‑custody); a **single** contract miner UID with the contract as sole validator
 (collapses Yuma); and the earlier **per‑NO validator pool with a take‑0 custody hack** (fragile, and
-redundant with crypto‑validity — replaced by independent validators + the §9.3 bounty, §13.6).
+redundant with crypto‑validity — replaced by plain independent validators earning native dividends, §13.6).
 
 ### 13.2 Payment token: α (chosen) vs. TAO vs. USDC
 
@@ -1305,9 +1326,9 @@ The cross‑NO split is a genuine on‑chain **consensus output**: many independ
 miners' pay; a
 design where validator input is *off* the payout path would miss the point of Bittensor. The cost is the
 standard subjective‑weight toolkit (commit‑reveal, self‑mask, Liquid Alpha), switched on, plus a healthy
-independent validator set — which §9.7 cultivates and the §9.3 bounty funds. *Rejected (briefly
-explored):* a **deposit‑only** weight — simpler, but it takes validators off the miner payout path and
-reduces them to a side‑channel, so it was reverted.
+independent validator set — which §9.7 cultivates (re‑delegating reserve slices is the committed lever;
+native dividends are the reward). *Rejected (briefly explored):* a **deposit‑only** weight — simpler, but
+it takes validators off the miner payout path and reduces them to a side‑channel, so it was reverted.
 
 ### 13.4 Quality in the cross‑operator weight: **adopted** (ramped at bootstrap)
 
@@ -1327,35 +1348,34 @@ fixed rate" is an off‑chain governance‑published reference NOs use to price 
 (If a future version ever needs an on‑chain α/USD value — e.g. to denominate the deposit fee in USD —
 the `0x808` α price is already trustless and only TAO/USD would need a committed validator‑median feed.)
 
-### 13.6 Validator effort reward: dividends‑only v1 (W); fee‑funded bounty (X) and emission‑routed (Y) as escalations
+### 13.6 Validator effort reward: v1 is native dividends only; the effort bounty is out of scope (D29)
 
-The validators' output — *which providers are the weakest links* — is the product, so validator **effort**
-must be strongly rewarded. Yuma pays validators **∝ stake × vtrust**, which is effort‑agnostic, so we add
-an explicit effort reward. Two ways to fund it:
+The validators' output — *which providers are the weakest links* — is the product. Yuma pays validators
+**∝ stake × vtrust**, which is effort‑agnostic, and **v1 ships exactly that and nothing more.** Earlier
+drafts kept a *committed* effort‑reward ladder in reserve; **D29 retires that commitment** — whether any
+explicit validator‑effort reward is ever added, and in what shape, is a **post‑launch open question**, to be
+decided from what the live network shows about independent‑validator coverage. The two designs below are kept
+as **parked reference** (formulas + already‑built machinery preserved), **not a roadmap**:
 
-- **(W) — v1 as shipped: native dividends only.** No fee pool, no effort claims (D23). The owner is the
+- **(W) — v1 as shipped: native dividends only.** No fee pool, no effort claims. The owner is the
   majority validator (α holdings + the compounding reserve, §7.4/§9.2) and runs the trail volume out of
-  intrinsic interest; commit‑reveal already forces any dividend‑earning validator to measure. Chosen for
-  v1 because the bounty's purpose — paying for verification the owner does *not* control — has no
-  customer until independent validators are wanted, and deleting it removes a whole
-  optimistic‑claims/dispute subsystem from the launch surface.
-- **(X) — the first escalation (specified, deferred).** A **fee‑funded bounty** (`φ·ΣD + ω·OwnerCut`)
-  paid ∝ verified coverage‑weighted trails (§9.3), **on top of** native dividends. Keeps validators as
-  **independent on‑chain UIDs running real Yuma consensus** (median/clip/vtrust intact) and needs **no
-  emission capture** — the simplest, most Yuma‑native option. Trigger: governance wants
-  owner‑independent trail coverage (§12.3's ramp). Risk: the bounty is only as large as the fee pool, so
-  the effort incentive is bounded.
-- **(Y) — the escalation.** Route the **41% validator emission itself** through the effort split — the
-  contract captures it and pays ∝ trails. Strongest effort incentive, but capturing requires
-  contract‑owned validator UIDs, which moves the quality consensus **into the contract** (robust median
-  of submitted crypto‑verified scores) instead of on‑chain Yuma. We move to (Y) only if (X)'s observed
-  trail coverage is too thin.
+  intrinsic interest; commit‑reveal already forces any dividend‑earning validator to measure. This is the
+  plain Bittensor norm and the **whole** v1 validator reward.
+- **(X) — parked candidate: a fee‑funded bounty.** `φ·ΣD + ω·OwnerCut` paid ∝ verified coverage‑weighted
+  trails (§9.3), **on top of** native dividends. Would keep validators as **independent on‑chain UIDs
+  running real Yuma consensus** (median/clip/vtrust intact) and needs **no emission capture** — the simplest,
+  most Yuma‑native option *if* an effort reward is ever wanted. **Not in v1**, and no committed trigger to
+  add it.
+- **(Y) — parked candidate: route the 41% validator emission itself through the effort split.** The contract
+  would capture it and pay ∝ trails — the strongest effort incentive, but capturing requires contract‑owned
+  validator UIDs, which moves the quality consensus **into the contract** instead of on‑chain Yuma. A
+  heavier last resort, kept only as reference. **Not in v1.**
 
-*Eliminated with this decision:* the per‑NO validator pool, the NO↔V **intersection split**, **VT**, the
-verifier **bond**, `attestedPathsRoot`, and the **take‑0 custody hack** — replaced by one rule, *more
-verified useful trails → more pay*. The intersection split was in any case redundant for fraud detection
-(a valid path is co‑signed = agreed by construction; an invalid one is caught by the `0x402` check, §11.3)
-and was a weak effort proxy; the bounty is a direct, stronger one.
+*Independently eliminated (and **staying** eliminated — not resurrected by any future effort reward):* the
+per‑NO validator pool, the NO↔V **intersection split**, **VT**, the verifier **bond**, `attestedPathsRoot`,
+and the **take‑0 custody hack**. The intersection split was redundant for fraud detection (a valid path is
+co‑signed = agreed by construction; an invalid one is caught by the `0x402` check, §11.3) and was a weak
+effort proxy. v1's validator side is simply: **stake α, run trails, earn native dividends.**
 
 ### 13.7 Two miner tiers: pool on-ramp + direct top-level miners (chosen)
 
@@ -1444,9 +1464,9 @@ and the rest of the 256 are miners.
 | Epoch length | `T_epoch` | 50 400 blocks (7 d) | settlement period |
 | Operator data deadline | — | +4 h | `README.md` |
 | Reserve hotkey | — | the owner‑validator hotkey, set at initialize | the buyback reserve's staking target (§7.4); run its delegate **take = 0** so reserve yield compounds whole |
-| `φ` / `ω` / effort‑claim deadline / dispute window | — | — | **deferred with the effort bounty** (§9.3, §13.6) |
+| `φ` / `ω` / effort‑claim deadline / dispute window | — | — | **out of scope** — parked bounty design (§9.3/§13.6, D29) |
 | **Head share** | `θ` | governance; start ~0.3, ramp | fraction of the 41% miner emission to top-level miners; `1−θ` to pools — **the load-bearing new dial** (§8.5) |
-| Coverage weighting | — | governance curve (bounty phase) | up‑weights under‑sampled / weak providers (§9.3) |
+| Coverage weighting | — | (parked bounty design only) | up‑weights under‑sampled / weak providers (§9.3) — not in v1 (D29) |
 | Validator min stake | — | governance | permit qualifier + Sybil ante (§9.7) |
 | **Deposit‑rate schedule per conviction tier** | `rate(tier)` | governance, **off‑chain published**; zero tier = baseline; **floored > 0** | α‑per‑usage by conviction; validators read it to weight (§7.3, §8.1). Staking lowers the rate — the onboarding/alignment lever (D25). |
 | **Egress‑IP‑hash granularity** (head IP‑score) | — | **configurable subnet param**; default /29 IPv4, /48 IPv6 | the "distinct routable IP" unit for the head score (§8.4, D27); trails hash egress IPs at this prefix (`VALIDATOR.md` §8) |
@@ -1474,7 +1494,7 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
 1. **ST contract (Solidity, Cancun / 0.8.24).** State + interfaces of §6; precompile bindings
    (Staking V2 `0x805`, Neuron `0x804`, Metagraph `0x802`, Alpha `0x808`, Ed25519 `0x402`); Merkle
    verifier (OZ); the **buyback reserve** (deposit → `moveStake` → locked, §7.4); proxy + owner multisig
-   governance. **New work.** (The `submitTrails` effort verifier ships with the bounty phase, §9.3.)
+   governance. **New work.** (No `submitTrails` effort verifier — the bounty is out of scope, §9.3/D29.)
 2. **Subnet bootstrap.** `register_network`; set hyperparameters (§15.1); as each NO onboards, the
    contract `burnedRegister`s its **miner‑pool UID** (owned outright); stand up an initial set of
    **independent validators** (owner‑run at first) so consensus has measurement from day one; register
@@ -1484,7 +1504,7 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
    implied usage = deposit ÷ conviction‑tier rate, computed off the published deposit events; head on its **routable‑IP breadth score**), read the `client_id ⇄ hotkey` binding (§11.4), split by θ, and submit
    commit-reveal weights (standard Bittensor validator loop → native dividends) — **no central
    keeper sets weights**. A separate **permissionless settlement poke** triggers `finalizeEpoch` after
-   the +48h window. (Trail‑proof submission for the effort bounty: bounty phase, §9.3.)
+   the +48h window. (No trail‑proof submission — the effort bounty is out of scope, §9.3/D29.)
 4. **Network‑Operator software.** Runs the privacy servers + the `VALIDATOR.md` `/verify` server
    (SEED/EXTEND/FINAL, poisoning, idempotency, the four Ed25519 signatures, the egress‑IP index);
    `deposit`s each epoch (conviction stake — the contract keeps no DT ledger, D25); computes provider reliability + payout list; commits the **`payoutRoot`**
@@ -1493,8 +1513,8 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
    against `payoutRoot`; `claimMiner`s. **If it reaches the top ~200:** `burnedRegister`s its own UID,
    publishes the dual-signed `client_id ⇄ hotkey` binding (§11.4), and earns **natively** (no claim, §8.4).
 6. **Validator client (was "verifier").** Stake α; run `/verify` trails; submit commit‑reveal pool
-   scores (native dividends); participate in binding disputes. (`registerValidator(vpk)`,
-   `submitTrails`, and `claimValidator` ship with the bounty phase, §9.3.)
+   scores (native dividends); participate in binding disputes. (No `registerValidator(vpk)` /
+   `submitTrails` / `claimValidator` — those belong to the parked bounty design, §9.3/D29.)
 7. **Indexer/explorer.** Surfaces `D_n`, pool quality `Q_n`, consensus weights, vtrust, the
    **independent‑validator stake share**, the **buyback reserve + demand ratio `R_e`** (§12.4), and
    roots — the public audit surface.
@@ -1535,8 +1555,8 @@ it re‑targets with zero code change. Operational detail: `docs/LAUNCH.md`.)*
 3. **M2 — Buyback reserve verified live (testnet).** Several short testnet epochs green: dividends
    **auto‑compound** onto the reserve stake (`getStake(reserveHotkey) > buybackTotal`), the **one‑way
    invariant** + on‑chain audit hold, and the upgrade/pause drills leave finalized claims and the
-   reserve untouched. (The effort‑bounty rail — `registerValidator`/`submitTrails`/`claimValidator` —
-   is its own milestone in the bounty phase, §9.3.)
+   reserve untouched. (The effort‑bounty rail — `registerValidator`/`submitTrails`/`claimValidator` — is
+   **out of scope**, so there is no such milestone in v1; it stays parked, §9.3/D29.)
 4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** `setEpochParams` to the 7‑day epoch
    (+4h/+48h windows, F2‑snapshotted so in‑flight epochs are untouched); the deposit cap raised stepwise
    toward the sized policy; settlement‑poke automation; the reference rate + sourcing commitment
@@ -1583,7 +1603,7 @@ against finney at the Phase‑E mainnet promotion.)*
 |---|---|
 | **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Commit a 32‑byte Merkle root per NO per epoch; the contract stores roots that gate claims and the **free** commitments pallet can mirror them; bulk leaves are served off‑chain; each provider verifies its own payout with an `O(log N)` proof (§11). (No on‑chain oracle: the global rate is an off‑chain reference, §7.1.) |
 | **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24, chain 964, permissionless deploy. With Subtensor‑specific **precompiles**, validators set commit‑reveal weights and the contract stakes/transfers α, reads the metagraph/α‑price, and verifies Ed25519 — everything this design needs (§2.5). |
-| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = deposit ÷ conviction‑tier rate, computed by the validator off the published event log + rate schedule — the contract weighs nothing, D25) on the per‑NO miner‑pool UIDs; the chain's incentive/dividend split delivers emission to the **miner pools** (which the contract owns → re‑splits to providers per Merkle payout roots, §§8, 11) and ∝ stake × vtrust to **validators natively**. (Validator *effort* subsidies are deferred, §9.3.) No deviation from standard Yuma — it *is* Yuma, with many independent validators (§9). **Plus a second tier:** the top ~200 **fleets by split‑adjusted routable‑IP breadth** hold their own UIDs, steered on that score with native emission, split from the pools by θ (§8.4–8.5). |
+| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = deposit ÷ conviction‑tier rate, computed by the validator off the published event log + rate schedule — the contract weighs nothing, D25) on the per‑NO miner‑pool UIDs; the chain's incentive/dividend split delivers emission to the **miner pools** (which the contract owns → re‑splits to providers per Merkle payout roots, §§8, 11) and ∝ stake × vtrust to **validators natively**. (Native dividends are the whole validator reward; a validator *effort* subsidy is out of scope, §9.3/D29.) No deviation from standard Yuma — it *is* Yuma, with many independent validators (§9). **Plus a second tier:** the top ~200 **fleets by split‑adjusted routable‑IP breadth** hold their own UIDs, steered on that score with native emission, split from the pools by θ (§8.4–8.5). |
 
 ---
 
@@ -1608,17 +1628,18 @@ against finney at the Phase‑E mainnet promotion.)*
 - **θ (head share)** — the governed fraction of the 41% miner emission steered to top-level miners; `1−θ`
   goes to the pools (§8.5).
 - **Validator** (was "verifier") — an **independent** Bittensor validator UID: stakes α, runs
-  `VALIDATOR.md` trails, scores pools, and earns **native dividends** (the effort bounty is deferred,
-  §9.3). No NO, no pool — the disinterested consensus baseline; the owner is the majority validator
-  early (§9.2).
+  `VALIDATOR.md` trails, scores pools, and earns **native dividends** — its **only** reward (a validator
+  effort bounty is out of scope, §9.3/D29). No NO, no pool — the disinterested consensus baseline; the
+  owner is the majority validator early (§9.2).
 - **Deposit / conviction stake / buyback reserve** — an NO's deposit (∝ usage) is locked in full to the
   **reserve hotkey** (never distributed, dividend‑compounding, §7.4); its cumulative locked α = its
   **conviction**, which sets its **tier → deposit rate** (§7.3). The contract keeps no deposit ledger —
   the `Deposited` events are the record (§7.5, D25).
 - **implied usage** — `deposit_n / rate(tier_n)`: the demand signal validators weight for the pool tier
   (§8.1); staking for a lower rate keeps weight tracking real usage rather than raw α.
-- **Effort bounty** — fee‑funded reward paid ∝ verified, coverage‑weighted, server‑assigned completed
-  trails; **deferred** to the independent‑validator phase (§9.3, §13.6).
+- **Effort bounty** — a fee‑funded reward that *would* pay ∝ verified, coverage‑weighted, server‑assigned
+  completed trails; **out of v1 scope** and **not a committed phase** — a parked future‑iteration candidate
+  (§9.3, §13.6, D29).
 - **ST contract** — the subnet‑token (α) EVM contract: ledger + **custodian of miner emission and the
   buyback reserve** + settlement. **Not** the validator (§9–§10).
 - **`D_n` / `Q_n` / `ŵ_n`** — NO's epoch deposit total (from the event log) / its consensus‑measured pool
@@ -1629,9 +1650,10 @@ against finney at the Phase‑E mainnet promotion.)*
 
 ---
 
-*End of WHITEPAPER.md v0.3 — deposits-as-buybacks (locked, dividend-compounding reserve on the
-owner-validator hotkey; miner pay = emission-only; effort bounty deferred to the independent-validator
-phase; §6.3–6.4, §7.4, §8.3, §9, §12.4, §13.6; decision D23 in `WHITEPAPER_DISCUSS.md`) — layered on the
-v0.2 two-tier miner side (pool on-ramp + direct top-level miners; §8.4–8.5, §10, §11.4, §14; D16–D20).
-This document fixes the architecture and the formulas; the next artifacts are the contract source, the
-chain‑config script, and the operator/validator reference daemons (§16).*
+*End of WHITEPAPER.md v0.5 — validator effort bounty removed from scope (v1 = native dividends only; the
+`(X)`/`(Y)` bounty designs are parked, not a committed phase; §9, §13.6; decision D29 in
+`WHITEPAPER_DISCUSS.md`) — layered on v0.4 conviction staking + validator-computed weights + IP-breadth head
+(D25–D28), v0.3 deposits-as-buybacks (locked, dividend-compounding reserve; miner pay = emission-only; §7.4,
+§12.4; D23), and the v0.2 two-tier miner side (pool on-ramp + direct top-level miners; §8.4–8.5, §10, §11.4,
+§14; D16–D20). This document fixes the architecture and the formulas; the next artifacts are the contract
+source, the chain‑config script, and the operator/validator reference daemons (§16).*

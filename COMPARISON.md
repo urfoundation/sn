@@ -719,7 +719,57 @@ actually recruit independent validators (re-delegating reserve slices is the lev
 validator-effort incentive is one thing a next iteration could add if the live network shows it is needed),
 and bespoke designs usually struggle exactly there.
 
-### 8.5 Bottom line
+### 8.5 What the July-2026 pass (Hippius, BlockMachine) challenges — and confirms
+
+Adding two revenue-bearing DePIN subnets sharpened the picture more than it moved it. Net: they mostly
+**corroborate** us, but BlockMachine lands one genuine challenge worth holding consciously.
+
+**What they confirm (confidence up).**
+- **The buyback reserve.** BlockMachine runs a **1:1 α buyback into a locked Protocol Stability Reserve**
+  ("for every α paid to miners, buy an equal amount and lock it"); Chutes does buy-and-lock. Two independent
+  designs converge on exactly our conviction-stake reserve (§4.15) — our most "field-adjacent" bet is now
+  field-corroborated.
+- **Native settlement is the norm.** BlockMachine pays native α to hotkeys; Hippius auto-stakes on its own
+  chain. Neither runs a reward-custody contract or a Merkle distributor for off-chain workers — so our tail
+  EVM-custody remains the genuinely distinctive (and heaviest) surface, exactly as §4.12 says.
+- **Demand-coupling is the right direction.** BlockMachine proves emission *can* answer to real usage
+  on-chain today. We are early on a real trend, not contrarian.
+
+**The one genuine challenge — from BlockMachine — to the deposit (bet #1).**
+BlockMachine couples emission to `RU_served × self-declared price`, **verified by re-execution against
+reference nodes, with no costly deposit at all**. The signal is non-gameable for two reasons we lack: (a)
+requests flow through a **protocol-operated gateway** that meters them, and (b) that gateway **routes
+customers by price/quality**, so a miner that declares a silly price gets no traffic and earns zero — the
+market disciplines the price for free. This reframes our deposit honestly: **it is not the ideal demand
+signal, it is a substitute for usage-verification we can't get**, because we deliberately keep the protocol
+*out* of the traffic/payment path (privacy + NO-as-independent-business + decentralization). Our single
+load-bearing premise is *"VPN bandwidth can't be metered/billed through a trustless gateway."* If that
+premise is even partly soft, BlockMachine's approach dominates ours on every axis (no pay-to-play surface,
+no wash-deposit worry, no `deposit ≤ revenue` assumption, weight tracks served work not capital). The design
+survives — the premise is real — but this is **the assumption to stress-test hardest before mainnet**,
+because it is the whole reason we prefer a costly deposit to a clean meter.
+
+**A milder challenge — from Hippius — to staying in-metagraph (#1) and the per-UID head (#2).**
+Hippius **sidesteps the 256-cap entirely** by running its own L1 (storage miners aren't UIDs), which makes
+our cap-gymnastics (~200 head UIDs + one pool UID per NO + validators, `mechanism_count=1`, dereg-churn) a
+*self-imposed* constraint. Our reasons to stay in-metagraph are strong — inherit Bittensor security + α
+liquidity instead of bootstrapping a whole chain, and Hippius arguably takes on the worst of both worlds (a
+Bittensor slot *and* a full L1) — but it proves the escape hatch works if the metagraph ever gets too tight.
+Separately, Hippius's **"family / top-10 / 80% geometric decay"** is a UID-*cheap* soft-tier; our per-UID
+head is UID-*expensive*, but deliberately so — it buys **native-direct pay with no operator in the payout
+path**, which the family model gives up (it pays the account owner, who redistributes). We're trading UID
+budget for trust-minimization, on purpose.
+
+**Alternatives worth carrying (not adopting now).** (1) A **partial usage meter as a deposit cross-check**:
+have the NO `/verify` server attest per-provider served-byte counts (it already knows `client_id ⇄ traffic`),
+validator-sample them, and use them to *bound* deposits (flag a NO depositing 100× its attested usage) — it
+stays NO-trusted so it can't *replace* the deposit, but it narrows the wash-deposit surface that is our
+headline risk. (2) Keep the head as UIDs, but **document a soft-tier fallback** (Hippius-style) if the head's
+~200 UIDs ever over-pressure the metagraph. (3) Treat **own-L1 as a consciously-rejected option**, not a
+default — revisit only if cap/custody pressure becomes acute. None forces a change now; each is a named lever
+if a premise shifts.
+
+### 8.6 Bottom line
 
 Stay conservative on the consensus plumbing (we are), stay aggressive on demand-coupling (it is our edge), and
 concentrate validation on the genuine unknowns — the **deposit-vs-quality balance / self-dealing defense**,
