@@ -1,0 +1,288 @@
+package main
+
+// Effort-claim tests: 9-field leaf building against the merkle helper, tree
+// root stability, the sampled-index formula port against cast-derived
+// vectors, duplicate-index sampling, and claim persistence.
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"math/big"
+	mathrand "math/rand"
+	"testing"
+
+	"github.com/urnetwork/connect"
+
+	"github.com/urnetwork/sn/merkle"
+)
+
+// testProofRecord fabricates a structurally valid record (signatures are
+// random bytes — leaf building does not verify them; the chain does).
+func testProofRecord(t *testing.T, seed byte, epoch uint64) *ProofRecord {
+	t.Helper()
+	trailId := connect.Id{}
+	for i := range trailId {
+		trailId[i] = seed ^ byte(i)
+	}
+	vpk := make([]byte, ed25519.PublicKeySize)
+	for i := range vpk {
+		vpk[i] = seed + byte(i)
+	}
+	record := &ProofRecord{
+		Version:     1,
+		Epoch:       epoch,
+		TrailId:     trailId,
+		Vpk:         vpk,
+		M:           8,
+		ServerKeyId: 7,
+		FinalSig:    make([]byte, 64),
+		VpkSig:      make([]byte, 64),
+		FinalDigest: make([]byte, 32),
+		Coverage:    7,
+	}
+	rand.Read(record.FinalSig)
+	rand.Read(record.VpkSig)
+	rand.Read(record.FinalDigest)
+	pathId := TrailPathId(trailId, vpk, record.ServerKeyId)
+	record.PathId = pathId[:]
+	return record
+}
+
+// TestTrailPathIdGolden pins the §9.1 derivation against a cast-computed
+// vector:
+//
+//	cast keccak $(cast concat-hex \
+//	    0x0102030405060708090a0b0c0d0e0f10 \  # trail_id (16)
+//	    0xdd…dd \                             # vpk (32 × 0xdd)
+//	    0x07)                                 # server_key_id (1)
+//	= 0xcb74fcd696b167476711d07f569304d4c4e9504cd878f790aba6d97a0a75329f
+func TestTrailPathIdGolden(t *testing.T) {
+	var trailId connect.Id
+	for i := 0; i < 16; i++ {
+		trailId[i] = byte(i + 1)
+	}
+	vpk := bytes.Repeat([]byte{0xdd}, 32)
+	pathId := TrailPathId(trailId, vpk, 0x07)
+	want := "cb74fcd696b167476711d07f569304d4c4e9504cd878f790aba6d97a0a75329f"
+	if hex.EncodeToString(pathId[:]) != want {
+		t.Fatalf("pathId %x, want %s", pathId, want)
+	}
+}
+
+func TestBuildEffortClaimDeterministicOrder(t *testing.T) {
+	records := make([]*ProofRecord, 9)
+	for i := range records {
+		records[i] = testProofRecord(t, byte(0x10+i*13), 3)
+	}
+	claim1, err := BuildEffortClaim(3, records)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Shuffled input produces the identical root, indices, and effort.
+	shuffled := append([]*ProofRecord{}, records...)
+	mathrand.Shuffle(len(shuffled), func(a, b int) { shuffled[a], shuffled[b] = shuffled[b], shuffled[a] })
+	claim2, err := BuildEffortClaim(3, shuffled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim1.Root != claim2.Root {
+		t.Fatal("root depends on record order")
+	}
+	if claim1.ClaimedEffort.Cmp(claim2.ClaimedEffort) != 0 {
+		t.Fatal("claimed effort depends on record order")
+	}
+
+	// Indices are 0..n-1 in pathId order; claimed effort = Σ coverage.
+	wantEffort := new(big.Int)
+	for i, leaf := range claim1.Leaves {
+		if leaf.Index.Uint64() != uint64(i) {
+			t.Fatalf("leaf %d has index %s", i, leaf.Index)
+		}
+		if 0 < i && bytes.Compare(claim1.Leaves[i-1].PathId[:], leaf.PathId[:]) >= 0 {
+			t.Fatal("leaves not sorted by pathId")
+		}
+		wantEffort.Add(wantEffort, leaf.Coverage)
+	}
+	if claim1.ClaimedEffort.Cmp(wantEffort) != 0 {
+		t.Fatalf("claimed effort %s, want Σ coverage %s", claim1.ClaimedEffort, wantEffort)
+	}
+	// v1 coverage: M − 1 per completed trail.
+	if claim1.Leaves[0].Coverage.Uint64() != 7 {
+		t.Fatalf("coverage %s, want M-1=7", claim1.Leaves[0].Coverage)
+	}
+}
+
+// TestEffortLeafHashMatchesMerkleHelper rebuilds each leaf hash from the
+// stabi struct fields via merkle.TrailLeaf and verifies every proof against
+// the claim root — the exact check MerkleProof.verify + trailLeafHash
+// performs on-chain.
+func TestEffortLeafHashMatchesMerkleHelper(t *testing.T) {
+	records := make([]*ProofRecord, 5)
+	for i := range records {
+		records[i] = testProofRecord(t, byte(0x40+i*29), 2)
+	}
+	claim, err := BuildEffortClaim(2, records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, leaf := range claim.Leaves {
+		leafHash := merkle.TrailLeaf(
+			leaf.Index.Uint64(), leaf.PathId, leaf.Coverage, leaf.ServerKeyId,
+			leaf.FinalDigest, leaf.ServerSigR, leaf.ServerSigS, leaf.VpkSigR, leaf.VpkSigS,
+		)
+		proof, err := claim.ProofAt(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !merkle.Verify(claim.Root, leafHash, proof) {
+			t.Fatalf("leaf %d proof does not verify against the root", i)
+		}
+	}
+
+	// The r/s halves must be the split of the record signatures.
+	for _, record := range records {
+		var pathId [32]byte
+		copy(pathId[:], record.PathId)
+		for _, leaf := range claim.Leaves {
+			if leaf.PathId != pathId {
+				continue
+			}
+			if !bytes.Equal(leaf.ServerSigR[:], record.FinalSig[:32]) || !bytes.Equal(leaf.ServerSigS[:], record.FinalSig[32:]) {
+				t.Fatal("server sig halves do not match final_sig")
+			}
+			if !bytes.Equal(leaf.VpkSigR[:], record.VpkSig[:32]) || !bytes.Equal(leaf.VpkSigS[:], record.VpkSig[32:]) {
+				t.Fatal("vpk sig halves do not match vpk_sig")
+			}
+		}
+	}
+}
+
+func TestBuildEffortClaimDedupesPathIds(t *testing.T) {
+	a := testProofRecord(t, 0x01, 1)
+	duplicate := *a // same trail id → same pathId
+	b := testProofRecord(t, 0x99, 1)
+	claim, err := BuildEffortClaim(1, []*ProofRecord{a, &duplicate, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.LeafCount() != 2 {
+		t.Fatalf("dedupe failed: %d leaves", claim.LeafCount())
+	}
+}
+
+// TestSampleIndicesPortGolden pins the pure-Go port of
+// STSubnet.trailSampleSeed/sampleIndices against cast-derived vectors:
+//
+//	seed = keccak256(abi.encodePacked(bh, uint256(e), uint256(valId)))
+//	     = cast keccak $(cast concat-hex 0xaa…aa $(cast to-uint256 3) $(cast to-uint256 1))
+//	     = 0xe66863f266b59527019b13172e3ad76a358d848839a46d611bdc5752b7f2ec84
+//	idx_i = uint256(keccak256(abi.encodePacked(seed, uint256(i)))) % 13
+//	      = [3, 4, 0, 4] for i in 0..3   (note the natural duplicate)
+func TestSampleIndicesPortGolden(t *testing.T) {
+	var blockHash [32]byte
+	for i := range blockHash {
+		blockHash[i] = 0xaa
+	}
+	seed := sampleSeed(blockHash, big.NewInt(3), big.NewInt(1))
+	wantSeed := "e66863f266b59527019b13172e3ad76a358d848839a46d611bdc5752b7f2ec84"
+	if hex.EncodeToString(seed[:]) != wantSeed {
+		t.Fatalf("seed %x, want %s", seed, wantSeed)
+	}
+	indices := sampleIndicesFromSeed(seed, 4, 13)
+	want := []uint64{3, 4, 0, 4}
+	if len(indices) != len(want) {
+		t.Fatalf("%d indices", len(indices))
+	}
+	for i := range want {
+		if indices[i] != want[i] {
+			t.Fatalf("idx[%d] = %d, want %d", i, indices[i], want[i])
+		}
+	}
+}
+
+// TestSampledLeavesDuplicateIndices exercises the duplicate-index case the
+// golden vector above produces: proveTrailSamples receives the same leaf
+// twice, each with a verifying proof.
+func TestSampledLeavesDuplicateIndices(t *testing.T) {
+	records := make([]*ProofRecord, 13)
+	for i := range records {
+		records[i] = testProofRecord(t, byte(0x20+i*17), 5)
+	}
+	claim, err := BuildEffortClaim(5, records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indices := []*big.Int{big.NewInt(3), big.NewInt(4), big.NewInt(0), big.NewInt(4)}
+	leaves, proofs, err := claim.SampledLeaves(indices)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leaves) != 4 || len(proofs) != 4 {
+		t.Fatalf("%d leaves %d proofs", len(leaves), len(proofs))
+	}
+	for i, leaf := range leaves {
+		if leaf.Index.Cmp(indices[i]) != 0 {
+			t.Fatalf("sampled leaf %d has index %s, want %s", i, leaf.Index, indices[i])
+		}
+		leafHash := merkle.TrailLeaf(
+			leaf.Index.Uint64(), leaf.PathId, leaf.Coverage, leaf.ServerKeyId,
+			leaf.FinalDigest, leaf.ServerSigR, leaf.ServerSigS, leaf.VpkSigR, leaf.VpkSigS,
+		)
+		if !merkle.Verify(claim.Root, leafHash, proofs[i]) {
+			t.Fatalf("sampled proof %d does not verify", i)
+		}
+	}
+	// Out of range rejected.
+	if _, _, err := claim.SampledLeaves([]*big.Int{big.NewInt(13)}); err == nil {
+		t.Fatal("out-of-range index accepted")
+	}
+}
+
+func TestEffortClaimSaveLoadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	records := make([]*ProofRecord, 6)
+	for i := range records {
+		records[i] = testProofRecord(t, byte(0x30+i*23), 9)
+	}
+	claim, err := BuildEffortClaim(9, records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveEffortClaim(dir, claim); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := LoadEffortClaim(dir, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored == nil {
+		t.Fatal("claim not found after save")
+	}
+	if restored.Root != claim.Root {
+		t.Fatal("root changed across persistence")
+	}
+	if restored.ClaimedEffort.Cmp(claim.ClaimedEffort) != 0 {
+		t.Fatal("claimed effort changed across persistence")
+	}
+	// A missing epoch returns (nil, nil).
+	missing, err := LoadEffortClaim(dir, 10)
+	if err != nil || missing != nil {
+		t.Fatalf("missing epoch: claim=%v err=%v", missing, err)
+	}
+}
+
+func TestSelectEpochRecords(t *testing.T) {
+	records := []*ProofRecord{
+		testProofRecord(t, 1, 4),
+		testProofRecord(t, 2, 5),
+		testProofRecord(t, 3, 0), // unstamped (chainless run)
+		testProofRecord(t, 4, 4),
+	}
+	selected, unstamped := SelectEpochRecords(records, 4)
+	if len(selected) != 2 || unstamped != 1 {
+		t.Fatalf("selected %d unstamped %d", len(selected), unstamped)
+	}
+}

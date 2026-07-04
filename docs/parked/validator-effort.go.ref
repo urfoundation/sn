@@ -1,0 +1,447 @@
+package main
+
+// effort.go — the validator's per-epoch effort claim (WHITEPAPER §9.3,
+// STSubnet submitTrails/proveTrailSamples/reseedTrailSamples/claimValidator).
+//
+// # v1 coverage formula (documented decision)
+//
+// WHITEPAPER §9.3 defines
+//
+//	effort_v = Σ over v's trails of Σ over server-assigned completed hops coverage(hop)
+//
+// with an owner-tunable under-sampling weighting ("the coverage curve" is a
+// governance parameter, §6.4). v1 fixes coverage(hop) = 1, so one completed
+// trail contributes
+//
+//	coverage(trail) = M − 1
+//
+// — the number of SERVER-ASSIGNED completed hops (the validator-chosen seed
+// is excluded per §7.6; hops are distinct by construction, §5.1 sampling
+// without replacement). The server ATTESTS this per-trail coverage in
+// proof.Coverage, binding it into the trail's final_sig via the effort digest
+// (review A2); the validator carries that signed value into the leaf rather
+// than recomputing it. claimedEffort = Σ coverage over the epoch's trails (in
+// v1 that is Σ (M−1)). The contract now treats claimedEffort as a declared cap
+// on a sampled estimator, so we send our true Σ coverage.
+// The under-sampling curve is deferred: it needs a network-wide sample
+// census no single validator holds locally. Values are dimensionless
+// integers; only relative effort matters (the bounty is pro-rata).
+//
+// # Leaf construction
+//
+// Leaves are the contract's 9-field TrailLeaf (merkle.TrailLeaf ==
+// STSubnet.trailLeafHash byte-for-byte):
+//
+//	index       — the leaf's position in the DETERMINISTIC ORDER: records
+//	              sorted by pathId ascending (byte order). Independent of
+//	              JSONL file order, so a rebuilt tree always matches the
+//	              submitted root.
+//	pathId      — keccak256(trail_id(16) ‖ vpk(32) ‖ server_key_id(1))
+//	              (WHITEPAPER §9.1; TrailPathId in trail.go).
+//	coverage    — the SERVER-ATTESTED coverage (proof.Coverage), bound into
+//	              both signatures below via the effort digest (v1 = M − 1).
+//	serverKeyId — the proof's 1-byte wire key id widened to uint64 (the
+//	              on-chain serverKeys registry key).
+//	finalDigest — VerifyFinalDigest of the canonical FINAL message (the RAW
+//	              final digest; the contract derives the effort digest from it
+//	              plus coverage).
+//	serverSig   — final_sig r‖s halves (Ed25519 over the EFFORT digest
+//	              VerifyEffortDigest(finalDigest, coverage)).
+//	vpkSig      — the validator's co-signature r‖s halves (over the SAME
+//	              effort digest).
+//
+// Records with duplicate pathIds are dropped beyond the first occurrence —
+// disputeTrailLeafPair voids a claim over any pathId double-count.
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+
+	"github.com/urnetwork/sn/merkle"
+	"github.com/urnetwork/sn/stabi"
+)
+
+// EffortClaim is a built (or rebuilt) epoch effort claim.
+type EffortClaim struct {
+	Epoch         uint64
+	Leaves        []stabi.STSubnetTrailLeaf // in index order (== pathId order)
+	Root          [32]byte
+	ClaimedEffort *big.Int
+	tree          *merkle.Tree
+}
+
+// LeafCount returns the declared tree size.
+func (self *EffortClaim) LeafCount() int {
+	return len(self.Leaves)
+}
+
+// ProofAt returns the Merkle proof of the leaf at index i (input order ==
+// index order).
+func (self *EffortClaim) ProofAt(i int) ([][32]byte, error) {
+	return self.tree.ProofAt(i)
+}
+
+// splitSig splits a 64-byte Ed25519 signature into its r and s halves.
+func splitSig(sig []byte) (r [32]byte, s [32]byte, err error) {
+	if len(sig) != 64 {
+		return r, s, fmt.Errorf("signature must be 64 bytes: %d", len(sig))
+	}
+	copy(r[:], sig[:32])
+	copy(s[:], sig[32:])
+	return r, s, nil
+}
+
+// BuildEffortClaim assembles the epoch's effort claim from proof records.
+// Records not matching epoch are excluded by the caller; here every record
+// is used. Duplicate pathIds are dropped (first kept). Returns an error
+// when no leaves remain.
+func BuildEffortClaim(epoch uint64, records []*ProofRecord) (*EffortClaim, error) {
+	// Deterministic order: sort by pathId ascending.
+	type entry struct {
+		record *ProofRecord
+		pathId [32]byte
+	}
+	entries := make([]entry, 0, len(records))
+	seen := map[[32]byte]bool{}
+	for _, record := range records {
+		if len(record.PathId) != 32 {
+			return nil, fmt.Errorf("trail %s: path_id is %d bytes", record.TrailId, len(record.PathId))
+		}
+		var pathId [32]byte
+		copy(pathId[:], record.PathId)
+		if seen[pathId] {
+			fmt.Printf("warning: duplicate pathId 0x%x dropped (trail %s)\n", pathId, record.TrailId)
+			continue
+		}
+		seen[pathId] = true
+		entries = append(entries, entry{record: record, pathId: pathId})
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no proof records for epoch %d", epoch)
+	}
+	sort.Slice(entries, func(a, b int) bool {
+		return bytes.Compare(entries[a].pathId[:], entries[b].pathId[:]) < 0
+	})
+
+	leaves := make([]stabi.STSubnetTrailLeaf, len(entries))
+	hashes := make([]merkle.Leaf, len(entries))
+	claimedEffort := new(big.Int)
+	for i, ent := range entries {
+		record := ent.record
+		serverSigR, serverSigS, err := splitSig(record.FinalSig)
+		if err != nil {
+			return nil, fmt.Errorf("trail %s final_sig: %w", record.TrailId, err)
+		}
+		vpkSigR, vpkSigS, err := splitSig(record.VpkSig)
+		if err != nil {
+			return nil, fmt.Errorf("trail %s vpk_sig: %w", record.TrailId, err)
+		}
+		if len(record.FinalDigest) != 32 {
+			return nil, fmt.Errorf("trail %s: final_digest is %d bytes", record.TrailId, len(record.FinalDigest))
+		}
+		var finalDigest [32]byte
+		copy(finalDigest[:], record.FinalDigest)
+
+		coverage := new(big.Int).SetUint64(record.Coverage)
+		leaves[i] = stabi.STSubnetTrailLeaf{
+			Index:       new(big.Int).SetUint64(uint64(i)),
+			PathId:      ent.pathId,
+			Coverage:    coverage,
+			ServerKeyId: uint64(record.ServerKeyId),
+			FinalDigest: finalDigest,
+			ServerSigR:  serverSigR,
+			ServerSigS:  serverSigS,
+			VpkSigR:     vpkSigR,
+			VpkSigS:     vpkSigS,
+		}
+		hashes[i] = merkle.TrailLeaf(
+			uint64(i), ent.pathId, coverage, uint64(record.ServerKeyId),
+			finalDigest, serverSigR, serverSigS, vpkSigR, vpkSigS,
+		)
+		claimedEffort.Add(claimedEffort, coverage)
+	}
+
+	tree, err := merkle.NewTree(hashes)
+	if err != nil {
+		return nil, err
+	}
+	return &EffortClaim{
+		Epoch:         epoch,
+		Leaves:        leaves,
+		Root:          tree.Root(),
+		ClaimedEffort: claimedEffort,
+		tree:          tree,
+	}, nil
+}
+
+// SelectEpochRecords filters records to those stamped with epoch, reporting
+// how many carried no epoch stamp (chainless runs).
+func SelectEpochRecords(records []*ProofRecord, epoch uint64) (selected []*ProofRecord, unstamped int) {
+	for _, record := range records {
+		switch record.Epoch {
+		case epoch:
+			selected = append(selected, record)
+		case 0:
+			unstamped++
+		}
+	}
+	return
+}
+
+// --- persisted claim (resume prove after restart) ---
+
+// persistedLeaf mirrors stabi.STSubnetTrailLeaf with JSON-friendly fields.
+type persistedLeaf struct {
+	Index       uint64 `json:"index"`
+	PathId      []byte `json:"path_id"`
+	Coverage    string `json:"coverage"` // decimal
+	ServerKeyId uint64 `json:"server_key_id"`
+	FinalDigest []byte `json:"final_digest"`
+	ServerSigR  []byte `json:"server_sig_r"`
+	ServerSigS  []byte `json:"server_sig_s"`
+	VpkSigR     []byte `json:"vpk_sig_r"`
+	VpkSigS     []byte `json:"vpk_sig_s"`
+}
+
+type persistedClaim struct {
+	Version       int             `json:"v"`
+	Epoch         uint64          `json:"epoch"`
+	Root          []byte          `json:"root"`
+	ClaimedEffort string          `json:"claimed_effort"` // decimal
+	Leaves        []persistedLeaf `json:"leaves"`
+}
+
+func effortClaimPath(stateDir string, epoch uint64) string {
+	return filepath.Join(stateDir, fmt.Sprintf("effort_epoch_%d.json", epoch))
+}
+
+// SaveEffortClaim persists the built claim so prove/reseed can resume and
+// disputes can be answered later.
+func SaveEffortClaim(stateDir string, claim *EffortClaim) error {
+	p := persistedClaim{
+		Version:       1,
+		Epoch:         claim.Epoch,
+		Root:          claim.Root[:],
+		ClaimedEffort: claim.ClaimedEffort.String(),
+		Leaves:        make([]persistedLeaf, len(claim.Leaves)),
+	}
+	for i, leaf := range claim.Leaves {
+		p.Leaves[i] = persistedLeaf{
+			Index:       leaf.Index.Uint64(),
+			PathId:      append([]byte{}, leaf.PathId[:]...),
+			Coverage:    leaf.Coverage.String(),
+			ServerKeyId: leaf.ServerKeyId,
+			FinalDigest: append([]byte{}, leaf.FinalDigest[:]...),
+			ServerSigR:  append([]byte{}, leaf.ServerSigR[:]...),
+			ServerSigS:  append([]byte{}, leaf.ServerSigS[:]...),
+			VpkSigR:     append([]byte{}, leaf.VpkSigR[:]...),
+			VpkSigS:     append([]byte{}, leaf.VpkSigS[:]...),
+		}
+	}
+	b, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(effortClaimPath(stateDir, claim.Epoch), b, 0600)
+}
+
+// LoadEffortClaim restores a persisted claim, rebuilding the tree and
+// verifying root + claimed effort consistency. Returns (nil, nil) when no
+// claim was persisted for the epoch.
+func LoadEffortClaim(stateDir string, epoch uint64) (*EffortClaim, error) {
+	b, err := os.ReadFile(effortClaimPath(stateDir, epoch))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var p persistedClaim
+	if err := json.Unmarshal(b, &p); err != nil {
+		return nil, err
+	}
+	leaves := make([]stabi.STSubnetTrailLeaf, len(p.Leaves))
+	hashes := make([]merkle.Leaf, len(p.Leaves))
+	claimedEffort := new(big.Int)
+	for i, pl := range p.Leaves {
+		coverage, ok := new(big.Int).SetString(pl.Coverage, 10)
+		if !ok {
+			return nil, fmt.Errorf("leaf %d: bad coverage %q", i, pl.Coverage)
+		}
+		if pl.Index != uint64(i) {
+			return nil, fmt.Errorf("leaf %d: persisted index %d out of order", i, pl.Index)
+		}
+		var pathId, finalDigest, serverSigR, serverSigS, vpkSigR, vpkSigS [32]byte
+		for _, cp := range []struct {
+			dst  *[32]byte
+			src  []byte
+			name string
+		}{
+			{&pathId, pl.PathId, "path_id"},
+			{&finalDigest, pl.FinalDigest, "final_digest"},
+			{&serverSigR, pl.ServerSigR, "server_sig_r"},
+			{&serverSigS, pl.ServerSigS, "server_sig_s"},
+			{&vpkSigR, pl.VpkSigR, "vpk_sig_r"},
+			{&vpkSigS, pl.VpkSigS, "vpk_sig_s"},
+		} {
+			if len(cp.src) != 32 {
+				return nil, fmt.Errorf("leaf %d: %s is %d bytes", i, cp.name, len(cp.src))
+			}
+			copy(cp.dst[:], cp.src)
+		}
+		leaves[i] = stabi.STSubnetTrailLeaf{
+			Index:       new(big.Int).SetUint64(pl.Index),
+			PathId:      pathId,
+			Coverage:    coverage,
+			ServerKeyId: pl.ServerKeyId,
+			FinalDigest: finalDigest,
+			ServerSigR:  serverSigR,
+			ServerSigS:  serverSigS,
+			VpkSigR:     vpkSigR,
+			VpkSigS:     vpkSigS,
+		}
+		hashes[i] = merkle.TrailLeaf(pl.Index, pathId, coverage, pl.ServerKeyId,
+			finalDigest, serverSigR, serverSigS, vpkSigR, vpkSigS)
+		claimedEffort.Add(claimedEffort, coverage)
+	}
+	tree, err := merkle.NewTree(hashes)
+	if err != nil {
+		return nil, err
+	}
+	claim := &EffortClaim{
+		Epoch:         p.Epoch,
+		Leaves:        leaves,
+		Root:          tree.Root(),
+		ClaimedEffort: claimedEffort,
+		tree:          tree,
+	}
+	if !bytes.Equal(claim.Root[:], p.Root) {
+		return nil, fmt.Errorf("persisted claim root mismatch: rebuilt 0x%x, stored 0x%x", claim.Root, p.Root)
+	}
+	if claim.ClaimedEffort.String() != p.ClaimedEffort {
+		return nil, fmt.Errorf("persisted claimed effort mismatch: rebuilt %s, stored %s", claim.ClaimedEffort, p.ClaimedEffort)
+	}
+	return claim, nil
+}
+
+// SampledLeaves assembles the (leaves, proofs) arguments of
+// proveTrailSamples for the sampled indices (duplicates allowed — the
+// contract checks leaves[i].index == idx[i] for each i independently).
+func (self *EffortClaim) SampledLeaves(indices []*big.Int) ([]stabi.STSubnetTrailLeaf, [][][32]byte, error) {
+	leaves := make([]stabi.STSubnetTrailLeaf, len(indices))
+	proofs := make([][][32]byte, len(indices))
+	for i, idx := range indices {
+		if !idx.IsUint64() || idx.Uint64() >= uint64(len(self.Leaves)) {
+			return nil, nil, fmt.Errorf("sample index %s out of range (%d leaves)", idx, len(self.Leaves))
+		}
+		position := int(idx.Uint64())
+		leaves[i] = self.Leaves[position]
+		proof, err := self.ProofAt(position)
+		if err != nil {
+			return nil, nil, err
+		}
+		proofs[i] = proof
+	}
+	return leaves, proofs, nil
+}
+
+// DriveTrailSubmission runs the interactive sampled-verification flow for a
+// submitted claim until the effort is credited (TrailSubmission.proven),
+// reseeding on blockhash expiry (the contract's seed lives for 256 blocks):
+//
+//	submit (done by caller) → wait block > seedBlock → sampleIndices
+//	→ proveTrailSamples; on "seed expired" → reseedTrailSamples → retry.
+//
+// pollInterval is the chain poll cadence (block time is a good value).
+func DriveTrailSubmission(
+	chain *ChainClient,
+	identity *Identity,
+	e *big.Int,
+	valId *big.Int,
+	claim *EffortClaim,
+	pollInterval time.Duration,
+) error {
+	leafCount := new(big.Int).SetUint64(uint64(claim.LeafCount()))
+
+	for {
+		sub, err := chain.TrailSubmission(e, valId)
+		if err != nil {
+			return err
+		}
+		if sub.Voided {
+			return fmt.Errorf("submission for epoch %s was voided by a dispute", e)
+		}
+		if sub.Proven {
+			// Covers both the sampled-prove success and the sampleK == 0
+			// credit-at-submit path.
+			fmt.Printf("effort claim proven — claimed effort %s credited\n", claim.ClaimedEffort)
+			return nil
+		}
+		if sub.SeedBlock == 0 {
+			return fmt.Errorf("no submission recorded for epoch %s", e)
+		}
+		// Re-read sampleK each round: proveTrailSamples sizes its arrays
+		// from the CURRENT value, which is owner-settable.
+		sampleK, err := chain.SampleK()
+		if err != nil {
+			return err
+		}
+		if sampleK == 0 {
+			// k was zeroed after our submit without proven being set —
+			// nothing to prove; poll until the state reflects it or the
+			// window closes. In practice submitTrails with sampleK == 0
+			// sets proven at submit, so this is unreachable; guard anyway.
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		blockNumber, err := chain.BlockNumber()
+		if err != nil {
+			return err
+		}
+		if blockNumber <= sub.SeedBlock {
+			// Seed not ready: sampleIndices needs blockhash(seedBlock),
+			// available from seedBlock+1.
+			time.Sleep(pollInterval)
+			continue
+		}
+		if blockNumber > sub.SeedBlock+256 {
+			// blockhash fell out of the 256-block window — reseed
+			// (validator-only guard on the contract side).
+			fmt.Printf("sample seed expired (seed block %d, now %d) — reseeding\n", sub.SeedBlock, blockNumber)
+			if _, err := chain.ReseedTrailSamples(identity.EvmKey, e, valId); err != nil {
+				return fmt.Errorf("reseedTrailSamples: %w", err)
+			}
+			continue
+		}
+
+		indices, err := chain.SampleIndices(e, valId, leafCount)
+		if err != nil {
+			// The seed can expire between the block check and this call.
+			fmt.Printf("sampleIndices: %v — retrying\n", err)
+			time.Sleep(pollInterval)
+			continue
+		}
+		leaves, proofs, err := claim.SampledLeaves(indices)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("proving %d sampled leaves (indices %v) against root 0x%x\n", len(leaves), indices, claim.Root)
+		if _, err := chain.ProveTrailSamples(identity.EvmKey, e, valId, leafCount, leaves, proofs); err != nil {
+			// Most recoverable failure: the seed expired while the tx was
+			// in flight. Loop re-reads state and reseeds when needed.
+			fmt.Printf("proveTrailSamples failed: %v — re-evaluating\n", err)
+			time.Sleep(pollInterval)
+			continue
+		}
+	}
+}

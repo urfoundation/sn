@@ -8,17 +8,20 @@ A detailed, color-coded layout of the components and money flows described in
 **§1. Summary of the mechanism** (the v0.2 **two-tier miner side**). The 41% miner emission now
 splits by a governance share **θ** into two tiers of miner UIDs inside **one** mechanism:
 
-- **TAIL / pool** (`1−θ`): the contract-owned **miner-pool UID per NO** (weight `deposit × Qn`),
-  settled to the 100k+ providers by **per-NO Merkle claim** — the low-barrier on-ramp / baseline.
-- **HEAD / top-level miners** (`θ`): the top ~200 providers as **their own UIDs** (weight `Qp` —
-  pure quality, no deposit), paid by **native** emission straight to their own hotkey — no contract
-  custody, no Merkle claim, no take; identity via the `client_id ⇄ hotkey` binding (§11.4).
+- **TAIL / pool** (`1−θ`): the contract-owned **miner-pool UID per NO**; validators weight it
+  `implied_usage × Qn` (implied usage = deposit ÷ conviction-tier rate — the contract weighs nothing,
+  D25), settled to the 100k+ providers by **per-NO Merkle claim** — the low-barrier on-ramp / baseline.
+- **HEAD / top-level miners** (`θ`): the top ~200 fleets as **their own UIDs**, ranked and weighted by
+  **routable-IP breadth** (split-adjusted distinct egress-IP count, D27 — no deposit, no quality term),
+  paid by **native** emission straight to their own hotkey — no contract custody, no Merkle claim, no take.
 
 Independent validators score **both** tiers into one commit-reveal weight vector (split by θ) → Yuma.
-The diagram also shows the ST contract internals (deposit ledger, pool UIDs, Merkle payout roots,
-FeePool), the provider lifecycle (start in a pool → graduate to a top slot → fall back if quality
-slips), native validator dividends + the fee-funded effort bounty, and the off-chain `VALIDATOR.md`
-measurement trails.
+The diagram also shows the ST contract internals (**deposits are conviction stake read from the
+`Deposited` events — no DT ledger**; the contract does custody + settlement only), the pool UIDs, the
+Merkle payout roots, and the **buyback reserve** (every deposit staked + locked, §7.4); the provider
+lifecycle (start in a pool → graduate to a top slot → fall back if it slips); native validator
+dividends; and the off-chain `VALIDATOR.md` measurement trails. (The fee-funded effort bounty is
+deferred out of v1, §9.3.)
 
 | File | Use |
 |---|---|

@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {STBase} from "./utils/STBase.sol";
+import {MerkleBuilder} from "./utils/MerkleBuilder.sol";
+import {STSubnet} from "../src/STSubnet.sol";
+
+/// @dev Effort-mechanism hardening (docs/REVIEW_FINDINGS.md F1 + A2). This file
+///      pins the cross-repo effort-digest golden vectors, the F1 sample-estimator
+///      credit rule (honest + the capped over-claim), and converts the two
+///      adversarial PoCs (docs/review-artifacts/AttackPoC.t.sol.ref, findings A
+///      and A2) into REGRESSION tests that now fail to over-claim.
+contract EffortHardeningTest is STBase {
+    uint256 constant DEPOSIT = 1_000e9; // feePool = φ·DEPOSIT = 100e9
+
+    // =====================================================================
+    // A2 — the effort digest: sha256(finalDigest ‖ coverage)
+    // =====================================================================
+
+    /// @dev Golden vectors shared with connect/verify_wire.go (MUST match). The
+    ///      on-chain digest is the message both Ed25519 sigs are verified over.
+    function test_effortDigest_goldenVectors() public view {
+        bytes32 fd = 0x6e85e7bf93f67bf6669a16523874f8efe4ae321449badc8f940567a19ce377ee;
+        assertEq(
+            st.effortDigest(fd, 1),
+            0x706d76c16b69676f8a4f22ec332440903f0cfb4edb61cceb1bd00705aaead5c4,
+            "coverage=1 vector"
+        );
+        assertEq(
+            st.effortDigest(fd, 7),
+            0x75ee47fe12ab6bdedc0d9884c6d293eadb8891948d5647426ab0b38d02c792b4,
+            "coverage=7 vector"
+        );
+        // structural: 64-byte packed preimage (32B digest ‖ 32B big-endian cov)
+        assertEq(st.effortDigest(fd, 1), sha256(abi.encodePacked(fd, uint256(1))));
+        assertEq(abi.encodePacked(fd, uint256(7)).length, 64);
+    }
+
+    // =====================================================================
+    // F1 — credit is the sample estimator, capped at the declaration
+    // =====================================================================
+
+    /// @dev Honest path: credit = (Σ sampled coverage)·leafCount/k. With uniform
+    ///      coverage C=10 the estimator is exact: C·n.
+    function test_F1_honestCreditIsSampleEstimator() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 6); // true Σ coverage = 60; declared = 60
+        _prove(0, VAL_ID, 6);
+        // (10 + 10)·6 / 2 = 60
+        assertEq(st.effort(0, VAL_ID), 60, "credit = sample estimator");
+    }
+
+    /// @dev The declaration is an UPPER bound: declaring less than the estimate
+    ///      caps the credit downward (credit = min(estimate, claimedEffort)).
+    function test_F1_creditCappedAtDeclaration() public {
+        _afterClose(0);
+        bytes32 root = _effortRoot(4); // true Σ coverage = 40
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, 25); // declare LESS than the estimate
+        _prove(0, VAL_ID, 4);
+        assertEq(st.effort(0, VAL_ID), 25, "credit = min(estimate 40, declared 25)");
+    }
+
+    // =====================================================================
+    // FINDING A (regression) — an inflated claimedEffort no longer captures the
+    // fee pool: proveTrailSamples credits the sample estimator (capped at the
+    // declaration), NOT the free claimed number. (Was:
+    // test_A_claimedEffort_inflation_capturesWholeFeePool.)
+    // =====================================================================
+    function test_A_regression_inflatedClaimCappedToSampleEstimate() public {
+        uint256 honest = _registerValidator2();
+        _deposit(NO_ID, noAddr, DEPOSIT); // feePool[0] = 100e9
+        _afterClose(0);
+
+        // Honest validator: real 7-leaf tree, true Σ coverage = 70.
+        _submit(0, honest, val2Wallet, 7);
+        _prove(0, honest, 7);
+        assertEq(st.effort(0, honest), 70);
+
+        // Cheater: commits the canonical 4-leaf tree (every leaf VALID) but
+        // DECLARES 1e27 effort instead of the true Σ coverage (40).
+        uint256 BOGUS = 1e27;
+        bytes32 root = _effortRoot(4);
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, BOGUS);
+        _prove(0, VAL_ID, 4); // samples are the real, valid leaves -> passes
+
+        // The credit is the sample estimator (C·4 = 40), NOT the inflated claim.
+        assertEq(st.effort(0, VAL_ID), 40, "inflated claim capped to sample estimate");
+        assertEq(st.totalEffort(0), 40 + 70);
+
+        // The committed leaves are all valid, so no dispute voids them — but the
+        // over-claim was already neutralized at prove time.
+        STSubnet.TrailLeaf memory l0 = _mkLeaf(0);
+        bytes32[] memory p0 = _effortProof(4, 0);
+        vm.expectRevert("ST: leaf valid");
+        st.disputeTrailLeaf(0, VAL_ID, l0, p0);
+
+        _toFinalize(0);
+        st.finalizeEpoch(0);
+
+        uint256 fee = st.feePool(0);
+        st.claimValidator(0, VAL_ID);
+        st.claimValidator(0, honest);
+
+        uint256 cheaterPay = staking.stakes(TREASURY, st.validatorColdkey(VAL_ID));
+        uint256 honestPay = staking.stakes(TREASURY, st.validatorColdkey(honest));
+        // The cheater is paid ONLY its true 40/110 coverage share; the honest
+        // 7-leaf validator out-earns it — the pool is no longer captured.
+        assertEq(cheaterPay, (fee * 40) / 110, "cheater paid only its true coverage share");
+        assertEq(honestPay, (fee * 70) / 110);
+        assertGt(honestPay, cheaterPay, "honest validator out-earns the over-claimer");
+    }
+
+    // =====================================================================
+    // FINDING A2 (regression) — a FORGED-coverage leaf now fails the signature
+    // check (the sigs are verified over sha256(finalDigest ‖ coverage)), so it
+    // cannot be proved and is disputable. (Was:
+    // test_A2_signatureReplay_manyValidLeavesFromOneTrail.)
+    // =====================================================================
+    function test_A2_regression_forgedCoverageFailsSigCheck() public {
+        _deposit(NO_ID, noAddr, DEPOSIT);
+        _afterClose(0);
+
+        // The server attested ONE trail: finalDigest `dig`, over some REAL
+        // coverage. Model "the server did NOT sign the FORGED coverage" by
+        // flagging exactly that message (finalDigest ‖ FORGED) bad for both the
+        // server key and the vpk — the A2 fix routes the sig check through it.
+        bytes32 dig = keccak256("one-real-trail-final");
+        bytes32 sr = keccak256("one-server-r");
+        bytes32 ss = keccak256("one-server-s");
+        bytes32 vr = keccak256("one-vpk-r");
+        bytes32 vs = keccak256("one-vpk-s");
+        uint256 FORGED = 1_000_000;
+        ed.setBad(st.effortDigest(dig, FORGED), SERVER_PUB, sr, ss, true);
+        ed.setBad(st.effortDigest(dig, FORGED), VPK, vr, vs, true);
+
+        // Build 4 replay leaves carrying the FORGED coverage (as the PoC did).
+        uint256 N = 4;
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](N);
+        bytes32[] memory hashes = new bytes32[](N);
+        for (uint256 i = 0; i < N; i++) {
+            leaves[i] = STSubnet.TrailLeaf({
+                index: i,
+                pathId: keccak256(abi.encodePacked("distinct-path", i)),
+                coverage: FORGED,
+                serverKeyId: SERVER_KEY_ID,
+                finalDigest: dig,
+                serverSigR: sr,
+                serverSigS: ss,
+                vpkSigR: vr,
+                vpkSigS: vs
+            });
+            hashes[i] = st.trailLeafHash(leaves[i]);
+        }
+        bytes32 root = MerkleBuilder.root(hashes);
+
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, N * FORGED);
+
+        // (a) proving the forged-coverage sample REVERTS on the sig check.
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256(abi.encodePacked("bh", seedBlock)));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, N);
+        STSubnet.TrailLeaf[] memory sl = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory pf = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            sl[i] = leaves[idx[i]];
+            pf[i] = MerkleBuilder.proof(hashes, idx[i]);
+        }
+        vm.expectRevert("ST: bad server sig");
+        st.proveTrailSamples(0, VAL_ID, N, sl, pf);
+
+        // (b) even committed (unproven), a forged-coverage leaf is disputable:
+        //     its server sig no longer verifies over the forged coverage.
+        st.disputeTrailLeaf(0, VAL_ID, leaves[0], MerkleBuilder.proof(hashes, 0));
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided, "forged-coverage leaf voids the claim");
+        assertEq(st.effort(0, VAL_ID), 0);
+    }
+}

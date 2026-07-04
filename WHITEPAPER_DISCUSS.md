@@ -16,16 +16,41 @@ Each **Network Operator (NO)** is **one contract‑owned miner‑pool UID** (its
 `VALIDATOR.md` trails, and set Yuma weights **`deposit × Q_n`** (deposit = on‑chain demand anchor; `Q_n` =
 measured pool quality) — so **validators' evaluation drives the miner emission, the Bittensor way**.
 Miner emission (41%) accrues to the contract (custody) → providers claim via Merkle. Validator emission
-(41%) is **native** ∝ stake × vtrust. On top, validators earn a **fee‑funded effort bounty**
-(`φ·ΣD + ω·OwnerCut`) ∝ verified, coverage‑weighted trails — the engine that keeps the failure data
-flowing. Everything is denominated in the subnet's **α**. The **ST contract** (Subtensor EVM) is the
-ledger, miner‑emission custodian, bounty payer, and settlement engine — **not** the validator.
+(41%) is **native** ∝ stake × vtrust (v1's only validator reward — the effort bounty is a deferred
+phase, D23). Everything is denominated in the subnet's **α**. The **ST contract** (Subtensor EVM) is the
+ledger, miner‑emission custodian, buyback‑reserve custodian, and settlement engine — **not** the
+validator.
 
 **v0.2 — two tiers (D16–D20).** The miner side now also runs a **head** channel beside the pools: the **top
 ~200 providers hold their own UIDs** and are steered **directly** on pure quality `Q_p` (no deposit), paid
 **natively**, matched by a signed `client_id ⇄ hotkey` binding; the pool is the **on-ramp** they graduate
 from. Both tiers share one mechanism's 256 UIDs, split by a governed head share **θ**. See `WHITEPAPER.md`
 §8.4–8.5, §10, §11.4, §14.
+
+**v0.3 — deposits are buybacks (D23).** Deposits keep the steering role but are **never distributed**:
+the contract stakes **every deposit in full** into a locked, dividend‑compounding **buyback reserve** on
+the **owner‑validator hotkey** (one‑way invariant; no exit path in code). `poolTotal = emission‑only` —
+both miner tiers are paid from emission; revenue supports miners through the token (buy‑and‑lock, the
+Chutes flywheel) instead of pass‑through payouts. The **effort bounty and its whole contract surface
+leave v1** (owner = majority validator early, with intrinsic motive to measure); §13.6's ladder is now
+**W → X → Y**. See `WHITEPAPER.md` §6.3–6.4, §7.4, §8.3, §9, §12.4.
+
+**v0.4 — conviction staking, validator-computed weights, IP-breadth head, testnet-first (D25–D28).**
+A simplification pass that moves the mechanism's judgment OUT of the contract and INTO the validators:
+- **The contract stops weighting/validating deposits (D25).** It drops the `DT`/`totalDT` ledger and
+  becomes custody + settlement only. Deposits are **conviction stake** — locked α in the reserve (the
+  D23 buyback), whose cumulative amount sets the NO's **tier**, which sets its published
+  **deposit-rate** (zero conviction = today's baseline; more → a lower rate — the onboarding lever).
+  **Validators weight the pools themselves**: `weight_n ∝ (epoch_deposit_n / rate(tier_n)) × Q_n` =
+  implied-usage × quality (staking is a discount, not a penalty; weight still tracks real usage).
+- **Validators set their own measurement rate (D26).** The §5.3 eligibility throttle + soft seed
+  limits go off/configurable (UR is the largest validator); only a loose hard per-IP DoS backstop stays.
+- **Head tier ranks by routable-IP breadth (D27).** Head = top-200 NOs by **split-adjusted distinct
+  routable egress-IP count** (shared IPs split equally among claimants); head weight ∝ that score;
+  trails carry a per-hop egress-IP-hash so validators verify it from their own paths; IP-hash
+  granularity is a subnet-configurable param (default /29 v4, /48 v6).
+- **Testnet-first (D28).** Reverts D24 — v1 shakes out on testnet, then mainnet.
+See `WHITEPAPER.md` §7, §8.1/§8.4/§8.5, §10, §12; `VALIDATOR.md` §5/§7/§8.
 
 ---
 
@@ -49,7 +74,9 @@ claim. The NO only *directs* (commits a payout root); it never custodies others'
 explicit.) §1, §3, §6.
 
 **D4 — Two clocks.** Native **tempo** (~360 blocks) drives weights/emission; a **7‑day epoch**
-(~50 400 blocks) is the application‑layer settlement period with +4h/+24h/+48h windows. §5.
+(~50 400 blocks) is the application‑layer settlement period with +4h/+24h/+48h windows. §5. *(v0.3/D23:
+the +24h effort‑claim window is deferred with the bounty — v1 runs +4h commit / +48h finalize; the
+trails‑window dial stays reserved for the bounty phase.)*
 
 **D5 — Pool design: UID = a NO's pool (scale).** A NO has up to **100k+ providers** — far beyond the
 ~256 subnet UID cap — so providers **cannot** be UIDs. Each NO = **one miner‑pool UID**; providers are
@@ -76,12 +103,19 @@ their output — *which providers are the weakest links* — is the product (use
   captures it, pays ∝ trails) — strongest incentive, but moves the quality consensus into the contract.
   We move to (Y) only if (X)'s observed trail coverage is too thin. §13.6.
 
+*(v0.3 update — D23: v1 ships **(W) dividends‑only** — the owner is the majority validator with an
+intrinsic motive to measure, so the explicit effort reward has no customer yet. (X) is unchanged as the
+first escalation, triggered when owner‑independent coverage is wanted; (Y) stays the final escalation.)*
+
 **D9 — No on‑chain oracle.** Per‑GB/per‑user usage is self‑reported and unverifiable on‑chain, so an
 on‑chain rate has no teeth — the only quantity the protocol acts on is *α deposited*. The "global fixed
 rate" survives as an **off‑chain published reference**. §7.1, §13.5.
 
 **D10 — `φ`, the non‑refundable deposit fraction.** A hard cost floor against deposit self‑dealing
 (round‑tripping a deposit through your own providers), and it **funds the effort bounty**. §7.2, §9.3.
+*(Superseded by D23: deposits are now **fully sunk buybacks** — the round‑trip is closed structurally
+(recovery = 0, not `1−φ`), so `φ`'s anti‑gaming job is subsumed and it is retired from v1; it returns
+only as the bounty‑phase funding split carved from the buyback flow.)*
 
 **D11 — Governance: Phase 0 → Phase 1 (committed); deeper deferred.** Phase 0: owner M‑of‑N multisig +
 upgradeable proxy (fast bug‑fixes, central control). Phase 1: **timelock ≥ 1 epoch** on
@@ -91,7 +125,10 @@ sacrosanct** (no upgrade/pause can block or claw back an earned claim). §6.4.
 **D12 — Optimistic effort verification (scales).** Verifying *every* trail on‑chain via `0x402` won't
 scale. `submitTrails` commits a **Merkle root** of `(trail, coverage)` leaves + a claimed total; the
 contract **spot‑checks a random sample** and **anyone may dispute any leaf** in the window (one bad sig
-voids the claim + forfeits stake). O(1) on‑chain. §9.3, §11.3.
+voids the claim + forfeits stake). O(1) on‑chain. §9.3, §11.3. *(Deferred with the bounty — D23. The
+mechanism as specified — including the built‑and‑hardened implementation (coverage‑bound signatures,
+sample estimator credit, HF‑2 reseed caps) — is the parked (X)‑phase implementation, preserved under
+`docs/parked/`.)*
 
 **D13 — Coverage weighting = under‑sampling (not "suspected‑weak").** Weighting by how *under‑sampled* a
 provider is is well‑defined and non‑circular; "suspected‑weak" was circular (depends on the data it
@@ -105,8 +142,10 @@ independent‑validator stake share grows. Quality is on the payout path from da
 
 **D15 — No global claim roots; settle from on‑chain state (+ drop `depositSummaryHash`).** Providers
 claim **per‑NO** against that NO's committed `payoutRoot` (fractional shares, Σ=1), scaled by the
-on‑chain `poolTotal_n = emission_n + (1−φ)D_n` (capped so a pool can't be over‑drained). The validator
-bounty is computed on‑chain (`feePool·effort/Σeffort`) — no root. So **nothing is computed off‑chain at
+on‑chain `poolTotal_n = emission_n + (1−φ)D_n` *(v0.3/D23: now `poolTotal_n = emission_n` only —
+deposits are reserved; the no‑off‑chain‑compute property is unchanged)* (capped so a pool can't be
+over‑drained). The validator bounty computation (`feePool·effort/Σeffort`, on‑chain, no root) is
+deferred with the bounty. So **nothing is computed off‑chain at
 finalize**, removing the last "who computed this root" trust step (this subsumes review‑item *B*).
 `depositSummaryHash` is dropped (redundant with on‑chain `Deposit` events). Trade: a multi‑NO provider
 claims once per NO. (Deferred: review‑item *A*, the `Q_n` aggregation + sampling spec — pending
@@ -155,6 +194,160 @@ rejected). **Crucially this is no-custody *in spirit*, not contract immutability
 progressively locked down over time — **D11 / §6.4 are unchanged**. (User decision + clarification,
 2026-06-30; resolves the `COMPARISON.md` §8.3 open question.) §6, §8.3, §13.1.
 
+**D22 — v1 implementation decisions settled (PLAN.md, 2026-07-01).** The cross-repo implementation
+decisions are recorded in `PLAN.md` §9 (namespace `D-1..D-13`, distinct from this log). Two touch the
+design layer: **`Q_n` v1 aggregation = usage-weighted mean** of per-provider `q_p`, EMA-smoothed (resolves
+the §3 open item *for v1*; the multi-NO-grade spec stays open), and the **epoch windows become
+governance-settable contract parameters** (commit window default +4h per §5.2; a missed commit rolls the
+pool total into the next epoch). Also notable: commit-reveal is implemented **Go-native (drand tlock) from
+day one** (no CR-off interim, no Python sidecar); validator coldkeys are EVM-mirror accounts with real
+sr25519 hotkeys (permissionless `registerValidator` via a metagraph coldkey check); trail eligibility
+includes **residential** egress IPs behind the `VALIDATOR.md` §8.2 bijection from day one; provider claim
+wallets are native ss58 coldkeys.
+
+**D23 — Deposits are buybacks (staked, locked, compounding); miner pay = emission-only; effort bounty
+deferred out of v1 (user decision, 2026-07-03; WHITEPAPER v0.3).** Three linked changes:
+1. **Every deposit is a buyback** (the Chutes buy-and-lock pattern, `COMPARISON.md` SN64) — the contract
+   moves the **full deposit** into a **buyback reserve**: α staked to the **owner's validator hotkey**
+   (`reserveHotkey`), with **no code path out** (a §6.4 sibling invariant to "finalized claims are
+   sacrosanct"). dTAO stake has **no unbonding**, so the lock is the contract's missing exit path +
+   upgrade governance — not the staking itself. Deposits keep their steering role (`D_n × Q_n`)
+   unchanged; **`poolTotal = emission_n` only** — the `(1−φ)·D` pass-through to pool miners is gone, and
+   both tiers are paid from emission alone. Custody splits across two hotkeys (`treasuryHotkey` = exact
+   push-then-credit claims escrow; `reserveHotkey` = compounding reserve) because dividend accrual on the
+   escrow hotkey would corrupt the deposit attribution check. Reserve-hotkey delegate take = 0.
+2. **Why staked to the owner-validator** (user choice (b) over inert/spread/burn): the reserve earns its
+   pro-rata share of the 41% validator emission (auto-restaked → compounds instead of melting), recycles
+   validator emission out of liquid supply, and **deliberately hardens the owner's majority-validator
+   posture** early. Long-run thesis (§12.4): buyback `B_e` compounds with revenue while issuance `E_e`
+   halves — the demand ratio `R_e = (B_e + Y_e)/L_e` is expected to cross 1, after which float shrinks
+   structurally. Caveats recorded in §12.4: miner pay becomes price-mediated (the deposit-funded floor is
+   gone); the reserve is a growing honeypot (governance phases matter more); the lock is
+   governance-credible, not physical; consensus concentration is intended and makes later validator
+   decentralization a deliberate, budgeted step.
+3. **Effort bounty (X) deferred out of v1** — with it go `φ`/`ω`/`feePool`, `registerValidator`/the vpk
+   registry, `submitTrails` + sampled verification + effort disputes, and `claimValidator`. Rationale:
+   native dividends suffice while the **owner is the majority validator** (α holdings + the reserve) with
+   an intrinsic motive to run trails; the bounty pays for verification the owner does NOT control, so it
+   ships with the independent-validator phase (trigger: §12.3's quality-swing ramp needs an
+   owner-independent baseline). §13.6 ladder is now **W (dividends-only, v1) → X (fee-funded bounty) → Y
+   (emission-routed)**. This **defers, does not re-open**, the §2 (X)-design closures (intersection
+   split/VT/bond eliminations stand; §9.3's bounty spec is unchanged, waiting). Self-dealing: the buyback
+   **closes the deposit round-trip structurally** (recovery = 0, vs `1−φ` before), so `φ`'s anti-gaming
+   role is subsumed (§12.1 rewritten).
+   *Implementation note:* the already-built effort machinery (coverage-bound digests, sampled proofs,
+   HF-2 reseed caps, `snclaim` submit) is **parked as the (X)-phase implementation**, not discarded.
+
+**D24 — Launch directly on mainnet; no public-testnet phase (user decision, 2026-07-03).**
+*(REVERTED by D28, 2026-07-03 same-day: v1 goes back to a testnet-first launch. The rationale below
+is retained for the record; the SP-1/SP-2/SP-3 harness work it drove all stays — it simply runs
+against testnet first, then mainnet, instead of mainnet-direct. Everything below is superseded except
+the harness artifacts, which are chain-agnostic.)* v1 deploys
+straight to finney. Rationale: the code is chain-agnostic (endpoints/windows/caps are config; the 964
+profile already exists), the v1 posture is safe-by-construction (owner-run everything, the D-3 deposit
+cap, guardian pause, UUPS, governance-settable epoch windows per D-11/F2), and public testnet was a
+low-fidelity proxy anyway — test.finney frequently runs a DIFFERENT runtime than finney, so "SP-1
+verified on testnet" could still break at launch; verifying against the real runtime is stronger.
+Replacements for what testnet was load-bearing for:
+- **SP-1** → **mainnet dust probes** before the subnet exists: a throwaway probe contract on chain 964
+  against an existing netuid (custody semantics, rao units, 0x402 gas, blake2f, and the §7.4 reserve
+  leg — dividend auto-compounding + take). Harness **BUILT + CI-green**:
+  `evm/src/probe/STSubnetProbe.sol` + `script/SP1Conformance.s.sol` + `test/SP1Probe.t.sol` (the
+  subtensor precompiles are runtime-only → the battery runs on-node via `cast` against the deployed
+  probe; forge sim can't execute them). `docs/LAUNCH.md` B1 has the exact command sequence.
+- **SP-2** → `sp2 check-metadata` re-pinned read-only against finney (format already live-verified vs
+  test.finney). The first real commit on our subnet lands at genesis — costs a tempo, never funds.
+- **e2e rehearsal** → **SP-3 localnet promoted to required** (docker subtensor pinned to the live
+  finney runtime tag, fast blocks): full genesis dry-run + failure drills; localnet drand may be
+  stubbed (noted — the reveal is the one genesis-only step).
+- **soak** → **mainnet ramp**: launch with short epochs (e.g. tEpoch 7 200) + a dust deposit cap,
+  N clean cycles, then `setEpochParams(50_400, 1_200, 7_200, 14_400)` and raise the cap stepwise.
+Mainnet-only additions: genesis is ONE scripted window (subnet registration locks real TAO and starts
+the start_call/emission clock — do not register until rehearsal + probes are green); defensive
+registration hyperparams + OWN UIDs registered first (new-subnet UID snipers are a real meta); the
+owner-validator α position is acquired in the first hours after start (α is cheapest at genesis — the
+purchase IS the first buyback and secures the §9.2 majority seat, which §7.4 then compounds);
+reserve-hotkey delegate take set to 0 before the first deposit (rate-limited change); the owner
+multisig + guardian exist at deploy, not later. Accepted residuals, stated once: a custody bug now
+costs real funds (bounded by the per-epoch cap + the one-way reserve); the first CRv4 commit and first
+`finalizeEpoch` on real infra are unrehearsed-on-mainnet moments; hyperparameter mistakes are
+rate-limited/expensive to unwind. Docs: WHITEPAPER §16.3 milestones reframed (M0 = rehearsal + probes,
+M1 = scripted genesis in rehearsal mode, M2 = reserve verified live, M3 = ramp), §16.4 gates now run
+against finney + localnet; `docs/TESTNET.md` → **`docs/LAUNCH.md`**; PLAN.md amended. Zero code
+changes.
+
+**D25 — Conviction staking: the contract stops weighting/validating deposits; validators weight pools
+from published data; tiered deposit rates (user decision, 2026-07-03; v0.4).** Bundles simplification
+changes #1 + #4. Three linked moves:
+1. **The contract does NO deposit weighting or validation.** It drops the per-NO deposit ledger
+   (`DT[e][noId]`, `totalDT`) entirely. `deposit(noId, amount)` still stakes the **full amount into the
+   locked reserve** (D23 buyback — kept, chosen 1(a)) and emits `Deposited(e, noId, from, amount)` +
+   `BuybackReserved`; that event log IS the authoritative, published per-NO deposit record. The
+   contract's miner-channel role shrinks to **custody + settlement only** — it never computes a weight.
+2. **Deposits are CONVICTION STAKE.** A deposit is locked α in the reserve, never distributed, never
+   returned. An NO's **total conviction** = its cumulative locked α (deposits + any voluntary
+   up-front stake — **one pool**; a new NO can pre-stake to jump tiers or accumulate conviction by
+   depositing over time). Conviction = the **locked amount** (the lock is the alignment — NOT a
+   time-integral `amount × time`; kept simple, reuses the reserve already built).
+3. **Tiered deposit rates (change #4).** Governance publishes a **deposit-rate schedule per conviction
+   tier**: `rate(tier)` = α required per unit of real usage. **Zero conviction = the zero tier = today's
+   baseline (full) rate**; more conviction → a lower rate → less α needed up front (the onboarding +
+   long-term-alignment lever). The schedule is an off-chain published reference (like the §7.1 rate),
+   read by validators; the contract does not consume it.
+4. **Validators weight the pools themselves (change #1).** Each validator reads (a) each NO's on-chain
+   deposits (this epoch) + cumulative conviction (from the event log), (b) the published tier→rate
+   schedule, and (c) its OWN measured quality `Q_n`, and sets Yuma weights as
+   **`weight_n ∝ implied_usage_n × Q_n`** where **`implied_usage_n = epoch_deposit_n / rate(tier_n)`**
+   (decision A). This is the key economic fix: a staker on a lower rate posts LESS α for the SAME
+   implied usage and gets the SAME weight, so the stake is a genuine discount, not a penalty, and the
+   pool weight still tracks **real revenue-backed usage** (the headline thesis) rather than raw α.
+   *Requires* the rate schedule floored above zero (else implied usage → ∞ for any deposit).
+   `BuildWeightVector`'s pool term changes from `deposit × quality` to `implied_usage × quality`; the
+   validator loads the rate schedule from config. Self-dealing stays bounded: the deposit is a full
+   sink (D23) AND the conviction that lowers the rate is itself sunk α — buying a low rate costs locked
+   capital. Supersedes the D6 `deposit × Q_n` formula (the *inputs* move off-contract; the deposit↔demand
+   coupling and validator-consensus core are unchanged). Rewrites WHITEPAPER §7, §8.1, §10, §12.1,
+   §15.2; drops `DT`/`totalDT` from §6.1 + the contract; `EpochFinalized` loses `totalDT`.
+
+**D26 — Validators set their own measurement rate; guardrails off (user decision, 2026-07-03; v0.4;
+change #2).** We want to experiment with the measurement throttles OFF, since UR is the largest
+validator by far. The `VALIDATOR.md` §5.3 **eligibility token bucket** (one measurement per provider
+per `EligibilityInterval`) and the §9 **soft seed limits** become permissive / **validator-configurable
+with an off default** — each validator drives its own trail/testing rate as fast as the network allows
+(server-push sampling stays, so the equal-probability baseline is intact). We KEEP only a **loose hard
+per-source-IP DoS backstop** (the state-creation bound — `/verify` still faces non-validator callers;
+the nginx-forced `$remote_addr` is the real limit, V11). Accepted trade-off, documented: §5.3's throttle
+also bounded how often a self-dealer harvests its own node's measurements (§7.7 per-hop self-dealing);
+running it off re-opens that cadence — fine while validators are owner-run, flagged for the
+independent-validator phase. Rewrites `VALIDATOR.md` §5.3/§5.5/§9.
+
+**D27 — Head tier ranks NOs by split-adjusted unique routable egress-IP count; head weight ∝ that score
+(user decision, 2026-07-03; v0.4; change #3).** The head-tier ranking metric changes from measured
+quality to **breadth of routable exit IPs** — the real VPN supply metric ("not how much traffic is
+routed, but how many unique IPs are routable"). Because §8.2 enforces **one provider ⇄ one egress IP**,
+the ranked unit is the **network operator (fleet)**, not a single provider: an NO's score = the count of
+**distinct routable egress-IP-hashes** across its providers. **Shared IPs are split:** each distinct
+IP-hash contributes **1.0 total, divided equally among every top miner claiming it** (A and B both route
+IP Q → 0.5 each; score_n = Σ over n's IP-hashes of `1 / (#top-miners claiming that hash)`). To let each
+validator compute the counts and splits **from its own paths**, the `VALIDATOR.md` trail/proof wire
+gains a **per-hop egress-IP-hash** (a hash, not the raw IP — privacy preserved). The head **emission
+weight ∝ the split-adjusted IP score itself** (decision B — more routable breadth → more emission; the
+score is both the top-200 gate AND the weight), replacing pure `Q_p`. Validators **verify** a claimed
+top-200 miner actually ranks by their own trail-observed IP score (self-endorsed, trust-minimized).
+**IP-hash granularity is a configurable subnet parameter**, default **/29 for IPv4, /48 for IPv6** (what
+UR uses today), so the "distinct IP" unit is tunable. Rewrites `WHITEPAPER.md` §8.4/§8.5/§11.4 (head
+identity binds a fleet, not one client_id; weight = IP score) + `VALIDATOR.md` §7 (the IP-score
+measurement) + §8 (the wire's egress-IP-hash) + the head steering in `sn/validator/steer.go`.
+
+**D28 — Revert D24: v1 launches on TESTNET first, then mainnet (user decision, 2026-07-03; change #5).**
+Undoes the mainnet-direct decision. `docs/LAUNCH.md` goes back to the testnet-bootstrap-then-mainnet
+runbook (M0→M6 roadmap; mainnet stays the eventual target, gated behind a clean testnet run). The SP-1
+probe harness (`evm/src/probe/STSubnetProbe.sol` + script + test) and the SP-2/SP-3 work are
+endpoint-parameterized, so they **re-target to testnet with zero code change** (`SP1_NETUID` +
+`--rpc-url testnet`, chain 945, `wss://test.finney`). WHITEPAPER §16.3 milestones revert to
+testnet-first. Rationale for the reversal: with the v0.4 mechanism changes (D25–D27) reshaping the
+economic + measurement core, a live testnet shakeout de-risks more than mainnet-direct speed saves.
+
 ---
 
 ## 2. Rejected / reverted — do NOT re-open these
@@ -188,10 +381,12 @@ re‑opening the weight formula.**
 
 ## 3. Open questions / deferred to later revisions
 
-- **(Y) escalation.** If the (X) bounty proves too small to pull enough trail coverage (native dividends
-  are ∝ stake, so a high‑stake validator can coast), escalate to (Y). Trigger = observed coverage too
-  thin. §13.6.
-- **`Q_n` aggregation + sampling spec (UNDER‑SPECIFIED — needs design).** How per‑provider reliability
+- **(X) then (Y) escalation.** v1 ships dividends-only (**W**, D23 — the owner-majority validator needs
+  no effort subsidy). (X) — the fee-funded bounty — ships when owner-independent trail coverage is
+  wanted; if (X) proves too small (native dividends are ∝ stake, so a high‑stake validator can coast),
+  escalate to (Y). Trigger = observed coverage too thin. §13.6.
+- **`Q_n` aggregation + sampling spec** *(v1 RESOLVED → D22: usage-weighted mean of per-provider `q_p`,
+  EMA-smoothed — `PLAN.md` D-9. The multi-NO-grade version below stays open.)* How per‑provider reliability
   aggregates to the pool scalar (a flat **mean hides bad providers**; a **sum rewards count** — likely
   traffic/usage‑weighted reliability), plus an **EMA across epochs** and the sampling/coverage model for
   100k‑provider pools. This is the most important remaining under‑specification **for the tail** — the **head needs no such

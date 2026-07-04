@@ -1,0 +1,43 @@
+# ST settlement contract — UR Bittensor subnet.
+#
+# solc 0.8.24 + evm_version = "cancun" are LOAD-BEARING (PLAN.md §2): newer solc
+# defaults to prague, which the subtensor EVM does not implement. Do not bump
+# either without re-verifying against the live runtime.
+
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.24"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+# 12-arg flat initializer (kept flat for tooling) needs IR codegen.
+via_ir = true
+# Vendored subtensor precompile interfaces (src/interfaces/) are kept
+# byte-identical to upstream and ship without SPDX headers / with float pragmas:
+# 1878 = missing SPDX license identifier, 3420 = pragma mismatch note.
+# 5574/3860 = code/initcode size warnings — they trigger only on the Deploy
+# script and the test contract (never deployed on-chain); check deployable
+# sizes with `forge build --sizes` (STSubnet runtime: ~22.6 KB / 24.6 KB cap).
+ignored_error_codes = [1878, 3420, 5574, 3860]
+# Shared Go<->Solidity Merkle test vectors (sn/merkle) consumed by test/Claims.t.sol.
+fs_permissions = [{ access = "read", path = "../merkle/testdata" }]
+
+[profile.default.fuzz]
+runs = 256
+
+[profile.default.invariant]
+runs = 48
+depth = 48
+fail_on_revert = false
+
+[rpc_endpoints]
+# PLAN.md §3.1 (live-checked 2026-07-01)
+testnet = "https://test.chain.opentensor.ai"  # chain id 945
+mainnet = "https://lite.chain.opentensor.ai"  # chain id 964
+
+[fmt]
+line_length = 110

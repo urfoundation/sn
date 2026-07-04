@@ -30,13 +30,13 @@ and this document is mostly about the first:
 2. **Steer (§11).** Each **tempo** (~72 min), turn those per-provider statistics into
    a Bittensor **weight vector** and submit it under commit-reveal, so the
    validators' evaluation — not a fixed formula — drives the 41% miner emission, the
-   Bittensor way (`WHITEPAPER.md` §10). The same per-provider numbers feed **both**
-   miner tiers (`WHITEPAPER.md` §8.4–§8.5): they aggregate to a **pool scalar `Q_n`**
-   for the per-NO **pool** tier (the tail), and are used **directly, per provider, as
-   `Q_p`** for the **top-level miners** (the head — no aggregation). For this work the
-   validator earns **native Yuma dividends** (∝ stake × vtrust) **plus a fee-funded
-   effort bounty** (∝ verified trail volume) — both unchanged by the two-tier
-   iteration (`WHITEPAPER.md` §9).
+   Bittensor way (`WHITEPAPER.md` §10). The two miner tiers use **two different metrics**
+   (`WHITEPAPER.md` §8.1, §8.4; D25/D27): the per-provider stats aggregate to a **pool
+   scalar `Q_n`** for the per-NO **pool** tier (weighted `implied_usage_n × Q_n`, the
+   deposits+tier read off-chain, §11.3), while the **head** ranks fleets by their
+   **split-adjusted count of distinct routable egress-IP-hashes** (§11.1). For this work
+   the validator earns **native Yuma dividends** (∝ stake × vtrust); the fee-funded
+   effort bounty is **deferred** (`WHITEPAPER.md` §9.2–§9.3, D23).
 
 The two jobs are separated by design: §1–§10 produce an attributable measurement
 under an open, adversarial validator set; §11 is the thin consuming layer that maps
@@ -187,11 +187,18 @@ When a trail reaches depth `M`, the server publishes and returns:
 ```
 proof = {
   header:      { trail_id, server_nonce, vpk, M },
-  hops:        [ (client_id_1, time_ms_1), …, (client_id_M, time_ms_M) ],
-  final_sig:   FINAL signed by server_sk,   // server_key_id included
+  hops:        [ (client_id_1, time_ms_1, egress_ip_hash_1), …, (client_id_M, time_ms_M, egress_ip_hash_M) ],
+  final_sig:   FINAL signed by server_sk,   // server_key_id included; signs over the full hop tuples incl. egress_ip_hash
   verifier_sig: EXTEND at depth M signed by vsk   // the validator's signature (wire field name, WHITEPAPER.md §9.1)
 }
 ```
+
+Each hop record carries an **`egress_ip_hash`** (v0.4, D27) — `H(prefix(egress_ip, g))`
+at the configured subnet granularity `g` (§8.1) — so validators compute the head
+**routable-IP score** (§11.1) from the signed proof. It is inside the `final_sig`
+preimage (the server attests the egress-IP-hash, not just the client_id), so a fleet
+cannot forge which IPs it routed. (The ASSIGN/FINAL canonical encodings of Appendix A
+gain this field; a hop tuple is `(client_id, time_ms, egress_ip_hash)`.)
 
 Anyone with the server's published Ed25519 public key can verify:
 
@@ -382,6 +389,19 @@ Implement the bucket in Redis: key `{velig_<clientId>}` (own hash-tag slot),
 `INCR`+`EXPIRE` style as in `connect/transport_rate_limit.go:124`, or a token count
 with a refill timestamp.
 
+**v1 — guardrails off, validator sets its own rate (D26).** For v1 we run this throttle
+**off** (or wide open) and let each **validator drive its own testing/trail rate** as
+fast as the network allows — UR is the largest validator by far, and we want to
+experiment with maximum measurement throughput. Concretely: `EligibilityInterval` and
+the §9 **soft** seed limits become **validator-configurable with a permissive/off
+default** (server-push sampling stays, so the equal-probability baseline is intact); only
+the **hard per-source-IP DoS backstop** (§9, the state-creation bound on the
+nginx-forced `$remote_addr`) remains, because `/verify` still faces non-validator
+callers. **Trade-off, accepted:** the token bucket also bounded how often a self-dealer
+harvests its *own* node's measurements (§7.7 per-hop self-dealing) and spread coverage
+over time; running it off re-opens that cadence — fine while validators are owner-run,
+flagged for the independent-validator phase (`WHITEPAPER.md` D26, §12.3).
+
 ### 5.4 Resistance to whole-trail forgery (the "needs majority" result)
 
 If one party owns `k` of the `N` providers (fraction `f = k/N`), the probability
@@ -402,10 +422,11 @@ needs only `k = 1` (§7.7).
 | `M` | trail depth | 8 | `f^(M−1)` forgery resistance vs. completion difficulty |
 | `MMin/MMax` | clamp on requested `M` | 4 / 16 | reject out-of-range |
 | `T` | `StepTimeout` | 30 s | defines a step "failure" |
-| `EligibilityInterval` | token refill | 60 s | size from `ρ` (§5.2) and target sample rate |
+| `EligibilityInterval` | token refill | **off / validator-configurable (D26)** | v1 runs it off — validators set their own rate (§5.3); a positive value re-enables coverage spreading |
 | `TrailTTL` | trail lifetime | `M·T` + 60 s | GC abandoned trails |
 | `a_min` | min exposure to report a provider | 30 | §7.3 |
-| seed limits | per-source-IP, per-`vpk` seed rate | tune | §9 |
+| soft seed limits | per-source-IP, per-`vpk` seed rate | **off / configurable (D26)** | §9; the **hard** per-source-IP DoS backstop always stays on |
+| egress-IP-hash granularity `g` | head-score prefix | /29 IPv4, /48 IPv6 (**subnet-configurable**) | the "distinct routable IP" unit for the head score (§8.1, §11.1, D27) |
 
 ---
 
@@ -570,10 +591,11 @@ Only the `M−1` **server-assigned** positions are unbiased random samples. The 
 hop (§4.1) is validator-*chosen* (they pick a working entry), so it is
 selection-biased upward. Never count the seed position in `a_Y` / `c_Y` / latency.
 **This rule is load-bearing twice over:** it keeps the statistics clean *and* —
-because the same server-assigned-only sampling underlies both the effort bounty
-**and** the per-provider head weight `Q_p` (§11) — it is what stops a top-level miner
-from *farming its own measurement* (it cannot seed itself, §4.1, and the assigned
-hops it appears in are drawn at random by the server, §5.1). See `WHITEPAPER.md` §9.3.
+because the same server-assigned-only sampling underlies the head **routable-IP score**
+(§11.1) and the deferred effort bounty — it is what stops a top-level miner from *farming
+its own measurement* (it cannot seed itself, §4.1, so it cannot manufacture routable IPs
+it does not serve; the assigned hops it appears in are drawn at random by the server,
+§5.1). See §11.4, `WHITEPAPER.md` §9.3.
 
 ### 7.7 Known biases the numbers still carry
 
@@ -624,6 +646,18 @@ Only providers satisfying the one-provider-⇄-one-egress-IP invariant (§8.2) a
 present in this index; everyone else is absent and therefore ineligible. Do the
 lookup in **constant-ish time** regardless of hit/miss (§9).
 
+**Egress-IP-hash on the trail (head score, D27).** Two granularities, do not conflate:
+the reverse index above resolves a hop to a `client_id` at the **exact egress IP**
+(the bijection, §8.2). Separately, for the head **routable-IP breadth** score
+(`WHITEPAPER.md` §8.4, §11.1) the server records on each confirmed hop an
+**egress-IP-hash** = `H(prefix(egress_ip, g))` at a **configurable subnet granularity**
+`g` (default **/29 IPv4, /48 IPv6** — what UR uses today), carried in the published proof
+(§3.3, Appendix A) so validators count each fleet's distinct routable IP-hashes **from
+their own trails**. The prefix hash never exposes the raw exit IP, and coarsening to a
+prefix is what makes IPs *shareable*: two distinct exact exit IPs in the same prefix (two
+`client_id`s, possibly two fleets) collapse to one hash — counted **split** across the
+fleets claiming it (§11.1), so co-located supply is not double-counted.
+
 ### 8.2 Eligibility invariant: one provider ⇄ one egress IP
 
 The hop lookup must be unambiguous, so eligibility enforces a **bijection** between
@@ -640,6 +674,13 @@ we exclude.
   remove it from the eligible index; on returning to a single egress IP, re-add it.
 - **IPv6 / churn:** index both families; expire entries when a `proxy_client` is
   released so a reassigned IP is not miscredited to the previous holder.
+
+> **Bijection (attribution) vs. splitting (head score) — no contradiction.** The
+> exact-IP bijection here keeps **hop attribution** unambiguous: one exact egress IP ⇄
+> one `client_id`, so a trail hop names exactly one provider. The head **score** counts
+> the coarser **egress-IP-hashes** (§8.1) across a fleet's `client_id`s, where two
+> *distinct* exact IPs can share a prefix hash and are counted **split** (D27, §11.1).
+> Attribution is exact and one-to-one; the score's sharing lives one granularity up.
 
 ---
 
@@ -705,37 +746,41 @@ fixed formula — drives the 41% miner emission. This is the consuming layer; it
 `WHITEPAPER.md` §10 (setting weights), §8.4–§8.5 (the two tiers and the split θ), and
 §9 (the validator's rewards). Nothing here changes §1–§10.
 
-### 11.1 Per-provider quality, EMA-smoothed — and its dual use
+### 11.1 The two tier metrics — pool quality, and head routable-IP breadth (v0.4)
 
 For every provider with enough exposure (`a_Y ≥ a_min`, §7.4), compute the §7 quality
 signals — the **Wilson-score step-completion (liveness)** interval (§7.3) and the
 **latency percentiles** (median / p95 / p99, §7.3) — over the **server-assigned,
 non-seed** hops only (§7.6). **EMA-smooth** each provider's signal across epochs
-(template default α ≈ 0.1) so a single noisy epoch does not thrash emission or
-deregistration.
+(template default α ≈ 0.1). The **two tiers use two different metrics**
+(`WHITEPAPER.md` §8.1, §8.4, D25/D27):
 
-These per-provider numbers have a **dual use** across the two miner tiers
-(`WHITEPAPER.md` §8.4–§8.5), and that is the key point:
-
-- **TAIL — pool tier (`Q_n`).** For a per-NO **pool**, aggregate the per-provider
+- **TAIL — pool quality (`Q_n`).** For a per-NO **pool**, aggregate the per-provider
   stats over the NO's *tail* providers into a single **pool scalar `Q_n`**. The pool's
-  weight is `deposit_n × Q_n` (demand-coupled, the unchanged v0.1 mechanism). The
-  aggregation rule itself is the open question that lives **only on the tail**
-  (`WHITEPAPER.md` §8.4).
-- **HEAD — top-level miners (`Q_p`).** For a **top-level miner**, the **same
-  per-provider statistic is used directly, per provider, as its weight `Q_p` — no
-  aggregation at all.** Per-provider `Q_p` *is* the head weight (pure quality, no
-  `deposit` term). This is why the head sidesteps the pool-quality-aggregation problem
-  entirely.
+  weight is `implied_usage_n × Q_n` (§11.3) — the aggregation rule is the open question
+  that lives **only on the tail** (`WHITEPAPER.md` §8.4).
+- **HEAD — routable-IP breadth (`score`).** A top-level miner is a **fleet** (a hotkey
+  binding many `client_id`s, §11.2), ranked **not** by quality but by **how many unique
+  IPs it can route through**. From its own trails the validator collects, per fleet, the
+  set of **distinct routable egress-IP-hashes** its `client_id`s served (an IP-hash is
+  *routable* iff a verified trail hop egressed from it, §7 — liveness is baked in), and
+  scores the fleet by that count, **splitting any hash shared with other top miners**:
 
 ```
-for each measured provider p (a_p ≥ a_min, server-assigned hops only):
+for each measured provider p (client_id c, a_p ≥ a_min, server-assigned hops only):
     q_p = EMA_e( Wilson_liveness(p), latency_percentiles(p) )    # §7.3, §7.6
-# TAIL: roll up to a pool scalar
-Q_n  = aggregate{ q_p : p is a TAIL provider of NO n }            # WHITEPAPER §8.4 (tail only)
-# HEAD: use per-provider, no roll-up
-Q_p  = q_p                                                       # the top-level miner's weight, directly
+# TAIL: roll up per-provider quality to a pool scalar
+Q_n = aggregate{ q_p : p is a TAIL provider of NO n }            # WHITEPAPER §8.4 (tail only)
+
+# HEAD: split-adjusted distinct routable egress-IP count per fleet (D27)
+IPs(u)   = { egress-IP-hash h : some client_id ∈ fleet(u) egressed a verified hop from h }   # §8 (hash at the configured granularity)
+claim(h) = #{ top-miner fleets u' : h ∈ IPs(u') }               # how many top miners share this hash
+score(u) = Σ over h ∈ IPs(u) of  1 / claim(h)                   # EMA-smoothed; the top-level miner's weight, directly
 ```
+
+So two fleets sharing an egress-IP-hash (e.g. distinct exit IPs in the same configured
+prefix, §8.1) each get **0.5** for it — overlapping supply cannot be double-counted, and
+breadth of *genuinely distinct, routable* exit IPs is what earns head emission.
 
 ### 11.2 Mapping a measured `client_id` to a head UID — the binding
 
@@ -784,55 +829,63 @@ the two tiers combined and divided by the **governance head share θ** (`WHITEPA
 §8.5 — SN13-style weight reservation, started ≈ 0.3 and ramped):
 
 ```
-# HEAD — top-level miners, pure measured quality (no deposit)
-for each top-level-miner UID u (with bound, verified client_id c, §11.2):
-    head[u] = Q_p(c)                       # §11.1; = 0 for the validator's own UID (self-mask)
+# HEAD — top-level miners, split-adjusted routable-IP breadth (D27; no deposit, no quality)
+for each top-level-miner UID u (fleet — bound, verified client_ids C_u, §11.2):
+    head[u] = score(u)                     # §11.1; = 0 for the validator's own UID (self-mask)
 normalize head so Σ head = θ
 
-# TAIL — NO pools, unchanged deposit × quality
+# TAIL — NO pools, implied-usage × quality (D25)
 for each NO-pool UID n:
-    pool[n] = deposit_n × Q_n              # §11.1; = 0 if this validator operates NO n (self-mask)
+    implied_usage_n = epoch_deposit_n / rate(tier_n)   # deposits from the Deposited event log; rate from the published tier schedule
+    pool[n] = implied_usage_n × Q_n        # §11.1; = 0 if this validator operates NO n (self-mask)
 normalize pool so Σ pool = 1 − θ
 
 w = head ⊕ pool                            # ONE vector over all miner UIDs
 apply max_weight_limit                     # MUST set — chain default is NO cap; else one UID dominates a tier
-commit / reveal w                          # commit-reveal ON: the Q_p / θ signal is subjective, anti-copy
+commit / reveal w                          # commit-reveal ON: the score / θ signal is subjective, anti-copy
 ```
 
-Because Yuma clips each validator to the κ-stake-weighted median, **θ and the scoring
-rule are a validator-software convention a stake-majority must run in common** — a
-published governance parameter, not per-validator discretion (`WHITEPAPER.md` §8.5,
-§10). Both shares go to **real recipients** (top miners; contract-owned pool UIDs), so
-the June-2026 `(1 − miner_burned)` penalty does not apply — never reserve a share by
+**Where the pool inputs come from (D25).** The validator reads each NO's `epoch_deposit_n`
+and cumulative conviction by **summing the on-chain `Deposited` events** (`WHITEPAPER.md`
+§7.5) — the contract stores no deposit ledger and computes no weight — and reads
+`rate(tier_n)` from the **published tier→rate schedule** (`WHITEPAPER.md` §7.3, loaded
+from validator config). `implied_usage = deposit / rate` so a NO that staked into a lower
+tier posts less α for the same usage and earns the same weight (the stake is a discount).
+
+Because Yuma clips each validator to the κ-stake-weighted median, **θ, the rate schedule,
+and the scoring rules are a validator-software convention a stake-majority must run in
+common** — published governance parameters, not per-validator discretion (`WHITEPAPER.md`
+§8.5, §10). Both shares go to **real recipients** (top miners; contract-owned pool UIDs),
+so the June-2026 `(1 − miner_burned)` penalty does not apply — never reserve a share by
 burning to an owner UID.
 
-For this work the validator earns its two reward streams **unchanged** by the two-tier
-iteration (`WHITEPAPER.md` §9.2): **native Yuma dividends** (∝ stake × vtrust —
-accurate, consensus-aligned scoring) **plus the fee-funded effort bounty** (∝ verified,
-coverage-weighted completed trails — the engine that keeps the failure data flowing,
-`WHITEPAPER.md` §9.3). Steering both tiers is one extra sub-vector, not a new reward.
+For this work the validator earns **native Yuma dividends** (∝ stake × vtrust — accurate,
+consensus-aligned scoring; `WHITEPAPER.md` §9.2). The fee-funded effort bounty is deferred
+(§9.3); steering both tiers is one extra sub-vector, not a new reward.
 
 ### 11.4 Why a top miner cannot farm its own head weight
 
-The head channel pays a provider **directly** on its own `Q_p`, which sharpens the
-§7.7 per-hop self-dealing concern to a single UID. The same anti-farming rules that
-protect the effort bounty protect `Q_p`:
+The head channel pays a fleet **directly** on its `score` — its count of distinct
+routable egress-IP-hashes (§11.1). Four rules keep the count honest:
 
-- **Server-assigned hops only, seed excluded (§7.6).** A provider cannot place itself
-  on a trail: it cannot seed through itself (§4.1), and the hops it appears in are
-  drawn **uniformly at random by the server** after the previous hop confirms (§5.1).
-  So a top-level miner cannot steer trails onto itself to manufacture a flattering
-  `Q_p` — the same property that stops a validator farming the bounty through favored
-  providers (`WHITEPAPER.md` §9.3).
-- **Self-weight mask + independent baseline.** A validator's head/tail vector zeroes
-  its own UID and its own NO (§11.3); with an independent validator majority (§1, §7.7)
-  the κ-median tracks ground truth, and a self-dealt `Q_p` shows up as the §7.7
-  too-perfect / single-source anomaly.
-- **Provisional until §10.** As for every other use of these statistics, head rewards
-  remain **provisional** until the §10 structural defenses (proof-of-routing,
-  destination diversity, validator Sybil resistance) land. The `WHITEPAPER.md` §8.4
-  quality-dip protections (high `immunity_period`, the `Q_p` EMA of §11.1, θ headroom)
-  keep native deregistration churn from evicting a good top miner on one bad stretch.
+- **Only routable IPs count — server-assigned, seed excluded (§7.6).** A hash enters a
+  fleet's `IPs(u)` only if a **verified trail hop egressed from it**, and a fleet cannot
+  place itself on a trail: it cannot seed through itself (§4.1), and the hops it appears
+  in are drawn **uniformly at random by the server** after the previous hop confirms
+  (§5.1). So a fleet cannot manufacture routable IPs it does not actually serve.
+- **Can't claim IPs it does not own (§11.2).** An egress-IP-hash is attributed to a
+  fleet only through a `client_id` in its **dual-signed** binding — a fleet cannot claim
+  another operator's `client_id` (hence its IP) without that client key.
+- **Shared IPs are split (D27).** Two fleets presenting the same egress-IP-hash each get
+  `1/claim(h)`, so spinning up overlapping exit IPs (or colluding fleets fronting one IP
+  pool) **cannot** multiply credit — breadth of *genuinely distinct* routable IPs is the
+  only thing that moves the score.
+- **Self-weight mask + independent baseline, provisional until §10.** A validator's
+  head/tail vector zeroes its own UID and its own NO (§11.3); with an independent
+  validator majority (§1, §7.7) the κ-median tracks ground truth. Head rewards remain
+  **provisional** until the §10 structural defenses land; the `WHITEPAPER.md` §8.4
+  score-dip protections (high `immunity_period`, the `score` EMA of §11.1, θ headroom)
+  keep native deregistration churn from evicting a good top miner on one thin stretch.
 
 ---
 

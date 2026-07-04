@@ -1,0 +1,816 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {STBase} from "./utils/STBase.sol";
+import {MerkleBuilder} from "./utils/MerkleBuilder.sol";
+import {STSubnet} from "../src/STSubnet.sol";
+
+/// @dev Area 3 — trails: submitTrails windows, the two-phase sampled prove
+///      (blockhash seed, exact indices, wrong-leaf rejection), reseed past the
+///      256-block horizon, effort crediting rules (sampleK == 0 vs > 0), and
+///      the dispute surface (bad FINAL/vpk sigs, unknown server key, index
+///      overflow, duplicate index/pathId pairs, window boundaries).
+contract TrailsTest is STBase {
+    event TrailSamplesReseeded(uint256 indexed e, uint256 indexed valId, uint64 seedBlock);
+    event TrailSamplesProven(uint256 indexed e, uint256 indexed valId, uint256 leafCount);
+    event TrailLeafDisputed(
+        uint256 indexed e, uint256 indexed valId, address indexed disputer, bytes32 leafHash
+    );
+
+    // ------------------------------------------------------------------
+    // custom-tree helpers
+    // ------------------------------------------------------------------
+
+    function _hashLeaves(STSubnet.TrailLeaf[] memory ls)
+        internal
+        view
+        returns (bytes32[] memory lh)
+    {
+        lh = new bytes32[](ls.length);
+        for (uint256 i = 0; i < ls.length; i++) {
+            lh[i] = st.trailLeafHash(ls[i]);
+        }
+    }
+
+    function _submitCustom(
+        uint256 e,
+        uint256 valId,
+        address wallet,
+        STSubnet.TrailLeaf[] memory ls,
+        uint256 claimed
+    ) internal returns (bytes32 root) {
+        root = MerkleBuilder.root(_hashLeaves(ls));
+        vm.prank(wallet);
+        st.submitTrails(e, valId, root, claimed);
+    }
+
+    function _findByIndex(STSubnet.TrailLeaf[] memory ls, uint256 index)
+        internal
+        pure
+        returns (uint256 pos)
+    {
+        for (uint256 i = 0; i < ls.length; i++) {
+            if (ls[i].index == index) return i;
+        }
+        revert("no leaf with index");
+    }
+
+    /// @dev Seed the sample and assemble prove args for a custom leaf set:
+    ///      tree position == array position; the leaf supplied for sampled
+    ///      index i is the one whose `.index == i`.
+    function _prepareProveCustom(
+        uint256 e,
+        uint256 valId,
+        uint256 declaredCount,
+        STSubnet.TrailLeaf[] memory ls
+    ) internal returns (STSubnet.TrailLeaf[] memory sampled, bytes32[][] memory proofs) {
+        (,, uint64 seedBlock,,,) = st.trailSubmission(e, valId);
+        if (block.number <= seedBlock) {
+            vm.roll(uint256(seedBlock) + 1);
+        }
+        vm.setBlockhash(seedBlock, keccak256(abi.encodePacked("bh", seedBlock)));
+        bytes32[] memory lh = _hashLeaves(ls);
+        uint256[] memory idx = st.sampleIndices(e, valId, declaredCount);
+        sampled = new STSubnet.TrailLeaf[](idx.length);
+        proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            uint256 pos = _findByIndex(ls, idx[i]);
+            sampled[i] = ls[pos];
+            proofs[i] = MerkleBuilder.proof(lh, pos);
+        }
+    }
+
+    function _proveCustom(
+        uint256 e,
+        uint256 valId,
+        uint256 declaredCount,
+        STSubnet.TrailLeaf[] memory ls
+    ) internal {
+        (STSubnet.TrailLeaf[] memory sampled, bytes32[][] memory proofs) =
+            _prepareProveCustom(e, valId, declaredCount, ls);
+        st.proveTrailSamples(e, valId, declaredCount, sampled, proofs);
+    }
+
+    function _canonicalLeaves(uint256 n) internal pure returns (STSubnet.TrailLeaf[] memory ls) {
+        ls = new STSubnet.TrailLeaf[](n);
+        for (uint256 i = 0; i < n; i++) {
+            ls[i] = _mkLeaf(i);
+        }
+    }
+
+    /// @dev Dummy args for prove calls expected to revert before leaf checks.
+    function _dummyProveArgs()
+        internal
+        view
+        returns (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs)
+    {
+        leaves = new STSubnet.TrailLeaf[](SAMPLE_K);
+        proofs = new bytes32[][](SAMPLE_K);
+        for (uint256 i = 0; i < SAMPLE_K; i++) {
+            leaves[i] = _mkLeaf(i);
+            proofs[i] = new bytes32[](0);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // submitTrails window + guards
+    // ------------------------------------------------------------------
+
+    function test_submitTrails_beforeClose_reverts() public {
+        bytes32 root = _effortRoot(4);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: epoch open");
+        st.submitTrails(0, VAL_ID, root, 46);
+    }
+
+    function test_submitTrails_atWindowBoundary_ok() public {
+        bytes32 root = _effortRoot(4);
+        vm.roll(_closeBlock(0) + TRAILS_W); // inclusive boundary
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, 46);
+        assertEq(st.trailsRoot(0, VAL_ID), root);
+        (uint256 claimed, uint64 submitBlock, uint64 seedBlock,, bool proven, bool voided) =
+            st.trailSubmission(0, VAL_ID);
+        assertEq(claimed, 46);
+        assertEq(submitBlock, uint64(block.number));
+        assertEq(seedBlock, uint64(block.number));
+        assertFalse(proven);
+        assertFalse(voided);
+        assertEq(st.effort(0, VAL_ID), 0, "not credited until proven");
+    }
+
+    function test_submitTrails_afterWindow_reverts() public {
+        bytes32 root = _effortRoot(4);
+        vm.roll(_closeBlock(0) + TRAILS_W + 1);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: trails window");
+        st.submitTrails(0, VAL_ID, root, 46);
+    }
+
+    function test_submitTrails_guards() public {
+        bytes32 root = _effortRoot(4);
+        _afterClose(0);
+
+        vm.prank(rando);
+        vm.expectRevert("ST: not validator");
+        st.submitTrails(0, VAL_ID, root, 46);
+
+        vm.prank(valWallet);
+        vm.expectRevert("ST: root 0");
+        st.submitTrails(0, VAL_ID, bytes32(0), 46);
+
+        vm.prank(valWallet);
+        vm.expectRevert("ST: effort 0");
+        st.submitTrails(0, VAL_ID, root, 0);
+
+        vm.prank(owner);
+        st.setValidatorActive(VAL_ID, false);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: validator inactive");
+        st.submitTrails(0, VAL_ID, root, 46);
+        vm.prank(owner);
+        st.setValidatorActive(VAL_ID, true);
+
+        vm.prank(guardian);
+        st.setPaused(true);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: paused");
+        st.submitTrails(0, VAL_ID, root, 46);
+        vm.prank(guardian);
+        st.setPaused(false);
+
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, 46);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: submitted");
+        st.submitTrails(0, VAL_ID, root, 46);
+    }
+
+    /// @dev Overflow-griefing bound (contract fix): claimedEffort must fit in
+    ///      uint128 so Σ effort / feePool·effort can never overflow.
+    function test_submitTrails_effortBound() public {
+        bytes32 root = _effortRoot(4);
+        _afterClose(0);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: effort too large");
+        st.submitTrails(0, VAL_ID, root, uint256(type(uint128).max) + 1);
+
+        vm.prank(valWallet); // boundary accepted
+        st.submitTrails(0, VAL_ID, root, type(uint128).max);
+    }
+
+    function test_submitTrails_afterFinalize_reverts() public {
+        // overlap the trails window with the finalize offset so the
+        // "finalized" guard is reachable
+        vm.prank(owner);
+        st.setEpochParams(T_EPOCH, COMMIT_W, FINALIZE_OFF, FINALIZE_OFF);
+        bytes32 root = _effortRoot(4);
+        _toFinalize(0);
+        st.finalizeEpoch(0);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: finalized");
+        st.submitTrails(0, VAL_ID, root, 46);
+    }
+
+    // ------------------------------------------------------------------
+    // two-phase sampled prove
+    // ------------------------------------------------------------------
+
+    function test_prove_happyPath_creditsAndRecords() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 5); // odd leaf count: exercises promoted nodes
+        assertEq(st.totalEffort(0), 0);
+
+        vm.expectEmit(true, true, false, true, address(st));
+        emit TrailSamplesProven(0, VAL_ID, 5);
+        _prove(0, VAL_ID, 5);
+
+        assertEq(st.effort(0, VAL_ID), _claimedEffort(5));
+        assertEq(st.totalEffort(0), _claimedEffort(5));
+        (,,, uint256 leafCount, bool proven,) = st.trailSubmission(0, VAL_ID);
+        assertEq(leafCount, 5);
+        assertTrue(proven);
+    }
+
+    function test_prove_isPermissionless() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, 4);
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            leaves[i] = _mkLeaf(idx[i]);
+            proofs[i] = _effortProof(4, idx[i]);
+        }
+        vm.prank(rando); // anyone may prove — the data decides
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+        assertEq(st.effort(0, VAL_ID), 40); // C=10 · leafCount 4 (sample estimator)
+    }
+
+    function test_prove_sameBlockAsSeed_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs) = _dummyProveArgs();
+        vm.expectRevert("ST: seed not ready");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_wrongSampleIndex_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, 4);
+
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            uint256 wrong = (idx[i] + 1) % 4; // a real leaf, at the WRONG sampled slot
+            leaves[i] = _mkLeaf(wrong);
+            proofs[i] = _effortProof(4, wrong);
+        }
+        vm.expectRevert("ST: wrong sample index");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_corruptedLeaf_notInTree_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, 4);
+
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            leaves[i] = _mkLeaf(idx[i]);
+            proofs[i] = _effortProof(4, idx[i]);
+        }
+        leaves[0].coverage += 1_000; // right index, tampered content
+        vm.expectRevert("ST: leaf not in tree");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_badServerSig_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, 4);
+
+        STSubnet.TrailLeaf memory bad = _mkLeaf(idx[0]);
+        ed.setBad(_effDigest(bad), SERVER_PUB, bad.serverSigR, bad.serverSigS, true);
+
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            leaves[i] = _mkLeaf(idx[i]);
+            proofs[i] = _effortProof(4, idx[i]);
+        }
+        vm.expectRevert("ST: bad server sig");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_badVpkSig_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, 4);
+
+        STSubnet.TrailLeaf memory bad = _mkLeaf(idx[0]);
+        ed.setBad(_effDigest(bad), VPK, bad.vpkSigR, bad.vpkSigS, true);
+
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory proofs = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            leaves[i] = _mkLeaf(idx[i]);
+            proofs[i] = _effortProof(4, idx[i]);
+        }
+        vm.expectRevert("ST: bad vpk sig");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_unknownServerKey_reverts() public {
+        _afterClose(0);
+        // every leaf names an unregistered serverKeyId => any sample trips
+        STSubnet.TrailLeaf[] memory ls = new STSubnet.TrailLeaf[](4);
+        for (uint256 i = 0; i < 4; i++) {
+            ls[i] = _mkLeafFor(i, 999, keccak256(abi.encodePacked("path", i)));
+        }
+        _submitCustom(0, VAL_ID, valWallet, ls, 46);
+        (STSubnet.TrailLeaf[] memory sampled, bytes32[][] memory proofs) =
+            _prepareProveCustom(0, VAL_ID, 4, ls);
+        vm.expectRevert("ST: unknown server key");
+        st.proveTrailSamples(0, VAL_ID, 4, sampled, proofs);
+    }
+
+    function test_prove_sampleCountMismatch_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256("bh"));
+
+        STSubnet.TrailLeaf[] memory one = new STSubnet.TrailLeaf[](1);
+        one[0] = _mkLeaf(0);
+        bytes32[][] memory oneProof = new bytes32[][](1);
+        oneProof[0] = _effortProof(4, 0);
+        vm.expectRevert("ST: sample count");
+        st.proveTrailSamples(0, VAL_ID, 4, one, oneProof);
+    }
+
+    function test_prove_leafCountZero_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        vm.roll(block.number + 1);
+        (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs) = _dummyProveArgs();
+        vm.expectRevert("ST: leafCount 0");
+        st.proveTrailSamples(0, VAL_ID, 0, leaves, proofs);
+    }
+
+    function test_prove_stateGuards() public {
+        (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs) = _dummyProveArgs();
+
+        vm.expectRevert("ST: not submitted");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+
+        vm.prank(guardian);
+        st.setPaused(true);
+        vm.expectRevert("ST: paused");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+        vm.prank(guardian);
+        st.setPaused(false);
+
+        _prove(0, VAL_ID, 4);
+        vm.expectRevert("ST: proven");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_afterTrailsWindow_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        vm.roll(_closeBlock(0) + TRAILS_W + 1);
+        (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs) = _dummyProveArgs();
+        vm.expectRevert("ST: trails window");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    function test_prove_afterVoid_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        // dispute pre-prove: leaf 0's server sig is bad
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        ed.setBad(_effDigest(leaf0), SERVER_PUB, leaf0.serverSigR, leaf0.serverSigS, true);
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, _effortProof(4, 0));
+
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+        assertEq(st.totalEffort(0), 0, "never credited");
+
+        vm.roll(block.number + 1);
+        (STSubnet.TrailLeaf[] memory leaves, bytes32[][] memory proofs) = _dummyProveArgs();
+        vm.expectRevert("ST: voided");
+        st.proveTrailSamples(0, VAL_ID, 4, leaves, proofs);
+    }
+
+    // ------------------------------------------------------------------
+    // sampleK == 0: DISABLED effort — credits 0 (F1) + dispute regressions
+    // ------------------------------------------------------------------
+
+    /// @dev F1: k == 0 disables effort. With no sample there is no unbiased
+    ///      estimator of the tree's coverage, so the free `claimedEffort` is
+    ///      NOT credited — the claim is recorded (declaration/event) and marked
+    ///      proven, but earns 0 (claimValidator would revert). k=0 is a
+    ///      debug/degenerate setting; run k>0 for the bounty to pay.
+    function test_sampleKZero_creditsZero() public {
+        vm.prank(owner);
+        st.setSampleK(0);
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+
+        assertEq(st.effort(0, VAL_ID), 0, "k==0 credits nothing");
+        assertEq(st.totalEffort(0), 0);
+        (uint256 claimed,,, uint256 leafCount, bool proven,) = st.trailSubmission(0, VAL_ID);
+        assertEq(claimed, _claimedEffort(4), "declaration still recorded");
+        assertTrue(proven, "marked proven without sampling");
+        assertEq(leafCount, 0, "no declared tree size in sampleK==0 mode");
+    }
+
+    /// @dev REGRESSION (contract fix): with sampleK == 0 the submission is
+    ///      proven with leafCount == 0 (no declared size), so the
+    ///      index-vs-leafCount dispute ground must NOT apply — before the fix
+    ///      ANY valid in-tree leaf (index >= 0 == leafCount) voided the claim.
+    function test_sampleKZero_validLeafDispute_rejected() public {
+        vm.prank(owner);
+        st.setSampleK(0);
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+
+        STSubnet.TrailLeaf memory leaf2 = _mkLeaf(2);
+        bytes32[] memory proof2 = _effortProof(4, 2);
+        vm.expectRevert("ST: leaf valid");
+        st.disputeTrailLeaf(0, VAL_ID, leaf2, proof2);
+        assertEq(st.effort(0, VAL_ID), 0, "unchanged (k==0 never credited)");
+    }
+
+    function test_sampleKZero_badLeafDispute_stillVoids() public {
+        vm.prank(owner);
+        st.setSampleK(0);
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+
+        // A bad leaf still voids the submission even when nothing was credited.
+        STSubnet.TrailLeaf memory leaf1 = _mkLeaf(1);
+        ed.setBad(_effDigest(leaf1), SERVER_PUB, leaf1.serverSigR, leaf1.serverSigS, true);
+        st.disputeTrailLeaf(0, VAL_ID, leaf1, _effortProof(4, 1));
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided, "submission voided");
+        assertEq(st.effort(0, VAL_ID), 0);
+        assertEq(st.totalEffort(0), 0);
+    }
+
+    // ------------------------------------------------------------------
+    // seed expiry + reseed
+    // ------------------------------------------------------------------
+
+    function test_seedExpiry_reseed_thenProve() public {
+        // widen windows so the 256-block horizon fits inside the trails window
+        vm.prank(owner);
+        st.setEpochParams(T_EPOCH, COMMIT_W, 400, 500);
+
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock0,,,) = st.trailSubmission(0, VAL_ID);
+
+        // horizon edge: at seedBlock+256 the seed is still live => reseed early is refused
+        vm.roll(uint256(seedBlock0) + 256);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: seed live");
+        st.reseedTrailSamples(0, VAL_ID);
+
+        // past the horizon the blockhash is gone (0) => seed expired
+        vm.roll(uint256(seedBlock0) + 257);
+        vm.expectRevert("ST: seed expired");
+        st.trailSampleSeed(0, VAL_ID);
+
+        // reseed is validator-only (griefing protection for prepared proofs)
+        vm.prank(rando);
+        vm.expectRevert("ST: not validator");
+        st.reseedTrailSamples(0, VAL_ID);
+
+        vm.expectEmit(true, true, false, true, address(st));
+        emit TrailSamplesReseeded(0, VAL_ID, uint64(block.number));
+        vm.prank(valWallet);
+        st.reseedTrailSamples(0, VAL_ID);
+        (,, uint64 seedBlock1,,,) = st.trailSubmission(0, VAL_ID);
+        assertEq(seedBlock1, uint64(block.number));
+
+        _prove(0, VAL_ID, 4); // fresh seed proves fine
+        assertEq(st.effort(0, VAL_ID), 40); // C=10 · leafCount 4 (sample estimator)
+    }
+
+    // HF-2: reseedTrailSamples is capped at MAX_RESEEDS so it cannot be used as
+    // a keep-the-best resample oracle to grind the effort estimator.
+    function test_reseed_cappedAtMaxReseeds() public {
+        // windows wide enough to fit several 256-block horizons
+        vm.prank(owner);
+        st.setEpochParams(T_EPOCH, COMMIT_W, 2000, 2100);
+
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+
+        // MAX_RESEEDS (2) reseeds succeed (legitimate late-prove refresh)
+        for (uint256 i = 0; i < 2; i++) {
+            vm.roll(uint256(seedBlock) + 257);
+            vm.prank(valWallet);
+            st.reseedTrailSamples(0, VAL_ID);
+            (,, seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        }
+
+        // the next reseed is refused — the resample grind is bounded
+        vm.roll(uint256(seedBlock) + 257);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: reseed limit");
+        st.reseedTrailSamples(0, VAL_ID);
+    }
+
+    function test_reseed_guards() public {
+        vm.prank(valWallet);
+        vm.expectRevert("ST: not submitted");
+        st.reseedTrailSamples(0, VAL_ID);
+
+        vm.prank(owner);
+        st.setEpochParams(T_EPOCH, COMMIT_W, 400, 500);
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        _prove(0, VAL_ID, 4);
+
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 257);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: settled"); // already proven
+        st.reseedTrailSamples(0, VAL_ID);
+    }
+
+    function test_reseed_outsideTrailsWindow_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        // default windows: trails window (close+20) ends long before seed
+        // expiry (submit+257) => reseed is impossible, claim dies un-proven
+        vm.roll(uint256(seedBlock) + 257);
+        vm.prank(valWallet);
+        vm.expectRevert("ST: trails window");
+        st.reseedTrailSamples(0, VAL_ID);
+    }
+
+    // ------------------------------------------------------------------
+    // disputes: single leaf
+    // ------------------------------------------------------------------
+
+    function test_dispute_badServerSig_preProve_voids() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+
+        STSubnet.TrailLeaf memory leaf3 = _mkLeaf(3);
+        bytes32 leaf3Hash = st.trailLeafHash(leaf3);
+        bytes32[] memory proof3 = _effortProof(4, 3);
+        ed.setBad(_effDigest(leaf3), SERVER_PUB, leaf3.serverSigR, leaf3.serverSigS, true);
+
+        vm.expectEmit(true, true, true, true, address(st));
+        emit TrailLeafDisputed(0, VAL_ID, rando, leaf3Hash);
+        vm.prank(rando); // anyone
+        st.disputeTrailLeaf(0, VAL_ID, leaf3, proof3);
+
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+        assertEq(st.effort(0, VAL_ID), 0);
+        assertEq(st.totalEffort(0), 0);
+    }
+
+    function test_dispute_badVpkSig_postProve_voidsAndUncredits() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        _prove(0, VAL_ID, 4);
+        assertEq(st.totalEffort(0), 40);
+
+        STSubnet.TrailLeaf memory leaf1 = _mkLeaf(1);
+        ed.setBad(_effDigest(leaf1), VPK, leaf1.vpkSigR, leaf1.vpkSigS, true);
+        st.disputeTrailLeaf(0, VAL_ID, leaf1, _effortProof(4, 1));
+
+        assertEq(st.effort(0, VAL_ID), 0, "credit clawed back pre-finalize");
+        assertEq(st.totalEffort(0), 0);
+    }
+
+    function test_dispute_unknownServerKey_voids() public {
+        _afterClose(0);
+        // in-tree leaf naming a serverKeyId that was never registered
+        STSubnet.TrailLeaf[] memory ls = _canonicalLeaves(4);
+        ls[2] = _mkLeafFor(2, 424242, keccak256("path-x"));
+        _submitCustom(0, VAL_ID, valWallet, ls, 46);
+
+        st.disputeTrailLeaf(0, VAL_ID, ls[2], MerkleBuilder.proof(_hashLeaves(ls), 2));
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+    }
+
+    function test_dispute_validLeaf_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        _prove(0, VAL_ID, 4);
+        STSubnet.TrailLeaf memory leaf2 = _mkLeaf(2);
+        bytes32[] memory proof2 = _effortProof(4, 2);
+        vm.expectRevert("ST: leaf valid");
+        st.disputeTrailLeaf(0, VAL_ID, leaf2, proof2);
+    }
+
+    function test_dispute_leafNotInTree_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory foreign = _mkLeaf(9); // not in the 4-leaf tree
+        bytes32[] memory proof0 = _effortProof(4, 0);
+        vm.expectRevert("ST: leaf not in tree");
+        st.disputeTrailLeaf(0, VAL_ID, foreign, proof0);
+    }
+
+    /// @dev Sampling fraud: a committed leaf whose index lies OUTSIDE the tree
+    ///      size declared at prove time is dispute-grounds (post-prove only).
+    function test_dispute_indexBeyondDeclaredLeafCount_voids() public {
+        _afterClose(0);
+        // tree: canonical leaves 0..3 plus a 5th tree position whose declared
+        // index is 7 (valid sigs, registered key)
+        STSubnet.TrailLeaf[] memory ls = new STSubnet.TrailLeaf[](5);
+        for (uint256 i = 0; i < 4; i++) {
+            ls[i] = _mkLeaf(i);
+        }
+        ls[4] = _mkLeaf(7);
+        _submitCustom(0, VAL_ID, valWallet, ls, 46);
+        _proveCustom(0, VAL_ID, 4, ls); // declares leafCount = 4; samples hit 0..3
+        assertEq(st.effort(0, VAL_ID), 40); // C=10 · leafCount 4 (sample estimator)
+
+        st.disputeTrailLeaf(0, VAL_ID, ls[4], MerkleBuilder.proof(_hashLeaves(ls), 4));
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+        assertEq(st.effort(0, VAL_ID), 0);
+    }
+
+    function test_dispute_doubleDispute_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        bytes32[] memory proof0 = _effortProof(4, 0);
+        ed.setBad(_effDigest(leaf0), SERVER_PUB, leaf0.serverSigR, leaf0.serverSigS, true);
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, proof0);
+        vm.expectRevert("ST: voided");
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, proof0);
+    }
+
+    function test_dispute_notSubmitted_reverts() public {
+        _afterClose(0);
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        bytes32[] memory proof0 = _effortProof(4, 0);
+        vm.expectRevert("ST: not submitted");
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, proof0);
+    }
+
+    // ------------------------------------------------------------------
+    // disputes: pairs (duplicate index / pathId)
+    // ------------------------------------------------------------------
+
+    function test_disputePair_duplicateIndex_voids() public {
+        _afterClose(0);
+        STSubnet.TrailLeaf[] memory ls = new STSubnet.TrailLeaf[](5);
+        for (uint256 i = 0; i < 4; i++) {
+            ls[i] = _mkLeaf(i);
+        }
+        ls[4] = _mkLeafFor(2, SERVER_KEY_ID, keccak256("other-path")); // second index-2 leaf
+        _submitCustom(0, VAL_ID, valWallet, ls, 46);
+
+        bytes32[] memory lh = _hashLeaves(ls);
+        st.disputeTrailLeafPair(
+            0, VAL_ID, ls[2], MerkleBuilder.proof(lh, 2), ls[4], MerkleBuilder.proof(lh, 4)
+        );
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+    }
+
+    function test_disputePair_duplicatePathId_voids() public {
+        _afterClose(0);
+        STSubnet.TrailLeaf[] memory ls = new STSubnet.TrailLeaf[](5);
+        for (uint256 i = 0; i < 4; i++) {
+            ls[i] = _mkLeaf(i);
+        }
+        // distinct index, same pathId as leaf 1: one trail counted twice
+        ls[4] = _mkLeafFor(9, SERVER_KEY_ID, ls[1].pathId);
+        _submitCustom(0, VAL_ID, valWallet, ls, 46);
+
+        bytes32[] memory lh = _hashLeaves(ls);
+        st.disputeTrailLeafPair(
+            0, VAL_ID, ls[1], MerkleBuilder.proof(lh, 1), ls[4], MerkleBuilder.proof(lh, 4)
+        );
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+    }
+
+    function test_disputePair_noDoubleCount_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf1 = _mkLeaf(1);
+        STSubnet.TrailLeaf memory leaf2 = _mkLeaf(2);
+        bytes32[] memory proof1 = _effortProof(4, 1);
+        bytes32[] memory proof2 = _effortProof(4, 2);
+        vm.expectRevert("ST: no double-count");
+        st.disputeTrailLeafPair(0, VAL_ID, leaf1, proof1, leaf2, proof2);
+    }
+
+    function test_disputePair_sameLeaf_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf1 = _mkLeaf(1);
+        bytes32[] memory proof1 = _effortProof(4, 1);
+        vm.expectRevert("ST: same leaf");
+        st.disputeTrailLeafPair(0, VAL_ID, leaf1, proof1, leaf1, proof1);
+    }
+
+    function test_disputePair_leafNotInTree_reverts() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf1 = _mkLeaf(1);
+        STSubnet.TrailLeaf memory foreign = _mkLeaf(9);
+        bytes32[] memory proof1 = _effortProof(4, 1);
+        bytes32[] memory proof2 = _effortProof(4, 2);
+        vm.expectRevert("ST: leaf B not in tree");
+        st.disputeTrailLeafPair(0, VAL_ID, leaf1, proof1, foreign, proof2);
+    }
+
+    // ------------------------------------------------------------------
+    // dispute window boundaries + multi-validator isolation
+    // ------------------------------------------------------------------
+
+    function test_dispute_windowClosesAtFinalizeOffset() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        bytes32[] memory proof0 = _effortProof(4, 0);
+        ed.setBad(_effDigest(leaf0), SERVER_PUB, leaf0.serverSigR, leaf0.serverSigS, true);
+
+        // strictly < close + finalizeOffset
+        vm.roll(_closeBlock(0) + FINALIZE_OFF);
+        vm.expectRevert("ST: dispute window");
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, proof0);
+
+        st.finalizeEpoch(0);
+        vm.expectRevert("ST: finalized");
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, proof0);
+    }
+
+    function test_dispute_lastBlockOfWindow_works() public {
+        _afterClose(0);
+        _submit(0, VAL_ID, valWallet, 4);
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        ed.setBad(_effDigest(leaf0), SERVER_PUB, leaf0.serverSigR, leaf0.serverSigS, true);
+        vm.roll(_closeBlock(0) + FINALIZE_OFF - 1);
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, _effortProof(4, 0));
+        (,,,,, bool voided) = st.trailSubmission(0, VAL_ID);
+        assertTrue(voided);
+    }
+
+    function test_dispute_voidIsolatedPerValidator() public {
+        uint256 val2 = _registerValidator2();
+        _deposit(NO_ID, noAddr, 1_000e9); // feePool 100e9
+        _afterClose(0);
+
+        _submit(0, VAL_ID, valWallet, 4);
+        _prove(0, VAL_ID, 4);
+        _submit(0, val2, val2Wallet, 5);
+        _prove(0, val2, 5);
+        assertEq(st.totalEffort(0), 40 + 50); // val1 leafCount 4, val2 leafCount 5 (C=10)
+
+        // void validator 1 only
+        STSubnet.TrailLeaf memory leaf0 = _mkLeaf(0);
+        ed.setBad(_effDigest(leaf0), SERVER_PUB, leaf0.serverSigR, leaf0.serverSigS, true);
+        st.disputeTrailLeaf(0, VAL_ID, leaf0, _effortProof(4, 0));
+        assertEq(st.totalEffort(0), 50, "only the voided claim removed");
+        assertEq(st.effort(0, val2), 50);
+
+        _toFinalize(0);
+        st.finalizeEpoch(0);
+        st.claimValidator(0, val2);
+        // sole surviving effort takes the whole bounty
+        assertEq(staking.stakes(TREASURY, st.validatorColdkey(val2)), 100e9);
+        vm.expectRevert("ST: no credited effort");
+        st.claimValidator(0, VAL_ID);
+    }
+}

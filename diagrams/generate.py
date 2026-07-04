@@ -14,7 +14,7 @@ DEP  =("#2563eb","#eff6ff","#1d4ed8")  # deposits  / blue
 EMI  =("#0d9488","#ecfdf5","#0f766e")  # emission   / teal-green
 SET  =("#7c3aed","#f5f3ff","#6d28d9")  # settlement / purple
 EVAL =("#d97706","#fffbeb","#b45309")  # evaluation / amber
-BNTY =("#e11d48","#fff1f2","#be123c")  # bounty     / rose
+BUY  =("#e11d48","#fff1f2","#be123c")  # buyback reserve / rose
 HEAD =("#0891b2","#ecfeff","#0e7490")  # head / top-level miners (native, merit) / cyan
 OFF  =("#64748b","#f8fafc","#475569")  # off-chain  / slate
 CON_BORDER="#334155"; CON_FILL="#f8fafc"; CON_HEAD="#1e293b"
@@ -119,7 +119,7 @@ S.append(f'<rect x="8" y="8" width="{W-16}" height="{H-16}" rx="16" fill="none" 
 
 # ================= TITLE =================
 T(40,58,"UR Subnet — Mechanism at a glance",30,"bold",INK)
-T(40,86,"Two miner tiers in ONE mechanism: the 41% miner emission splits by governance share θ into a pure-quality HEAD and a deposit×quality TAIL.  §1, §8.4–8.5.",14.5,"normal",SUB)
+T(40,86,"Two miner tiers in ONE mechanism (41% miner emission split by θ: routable-IP-breadth HEAD / implied_usage x Qn TAIL) — and every deposit is CONVICTION STAKE: locked in a buyback reserve, never distributed.  §1, §7.4, §8.4–8.5.",14.5,"normal",SUB)
 S.append(f'<line x1="40" y1="104" x2="{W-40}" y2="104" stroke="#e2e8f0" stroke-width="1.5"/>')
 
 # ================= NODES =================
@@ -149,10 +149,10 @@ S.append(f'<rect x="{sb_x}" y="{sb_y}" width="{sb_w}" height="{sb_h}" rx="4" fil
 T(770,250,"standard 18 / 41 / 41 split — we do not fight the coinbase",11.5,"italic",SUB)
 # Owner (top-right)
 card(1560,150,300,86,OFF,"Subnet owner",
-     ["18% owner cut. A slice ω co-funds","the effort bounty (below)."],bsize=11.5)
+     ["18% owner cut. Runs the majority","validator early; the reserve backs it."],bsize=11.5)
 # Independent validators (right)
-card(1560,256,300,178,EVAL,"Independent validators",
-     ["anyone who stakes own α, runs","/verify trails — no NO, no pool;","scores BOTH miner tiers.","native dividends (stake × vtrust)","+ the effort bounty.","anti-gaming ON: commit–reveal,","clip + vtrust · self-mask · bonds"],bsize=11)
+card(1560,256,300,178,EVAL,"Validators  (owner-majority v1)",
+     ["anyone who stakes own α, runs","/verify trails — no NO, no pool;","scores BOTH miner tiers.","native dividends (stake × vtrust);","effort bounty: deferred phase (§9.3).","anti-gaming ON: commit–reveal,","clip + vtrust · self-mask · bonds"],bsize=11)
 # Yuma + theta split node (right, below validators) — the heart of the split
 card(1560,454,300,188,EVAL,"Yuma  +  θ split",
      ["stake-weighted median + clip +","vtrust over commit–reveal weights","— real, independent consensus.","",
@@ -167,19 +167,19 @@ card(1300,662,560,210,HEAD,"Top-level miner UIDs   (~200)",
       "identity: client_id <-> hotkey binding (§11.4) — dual-signed, fail-closed."],bsize=11.5,sub="HEAD")
 # head weight highlight
 S.append(f'<rect x="1316" y="822" width="424" height="32" rx="6" fill="white" stroke="{HEAD[0]}" stroke-width="1.3"/>')
-T(1326,843,"weight = Qp",12.5,"bold",HEAD[2],family=MONO)
-T(1466,843,"— pure measured quality, NO deposit term (a meritocracy)",10.5,"italic",SUB)
+T(1326,843,"weight = IP score",12.5,"bold",HEAD[2],family=MONO)
+T(1476,843,"— split-adjusted routable egress IPs, NO deposit term (D27)",10.5,"italic",SUB)
 
 # Legend (top-center)
 lg_x,lg_y,lg_w,lg_h=372,128,352,288
 box(lg_x,lg_y,lg_w,lg_h,12,"#ffffff","#cbd5e1",1.4)
 T(lg_x+16,lg_y+26,"Flows  (all in α)",14,"bold",INK)
-rows=[("1",DEP[0],"Deposits (DT)","the costly demand signal",False),
+rows=[("1",DEP[0],"Deposits","conviction stake (from events)",False),
       ("2",EMI[0],"Emission (Yuma)","split θ head / 1−θ tail",False),
       ("3",SET[0],"Settlement","per-NO Merkle claims (tail)",False),
-      (None,HEAD[0],"Top-level miners","native, pure quality (head)",False),
+      (None,HEAD[0],"Top-level miners","native, routable-IP score (head)",False),
       (None,EVAL[0],"Evaluation / quality","VALIDATOR.md /verify trails",True),
-      (None,BNTY[0],"Effort bounty","fee-funded validator reward",False),
+      (None,BUY[0],"Buyback reserve","deposits staked + locked (§7.4)",False),
       (None,OFF[0],"Off-chain","revenue & operations",True)]
 ry=lg_y+54
 for num,c,name,desc,dash in rows:
@@ -208,30 +208,30 @@ iw=(cW-2*pad-gut)/2
 Lx=cX+pad; Rx=cX+pad+iw+gut
 # L-top: deposit ledger
 box(Lx,iy,iw,ih1,10,DEP[1],DEP[0],1.5,sh=False)
-T(Lx+12,iy+24,"Deposit ledger",13.5,"bold",DEP[2])
-TL(Lx+12,iy+46,["Dn = SUM(DT) per NO, per epoch.","The single quantity that weights",
-                "everything else:","   w_n = Dn / Σ Dm   (demand share)"],11.5,"normal",INK,lh=17)
-T(Lx+12,iy+ih1-12,"objective, revenue-backed anchor",10.5,"italic",DEP[2])
+T(Lx+12,iy+24,"Deposits  (conviction stake)",13.5,"bold",DEP[2])
+TL(Lx+12,iy+46,["NO deposit -> Deposited event + full","amount into the reserve. NO DT ledger:",
+                "the contract weighs nothing (D25).","validators read deposits from events."],11.5,"normal",INK,lh=17)
+T(Lx+12,iy+ih1-12,"cumulative locked α sets the NO's rate tier",10.5,"italic",DEP[2])
 # R-top: miner-pool UIDs (TAIL)
 box(Rx,iy,iw,ih1,10,EMI[1],EMI[0],1.5,sh=False)
 T(Rx+12,iy+24,"Miner-pool UIDs  (one per NO) — TAIL",12.5,"bold",EMI[2])
 TL(Rx+12,iy+46,["contract-owned accrual slots — no","emission ever touches a NO's keys.","",
-                "weight  w_n = deposit × Qn"],11.5,"normal",INK,lh=17)
+                "validator weight  w_n = implied_usage x Qn"],11.5,"normal",INK,lh=17)
 # emphasize formula
 S.append(f'<rect x="{Rx+10}" y="{iy+ih1-40}" width="{iw-20}" height="26" rx="5" fill="white" stroke="{EMI[0]}" stroke-width="1.2"/>')
-T(Rx+18,iy+ih1-22,"deposit × Qn",12,"bold",EMI[2],family=MONO)
-T(Rx+iw-14,iy+ih1-22,"the 1−θ tail emission",10.5,"italic",SUB,anchor="end")
+T(Rx+18,iy+ih1-22,"implied_usage x Qn",12,"bold",EMI[2],family=MONO)
+T(Rx+iw-14,iy+ih1-22,"impl = dep / tier-rate",10.5,"italic",SUB,anchor="end")
 # L-bot: merkle roots
 iy2=iy+ih1+gut
 box(Lx,iy2,iw,ih2,10,SET[1],SET[0],1.5,sh=False)
 T(Lx+12,iy2+24,"Per-NO Merkle payout roots",13.5,"bold",SET[2])
-TL(Lx+12,iy2+46,["pool = earned α + refundable deposit.","NO commits a payout root each epoch;",
+TL(Lx+12,iy2+46,["pool = earned emission ONLY (§8.3).","NO commits a payout root each epoch;",
                  "it directs the split but never holds α."],11.5,"normal",INK,lh=17)
-# R-bot: feepool
-box(Rx,iy2,iw,ih2,10,BNTY[1],BNTY[0],1.5,sh=False)
-T(Rx+12,iy2+24,"FeePool — effort bounty",13.5,"bold",BNTY[2])
-TL(Rx+12,iy2+46,["FeePool = φ·Σ Dn  +  ω·OwnerCut","paid out by each validator's verified,",
-                 "coverage-weighted completed trails."],11.5,"normal",INK,lh=17)
+# R-bot: buyback reserve
+box(Rx,iy2,iw,ih2,10,BUY[1],BUY[0],1.5,sh=False)
+T(Rx+12,iy2+24,"BUYBACK RESERVE  (§7.4)",13.5,"bold",BUY[2])
+TL(Rx+12,iy2+46,["every deposit, in full — staked to the","owner-validator hotkey. LOCKED (no",
+                 "exit path) · dividends auto-compound."],11.5,"normal",INK,lh=17)
 
 # ================= EDGES =================
 # 1) customers -> NO   (off-chain revenue)
@@ -240,8 +240,11 @@ pill(165,307,["usage revenue ($)","off-chain reference rate"],11,SUB,OFF[0])
 
 # 2) NO -> deposit ledger  (CHANNEL 1)
 elbow([(340,470),(396,470),(396,iy+70),(Lx-2,iy+70)],DEP[0],2.8)
-T(396,452,"deposit α (DT)",11,"bold",DEP[2],anchor="middle")
+T(396,452,"deposit α — conviction stake",11,"bold",DEP[2],anchor="middle")
 circnum(396,470,"1",DEP[0])
+# 2b) deposit ledger -> buyback reserve (full amount, internal moveStake)
+la(Lx+iw*0.62,iy+ih1,Rx+iw*0.30,iy2-2,BUY[0],2.6)
+pill((Lx+iw*0.62+Rx+iw*0.30)/2,iy+ih1+7,["full amount -> reserve"],10.5,BUY[2],BUY[0],weight="bold")
 
 # 3) coinbase 41% miner -> Yuma/theta node  (CHANNEL 2 emission)
 elbow([(940,272),(940,314),(1500,314),(1500,512),(1560-2,512)],EMI[0],2.8)
@@ -264,9 +267,9 @@ pill(1392,212,["41% validator","emission (native)"],10.5,EMI[2],EMI[0])
 elbow([(1226,162),(1512,162),(1512,186),(1560-2,186)],EMI[0],2.2)
 pill(1440,158,["18%"],11,EMI[2],EMI[0],weight="bold")
 
-# 8) feepool -> validators  (effort bounty)
-la(Rx+iw,iy2+10,1560-2,430,BNTY[0],2.6)
-pill(1378,560,["effort bounty"],11,BNTY[2],BNTY[0],weight="bold")
+# 8) buyback reserve -> owner-validator hotkey (staked; compounds)
+la(Rx+iw,iy2+10,1560-2,430,BUY[0],2.6)
+pill(1378,560,["staked to the owner-validator hotkey","locked · dividends auto-compound (take 0)"],10.5,BUY[2],BUY[0],weight="bold")
 
 # 9) merkle roots -> providers (CHANNEL 3 settlement, tail)
 elbow([(Lx+iw*0.4,iy2+ih2),(Lx+iw*0.4,930),(300,930),(300,1000-2)],SET[0],2.8)
@@ -280,7 +283,7 @@ pill(160,760,["/verify server","commits payout root","(never holds α)"],10.5,SU
 # 11) validators -> providers (measurement trails, the core signal) big arc
 # routed through the contract<->head gap, then below the contract, to clear both cards
 curve(1600,442,1210,720,680,1055,512,1002,EVAL[0],2.6,dash="7 5")
-pill(806,930,["VALIDATOR.md /verify trails: walk provider chains,","measuring liveness & quality (feeds both Qn and Qp)"],11,EVAL[2],EVAL[0])
+pill(806,930,["VALIDATOR.md /verify trails: walk provider chains,","measuring liveness/quality (Qn) + egress-IP breadth (head)"],11,EVAL[2],EVAL[0])
 
 # 12) top-level miner UIDs -> own hotkey (native, direct)
 la(1580,872,1580,910,HEAD[0],2.8)
@@ -293,9 +296,9 @@ pill(936,1196,["a provider starts in a pool, GRADUATES to a top slot, and FALLS 
 # key-insight callout (bottom banner)
 kb_x,kb_y,kb_w,kb_h=470,1212,960,66
 box(kb_x,kb_y,kb_w,kb_h,12,"#f8fafc","#cbd5e1",1.4)
-T(kb_x+kb_w/2,kb_y+27,"pool = deposit × quality on-ramp (baseline)    ·    top-level miners = pure quality, native (merit apex)    ·    θ splits the 41% miner emission",
+T(kb_x+kb_w/2,kb_y+27,"pool = implied_usage x quality (baseline)    ·    head = routable-IP breadth, native (merit apex)    ·    both tiers paid from EMISSION ONLY",
   12.5,"bold",INK,anchor="middle")
-T(kb_x+kb_w/2,kb_y+48,"deposit anchors demand (§7); validator-measured quality moves the money (§10) — start tail-weighted θ ≈ 0.3 and widen θ as the data matures (§8.5)",
+T(kb_x+kb_w/2,kb_y+48,"deposits are conviction stake (read from events, no DT ledger); validators weight the pools; each is a buy-and-lock buyback (§7.4); θ ≈ 0.3 then widen (§8.5)",
   11,"italic",SUB,anchor="middle")
 
 # ================= RENDER =================

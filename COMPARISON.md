@@ -43,7 +43,7 @@ identity plumbing the head needs — binding an off-chain worker to a hotkey —
 - **Off-chain-worker identity binding.** To steer the head we reuse the field-standard **signed-proof + ss58 + metagraph-membership check, fail-closed** (Epistula / ORO-AI `bittensor-auth`), specialized to a Celium-style **dual-signed `client_id`-`hotkey` association** (the `associate_evm_key` shape). This piece is *aligned*, not novel.
 
 **Biggest divergences and novel bets (same goal, different direction):**
-- **Demand coupling — novel bet #1.** The field couples emission to **token-market/speculative demand** (α price or net TAO staking flow); we couple it to **costly, revenue-backed operator deposits** (`deposit × quality`). *Closest precedent: Chutes' revenue→buyback, and even that is indirect.* The bet now lives in the **pooled tail** (the `1−θ` share); the head is deliberately demand-agnostic pure merit. — **our headline bet.**
+- **Demand coupling — novel bet #1.** The field couples emission to **token-market/speculative demand** (α price or net TAO staking flow); we couple it to **costly, revenue-backed operator deposits**: validators weight each pool **`implied_usage × quality`** (implied usage = a NO's epoch deposit ÷ its conviction-tier rate), computed off the **on-chain deposit events + a published tier-rate schedule** — the contract itself weighs nothing (v0.4/D25). *Closest precedent: Chutes' revenue→buyback, and even that is indirect.* Since WHITEPAPER v0.3 (D23) we ALSO run the Chutes flywheel on top: every deposit is itself a **buy-and-lock buyback** — now **conviction stake**, locked into a dividend-compounding reserve, never distributed, its cumulative amount setting the NO's rate tier; miners are paid from emission only (WHITEPAPER §7.4/§12.4) — so the deposit is simultaneously the **direct steering signal** (novel) and the **indirect price support** (field-standard). The bet now lives in the **pooled tail** (the `1−θ` share); the head is deliberately demand-agnostic — ranked on **routable-IP breadth** (§4.16). — **our headline bet.**
 - **Tiered head/tail miner side — novel bet #2.** No subnet **tiers** individual top-N providers into their own native-emission UIDs *above* a pooled/off-chained tail. The field does the **opposite** — it *consolidates* behind one UID (Chutes: "never register more than one UID… just add capacity to one miner"; ComputeHorde fronts many executors behind one UID; TPN/Vanta pool many workers behind one UID) — and pays the pooled tail **off-chain at operator discretion** (TPN: "the mining pools get to decide how they pay their workers"). Our trustless on-chain pool (tail) **plus** native direct head is **without Bittensor precedent**.
 - **Reward custody.** The field pays **native emission straight to hotkeys**; we keep exactly that for the **head** (top providers paid natively, no contract in the loop), but route **within-tail** payout through an **EVM contract that custodies deposits + emission** and settles by Merkle claim. EVM custody exists elsewhere only for **validator-scoped slashable collateral**, never operator-scoped demand deposits or pool settlement.
 - **Worker payout trust.** Where operators normally **pay their off-chain workers at their own discretion**, our **head** providers are paid **natively-direct** (the most trust-minimized, canonical case — no operator in the loop) and our **tail** providers **claim α trustlessly on-chain** against a committed Merkle root (no-custody).
@@ -103,7 +103,7 @@ direction) · NOVEL (little/no precedent). Rendered visually in `diagrams/compar
 | 12 | **Reward settlement & custody** | Pure native emission to hotkeys; no contract in the reward loop | Head: pure native emission, no contract. Tail: EVM contract custodies deposits + emission, Merkle-settles | **DIVERGENT** (partial — head native) |
 | 13 | **Worker payout trust model** | Operator pays its off-chain workers at its discretion | Head = native direct (canonical, most trust-minimized); tail = trustless on-chain Merkle claim | **DIVERGENT** |
 | 14 | **Validator effort reward** | Native dividends only (stake × vtrust) — effort-agnostic | Dividends + explicit fee-funded, coverage-weighted bounty | **DIVERGENT** |
-| 15 | **Miner reward basis / demand coupling** | Pure measured work; emission decoupled from real paying demand | deposit × quality (in the tail) — costly, revenue-backed demand weights pay | **NOVEL** |
+| 15 | **Miner reward basis / demand coupling** | Pure measured work; emission decoupled from real paying demand | implied_usage × quality in the tail (validators compute it off published deposit events — the contract weighs nothing) — costly, revenue-backed demand weights pay | **NOVEL** |
 | 16 | **Miner tiering (head / tail)** | Consolidate behind one UID (Chutes: "never register more than one UID"); pool the tail off-chain | Top-N providers promoted to their own native UID (head) above a trustless pooled tail — tiered, one metagraph | **NOVEL** |
 
 **Tally: 11 aligned · 3 divergent · 2 novel.**
@@ -131,7 +131,7 @@ We switch on the protocol-native machinery everyone leans on: stake-weighted-med
 penalties for consensus departure, EMA bonds / Liquid Alpha, self-weight masking. Two caveats we keep in
 view: **(a)** Yuma rewards consensus-*conformity* as a proxy for accuracy, and rewards are empirically
 **stake-dominated** (a critical analysis finds stake–reward correlation ≈ 0.80–0.95 vs performance ≈ 0.50;
-arXiv 2507.02951) — so we should not oversell Yuma as rewarding objective quality; our *deposit × quality*
+arXiv 2507.02951) — so we should not oversell Yuma as rewarding objective quality; our *implied_usage × quality*
 design is partly an attempt to add an objective anchor. **(b)** Commit-reveal is **not** a protocol default
 (it defaults off, per-subnet opt-in) — turning it on is our deliberate choice for a subjective-quality
 signal, not "following the majority." [docs.bittensor.com/subnets/consensus-based-weights;
@@ -254,9 +254,9 @@ customer payments to an **off-chain USD ledger** and sets miner emission **separ
 so revenue and miner payout are decoupled by construction. (Independently-verified Chutes external revenue is
 ~$1.3–2.4M/yr against a far larger emission subsidy — a ~22–40:1 ratio; the self-reported ~$10M ARR is
 disputed, and Chutes itself purged ~40B tokens/day of unprofitable free traffic in 2026.) **Us:** per-operator **α deposits, sized to real usage at an off-chain reference rate**,
-are the **objective anchor** that weights the cross-operator emission split (`deposit × quality`) — and, after
+are the **objective anchor** validators turn into the cross-operator emission split — each weights a pool **`implied_usage × quality`** (implied usage = the NO's epoch deposit ÷ its conviction-tier rate), read off the **on-chain deposit events + a published tier-rate schedule**; the contract weighs nothing (v0.4/D25) — and, after
 the two-tier iteration, this is the rule for the **`1−θ` tail share** (the **head** is deliberately
-demand-agnostic pure merit, §4.16, so demand-coupling now governs the tail rather than all 41%). Costly,
+demand-agnostic, ranked on **routable-IP breadth**, §4.16, so demand-coupling now governs the tail rather than all 41%). Costly,
 revenue-backed, on-chain demand directly steering miner emission is **without standard precedent on
 Bittensor** — this is our defining bet. **Trade-off:** a harder-to-fake demand signal and emission that
 tracks genuine usage, at the cost of a "pay-to-play" surface (mitigated by the non-refundable `φ` floor +
@@ -270,14 +270,14 @@ capacity to one miner"*; ComputeHorde fronts many executors behind one UID; TPN 
 workers behind one UID. The standard move is to put *everything* behind a single UID and (for the pooled
 workers) **pay them off-chain at the operator's discretion**. **Us:** we run the **opposite** — a **tiered**
 miner side in one metagraph: the best ~200 providers are **promoted to their own native-emission UID** (the
-**head**, steered directly on pure quality `Q_p`, paid natively, no operator in the loop), sitting **above** a
-**pooled tail** (one contract-owned UID per NO, `deposit × Q_n`, providers paid by trustless Merkle claim). A
+**head**, ranked and steered on **routable-IP breadth** — split-adjusted distinct routable egress-IP count (v0.4/D27) — paid natively, no operator in the loop), sitting **above** a
+**pooled tail** (one contract-owned UID per NO, `implied_usage × Q_n`, providers paid by trustless Merkle claim). A
 provider **starts in the tail and graduates to the head**, the chain's **lowest-emission deregistration
 churn** running that tournament for free — there is **no native promote/demote primitive**, and child hotkeys
 **cannot** route miner emission, so each head slot is genuinely its own UID. No Bittensor subnet tiers direct
 top-N UIDs *above* a pooled/off-chained tail — this is **without precedent**. **Trade-off:** a clean merit
 ladder and a trust-minimized apex, governed by the head share **θ** (§8) — but θ trades the demand-coupling
-bet (which now lives only in the `1−θ` tail, §4.15) against a pure-merit head, and a **subnet-funded head can
+bet (which now lives only in the `1−θ` tail, §4.15) against a routable-IP-breadth head, and a **subnet-funded head can
 weaken NO deposit incentives** (a NO's best providers earn from the head, not its deposit-funded pool). We
 start θ tail-weighted (~0.3) and ramp it as the head set and validator quality-consensus mature.
 [github.com/rayonlabs/chutes-api; github.com/backend-developers-ltd/ComputeHorde; github.com/taofu-labs/tpn-subnet; SN13 weight reservation]
@@ -300,7 +300,10 @@ auto-staking α buyback** — the field's strongest revenue→token flywheel (bu
 Tellingly, **customer payments are booked to an off-chain USD ledger and miners are settled entirely
 separately in native emission** — the dollar size of pay is set by the dTAO market, not by usage.
 *Sharpest contrast:* Chutes is the closest thing to "revenue-coupled," yet the coupling is **indirect
-(revenue→price)**; we couple **directly (deposit→emission weight)**.
+(revenue→price)**; we couple **directly (deposit→emission weight)** — now via validator-computed **`implied_usage × quality`** off the published deposit events, the contract itself weighing nothing (v0.4/D25) — and since WHITEPAPER v0.3 (D23) we
+also adopt their buy-and-lock leg (the deposit is **conviction stake**, locked into a compounding reserve,
+WHITEPAPER §7.4), so the designs now differ in the steering, not the flywheel. Note our miners are, like
+theirs, settled in native emission — the deliberate v0.3 trade (WHITEPAPER §12.4).
 
 **SN4 — Targon (Manifold Labs) · confidential compute/inference.** Pivoted from a 2024 deterministic logprob
 verifier to **cryptographic hardware attestation** (Intel TDX / AMD SEV-SNP + NVIDIA Confidential Computing,
@@ -349,7 +352,7 @@ it as native UIDs (§4.16).
 
 **SN65 — TPN / Tao Private Network · VPN/bandwidth DePIN.** **Our closest analog:** decentralized WireGuard
 **exit nodes**, a **mining-pool topology** where one UID aggregates many off-chain VPN workers, scored with
-**robust per-run latency statistics** (the field-standard DePIN scoring our head's `Q_p` matches) and verified
+**robust per-run latency statistics** (the field-standard DePIN scoring our pool quality `Q_n` matches) and verified
 by **geo-IP + latency/connectivity heuristics**. Crucially, **"the mining pools get to decide how they pay
 their workers"** — the pooled tail is paid **off-chain at operator discretion**, the norm we invert.
 *Sharpest contrast:* same shape and domain, but TPN verifies liveness **heuristically**, **pools without
@@ -366,7 +369,7 @@ coding** — an example of cryptographic verification where the work is intrinsi
 target for routing.
 
 **FileTAO (storage, referenced).** Scores providers on **Wilson-score confidence intervals** with tiers — the
-robust real-world-DePIN scoring our head's `Q_p` uses verbatim (Wilson liveness + latency percentiles,
+robust real-world-DePIN scoring our pool quality `Q_n` uses verbatim (Wilson liveness + latency percentiles,
 EMA-smoothed; `VALIDATOR.md` §7). With TPN's robust latency statistics, it confirms our quality measurement is
 field best-practice, not bespoke.
 
@@ -382,7 +385,7 @@ Each divergence is intentional. Stated as *bet → risk accepted*.
    approximates it via buyback). *Risk:* "pay-to-play" optics and wash/self-deposits — mitigated by the
    non-refundable `φ` floor (a hard cost that never round-trips), quality consensus by **independent**
    validators, and the self-weight mask; and the assumption that `deposit ≤ revenue` long-run. After the
-   two-tier iteration this bet lives in the **`1−θ` tail** (the head is pure merit), so the share of emission
+   two-tier iteration this bet lives in the **`1−θ` tail** (the head is ranked on routable-IP breadth), so the share of emission
    it governs is now set by θ (bet #2).
 
 2. **Tiered head/tail miner side (the second novel bet).** *Bet:* a newcomer needs a **low-barrier on-ramp
@@ -392,7 +395,7 @@ Each divergence is intentional. Stated as *bet → risk accepted*.
    deregistration churn run the graduation tournament for free. No subnet does this — the field *consolidates*
    behind one UID (Chutes: "never register more than one UID") and pays the pooled tail off-chain at operator
    discretion. *Risk:* the head share **θ** is a new, load-bearing economic dial. Too large and most emission
-   goes to the pure-merit head, **diluting the demand-coupling bet** (now only in the `1−θ` tail) and
+   goes to the IP-breadth head, **diluting the demand-coupling bet** (now only in the `1−θ` tail) and
    **weakening NO deposit incentives** — a NO's best providers earn from the subnet-funded head, not its
    deposit-funded pool; too small and graduating is a pay cut that breaks the ladder. Mitigation: govern θ,
    **start tail-weighted (~0.3)**, instrument realized per-tier pay, ramp as the head set and validator
@@ -526,7 +529,7 @@ allocation; leave it alone.
 **1. Deposit-weighted emission — highest conviction *and* highest risk. Keep it; red-team it hardest.**
 The right bet *because* we have real revenue almost no one else does, and a costly, revenue-backed deposit is
 Sybil-resistant where measured-output scoring is cheap to fake. The sharpest critique to respect: the field is
-already criticized for capital-beating-merit, and `deposit × quality` leans into capital-weighting. Our
+already criticized for capital-beating-merit, and `implied_usage × quality` leans into capital-weighting. Our
 defense is real — our capital is **productive and revenue-bounded** (non-refundable `φ`, sized to usage), not
 speculative stake — but it holds only if **(a)** `φ` is high enough and independent validators numerous/honest
 enough to make wash-deposits unprofitable, and **(b)** quality `Q_n` genuinely bites at maturity rather than
@@ -580,7 +583,7 @@ the effort bounty helps, but validator go-to-market is where bespoke designs usu
 
 Stay conservative on the consensus plumbing (we are), stay aggressive on demand-coupling (it is our edge), and
 concentrate validation on the genuine unknowns — the **deposit-vs-quality balance / self-dealing defense**,
-the **head/tail share θ** (how much of the 41% stays demand-coupled vs. flows to the pure-merit head, and
+the **head/tail share θ** (how much of the 41% stays demand-coupled vs. flows to the IP-breadth head, and
 whether it weakens NO deposits). **No-custody + trustless on-chain payout is now locked as a v1 must-have**
 (§8.3), not an open question.
 Divergence here is a considered bet with a named trade-off, not a deficiency — and on our first principles, it
