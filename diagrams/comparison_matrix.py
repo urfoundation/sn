@@ -54,15 +54,15 @@ DATA=[
   ("Anti-gaming stack","",
    "Always-on Yuma core; commit-reveal & Liquid Alpha are opt-in",
    "Full stack ON: commit-reveal, clip+vtrust, self-mask, bonds"),
-  ("Validator independence","",
-   "Many independent validators; stake-weighted permits",
-   "Independent validator UIDs; no Network Operator owns one"),
+  ("Validator independence","owner-majority launch caveat",
+   "Many independent validators; stake-weighted permits; owner-heavy launches",
+   "Permissionless validator UIDs; no NO owns one; v1 owner-majority (reserve compounds it)"),
   ("Token & economics","",
    "α-denominated, dTAO; stake / price is the demand proxy",
    "All α; slippage-free transferStake; α buy & stake pressure"),
   ("On-chain oracles","",
    "Avoided; validators fetch off-chain, Yuma median reconciles",
-   "No oracle; off-chain governance-published reference rate"),
+   "No oracle; off-chain published tier-rate schedule, read by validators"),
   ("Multi-mechanism subnets","",
    "≤2 mechanisms / subnet, each own Yuma + bonds (Sept 2025)",
    "Pool 0 (core) / Pool 1 (VPN factory) via sub-mechanisms"),
@@ -78,6 +78,9 @@ DATA=[
   ("Off-chain-worker identity binding","",
    "Signed proof + ss58 + metagraph-membership check, fail-closed (Epistula / ORO-AI)",
    "Celium-style dual-signed client_id-hotkey association; same fail-closed check"),
+  ("Validator rewards","",
+   "Native dividends only (stake × vtrust)",
+   "Native dividends only (stake × vtrust) — the norm; v1 adds no validator-side reward"),
  ]),
  ("DIVERGENT",[
   ("Reward settlement & custody","partial — head native",
@@ -86,14 +89,11 @@ DATA=[
   ("Worker payout trust model","",
    "Operator pays its off-chain workers at its own discretion",
    "Head = native direct (canonical); tail = trustless on-chain Merkle claim"),
-  ("Validator effort reward","",
-   "Native dividends only (stake × vtrust) — effort-agnostic",
-   "Dividends + explicit fee-funded, coverage-weighted effort bounty"),
  ]),
  ("NOVEL",[
-  ("Miner reward basis / demand coupling","headline bet (now in the tail)",
-   "Pure measured work; emission decoupled from real paying demand",
-   "deposit × quality (tail) — costly, revenue-backed demand weights pay"),
+  ("Miner reward basis / demand coupling","headline bet; BlockMachine is nearest",
+   "Mostly measured work / token-coupled; a minority couples to real usage (BlockMachine RU×price, Chutes buyback)",
+   "implied_usage × quality (tail) — a costly sunk deposit as the demand proxy where usage can't be metered"),
   ("Miner tiering (head / tail)","the second novel bet",
    "Consolidate behind one UID (Chutes: “never register more than one”); pool the tail",
    "Top-N promoted to own native UID (head) above a trustless pooled tail — tiered"),
@@ -182,7 +182,7 @@ for v in ("ALIGNED","DIVERGENT","NOVEL"):
     rect(lx,ly-13,18,18,4,fill=light,stroke=mid,sw=1.6)
     T(lx+26,ly,f"{v} — {GROUP_BLURB[v]}",12.5,"normal",SUB)
     lx+=26+ (len(v)+len(GROUP_BLURB[v]))*7.0 + 40
-T(W-MX,ly,"11 aligned   ·   3 divergent   ·   2 novel",13,"bold","#334155",anchor="end")
+T(W-MX,ly,"12 aligned   ·   2 divergent   ·   2 novel",13,"bold","#334155",anchor="end")
 
 # ---------- render ----------
 svg='<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">%s</svg>'%(W,H,W,H,"".join(S))

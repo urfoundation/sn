@@ -4,8 +4,9 @@ Companion to `WHITEPAPER.md`. The whitepaper is the *what*; this file is the *wh
 alternatives we rejected (and reverted), the axes we circled and settled, and what's still open. Read
 this before proposing a change so we don't re-litigate something already decided.
 
-Last updated: 2026-06-28. Inputs: `seed/INCENTIVES.md`, `VALIDATOR.md`, `README.md`, and a deep research pass
-on current (post‑dTAO) Bittensor.
+Last updated: 2026-07-04. Inputs: `seed/INCENTIVES.md`, `VALIDATOR.md`, `README.md`, and a deep research pass
+on current (post‑dTAO) Bittensor (extended 2026-07-04 with primary-source profiles of Hippius SN75 and
+BlockMachine SN19 — see `COMPARISON.md`).
 
 ---
 
@@ -16,10 +17,10 @@ Each **Network Operator (NO)** is **one contract‑owned miner‑pool UID** (its
 `VALIDATOR.md` trails, and set Yuma weights **`deposit × Q_n`** (deposit = on‑chain demand anchor; `Q_n` =
 measured pool quality) — so **validators' evaluation drives the miner emission, the Bittensor way**.
 Miner emission (41%) accrues to the contract (custody) → providers claim via Merkle. Validator emission
-(41%) is **native** ∝ stake × vtrust (v1's only validator reward — the effort bounty is a deferred
-phase, D23). Everything is denominated in the subnet's **α**. The **ST contract** (Subtensor EVM) is the
-ledger, miner‑emission custodian, buyback‑reserve custodian, and settlement engine — **not** the
-validator.
+(41%) is **native** ∝ stake × vtrust — **v1's only validator reward, full stop**; a validator-effort
+incentive is **out of v1 scope**, a post-launch learning, not a committed deferred feature (D29). Everything
+is denominated in the subnet's **α**. The **ST contract** (Subtensor EVM) is the ledger, miner‑emission
+custodian, buyback‑reserve custodian, and settlement engine — **not** the validator.
 
 **v0.2 — two tiers (D16–D20).** The miner side now also runs a **head** channel beside the pools: the **top
 ~200 providers hold their own UIDs** and are steered **directly** on pure quality `Q_p` (no deposit), paid
@@ -32,8 +33,9 @@ the contract stakes **every deposit in full** into a locked, dividend‑compound
 the **owner‑validator hotkey** (one‑way invariant; no exit path in code). `poolTotal = emission‑only` —
 both miner tiers are paid from emission; revenue supports miners through the token (buy‑and‑lock, the
 Chutes flywheel) instead of pass‑through payouts. The **effort bounty and its whole contract surface
-leave v1** (owner = majority validator early, with intrinsic motive to measure); §13.6's ladder is now
-**W → X → Y**. See `WHITEPAPER.md` §6.3–6.4, §7.4, §8.3, §9, §12.4.
+leave v1** (owner = majority validator early, with intrinsic motive to measure). *(v0.5/D29 goes further:
+the bounty is no longer a **committed** deferred phase — it is removed from the roadmap and reframed as a
+post-launch open question; v1 is native-dividends-only.)* See `WHITEPAPER.md` §6.3–6.4, §7.4, §8.3, §9, §12.4.
 
 **v0.4 — conviction staking, validator-computed weights, IP-breadth head, testnet-first (D25–D28).**
 A simplification pass that moves the mechanism's judgment OUT of the contract and INTO the validators:
@@ -348,6 +350,33 @@ endpoint-parameterized, so they **re-target to testnet with zero code change** (
 testnet-first. Rationale for the reversal: with the v0.4 mechanism changes (D25–D27) reshaping the
 economic + measurement core, a live testnet shakeout de-risks more than mainnet-direct speed saves.
 
+**D29 — Validator effort bounty removed from scope entirely; it is a post-launch learning, not a committed
+deferred feature (user decision, 2026-07-04; v0.5).** D23 *deferred* the effort bounty but kept it as a
+**specified, committed** next phase with a named trigger and a **W → X → Y** escalation ladder. D29 goes
+further: **the effort bounty is out of scope, period.** v1 pays validators **native Yuma dividends only**
+(∝ stake × vtrust) — the plain Bittensor norm — and **whether to add any validator-effort incentive at all
+(and if so, what shape) is deliberately left open, to be decided from what the live launch teaches us about
+independent-validator coverage.** Rationale: the owner is the majority validator early with an intrinsic
+motive to run trails (D23's logic stands), and pre-committing a specific bounty design — before the network
+exists — over-specifies a future we should learn our way into. What this changes:
+- **Positioning / comparison.** `COMPARISON.md` no longer lists the effort bounty as a design divergence.
+  With v1 paying plain native dividends, "validator rewards" is now an **ALIGNED** row (12 aligned · 2
+  divergent · 2 novel), not a divergence. All `φ`/`FeePool`/`(X)`/`(Y)`/coverage-bounty language is removed
+  from that doc; the matrix diagram is regenerated.
+- **Supersedes the forward-looking parts of D8, D10, D12, D23-pt3, and the §3 "(X) then (Y)" open item** —
+  those entries stay as the historical record of *how* the bounty was designed, but they are **no longer a
+  roadmap commitment**. The already-built (X)-phase machinery (coverage-bound digests, sampled proofs, HF-2
+  reseed caps, `snclaim`) stays **parked** exactly as D23 noted — raw material for a *possible* future
+  iteration, not a promised one.
+- **NOT changed:** the eliminations those decisions also made — the per-NO validator pool, the NO↔V
+  **intersection split**, **VT**, the verifier **bond**, and the take-0 custody hack — **stay eliminated**
+  (they were rejected on their own merits, §2; D29 does not resurrect them). Native-dividends-only is the
+  whole validator reward.
+- **WHITEPAPER.md follow-up (flagged, not yet applied):** §9.3 still carries the full bounty spec and §13.6
+  the W→X→Y ladder, written as a "deferred phase." To match D29 those should be demoted from "committed
+  deferred design" to "a candidate a future iteration *might* explore" (or moved to a parked/appendix note).
+  Left for a deliberate whitepaper pass so the formulas aren't lost — call it out before editing.
+
 ---
 
 ## 2. Rejected / reverted — do NOT re-open these
@@ -369,8 +398,13 @@ These were explored and closed. Re‑proposing them is the "going in circles" we
 - **Single contract miner UID / contract as sole validator (REJECTED).** Collapses Yuma to nothing
   (no consensus) — the degeneracy the multi‑validator design exists to avoid.
 - **Full‑EVM and commitments‑only settlement (NOT CHOSEN).** See D1.
-- **Collapsing the validator side to pure native dividends, no effort reward (REJECTED).** Would gut the
-  validator incentive and the failure data — the product (user). See D8.
+- **Collapsing the validator side to pure native dividends *as the permanent design* (REJECTED).** Removing
+  the effort reward *forever* would gut the long‑run validator incentive and the failure data — the product
+  (user). See D8. *(Nuance added by D29: this rejection was about making "no effort reward ever" the
+  **permanent** design. v1 nonetheless **ships native‑dividends‑only** — legitimately, because the owner is
+  the majority validator early and needs no subsidy — and D29 leaves the long‑run effort question **open**
+  rather than answering it "never." So D29 is not a re‑opening of this rejection: it neither commits to a
+  bounty nor forecloses one; it defers the call to post‑launch evidence.)*
 
 **The circular axis, named:** *quality‑in‑weight vs deposit‑only* was circled twice (deposit‑only →
 "use Yuma maximally" put quality in → deposit‑only simplification → reverted to quality‑in‑weight). The
@@ -381,10 +415,13 @@ re‑opening the weight formula.**
 
 ## 3. Open questions / deferred to later revisions
 
-- **(X) then (Y) escalation.** v1 ships dividends-only (**W**, D23 — the owner-majority validator needs
-  no effort subsidy). (X) — the fee-funded bounty — ships when owner-independent trail coverage is
-  wanted; if (X) proves too small (native dividends are ∝ stake, so a high‑stake validator can coast),
-  escalate to (Y). Trigger = observed coverage too thin. §13.6.
+- **Validator-effort incentive — fully open post-launch (was the "(X) then (Y)" ladder; D29).** v1 ships
+  **dividends-only** and stays there. Whether any validator-effort reward is ever added — and if so, whether
+  it looks anything like the parked fee-funded bounty (X) / emission-routed (Y) design — is **deliberately
+  undecided**: we launch, watch whether independent-validator trail coverage is actually thin once the
+  owner is no longer the whole validator set, and decide then. The old ladder framing (a committed
+  W→X→Y) is retired; the (X)-phase code stays parked as raw material, not a plan. §13.6 (to be demoted to
+  match — see D29).
 - **`Q_n` aggregation + sampling spec** *(v1 RESOLVED → D22: usage-weighted mean of per-provider `q_p`,
   EMA-smoothed — `PLAN.md` D-9. The multi-NO-grade version below stays open.)* How per‑provider reliability
   aggregates to the pool scalar (a flat **mean hides bad providers**; a **sum rewards count** — likely

@@ -1,7 +1,7 @@
 # UR Subnet vs. the Bittensor field — a macro design comparison
 
 **What this is.** A neutral, first-principles comparison of the UR Subnet design (this repo's
-`WHITEPAPER.md` / `seed/INCENTIVES.md` / `VALIDATOR.md`) against ~10 well-respected, established Bittensor
+`WHITEPAPER.md` / `seed/INCENTIVES.md` / `VALIDATOR.md`) against ~12 well-respected or instructive Bittensor
 subnets, at the level of **macro mechanism-design themes** — not implementation detail. The goal is to
 see **where we follow Bittensor best practice** and **where we diverge in direction**. Divergence here is
 a *choice*, not a deficiency: we note the trade-off each side is making and the bet we are taking.
@@ -10,8 +10,12 @@ a *choice*, not a deficiency: we note the trade-off each side is making and the 
 (green = aligned, amber = divergent, purple = novel).
 
 > **Confidence & method.** Built from three parallel research passes (cross-cutting protocol norms; deep
-> per-subnet profiles read from GitHub/docs; and an adversarially-verified claim synthesis). Today is
-> **mid-2026 (dTAO era)**. Where a fact is protocol-level and primary-sourced it is treated as **high
+> per-subnet profiles read from GitHub/docs; and an adversarially-verified claim synthesis), **extended
+> 2026-07-04** with primary-source profiles of **Hippius (SN75)** and **BlockMachine (SN19)** — identity
+> confirmed on taostats, mechanism read from each project's whitepaper/docs/GitHub (the deep-research run's
+> adversarial-verify stage was interrupted, so the two new subnets' *mechanism* claims were re-checked by
+> hand against primary sources rather than by the full 3-vote panel; identity/status for both is
+> taostats-confirmed). Today is **mid-2026 (dTAO era)**. Where a fact is protocol-level and primary-sourced it is treated as **high
 > confidence**; per-subnet specifics are sourced to repos/docs but the landscape moves fast. Honored
 > caveats: (a) precise market-cap rankings/standings are **volatile and could not be reliably verified** —
 > treat all "standing" language as illustrative; (b) the cross-subnet *emission-allocation* rule
@@ -37,17 +41,17 @@ identity plumbing the head needs — binding an off-chain worker to a hotkey —
 - **Validators' evaluation drives miner emission via Yuma Consensus** — the canonical Bittensor mechanism; our contract sits *downstream* of Yuma (tail only), not in place of it.
 - **Native direct steering of top miners.** `set_weights → Yuma → incentive`, credited **natively to the miner's own hotkey/coldkey (no take, not shared)**, with the **top-N kept for free by lowest-emission deregistration churn** — this is exactly how the field pays direct-UID miners; our head channel uses it verbatim.
 - **The native anti-gaming stack** — stake-weighted-median clipping, vtrust, bonds/Liquid Alpha, self-weight masking — all on; we also opt into commit-reveal.
+- **Native validator dividends.** Validators earn Bittensor-native dividends (∝ stake × vtrust), exactly the field-standard validator reward; v1 adds **no** validator-side reward of its own.
 - **α/dTAO-denominated economics**, slippage-free internal stake transfers, α as the value-capture token.
 - **Oracle-free** — like the field, we avoid on-chain oracles and use off-chain reference data.
 - **Real-world/DePIN output** and **pool-style scaling past the 256-UID cap** — both are *established* (if minority) patterns, not inventions; the head and pooled tail **share one 256-UID metagraph**.
 - **Off-chain-worker identity binding.** To steer the head we reuse the field-standard **signed-proof + ss58 + metagraph-membership check, fail-closed** (Epistula / ORO-AI `bittensor-auth`), specialized to a Celium-style **dual-signed `client_id`-`hotkey` association** (the `associate_evm_key` shape). This piece is *aligned*, not novel.
 
 **Biggest divergences and novel bets (same goal, different direction):**
-- **Demand coupling — novel bet #1.** The field couples emission to **token-market/speculative demand** (α price or net TAO staking flow); we couple it to **costly, revenue-backed operator deposits**: validators weight each pool **`implied_usage × quality`** (implied usage = a NO's epoch deposit ÷ its conviction-tier rate), computed off the **on-chain deposit events + a published tier-rate schedule** — the contract itself weighs nothing (v0.4/D25). *Closest precedent: Chutes' revenue→buyback, and even that is indirect.* Since WHITEPAPER v0.3 (D23) we ALSO run the Chutes flywheel on top: every deposit is itself a **buy-and-lock buyback** — now **conviction stake**, locked into a dividend-compounding reserve, never distributed, its cumulative amount setting the NO's rate tier; miners are paid from emission only (WHITEPAPER §7.4/§12.4) — so the deposit is simultaneously the **direct steering signal** (novel) and the **indirect price support** (field-standard). The bet now lives in the **pooled tail** (the `1−θ` share); the head is deliberately demand-agnostic — ranked on **routable-IP breadth** (§4.16). — **our headline bet.**
+- **Demand coupling — novel bet #1.** The field couples emission to **token-market/speculative demand** (α price or net TAO staking flow); we couple it to **costly, revenue-backed operator deposits**: validators weight each pool **`implied_usage × quality`** (implied usage = a NO's epoch deposit ÷ its conviction-tier rate), computed off the **on-chain deposit events + a published tier-rate schedule** — the contract itself weighs nothing (v0.4/D25). *Closest precedents: **BlockMachine (SN19)**, which couples emission to **metered priced usage** (`RU_served × self-declared USD/RU`) — the nearest thing to on-chain demand-coupled emission the field has, but via a **usage meter + price bid**, not a costly stake — and **Chutes**, whose revenue→buyback coupling is only **indirect**.* We differ from BlockMachine on *how demand is proven*: it can **directly meter** usage because RPC requests flow through a **protocol gateway**; VPN bandwidth has no trustless meter, so we substitute a **costly sunk deposit** as the demand proxy (§4.15). Since WHITEPAPER v0.3 (D23) we ALSO run the buy-and-lock flywheel that both Chutes and BlockMachine (its 1:1 α buyback → Protocol Stability Reserve) demonstrate: every deposit is itself a **buy-and-lock buyback** — now **conviction stake**, locked into a dividend-compounding reserve, never distributed, its cumulative amount setting the NO's rate tier; miners are paid from emission only (WHITEPAPER §7.4/§12.4) — so the deposit is simultaneously the **direct steering signal** (novel) and the **indirect price support** (now field-corroborated, not just field-adjacent). The bet now lives in the **pooled tail** (the `1−θ` share); the head is deliberately demand-agnostic — ranked on **routable-IP breadth** (§4.16). — **our headline bet.**
 - **Tiered head/tail miner side — novel bet #2.** No subnet **tiers** individual top-N providers into their own native-emission UIDs *above* a pooled/off-chained tail. The field does the **opposite** — it *consolidates* behind one UID (Chutes: "never register more than one UID… just add capacity to one miner"; ComputeHorde fronts many executors behind one UID; TPN/Vanta pool many workers behind one UID) — and pays the pooled tail **off-chain at operator discretion** (TPN: "the mining pools get to decide how they pay their workers"). Our trustless on-chain pool (tail) **plus** native direct head is **without Bittensor precedent**.
 - **Reward custody.** The field pays **native emission straight to hotkeys**; we keep exactly that for the **head** (top providers paid natively, no contract in the loop), but route **within-tail** payout through an **EVM contract that custodies deposits + emission** and settles by Merkle claim. EVM custody exists elsewhere only for **validator-scoped slashable collateral**, never operator-scoped demand deposits or pool settlement.
 - **Worker payout trust.** Where operators normally **pay their off-chain workers at their own discretion**, our **head** providers are paid **natively-direct** (the most trust-minimized, canonical case — no operator in the loop) and our **tail** providers **claim α trustlessly on-chain** against a committed Merkle root (no-custody).
-- **Explicit validator effort bounty.** The field pays validators **native dividends only** (stake × vtrust); we add a **fee-funded, coverage-weighted bounty** for verified trail volume.
 - **Cryptographic verification of a real-world service.** We push a **cryptographic routing-verification** protocol for bandwidth-class work that the field generally verifies with **heuristics** (geo-IP/latency) — closer to Targon's TEE attestation than to a VPN subnet's connectivity checks.
 
 ---
@@ -70,11 +74,14 @@ market-cap standings are volatile and intentionally not asserted here**.
 | SN12 | **ComputeHorde** | GPU compute (for other subnets) | **EVM collateral + executor-pooling** precedent (one UID, many workers) |
 | SN65 | **TPN — Tao Private Network** | VPN / bandwidth DePIN | **Our closest analog**: decentralized WireGuard exits, mining-pool topology |
 | SN56 | **Gradients** (Rayon Labs) | Model training / AutoML | **Burned TAO entry-fee** — the closest thing to a costly demand-deposit |
+| SN75 | **Hippius** (The Nerve Lab) | Decentralized cloud storage / compute | **DePIN with real paid usage** that solves our four problems the *opposite* way — its **own L1 chain** off Bittensor; ZK proof-of-storage; revenue-share flywheel |
+| SN19 | **BlockMachine** | Decentralized RPC / archive-node marketplace | **The nearest demand-coupling precedent**: emission ∝ *metered priced usage* (`RU × USD/RU`) + a **1:1 α buyback**; the RPC subnet that took over netuid 19 after Nineteen wound down |
 
 *Also referenced:* **SN26 Storb** (storage; Proof-of-Data-Possession), **FileTAO** (storage; Wilson-score
-provider scoring) and **Beam** (orchestrator UID + Merkle-verified chunks). *(Excluded after verification: Rayon's former **Nineteen / SN19** inference subnet
-appears **wound down** — netuid 19 was transferred ~Jan 2026 and now hosts an unrelated RPC/archive subnet,
-and the `rayonlabs/nineteen` repo is gone; we don't rely on it.)* An illustrative — **unverified** — mid-2026
+provider scoring) and **Beam** (orchestrator UID + Merkle-verified chunks). *(Note on netuid 19: Rayon's former
+**Nineteen** inference subnet is **wound down** — the `rayonlabs/nineteen` repo is gone and netuid 19 was
+re-registered ~2026; the "unrelated RPC/archive subnet" now on netuid 19 is **BlockMachine**, which we profile
+below as SN19 — so the loose end is resolved, not excluded.)* An illustrative — **unverified** — mid-2026
 market-cap top-5 floated by secondary sources put Chutes (SN64), τemplar (SN3), Targon (SN4), affine (SN120),
 and lium (SN51) near the top (with Chutes' own α down ~85% from its mid-2025 ATH); we cite this only to show
 roughly who is in the conversation, **not as a ranking** — exact standings are volatile and were not reliably
@@ -92,21 +99,22 @@ direction) · NOVEL (little/no precedent). Rendered visually in `diagrams/compar
 | 1 | **Emission split** | Fixed 18 / 41 / 41, protocol-enforced | Standard 18 / 41 / 41 — "don't fight the coinbase" | **ALIGNED** |
 | 2 | **Consensus engine** | Validators score miners; Yuma drives emission | Independent validators score pools + top miners; Yuma drives miner emission | **ALIGNED** |
 | 3 | **Anti-gaming stack** | Always-on Yuma core; commit-reveal & Liquid Alpha opt-in | Full stack ON incl. commit-reveal + Liquid Alpha | **ALIGNED** |
-| 4 | **Validator independence** | Many independent validators; stake-weighted permits | Independent validator UIDs; no operator owns one | **ALIGNED** |
+| 4 | **Validator independence** | Many independent validators; stake-weighted permits; owner-heavy at launch is the norm | Permissionless independent validator UIDs; no NO owns one; v1 launches **owner-majority by construction** (the reserve compounds it, §4.4) | **ALIGNED** (owner-majority launch caveat) |
 | 5 | **Token & economics** | α-denominated, dTAO; stake/price = demand proxy | All α; slippage-free transferStake; α buy/stake pressure | **ALIGNED** |
 | 6 | **On-chain oracles** | Avoided; validators fetch off-chain, Yuma median reconciles | No oracle; off-chain published reference rate | **ALIGNED** |
 | 7 | **Multi-mechanism subnets** | ≤2 mechanisms/subnet, each own Yuma + bonds | Pool 0 (core) / Pool 1 (VPN factory) via sub-mechanisms | **ALIGNED** |
-| 8 | **Scaling past the 256-UID cap** | 1 UID fronts many off-chain workers (ComputeHorde, TPN, Vanta) | Pool UIDs (tail) + top ~200 direct provider UIDs (head) share one 256-UID metagraph | **ALIGNED** |
+| 8 | **Scaling past the 256-UID cap** | 1 UID fronts many off-chain workers (ComputeHorde, TPN, Vanta); or move workers off Bittensor onto your own L1 (Hippius SN75) | Pool UIDs (tail) + top ~200 direct provider UIDs (head) share one 256-UID metagraph — **stay in-metagraph, no own chain** | **ALIGNED** (in-metagraph pooling; Hippius takes the own-L1 fork) |
 | 9 | **Real-world / DePIN output** | Respected minority: compute, storage, VPN/bandwidth | Privacy/VPN — providers carry ingress/egress traffic | **ALIGNED** |
-| 10 | **Verification rigor** | Trending crypto/deterministic; heuristic for real-world work | Cryptographic routing-verification (signed proof-of-transit) | **ALIGNED** (leading edge) |
+| 10 | **Verification rigor** | Trending crypto/deterministic (Targon TEE, Hippius Plonky3 ZK proof-of-storage, BlockMachine Merkle-proof + re-execution); heuristic for bandwidth-class work | Cryptographic routing-verification (signed proof-of-transit) — Targon-class rigor aimed at bandwidth | **ALIGNED** (leading edge) |
 | 11 | **Off-chain-worker identity binding** | Signed proof + ss58 + metagraph-membership check, fail-closed (Epistula / ORO-AI) | Celium-style dual-signed client_id-hotkey association; same fail-closed metagraph check | **ALIGNED** |
 | 12 | **Reward settlement & custody** | Pure native emission to hotkeys; no contract in the reward loop | Head: pure native emission, no contract. Tail: EVM contract custodies deposits + emission, Merkle-settles | **DIVERGENT** (partial — head native) |
 | 13 | **Worker payout trust model** | Operator pays its off-chain workers at its discretion | Head = native direct (canonical, most trust-minimized); tail = trustless on-chain Merkle claim | **DIVERGENT** |
-| 14 | **Validator effort reward** | Native dividends only (stake × vtrust) — effort-agnostic | Dividends + explicit fee-funded, coverage-weighted bounty | **DIVERGENT** |
-| 15 | **Miner reward basis / demand coupling** | Pure measured work; emission decoupled from real paying demand | implied_usage × quality in the tail (validators compute it off published deposit events — the contract weighs nothing) — costly, revenue-backed demand weights pay | **NOVEL** |
+| 14 | **Validator rewards** | Native dividends only (∝ stake × vtrust) | Native dividends only (∝ stake × vtrust) — the Bittensor norm; v1 adds no validator-side reward | **ALIGNED** |
+| 15 | **Miner reward basis / demand coupling** | Mostly pure measured work / speculative-token-coupled; an emerging minority couples to real usage (BlockMachine SN19: `RU × USD/RU` metered; Chutes: revenue→buyback) | implied_usage × quality in the tail (validators compute it off published deposit events — the contract weighs nothing) — a **costly sunk deposit** as the demand proxy where usage can't be metered | **NOVEL** (deposit-as-proxy; BlockMachine is the nearest neighbor via metered usage) |
 | 16 | **Miner tiering (head / tail)** | Consolidate behind one UID (Chutes: "never register more than one UID"); pool the tail off-chain | Top-N providers promoted to their own native UID (head) above a trustless pooled tail — tiered, one metagraph | **NOVEL** |
 
-**Tally: 11 aligned · 3 divergent · 2 novel.**
+**Tally: 12 aligned · 2 divergent · 2 novel.** (Validator rewards, row 14, are plain native dividends — the
+Bittensor norm — so the miner-side custody rows are the only two divergences, alongside the two novel bets.)
 
 ---
 
@@ -115,8 +123,8 @@ direction) · NOVEL (little/no precedent). Rendered visually in `diagrams/compar
 ### 4.1 Emission split — ALIGNED (high confidence)
 The within-subnet split is a protocol-fixed **18% owner / 41% miners / 41% validators(+stakers)** (owner cut
 `SubnetOwnerCut ≈ 11796/65535`); it survived dTAO, Taoflow, and the May-2026 Conviction change. We adopt it
-verbatim and deliver emission through the chain coinbase — the contract only *steers distribution* and
-*pays the bounty*. Adopting this is "following the default" almost tautologically.
+verbatim and deliver emission through the chain coinbase — the contract only *custodies and settles the pool
+tier* (it computes no weights, D25). Adopting this is "following the default" almost tautologically.
 [learnbittensor.org/learn/emissions; bittensor.com/dtao-whitepaper]
 
 ### 4.2 Consensus engine — ALIGNED (high)
@@ -137,23 +145,32 @@ design is partly an attempt to add an objective anchor. **(b)** Commit-reveal is
 signal, not "following the majority." [docs.bittensor.com/subnets/consensus-based-weights;
 learnbittensor.org/concepts/commit-reveal]
 
-### 4.4 Validator independence — ALIGNED (high)
+### 4.4 Validator independence — ALIGNED (high), with an owner-majority launch posture
 The field runs many independent validators earning permits by stake; we do the same and explicitly forbid a
 Network Operator from owning a validator. This is the structural source of the "independent measurement" our
-mechanism needs, and it is standard.
+mechanism needs, and it is standard. One honest caveat since v0.3 (D23): **v1 launches owner-majority by
+construction** — the owner holds most α at genesis, and the buyback reserve is **staked to the owner-validator
+hotkey** (WHITEPAPER §7.4), compounding that majority every tempo. An owner-dominant validator at launch is
+itself normal in the dTAO era (a new subnet's owner holds most α on day one), and the reserve-staking leg is
+the same auto-staking move as Chutes' buyback — but it does make decentralizing the validator set a
+**deliberate, budgeted later step** (re-delegating reserve slices across independent validators is the lever),
+not a passive default. Entry stays permissionless throughout (stake α → permit), the
+anti-gaming stack is on from day one, and the full Yuma machinery does real work as independents join.
 
 ### 4.5 Token & economics — ALIGNED (high)
 α/dTAO is the universal model: per-subnet alpha, price/stake as the chain's value signal, slippage-free
 within-netuid stake transfers. We are fully inside it (everything in α; `transferStake` for internal moves;
-α buy/stake pressure as the value-capture path). Our one wrinkle — an **off-chain reference rate** so
-operators can target a *fixed real price* despite α volatility — is an application-layer convenience, not a
-protocol change.
+α buy/stake pressure as the value-capture path). Our one wrinkle — an **off-chain reference rate** (since
+v0.4/D25 a **tier→rate schedule**: locked conviction stake lowers a NO's deposit rate) so operators can
+target a *fixed real price* despite α volatility — is an application-layer convenience, not a protocol
+change.
 
 ### 4.6 On-chain oracles — ALIGNED (high)
 Subnets avoid on-chain oracles by architecture: validators fetch external data off-chain, and Yuma's
 stake-weighted median reconciles (e.g., Foundry's S&P oracle, Synth's Pyth pulls). We match this — there is
-**no on-chain oracle**; the "global rate" is an off-chain governance-published reference, and the *costly
-deposit*, not the rate, is the enforced signal. [learnbittensor.org/learn/yuma-consensus]
+**no on-chain oracle**; the "global rate" is an off-chain governance-published reference (a **tier→rate
+schedule** since v0.4/D25, read by validators to compute implied usage — never consumed by the contract), and
+the *costly deposit*, not the rate, is the enforced signal. [learnbittensor.org/learn/yuma-consensus]
 
 ### 4.7 Multi-mechanism (Pool 0 / Pool 1) — ALIGNED (high)
 Bittensor shipped **multiple incentive mechanisms per subnet** (~Sept 2025, cap 2/subnet), each with its own
@@ -172,24 +189,46 @@ validator UIDs`; a *second mechanism* would halve the budget to ~127, too few fo
 mechanisms stay reserved for the Pool 0 / Pool 1 product split, §4.7). The *pooling* primitive is aligned;
 the **tiering** of direct head UIDs *above* the pooled tail is the novel part (§4.16), and the *trustless
 on-chain* settlement of the tail is the divergent part (§4.12–4.13).
-[github.com/backend-developers-ltd/ComputeHorde; github.com/taofu-labs/tpn-subnet]
+
+There is also a **second, architecturally opposite** way to beat the 256 cap, and **Hippius (SN75)** takes
+it: **run your own L1**. Hippius keeps a Bittensor subnet only as the α-emission source and pushes
+**registration, per-node accounting, and settlement onto its own Substrate chain** (BABE + staking), where
+storage workers register via a `registration` pallet (`registerNodeWithColdkey`/`registerNodeWithHotkey`),
+never taking a Bittensor UID at all — the metagraph cap simply doesn't apply to them. On the Bittensor side
+it *also* pools: weights are assigned per **account "family"** (one owner, many child nodes), and only the
+**top 10 nodes count, each contributing 80% of the previous** (a geometric within-identity cap). We
+deliberately take the **opposite fork from the own-L1 move**: we do **not** fork a chain — head and tail
+both live **inside Bittensor's 256-UID metagraph** and settle on the **Subtensor EVM**, so we inherit
+Bittensor's security and liquidity rather than bootstrapping our own validator set and token bridge. (The
+own-L1 route buys unbounded worker scale and native economic enforcement at the cost of standing up and
+securing a whole second chain — the §4.12 custody trade in a different guise.)
+[github.com/backend-developers-ltd/ComputeHorde; github.com/taofu-labs/tpn-subnet; github.com/thenervelab/thebrain; docs.hippius.com/learn/weights]
 
 ### 4.9 Real-world / DePIN output — ALIGNED with the respected minority (high)
 Most flagship subnets are purely digital (AI/data), but a **respected DePIN minority** delivers real-world
-services: compute (SN51 Lium, SN27, SN64 Chutes, SN12 ComputeHorde), storage (SN26 Storb, FileTAO),
-bandwidth/VPN (**SN65 TPN**), scraping (SN13, SN22, SN42). A privacy/VPN bandwidth network sits squarely in
-this camp — unusual versus the AI majority, but well-precedented.
+services: compute (SN51 Lium, SN27, SN64 Chutes, SN12 ComputeHorde), storage (SN26 Storb, FileTAO,
+**SN75 Hippius**), bandwidth/VPN (**SN65 TPN**), RPC/archive-node infrastructure (**SN19 BlockMachine**),
+scraping (SN13, SN22, SN42). A privacy/VPN bandwidth network sits squarely in this camp — unusual versus the
+AI majority, but well-precedented, and the minority is **growing and increasingly revenue-bearing** (Hippius
+sells storage; BlockMachine sells RPC calls) — the same real-demand footing we build on.
 
 ### 4.10 Verification rigor — ALIGNED, at the leading edge (medium–high)
 The 2026 trend is **away from gameable LLM-judge toward deterministic/cryptographic ground truth**: zkML
 (SN2 Omron), deterministic re-execution (SN4 Targon's legacy logprob check; SN9's recompute+cosine),
-realized-outcome scoring (SN8 Taoshi, SN6), and **hardware attestation / TEE** (SN4 Targon, SN64 Chutes).
-Importantly, for **externally-delivered real-world work** (bandwidth/VPN/scraping) the field generally
-*falls back to heuristics* (geo-IP, latency, sampling) — "you can't cryptographically prove a packet
-traversed a residential line." Our `VALIDATOR.md` cryptographic routing-verification (signed validated paths,
-Ed25519, proof-of-transit) deliberately tries to bring **Targon-class rigor to bandwidth-class work** — which
-is both our differentiation and our hard problem (the honest-relay gap we acknowledge in v1). [arxiv.org/abs/2507.02951;
-manifold.inc/releases/targon-v6]
+realized-outcome scoring (SN8 Taoshi, SN6), **hardware attestation / TEE** (SN4 Targon, SN64 Chutes), and —
+newly confirmed in this pass — **ZK proof-of-storage** (**Hippius SN75**: its "Arion" layer runs a **"Warden"
+audit service issuing Plonky3 zero-knowledge proof-of-storage circuits** against Reed-Solomon shards, feeding
+a reputation score) and **Merkle-proof + re-execution** (**BlockMachine SN19**: the gateway verifies each RPC
+response against a **trusted state root via Merkle proof in real time**, and validators **re-execute sampled
+queries against reference nodes**, a confirmed mismatch → permanent coldkey ban). Importantly, for
+**externally-delivered real-world work** the field's rigor **tracks how checkable the work is**: storage
+(possession is provable) and RPC (responses are deterministically re-executable) get cryptographic proofs,
+while **bandwidth/VPN** generally *falls back to heuristics* (geo-IP, latency, sampling) — "you can't
+cryptographically prove a packet traversed a residential line." Our `VALIDATOR.md` cryptographic
+routing-verification (signed validated paths, Ed25519, proof-of-transit) deliberately tries to bring
+**Targon-/Hippius-class rigor to the hardest-to-verify DePIN class** — which is both our differentiation and
+our hard problem (the honest-relay gap we acknowledge in v1). [arxiv.org/abs/2507.02951;
+manifold.inc/releases/targon-v6; github.com/thenervelab/arion; blockmachine.io/whitepaper]
 
 ### 4.11 Off-chain-worker identity binding — ALIGNED (high)
 To steer the **head**, a validator must turn its per-provider `VALIDATOR.md` measurements (keyed by
@@ -213,12 +252,26 @@ own TAO bond, validators slash), live on **SN12 ComputeHorde** and **SN51 Lium/C
 now *partial*:** the **head matches the norm exactly** — top miners are paid **pure native emission to their
 own coldkey, with no contract in the loop**. Only the **tail** diverges: a *single subnet-wide* contract
 **owns the NO-pool UIDs**, custodies operator **demand deposits + captured pool emission**, and settles by
-Merkle claim. The two-tier iteration therefore **shrinks the contract's custody-critical surface** — it no
+Merkle claim. (Since v0.3/D23 the deposits it custodies are the **locked buyback reserve** — staked to the
+owner-validator hotkey, dividend-compounding, never distributed — so the distributable surface is
+emission-only, but the reserve makes the contract a **growing honeypot**, which is why the §6.4
+timelock/guardian phases carry real weight.) The two-tier iteration therefore **shrinks the contract's
+custody-critical surface** — it no
 longer owns or custodies the head's emission at all. **Trade-off:** in the tail we gain trust-minimized
 payout to 100k providers, a hard no-custody guarantee, and clean 7-day accounting; we pay with a
 **custody-critical contract** (audit + governance burden) and a departure from the "native emission is the
 whole story" simplicity — a departure the head now avoids entirely.
-[github.com/bactensor/collateral-contracts; docs.lium.io/bittensor-subnet/collateral/overview]
+
+The two new comparanda **reinforce the norm** and sharpen how alone our tail-custody sits: **BlockMachine
+(SN19)** pays **native α straight to miner hotkeys** (no reward contract; its only protocol treasury is the
+buyback **Protocol Stability Reserve**, which is a *sink*, not per-worker custody), and **Hippius (SN75)**
+**auto-stakes** each node's reward to its owner account **on Hippius's own chain** every ~3,600 blocks — a
+push settlement with **no manual claim, no EVM custody, no Merkle distributor** (its only Solidity is a small
+~1.7% **bridge**, not a reward custodian). So across the field — native-to-hotkey (BlockMachine), auto-stake
+on an own-L1 (Hippius), and EVM *collateral* (ComputeHorde, Celium) — **no one custodies operator-scoped
+demand deposits or runs an on-chain Merkle distributor to pay off-chain workers**; that remains our tail's
+distinctive (and custody-critical) surface.
+[github.com/bactensor/collateral-contracts; docs.lium.io/bittensor-subnet/collateral/overview; blockmachine.io/whitepaper; docs.hippius.com/learn/weights]
 
 ### 4.13 Worker payout trust model — DIVERGENT, toward trustlessness (high)
 In the pool pattern (§4.8) the **operator pays its off-chain workers at its own discretion** — workers trust
@@ -234,35 +287,68 @@ genuinely new piece of our custody design (the native head is simply the field n
 smaller intra-pool surface that Yuma does *not* directly score (we lean on the auditable payout list +
 reputation there).
 
-### 4.14 Validator effort reward — DIVERGENT (high; precedent likely absent)
-**Norm:** validators earn **native dividends only** (∝ stake × vtrust), which is **effort-agnostic** — a
-high-stake validator can coast on consensus. No clean precedent was found for an explicit, fee-funded
-validator *effort* reward that steers sampling toward under-covered work (the closest analogs are
-subnet-custom validator incentives and slashing, not a coverage bounty). **Us:** dividends **plus** a
-FeePool-funded (`φ·ΣD + ω·ownerCut`) **effort bounty** ∝ verified, coverage-weighted completed trails.
-**Trade-off:** because our *product is the failure data*, we pay directly for the trail volume that produces
-it and steer it to under-sampled providers; the cost is added complexity and an incentive **bounded by the
-fee pool** (with an "(Y)" escalation — routing validator emission through the effort split — held in reserve).
+### 4.14 Validator rewards — ALIGNED (high)
+**Norm:** validators earn **native Yuma dividends** (∝ stake × vtrust) — the standard, effort-agnostic
+Bittensor validator reward. **Us:** exactly that, and **nothing more** — v1 adds no validator-side reward.
+Validators stake α, run the `VALIDATOR.md` trails, score both miner tiers under commit-reveal, and are paid
+**native dividends** flowing straight to their own hotkeys (the contract never custodies validator emission).
+At launch the owner is the **majority validator** (α holdings + the reserve staked to its hotkey, §4.4) with
+an intrinsic motive to run the trail volume — the failure data is the product its network runs on — and
+commit-reveal already forces any dividend-earning validator to run real trails, so native dividends are a
+**sufficient** effort signal for the launch configuration. Whether a richer, coverage-steered validator-effort
+incentive is ever worth adding is an **open question we deliberately leave to a post-launch iteration**,
+informed by what the live network shows about independent-validator coverage — not a v1 design element.
+**Trade-off:** effort-agnostic dividends could in principle let a high-stake validator under-measure, but in
+v1 that high-stake validator **is the owner**, whose business depends on the measurement — so the concern
+only becomes real once the validator set is broadly independent, which is exactly when a future iteration
+would revisit it.
 
-### 4.15 Miner reward basis / demand coupling — NOVEL (medium–high)
-**Norm:** emission *is* the reward, and it is coupled to **token-market/speculative demand** — a subnet's α
-price (or, during the Taoflow interlude, net TAO staking inflows). **The protocol has no on-chain revenue
-oracle and cannot distinguish real usage from speculation.** The single closest precedent is **Chutes (SN64)**,
-which couples revenue only **indirectly**: it funnels platform revenue into an **auto-staking buyback** of its
-own α, nudging the *market* signal — not a deposit that directly weights Yuma. Concretely, Chutes even books
-customer payments to an **off-chain USD ledger** and sets miner emission **separately** via the dTAO market,
-so revenue and miner payout are decoupled by construction. (Independently-verified Chutes external revenue is
-~$1.3–2.4M/yr against a far larger emission subsidy — a ~22–40:1 ratio; the self-reported ~$10M ARR is
-disputed, and Chutes itself purged ~40B tokens/day of unprofitable free traffic in 2026.) **Us:** per-operator **α deposits, sized to real usage at an off-chain reference rate**,
-are the **objective anchor** validators turn into the cross-operator emission split — each weights a pool **`implied_usage × quality`** (implied usage = the NO's epoch deposit ÷ its conviction-tier rate), read off the **on-chain deposit events + a published tier-rate schedule**; the contract weighs nothing (v0.4/D25) — and, after
-the two-tier iteration, this is the rule for the **`1−θ` tail share** (the **head** is deliberately
-demand-agnostic, ranked on **routable-IP breadth**, §4.16, so demand-coupling now governs the tail rather than all 41%). Costly,
-revenue-backed, on-chain demand directly steering miner emission is **without standard precedent on
-Bittensor** — this is our defining bet. **Trade-off:** a harder-to-fake demand signal and emission that
-tracks genuine usage, at the cost of a "pay-to-play" surface (mitigated by the non-refundable `φ` floor +
-independent-validator quality consensus + self-weight mask) and the assumption that deposits ≤ revenue in the
-long run; plus the new θ tension — a larger head dilutes how much emission this signal governs (§4.16, §8).
-[bittensor.com/dtao-whitepaper; coingecko.com/learn/top-bittensor-subnets-dtao]
+### 4.15 Miner reward basis / demand coupling — NOVEL (medium–high), and the field is starting to move here
+**Norm:** emission *is* the reward, and for most subnets it is coupled to **token-market/speculative demand** —
+a subnet's α price (or, during the Taoflow interlude, net TAO staking inflows). **The protocol has no on-chain
+revenue oracle and cannot distinguish real usage from speculation.** But this pass surfaced a **real, growing
+minority that couples emission to genuine usage**, and it moves our claim from "unprecedented" to "leading a
+nascent trend by a *different mechanism*":
+
+- **BlockMachine (SN19) — the nearest neighbor, and a strong one.** Its miner weight is
+  **`ask_i = RU_i × t_i`** — Request Units *actually served to paying customers* times the miner's
+  **self-declared USD price per RU** — normalized against the epoch's α-value of emissions
+  (`scale = min(1, M/ASK)`), with **unearned emission burned**. Customers **pay USD per RU through a
+  protocol-operated gateway**, and — exactly like our reserve — **"for every α paid to miners the protocol
+  buys an equal amount of α on the open market"** into a locked **Protocol Stability Reserve** (a 1:1
+  buy-and-lock buyback). So BlockMachine couples emission to **real metered demand *and* runs the buyback leg**
+  — it is arguably a **closer precedent than Chutes on both counts**.
+- **Chutes (SN64) — indirect.** Funnels platform revenue into an **auto-staking buyback**, nudging the
+  *market* signal only; it books customer payments to an **off-chain USD ledger** and sets miner emission
+  **separately** via the dTAO market, so revenue and payout are decoupled by construction. (Independently-
+  verified external revenue ~$1.3–2.4M/yr against a far larger emission subsidy — a ~22–40:1 ratio; the
+  self-reported ~$10M ARR is disputed.)
+- **Hippius (SN75) — revenue-share, off-Bittensor.** Splits **marketplace revenue 60/30/10** (miners /
+  validators+stakers / treasury) on **its own chain**, and floats its Bittensor miner-vs-validator emission
+  split by **"how much real storage the network holds relative to token emissions"** — a real-usage-indexed
+  split, though of capacity, not customer payment.
+
+**Us — the distinction is *how demand is proven*.** BlockMachine can **directly meter** usage because RPC
+calls are cheap to proxy through a **trusted protocol gateway**; **VPN bandwidth has no such trustless meter**
+(privacy, volume, and no honest party in the path), so we **cannot** price metered work the way SN19 does.
+Instead we make the operator post a **costly, fully-sunk α deposit** as the demand *proxy*: validators turn
+it into the cross-operator split, each weighting a pool **`implied_usage × quality`** (implied usage = the
+NO's epoch deposit ÷ its conviction-tier rate) read off the **on-chain deposit events + a published tier-rate
+schedule**; the contract weighs nothing (v0.4/D25). After the two-tier iteration this governs the **`1−θ`
+tail share** (the **head** is demand-agnostic, ranked on **routable-IP breadth**, §4.16). So the honest verdict
+is now sharper than "no precedent": **demand-coupled emission is an emerging edge of the field** (BlockMachine
+metered, Chutes indirect, Hippius revenue-share), and our specific mechanism — a **costly sunk deposit
+weighting Yuma where usage is unmeterable** — remains **without direct precedent**. The buyback leg is no
+longer field-adjacent either: BlockMachine's 1:1 PSR buyback and Chutes' buy-and-lock both **corroborate**
+our conviction-stake reserve (§4.12). **Trade-off:** a harder-to-fake demand signal at the cost of a
+"pay-to-play" surface (mitigated structurally since v0.3/D23 — the **whole deposit is sunk** into the locked
+reserve, so a wash-deposit round-trip recovers zero — plus independent-validator quality consensus + the
+self-weight mask) and the assumption that deposits ≤ revenue long-run; plus the new θ tension — a larger head
+dilutes how much emission this signal governs (§4.16, §8). *One caution worth carrying forward:* where a
+subnet **can** meter usage (RPC, storage, compute), metered-price coupling (BlockMachine) is cleaner than a
+deposit proxy — our deposit design is the right tool *specifically because bandwidth resists metering*, and
+that's the framing to keep.
+[bittensor.com/dtao-whitepaper; coingecko.com/learn/top-bittensor-subnets-dtao; blockmachine.io/whitepaper; docs.hippius.com/learn/substrate-staking]
 
 ### 4.16 Miner tiering (head / tail) — NOVEL (high)
 **Norm:** the field **consolidates** — Chutes' own docs say *"Never register more than one UID… just add
@@ -364,6 +450,39 @@ tiered above** the pool, and **trustless on-chain** tail payout, anchored by **o
 **gate/sink**, not a per-operator weight on emission; we turn the costly deposit into the **emission-weighting
 signal** itself.
 
+**SN19 — BlockMachine · decentralized RPC / archive-node marketplace.** The subnet now on **netuid 19** (the
+slot Rayon's wound-down *Nineteen* vacated): miners run **blockchain RPC/archive nodes** (Bittensor
+subtensor lite/archive; Ethereum via reth/erigon) behind an **authenticated protocol gateway**, and — the
+part that matters to us — **emission is coupled to real metered demand at a declared price**:
+weight `ask_i = RU_i × t_i` (Request Units *served to paying customers* × the miner's **self-set USD/RU**),
+scaled to the epoch's α-value of emissions with **unearned α burned**, and a **1:1 α buyback into a Protocol
+Stability Reserve** on top. Verification is genuinely rigorous: the gateway checks each response against a
+**trusted state root by Merkle proof in real time**, and independent validators **re-execute sampled queries
+against reference nodes** (mismatch → permanent coldkey ban); settlement is **native α to hotkeys** (no
+contract custody). *Sharpest contrast:* BlockMachine is the **nearest thing to us in the whole field** —
+demand-coupled emission *plus* a buy-and-lock reserve — but it can **directly meter** usage because RPC flows
+through a trusted gateway and its price is a **self-declared bid**; we serve **unmeterable VPN bandwidth**, so
+we replace the meter+bid with a **costly, fully-sunk deposit** as the demand proxy and weight
+`implied_usage × quality` (§4.15). Same destination (emission that answers to real demand, backed by a
+buyback), opposite tool for proving the demand.
+
+**SN75 — Hippius (The Nerve Lab) · decentralized cloud storage / compute.** A **revenue-bearing DePIN** that
+solves *our* four problems — real demand, scale past 256, cryptographic verification of real-world work, and
+reliability rewards — by the **architecturally opposite route: it runs its own L1**. Hippius keeps a Bittensor
+subnet (SN75) only as the α-emission source and pushes **registration, per-node accounting, and settlement
+onto its own Substrate chain** (BABE + staking); storage miners register via a `registration` pallet and
+**never take a Bittensor UID**, sidestepping the 256 cap entirely. Miners are scored on **measured service —
+`70% bandwidth-served + 30% storage-held`, each on a log2 diminishing-returns curve, × uptime** — not raw
+capacity; storage is proven **cryptographically** (its "Arion" layer's **"Warden" service issues Plonky3 ZK
+proof-of-storage** against Reed-Solomon shards, `k=10/m=20`); rewards **auto-stake** to the owner every ~6h on
+Hippius's chain (no claim, no EVM custody, no Merkle); and **marketplace revenue is shared 60/30/10** with a
+**credit-based** payment layer. It even soft-pools and soft-tiers: weights are per **account "family"**, only
+the **top 10 nodes** count with **80% geometric decay**. *Sharpest contrast:* Hippius and UR want the same
+things, but Hippius **forks a chain** to get them (own L1 for accounting + native economic enforcement),
+whereas UR **stays entirely inside Bittensor** — one 256-UID metagraph + the Subtensor EVM + Merkle claims —
+inheriting Bittensor's security/liquidity instead of bootstrapping a second chain, and coupling demand through
+a **costly deposit** rather than a **capacity-indexed split + revenue-share**.
+
 **SN26 — Storb (storage, referenced).** S3-like object storage verified by **Proof-of-Data-Possession + erasure
 coding** — an example of cryptographic verification where the work is intrinsically checkable, the rigor bar we
 target for routing.
@@ -381,10 +500,13 @@ Each divergence is intentional. Stated as *bet → risk accepted*.
 
 1. **Deposit-weighted emission (the headline).** *Bet:* a costly, revenue-backed deposit is a harder-to-fake
    demand signal than measured output alone, and auctioning the emission subsidy to real usage makes the
-   cross-operator split track genuine demand — something no Bittensor subnet does on-chain today (Chutes only
-   approximates it via buyback). *Risk:* "pay-to-play" optics and wash/self-deposits — mitigated by the
-   non-refundable `φ` floor (a hard cost that never round-trips), quality consensus by **independent**
-   validators, and the self-weight mask; and the assumption that `deposit ≤ revenue` long-run. After the
+   cross-operator split track genuine demand. A small but growing minority now couples emission to real usage —
+   **BlockMachine (SN19)** meters priced RPC work directly, **Chutes** approximates it via buyback — but our
+   mechanism (a **costly sunk deposit** as the demand proxy, for a service that **can't be metered** trustlessly)
+   is still without direct precedent (§4.15). *Risk:* "pay-to-play" optics and wash/self-deposits — mitigated
+   structurally: since v0.3 (D23) the **entire deposit is sunk** (locked into the compounding reserve, never
+   distributed), so the round-trip recovers zero; plus quality consensus by **independent** validators and
+   the self-weight mask; and the assumption that `deposit ≤ revenue` long-run. After the
    two-tier iteration this bet lives in the **`1−θ` tail** (the head is ranked on routable-IP breadth), so the share of emission
    it governs is now set by θ (bet #2).
 
@@ -413,17 +535,13 @@ Each divergence is intentional. Stated as *bet → risk accepted*.
    strictly more trust-minimizing than the discretionary off-chain norm. *Risk:* intra-tail quality is not
    *directly* Yuma-scored (we lean on auditable payout lists + reputation); more on-chain surface.
 
-5. **Explicit validator effort bounty.** *Bet:* native dividends are effort-agnostic, but our **product is the
-   failure-data**, so effort must be paid for directly and steered (coverage-weighting) to under-sampled
-   providers. *Risk:* the bounty is bounded by the fee pool; if too thin, validators could coast — hence the
-   `(Y)` escalation (route validator emission through the effort split) held in reserve.
-
-6. **Cryptographic verification of a real-world service.** *Bet:* verifiable proofs beat the heuristic
-   (geo-IP/latency) verification used by bandwidth/VPN peers, and match the field's verifiable-compute trend.
+5. **Cryptographic verification of a real-world service.** *Bet:* verifiable proofs beat the heuristic
+   (geo-IP/latency) verification used by bandwidth/VPN peers, and match the field's verifiable-compute trend
+   (now including Hippius's ZK proof-of-storage and BlockMachine's Merkle-proof + re-execution).
    *Risk:* v1 proves **liveness, not honest-relay**; closing that gap (Sybil resistance, proof-of-routing,
    destination diversity) is an explicit roadmap, and rewards stay provisional until then.
 
-7. **Off-chain reference rate instead of an on-chain oracle.** *Bet:* usage is self-reported and unverifiable
+6. **Off-chain reference rate instead of an on-chain oracle.** *Bet:* usage is self-reported and unverifiable
    on-chain, so an on-chain oracle would have no enforcement power; the **costly deposit**, not the published
    rate, is the real signal. *Risk:* the rate is a governance-published off-chain input — but its abuse is
    bounded because deposits cost real α regardless of the rate.
@@ -433,10 +551,16 @@ Each divergence is intentional. Stated as *bet → risk accepted*.
 **signed-proof identity pattern**) and we concentrate our novelty on the places our first principles demand
 it: **making emission answer to real demand** (now in the tail), **tiering a native merit head above a
 trustlessly-settled pooled tail**, and **paying a 100k-provider real-world network trustlessly**. The field's
-own trajectory — toward verifiable proofs, toward DePIN, toward EVM economic primitives (collateral today) and
-pooled off-chain fleets — is moving *in our direction*; we are ahead of it on demand-coupling, on tiering, and
-on on-chain settlement, and we accept the corresponding complexity and verification-hardness as the price of
-those bets.
+own trajectory — toward verifiable proofs (now including **Hippius's ZK proof-of-storage** and **BlockMachine's
+Merkle-proof + re-execution**), toward **revenue-bearing DePIN** (Hippius storage, BlockMachine RPC), toward
+**demand-coupled emission and buy-and-lock reserves** (BlockMachine's metered `RU×price` + 1:1 buyback is the
+nearest neighbor to our design), and toward EVM economic primitives and pooled off-chain fleets — is moving
+*in our direction*, and faster than the last pass showed. We are still ahead of it on **deposit-as-demand-proxy
+for unmeterable work**, on **tiering**, and on **trustless in-metagraph on-chain settlement** — where the
+field's alternative (Hippius) is to **fork its own L1** — and we accept the corresponding complexity and
+verification-hardness as the price of those bets. The honest adjustment from this pass: "no one couples
+emission to real demand" is no longer true — so the claim is now the sharper, still-defensible one that **no one
+does it by our *mechanism*, for our *hardest-to-verify* class of work**.
 
 ---
 
@@ -472,6 +596,8 @@ those bets.
 
 **Revenue / demand coupling:**
 - Chutes revenue→buyback (secondary/blog) — https://www.coingecko.com/learn/top-bittensor-subnets-dtao · https://ownyourmind.ai/tokenomics/bittensor-subnets-where-the-revenue-is/ · https://pineanalytics.substack.com/p/the-bear-case-for-bittensor-tao (disputes self-reported ARR)
+- BlockMachine (SN19) metered `RU×USD/RU` emission + 1:1 α buyback → Protocol Stability Reserve (primary) — https://blockmachine.io/whitepaper · https://blockmachine.io/technology (verified 2026-07-04; SN19 = "decentralized RPC and archive node network", https://taostats.io/subnets/19)
+- Hippius (SN75) marketplace revenue-share 60/30/10 + credit-based payment (primary) — https://docs.hippius.com/learn/substrate-staking
 
 **Per-subnet (primary repos/docs):**
 - SN1 Apex — https://docs.macrocosmos.ai/subnets/subnet-1-apex · https://github.com/macrocosm-os/apex
@@ -485,11 +611,15 @@ those bets.
 - SN65 TPN — https://github.com/taofu-labs/tpn-subnet
 - SN56 Gradients — https://github.com/rayonlabs/G.O.D (miner docs)
 - SN26 Storb — https://github.com/storb-tech/storb
+- SN19 BlockMachine — https://blockmachine.io/whitepaper · https://github.com/taostat/blockmachine (netuid 19 confirmed via https://taostats.io/subnets/19 — the RPC/archive subnet now on the slot Rayon's *Nineteen* vacated)
+- SN75 Hippius (The Nerve Lab) — https://taostats.io/subnets/75 · https://docs.hippius.com/learn/weights · https://github.com/thenervelab/thebrain (own Substrate L1) · https://github.com/thenervelab/arion (Iroh + Reed-Solomon + Plonky3 ZK proof-of-storage "Warden")
 
 > **Reproduce / extend:** the verdicts above feed `diagrams/comparison_matrix.py`. Open items to re-confirm
 > before relying on standings: live mid-2026 emission/market-cap ranks (volatile, JS-gated); per-subnet
-> commit-reveal/Liquid-Alpha enablement; whether any subnet has shipped an effort-style validator bounty since
-> this was written.
+> commit-reveal/Liquid-Alpha enablement; and a full 3-vote adversarial re-verification of the **BlockMachine/Hippius mechanism**
+> claims (this pass hand-checked them against primary sources after the automated verify stage was interrupted —
+> identity/status are taostats-confirmed, but e.g. BlockMachine's UID-topology / 256-cap handling is
+> **unstated in its whitepaper** and Hippius's Bittensor-side validator count is inferential).
 
 ---
 
@@ -506,14 +636,17 @@ watch — the head/tail share θ** (it can dilute the very demand-coupling that 
 
 ### 8.1 What "following the leader" would actually mean
 
-The leaders share a pathology we would be *adopting*, not escaping: emission is **decoupled from real demand**
+Most leaders share a pathology we would be *adopting*, not escaping: emission is **decoupled from real demand**
 (~20–40× emission-to-revenue subsidy, even at Chutes); rewards are **stake-dominated, not quality-driven**
 (stake↔reward correlation ~0.80–0.95 vs performance ~0.50, arXiv 2507.02951); scoring is **frequently gamed**
 (SN1's envelope exploit, SN13's 15 anti-exploit resets, LLM-judge attacks); and control planes are
 **operationally centralized**. Those designs are excellent *for their objective* — "emission is the product,
 token price is the scoreboard." Our objective differs: we are an incentive layer for a **real business with
-real revenue and 100k real providers**. Copying a demand-decoupled design to look normal would throw away the
-rarest asset on Bittensor — actual paying demand. That is conservatism in the wrong place.
+real revenue and 100k real providers**. Real paying demand is no longer *unique* on Bittensor — this pass found
+a growing revenue-bearing minority (**Hippius** sells storage, **BlockMachine** sells RPC, Chutes sells
+inference), and **BlockMachine even couples emission to it directly** — but it is still **rare**, and coupling
+emission to it for a service you **can't meter trustlessly** is rarer still. Copying a demand-decoupled design
+to look normal would throw away our scarcest asset. That is conservatism in the wrong place.
 
 The operative rule: **conserve the plumbing, innovate the economics** — which is precisely what the matrix
 shows we do (11 of 16 decisions are straight best-practice).
@@ -524,16 +657,24 @@ We do not fork Yuma, change the 18/41/41 split, invent a consensus, or replace t
 novelty is spent on economics, none on the battle-tested safety machinery. This is the correct risk-budget
 allocation; leave it alone.
 
-### 8.3 The four bets, ranked by risk
+### 8.3 The three bets, ranked by risk
 
 **1. Deposit-weighted emission — highest conviction *and* highest risk. Keep it; red-team it hardest.**
-The right bet *because* we have real revenue almost no one else does, and a costly, revenue-backed deposit is
-Sybil-resistant where measured-output scoring is cheap to fake. The sharpest critique to respect: the field is
-already criticized for capital-beating-merit, and `implied_usage × quality` leans into capital-weighting. Our
-defense is real — our capital is **productive and revenue-bounded** (non-refundable `φ`, sized to usage), not
-speculative stake — but it holds only if **(a)** `φ` is high enough and independent validators numerous/honest
-enough to make wash-deposits unprofitable, and **(b)** quality `Q_n` genuinely bites at maturity rather than
-collapsing to "biggest depositor wins." Both are tunable, and our bootstrap ramp (cap quality early, widen as
+The right bet *because* we have real revenue (rarer than it looks, even if no longer unique — see §8.1), and a
+costly, revenue-backed deposit is Sybil-resistant where measured-output scoring is cheap to fake. A new
+data-point sharpens the bet rather than undercutting it: **BlockMachine (SN19)** proves demand-coupled emission
+*works on-chain today* — but it can only do so because RPC is **meterable through a trusted gateway**; our
+deposit design exists **precisely because bandwidth isn't**, so BlockMachine is validation of the *goal* and a
+reminder of *why our tool differs*, not a cheaper path we're ignoring (§4.15). The sharpest critique to respect:
+the field is already criticized for capital-beating-merit, and `implied_usage × quality` leans into
+capital-weighting. Our
+defense is real — our capital is **productive and revenue-bounded** (the deposit is fully sunk into the locked
+reserve, sized to usage), not speculative stake — and since v0.3 (D23) the wash-deposit **round-trip is closed
+structurally** (recovery through the payout channel is zero; a higher conviction tier costs *more* locked
+capital, not less). What remains is the *steering* channel, and it holds only if **(a)** independent
+validators are numerous/honest enough that quality consensus can't be captured, and **(b)** quality `Q_n`
+genuinely bites at maturity rather than collapsing to "biggest depositor wins." Both are tunable, and our
+bootstrap ramp (cap quality early, widen as
 validators mature) is the right *conservative-within-the-novel* move. Note the iteration narrows this bet's
 reach to the `1−θ` tail (see #2). Action item: **instrument the deposit:quality balance explicitly**, and
 treat self-dealing as something to empirically disprove, not argue away on paper.
@@ -566,25 +707,26 @@ itself stays **upgradeable + owner-multisig + guardian** for v1 — normal bug-f
 and is progressively locked down (`WHITEPAPER.md` §6.4). The earlier "start TPN-style off-chain and add the
 claim later" fallback is **rejected**.
 
-**4. Validator effort bounty — additive, low blast-radius. Keep and tune.**
-It does not touch Yuma; if it underperforms we adjust `φ`/`ω` or escalate to (Y). It targets a real gap the
-field does not have: our measurement (walking provider chains) is expensive and **coverage** matters, so
-dividends-only would let validators coast on a thin sample. Safest of the four — no reason to drop it.
-
 ### 8.4 The risks that actually decide this (not mechanism soundness)
 
 Two execution risks dwarf the design ones: **(1) dTAO emission tracks alpha price = market perception** — a
 mechanism the market can't easily value can mean lower price → lower emission → less provider subsidy; our
 real-revenue story is a *better* narrative, but only if we sell it. **(2) Validator recruitment** —
-independent validators must run our bespoke `VALIDATOR.md` protocol, a heavier lift than generic validating;
-the effort bounty helps, but validator go-to-market is where bespoke designs usually struggle.
+independent validators must run our bespoke `VALIDATOR.md` protocol, a heavier lift than generic validating.
+v1 sidesteps this by construction (the owner-majority validator runs the volume, D23), but that only *defers*
+the go-to-market: a later phase — when the quality-swing ramp needs an owner-independent baseline — has to
+actually recruit independent validators (re-delegating reserve slices is the lever, and a coverage-steered
+validator-effort incentive is one thing a next iteration could add if the live network shows it is needed),
+and bespoke designs usually struggle exactly there.
 
 ### 8.5 Bottom line
 
 Stay conservative on the consensus plumbing (we are), stay aggressive on demand-coupling (it is our edge), and
 concentrate validation on the genuine unknowns — the **deposit-vs-quality balance / self-dealing defense**,
 the **head/tail share θ** (how much of the 41% stays demand-coupled vs. flows to the IP-breadth head, and
-whether it weakens NO deposits). **No-custody + trustless on-chain payout is now locked as a v1 must-have**
+whether it weakens NO deposits), and the **owner-majority → independent-validator handoff** (the reserve
+deliberately compounds the owner's consensus seat, D23; decentralizing it is a budgeted step, its lever
+re-delegating reserve slices). **No-custody + trustless on-chain payout is now locked as a v1 must-have**
 (§8.3), not an open question.
 Divergence here is a considered bet with a named trade-off, not a deficiency — and on our first principles, it
 is the right one.

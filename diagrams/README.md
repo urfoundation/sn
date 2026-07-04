@@ -53,7 +53,9 @@ Companion to `COMPARISON.md`. A color-coded, at-a-glance matrix of the major des
 with the **Bittensor majority pattern** and **UR Subnet direction** side by side, each row tagged
 **ALIGNED** (green) / **DIVERGENT** (amber) / **NOVEL** (purple). The visual story: a large green
 block (we follow the Bittensor core), a small amber block (intentional divergences), and **two** purple
-rows (the novel **demand-coupling** and **head/tail-tiering** bets). Tally: **11 aligned · 3 divergent · 2 novel** (16 rows).
+rows (the novel **demand-coupling** and **head/tail-tiering** bets). Tally: **11 aligned · 3 divergent · 2 novel**
+(16 rows) — though one divergence (the **validator effort bounty**, row 14) is **deferred out of v1**, so v1 *as
+shipped* reads 12 aligned · 2 divergent · 2 novel (`COMPARISON.md` §3).
 
 | File | Use |
 |---|---|
