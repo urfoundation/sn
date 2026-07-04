@@ -1,4 +1,4 @@
-package main
+package validator
 
 // identity.go — the validator's identity bundle (PLAN.md §7.2):
 //

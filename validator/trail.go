@@ -1,4 +1,4 @@
-package main
+package validator
 
 // trail.go — the trail engine (VALIDATOR.md §§3–6; PLAN.md §7.2): walk
 // server-assigned chains of providers through per-hop egress-pinned tunnels,

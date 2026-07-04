@@ -1,4 +1,4 @@
-package main
+package validator
 
 // Weight-pipeline tests (v0.4, D25+D27): the TAIL is implied_usage × quality
 // and the HEAD is each fleet's split-adjusted routable-IP score → θ split →

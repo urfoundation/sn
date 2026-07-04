@@ -1,4 +1,4 @@
-package main
+package validator
 
 // chain.go — the validator's EVM chain client (PLAN.md §7.2 / §11.1):
 // ordered-failover ethclient dialing + STSubnet reads/writes through the

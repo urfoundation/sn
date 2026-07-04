@@ -1,5 +1,7 @@
 **/.DS_Store
 
-validator/validator
+cli/miner/miner
+cli/validator/validator
+cli/snclaim/snclaim
 
 evm/lib

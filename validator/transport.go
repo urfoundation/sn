@@ -1,4 +1,4 @@
-package main
+package validator
 
 // transport.go — the production TrailTransport: for each hop, an
 // egress-pinned tunnel is opened through exactly that provider and the

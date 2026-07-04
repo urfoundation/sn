@@ -1,4 +1,4 @@
-package main
+package validator
 
 // Chain-client tests that need no live chain: endpoint failover against
 // minimal JSON-RPC stubs, and the hand-encoded metagraph calldata against

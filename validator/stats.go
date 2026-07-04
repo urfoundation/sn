@@ -1,4 +1,4 @@
-package main
+package validator
 
 // stats.go — per-provider statistics (VALIDATOR.md §7, §11.1).
 //

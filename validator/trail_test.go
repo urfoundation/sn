@@ -1,4 +1,4 @@
-package main
+package validator
 
 // Protocol-logic tests against an in-memory mock of the /verify server
 // (VALIDATOR.md §4). The mock implements the full server side — source-hop

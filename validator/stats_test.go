@@ -1,4 +1,4 @@
-package main
+package validator
 
 // Statistics math tests (VALIDATOR.md §7): Wilson bound reference values,
 // EMA folding, a_min gating, latency buckets, persistence.

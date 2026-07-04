@@ -1,4 +1,4 @@
-package main
+package validator
 
 // steer.go — the validator's second job (VALIDATOR.md §0.5/§11, WHITEPAPER
 // §8.5/§10): each tempo, turn the per-provider statistics into ONE u16

@@ -1,4 +1,4 @@
-package main
+package validator
 
 // Identity bundle tests: vpk seed persistence, EVM key loading (stctl
 // format), mirror ss58 derivation.
