@@ -1,6 +1,6 @@
-# UR BitTensor subnet incentives and design
+# UR Bittensor subnet incentives and design
 
-We are building a new BitTensor subnet to run a decentralized privacy network with the components below.
+We are building a new Bittensor subnet to run a decentralized privacy network with the components below.
 
 
 ## Explanation of components
@@ -9,7 +9,7 @@ Block size: 7 days
 Subnet contract accumulates payments and emissions over the course of the block, to be distributed at the end of the block.
 The payout from the subnet contract is weighted by the payment of the network operator over the total payments, and then distributes the balance according to each network operator's distribution.
 
-Network operator: runs the servers. Each network operator has a mining slot and a validator slot on the BitTensor subnet, which are pooled rewards for their attached miners and validators. The network operator determines the payout from their mining slots. The network operator pays into the subnet contract per used GB and active user (per month) based on the global fixed rate. 
+Network operator: runs the servers. Each network operator has a mining slot and a validator slot on the Bittensor subnet, which are pooled rewards for their attached miners and validators. The network operator determines the payout from their mining slots. The network operator pays into the subnet contract per used GB and active user (per month) based on the global fixed rate. 
 Miner: connects to one or more network operators simultaneously. Providers provide egress and ingress traffic. Miners accumulate contracts, issued by the network operator. Miners accumulate reliability, issues by the network operator.
 Validator: connects to one or more network operators. Follows the validation protocol described in VALIDATOR.md. Accumulates signed validated paths from the network operator.
 
@@ -39,8 +39,8 @@ Open questions:
 
 ## Design goals
 
-We want to build BitTensor smart contract and emission schedule to run this subnet. It should follow the best practice and payout formulas established by the BitTensor community.
+We want to build Bittensor smart contract and emission schedule to run this subnet. It should follow the best practice and payout formulas established by the Bittensor community.
 
-Spend extra time on deep research so that we capture the current state of BitTensor accurately.
+Spend extra time on deep research so that we capture the current state of Bittensor accurately.
 
 Create a WHITEPAPER.md that desribes in detail enough that it can be clearly implemented how this subnet will work.

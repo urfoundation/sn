@@ -21,7 +21,7 @@ The diagram also shows the ST contract internals (**deposits are conviction stak
 Merkle payout roots, and the **buyback reserve** (every deposit staked + locked, §7.4); the provider
 lifecycle (start in a pool → graduate to a top slot → fall back if it slips); native validator
 dividends; and the off-chain `VALIDATOR.md` measurement trails. (The fee-funded effort bounty is
-deferred out of v1, §9.3.)
+out of v1 scope, §9.3/D29.)
 
 | File | Use |
 |---|---|
@@ -53,9 +53,9 @@ Companion to `COMPARISON.md`. A color-coded, at-a-glance matrix of the major des
 with the **Bittensor majority pattern** and **UR Subnet direction** side by side, each row tagged
 **ALIGNED** (green) / **DIVERGENT** (amber) / **NOVEL** (purple). The visual story: a large green
 block (we follow the Bittensor core), a small amber block (intentional divergences), and **two** purple
-rows (the novel **demand-coupling** and **head/tail-tiering** bets). Tally: **11 aligned · 3 divergent · 2 novel**
-(16 rows) — though one divergence (the **validator effort bounty**, row 14) is **deferred out of v1**, so v1 *as
-shipped* reads 12 aligned · 2 divergent · 2 novel (`COMPARISON.md` §3).
+rows (the novel **demand-coupling** and **head/tail-tiering** bets). Tally: **12 aligned · 2 divergent · 2 novel**
+(16 rows) — the **validator effort bounty is out of v1 scope** (D29), so validator rewards read as **aligned**
+(native dividends only; `COMPARISON.md` §3).
 
 | File | Use |
 |---|---|

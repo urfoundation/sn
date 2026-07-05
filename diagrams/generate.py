@@ -152,7 +152,7 @@ card(1560,150,300,86,OFF,"Subnet owner",
      ["18% owner cut. Runs the majority","validator early; the reserve backs it."],bsize=11.5)
 # Independent validators (right)
 card(1560,256,300,178,EVAL,"Validators  (owner-majority v1)",
-     ["anyone who stakes own α, runs","/verify trails — no NO, no pool;","scores BOTH miner tiers.","native dividends (stake × vtrust);","effort bounty: deferred phase (§9.3).","anti-gaming ON: commit–reveal,","clip + vtrust · self-mask · bonds"],bsize=11)
+     ["anyone who stakes own α, runs","/verify trails — no NO, no pool;","scores BOTH miner tiers.","native dividends (stake × vtrust);","effort bounty: out of scope (D29).","anti-gaming ON: commit–reveal,","clip + vtrust · self-mask · bonds"],bsize=11)
 # Yuma + theta split node (right, below validators) — the heart of the split
 card(1560,454,300,188,EVAL,"Yuma  +  θ split",
      ["stake-weighted median + clip +","vtrust over commit–reveal weights","— real, independent consensus.","",
