@@ -1,5 +1,5 @@
 # sn
-BitTensor Subnet
+Bittensor Subnet
 
 
 
