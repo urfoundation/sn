@@ -18,9 +18,9 @@ require (
 
 // validator (and miner) import connect; connect imports glog. Replaces in a
 // dependency's go.mod are ignored, so the main module declares both.
-replace github.com/urnetwork/connect => ../../urnetwork/connect
+replace github.com/urnetwork/connect => ../connect
 
-replace github.com/urnetwork/glog => ../../urnetwork/glog
+replace github.com/urnetwork/glog => ../glog
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
