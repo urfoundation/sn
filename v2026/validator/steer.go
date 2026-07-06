@@ -61,7 +61,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 
 	"github.com/urnetwork/sn/crv4"
 )

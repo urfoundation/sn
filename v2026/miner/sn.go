@@ -33,7 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 
 	"github.com/urnetwork/sn/merkle"
 	"github.com/urnetwork/sn/miner/onchain"

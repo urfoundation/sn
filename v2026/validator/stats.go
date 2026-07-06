@@ -53,7 +53,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // statsLatencyBuckets is the number of log2 latency buckets. Bucket i

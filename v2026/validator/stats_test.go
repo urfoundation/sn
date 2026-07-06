@@ -7,7 +7,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Reference values computed independently (python, the closed-form Wilson

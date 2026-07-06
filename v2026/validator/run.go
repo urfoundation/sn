@@ -34,7 +34,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 const DefaultApiUrl = "https://api.bringyour.com"

@@ -256,6 +256,10 @@ github.com/tklauser/numcpus v0.6.1 h1:ng9scYS7az0Bk4OZLvrNXNSAO2Pxr1XXRAPyjhIx+F
 github.com/tklauser/numcpus v0.6.1/go.mod h1:1XfjsgE2zo8GVw7POkMbHENHzVg3GzmoZ9fESEdAacY=
 github.com/urfave/cli/v2 v2.27.5 h1:WoHEJLdsXr6dDWoJgMq/CboDmyY/8HMMH1fTECbih+w=
 github.com/urfave/cli/v2 v2.27.5/go.mod h1:3Sevf16NykTbInEnD0yKkjDAeZDS0A6bzhBH5hrMvTQ=
+github.com/urnetwork/connect/v2026 v2026.7.5-985168150 h1:aLMQ46R8N75Jm+ZnEB5eMF6DeZXERkN/LBoNMKWqkG8=
+github.com/urnetwork/connect/v2026 v2026.7.5-985168150/go.mod h1:FVWkdM7kZ+d7TDO/77d5vtnXfsanpD0s9xrom1IDK6o=
+github.com/urnetwork/glog/v2026 v2026.7.5-985168150 h1:eUqZyn2Hh5G6Chlaqp0S5slhvoMnS0smtpZUha2anhA=
+github.com/urnetwork/glog/v2026 v2026.7.5-985168150/go.mod h1:X77XqzsL9XxcDl8+FlcXqssBOec+d0oGcHthz20+0MM=
 github.com/vedhavyas/go-subkey/v2 v2.0.0 h1:LemDIsrVtRSOkp0FA8HxP6ynfKjeOj3BY2U9UNfeDMA=
 github.com/vedhavyas/go-subkey/v2 v2.0.0/go.mod h1:95aZ+XDCWAUUynjlmi7BtPExjXgXxByE0WfBwbmIRH4=
 github.com/wlynxg/anet v0.0.5 h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=

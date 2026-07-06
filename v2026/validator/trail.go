@@ -52,7 +52,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // TrailTransport posts one signed /verify body through the given provider
