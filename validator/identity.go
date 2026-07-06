@@ -32,8 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/sn/crv4"
-	"github.com/urnetwork/sn/ss58"
+	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/ss58"
 )
 
 const vpkSeedFileName = ".validator.key"

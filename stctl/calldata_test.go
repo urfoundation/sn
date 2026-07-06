@@ -9,8 +9,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/sn/ss58"
-	"github.com/urnetwork/sn/stabi"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // mustHex decodes a hex string built from concatenated calldata words.

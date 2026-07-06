@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/sn/ss58"
+	"github.com/urfoundation/sn/ss58"
 )
 
 // TestFormatAlpha pins the rao <-> alpha rendering (1 alpha = 1e9 rao).

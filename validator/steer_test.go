@@ -13,7 +13,7 @@ import (
 
 	"github.com/urnetwork/connect"
 
-	"github.com/urnetwork/sn/crv4"
+	"github.com/urfoundation/sn/crv4"
 )
 
 // stubHeadReader is an injected HeadBindingReader for the head-tier tests: a

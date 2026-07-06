@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/sn/ss58"
+	"github.com/urfoundation/sn/ss58"
 )
 
 // TestParseColdkeyAlice checks the ss58 <-> hex32 equivalence on the Alice

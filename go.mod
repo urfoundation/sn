@@ -1,4 +1,4 @@
-module github.com/urnetwork/sn
+module github.com/urfoundation/sn
 
 go 1.26.3
 

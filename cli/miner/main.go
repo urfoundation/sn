@@ -1,5 +1,5 @@
 // Command miner is the thin CLI entry point for the miner library
-// (github.com/urnetwork/sn/miner) — the subnet's provider node (formerly
+// (github.com/urfoundation/sn/miner) — the subnet's provider node (formerly
 // connect/provider). All logic lives in the library so it is importable and
 // testable; this executable only forwards os.Args.
 package main
@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/urnetwork/sn/miner"
+	"github.com/urfoundation/sn/miner"
 )
 
 func main() {

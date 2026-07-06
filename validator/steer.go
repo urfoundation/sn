@@ -63,7 +63,7 @@ import (
 
 	"github.com/urnetwork/connect"
 
-	"github.com/urnetwork/sn/crv4"
+	"github.com/urfoundation/sn/crv4"
 )
 
 // PoolWeightInput is one NO pool's steering inputs for a tempo. The pool term

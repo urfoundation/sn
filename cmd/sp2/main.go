@@ -14,7 +14,7 @@ import (
 
 	"github.com/docopt/docopt-go"
 
-	"github.com/urnetwork/sn/crv4"
+	"github.com/urfoundation/sn/crv4"
 )
 
 const usage = `sp2 - CRv4 (commit-reveal v4) conformance harness for the UR subnet.

@@ -10,9 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urnetwork/sn/merkle"
-	"github.com/urnetwork/sn/ss58"
-	"github.com/urnetwork/sn/stabi"
+	"github.com/urfoundation/sn/merkle"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // stringOpt returns a docopt option value, "" when absent.

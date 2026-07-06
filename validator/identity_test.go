@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/urnetwork/sn/ss58"
+	"github.com/urfoundation/sn/ss58"
 )
 
 func TestVpkSeedCreateAndReload(t *testing.T) {

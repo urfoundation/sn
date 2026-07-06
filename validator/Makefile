@@ -14,7 +14,7 @@ build:
 		os=$${osarch%/*}; arch=$${osarch#*/}; \
 		echo "building $$os/$$arch"; \
 		env CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
-			go build -trimpath -ldflags "-w -s -X github.com/urnetwork/sn/validator.Version=$(VALIDATOR_VERSION)" \
+			go build -trimpath -ldflags "-w -s -X github.com/urfoundation/sn/validator.Version=$(VALIDATOR_VERSION)" \
 			-o build/$$os/$$arch/validator ../cli/validator ; \
 	done
 

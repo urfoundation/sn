@@ -34,7 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/crypto/sha3"
 
-	"github.com/urnetwork/sn/stabi"
+	"github.com/urfoundation/sn/stabi"
 )
 
 const (

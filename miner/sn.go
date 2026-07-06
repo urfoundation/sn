@@ -35,10 +35,10 @@ import (
 
 	"github.com/urnetwork/connect"
 
-	"github.com/urnetwork/sn/merkle"
-	"github.com/urnetwork/sn/miner/onchain"
-	"github.com/urnetwork/sn/ss58"
-	"github.com/urnetwork/sn/stabi"
+	"github.com/urfoundation/sn/merkle"
+	"github.com/urfoundation/sn/miner/onchain"
+	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/stabi"
 )
 
 // stSubnet holds the shared abigen packers/unpackers for STSubnet: the

@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/urnetwork/sn/ss58"
+	"github.com/urfoundation/sn/ss58"
 )
 
 // blockTimeSeconds is the subtensor block time used for window ETAs.
