@@ -701,7 +701,7 @@ only genuinely optional piece is **trustless on-chain Merkle payout vs. the fiel
 workers off-chain at discretion** (TPN, ComputeHorde). That question is now **resolved and locked: no-custody +
 trustless on-chain provider payout is a v1 must-have**, not a v2 hardening — for a decentralized privacy
 network, providers must not have to trust an operator to be paid. Crucially this is *no-custody in spirit*,
-**not** contract immutability: the **foundation and NOs never hold or distribute α** (the contract is the sole
+**not** contract immutability: the **owner and NOs never hold or distribute α** (the contract is the sole
 custodian and pays out only by on-chain pull claims, `transferStake`; the head is native), while the contract
 itself stays **upgradeable + owner-multisig + guardian** for v1 — normal bug-fix latitude for a new subnet —
 and is progressively locked down (`WHITEPAPER.md` §6.4). The earlier "start TPN-style off-chain and add the

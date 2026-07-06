@@ -67,7 +67,7 @@ tail‑weighted (**θ ≈ 0.3**) and widen it as the top‑miner set and validat
 
 ### Custody and trust model
 
-- **No‑custody in spirit.** The foundation and NOs never hold or distribute anyone else's α.
+- **No‑custody in spirit.** The owner and NOs never hold or distribute anyone else's α.
   The contract is the sole custodian of in‑transit α; every pool payout is a **direct
   on‑chain pull claim**; the head is paid **natively**.
 - **Finalized claims are sacrosanct** from day one — no upgrade, pause, or admin action can

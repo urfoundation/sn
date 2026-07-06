@@ -321,7 +321,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
 
 | Design role (`seed/INCENTIVES.md`) | On‑chain identity | Notes |
 |---|---|---|
-| **Subnet owner** (UR Foundation) | owner coldkey + owner hotkey at **UID 0** (immune); deploys & governs the ST contract; operates the **reserve validator hotkey** (§7.4) | receives the 18% owner cut; the **majority validator** in the early network (§9.2); the governance **referee** (§9.6). |
+| **Subnet owner** (BringYour, Inc.) | owner coldkey + owner hotkey at **UID 0** (immune); deploys & governs the ST contract; operates the **reserve validator hotkey** (§7.4) | receives the 18% owner cut; the **majority validator** in the early network (§9.2); the governance **referee** (§9.6). |
 | **Network Operator (NO)** | a contract registration (`noId`) with **one miner‑pool UID** (its providers, contract‑owned). Holds **no emission**; runs no validator. | a per‑NO *pool operator*: deposits; runs the `/verify` server (co‑signs trails); commits the Merkle payout root that splits its miner pool. Directs flow; the contract holds and pays. |
 | **Provider (miner)** | a `client_id` **inside** a NO's miner pool — **not a UID** (100k+ providers can't each be a UID) | carries traffic; **claims its α directly from the contract** with a Merkle proof against its NO's payout root. The **on-ramp / tail** tier; can **graduate** to a top-level slot (§8.4). |
 | **Top-level miner (head)** | **its own miner UID**; a **fleet** — its `client_id`s **bound to its hotkey** (§11.4) | the **supply apex**: the top ~200 fleets by **split-adjusted distinct routable egress-IP count**, steered **directly** by validators (`weight = score`); **native** emission to its own coldkey — no contract custody, no Merkle claim; maintained by deregistration churn (§8.4). |
@@ -435,7 +435,7 @@ UIDs and captures their incentive), and the **settlement/claims** engine. It is 
 validator — **independent validators** (§9) set the weights and earn dividends natively; the contract
 holds and pays out the **miner emission only** (an effort bounty is out of scope, §9.3/D29).
 
-**No-custody is a v1 must-have — in spirit, not immutability (D21).** The *foundation and NOs never hold or
+**No-custody is a v1 must-have — in spirit, not immutability (D21).** The *owner and NOs never hold or
 distribute α*: the contract is the sole custodian of in-transit α and every payout is a **direct on-chain
 pull claim** (`transferStake`), with the **head paid natively** (§8.4). All α moves on-chain; no person ever
 holds participants' α in an off-chain wallet. This property is required at v1 — but it does **not** mean the
@@ -447,7 +447,7 @@ latitude) and is progressively locked down (§6.4).
 ```solidity
 uint16  public netuid;
 bytes32 public treasuryHotkey;         // contract's own hotkey for staking idle/treasury α (NOT the subnet validator)
-address public owner;                  // UR Foundation governance (multisig)
+address public owner;                  // BringYour, Inc. governance (multisig)
 uint256 public epoch;                  // current epoch index e
 uint64  public epochStartBlock;        // start of current epoch
 uint64  public constant T_EPOCH = 50_400;
@@ -566,7 +566,7 @@ The reserve is publicly auditable every block: `getStake(reserveHotkey)` vs. `bu
 
 #### 6.4.1 Phase 0 — Launch (central control, fast bug‑fixes)
 
-- **Owner = an M‑of‑N multisig** (UR Foundation + signers): the proxy admin and holder of every
+- **Owner = an M‑of‑N multisig** (BringYour, Inc. + signers): the proxy admin and holder of every
   privileged role.
 - **Upgradeable proxy** (transparent or UUPS) → the owner can patch settlement/claim logic and tune
   parameters. This is intentional: early bug‑fix and tuning capability, and central control. Honest
