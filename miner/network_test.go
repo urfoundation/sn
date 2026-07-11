@@ -148,3 +148,72 @@ func TestNetworkConfigPath(t *testing.T) {
 		t.Fatalf("expected ~/.urnetwork to not exist yet before any write")
 	}
 }
+
+func TestResolveApiUrlPrecedence(t *testing.T) {
+	withTempHome(t)
+
+	// Neither flag nor saved config: falls back to DefaultApiUrl.
+	opts := parseArgsForTest(t, []string{"provide"})
+	got, err := resolveApiUrl(opts)
+	if err != nil {
+		t.Fatalf("resolveApiUrl: unexpected error: %s", err)
+	}
+	if got != DefaultApiUrl {
+		t.Errorf("resolveApiUrl (no flag, no saved) = %q, want %q", got, DefaultApiUrl)
+	}
+
+	// Saved config present, no flag: saved config wins.
+	if err := writeNetworkConfig("https://saved.example.com", "wss://saved.example.com"); err != nil {
+		t.Fatalf("writeNetworkConfig: unexpected error: %s", err)
+	}
+	got, err = resolveApiUrl(opts)
+	if err != nil {
+		t.Fatalf("resolveApiUrl: unexpected error: %s", err)
+	}
+	if got != "https://saved.example.com" {
+		t.Errorf("resolveApiUrl (saved, no flag) = %q, want %q", got, "https://saved.example.com")
+	}
+
+	// Flag present: flag wins over saved config.
+	flagOpts := parseArgsForTest(t, []string{"provide", "--api_url=https://flag.example.com"})
+	got, err = resolveApiUrl(flagOpts)
+	if err != nil {
+		t.Fatalf("resolveApiUrl: unexpected error: %s", err)
+	}
+	if got != "https://flag.example.com" {
+		t.Errorf("resolveApiUrl (flag) = %q, want %q", got, "https://flag.example.com")
+	}
+}
+
+func TestResolveConnectUrlPrecedence(t *testing.T) {
+	withTempHome(t)
+
+	opts := parseArgsForTest(t, []string{"provide"})
+	got, err := resolveConnectUrl(opts)
+	if err != nil {
+		t.Fatalf("resolveConnectUrl: unexpected error: %s", err)
+	}
+	if got != DefaultConnectUrl {
+		t.Errorf("resolveConnectUrl (no flag, no saved) = %q, want %q", got, DefaultConnectUrl)
+	}
+
+	if err := writeNetworkConfig("https://saved.example.com", "wss://saved.example.com"); err != nil {
+		t.Fatalf("writeNetworkConfig: unexpected error: %s", err)
+	}
+	got, err = resolveConnectUrl(opts)
+	if err != nil {
+		t.Fatalf("resolveConnectUrl: unexpected error: %s", err)
+	}
+	if got != "wss://saved.example.com" {
+		t.Errorf("resolveConnectUrl (saved, no flag) = %q, want %q", got, "wss://saved.example.com")
+	}
+
+	flagOpts := parseArgsForTest(t, []string{"provide", "--connect_url=wss://flag.example.com"})
+	got, err = resolveConnectUrl(flagOpts)
+	if err != nil {
+		t.Fatalf("resolveConnectUrl: unexpected error: %s", err)
+	}
+	if got != "wss://flag.example.com" {
+		t.Errorf("resolveConnectUrl (flag) = %q, want %q", got, "wss://flag.example.com")
+	}
+}

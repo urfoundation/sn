@@ -204,9 +204,9 @@ func auth(opts docopt.Opts) {
 		}
 	}
 
-	apiUrl, err := opts.String("--api_url")
+	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		apiUrl = DefaultApiUrl
+		panic(err)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
@@ -326,14 +326,14 @@ func auth(opts docopt.Opts) {
 func provide(opts docopt.Opts) {
 	port, _ := opts.Int("--port")
 
-	apiUrl, err := opts.String("--api_url")
+	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		apiUrl = DefaultApiUrl
+		panic(err)
 	}
 
-	connectUrl, err := opts.String("--connect_url")
+	connectUrl, err := resolveConnectUrl(opts)
 	if err != nil {
-		connectUrl = DefaultConnectUrl
+		panic(err)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")

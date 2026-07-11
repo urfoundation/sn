@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+
+	"github.com/docopt/docopt-go"
 )
 
 // networkConfig is the on-disk shape of ~/.urnetwork/network.json.
@@ -118,4 +120,36 @@ func resetNetworkConfig() error {
 		return nil
 	}
 	return err
+}
+
+// resolveApiUrl implements the 3-tier precedence for the API URL:
+// --api_url flag > saved network config > DefaultApiUrl.
+func resolveApiUrl(opts docopt.Opts) (string, error) {
+	if apiUrl, err := opts.String("--api_url"); err == nil {
+		return apiUrl, nil
+	}
+	cfg, ok, err := readNetworkConfig()
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return cfg.ApiUrl, nil
+	}
+	return DefaultApiUrl, nil
+}
+
+// resolveConnectUrl implements the 3-tier precedence for the connect
+// URL: --connect_url flag > saved network config > DefaultConnectUrl.
+func resolveConnectUrl(opts docopt.Opts) (string, error) {
+	if connectUrl, err := opts.String("--connect_url"); err == nil {
+		return connectUrl, nil
+	}
+	cfg, ok, err := readNetworkConfig()
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return cfg.ConnectUrl, nil
+	}
+	return DefaultConnectUrl, nil
 }
