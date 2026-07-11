@@ -97,6 +97,8 @@ Usage:
     provider proxy auth remove [<key>] [--all]
     provider proxy add [<key_address>...] [--proxy_file=<proxy_file>] [-f]
     provider proxy remove [<key_address>...] [--all]
+    provider choose_network <api_url> <connect_url>
+    provider choose_network --reset
 
 Options:
     -h --help                        Show this help and exit.
@@ -107,6 +109,9 @@ Options:
                                      By default, existing values will not be overwritten.
     --api_url=<api_url>              Specify a custom API URL to use.
     --connect_url=<connect_url>      Specify a custom connect URL to use.
+    <api_url>                        API URL to save as the chosen network (http:// or https://).
+    <connect_url>                    Connect URL to save as the chosen network (ws:// or wss://).
+    --reset                          With choose_network, clear the saved network and revert to the main network.
     --user_auth=<user_auth>	         Login with a username.
     --password=<password>            Login with a password. If --user_auth is used, you will be prompted for your
     				                 password anyways, if you don't specify it using this option.
@@ -179,6 +184,8 @@ func Run(args []string) {
 	} else if authProvide, _ := opts.Bool("auth-provide"); authProvide {
 		auth(opts)
 		provide(opts)
+	} else if chooseNetwork, _ := opts.Bool("choose_network"); chooseNetwork {
+		chooseNetworkCmd(opts)
 	}
 }
 

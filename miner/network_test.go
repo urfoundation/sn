@@ -217,3 +217,38 @@ func TestResolveConnectUrlPrecedence(t *testing.T) {
 		t.Errorf("resolveConnectUrl (flag) = %q, want %q", got, "wss://flag.example.com")
 	}
 }
+
+func TestChooseNetworkCmdSaves(t *testing.T) {
+	withTempHome(t)
+	opts := parseArgsForTest(t, []string{"choose_network", "https://example.com", "wss://example.com"})
+	chooseNetworkCmd(opts)
+
+	cfg, ok, err := readNetworkConfig()
+	if err != nil {
+		t.Fatalf("readNetworkConfig: unexpected error: %s", err)
+	}
+	if !ok {
+		t.Fatalf("expected network config to be saved")
+	}
+	if cfg.ApiUrl != "https://example.com" || cfg.ConnectUrl != "wss://example.com" {
+		t.Fatalf("saved config = %+v, want api_url=https://example.com connect_url=wss://example.com", cfg)
+	}
+}
+
+func TestChooseNetworkCmdReset(t *testing.T) {
+	withTempHome(t)
+	if err := writeNetworkConfig("https://example.com", "wss://example.com"); err != nil {
+		t.Fatalf("writeNetworkConfig: unexpected error: %s", err)
+	}
+
+	opts := parseArgsForTest(t, []string{"choose_network", "--reset"})
+	chooseNetworkCmd(opts)
+
+	_, ok, err := readNetworkConfig()
+	if err != nil {
+		t.Fatalf("readNetworkConfig: unexpected error: %s", err)
+	}
+	if ok {
+		t.Fatalf("expected network config to be cleared after reset")
+	}
+}
