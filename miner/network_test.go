@@ -235,6 +235,25 @@ func TestChooseNetworkCmdSaves(t *testing.T) {
 	}
 }
 
+func TestResolveApiUrlCorruptConfig(t *testing.T) {
+	home := withTempHome(t)
+	dir := filepath.Join(home, ".urnetwork")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll: unexpected error: %s", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "network.json"), []byte("{not valid json"), 0600); err != nil {
+		t.Fatalf("WriteFile: unexpected error: %s", err)
+	}
+
+	opts := parseArgsForTest(t, []string{"provide"})
+	if _, err := resolveApiUrl(opts); err == nil {
+		t.Fatalf("resolveApiUrl: expected error for corrupt config, got nil")
+	}
+	if _, err := resolveConnectUrl(opts); err == nil {
+		t.Fatalf("resolveConnectUrl: expected error for corrupt config, got nil")
+	}
+}
+
 func TestChooseNetworkCmdReset(t *testing.T) {
 	withTempHome(t)
 	if err := writeNetworkConfig("https://example.com", "wss://example.com"); err != nil {

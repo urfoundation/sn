@@ -93,7 +93,8 @@ func snSetWallet(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 func walletSet(opts docopt.Opts) {
 	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		panic(err)
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	event := connect.NewEventWithContext(context.Background())
@@ -132,7 +133,8 @@ func walletSet(opts docopt.Opts) {
 func claim(opts docopt.Opts) {
 	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		panic(err)
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	event := connect.NewEventWithContext(context.Background())

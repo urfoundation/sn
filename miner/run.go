@@ -213,7 +213,8 @@ func auth(opts docopt.Opts) {
 
 	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		panic(err)
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
@@ -335,12 +336,14 @@ func provide(opts docopt.Opts) {
 
 	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		panic(err)
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	connectUrl, err := resolveConnectUrl(opts)
 	if err != nil {
-		panic(err)
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
