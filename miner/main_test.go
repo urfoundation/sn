@@ -99,3 +99,28 @@ func TestMainUsageClaim(t *testing.T) {
 		t.Fatalf("--rpc unexpectedly set: %v", rpcUrls)
 	}
 }
+
+func TestMainUsageChooseNetwork(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "https://example.com", "wss://example.com"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	apiUrl, err := opts.String("<api_url>")
+	if err != nil || apiUrl != "https://example.com" {
+		t.Fatalf("<api_url> = %q, err %v", apiUrl, err)
+	}
+	connectUrl, err := opts.String("<connect_url>")
+	if err != nil || connectUrl != "wss://example.com" {
+		t.Fatalf("<connect_url> = %q, err %v", connectUrl, err)
+	}
+}
+
+func TestMainUsageChooseNetworkReset(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "--reset"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	if reset, _ := opts.Bool("--reset"); !reset {
+		t.Fatalf("--reset not set")
+	}
+}
