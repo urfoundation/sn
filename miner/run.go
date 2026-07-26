@@ -702,9 +702,24 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 
 	api.SetByJwt(byJwt)
 
+	urNetworkDir := filepath.Join(home, ".urnetwork")
+
+	// Reuse the identity the platform issued us on a previous run. Without
+	// this the server mints a NEW client_id on every start (AuthNetworkClient
+	// creates one whenever ClientId is omitted), so a restart discards the
+	// provider's probed location, measured bandwidth and reliability history,
+	// and it must serve out a fresh probation before it can be selected again.
+	// One host in the beta data accumulated 19 client ids this way.
+	storedClientId, err := readStoredClientId(urNetworkDir)
+	if err != nil {
+		returnErr = err
+		return
+	}
+
 	authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
 
 	authClientArgs := &connect.AuthNetworkClientArgs{
+		ClientId:    storedClientId,
 		Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
 		DeviceSpec:  "",
 	}
@@ -739,6 +754,12 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 	clientId, err = connect.ParseId(claims["client_id"].(string))
 	if err != nil {
 		panic(err)
+	}
+
+	// persist for the next run; a failure here must not stop the provider
+	// from serving, it only means the next restart re-auths as it does today
+	if writeErr := writeStoredClientId(urNetworkDir, clientId); writeErr != nil {
+		fmt.Printf("could not persist client id to %s: %s\n", urNetworkDir, writeErr)
 	}
 
 	return
