@@ -41,3 +41,52 @@ func writeStoredClientId(dir string, clientId connect.Id) error {
 	}
 	return os.WriteFile(filepath.Join(dir, clientIdFileName), []byte(clientId.String()), 0600)
 }
+
+// clearStoredClientId discards the persisted client id so that the next
+// authentication asks the platform for a fresh identity.
+//
+// A missing file is deliberately NOT an error: clearing runs on rejection
+// paths where there may be nothing to clear, and it must never be the reason
+// a provider fails to start.
+func clearStoredClientId(dir string) error {
+	if err := os.Remove(filepath.Join(dir, clientIdFileName)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// shouldRetryWithNewIdentity reports whether a failed authentication attempt
+// should be retried after discarding the stored client identity.
+//
+// The two error channels mean very different things and must not be collapsed:
+//
+//   - transportErr is ApiCallbackResult.Error, a transport/callback failure --
+//     the network is down, the context was cancelled, the api is unreachable.
+//     The stored identity is almost certainly still valid, so discarding it
+//     here would mint a brand new client id in response to a transient blip,
+//     which is exactly the identity churn the stored id exists to prevent.
+//
+//   - resultErrMessage is AuthNetworkClientResult.Error.Message, the server
+//     rejecting the request at the application level. "Client does not exist."
+//     arrives here whenever the stored id names a client the platform no
+//     longer knows: a different deployment via --api_url, a re-auth to another
+//     network, the device removed in the app, or the idle client reap. Before
+//     the id was persisted every one of these simply minted a new client, and
+//     falling back restores that.
+//
+// Only an attempt that actually sent a stored id is retryable -- a fresh auth
+// the server rejects has no identity left to discard, and retrying it would
+// just repeat the same request.
+//
+// The message text is deliberately not matched. Any application-level
+// rejection of a stored id is grounds to fall back, and the server's wording
+// is free to change.
+func shouldRetryWithNewIdentity(sentStoredId bool, transportErr error, resultErrMessage string) bool {
+	if !sentStoredId {
+		return false
+	}
+	if transportErr != nil {
+		return false
+	}
+	return resultErrMessage != ""
+}
