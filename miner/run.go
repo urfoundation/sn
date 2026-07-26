@@ -726,21 +726,61 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 		return
 	}
 
-	authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
-
-	authClientArgs := &connect.AuthNetworkClientArgs{
-		ClientId:    storedClientId,
-		Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
-		DeviceSpec:  "",
-	}
-
-	api.AuthNetworkClient(authClientArgs, authClientCallback)
-
+	// A stored id the server no longer recognises must not wedge the provider.
+	// The server answers "Client does not exist." at the application level for
+	// an id from another deployment, another network, a device removed in the
+	// app, or one the idle reap collected. Under the systemd unit's
+	// Restart=always, panicking on that -- and leaving the bad id on disk --
+	// is a permanent crash loop. Clear it and ask for a new identity instead,
+	// exactly once, which is what the CLI did before the id was persisted.
 	var authClientResult connect.ApiCallbackResult[*connect.AuthNetworkClientResult]
-	select {
-	case <-ctx.Done():
-		os.Exit(0)
-	case authClientResult = <-authClientChannel:
+	sentStoredId := storedClientId != nil
+
+	for {
+		authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
+
+		authClientArgs := &connect.AuthNetworkClientArgs{
+			ClientId:    storedClientId,
+			Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
+			DeviceSpec:  "",
+		}
+
+		api.AuthNetworkClient(authClientArgs, authClientCallback)
+
+		select {
+		case <-ctx.Done():
+			os.Exit(0)
+		case authClientResult = <-authClientChannel:
+		}
+
+		// Only an application-level rejection is a reason to drop the stored
+		// identity. A transport error leaves it alone -- see
+		// shouldRetryWithNewIdentity.
+		resultErrMessage := ""
+		if authClientResult.Error == nil && authClientResult.Result != nil && authClientResult.Result.Error != nil {
+			resultErrMessage = authClientResult.Result.Error.Message
+			if resultErrMessage == "" {
+				resultErrMessage = "the server rejected the client authentication"
+			}
+		}
+
+		if !shouldRetryWithNewIdentity(sentStoredId, authClientResult.Error, resultErrMessage) {
+			break
+		}
+
+		fmt.Printf(
+			"stored client identity %s was rejected by the server (%s); discarding it and requesting a new client identity\n",
+			storedClientId,
+			resultErrMessage,
+		)
+		if clearErr := clearStoredClientId(urNetworkDir); clearErr != nil {
+			fmt.Printf("could not clear stored client id at %s: %s\n", urNetworkDir, clearErr)
+		}
+
+		// retry exactly once: the next pass sends no id, and any failure of
+		// that pass surfaces below
+		storedClientId = nil
+		sentStoredId = false
 	}
 
 	if authClientResult.Error != nil {
