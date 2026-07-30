@@ -712,20 +712,75 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 
 	api.SetByJwt(byJwt)
 
-	authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
+	urNetworkDir := filepath.Join(home, ".urnetwork")
 
-	authClientArgs := &connect.AuthNetworkClientArgs{
-		Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
-		DeviceSpec:  "",
+	// Reuse the identity the platform issued us on a previous run. Without
+	// this the server mints a NEW client_id on every start (AuthNetworkClient
+	// creates one whenever ClientId is omitted), so a restart discards the
+	// provider's probed location, measured bandwidth and reliability history,
+	// and it must serve out a fresh probation before it can be selected again.
+	// One host in the beta data accumulated 19 client ids this way.
+	storedClientId, err := readStoredClientId(urNetworkDir)
+	if err != nil {
+		returnErr = err
+		return
 	}
 
-	api.AuthNetworkClient(authClientArgs, authClientCallback)
-
+	// A stored id the server no longer recognises must not wedge the provider.
+	// The server answers "Client does not exist." at the application level for
+	// an id from another deployment, another network, a device removed in the
+	// app, or one the idle reap collected. Under the systemd unit's
+	// Restart=always, panicking on that -- and leaving the bad id on disk --
+	// is a permanent crash loop. Clear it and ask for a new identity instead,
+	// exactly once, which is what the CLI did before the id was persisted.
 	var authClientResult connect.ApiCallbackResult[*connect.AuthNetworkClientResult]
-	select {
-	case <-ctx.Done():
-		os.Exit(0)
-	case authClientResult = <-authClientChannel:
+	sentStoredId := storedClientId != nil
+
+	for {
+		authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
+
+		authClientArgs := &connect.AuthNetworkClientArgs{
+			ClientId:    storedClientId,
+			Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
+			DeviceSpec:  "",
+		}
+
+		api.AuthNetworkClient(authClientArgs, authClientCallback)
+
+		select {
+		case <-ctx.Done():
+			os.Exit(0)
+		case authClientResult = <-authClientChannel:
+		}
+
+		// Only an application-level rejection is a reason to drop the stored
+		// identity. A transport error leaves it alone -- see
+		// shouldRetryWithNewIdentity.
+		resultErrMessage := ""
+		if authClientResult.Error == nil && authClientResult.Result != nil && authClientResult.Result.Error != nil {
+			resultErrMessage = authClientResult.Result.Error.Message
+			if resultErrMessage == "" {
+				resultErrMessage = "the server rejected the client authentication"
+			}
+		}
+
+		if !shouldRetryWithNewIdentity(sentStoredId, authClientResult.Error, resultErrMessage) {
+			break
+		}
+
+		fmt.Printf(
+			"stored client identity %s was rejected by the server (%s); discarding it and requesting a new client identity\n",
+			storedClientId,
+			resultErrMessage,
+		)
+		if clearErr := clearStoredClientId(urNetworkDir); clearErr != nil {
+			fmt.Printf("could not clear stored client id at %s: %s\n", urNetworkDir, clearErr)
+		}
+
+		// retry exactly once: the next pass sends no id, and any failure of
+		// that pass surfaces below
+		storedClientId = nil
+		sentStoredId = false
 	}
 
 	if authClientResult.Error != nil {
@@ -749,6 +804,12 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 	clientId, err = connect.ParseId(claims["client_id"].(string))
 	if err != nil {
 		panic(err)
+	}
+
+	// persist for the next run; a failure here must not stop the provider
+	// from serving, it only means the next restart re-auths as it does today
+	if writeErr := writeStoredClientId(urNetworkDir, clientId); writeErr != nil {
+		fmt.Printf("could not persist client id to %s: %s\n", urNetworkDir, writeErr)
 	}
 
 	return
