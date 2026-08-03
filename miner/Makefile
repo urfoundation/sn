@@ -16,8 +16,8 @@ build:
 	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=linux GOARCH=mips64le GOMIPS=softfloat go build -trimpath -ldflags "-w -s -w -s -X main.Version=${WARP_VERSION}" -o build/linux/mips64le/miner ../cli/miner
 	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/darwin/arm64/miner ../cli/miner
 	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/darwin/amd64/miner ../cli/miner
-	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/arm64/miner ../cli/miner
-	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/amd64/miner ../cli/miner
+	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/arm64/miner.exe ../cli/miner
+	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/amd64/miner.exe ../cli/miner
 	COPYFILE_DISABLE=1 tar -czf build/miner.tar.gz -C build linux darwin windows
 
 warp_build:
