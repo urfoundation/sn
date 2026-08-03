@@ -123,4 +123,37 @@ func TestMainUsageChooseNetworkReset(t *testing.T) {
 	if reset, _ := opts.Bool("--reset"); !reset {
 		t.Fatalf("--reset not set")
 	}
+	if show, _ := opts.Bool("--show"); show {
+		t.Fatalf("--show set by --reset")
+	}
+}
+
+func TestMainUsageChooseNetworkShow(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "--show"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	if show, _ := opts.Bool("--show"); !show {
+		t.Fatalf("--show not set")
+	}
+	if reset, _ := opts.Bool("--reset"); reset {
+		t.Fatalf("--reset set by --show")
+	}
+}
+
+// TestMainUsageChooseNetworkRejectsBadForms: the mutually exclusive
+// forms must stay mutually exclusive, and the two-URL form must require
+// both URLs.
+func TestMainUsageChooseNetworkRejectsBadForms(t *testing.T) {
+	parser := &docopt.Parser{HelpHandler: docopt.NoHelpHandler}
+	for _, argv := range [][]string{
+		{"choose_network"},
+		{"choose_network", "https://example.com"},
+		{"choose_network", "--reset", "--show"},
+		{"choose_network", "--reset", "https://example.com", "wss://example.com"},
+	} {
+		if _, err := parser.ParseArgs(mainUsage(), argv, "test"); err == nil {
+			t.Errorf("parse %v: expected an error, got nil", argv)
+		}
+	}
 }

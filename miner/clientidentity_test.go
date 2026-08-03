@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/urnetwork/connect"
@@ -56,6 +57,9 @@ func TestStoredClientIdIgnoresCorruptFile(t *testing.T) {
 }
 
 func TestStoredClientIdFileIsNotWorldReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
 	dir := t.TempDir()
 	if err := writeStoredClientId(dir, connect.NewId()); err != nil {
 		t.Fatal(err)

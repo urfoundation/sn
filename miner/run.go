@@ -65,6 +65,9 @@ The default URLs are:
     api_url: %s
     connect_url: %s
 
+A network saved with "provider choose_network" replaces these defaults;
+"provider choose_network --show" prints the network actually in effect.
+
 Usage:
     provider auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
     	[--api_url=<api_url>]
@@ -99,6 +102,7 @@ Usage:
     provider proxy remove [<key_address>...] [--all]
     provider choose_network <api_url> <connect_url>
     provider choose_network --reset
+    provider choose_network --show
 
 Options:
     -h --help                        Show this help and exit.
@@ -112,6 +116,7 @@ Options:
     <api_url>                        API URL to save as the chosen network (http:// or https://).
     <connect_url>                    Connect URL to save as the chosen network (ws:// or wss://).
     --reset                          With choose_network, clear the saved network and revert to the main network.
+    --show                           With choose_network, print the network currently in effect and exit.
     --user_auth=<user_auth>	         Login with a username.
     --password=<password>            Login with a password. If --user_auth is used, you will be prompted for your
     				                 password anyways, if you don't specify it using this option.
@@ -185,7 +190,10 @@ func Run(args []string) {
 		auth(opts)
 		provide(opts)
 	} else if chooseNetwork, _ := opts.Bool("choose_network"); chooseNetwork {
-		chooseNetworkCmd(opts)
+		if err := chooseNetworkCmd(opts); err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -586,15 +594,27 @@ func provide(opts docopt.Opts) {
 	os.Exit(0)
 }
 
-// providerStatePath returns the absolute filesystem path of a named
-// provider state file under ~/.urnetwork (alongside `jwt`). Does not
-// create the directory.
-func providerStatePath(name string) (string, error) {
+// providerStateDir returns the absolute path of the provider state
+// directory, ~/.urnetwork — the one place `jwt`, `client_id`,
+// `network.json`, `.provider.key` and `.provider.cert` live. Does not
+// create it.
+func providerStateDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".urnetwork", name), nil
+	return filepath.Join(home, ".urnetwork"), nil
+}
+
+// providerStatePath returns the absolute filesystem path of a named
+// provider state file under ~/.urnetwork (alongside `jwt`). Does not
+// create the directory.
+func providerStatePath(name string) (string, error) {
+	dir, err := providerStateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
 }
 
 // readProviderClientKeySeed loads the Ed25519 seed for the provider
@@ -689,11 +709,11 @@ func writeProviderTlsCertAndKey(certPem, keyPem []byte) error {
 }
 
 func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, apiUrl string, opts docopt.Opts) (byClientJwt string, clientId connect.Id, returnErr error) {
-	home, err := os.UserHomeDir()
+	urNetworkDir, err := providerStateDir()
 	if err != nil {
 		panic(err)
 	}
-	jwtPath := filepath.Join(home, ".urnetwork", "jwt")
+	jwtPath := filepath.Join(urNetworkDir, "jwt")
 
 	if _, err := os.Stat(jwtPath); errors.Is(err, os.ErrNotExist) {
 		// jwt does not exist
@@ -711,8 +731,6 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
 
 	api.SetByJwt(byJwt)
-
-	urNetworkDir := filepath.Join(home, ".urnetwork")
 
 	// Reuse the identity the platform issued us on a previous run. Without
 	// this the server mints a NEW client_id on every start (AuthNetworkClient
@@ -785,6 +803,11 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 
 	if authClientResult.Error != nil {
 		panic(authClientResult.Error)
+	}
+	// a callback that reports neither a transport error nor a result is a
+	// protocol violation, not something to dereference
+	if authClientResult.Result == nil {
+		panic(fmt.Errorf("auth network client returned no result and no error"))
 	}
 	if authClientResult.Result.Error != nil {
 		panic(fmt.Errorf("%s", authClientResult.Result.Error.Message))
