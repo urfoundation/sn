@@ -99,3 +99,61 @@ func TestMainUsageClaim(t *testing.T) {
 		t.Fatalf("--rpc unexpectedly set: %v", rpcUrls)
 	}
 }
+
+func TestMainUsageChooseNetwork(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "https://example.com", "wss://example.com"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	apiUrl, err := opts.String("<api_url>")
+	if err != nil || apiUrl != "https://example.com" {
+		t.Fatalf("<api_url> = %q, err %v", apiUrl, err)
+	}
+	connectUrl, err := opts.String("<connect_url>")
+	if err != nil || connectUrl != "wss://example.com" {
+		t.Fatalf("<connect_url> = %q, err %v", connectUrl, err)
+	}
+}
+
+func TestMainUsageChooseNetworkReset(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "--reset"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	if reset, _ := opts.Bool("--reset"); !reset {
+		t.Fatalf("--reset not set")
+	}
+	if show, _ := opts.Bool("--show"); show {
+		t.Fatalf("--show set by --reset")
+	}
+}
+
+func TestMainUsageChooseNetworkShow(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"choose_network", "--show"})
+	if chooseNetwork, _ := opts.Bool("choose_network"); !chooseNetwork {
+		t.Fatalf("choose_network not set")
+	}
+	if show, _ := opts.Bool("--show"); !show {
+		t.Fatalf("--show not set")
+	}
+	if reset, _ := opts.Bool("--reset"); reset {
+		t.Fatalf("--reset set by --show")
+	}
+}
+
+// TestMainUsageChooseNetworkRejectsBadForms: the mutually exclusive
+// forms must stay mutually exclusive, and the two-URL form must require
+// both URLs.
+func TestMainUsageChooseNetworkRejectsBadForms(t *testing.T) {
+	parser := &docopt.Parser{HelpHandler: docopt.NoHelpHandler}
+	for _, argv := range [][]string{
+		{"choose_network"},
+		{"choose_network", "https://example.com"},
+		{"choose_network", "--reset", "--show"},
+		{"choose_network", "--reset", "https://example.com", "wss://example.com"},
+	} {
+		if _, err := parser.ParseArgs(mainUsage(), argv, "test"); err == nil {
+			t.Errorf("parse %v: expected an error, got nil", argv)
+		}
+	}
+}

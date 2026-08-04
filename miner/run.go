@@ -65,6 +65,9 @@ The default URLs are:
     api_url: %s
     connect_url: %s
 
+A network saved with "provider choose_network" replaces these defaults;
+"provider choose_network --show" prints the network actually in effect.
+
 Usage:
     provider auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
     	[--api_url=<api_url>]
@@ -97,6 +100,9 @@ Usage:
     provider proxy auth remove [<key>] [--all]
     provider proxy add [<key_address>...] [--proxy_file=<proxy_file>] [-f]
     provider proxy remove [<key_address>...] [--all]
+    provider choose_network <api_url> <connect_url>
+    provider choose_network --reset
+    provider choose_network --show
 
 Options:
     -h --help                        Show this help and exit.
@@ -107,6 +113,10 @@ Options:
                                      By default, existing values will not be overwritten.
     --api_url=<api_url>              Specify a custom API URL to use.
     --connect_url=<connect_url>      Specify a custom connect URL to use.
+    <api_url>                        API URL to save as the chosen network (http:// or https://).
+    <connect_url>                    Connect URL to save as the chosen network (ws:// or wss://).
+    --reset                          With choose_network, clear the saved network and revert to the main network.
+    --show                           With choose_network, print the network currently in effect and exit.
     --user_auth=<user_auth>	         Login with a username.
     --password=<password>            Login with a password. If --user_auth is used, you will be prompted for your
     				                 password anyways, if you don't specify it using this option.
@@ -179,6 +189,11 @@ func Run(args []string) {
 	} else if authProvide, _ := opts.Bool("auth-provide"); authProvide {
 		auth(opts)
 		provide(opts)
+	} else if chooseNetwork, _ := opts.Bool("choose_network"); chooseNetwork {
+		if err := chooseNetworkCmd(opts); err != nil {
+			fmt.Printf("%s\n", err)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -204,9 +219,10 @@ func auth(opts docopt.Opts) {
 		}
 	}
 
-	apiUrl, err := opts.String("--api_url")
+	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		apiUrl = DefaultApiUrl
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
@@ -326,14 +342,16 @@ func auth(opts docopt.Opts) {
 func provide(opts docopt.Opts) {
 	port, _ := opts.Int("--port")
 
-	apiUrl, err := opts.String("--api_url")
+	apiUrl, err := resolveApiUrl(opts)
 	if err != nil {
-		apiUrl = DefaultApiUrl
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
-	connectUrl, err := opts.String("--connect_url")
+	connectUrl, err := resolveConnectUrl(opts)
 	if err != nil {
-		connectUrl = DefaultConnectUrl
+		fmt.Printf("network config error: %s\n", err)
+		os.Exit(1)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
@@ -576,15 +594,27 @@ func provide(opts docopt.Opts) {
 	os.Exit(0)
 }
 
-// providerStatePath returns the absolute filesystem path of a named
-// provider state file under ~/.urnetwork (alongside `jwt`). Does not
-// create the directory.
-func providerStatePath(name string) (string, error) {
+// providerStateDir returns the absolute path of the provider state
+// directory, ~/.urnetwork — the one place `jwt`, `client_id`,
+// `network.json`, `.provider.key` and `.provider.cert` live. Does not
+// create it.
+func providerStateDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".urnetwork", name), nil
+	return filepath.Join(home, ".urnetwork"), nil
+}
+
+// providerStatePath returns the absolute filesystem path of a named
+// provider state file under ~/.urnetwork (alongside `jwt`). Does not
+// create the directory.
+func providerStatePath(name string) (string, error) {
+	dir, err := providerStateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
 }
 
 // readProviderClientKeySeed loads the Ed25519 seed for the provider
@@ -679,11 +709,11 @@ func writeProviderTlsCertAndKey(certPem, keyPem []byte) error {
 }
 
 func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, apiUrl string, opts docopt.Opts) (byClientJwt string, clientId connect.Id, returnErr error) {
-	home, err := os.UserHomeDir()
+	urNetworkDir, err := providerStateDir()
 	if err != nil {
 		panic(err)
 	}
-	jwtPath := filepath.Join(home, ".urnetwork", "jwt")
+	jwtPath := filepath.Join(urNetworkDir, "jwt")
 
 	if _, err := os.Stat(jwtPath); errors.Is(err, os.ErrNotExist) {
 		// jwt does not exist
@@ -702,24 +732,82 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 
 	api.SetByJwt(byJwt)
 
-	authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
-
-	authClientArgs := &connect.AuthNetworkClientArgs{
-		Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
-		DeviceSpec:  "",
+	// Reuse the identity the platform issued us on a previous run. Without
+	// this the server mints a NEW client_id on every start (AuthNetworkClient
+	// creates one whenever ClientId is omitted), so a restart discards the
+	// provider's probed location, measured bandwidth and reliability history,
+	// and it must serve out a fresh probation before it can be selected again.
+	// One host in the beta data accumulated 19 client ids this way.
+	storedClientId, err := readStoredClientId(urNetworkDir)
+	if err != nil {
+		returnErr = err
+		return
 	}
 
-	api.AuthNetworkClient(authClientArgs, authClientCallback)
-
+	// A stored id the server no longer recognises must not wedge the provider.
+	// The server answers "Client does not exist." at the application level for
+	// an id from another deployment, another network, a device removed in the
+	// app, or one the idle reap collected. Under the systemd unit's
+	// Restart=always, panicking on that -- and leaving the bad id on disk --
+	// is a permanent crash loop. Clear it and ask for a new identity instead,
+	// exactly once, which is what the CLI did before the id was persisted.
 	var authClientResult connect.ApiCallbackResult[*connect.AuthNetworkClientResult]
-	select {
-	case <-ctx.Done():
-		os.Exit(0)
-	case authClientResult = <-authClientChannel:
+	sentStoredId := storedClientId != nil
+
+	for {
+		authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
+
+		authClientArgs := &connect.AuthNetworkClientArgs{
+			ClientId:    storedClientId,
+			Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
+			DeviceSpec:  "",
+		}
+
+		api.AuthNetworkClient(authClientArgs, authClientCallback)
+
+		select {
+		case <-ctx.Done():
+			os.Exit(0)
+		case authClientResult = <-authClientChannel:
+		}
+
+		// Only an application-level rejection is a reason to drop the stored
+		// identity. A transport error leaves it alone -- see
+		// shouldRetryWithNewIdentity.
+		resultErrMessage := ""
+		if authClientResult.Error == nil && authClientResult.Result != nil && authClientResult.Result.Error != nil {
+			resultErrMessage = authClientResult.Result.Error.Message
+			if resultErrMessage == "" {
+				resultErrMessage = "the server rejected the client authentication"
+			}
+		}
+
+		if !shouldRetryWithNewIdentity(sentStoredId, authClientResult.Error, resultErrMessage) {
+			break
+		}
+
+		fmt.Printf(
+			"stored client identity %s was rejected by the server (%s); discarding it and requesting a new client identity\n",
+			storedClientId,
+			resultErrMessage,
+		)
+		if clearErr := clearStoredClientId(urNetworkDir); clearErr != nil {
+			fmt.Printf("could not clear stored client id at %s: %s\n", urNetworkDir, clearErr)
+		}
+
+		// retry exactly once: the next pass sends no id, and any failure of
+		// that pass surfaces below
+		storedClientId = nil
+		sentStoredId = false
 	}
 
 	if authClientResult.Error != nil {
 		panic(authClientResult.Error)
+	}
+	// a callback that reports neither a transport error nor a result is a
+	// protocol violation, not something to dereference
+	if authClientResult.Result == nil {
+		panic(fmt.Errorf("auth network client returned no result and no error"))
 	}
 	if authClientResult.Result.Error != nil {
 		panic(fmt.Errorf("%s", authClientResult.Result.Error.Message))
@@ -739,6 +827,12 @@ func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 	clientId, err = connect.ParseId(claims["client_id"].(string))
 	if err != nil {
 		panic(err)
+	}
+
+	// persist for the next run; a failure here must not stop the provider
+	// from serving, it only means the next restart re-auths as it does today
+	if writeErr := writeStoredClientId(urNetworkDir, clientId); writeErr != nil {
+		fmt.Printf("could not persist client id to %s: %s\n", urNetworkDir, writeErr)
 	}
 
 	return
