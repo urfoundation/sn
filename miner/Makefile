@@ -1,4 +1,5 @@
 
+.PHONY: all clean build init warp_build warp_build_image
 
 all: init clean build
 
@@ -21,7 +22,10 @@ build:
 	COPYFILE_DISABLE=1 tar -czf build/miner.tar.gz -C build linux darwin windows
 
 warp_build:
-	$(MAKE) all
+	@echo "warp_build must be run through warpctl build so govulncheck gates image publication." >&2
+	@false
+
+warp_build_image:
 	docker buildx build --progress=plain \
 		--build-arg warp_env=${WARP_ENV} \
 		--platform linux/arm64/v8,linux/amd64 \
