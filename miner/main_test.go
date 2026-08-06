@@ -6,10 +6,50 @@ package miner
 // errors instead of process exits.
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/docopt/docopt-go"
+	"github.com/urnetwork/connect"
+	"golang.org/x/net/proxy"
 )
+
+func TestProviderClientJwtPathIsStableAndSecretFree(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	direct, err := providerClientJwtPath(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direct != filepath.Join(home, ".urnetwork", ".provider.jwt") {
+		t.Fatalf("direct path = %s", direct)
+	}
+
+	first := &connect.ProxySettings{
+		Network: "tcp",
+		Address: "proxy.example:1080",
+		Auth:    &proxy.Auth{User: "first-user", Password: "first-secret"},
+	}
+	second := &connect.ProxySettings{
+		Network: "tcp",
+		Address: "proxy.example:1080",
+		Auth:    &proxy.Auth{User: "other-user", Password: "other-secret"},
+	}
+	firstPath, err := providerClientJwtPath(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPath, err := providerClientJwtPath(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstPath != secondPath {
+		t.Fatalf("credential rotation changed provider identity path: %s != %s", firstPath, secondPath)
+	}
+	if firstPath == direct || filepath.Base(firstPath) == ".provider.jwt" {
+		t.Fatalf("proxy path did not receive a distinct identity: %s", firstPath)
+	}
+}
 
 // parseArgsForTest parses argv against mainUsage without exiting on
 // error.

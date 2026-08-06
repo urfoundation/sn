@@ -34,15 +34,17 @@ import (
 
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/connect/protocol"
+	"github.com/urnetwork/sdk"
 )
 
 // TunnelTransportConfig configures the production transport.
 type TunnelTransportConfig struct {
 	ApiUrl     string
 	ConnectUrl string
-	// ByClientJwt is the validator identity client's JWT; the generator
-	// derives per-tunnel clients from it (SourceClientId set).
-	ByClientJwt string
+	// ByClientJwt returns the validator identity client's current JWT. The SDK
+	// API rotates it in place; every newly created tunnel snapshots the latest
+	// value while an in-flight tunnel may finish on the prior still-valid JWT.
+	ByClientJwt func() string
 	// SourceClientId is the validator's own client id — excluded from
 	// provider selection and used as the packet source.
 	SourceClientId connect.Id
@@ -65,6 +67,17 @@ func NewTunnelTransport(ctx context.Context, clientStrategy *connect.ClientStrat
 	}
 }
 
+func (self *TunnelTransport) currentByClientJwt() (string, error) {
+	if self.cfg.ByClientJwt == nil {
+		return "", fmt.Errorf("validator client JWT source is not configured")
+	}
+	byClientJwt := self.cfg.ByClientJwt()
+	if byClientJwt == "" {
+		return "", fmt.Errorf("validator client JWT is empty")
+	}
+	return byClientJwt, nil
+}
+
 // PostVerify opens an egress-pinned tunnel through hop, POSTs the body to
 // <ApiUrl>/verify through it, and tears the tunnel down. ctx bounds the
 // whole attempt (the engine's StepTimeout).
@@ -78,6 +91,10 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 	defer tunnelCancel()
 
 	hopId := hop
+	byClientJwt, err := self.currentByClientJwt()
+	if err != nil {
+		return nil, err
+	}
 	specs := []*connect.ProviderSpec{
 		{ClientId: &hopId},
 	}
@@ -88,7 +105,7 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		// exclude self — a validator may not egress through itself
 		[]connect.Id{self.cfg.SourceClientId},
 		self.cfg.ApiUrl,
-		self.cfg.ByClientJwt,
+		byClientJwt,
 		self.cfg.ConnectUrl,
 		"validator",
 		"validator",
@@ -168,25 +185,39 @@ func truncateForLog(b []byte) string {
 // validator-chosen entry hop from FindProviders2 (§4.1) — best-available
 // ranking, excluding the validator itself, choosing uniformly among the
 // returned candidates so consecutive trails spread their entry points.
-func NewFindProvidersSeedPicker(api *connect.BringYourApi, selfClientId connect.Id) SeedPicker {
+func NewFindProvidersSeedPicker(api *sdk.Api, selfClientId connect.Id) SeedPicker {
 	return func(ctx context.Context) (connect.Id, error) {
-		result, err := api.FindProviders2Sync(&connect.FindProviders2Args{
-			Specs: []*connect.ProviderSpec{
-				{BestAvailable: true},
-			},
+		selfId, err := sdk.ParseId(selfClientId.String())
+		if err != nil {
+			return connect.Id{}, err
+		}
+		specs := sdk.NewProviderSpecList()
+		specs.Add(&sdk.ProviderSpec{BestAvailable: true})
+		excludeClientIds := sdk.NewIdList()
+		excludeClientIds.Add(selfId)
+		result, err := api.FindProviders2SyncWithContext(ctx, &sdk.FindProviders2Args{
+			Specs:            specs,
 			Count:            8,
-			ExcludeClientIds: []connect.Id{selfClientId},
+			ExcludeClientIds: excludeClientIds,
 			RankMode:         "quality",
 		})
 		if err != nil {
 			return connect.Id{}, err
 		}
 		candidates := []connect.Id{}
-		for _, provider := range result.Providers {
-			if provider.ClientId == selfClientId {
+		if result.ProviderStats == nil {
+			return connect.Id{}, fmt.Errorf("no seed providers available")
+		}
+		for i := 0; i < result.ProviderStats.Len(); i += 1 {
+			provider := result.ProviderStats.Get(i)
+			if provider == nil || provider.ClientId == nil {
 				continue
 			}
-			candidates = append(candidates, provider.ClientId)
+			providerId, err := connect.ParseId(provider.ClientId.String())
+			if err != nil || providerId == selfClientId {
+				continue
+			}
+			candidates = append(candidates, providerId)
 		}
 		if len(candidates) == 0 {
 			return connect.Id{}, fmt.Errorf("no seed providers available")
@@ -197,7 +228,7 @@ func NewFindProvidersSeedPicker(api *connect.BringYourApi, selfClientId connect.
 
 // NewApiServerKeyRing builds a ServerKeyRing backed by the unauthenticated
 // control-plane `GET /verify/keys` binding (VALIDATOR.md §3.5).
-func NewApiServerKeyRing(api *connect.BringYourApi) *ServerKeyRing {
+func NewApiServerKeyRing(api *sdk.Api) *ServerKeyRing {
 	return NewServerKeyRing(func() (map[byte]ed25519.PublicKey, error) {
 		result, err := api.VerifyKeysSync()
 		if err != nil {

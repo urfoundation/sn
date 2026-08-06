@@ -1,6 +1,6 @@
 module github.com/urfoundation/sn
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/centrifuge/go-substrate-rpc-client/v4 v4.2.2-0.20240919131012-e3b938563803
@@ -9,18 +9,13 @@ require (
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/urnetwork/connect v0.0.0
+	github.com/urnetwork/sdk v0.0.0
 	github.com/vedhavyas/go-subkey/v2 v2.0.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/net v0.56.0
-	golang.org/x/term v0.44.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/net v0.57.0
+	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-// validator (and miner) import connect; connect imports glog. Replaces in a
-// dependency's go.mod are ignored, so the main module declares both.
-replace github.com/urnetwork/connect => ../connect
-
-replace github.com/urnetwork/glog => ../glog
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.0.0 // indirect
@@ -41,7 +36,7 @@ require (
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/google/btree v1.1.2 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
@@ -51,7 +46,7 @@ require (
 	github.com/pierrec/xxHash v0.1.5 // indirect
 	github.com/pion/datachannel v1.6.2 // indirect
 	github.com/pion/dtls/v3 v3.1.5 // indirect
-	github.com/pion/ice/v4 v4.4.0 // indirect
+	github.com/pion/ice/v4 v4.4.1 // indirect
 	github.com/pion/interceptor v0.1.47 // indirect
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
@@ -60,13 +55,13 @@ require (
 	github.com/pion/rtp v1.10.5 // indirect
 	github.com/pion/sctp v1.11.1 // indirect
 	github.com/pion/sdp/v3 v3.0.19 // indirect
-	github.com/pion/srtp/v3 v3.0.12 // indirect
+	github.com/pion/srtp/v3 v3.0.13 // indirect
 	github.com/pion/stun/v3 v3.1.6 // indirect
-	github.com/pion/transport/v4 v4.0.2 // indirect
+	github.com/pion/transport/v4 v4.1.0 // indirect
 	github.com/pion/turn/v5 v5.0.12 // indirect
 	github.com/pion/webrtc/v4 v4.2.18 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/quic-go v0.60.0 // indirect
+	github.com/quic-go/quic-go v0.61.0 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
@@ -75,14 +70,27 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/urnetwork/glog v0.0.0 // indirect
+	github.com/urnetwork/goidenticons v0.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
+	golang.org/x/image v0.44.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
-	gvisor.dev/gvisor v0.0.0-20260624000029-d10071d63566 // indirect
-	src.agwa.name/tlshacks v0.0.3 // indirect
+	gvisor.dev/gvisor v0.0.0-20260805230438-8eba670122c5 // indirect
+	src.agwa.name/tlshacks v0.0.4 // indirect
 )
+
+
+// validator (and miner) import connect; connect imports glog. Replaces in a
+// dependency's go.mod are ignored, so the main module declares both.
+replace github.com/urnetwork/connect => ../connect
+
+replace github.com/urnetwork/sdk => ../sdk
+
+replace github.com/urnetwork/glog => ../glog
+
+replace github.com/urnetwork/goidenticons => ../goidenticons

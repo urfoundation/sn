@@ -35,6 +35,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/urnetwork/connect"
+	"github.com/urnetwork/sdk"
+
+	"github.com/urfoundation/sn/clientauth"
 )
 
 const DefaultApiUrl = "https://api.bringyour.com"
@@ -254,7 +257,8 @@ func auth(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.Close()
 
 	var byJwt string
 	if userAuth, err := opts.String("--user_auth"); err == nil && userAuth != "" {
@@ -269,28 +273,20 @@ func auth(opts docopt.Opts) {
 			fmt.Printf("\n")
 		}
 
-		loginCallback, loginChannel := connect.NewBlockingApiCallback[*connect.AuthLoginWithPasswordResult](ctx)
-		api.AuthLoginWithPassword(&connect.AuthLoginWithPasswordArgs{
+		loginResult, err := api.AuthLoginWithPasswordSyncWithContext(ctx, &sdk.AuthLoginWithPasswordArgs{
 			UserAuth: userAuth,
 			Password: password,
-		}, loginCallback)
-
-		var loginResult connect.ApiCallbackResult[*connect.AuthLoginWithPasswordResult]
-		select {
-		case <-ctx.Done():
-			os.Exit(0)
-		case loginResult = <-loginChannel:
+		})
+		if err != nil {
+			panic(err)
 		}
 		if loginResult.Error != nil {
-			panic(loginResult.Error)
+			panic(fmt.Errorf("%s", loginResult.Error.Message))
 		}
-		if loginResult.Result.Error != nil {
-			panic(fmt.Errorf("%s", loginResult.Result.Error.Message))
+		if loginResult.VerificationRequired != nil {
+			panic(fmt.Errorf("verification required for %s. Use the app or web to complete account setup.", loginResult.VerificationRequired.UserAuth))
 		}
-		if loginResult.Result.VerificationRequired != nil {
-			panic(fmt.Errorf("verification required for %s. Use the app or web to complete account setup.", loginResult.Result.VerificationRequired.UserAuth))
-		}
-		byJwt = loginResult.Result.Network.ByJwt
+		byJwt = loginResult.Network.ByJwt
 	} else {
 		authCode, _ := opts.String("<auth_code>")
 		if authCode == "" {
@@ -303,62 +299,24 @@ func auth(opts docopt.Opts) {
 			fmt.Printf("\n")
 		}
 
-		authCodeLoginCallback, authCodeLoginChannel := connect.NewBlockingApiCallback[*connect.AuthCodeLoginResult](ctx)
-		api.AuthCodeLogin(&connect.AuthCodeLoginArgs{
+		authCodeLoginResult, err := api.AuthCodeLoginSyncWithContext(ctx, &sdk.AuthCodeLoginArgs{
 			AuthCode: authCode,
-		}, authCodeLoginCallback)
-
-		var authCodeLoginResult connect.ApiCallbackResult[*connect.AuthCodeLoginResult]
-		select {
-		case <-ctx.Done():
-			os.Exit(0)
-		case authCodeLoginResult = <-authCodeLoginChannel:
+		})
+		if err != nil {
+			panic(err)
 		}
 		if authCodeLoginResult.Error != nil {
-			panic(authCodeLoginResult.Error)
+			panic(fmt.Errorf("%s", authCodeLoginResult.Error.Message))
 		}
-		if authCodeLoginResult.Result.Error != nil {
-			panic(fmt.Errorf("%s", authCodeLoginResult.Result.Error.Message))
-		}
-		byJwt = authCodeLoginResult.Result.ByJwt
+		byJwt = authCodeLoginResult.Jwt
 	}
 
 	if byJwt != "" {
-		if err := os.MkdirAll(urNetworkDir, 0700); err != nil {
+		if err := clientauth.WriteToken(jwtPath, byJwt); err != nil {
 			panic(err)
 		}
-		os.WriteFile(jwtPath, []byte(byJwt), 0700)
 		fmt.Printf("Jwt written to %s\n", jwtPath)
 	}
-}
-
-// authValidatorClient authenticates a client under the network JWT and
-// returns (byClientJwt, clientId) — provideAuth's shape.
-func authValidatorClient(ctx context.Context, api *connect.BringYourApi) (string, connect.Id, error) {
-	authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
-	api.AuthNetworkClient(&connect.AuthNetworkClientArgs{
-		Description: fmt.Sprintf("validator %s", RequireVersion()),
-		DeviceSpec:  "",
-	}, authClientCallback)
-
-	var authClientResult connect.ApiCallbackResult[*connect.AuthNetworkClientResult]
-	select {
-	case <-ctx.Done():
-		return "", connect.Id{}, ctx.Err()
-	case authClientResult = <-authClientChannel:
-	}
-	if authClientResult.Error != nil {
-		return "", connect.Id{}, authClientResult.Error
-	}
-	if authClientResult.Result.Error != nil {
-		return "", connect.Id{}, fmt.Errorf("%s", authClientResult.Result.Error.Message)
-	}
-	byClientJwt := authClientResult.Result.ByClientJwt
-	parsed, err := connect.ParseByJwtUnverified(byClientJwt)
-	if err != nil {
-		return "", connect.Id{}, err
-	}
-	return byClientJwt, parsed.ClientId, nil
 }
 
 // --- run ---
@@ -378,29 +336,51 @@ func run(opts docopt.Opts) {
 		panic(err)
 	}
 
-	byJwt, err := readNetworkJwt()
-	if err != nil {
-		panic(err)
-	}
-
 	event := connect.NewEventWithContext(context.Background())
 	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(event.Ctx())
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
-	api.SetByJwt(byJwt)
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.Close()
+
+	networkTokenPath, err := networkJwtPath()
+	if err != nil {
+		panic(err)
+	}
+	clientTokenPath := filepath.Join(identity.StateDir, ".validator.jwt")
+	byClientJwt, clientId, err := clientauth.LoadOrCreateClientJwt(
+		ctx,
+		api,
+		networkTokenPath,
+		clientTokenPath,
+		fmt.Sprintf("validator %s", RequireVersion()),
+	)
+	if err != nil {
+		panic(err)
+	}
+	refreshPersistSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
+		if err := clientauth.WriteToken(clientTokenPath, jwt); err != nil {
+			fmt.Printf("validator client JWT save failed: %s\n", err)
+			cancel()
+		}
+	}))
+	defer refreshPersistSub.Close()
+	logoutSub := api.AddAuthLogoutListener(clientauth.AuthLogoutListenerFunc(func() {
+		if err := clientauth.MarkRejected(clientTokenPath, networkTokenPath); err != nil {
+			fmt.Printf("validator client JWT rejection save failed: %s\n", err)
+		}
+		fmt.Printf("validator authentication was rejected; run `validator auth` if the bootstrap credential is no longer valid\n")
+		cancel()
+	}))
+	defer logoutSub.Close()
 
 	// Client identity: authenticate a client id under the network, then
 	// run a connect client whose ClientKeySeed is the persisted vpk seed —
 	// the ClientKeyManager publishes the vpk to the platform
 	// (ckey_<clientId>), which is what the /verify server checks SEED
 	// bodies against (VALIDATOR.md §2).
-	byClientJwt, clientId, err := authValidatorClient(ctx, api)
-	if err != nil {
-		panic(err)
-	}
 	fmt.Printf("client_id: %s\n", clientId)
 	fmt.Printf("vpk: %s\n", hex.EncodeToString(identity.Vpk))
 
@@ -409,11 +389,22 @@ func run(opts docopt.Opts) {
 	clientOob := connect.NewApiOutOfBandControl(ctx, clientStrategy, byClientJwt, apiUrl)
 	identityClient := connect.NewClient(ctx, clientId, clientOob, clientSettings)
 	defer identityClient.Close()
-	connect.NewPlatformTransportWithDefaults(ctx, clientStrategy, identityClient.RouteManager(), connectUrl, &connect.ClientAuth{
+	instanceId := connect.NewId()
+	platformTransport := connect.NewPlatformTransportWithDefaults(ctx, clientStrategy, identityClient.RouteManager(), connectUrl, &connect.ClientAuth{
 		ByJwt:      byClientJwt,
-		InstanceId: connect.NewId(),
+		InstanceId: instanceId,
 		AppVersion: RequireVersion(),
 	})
+	refreshTransportSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
+		clientOob.SetByJwt(jwt)
+		platformTransport.SetAuth(&connect.ClientAuth{
+			ByJwt:      jwt,
+			InstanceId: instanceId,
+			AppVersion: RequireVersion(),
+		})
+	}))
+	defer refreshTransportSub.Close()
+	api.StartJwtRefresh()
 
 	// Optional chain access: epoch stamping for proofs + steering reads.
 	var chain *ChainClient
@@ -464,7 +455,7 @@ func run(opts docopt.Opts) {
 	transport := NewTunnelTransport(ctx, clientStrategy, TunnelTransportConfig{
 		ApiUrl:         apiUrl,
 		ConnectUrl:     connectUrl,
-		ByClientJwt:    byClientJwt,
+		ByClientJwt:    api.GetByJwt,
 		SourceClientId: clientId,
 	})
 	keyRing := NewApiServerKeyRing(api)
@@ -496,7 +487,11 @@ func run(opts docopt.Opts) {
 		// on-chain binding read (the rarer call) still logs its errors.
 		steerer.SetHeadBindings(
 			func(id connect.Id) ([32]byte, bool, error) {
-				res, err := api.GetClientKeySync(&connect.GetClientKeyArgs{ClientId: id})
+				sdkId, parseErr := sdk.ParseId(id.String())
+				if parseErr != nil {
+					return [32]byte{}, false, nil
+				}
+				res, err := api.GetClientKeySyncWithContext(ctx, &sdk.GetClientKeyArgs{ClientId: sdkId})
 				if err != nil || res == nil || len(res.PublicKey) != 32 {
 					return [32]byte{}, false, nil
 				}

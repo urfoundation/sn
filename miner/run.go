@@ -3,6 +3,7 @@ package miner
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,10 +27,10 @@ import (
 
 	"github.com/docopt/docopt-go"
 
-	gojwt "github.com/golang-jwt/jwt/v5"
-
 	"github.com/urnetwork/connect"
-	"github.com/urnetwork/connect/protocol"
+	"github.com/urnetwork/sdk"
+
+	"github.com/urfoundation/sn/clientauth"
 )
 
 const DefaultApiUrl = "https://api.bringyour.com"
@@ -245,8 +246,8 @@ func auth(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
-
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.Close()
 
 	var byJwt string
 	if userAuth, err := opts.String("--user_auth"); err == nil {
@@ -265,33 +266,22 @@ func auth(opts docopt.Opts) {
 
 		// fmt.Printf("userAuth='%s'; password='%s'\n", userAuth, password)
 
-		loginCallback, loginChannel := connect.NewBlockingApiCallback[*connect.AuthLoginWithPasswordResult](ctx)
-
-		loginArgs := &connect.AuthLoginWithPasswordArgs{
+		loginArgs := &sdk.AuthLoginWithPasswordArgs{
 			UserAuth: userAuth,
 			Password: password,
 		}
-
-		api.AuthLoginWithPassword(loginArgs, loginCallback)
-
-		var loginResult connect.ApiCallbackResult[*connect.AuthLoginWithPasswordResult]
-		select {
-		case <-ctx.Done():
-			os.Exit(0)
-		case loginResult = <-loginChannel:
+		loginResult, err := api.AuthLoginWithPasswordSyncWithContext(ctx, loginArgs)
+		if err != nil {
+			panic(err)
 		}
-
 		if loginResult.Error != nil {
-			panic(loginResult.Error)
+			panic(fmt.Errorf("%s", loginResult.Error.Message))
 		}
-		if loginResult.Result.Error != nil {
-			panic(fmt.Errorf("%s", loginResult.Result.Error.Message))
-		}
-		if loginResult.Result.VerificationRequired != nil {
-			panic(fmt.Errorf("Verification required for %s. Use the app or web to complete account setup.", loginResult.Result.VerificationRequired.UserAuth))
+		if loginResult.VerificationRequired != nil {
+			panic(fmt.Errorf("Verification required for %s. Use the app or web to complete account setup.", loginResult.VerificationRequired.UserAuth))
 		}
 
-		byJwt = loginResult.Result.Network.ByJwt
+		byJwt = loginResult.Network.ByJwt
 	} else {
 		// auth_code
 		authCode, _ := opts.String("<auth_code>")
@@ -305,36 +295,24 @@ func auth(opts docopt.Opts) {
 			fmt.Printf("\n")
 		}
 
-		authCodeLogin := &connect.AuthCodeLoginArgs{
+		authCodeLogin := &sdk.AuthCodeLoginArgs{
 			AuthCode: authCode,
 		}
-
-		authCodeLoginCallback, authCodeLoginChannel := connect.NewBlockingApiCallback[*connect.AuthCodeLoginResult](ctx)
-
-		api.AuthCodeLogin(authCodeLogin, authCodeLoginCallback)
-
-		var authCodeLoginResult connect.ApiCallbackResult[*connect.AuthCodeLoginResult]
-		select {
-		case <-ctx.Done():
-			os.Exit(0)
-		case authCodeLoginResult = <-authCodeLoginChannel:
+		authCodeLoginResult, err := api.AuthCodeLoginSyncWithContext(ctx, authCodeLogin)
+		if err != nil {
+			panic(err)
 		}
-
 		if authCodeLoginResult.Error != nil {
-			panic(authCodeLoginResult.Error)
-		}
-		if authCodeLoginResult.Result.Error != nil {
-			panic(fmt.Errorf("%s", authCodeLoginResult.Result.Error.Message))
+			panic(fmt.Errorf("%s", authCodeLoginResult.Error.Message))
 		}
 
-		byJwt = authCodeLoginResult.Result.ByJwt
+		byJwt = authCodeLoginResult.Jwt
 	}
 
 	if byJwt != "" {
-		if err := os.MkdirAll(urNetworkDir, 0700); err != nil {
+		if err := clientauth.WriteToken(jwtPath, byJwt); err != nil {
 			panic(err)
 		}
-		os.WriteFile(jwtPath, []byte(byJwt), 0700)
 		fmt.Printf("Jwt written to %s\n", jwtPath)
 	}
 }
@@ -385,66 +363,43 @@ func provide(opts docopt.Opts) {
 		}
 	}
 
+	allProxySettings := readProxySettings()
+	providerCount := len(allProxySettings)
+	if providerCount == 0 {
+		providerCount = 1
+	}
+	providerMemoryTarget := maxMemory
+	if 0 < providerMemoryTarget {
+		providerMemoryTarget /= connect.ByteCount(providerCount)
+	}
+
 	provideWithProxy := func(proxySettings *connect.ProxySettings) {
 		proxyCtx, proxyCancel := context.WithCancel(ctx)
 		defer proxyCancel()
 
 		clientStrategySettings := connect.DefaultClientStrategySettings()
 		clientStrategySettings.ProxySettings = proxySettings
-		clientSettings := connect.DefaultClientSettings()
-		// Load previously-persisted long-lived identity material — the
-		// Ed25519 client-key seed and the sequence-level TLS server
-		// cert + private key. Missing or invalid files are silently
-		// ignored; the client will then generate fresh values and we
-		// save them back after construction.
-		if seed, err := readProviderClientKeySeed(); err == nil && 0 < len(seed) {
-			clientSettings.ClientKeySeed = seed
-		}
-		if certPem, keyPem, err := readProviderTlsCertAndKey(); err == nil && 0 < len(certPem) && 0 < len(keyPem) {
-			if clientSettings.EncryptionSettings == nil {
-				clientSettings.EncryptionSettings = connect.DefaultEncryptionSettings()
-			}
-			clientSettings.EncryptionSettings.ProvideTlsCertificatePem = certPem
-			clientSettings.EncryptionSettings.ProvideTlsPrivateKeyPem = keyPem
-		}
-		localUserNatSettings := connect.DefaultLocalUserNatSettings()
-		localUserNatSettings.TcpBufferSettings.ConnectSettings = clientStrategySettings.ConnectSettings
-		localUserNatSettings.UdpBufferSettings.ConnectSettings = clientStrategySettings.ConnectSettings
-		remoteUserNatProviderSettings := connect.DefaultRemoteUserNatProviderSettings()
+		networkSpace := sdk.NewNetworkSpaceWithUrls(proxyCtx, apiUrl, connectUrl, clientStrategySettings)
+		api := networkSpace.GetApi()
 
-		clientStrategy := connect.NewClientStrategy(proxyCtx, clientStrategySettings)
-
-		// Plumb the out-of-band peer-client-key fetcher so each
-		// per-peer encryption session can cross-check the
-		// contract-supplied public client key against the
-		// canonical value served by the platform's unauthenticated
-		// `/key/<peerId>` API. Today the session only logs on
-		// mismatch; the contract value is still trusted, but
-		// operators get an early-warning signal for a substitution
-		// attack. Skipped if `EncryptionSettings` is nil
-		// (encryption disabled).
-		if clientSettings.EncryptionSettings != nil && clientSettings.EncryptionSettings.NewPeerClientPublicKeyFetcher == nil {
-			clientSettings.EncryptionSettings.NewPeerClientPublicKeyFetcher = func(peerId connect.Id) func(context.Context) ([]byte, error) {
-				return func(fetchCtx context.Context) ([]byte, error) {
-					r, err := connect.HttpGetWithStrategy(
-						fetchCtx,
-						clientStrategy,
-						fmt.Sprintf("%s/key/%s", apiUrl, peerId),
-						"",
-						&connect.GetClientKeyResult{},
-						connect.NewNoopApiCallback[*connect.GetClientKeyResult](),
-					)
-					if err != nil {
-						return nil, err
-					}
-					return r.PublicKey, nil
-				}
-			}
+		networkJwtPath, err := providerStatePath("jwt")
+		if err != nil {
+			panic(err)
+		}
+		clientJwtPath, err := providerClientJwtPath(proxySettings)
+		if err != nil {
+			panic(err)
 		}
 
 		byClientJwt, clientId, err := func() (string, connect.Id, error) {
 			for {
-				byClientJwt, clientId, err := provideAuth(proxyCtx, clientStrategy, apiUrl, opts)
+				byClientJwt, clientId, err := clientauth.LoadOrCreateClientJwt(
+					proxyCtx,
+					api,
+					networkJwtPath,
+					clientJwtPath,
+					fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
+				)
 				if err == nil {
 					return byClientJwt, clientId, nil
 				}
@@ -452,69 +407,74 @@ func provide(opts docopt.Opts) {
 				fmt.Printf("init proxy auth failed. Will retry in %.2fs\n", float64(retryDelay/time.Millisecond)/1000.0)
 				select {
 				case <-proxyCtx.Done():
+					return "", connect.Id{}, proxyCtx.Err()
 				case <-time.After(retryDelay):
 				}
 			}
 		}()
 		if err != nil {
+			if proxyCtx.Err() != nil {
+				return
+			}
 			panic(err)
 		}
 
-		instanceId := connect.NewId()
+		refreshSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
+			if err := clientauth.WriteToken(clientJwtPath, jwt); err != nil {
+				fmt.Printf("provider client JWT save failed: %s\n", err)
+				cancel()
+			}
+		}))
+		defer refreshSub.Close()
+		logoutSub := api.AddAuthLogoutListener(clientauth.AuthLogoutListenerFunc(func() {
+			if err := clientauth.MarkRejected(clientJwtPath, networkJwtPath); err != nil {
+				fmt.Printf("provider client JWT rejection save failed: %s\n", err)
+			}
+			fmt.Printf("provider authentication was rejected; run `provider auth` if the bootstrap credential is no longer valid\n")
+			cancel()
+		}))
+		defer logoutSub.Close()
 
-		clientOob := connect.NewApiOutOfBandControl(proxyCtx, clientStrategy, byClientJwt, apiUrl)
-		connectClient := connect.NewClient(proxyCtx, clientId, clientOob, clientSettings)
-		defer connectClient.Close()
+		seed, _ := readProviderClientKeySeed()
+		certPem, keyPem, _ := readProviderTlsCertAndKey()
+		settings := sdk.DefaultDeviceLocalSettings()
+		settings.KeyMaterial = sdk.NewDeviceLocalKeyMaterial(seed, certPem, keyPem)
+		settings.MemoryTargetByteCount = sdk.ByteCount(providerMemoryTarget)
+		instanceId := sdk.NewId()
+		device, err := sdk.NewDeviceLocal(
+			networkSpace,
+			byClientJwt,
+			fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
+			"",
+			RequireVersion(),
+			instanceId,
+			settings,
+		)
+		if err != nil {
+			panic(err)
+		}
+		defer device.Close()
 
-		// Persist the live identity material so the next process
-		// start loads the same values. On a fresh install both
-		// reads above returned empty and the connect.Client just
-		// generated; on subsequent starts we're writing back the
-		// same bytes (cheap no-op-equivalent).
-		if keyManager := connectClient.ClientKeyManager(); keyManager != nil {
-			if seed := keyManager.Seed(); 0 < len(seed) {
-				if err := writeProviderClientKeySeed(seed); err != nil {
-					fmt.Printf("provider client key save failed: %s\n", err)
-				}
+		// Always-on public mode includes network and friends/family service,
+		// matching the SDK's hierarchical provide contract.
+		device.SetProvideControlMode(sdk.ProvideControlModeAlways)
+
+		keyMaterial := device.GetKeyMaterial()
+		if seed := keyMaterial.GetClientKeySeed(); 0 < len(seed) {
+			if err := writeProviderClientKeySeed(seed); err != nil {
+				fmt.Printf("provider client key save failed: %s\n", err)
 			}
 		}
-		if encManager := connectClient.EncryptionSessionManager(); encManager != nil {
-			certPem := encManager.ProvideTlsCertificatePem()
-			keyPem := encManager.ProvideTlsPrivateKeyPem()
-			if 0 < len(certPem) && 0 < len(keyPem) {
-				if err := writeProviderTlsCertAndKey(certPem, keyPem); err != nil {
-					fmt.Printf("provider tls cert/key save failed: %s\n", err)
-				}
+		certPem = keyMaterial.GetProvideTlsCertificatePem()
+		keyPem = keyMaterial.GetProvideTlsPrivateKeyPem()
+		if 0 < len(certPem) && 0 < len(keyPem) {
+			if err := writeProviderTlsCertAndKey(certPem, keyPem); err != nil {
+				fmt.Printf("provider tls cert/key save failed: %s\n", err)
 			}
 		}
-
-		// routeManager := connect.NewRouteManager(connectClient)
-		// contractManager := connect.NewContractManagerWithDefaults(connectClient)
-		// connectClient.Setup(routeManager, contractManager)
-		// go connectClient.Run()
 
 		fmt.Printf("client_id: %s\n", clientId)
 		fmt.Printf("instance_id: %s\n", instanceId)
-
-		auth := &connect.ClientAuth{
-			ByJwt: byClientJwt,
-			// ClientId: clientId,
-			InstanceId: instanceId,
-			AppVersion: RequireVersion(),
-		}
-		connect.NewPlatformTransportWithDefaults(proxyCtx, clientStrategy, connectClient.RouteManager(), connectUrl, auth)
-		// go platformTransport.Run(connectClient.RouteManager())
-
-		localUserNat := connect.NewLocalUserNat(proxyCtx, clientId.String(), localUserNatSettings)
-		defer localUserNat.Close()
-		remoteUserNatProvider := connect.NewRemoteUserNatProvider(connectClient, localUserNat, remoteUserNatProviderSettings)
-		defer remoteUserNatProvider.Close()
-
-		provideModes := map[protocol.ProvideMode]bool{
-			protocol.ProvideMode_Public:  true,
-			protocol.ProvideMode_Network: true,
-		}
-		connectClient.ContractManager().SetProvideModes(provideModes)
 
 		select {
 		case <-proxyCtx.Done():
@@ -523,7 +483,7 @@ func provide(opts docopt.Opts) {
 
 	var wg sync.WaitGroup
 
-	if allProxySettings := readProxySettings(); 0 < len(allProxySettings) {
+	if 0 < len(allProxySettings) {
 		fmt.Printf("Using %d proxy servers:\n", len(allProxySettings))
 
 		for i, proxySettings := range allProxySettings {
@@ -617,6 +577,19 @@ func providerStatePath(name string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
+// providerClientJwtPath gives each independently connected proxy provider a
+// stable renewable client identity without placing proxy credentials in a
+// filename. The direct (non-proxy) provider keeps the simple legacy-adjacent
+// name.
+func providerClientJwtPath(proxySettings *connect.ProxySettings) (string, error) {
+	if proxySettings == nil {
+		return providerStatePath(".provider.jwt")
+	}
+	key := proxySettings.Network + "\x00" + proxySettings.Address
+	sum := sha256.Sum256([]byte(key))
+	return providerStatePath(fmt.Sprintf(".provider-%x.jwt", sum[:8]))
+}
+
 // readProviderClientKeySeed loads the Ed25519 seed for the provider
 // client's long-lived identity key from `~/.urnetwork/.provider.key`.
 // Returns (nil, nil) when the file does not exist — a fresh install.
@@ -706,136 +679,6 @@ func writeProviderTlsCertAndKey(certPem, keyPem []byte) error {
 	out = append(out, certPem...)
 	out = append(out, keyPem...)
 	return os.WriteFile(p, out, 0600)
-}
-
-func provideAuth(ctx context.Context, clientStrategy *connect.ClientStrategy, apiUrl string, opts docopt.Opts) (byClientJwt string, clientId connect.Id, returnErr error) {
-	urNetworkDir, err := providerStateDir()
-	if err != nil {
-		panic(err)
-	}
-	jwtPath := filepath.Join(urNetworkDir, "jwt")
-
-	if _, err := os.Stat(jwtPath); errors.Is(err, os.ErrNotExist) {
-		// jwt does not exist
-		returnErr = fmt.Errorf("Jwt does not exist at %s", jwtPath)
-		return
-	}
-
-	byJwtBytes, err := os.ReadFile(jwtPath)
-	if err != nil {
-		returnErr = err
-		return
-	}
-	byJwt := strings.TrimSpace(string(byJwtBytes))
-
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
-
-	api.SetByJwt(byJwt)
-
-	// Reuse the identity the platform issued us on a previous run. Without
-	// this the server mints a NEW client_id on every start (AuthNetworkClient
-	// creates one whenever ClientId is omitted), so a restart discards the
-	// provider's probed location, measured bandwidth and reliability history,
-	// and it must serve out a fresh probation before it can be selected again.
-	// One host in the beta data accumulated 19 client ids this way.
-	storedClientId, err := readStoredClientId(urNetworkDir)
-	if err != nil {
-		returnErr = err
-		return
-	}
-
-	// A stored id the server no longer recognises must not wedge the provider.
-	// The server answers "Client does not exist." at the application level for
-	// an id from another deployment, another network, a device removed in the
-	// app, or one the idle reap collected. Under the systemd unit's
-	// Restart=always, panicking on that -- and leaving the bad id on disk --
-	// is a permanent crash loop. Clear it and ask for a new identity instead,
-	// exactly once, which is what the CLI did before the id was persisted.
-	var authClientResult connect.ApiCallbackResult[*connect.AuthNetworkClientResult]
-	sentStoredId := storedClientId != nil
-
-	for {
-		authClientCallback, authClientChannel := connect.NewBlockingApiCallback[*connect.AuthNetworkClientResult](ctx)
-
-		authClientArgs := &connect.AuthNetworkClientArgs{
-			ClientId:    storedClientId,
-			Description: fmt.Sprintf("provider %s %s", runtime.GOOS, RequireVersion()),
-			DeviceSpec:  "",
-		}
-
-		api.AuthNetworkClient(authClientArgs, authClientCallback)
-
-		select {
-		case <-ctx.Done():
-			os.Exit(0)
-		case authClientResult = <-authClientChannel:
-		}
-
-		// Only an application-level rejection is a reason to drop the stored
-		// identity. A transport error leaves it alone -- see
-		// shouldRetryWithNewIdentity.
-		resultErrMessage := ""
-		if authClientResult.Error == nil && authClientResult.Result != nil && authClientResult.Result.Error != nil {
-			resultErrMessage = authClientResult.Result.Error.Message
-			if resultErrMessage == "" {
-				resultErrMessage = "the server rejected the client authentication"
-			}
-		}
-
-		if !shouldRetryWithNewIdentity(sentStoredId, authClientResult.Error, resultErrMessage) {
-			break
-		}
-
-		fmt.Printf(
-			"stored client identity %s was rejected by the server (%s); discarding it and requesting a new client identity\n",
-			storedClientId,
-			resultErrMessage,
-		)
-		if clearErr := clearStoredClientId(urNetworkDir); clearErr != nil {
-			fmt.Printf("could not clear stored client id at %s: %s\n", urNetworkDir, clearErr)
-		}
-
-		// retry exactly once: the next pass sends no id, and any failure of
-		// that pass surfaces below
-		storedClientId = nil
-		sentStoredId = false
-	}
-
-	if authClientResult.Error != nil {
-		panic(authClientResult.Error)
-	}
-	// a callback that reports neither a transport error nor a result is a
-	// protocol violation, not something to dereference
-	if authClientResult.Result == nil {
-		panic(fmt.Errorf("auth network client returned no result and no error"))
-	}
-	if authClientResult.Result.Error != nil {
-		panic(fmt.Errorf("%s", authClientResult.Result.Error.Message))
-	}
-
-	byClientJwt = authClientResult.Result.ByClientJwt
-
-	// parse the clientId
-	parser := gojwt.NewParser()
-	token, _, err := parser.ParseUnverified(byClientJwt, gojwt.MapClaims{})
-	if err != nil {
-		panic(err)
-	}
-
-	claims := token.Claims.(gojwt.MapClaims)
-
-	clientId, err = connect.ParseId(claims["client_id"].(string))
-	if err != nil {
-		panic(err)
-	}
-
-	// persist for the next run; a failure here must not stop the provider
-	// from serving, it only means the next restart re-auths as it does today
-	if writeErr := writeStoredClientId(urNetworkDir, clientId); writeErr != nil {
-		fmt.Printf("could not persist client id to %s: %s\n", urNetworkDir, writeErr)
-	}
-
-	return
 }
 
 type Status struct {

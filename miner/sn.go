@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/urnetwork/connect"
+	"github.com/urnetwork/sdk"
 
 	"github.com/urfoundation/sn/merkle"
 	"github.com/urfoundation/sn/miner/onchain"
@@ -74,9 +75,10 @@ func snSetWallet(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 	if err != nil {
 		return err
 	}
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.Close()
 	api.SetByJwt(byJwt)
-	result, err := api.SnSetWalletSync(&connect.SnSetWalletArgs{
+	result, err := api.SnSetWalletSync(&sdk.SnSetWalletArgs{
 		ColdkeySs58: coldkeySs58,
 	})
 	if err != nil {
@@ -155,7 +157,8 @@ func claim(opts docopt.Opts) {
 	if err != nil {
 		panic(err)
 	}
-	api := connect.NewBringYourApi(ctx, clientStrategy, apiUrl)
+	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
+	defer api.Close()
 	api.SetByJwt(byJwt)
 
 	var rpcUrls []string
@@ -187,7 +190,7 @@ func claim(opts docopt.Opts) {
 		epochNote = fmt.Sprintf(" (last finalized; current epoch is %d. Use --epoch to override)", epochResult.Epoch)
 	}
 
-	poolClaim, err := api.SnPoolClaimSync(&connect.SnPoolClaimArgs{
+	poolClaim, err := api.SnPoolClaimSync(&sdk.SnPoolClaimArgs{
 		Epoch: epoch,
 	})
 	if err != nil {
