@@ -171,12 +171,15 @@ func claim(opts docopt.Opts) {
 		os.Exit(1)
 	}
 
-	epoch := uint64(0)
+	epoch := int64(0)
 	epochNote := ""
 	if epochStr, epochErr := opts.String("--epoch"); epochErr == nil && epochStr != "" {
-		epoch, err = strconv.ParseUint(epochStr, 10, 64)
+		epoch, err = strconv.ParseInt(epochStr, 10, 64)
 		if err != nil {
 			panic(fmt.Errorf("bad --epoch %q: %s", epochStr, err))
+		}
+		if epoch < 0 {
+			panic(fmt.Errorf("bad --epoch %q: must be non-negative", epochStr))
 		}
 	} else {
 		epochResult, err := api.SnEpochSync()
@@ -236,7 +239,7 @@ func claim(opts docopt.Opts) {
 	// read the on-chain root, trying each --rpc endpoint in order until one
 	// answers both eth_chainId and eth_call. The noCommit read calldata is
 	// built with sn/stabi; only the http transport is hand-rolled (sn_rpc.go).
-	epochBig := new(big.Int).SetUint64(epoch)
+	epochBig := big.NewInt(epoch)
 	chainChecked := false
 	var chainRoot [32]byte
 	var chainId uint64
@@ -297,7 +300,7 @@ func claim(opts docopt.Opts) {
 		} else if chainRoot != serverRoot {
 			mismatches = append(mismatches, "the server payout root does not match the on-chain root")
 		}
-		if chainId != poolClaim.ChainId {
+		if poolClaim.ChainId < 0 || chainId != uint64(poolClaim.ChainId) {
 			mismatches = append(mismatches, fmt.Sprintf("chain id mismatch: rpc says %d, server says %d", chainId, poolClaim.ChainId))
 		}
 	}
@@ -349,6 +352,10 @@ func claim(opts docopt.Opts) {
 			fmt.Printf("claim: server contract address %q is not a valid EVM address\n", poolClaim.ContractAddress)
 			os.Exit(1)
 		}
+		if poolClaim.ChainId < 0 {
+			fmt.Printf("claim: server chain id %d is invalid\n", poolClaim.ChainId)
+			os.Exit(1)
+		}
 		contract := common.HexToAddress(poolClaim.ContractAddress)
 		key, err := onchain.LoadKeyFile(keyFile)
 		if err != nil {
@@ -360,7 +367,7 @@ func claim(opts docopt.Opts) {
 			Rpcs:     rpcUrls,
 			Key:      key,
 			Calldata: claimCalldata,
-			ChainID:  new(big.Int).SetUint64(poolClaim.ChainId),
+			ChainID:  new(big.Int).SetUint64(uint64(poolClaim.ChainId)),
 			DryRun:   dryRun,
 		})
 		if err != nil {

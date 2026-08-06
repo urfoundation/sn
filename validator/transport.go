@@ -237,7 +237,10 @@ func NewApiServerKeyRing(api *sdk.Api) *ServerKeyRing {
 		keys := map[byte]ed25519.PublicKey{}
 		for _, key := range result.Keys {
 			if len(key.PublicKey) == ed25519.PublicKeySize {
-				keys[key.ServerKeyId] = ed25519.PublicKey(key.PublicKey)
+				if key.ServerKeyId < 0 || 255 < key.ServerKeyId {
+					return nil, fmt.Errorf("server key id %d is outside the byte range", key.ServerKeyId)
+				}
+				keys[byte(key.ServerKeyId)] = ed25519.PublicKey(key.PublicKey)
 			}
 		}
 		return keys, nil
