@@ -555,7 +555,7 @@ func provide(opts docopt.Opts) {
 }
 
 // providerStateDir returns the absolute path of the provider state
-// directory, ~/.urnetwork — the one place `jwt`, `client_id`,
+// directory, ~/.urnetwork — the one place `jwt`, `.provider.jwt`,
 // `network.json`, `.provider.key` and `.provider.cert` live. Does not
 // create it.
 func providerStateDir() (string, error) {

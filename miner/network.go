@@ -3,17 +3,16 @@ package miner
 // network.go — persisted custom-network selection for the miner CLI.
 // `provider choose_network <api_url> <connect_url>` writes the chosen
 // network to network.json in the provider state directory (alongside
-// jwt, client_id and .provider.key — see providerStateDir);
+// jwt, .provider.jwt and .provider.key — see providerStateDir);
 // `provider choose_network --reset` removes it. resolveApiUrl and
 // resolveConnectUrl apply the flag > saved-config > default precedence
 // on top of this file.
 //
 // The read/write/reset functions take the state directory explicitly
-// rather than resolving the home directory themselves, matching
-// clientidentity.go. That keeps the tests off the developer's real
-// ~/.urnetwork: overriding $HOME does not work on Windows, where
-// os.UserHomeDir reads %USERPROFILE%, so a test that reset the config
-// would delete the config of whoever ran it.
+// rather than resolving the home directory themselves, keeping the
+// tests off the developer's real ~/.urnetwork: overriding $HOME does
+// not work on Windows, where os.UserHomeDir reads %USERPROFILE%, so a
+// test that reset the config would delete the config of whoever ran it.
 
 import (
 	"encoding/json"
@@ -28,7 +27,7 @@ import (
 )
 
 // networkConfigFileName is the saved network, in the provider state
-// directory beside jwt and client_id.
+// directory beside jwt and .provider.jwt.
 const networkConfigFileName = "network.json"
 
 // networkConfig is the on-disk shape of network.json.
@@ -116,10 +115,11 @@ func insecureNetworkWarning(apiUrl, connectUrl string) string {
 //
 // The jwt is minted by one network's api and means nothing to another, so
 // after a switch `provider provide` fails with an auth error whose cause
-// is several steps removed from the message. The stored client id goes
-// stale the same way, but that one recovers on its own (provideAuth
-// discards a rejected id and asks for a new one), so only the jwt needs
-// the operator to act.
+// is several steps removed from the message. The persisted client JWT
+// (.provider.jwt) goes stale the same way, but that one fails loudly on
+// its own: clientauth.LoadOrCreateClientJwt finds it rejected, clears it,
+// and its error says to run `provider auth`, so only the jwt needs this
+// note.
 func networkSwitchNotice(dir string) string {
 	if _, err := os.Stat(filepath.Join(dir, "jwt")); err != nil {
 		return ""

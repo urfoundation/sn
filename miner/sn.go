@@ -47,7 +47,8 @@ import (
 var stSubnet = stabi.NewSTSubnet()
 
 // readNetworkJwt loads the network jwt written by `provider auth` from
-// ~/.urnetwork/jwt — the same credential provideAuth uses.
+// ~/.urnetwork/jwt — the same bootstrap credential `provider provide`
+// uses to mint its client JWT (clientauth.LoadOrCreateClientJwt).
 func readNetworkJwt() (string, error) {
 	jwtPath, err := providerStatePath("jwt")
 	if err != nil {
