@@ -1,0 +1,690 @@
+openapi: "3.1.0"
+info:
+  version: 2026.8.16
+  title: URnetwork Competition API
+  description: |
+    Control-plane API for reproducible, cached sim-latency competition rounds.
+    The same server process also serves the URnetwork API described by
+    connect/api/bringyour.yml. Competition paths are namespaced under
+    /competition.
+
+    Round workload seeds are never returned while a round is active. The API
+    publishes a seed commitment and the generated providers.yml SHA-256 until
+    the configured reveal time, then exposes both seed and immutable file.
+    Identical canonical patch bytes in one round map to one durable job/result.
+  contact:
+    name: URnetwork
+    email: support@ur.io
+    url: https://ur.io
+  license:
+    name: Mozilla Public License, v. 2.0
+    url: https://mozilla.org/MPL/2.0/
+servers:
+  - url: https://api.bringyour.com
+
+tags:
+  - name: Competition
+    description: Public round information and score submission.
+  - name: Competition operator
+    description: Authenticated round administration.
+
+paths:
+  /competition/healthz:
+    get:
+      operationId: CompetitionHealth
+      tags: [Competition]
+      security: []
+      summary: Process liveness
+      responses:
+        "200":
+          description: The API process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionHealthResult"
+
+  /competition/readyz:
+    get:
+      operationId: CompetitionReady
+      tags: [Competition operator]
+      summary: Deep competition readiness
+      description: |
+        Fails closed unless durable storage, the FIFO worker lease path, the
+        frozen round policy, artifact storage, and the authoritative evaluator
+        host passes its current self-check.
+      responses:
+        "200":
+          description: Ready to accept score jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionReadinessResult"
+        "401":
+          $ref: "#/components/responses/CompetitionUnauthorized"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/info:
+    get:
+      operationId: CompetitionInfo
+      tags: [Competition]
+      security: []
+      summary: Published non-secret run and scoring policy
+      responses:
+        "200":
+          description: Current immutable competition policy and active round commitment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionInfoResult"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/generate-round:
+    post:
+      operationId: CompetitionGenerateRound
+      tags: [Competition operator]
+      summary: Generate and commit a hidden-seed round
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompetitionGenerateRoundArgs"
+      responses:
+        "201":
+          description: Round created; no seed is disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionRoundResult"
+        "400":
+          $ref: "#/components/responses/CompetitionBadRequest"
+        "401":
+          $ref: "#/components/responses/CompetitionUnauthorized"
+        "409":
+          $ref: "#/components/responses/CompetitionConflict"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/round/{roundId}/providers.yml:
+    get:
+      operationId: CompetitionGetRoundWorkload
+      tags: [Competition]
+      security: []
+      summary: Download the committed workload after reveal
+      parameters:
+        - name: roundId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Byte-identical providers.yml whose SHA-256 was published at round creation.
+          headers:
+            ETag:
+              schema:
+                type: string
+            X-Content-SHA256:
+              schema:
+                $ref: "#/components/schemas/Sha256"
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/CompetitionBadRequest"
+        "404":
+          $ref: "#/components/responses/CompetitionNotFound"
+        "409":
+          $ref: "#/components/responses/CompetitionConflict"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/score:
+    post:
+      operationId: CompetitionSubmitScore
+      tags: [Competition]
+      summary: Validate, canonicalize, cache, and enqueue a patch
+      description: |
+        The response is asynchronous. Submitting identical canonical patch
+        bytes for the same round returns the existing job and cannot buy
+        another draw from evaluator noise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompetitionScoreArgs"
+      responses:
+        "202":
+          description: The durable job was accepted or returned from cache.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionScoreAcceptedResult"
+        "400":
+          $ref: "#/components/responses/CompetitionBadRequest"
+        "401":
+          $ref: "#/components/responses/CompetitionUnauthorized"
+        "404":
+          $ref: "#/components/responses/CompetitionNotFound"
+        "409":
+          $ref: "#/components/responses/CompetitionConflict"
+        "413":
+          description: Patch exceeds the published byte limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionError"
+        "422":
+          description: Patch is structurally invalid or outside the allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionError"
+        "429":
+          description: Queue admission limit reached.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionError"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/score/{jobId}:
+    get:
+      operationId: CompetitionGetScore
+      tags: [Competition]
+      summary: Poll one cached score job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current durable state; detailed diagnostics obey reveal policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionScoreJobResult"
+        "400":
+          $ref: "#/components/responses/CompetitionBadRequest"
+        "401":
+          $ref: "#/components/responses/CompetitionUnauthorized"
+        "404":
+          $ref: "#/components/responses/CompetitionNotFound"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+components:
+  securitySchemes:
+    CompetitionBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Competition submitter or operator token.
+
+  responses:
+    CompetitionBadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CompetitionError"
+    CompetitionUnauthorized:
+      description: Missing or invalid competition bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CompetitionError"
+    CompetitionNotFound:
+      description: Round or job does not exist, or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CompetitionError"
+    CompetitionConflict:
+      description: Request conflicts with immutable round or job state.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CompetitionError"
+    CompetitionUnavailable:
+      description: Competition evaluation is disabled or not ready.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CompetitionError"
+
+  schemas:
+    CompetitionHealthResult:
+      type: object
+      additionalProperties: false
+      required: [status, version, time]
+      properties:
+        status:
+          type: string
+          const: alive
+        version:
+          type: string
+        time:
+          type: string
+          format: date-time
+
+    CompetitionReadinessResult:
+      type: object
+      additionalProperties: false
+      required: [ready, checks, checked_at]
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: object
+          additionalProperties:
+            type: boolean
+        checked_at:
+          type: string
+          format: date-time
+
+    CompetitionInfoResult:
+      type: object
+      additionalProperties: false
+      required:
+        - competition_id
+        - enabled
+        - score_schema
+        - scorer_version
+        - base_sha
+        - evaluator_image_digest
+        - patch_policy
+        - evaluation_policy
+      properties:
+        competition_id:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        score_schema:
+          type: integer
+          const: 1
+        scorer_version:
+          type: string
+          const: sim-latency-score/1
+        base_sha:
+          $ref: "#/components/schemas/GitSha"
+        evaluator_image_digest:
+          $ref: "#/components/schemas/ImageDigest"
+        patch_policy:
+          $ref: "#/components/schemas/CompetitionPatchPolicy"
+        evaluation_policy:
+          $ref: "#/components/schemas/CompetitionEvaluationPolicy"
+        active_round:
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionRoundResult"
+            - type: "null"
+
+    CompetitionPatchPolicy:
+      type: object
+      additionalProperties: false
+      required: [max_patch_bytes, allowed_paths, forbidden_paths]
+      properties:
+        max_patch_bytes:
+          type: integer
+          minimum: 1
+          maximum: 262144
+        allowed_paths:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: Exact literal existing Go files; glob patterns are rejected.
+          items:
+            type: string
+        forbidden_paths:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+
+    CompetitionEvaluationPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - hardware_id
+        - host_qualification_sha256
+        - config_local_sha256
+        - vault_local_sha256
+        - simulator_sha256
+        - scorer_sha256
+        - provider_count
+        - client_pool_size
+        - arrivals_per_minute
+        - quality_window_size
+        - exchange_hosts
+        - fleet_shards
+        - site_listen
+        - api_port
+        - ramp_ms
+        - prewarm_ms
+        - settle_ms
+        - duration_ms
+        - request_timeout_ms
+        - pipeline_interval_ms
+        - test_timeout_ms
+        - announce_timeout_ms
+        - impairment_enabled
+        - replicates
+        - takeover_margin
+        - queue_limit
+        - score_timeout_seconds
+      properties:
+        hardware_id:
+          type: string
+          minLength: 1
+        host_qualification_sha256:
+          $ref: "#/components/schemas/Sha256"
+        config_local_sha256:
+          $ref: "#/components/schemas/Sha256"
+        vault_local_sha256:
+          $ref: "#/components/schemas/Sha256"
+        simulator_sha256:
+          $ref: "#/components/schemas/Sha256"
+        scorer_sha256:
+          $ref: "#/components/schemas/Sha256"
+        provider_count:
+          type: integer
+          minimum: 1
+        client_pool_size:
+          type: integer
+          minimum: 1
+        arrivals_per_minute:
+          type: integer
+          minimum: 1
+        quality_window_size:
+          type: integer
+          minimum: 0
+          maximum: 32
+        exchange_hosts:
+          type: integer
+          minimum: 1
+        fleet_shards:
+          type: integer
+          minimum: 0
+        site_listen:
+          type: string
+        api_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        ramp_ms:
+          type: integer
+          minimum: 0
+        prewarm_ms:
+          type: integer
+          minimum: 0
+        settle_ms:
+          type: integer
+          minimum: 0
+        duration_ms:
+          type: integer
+          minimum: 1
+        request_timeout_ms:
+          type: integer
+          minimum: 1
+        pipeline_interval_ms:
+          type: integer
+          minimum: 1
+        test_timeout_ms:
+          type: integer
+          minimum: 1
+        announce_timeout_ms:
+          type: integer
+          minimum: 1
+        impairment_enabled:
+          type: boolean
+        replicates:
+          type: integer
+          minimum: 1
+        takeover_margin:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 0.5
+        queue_limit:
+          type: integer
+          minimum: 1
+        score_timeout_seconds:
+          type: integer
+          minimum: 1
+
+    CompetitionGenerateRoundArgs:
+      type: object
+      additionalProperties: false
+      required: [opens_at, closes_at, reveal_at]
+      properties:
+        opens_at:
+          type: string
+          format: date-time
+        closes_at:
+          type: string
+          format: date-time
+        reveal_at:
+          type: string
+          format: date-time
+
+    CompetitionRoundResult:
+      type: object
+      additionalProperties: false
+      required:
+        - round_id
+        - status
+        - workload_commitment
+        - providers_sha256
+        - score_schema
+        - opens_at
+        - closes_at
+        - reveal_at
+        - created_at
+      properties:
+        round_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [scheduled, open, closed, revealed, canceled]
+        workload_commitment:
+          $ref: "#/components/schemas/Sha256"
+        providers_sha256:
+          description: SHA-256 of the exact generated providers.yml bytes.
+          $ref: "#/components/schemas/Sha256"
+        score_schema:
+          type: integer
+          const: 1
+        opens_at:
+          type: string
+          format: date-time
+        closes_at:
+          type: string
+          format: date-time
+        reveal_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        revealed_seed:
+          description: Present only at or after reveal_at.
+          oneOf:
+            - type: string
+              pattern: "^[0-9a-f]{64}$"
+            - type: "null"
+        providers_url:
+          description: Present only at or after reveal_at.
+          type: string
+          pattern: "^/competition/round/[0-9a-f-]+/providers\\.yml$"
+
+    CompetitionScoreArgs:
+      type: object
+      additionalProperties: false
+      required: [round_id, patch]
+      properties:
+        round_id:
+          type: string
+          format: uuid
+        patch:
+          type: string
+          minLength: 1
+          maxLength: 262144
+
+    CompetitionScoreAcceptedResult:
+      type: object
+      additionalProperties: false
+      required: [job_id, round_id, patch_sha256, state, cache_hit, status_url]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        round_id:
+          type: string
+          format: uuid
+        patch_sha256:
+          $ref: "#/components/schemas/Sha256"
+        state:
+          $ref: "#/components/schemas/CompetitionJobState"
+        cache_hit:
+          type: boolean
+        status_url:
+          type: string
+          pattern: "^/competition/score/[0-9a-f-]+$"
+
+    CompetitionScoreJobResult:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - round_id
+        - patch_sha256
+        - state
+        - submitted_at
+        - cache_key
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        round_id:
+          type: string
+          format: uuid
+        patch_sha256:
+          $ref: "#/components/schemas/Sha256"
+        state:
+          $ref: "#/components/schemas/CompetitionJobState"
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        completed_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        cache_key:
+          $ref: "#/components/schemas/Sha256"
+        score:
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionScoreResult"
+            - type: "null"
+        eval_error:
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionError"
+            - type: "null"
+
+    CompetitionJobState:
+      type: string
+      enum: [queued, running, succeeded, failed, canceled]
+
+    CompetitionScoreResult:
+      type: object
+      additionalProperties: false
+      required: [score_schema, placeable, gates]
+      properties:
+        score_schema:
+          type: integer
+          const: 1
+        raw_score:
+          description: Present only after the round reveal.
+          type: number
+          exclusiveMinimum: 0
+        normalized_score:
+          description: Present for a completed placeable score, including during an active round.
+          type: number
+          minimum: 1
+          maximum: 200
+        placeable:
+          type: boolean
+        takeover_eligible:
+          type: boolean
+        gates:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CompetitionGate"
+        diagnostics:
+          type: object
+          additionalProperties: true
+
+    CompetitionGate:
+      type: object
+      additionalProperties: false
+      required: [passed, details]
+      properties:
+        passed:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+
+    CompetitionError:
+      type: object
+      additionalProperties: false
+      required: [kind, code, message, retriable]
+      properties:
+        kind:
+          type: string
+          enum: [auth, submission, infrastructure]
+        code:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{1,63}$"
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        retriable:
+          type: boolean
+
+    Sha256:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+
+    GitSha:
+      type: string
+      pattern: "^[0-9a-f]{40}$"
+
+    ImageDigest:
+      type: string
+      pattern: "^sha256:[0-9a-f]{64}$"
+
+security:
+  - CompetitionBearerAuth: []
