@@ -154,3 +154,19 @@ func TestProductionPolicyEvidenceRequiresCompleteCanonicalCadence(t *testing.T) 
 		t.Fatal("mutated production cadence evidence was accepted")
 	}
 }
+
+func TestFinalizedActionBlockBindsPlanActionAndIntent(t *testing.T) {
+	action := Action{ID: "operator.register.1", IntentHash: "intent-a"}
+	entries := []JournalEntry{
+		{PlanHash: "plan-a", ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIncluded, BlockNumber: 10},
+		{PlanHash: "plan-b", ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, BlockNumber: 11},
+		{PlanHash: "plan-a", ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, BlockNumber: 12},
+	}
+	if block, err := finalizedActionBlock(entries, "plan-a", action); err != nil || block != 12 {
+		t.Fatalf("finalized block = %d, %v", block, err)
+	}
+	action.IntentHash = "intent-b"
+	if _, err := finalizedActionBlock(entries, "plan-a", action); err == nil {
+		t.Fatal("wrong action intent found a finalized transaction")
+	}
+}

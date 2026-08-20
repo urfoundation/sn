@@ -227,7 +227,7 @@ func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 func releaseQualityFault(cfg *ResolvedConfig) (scenarioFaultSpec, error) {
 	var targets []string
 	for miner := cfg.Config.Topology.HeadFleets*cfg.Config.Topology.ClientsPerHeadFleet + 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		if 1+(miner-1)%cfg.Config.Topology.Operators == cfg.Config.Scenarios.QualityFaultOperator {
+		if operatorForMiner(cfg, miner) == cfg.Config.Scenarios.QualityFaultOperator {
 			targets = append(targets, fmt.Sprintf("miner-%d", miner))
 		}
 	}

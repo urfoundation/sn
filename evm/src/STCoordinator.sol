@@ -200,6 +200,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error InvalidBinding();
     error StaleCommitment();
     error RuntimeIdentityMissing();
+    error NativeRefundFailed();
     error Paused();
     error Reentrancy();
 
@@ -355,12 +356,14 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         bytes32 depositHotkey,
         address depositSigner,
         address rootSigner,
-        uint64 effectiveEpoch
+        uint64 effectiveEpoch,
+        uint64 maximumBurnRao
     ) external payable onlyOwner nonReentrant returns (uint16 uid) {
         if (_operatorVersions[noId].length != 0 || noId == 0) {
             revert InvalidConfiguration();
         }
         if (effectiveEpoch < currentEpoch()) revert InvalidEpoch();
+        uint256 balanceBefore = address(this).balance - msg.value;
         _validateOperator(coldkey, poolHotkey, depositHotkey, depositSigner, rootSigner);
         if (depositHotkeyUsed[depositHotkey]) revert InvalidConfiguration();
         depositHotkeyUsed[depositHotkey] = true;
@@ -379,10 +382,15 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             })
         );
         _operatorIds.push(noId);
-        uid = settlementVault.registerPool{value: msg.value}(noId, poolHotkey);
+        uid = settlementVault.registerPool{value: msg.value}(noId, poolHotkey, maximumBurnRao);
         emit OperatorScheduled(
             noId, effectiveEpoch, coldkey, poolHotkey, depositHotkey, depositSigner, rootSigner, true
         );
+        uint256 current = address(this).balance;
+        if (current > balanceBefore) {
+            (bool refunded,) = payable(msg.sender).call{value: current - balanceBefore}("");
+            if (!refunded) revert NativeRefundFailed();
+        }
     }
 
     function scheduleOperator(

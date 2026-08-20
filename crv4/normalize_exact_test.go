@@ -52,3 +52,63 @@ func TestApplyMaxWeightLimitRationalRejectsInfeasible(t *testing.T) {
 		t.Fatal("expected infeasible cap rejection")
 	}
 }
+
+func TestApplyMaxWeightLimitRationalAllowsExactFeasibility(t *testing.T) {
+	limit := uint16(U16Max / 3)
+	capped, err := ApplyMaxWeightLimitRational(rats(1, 2, 8), limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, weight := range capped {
+		if weight.Cmp(big.NewRat(1, 1)) != 0 {
+			t.Fatalf("weight %d = %s, want 1", index, weight)
+		}
+	}
+}
+
+func TestRepairMaxWeightLimitU16AfterRounding(t *testing.T) {
+	limit := uint16((uint64(U16Max) * 2) / 5)
+	capped, err := ApplyMaxWeightLimitRational(rats(1, 1, 8), limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uids, values, err := NormalizeRationalToU16([]uint16{2, 1, 3}, capped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := uint64(values[2]) * uint64(U16Max)
+	beforeSum := uint64(values[0]) + uint64(values[1]) + uint64(values[2])
+	beforeLimit := beforeSum * uint64(limit)
+	if before <= beforeLimit {
+		t.Fatalf("fixture did not reproduce rounding violation: %v", values)
+	}
+	if err := repairMaxWeightLimitU16(uids, values, limit); err != nil {
+		t.Fatal(err)
+	}
+	if values[0] != 49151 || values[1] != 49152 {
+		t.Fatalf("rounding unit was not assigned by ascending UID: uids=%v values=%v", uids, values)
+	}
+	var sum uint64
+	var maximum uint16
+	for _, value := range values {
+		sum += uint64(value)
+		if value > maximum {
+			maximum = value
+		}
+	}
+	if uint64(maximum)*uint64(U16Max) > sum*uint64(limit) {
+		t.Fatalf("repaired vector still violates cap: %v", values)
+	}
+}
+
+func TestRepairMaxWeightLimitU16RejectsInfeasibleEmittedBreadth(t *testing.T) {
+	if err := repairMaxWeightLimitU16([]uint16{1, 2}, []uint16{U16Max, U16Max}, 32767); err == nil {
+		t.Fatal("infeasible emitted vector was accepted")
+	}
+}
+
+func TestRepairMaxWeightLimitU16RejectsMismatchedVectors(t *testing.T) {
+	if err := repairMaxWeightLimitU16([]uint16{1}, []uint16{U16Max, U16Max}, 32768); err == nil {
+		t.Fatal("mismatched UID/value vectors were accepted")
+	}
+}

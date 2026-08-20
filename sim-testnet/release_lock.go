@@ -141,6 +141,19 @@ func protocolSourceHash(snRoot string) (string, error) {
 	return digestNamedFiles(snRoot, names)
 }
 
+// serverLocalDependencyConfigHash covers the server/local compose contract
+// mirrored by sim-testnet and every PostgreSQL init hook mounted into the
+// release containers. Enumerating the directory also makes newly added hooks
+// fail the lock instead of executing as unreviewed container input.
+func serverLocalDependencyConfigHash(serverRoot string) (string, error) {
+	names, err := filesUnder(serverRoot, []string{"local/postgres/initdb"}, func(string) bool { return true })
+	if err != nil {
+		return "", err
+	}
+	names = append(names, "local/docker-compose.yml")
+	return digestNamedFiles(serverRoot, names)
+}
+
 func generatedABIHash() string {
 	entries := []struct{ name, abi string }{
 		{"Coordinator", CoordinatorABI},
@@ -273,6 +286,10 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	observation.Infrastructure["node_config_hash"], err = digestNamedFiles(xops, []string{"main/ansible/host_files/snow/subtensor/vars.yml", "main/ansible/host_files/snow/subtensor/docker-compose.yml.j2"})
 	if err != nil {
 		return nil, fmt.Errorf("hash Subtensor node config: %w", err)
+	}
+	observation.Infrastructure["server_local_config_hash"], err = serverLocalDependencyConfigHash(cfg.Repos.Server)
+	if err != nil {
+		return nil, fmt.Errorf("hash server/local dependency config: %w", err)
 	}
 	return observation, nil
 }

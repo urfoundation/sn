@@ -157,7 +157,7 @@ func TestScenarioDefinitionsAreStrict(t *testing.T) {
 	for _, check := range release.Checks {
 		checks[check.ID] = true
 	}
-	for _, required := range []string{"native_head_weight_observed", "validator_self_uids_masked", "reserve_yield_auto_compounds", "validator_pool_scores_are_non_global", "claims_finalized_per_no"} {
+	for _, required := range []string{"native_head_weight_observed", "validator_self_uids_masked", "reserve_yield_auto_compounds", "validator_pool_scores_are_non_global", "claims_finalized_per_no", "signed_weight_cap_enforced"} {
 		if !checks[required] {
 			t.Fatalf("release scenario is missing %s", required)
 		}
@@ -174,7 +174,10 @@ func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 			{NoID: 2, PoolUID: 11, PoolLive: true},
 		}}},
 		Validators: []ValidatorObservation{
-			{ValidatorID: 1, SelfUID: 5, MaskedUIDs: []uint16{5, 10, 20, 21}, AppliedWeights: []IntentWeightObservation{{UID: 11, Numerator: "1", Denominator: "1", Value: 65535}}},
+			{ValidatorID: 1, SelfUID: 5, MaskedUIDs: []uint16{5, 10, 20}, AppliedWeights: []IntentWeightObservation{
+				{UID: 11, Numerator: "1", Denominator: "1", Value: 32768},
+				{UID: 21, Numerator: "1", Denominator: "2", Value: 32767},
+			}},
 			{ValidatorID: 2, SelfUID: 6, MaskedUIDs: []uint16{6}, AppliedWeights: []IntentWeightObservation{
 				{UID: 10, Numerator: "2", Denominator: "1", Value: 32767},
 				{UID: 11, Numerator: "1", Denominator: "1", Value: 16383},
@@ -188,7 +191,7 @@ func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 	for _, check := range releaseScenarioChecks() {
 		checks[check.ID] = check
 	}
-	for _, id := range []string{"native_head_weight_observed", "two_fleet_shared_prefix_split", "validator_self_uids_masked", "validator_pool_scores_are_non_global"} {
+	for _, id := range []string{"native_head_weight_observed", "two_fleet_shared_prefix_split", "validator_self_uids_masked", "validator_pool_scores_are_non_global", "signed_weight_cap_enforced"} {
 		passed, message := checks[id].Check(evaluation)
 		if !passed {
 			t.Errorf("%s: %s", id, message)
@@ -197,6 +200,20 @@ func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 	observation.Validators[0].MaskedUIDs = []uint16{5}
 	if passed, _ := checks["validator_self_uids_masked"].Check(evaluation); passed {
 		t.Fatal("affiliated validator passed without masking its controlled pool/fleets")
+	}
+}
+
+func TestWeightValuesRespectSignedCapExactly(t *testing.T) {
+	within := []IntentWeightObservation{{Value: 32768}, {Value: 32767}}
+	if ok, maximum, sum := weightValuesRespectCap(within, 32768); !ok || maximum != 32768 || sum != 65535 {
+		t.Fatalf("feasible exact cap result = %t max=%d sum=%d", ok, maximum, sum)
+	}
+	over := []IntentWeightObservation{{Value: 32769}, {Value: 32766}}
+	if ok, _, _ := weightValuesRespectCap(over, 32768); ok {
+		t.Fatal("over-cap vector was accepted")
+	}
+	if ok, _, _ := weightValuesRespectCap(nil, 32768); ok {
+		t.Fatal("empty vector was accepted")
 	}
 }
 

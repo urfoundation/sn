@@ -1,26 +1,30 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation complete locally; paused at the live-testnet configuration gate, 2026-08-20 UTC
+**Status:** release-1.0 implementation complete locally; testnet inputs, alpha bootstrap and isolated dependency preflight complete; full `sim-testnet` launch is fail-closed while the private Subtensor archive catches up, 2026-08-20 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
 This document is both the original audit plan and its completion record. The F0-F6
 engineering work is implemented in this checkout. M0A-M3 remain execution proof
-gates, not missing code. M0A requires the locked local Subtensor/container profile;
-M0B-M3 cannot begin until the operator fills the deliberately blank `testnet-`
-values in `vault/main/st.yml`, a read-only `doctor` is green, and the exact
-spend-bounded plan hash is approved. No local integration topology or testnet write
-was started while completing this plan.
+gates, not missing code. The `testnet-` values are filled and netuid 521 is activated
+with sufficient alpha. M0A still requires the shared private Subtensor node to reach
+the runtime-447 finalized tip; M0B-M3 require a green read-only `doctor` and explicit approval of the
+exact spend-bounded plan hash. The full local integration topology has not been
+launched; only the separately approved, bounded activation/alpha bootstrap was
+written to testnet.
 
 **Version terminology:** Whitepaper 1.0 is the normative specification and release 1.0 is the software/protocol release that implements it. “v1” inside the whitepaper is shorthand for this same 1.0 release. The former Whitepaper v0.5 design has been promoted to 1.0 without adding the explicitly parked validator-effort bounty.
 
 ## 1. Executive verdict
 
-The release-1.0 implementation is ready for its **read-only testnet preflight**. It
-is not yet a testnet-validated release: M0A was not launched on this Docker-less
-host, and wallet authority, the existing netuid and spend ceilings are intentionally
-absent, so the live M0B-M3 campaign has not run. That distinction is fail-closed in
-code; no default or unprefixed mainnet value can silently authorize a testnet write.
+The release-1.0 implementation runs its **read-only testnet preflight** against the
+reachable private RPC and fails closed until that archive is current. It is not yet
+a testnet-validated release: Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
+authenticated live readiness checks, but the full M0A topology and live M0B-M3 campaign have not
+run. Wallet control, netuid 521, balances, runtime call shapes, subnet activation
+and sufficient campaign alpha have been independently verified. The remaining
+distinction is fail-closed in code; no default or unprefixed mainnet value can
+silently authorize a testnet write.
 
 All 17 blockers found by the initial audit are addressed:
 
@@ -38,7 +42,7 @@ All 17 blockers found by the initial audit are addressed:
 | Unsafe event ingestion | Block-hash checkpoints, confirmation/finality gates, rewind/replay, explicit deployment origin and durable transaction intent/recovery. |
 | Unexercised CRv4 lifecycle | Exact rational normalization, policy/hash gates, commit/reveal/finality intent states, restart recovery and live-campaign assertions. Funded live proof remains M0B. |
 | Obsolete Subtensor image | `xops` pins runtime v447 by immutable digest, archive retention and the required safe RPC gateway methods, with Ansible regression tests. |
-| Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Only the six operator-owned values remain blank by design; generated deployment values are written to an isolated runtime profile. |
+| Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Wallet/password references, netuid, local origins and three spend ceilings are populated; generated deployment values are written to an isolated runtime profile. |
 | Missing verify key | Harness-derived, versioned per-operator verify keys with rotation/overlap and signed evidence; no secret enters the public manifest. |
 | Distinguishable poisoning | Full-depth routable shadow/padding paths with uniform response surface and constant-envelope failure handling, covered by operator tests. |
 | No reproducible environment | Portable Go harness manages pinned PostgreSQL/Redis, builds locked binaries and supervises two NOs, eight miners, two validators, claim daemons and two independently keyed three-client head fleets. Existing `server/blob` MinIO is reused. |
@@ -49,13 +53,13 @@ All 17 blockers found by the initial audit are addressed:
 | Gate | State | Principal evidence |
 |---|---|---|
 | F0 specification | Implemented | Whitepaper v1.0, `docs/spec/`, canonical Go/Solidity encodings and golden-vector tests. |
-| F1 infrastructure | Implemented locally | v447 digest/archive/RPC Ansible configuration, capability doctor and regression tests. Live gateway reachability is M0B. |
+| F1 infrastructure | Implemented locally | v447 digest/archive/RPC Ansible configuration, capability doctor and regression tests. The live gateway is reachable; finalized catch-up/canonical-head proof remains M0B. |
 | F2 contracts | Implemented and locally verified | Split reserve/vault/coordinator deployment, generated ABIs/bytecode, and a passing Foundry suite including fuzz and stateful invariants. |
 | F3 operator | Implemented and locally verified | Finality-safe index, exact artifacts, public history, multi-NO verification, key rotation, poisoning and proxy attribution/release cleanup. DB-backed launch proof is M1. |
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3 | Paused at the requested launch gate | M0A requires Docker and the locked local runtime profile. M0B-M3 additionally require populated testnet vault values, green `doctor`, and explicit approval of the generated plan hash. |
+| M0A-M3 | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-20 final read-only preflight observed two peers and private finalized block 2,134,528/runtime 186 against public block 7,827,242/runtime 447. A full archive catch-up is expected to take roughly 10–24 hours. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and explicit approval of the regenerated plan hash; vault inputs and alpha are ready. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -577,11 +581,11 @@ Permissionless validators still need a legitimate UR network identity to perform
 - Split shared prefixes by the number of distinct eligible fleets claiming/observed on that prefix, using a deterministic rational allocation.
 - Persist head EMA by `(hotkey, binding generation)`, not UID alone, so UID reuse cannot inherit history.
 - Apply self-UID and self-NO masks after identity resolution and again before serialization. Persist the proof/input that justified each mask.
-- Apply theta, empty-channel transfer, quality cap, `max_weight_limit`, and u16 normalization in the canonical order defined by fixtures.
+- Apply theta, empty-channel transfer, quality cap, the signed policy's `max_weight_limit_u16`, and u16 normalization in the canonical order defined by fixtures; reject a cap infeasible for the minimum positive-recipient breadth.
 
 #### F4.3 Chain-driven CRv4 lifecycle
 
-- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state.
+- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, the effective native `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state. For v447, compatibility-gate the hard-coded native no-cap value and persist/audit the signed policy cap separately.
 - Schedule from native epoch/boundary state, not a process-start wall-clock ticker.
 - Before commit, store the complete input artifact, uids/weights, payload bytes, timelock ciphertext, drand round, runtime versions, account nonce, and expected reveal window.
 - Submit, then track transaction pool, inclusion block/hash, finality, `TimelockedWeightsCommitted`/equivalent event/state, reveal, application, and resulting metagraph weights. A returned `author_submitExtrinsic` hash is not success.
@@ -684,7 +688,7 @@ sim-testnet/runs/                       # gitignored per-run journals, logs, rec
 
 Secrets remain outside Git in the environment vault or an approved signer/KMS. Committed files contain secret references and public derivations only. A renderer validates the complete manifest, derives public addresses from the loaded secrets, proves every public/private pair matches, writes configs atomically, and leaves `enabled: false` until preflight succeeds.
 
-Environment naming in `vault/main/st.yml` is explicit: keys beginning with `testnet-` are consumed only by the real-testnet harness; unprefixed ST keys are mainnet settings. The file now contains fail-closed placeholders for `testnet-wallet`, `testnet-netuid`, the TAO/alpha/EVM-gas spending ceilings, and the selected `testnet-contract-governance: single-owner`. Mainnet governance is `contract_governance: safe-2-of-3`. `sim-testnet doctor` must reject an empty wallet, netuid 0, or a zero spending ceiling before planning a write.
+Environment naming in `vault/main/st.yml` is explicit: keys beginning with `testnet-` are consumed only by the real-testnet harness; unprefixed ST keys are mainnet settings. The testnet wallet/password references, netuid 521, localhost operator origins, RPC authority, and TAO/alpha/EVM-gas ceilings are now configured; testnet governance is `testnet-contract-governance: single-owner`. Mainnet governance is `contract_governance: safe-2-of-3`. `sim-testnet doctor` still rejects an empty wallet, netuid 0, or a zero spending ceiling before planning a write.
 
 `sim-testnet/testnet.yml` is the executable integration-test profile, not a second source of chain, wallet, netuid, budget, or policy truth. It references the canonical manifests and the prefixed vault keys, then adds topology, binary, dependency, process, and scenario settings. Its release profile must request two operators, at least six real miner/provider processes across them, two distinct validators, and one multi-client head fleet; a one-operator smoke profile may exist for development but cannot satisfy the release 1.0 gate.
 
@@ -717,8 +721,8 @@ runtime:
   node_image: "ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de"
 
 rpc:
-  private_substrate_ws: "ws://172.28.208.185:9944"
-  private_evm_http: "http://172.28.208.185:9944"
+  private_substrate_ws: "ws://sim-testnet:9944"
+  private_evm_http: "http://sim-testnet:9944"
   public_substrate_read_fallback: "wss://test.finney.opentensor.ai:443"
   public_evm_read_fallback: "https://test.chain.opentensor.ai"
   public_fallback_allows_event_indexing: false
@@ -730,7 +734,19 @@ evm_build:
   foundry: "1.7.1"
 ```
 
-The private endpoint is configured in the deployed settings, but a 2026-08-20 recheck from this likely first execution host reached the route and received TCP connection refusal on port 9944 at both `172.28.208.185` and `snow` (`192.168.1.161`). This is an F1/`doctor` hard failure until the gateway listener is healthy. The M0 preflight must succeed from the deployment host and both validator hosts and be archived as evidence; the harness remains portable to any host where the same capability checks pass.
+The Subtensor infrastructure is deployed by `xops/main/ansible/run-subtensor.sh`, and the server can reach its RPC. This execution host resolves `sim-testnet` to the overlay gateway and reaches port 9944; `doctor` now blocks on archive catch-up rather than routing. The M0 preflight must succeed from the deployment host and both validator hosts and be archived as evidence; the harness remains portable to any host where the same capability checks pass.
+
+On 2026-08-20 the owner wallet activated netuid 521 (`start_call` finalized in
+block 7,826,089, extrinsic
+`0xd59d3325696d3f8b9b8c3688653e11c1dba071e58f263a7d2704f7dde9f6ece2`) and
+then submitted a fill-or-kill Dynamic TAO stake capped at 473,744 rao per alpha.
+The stake finalized in block 7,826,092, extrinsic
+`0x304286f7a167dcba7260c884b39d18370e7f3f578417fd555d0b4992b0ce5ad5`,
+leaving 47,733,986,724 alpha rao on the configured default hotkey. An
+independent finalized read at block 7,826,097 confirmed that position and a
+free balance of 498,970,054,887 testTAO rao. These bootstrap transactions are
+diagnostic provenance; the release gate still requires the harness-generated
+plan, receipts, postconditions, and evidence.
 
 Do not silently accept a newer runtime while keeping these pins. A runtime update opens a controlled compatibility task: update source/image/interfaces, run all probes, update the lockfile, then resume chain writes.
 
@@ -843,7 +859,7 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `max_allowed_uids` | 256 | Verify hard/live maximum and registration capacity. |
 | `max_allowed_validators` | ≤56 desired capacity budget | Query whether owner/root controls it; never assume 128. |
 | `mechanism_count` | 1 | Hard gate. |
-| `max_weight_limit` | 3277 u16 (≈5%) initially | Confirm runtime interpretation and that vector normalizer respects it. |
+| native `max_weight_limit` / signed policy cap | native 65535 on v447; signed 32768 for the two-NO bootstrap | v447's effective getter is hard-coded to no cap. Enforce the signed cap in every release validator and finalized-vector audit; lower it toward a low single-digit percentage only when positive-recipient breadth makes that cap feasible. |
 | `commit_reveal_weights_enabled` | true | Hard gate. |
 | `commit_reveal_period` | query then explicitly set/record | Immunity must exceed the full reveal interval. |
 | `liquid_alpha_enabled` | true | Verify live. |
@@ -851,7 +867,7 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `min_allowed_weights` | 1 | Hard gate. |
 | `weights_version_key` | 1 for first release | Validator must read it from chain; bump on scoring changes. |
 | `serving_rate_limit` | 50 unless live semantics differ | Verify; axon remains optional. |
-| registration mode/burns | burn-based; exact values set after live cost query | Record cost, balance, bounds, and receipts. |
+| registration mode/burns | burn-based; runtime `register_limit`, live cost plus reviewed ceiling | Record cost, mirror balance, ceiling, and receipts; EVM precompile call value is zero. |
 | `bonds_penalty`, `alpha_low`, `alpha_high` | no guessed default | Query and approve a tested value set before M1 changes. |
 | subnet owner cut / `tao_weight` | query and record/set where authorized | Verify whitepaper assumptions rather than relying on prose. |
 
@@ -881,7 +897,7 @@ No zero address, netuid 0, zero hotkey, empty hash, moving image tag, or `deploy
 
 ### 7.6 Secret/key inventory
 
-The testnet wallet will be supplied through the now-defined `vault/main/st.yml#testnet-wallet` value. It remains empty until the user fills it. `sim-testnet` treats the value as opaque signer input, derives and prints only public identities/proof-of-control, and redacts the literal value at config-load and logger boundaries. The existing netuid and all write ceilings likewise come from `testnet-netuid` and the three `testnet-spending-limit-*` values. Existing unprefixed EVM signer fields are mainnet settings and must never be selected by the testnet profile.
+The testnet wallet is supplied through `vault/main/st.yml#testnet-wallet` as a contained `vault-wallet:` reference, with its password supplied separately by `testnet-wallet-password` as a contained `vault-file:` reference. `sim-testnet` decrypts the standard `$NACL` coldkey in memory, verifies it against `coldkeypub.txt`, derives and prints only public identities/proof-of-control, and redacts the references, password, mnemonic, and seed at config-load and logger boundaries. The existing netuid and all write ceilings likewise come from `testnet-netuid` and the three `testnet-spending-limit-*` values. Existing unprefixed EVM signer fields are mainnet settings and must never be selected by the testnet profile.
 
 Required secret roles:
 
@@ -916,14 +932,14 @@ only after setup has finalized and verified every generated identity:
 | Field | Implemented state | Live gate |
 |---|---|---|
 | `enabled` / `testnet-enabled` | Mainnet remains `false`; the generated testnet runtime profile alone is enabled after setup convergence. | `doctor`, approved plan hash and finalized deployment receipt. |
-| `authority`, `testnet-authority`, RPC lists | Explicit-profile resolution with ordered endpoints; EVM/Substrate capabilities and finality are probed. | User supplies `BRINGYOUR_SUBTENSOR_HOSTNAME`; an independent read endpoint is verified before writes. |
+| `authority`, `testnet-authority`, RPC lists | Explicit-profile resolution with ordered endpoints; EVM/Substrate capabilities and finality are probed. | `sim-testnet:9944` resolves to the deployed local gateway; an independent read endpoint is verified before writes. |
 | `chain_id`, genesis, deployment/policy hashes | Testnet is pinned to chain 945 and the known genesis; mainnet is 964. Every runtime config carries all identity hashes. | Any mismatch is fatal. |
 | coordinator, settlement vault, reserve sink | Three distinct generated testnet addresses are rendered after exact bytecode/postcondition verification. Legacy `contract_address` is never a release fallback. | Finalized deployment block/hash and release lock must match. |
-| `netuid`, `testnet-netuid` | Mainnet remains a placeholder; the user supplies the existing testnet netuid. | `doctor` proves live subnet ownership/control before any write; subnet creation is disabled. |
+| `netuid`, `testnet-netuid` | Mainnet remains a placeholder; testnet is configured for existing netuid 521. | `doctor` proves live subnet ownership/control before any write; subnet creation is disabled. |
 | `no_id`, pool/escrow/deposit hotkeys | Generated per operator and verified from finalized registration/state. | Independent endpoint postcondition checks. |
 | deposit, root and artifact keys | Distinct harness-derived testnet roles, stored only in the private `0600` runtime vault. Legacy `ops_key` is not selected. | Role reuse, missing keys and public-secret leakage are fatal. |
 | deposit rate tiers and epoch cap | Exact rational signed-policy schedule and per-operator cap are rendered, not an unversioned scalar. | Cap plus campaign alpha ceiling must both pass. |
-| testnet wallet and campaign ceilings | The six operator-owned values remain deliberately blank/zero. | User fills wallet, netuid, two API origins and three nonzero spend ceilings. |
+| testnet wallet and campaign ceilings | Wallet/password references, netuid 521, two localhost API origins and three nonzero spend ceilings are configured. | `doctor` decrypts and identity-checks the wallet, validates origins and proves the live balance/ownership without serializing secrets. |
 | governance | Dedicated generated single owner on testnet; unprefixed mainnet policy requires a distinct 2-of-3 Safe. | Environment-specific postconditions and governance drill. |
 | reliability/cadence/deploy origin | `a_min`, block estimate and the exact finalized deployment block are rendered from locked policy/evidence. | Block time is never an authorization clock. |
 
@@ -984,6 +1000,7 @@ deployment:
 
 launch_inputs:
   wallet: "vault://main/st.yml#testnet-wallet"
+  wallet_password: "vault://main/st.yml#testnet-wallet-password"
   chain_id: "vault://main/st.yml#testnet-chain-id"
   authority: "vault://main/st.yml#testnet-authority"
 
@@ -991,13 +1008,13 @@ topology:
   operators: 2
   miners: 8
   validators: 2
-  head_fleets: 1
+  head_fleets: 2
   clients_per_head_fleet: 3
   operator_assignment: balanced
 
 contracts:
   install: true
-  artifact_source: ../evm/out/release-1.0
+  artifact_source: ../evm/out
   governance_profile: testnet-single-owner
   verify_runtime_code_hash: true
 
@@ -1030,6 +1047,7 @@ budgets:
   maximum_total_alpha_rao_from: "vault://main/st.yml#testnet-spending-limit-alpha-rao"
   maximum_evm_gas_tao_wei_from: "vault://main/st.yml#testnet-spending-limit-evm-gas-wei"
   maximum_registrations: 32
+  maximum_registration_burn_rao: 100000000
 
 secrets:
   generated_role_store: "runtime-secret://testnet/sim-testnet/${deployment_id}"
@@ -1207,8 +1225,10 @@ Use metadata-driven Substrate calls rather than shelling out to `btcli` for corr
 - record root-controlled values as observed compatibility gates;
 - register/stake validator hotkeys and wait for UID/permit state;
 - fund the EVM deployer and scoped online signers within configured limits;
-- fund the contract mirror where registration/gas semantics require it;
-- burned-register contract-owned pool hotkeys and provider-owned head hotkeys;
+- fund the EVM caller/contract mirror where registration and gas semantics require it;
+- limit-register contract-owned pool hotkeys and provider-owned head hotkeys with the exact approved
+  rao ceiling, passing zero value to the neuron precompile because runtime 447 burns from the funded
+  caller mirror; contract calls supply the full ceiling and return the unburned surplus atomically;
 - publish commitments from the correct sr25519 hotkeys;
 - register operators, signer roles, fleet members, policy, and effective epochs in the coordinator; and
 - query all postconditions from an independent RPC endpoint.
@@ -1235,7 +1255,7 @@ Required safety controls:
 
 The release profile launches the real binaries built from the locked repository commits:
 
-- **Dependencies:** isolated PostgreSQL and Redis, either as program-managed pinned containers or explicitly supplied external endpoints. Artifacts use the existing server `BlobStore`/MinIO configuration; `sim-testnet` must not launch a second object store. Release evidence records dependency image digests and effective non-secret blob configuration hashes.
+- **Dependencies:** one program-managed, digest-pinned PostgreSQL/Redis pair per operator, isolated by address, credentials, name and data volume, and configured to mirror `server/local`. Neither database may be replaced by a shared external service in the release profile. The full `server/local` compose contract and every mounted PostgreSQL init hook are content-locked. Artifacts use the existing server `BlobStore`/MinIO configuration; `sim-testnet` must not launch a second object store. MinIO and Subtensor are the only external shared services. Release evidence records dependency image digests and effective non-secret blob configuration hashes.
 - **Each operator:** the required server API/connect/taskworker and related processes under a simulation-specific `WARP_ENV`, site/vault directory, ports, DB namespace, rendered testnet `st.yml`, `verify.yml`, server keys, NO ID, scoped chain signers, and server/blob artifact namespace. Health requires `/verify`, event index, task workers, chain roles, MinIO writes/reads, artifact-history API, and finalized checkpoint—not merely an open TCP port.
 - **Miners/providers:** actual `cli/miner`/provider binaries, each with a distinct home, JWT, client identity/key, payout coldkey, NO selection, and logs. The release profile uses at least six, distributed across both NOs; scenario expansion may use twenty or more.
 - **Validators:** actual `cli/validator` binaries with distinct state directories, UR credentials, vpk, Substrate hotkey/coldkey, stake/permit, and both NO endpoints. At least two run concurrently and independently persist trail/stat/CRv4 state.
@@ -1425,7 +1445,7 @@ Exit gate: a single signed M0A bundle with no hard-gate failure and no manual da
 
 ### M0B — Live testnet conformance and wallet proof
 
-Use the reported testnet wallet only after the user fills `vault/main/st.yml#testnet-wallet` on the deployment checkout and `doctor` loads it through the approved signer adapter. Record public coldkey/hotkey/address derivations and signed challenges; never record or echo the vault value.
+Use the configured testnet wallet only after `doctor` loads its wallet and password references through the approved signer adapter. Record public coldkey/hotkey/address derivations and signed challenges; never record or echo a password, mnemonic, seed, or decrypted keyfile.
 
 Run this stage through `sim-testnet doctor` and an approved `sim-testnet plan`; add the value-bearing probe as a named, journaled `precompile-conformance` scenario. Ad-hoc commands may diagnose a failure, but only the harness evidence satisfies the gate.
 
@@ -1439,7 +1459,8 @@ The read-only subset is already partially green at spec 447, but rerun it from t
 6. TAO/EVM value units and alpha rao units;
 7. `addStake`, `moveStake`, and `transferStake` within one netuid, including exact pre/post balances and slippage;
 8. contract-coldkey custody and outbound direct transfer to a provider coldkey;
-9. disposable burned registration if the approved burn/campaign cap allows it;
+9. disposable native and EVM limit registration if the approved burn/campaign cap allows it, proving
+   the EVM caller-mirror is charged while the precompile call value remains zero;
 10. reserve-hotkey take and dividend auto-compounding over at least one native cycle; and
 11. private RPC logs, receipts, finality, historical reads, reconnect, and method capacity.
 
@@ -1459,7 +1480,11 @@ M1 is driven by one resumable command, not a manual runbook:
   --detach
 ```
 
-M1 begins with an audited configuration/deployment window with a precomputed balance/burn/value cap and a stop condition after every finalized action. Internally, `sim-testnet` must:
+M1 begins with an audited configuration/deployment window with a precomputed balance/burn/value cap and
+a stop condition after every finalized action. Runtime 447 raises the burn after successful
+registrations, so approval binds one per-registration maximum and every native/EVM action uses the
+runtime-enforced limit call; it never assumes later burns equal the first observation. Internally,
+`sim-testnet` must:
 
 1. load the nonzero `testnet-netuid`, query runtime/hyperparameter/registration capabilities and costs, and record them;
 2. prove the `testnet-wallet` controls the supplied subnet and refuse to create a replacement subnet;
@@ -1645,14 +1670,22 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## 13. Immediate next actions
 
-1. The operator fills exactly these values in `vault/main/st.yml`:
-   `testnet-wallet`, `testnet-netuid`, `testnet-operator-api-origins`, and the
-   TAO-rao, alpha-rao and EVM-gas-wei spending ceilings. Set
-   `BRINGYOUR_SUBTENSOR_HOSTNAME` for the execution host. Do not change unprefixed
-   mainnet custody values.
-2. Install Docker on the selected execution host and grant the invoking user daemon
-   access. This host already has Go, Foundry and a running user systemd manager, but
-   Docker is currently absent and cannot be installed without host-admin authority.
+1. The testnet-prefixed values are filled. On each execution host, keep the
+   wallet password owner-only (`chmod 600 vault/subtensor/testnet_wallet.password`).
+   `sim-testnet:9944` now resolves to the deployed **private** overlay gateway at
+   `172.28.208.185`; the temporary public-endpoint proxy has been removed. Wait for
+   that node to finish full sync and expose finalized runtime 447/EVM APIs. The
+   full archive catch-up is expected to take roughly 10–24 hours. The 2026-08-20
+   final read-only preflight observed two peers and private finalized block
+   2,134,528/runtime 186 against public block 7,827,242/runtime 447 with active syncing;
+   the readiness gate also requires peers, canonical checkpoint agreement and no
+   more than three finalized blocks of lag. Do not change
+   unprefixed mainnet custody values.
+2. Docker and Foundry are installed. The harness supports direct Docker group access
+   or passwordless `sudo -n docker`. The two digest-pinned PostgreSQL 18 and Redis 8
+   pairs have passed their live managed-dependency probe: PostgreSQL authenticated as
+   the derived application role and returned `512:256MB:en_US.UTF-8`; Redis returned
+   `PONG`. Containers and PostgreSQL volumes now carry matching complete spec hashes.
 3. Build `sim-testnet`, then run read-only `doctor`. Resolve every failure; archive
    the redacted report. No partial preflight may be waived.
 4. Run read-only `plan`, review the existing-netuid ownership proof, identities,
@@ -1676,25 +1709,36 @@ completed successfully after the release lock was frozen:
 |---|---|
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`. |
-| `forge fmt --check` / `forge build --sizes` | Pass; the largest deployable release runtime is `STCoordinator` at 19,906 bytes, leaving 4,670 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,774 bytes with 3,802 bytes remaining. |
-| `forge test --summary` | **105 passed, 0 failed, 0 skipped**, including 4,608 stateful reserve/vault invariant-handler calls. |
+| Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** across 22 analyzed contracts and 64 detectors. |
+| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized build completed in 625.07 seconds. The largest deployable release runtime is `STCoordinator` at 20,075 bytes, leaving 4,501 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,907 bytes with 3,669 bytes remaining. |
+| `forge test --summary` | **108 passed, 0 failed, 0 skipped**, including 4,608 stateful reserve/vault invariant-handler calls. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, `api/...`/`model` compilation, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. |
 | Subtensor infrastructure regressions | **20 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across `sn`, `server`, `connect`, `sdk`, `vault` and `xops`. |
 
-The generated artifact fingerprint excludes Foundry's expanded compilation-graph
-metadata, which can differ between a focused and full build despite identical
+The contract generator now applies canonical Go formatting before writing its
+payload, so a clean Foundry rebuild followed by `go generate` reproduces the
+checked-in file byte-for-byte. The generated artifact fingerprint excludes
+Foundry's expanded compilation-graph metadata, which can differ between a focused
+and full build despite identical
 deployable bytecode. It still pins exact creation/runtime bytecode (including the
 Solidity metadata suffix), ABI, method identifiers, immutable references and the
 normalized storage layout; source and compiler settings are independently pinned
 in `release.lock.yml`. Generator regression tests cover both this normalization and
 deployment-relevant drift.
 
-The operator PostgreSQL/Redis transaction, poisoning, replay and orphan-cleanup
-suites are part of the managed `sim-testnet` dependency profile and therefore remain
-a launch gate, not an unrecorded local pass. Set `RUN_SERVER_DB_TESTS=1` when that
-profile is running. This host currently has no Docker daemon, and no live testnet
-command was run during this verification.
+The digest-pinned PostgreSQL 18/Redis 8 pairs have been created and live-checked on
+the two isolated loopback addresses with authenticated semantic probes and matching
+container/volume provenance labels. The operator transaction, poisoning, replay and
+orphan-cleanup suites remain a launch gate because they require the rendered
+per-operator runtime vault/config, not merely open dependency ports. Set
+`RUN_SERVER_DB_TESTS=1` under that profile. Invoking the flag without `WARP_ENV` was
+confirmed to fail closed before connecting. The operator/miner/validator topology was
+not launched because the private Subtensor archive is still syncing through historical
+runtimes toward the runtime-447 tip; the overlay listener itself is reachable and independent.
+Separately approved bootstrap extrinsics activated netuid 521 and
+acquired alpha; their hashes and finalized postconditions are recorded in section
+7.2 and are not substituted for release-campaign evidence.
 
 Run the same local gate with:
 

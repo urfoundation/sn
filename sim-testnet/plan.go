@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -29,22 +31,25 @@ type Action struct {
 	IntentHash  string            `json:"intent_hash"`
 }
 type SetupPlan struct {
-	Schema       string      `json:"schema"`
-	Release      string      `json:"release"`
-	DeploymentID string      `json:"deployment_id"`
-	ChainID      uint64      `json:"chain_id"`
-	GenesisHash  string      `json:"genesis_hash"`
-	Netuid       uint16      `json:"netuid"`
-	Owner        string      `json:"owner"`
-	LiveFacts    SetupFacts  `json:"live_facts"`
-	ConfigHash   string      `json:"config_hash"`
-	PolicyHash   string      `json:"policy_hash"`
-	Roles        PublicRoles `json:"roles"`
-	Actions      []Action    `json:"actions"`
-	MaximumSpend Spend       `json:"maximum_spend"`
-	Limits       Spend       `json:"limits"`
-	PlanHash     string      `json:"plan_hash"`
-	GeneratedAt  string      `json:"generated_at,omitempty"`
+	Schema                   string      `json:"schema"`
+	Release                  string      `json:"release"`
+	ReleaseLockHash          string      `json:"release_lock_hash"`
+	DeploymentID             string      `json:"deployment_id"`
+	ChainID                  uint64      `json:"chain_id"`
+	GenesisHash              string      `json:"genesis_hash"`
+	Netuid                   uint16      `json:"netuid"`
+	Owner                    string      `json:"owner"`
+	LiveFacts                SetupFacts  `json:"live_facts"`
+	RegistrationBurnLimitRao uint64      `json:"registration_burn_limit_rao"`
+	ConfigHash               string      `json:"config_hash"`
+	ResolvedInputsHash       string      `json:"resolved_inputs_hash"`
+	PolicyHash               string      `json:"policy_hash"`
+	Roles                    PublicRoles `json:"roles"`
+	Actions                  []Action    `json:"actions"`
+	MaximumSpend             Spend       `json:"maximum_spend"`
+	Limits                   Spend       `json:"limits"`
+	PlanHash                 string      `json:"plan_hash"`
+	GeneratedAt              string      `json:"generated_at,omitempty"`
 }
 type PublicRoles struct {
 	Deployer, Owner, Guardian, CommitmentOracle string   `json:",omitempty"`
@@ -70,20 +75,74 @@ func BuildPlan(ctx context.Context, cfg *ResolvedConfig) (*SetupPlan, error) {
 	return buildPlan(cfg, facts, roles, time.Now().UTC())
 }
 
+// Bind resolved non-secret authority, identity, origin, and budget values so a
+// vault edit invalidates approval even when its YAML reference stays constant.
+func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
+	if cfg == nil {
+		return "", errors.New("resolved configuration is unavailable")
+	}
+	return canonicalHashHex(struct {
+		ChainID            uint64
+		Netuid             uint16
+		Authority          string
+		ObjectStoreHost    string
+		TrustedProxyCIDRs  string
+		OperatorAPIOrigins []string
+		WalletPublic       string
+		WalletHotkeyPublic string
+		MaximumTAORao      uint64
+		MaximumAlphaRao    uint64
+		MaximumEVMGasWei   uint64
+	}{
+		ChainID: cfg.ChainID, Netuid: cfg.Netuid, Authority: cfg.Authority,
+		ObjectStoreHost: cfg.ObjectStoreHost, TrustedProxyCIDRs: cfg.TrustedProxyCIDRs,
+		OperatorAPIOrigins: append([]string(nil), cfg.OperatorAPIOrigins...),
+		WalletPublic:       cfg.WalletPublic, WalletHotkeyPublic: cfg.WalletHotkeyPublic,
+		MaximumTAORao: cfg.MaximumTAORao, MaximumAlphaRao: cfg.MaximumAlphaRao,
+		MaximumEVMGasWei: cfg.MaximumEVMGasWei,
+	})
+}
+
 func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time) (*SetupPlan, error) {
 	if facts == nil || facts.BurnRao == 0 || facts.AlphaSourceHotkey == "" || facts.ProbeTAORao == 0 {
 		return nil, fmt.Errorf("finalized burn, alpha source, and probe-value facts are required")
 	}
-	p := &SetupPlan{Schema: "urnetwork-sim-plan-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
+	registrationBurnLimit := cfg.Config.Budgets.MaximumRegistrationBurnRao
+	if registrationBurnLimit == 0 || facts.BurnRao > registrationBurnLimit {
+		return nil, fmt.Errorf("finalized registration burn %d exceeds configured per-registration limit %d", facts.BurnRao, registrationBurnLimit)
+	}
+	if cfg.Release == nil {
+		return nil, fmt.Errorf("release lock is required")
+	}
+	releaseLockHash, err := canonicalHashHex(cfg.Release)
+	if err != nil || releaseLockHash == "" {
+		return nil, fmt.Errorf("hash release lock: %w", err)
+	}
+	resolvedHash, err := resolvedInputsHash(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("hash resolved launch inputs: %w", err)
+	}
+	p := &SetupPlan{Schema: "urnetwork-sim-plan-v1", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
 	add := func(a Action) {
 		h, _ := canonicalHashHex(struct {
 			ID, Kind, Target, Description string
 			Parameters                    map[string]string
 			Spend                         Spend
 			DependsOn                     []string
-		}{a.ID, a.Kind, a.Target, a.Description, a.Parameters, a.Spend, a.DependsOn})
+		}{
+			ID:          a.ID,
+			Kind:        a.Kind,
+			Target:      a.Target,
+			Description: a.Description,
+			Parameters:  a.Parameters,
+			Spend:       a.Spend,
+			DependsOn:   a.DependsOn,
+		})
 		a.IntentHash = h
 		p.Actions = append(p.Actions, a)
+	}
+	registrationParameters := func() map[string]string {
+		return map[string]string{"maximum_burn_rao": fmt.Sprint(registrationBurnLimit)}
 	}
 	add(Action{ID: "subnet.verify-owner", Kind: "substrate-read", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "verify existing subnet and owner; subnet creation is forbidden"})
 	operatorCount := cfg.Config.Topology.Operators
@@ -176,20 +235,20 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		burns          uint64
 	}
 	gasRoles := []gasRole{
-		{"deployer", roles.Deployer, 30, 1},
-		{"owner", roles.Owner, 15, uint64(operatorCount)},
-		{"guardian", roles.Guardian, 5, 0},
-		{"commitment-oracle", roles.CommitmentOracle, 5, 0},
-		{"keeper", roles.Keeper, 10, 0},
+		{label: "deployer", address: roles.Deployer, weight: 30, burns: 1},
+		{label: "owner", address: roles.Owner, weight: 15, burns: uint64(operatorCount)},
+		{label: "guardian", address: roles.Guardian, weight: 5},
+		{label: "commitment-oracle", address: roles.CommitmentOracle, weight: 5},
+		{label: "keeper", address: roles.Keeper, weight: 10},
 	}
 	for i := 0; i < operatorCount; i++ {
 		gasRoles = append(gasRoles,
-			gasRole{fmt.Sprintf("operator-%d-deposit", i+1), roles.OperatorDepositSigners[i], 10, 1},
-			gasRole{fmt.Sprintf("operator-%d-root", i+1), roles.OperatorRootSigners[i], 10, 0},
+			gasRole{label: fmt.Sprintf("operator-%d-deposit", i+1), address: roles.OperatorDepositSigners[i], weight: 10, burns: 1},
+			gasRole{label: fmt.Sprintf("operator-%d-root", i+1), address: roles.OperatorRootSigners[i], weight: 10},
 		)
 	}
 	for i := 0; i < cfg.Config.Topology.Miners; i++ {
-		gasRoles = append(gasRoles, gasRole{fmt.Sprintf("miner-%d-claim-relayer", i+1), roles.MinerClaimRelayers[i], 4, 0})
+		gasRoles = append(gasRoles, gasRole{label: fmt.Sprintf("miner-%d-claim-relayer", i+1), address: roles.MinerClaimRelayers[i], weight: 4})
 	}
 	var roleWeight uint64
 	for _, role := range gasRoles {
@@ -206,7 +265,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		}
 		fundedGas += gas
 		gasRao := ceilDiv(gas, 1_000_000_000)
-		burnRao, mulOK := checkedMul(role.burns, facts.BurnRao)
+		burnRao, mulOK := checkedMul(role.burns, registrationBurnLimit)
 		if !mulOK {
 			return nil, fmt.Errorf("%s burn budget overflow", role.label)
 		}
@@ -235,21 +294,25 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	for _, entry := range []struct {
 		id, desc     string
 		registration bool
-	}{{"reserve-sink", "deploy immutable one-way reserve sink", false}, {"settlement-vault", "deploy immutable settlement vault", false}, {"coordinator-implementation", "deploy coordinator implementation", false}, {"vault-register-escrow", "burn-register the claims escrow under the immutable vault coldkey", true}, {"coordinator-proxy", "deploy and initialize ERC1967 coordinator proxy", false}, {"governance-drill-implementation", "deploy the locked testnet-only hostile coordinator implementation", false}, {"vault-fix-coordinator", "fix coordinator on settlement vault exactly once", false}, {"sink-fix-recorder", "fix coordinator on reserve sink exactly once", false}} {
+	}{{"reserve-sink", "deploy immutable one-way reserve sink", false}, {"settlement-vault", "deploy immutable settlement vault", false}, {"coordinator-implementation", "deploy coordinator implementation", false}, {"vault-register-escrow", "register the claims escrow under the immutable vault coldkey with the approved burn ceiling", true}, {"coordinator-proxy", "deploy and initialize ERC1967 coordinator proxy", false}, {"governance-drill-implementation", "deploy the locked testnet-only hostile coordinator implementation", false}, {"vault-fix-coordinator", "fix coordinator on settlement vault exactly once", false}, {"sink-fix-recorder", "fix coordinator on reserve sink exactly once", false}} {
 		id := "evm." + entry.id
 		registrations := uint32(0)
 		if entry.registration {
 			registrations = 1
 		}
-		add(Action{ID: id, Kind: "evm-transaction", Target: entry.id, Description: entry.desc, Spend: Spend{EVMGasWei: gasCaps[id], Registrations: registrations}, DependsOn: []string{prev}})
+		action := Action{ID: id, Kind: "evm-transaction", Target: entry.id, Description: entry.desc, Spend: Spend{EVMGasWei: gasCaps[id], Registrations: registrations}, DependsOn: []string{prev}}
+		if entry.registration {
+			action.Parameters = registrationParameters()
+		}
+		add(action)
 		prev = id
 	}
 	setupDeps := []string{prev}
 	for i := 0; i < operatorCount; i++ {
 		depositRegistration := fmt.Sprintf("operator.deposit.register.%d", i+1)
-		add(Action{ID: depositRegistration, Kind: "evm-transaction", Target: roles.OperatorDepositSigners[i], Description: "burn-register the operator-isolated deposit hotkey under its EVM mirror coldkey", Spend: Spend{EVMGasWei: gasCaps[depositRegistration], Registrations: 1}, DependsOn: []string{fmt.Sprintf("evm.fund-operator-%d-deposit", i+1)}})
+		add(Action{ID: depositRegistration, Kind: "evm-transaction", Target: roles.OperatorDepositSigners[i], Description: "limit-register the operator-isolated deposit hotkey under its EVM mirror coldkey", Parameters: registrationParameters(), Spend: Spend{EVMGasWei: gasCaps[depositRegistration], Registrations: 1}, DependsOn: []string{fmt.Sprintf("evm.fund-operator-%d-deposit", i+1)}})
 		id := fmt.Sprintf("operator.register.%d", i+1)
-		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("no:%d", i+1), Description: "burn-register immutable pool hotkey and grant distinct deposit/root roles", Spend: Spend{EVMGasWei: gasCaps[id], Registrations: 1}, DependsOn: []string{prev, "evm.fund-owner", depositRegistration}})
+		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("no:%d", i+1), Description: "limit-register immutable pool hotkey and grant distinct deposit/root roles", Parameters: registrationParameters(), Spend: Spend{EVMGasWei: gasCaps[id], Registrations: 1}, DependsOn: []string{prev, "evm.fund-owner", depositRegistration}})
 		alphaID := fmt.Sprintf("alpha.transfer.operator-deposit.%d", i+1)
 		amount := perOperatorCampaign
 		if i == 0 {
@@ -267,7 +330,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		add(Action{ID: alphaID, Kind: "substrate-extrinsic", Target: roles.OperatorDepositSigners[i], Description: "transfer exact existing subnet alpha into the coordinator-owned isolated deposit position", Spend: Spend{AlphaRao: amount}, DependsOn: []string{id}})
 		setupDeps = append(setupDeps, alphaID)
 	}
-	roleFunding, ok := checkedAdd(facts.BurnRao, 2_000_000)
+	roleFunding, ok := checkedAdd(registrationBurnLimit, 2_000_000)
 	if !ok {
 		return nil, fmt.Errorf("native role funding overflow")
 	}
@@ -276,7 +339,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		registerID := fmt.Sprintf("fleet.register.%d", fleet)
 		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
 		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner"}})
-		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "burn-register an independently keyed provider-owned head fleet hotkey", Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
+		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "limit-register an independently keyed provider-owned head fleet hotkey", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
 		commitmentFees := uint64(1_000_000)
 		if fleet == 1 {
 			// Canonical publish plus the M0B replace/restore pair.
@@ -290,11 +353,11 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		fundID := fmt.Sprintf("validator.fund.%d", i+1)
 		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator-coldkey:%d", i+1), Description: "fund the independent validator coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner"}})
 		registerID := fmt.Sprintf("validator.register.%d", i+1)
-		description := "burn-register the independent validator hotkey and verify live UID"
+		description := "limit-register the independent validator hotkey and verify live UID"
 		if i == 0 {
-			description = "burn-register validator 1 as the reserve validator hotkey and verify live UID"
+			description = "limit-register validator 1 as the reserve validator hotkey and verify live UID"
 		}
-		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator:%d", i+1), Description: description, Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
+		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator:%d", i+1), Description: description, Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
 		stakeDependency := registerID
 		if i == 0 {
 			add(Action{ID: "validator.take-zero.1", Kind: "substrate-extrinsic", Target: "reserve-validator:1", Description: "set and verify the reserve validator delegate take at exactly zero", DependsOn: []string{registerID}})
@@ -502,6 +565,9 @@ func (p SetupPlan) hash() (string, error) {
 	return canonicalHashHex(p)
 }
 func validatePlanBudget(p *SetupPlan) error {
+	if p == nil {
+		return errors.New("setup plan is unavailable")
+	}
 	if p.MaximumSpend.TAORao > p.Limits.TAORao {
 		return fmt.Errorf("TAO plan maximum %d exceeds limit %d", p.MaximumSpend.TAORao, p.Limits.TAORao)
 	}
@@ -513,6 +579,33 @@ func validatePlanBudget(p *SetupPlan) error {
 	}
 	if p.MaximumSpend.Registrations > p.Limits.Registrations {
 		return fmt.Errorf("registration plan %d exceeds limit %d", p.MaximumSpend.Registrations, p.Limits.Registrations)
+	}
+	if p.MaximumSpend.Registrations > 0 && p.RegistrationBurnLimitRao == 0 {
+		return errors.New("registration plan has no per-registration burn limit")
+	}
+	seenActions := make(map[string]bool, len(p.Actions))
+	var actionRegistrations uint64
+	for _, action := range p.Actions {
+		if action.ID == "" || seenActions[action.ID] {
+			return fmt.Errorf("setup plan has an empty or duplicate action id %q", action.ID)
+		}
+		for _, dependency := range action.DependsOn {
+			if !seenActions[dependency] {
+				return fmt.Errorf("action %s depends on missing or later action %s", action.ID, dependency)
+			}
+		}
+		seenActions[action.ID] = true
+		if action.Spend.Registrations == 0 {
+			continue
+		}
+		actionRegistrations += uint64(action.Spend.Registrations)
+		limit, err := strconv.ParseUint(action.Parameters["maximum_burn_rao"], 10, 64)
+		if err != nil || limit != p.RegistrationBurnLimitRao {
+			return fmt.Errorf("registration action %s does not bind the plan burn limit", action.ID)
+		}
+	}
+	if actionRegistrations != uint64(p.MaximumSpend.Registrations) {
+		return fmt.Errorf("registration actions total %d, plan maximum is %d", actionRegistrations, p.MaximumSpend.Registrations)
 	}
 	if p.MaximumSpend.SubnetCreations != 0 || p.Limits.SubnetCreations != 0 {
 		return fmt.Errorf("subnet creation is forbidden")

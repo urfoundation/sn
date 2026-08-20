@@ -3,12 +3,40 @@ package main
 import (
 	"bytes"
 	"math/big"
+	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+func TestNeuronRegistrationTransactionUsesMirrorBalanceAndBindsLimit(t *testing.T) {
+	parsed, err := abi.JSON(strings.NewReader(neuronSetupABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotkey := [32]byte{1, 2, 3}
+	data, value, err := buildNeuronRegistrationTransaction(parsed, 521, hotkey, 100_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Sign() != 0 {
+		t.Fatalf("neuron precompile call value = %s, want zero", value)
+	}
+	if funding := registrationFundingWei(100_000_000); funding.Cmp(big.NewInt(100_000_000_000_000_000)) != 0 {
+		t.Fatalf("contract registration funding = %s", funding)
+	}
+	method := parsed.Methods["registerLimit"]
+	decoded, err := method.Inputs.Unpack(data[4:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 3 || decoded[0].(uint16) != 521 || decoded[1].([32]byte) != hotkey || decoded[2].(uint64) != 100_000_000 {
+		t.Fatalf("registration calldata = %#v", decoded)
+	}
+}
 
 func TestDeploymentPayloadsAreStableAndMatchPlanRoles(t *testing.T) {
 	cfg := testResolvedConfig(t)

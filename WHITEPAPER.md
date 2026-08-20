@@ -241,8 +241,9 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   immune from deregistration). Creation pays a dynamic α‑denominated lock that **seeds the subnet's
   liquidity pool**.
 - A **neuron** is a `(coldkey, hotkey)` holding a **UID** (slot). Default capacity
-  `max_allowed_uids = 256`. A hotkey **registers** by paying a recycled **burn** (`burned_register`);
-  when slots are full the lowest‑emission non‑immune neuron is deregistered.
+  `max_allowed_uids = 256`. A hotkey **registers** by paying a recycled **burn**. Release automation
+  uses `register_limit`/`registerLimit` so the runtime rejects a price above the signed per-action
+  ceiling; when slots are full the lowest‑emission non‑immune neuron is deregistered.
 - A neuron is **not** intrinsically "miner" or "validator." It earns **incentive** (miner reward) if
   validators weight it, and **dividends** (validator reward) if it holds a **validator permit** and
   sets weights. Roles are emergent from stake + permit + behavior.
@@ -265,8 +266,10 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   governance‑settable), then the remaining 82% split **50/50** (hard‑coded) → **41% miners** (by
   incentive) / **41% validators + their stakers** (by dividends). Emission accrues to hotkeys as **α
   stake** and is drained each tempo.
-- **Stake weight** = `alpha_stake + 0.18 × tao_stake` (the `tao_weight = 0.18` factor down‑weights
-  root/TAO stake relative to the subnet's own α).
+- **Stake weight** = `alpha_stake + tao_weight × tao_stake`. `tao_weight` is global, root-governed,
+  and encoded as `u64 / u64::MAX`; testnet currently resolves to **0.018** (1.8%), while the pinned
+  v447 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
+  observe mainnet independently rather than assuming either value.
 
 ### 2.3 dTAO economics
 
@@ -312,7 +315,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   | `0x…0009` | **Blake2f** | derive the exact H160 → AccountId32 mirror used by every contract coldkey |
   | `0x…0402` | **Ed25519Verify** | verify client consent for fleet binding and revocation |
   | `0x…0403` | **Sr25519Verify** | verify the registered Bittensor hotkey's fleet-binding signature |
-  | `0x…0804` | **Neuron** | `burnedRegister` vault-owned pool hotkeys and prove live `(netuid, hotkey) → UID` bindings |
+  | `0x…0804` | **Neuron** | limit-register vault-owned pool hotkeys and prove live `(netuid, hotkey) → UID` bindings |
   | `0x…0805` | **Staking V2** | exact `getStake`, `moveStake`, and `transferStake` operations for isolated deposits, immutable reserve custody, emission capture, and claims |
   | `0x…0802` | **Metagraph** | read-only conformance/observation of UID 0 and metagraph identity; production settlement does not trust a point-in-time emission getter |
 
@@ -320,6 +323,12 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   precompile. Runtime 447 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
   finalized indexer mirrors `(hotkey, commitment hash, finalized block/hash)` into the coordinator; the
   coordinator then checks the mirror, both signatures, freshness and the live UID atomically.
+
+  Neuron registration burns from the EVM caller's funded SS58 mirror. A contract receives/funds that
+  native balance and calls `registerLimit` with **zero precompile call value**; forwarding the burn to
+  `0x…0804` would move it away before the runtime dispatch charges the caller. Automated contract
+  registration supplies the full approved ceiling and atomically returns the difference after the
+  runtime burns the actual price.
 
   > Precompile ABIs are **not formally versioned** (issue #2455). Pin a Subtensor release tag, target
   > **Staking V2** (`0x805`, not the legacy `0x801`), and re‑verify addresses/ABIs before launch.
@@ -480,7 +489,7 @@ Selected release interfaces are:
 ```solidity
 // Coordinator: scoped roles, exact nonce/deadline, and per-NO deposit hotkey.
 registerOperator(noId, coldkey, poolHotkey, depositHotkey,
-                 depositSigner, rootSigner, effectiveEpoch)
+                 depositSigner, rootSigner, effectiveEpoch, maximumBurnRao)
 deposit(noId, amount, nonce, deadlineBlock)
 addConviction(noId, amount, nonce, deadlineBlock)
 closeOperatorEpoch(epoch, noId)
@@ -838,10 +847,16 @@ That *is* the tournament, driven by the weights validators set:
   burn makes the head **more** Sybil-resistant than one pool UID per NO.
 
 **Weight shaping (best practice for ~200 concurrent fleets).** Steer **proportionally** to `score`, *not*
-winner-take-all; **set `max_weight_limit`** to a real cap (the chain default is *no cap*, so one fleet
-could dominate the head); and drive `VALIDATOR.md` trails at a rate (validator-configurable, §D26) that
-gives every top UID regular coverage so honest-but-idle fleets don't stale-decay. This matches the
-strongest DePIN precedents — FileTAO's live-scoring and TPN's robust statistics.
+winner-take-all; apply the signed policy's `max_weight_limit_u16` before every CRv4 commit; and drive
+`VALIDATOR.md` trails at a rate (validator-configurable, §D26) that gives every top UID regular coverage
+so honest-but-idle fleets don't stale-decay. Runtime v447's native getter is hard-coded to `65535`
+(no cap), despite retaining a `MaxWeightsLimit` storage item, so release 1.0 validators enforce the
+policy cap locally and finalized-vector analysis rejects violations. The two-NO testnet bootstrap uses
+`32768` (the smallest feasible two-recipient cap); a production policy lowers the cap toward a low
+single-digit percentage only after enough positive recipients exist. Deterministic `u16` conversion
+repairs any one-unit rounding deficit before signing and rechecks the exact integer cap. A native
+runtime cap remains the preferred defense against non-conforming validators. This matches the strongest DePIN precedents —
+FileTAO's live-scoring and TPN's robust statistics.
 
 ### 8.5 The head/tail emission split θ
 
@@ -853,7 +868,7 @@ Universe (SN13) reserves a fixed share to one UID by rewriting weights before `s
 ```
 head[]  =  { score(u) }               normalized so Σ head = θ      # split-adjusted routable-IP breadth (§8.4)
 pool[]  =  { implied_usage_n × Q_n }  normalized so Σ pool = 1 − θ  # implied_usage = deposit / rate(tier) (§8.1)
-w       =  head ⊕ pool                # one vector over all miner UIDs; commit-reveal; apply max_weight_limit
+w       =  head ⊕ pool                # one vector; apply signed max_weight_limit_u16; commit-reveal
 ```
 
 Both shares go to **real recipients** (top miners; vault-owned pool UIDs), so the **June-2026
@@ -1032,7 +1047,8 @@ for validator v:
         head[u] = score_v(u) = Σ_{h ∈ v's routable IP-hashes for C_u} 1 / (# top miners v sees claiming h)   // = 0 for v's own UID
     # split by governance share θ, into ONE vector (§8.5)
     normalize head so Σ head = θ ;   normalize pool so Σ pool = 1 − θ
-    w_v = (head ⊕ pool) to u16 ;   apply max_weight_limit
+    w_v = apply signed policy max_weight_limit_u16 to (head ⊕ pool)
+    w_v = half-up u16(w_v); deterministically repair rounding under the same cap
     commit / reveal w_v   (Neuron 0x804, drand timelock — §2.4)
 ```
 
@@ -1057,8 +1073,10 @@ Yuma combines the validators' vectors with their stake:
   from current quality and loses vtrust (§5.1).
 
 Hyperparameters: `commit_reveal_weights_enabled = true`, `liquid_alpha_enabled = true` (reward early
-pool discovery), `max_weight_limit` set to a real cap (chain default is *no cap*) so no single UID dominates either tier, `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), `weights_version_key` bumped to
-force validator‑software upgrades (§15.1).
+pool discovery), `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), and
+`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v447 cannot impose a
+lower native `max_weight_limit`; the signed policy cap and finalized-vector audit described above are
+therefore mandatory release gates.
 
 > **Why this is real Yuma.** With a sole validator the consensus would be inert; with **many independent
 > validators** — most running no NO — scoring the pools, median / clip / vtrust / bonds all do their job,
@@ -1296,16 +1314,18 @@ a deliberate, budgeted step, its committed lever **re‑delegating reserve slice
 ### 13.1 Settlement: contract custodies the miner pools; validators are independent (chosen)
 
 The immutable settlement vault **owns each NO's miner‑pool UID** outright, so the **tail's share of the
-41% miner emission** accrues to the vault and is paid out by direct Merkle claim (the **head is native** — top-level miners
-own their UIDs and are paid to their own coldkey, §8.4) — *a network operator never custodies emission destined
-for its providers* (the hard requirement). The **weights are set by independent validators** (§9, §10),
+41% miner emission** accrues to the vault and is paid out by direct Merkle claim (the **head is native**
+— top-level miners own their UIDs and are paid to their own coldkey, §8.4) — *a network operator never
+custodies emission destined for its providers* (the hard requirement). The **weights are set by
+independent validators** (§9, §10),
 not the contract, so Yuma consensus does real work; their **41% dividends are native** (no middleman to
 remove; a fee‑funded effort bounty is out of scope, §9.3/§13.6/D29). Implications: the contract is
 custody-critical for miner emission while a separate immutable sink owns the buyback reserve; the
-upgradeable coordinator owns neither. The vault owns **one miner-pool UID per NO**, so budget `max_allowed_uids` and registration
-burns to the **NO count** — providers are *not* UIDs, they live inside the pools. No α→TAO→α churn.
-*Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason for pools, though the **top ~200 do get their own UID** — the head tier, §8.4); letting emission land on
-NO hotkeys (violates no‑custody); a **single** contract miner UID with the contract as sole validator
+upgradeable coordinator owns neither. The vault owns **one miner-pool UID per NO**, so budget
+`max_allowed_uids` and registration burns to the **NO count** — providers are *not* UIDs, they live
+inside the pools. No α→TAO→α churn. *Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason
+for pools, though the **top ~200 do get their own UID** — the head tier, §8.4); letting emission land
+on NO hotkeys (violates no‑custody); a **single** contract miner UID with the contract as sole validator
 (collapses Yuma); and the earlier **per‑NO validator pool with a take‑0 custody hack** (fragile, and
 redundant with crypto‑validity — replaced by plain independent validators earning native dividends, §13.6).
 
@@ -1382,8 +1402,9 @@ effort proxy. v1's validator side is simply: **stake α, run trails, earn native
 
 The miner side runs **both** a per-NO pool (§8.1–8.3) *and* a direct top-level-miner channel (§8.4), in
 parallel. *Why both:* a new provider needs a low-barrier **place to start with a baseline reward** (the
-provider needs no UID or burn; the vault burn-registers the shared NO pool UID), while the best providers deserve the **canonical, trust-minimized** Bittensor
-treatment (their own UID, steered directly, paid natively). A provider **starts in a pool and graduates**
+provider needs no UID or burn; the vault limit-registers the shared NO pool UID), while the best
+providers deserve the **canonical, trust-minimized** Bittensor treatment (their own UID, steered
+directly, paid natively). A provider **starts in a pool and graduates**
 to a top slot, the chain's deregistration churn running the tournament. This is **novel** on Bittensor: the
 field has the pool pattern (ComputeHorde, TPN, Vanta) *and* the direct-UID pattern, but **no subnet tiers
 them** — the norm is the opposite, *consolidate* behind one UID (Chutes: "never register more than one
@@ -1432,19 +1453,20 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
 | `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
-| `max_weight_limit` | **set a real cap** (e.g. low single-digit %) | chain default is *no cap* (65535); without it one UID could dominate the head (§8.4) |
+| native `max_weight_limit` / signed policy cap | v447 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v447's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
 | `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 breadth-sampling dip risk); must exceed `commit_reveal_period × tempo` |
 | `min_allowed_weights` | **1** | a validator scores all miner UIDs (pools + top-level miners); avoid the 1024 default |
 | `weights_version_key` | bump on scoring‑logic upgrades | force validator‑software upgrades (§10) |
 | `serving_rate_limit` | default 50 | axons optional (custom HTTP protocol, §16) |
-| `registration` | burn‑based, `min_burn`/`max_burn` tuned | Sybil cost on pool, fleet, validator, and escrow hotkeys; every burn is plan-bounded |
+| `registration` | burn‑based, `min_burn`/`max_burn` tuned | Sybil cost on pool, fleet, validator, and escrow hotkeys; automation uses the runtime limit call and every burn is plan-bounded |
 | `bonds_penalty` / `alpha_low`/`alpha_high` | tune (Liquid Alpha) | shape early‑discovery reward vs. stability (§2.2) |
 
-> Several genesis defaults are governance‑mutable and have drifted from docs (e.g. `tao_weight = 0.18`
-> live; `max_validators` 64 vs 128; `commit_reveal` default flipped). Query the live chain and set
-> explicitly; do not rely on documented defaults (§16 checklist).
+> Several genesis defaults are governance‑mutable and have drifted from docs (e.g. testnet's global
+> `tao_weight` is 1.8% while the pinned v447 fallback is about 5.27%; `max_validators` is 64 vs 128;
+> the `commit_reveal` default flipped). Query and compatibility-gate the live finalized values; set
+> only owner-controlled fields explicitly and do not rely on documented defaults (§16 checklist).
 
 ### 15.2 Contract / economic parameters
 
@@ -1486,12 +1508,12 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
    artifacts and deployed runtime hashes are release-locked. (No effort verifier — §9.3/D29.)
 2. **Subnet convergence.** Validate the supplied, wallet-owned existing testnet netuid; explicitly set
    and verify every launch hyperparameter (§15.1); during installation the immutable vault first
-   burn-registers its claims-escrow hotkey under its own mapped coldkey, and coordinator initialization
-   fails unless that live registration exists. As each NO onboards, the immutable vault
-   `burnedRegister`s its **miner‑pool UID**; stand up an initial set of
+   limit-registers its claims-escrow hotkey under its own mapped coldkey, and coordinator initialization
+   fails unless that live registration exists. As each NO onboards, the immutable vault calls
+   `registerLimit` for its **miner‑pool UID** with the reviewed rao ceiling; stand up an initial set of
    **independent validators** (owner-run at first) so consensus has measurement from day one. The release
-   remains one mechanism. **Top-level miners self-`burnedRegister`** their own (provider-owned, not
-   contract-owned) UIDs and publish the §11.4 binding.
+   remains one mechanism. **Top-level miners self-`register_limit`** their own (provider-owned, not
+   contract-owned) UIDs with a locally approved ceiling and publish the §11.4 binding.
 3. **Validator software (independent).** Stake α; run `VALIDATOR.md` trails; each tempo score **both tiers** (pools `implied_usage × quality` —
    implied usage = deposit ÷ conviction‑tier rate, computed off the published deposit events; head on its **routable‑IP breadth score**), read the `client_id ⇄ hotkey` binding (§11.4), split by θ, and submit
    commit-reveal weights (standard Bittensor validator loop → native dividends) — **no central
@@ -1503,8 +1525,9 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
    weighting, D25); computes provider reliability + payout list; publishes a content-addressed artifact and commits the **`payoutRoot`**
    (fractional shares); serves leaves. (No validator pool — it co‑signs trails as the `/verify` server.)
 5. **Provider software.** Carries ingress/egress; registers a `client_id`; verifies its payout leaf
-   against `payoutRoot`; calls the immutable vault's `claim`. **If it reaches the top ~200:** `burnedRegister`s its own UID,
-   publishes the dual-signed `client_id ⇄ hotkey` binding (§11.4), and earns **natively** (no claim, §8.4).
+   against `payoutRoot`; calls the immutable vault's `claim`. **If it reaches the top ~200:**
+   limit-registers its own UID, publishes the dual-signed `client_id ⇄ hotkey` binding (§11.4), and
+   earns **natively** (no claim, §8.4).
 6. **Validator client (was "verifier").** Stake α; run `/verify` trails; submit commit‑reveal pool
    scores (native dividends); independently reject stale/invalid bindings. (No `registerValidator(vpk)` /
    `submitTrails` / `claimValidator` — those belong to the parked bounty design, §9.3/D29.)
@@ -1574,9 +1597,11 @@ against finney at the Phase‑E mainnet promotion.)*
 - Precompile addresses/ABIs at the pinned Subtensor release (Blake2f `0x09`, Ed25519 `0x402`, sr25519
   `0x403`, Metagraph `0x802`, Neuron `0x804`, Staking V2 `0x805`) using good/bad vectors and
   value-bearing exact-delta tests. CRv4 is checked through native Substrate metadata/calls.
-- `tao_weight` (expect 0.18), `max_allowed_validators`, `min_allowed_weights`,
+- `tao_weight` (testnet expects raw `332041393326771929`, i.e. 1.8%; observe mainnet independently),
+  `max_allowed_validators`, `min_allowed_weights`,
   `commit_reveal_weights_enabled` default, `SubnetOwnerCut` — query live, set explicitly.
-- Existing-netuid ownership, capacity and every registration burn bound.
+- Existing-netuid ownership, capacity and every registration burn bound; prove both native
+  `register_limit` and EVM `registerLimit`, including funded-mirror/zero-precompile-value semantics.
 - Confirm `transferStake`/`moveStake` within‑netuid are slippage‑free on the live runtime; confirm the
   staking precompile's "contract address = coldkey" custody semantics.
 - Confirm an **independent validator** earns a permit at expected stake and that its **native
@@ -1588,8 +1613,9 @@ against finney at the Phase‑E mainnet promotion.)*
   coldkey (no take, not shared) and that the §11.4 binding verifies via `0x402` + `0x403`, a matching
   finalized commitment and live UID.
 - Confirm vault-owned **pool UIDs are not treated as owner/immune**, so the head/tail θ split does **not**
-  trigger the post-Spec-421 `(1 − miner_burned)` penalty (§8.5); set `max_weight_limit` and a high
-  `immunity_period` to protect the head from breadth-sampling-dip eviction.
+  trigger the post-Spec-421 `(1 − miner_burned)` penalty (§8.5); enforce the signed
+  `max_weight_limit_u16`, audit finalized vectors, and set a high `immunity_period` to protect the head
+  from breadth-sampling-dip eviction.
 
 ---
 

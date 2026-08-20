@@ -16,6 +16,9 @@ interface INeuron {
      */
     function burnedRegister(uint16 netuid, bytes32 hotkey) external payable;
 
+    /// @notice Runtime-447 registration with a hard rao-denominated price cap.
+    function registerLimit(uint16 netuid, bytes32 hotkey, uint64 limitPrice) external payable;
+
     /**
      * @dev Registers axon information for a neuron.
      * This function is used to serve axon information, including the subnet to register to, version, IP address, port, IP type, protocol, and placeholders for future use.

@@ -3,11 +3,13 @@ package crv4
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/registry"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/registry/retriever"
 	registryState "github.com/centrifuge/go-substrate-rpc-client/v4/registry/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -129,7 +131,7 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 		}
 		switch event.Name {
 		case "System.ExtrinsicFailed", "ExtrinsicFailed":
-			return fmt.Errorf("crv4: extrinsic %s dispatch failed: %v", extrinsicHash.Hex(), event.Fields)
+			return fmt.Errorf("crv4: extrinsic %s dispatch failed: %s", extrinsicHash.Hex(), formatDecodedEventFields(event.Fields))
 		case "System.ExtrinsicSuccess", "ExtrinsicSuccess":
 			success = true
 		}
@@ -138,6 +140,17 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 		return fmt.Errorf("crv4: extrinsic %s has no System.ExtrinsicSuccess event", extrinsicHash.Hex())
 	}
 	return nil
+}
+
+// Preserve structured dispatch detail instead of rendering nested registry
+// pointers, which hides the pallet index and error bytes needed to diagnose a
+// failed finalized extrinsic.
+func formatDecodedEventFields(fields registry.DecodedFields) string {
+	encoded, err := json.Marshal(fields)
+	if err != nil {
+		return fmt.Sprintf("event fields unavailable: %v", err)
+	}
+	return string(encoded)
 }
 
 // FindFinalizedExtrinsic searches canonical finalized block bodies beginning

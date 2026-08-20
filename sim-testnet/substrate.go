@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -36,6 +37,22 @@ type SubstrateManager struct {
 	cfg      *ResolvedConfig
 }
 
+// subtensorAccountInfo matches runtime 447's System.Account value. Subtensor's
+// Balance is u64 (rao), while the generic GSRPC AccountInfo assumes u128 and
+// therefore cannot decode this runtime's AccountData.
+type subtensorAccountInfo struct {
+	Nonce       types.U32
+	Consumers   types.U32
+	Providers   types.U32
+	Sufficients types.U32
+	Data        struct {
+		Free     types.U64
+		Reserved types.U64
+		Frozen   types.U64
+		Flags    types.U128
+	}
+}
+
 // SetupFacts are finalized, read-only inputs which make the setup plan exact.
 // In particular, alpha is transferred from an existing wallet-owned position;
 // the harness never guesses an AMM conversion or silently buys an unbounded
@@ -49,6 +66,16 @@ type SetupFacts struct {
 	WalletFreeTAORao    uint64 `json:"wallet_free_tao_rao"`
 	FinalizedBlock      uint64 `json:"finalized_block"`
 	FinalizedBlockHash  string `json:"finalized_block_hash"`
+}
+
+// Finalized activation facts distinguish the atomic-transfer toggle from the
+// one-time Dynamic TAO token activation required before staking.
+type SubnetActivationState struct {
+	SubtokenEnabled          bool
+	NetworkRegisteredAt      uint64
+	StartCallDelay           uint64
+	FirstEmissionBlockNumber uint64
+	FinalizedBlock           uint64
 }
 
 const stakingPrecompileABI = `[{"type":"function","name":"getStake","inputs":[{"name":"hotkey","type":"bytes32"},{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint256"}],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"},{"type":"function","name":"getNominatorMinRequiredStake","inputs":[],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"}]`
@@ -99,13 +126,13 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	if err != nil {
 		return nil, err
 	}
-	var account types.AccountInfo
+	var account subtensorAccountInfo
 	if ok, readErr := chain.API.RPC.State.GetStorage(accountKey, &account, finalizedHash); readErr != nil {
 		return nil, readErr
-	} else if !ok || account.Data.Free.Int == nil || !account.Data.Free.IsUint64() {
-		return nil, fmt.Errorf("testnet wallet free balance is unavailable or exceeds uint64")
+	} else if !ok {
+		return nil, fmt.Errorf("testnet wallet free balance is unavailable")
 	}
-	facts.WalletFreeTAORao = account.Data.Free.Uint64()
+	facts.WalletFreeTAORao = uint64(account.Data.Free)
 	hotkeysKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "StakingHotkeys", wallet[:])
 	if err != nil {
 		return nil, err
@@ -115,7 +142,7 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		return nil, err
 	}
 	if len(hotkeys) == 0 {
-		return nil, fmt.Errorf("testnet wallet has no staking hotkeys")
+		return facts, fmt.Errorf("testnet wallet has no staking hotkeys")
 	}
 	evm, err := ethclient.DialContext(ctx, httpURL)
 	if err != nil {
@@ -173,7 +200,7 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		}
 	}
 	if facts.AlphaSourceHotkey == "" || facts.AlphaAvailableRao == 0 {
-		return nil, fmt.Errorf("testnet wallet has no alpha on netuid %d", cfg.Netuid)
+		return facts, fmt.Errorf("testnet wallet has no alpha on netuid %d", cfg.Netuid)
 	}
 	return facts, nil
 }
@@ -219,10 +246,65 @@ func (m *SubstrateManager) Close() { m.chain.API.Client.Close() }
 type hyperShape struct{ Storage, Call, Kind string }
 
 var hyperShapes = map[string]hyperShape{
-	"tempo": {"Tempo", "sudo_set_tempo", "u16"}, "max_allowed_uids": {"MaxAllowedUids", "sudo_set_max_allowed_uids", "u16"}, "mechanism_count": {"MechanismCountCurrent", "sudo_set_mechanism_count", "u8"}, "commit_reveal_weights_enabled": {"CommitRevealWeightsEnabled", "sudo_set_commit_reveal_weights_enabled", "bool"}, "commit_reveal_period": {"RevealPeriodEpochs", "sudo_set_commit_reveal_weights_interval", "u64"}, "liquid_alpha_enabled": {"LiquidAlphaOn", "sudo_set_liquid_alpha_enabled", "bool"}, "immunity_period": {"ImmunityPeriod", "sudo_set_immunity_period", "u16"}, "min_allowed_weights": {"MinAllowedWeights", "sudo_set_min_allowed_weights", "u16"}, "weights_version_key": {"WeightsVersionKey", "sudo_set_weights_version_key", "u64"}, "serving_rate_limit": {"ServingRateLimit", "sudo_set_serving_rate_limit", "u64"}, "transfer_enabled": {"SubtokenEnabled", "sudo_set_toggle_transfer", "bool"},
+	"tempo":                         {Storage: "Tempo", Call: "sudo_set_tempo", Kind: "u16"},
+	"max_allowed_uids":              {Storage: "MaxAllowedUids", Call: "sudo_set_max_allowed_uids", Kind: "u16"},
+	"mechanism_count":               {Storage: "MechanismCountCurrent", Call: "sudo_set_mechanism_count", Kind: "u8"},
+	"commit_reveal_weights_enabled": {Storage: "CommitRevealWeightsEnabled", Call: "sudo_set_commit_reveal_weights_enabled", Kind: "bool"},
+	"commit_reveal_period":          {Storage: "RevealPeriodEpochs", Call: "sudo_set_commit_reveal_weights_interval", Kind: "u64"},
+	"liquid_alpha_enabled":          {Storage: "LiquidAlphaOn", Call: "sudo_set_liquid_alpha_enabled", Kind: "bool"},
+	"immunity_period":               {Storage: "ImmunityPeriod", Call: "sudo_set_immunity_period", Kind: "u16"},
+	"min_allowed_weights":           {Storage: "MinAllowedWeights", Call: "sudo_set_min_allowed_weights", Kind: "u16"},
+	"weights_version_key":           {Storage: "WeightsVersionKey", Call: "sudo_set_weights_version_key", Kind: "u64"},
+	"serving_rate_limit":            {Storage: "ServingRateLimit", Call: "sudo_set_serving_rate_limit", Kind: "u64"},
+	"transfer_enabled":              {Storage: "TransferToggle", Call: "sudo_set_toggle_transfer", Kind: "bool"},
 }
 
 func netuidArg(n uint16) []byte { var b [2]byte; binary.LittleEndian.PutUint16(b[:], n); return b[:] }
+
+// Decode a runtime-declared ValueQuery fallback when no raw key exists. A
+// missing OptionalQuery remains absent; inventing a zero value there would
+// hide missing identities and subnet state.
+func decodeStorageFallback(entry types.StorageEntryMetadata, value any) (bool, error) {
+	entryV14, ok := entry.(types.StorageEntryMetadataV14)
+	if !ok {
+		return false, fmt.Errorf("runtime storage entry is not metadata v14")
+	}
+	if !entryV14.Modifier.IsDefault {
+		return false, nil
+	}
+	if err := codec.Decode(entryV14.Fallback, value); err != nil {
+		return false, fmt.Errorf("decode runtime storage fallback: %w", err)
+	}
+	return true, nil
+}
+
+// Read one finalized value with the same absent-key semantics the runtime
+// applies. GSRPC reports only raw key presence and otherwise leaves zeroes.
+func readStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, storage string, value any, blockHash types.Hash) (bool, error) {
+	present, err := chain.API.RPC.State.GetStorage(key, value, blockHash)
+	if err != nil || present {
+		return present, err
+	}
+	entry, err := chain.Meta.FindStorageEntryMetadata(pallet, storage)
+	if err != nil {
+		return false, err
+	}
+	return decodeStorageFallback(entry, value)
+}
+
+// Require a concrete value or a runtime-declared ValueQuery fallback. Owner
+// settings and activation prerequisites must never interpret absent optional
+// storage as a real zero/false value.
+func readRequiredStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, storage string, value any, blockHash types.Hash) error {
+	present, err := readStorageAt(chain, key, pallet, storage, value, blockHash)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return fmt.Errorf("%s.%s storage is absent", pallet, storage)
+	}
+	return nil
+}
 
 func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
 	hash, err := m.chain.API.RPC.Chain.GetFinalizedHead()
@@ -252,19 +334,19 @@ func (m *SubstrateManager) ReadHyper(name string) (any, error) {
 	switch s.Kind {
 	case "u8":
 		var v types.U8
-		_, err = m.chain.API.RPC.State.GetStorage(key, &v, finalized)
+		err = readRequiredStorageAt(m.chain, key, crv4.PalletName, s.Storage, &v, finalized)
 		return uint8(v), err
 	case "u16":
 		var v types.U16
-		_, err = m.chain.API.RPC.State.GetStorage(key, &v, finalized)
+		err = readRequiredStorageAt(m.chain, key, crv4.PalletName, s.Storage, &v, finalized)
 		return uint16(v), err
 	case "u64":
 		var v types.U64
-		_, err = m.chain.API.RPC.State.GetStorage(key, &v, finalized)
+		err = readRequiredStorageAt(m.chain, key, crv4.PalletName, s.Storage, &v, finalized)
 		return uint64(v), err
 	case "bool":
 		var v types.Bool
-		_, err = m.chain.API.RPC.State.GetStorage(key, &v, finalized)
+		err = readRequiredStorageAt(m.chain, key, crv4.PalletName, s.Storage, &v, finalized)
 		return bool(v), err
 	default:
 		return nil, fmt.Errorf("invalid hyperparameter shape")
@@ -356,7 +438,7 @@ func (m *SubstrateManager) FreeBalance(account [32]byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var info types.AccountInfo
+	var info subtensorAccountInfo
 	finalized, _, err := m.finalizedHead()
 	if err != nil {
 		return 0, err
@@ -365,13 +447,10 @@ func (m *SubstrateManager) FreeBalance(account [32]byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if !ok || info.Data.Free.Int == nil {
+	if !ok {
 		return 0, nil
 	}
-	if !info.Data.Free.IsUint64() {
-		return 0, fmt.Errorf("free balance for 0x%x exceeds uint64", account)
-	}
-	return info.Data.Free.Uint64(), nil
+	return uint64(info.Data.Free), nil
 }
 
 func (m *SubstrateManager) Send(ctx context.Context, planHash string, a Action, call types.Call) (types.Hash, uint64, error) {
@@ -428,19 +507,83 @@ func (m *SubstrateManager) RoleSigner(roles *RoleSecrets, label string) (signatu
 	}
 	return signature.KeyringPairFromSecret("0x"+v.SeedHex, 42)
 }
-func (m *SubstrateManager) BurnRegisterCall(hotkey [32]byte) (types.Call, error) {
+
+// Build a runtime-enforced registration limit so a moving burn auction cannot
+// charge more than the approved action ceiling between observation and block.
+func (m *SubstrateManager) BurnRegisterLimitCall(hotkey [32]byte, limitPrice uint64) (types.Call, error) {
 	account, err := types.NewAccountID(hotkey[:])
 	if err != nil {
 		return types.Call{}, err
 	}
-	return types.NewCall(m.chain.Meta, crv4.PalletName+".burned_register", types.NewU16(m.cfg.Netuid), *account)
+	return types.NewCall(m.chain.Meta, crv4.PalletName+".register_limit", types.NewU16(m.cfg.Netuid), *account, types.NewU64(limitPrice))
 }
-func (m *SubstrateManager) AddStakeCall(hotkey [32]byte, amount uint64) (types.Call, error) {
+
+// Build a fill-or-kill Dynamic TAO purchase with an explicit maximum price.
+func (self *SubstrateManager) AddStakeLimitCall(hotkey [32]byte, amount, limitPrice uint64, allowPartial bool) (types.Call, error) {
 	account, err := types.NewAccountID(hotkey[:])
 	if err != nil {
 		return types.Call{}, err
 	}
-	return types.NewCall(m.chain.Meta, crv4.PalletName+".add_stake", *account, types.NewU16(m.cfg.Netuid), types.NewUCompactFromUInt(amount))
+	return types.NewCall(
+		self.chain.Meta,
+		crv4.PalletName+".add_stake_limit",
+		*account,
+		types.NewU16(self.cfg.Netuid),
+		types.NewU64(amount),
+		types.NewU64(limitPrice),
+		types.NewBool(allowPartial),
+	)
+}
+
+// Read all activation prerequisites and results from one finalized head.
+func (self *SubstrateManager) ActivationState() (SubnetActivationState, error) {
+	finalized, block, err := self.finalizedHead()
+	if err != nil {
+		return SubnetActivationState{}, err
+	}
+	state := SubnetActivationState{FinalizedBlock: block}
+	readNetuid := func(storage string, out any) (bool, error) {
+		key, keyErr := types.CreateStorageKey(self.chain.Meta, crv4.PalletName, storage, netuidArg(self.cfg.Netuid))
+		if keyErr != nil {
+			return false, keyErr
+		}
+		return readStorageAt(self.chain, key, crv4.PalletName, storage, out, finalized)
+	}
+	var enabled types.Bool
+	if present, err := readNetuid("SubtokenEnabled", &enabled); err != nil {
+		return state, err
+	} else if !present {
+		return state, errors.New("SubtensorModule.SubtokenEnabled storage is absent")
+	}
+	state.SubtokenEnabled = bool(enabled)
+	var registered types.U64
+	if present, err := readNetuid("NetworkRegisteredAt", &registered); err != nil {
+		return state, err
+	} else if !present {
+		return state, errors.New("SubtensorModule.NetworkRegisteredAt storage is absent")
+	}
+	state.NetworkRegisteredAt = uint64(registered)
+	delayKey, err := types.CreateStorageKey(self.chain.Meta, crv4.PalletName, "StartCallDelay")
+	if err != nil {
+		return state, err
+	}
+	var delay types.U64
+	if err := readRequiredStorageAt(self.chain, delayKey, crv4.PalletName, "StartCallDelay", &delay, finalized); err != nil {
+		return state, err
+	}
+	state.StartCallDelay = uint64(delay)
+	var first types.U64
+	if present, err := readNetuid("FirstEmissionBlockNumber", &first); err != nil {
+		return state, err
+	} else if present {
+		state.FirstEmissionBlockNumber = uint64(first)
+	}
+	return state, nil
+}
+
+// Build the one-time subnet-token activation call after its delay expires.
+func (self *SubstrateManager) StartCallCall() (types.Call, error) {
+	return types.NewCall(self.chain.Meta, crv4.PalletName+".start_call", types.NewU16(self.cfg.Netuid))
 }
 
 func (m *SubstrateManager) DelegateTake(hotkey [32]byte) (uint16, error) {
@@ -453,7 +596,7 @@ func (m *SubstrateManager) DelegateTake(hotkey [32]byte) (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := m.chain.API.RPC.State.GetStorage(key, &take, finalized); err != nil {
+	if _, err := readStorageAt(m.chain, key, crv4.PalletName, "Delegates", &take, finalized); err != nil {
 		return 0, err
 	}
 	return uint16(take), nil
@@ -504,6 +647,33 @@ func (m *SubstrateManager) UID(hotkey [32]byte) (uint16, bool, error) {
 	}
 	ok, err := m.chain.API.RPC.State.GetStorage(key, &uid, finalized)
 	return uint16(uid), ok, err
+}
+
+// Read the controlling coldkey for a hotkey from the same finalized runtime
+// storage used by registration. Owner is a ValueQuery; an unowned hotkey
+// resolves to the runtime's zero-account fallback and will fail exact matching.
+func (m *SubstrateManager) HotkeyOwner(hotkey [32]byte) ([32]byte, error) {
+	var result [32]byte
+	key, err := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "Owner", hotkey[:])
+	if err != nil {
+		return result, err
+	}
+	finalized, _, err := m.finalizedHead()
+	if err != nil {
+		return result, err
+	}
+	var owner types.AccountID
+	if err := readRequiredStorageAt(m.chain, key, crv4.PalletName, "Owner", &owner, finalized); err != nil {
+		return result, err
+	}
+	return [32]byte(owner), nil
+}
+
+func validateHotkeyOwner(label string, actual, expected [32]byte) error {
+	if actual != expected {
+		return fmt.Errorf("%s coldkey is 0x%x, want 0x%x", label, actual, expected)
+	}
+	return nil
 }
 
 func (m *SubstrateManager) appendRecoveredFinality(planHash string, a Action, hash types.Hash, receipt *crv4.FinalizedExtrinsic, recoveryBlock uint64, recoveryHash string) (types.Hash, uint64, error) {
@@ -619,18 +789,18 @@ func verifyCompatibilityGates(chain *crv4.Chain, cfg *ResolvedConfig) (map[strin
 		switch gate.Kind {
 		case "u16":
 			var value types.U16
-			present, err = chain.API.RPC.State.GetStorage(key, &value, finalized)
+			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value)}
 		case "u64":
 			var value types.U64
-			present, err = chain.API.RPC.State.GetStorage(key, &value, finalized)
+			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value)}
 		case "u16_pair":
 			var value struct {
 				Low  types.U16
 				High types.U16
 			}
-			present, err = chain.API.RPC.State.GetStorage(key, &value, finalized)
+			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value.Low), uint64(value.High)}
 		default:
 			return nil, fmt.Errorf("compatibility gate %s has unsupported kind %s", name, gate.Kind)

@@ -881,7 +881,7 @@ func inspectValidatorIntent(stateDir string, validatorID int) ValidatorObservati
 }
 
 func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimObservation {
-	result := ClaimObservation{MinerID: minerID, NoID: 1 + (minerID-1)%cfg.Config.Topology.Operators}
+	result := ClaimObservation{MinerID: minerID, NoID: operatorForMiner(cfg, minerID)}
 	b, err := os.ReadFile(filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", minerID), "claims", "claim-queue.json"))
 	if err != nil {
 		result.Error = err.Error()
@@ -1092,6 +1092,16 @@ func releaseScenarioChecks() []scenarioCheck {
 			}
 			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, fmt.Sprintf("applied_vectors=%d", len(e.Current.Validators))
 		}},
+		{ID: "signed_weight_cap_enforced", Check: func(e *scenarioEvaluation) (bool, string) {
+			cap := e.Cfg.Policy.Steering.MaxWeightLimitU16
+			for _, validator := range e.Current.Validators {
+				ok, maximum, sum := weightValuesRespectCap(validator.AppliedWeights, cap)
+				if !ok {
+					return false, fmt.Sprintf("validator=%d max=%d sum=%d cap=%d", validator.ValidatorID, maximum, sum, cap)
+				}
+			}
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, fmt.Sprintf("validators=%d cap=%d", len(e.Current.Validators), cap)
+		}},
 		{ID: "native_head_weight_observed", Check: func(e *scenarioEvaluation) (bool, string) {
 			if !e.Current.FleetBindingsValid {
 				return false, "fleet binding evidence is invalid"
@@ -1167,7 +1177,7 @@ func releaseScenarioChecks() []scenarioCheck {
 				for fleetIndex, uid := range e.Current.HeadFleetUIDs {
 					for member := 1; member <= e.Cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 						miner := fleetMemberMinerIndex(e.Cfg, fleetIndex+1, member)
-						noID := uint64(1 + (miner-1)%e.Cfg.Config.Topology.Operators)
+						noID := uint64(operatorForMiner(e.Cfg, miner))
 						if controlled[noID] {
 							expected[uid] = true
 						}
@@ -1294,6 +1304,23 @@ func uint16Set(values []uint16) map[uint16]bool {
 		result[value] = true
 	}
 	return result
+}
+
+// weightValuesRespectCap checks the exact integer inequality used by
+// Subtensor's normalized max-weight rule without introducing float rounding.
+func weightValuesRespectCap(weights []IntentWeightObservation, cap uint16) (bool, uint16, uint64) {
+	var maximum uint16
+	var sum uint64
+	for _, weight := range weights {
+		sum += uint64(weight.Value)
+		if weight.Value > maximum {
+			maximum = weight.Value
+		}
+	}
+	if cap == 0 || sum == 0 {
+		return false, maximum, sum
+	}
+	return uint64(maximum)*uint64(^uint16(0)) <= sum*uint64(cap), maximum, sum
 }
 
 func uint64Set(values []uint64) map[uint64]bool {
@@ -1684,7 +1711,7 @@ scenarioLoop:
 		}
 	}
 	if result.Result == "pass" {
-		if err := scanEvidenceSecrets(stateDir, runDir, options.Roles, cfg.WalletSecret, cfg.WalletMaterial); err != nil {
+		if err := scanEvidenceSecrets(stateDir, runDir, options.Roles, cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword); err != nil {
 			return result, err
 		}
 		hashes, err := evidenceFileHashes(runDir)

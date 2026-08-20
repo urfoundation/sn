@@ -5,24 +5,28 @@ test. It converges an **existing** Bittensor testnet subnet, deploys the reviewe
 reserve/vault/coordinator contract set, provisions two operators, eight miners,
 two validators, two independently keyed three-client head fleets and two tail
 miners, then leaves the topology running for inspection and named scenarios.
+Each head fleet stays within one operator and whole fleets are balanced across
+operators, so the affiliated-validator self-dealing mask leaves an independent
+head and pool instead of contaminating every head UID.
 
 It never creates a subnet. Every write is bounded by an approved, content-hashed
 plan. `doctor`, `plan`, `status`, `inspect` and `analyze` are read-only. `setup`,
 `launch`, `resume`, `scenario` and `retire` are dry-runs unless both `--apply`
 and the exact `--plan-hash` are supplied.
 
-## Pre-launch pause
+## Pre-launch approval
 
-The repository intentionally ships with empty/zero launch authority in
-`../vault/main/st.yml`. Do not run `setup --apply` or `launch --apply` until the
-values below are filled, `doctor` is green, and the printed plan hash and maximum
-spend have been reviewed. Filling the file does not itself write to either chain.
+The testnet inputs are stored under testnet-prefixed keys in
+`../vault/main/st.yml`. Do not run `setup --apply` or `launch --apply` until
+`doctor` is green and the printed plan hash and maximum spend have been reviewed.
+Loading the configuration does not itself write to either chain.
 
 Required `testnet-` keys:
 
 | key | required value |
 |---|---|
-| `testnet-wallet` | The subnet-owner signer as a Substrate secret URI/mnemonic, `env:VARIABLE`, or `file:/absolute/owner-only/path`. Secret files must be regular, non-symlink, absolute, nonempty, and have no group/other permission bits. It is never accepted as a CLI flag or emitted in evidence. |
+| `testnet-wallet` | A portable `vault-wallet:relative/path` to a standard encrypted Bittensor wallet directory, or the legacy signer forms `env:VARIABLE` and `file:/absolute/owner-only/path`. The coldkey is decrypted only in memory and must match `coldkeypub.txt`; its public default hotkey is also identity-checked. |
+| `testnet-wallet-password` | A contained, non-symlink `vault-file:relative/path` to the encrypted wallet password. On execution hosts it must be owner-readable with no group/other permission bits (for example `chmod 600 vault/subtensor/testnet_wallet.password`). It is never accepted as a CLI flag or emitted in evidence. |
 | `testnet-netuid` | The existing nonzero netuid owned by that wallet. |
 | `testnet-spending-limit-tao-rao` | Maximum total testTAO outflow, as an integer number of rao. |
 | `testnet-spending-limit-alpha-rao` | Maximum existing subnet-alpha transferred into release roles, as integer rao. The wallet must already control a staking hotkey with at least this topology's planned alpha. |
@@ -33,16 +37,37 @@ The checked-in testnet governance value is `single-owner`; the harness generates
 a dedicated capped testnet owner and a separate guardian. Unprefixed values are
 mainnet-only and retain `safe-2-of-3`; `sim-testnet` refuses to resolve them.
 
-`testnet-authority` uses `BRINGYOUR_SUBTENSOR_HOSTNAME` and must reach the deployed
-runtime-447 RPC gateway on port 9944 from the execution host. Evidence uses the
-existing `server/blob` MinIO configuration and bucket; no second object store is
-started.
+`testnet-authority` must resolve `sim-testnet:9944` to the deployed runtime-447
+RPC gateway from the execution host. Map that name to the reachable local or
+overlay gateway address for the execution host. Evidence uses the existing
+shared `server/blob` MinIO configuration and bucket; no second object store is
+started. MinIO and Subtensor are the only external shared services.
+
+Runtime 447 distinguishes atomic alpha transfers (`TransferToggle`, managed by
+`sudo_set_toggle_transfer`) from the one-time trading/emission activation
+(`SubtokenEnabled`, managed by the subnet owner's `start_call`). The harness
+checks these as distinct storage postconditions.
+
+Runtime 447 also raises a subnet's burn after successful registration. The
+release plan therefore reserves at most `100000000` rao per registration and
+binds that same ceiling into every native `register_limit` and EVM
+`registerLimit` action. EVM callers are funded at their SS58 mirrors and pass
+zero value to the neuron precompile; the runtime deducts the burn from the
+caller mirror. Contract registrations supply the full ceiling and return the
+unburned surplus, so an in-flight price increase cannot produce an underfunded
+call below the approved cap.
 
 ## Host prerequisites
 
 - Linux amd64, Go 1.26.x, Git, and a running user systemd manager.
-- Docker with permission for the invoking user. PostgreSQL 16.4 and Redis 7.4
-  containers are created from the exact digests in `deploy/testnet/release.lock.yml`.
+- Docker with direct permission for the invoking user or passwordless `sudo -n
+  docker`. The harness prefers direct access and never opens an interactive sudo
+  prompt. One isolated PostgreSQL 18 and Redis 8 pair is created per operator from the exact digests in
+  `deploy/testnet/release.lock.yml`. Their locale, database initialization,
+  connection capacity, Redis threading, and persistence settings mirror
+  `server/local`; they never use shared PG or Redis services. PostgreSQL data
+  volumes and containers carry the same complete release/config hash, and stale
+  or unlabelled volumes are rejected instead of silently reusing old init hooks.
 - The locked `sn`, `server`, `vault`, platform `config`, `connect`, `sdk`, `glog`,
   `goidenticons`, `proxy`, `userwireguard`, and `xops` repositories checked out
   beneath one parent. Repository discovery uses Go module identity plus required
@@ -54,8 +79,7 @@ started.
 - Foundry 1.7.1 only for developer rebuild/review. A launch embeds locked bytecode
   and never compiles Solidity at runtime.
 
-On this checkout Foundry is installed at `/home/by/.foundry/bin`. Docker is not
-currently installed and requires host-administrator action before `doctor` can pass.
+On this checkout Foundry is installed at `/home/by/.foundry/bin`.
 
 ## Build and read-only preflight
 
@@ -75,16 +99,36 @@ go build -trimpath -o build/sim-testnet ./sim-testnet
 
 `doctor` checks the release lock, repository source hashes, wallet proof,
 ownership, balances, budget, runtime/genesis/chain identity, metadata and call
-shapes, gateway methods, precompiles, MinIO, Docker and systemd. `plan` repeats
-those gates, reads finalized setup facts, and prints every intended action,
-dependency, maximum spend and the canonical `plan_hash`. Neither command submits
-a transaction or extrinsic.
+shapes, finalized subnet-token/emission activation, recent historical EVM state,
+gateway methods, connected consensus peers, the signed finalized-head lag
+bound, a canonical common checkpoint, distinct physical private/public Subtensor
+peers, precompiles, MinIO's exact HTTP live endpoint, the Docker daemon and systemd.
+`plan` repeats those gates, reads finalized setup facts, and prints every intended
+action, dependency, maximum spend and the canonical `plan_hash`. That approval
+hash binds the complete release lock, harness/public/hyperparameter manifests and
+all non-secret values resolved from the vault, not only their YAML references. The
+signed policy has its own canonical hash. Neither command submits a transaction or
+extrinsic.
+
+The public-chain integration probes are opt-in:
+
+```bash
+SIM_TESTNET_LIVE_WALLET=1 go test ./sim-testnet -run TestLiveVaultWalletResolution -v
+SIM_TESTNET_LIVE_READ=1 go test ./sim-testnet -run TestLiveBalanceProbe -v
+```
+
+The alpha-bootstrap integration test additionally requires its exact
+`SIM_TESTNET_STAKE_ALPHA` confirmation string. It is idempotent once the target
+alpha position exists and otherwise journals activation and staking before
+checking finalized storage. It is not part of the ordinary unit-test suite.
 
 ## Approved setup and launch
 
-Use the exact hash from the reviewed plan. A changed config, policy, role
-derivation, source checkout, artifact, runtime fact, or persisted plan fails
-closed.
+Use the exact hash from the reviewed plan. A changed config, resolved vault input,
+policy, release lock, role derivation, source checkout, artifact, runtime fact, or
+persisted plan fails closed. Every apply reruns `doctor` and rechecks finalized
+economic facts against the exact unverified remainder. Docker dependencies and
+all release binaries are preflighted before a transaction-capable executor opens.
 
 ```bash
 # Optional: converge chain/contracts/config without starting services.
@@ -142,8 +186,9 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
 `release-1.0` requires 20 accelerated epochs, real two-NO verification,
 independently applied CRv4 vectors and self masks, isolated deposits and conviction,
 public roots, claims from both pools, cryptographically reconstructed head bindings,
-a nonzero native head weight, reserve principal plus auto-compounded yield, process
-fault recovery and exact rao conservation. `production-soak` schedules the canonical
+a nonzero native head weight, exact signed-policy max-weight-cap compliance, reserve
+principal plus auto-compounded yield, process fault recovery and exact rao
+conservation. `production-soak` schedules the canonical
 50,400-block policy and immunity period, rotates each operator verification key while
 retaining old proof verification, runs two complete production epochs, and genuinely
 restarts (new PID, healthy replacement) every operator service, miner/claim daemon
@@ -182,8 +227,7 @@ local run evidence.
 
 ## Local verification
 
-These commands are safe before the launch values are filled and perform no testnet
-writes:
+These commands are safe before launch approval and perform no testnet writes:
 
 ```bash
 go test ./...
@@ -194,6 +238,7 @@ PATH=/home/by/.foundry/bin:$PATH \
 ```
 
 Database-backed server tests additionally need the hermetic PostgreSQL/Redis/vault
-profile that `launch` materializes. Their absence on a development shell is not
-treated as live evidence; the release campaign must run them against both managed
-operator databases before the final go/no-go decision.
+profile that `launch` materializes after verified contract addresses exist. Running
+them with only `RUN_SERVER_DB_TESTS=1` and no `WARP_ENV` is an expected fail-closed
+configuration error, not a database-health result. The release campaign runs them
+against both rendered managed-operator databases before the final go/no-go decision.

@@ -219,6 +219,9 @@ func PrepareWeightsCRv4(ctx context.Context, chain *Chain, kp *Keypair, netuid u
 	if err != nil {
 		return nil, err
 	}
+	if err := repairMaxWeightLimitU16(u16uids, u16vals, maxWeightLimit); err != nil {
+		return nil, err
+	}
 	if len(u16uids) == 0 {
 		return nil, fmt.Errorf("crv4: all weights are zero; nothing to commit")
 	}
@@ -249,6 +252,9 @@ func PrepareWeightsCRv4Exact(ctx context.Context, chain *Chain, kp *Keypair, net
 	}
 	u16uids, u16vals, err := NormalizeRationalToU16(uids, capped)
 	if err != nil {
+		return nil, err
+	}
+	if err := repairMaxWeightLimitU16(u16uids, u16vals, maxWeightLimit); err != nil {
 		return nil, err
 	}
 	if len(u16uids) == 0 {

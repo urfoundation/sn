@@ -1,11 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
+	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 func TestStrictYAMLRejectsUnknownAndMultipleDocuments(t *testing.T) {
@@ -36,6 +42,19 @@ func TestHarnessConfigRequiresTestnetOnlyReferences(t *testing.T) {
 	r.Config.LaunchInputs.Wallet = "vault://main/st.yml#wallet"
 	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "testnet-prefixed") {
 		t.Fatalf("mainnet wallet reference was not rejected: %v", err)
+	}
+	r = testResolvedConfig(t)
+	r.Config.LaunchInputs.WalletPassword = "vault://main/st.yml#wallet-password"
+	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "testnet-prefixed") {
+		t.Fatalf("mainnet wallet password reference was not rejected: %v", err)
+	}
+}
+
+func TestHarnessConfigRequiresRegistrationBurnLimit(t *testing.T) {
+	r := testResolvedConfig(t)
+	r.Config.Budgets.MaximumRegistrationBurnRao = 0
+	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "registration burn") {
+		t.Fatalf("zero registration burn limit was accepted: %v", err)
 	}
 }
 
@@ -97,15 +116,169 @@ func TestWalletSecretReferencesFailClosedAndRequirePrivateFiles(t *testing.T) {
 	}
 }
 
+func TestBTWALLETNACLDecryptsAndFailsClosed(t *testing.T) {
+	password := "unit-test-password"
+	plain := []byte(`{"secretPhrase":"//Alice","cryptoType":1}`)
+	const memoryKiB = uint32(32)
+	derived := argon2.Key([]byte(password), btwalletNACLSalt[:], 1, memoryKiB, 1, 32)
+	var key [32]byte
+	copy(key[:], derived)
+	var nonce [24]byte
+	for i := range nonce {
+		nonce[i] = byte(i + 1)
+	}
+	encrypted := append([]byte(btwalletNACLPrefix), nonce[:]...)
+	encrypted = append(encrypted, secretbox.Seal(nil, plain, &nonce, &key)...)
+	got, err := decryptBTWALLETNACL(encrypted, password, 1, memoryKiB, 1)
+	if err != nil || !bytes.Equal(got, plain) {
+		t.Fatalf("decrypted = %q, %v", got, err)
+	}
+	if _, err := decryptBTWALLETNACL(encrypted, "wrong", 1, memoryKiB, 1); err == nil {
+		t.Fatal("wrong wallet password was accepted")
+	}
+	if _, err := decryptBTWALLETNACL([]byte("not-a-keyfile"), password, 1, memoryKiB, 1); err == nil {
+		t.Fatal("malformed keyfile was accepted")
+	}
+}
+
+func TestVaultRelativePathsRejectTraversalAndSymlinkEscape(t *testing.T) {
+	vault := t.TempDir()
+	inside := filepath.Join(vault, "secret")
+	if err := os.WriteFile(inside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveVaultRelativePath(vault, "vault-file:secret", "vault-file:", true); err != nil || got != inside {
+		t.Fatalf("inside path = %q, %v", got, err)
+	}
+	if _, err := resolveVaultRelativePath(vault, "vault-file:../secret", "vault-file:", true); err == nil {
+		t.Fatal("vault traversal was accepted")
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(vault, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveVaultRelativePath(vault, "vault-file:escape", "vault-file:", true); err == nil {
+		t.Fatal("vault symlink escape was accepted")
+	}
+}
+
+func TestVaultWalletFilesRejectTraversalSymlinkAndPublicSecretPermissions(t *testing.T) {
+	wallet := t.TempDir()
+	inside := filepath.Join(wallet, "coldkey")
+	if err := os.WriteFile(inside, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveVaultWalletFile(wallet, "coldkey", true); err != nil || got != inside {
+		t.Fatalf("inside wallet file = %q, %v", got, err)
+	}
+	if _, err := resolveVaultWalletFile(wallet, "../coldkey", true); err == nil {
+		t.Fatal("wallet file traversal was accepted")
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("encrypted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(wallet, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveVaultWalletFile(wallet, "escape", true); err == nil {
+		t.Fatal("wallet child symlink escape was accepted")
+	}
+	if err := os.Chmod(inside, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveVaultWalletFile(wallet, "coldkey", true); err == nil {
+		t.Fatal("world-readable wallet coldkey was accepted")
+	}
+	if _, err := resolveVaultWalletFile(wallet, "coldkey", false); err != nil {
+		t.Fatalf("public wallet file permissions were rejected: %v", err)
+	}
+}
+
+func TestBTWALLETMaterialMustMatchPublicIdentity(t *testing.T) {
+	ring, err := signature.KeyringPairFromSecret("//Alice", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cryptoType := uint8(1)
+	public := btwalletKeyfile{PublicKey: "0x" + hex.EncodeToString(ring.PublicKey), AccountID: "0x" + hex.EncodeToString(ring.PublicKey), SS58Address: ring.Address, CryptoType: &cryptoType}
+	if got, err := materialFromBTWALLET(btwalletKeyfile{SecretPhrase: "//Alice", SS58Address: ring.Address, CryptoType: &cryptoType}, public); err != nil || got != "//Alice" {
+		t.Fatalf("wallet material = %q, %v", got, err)
+	}
+	public.SS58Address = "5Wrong"
+	if _, err := materialFromBTWALLET(btwalletKeyfile{SecretPhrase: "//Alice", CryptoType: &cryptoType}, public); err == nil {
+		t.Fatal("wallet identity mismatch was accepted")
+	}
+}
+
+func TestBTWALLETPublicRequiresMatchingSS58Identity(t *testing.T) {
+	alice, err := signature.KeyringPairFromSecret("//Alice", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := signature.KeyringPairFromSecret("//Bob", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cryptoType := uint8(1)
+	value := btwalletKeyfile{
+		AccountID:   "0x" + hex.EncodeToString(alice.PublicKey),
+		PublicKey:   "0x" + hex.EncodeToString(alice.PublicKey),
+		SS58Address: bob.Address,
+		CryptoType:  &cryptoType,
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "coldkeypub.txt")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readBTWALLETPublic(path); err == nil || !strings.Contains(err.Error(), "ss58Address") {
+		t.Fatalf("mismatched public wallet identity was accepted: %v", err)
+	}
+	value.SS58Address = alice.Address
+	b, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readBTWALLETPublic(path); err != nil {
+		t.Fatalf("matching public wallet identity was rejected: %v", err)
+	}
+}
+
+func TestUnsignedVaultValuesRejectNegativeAndOverflow(t *testing.T) {
+	for name, value := range map[string]any{
+		"negative integer": -1,
+		"negative string":  "-1",
+		"overflow":         "18446744073709551616",
+	} {
+		if _, err := parseUnsignedVaultValue("testnet-limit", value); err == nil {
+			t.Errorf("%s: unsafe unsigned value %v was accepted", name, value)
+		}
+	}
+	if value, err := parseUnsignedVaultValue("testnet-limit", " 42 "); err != nil || value != 42 {
+		t.Fatalf("valid unsigned value = %d, %v", value, err)
+	}
+}
+
 func TestResolvedConfigJSONRedactsWalletAndVault(t *testing.T) {
 	r := testResolvedConfig(t)
 	r.Vault = map[string]any{"testnet-wallet": "do not serialize"}
+	r.Authority = "wss://rpc-user:rpc-password@example.test/path?token=rpc-token"
 	b, err := json.Marshal(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(b)
-	for _, secret := range []string{r.WalletSecret, r.WalletMaterial, "do not serialize", "WalletSecret", "WalletMaterial"} {
+	for _, secret := range []string{r.WalletSecret, r.WalletMaterial, r.WalletPasswordSecret, r.WalletPassword, "do not serialize", "WalletSecret", "WalletMaterial", "WalletPassword", "rpc-user", "rpc-password", "rpc-token"} {
 		if strings.Contains(text, secret) {
 			t.Fatalf("resolved config JSON leaked %q: %s", secret, text)
 		}
@@ -175,5 +348,39 @@ func TestCompatibilityGateSchemaAndEvaluationFailClosed(t *testing.T) {
 	}
 	if err := evaluateCompatibilityGate(CompatibilityGate{Rule: "nonzero"}, []uint64{0}); err == nil {
 		t.Fatal("zero nonzero-gate value accepted")
+	}
+}
+
+func TestReleaseConfigHashBindsPublicAndHyperparameterManifests(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	public := *cfg.Public
+	public.Chain.ExpectedBlockSeconds++
+	publicHash, err := releaseConfigHash(cfg.Config, &public, cfg.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if publicHash == cfg.ConfigHash {
+		t.Fatal("public chain-manifest drift did not change the release config hash")
+	}
+
+	hyperparameters := *cfg.Hyperparameters
+	hyperparameters.OwnerControlled = make(map[string]any, len(cfg.Hyperparameters.OwnerControlled))
+	for name, value := range cfg.Hyperparameters.OwnerControlled {
+		hyperparameters.OwnerControlled[name] = value
+	}
+	hyperparameters.OwnerControlled["tempo"] = uint64(361)
+	hyperparameterHash, err := releaseConfigHash(cfg.Config, cfg.Public, &hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hyperparameterHash == cfg.ConfigHash {
+		t.Fatal("owner hyperparameter drift did not change the release config hash")
+	}
+}
+
+func TestReleaseConfigHashRejectsIncompleteManifestSet(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	if _, err := releaseConfigHash(cfg.Config, nil, cfg.Hyperparameters); err == nil {
+		t.Fatal("incomplete release manifest set was accepted")
 	}
 }

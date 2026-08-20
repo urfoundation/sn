@@ -839,9 +839,23 @@ for each NO-pool UID n:
 normalize pool so Σ pool = 1 − θ
 
 w = head ⊕ pool                            # ONE vector over all miner UIDs
-apply max_weight_limit                     # MUST set — chain default is NO cap; else one UID dominates a tier
+apply signed-policy max_weight_limit_u16   # v447 native getter is 65535/no-cap; fail if infeasible
 commit / reveal w                          # commit-reveal ON: the score / θ signal is subjective, anti-copy
 ```
+
+Runtime v447 retains `MaxWeightsLimit` storage but its effective getter is
+hard-coded to `65535`, so changing that storage does not impose a native cap.
+Release 1.0 validators therefore load the cap from the exact signed policy,
+apply it before serialization, persist it with the intent, and audit the
+finalized applied vector using `max(value)/sum(values) ≤ cap/65535`. The testnet
+bootstrap uses `32768`, the smallest feasible cap with two positive recipients;
+production lowers it only as recipient breadth makes the requested cap feasible.
+After half-up `u16` conversion, validators deterministically add the minimum
+rounding units to lower, positive entries in UID order until the same exact
+integer inequality holds; they never sign a rounded vector which exceeds it.
+Until the runtime restores a native cap, this convention depends on the same
+honest stake-majority as θ and the scoring rules and cannot constrain a
+non-conforming validator by itself.
 
 **Where the pool inputs come from (D25).** The validator reads each NO's `epoch_deposit_n`
 and cumulative conviction by **summing finalized `Deposit` and `ConvictionAdded` events**

@@ -58,11 +58,12 @@ Each contract has a distinct H160-mirrored Substrate coldkey.
    available stake. In one EVM transaction it moves the amount to the reserve
    hotkey, transfers it to the immutable sink coldkey, records principal, and
    emits the policy-bound event. Any failed runtime call reverts all accounting.
-3. During installation the immutable vault burn-registers its escrow hotkey
-   exactly once under its own mapped coldkey. It also owns one pool hotkey per
-   NO. A timely boundary call moves the complete realized pool stake to that
-   escrow; a missed boundary defers the still-on-pool stake rather than
-   misattributing a multi-epoch delta.
+3. During installation the immutable vault limit-registers its escrow hotkey
+   exactly once under its own mapped coldkey. Runtime 447 burns from the funded
+   caller mirror, so the vault calls the neuron precompile with zero call value.
+   It also owns one pool hotkey per NO. A timely boundary call moves the
+   complete realized pool stake to that escrow; a missed boundary defers the
+   still-on-pool stake rather than misattributing a multi-epoch delta.
 4. The NO commits a root plus canonical artifact hash. Finalization fixes one
    vault entitlement containing captured emission plus same-NO carry. Claims use
    the shared double-hashed OZ Merkle leaf and transfer alpha stake directly to
@@ -101,8 +102,10 @@ deregistration, or UID reuse.
 ## Deployment
 
 `script/Deploy.s.sol` installs the sink, vault, coordinator implementation, and
-ERC1967 proxy, burn-registers the vault-owned escrow with the required
-`ST_REGISTRATION_BURN_WEI`, then irreversibly fixes the proxy as sink recorder
+ERC1967 proxy, limit-registers the vault-owned escrow with the required
+runtime-enforced `ST_REGISTRATION_BURN_LIMIT_RAO` (funded at the full ceiling;
+the actual burn is charged and surplus is returned), then irreversibly fixes
+the proxy as sink recorder
 and vault coordinator. It accepts only Bittensor testnet chain 945 or mainnet chain 964.
 Testnet requires a dedicated EOA owner. Mainnet calls the standard Safe
 `getThreshold()`/`getOwners()` views and refuses deployment unless the owner is

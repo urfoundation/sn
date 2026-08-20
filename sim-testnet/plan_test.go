@@ -59,6 +59,14 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.MaximumSpend.Registrations != wantRegistrations {
 		t.Fatalf("registrations = %d, want %d", plan.MaximumSpend.Registrations, wantRegistrations)
 	}
+	if plan.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao {
+		t.Fatalf("registration burn limit = %d, want %d", plan.RegistrationBurnLimitRao, cfg.Config.Budgets.MaximumRegistrationBurnRao)
+	}
+	for _, action := range plan.Actions {
+		if action.Spend.Registrations > 0 && action.Parameters["maximum_burn_rao"] != fmt.Sprint(plan.RegistrationBurnLimitRao) {
+			t.Fatalf("registration action %s does not bind the reviewed burn limit: %+v", action.ID, action)
+		}
+	}
 	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
 		t.Fatalf("release setup actions missing: %v", seen)
 	}
@@ -141,6 +149,49 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	if a.PlanHash == c.PlanHash {
 		t.Fatal("finalized burn did not change plan hash")
 	}
+	if a.MaximumSpend.TAORao != c.MaximumSpend.TAORao {
+		t.Fatal("moving observed burn changed the reviewed registration ceiling")
+	}
+}
+
+func TestPlanHashBindsTheCompleteReleaseLock(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	first, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := *cfg.Release
+	changed.Dependencies = map[string]string{}
+	for name, value := range cfg.Release.Dependencies {
+		changed.Dependencies[name] = value
+	}
+	changed.Dependencies["redis"] = "redis:8-alpine@sha256:" + strings.Repeat("3", 64)
+	cfg.Release = &changed
+	second, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ReleaseLockHash == second.ReleaseLockHash || first.PlanHash == second.PlanHash {
+		t.Fatal("release-lock drift did not invalidate the approved plan hash")
+	}
+}
+
+func TestPlanHashBindsResolvedVaultLaunchInputs(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	first, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Authority = "private-testnet-rpc.example:9944"
+	second, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ResolvedInputsHash == second.ResolvedInputsHash || first.PlanHash == second.PlanHash {
+		t.Fatal("resolved vault launch-input drift did not invalidate the approved plan hash")
+	}
 }
 
 func TestBuildPlanFailsClosedOnEveryBudget(t *testing.T) {
@@ -151,6 +202,7 @@ func TestBuildPlanFailsClosedOnEveryBudget(t *testing.T) {
 		"alpha availability": func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaAvailableRao = 1 },
 		"tao limit":          func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumTAORao = 1 },
 		"gas limit":          func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumEVMGasWei = 1 },
+		"registration burn":  func(c *ResolvedConfig, f *SetupFacts) { f.BurnRao = c.Config.Budgets.MaximumRegistrationBurnRao + 1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			copyCfg := *base
@@ -160,6 +212,46 @@ func TestBuildPlanFailsClosedOnEveryBudget(t *testing.T) {
 				t.Fatalf("%s violation accepted", name)
 			}
 		})
+	}
+}
+
+func TestRegistrationBurnLimitBindsPlanAndAction(t *testing.T) {
+	plan := &SetupPlan{RegistrationBurnLimitRao: 100}
+	action := Action{ID: "register", Parameters: map[string]string{"maximum_burn_rao": "100"}, Spend: Spend{Registrations: 1}}
+	if limit, err := registrationBurnLimit(plan, action); err != nil || limit != 100 {
+		t.Fatalf("registration limit = %d, %v", limit, err)
+	}
+	action.Parameters["maximum_burn_rao"] = "101"
+	if _, err := registrationBurnLimit(plan, action); err == nil {
+		t.Fatal("action-local registration limit widened its approved plan")
+	}
+	action.Parameters["maximum_burn_rao"] = "not-a-number"
+	if _, err := registrationBurnLimit(plan, action); err == nil {
+		t.Fatal("malformed registration limit was accepted")
+	}
+}
+
+func TestPlanValidationRejectsDuplicateAndForwardActionDependencies(t *testing.T) {
+	base := &SetupPlan{
+		Actions: []Action{
+			{ID: "first"},
+			{ID: "second", DependsOn: []string{"first"}},
+		},
+	}
+	if err := validatePlanBudget(base); err != nil {
+		t.Fatalf("valid action graph rejected: %v", err)
+	}
+	duplicate := *base
+	duplicate.Actions = append([]Action(nil), base.Actions...)
+	duplicate.Actions[1].ID = "first"
+	if err := validatePlanBudget(&duplicate); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate action id was accepted: %v", err)
+	}
+	forward := *base
+	forward.Actions = append([]Action(nil), base.Actions...)
+	forward.Actions[0].DependsOn = []string{"second"}
+	if err := validatePlanBudget(&forward); err == nil || !strings.Contains(err.Error(), "missing or later") {
+		t.Fatalf("forward dependency was accepted: %v", err)
 	}
 }
 

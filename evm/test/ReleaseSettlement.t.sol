@@ -39,12 +39,65 @@ contract ReleaseSettlementTest is ReleaseBase {
     function test_escrowIsRegisteredExactlyOnceByTheImmutableVault() public {
         assertTrue(vault.escrowRegistered());
         assertEq(neuron.registrants(NETUID, ESCROW_HOTKEY), address(vault));
+        assertEq(neuron.lastLimitPrice(), REGISTRATION_BURN_LIMIT);
+        assertEq(neuron.lastRegistrationCallValue(), 0);
 
         vm.expectRevert(STSettlementVault.AlreadyInitialized.selector);
-        vault.registerEscrow();
+        vault.registerEscrow(REGISTRATION_BURN_LIMIT);
         vm.prank(stranger);
         vm.expectRevert(STSettlementVault.Unauthorized.selector);
-        vault.registerEscrow();
+        vault.registerEscrow(REGISTRATION_BURN_LIMIT);
+    }
+
+    function test_operatorRegistrationForwardsReviewedBurnLimit() public view {
+        assertEq(neuron.lastHotkey(), POOL2);
+        assertEq(neuron.lastRegistrant(), address(vault));
+        assertEq(neuron.lastLimitPrice(), REGISTRATION_BURN_LIMIT);
+        assertEq(neuron.lastRegistrationCallValue(), 0);
+    }
+
+    function test_registrationRejectsZeroBurnLimit() public {
+        STSettlementVault unregistered =
+            new STSettlementVault(NETUID, keccak256("zero-limit-escrow"), VAULT_COLDKEY, 1, address(this));
+        vm.expectRevert(STSettlementVault.InvalidConfiguration.selector);
+        unregistered.registerEscrow(0);
+    }
+
+    function test_registrationSurplusReturnsThroughVaultAndCoordinator() public {
+        address payer = makeAddr("registration-payer");
+        bytes32 escrow = keccak256("refund-escrow");
+        STSettlementVault unregistered = new STSettlementVault(NETUID, escrow, VAULT_COLDKEY, 1, payer);
+        neuron.setUid(NETUID, escrow, 40);
+        vm.deal(payer, 2 ether);
+        uint256 payerBefore = payer.balance;
+        vm.prank(payer);
+        unregistered.registerEscrow{value: 1 ether}(REGISTRATION_BURN_LIMIT);
+        assertEq(payer.balance, payerBefore);
+        assertEq(address(unregistered).balance, 0);
+        assertEq(neuron.lastRegistrationCallValue(), 0);
+
+        bytes32 pool = keccak256("refund-pool");
+        neuron.setUid(NETUID, pool, 41);
+        vm.deal(owner, 2 ether);
+        uint256 ownerBefore = owner.balance;
+        uint64 epoch = uint64(coordinator.currentEpoch());
+        address refundDepositSigner = makeAddr("refund-deposit-signer");
+        address refundRootSigner = makeAddr("refund-root-signer");
+        vm.prank(owner);
+        coordinator.registerOperator{value: 1 ether}(
+            3,
+            keccak256("refund-coldkey"),
+            pool,
+            keccak256("refund-deposit"),
+            refundDepositSigner,
+            refundRootSigner,
+            epoch,
+            REGISTRATION_BURN_LIMIT
+        );
+        assertEq(owner.balance, ownerBefore);
+        assertEq(address(coordinator).balance, 0);
+        assertEq(address(vault).balance, 0);
+        assertEq(neuron.lastRegistrationCallValue(), 0);
     }
 
     function test_coordinatorCannotInitializeAgainstAnUnregisteredEscrow() public {

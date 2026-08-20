@@ -133,7 +133,7 @@ func buildDeploymentPayloads(cfg *ResolvedConfig, roles *RoleSecrets, initialNon
 	if err != nil {
 		return nil, fmt.Errorf("precompile probe constructor: %w", err)
 	}
-	registerEscrow, err := vaultABI.Pack("registerEscrow")
+	registerEscrow, err := vaultABI.Pack("registerEscrow", cfg.Config.Budgets.MaximumRegistrationBurnRao)
 	if err != nil {
 		return nil, err
 	}

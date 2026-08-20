@@ -15,16 +15,25 @@ import (
 	"strings"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
+	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/nacl/secretbox"
 	"gopkg.in/yaml.v3"
 
 	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/ss58"
 )
 
 const (
-	releaseProfile = "release-1.0"
-	testnetChainID = uint64(945)
-	testnetGenesis = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
+	releaseProfile         = "release-1.0"
+	testnetChainID         = uint64(945)
+	testnetGenesis         = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
+	btwalletNACLPrefix     = "$NACL"
+	btwalletArgonTime      = uint32(8)
+	btwalletArgonMemoryKiB = uint32(512 * 1024)
+	btwalletArgonThreads   = uint8(1)
 )
+
+var btwalletNACLSalt = [16]byte{0x13, 0x71, 0x83, 0xdf, 0xf1, 0x5a, 0x09, 0xbc, 0x9c, 0x90, 0xb5, 0x51, 0x87, 0x39, 0xe9, 0xb1}
 
 type HarnessConfig struct {
 	SchemaVersion int              `yaml:"schema_version" json:"schema_version"`
@@ -84,6 +93,7 @@ type DeploymentConfig struct {
 }
 type LaunchInputs struct {
 	Wallet              string `yaml:"wallet" json:"wallet"`
+	WalletPassword      string `yaml:"wallet_password" json:"wallet_password"`
 	ChainID             string `yaml:"chain_id" json:"chain_id"`
 	Authority           string `yaml:"authority" json:"authority"`
 	ObjectStoreHostname string `yaml:"object_store_hostname" json:"object_store_hostname"`
@@ -132,11 +142,12 @@ type ScenarioConfig struct {
 	QualityFaultDurationBlocks uint64 `yaml:"quality_fault_duration_blocks" json:"quality_fault_duration_blocks"`
 }
 type BudgetConfig struct {
-	MaximumSubnetCreations   int    `yaml:"maximum_subnet_creations" json:"maximum_subnet_creations"`
-	MaximumTotalTAORaoFrom   string `yaml:"maximum_total_tao_rao_from" json:"maximum_total_tao_rao_from"`
-	MaximumTotalAlphaRaoFrom string `yaml:"maximum_total_alpha_rao_from" json:"maximum_total_alpha_rao_from"`
-	MaximumEVMGasWeiFrom     string `yaml:"maximum_evm_gas_tao_wei_from" json:"maximum_evm_gas_tao_wei_from"`
-	MaximumRegistrations     int    `yaml:"maximum_registrations" json:"maximum_registrations"`
+	MaximumSubnetCreations     int    `yaml:"maximum_subnet_creations" json:"maximum_subnet_creations"`
+	MaximumTotalTAORaoFrom     string `yaml:"maximum_total_tao_rao_from" json:"maximum_total_tao_rao_from"`
+	MaximumTotalAlphaRaoFrom   string `yaml:"maximum_total_alpha_rao_from" json:"maximum_total_alpha_rao_from"`
+	MaximumEVMGasWeiFrom       string `yaml:"maximum_evm_gas_tao_wei_from" json:"maximum_evm_gas_tao_wei_from"`
+	MaximumRegistrations       int    `yaml:"maximum_registrations" json:"maximum_registrations"`
+	MaximumRegistrationBurnRao uint64 `yaml:"maximum_registration_burn_rao" json:"maximum_registration_burn_rao"`
 }
 type SecretConfig struct {
 	GeneratedRoleStore string `yaml:"generated_role_store" json:"generated_role_store"`
@@ -257,29 +268,32 @@ type CompatibilityGate struct {
 
 type RepoPaths struct{ SN, Server, Vault, PlatformConfig string }
 type ResolvedConfig struct {
-	ConfigPath         string
-	Config             *HarnessConfig
-	Public             *PublicManifest
-	Policy             *protocol.Policy
-	Release            *ReleaseLock
-	Hyperparameters    *Hyperparameters
-	Repos              RepoPaths
-	VaultPath          string
-	Vault              map[string]any
-	Netuid             uint16
-	ChainID            uint64
-	Authority          string
-	ObjectStoreHost    string
-	TrustedProxyCIDRs  string
-	OperatorAPIOrigins []string
-	WalletSecret       string
-	WalletMaterial     string
-	WalletPublic       string
-	MaximumTAORao      uint64
-	MaximumAlphaRao    uint64
-	MaximumEVMGasWei   uint64
-	PolicyHash         string
-	ConfigHash         string
+	ConfigPath           string
+	Config               *HarnessConfig
+	Public               *PublicManifest
+	Policy               *protocol.Policy
+	Release              *ReleaseLock
+	Hyperparameters      *Hyperparameters
+	Repos                RepoPaths
+	VaultPath            string
+	Vault                map[string]any
+	Netuid               uint16
+	ChainID              uint64
+	Authority            string
+	ObjectStoreHost      string
+	TrustedProxyCIDRs    string
+	OperatorAPIOrigins   []string
+	WalletSecret         string
+	WalletMaterial       string
+	WalletPasswordSecret string
+	WalletPassword       string
+	WalletPublic         string
+	WalletHotkeyPublic   string
+	MaximumTAORao        uint64
+	MaximumAlphaRao      uint64
+	MaximumEVMGasWei     uint64
+	PolicyHash           string
+	ConfigHash           string
 }
 
 type LoadOptions struct {
@@ -359,7 +373,7 @@ func LoadResolved(opts LoadOptions) (*ResolvedConfig, error) {
 	if r.PolicyHash, err = policy.HashHex(); err != nil {
 		return nil, err
 	}
-	if r.ConfigHash, err = canonicalHashHex(cfg); err != nil {
+	if r.ConfigHash, err = releaseConfigHash(&cfg, pub, hyper); err != nil {
 		return nil, err
 	}
 	if err := r.resolveVaultInputs(opts.RequireSecrets); err != nil {
@@ -369,6 +383,19 @@ func LoadResolved(opts LoadOptions) (*ResolvedConfig, error) {
 		return nil, err
 	}
 	return r, nil
+}
+
+// Bind every non-secret launch manifest which can change setup behavior. The
+// policy and source lock retain their own hashes for independent audit fields.
+func releaseConfigHash(config *HarnessConfig, public *PublicManifest, hyperparameters *Hyperparameters) (string, error) {
+	if config == nil || public == nil || hyperparameters == nil {
+		return "", errors.New("release configuration manifests are incomplete")
+	}
+	return canonicalHashHex(struct {
+		Config          *HarnessConfig   `json:"config"`
+		Public          *PublicManifest  `json:"public"`
+		Hyperparameters *Hyperparameters `json:"hyperparameters"`
+	}{Config: config, Public: public, Hyperparameters: hyperparameters})
 }
 
 func (c *HarnessConfig) Validate() error {
@@ -398,18 +425,42 @@ func (c *HarnessConfig) Validate() error {
 		return errors.New("artifacts must use content-addressed server/blob and server API history")
 	}
 	// Each NO consumes a deposit and pool UID; validators include the reserve
-	// validator; the fleet consumes one UID; and the immutable claims escrow
+	// validator; every fleet consumes one UID; and the immutable claims escrow
 	// needs its own valid hotkey for moveStake/transferStake.
 	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.HeadFleets + 1
 	if c.Budgets.MaximumRegistrations < requiredRegistrations {
 		return errors.New("registration budget is below topology requirement")
 	}
-	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "trusted proxy CIDRs": c.LaunchInputs.TrustedProxyCIDRs, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
+	if c.Budgets.MaximumRegistrationBurnRao == 0 {
+		return errors.New("maximum registration burn must be nonzero")
+	}
+	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "wallet password": c.LaunchInputs.WalletPassword, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "trusted proxy CIDRs": c.LaunchInputs.TrustedProxyCIDRs, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
 		if !strings.HasPrefix(ref, "vault://main/st.yml#testnet-") {
 			return fmt.Errorf("%s must reference a testnet-prefixed st.yml key", name)
 		}
 	}
 	return nil
+}
+
+// Convert YAML's supported scalar forms without allowing negative wraparound.
+func parseUnsignedVaultValue(reference string, value any) (uint64, error) {
+	switch typed := value.(type) {
+	case int:
+		if typed < 0 {
+			return 0, fmt.Errorf("vault value %q is negative", reference)
+		}
+		return uint64(typed), nil
+	case uint64:
+		return typed, nil
+	case string:
+		parsed, err := strconv.ParseUint(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("vault value %q is not an unsigned integer: %w", reference, err)
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("vault value %q is not an unsigned integer", reference)
+	}
 }
 
 func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
@@ -433,24 +484,24 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		if e != nil {
 			return 0, e
 		}
-		switch x := v.(type) {
-		case int:
-			return uint64(x), nil
-		case uint64:
-			return x, nil
-		case string:
-			n, e := strconv.ParseUint(strings.TrimSpace(x), 10, 64)
-			return n, e
-		default:
-			return 0, fmt.Errorf("vault value %q is not an unsigned integer", ref)
-		}
+		return parseUnsignedVaultValue(ref, v)
 	}
 	v, err := get(r.Config.LaunchInputs.Wallet)
 	if err != nil {
 		return err
 	}
 	r.WalletSecret = strings.TrimSpace(fmt.Sprint(v))
-	if r.WalletSecret != "" {
+	passwordValue, err := get(r.Config.LaunchInputs.WalletPassword)
+	if err != nil {
+		return err
+	}
+	r.WalletPasswordSecret = strings.TrimSpace(fmt.Sprint(passwordValue))
+	if strings.HasPrefix(r.WalletSecret, "vault-wallet:") {
+		r.WalletMaterial, r.WalletPublic, r.WalletHotkeyPublic, r.WalletPassword, err = resolveVaultWallet(r.Repos.Vault, r.WalletSecret, r.WalletPasswordSecret, require)
+		if err != nil {
+			return fmt.Errorf("testnet wallet: %w", err)
+		}
+	} else if r.WalletSecret != "" {
 		r.WalletMaterial, err = resolveSecretValue(r.WalletSecret, require)
 		if err != nil {
 			return fmt.Errorf("testnet wallet secret reference: %w", err)
@@ -530,6 +581,263 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		}
 	}
 	return nil
+}
+
+// Minimal Bittensor wallet keyfile envelope. Public files must contain only
+// identity fields; the decrypted coldkey supplies exactly one signer source.
+type btwalletKeyfile struct {
+	AccountID    string `json:"accountId"`
+	PublicKey    string `json:"publicKey"`
+	PrivateKey   string `json:"privateKey"`
+	SecretPhrase string `json:"secretPhrase"`
+	SecretSeed   string `json:"secretSeed"`
+	SS58Address  string `json:"ss58Address"`
+	CryptoType   *uint8 `json:"cryptoType"`
+}
+
+// Report whether a resolved candidate remains confined to a repository root.
+func pathWithin(root, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// resolveVaultRelativePath confines portable vault-file/vault-wallet references
+// to the checked-out vault repository and rejects symlink escapes.
+func resolveVaultRelativePath(vaultRepo, reference, prefix string, require bool) (string, error) {
+	if !strings.HasPrefix(reference, prefix) {
+		return "", fmt.Errorf("reference must start with %s", prefix)
+	}
+	relative := strings.TrimSpace(strings.TrimPrefix(reference, prefix))
+	if relative == "" || filepath.IsAbs(relative) {
+		return "", errors.New("vault-relative reference must be a nonempty relative path")
+	}
+	root, err := filepath.EvalSymlinks(filepath.Clean(vaultRepo))
+	if err != nil {
+		return "", fmt.Errorf("resolve vault repository: %w", err)
+	}
+	candidate := filepath.Clean(filepath.Join(root, relative))
+	if !pathWithin(root, candidate) {
+		return "", errors.New("vault-relative reference escapes the vault repository")
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if errors.Is(err, os.ErrNotExist) && !require {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve vault-relative reference: %w", err)
+	}
+	if !pathWithin(root, resolved) {
+		return "", errors.New("vault-relative symlink escapes the vault repository")
+	}
+	return resolved, nil
+}
+
+// Read a secret only from a regular owner-private file.
+func readPrivateVaultFile(path string, require bool) (string, error) {
+	if path == "" && !require {
+		return "", nil
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("vault secret must be a regular file")
+	}
+	permissions := info.Mode().Perm()
+	if permissions&0o077 != 0 || permissions&0o400 == 0 {
+		return "", fmt.Errorf("vault secret permissions must be owner-readable and deny group/other access (got %04o)", permissions)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(b))
+	if value == "" && require {
+		return "", errors.New("vault secret file is empty")
+	}
+	return value, nil
+}
+
+// Resolve a fixed wallet child without allowing the keyfile tree to escape
+// through a nested symlink. Secret keyfiles must also remain owner-private.
+func resolveVaultWalletFile(walletDir, relative string, private bool) (string, error) {
+	root, err := filepath.EvalSymlinks(filepath.Clean(walletDir))
+	if err != nil {
+		return "", fmt.Errorf("resolve wallet directory: %w", err)
+	}
+	candidate := filepath.Clean(filepath.Join(root, relative))
+	if !pathWithin(root, candidate) {
+		return "", errors.New("wallet file escapes the wallet directory")
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve wallet file: %w", err)
+	}
+	if !pathWithin(root, resolved) {
+		return "", errors.New("wallet file symlink escapes the wallet directory")
+	}
+	info, err := os.Lstat(resolved)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("wallet keyfile must be a regular file")
+	}
+	if private && (info.Mode().Perm()&0o077 != 0 || info.Mode().Perm()&0o400 == 0) {
+		return "", fmt.Errorf("wallet keyfile permissions must be owner-readable and deny group/other access (got %04o)", info.Mode().Perm())
+	}
+	return resolved, nil
+}
+
+// Decode the legacy $NACL envelope using Bittensor's fixed Argon2i profile.
+// Parameters remain injectable so unit tests can use a small memory cost.
+func decryptBTWALLETNACL(encrypted []byte, password string, time uint32, memoryKiB uint32, threads uint8) ([]byte, error) {
+	if !bytes.HasPrefix(encrypted, []byte(btwalletNACLPrefix)) || len(encrypted) < len(btwalletNACLPrefix)+24+secretbox.Overhead {
+		return nil, errors.New("coldkey is not a valid $NACL keyfile")
+	}
+	derived := argon2.Key([]byte(password), btwalletNACLSalt[:], time, memoryKiB, threads, 32)
+	var key [32]byte
+	copy(key[:], derived)
+	for i := range derived {
+		derived[i] = 0
+	}
+	offset := len(btwalletNACLPrefix)
+	var nonce [24]byte
+	copy(nonce[:], encrypted[offset:offset+len(nonce)])
+	plain, ok := secretbox.Open(nil, encrypted[offset+len(nonce):], &nonce, &key)
+	for i := range key {
+		key[i] = 0
+	}
+	if !ok {
+		return nil, errors.New("coldkey decryption failed")
+	}
+	return plain, nil
+}
+
+// Validate a public-only sr25519 identity without accepting secret fields.
+func readBTWALLETPublic(path string) (btwalletKeyfile, error) {
+	var public btwalletKeyfile
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return public, err
+	}
+	if err := json.Unmarshal(b, &public); err != nil {
+		return public, fmt.Errorf("decode public keyfile: %w", err)
+	}
+	if public.SS58Address == "" || public.PublicKey == "" || public.PrivateKey != "" || public.SecretPhrase != "" || public.SecretSeed != "" {
+		return public, errors.New("public keyfile is missing identity fields or contains secret material")
+	}
+	if public.CryptoType != nil && *public.CryptoType != 1 {
+		return public, errors.New("wallet keyfile must use sr25519")
+	}
+	publicKey, err := hex.DecodeString(strings.TrimPrefix(public.PublicKey, "0x"))
+	if err != nil || len(publicKey) != 32 {
+		return public, errors.New("public keyfile has an invalid publicKey")
+	}
+	if public.AccountID != "" && !strings.EqualFold(public.AccountID, public.PublicKey) {
+		return public, errors.New("public keyfile accountId does not match publicKey")
+	}
+	addressPublicKey, err := ss58.DecodeWithPrefix(public.SS58Address, ss58.BittensorPrefix)
+	if err != nil || !bytes.Equal(addressPublicKey[:], publicKey) {
+		return public, errors.New("public keyfile ss58Address does not match publicKey")
+	}
+	return public, nil
+}
+
+// Bind decrypted signer material to the separately stored public identity.
+func materialFromBTWALLET(secret, public btwalletKeyfile) (string, error) {
+	if secret.CryptoType != nil && *secret.CryptoType != 1 {
+		return "", errors.New("wallet coldkey must use sr25519")
+	}
+	material := strings.TrimSpace(secret.SecretPhrase)
+	if material == "" {
+		material = strings.TrimSpace(secret.SecretSeed)
+	}
+	if material == "" {
+		return "", errors.New("wallet coldkey has no mnemonic or seed")
+	}
+	ring, err := signature.KeyringPairFromSecret(material, 42)
+	if err != nil {
+		return "", errors.New("derive wallet coldkey signer")
+	}
+	publicBytes, err := hex.DecodeString(strings.TrimPrefix(public.PublicKey, "0x"))
+	if err != nil || len(publicBytes) != 32 || !bytes.Equal(ring.PublicKey, publicBytes) {
+		return "", errors.New("decrypted coldkey does not match coldkeypub")
+	}
+	if ring.Address != public.SS58Address || (secret.SS58Address != "" && secret.SS58Address != public.SS58Address) {
+		return "", errors.New("decrypted coldkey does not match coldkeypub")
+	}
+	return material, nil
+}
+
+// Resolve a portable wallet directory and password reference. Read-only loads
+// expose identities but never decrypt secret material.
+func resolveVaultWallet(vaultRepo, walletReference, passwordReference string, require bool) (material, public, hotkeyPublic, password string, err error) {
+	walletDir, err := resolveVaultRelativePath(vaultRepo, walletReference, "vault-wallet:", require)
+	if err != nil || walletDir == "" {
+		return "", "", "", "", err
+	}
+	info, err := os.Stat(walletDir)
+	if err != nil || !info.IsDir() {
+		if err == nil {
+			err = errors.New("wallet reference is not a directory")
+		}
+		return "", "", "", "", err
+	}
+	coldPublicPath, err := resolveVaultWalletFile(walletDir, "coldkeypub.txt", false)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	coldPublic, err := readBTWALLETPublic(coldPublicPath)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	hotPublicPath, err := resolveVaultWalletFile(walletDir, filepath.Join("hotkeys", "defaultpub.txt"), false)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("default hotkey: %w", err)
+	}
+	hotPublic, err := readBTWALLETPublic(hotPublicPath)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("default hotkey: %w", err)
+	}
+	if !require {
+		return "", coldPublic.SS58Address, hotPublic.SS58Address, "", nil
+	}
+	passwordPath, err := resolveVaultRelativePath(vaultRepo, passwordReference, "vault-file:", true)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("wallet password: %w", err)
+	}
+	password, err = readPrivateVaultFile(passwordPath, true)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("wallet password: %w", err)
+	}
+	coldkeyPath, err := resolveVaultWalletFile(walletDir, "coldkey", true)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	encrypted, err := os.ReadFile(coldkeyPath)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	plain, err := decryptBTWALLETNACL(encrypted, password, btwalletArgonTime, btwalletArgonMemoryKiB, btwalletArgonThreads)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	defer func() {
+		for i := range plain {
+			plain[i] = 0
+		}
+	}()
+	var secret btwalletKeyfile
+	if err := json.Unmarshal(plain, &secret); err != nil {
+		return "", "", "", "", errors.New("decrypted coldkey is not valid JSON")
+	}
+	material, err = materialFromBTWALLET(secret, coldPublic)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return material, coldPublic.SS58Address, hotPublic.SS58Address, password, nil
 }
 
 func stringListValue(value any) ([]string, error) {
@@ -633,6 +941,9 @@ func resolveSecretValue(value string, require bool) (string, error) {
 func (r *ResolvedConfig) Validate() error {
 	if r.Public.SchemaVersion != 1 || r.Public.Profile != releaseProfile || r.Public.Chain.ChainID != testnetChainID || strings.ToLower(r.Public.Chain.GenesisHash) != testnetGenesis {
 		return errors.New("public manifest is not the pinned Bittensor testnet release profile")
+	}
+	if r.Public.Chain.ExpectedBlockSeconds == 0 {
+		return errors.New("public manifest must declare a nonzero block cadence")
 	}
 	if r.ChainID != 0 && r.ChainID != testnetChainID {
 		return fmt.Errorf("vault testnet chain id %d, want %d", r.ChainID, testnetChainID)
@@ -814,5 +1125,22 @@ func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 		PolicyHash        string         `json:"policy_hash"`
 		ConfigHash        string         `json:"config_hash"`
 	}
-	return json.Marshal(public{r.ConfigPath, r.Config, r.Netuid, r.ChainID, r.Authority, r.ObjectStoreHost, r.TrustedProxyCIDRs, r.WalletPublic, r.PolicyHash, r.ConfigHash})
+	authority, _, err := authorityURLs(r.Authority)
+	if err != nil {
+		authority = "<redacted-url>"
+	} else {
+		authority = redactURL(authority)
+	}
+	return json.Marshal(public{
+		ConfigPath:        r.ConfigPath,
+		Config:            r.Config,
+		Netuid:            r.Netuid,
+		ChainID:           r.ChainID,
+		Authority:         authority,
+		ObjectStore:       r.ObjectStoreHost,
+		TrustedProxyCIDRs: r.TrustedProxyCIDRs,
+		WalletPublic:      r.WalletPublic,
+		PolicyHash:        r.PolicyHash,
+		ConfigHash:        r.ConfigHash,
+	})
 }

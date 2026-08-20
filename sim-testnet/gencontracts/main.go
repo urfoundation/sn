@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -222,7 +223,9 @@ func main() {
 			fmt.Fprintf(&b, "\nvar %s = ContractArtifact{Name: %q, ABI: %sABI, CreationBytecode: %sCreationBytecode, RuntimeBytecode: %sRuntimeBytecode, RuntimeBytecodeHash: %sRuntimeBytecodeHash, FoundryArtifactHash: %sFoundryArtifactHash, StorageLayoutHash: %sStorageLayoutHash, ImmutableReferences: %#v}\n", v.Variable, v.Name, v.Name, v.Name, v.Name, v.Name, v.Name, v.Name, v.References)
 		}
 	}
-	must(os.WriteFile(out, []byte(b.String()), 0o644))
+	formatted, err := format.Source([]byte(b.String()))
+	must(err)
+	must(os.WriteFile(out, formatted, 0o644))
 }
 
 func validateImmutableSourceOrder(root string, d artifactDefinition) {

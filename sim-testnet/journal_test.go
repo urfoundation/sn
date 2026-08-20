@@ -103,6 +103,20 @@ func TestPersistedPlanSurvivesChangedLiveBalances(t *testing.T) {
 	if loaded.PlanHash != plan.PlanHash || loaded.LiveFacts.AlphaAvailableRao != plan.LiveFacts.AlphaAvailableRao {
 		t.Fatalf("persisted plan changed: %+v", loaded)
 	}
+	originalRelease := cfg.Release
+	changedRelease := *cfg.Release
+	changedRelease.Release = "1.0-drift"
+	cfg.Release = &changedRelease
+	if _, err := loadPersistedPlan(cfg, dir); err == nil {
+		t.Fatal("persisted plan survived release-lock drift")
+	}
+	cfg.Release = originalRelease
+	originalAuthority := cfg.Authority
+	cfg.Authority = "changed-private-rpc.example:9944"
+	if _, err := loadPersistedPlan(cfg, dir); err == nil {
+		t.Fatal("persisted plan survived resolved launch-input drift")
+	}
+	cfg.Authority = originalAuthority
 	loaded.LiveFacts.BurnRao++
 	b, _ = json.Marshal(loaded)
 	if err := os.WriteFile(filepath.Join(dir, "plan.json"), b, 0o600); err != nil {
@@ -110,6 +124,77 @@ func TestPersistedPlanSurvivesChangedLiveBalances(t *testing.T) {
 	}
 	if _, err := loadPersistedPlan(cfg, dir); err == nil {
 		t.Fatal("tampered persisted plan was accepted")
+	}
+}
+
+func TestRemainingPlanSpendSubtractsVerifiedWritesButPreservesReserves(t *testing.T) {
+	plan := &SetupPlan{PlanHash: "plan", MaximumSpend: Spend{TAORao: 100, AlphaRao: 80, EVMGasWei: 70}}
+	plan.Actions = []Action{
+		{ID: "written", IntentHash: "write-intent", Kind: "substrate-transaction", Spend: Spend{TAORao: 25, AlphaRao: 30, EVMGasWei: 10}},
+		{ID: "reserved", IntentHash: "reserve-intent", Kind: "budget-reserve", Spend: Spend{TAORao: 40, EVMGasWei: 20}},
+	}
+	entries := []JournalEntry{
+		{PlanHash: "plan", ActionID: "written", IntentHash: "write-intent", Stage: StageVerified},
+		{PlanHash: "plan", ActionID: "reserved", IntentHash: "reserve-intent", Stage: StageVerified},
+	}
+	remaining, err := remainingPlanSpend(plan, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != 60 {
+		t.Fatalf("remaining spend = %+v", remaining)
+	}
+	entries = append(entries, JournalEntry{PlanHash: "plan", ActionID: "written", IntentHash: "write-intent", Stage: StageFailed})
+	remaining, err = remainingPlanSpend(plan, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != 60 {
+		t.Fatalf("later unrelated stage hid verified spend: %+v", remaining)
+	}
+}
+
+func TestJournalMakesVerifiedIntentTerminal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	j, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	verified := JournalEntry{DeploymentID: "d", PlanHash: "p", ActionID: "action", IntentHash: "intent", Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/action.json"}
+	if err := j.Append(verified); err != nil {
+		t.Fatal(err)
+	}
+	failed := verified
+	failed.Stage = StageFailed
+	failed.PostconditionHash = ""
+	failed.PostconditionPath = ""
+	if err := j.Append(failed); err == nil {
+		t.Fatal("entry after terminal postcondition verification was accepted")
+	}
+}
+
+func TestJournalRejectsMultipleIntentsForOnePlannedAction(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	j, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	first := JournalEntry{DeploymentID: "d", PlanHash: "p", ActionID: "action", IntentHash: "first", Stage: StageIntent}
+	if err := j.Append(first); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.IntentHash = "second"
+	if err := j.Append(second); err == nil {
+		t.Fatal("one plan/action pair accepted a second intent hash")
 	}
 }
 
@@ -124,7 +209,7 @@ func TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent(t *testing.T)
 	}
 	defer j.Close()
 	for _, entry := range []JournalEntry{
-		{DeploymentID: "d", PlanHash: "p", ActionID: "deposit", IntentHash: "old", Stage: StageBroadcast, Signer: "s", Nonce: "1", TransactionHash: "0xold", RecoveryBlock: 1, RecoveryBlockHash: "0xcheckpoint"},
+		{DeploymentID: "d", PlanHash: "old-plan", ActionID: "deposit", IntentHash: "old", Stage: StageBroadcast, Signer: "s", Nonce: "1", TransactionHash: "0xold", RecoveryBlock: 1, RecoveryBlockHash: "0xcheckpoint"},
 		{DeploymentID: "d", PlanHash: "p", ActionID: "deposit", IntentHash: "current", Stage: StageBroadcast, Signer: "s", Nonce: "2", TransactionHash: "0xcurrent", RecoveryBlock: 1, RecoveryBlockHash: "0xcheckpoint"},
 		{DeploymentID: "d", PlanHash: "p", ActionID: "deposit", IntentHash: "current", Stage: StageIntent},
 	} {
@@ -197,7 +282,7 @@ func TestActionDependenciesRequireExactVerifiedPlanIntent(t *testing.T) {
 	if err := e.verifyActionDependencies(action); err == nil {
 		t.Fatal("unverified dependency was accepted")
 	}
-	wrong := JournalEntry{DeploymentID: "d", PlanHash: "plan-a", ActionID: dependency.ID, IntentHash: "wrong-intent", Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/first.json"}
+	wrong := JournalEntry{DeploymentID: "d", PlanHash: "plan-wrong", ActionID: dependency.ID, IntentHash: "wrong-intent", Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/first.json"}
 	if err := j.Append(wrong); err != nil {
 		t.Fatal(err)
 	}
@@ -205,6 +290,7 @@ func TestActionDependenciesRequireExactVerifiedPlanIntent(t *testing.T) {
 		t.Fatal("dependency verified for a different intent was accepted")
 	}
 	exact := wrong
+	exact.PlanHash = "plan-a"
 	exact.IntentHash = dependency.IntentHash
 	if err := j.Append(exact); err != nil {
 		t.Fatal(err)

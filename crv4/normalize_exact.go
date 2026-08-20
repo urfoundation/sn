@@ -38,7 +38,7 @@ func ApplyMaxWeightLimitRational(weights []*big.Rat, maxWeightLimit uint16) ([]*
 	if new(big.Rat).Quo(max, total).Cmp(limit) <= 0 {
 		return out, nil
 	}
-	if positive == 0 || new(big.Int).Mul(big.NewInt(int64(maxWeightLimit)), big.NewInt(int64(positive))).Cmp(big.NewInt(U16Max)) <= 0 {
+	if positive == 0 || new(big.Int).Mul(big.NewInt(int64(maxWeightLimit)), big.NewInt(int64(positive))).Cmp(big.NewInt(U16Max)) < 0 {
 		return nil, fmt.Errorf("crv4: max weight limit %d is infeasible for %d positive weights", maxWeightLimit, positive)
 	}
 

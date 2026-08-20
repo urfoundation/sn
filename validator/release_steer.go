@@ -131,6 +131,13 @@ func commonHashBytes(value string) []byte {
 	return h[:]
 }
 
+// Pin the policy cap explicitly because runtime 447's native getter is
+// hardcoded to u16::MAX even though legacy storage metadata still exists.
+func releaseSubmitOptions(cfg *ReleaseConfig) crv4.SubmitOptions {
+	maxWeightLimit := cfg.Policy.Steering.MaxWeightLimitU16
+	return crv4.SubmitOptions{VersionKey: cfg.VersionKey, MaxWeightLimit: &maxWeightLimit}
+}
+
 func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInput, map[uint64]map[connect.Id]bool, map[uint16]bool, error) {
 	bound := map[uint64]map[connect.Id]bool{}
 	controlledHead := map[uint16]bool{}
@@ -480,7 +487,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	prepared, err := crv4.PrepareWeightsCRv4Exact(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, crv4.SubmitOptions{VersionKey: s.cfg.VersionKey})
+	prepared, err := crv4.PrepareWeightsCRv4Exact(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, releaseSubmitOptions(s.cfg))
 	if err != nil {
 		return err
 	}

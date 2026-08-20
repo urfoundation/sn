@@ -191,6 +191,14 @@ func runRetirement(ctx context.Context, cfg *ResolvedConfig, stateDir string, op
 		return err
 	}
 	defer journal.Close()
+	remaining, err := remainingPlanSpend(setup, journal.Entries())
+	if err != nil {
+		return err
+	}
+	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: setup, Remaining: remaining})
+	if err := doctor.Error(); err != nil {
+		return fmt.Errorf("doctor must pass immediately before retirement apply: %w", err)
+	}
 	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
 	if err != nil {
 		return err

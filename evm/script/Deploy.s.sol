@@ -36,7 +36,7 @@ contract Deploy is Script {
         address commitmentOracle;
         bytes32 reserveHotkey;
         bytes32 escrowHotkey;
-        uint256 registrationBurnWei;
+        uint64 registrationBurnLimitRao;
         STCoordinator.PolicySnapshot policy;
     }
 
@@ -68,7 +68,9 @@ contract Deploy is Script {
             cfg.deployer
         );
         STCoordinator implementation = new STCoordinator();
-        vault.registerEscrow{value: cfg.registrationBurnWei}();
+        vault.registerEscrow{value: uint256(cfg.registrationBurnLimitRao) * 1 gwei}(
+            cfg.registrationBurnLimitRao
+        );
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(implementation),
             abi.encodeCall(
@@ -105,7 +107,8 @@ contract Deploy is Script {
 
     /// Required: ST_NETUID, ST_DEPLOYER, ST_OWNER, ST_GUARDIAN,
     /// ST_COMMITMENT_ORACLE, ST_RESERVE_HOTKEY, ST_ESCROW_HOTKEY,
-    /// ST_POLICY_HASH, ST_REGISTRATION_BURN_WEI, ST_EPOCH_DEPOSIT_CAP_RAO and
+    /// ST_POLICY_HASH, ST_REGISTRATION_BURN_LIMIT_RAO,
+    /// ST_EPOCH_DEPOSIT_CAP_RAO and
     /// ST_CAMPAIGN_DEPOSIT_CAP_RAO. Window fields have profile defaults.
     function _loadConfig(bool mainnet) internal view returns (Config memory cfg) {
         cfg.netuid = uint16(vm.envUint("ST_NETUID"));
@@ -115,7 +118,11 @@ contract Deploy is Script {
         cfg.commitmentOracle = vm.envAddress("ST_COMMITMENT_ORACLE");
         cfg.reserveHotkey = vm.envBytes32("ST_RESERVE_HOTKEY");
         cfg.escrowHotkey = vm.envBytes32("ST_ESCROW_HOTKEY");
-        cfg.registrationBurnWei = vm.envUint("ST_REGISTRATION_BURN_WEI");
+        uint256 registrationBurnLimitRao = vm.envUint("ST_REGISTRATION_BURN_LIMIT_RAO");
+        require(registrationBurnLimitRao <= type(uint64).max, "Deploy: registration burn limit overflow");
+        // Casting is safe because the explicit upper bound is enforced above.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        cfg.registrationBurnLimitRao = uint64(registrationBurnLimitRao);
         bytes32 policyHash = vm.envBytes32("ST_POLICY_HASH");
 
         require(cfg.netuid != 0 && cfg.deployer != address(0) && cfg.owner != address(0), "Deploy: identity");
@@ -127,7 +134,7 @@ contract Deploy is Script {
             "Deploy: roles must be distinct"
         );
         require(cfg.reserveHotkey != bytes32(0) && cfg.escrowHotkey != bytes32(0), "Deploy: hotkeys");
-        require(cfg.registrationBurnWei != 0, "Deploy: registration burn");
+        require(cfg.registrationBurnLimitRao != 0, "Deploy: registration burn");
         require(cfg.reserveHotkey != cfg.escrowHotkey && policyHash != bytes32(0), "Deploy: policy");
         if (mainnet) {
             _requireMainnetSafe(cfg.owner);

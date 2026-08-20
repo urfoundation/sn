@@ -7,21 +7,22 @@ contract are retired and must not be used.
 
 ## Current gate
 
-Implementation and local verification can run without launch authority. The first
-live command is deliberately paused until the placeholders in
-`../vault/main/st.yml` are filled and reviewed:
+Implementation and local verification can run without launch authority. All
+required `testnet-` inputs are populated in `../vault/main/st.yml`: the contained
+encrypted wallet/password references, existing netuid 521, three spend ceilings,
+two loopback operator API origins, MinIO overlay host, private RPC hostname and
+single-owner testnet governance. Unprefixed settings remain mainnet-only; mainnet
+contract custody remains 2-of-3 Safe governance.
 
-- `testnet-wallet`
-- `testnet-netuid`
-- `testnet-spending-limit-tao-rao`
-- `testnet-spending-limit-alpha-rao`
-- `testnet-spending-limit-evm-gas-wei`
-- `testnet-operator-api-origins`
-
-`BRINGYOUR_SUBTENSOR_HOSTNAME` must also resolve to the deployed runtime-447 RPC
-gateway from the execution host. Testnet uses the isolated `testnet-` namespace
-and single-owner governance. Unprefixed settings are mainnet-only; mainnet contract
-custody remains 2-of-3 Safe governance.
+The remaining live gate is the shared private Subtensor node. On 2026-08-20,
+`sim-testnet` resolves to overlay address `172.28.208.185` and exposes an independent
+physical peer, but the archive is still full-syncing toward the runtime-447 testnet
+head; a 10–24 hour initial catch-up is expected. `doctor` requires a positive peer
+count, `system_health.isSyncing=false`, a
+private finalized head no more than the signed policy's three-block limit behind the
+public comparison endpoint, the same canonical hash at their common checkpoint,
+runtime 447, and working EVM APIs. Do not substitute a proxy to the public endpoints:
+the physical-peer-independence gate detects and rejects that topology.
 
 Filling configuration is not approval to spend. Every mutating command is a dry
 run unless it receives both `--apply` and the exact hash of the reviewed plan.
@@ -44,10 +45,14 @@ go build -trimpath -o build/sim-testnet ./sim-testnet
 
 Both commands are read-only. Review every action, dependency and maximum spend in
 the plan, then preserve its `plan_hash`. `doctor` must be completely green. In
-particular, Docker, user systemd, the locked repository checkouts (including the
-platform `config` resources), Substrate and
-EVM RPC, wallet ownership/balances, runtime identity, precompiles, MinIO and the two
-public operator origins must be available.
+particular, Docker (direct or passwordless-sudo), user systemd, the locked repository
+checkouts (including the platform `config` resources), physically independent
+private/public Substrate and EVM RPC, consensus peers/canonical finalized head,
+wallet ownership/balances, runtime identity, precompiles and MinIO HTTP liveness must
+pass. The subnet token and first-emission block must already be activated and
+finalized, and the private EVM RPC must serve historical state for transaction
+balance-delta proofs. Operator origins are proved after the
+two local APIs start and before public evidence is accepted.
 
 The harness operates only on the existing configured netuid. It refuses subnet
 creation and checks that the wallet owns the subnet before planning writes.
@@ -72,6 +77,11 @@ two tail miners, proves readiness, runs the mandatory value-capped
 replace/restores a native commitment, exercises both signature precompiles plus
 metagraph/neuron/staking, proves exact stake moves, waits for a dividend cycle and
 recovers all probe-attributable alpha to a controlled provider coldkey.
+Every registration uses runtime `register_limit`/`registerLimit` with the reviewed
+`100000000` rao ceiling. EVM registrations fund the caller mirror and send zero
+value to the neuron precompile, matching runtime-447 deduction semantics.
+Contract registrations supply that full ceiling and atomically refund the
+unburned difference.
 Transactions are journaled through intent, signed bytes and nonce,
 broadcast, inclusion, finality and postcondition. An interrupted convergence is
 continued with `resume` and the same approval hash.

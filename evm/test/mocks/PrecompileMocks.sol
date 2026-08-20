@@ -80,6 +80,8 @@ contract MockNeuron {
     bytes32 public lastHotkey;
     uint16 public lastNetuid;
     address public lastRegistrant;
+    uint64 public lastLimitPrice;
+    uint256 public lastRegistrationCallValue;
     mapping(uint16 => mapping(bytes32 => address)) public registrants;
     mapping(uint16 => mapping(bytes32 => uint16)) public uids;
     mapping(uint16 => mapping(bytes32 => bool)) public uidExists;
@@ -94,6 +96,16 @@ contract MockNeuron {
         lastNetuid = netuid;
         lastHotkey = hotkey;
         lastRegistrant = msg.sender;
+        registrants[netuid][hotkey] = msg.sender;
+    }
+
+    function registerLimit(uint16 netuid, bytes32 hotkey, uint64 limitPrice) external payable {
+        registerCount++;
+        lastNetuid = netuid;
+        lastHotkey = hotkey;
+        lastRegistrant = msg.sender;
+        lastLimitPrice = limitPrice;
+        lastRegistrationCallValue = msg.value;
         registrants[netuid][hotkey] = msg.sender;
     }
 

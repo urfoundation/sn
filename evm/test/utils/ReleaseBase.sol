@@ -21,6 +21,7 @@ abstract contract ReleaseBase is Test {
     uint64 internal constant FINALIZE_OFFSET = 40;
     uint64 internal constant CLOSE_GRACE = 5;
     uint64 internal constant START_BLOCK = 1_000;
+    uint64 internal constant REGISTRATION_BURN_LIMIT = 100_000_000;
 
     uint256 internal constant NO1 = 1;
     uint256 internal constant NO2 = 2;
@@ -68,7 +69,7 @@ abstract contract ReleaseBase is Test {
         sink = new STReserveSink(NETUID, RESERVE_HOTKEY, SINK_COLDKEY, address(this));
         vault = new STSettlementVault(NETUID, ESCROW_HOTKEY, VAULT_COLDKEY, 1, address(this));
         neuron.setUid(NETUID, ESCROW_HOTKEY, 10);
-        vault.registerEscrow();
+        vault.registerEscrow(REGISTRATION_BURN_LIMIT);
         implementation = new STCoordinator();
         STCoordinator.PolicySnapshot memory policy = _policy();
         ERC1967Proxy proxy = new ERC1967Proxy(
@@ -89,8 +90,12 @@ abstract contract ReleaseBase is Test {
         neuron.setUid(NETUID, POOL1, 11);
         neuron.setUid(NETUID, POOL2, 12);
         vm.startPrank(owner);
-        coordinator.registerOperator(NO1, COLD1, POOL1, DEPOSIT1, depositSigner1, rootSigner1, 0);
-        coordinator.registerOperator(NO2, COLD2, POOL2, DEPOSIT2, depositSigner2, rootSigner2, 0);
+        coordinator.registerOperator(
+            NO1, COLD1, POOL1, DEPOSIT1, depositSigner1, rootSigner1, 0, REGISTRATION_BURN_LIMIT
+        );
+        coordinator.registerOperator(
+            NO2, COLD2, POOL2, DEPOSIT2, depositSigner2, rootSigner2, 0, REGISTRATION_BURN_LIMIT
+        );
         vm.stopPrank();
     }
 

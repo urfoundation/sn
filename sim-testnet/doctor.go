@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"gopkg.in/yaml.v3"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
@@ -46,23 +48,50 @@ func (r DoctorReport) Error() error {
 	if r.Ready {
 		return nil
 	}
-	return fmt.Errorf("doctor found one or more hard failures")
+	var failed []string
+	for _, check := range r.Checks {
+		if check.Hard && !check.OK {
+			failed = append(failed, check.Name)
+		}
+	}
+	return fmt.Errorf("doctor hard failures: %s", strings.Join(failed, ", "))
 }
 func (r *DoctorReport) add(name string, hard bool, err error, detail string) {
 	c := Check{Name: name, Hard: hard, OK: err == nil, Detail: detail}
 	if err != nil {
-		c.Detail = err.Error()
+		if c.Detail == "" {
+			c.Detail = err.Error()
+		} else {
+			c.Detail += "; error=" + err.Error()
+		}
 	}
 	r.Checks = append(r.Checks, c)
 }
 
+type doctorPlanBudget struct {
+	Plan      *SetupPlan
+	Remaining Spend
+}
+
 func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
+	return runDoctor(ctx, cfg, nil)
+}
+
+// The approved mode rechecks changing facts against only unverified spend;
+// the read-only mode additionally proves a newly generated plan is affordable.
+func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
 	r := DoctorReport{Schema: "urnetwork-sim-doctor-v1", GeneratedAt: time.Now().UTC().Format(time.RFC3339), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Ready: true}
-	r.add("host/linux-amd64", true, nil, runtime.GOOS+"/"+runtime.GOARCH)
+	r.add("host/linux-amd64", true, validateHostPlatform(runtime.GOOS, runtime.GOARCH), runtime.GOOS+"/"+runtime.GOARCH)
 	for _, tool := range []string{"go", "git", "docker"} {
 		p, err := exec.LookPath(tool)
 		r.add("tool/"+tool, true, err, p)
 	}
+	docker, daemonErr := resolveDockerCLI(ctx)
+	dockerDetail := docker.ServerVersion
+	if len(docker.Prefix) != 0 {
+		dockerDetail += " via passwordless sudo"
+	}
+	r.add("docker/daemon", true, daemonErr, dockerDetail)
 	if systemctl, err := exec.LookPath("systemctl"); err != nil {
 		r.add("supervisor/systemd-user", true, err, "")
 	} else {
@@ -89,10 +118,13 @@ func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 	r.add("vault/governance", true, validateGovernanceSeparation(cfg.Vault), "testnet=single-owner mainnet=safe-2-of-3")
 	r.add("config/independent-rpcs", true, validateIndependentRPCEndpoints(cfg), "private write/finality endpoints are distinct from public postcondition endpoints")
 	r.add("config/trusted-proxies", true, validateCIDRs(cfg.TrustedProxyCIDRs), cfg.TrustedProxyCIDRs)
-	checkBlobConfig(&r, cfg)
+	checkBlobConfig(ctx, &r, cfg)
 	if err := ctx.Err(); err == nil {
 		checkSubstrate(&r, cfg, false)
 		checkSubstrate(&r, cfg, true)
+		topology := checkSubstrateTopology(cfg)
+		r.add("rpc/substrate-private-readiness", true, topology.ReadinessErr, topology.ReadinessDetail)
+		r.add("rpc/substrate-physical-independence", true, topology.IndependenceErr, topology.IndependenceDetail)
 		checkEVM(ctx, &r, cfg)
 		facts, factsErr := ReadSetupFacts(ctx, cfg)
 		detail := ""
@@ -101,18 +133,27 @@ func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 		}
 		r.add("wallet/finalized-alpha-source", true, factsErr, detail)
 		if factsErr == nil {
-			roles, roleErr := derivePublicRoles(cfg)
 			var planErr error
 			var plan *SetupPlan
-			if roleErr == nil {
-				plan, planErr = buildPlan(cfg, facts, roles, time.Unix(0, 0).UTC())
+			if approved != nil {
+				plan = approved.Plan
+				planErr = validateApprovedSetupFacts(plan, facts, approved.Remaining)
 			} else {
-				planErr = roleErr
+				roles, roleErr := derivePublicRoles(cfg)
+				if roleErr == nil {
+					plan, planErr = buildPlan(cfg, facts, roles, time.Unix(0, 0).UTC())
+				} else {
+					planErr = roleErr
+				}
 			}
 			planDetail := ""
 			if plan != nil {
-				planDetail = fmt.Sprintf("tao_rao=%d/%d alpha_rao=%d/%d gas_wei=%d/%d registrations=%d/%d", plan.MaximumSpend.TAORao, plan.Limits.TAORao, plan.MaximumSpend.AlphaRao, plan.Limits.AlphaRao, plan.MaximumSpend.EVMGasWei, plan.Limits.EVMGasWei, plan.MaximumSpend.Registrations, plan.Limits.Registrations)
-				if facts.WalletFreeTAORao < plan.MaximumSpend.TAORao {
+				required := plan.MaximumSpend
+				if approved != nil {
+					required = approved.Remaining
+				}
+				planDetail = fmt.Sprintf("tao_rao=%d/%d alpha_rao=%d/%d gas_wei=%d/%d registrations=%d/%d", required.TAORao, plan.Limits.TAORao, required.AlphaRao, plan.Limits.AlphaRao, required.EVMGasWei, plan.Limits.EVMGasWei, required.Registrations, plan.Limits.Registrations)
+				if approved == nil && facts.WalletFreeTAORao < plan.MaximumSpend.TAORao {
 					planErr = fmt.Errorf("wallet free TAO %d rao is below planned maximum outflow %d rao", facts.WalletFreeTAORao, plan.MaximumSpend.TAORao)
 				}
 			}
@@ -126,6 +167,40 @@ func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 	}
 	sort.SliceStable(r.Checks, func(i, j int) bool { return r.Checks[i].Name < r.Checks[j].Name })
 	return r
+}
+
+// The release binaries and pinned dependency images are qualified only on the
+// architecture declared by the deployment profile.
+func validateHostPlatform(goos, goarch string) error {
+	if goos != "linux" || goarch != "amd64" {
+		return fmt.Errorf("host platform is %s/%s, want linux/amd64", goos, goarch)
+	}
+	return nil
+}
+
+// Compare mutable finalized facts to the reviewed plan without invalidating it
+// merely because prior journaled actions consumed their approved balances.
+func validateApprovedSetupFacts(plan *SetupPlan, current *SetupFacts, remaining Spend) error {
+	if plan == nil || current == nil {
+		return errors.New("approved plan and finalized setup facts are required")
+	}
+	approved := plan.LiveFacts
+	if remaining.Registrations > 0 && (plan.RegistrationBurnLimitRao == 0 || current.BurnRao > plan.RegistrationBurnLimitRao) {
+		return fmt.Errorf("registration burn is %d rao, remaining actions are capped at %d", current.BurnRao, plan.RegistrationBurnLimitRao)
+	}
+	if current.NominatorMinimumRao != approved.NominatorMinimumRao || current.ProbeTAORao != approved.ProbeTAORao {
+		return fmt.Errorf("staking precompile minimum changed from approved %d/%d to %d/%d", approved.NominatorMinimumRao, approved.ProbeTAORao, current.NominatorMinimumRao, current.ProbeTAORao)
+	}
+	if remaining.AlphaRao > 0 && current.AlphaSourceHotkey != approved.AlphaSourceHotkey {
+		return fmt.Errorf("alpha source changed from approved %s to %s", approved.AlphaSourceHotkey, current.AlphaSourceHotkey)
+	}
+	if current.AlphaAvailableRao < remaining.AlphaRao {
+		return fmt.Errorf("approved alpha source has %d rao, remaining actions require %d", current.AlphaAvailableRao, remaining.AlphaRao)
+	}
+	if current.WalletFreeTAORao < remaining.TAORao {
+		return fmt.Errorf("wallet free TAO is %d rao, remaining actions require %d", current.WalletFreeTAORao, remaining.TAORao)
+	}
+	return validatePlanBudget(plan)
 }
 
 func validateGovernanceSeparation(vault map[string]any) error {
@@ -145,8 +220,13 @@ func validateCIDRs(raw string) error {
 		if item == "" {
 			continue
 		}
-		if _, err := netip.ParsePrefix(item); err != nil {
+		prefix, err := netip.ParsePrefix(item)
+		if err != nil {
 			return fmt.Errorf("invalid trusted proxy CIDR %q: %w", item, err)
+		}
+		masked := prefix.Masked()
+		if !masked.Addr().IsLoopback() || (!masked.Addr().Is4() && masked.Bits() != 128) {
+			return fmt.Errorf("trusted proxy CIDR %q is outside loopback", item)
 		}
 		count++
 	}
@@ -214,22 +294,65 @@ func expectString(v any, want string) error {
 	return nil
 }
 
-func checkBlobConfig(r *DoctorReport, cfg *ResolvedConfig) {
-	path := filepath.Join(cfg.Repos.Vault, "main", "minio.yml")
-	b, err := os.ReadFile(path)
-	if err == nil {
-		lower := strings.ToLower(string(b))
-		if !strings.Contains(lower, "bucket: blob") {
-			err = fmt.Errorf("minio config does not select blob bucket")
-		}
+// Require an exact 200 response without following a misleading redirect.
+func checkHTTPHealth(ctx context.Context, endpoint string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
 	}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("health endpoint redirected")
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("health endpoint returned HTTP %d", response.StatusCode)
+	}
+	return nil
+}
+
+// Parse the same non-secret MinIO resource consumed by server/blob and reject
+// a health-only endpoint whose application service account is incomplete.
+func validateBlobConfig(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var config struct {
+		Authority string `yaml:"authority"`
+		AccessKey string `yaml:"access_key"`
+		SecretKey string `yaml:"secret_key"`
+		Bucket    string `yaml:"bucket"`
+		TLS       bool   `yaml:"tls"`
+		Prefix    string `yaml:"prefix"`
+	}
+	if err := yaml.Unmarshal(b, &config); err != nil {
+		return fmt.Errorf("decode server/blob MinIO config: %w", err)
+	}
+	if strings.TrimSpace(config.Authority) == "" || strings.TrimSpace(config.AccessKey) == "" || strings.TrimSpace(config.SecretKey) == "" {
+		return errors.New("server/blob MinIO authority or service-account credentials are empty")
+	}
+	if config.Bucket != "blob" {
+		return fmt.Errorf("server/blob MinIO bucket is %q, want blob", config.Bucket)
+	}
+	return nil
+}
+
+// Check both server/blob configuration completeness and endpoint liveness.
+func checkBlobConfig(ctx context.Context, r *DoctorReport, cfg *ResolvedConfig) {
+	path := filepath.Join(cfg.Repos.Vault, "main", "minio.yml")
+	err := validateBlobConfig(path)
 	r.add("artifact-store/server-blob", true, err, path)
 	if err == nil {
-		conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(cfg.ObjectStoreHost, "23900"), 5*time.Second)
-		if dialErr == nil {
-			_ = conn.Close()
-		}
-		r.add("artifact-store/minio-reachable", true, dialErr, net.JoinHostPort(cfg.ObjectStoreHost, "23900"))
+		endpoint := (&url.URL{Scheme: "http", Host: net.JoinHostPort(cfg.ObjectStoreHost, "23900"), Path: "/minio/health/live"}).String()
+		healthErr := checkHTTPHealth(ctx, endpoint)
+		r.add("artifact-store/minio-live", true, healthErr, endpoint)
 	}
 }
 
@@ -274,6 +397,13 @@ func authorityURLs(authority string) (wsURL, httpURL string, err error) {
 	return
 }
 
+// Use a single exact finalized block so shape-restricted production gateways
+// can prove log support without admitting an unbounded symbolic range.
+func finalizedLogProbe(blockNumber uint64) map[string]any {
+	block := fmt.Sprintf("0x%x", blockNumber)
+	return map[string]any{"fromBlock": block, "toBlock": block}
+}
+
 func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 	name := "public"
 	endpoint := cfg.Public.Chain.SubstratePublicReadEndpoint
@@ -310,7 +440,7 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 			}
 		}
 		r.add("runtime/metadata-"+name, true, metadataErr, metadataDetail)
-		r.add("runtime/release-call-shapes-"+name, true, checkReleaseCallShapes(chain, cfg), "burned_register, decrease_take, transfer_stake_and_hotkey, commitments, and owner calls")
+		r.add("runtime/release-call-shapes-"+name, true, checkReleaseCallShapes(chain, cfg), "registration, staking/activation, take, transfer, commitments, and owner calls")
 		gates, gateErr := verifyCompatibilityGates(chain, cfg)
 		gateDetail := ""
 		if gates != nil {
@@ -319,6 +449,9 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 			}
 		}
 		r.add("runtime/compatibility-gates-"+name, true, gateErr, gateDetail)
+		activation, activationErr := readAndValidateSubnetActivation(chain, cfg)
+		activationDetail := fmt.Sprintf("enabled=%t registered_at=%d first_emission=%d finalized=%d", activation.SubtokenEnabled, activation.NetworkRegisteredAt, activation.FirstEmissionBlockNumber, activation.FinalizedBlock)
+		r.add("subnet/activation-"+name, true, activationErr, activationDetail)
 		r.add("subnet/uid-capacity-"+name, true, checkUIDCapacity(chain, cfg), "all missing release identities fit the intended finalized UID cap")
 	}
 	if err == nil && cfg.Netuid != 0 && cfg.WalletPublic != "" {
@@ -327,9 +460,233 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 	}
 	if private {
 		var logs any
-		callErr := chain.API.Client.Call(&logs, "eth_getLogs", map[string]any{"fromBlock": "latest", "toBlock": "latest"})
-		r.add("rpc/private-eth_getLogs", true, callErr, "method available")
+		finalizedHash, finalizedErr := chain.API.RPC.Chain.GetFinalizedHead()
+		var finalizedNumber uint64
+		if finalizedErr == nil {
+			var header *types.Header
+			header, finalizedErr = chain.API.RPC.Chain.GetHeader(finalizedHash)
+			if finalizedErr == nil {
+				finalizedNumber = uint64(header.Number)
+			}
+		}
+		if finalizedErr == nil {
+			finalizedErr = chain.API.Client.Call(&logs, "eth_getLogs", finalizedLogProbe(finalizedNumber))
+		}
+		r.add("rpc/private-eth_getLogs", true, finalizedErr, fmt.Sprintf("exact finalized block=%d", finalizedNumber))
 	}
+}
+
+func validateSubnetActivation(state SubnetActivationState) error {
+	if !state.SubtokenEnabled || state.NetworkRegisteredAt == 0 || state.FirstEmissionBlockNumber == 0 {
+		return fmt.Errorf("subnet token/emission is not activated: %+v", state)
+	}
+	readyAt, ok := checkedAdd(state.NetworkRegisteredAt, state.StartCallDelay)
+	if !ok || state.FirstEmissionBlockNumber < readyAt || state.FirstEmissionBlockNumber > state.FinalizedBlock {
+		return fmt.Errorf("subnet activation block is outside the finalized lifetime: %+v", state)
+	}
+	return nil
+}
+
+func readAndValidateSubnetActivation(chain *crv4.Chain, cfg *ResolvedConfig) (SubnetActivationState, error) {
+	state, err := (&SubstrateManager{chain: chain, cfg: cfg}).ActivationState()
+	if err != nil {
+		return state, err
+	}
+	return state, validateSubnetActivation(state)
+}
+
+// Extract unique physical libp2p identities from multiaddresses.
+func peerIDsFromListenAddresses(addresses []string) []string {
+	seen := map[string]bool{}
+	var result []string
+	for _, address := range addresses {
+		parts := strings.Split(address, "/")
+		for index := 0; index+1 < len(parts); index++ {
+			if parts[index] != "p2p" || parts[index+1] == "" || seen[parts[index+1]] {
+				continue
+			}
+			seen[parts[index+1]] = true
+			result = append(result, parts[index+1])
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+// Extract the stable libp2p identity exposed by one already connected node.
+func substratePeerIDs(chain *crv4.Chain) ([]string, error) {
+	var addresses []string
+	if err := chain.API.Client.Call(&addresses, "system_localListenAddresses"); err != nil {
+		return nil, err
+	}
+	peers := peerIDsFromListenAddresses(addresses)
+	if len(peers) == 0 {
+		return nil, errors.New("system_localListenAddresses returned no physical peer identity")
+	}
+	return peers, nil
+}
+
+// Reject any physical identity shared by the write and observation endpoints.
+func disjointSubstratePeers(privatePeers, publicPeers []string) error {
+	public := map[string]bool{}
+	for _, peer := range publicPeers {
+		public[peer] = true
+	}
+	for _, peer := range privatePeers {
+		if public[peer] {
+			return fmt.Errorf("private and public RPCs expose the same physical Subtensor peer %s", peer)
+		}
+	}
+	return nil
+}
+
+// Reject a private endpoint which is only another route to the public backend.
+func checkSubstratePeerIndependence(privateChain, publicChain *crv4.Chain) (string, error) {
+	privatePeers, err := substratePeerIDs(privateChain)
+	if err != nil {
+		return "", fmt.Errorf("private RPC physical identity: %w", err)
+	}
+	publicPeers, err := substratePeerIDs(publicChain)
+	if err != nil {
+		return "", fmt.Errorf("public RPC physical identity: %w", err)
+	}
+	detail := fmt.Sprintf("private=%s public=%s", strings.Join(privatePeers, ","), strings.Join(publicPeers, ","))
+	return detail, disjointSubstratePeers(privatePeers, publicPeers)
+}
+
+// substrateHealth is the node's direct declaration of whether it is connected
+// and catching up. A reachable RPC can otherwise look healthy while stranded
+// on an old finalized state, as happened during the testnet archive bootstrap.
+type substrateHealth struct {
+	Peers           uint64 `json:"peers"`
+	IsSyncing       bool   `json:"isSyncing"`
+	ShouldHavePeers bool   `json:"shouldHavePeers"`
+}
+
+// substrateReadinessObservation binds peer health to a canonical checkpoint
+// independently read from the private and public physical nodes.
+type substrateReadinessObservation struct {
+	Health                substrateHealth
+	PrivateFinalized      uint64
+	PublicFinalized       uint64
+	Checkpoint            uint64
+	PrivateCheckpointHash types.Hash
+	PublicCheckpointHash  types.Hash
+}
+
+// substrateTopologyChecks keeps the independent readiness and physical-node
+// results separate while sharing the same two RPC connections.
+type substrateTopologyChecks struct {
+	ReadinessDetail    string
+	ReadinessErr       error
+	IndependenceDetail string
+	IndependenceErr    error
+}
+
+// Reject any endpoint which cannot prove both live consensus participation and
+// agreement with an independently operated finalized chain.
+func validateSubstrateReadiness(observation substrateReadinessObservation, maximumLag uint64) error {
+	var problems []string
+	if maximumLag == 0 {
+		problems = append(problems, "maximum finalized-head lag is zero")
+	}
+	if !observation.Health.ShouldHavePeers {
+		problems = append(problems, "node does not expect peers")
+	}
+	if observation.Health.Peers == 0 {
+		problems = append(problems, "node has zero connected peers")
+	}
+	if observation.Health.IsSyncing {
+		problems = append(problems, "node is still syncing")
+	}
+	if observation.PublicFinalized > observation.PrivateFinalized && observation.PublicFinalized-observation.PrivateFinalized > maximumLag {
+		problems = append(problems, fmt.Sprintf("private finalized head lags public by %d blocks (maximum %d)", observation.PublicFinalized-observation.PrivateFinalized, maximumLag))
+	}
+	if observation.Checkpoint == 0 || observation.PrivateCheckpointHash == (types.Hash{}) || observation.PublicCheckpointHash == (types.Hash{}) {
+		problems = append(problems, "canonical checkpoint is unavailable")
+	} else if observation.PrivateCheckpointHash != observation.PublicCheckpointHash {
+		problems = append(problems, fmt.Sprintf("private/public canonical hashes disagree at block %d", observation.Checkpoint))
+	}
+	if len(problems) != 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// Read the number corresponding to the node's explicit finalized hash.
+func finalizedSubstrateNumber(chain *crv4.Chain) (uint64, error) {
+	hash, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return 0, err
+	}
+	header, err := chain.API.RPC.Chain.GetHeader(hash)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(header.Number), nil
+}
+
+// Observe both physical endpoints at one common finalized checkpoint.
+func checkSubstrateReadiness(privateChain, publicChain *crv4.Chain, maximumLag uint64) (string, error) {
+	var observation substrateReadinessObservation
+	var err error
+	if err := privateChain.API.Client.Call(&observation.Health, "system_health"); err != nil {
+		return "", fmt.Errorf("private system_health: %w", err)
+	}
+	observation.PrivateFinalized, err = finalizedSubstrateNumber(privateChain)
+	if err != nil {
+		return "", fmt.Errorf("private finalized head: %w", err)
+	}
+	observation.PublicFinalized, err = finalizedSubstrateNumber(publicChain)
+	if err != nil {
+		return "", fmt.Errorf("public finalized head: %w", err)
+	}
+	observation.Checkpoint = observation.PrivateFinalized
+	if observation.PublicFinalized < observation.Checkpoint {
+		observation.Checkpoint = observation.PublicFinalized
+	}
+	var observationErrors []error
+	if observation.Checkpoint != 0 {
+		observation.PrivateCheckpointHash, err = privateChain.API.RPC.Chain.GetBlockHash(observation.Checkpoint)
+		if err != nil {
+			observationErrors = append(observationErrors, fmt.Errorf("private checkpoint %d: %w", observation.Checkpoint, err))
+		}
+		observation.PublicCheckpointHash, err = publicChain.API.RPC.Chain.GetBlockHash(observation.Checkpoint)
+		if err != nil {
+			observationErrors = append(observationErrors, fmt.Errorf("public checkpoint %d: %w", observation.Checkpoint, err))
+		}
+	}
+	if readinessErr := validateSubstrateReadiness(observation, maximumLag); readinessErr != nil {
+		observationErrors = append(observationErrors, readinessErr)
+	}
+	detail := fmt.Sprintf("peers=%d syncing=%t private_finalized=%d public_finalized=%d checkpoint=%d", observation.Health.Peers, observation.Health.IsSyncing, observation.PrivateFinalized, observation.PublicFinalized, observation.Checkpoint)
+	return detail, errors.Join(observationErrors...)
+}
+
+// Check live consensus state and backend independence with one connection per
+// endpoint, reducing public RPC pressure and keeping both observations close.
+func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
+	privateEndpoint, _, err := authorityURLs(cfg.Authority)
+	if err != nil {
+		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
+	}
+	privateChain, err := crv4.DialChain(privateEndpoint)
+	if err != nil {
+		err = fmt.Errorf("private RPC: %w", err)
+		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
+	}
+	defer privateChain.API.Client.Close()
+	publicChain, err := crv4.DialChain(cfg.Public.Chain.SubstratePublicReadEndpoint)
+	if err != nil {
+		err = fmt.Errorf("public RPC: %w", err)
+		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
+	}
+	defer publicChain.API.Client.Close()
+
+	result := substrateTopologyChecks{}
+	result.ReadinessDetail, result.ReadinessErr = checkSubstrateReadiness(privateChain, publicChain, uint64(cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks))
+	result.IndependenceDetail, result.IndependenceErr = checkSubstratePeerIndependence(privateChain, publicChain)
+	return result
 }
 
 type releaseCallRequirement struct {
@@ -341,9 +698,48 @@ type releaseCallRequirement struct {
 
 func checkReleaseCallShapes(chain *crv4.Chain, cfg *ResolvedConfig) error {
 	requirements := []releaseCallRequirement{
-		{crv4.PalletName, "burned_register", []string{"netuid", "hotkey"}, []string{"u16", "[u8;32]"}},
-		{crv4.PalletName, "decrease_take", []string{"hotkey", "take"}, []string{"[u8;32]", "u16"}},
-		{crv4.PalletName, "transfer_stake_and_hotkey", []string{"destination_coldkey", "origin_hotkey", "destination_hotkey", "origin_netuid", "destination_netuid", "alpha_amount"}, []string{"[u8;32]", "[u8;32]", "[u8;32]", "u16", "u16", "u64"}},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "burned_register",
+			Names:  []string{"netuid", "hotkey"},
+			Shapes: []string{"u16", "[u8;32]"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "register_limit",
+			Names:  []string{"netuid", "hotkey", "limit_price"},
+			Shapes: []string{"u16", "[u8;32]", "u64"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "add_stake",
+			Names:  []string{"hotkey", "netuid", "amount_staked"},
+			Shapes: []string{"[u8;32]", "u16", "u64"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "add_stake_limit",
+			Names:  []string{"hotkey", "netuid", "amount_staked", "limit_price", "allow_partial"},
+			Shapes: []string{"[u8;32]", "u16", "u64", "u64", "bool"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "start_call",
+			Names:  []string{"netuid"},
+			Shapes: []string{"u16"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "decrease_take",
+			Names:  []string{"hotkey", "take"},
+			Shapes: []string{"[u8;32]", "u16"},
+		},
+		{
+			Pallet: crv4.PalletName,
+			Call:   "transfer_stake_and_hotkey",
+			Names:  []string{"destination_coldkey", "origin_hotkey", "destination_hotkey", "origin_netuid", "destination_netuid", "alpha_amount"},
+			Shapes: []string{"[u8;32]", "[u8;32]", "[u8;32]", "u16", "u16", "u64"},
+		},
 	}
 	for _, requirement := range requirements {
 		report, err := chain.DescribeCall(requirement.Pallet, requirement.Call)
@@ -562,6 +958,17 @@ func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConf
 	r.add("runtime/evm-finality"+suffix, true, headErr, fmt.Sprintf("number=%d hash=%s", head.Number, head.Hash))
 	if headErr != nil {
 		return
+	}
+	if name == "private" {
+		var historicalErr error
+		var historicalBlock uint64
+		if head.Number < 2 {
+			historicalErr = errors.New("private EVM finalized head is too early for historical-state verification")
+		} else {
+			historicalBlock = head.Number - 1
+			_, historicalErr = client.BalanceAt(ctx, common.Address{}, new(big.Int).SetUint64(historicalBlock))
+		}
+		r.add("runtime/evm-historical-state", true, historicalErr, fmt.Sprintf("block=%d", historicalBlock))
 	}
 	parsed, parseErr := abi.JSON(strings.NewReader(doctorPrecompileABI))
 	if parseErr != nil {

@@ -305,11 +305,18 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case strings.HasPrefix(a.ID, "validator.fund."):
 		return e.verifySubstrateFunding(a, fmt.Sprintf("validator-%d-coldkey", suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "fleet.register."):
-		return e.verifyNativeRegistration(fleetHotkeyLabel(suffixInt(a.ID)), state)
+		fleet := suffixInt(a.ID)
+		return e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "validator.register."):
-		return e.verifyNativeRegistration(validatorHotkeyLabel(suffixInt(a.ID)), state)
+		validator := suffixInt(a.ID)
+		return e.verifyRegistration(validatorHotkeyLabel(validator), fmt.Sprintf("validator-%d-coldkey", validator), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "operator.deposit.register."):
-		return e.verifyNativeRegistration(fmt.Sprintf("operator-%d-deposit-hotkey", suffixInt(a.ID)), state)
+		operator := suffixInt(a.ID)
+		signer, err := e.roles.EVMAddress(fmt.Sprintf("operator-%d-deposit", operator))
+		if err != nil {
+			return nil, err
+		}
+		return e.verifyRegistration(fmt.Sprintf("operator-%d-deposit-hotkey", operator), "", signer, state)
 	case a.ID == "validator.take-zero.1":
 		hotkey, err := roleBytes32(e.roles, "reserve-hotkey")
 		if err != nil {
@@ -331,7 +338,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case strings.HasPrefix(a.ID, "governance."):
 		return e.verifyGovernanceDrillPostState(ctx, a, state)
 	case strings.HasPrefix(a.ID, "operator.register."):
-		return e.verifyOperatorPostState(ctx, suffixInt(a.ID), state)
+		return e.verifyOperatorPostState(ctx, a, state)
 	case strings.HasPrefix(a.ID, "fleet.commitment."):
 		return e.verifyFleetCommitmentPostState(suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.mirror."):
@@ -542,7 +549,7 @@ func (e *Executor) verifySubstrateFunding(a Action, label string, state map[stri
 	return state, nil
 }
 
-func (e *Executor) verifyNativeRegistration(label string, state map[string]any) (map[string]any, error) {
+func (e *Executor) verifyRegistration(label, coldkeyLabel string, mirror common.Address, state map[string]any) (map[string]any, error) {
 	hotkey, err := roleBytes32(e.roles, label)
 	if err != nil {
 		return nil, err
@@ -551,7 +558,23 @@ func (e *Executor) verifyNativeRegistration(label string, state map[string]any) 
 	if err != nil || !found {
 		return nil, fmt.Errorf("%s native registration found=%t: %w", label, found, err)
 	}
+	var expected [32]byte
+	if coldkeyLabel != "" {
+		expected, err = roleBytes32(e.roles, coldkeyLabel)
+	} else if mirror != (common.Address{}) {
+		expected = ss58Mirror(mirror)
+	} else {
+		return nil, fmt.Errorf("%s registration has no expected coldkey", label)
+	}
+	owner, err := e.substrate.HotkeyOwner(hotkey)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateHotkeyOwner(label, owner, expected); err != nil {
+		return nil, err
+	}
 	state["role"], state["hotkey"], state["uid"] = label, "0x"+hex.EncodeToString(hotkey[:]), uid
+	state["coldkey"] = "0x" + hex.EncodeToString(owner[:])
 	return state, nil
 }
 
@@ -612,7 +635,19 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		if err != nil || !found {
 			return nil, fmt.Errorf("vault escrow live UID=%d found=%t: %w", liveUID, found, err)
 		}
+		owner, err := e.substrate.HotkeyOwner(hotkey)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateHotkeyOwner("vault escrow hotkey", owner, ss58Mirror(p.Manifest.SettlementVault)); err != nil {
+			return nil, err
+		}
+		if err := e.verifyRegistrationBalances(ctx, a, p.Manifest.SettlementVault); err != nil {
+			return nil, err
+		}
 		state["vault"], state["escrow_hotkey"], state["uid"] = p.Manifest.SettlementVault.Hex(), "0x"+hex.EncodeToString(hotkey[:]), liveUID
+		state["coldkey"] = "0x" + hex.EncodeToString(owner[:])
+		state["liquid_registration_balance_preserved"] = true
 		return state, nil
 	}
 	contract := stabi.NewSTReserveSink()
@@ -634,7 +669,45 @@ func cryptoKeccakBytes(value []byte) []byte {
 	return crypto.Keccak256(value)
 }
 
-func (e *Executor) verifyOperatorPostState(ctx context.Context, noID int, state map[string]any) (map[string]any, error) {
+func finalizedActionBlock(entries []JournalEntry, planHash string, action Action) (uint64, error) {
+	for index := len(entries) - 1; index >= 0; index-- {
+		entry := entries[index]
+		if entry.PlanHash == planHash && entry.ActionID == action.ID && entry.IntentHash == action.IntentHash && entry.Stage == StageFinalized {
+			if entry.BlockNumber == 0 {
+				break
+			}
+			return entry.BlockNumber, nil
+		}
+	}
+	return 0, fmt.Errorf("action %s has no finalized transaction block", action.ID)
+}
+
+// Contract registration must consume only the runtime burn. The full ceiling
+// is supplied to eliminate an in-flight price race, so every involved
+// contract's liquid balance must be unchanged across the finalized block.
+func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action, addresses ...common.Address) error {
+	block, err := finalizedActionBlock(e.journal.Entries(), e.plan.PlanHash, action)
+	if err != nil || block == 0 {
+		return err
+	}
+	for _, address := range addresses {
+		before, readErr := e.deployer.client.BalanceAt(ctx, address, new(big.Int).SetUint64(block-1))
+		if readErr != nil {
+			return fmt.Errorf("read %s registration pre-balance at %d: %w", address, block-1, readErr)
+		}
+		after, readErr := e.deployer.client.BalanceAt(ctx, address, new(big.Int).SetUint64(block))
+		if readErr != nil {
+			return fmt.Errorf("read %s registration post-balance at %d: %w", address, block, readErr)
+		}
+		if before.Cmp(after) != 0 {
+			return fmt.Errorf("registration changed %s liquid balance from %s to %s", address, before, after)
+		}
+	}
+	return nil
+}
+
+func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, state map[string]any) (map[string]any, error) {
+	noID := suffixInt(action.ID)
 	if err := e.ensurePayloads(ctx); err != nil {
 		return nil, err
 	}
@@ -660,7 +733,19 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, noID int, state 
 	if err != nil || !found {
 		return nil, fmt.Errorf("operator %d pool UID missing: %w", noID, err)
 	}
+	owner, err := e.substrate.HotkeyOwner(pool)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateHotkeyOwner(fmt.Sprintf("operator %d pool", noID), owner, ss58Mirror(e.payloads.Manifest.SettlementVault)); err != nil {
+		return nil, err
+	}
+	if err := e.verifyRegistrationBalances(ctx, action, e.payloads.Manifest.CoordinatorProxy, e.payloads.Manifest.SettlementVault); err != nil {
+		return nil, err
+	}
 	state["no_id"], state["effective_epoch"], state["pool_uid"], state["active"] = noID, version.EffectiveEpoch, uid, true
+	state["pool_coldkey"] = "0x" + hex.EncodeToString(owner[:])
+	state["liquid_registration_balances_preserved"] = true
 	state["deposit_signer"], state["root_signer"] = depositSigner.Hex(), rootSigner.Hex()
 	return state, nil
 }

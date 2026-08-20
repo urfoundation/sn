@@ -22,21 +22,21 @@ observed_compatibility_gates:
     scope: netuid
     kind: u16
     rule: exact
-    expected: [3277]
-    decision: release weights require an approximately five-percent per-UID cap
+    expected: [65535]
+    decision: runtime-v447 hardcodes the native getter to no cap; release validators enforce the signed policy max_weight_limit_u16 and the production policy must lower it as recipient breadth grows
   max_allowed_validators:
     storage: MaxAllowedValidators
     scope: netuid
     kind: u16
     rule: exact
-    expected: [128]
-    decision: runtime-v447 root-controlled capacity is accepted while live validator admission is stake-limited
+    expected: [64]
+    decision: runtime-v447 testnet root-controlled default is accepted for the bounded release topology; production governance must lower it to 56 or less before targeting 200 top-level miner UIDs
   registration_burn:
     storage: Burn
     scope: netuid
     kind: u64
     rule: nonzero
-    decision: all release registrations use the live finalized burn and the approved spend plan
+    decision: all release registrations use runtime-enforced register_limit calls capped at 100000000 rao by the approved spend plan
   bonds_penalty:
     storage: BondsPenalty
     scope: netuid
@@ -70,6 +70,6 @@ observed_compatibility_gates:
     scope: global
     kind: u64
     rule: exact
-    expected: [971718665099567868]
-    decision: release economics are pinned to the v447 root-stake TAO weight
+    expected: [332041393326771929]
+    decision: testnet governance currently pins the global root-stake factor to 1.8 percent; the live finalized value is compatibility-gated and mainnet must be observed independently
 receipts: {}

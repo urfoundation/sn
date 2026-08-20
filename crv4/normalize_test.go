@@ -110,70 +110,74 @@ func chainMaxLimitCheck(weights []float64, limit uint16) bool {
 	return maxW/sum <= float64(limit)/U16Max+1e-12
 }
 
-func TestApplyMaxWeightLimit(t *testing.T) {
-	t.Run("noop_when_unlimited", func(t *testing.T) {
-		in := []float64{10, 1, 1}
-		out, err := ApplyMaxWeightLimit(in, U16Max)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(out, in) {
-			t.Errorf("changed weights under u16::MAX limit: %v", out)
-		}
-	})
+func TestApplyMaxWeightLimitUnlimited(t *testing.T) {
+	in := []float64{10, 1, 1}
+	out, err := ApplyMaxWeightLimit(in, U16Max)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out, in) {
+		t.Errorf("changed weights under u16::MAX limit: %v", out)
+	}
+}
 
-	t.Run("noop_when_already_satisfied", func(t *testing.T) {
-		in := []float64{1, 1, 1, 1}
-		out, err := ApplyMaxWeightLimit(in, 32768) // limit 0.5, max share 0.25
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(out, in) {
-			t.Errorf("changed already-satisfying weights: %v", out)
-		}
-	})
+func TestApplyMaxWeightLimitAlreadySatisfied(t *testing.T) {
+	in := []float64{1, 1, 1, 1}
+	out, err := ApplyMaxWeightLimit(in, 32768)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out, in) {
+		t.Errorf("changed already-satisfying weights: %v", out)
+	}
+}
 
-	t.Run("clips_to_limit", func(t *testing.T) {
-		in := []float64{10, 1, 1}
-		limit := uint16(32767) // ~0.5
-		out, err := ApplyMaxWeightLimit(in, limit)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !chainMaxLimitCheck(out, limit) {
-			t.Errorf("clipped weights still violate the chain check: %v", out)
-		}
-		// Untouched small weights, clipped large one.
-		if out[1] != 1 || out[2] != 1 {
-			t.Errorf("small weights modified: %v", out)
-		}
-		if out[0] >= 10 {
-			t.Errorf("large weight not clipped: %v", out)
-		}
-		// The cap should be tight: max/sum ~ limit.
-		if got := out[0] / (out[0] + 2); got < float64(limit)/U16Max-1e-6 {
-			t.Errorf("clip not tight: max share %v", got)
-		}
-	})
+func TestApplyMaxWeightLimitClipsToLimit(t *testing.T) {
+	in := []float64{10, 1, 1}
+	limit := uint16(32767)
+	out, err := ApplyMaxWeightLimit(in, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chainMaxLimitCheck(out, limit) {
+		t.Errorf("clipped weights still violate the chain check: %v", out)
+	}
+	if out[1] != 1 || out[2] != 1 {
+		t.Errorf("small weights modified: %v", out)
+	}
+	if out[0] >= 10 {
+		t.Errorf("large weight not clipped: %v", out)
+	}
+	if got := out[0] / (out[0] + 2); got < float64(limit)/U16Max-1e-6 {
+		t.Errorf("clip not tight: max share %v", got)
+	}
+}
 
-	t.Run("uniform_when_unsatisfiable", func(t *testing.T) {
-		// limit*n <= 1: no clipping can satisfy max/sum <= limit; SDK
-		// falls back to uniform.
-		in := []float64{5, 3}
-		out, err := ApplyMaxWeightLimit(in, 16384) // 0.25 * 2 = 0.5 <= 1
-		if err != nil {
-			t.Fatal(err)
+func TestApplyMaxWeightLimitRejectsInfeasiblePositiveBreadth(t *testing.T) {
+	tests := []struct {
+		weights []float64
+		limit   uint16
+	}{
+		{weights: []float64{5, 3}, limit: 16384},
+		{weights: []float64{0, 5, 3}, limit: 21845},
+	}
+	for index, test := range tests {
+		if _, err := ApplyMaxWeightLimit(test.weights, test.limit); err == nil {
+			t.Errorf("infeasible case %d was accepted", index)
 		}
-		if out[0] != 0.5 || out[1] != 0.5 {
-			t.Errorf("expected uniform, got %v", out)
-		}
-	})
+	}
+}
 
-	t.Run("zero_limit_rejected", func(t *testing.T) {
-		if _, err := ApplyMaxWeightLimit([]float64{1}, 0); err == nil {
-			t.Error("zero limit accepted")
-		}
-	})
+func TestApplyMaxWeightLimitRejectsZeroLimit(t *testing.T) {
+	if _, err := ApplyMaxWeightLimit([]float64{1}, 0); err == nil {
+		t.Error("zero limit accepted")
+	}
+}
+
+func TestApplyMaxWeightLimitValidatesUnlimitedInputs(t *testing.T) {
+	if _, err := ApplyMaxWeightLimit([]float64{-1}, U16Max); err == nil {
+		t.Fatal("negative weight bypassed validation under the unlimited cap")
+	}
 }
 
 // TestNormalizePipelineChainValid: the full cap+normalize pipeline yields

@@ -92,6 +92,7 @@ contract STSettlementVault {
     error AlreadyInitialized();
     error InvalidConfiguration();
     error InvalidTransition();
+    error NativeRefundFailed();
     error UnknownPool();
     error ClaimExpired();
     error InvalidProof();
@@ -131,6 +132,15 @@ contract STSettlementVault {
 
     receive() external payable {}
 
+    // Preserve any pre-existing vault balance and return only registration
+    // funding left after the runtime charges this contract's SS58 mirror.
+    function _refundRegistrationSurplus(address recipient, uint256 balanceBefore) private {
+        uint256 current = address(this).balance;
+        if (current <= balanceBefore) return;
+        (bool refunded,) = payable(recipient).call{value: current - balanceBefore}("");
+        if (!refunded) revert NativeRefundFailed();
+    }
+
     function setCoordinatorOnce(address coordinator_) external {
         if (msg.sender != bootstrap) revert Unauthorized();
         if (coordinator != address(0)) revert AlreadyInitialized();
@@ -141,20 +151,26 @@ contract STSettlementVault {
         emit CoordinatorFixed(coordinator_);
     }
 
-    /// @notice Burn-registers the immutable claims escrow under this vault's
+    /// @notice Limit-registers the immutable claims escrow under this vault's
     /// mapped Substrate coldkey. The bootstrap may execute this exactly once
     /// during installation; no external key retains control of the hotkey.
-    function registerEscrow() external payable nonReentrant returns (uint16 uid) {
+    function registerEscrow(uint64 maximumBurnRao) external payable nonReentrant returns (uint16 uid) {
         if (msg.sender != bootstrap) revert Unauthorized();
         if (escrowRegistered) revert AlreadyInitialized();
+        if (maximumBurnRao == 0) revert InvalidConfiguration();
+        uint256 balanceBefore = address(this).balance - msg.value;
         // Checks-effects-interactions: a failed registration/read rolls this
         // flag back with the transaction, while a hostile callback can never
         // observe an unclaimed one-shot registration capability.
         escrowRegistered = true;
-        INeuron(INeuron_ADDRESS).burnedRegister{value: msg.value}(netuid, escrowHotkey);
+        // Runtime 447 charges this contract's SS58-mirror balance. msg.value
+        // funds that balance before execution; forwarding it to the precompile
+        // would move the funds away before the runtime dispatch can burn them.
+        INeuron(INeuron_ADDRESS).registerLimit(netuid, escrowHotkey, maximumBurnRao);
         (bool exists, uint16 liveUid) = INeuron(INeuron_ADDRESS).getUid(netuid, escrowHotkey);
         if (!exists) revert UnknownPool();
         emit EscrowRegistered(escrowHotkey, liveUid);
+        _refundRegistrationSurplus(msg.sender, balanceBefore);
         return liveUid;
     }
 
@@ -165,8 +181,8 @@ contract STSettlementVault {
     // The runtime registration call can expose read-only public getters while
     // it executes, but every state-changing vault entry point shares the
     // nonReentrant guard and only the fixed coordinator can mutate a pool.
-    // slither-disable-next-line reentrancy-eth
-    function registerPool(uint256 noId, bytes32 poolHotkey)
+    // slither-disable-next-line reentrancy-no-eth
+    function registerPool(uint256 noId, bytes32 poolHotkey, uint64 maximumBurnRao)
         external
         payable
         onlyCoordinator
@@ -175,14 +191,16 @@ contract STSettlementVault {
     {
         if (
             noId == 0 || poolHotkey == bytes32(0) || poolHotkey == escrowHotkey
-                || pools[noId].hotkey != bytes32(0) || poolHotkeyUsed[poolHotkey]
+                || pools[noId].hotkey != bytes32(0) || poolHotkeyUsed[poolHotkey] || maximumBurnRao == 0
         ) revert InvalidConfiguration();
-        INeuron(INeuron_ADDRESS).burnedRegister{value: msg.value}(netuid, poolHotkey);
+        uint256 balanceBefore = address(this).balance - msg.value;
+        INeuron(INeuron_ADDRESS).registerLimit(netuid, poolHotkey, maximumBurnRao);
         (bool exists, uint16 liveUid) = INeuron(INeuron_ADDRESS).getUid(netuid, poolHotkey);
         if (!exists) revert UnknownPool();
         pools[noId] = Pool({hotkey: poolHotkey, uid: liveUid, active: true});
         poolHotkeyUsed[poolHotkey] = true;
         emit PoolRegistered(noId, poolHotkey, liveUid);
+        _refundRegistrationSurplus(msg.sender, balanceBefore);
         return liveUid;
     }
 

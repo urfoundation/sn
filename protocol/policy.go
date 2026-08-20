@@ -67,11 +67,12 @@ type QualityTransform struct {
 }
 
 type SteeringPolicy struct {
-	Theta            Rational         `json:"theta" yaml:"theta"`
-	QualityTransform QualityTransform `json:"quality_transform" yaml:"quality_transform"`
-	HeadScoreEMA     Rational         `json:"head_score_ema" yaml:"head_score_ema"`
-	EmptyChannel     string           `json:"empty_channel" yaml:"empty_channel"`
-	Arithmetic       string           `json:"arithmetic" yaml:"arithmetic"`
+	Theta             Rational         `json:"theta" yaml:"theta"`
+	QualityTransform  QualityTransform `json:"quality_transform" yaml:"quality_transform"`
+	HeadScoreEMA      Rational         `json:"head_score_ema" yaml:"head_score_ema"`
+	MaxWeightLimitU16 uint16           `json:"max_weight_limit_u16" yaml:"max_weight_limit_u16"`
+	EmptyChannel      string           `json:"empty_channel" yaml:"empty_channel"`
+	Arithmetic        string           `json:"arithmetic" yaml:"arithmetic"`
 }
 
 type DepositTier struct {
@@ -211,6 +212,9 @@ func (p Policy) Validate() error {
 	if p.Steering.HeadScoreEMA.Numerator > p.Steering.HeadScoreEMA.Denominator {
 		return errors.New("head_score_ema exceeds one")
 	}
+	if p.Steering.MaxWeightLimitU16 == 0 {
+		return errors.New("max_weight_limit_u16 is zero")
+	}
 	q := p.Steering.QualityTransform
 	if q.Kind != "clamp_ppm" || q.MinimumPPM > q.MaximumPPM || q.MaximumPPM > 1_000_000 {
 		return errors.New("invalid quality clamp")
@@ -254,8 +258,11 @@ func (p Policy) Validate() error {
 	if b.Schema != "urnetwork-fleet-binding-v1" || !b.ChangesEffectiveNextEpoch || b.MaximumValidityEpochs == 0 || !b.CommitmentsRequired || b.ClientSignature != "ed25519" || b.HotkeySignature != "sr25519" {
 		return errors.New("unsupported binding policy")
 	}
-	if p.Safety.MinimumHealthyNOCount < 2 || p.Safety.MinimumLiveValidatorCount < 2 || p.Safety.MaximumFinalizedHeadLagBlocks < 0 || !p.Safety.StopOnRuntimeChange || !p.Safety.StopOnPolicyMismatch || !p.Safety.StopOnIndexGap {
+	if p.Safety.MinimumHealthyNOCount < 2 || p.Safety.MinimumLiveValidatorCount < 2 || p.Safety.MaximumFinalizedHeadLagBlocks <= 0 || !p.Safety.StopOnRuntimeChange || !p.Safety.StopOnPolicyMismatch || !p.Safety.StopOnIndexGap {
 		return errors.New("unsafe safety policy")
+	}
+	if uint64(p.Steering.MaxWeightLimitU16)*uint64(p.Safety.MinimumHealthyNOCount) < uint64(^uint16(0)) {
+		return errors.New("max_weight_limit_u16 is infeasible at the minimum healthy operator count")
 	}
 	return nil
 }

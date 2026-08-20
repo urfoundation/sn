@@ -32,6 +32,9 @@ policy:
     head_score_ema:
       numerator: 1
       denominator: 4
+    # Runtime 447 hardcodes the native getter to 65535. Release validators pin
+    # this feasible two-NO bootstrap cap in the signed policy instead.
+    max_weight_limit_u16: 32768
     empty_channel: cede_to_nonempty
     arithmetic: integer_rational_v1
   deposit:

@@ -57,13 +57,76 @@ type SupervisorState struct {
 	Processes     []ProcessState `json:"processes"`
 }
 
-func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets, executor *Executor, detach bool) error {
-	if err := startDependencies(ctx, cfg, stateDir); err != nil {
-		return err
-	}
-	bins, err := buildReleaseBinaries(ctx, cfg, stateDir)
+type dockerCLI struct {
+	Executable    string
+	Prefix        []string
+	ServerVersion string
+}
+
+func (self dockerCLI) commandContext(ctx context.Context, args ...string) *exec.Cmd {
+	commandArgs := append([]string(nil), self.Prefix...)
+	commandArgs = append(commandArgs, args...)
+	return exec.CommandContext(ctx, self.Executable, commandArgs...)
+}
+
+// Prove that the selected CLI can talk to a daemon, not merely that it exists.
+func dockerServerVersion(ctx context.Context, cli dockerCLI) (string, error) {
+	output, err := cli.commandContext(ctx, "version", "--format", "{{.Server.Version}}").CombinedOutput()
+	detail := strings.TrimSpace(string(output))
 	if err != nil {
-		return err
+		return detail, fmt.Errorf("docker daemon is unavailable: %w: %s", err, detail)
+	}
+	if detail == "" {
+		return "", errors.New("docker daemon returned an empty server version")
+	}
+	return detail, nil
+}
+
+// resolveDockerCLI prefers unprivileged Docker access, then accepts only a
+// passwordless sudo fallback. It never blocks on an interactive prompt.
+func resolveDockerCLI(ctx context.Context) (dockerCLI, error) {
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		return dockerCLI{}, err
+	}
+	direct := dockerCLI{Executable: docker}
+	if version, directErr := dockerServerVersion(ctx, direct); directErr == nil {
+		direct.ServerVersion = version
+		return direct, nil
+	} else if sudo, sudoErr := exec.LookPath("sudo"); sudoErr == nil {
+		privileged := dockerCLI{Executable: sudo, Prefix: []string{"-n", docker}}
+		if version, privilegedErr := dockerServerVersion(ctx, privileged); privilegedErr == nil {
+			privileged.ServerVersion = version
+			return privileged, nil
+		} else {
+			return dockerCLI{}, fmt.Errorf("direct Docker access failed (%v); passwordless sudo Docker access failed (%v)", directErr, privilegedErr)
+		}
+	} else {
+		return dockerCLI{}, fmt.Errorf("direct Docker access failed (%v); sudo is unavailable: %w", directErr, sudoErr)
+	}
+}
+
+// managedContainerSpec is the complete reproducible Docker contract for one
+// simulator-owned dependency. RunArgs precede the image and Command follows it.
+type managedContainerSpec struct {
+	Name              string
+	Image             string
+	ConfigurationHash string
+	RunArgs           []string
+	Command           []string
+	DataVolumes       []string
+	ReadyProbe        []string
+	ReadyExpected     string
+	ReadyTimeout      time.Duration
+}
+
+const managedContainerSpecHashLabel = "com.urnetwork.sim-testnet.spec-hash"
+
+// Provision API-assigned identities, finish their chain bindings, then hand
+// the checksum-locked process topology to the persistent supervisor.
+func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets, executor *Executor, bins map[string]string, detach bool) error {
+	if len(bins) == 0 {
+		return errors.New("launch requires preflighted release binaries")
 	}
 	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
 		return err
@@ -207,74 +270,227 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		cmd.Dir = t.dir
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return nil, fmt.Errorf("build %s: %w: %s", t.name, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial))
+			return nil, fmt.Errorf("build %s: %w: %s", t.name, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword))
 		}
 		result[t.name] = path
 	}
 	return result, nil
 }
 
-func startDependencies(ctx context.Context, cfg *ResolvedConfig, stateDir string) error {
-	docker, err := exec.LookPath("docker")
+// startDependencies launches one isolated server/local-compatible PostgreSQL
+// and Redis pair per operator. MinIO and Subtensor deliberately remain shared
+// external services.
+func startDependencies(ctx context.Context, cfg *ResolvedConfig) error {
+	docker, err := resolveDockerCLI(ctx)
 	if err != nil {
-		return fmt.Errorf("managed_containers requires docker: %w", err)
+		return fmt.Errorf("managed_containers requires a usable Docker daemon: %w", err)
 	}
+	specs, err := dependencyContainerSpecs(cfg)
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
+		if err := ensureContainer(ctx, docker, spec); err != nil {
+			return err
+		}
+		if err := waitContainerReady(ctx, docker, spec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dependencyContainerSpecs mirrors the operational settings in server/local
+// while assigning every operator distinct loopback ports, names, and data.
+func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, error) {
+	if cfg == nil || cfg.Release == nil {
+		return nil, errors.New("managed dependency config is incomplete")
+	}
+	postgresImage := strings.TrimSpace(cfg.Release.Dependencies["postgres"])
+	redisImage := strings.TrimSpace(cfg.Release.Dependencies["redis"])
+	if postgresImage == "" || redisImage == "" {
+		return nil, errors.New("managed dependency images are missing from the release lock")
+	}
+	initDir := filepath.Join(cfg.Repos.Server, "local", "postgres", "initdb")
+	if info, err := os.Stat(initDir); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("server/local PostgreSQL init directory is unavailable: %s", initDir)
+	}
+	localConfigHash, err := serverLocalDependencyConfigHash(cfg.Repos.Server)
+	if err != nil {
+		return nil, fmt.Errorf("hash server/local dependency configuration: %w", err)
+	}
+	specs := make([]managedContainerSpec, 0, cfg.Config.Topology.Operators*2)
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		ip := fmt.Sprintf("127.0.0.%d", 10+i)
 		pgName := fmt.Sprintf("%s-pg-%d", cfg.Config.Deployment.DeploymentID, i)
 		redisName := fmt.Sprintf("%s-redis-%d", cfg.Config.Deployment.DeploymentID, i)
 		pgSeed := derive32(cfg, fmt.Sprintf("dependency/postgres-%d", i))
 		pgPassword := hex.EncodeToString(pgSeed[:])
-		if err := ensureContainer(ctx, docker, pgName, cfg.Release.Dependencies["postgres"], []string{"-e", "POSTGRES_USER=bringyour", "-e", "POSTGRES_PASSWORD=" + pgPassword, "-e", "POSTGRES_DB=bringyour", "-p", ip + ":5432:5432"}); err != nil {
-			return err
+		pgSuperuserSeed := derive32(cfg, fmt.Sprintf("dependency/postgres-superuser-%d", i))
+		pgSuperuserPassword := hex.EncodeToString(pgSuperuserSeed[:])
+		postgresArgs := []string{
+			"--mount", "type=volume,src=" + pgName + "-data,dst=/var/lib/postgresql",
+			"--mount", "type=bind,src=" + initDir + ",dst=/docker-entrypoint-initdb.d,readonly",
+			"-e", "LANG=en_US.UTF-8",
+			"-e", "POSTGRES_INITDB_ARGS=--locale=en_US.UTF-8",
+			"-e", "POSTGRES_USER=postgres",
+			"-e", "POSTGRES_PASSWORD=" + pgSuperuserPassword,
+			"-e", "POSTGRES_DB=postgres",
+			"-e", "APP_DB_USER=bringyour",
+			"-e", "APP_DB_PASSWORD=" + pgPassword,
+			"-e", "APP_DB_NAME=bringyour",
+			"-p", ip + ":5432:5432",
 		}
-		if err := ensureContainer(ctx, docker, redisName, cfg.Release.Dependencies["redis"], []string{"-p", ip + ":6379:6379"}); err != nil {
-			return err
+		postgresCommand := []string{"postgres", "-c", "max_connections=512", "-c", "shared_buffers=256MB"}
+		specs = append(specs, managedContainerSpec{
+			Name:              pgName,
+			Image:             postgresImage,
+			ConfigurationHash: localConfigHash,
+			RunArgs:           postgresArgs,
+			Command:           postgresCommand,
+			DataVolumes:       []string{pgName + "-data"},
+			ReadyProbe: []string{
+				"env", "PGPASSWORD=" + pgPassword,
+				"psql", "-h", "127.0.0.1", "-U", "bringyour", "-d", "bringyour", "-Atqc",
+				"SELECT current_setting('max_connections') || ':' || current_setting('shared_buffers') || ':' || datcollate FROM pg_database WHERE datname=current_database()",
+			},
+			ReadyExpected: "512:256MB:en_US.UTF-8",
+			ReadyTimeout:  90 * time.Second,
+		})
+		redisArgs := []string{
+			"--ulimit", "nofile=65536:65536",
+			"--sysctl", "net.core.somaxconn=65535",
+			"--sysctl", "net.ipv4.tcp_max_syn_backlog=65535",
+			"-p", ip + ":6379:6379",
 		}
-		if err := waitContainerReady(ctx, docker, pgName, []string{"pg_isready", "-U", "bringyour", "-d", "bringyour"}, 90*time.Second); err != nil {
-			return err
-		}
-		if err := waitContainerReady(ctx, docker, redisName, []string{"redis-cli", "ping"}, 30*time.Second); err != nil {
+		redisCommand := []string{"redis-server", "--io-threads", "8", "--io-threads-do-reads", "yes", "--maxclients", "32768", "--tcp-backlog", "65535", "--save", "", "--appendonly", "no"}
+		specs = append(specs, managedContainerSpec{
+			Name:              redisName,
+			Image:             redisImage,
+			ConfigurationHash: localConfigHash,
+			RunArgs:           redisArgs,
+			Command:           redisCommand,
+			ReadyProbe:        []string{"redis-cli", "ping"},
+			ReadyExpected:     "PONG",
+			ReadyTimeout:      30 * time.Second,
+		})
+	}
+	return specs, nil
+}
+
+// managedContainerSpecHash binds the image and every creation argument. It
+// prevents an old same-image container from silently reusing stale settings.
+func managedContainerSpecHash(spec managedContainerSpec) (string, error) {
+	canonical := struct {
+		Image             string   `json:"image"`
+		ConfigurationHash string   `json:"configuration_hash"`
+		RunArgs           []string `json:"run_args"`
+		Command           []string `json:"command"`
+		DataVolumes       []string `json:"data_volumes"`
+	}{
+		Image:             spec.Image,
+		ConfigurationHash: spec.ConfigurationHash,
+		RunArgs:           spec.RunArgs,
+		Command:           spec.Command,
+		DataVolumes:       spec.DataVolumes,
+	}
+	b, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// ensureContainer creates or starts a simulator-owned container only when its
+// digest-pinned image and complete creation spec match the requested release.
+func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContainerSpec) error {
+	specHash, err := managedContainerSpecHash(spec)
+	if err != nil {
+		return fmt.Errorf("hash container %s spec: %w", spec.Name, err)
+	}
+	for _, volume := range spec.DataVolumes {
+		if err := ensureManagedVolume(ctx, docker, volume, specHash); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-func ensureContainer(ctx context.Context, docker, name, image string, args []string) error {
-	inspect := exec.CommandContext(ctx, docker, "inspect", "--format", "{{.Config.Image}}", name)
-	if out, inspectErr := inspect.Output(); inspectErr == nil {
-		if strings.TrimSpace(string(out)) != image {
-			return fmt.Errorf("container %s image is %q, release lock requires %q", name, strings.TrimSpace(string(out)), image)
+	inspect := docker.commandContext(ctx, "container", "inspect", "--format", "{{.Config.Image}}|{{index .Config.Labels \""+managedContainerSpecHashLabel+"\"}}", spec.Name)
+	if out, inspectErr := inspect.CombinedOutput(); inspectErr == nil {
+		parts := strings.SplitN(strings.TrimSpace(string(out)), "|", 2)
+		if len(parts) != 2 || parts[0] != spec.Image || parts[1] != specHash {
+			return fmt.Errorf("container %s does not match its release-locked image and creation spec; remove that simulator container before retrying", spec.Name)
 		}
-		start := exec.CommandContext(ctx, docker, "start", name)
+		start := docker.commandContext(ctx, "start", spec.Name)
 		if out, err := start.CombinedOutput(); err != nil {
-			return fmt.Errorf("start %s: %w: %s", name, err, out)
+			return fmt.Errorf("start %s: %w: %s", spec.Name, err, out)
 		}
 		return nil
+	} else if detail := strings.ToLower(string(out)); !strings.Contains(detail, "no such object") && !strings.Contains(detail, "no such container") {
+		return fmt.Errorf("inspect container %s: %w: %s", spec.Name, inspectErr, strings.TrimSpace(string(out)))
 	}
-	cmdArgs := append([]string{"run", "-d", "--name", name, "--restart", "unless-stopped"}, args...)
-	cmdArgs = append(cmdArgs, image)
-	cmd := exec.CommandContext(ctx, docker, cmdArgs...)
+	cmdArgs := []string{"run", "-d", "--name", spec.Name, "--restart", "unless-stopped", "--label", managedContainerSpecHashLabel + "=" + specHash}
+	cmdArgs = append(cmdArgs, spec.RunArgs...)
+	cmdArgs = append(cmdArgs, spec.Image)
+	cmdArgs = append(cmdArgs, spec.Command...)
+	cmd := docker.commandContext(ctx, cmdArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("run %s: %w: %s", name, err, out)
+		return fmt.Errorf("run %s: %w: %s", spec.Name, err, out)
 	}
 	return nil
 }
 
-func waitContainerReady(ctx context.Context, docker, name string, probe []string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// ensureManagedVolume prevents PostgreSQL from silently reusing data created
+// by another release, init-hook set, password derivation, or container spec.
+func ensureManagedVolume(ctx context.Context, docker dockerCLI, name, specHash string) error {
+	inspect := docker.commandContext(ctx, "volume", "inspect", "--format", "{{index .Labels \""+managedContainerSpecHashLabel+"\"}}", name)
+	out, err := inspect.CombinedOutput()
+	if err == nil {
+		if strings.TrimSpace(string(out)) != specHash {
+			return fmt.Errorf("volume %s does not match its release-locked creation spec; remove that exact simulator volume before retrying", name)
+		}
+		return nil
+	}
+	if detail := strings.ToLower(string(out)); !strings.Contains(detail, "no such volume") {
+		return fmt.Errorf("inspect volume %s: %w: %s", name, err, strings.TrimSpace(string(out)))
+	}
+	create := docker.commandContext(ctx, "volume", "create", "--label", managedContainerSpecHashLabel+"="+specHash, name)
+	if out, err := create.CombinedOutput(); err != nil {
+		return fmt.Errorf("create volume %s: %w: %s", name, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// waitContainerReady polls an in-container dependency probe until its bounded
+// startup deadline or caller cancellation.
+func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedContainerSpec) error {
+	deadline := time.Now().Add(spec.ReadyTimeout)
+	var lastOutput string
+	var lastErr error
 	for time.Now().Before(deadline) {
-		args := append([]string{"exec", name}, probe...)
-		if exec.CommandContext(ctx, docker, args...).Run() == nil {
+		args := append([]string{"exec", spec.Name}, spec.ReadyProbe...)
+		output, err := docker.commandContext(ctx, args...).CombinedOutput()
+		lastOutput = strings.TrimSpace(string(output))
+		lastErr = err
+		if err == nil && (spec.ReadyExpected == "" || lastOutput == spec.ReadyExpected) {
 			return nil
+		}
+		pause := time.Second
+		if remaining := time.Until(deadline); remaining < pause {
+			pause = remaining
+		}
+		if pause <= 0 {
+			break
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(time.Second):
+		case <-time.After(pause):
 		}
 	}
-	return fmt.Errorf("container %s readiness timeout", name)
+	if lastErr != nil {
+		return fmt.Errorf("container %s readiness timeout: %w", spec.Name, lastErr)
+	}
+	return fmt.Errorf("container %s readiness output %q, want %q", spec.Name, lastOutput, spec.ReadyExpected)
 }
 
 func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) []ProcessSpec {
@@ -325,7 +541,7 @@ func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, b
 		cmd.Env = envList(operatorBaseEnv(cfg, stateDir, i, ip))
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("operator %d database migrations: %w: %s", i, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial))
+			return fmt.Errorf("operator %d database migrations: %w: %s", i, err, redactText(string(output), cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword))
 		}
 		if err := atomicWrite(filepath.Join(stateDir, "processes", fmt.Sprintf("operator-%d-db-migrate.log", i)), output, 0o600); err != nil {
 			return err
@@ -336,7 +552,7 @@ func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, b
 func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string, roles *RoleSecrets) []ProcessSpec {
 	var out []ProcessSpec
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-		op := 1 + (i-1)%cfg.Config.Topology.Operators
+		op := operatorForMiner(cfg, i)
 		minerState := filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
 		id := fmt.Sprintf("miner-%d", i)
 		wallet := roles.Substrate[fmt.Sprintf("miner-%d-payout", i)].SS58
@@ -362,6 +578,23 @@ func minerTestEgressSourceIP(miner int) string {
 		return fmt.Sprintf("127.64.0.%d", miner)
 	}
 	return fmt.Sprintf("127.65.%d.1", miner-7)
+}
+
+// operatorForMiner keeps every head fleet within one operator so affiliation
+// masking cannot contaminate every head UID. Whole fleets and tail miners are
+// distributed round-robin, preserving the configured balanced topology.
+func operatorForMiner(cfg *ResolvedConfig, miner int) int {
+	if cfg == nil || cfg.Config == nil || cfg.Config.Topology.Operators <= 0 || miner <= 0 || miner > cfg.Config.Topology.Miners {
+		return 0
+	}
+	topology := cfg.Config.Topology
+	headMembers := topology.HeadFleets * topology.ClientsPerHeadFleet
+	if miner <= headMembers {
+		fleet := 1 + (miner-1)/topology.ClientsPerHeadFleet
+		return 1 + (fleet-1)%topology.Operators
+	}
+	tail := miner - headMembers
+	return 1 + (tail-1)%topology.Operators
 }
 
 func stripScheme(s string) string {
@@ -564,7 +797,7 @@ func provisionSimulationAccounts(ctx context.Context, cfg *ResolvedConfig, state
 			return fmt.Errorf("operator %d network response has no JWT", op)
 		}
 		for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-			if 1+(i-1)%cfg.Config.Topology.Operators == op {
+			if operatorForMiner(cfg, i) == op {
 				state := filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
 				if err := atomicWrite(filepath.Join(state, "jwt"), []byte(result.Network.ByJWT+"\n"), 0o600); err != nil {
 					return err

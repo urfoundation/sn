@@ -32,6 +32,34 @@ func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	}
 }
 
+func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
+	serverRoot := t.TempDir()
+	initDir := filepath.Join(serverRoot, "local", "postgres", "initdb")
+	if err := os.MkdirAll(initDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(serverRoot, "local", "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(initDir, "01-init.sh"), []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := serverLocalDependencyConfigHash(serverRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(initDir, "02-unreviewed.sh"), []byte("second\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := serverLocalDependencyConfigHash(serverRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("new PostgreSQL init hook did not change the release-lock digest")
+	}
+}
+
 func TestFoundryStorageLayoutHashIsCanonicalAndComplete(t *testing.T) {
 	dir := t.TempDir()
 	first := `{"storageLayout":{"types":{"t_struct(Config)12_storage":{"label":"struct C.Config","members":[{"astId":13,"contract":"C","label":"value","slot":"0","offset":0,"type":"t_uint"}]},"t_uint":{"label":"uint256"}},"storage":[{"astId":12,"contract":"C","slot":"0","offset":0,"type":"t_struct(Config)12_storage","label":"owner"}]}}`

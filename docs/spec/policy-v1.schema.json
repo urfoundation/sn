@@ -55,9 +55,10 @@
     },
     "steering": {
       "type": "object", "additionalProperties": false,
-      "required": ["theta", "quality_transform", "head_score_ema", "empty_channel", "arithmetic"],
+      "required": ["theta", "quality_transform", "head_score_ema", "max_weight_limit_u16", "empty_channel", "arithmetic"],
       "properties": {
         "theta": {"$ref": "#/$defs/rational"}, "head_score_ema": {"$ref": "#/$defs/rational"},
+        "max_weight_limit_u16": {"type": "integer", "minimum": 1, "maximum": 65535},
         "quality_transform": {"type": "object", "additionalProperties": false, "required": ["kind", "minimum_ppm", "maximum_ppm"], "properties": {"kind": {"const": "clamp_ppm"}, "minimum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}, "maximum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}}},
         "empty_channel": {"const": "cede_to_nonempty"}, "arithmetic": {"const": "integer_rational_v1"}
       }
@@ -86,7 +87,7 @@
     "safety": {
       "type": "object", "additionalProperties": false,
       "required": ["minimum_healthy_no_count", "minimum_live_validator_count", "maximum_finalized_head_lag_blocks", "stop_on_runtime_change", "stop_on_policy_mismatch", "stop_on_index_gap"],
-      "properties": {"minimum_healthy_no_count": {"type": "integer", "minimum": 2}, "minimum_live_validator_count": {"type": "integer", "minimum": 2}, "maximum_finalized_head_lag_blocks": {"$ref": "#/$defs/u64"}, "stop_on_runtime_change": {"const": true}, "stop_on_policy_mismatch": {"const": true}, "stop_on_index_gap": {"const": true}}
+      "properties": {"minimum_healthy_no_count": {"type": "integer", "minimum": 2}, "minimum_live_validator_count": {"type": "integer", "minimum": 2}, "maximum_finalized_head_lag_blocks": {"$ref": "#/$defs/positive"}, "stop_on_runtime_change": {"const": true}, "stop_on_policy_mismatch": {"const": true}, "stop_on_index_gap": {"const": true}}
     }
   }
 }

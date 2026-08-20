@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"gopkg.in/yaml.v3"
 
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
 	"github.com/urfoundation/sn/stabi"
 )
@@ -154,6 +155,87 @@ func (e *Executor) Close() {
 	}
 }
 
+// Identify commands which operate the live server topology.
+func requiresManagedDependencies(command string) bool {
+	switch command {
+	case "launch", "resume", "scenario":
+		return true
+	default:
+		return false
+	}
+}
+
+// Identify commands which can create or replace supervised processes.
+func requiresReleaseBinaries(command string) bool {
+	return command == "launch" || command == "resume"
+}
+
+// Subtract each exact terminal action once while retaining future campaign and
+// retirement reserves which are not setup transactions themselves.
+func remainingPlanSpend(plan *SetupPlan, entries []JournalEntry) (Spend, error) {
+	if plan == nil {
+		return Spend{}, errors.New("approved plan is unavailable")
+	}
+	remaining := plan.MaximumSpend
+	verified := map[string]bool{}
+	for _, entry := range entries {
+		if entry.PlanHash == plan.PlanHash && entry.Stage == StageVerified {
+			verified[entry.ActionID+"\x00"+entry.IntentHash] = true
+		}
+	}
+	for _, action := range plan.Actions {
+		if !verified[action.ID+"\x00"+action.IntentHash] || action.Kind == "budget-reserve" {
+			continue
+		}
+		if action.Spend.TAORao > remaining.TAORao || action.Spend.AlphaRao > remaining.AlphaRao || action.Spend.EVMGasWei > remaining.EVMGasWei || action.Spend.Registrations > remaining.Registrations || action.Spend.SubnetCreations > remaining.SubnetCreations {
+			return Spend{}, fmt.Errorf("verified action %s spend exceeds the approved remaining budget", action.ID)
+		}
+		remaining.TAORao -= action.Spend.TAORao
+		remaining.AlphaRao -= action.Spend.AlphaRao
+		remaining.EVMGasWei -= action.Spend.EVMGasWei
+		remaining.Registrations -= action.Spend.Registrations
+		remaining.SubnetCreations -= action.Spend.SubnetCreations
+	}
+	return remaining, nil
+}
+
+// Extract the exact reviewed ceiling from both the plan and action. Every
+// registration intent carries it so a runtime price move cannot widen an old
+// approval.
+func registrationBurnLimit(plan *SetupPlan, action Action) (uint64, error) {
+	if plan == nil || plan.RegistrationBurnLimitRao == 0 || action.Spend.Registrations == 0 {
+		return 0, errors.New("registration action has no approved burn limit")
+	}
+	limit, err := strconv.ParseUint(action.Parameters["maximum_burn_rao"], 10, 64)
+	if err != nil || limit != plan.RegistrationBurnLimitRao {
+		return 0, fmt.Errorf("registration action %s burn limit does not match its approved plan", action.ID)
+	}
+	return limit, nil
+}
+
+// Read the current auction price and enforce the reviewed limit immediately
+// before constructing a native or EVM registration transaction.
+func (e *Executor) boundedRegistrationBurn(action Action) (uint64, uint64, error) {
+	limit, err := registrationBurnLimit(e.plan, action)
+	if err != nil {
+		return 0, 0, err
+	}
+	burn, err := e.readBurn()
+	if err != nil {
+		return 0, 0, err
+	}
+	if burn > limit {
+		return 0, limit, fmt.Errorf("live registration burn %d exceeds approved limit %d", burn, limit)
+	}
+	return burn, limit, nil
+}
+
+// Contract registration receives the full approved ceiling. Runtime 447 burns
+// the current rao price and the release contracts return any surplus.
+func registrationFundingWei(limitRao uint64) *big.Int {
+	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
+}
+
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
 	if cmd == "retire" {
 		return runRetirement(ctx, cfg, stateDir, o)
@@ -179,12 +261,39 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		return err
 	}
 	defer j.Close()
+	remaining, err := remainingPlanSpend(p, j.Entries())
+	if err != nil {
+		return err
+	}
+	// Approval is necessary but not sufficient: every apply re-runs all live
+	// safety checks against the exact unverified spend so a persisted plan
+	// cannot bypass changed RPCs, services, facts, repository locks, or host
+	// readiness, while an honest partial deployment remains resumable.
+	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining})
+	if err := doctor.Error(); err != nil {
+		return fmt.Errorf("doctor must pass immediately before apply: %w", err)
+	}
 	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
 	if err != nil {
 		return err
 	}
 	if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
 		return err
+	}
+	// Finish all reversible host preflight before opening a transaction-capable
+	// executor. In particular, a missing Docker daemon or a broken build must
+	// never be discovered after contracts or registrations have been written.
+	if requiresManagedDependencies(cmd) {
+		if err := startDependencies(ctx, cfg); err != nil {
+			return err
+		}
+	}
+	var bins map[string]string
+	if requiresReleaseBinaries(cmd) {
+		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
+		if err != nil {
+			return err
+		}
 	}
 	ex, err := NewExecutor(ctx, cfg, stateDir, p, j, roles)
 	if err != nil {
@@ -208,7 +317,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	if cmd == "launch" || cmd == "resume" {
-		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, o.Detach); err != nil {
+		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
 			return err
 		}
 		if cmd == "launch" {
@@ -236,7 +345,18 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	if err := json.Unmarshal(b, &p); err != nil {
 		return nil, fmt.Errorf("persisted setup plan: %w", err)
 	}
-	if p.Schema != "urnetwork-sim-plan-v1" || p.Release != "1.0" || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash {
+	if cfg.Release == nil {
+		return nil, fmt.Errorf("current release lock is unavailable")
+	}
+	releaseLockHash, err := canonicalHashHex(cfg.Release)
+	if err != nil {
+		return nil, fmt.Errorf("hash current release lock: %w", err)
+	}
+	resolvedHash, err := resolvedInputsHash(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("hash current resolved launch inputs: %w", err)
+	}
+	if p.Schema != "urnetwork-sim-plan-v1" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash {
 		return nil, fmt.Errorf("persisted setup plan does not match the current release/configuration")
 	}
 	want := p.PlanHash
@@ -267,7 +387,7 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "authority": redactURL(cfg.Authority), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash}
+	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "authority": redactURL(cfg.Authority), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash, "resolved_inputs_hash": p.ResolvedInputsHash, "release_lock_hash": p.ReleaseLockHash}
 	y, err := yaml.Marshal(redacted)
 	if err != nil {
 		return err
@@ -297,12 +417,12 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 	}
 	err := e.execute(ctx, a)
 	if err != nil {
-		_ = e.journal.Append(JournalEntry{DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFailed, Error: redactText(err.Error(), e.cfg.WalletSecret, e.cfg.WalletMaterial)})
+		_ = e.journal.Append(JournalEntry{DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFailed, Error: redactText(err.Error(), e.cfg.WalletSecret, e.cfg.WalletMaterial, e.cfg.WalletPasswordSecret, e.cfg.WalletPassword)})
 		return fmt.Errorf("action %s: %w", a.ID, err)
 	}
 	post, err := e.verifyActionPostcondition(ctx, a)
 	if err != nil {
-		_ = e.journal.Append(JournalEntry{DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFailed, Error: redactText(err.Error(), e.cfg.WalletSecret, e.cfg.WalletMaterial)})
+		_ = e.journal.Append(JournalEntry{DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFailed, Error: redactText(err.Error(), e.cfg.WalletSecret, e.cfg.WalletMaterial, e.cfg.WalletPasswordSecret, e.cfg.WalletPassword)})
 		return fmt.Errorf("action %s postcondition: %w", a.ID, err)
 	}
 	path, hash, err := e.persistActionPostcondition(post)
@@ -751,17 +871,14 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		addr = p.Manifest.CoordinatorImplementation
 		data = p.Implementation
 	case "evm.vault-register-escrow":
-		liveBurn, err := e.readBurn()
+		_, limit, err := e.boundedRegistrationBurn(a)
 		if err != nil {
 			return err
-		}
-		if liveBurn != e.plan.LiveFacts.BurnRao {
-			return fmt.Errorf("registration burn changed from approved %d to %d; regenerate and approve the plan", e.plan.LiveFacts.BurnRao, liveBurn)
 		}
 		addr = p.Manifest.SettlementVault
 		to = &addr
 		data = p.RegisterEscrow
-		value = new(big.Int).Mul(new(big.Int).SetUint64(liveBurn), big.NewInt(1_000_000_000))
+		value = registrationFundingWei(limit)
 	case "evm.coordinator-proxy":
 		addr = p.Manifest.CoordinatorProxy
 		data = p.Proxy
@@ -859,18 +976,15 @@ func (e *Executor) registerOperator(ctx context.Context, a Action) error {
 	}
 	depositSigner, _ := e.roles.EVMAddress(fmt.Sprintf("operator-%d-deposit", n))
 	rootSigner, _ := e.roles.EVMAddress(fmt.Sprintf("operator-%d-root", n))
-	data, err := coordABI.Pack("registerOperator", big.NewInt(int64(n)), cold, pool, deposit, depositSigner, rootSigner, epoch)
+	_, limit, err := e.boundedRegistrationBurn(a)
 	if err != nil {
 		return err
 	}
-	burn, err := e.readBurn()
+	data, err := coordABI.Pack("registerOperator", big.NewInt(int64(n)), cold, pool, deposit, depositSigner, rootSigner, epoch, limit)
 	if err != nil {
 		return err
 	}
-	if burn != e.plan.LiveFacts.BurnRao {
-		return fmt.Errorf("registration burn changed from approved %d to %d; regenerate and approve the plan", e.plan.LiveFacts.BurnRao, burn)
-	}
-	value := new(big.Int).Mul(new(big.Int).SetUint64(burn), big.NewInt(1_000_000_000))
+	value := registrationFundingWei(limit)
 	addr := e.payloads.Manifest.CoordinatorProxy
 	_, err = e.owner.Send(ctx, e.plan.PlanHash, a, &addr, value, data)
 	return err
@@ -1058,7 +1172,7 @@ func (e *Executor) readBurn() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, err = e.substrate.chain.API.RPC.State.GetStorage(key, &v, finalized)
+	err = readRequiredStorageAt(e.substrate.chain, key, crv4.PalletName, "Burn", &v, finalized)
 	return uint64(v), err
 }
 func contractCall(ctx context.Context, c *ethclient.Client, address common.Address, a abi.ABI, method string, args ...any) ([]any, error) {
@@ -1106,9 +1220,16 @@ func (e *Executor) fundSubstrateRole(ctx context.Context, a Action, label string
 	return nil
 }
 
-const neuronSetupABI = `[{"type":"function","name":"burnedRegister","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"getUid","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}],"stateMutability":"view"}]`
+const neuronSetupABI = `[{"type":"function","name":"registerLimit","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"},{"name":"limitPrice","type":"uint64"}],"outputs":[],"stateMutability":"payable"},{"type":"function","name":"getUid","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}],"stateMutability":"view"}]`
 
 var neuronPrecompileAddress = common.HexToAddress("0x0000000000000000000000000000000000000804")
+
+// Subtensor's neuron precompile burns from the caller's funded SS58 mirror;
+// native value sent to the precompile is not the burn payment.
+func buildNeuronRegistrationTransaction(parsed abi.ABI, netuid uint16, hotkey [32]byte, limit uint64) ([]byte, *big.Int, error) {
+	data, err := parsed.Pack("registerLimit", netuid, hotkey, limit)
+	return data, new(big.Int), err
+}
 
 func (e *Executor) registerDepositHotkey(ctx context.Context, a Action, operator int) error {
 	manager := e.deposits[operator]
@@ -1119,6 +1240,11 @@ func (e *Executor) registerDepositHotkey(ctx context.Context, a Action, operator
 	if err != nil {
 		return err
 	}
+	depositSigner, err := e.roles.EVMAddress(fmt.Sprintf("operator-%d-deposit", operator))
+	if err != nil {
+		return err
+	}
+	expectedColdkey := ss58Mirror(depositSigner)
 	parsed, err := abi.JSON(strings.NewReader(neuronSetupABI))
 	if err != nil {
 		return err
@@ -1142,20 +1268,23 @@ func (e *Executor) registerDepositHotkey(ctx context.Context, a Action, operator
 		return exists, uid, nil
 	}
 	if exists, _, readErr := readUID(); readErr == nil && exists {
-		return nil
+		owner, ownerErr := e.substrate.HotkeyOwner(hotkey)
+		if ownerErr != nil {
+			return ownerErr
+		}
+		return validateHotkeyOwner("operator deposit hotkey", owner, expectedColdkey)
 	}
-	liveBurn, err := e.readBurn()
+	_, limit, err := e.boundedRegistrationBurn(a)
 	if err != nil {
 		return err
 	}
-	if liveBurn != e.plan.LiveFacts.BurnRao {
-		return fmt.Errorf("registration burn changed from approved %d to %d; regenerate and approve the plan", e.plan.LiveFacts.BurnRao, liveBurn)
-	}
-	data, err := parsed.Pack("burnedRegister", e.cfg.Netuid, hotkey)
+	data, value, err := buildNeuronRegistrationTransaction(parsed, e.cfg.Netuid, hotkey, limit)
 	if err != nil {
 		return err
 	}
-	value := new(big.Int).Mul(new(big.Int).SetUint64(liveBurn), big.NewInt(1_000_000_000))
+	// The runtime deducts the burn from the EVM caller's SS58 mirror. The role
+	// was funded up to the approved ceiling; msg.value must remain zero or it
+	// would be transferred to the precompile before the runtime dispatch.
 	if _, err := manager.Send(ctx, e.plan.PlanHash, a, &neuronPrecompileAddress, value, data); err != nil {
 		return err
 	}
@@ -1166,7 +1295,11 @@ func (e *Executor) registerDepositHotkey(ctx context.Context, a Action, operator
 	if !exists {
 		return fmt.Errorf("deposit hotkey was not registered after finalized transaction")
 	}
-	return nil
+	owner, err := e.substrate.HotkeyOwner(hotkey)
+	if err != nil {
+		return err
+	}
+	return validateHotkeyOwner("operator deposit hotkey", owner, expectedColdkey)
 }
 
 func (e *Executor) readStakeFinalized(ctx context.Context, hotkey, coldkey [32]byte) (uint64, error) {
@@ -1261,14 +1394,26 @@ func (e *Executor) registerNative(ctx context.Context, a Action, coldLabel, hotL
 	if err != nil {
 		return err
 	}
+	expectedColdkey, err := roleBytes32(e.roles, coldLabel)
+	if err != nil {
+		return err
+	}
 	if _, ok, err := e.substrate.UID(hot); err == nil && ok {
-		return nil
+		owner, ownerErr := e.substrate.HotkeyOwner(hot)
+		if ownerErr != nil {
+			return ownerErr
+		}
+		return validateHotkeyOwner(hotLabel, owner, expectedColdkey)
 	}
 	signer, err := e.substrate.RoleSigner(e.roles, coldLabel)
 	if err != nil {
 		return err
 	}
-	call, err := e.substrate.BurnRegisterCall(hot)
+	_, limit, err := e.boundedRegistrationBurn(a)
+	if err != nil {
+		return err
+	}
+	call, err := e.substrate.BurnRegisterLimitCall(hot, limit)
 	if err != nil {
 		return err
 	}
@@ -1283,7 +1428,11 @@ func (e *Executor) registerNative(ctx context.Context, a Action, coldLabel, hotL
 	if !ok {
 		return fmt.Errorf("hotkey not registered after finalized extrinsic")
 	}
-	return nil
+	owner, err := e.substrate.HotkeyOwner(hot)
+	if err != nil {
+		return err
+	}
+	return validateHotkeyOwner(hotLabel, owner, expectedColdkey)
 }
 
 func (e *Executor) setReserveTakeZero(ctx context.Context, a Action) error {
@@ -1317,23 +1466,6 @@ func (e *Executor) setReserveTakeZero(ctx context.Context, a Action) error {
 		return fmt.Errorf("reserve validator delegate take is %d, require zero", post)
 	}
 	return nil
-}
-
-func (e *Executor) stakeNative(ctx context.Context, a Action, coldLabel, hotLabel string) error {
-	hot, err := roleBytes32(e.roles, hotLabel)
-	if err != nil {
-		return err
-	}
-	signer, err := e.substrate.RoleSigner(e.roles, coldLabel)
-	if err != nil {
-		return err
-	}
-	call, err := e.substrate.AddStakeCall(hot, a.Spend.AlphaRao)
-	if err != nil {
-		return err
-	}
-	_, _, err = e.substrate.SendAs(ctx, e.plan.PlanHash, a, call, signer)
-	return err
 }
 
 func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) error {
@@ -1523,7 +1655,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
 		v := cloneMap(base)
 		v["miner_id"] = i
-		v["operator_no_id"] = 1 + (i-1)%cfg.Config.Topology.Operators
+		v["operator_no_id"] = operatorForMiner(cfg, i)
 		v["state_dir"] = filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
 		v["client_id"] = "0x" + roles.Clients[fmt.Sprintf("miner-%d", i)].ClientIDHex
 		v["client_key_seed_ref"] = "runtime-secret://roles.json#clients/miner"

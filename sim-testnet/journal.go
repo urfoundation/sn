@@ -165,8 +165,14 @@ func (j *Journal) validateEntry(e JournalEntry) error {
 		return fmt.Errorf("unknown journal stage %q", e.Stage)
 	}
 	for _, prior := range j.entries {
+		if prior.PlanHash == e.PlanHash && prior.ActionID == e.ActionID && prior.IntentHash != e.IntentHash {
+			return errors.New("one planned action cannot use multiple intent hashes")
+		}
 		if prior.ActionID == e.ActionID && prior.IntentHash == e.IntentHash && prior.PlanHash != e.PlanHash {
 			return errors.New("one action intent cannot cross plan hashes")
+		}
+		if prior.PlanHash == e.PlanHash && prior.ActionID == e.ActionID && prior.IntentHash == e.IntentHash && prior.Stage == StageVerified {
+			return errors.New("postcondition verification is terminal for one action intent")
 		}
 		if prior.ActionID == e.ActionID && prior.IntentHash == e.IntentHash && prior.TransactionHash != "" && e.TransactionHash != "" && prior.TransactionHash != e.TransactionHash {
 			return errors.New("one action intent cannot use multiple transactions")

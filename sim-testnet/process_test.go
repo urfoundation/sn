@@ -158,3 +158,189 @@ func TestClientSpecsGiveExactAddressesOneSharedHeadPrefix(t *testing.T) {
 		t.Fatalf("miner/source count = %d/%d, want %d", miners, len(sources), cfg.Config.Topology.Miners)
 	}
 }
+
+func TestBalancedOperatorAssignmentKeepsHeadFleetsIsolated(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	want := []int{1, 1, 1, 2, 2, 2, 1, 2}
+	for miner, operator := range want {
+		if got := operatorForMiner(cfg, miner+1); got != operator {
+			t.Fatalf("miner %d operator = %d, want %d", miner+1, got, operator)
+		}
+	}
+	if operatorForMiner(cfg, 0) != 0 || operatorForMiner(cfg, cfg.Config.Topology.Miners+1) != 0 {
+		t.Fatal("invalid miner index was assigned to a live operator")
+	}
+}
+
+func TestManagedDependencySpecsMirrorServerLocalAndIsolateOperators(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Release = &ReleaseLock{Dependencies: map[string]string{
+		"postgres": "postgres:18@sha256:" + strings.Repeat("1", 64),
+		"redis":    "redis:8-alpine@sha256:" + strings.Repeat("2", 64),
+	}}
+	specs, err := dependencyContainerSpecs(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 4 {
+		t.Fatalf("dependency spec count = %d, want 4", len(specs))
+	}
+	postgresOne := specs[0]
+	redisOne := specs[1]
+	postgresTwo := specs[2]
+	redisTwo := specs[3]
+	if postgresOne.Name != "unit-test-deployment-pg-1" || postgresTwo.Name != "unit-test-deployment-pg-2" || redisOne.Name != "unit-test-deployment-redis-1" || redisTwo.Name != "unit-test-deployment-redis-2" {
+		t.Fatalf("dependency names are not isolated: %+v", []string{postgresOne.Name, redisOne.Name, postgresTwo.Name, redisTwo.Name})
+	}
+	postgresArgs := strings.Join(postgresOne.RunArgs, " ")
+	if !strings.Contains(postgresArgs, "127.0.0.11:5432:5432") || !strings.Contains(strings.Join(postgresTwo.RunArgs, " "), "127.0.0.12:5432:5432") {
+		t.Fatalf("PostgreSQL operator bindings are not isolated: %q / %q", postgresArgs, strings.Join(postgresTwo.RunArgs, " "))
+	}
+	if !strings.Contains(postgresArgs, "/server/local/postgres/initdb") || !strings.Contains(postgresArgs, "POSTGRES_INITDB_ARGS=--locale=en_US.UTF-8") || !strings.Contains(postgresArgs, "APP_DB_USER=bringyour") || !strings.Contains(postgresArgs, "APP_DB_NAME=bringyour") {
+		t.Fatalf("PostgreSQL spec drifted from server/local: %q", postgresArgs)
+	}
+	if strings.Join(postgresOne.Command, " ") != "postgres -c max_connections=512 -c shared_buffers=256MB" {
+		t.Fatalf("PostgreSQL server settings drifted: %q", postgresOne.Command)
+	}
+	if len(postgresOne.DataVolumes) != 1 || postgresOne.DataVolumes[0] != "unit-test-deployment-pg-1-data" || postgresOne.ReadyExpected != "512:256MB:en_US.UTF-8" {
+		t.Fatalf("PostgreSQL durable/readiness contract drifted: volumes=%v expected=%q", postgresOne.DataVolumes, postgresOne.ReadyExpected)
+	}
+	postgresProbe := strings.Join(postgresOne.ReadyProbe, " ")
+	if !strings.Contains(postgresProbe, "PGPASSWORD=") || !strings.Contains(postgresProbe, "psql -h 127.0.0.1 -U bringyour -d bringyour") || !strings.Contains(postgresProbe, "max_connections") {
+		t.Fatalf("PostgreSQL readiness is not an authenticated settings query: %q", postgresProbe)
+	}
+	redisArgs := strings.Join(redisOne.RunArgs, " ")
+	redisCommand := strings.Join(redisOne.Command, " ")
+	if !strings.Contains(redisArgs, "127.0.0.11:6379:6379") || !strings.Contains(strings.Join(redisTwo.RunArgs, " "), "127.0.0.12:6379:6379") || !strings.Contains(redisArgs, "nofile=65536:65536") {
+		t.Fatalf("Redis operator bindings/settings are not isolated: %q / %q", redisArgs, strings.Join(redisTwo.RunArgs, " "))
+	}
+	for _, required := range []string{"--io-threads 8", "--maxclients 32768", "--tcp-backlog 65535", "--save  --appendonly no"} {
+		if !strings.Contains(redisCommand, required) {
+			t.Fatalf("Redis command %q lacks server/local setting %q", redisCommand, required)
+		}
+	}
+	if redisOne.ReadyExpected != "PONG" || len(redisOne.DataVolumes) != 0 {
+		t.Fatalf("Redis readiness/durability contract drifted: expected=%q volumes=%v", redisOne.ReadyExpected, redisOne.DataVolumes)
+	}
+}
+
+func TestMutationPreflightRunsBeforeWriteCapableExecution(t *testing.T) {
+	for command, want := range map[string]struct {
+		dependencies bool
+		binaries     bool
+	}{
+		"setup":    {},
+		"launch":   {dependencies: true, binaries: true},
+		"resume":   {dependencies: true, binaries: true},
+		"scenario": {dependencies: true},
+	} {
+		if got := requiresManagedDependencies(command); got != want.dependencies {
+			t.Fatalf("%s managed-dependency preflight = %t, want %t", command, got, want.dependencies)
+		}
+		if got := requiresReleaseBinaries(command); got != want.binaries {
+			t.Fatalf("%s binary preflight = %t, want %t", command, got, want.binaries)
+		}
+	}
+}
+
+func TestManagedContainerSpecHashCoversCreationSettings(t *testing.T) {
+	spec := managedContainerSpec{
+		Name:              "one",
+		Image:             "image@sha256:" + strings.Repeat("a", 64),
+		ConfigurationHash: "sha256:" + strings.Repeat("b", 64),
+		RunArgs:           []string{"-p", "127.0.0.11:5432:5432"},
+		Command:           []string{"server", "--limit", "1"},
+		DataVolumes:       []string{"one-data"},
+		ReadyProbe:        []string{"ready"},
+		ReadyExpected:     "ready",
+		ReadyTimeout:      time.Second,
+	}
+	first, err := managedContainerSpecHash(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := managedContainerSpecHash(spec)
+	if err != nil || first != second {
+		t.Fatalf("container spec hash is not deterministic: %q %q %v", first, second, err)
+	}
+	changed := spec
+	changed.Command = append([]string(nil), spec.Command...)
+	changed.Command[len(changed.Command)-1] = "2"
+	third, err := managedContainerSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Fatal("container creation command drift did not change the spec hash")
+	}
+	changed = spec
+	changed.DataVolumes = []string{"stale-data"}
+	third, err = managedContainerSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Fatal("container data-volume drift did not change the spec hash")
+	}
+	changed = spec
+	changed.ConfigurationHash = "sha256:" + strings.Repeat("c", 64)
+	third, err = managedContainerSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Fatal("server/local configuration drift did not change the spec hash")
+	}
+}
+
+func TestManagedContainerReadinessRequiresExactSemanticOutput(t *testing.T) {
+	docker := filepath.Join(t.TempDir(), "docker")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\nprintf 'PONG\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec := managedContainerSpec{Name: "redis", ReadyProbe: []string{"redis-cli", "ping"}, ReadyExpected: "PONG", ReadyTimeout: time.Second}
+	cli := dockerCLI{Executable: docker}
+	if err := waitContainerReady(context.Background(), cli, spec); err != nil {
+		t.Fatal(err)
+	}
+	spec.ReadyExpected = "AUTHENTICATED"
+	spec.ReadyTimeout = 20 * time.Millisecond
+	if err := waitContainerReady(context.Background(), cli, spec); err == nil || !strings.Contains(err.Error(), "want \"AUTHENTICATED\"") {
+		t.Fatalf("incorrect readiness output was accepted: %v", err)
+	}
+}
+
+func TestDockerResolutionUsesOnlyPasswordlessSudoFallback(t *testing.T) {
+	bin := t.TempDir()
+	docker := filepath.Join(bin, "docker")
+	sudo := filepath.Join(bin, "sudo")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sudo, []byte("#!/bin/sh\nprintf '29.7.2\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	cli, err := resolveDockerCLI(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cli.Executable != sudo || len(cli.Prefix) != 2 || cli.Prefix[0] != "-n" || cli.Prefix[1] != docker || cli.ServerVersion != "29.7.2" {
+		t.Fatalf("Docker sudo fallback = %+v", cli)
+	}
+}
+
+func TestLiveManagedDependenciesMirrorServerLocal(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_DEPENDENCIES") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_DEPENDENCIES=1 to create/check the digest-pinned local PG/Redis pairs")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := startDependencies(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+}

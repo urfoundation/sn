@@ -44,6 +44,15 @@ func TestBuildWeightVectorExactChannelsCedeAndMask(t *testing.T) {
 	}
 }
 
+func TestReleaseSubmitOptionsPinsSignedPolicyWeightCap(t *testing.T) {
+	cfg := validReleaseConfig(t)
+	cfg.VersionKey = 7
+	options := releaseSubmitOptions(&cfg)
+	if options.VersionKey != 7 || options.MaxWeightLimit == nil || *options.MaxWeightLimit != cfg.Policy.Steering.MaxWeightLimitU16 {
+		t.Fatalf("release submit options did not pin policy cap: %+v", options)
+	}
+}
+
 func TestExactPoolWeightQualityInvertsEqualDeposits(t *testing.T) {
 	p := exactPolicy(t)
 	deposit := big.NewInt(10_000_000)
