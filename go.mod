@@ -94,3 +94,8 @@ replace github.com/urnetwork/sdk => ../sdk
 replace github.com/urnetwork/glog => ../glog
 
 replace github.com/urnetwork/goidenticons => ../goidenticons
+
+// The substrate RPC client still imports the archived npipe module, whose
+// generated Windows syscalls only support 386 and amd64. Keep its narrow API
+// behind an arm64-capable go-winio adapter until the upstream import is fixed.
+replace gopkg.in/natefinch/npipe.v2 => ./third_party/npipe

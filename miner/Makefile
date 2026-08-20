@@ -1,5 +1,5 @@
 
-.PHONY: all clean build init warp_build warp_build_image
+.PHONY: all clean build init test test_windows_arm64 warp_build warp_build_image
 
 all: init clean build
 
@@ -20,6 +20,14 @@ build:
 	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/arm64/miner.exe ../cli/miner
 	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-w -s -X main.Version=${WARP_VERSION}" -o build/windows/amd64/miner.exe ../cli/miner
 	COPYFILE_DISABLE=1 tar -czf build/miner.tar.gz -C build linux darwin windows
+
+test: test_windows_arm64
+	go test ./...
+
+# This cross-compilation is intentional: the substrate RPC client's archived
+# npipe dependency compiled on windows/amd64 but failed on windows/arm64.
+test_windows_arm64:
+	env GOEXPERIMENT=greenteagc CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -o /dev/null ../cli/miner
 
 warp_build:
 	@echo "warp_build must be run through warpctl build so govulncheck gates image publication." >&2
