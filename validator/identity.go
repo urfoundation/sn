@@ -112,10 +112,10 @@ func loadOrCreateVpkSeed(stateDir string) ([]byte, bool, error) {
 	if _, err := rand.Read(seed); err != nil {
 		return nil, false, err
 	}
-	if err := os.MkdirAll(stateDir, 0700); err != nil {
+	if err := ensurePrivateStateDir(stateDir); err != nil {
 		return nil, false, err
 	}
-	if err := os.WriteFile(p, seed, 0600); err != nil {
+	if err := atomicStateWrite(p, seed, 0o600); err != nil {
 		return nil, false, err
 	}
 	return seed, true, nil

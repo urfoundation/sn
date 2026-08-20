@@ -1,0 +1,28 @@
+schema_version: 1
+profile: release-1.0
+chain:
+  name: bittensor-testnet
+  chain_id: 945
+  genesis_hash: "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
+  ss58_format: 42
+  token_symbol: testTAO
+  token_decimals: 9
+  expected_runtime_spec: 447
+  expected_transaction_version: 1
+  expected_state_version: 1
+  expected_block_seconds: 12
+  substrate_public_read_endpoint: "wss://test.finney.opentensor.ai:443"
+  evm_public_read_endpoint: "https://test.chain.opentensor.ai"
+  private_authority_from: "vault://main/st.yml#testnet-authority"
+  finality_method: chain_getFinalizedHead
+  public_fallback_allows_event_indexing: false
+subnet:
+  mode: existing
+  netuid_from: "vault://main/st.yml#testnet-netuid"
+governance:
+  testnet: single-owner
+  mainnet: safe-2-of-3
+artifacts:
+  store: server-blob
+  history: server-api
+  content_addressed: true

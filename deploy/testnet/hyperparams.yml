@@ -1,0 +1,75 @@
+schema_version: 1
+profile: release-1.0
+netuid_from: "vault://main/st.yml#testnet-netuid"
+owner_controlled:
+  tempo: 360
+  max_allowed_uids: 256
+  mechanism_count: 1
+  commit_reveal_weights_enabled: true
+  commit_reveal_period: 1
+  liquid_alpha_enabled: true
+  immunity_period: 7200
+  min_allowed_weights: 1
+  weights_version_key: 1
+  serving_rate_limit: 50
+  transfer_enabled: true
+production_owner_controlled:
+  # Applied with the production-cadence policy transition, after M2.
+  immunity_period: 50400
+observed_compatibility_gates:
+  max_weight_limit:
+    storage: MaxWeightsLimit
+    scope: netuid
+    kind: u16
+    rule: exact
+    expected: [3277]
+    decision: release weights require an approximately five-percent per-UID cap
+  max_allowed_validators:
+    storage: MaxAllowedValidators
+    scope: netuid
+    kind: u16
+    rule: exact
+    expected: [128]
+    decision: runtime-v447 root-controlled capacity is accepted while live validator admission is stake-limited
+  registration_burn:
+    storage: Burn
+    scope: netuid
+    kind: u64
+    rule: nonzero
+    decision: all release registrations use the live finalized burn and the approved spend plan
+  bonds_penalty:
+    storage: BondsPenalty
+    scope: netuid
+    kind: u16
+    rule: exact
+    expected: [65535]
+    decision: release-1.0 is validated against the pinned v447 full bonds-penalty setting
+  alpha_values:
+    storage: AlphaValues
+    scope: netuid
+    kind: u16_pair
+    rule: exact
+    expected: [45875, 58982]
+    decision: release-1.0 uses the pinned v447 liquid-alpha range of 0.7 through 0.9
+  min_delegate_take:
+    storage: MinDelegateTake
+    scope: global
+    kind: u16
+    rule: exact
+    expected: [0]
+    decision: the reserve validator must be able to compound delegated reserve stake at zero take
+  subnet_owner_cut:
+    storage: SubnetOwnerCut
+    scope: global
+    kind: u16
+    rule: exact
+    expected: [11796]
+    decision: release economics require the pinned v447 eighteen-percent owner cut
+  tao_weight:
+    storage: TaoWeight
+    scope: global
+    kind: u64
+    rule: exact
+    expected: [971718665099567868]
+    decision: release economics are pinned to the v447 root-stake TAO weight
+receipts: {}

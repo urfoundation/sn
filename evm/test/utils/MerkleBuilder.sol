@@ -42,11 +42,7 @@ library MerkleBuilder {
 
     /// @dev Merkle proof for leaves[index] (siblings bottom-up; promoted
     ///      levels contribute no element).
-    function proof(bytes32[] memory leaves, uint256 index)
-        internal
-        pure
-        returns (bytes32[] memory p)
-    {
+    function proof(bytes32[] memory leaves, uint256 index) internal pure returns (bytes32[] memory p) {
         require(index < leaves.length, "MerkleBuilder: index");
         bytes32[][] memory lv = levels(leaves);
         uint256 depth = lv.length;

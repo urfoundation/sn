@@ -23,7 +23,7 @@ func TestPackBindHeadGolden(t *testing.T) {
 		sig[32+i] = 0x44
 	}
 
-	got, err := stSubnet.TryPackBindHead(hotkey, clientID, sig)
+	got, err := legacySTSubnet.TryPackBindHead(hotkey, clientID, sig)
 	if err != nil {
 		t.Fatalf("TryPackBindHead: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestPackUnbindHeadGolden(t *testing.T) {
 	for i := range hotkey {
 		hotkey[i] = 0x11
 	}
-	got, err := stSubnet.TryPackUnbindHead(hotkey)
+	got, err := legacySTSubnet.TryPackUnbindHead(hotkey)
 	if err != nil {
 		t.Fatalf("TryPackUnbindHead: %v", err)
 	}

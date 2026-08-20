@@ -10,14 +10,14 @@ This document specifies the three things needed to implement the route correctly
 the **signature mechanism**, the **probabilities / trail selection**, and the
 **statistics**. It also fixes the wire format, the server state model, and the
 security scope. **§0.5** then frames the validator's *second* job — turning these
-statistics into the per-tempo `set_weights` that steers the v0.2 two-tier subnet
+statistics into the per-tempo CRv4 weight vector that steers the release-1.0 two-tier subnet
 (detailed in **§11**).
 
 ---
 
 ## 0.5 The validator's two jobs
 
-In v0.2 the subnet merges the old "verifier" and "validator" roles into **one** —
+Release 1.0 merges the old "verifier" and "validator" roles into **one** —
 *"Validator (was verifier)"* (`WHITEPAPER.md` §3). That one role has **two jobs**,
 and this document is mostly about the first:
 
@@ -36,7 +36,8 @@ and this document is mostly about the first:
    deposits+tier read off-chain, §11.3), while the **head** ranks fleets by their
    **split-adjusted count of distinct routable egress-IP-hashes** (§11.1). For this work
    the validator earns **native Yuma dividends** (∝ stake × vtrust); the fee-funded
-   effort bounty is **deferred** (`WHITEPAPER.md` §9.2–§9.3, D23).
+   effort bounty is **out of release-1.0 scope**, not a committed later phase
+   (`WHITEPAPER.md` §9.2–§9.3, D29).
 
 The two jobs are separated by design: §1–§10 produce an attributable measurement
 under an open, adversarial validator set; §11 is the thin consuming layer that maps
@@ -45,9 +46,9 @@ of §11** — the steering reads the statistics, it does not perturb them.
 
 > **Terminology & symbols.** "Validator" is the role formerly called "verifier"; the
 > route is still `/verify`. The signing key a validator endorses a trail with is
-> still its **path key `vpk`** (its `client_id`'s registered Ed25519 key, §2), which
-> the ST contract binds to the validator's Bittensor wallet via
-> `registerValidator(vpk, sig)` (`WHITEPAPER.md` §3). The proof's validator signature
+> still its **path key `vpk`** (its `client_id`'s registered Ed25519 key, §2). Release
+> 1.0 has no EVM validator registry or effort claim; the validator separately proves
+> its native hotkey/UID when submitting CRv4. The proof's validator signature
 > keeps its wire name **`verifier_sig`** (`WHITEPAPER.md` §9.1) — a field name, not
 > the role.
 
@@ -122,9 +123,8 @@ single most important implementation point.
   raw 32-byte Ed25519 public key (`network_client_key_model.go:24`,
   Redis `ckey_<clientId>`). The validator signs with the matching device private
   key. (A competition-only ephemeral key also works; the protocol only needs an
-  Ed25519 `vpk`.) The `vpk` is the validator's **path key**; the ST contract binds it
-  to the validator's Bittensor wallet via `registerValidator(vpk, sig)` so
-  completed-trail proofs are attributable to that wallet (`WHITEPAPER.md` §3).
+  Ed25519 `vpk`.) The `vpk` is the validator's **path key** and authenticates its
+  routing evidence; it is intentionally distinct from the native CRv4 hotkey.
 - The **hop** is the provider the validator is *currently egressing through*. The
   server derives it from the request source IP — the validator never asserts it.
   This is the anchor of the whole proof.
@@ -746,7 +746,7 @@ fixed formula — drives the 41% miner emission. This is the consuming layer; it
 `WHITEPAPER.md` §10 (setting weights), §8.4–§8.5 (the two tiers and the split θ), and
 §9 (the validator's rewards). Nothing here changes §1–§10.
 
-### 11.1 The two tier metrics — pool quality, and head routable-IP breadth (v0.4)
+### 11.1 The two tier metrics — pool quality, and head routable-IP breadth (release 1.0)
 
 For every provider with enough exposure (`a_Y ≥ a_min`, §7.4), compute the §7 quality
 signals — the **Wilson-score step-completion (liveness)** interval (§7.3) and the
@@ -757,8 +757,13 @@ non-seed** hops only (§7.6). **EMA-smooth** each provider's signal across epoch
 
 - **TAIL — pool quality (`Q_n`).** For a per-NO **pool**, aggregate the per-provider
   stats over the NO's *tail* providers into a single **pool scalar `Q_n`**. The pool's
-  weight is `implied_usage_n × Q_n` (§11.3) — the aggregation rule is the open question
-  that lives **only on the tail** (`WHITEPAPER.md` §8.4).
+  weight is `implied_usage_n × Q_n` (§11.3). Release 1.0 fixes `Q_n` as the exact
+  exposure-weighted mean of the providers' PPM quality values: exclude every client
+  bound into a head fleet, weight each remaining `q_p` by its current assignment
+  count (or one for a carried EMA with no current assignment), sum in integers, and
+  floor once on division by total exposure. A new provider below `a_min` is absent;
+  an established provider below `a_min` carries its prior EMA unchanged. This rule
+  lives **only on the tail** (`WHITEPAPER.md` §8.4) and is applied independently per NO.
 - **HEAD — routable-IP breadth (`score`).** A top-level miner is a **fleet** (a hotkey
   binding many `client_id`s, §11.2), ranked **not** by quality but by **how many unique
   IPs it can route through**. From its own trails the validator collects, per fleet, the
@@ -778,43 +783,36 @@ claim(h) = #{ top-miner fleets u' : h ∈ IPs(u') }               # how many top
 score(u) = Σ over h ∈ IPs(u) of  1 / claim(h)                   # EMA-smoothed; the top-level miner's weight, directly
 ```
 
-So two fleets sharing an egress-IP-hash (e.g. distinct exit IPs in the same configured
-prefix, §8.1) each get **0.5** for it — overlapping supply cannot be double-counted, and
-breadth of *genuinely distinct, routable* exit IPs is what earns head emission.
+So two fleets sharing an egress-IP-hash (e.g. distinct exact exit IPs in the same
+configured prefix, §8.1) each get **0.5** for it — overlapping/co-located supply cannot
+be double-counted, and breadth of independently routable scoring units earns head emission.
 
 ### 11.2 Mapping a measured `client_id` to a head UID — the binding
 
 A validator measures providers by **`client_id`** (the proof's hops, server-derived
 from the unspoofable source IP, §8.1) — it never learns a provider's on-chain UID from
 a trail. To steer the **head** it must resolve `client_id → UID`, and it does so by
-reading the **dual-signed `client_id ⇄ hotkey` binding** (`WHITEPAPER.md` §11.4):
+reading the **dual-signed `client_id ⇄ hotkey` binding** (`WHITEPAPER.md` §11.4 and
+`docs/spec/fleet-binding-v1.md`). The canonical payload is the ASCII domain
+`urnetwork/fleet-binding/v1`, followed without padding by `chain_id:u64be`,
+`netuid:u16be`, `coordinator:20`, `fleet_id:32`, `hotkey:32`, `client_id:16`,
+`client_key:32`, `generation:u64be`, `valid_from_epoch:u64be`,
+`valid_to_epoch:u64be`, and `commitment_hash:32`. The client Ed25519 key and hotkey
+sr25519 key both sign `keccak256(payload)`; sr25519 uses the Substrate signing context.
 
-```
-msg        = "urnetwork/bind/v1" ‖ client_id(16) ‖ hotkey_ss58(32)
-sig_client = Ed25519.Sign(client_sk, msg)   // client_sk = the provider's per-client key (the ckey/vpk keying of §2) → proves client_id ownership
-sig_hotkey = sr25519.Sign(hotkey_sk, msg)   // proves UID / hotkey ownership
-```
-
-The binding is published in the **commitments pallet** (free, `Pays::No`, keyed
-`(netuid, hotkey)`) and anchored in the **ST contract** for disputes. Before crediting
-any `Q_p` to a UID, the validator **verifies**:
-
-1. **Both signatures.** `sig_client` under the provider's per-client Ed25519 key,
-   `sig_hotkey` under the hotkey's sr25519 key. A *single* signature is not enough — it
-   would let a miner claim a `client_id` it does not operate and **steal another
-   provider's measured quality** (the dual signature is SN51 Celium's
-   `associate_evm_key` anti-theft shape).
-2. **The hotkey is a live UID** in the current metagraph snapshot — **fail closed** on
-   a stale snapshot (the standard Epistula / ORO-AI `bittensor-auth` "signed proof →
-   *registered* hotkey" rule). An unverifiable or stale binding contributes **zero**
-   head weight; it is never guessed.
+The hotkey publishes the fleet-manifest hash in the **commitments pallet**. A finalized
+indexer mirrors that exact commitment and finalized block/hash into the coordinator,
+which checks both signatures at `0x402`/`0x403`, freshness, non-overlapping generation
+and a live `(netuid,hotkey) → UID` at `0x804` before recording a future-effective member.
+Before crediting any score to a UID, the validator independently rechecks the canonical
+payload, commitment, active epoch interval and current UID. Any mismatch contributes
+zero head weight; it is never guessed.
 
 **Binding ⊥ quality.** The binding proves *ownership* only; the trail (§1–§7) proves
 *quality*. They are kept strictly separate — identity says *whose* UID this is, the
-measurement says *how good* it is — and composed, never merged (as every comparable
-subnet does; cf. Targon keeping the hotkey out of its attestation). A contested binding
-is adjudicated on-chain via the `0x402` Ed25519 precompile (`WHITEPAPER.md` §11.4); a
-bad one is slashable.
+measurement says *how good* it is — and composed, never merged. Invalid bindings never
+enter coordinator state; a client can sign a future-effective revoke, and anyone can
+clean up an expired, deregistered or UID-reused binding.
 
 **Privacy.** Publishing `client_id → hotkey` (→ egress IP via §8.1) **does**
 deanonymize the provider — exactly what §9 works to prevent for the general population.
@@ -836,7 +834,7 @@ normalize head so Σ head = θ
 
 # TAIL — NO pools, implied-usage × quality (D25)
 for each NO-pool UID n:
-    implied_usage_n = epoch_deposit_n / rate(tier_n)   # deposits from the Deposited event log; rate from the published tier schedule
+    implied_usage_n = epoch_deposit_n / rate(tier_n)   # finalized Deposit events; rate from the signed policy
     pool[n] = implied_usage_n × Q_n        # §11.1; = 0 if this validator operates NO n (self-mask)
 normalize pool so Σ pool = 1 − θ
 
@@ -846,8 +844,8 @@ commit / reveal w                          # commit-reveal ON: the score / θ si
 ```
 
 **Where the pool inputs come from (D25).** The validator reads each NO's `epoch_deposit_n`
-and cumulative conviction by **summing the on-chain `Deposited` events** (`WHITEPAPER.md`
-§7.5) — the contract stores no deposit ledger and computes no weight — and reads
+and cumulative conviction by **summing finalized `Deposit` and `ConvictionAdded` events**
+(`WHITEPAPER.md` §7.5) — coordinator counters enforce caps but compute no weight — and reads
 `rate(tier_n)` from the **published tier→rate schedule** (`WHITEPAPER.md` §7.3, loaded
 from validator config). `implied_usage = deposit / rate` so a NO that staked into a lower
 tier posts less α for the same usage and earns the same weight (the stake is a discount).
@@ -855,13 +853,13 @@ tier posts less α for the same usage and earns the same weight (the stake is a 
 Because Yuma clips each validator to the κ-stake-weighted median, **θ, the rate schedule,
 and the scoring rules are a validator-software convention a stake-majority must run in
 common** — published governance parameters, not per-validator discretion (`WHITEPAPER.md`
-§8.5, §10). Both shares go to **real recipients** (top miners; contract-owned pool UIDs),
+§8.5, §10). Both shares go to **real recipients** (top miners; vault-owned pool UIDs),
 so the June-2026 `(1 − miner_burned)` penalty does not apply — never reserve a share by
 burning to an owner UID.
 
 For this work the validator earns **native Yuma dividends** (∝ stake × vtrust — accurate,
-consensus-aligned scoring; `WHITEPAPER.md` §9.2). The fee-funded effort bounty is deferred
-(§9.3); steering both tiers is one extra sub-vector, not a new reward.
+consensus-aligned scoring; `WHITEPAPER.md` §9.2). The fee-funded effort bounty is out of
+release-1.0 scope (§9.3); steering both tiers is one extra sub-vector, not a new reward.
 
 ### 11.4 Why a top miner cannot farm its own head weight
 
@@ -878,7 +876,7 @@ routable egress-IP-hashes (§11.1). Four rules keep the count honest:
   another operator's `client_id` (hence its IP) without that client key.
 - **Shared IPs are split (D27).** Two fleets presenting the same egress-IP-hash each get
   `1/claim(h)`, so spinning up overlapping exit IPs (or colluding fleets fronting one IP
-  pool) **cannot** multiply credit — breadth of *genuinely distinct* routable IPs is the
+  pool) **cannot** multiply credit — breadth of distinct routable score units is the
   only thing that moves the score.
 - **Self-weight mask + independent baseline, provisional until §10.** A validator's
   head/tail vector zeroes its own UID and its own NO (§11.3); with an independent

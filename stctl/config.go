@@ -14,6 +14,10 @@ import (
 
 // Config is the stctl YAML config schema (default ~/.urnetwork/stctl.yml).
 type Config struct {
+	// ContractGeneration is an explicit acknowledgement that this utility
+	// targets only the retained pre-1.0 STSubnet monolith. Release contracts
+	// must be operated by sim-testnet/scoped service clients instead.
+	ContractGeneration string `yaml:"contract_generation"`
 	// RpcUrls are EVM json-rpc endpoints, tried in order until one answers.
 	RpcUrls []string `yaml:"rpc_urls"`
 	// ChainId is asserted against eth_chainId of the endpoint that answers
@@ -31,6 +35,11 @@ type Config struct {
 // exampleConfig is printed by `stctl deploy-status` when the config file is
 // missing, and documented in stctl/README.md. Keep the two in sync.
 const exampleConfig = `# stctl config (default path: ~/.urnetwork/stctl.yml)
+#
+# SAFETY: stctl is retained only for pre-1.0 STSubnet inspection/regression.
+# It refuses configs without this exact acknowledgement and must never point
+# at a release-1.0 STCoordinator proxy.
+contract_generation: legacy-pre-1.0-stsubnet
 #
 # EVM json-rpc endpoints, tried in order until one answers.
 # Testnet: https://test.chain.opentensor.ai (chain 945)
@@ -118,6 +127,9 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if c.ContractGeneration != "legacy-pre-1.0-stsubnet" {
+		return fmt.Errorf("config: stctl supports only contract_generation legacy-pre-1.0-stsubnet; use sim-testnet/server tooling for release 1.0")
+	}
 	if len(c.RpcUrls) == 0 {
 		return fmt.Errorf("config: rpc_urls must list at least one endpoint")
 	}

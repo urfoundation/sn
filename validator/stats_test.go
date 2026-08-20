@@ -209,4 +209,38 @@ func TestStatsSaveLoadRoundTrip(t *testing.T) {
 	if a, _ := restored.WindowCounts(hop); a != 1 {
 		t.Fatalf("window did not survive roundtrip: a=%d", a)
 	}
+	if got, want := restored.QualityPPM()[hop], stats.QualityPPM()[hop]; got != want {
+		t.Fatalf("exact quality after roundtrip %d, want %d", got, want)
+	}
+}
+
+func TestQualityPPMExactLatencyAndEMA(t *testing.T) {
+	stats := NewStatsEngine(StatsConfig{
+		AMin:             10,
+		AlphaNumerator:   1,
+		AlphaDenominator: 10,
+		LatRefMillis:     4000,
+	})
+	hop := connect.NewId()
+	for i := 0; i < 10; i++ {
+		stats.RecordAssignment(hop)
+		stats.RecordConfirmation(hop, 100) // conservative bucket upper = 128
+	}
+	wilson := uint64(722459) // exact floor from protocol.ReliabilityPPM(10,10,10)
+	wantFirst := uint32(wilson * 4000 / (4000 + 128))
+	if got := stats.QualityPPM()[hop]; got != wantFirst {
+		t.Fatalf("quality ppm = %d, want %d", got, wantFirst)
+	}
+	stats.Fold()
+	for i := 0; i < 10; i++ {
+		stats.RecordAssignment(hop) // all fail, raw = 0
+	}
+	wantPreview := uint32(9 * uint64(wantFirst) / 10)
+	if got := stats.QualityPPM()[hop]; got != wantPreview {
+		t.Fatalf("preview ppm = %d, want %d", got, wantPreview)
+	}
+	stats.Fold()
+	if got := stats.QualityPPM()[hop]; got != wantPreview {
+		t.Fatalf("folded ppm = %d, want %d", got, wantPreview)
+	}
 }

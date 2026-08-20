@@ -1,0 +1,54 @@
+schema_version: 1
+release: "1.0"
+runtime:
+  source_repository: https://github.com/RaoFoundation/subtensor
+  source_tag: v447
+  source_commit: 1f090af85d1771c5d8ece1f0910576fbd129906e
+  spec_version: 447
+  transaction_version: 1
+  image: "ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de"
+evm_build:
+  solidity: 0.8.24
+  evm_version: cancun
+  foundry: 1.7.1
+  optimizer: true
+  optimizer_runs: 200
+  source_hash: "sha256:0ae506655afa0219e96f430f2e80424df775c0c1ece5ebb947b01882fe6f0418"
+  compiler_settings_hash: "sha256:ed7bbf1127d61140a46ed10fc5f5871a81b83f8273c24f1c8c87005c1ea0b8c8"
+  reserve_sink_artifact_hash: "0x64556aa42d0d4ba778ce19aa1e79a761afa6fd7ebe713a0d37ced5f238dc381f"
+  reserve_sink_runtime_hash: "0x6ab5910b1106e788d9a52836a1513f611929e3f5d4bebbf00283ad2fa01db243"
+  settlement_vault_artifact_hash: "0xd904e38b49d207bc7a79bdc8c0ac624689dd1d13bcc54f5a15579644410b8e9a"
+  settlement_vault_runtime_hash: "0x2adaa0e6f758cb071ac2664f9e27453664c0ffadabda037d588b100073afbc69"
+  coordinator_implementation_artifact_hash: "0xbca1e04c0563e989ba0f690d0dfe9fa39e8826de1415f260e88a7407339b3521"
+  coordinator_implementation_runtime_hash: "0x7387dd14990dbc4ad3f8ba8ca25800cb4cd8f0692b80a221f2febb47722873f7"
+  coordinator_storage_layout_hash: "sha256:761d09f4de7eb1d47b0a2b0a4d87f5fc88264b421129bdb6e5c99397c8de7f9f"
+  coordinator_proxy_artifact_hash: "0x309b81907d133510f93f8907bde65840dcb54a5d94972ca9ad7729df4903863d"
+  coordinator_proxy_runtime_hash: "0x8b9a6be720b7bedae5f47f9505113a1340490930d4b7ea79966382ac12a4a9e2"
+  governance_drill_implementation_artifact_hash: "0xc1cdff52e7a3dbe38cbbe8a0e0f8fae676c01ad249bb3daaf21b0df75abf8171"
+  governance_drill_implementation_runtime_hash: "0x382ab5ad380788270d752d8146da4a7828a496fefdf65d4001d3b509ecea698b"
+  governance_drill_storage_layout_hash: "sha256:761d09f4de7eb1d47b0a2b0a4d87f5fc88264b421129bdb6e5c99397c8de7f9f"
+  precompile_probe_artifact_hash: "0xc3c6d500a1599c6af19cf10afdb9b9cf8f97dc96174819453adec7087a2fdd79"
+  precompile_probe_runtime_hash: "0xe4d437c42aa70643e2d0d77108d6142e3d442865bd85a50e0cf4701b71c2ed22"
+  abi_hash: "sha256:3995757aa3e343e4acafa5af5faed780241f1c4303c0461c825644ccc52f1e6d"
+repositories:
+  sn_audited_base_commit: "4d6944d6c60a3170da502572f2bbc7973e160de8"
+  server_audited_base_commit: "2480ae0dc6c45ce02254fd9399cb10037ab99fbe"
+  vault_audited_base_commit: "440ad80dd93ccef6fd55eb41a67cb66a6c48e017"
+  sn_go_source_hash: "sha256:64e912c7a6bc2a6747ce72f4e51e5471479d22404d22591d889f6e284ff61d53"
+  server_go_source_hash: "sha256:61a9b5a28eb55a47b4fd7fb56a07dc96a563532376a09905570e1ca38c3b3988"
+  connect_go_source_hash: "sha256:03f12d6763c11fbd19486d2ac140b9161dbcf7aabdd6c7d7b0939f35dd3432ab"
+  sdk_go_source_hash: "sha256:4d1a533f2f9548b5cd6a9d4061f0152cc2ce8317ac528aac01cdc286becdd2db"
+  glog_go_source_hash: "sha256:87da64dcd42d9dd670cd8bfe4fc3a55b03db47a646af973969e9e951c017e792"
+  goidenticons_go_source_hash: "sha256:e335a5bf9b3194faeeab2f1a2e1f11c8c765e3bb6950faa28bf56ad7231ca2f8"
+  proxy_go_source_hash: "sha256:d2e4e6ed005fd4fc5d4a6c00e2591f27fd296572be04ee6145a61a40fdb296e0"
+  userwireguard_go_source_hash: "sha256:0690d9274209c48ee95d71a3e12e775c0d8d8f1eb819e7968ab20fe4b530bcdd"
+  platform_config_source_hash: "sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a"
+  protocol_source_hash: "sha256:def54c1302bb0948109bd35327d31060e0ef409090ace6c202f2a756500dfdf5"
+dependencies:
+  postgres: "postgres:16.4@sha256:e62fbf9d3e2b49816a32c400ed2dba83e3b361e6833e624024309c35d334b412"
+  redis: "redis:7.4.0@sha256:6725a7dc7a44a6486b9d0a5172b10ccaf0c2ea600df87c0b93450d0e7769297f"
+interfaces:
+  precompile_interfaces_source_hash: "sha256:b0136e543de1fdb946bcd17ca82dd80d4fa4438f028bdd548ada947bd9946efe"
+infrastructure:
+  gateway_config_hash: "sha256:65db129efefddbea3a9130462d9c5a5131821d619a5316b49d7855823d1200b1"
+  node_config_hash: "sha256:5beb7a223eaacf4d3169b4d498f28ce4e95a93556ac0f9dbaa2fe57d08204519"

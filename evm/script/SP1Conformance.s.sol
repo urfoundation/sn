@@ -10,9 +10,10 @@ import {Blake2b} from "../src/lib/Blake2b.sol";
 /// @title SP1Conformance — deploy the SP-1 probe + print the on-node battery.
 ///
 /// @notice The SP-1 gate of `docs/LAUNCH.md` Phase B: verify every subtensor
-///         precompile assumption STSubnet depends on, against the LIVE mainnet
-///         runtime, BEFORE the subnet exists. (PLAN.md §3 SP-1 — the top
-///         pre-genesis artifact.)
+///         precompile assumption the release contract set depends on, against
+///         the LIVE testnet runtime and the supplied existing subnet.
+///         `sim-testnet` owns the release execution; this script is only an
+///         interactive developer diagnostic.
 ///
 /// @dev Two truths shape this script:
 ///      1. Only **blake2f (0x09)** is a standard EVM precompile forge can
@@ -27,16 +28,16 @@ import {Blake2b} from "../src/lib/Blake2b.sol";
 ///
 /// Usage:
 ///   # 1. local blake2f sanity + the playbook (no chain writes, no key needed):
-///   SP1_NETUID=<existing_netuid> forge script script/SP1Conformance.s.sol --rpc-url mainnet
+///   SP1_NETUID=<existing_netuid> forge script script/SP1Conformance.s.sol --rpc-url testnet
 ///
 ///   # 2. deploy the throwaway probe (broadcast):
 ///   SP1_NETUID=<existing_netuid> forge script script/SP1Conformance.s.sol \
-///       --sig "deploy()" --rpc-url mainnet --broadcast --private-key $DEPLOYER_KEY
+///       --sig "deploy()" --rpc-url testnet --broadcast --account <keystore-account>
 ///
 ///   # 3. run the read battery ON THE NODE (free; substitute the probe addr +
 ///   #    any live hotkey on the netuid, e.g. uid0's from the metagraph):
-///   cast call <probe> "readBattery(bytes32)((bool,bytes32,bool,bytes32,bool,bool,bool,bool,uint16,bytes32,bytes32,bool,uint256))" \
-///       <sampleHotkey> --rpc-url mainnet
+///   cast call <probe> "readBattery(bytes32,bytes32)((bool,bytes32,bool,bytes32,bool,bool,bool,bool,bool,bool,bool,uint16,bytes32,bytes32,bool,bool,uint16,bool,bool,uint256,uint256))" \
+///       <sampleHotkey> <knownAbsentHotkey> --rpc-url testnet
 ///
 ///   Value-bearing checks (dust α; see docs/LAUNCH.md B1 for the full sequence
 ///   incl. the dividend two-step): `cast send <probe> "seedFromTao(bytes32,uint256)" ...`,
@@ -52,7 +53,7 @@ contract SP1Conformance is Script {
         console2.log("blake2f (0x09) mirror KAT:", got == want ? "PASS (lib)" : "FAIL");
         console2.logBytes32(got);
         console2.log(
-            "  ^ local forge blake2f. Confirm the NODE's 0x09 with: cast call <probe> \"mirrorExt(address)(bytes32)\" 0x1111111111111111111111111111111111111111 --rpc-url mainnet"
+            "  ^ local forge blake2f. Confirm the NODE's 0x09 with: cast call <probe> \"mirrorExt(address)(bytes32)\" 0x1111111111111111111111111111111111111111 --rpc-url testnet"
         );
 
         // --- ed25519 (0x402) KAT constants, for a direct node check ---
@@ -64,7 +65,7 @@ contract SP1Conformance is Script {
             "    0xca6dd518081710a6081369b7d2eb0cf32396bf77c9f091be21e6d4c8ed37a6cb 0x3f0d9ad990f7706d891de2dd0a52cc68a6cc631683a31977bb38b9f189d26de1 \\"
         );
         console2.log(
-            "    0x2e530da93345ff099a7c46cb9aab8d964a7a016852b567e074f64f9cf1d5cf30 0x35a13c64140c12e523a8e5fec6541fa846be95974aa399f81fc907d020955f0e --rpc-url mainnet"
+            "    0x2e530da93345ff099a7c46cb9aab8d964a7a016852b567e074f64f9cf1d5cf30 0x35a13c64140c12e523a8e5fec6541fa846be95974aa399f81fc907d020955f0e --rpc-url testnet"
         );
 
         console2.log("");
@@ -85,7 +86,9 @@ contract SP1Conformance is Script {
         console2.log("Fund that ss58 mirror with dust TAO to run the value-bearing checks.");
         console2.log("Read battery (free, on-node):");
         console2.log(
-            "  cast call", probe, "\"readBattery(bytes32)((bool,bytes32,bool,bytes32,bool,bool,bool,bool,uint16,bytes32,bytes32,bool,uint256))\" <sampleHotkey> --rpc-url mainnet"
+            "  cast call",
+            probe,
+            "\"readBattery(bytes32,bytes32)((bool,bytes32,bool,bytes32,bool,bool,bool,bool,bool,bool,bool,uint16,bytes32,bytes32,bool,bool,uint16,bool,bool,uint256,uint256))\" <sampleHotkey> <knownAbsentHotkey> --rpc-url testnet"
         );
     }
 }

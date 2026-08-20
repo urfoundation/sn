@@ -42,9 +42,11 @@ import (
 	"github.com/urfoundation/sn/stabi"
 )
 
-// stSubnet holds the shared abigen packers/unpackers for STSubnet: the
-// noCommit / headBindDigest read calldata and the receipt event decoders.
-var stSubnet = stabi.NewSTSubnet()
+// Release bindings. Pool claims always target the immutable settlement vault;
+// fleet membership always targets the coordinator.
+var stSettlementVault = stabi.NewSTSettlementVault()
+var stCoordinator = stabi.NewSTCoordinator()
+var legacySTSubnet = stabi.NewSTSubnet()
 
 // readNetworkJwt loads the network jwt written by `provider auth` from
 // ~/.urnetwork/jwt — the same bootstrap credential `provider provide`
@@ -246,7 +248,7 @@ func claim(opts docopt.Opts) {
 	var chainId uint64
 	var chainRpcUrl string
 	if 0 < len(rpcUrls) {
-		noCommitCalldata := stSubnet.PackNoCommit(epochBig, noId)
+		entitlementCalldata := stSettlementVault.PackEntitlement(epochBig, noId)
 		for _, rpcUrl := range rpcUrls {
 			chainIdHex, rpcErr := ethRpcHexResult(ctx, rpcUrl, "eth_chainId", []any{})
 			if rpcErr != nil {
@@ -261,7 +263,7 @@ func claim(opts docopt.Opts) {
 			callHex, rpcErr := ethRpcHexResult(ctx, rpcUrl, "eth_call", []any{
 				map[string]any{
 					"to":   poolClaim.ContractAddress,
-					"data": fmt.Sprintf("0x%x", noCommitCalldata),
+					"data": fmt.Sprintf("0x%x", entitlementCalldata),
 				},
 				"latest",
 			})
@@ -271,11 +273,10 @@ func claim(opts docopt.Opts) {
 			}
 			returnData, rpcErr := parseEthHexBytes(callHex)
 			if rpcErr != nil || len(returnData) < 32 {
-				fmt.Printf("rpc %s: noCommit returned %d bytes; expected >= 32 (wrong contract address?)\n", rpcUrl, len(returnData))
+				fmt.Printf("rpc %s: entitlement returned %d bytes; expected >= 32 (wrong vault address?)\n", rpcUrl, len(returnData))
 				continue
 			}
-			// noCommit returns (bytes32 payoutRoot, bytes off); the first
-			// return word is the committed payout root for the pool.
+			// entitlement returns the tuple with payoutRoot as its first word.
 			copy(chainRoot[:], returnData[:32])
 			chainId = rpcChainId
 			chainRpcUrl = rpcUrl
@@ -324,7 +325,7 @@ func claim(opts docopt.Opts) {
 	fmt.Printf("contract: %s (chain id %d)\n", poolClaim.ContractAddress, poolClaim.ChainId)
 	fmt.Printf("claim_open_block: %d\n", poolClaim.ClaimOpenBlock)
 
-	// build the ready-to-submit claimMiner calldata with the shared stabi
+	// build the ready-to-submit immutable-vault claim calldata with the shared stabi
 	// packer — byte-identical to snclaim's own structured path
 	claimCalldata, err := onchain.BuildClaimCalldata(onchain.ClaimIntent{
 		E:        epochBig,
@@ -334,11 +335,11 @@ func claim(opts docopt.Opts) {
 		Proof:    proof,
 	})
 	if err != nil {
-		panic(fmt.Errorf("pack claimMiner: %s", err))
+		panic(fmt.Errorf("pack settlement-vault claim: %s", err))
 	}
 
 	if 0 < len(mismatches) {
-		fmt.Printf("claimMiner calldata:\n0x%x\n", claimCalldata)
+		fmt.Printf("claim calldata:\n0x%x\n", claimCalldata)
 		for _, mismatch := range mismatches {
 			fmt.Printf("mismatch: %s\n", mismatch)
 		}
@@ -382,7 +383,7 @@ func claim(opts docopt.Opts) {
 		return
 	}
 
-	fmt.Printf("claimMiner calldata:\n0x%x\n", claimCalldata)
+	fmt.Printf("claim calldata:\n0x%x\n", claimCalldata)
 	fmt.Printf("submit with: snclaim submit --rpc=<rpc_url> --contract=%s --calldata=0x%x --key_file=<evm_key_file>\n", poolClaim.ContractAddress, claimCalldata)
 	if chainChecked {
 		fmt.Printf("status: VERIFIED (proof, server, and on-chain roots agree)\n")
@@ -391,7 +392,7 @@ func claim(opts docopt.Opts) {
 	}
 }
 
-// printMinerClaimed decodes and prints the MinerClaimed event(s) that the
+// printMinerClaimed decodes and prints the immutable-vault Claimed event(s)
 // contract emitted for this claim receipt.
 func printMinerClaimed(receipt *types.Receipt, contract common.Address) {
 	decoded := false
@@ -399,18 +400,18 @@ func printMinerClaimed(receipt *types.Receipt, contract common.Address) {
 		if lg.Address != contract {
 			continue
 		}
-		ev, err := stSubnet.UnpackMinerClaimedEvent(lg)
+		ev, err := stSettlementVault.UnpackClaimedEvent(lg)
 		if err != nil {
 			continue
 		}
-		fmt.Printf("MinerClaimed: epoch %s, noId %s\n", ev.E, ev.NoId)
+		fmt.Printf("Claimed: epoch %s, noId %s\n", ev.Epoch, ev.NoId)
 		fmt.Printf("  coldkey:  0x%x\n", ev.Coldkey)
 		fmt.Printf("  shareBps: %s\n", ev.ShareBps)
 		fmt.Printf("  paid:     %s rao\n", ev.Amount)
 		decoded = true
 	}
 	if !decoded {
-		fmt.Printf("warning: no MinerClaimed event decoded from the receipt\n")
+		fmt.Printf("warning: no Claimed event decoded from the receipt\n")
 	}
 }
 
@@ -611,7 +612,7 @@ func bindHead(opts docopt.Opts) {
 	defer cancel()
 
 	contractHex := contract.Hex()
-	digestCalldata := stSubnet.PackHeadBindDigest(registrant, hotkey, clientId)
+	digestCalldata := legacySTSubnet.PackHeadBindDigest(registrant, hotkey, clientId)
 	digest, chainId, rpcUrl, err := snReadHeadBindDigest(ctx, rpcUrls, contractHex, digestCalldata)
 	if err != nil {
 		fail(err)
@@ -664,7 +665,7 @@ func printHeadBound(receipt *types.Receipt, contract common.Address) {
 		if lg.Address != contract {
 			continue
 		}
-		ev, err := stSubnet.UnpackHeadBoundEvent(lg)
+		ev, err := legacySTSubnet.UnpackHeadBoundEvent(lg)
 		if err != nil {
 			continue
 		}
@@ -772,7 +773,7 @@ func printHeadUnbound(receipt *types.Receipt, contract common.Address) {
 		if lg.Address != contract {
 			continue
 		}
-		ev, err := stSubnet.UnpackHeadUnboundEvent(lg)
+		ev, err := legacySTSubnet.UnpackHeadUnboundEvent(lg)
 		if err != nil {
 			continue
 		}

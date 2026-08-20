@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	dialTimeout    = 15 * time.Second
-	callTimeout    = 30 * time.Second
-	minedTimeout   = 10 * time.Minute
-	minedPollEvery = 3 * time.Second
+	dialTimeout        = 15 * time.Second
+	callTimeout        = 30 * time.Second
+	minedTimeout       = 10 * time.Minute
+	minedPollEvery     = 3 * time.Second
+	finalizedPollEvery = 3 * time.Second
 )
 
 // dialFirst tries each --rpc URL in order (failover) and returns the first
@@ -183,6 +184,17 @@ func runTx(
 	if err != nil {
 		return nil, fmt.Errorf("sign: %w", err)
 	}
+	raw, err := signed.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("encode signed transaction: %w", err)
+	}
+	// This line is intentionally emitted and flushed through stdout before the
+	// broadcast call. The release claim daemon fsyncs the exact RLP in its
+	// write-ahead queue from this record; Write does not return until that
+	// durable callback completes, so a crash cannot create a hashless send.
+	if _, err := fmt.Printf("prepared: tx %s raw 0x%x\n", signed.Hash(), raw); err != nil {
+		return nil, fmt.Errorf("persist prepared transaction: %w", err)
+	}
 	if err := client.SendTransaction(ctx, signed); err != nil {
 		return nil, fmt.Errorf("send: %w", revertError(err))
 	}
@@ -199,7 +211,11 @@ func runTx(
 		return nil, fmt.Errorf("tx %s reverted on-chain (status 0, block %s, gas used %d)",
 			signed.Hash(), receipt.BlockNumber, receipt.GasUsed)
 	}
-	fmt.Printf("mined: block %s, status success, gas used %d\n", receipt.BlockNumber, receipt.GasUsed)
+	fmt.Printf("mined: block %s, status success, gas used %d; waiting for finality...\n", receipt.BlockNumber, receipt.GasUsed)
+	if err := waitFinalized(wctx, client, receipt); err != nil {
+		return nil, err
+	}
+	fmt.Printf("finalized: tx %s in canonical block %s (%s)\n", signed.Hash(), receipt.BlockNumber, receipt.BlockHash)
 	return receipt, nil
 }
 
@@ -218,6 +234,38 @@ func waitMined(ctx context.Context, client *ethclient.Client, txHash common.Hash
 			return nil, fmt.Errorf("tx %s not mined yet: %w (it may still land — check the explorer before retrying)",
 				txHash, ctx.Err())
 		case <-time.After(minedPollEvery):
+		}
+	}
+}
+
+type finalityReader interface {
+	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
+}
+
+// waitFinalized waits for the standard finalized tag to cover the receipt and
+// then re-reads the inclusion height to prove the receipt's block is canonical.
+// A timeout is deliberately ambiguous and callers must not blindly retry the
+// same intent/nonce.
+func waitFinalized(ctx context.Context, client finalityReader, receipt *types.Receipt) error {
+	if receipt == nil || receipt.BlockNumber == nil || receipt.BlockHash == (common.Hash{}) {
+		return errors.New("cannot finalize an incomplete receipt")
+	}
+	for {
+		head, err := client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+		if err == nil && head != nil && head.Number != nil && head.Number.Cmp(receipt.BlockNumber) >= 0 {
+			canonical, canonicalErr := client.HeaderByNumber(ctx, receipt.BlockNumber)
+			if canonicalErr != nil {
+				return fmt.Errorf("read canonical inclusion block %s: %w", receipt.BlockNumber, canonicalErr)
+			}
+			if canonical.Hash() != receipt.BlockHash {
+				return fmt.Errorf("tx inclusion block %s was reorged: receipt %s canonical %s", receipt.BlockNumber, receipt.BlockHash, canonical.Hash())
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("tx %s mined but finality was not observed: %w (do not retry without checking its nonce and chain state)", receipt.TxHash, ctx.Err())
+		case <-time.After(finalizedPollEvery):
 		}
 	}
 }

@@ -1,0 +1,2 @@
+# Installed in an isolated environment; see evm/README.md.
+slither-analyzer==0.11.6

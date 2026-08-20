@@ -8,10 +8,13 @@ import (
 	"strings"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/registry/retriever"
+	registryState "github.com/centrifuge/go-substrate-rpc-client/v4/registry/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic/extensions"
+	"golang.org/x/crypto/blake2b"
 )
 
 // Pallet / call names pinned against subtensor v3.4.9-424 (identical on
@@ -64,6 +67,125 @@ type Chain struct {
 	Meta        *types.Metadata
 	GenesisHash types.Hash
 	Runtime     *types.RuntimeVersion
+}
+
+// FinalizedExtrinsic is the canonical receipt for a native Substrate write.
+// A submission hash alone is intentionally not treated as success anywhere in
+// the release-1.0 code: the containing block and its finalized hash are part of
+// every durable intent/artifact.
+type FinalizedExtrinsic struct {
+	ExtrinsicHash types.Hash
+	BlockHash     types.Hash
+	BlockNumber   uint64
+}
+
+// extrinsicIndex returns the index of hash in the exact block body. Substrate
+// extrinsic hashes are Blake2b-256 over the SCALE bytes, not the block's JSON
+// string or an Ethereum-style Keccak hash.
+func extrinsicIndex(encoded []string, hash types.Hash) (uint32, bool, error) {
+	for index, value := range encoded {
+		raw, err := codec.HexDecodeString(value)
+		if err != nil {
+			return 0, false, fmt.Errorf("crv4: decode block extrinsic %d: %w", index, err)
+		}
+		digest := blake2b.Sum256(raw)
+		if types.Hash(digest) == hash {
+			return uint32(index), true, nil
+		}
+	}
+	return 0, false, nil
+}
+
+// VerifyFinalizedExtrinsic proves both canonical inclusion and successful
+// dispatch. A finalized block is not sufficient: Substrate records dispatch
+// errors as System.ExtrinsicFailed events while the containing block remains
+// perfectly valid and finalized.
+func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) error {
+	block, err := c.API.RPC.Chain.GetBlock(blockHash)
+	if err != nil {
+		return fmt.Errorf("crv4: finalized block %s: %w", blockHash.Hex(), err)
+	}
+	index, found, err := extrinsicIndex(block.Block.Extrinsics, extrinsicHash)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("crv4: extrinsic %s absent from finalized block %s", extrinsicHash.Hex(), blockHash.Hex())
+	}
+	events, err := retriever.NewDefaultEventRetriever(
+		registryState.NewEventProvider(c.API.RPC.State), c.API.RPC.State,
+	)
+	if err != nil {
+		return fmt.Errorf("crv4: initialize finalized event decoder: %w", err)
+	}
+	records, err := events.GetEvents(blockHash)
+	if err != nil {
+		return fmt.Errorf("crv4: decode finalized events at %s: %w", blockHash.Hex(), err)
+	}
+	success := false
+	for _, event := range records {
+		if event == nil || event.Phase == nil || !event.Phase.IsApplyExtrinsic || event.Phase.AsApplyExtrinsic != index {
+			continue
+		}
+		switch event.Name {
+		case "System.ExtrinsicFailed", "ExtrinsicFailed":
+			return fmt.Errorf("crv4: extrinsic %s dispatch failed: %v", extrinsicHash.Hex(), event.Fields)
+		case "System.ExtrinsicSuccess", "ExtrinsicSuccess":
+			success = true
+		}
+	}
+	if !success {
+		return fmt.Errorf("crv4: extrinsic %s has no System.ExtrinsicSuccess event", extrinsicHash.Hex())
+	}
+	return nil
+}
+
+// FindFinalizedExtrinsic searches canonical finalized block bodies beginning
+// at fromBlock. It is the crash-recovery primitive for an exact previously
+// signed extrinsic; callers should persist fromBlock before broadcasting.
+func (c *Chain) FindFinalizedExtrinsic(ctx context.Context, extrinsicHash types.Hash, fromBlock uint64) (*FinalizedExtrinsic, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	finalizedHash, err := c.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return nil, false, err
+	}
+	header, err := c.API.RPC.Chain.GetHeader(finalizedHash)
+	if err != nil {
+		return nil, false, err
+	}
+	finalizedNumber := uint64(header.Number)
+	if fromBlock > finalizedNumber {
+		return nil, false, nil
+	}
+	for number := fromBlock; ; number++ {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+		blockHash, err := c.API.RPC.Chain.GetBlockHash(number)
+		if err != nil {
+			return nil, false, fmt.Errorf("crv4: block hash %d: %w", number, err)
+		}
+		block, err := c.API.RPC.Chain.GetBlock(blockHash)
+		if err != nil {
+			return nil, false, fmt.Errorf("crv4: block %d: %w", number, err)
+		}
+		_, found, err := extrinsicIndex(block.Block.Extrinsics, extrinsicHash)
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			if err := c.VerifyFinalizedExtrinsic(blockHash, extrinsicHash); err != nil {
+				return nil, false, err
+			}
+			return &FinalizedExtrinsic{ExtrinsicHash: extrinsicHash, BlockHash: blockHash, BlockNumber: number}, true, nil
+		}
+		if number == finalizedNumber {
+			break
+		}
+	}
+	return nil, false, nil
 }
 
 // DialChain connects to a substrate websocket endpoint (e.g.
@@ -181,6 +303,32 @@ func (c *Chain) MaxWeightsLimit(netuid uint16) (uint16, error) {
 	return uint16(v), nil
 }
 
+// WeightPair mirrors the SCALE tuple stored in SubtensorModule.Weights.
+type WeightPair struct {
+	UID   types.U16
+	Value types.U16
+}
+
+// WeightsAtFinalized reads one validator UID's applied weight row at the
+// canonical finalized head. It is used to distinguish a finalized CRv4 commit
+// from a commit whose timelock payload has actually been revealed and applied.
+func (c *Chain) WeightsAtFinalized(netuid, validatorUID uint16) ([]WeightPair, uint64, types.Hash, error) {
+	hash, err := c.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return nil, 0, types.Hash{}, fmt.Errorf("crv4: finalized head: %w", err)
+	}
+	header, err := c.API.RPC.Chain.GetHeader(hash)
+	if err != nil {
+		return nil, 0, types.Hash{}, fmt.Errorf("crv4: finalized header: %w", err)
+	}
+	var row []WeightPair
+	_, err = c.storageGet(&row, hash, "Weights", encodeNetuid(netuid), encodeNetuid(validatorUID))
+	if err != nil {
+		return nil, 0, types.Hash{}, err
+	}
+	return row, uint64(header.Number), hash, nil
+}
+
 // WeightsVersionKey reads SubtensorModule.WeightsVersionKey(netuid); the
 // payload's version_key must be >= this for the weights to apply at reveal.
 func (c *Chain) WeightsVersionKey(netuid uint16) (uint64, error) {
@@ -200,6 +348,22 @@ func (c *Chain) EpochScheduleState(netuid uint16) (*EpochScheduleState, error) {
 	if err != nil {
 		return nil, fmt.Errorf("crv4: chain head: %w", err)
 	}
+	return c.epochScheduleStateAt(netuid, blockHash)
+}
+
+// EpochScheduleStateFinalized reads all scheduling inputs and the block number
+// at one canonical finalized head. Production schedulers must use this method;
+// a best-head transition is never allowed to trigger an irreversible commit.
+func (c *Chain) EpochScheduleStateFinalized(netuid uint16) (*EpochScheduleState, types.Hash, error) {
+	blockHash, err := c.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return nil, types.Hash{}, fmt.Errorf("crv4: finalized head: %w", err)
+	}
+	state, err := c.epochScheduleStateAt(netuid, blockHash)
+	return state, blockHash, err
+}
+
+func (c *Chain) epochScheduleStateAt(netuid uint16, blockHash types.Hash) (*EpochScheduleState, error) {
 	header, err := c.API.RPC.Chain.GetHeader(blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("crv4: header: %w", err)
@@ -246,6 +410,119 @@ func (c *Chain) AccountNonce(ss58Address string) (uint32, error) {
 	return nonce, nil
 }
 
+// FinalizedAccountNonce returns only the nonce committed in canonical state;
+// unlike system_accountNextIndex it is unaffected by an exact transaction
+// already waiting in the local pool. This distinction is essential when
+// deciding whether a persisted transaction can still be replayed.
+func (c *Chain) FinalizedAccountNonce(publicKey [32]byte) (uint32, types.Hash, uint64, error) {
+	finalized, err := c.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return 0, types.Hash{}, 0, err
+	}
+	header, err := c.API.RPC.Chain.GetHeader(finalized)
+	if err != nil {
+		return 0, types.Hash{}, 0, err
+	}
+	key, err := types.CreateStorageKey(c.Meta, "System", "Account", publicKey[:])
+	if err != nil {
+		return 0, types.Hash{}, 0, err
+	}
+	var account types.AccountInfo
+	present, err := c.API.RPC.State.GetStorage(key, &account, finalized)
+	if err != nil {
+		return 0, types.Hash{}, 0, err
+	}
+	if !present {
+		return 0, finalized, uint64(header.Number), nil
+	}
+	return uint32(account.Nonce), finalized, uint64(header.Number), nil
+}
+
+// NewSignedExtrinsic signs an arbitrary runtime call with the same runtime-447
+// signed-extension set used by CRv4. It is shared by CRv4 and the commitments
+// pallet so both paths have one exact signing implementation.
+func (c *Chain) NewSignedExtrinsic(kp *Keypair, call types.Call, nonce uint32) (*extrinsic.Extrinsic, error) {
+	ext := extrinsic.NewExtrinsic(call)
+	err := ext.Sign(kp.Ring, c.Meta,
+		extrinsic.WithEra(types.ExtrinsicEra{IsImmortalEra: true}, c.GenesisHash),
+		extrinsic.WithNonce(types.NewUCompactFromUInt(uint64(nonce))),
+		extrinsic.WithTip(types.NewUCompactFromUInt(0)),
+		extrinsic.WithSpecVersion(c.Runtime.SpecVersion),
+		extrinsic.WithTransactionVersion(c.Runtime.TransactionVersion),
+		extrinsic.WithGenesisHash(c.GenesisHash),
+		extrinsic.WithMetadataMode(extensions.CheckMetadataModeDisabled, extensions.CheckMetadataHash{Hash: types.NewEmptyOption[types.H256]()}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("crv4: sign extrinsic: %w", err)
+	}
+	return &ext, nil
+}
+
+// SubmitAndWatchFinalized broadcasts ext and waits for canonical finality. It
+// rejects pool terminal states, retractions, and finalized dispatch failures.
+// Callers should additionally verify their operation-specific storage
+// postcondition where one exists.
+func (c *Chain) SubmitAndWatchFinalized(ctx context.Context, ext *extrinsic.Extrinsic) (*FinalizedExtrinsic, error) {
+	if ext == nil {
+		return nil, fmt.Errorf("crv4: nil extrinsic")
+	}
+	encoded, err := codec.EncodeToHex(*ext)
+	if err != nil {
+		return nil, fmt.Errorf("crv4: encode extrinsic: %w", err)
+	}
+	return c.SubmitRawAndWatchFinalized(ctx, encoded)
+}
+
+// SubmitRawAndWatchFinalized is the restart-safe variant of
+// SubmitAndWatchFinalized. Metadata-driven signed extension fields cannot be
+// generically decoded back into gsrpc's Extrinsic type, so durable callers
+// replay the exact persisted SCALE hex through the RPC subscription.
+func (c *Chain) SubmitRawAndWatchFinalized(ctx context.Context, encoded string) (*FinalizedExtrinsic, error) {
+	raw, err := codec.HexDecodeString(encoded)
+	if err != nil || len(raw) == 0 {
+		return nil, fmt.Errorf("crv4: malformed raw extrinsic")
+	}
+	h := blake2b.Sum256(raw)
+	txHash := types.Hash(h)
+
+	statuses := make(chan types.ExtrinsicStatus)
+	sub, err := c.API.Client.Subscribe(
+		ctx, "author", "submitAndWatchExtrinsic", "unwatchExtrinsic", "extrinsicUpdate",
+		statuses, codec.HexEncodeToString(raw),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("crv4: submit/watch %s: %w", txHash.Hex(), err)
+	}
+	defer sub.Unsubscribe()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err, ok := <-sub.Err():
+			if ok && err != nil {
+				return nil, fmt.Errorf("crv4: watch %s: %w", txHash.Hex(), err)
+			}
+		case status, ok := <-statuses:
+			if !ok {
+				return nil, fmt.Errorf("crv4: watch %s closed before finality", txHash.Hex())
+			}
+			switch {
+			case status.IsFinalized:
+				header, err := c.API.RPC.Chain.GetHeader(status.AsFinalized)
+				if err != nil {
+					return nil, fmt.Errorf("crv4: finalized header %s: %w", status.AsFinalized.Hex(), err)
+				}
+				if err := c.VerifyFinalizedExtrinsic(status.AsFinalized, txHash); err != nil {
+					return nil, err
+				}
+				return &FinalizedExtrinsic{ExtrinsicHash: txHash, BlockHash: status.AsFinalized, BlockNumber: uint64(header.Number)}, nil
+			case status.IsDropped, status.IsInvalid, status.IsUsurped, status.IsFinalityTimeout, status.IsRetracted:
+				return nil, fmt.Errorf("crv4: extrinsic %s failed before finality: %+v", txHash.Hex(), status)
+			}
+		}
+	}
+}
+
 // NewCommitExtrinsic builds and signs (but does not submit) the CRv4 commit
 // extrinsic. mecid selects commit_timelocked_mechanism_weights when non-nil;
 // otherwise commit_timelocked_weights (MechId::MAIN) is used.
@@ -269,49 +546,42 @@ func (c *Chain) NewCommitExtrinsic(kp *Keypair, netuid uint16, mecid *uint8, cip
 		return nil, fmt.Errorf("crv4: build call: %w", err)
 	}
 
-	ext := extrinsic.NewExtrinsic(call)
-	err = ext.Sign(kp.Ring, c.Meta,
-		extrinsic.WithEra(types.ExtrinsicEra{IsImmortalEra: true}, c.GenesisHash),
-		extrinsic.WithNonce(types.NewUCompactFromUInt(uint64(nonce))),
-		extrinsic.WithTip(types.NewUCompactFromUInt(0)),
-		extrinsic.WithSpecVersion(c.Runtime.SpecVersion),
-		extrinsic.WithTransactionVersion(c.Runtime.TransactionVersion),
-		extrinsic.WithGenesisHash(c.GenesisHash),
-		extrinsic.WithMetadataMode(extensions.CheckMetadataModeDisabled, extensions.CheckMetadataHash{Hash: types.NewEmptyOption[types.H256]()}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("crv4: sign extrinsic: %w", err)
-	}
-	return &ext, nil
+	return c.NewSignedExtrinsic(kp, call, nonce)
 }
 
-// Commit signs and submits the CRv4 commit extrinsic (hotkey-signed) and
-// returns the extrinsic hash. The nonce is fetched via
+// Commit signs and submits the CRv4 commit extrinsic (hotkey-signed), waits
+// for finalized inclusion, and returns the extrinsic hash. The nonce is fetched via
 // system_accountNextIndex. ctx is honored between RPC steps (gsrpc calls
 // are not context-aware internally).
 func (c *Chain) Commit(ctx context.Context, kp *Keypair, netuid uint16, mecid *uint8, ciphertext []byte, revealRound uint64, commitRevealVersion uint16) (types.Hash, error) {
-	if err := ctx.Err(); err != nil {
+	receipt, err := c.CommitFinalized(ctx, kp, netuid, mecid, ciphertext, revealRound, commitRevealVersion)
+	if err != nil {
 		return types.Hash{}, err
+	}
+	return receipt.ExtrinsicHash, nil
+}
+
+// CommitFinalized is Commit with the full canonical receipt required by the
+// validator's durable intent journal.
+func (c *Chain) CommitFinalized(ctx context.Context, kp *Keypair, netuid uint16, mecid *uint8, ciphertext []byte, revealRound uint64, commitRevealVersion uint16) (*FinalizedExtrinsic, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	nonce, err := c.AccountNonce(kp.Address())
 	if err != nil {
-		return types.Hash{}, err
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return types.Hash{}, err
+		return nil, err
 	}
 	ext, err := c.NewCommitExtrinsic(kp, netuid, mecid, ciphertext, revealRound, commitRevealVersion, nonce)
 	if err != nil {
-		return types.Hash{}, err
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return types.Hash{}, err
+		return nil, err
 	}
-	hash, err := c.API.RPC.Author.SubmitExtrinsic(*ext)
-	if err != nil {
-		return types.Hash{}, fmt.Errorf("crv4: submit: %w", err)
-	}
-	return hash, nil
+	return c.SubmitAndWatchFinalized(ctx, ext)
 }
 
 // EncodeExtrinsic returns the SCALE hex of a signed extrinsic (what
@@ -360,6 +630,37 @@ type MetadataReport struct {
 	Extensions         []ExtensionReport
 	StorageFound       map[string]bool
 	Problems           []string
+}
+
+// DescribeCall returns the metadata-derived index and argument shapes for one
+// dispatchable. It is used by release preflight code for calls outside CRv4
+// (registration, custody setup, and stake transfer) without duplicating the
+// metadata-v14 type resolver.
+func (c *Chain) DescribeCall(palletName, callName string) (CallReport, error) {
+	if c.Meta.Version != 14 {
+		return CallReport{}, fmt.Errorf("crv4: expected metadata v14, got v%d", c.Meta.Version)
+	}
+	m := c.Meta.AsMetadataV14
+	for i := range m.Pallets {
+		pallet := &m.Pallets[i]
+		if string(pallet.Name) != palletName {
+			continue
+		}
+		if !pallet.HasCalls {
+			return CallReport{}, nil
+		}
+		callsType, ok := m.EfficientLookup[pallet.Calls.Type.Int64()]
+		if !ok || !callsType.Def.IsVariant {
+			return CallReport{}, fmt.Errorf("crv4: pallet %s call type is unavailable", palletName)
+		}
+		for _, variant := range callsType.Def.Variant.Variants {
+			if string(variant.Name) == callName {
+				return c.describeCall(m, variant), nil
+			}
+		}
+		return CallReport{}, nil
+	}
+	return CallReport{}, fmt.Errorf("crv4: pallet %s not found", palletName)
 }
 
 var requiredStorageItems = []string{

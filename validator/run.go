@@ -82,13 +82,13 @@ Usage:
     validator auth ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
         [--api_url=<api_url>]
         [-v...]
-    validator run [--api_url=<api_url>] [--connect_url=<connect_url>]
-        [--concurrency=<n>] [--theta=<theta>] [--m=<depth>]
-        [--rpc=<rpc_url>]... [--substrate=<ws_url>]... [--contract=<addr>] [--netuid=<id>]
-        [--evm_key_file=<path>] [--hotkey_seed_file=<path>] [--state_dir=<path>]
-        [--tempo_blocks=<n>] [--block_time=<secs>] [--version_key=<n>]
+    validator run --config=<path>
         [-v...]
-    validator status [--api_url=<api_url>]
+    validator run [--api_url=<api_url>] [--connect_url=<connect_url>]
+        [--concurrency=<n>] [--m=<depth>]
+        [--rpc=<rpc_url>]... [--contract=<addr>] [--state_dir=<path>]
+        [-v...]
+    validator status [--config=<path>] [--api_url=<api_url>]
         [--rpc=<rpc_url>]... [--contract=<addr>] [--netuid=<id>]
         [--evm_key_file=<path>] [--hotkey_seed_file=<path>] [--state_dir=<path>]
         [-v...]
@@ -99,17 +99,13 @@ Options:
     -v...                        Verbose level (repeatable).
     -f                           Force overwrite the JWT token store file, if exists.
     --api_url=<api_url>          Custom API URL.
+	--config=<path>                Strict release-1.0 production configuration; the only weight-writing mode.
     --connect_url=<connect_url>  Custom connect (platform transport) URL.
     --user_auth=<user_auth>      Login with a username.
     --password=<password>        Login with a password (prompted when omitted).
     --concurrency=<n>            Concurrent trail walkers [default: 4].
-    --theta=<theta>              Governance head share θ of the miner emission
-                                 (WHITEPAPER 8.5). Head slots are empty in v1, so the
-                                 pools receive the full weight until top-level miners
-                                 exist [default: 0.3].
     --m=<depth>                  Requested trail depth M (server clamps to [4,16]) [default: 8].
     --rpc=<rpc_url>              EVM json-rpc endpoint (repeatable; ordered failover).
-    --substrate=<ws_url>         Substrate websocket endpoint (repeatable; ordered failover).
     --contract=<addr>            STSubnet contract address (0x hex).
     --netuid=<id>                Subnet netuid.
     --evm_key_file=<path>        Hex secp256k1 key file (stctl format). Its mirror is the
@@ -118,10 +114,7 @@ Options:
                                  [default: <state_dir>/hotkey.seed].
     --state_dir=<path>           Validator state (vpk seed, proofs, stats)
                                  [default: ~/.urnetwork/validator].
-    --tempo_blocks=<n>           Steering cadence in substrate blocks (default: read the
-                                 subnet tempo from chain).
-    --block_time=<secs>          Substrate block seconds (12 mainnet, 0.25 fast testnet).
-    --version_key=<n>            Weights version key for CRv4 payloads.`,
+`,
 		DefaultApiUrl,
 		DefaultConnectUrl,
 	)
@@ -322,15 +315,19 @@ func auth(opts docopt.Opts) {
 // --- run ---
 
 func run(opts docopt.Opts) {
+	if configPath := optString(opts, "--config", ""); configPath != "" {
+		runReleaseConfig(configPath)
+		return
+	}
+	if err := rejectLegacySteeringOptions(opts); err != nil {
+		panic(err)
+	}
 	apiUrl := optString(opts, "--api_url", DefaultApiUrl)
 	connectUrl := optString(opts, "--connect_url", DefaultConnectUrl)
 	concurrency := optInt(opts, "--concurrency", 4)
-	theta := optFloat(opts, "--theta", 0.3)
 	m := optInt(opts, "--m", connect.VerifyMDefault)
-	blockTime := optFloat(opts, "--block_time", 12.0)
 
 	identityOpts := identityOptionsFromOpts(opts)
-	identityOpts.LoadHotkey = true
 	identity, err := LoadIdentity(identityOpts)
 	if err != nil {
 		panic(err)
@@ -468,43 +465,10 @@ func run(opts docopt.Opts) {
 
 	go engine.Run(ctx, concurrency)
 
-	// Steering: needs the hotkey, chain reads, substrate endpoints, netuid.
-	substrateUrls := optStringList(opts, "--substrate")
-	netuid := optInt(opts, "--netuid", -1)
-	if chain != nil && identity.Hotkey != nil && len(substrateUrls) > 0 && netuid >= 0 {
-		steerer := NewSteerer(chain, stats, identity.Hotkey, SteerConfig{
-			Netuid:        uint16(netuid),
-			Theta:         theta,
-			TempoBlocks:   optUint64(opts, "--tempo_blocks", 0),
-			BlockTimeSecs: blockTime,
-			VersionKey:    optUint64(opts, "--version_key", 0),
-			SubstrateUrls: substrateUrls,
-		})
-		// Head tier (§11.4): resolve each measured provider's ckey from the
-		// unauthenticated /key API, then read its on-chain head binding. A
-		// ckey fetch failure (absent key or transient error) is treated as
-		// "not a resolvable head this tempo" — fail closed and quiet; the
-		// on-chain binding read (the rarer call) still logs its errors.
-		steerer.SetHeadBindings(
-			func(id connect.Id) ([32]byte, bool, error) {
-				sdkId, parseErr := sdk.ParseId(id.String())
-				if parseErr != nil {
-					return [32]byte{}, false, nil
-				}
-				res, err := api.GetClientKeySyncWithContext(ctx, &sdk.GetClientKeyArgs{ClientId: sdkId})
-				if err != nil || res == nil || len(res.PublicKey) != 32 {
-					return [32]byte{}, false, nil
-				}
-				var ckey [32]byte
-				copy(ckey[:], res.PublicKey)
-				return ckey, true, nil
-			},
-			NewChainHeadBindings(chain, uint16(netuid)),
-		)
-		go steerer.Run(ctx)
-	} else {
-		fmt.Printf("steering: disabled (requires --rpc, --contract, --substrate, --netuid and a hotkey)\n")
-	}
+	// The flag-mode runner is measurement-only. Release weight writes require
+	// the strict multi-NO config path, which uses per-NO quality and exact CRv4
+	// intents. There is no CLI route to the legacy global-quality aggregator.
+	fmt.Printf("steering: disabled in legacy flag mode; use --config for release-1.0 steering\n")
 
 	// Periodic stats snapshots + final save on shutdown.
 	go func() {
@@ -530,6 +494,13 @@ func run(opts docopt.Opts) {
 	os.Exit(0)
 }
 
+func rejectLegacySteeringOptions(opts docopt.Opts) error {
+	if len(optStringList(opts, "--substrate")) != 0 || optInt(opts, "--netuid", -1) >= 0 || optUint64(opts, "--version_key", 0) != 0 || optUint64(opts, "--tempo_blocks", 0) != 0 {
+		return errors.New("legacy flag-mode steering is disabled; use validator run --config=<release-1.0.yml>")
+	}
+	return nil
+}
+
 // The register / submit-trails / claim commands (the effort-bounty flow) are
 // deferred to the bounty phase (WHITEPAPER §9.3, D23); implementation parked
 // at docs/parked/.
@@ -537,6 +508,15 @@ func run(opts docopt.Opts) {
 // --- status ---
 
 func status(opts docopt.Opts) {
+	if configPath := optString(opts, "--config", ""); configPath != "" {
+		cfg, err := LoadReleaseConfig(configPath)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("release: %s production=%t validator=%d netuid=%d operators=%d\n", cfg.Release, cfg.Production, cfg.ValidatorID, cfg.Netuid, len(cfg.Operators))
+		fmt.Printf("coordinator: %s\npolicy: %s\nstate_dir: %s\n", cfg.Coordinator, cfg.PolicyHash, cfg.StateDir)
+		return
+	}
 	identityOpts := identityOptionsFromOpts(opts)
 	identityOpts.LoadHotkey = true
 	identity, err := LoadIdentity(identityOpts)

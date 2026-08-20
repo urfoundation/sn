@@ -51,9 +51,7 @@ contract STSubnetTest is Test {
     MockEd25519 ed = MockEd25519(IED25519VERIFY_ADDRESS);
 
     event Deposited(uint256 indexed e, uint256 indexed noId, address from, uint256 amount);
-    event BuybackReserved(
-        uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal
-    );
+    event BuybackReserved(uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal);
 
     // ------------------------------------------------------------------
     // setup
@@ -181,8 +179,7 @@ contract STSubnetTest is Test {
 
     function test_blake2b_vectors() public view {
         assertEq(
-            Blake2b.hash256(""),
-            bytes32(0x0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8)
+            Blake2b.hash256(""), bytes32(0x0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8)
         );
         assertEq(
             Blake2b.hash256("abc"),
@@ -202,8 +199,7 @@ contract STSubnetTest is Test {
             full[i] = 0xaa;
         }
         assertEq(
-            Blake2b.hash256(full),
-            bytes32(0x9d92efcb1dfd5882b7a7e6fa955ce225585a03d077044be3d855a118f736af5a)
+            Blake2b.hash256(full), bytes32(0x9d92efcb1dfd5882b7a7e6fa955ce225585a03d077044be3d855a118f736af5a)
         );
     }
 

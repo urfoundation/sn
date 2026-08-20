@@ -54,6 +54,8 @@ import (
 	"sync"
 
 	"github.com/urnetwork/connect"
+
+	"github.com/urfoundation/sn/protocol"
 )
 
 // statsLatencyBuckets is the number of log2 latency buckets. Bucket i
@@ -63,10 +65,13 @@ const statsLatencyBuckets = 31
 
 // StatsConfig tunes the engine. Zero values take the documented defaults.
 type StatsConfig struct {
-	AMin     uint64  // minimum exposure to score a provider (§7.4); default 30
-	Alpha    float64 // cross-epoch EMA weight (§11.1); default 0.1
-	Z        float64 // Wilson z; default 1.96 (95%)
-	LatRefMs float64 // latency reference for the quality composite; default 4000
+	AMin             uint64  // minimum exposure to score a provider (§7.4); default 30
+	Alpha            float64 // legacy/reporting EMA; default 0.1
+	Z                float64 // legacy/reporting Wilson z; default 1.96 (95%)
+	LatRefMs         float64 // legacy/reporting latency reference; default 4000
+	AlphaNumerator   uint64  // exact production EMA numerator; default 1
+	AlphaDenominator uint64  // exact production EMA denominator; default 10
+	LatRefMillis     uint64  // exact production latency reference; default 4000
 }
 
 func (self StatsConfig) withDefaults() StatsConfig {
@@ -81,6 +86,16 @@ func (self StatsConfig) withDefaults() StatsConfig {
 	}
 	if self.LatRefMs == 0 {
 		self.LatRefMs = 4000
+	}
+	if self.AlphaDenominator == 0 {
+		self.AlphaNumerator = 1
+		self.AlphaDenominator = 10
+	}
+	if self.AlphaNumerator > self.AlphaDenominator {
+		self.AlphaNumerator = self.AlphaDenominator
+	}
+	if self.LatRefMillis == 0 {
+		self.LatRefMillis = 4000
 	}
 	return self
 }
@@ -158,6 +173,7 @@ func WilsonLower(c uint64, a uint64, z float64) float64 {
 type statsSnapshot struct {
 	Version int                        `json:"v"`
 	Ema     map[string]float64         `json:"ema"`
+	EmaPPM  map[string]uint32          `json:"ema_ppm,omitempty"`
 	Window  map[string]*ProviderWindow `json:"window"`
 }
 
@@ -168,6 +184,7 @@ type StatsEngine struct {
 	cfg    StatsConfig
 	window map[connect.Id]*ProviderWindow
 	ema    map[connect.Id]float64
+	emaPPM map[connect.Id]uint32
 	// egress is the per-provider set of distinct routable egress-IP-hashes seen
 	// this window (§11.1, D27 — the head routable-IP score). Reset at Fold,
 	// ephemeral (not persisted): it rebuilds from fresh trails, and the steerer
@@ -180,6 +197,7 @@ func NewStatsEngine(cfg StatsConfig) *StatsEngine {
 		cfg:    cfg.withDefaults(),
 		window: map[connect.Id]*ProviderWindow{},
 		ema:    map[connect.Id]float64{},
+		emaPPM: map[connect.Id]uint32{},
 		egress: map[connect.Id]map[[32]byte]bool{},
 	}
 }
@@ -250,11 +268,80 @@ func (self *StatsEngine) EgressIpHashes() map[connect.Id]map[[32]byte]bool {
 	return out
 }
 
+// ProviderIDs returns the union of window, EMA and egress identities. Binding
+// tier exclusion is based on membership, not on whether a provider happened to
+// expose a routable prefix in this window.
+func (self *StatsEngine) ProviderIDs() []connect.Id {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	set := map[connect.Id]bool{}
+	for id := range self.window {
+		set[id] = true
+	}
+	for id := range self.emaPPM {
+		set[id] = true
+	}
+	for id := range self.egress {
+		set[id] = true
+	}
+	out := make([]connect.Id, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LessThan(out[j]) })
+	return out
+}
+
 // qualityRawLocked computes the documented composite for one window.
 func (self *StatsEngine) qualityRawLocked(w *ProviderWindow) float64 {
 	wilson := WilsonLower(w.Confirmations, w.Assignments, self.cfg.Z)
 	p95 := w.Percentile(0.95)
 	return wilson * (self.cfg.LatRefMs / (self.cfg.LatRefMs + p95))
+}
+
+// qualityRawPPMLocked is the release-1.0 score transform. The Wilson bound,
+// latency penalty and EMA all use integer arithmetic, making the score stable
+// across architectures and independent implementations.
+func (self *StatsEngine) qualityRawPPMLocked(w *ProviderWindow) uint32 {
+	reliability := uint64(protocol.ReliabilityPPM(w.Confirmations, w.Assignments, self.cfg.AMin))
+	p95 := uint64(w.Percentile(0.95))
+	denom := self.cfg.LatRefMillis + p95
+	if denom == 0 {
+		return 0
+	}
+	return uint32(reliability * self.cfg.LatRefMillis / denom)
+}
+
+func (self *StatsEngine) blendPPM(raw, prior uint32) uint32 {
+	n, d := self.cfg.AlphaNumerator, self.cfg.AlphaDenominator
+	if d == 0 {
+		return raw
+	}
+	// Both operands are <= 1e6; the policy-sized rational cannot overflow.
+	return uint32((n*uint64(raw) + (d-n)*uint64(prior)) / d)
+}
+
+// QualityPPM is the production per-provider quality map. Sparse providers
+// carry a prior EMA but are never bootstrapped from fewer than a_min samples.
+func (self *StatsEngine) QualityPPM() map[connect.Id]uint32 {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	out := make(map[connect.Id]uint32, len(self.emaPPM))
+	for id, value := range self.emaPPM {
+		out[id] = value
+	}
+	for id, w := range self.window {
+		if w.Assignments < self.cfg.AMin {
+			continue
+		}
+		raw := self.qualityRawPPMLocked(w)
+		if prior, ok := self.emaPPM[id]; ok {
+			out[id] = self.blendPPM(raw, prior)
+		} else {
+			out[id] = raw
+		}
+	}
+	return out
 }
 
 // Quality returns the current per-provider quality map q_p: the cross-epoch
@@ -311,6 +398,12 @@ func (self *StatsEngine) Fold() {
 		} else {
 			self.ema[id] = raw
 		}
+		rawPPM := self.qualityRawPPMLocked(w)
+		if prior, ok := self.emaPPM[id]; ok {
+			self.emaPPM[id] = self.blendPPM(rawPPM, prior)
+		} else {
+			self.emaPPM[id] = rawPPM
+		}
 	}
 	self.window = map[connect.Id]*ProviderWindow{}
 	// The egress-IP-hash sets are windowed too (§11.1): the per-fleet score is
@@ -333,12 +426,16 @@ func (self *StatsEngine) WindowCounts(hop connect.Id) (uint64, uint64) {
 func (self *StatsEngine) Save(dir string) error {
 	self.mu.Lock()
 	snap := statsSnapshot{
-		Version: 1,
+		Version: 2,
 		Ema:     map[string]float64{},
+		EmaPPM:  map[string]uint32{},
 		Window:  map[string]*ProviderWindow{},
 	}
 	for id, v := range self.ema {
 		snap.Ema[id.String()] = v
+	}
+	for id, v := range self.emaPPM {
+		snap.EmaPPM[id.String()] = v
 	}
 	for id, w := range self.window {
 		cp := *w
@@ -350,14 +447,7 @@ func (self *StatsEngine) Save(dir string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	tmp := filepath.Join(dir, ".stats.json.tmp")
-	if err := os.WriteFile(tmp, b, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(dir, "stats.json"))
+	return atomicStateWrite(filepath.Join(dir, "stats.json"), b, 0o600)
 }
 
 // Load restores a snapshot from <dir>/stats.json; a missing file is a clean
@@ -379,6 +469,24 @@ func (self *StatsEngine) Load(dir string) error {
 	for idStr, v := range snap.Ema {
 		if id, err := connect.ParseId(idStr); err == nil {
 			self.ema[id] = v
+		}
+	}
+	for idStr, v := range snap.EmaPPM {
+		if id, err := connect.ParseId(idStr); err == nil {
+			self.emaPPM[id] = v
+		}
+	}
+	// Deterministic migration from the pre-v2 reporting EMA. This occurs once;
+	// all subsequent folds and snapshots use the exact integer representation.
+	if len(snap.EmaPPM) == 0 {
+		for id, v := range self.ema {
+			if v <= 0 {
+				self.emaPPM[id] = 0
+			} else if v >= 1 {
+				self.emaPPM[id] = 1_000_000
+			} else {
+				self.emaPPM[id] = uint32(math.Floor(v * 1_000_000))
+			}
 		}
 	}
 	for idStr, w := range snap.Window {

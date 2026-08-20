@@ -1,0 +1,83 @@
+policy:
+  schema: urnetwork-policy-v1
+  policy_id: 1
+  effective_epoch: 0
+  settlement:
+    epoch_blocks: 300
+    root_commit_window_blocks: 50
+    finalize_offset_blocks: 150
+    close_grace_blocks: 5
+    claim_ttl_epochs: 8
+    claim_grace_epochs: 1
+    missed_root_action: carry_same_operator
+    expired_claim_action: carry_same_operator
+    shares_total_bps: 10000
+    rounding: largest_remainder_then_client_id_ascending
+  production_cadence:
+    # sim-testnet schedules this exact snapshot for currentEpoch+1 only after
+    # the 20 accelerated epochs reconcile. The active short epoch is unchanged.
+    after_accelerated_epochs: 20
+    epoch_blocks: 50400
+    root_commit_window_blocks: 1200
+    finalize_offset_blocks: 14400
+    close_grace_blocks: 120
+  steering:
+    theta:
+      numerator: 3
+      denominator: 10
+    quality_transform:
+      kind: clamp_ppm
+      minimum_ppm: 750000
+      maximum_ppm: 1000000
+    head_score_ema:
+      numerator: 1
+      denominator: 4
+    empty_channel: cede_to_nonempty
+    arithmetic: integer_rational_v1
+  deposit:
+    unit: rao_per_gib
+    epoch_cap_rao_per_operator: 100000000
+    # 2 NOs × 20 epochs × 0.1 alpha, plus 1 alpha voluntary conviction.
+    total_test_campaign_cap_rao: 5000000000
+    tier_snapshot: conviction_before_epoch
+    tiers:
+      - min_conviction_rao: 0
+        rate_numerator_rao_per_gib: 1000000
+        rate_denominator: 1
+      - min_conviction_rao: 1000000000
+        rate_numerator_rao_per_gib: 800000
+        rate_denominator: 1
+      - min_conviction_rao: 10000000000
+        rate_numerator_rao_per_gib: 600000
+        rate_denominator: 1
+    zero_or_invalid_rate: halt
+  verify:
+    trail_depth: 8
+    step_timeout_seconds: 30
+    step_timeout_grace_seconds: 5
+    trail_ttl_grace_seconds: 60
+    egress_ttl_seconds: 600
+    egress_refresh_seconds: 120
+    reliability_a_min: 8
+    stats_period_seconds: 900
+    egress_ipv4_prefix: 29
+    egress_ipv6_prefix: 48
+    egress_hash_key_id: testnet-v1
+    soft_guardrails_enabled: false
+    hard_seed_per_minute_per_source: 40
+    hard_extend_per_minute_per_source: 240
+    hard_active_trails_per_source: 32
+  binding:
+    schema: urnetwork-fleet-binding-v1
+    changes_effective_next_epoch: true
+    maximum_validity_epochs: 32
+    commitments_required: true
+    client_signature: ed25519
+    hotkey_signature: sr25519
+  safety:
+    minimum_healthy_no_count: 2
+    minimum_live_validator_count: 2
+    maximum_finalized_head_lag_blocks: 3
+    stop_on_runtime_change: true
+    stop_on_policy_mismatch: true
+    stop_on_index_gap: true

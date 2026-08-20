@@ -15,6 +15,7 @@ contract MockStakingV2 {
     mapping(bytes32 => mapping(bytes32 => uint256)) public stakes; // hotkey -> coldkey -> rao
     mapping(address => bytes32) public callerColdkey;
     bool public failMoveStake;
+    uint256 public nominatorMinimum = 1_000;
 
     // --- test configuration ---
     function setColdkey(address caller, bytes32 coldkey) external {
@@ -29,9 +30,17 @@ contract MockStakingV2 {
         failMoveStake = fail;
     }
 
+    function setNominatorMinimum(uint256 amount) external {
+        nominatorMinimum = amount;
+    }
+
     // --- IStaking surface used by STSubnet ---
     function getStake(bytes32 hotkey, bytes32 coldkey, uint256) external view returns (uint256) {
         return stakes[hotkey][coldkey];
+    }
+
+    function getNominatorMinRequiredStake() external view returns (uint256) {
+        return nominatorMinimum;
     }
 
     /// @dev SP-1 probe support: TAO->α at 1:1 (the mock has no AMM slippage;
@@ -43,13 +52,9 @@ contract MockStakingV2 {
         stakes[hotkey][ck] += amount;
     }
 
-    function moveStake(
-        bytes32 originHotkey,
-        bytes32 destinationHotkey,
-        uint256,
-        uint256,
-        uint256 amount
-    ) external {
+    function moveStake(bytes32 originHotkey, bytes32 destinationHotkey, uint256, uint256, uint256 amount)
+        external
+    {
         require(!failMoveStake, "mock: moveStake down");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
@@ -58,13 +63,9 @@ contract MockStakingV2 {
         stakes[destinationHotkey][ck] += amount;
     }
 
-    function transferStake(
-        bytes32 destinationColdkey,
-        bytes32 hotkey,
-        uint256,
-        uint256,
-        uint256 amount
-    ) external {
+    function transferStake(bytes32 destinationColdkey, bytes32 hotkey, uint256, uint256, uint256 amount)
+        external
+    {
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
         require(stakes[hotkey][ck] >= amount, "mock: insufficient");
@@ -78,11 +79,26 @@ contract MockNeuron {
     uint256 public registerCount;
     bytes32 public lastHotkey;
     uint16 public lastNetuid;
+    address public lastRegistrant;
+    mapping(uint16 => mapping(bytes32 => address)) public registrants;
+    mapping(uint16 => mapping(bytes32 => uint16)) public uids;
+    mapping(uint16 => mapping(bytes32 => bool)) public uidExists;
+
+    function setUid(uint16 netuid, bytes32 hotkey, uint16 uid) external {
+        uids[netuid][hotkey] = uid;
+        uidExists[netuid][hotkey] = true;
+    }
 
     function burnedRegister(uint16 netuid, bytes32 hotkey) external payable {
         registerCount++;
         lastNetuid = netuid;
         lastHotkey = hotkey;
+        lastRegistrant = msg.sender;
+        registrants[netuid][hotkey] = msg.sender;
+    }
+
+    function getUid(uint16 netuid, bytes32 hotkey) external view returns (bool exists, uint16 uid) {
+        return (uidExists[netuid][hotkey], uids[netuid][hotkey]);
     }
 }
 
@@ -122,14 +138,26 @@ contract MockEd25519 {
         bad[keccak256(abi.encode(message, pubkey, r, s))] = isBad;
     }
 
-    function verify(bytes32 message, bytes32 pubkey, bytes32 r, bytes32 s)
-        external
-        view
-        returns (bool)
-    {
+    function verify(bytes32 message, bytes32 pubkey, bytes32 r, bytes32 s) external view returns (bool) {
         if (r == bytes32(0) && s == bytes32(0)) {
             return false;
         }
+        return !bad[keccak256(abi.encode(message, pubkey, r, s))];
+    }
+}
+
+/// @dev Mock of runtime-447 sr25519 verifier (0x403), with the same failure
+/// controls as the Ed25519 mock. Real randomized sr25519 vectors are exercised
+/// by the Go fixture and live preflight.
+contract MockSr25519 {
+    mapping(bytes32 => bool) public bad;
+
+    function setBad(bytes32 message, bytes32 pubkey, bytes32 r, bytes32 s, bool isBad) external {
+        bad[keccak256(abi.encode(message, pubkey, r, s))] = isBad;
+    }
+
+    function verify(bytes32 message, bytes32 pubkey, bytes32 r, bytes32 s) external view returns (bool) {
+        if (r == bytes32(0) && s == bytes32(0)) return false;
         return !bad[keccak256(abi.encode(message, pubkey, r, s))];
     }
 }

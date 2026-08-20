@@ -16,14 +16,17 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/stabi"
 )
 
-// ClaimIntent is a decoded claimMiner(e, noId, coldkey, shareBps, proof) call.
+// ClaimIntent is a decoded immutable-vault claim call.
 // Exported (as an alias of the internal claimIntent) so external callers can
 // construct one for BuildClaimCalldata without reaching into the package.
 type ClaimIntent = claimIntent
 
-// BuildClaimCalldata ABI-packs a claimMiner call via the stabi bindings.
+// BuildClaimCalldata ABI-packs STSettlementVault.claim via the stabi bindings.
 func BuildClaimCalldata(intent ClaimIntent) ([]byte, error) {
 	return buildClaimCalldata(&intent)
 }
@@ -32,12 +35,30 @@ func BuildClaimCalldata(intent ClaimIntent) ([]byte, error) {
 // the stabi bindings. sig is the provider's 64-byte Ed25519 R‖S over the
 // on-chain headBindDigest.
 func BuildBindHeadCalldata(hotkey, clientID [32]byte, sig []byte) ([]byte, error) {
-	return stSubnet.TryPackBindHead(hotkey, clientID, sig)
+	return legacySTSubnet.TryPackBindHead(hotkey, clientID, sig)
 }
 
 // BuildUnbindHeadCalldata ABI-packs unbindHead(hotkey) via the stabi bindings.
 func BuildUnbindHeadCalldata(hotkey [32]byte) ([]byte, error) {
-	return stSubnet.TryPackUnbindHead(hotkey)
+	return legacySTSubnet.TryPackUnbindHead(hotkey)
+}
+
+// BuildFleetBindingCalldata packs the release-1.0 many-to-one dual-signed
+// binding. The protocol package owns the canonical digest; this function is
+// only the ABI boundary.
+func BuildFleetBindingCalldata(binding protocol.FleetBinding, clientSignature, hotkeySignature []byte) ([]byte, error) {
+	if err := binding.Validate(); err != nil {
+		return nil, err
+	}
+	if !binding.VerifyClient(clientSignature) || !binding.VerifyHotkey(hotkeySignature) {
+		return nil, fmt.Errorf("fleet binding signatures do not verify")
+	}
+	return stCoordinator.TryPackBindFleetMember(stabi.STCoordinatorFleetBinding{
+		ChainId: binding.ChainID, Netuid: binding.Netuid, Coordinator: common.Address(binding.Coordinator),
+		FleetId: binding.FleetID, Hotkey: binding.Hotkey, ClientId: binding.ClientID,
+		ClientKey: binding.ClientKey, Generation: binding.Generation, ValidFromEpoch: binding.ValidFromEpoch,
+		ValidToEpoch: binding.ValidToEpoch, CommitmentHash: binding.CommitmentHash,
+	}, clientSignature, hotkeySignature)
 }
 
 // LoadKeyFile reads a hex-encoded 32-byte secp256k1 EVM private key

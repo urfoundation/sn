@@ -14,11 +14,12 @@ import (
 // and requires equality.
 func TestConfigRoundTrip(t *testing.T) {
 	want := &Config{
-		RpcUrls:         []string{"https://test.chain.opentensor.ai", "http://127.0.0.1:9944"},
-		ChainId:         945,
-		ContractAddress: "0x00112233445566778899aAbBcCdDeEfF00112233",
-		Netuid:          350,
-		KeyFile:         "~/.urnetwork/stctl.key",
+		ContractGeneration: "legacy-pre-1.0-stsubnet",
+		RpcUrls:            []string{"https://test.chain.opentensor.ai", "http://127.0.0.1:9944"},
+		ChainId:            945,
+		ContractAddress:    "0x00112233445566778899aAbBcCdDeEfF00112233",
+		Netuid:             350,
+		KeyFile:            "~/.urnetwork/stctl.key",
 	}
 	data, err := yaml.Marshal(want)
 	if err != nil {
@@ -53,6 +54,9 @@ func TestExampleConfigParses(t *testing.T) {
 	if config.ChainId != 945 {
 		t.Errorf("example chain_id = %d, want 945", config.ChainId)
 	}
+	if config.ContractGeneration != "legacy-pre-1.0-stsubnet" {
+		t.Errorf("example contract_generation = %q", config.ContractGeneration)
+	}
 	if config.KeyFile != "~/.urnetwork/stctl.key" {
 		t.Errorf("example key_file = %q", config.KeyFile)
 	}
@@ -72,6 +76,7 @@ func TestConfigRejects(t *testing.T) {
 		{"no rpc urls", "chain_id: 945\n"},
 		{"no chain id", "rpc_urls: [x]\n"},
 		{"bad contract address", "rpc_urls: [x]\nchain_id: 945\ncontract_address: nothex\n"},
+		{"release contract generation", "contract_generation: release-1.0\nrpc_urls: [x]\nchain_id: 945\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

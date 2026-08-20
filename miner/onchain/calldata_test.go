@@ -30,10 +30,11 @@ const (
 	aliceHex  = "d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"
 	aliceSS58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
 
-	// goldenClaimCalldata is claimMiner(7, 3, alice, 1234, [0x11..11, 0x22..22]):
+	// goldenClaimCalldata is STSettlementVault.claim(7, 3, alice, 1234,
+	// [0x11..11, 0x22..22]):
 	// selector ‖ e ‖ noId ‖ coldkey ‖ shareBps ‖ proof offset (0xa0) ‖
 	// proof len ‖ proof[0] ‖ proof[1].
-	goldenClaimCalldata = "0x4c207962" +
+	goldenClaimCalldata = "0xce479a1b" +
 		"0000000000000000000000000000000000000000000000000000000000000007" +
 		"0000000000000000000000000000000000000000000000000000000000000003" +
 		"d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d" +
@@ -64,10 +65,10 @@ func goldenIntent(t *testing.T) *claimIntent {
 	}
 }
 
-// TestPackClaimMinerGolden pins the structured-mode packing to exact bytes,
+// TestPackClaimGolden pins the structured-mode packing to exact bytes,
 // cross-checked against (a) an independently keccak-derived selector and
 // (b) a hand-built ABI encoding assembled word by word in this test.
-func TestPackClaimMinerGolden(t *testing.T) {
+func TestPackClaimGolden(t *testing.T) {
 	got, err := buildClaimCalldata(goldenIntent(t))
 	if err != nil {
 		t.Fatalf("buildClaimCalldata: %v", err)
@@ -75,15 +76,15 @@ func TestPackClaimMinerGolden(t *testing.T) {
 
 	// (a) selector: keccak256 of the canonical signature, computed with
 	// x/crypto/sha3 rather than go-ethereum.
-	wantSel := keccak256x([]byte("claimMiner(uint256,uint256,bytes32,uint256,bytes32[])"))[:4]
-	if hex.EncodeToString(wantSel) != "4c207962" {
-		t.Fatalf("independent selector = %x, want 4c207962", wantSel)
+	wantSel := keccak256x([]byte("claim(uint256,uint256,bytes32,uint256,bytes32[])"))[:4]
+	if hex.EncodeToString(wantSel) != "ce479a1b" {
+		t.Fatalf("independent selector = %x, want ce479a1b", wantSel)
 	}
 	if !bytes.Equal(got[:4], wantSel) {
 		t.Fatalf("packed selector = %x, want %x", got[:4], wantSel)
 	}
-	if [4]byte(got[:4]) != claimMinerSelector {
-		t.Fatalf("claimMinerSelector constant = %x disagrees with packed %x", claimMinerSelector[:], got[:4])
+	if [4]byte(got[:4]) != claimSelector {
+		t.Fatalf("claimSelector constant = %x disagrees with packed %x", claimSelector[:], got[:4])
 	}
 
 	// (b) hand-built encoding: 5 head words (dynamic proof as offset 0xa0),
@@ -138,17 +139,15 @@ func TestParseClaimCalldataRoundTrip(t *testing.T) {
 // selector (a real deposit packing), odd-length hex, junk hex, and
 // truncated input are all refused.
 func TestParseClaimCalldataRejects(t *testing.T) {
-	deposit, err := stSubnet.TryPackDeposit(big.NewInt(1), big.NewInt(2))
-	if err != nil {
-		t.Fatalf("TryPackDeposit: %v", err)
-	}
+	wrong := append([]byte(nil), mustDecodeHex(t, goldenClaimCalldata)...)
+	wrong[0] ^= 0xff
 
 	cases := []struct {
 		name, in string
 	}{
-		{"wrong selector", "0x" + hex.EncodeToString(deposit)},
+		{"wrong selector", "0x" + hex.EncodeToString(wrong)},
 		{"odd hex", goldenClaimCalldata[:len(goldenClaimCalldata)-1]},
-		{"junk hex", "0x4c2079zz"},
+		{"junk hex", "0xce479azz"},
 		{"short", "0x4c20"},
 		{"empty", ""},
 		{"truncated args", goldenClaimCalldata[:20]},
@@ -161,25 +160,34 @@ func TestParseClaimCalldataRejects(t *testing.T) {
 	}
 
 	// Error text spot checks (selector + odd length are the load-bearing ones).
-	if _, _, err := parseClaimCalldata("0x" + hex.EncodeToString(deposit)); err == nil ||
-		!strings.Contains(err.Error(), "selector") || !strings.Contains(err.Error(), "4c207962") {
+	if _, _, err := parseClaimCalldata("0x" + hex.EncodeToString(wrong)); err == nil ||
+		!strings.Contains(err.Error(), "selector") || !strings.Contains(err.Error(), "ce479a1b") {
 		t.Errorf("wrong-selector error unhelpful: %v", err)
 	}
-	if _, _, err := parseClaimCalldata("0x4c2079621"); err == nil || !strings.Contains(err.Error(), "odd-length") {
+	if _, _, err := parseClaimCalldata("0xce479a1b1"); err == nil || !strings.Contains(err.Error(), "odd-length") {
 		t.Errorf("odd-length error unhelpful: %v", err)
 	}
 }
 
-// TestMinerClaimedByKey pins the status-command dedup key to the contract's
+// TestLeafClaimKey pins the status-command dedup key to the contract's
 // keccak256(abi.encode(noId, coldkey)), derived independently here.
-func TestMinerClaimedByKey(t *testing.T) {
+func TestLeafClaimKey(t *testing.T) {
 	in := goldenIntent(t)
 	var pre []byte
 	pre = append(pre, word(3)...) // noId as a 32-byte word
 	pre = append(pre, in.Coldkey[:]...)
 	want := keccak256x(pre)
-	got := minerClaimedByKey(in.NoID, in.Coldkey)
+	got := leafClaimKey(in.NoID, in.Coldkey)
 	if !bytes.Equal(got[:], want) {
-		t.Fatalf("minerClaimedByKey = %x, want %x", got, want)
+		t.Fatalf("leafClaimKey = %x, want %x", got, want)
 	}
+}
+
+func mustDecodeHex(t *testing.T, value string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

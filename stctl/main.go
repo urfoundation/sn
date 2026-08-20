@@ -1,6 +1,7 @@
-// stctl is the subtensor ops CLI for the UR subnet: runtime operations and
-// inspection for the STSubnet settlement contract (PLAN.md §2), talking to
-// the subtensor EVM json-rpc through the generated sn/stabi bindings.
+// stctl is retained only for inspection/regression of the pre-1.0 STSubnet
+// monolith. Release-1.0 writes belong to sim-testnet, scoped server tasks, and
+// the miner claim daemon; stctl refuses configs without an explicit legacy
+// contract-generation acknowledgement.
 //
 // Deployment itself stays in `forge script` (see sn/evm); stctl covers the
 // runtime surface: initialize (for a proxy deployed uninitialized), operator
@@ -27,9 +28,9 @@ var verbosity int
 // inline in `main`) so tests can parse argv against the real usage.
 func mainUsage() string {
 	return fmt.Sprintf(
-		`UR subtensor ops CLI: runtime ops + inspection for the STSubnet contract.
+		`UR legacy subtensor ops CLI: pre-1.0 STSubnet only (NOT release 1.0).
 
-Reads a YAML config (default %s).
+Reads a YAML config (default %s). Release users must use sim-testnet/server tooling.
 When the config file is missing, "stctl deploy-status" prints a commented
 example to copy from. Amounts are rao (1 alpha = 1e9 rao).
 

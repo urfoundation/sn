@@ -70,7 +70,7 @@ func cmdSubmit(opts docopt.Opts) error {
 			return err
 		}
 		if calldata, err = buildClaimCalldata(intent); err != nil {
-			return fmt.Errorf("pack claimMiner: %w", err)
+			return fmt.Errorf("pack settlement-vault claim: %w", err)
 		}
 	}
 
@@ -89,7 +89,7 @@ func cmdSubmit(opts docopt.Opts) error {
 		DryRun:   boolOpt(opts, "--dry-run"),
 	}, func(from common.Address, chainID *big.Int, rpcURL string) func(uint64, error) {
 		return func(gasEst uint64, gasErr error) {
-			fmt.Printf("claimMiner intent\n")
+			fmt.Printf("settlement-vault claim intent\n")
 			fmt.Printf("  contract:   %s (chain id %s, rpc %s)\n", contract.Hex(), chainID, rpcURL)
 			fmt.Printf("  from:       %s\n", from.Hex())
 			fmt.Printf("  epoch:      %s\n", intent.E)
@@ -116,18 +116,18 @@ func cmdSubmit(opts docopt.Opts) error {
 		if lg.Address != contract {
 			continue
 		}
-		ev, uerr := stSubnet.UnpackMinerClaimedEvent(lg)
+		ev, uerr := stSettlementVault.UnpackClaimedEvent(lg)
 		if uerr != nil {
 			continue
 		}
-		fmt.Printf("MinerClaimed: epoch %s, noId %s\n", ev.E, ev.NoId)
+		fmt.Printf("Claimed: epoch %s, noId %s\n", ev.Epoch, ev.NoId)
 		fmt.Printf("  coldkey:  %s\n", renderColdkey(ev.Coldkey))
 		fmt.Printf("  shareBps: %s\n", ev.ShareBps)
 		fmt.Printf("  paid:     %s\n", formatAlpha(ev.Amount))
 		decoded = true
 	}
 	if !decoded {
-		fmt.Println("warning: no MinerClaimed event decoded from the receipt")
+		fmt.Println("warning: no Claimed event decoded from the receipt")
 	}
 	return nil
 }
@@ -167,62 +167,37 @@ func cmdStatus(opts docopt.Opts) error {
 	}
 	defer client.Close()
 
-	finalizedRet, err := ethCall(ctx, client, contract, stSubnet.PackFinalized(e))
+	entitlementRet, err := ethCall(ctx, client, contract, stSettlementVault.PackEntitlement(e, noID))
 	if err != nil {
-		return fmt.Errorf("finalized(%s): %w", e, err)
+		return fmt.Errorf("entitlement(%s,%s): %w", e, noID, err)
 	}
-	finalized, err := stSubnet.UnpackFinalized(finalizedRet)
+	entitlement, err := stSettlementVault.UnpackEntitlement(entitlementRet)
 	if err != nil {
-		return fmt.Errorf("finalized(%s): %w", e, err)
-	}
-	commitRet, err := ethCall(ctx, client, contract, stSubnet.PackNoCommit(e, noID))
-	if err != nil {
-		return fmt.Errorf("noCommit(%s,%s): %w", e, noID, err)
-	}
-	commit, err := stSubnet.UnpackNoCommit(commitRet)
-	if err != nil {
-		return fmt.Errorf("noCommit(%s,%s): %w", e, noID, err)
-	}
-	totalRet, err := ethCall(ctx, client, contract, stSubnet.PackPoolTotal(e, noID))
-	if err != nil {
-		return fmt.Errorf("poolTotal(%s,%s): %w", e, noID, err)
-	}
-	total, err := stSubnet.UnpackPoolTotal(totalRet)
-	if err != nil {
-		return fmt.Errorf("poolTotal(%s,%s): %w", e, noID, err)
-	}
-	claimedRet, err := ethCall(ctx, client, contract, stSubnet.PackClaimedMiner(e, noID))
-	if err != nil {
-		return fmt.Errorf("claimedMiner(%s,%s): %w", e, noID, err)
-	}
-	claimed, err := stSubnet.UnpackClaimedMiner(claimedRet)
-	if err != nil {
-		return fmt.Errorf("claimedMiner(%s,%s): %w", e, noID, err)
+		return fmt.Errorf("entitlement(%s,%s): %w", e, noID, err)
 	}
 
 	fmt.Printf("STSubnet claim status — contract %s (chain id %s, rpc %s)\n", contract.Hex(), chainID, rpcURL)
-	if finalized {
-		fmt.Printf("  epoch:        %s (finalized — claims open)\n", e)
-	} else {
-		fmt.Printf("  epoch:        %s (NOT finalized — claims open only after finalizeEpoch)\n", e)
-	}
+	status := entitlement.Status
+	fmt.Printf("  epoch:        %s (vault status %d; 2 = finalized/claimable)\n", e, status)
 	fmt.Printf("  pool (noId):  %s\n", noID)
-	if commit.PayoutRoot == ([32]byte{}) {
+	if entitlement.PayoutRoot == ([32]byte{}) {
 		fmt.Printf("  payout root:  none (no operator commit for this epoch/pool)\n")
 	} else {
-		fmt.Printf("  payout root:  0x%x\n", commit.PayoutRoot)
+		fmt.Printf("  payout root:  0x%x\n", entitlement.PayoutRoot)
 	}
-	fmt.Printf("  pool total:   %s\n", formatAlpha(total))
-	fmt.Printf("  claimed:      %s%s\n", formatAlpha(claimed), shareOfPool(claimed, total))
-	fmt.Printf("  remaining:    %s\n", formatAlpha(new(big.Int).Sub(total, claimed)))
+	fmt.Printf("  artifact:     0x%x\n", entitlement.ArtifactHash)
+	fmt.Printf("  expiry block: %d\n", entitlement.ExpiryBlock)
+	fmt.Printf("  pool total:   %s\n", formatAlpha(entitlement.Total))
+	fmt.Printf("  claimed:      %s%s\n", formatAlpha(entitlement.Claimed), shareOfPool(entitlement.Claimed, entitlement.Total))
+	fmt.Printf("  remaining:    %s\n", formatAlpha(new(big.Int).Sub(entitlement.Total, entitlement.Claimed)))
 
 	if coldkey != nil {
-		key := minerClaimedByKey(noID, *coldkey)
-		ret, err := ethCall(ctx, client, contract, stSubnet.PackMinerClaimedBy(e, key))
+		key := leafClaimKey(noID, *coldkey)
+		ret, err := ethCall(ctx, client, contract, stSettlementVault.PackLeafClaimed(e, key))
 		if err != nil {
 			return fmt.Errorf("minerClaimedBy(%s,0x%x): %w", e, key, err)
 		}
-		done, err := stSubnet.UnpackMinerClaimedBy(ret)
+		done, err := stSettlementVault.UnpackLeafClaimed(ret)
 		if err != nil {
 			return fmt.Errorf("minerClaimedBy(%s,0x%x): %w", e, key, err)
 		}

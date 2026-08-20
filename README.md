@@ -2,9 +2,10 @@
 
 **A Bittensor subnet for a decentralized privacy network.**
 
-This repository (`sn`) is the reference implementation of the UR Subnet — the smart
-contract, the off‑chain operator/validator software, and the chain configuration that
-run a decentralized privacy/VPN network entirely through on‑chain incentives.
+This repository (`sn`) is the reference implementation of the UR Subnet — the EVM
+contract suite, miner and validator software, chain tooling, and the real-testnet
+integration harness. The operator/API implementation lives in the sibling `server`
+repository.
 
 **Network Operators** run the servers. Independent **providers** carry ingress/egress
 traffic. Independent **validators** run the [`VALIDATOR.md`](VALIDATOR.md)
@@ -25,11 +26,11 @@ the rest of the Bittensor field is in [`COMPARISON.md`](COMPARISON.md).
 Money flows in three coupled channels, all in α:
 
 1. **Deposits — the demand signal, conviction stake, and a buyback.** Each NO deposits α
-   into the ST contract, sized to its real usage at an **off‑chain published rate**
+   through the coordinator, sized to its real usage at an **off‑chain published rate**
    (no on‑chain oracle). Deposits are the costly signal of real demand — and they are
-   **never distributed**: the contract moves every deposit into a locked **buyback
-   reserve** (α staked to the owner's validator hotkey, compounding dividends, with no
-   code path out). A NO's cumulative locked α (its **conviction**) sets its **tier → rate**:
+   **never distributed**: every exact deposit is transferred into the immutable
+   `STReserveSink` and staked on the fixed reserve hotkey (compounding dividends, with
+   no outbound bytecode). A NO's cumulative locked α (its **conviction**) sets its **tier → rate**:
    zero conviction pays the baseline rate; more conviction lowers it — the onboarding and
    alignment lever.
 
@@ -40,8 +41,8 @@ Money flows in three coupled channels, all in α:
    scores into miner emission — so the validators' evaluation *is* what moves the money.
    Validator emission flows **natively** (∝ stake × vtrust).
 
-3. **Settlement (7‑day epoch).** Over each epoch the contract accrues the captured miner
-   emission and providers **claim their α directly from the contract** with cryptographic
+3. **Settlement (7‑day epoch).** Over each epoch the immutable settlement vault captures
+   pool miner emission and providers **claim their α directly from the vault** with cryptographic
    proofs. A NO *directs* where its pool's rewards go but **never holds anyone else's funds**.
 
 ### Two miner tiers, in parallel
@@ -49,10 +50,11 @@ Money flows in three coupled channels, all in α:
 Because one NO may serve **100k+ providers — far beyond a subnet's ~256 UID cap** — the
 miner side runs two tiers inside **one** mechanism, divided by a governance share **θ**:
 
-- **Pool tier (tail, `1−θ`)** — the **on‑ramp**. Each NO is a single contract‑owned
+- **Pool tier (tail, `1−θ`)** — the **on‑ramp**. Each NO is a single vault‑owned
   **pool UID**; validators weight it `implied_usage × quality` (implied usage = the NO's
   deposit ÷ its tier rate). Its providers are *not* UIDs — they are paid *inside* the pool
-  by **Merkle claim**. Low barrier (join a NO, no UID, no registration burn), baseline reward.
+  by **Merkle claim**. Low provider barrier (join a NO; the provider needs no UID or burn because the
+  immutable vault owns one shared, burn-registered pool UID per NO), baseline reward.
 - **Top‑level miners (head, `θ`)** — the **supply apex**. The **top ~200 fleets by
   split‑adjusted distinct routable egress‑IP count** (real VPN supply breadth, *not*
   traffic volume) each claim their **own miner UID**, are steered **directly** by
@@ -67,15 +69,15 @@ tail‑weighted (**θ ≈ 0.3**) and widen it as the top‑miner set and validat
 
 ### Custody and trust model
 
-- **No‑custody in spirit.** The owner and NOs never hold or distribute anyone else's α.
-  The contract is the sole custodian of in‑transit α; every pool payout is a **direct
+- **No operator custody.** The owner and NOs never hold or distribute anyone else's α.
+  The immutable vault is the sole custodian of in‑transit pool emission; every payout is a **direct
   on‑chain pull claim**; the head is paid **natively**.
 - **Finalized claims are sacrosanct** from day one — no upgrade, pause, or admin action can
   block or claw back a finalized claim.
 - **The buyback reserve is one‑way** — no contract function ever sources a transfer out of it.
-- **Progressive decentralization.** Launch is centralized‑but‑bounded (owner multisig behind
-  an upgradeable contract), hardening to a **timelock + pause‑only guardian**, then broader
-  governance and eventual immutabilization of the custody/settlement core.
+- **Split governance.** `STReserveSink` and `STSettlementVault` are non-upgradeable from
+  launch. Only `STCoordinator` is UUPS-upgradeable: testnet uses a dedicated value-capped
+  owner, while mainnet requires a distinct 2-of-3 Safe, followed by a ≥1-epoch timelock.
 
 ---
 
@@ -104,7 +106,7 @@ the subnet used for root contracts, so they can independently audit their contra
 launch phase, operator admission is owner‑gated.
 
 Each epoch, an NO commits the Merkle **payout root** that splits its pool among its
-providers. It directs the split; the contract holds and pays.
+providers. It directs the split; the immutable vault holds and pays.
 
 ### Register a provider (ingress or egress)
 
@@ -133,29 +135,21 @@ The epoch lifecycle (a *block* is the 7‑day settlement epoch, ≈ 50 400 chain
 
 | When | What |
 |---|---|
-| `t = 0` | Epoch closes. The contract snapshots per‑NO deposits and pool emissions. |
+| `t = 0` | A keeper calls `closeOperatorEpoch`; the vault captures that NO's pool emission at the boundary. |
 | `t ≤ +4h` | Each NO commits its payout‑list root for the epoch. |
-| `t < +48h` | Audit window — committed roots are public; a bad head binding is disputable on‑chain. |
-| `+48h` | `finalizeEpoch`: pool totals (emission only) are snapshotted and **claims open**. |
+| `t < +48h` | Audit window — committed roots and content-addressed payout artifacts are public and reproducible. |
+| `+48h` | `finalizeOperatorEpoch`: the vault fixes the per‑NO entitlement and **claims open**. |
 
 Top‑level miners need **no settlement** — Yuma pays their UID natively each tempo.
 
 ---
 
-## Pool 0 / Pool 1
+## One mechanism, two scoring channels
 
-The subnet uses Bittensor's **sub‑mechanism** feature for the product‑line split:
-
-- **Mining Pool 0 / Validator Pool 0** — *the core network* (mechanism 0). Fully specified
-  by [`WHITEPAPER.md`](WHITEPAPER.md); v1 launches this.
-- **Mining Pool 1 / Validator Pool 1** — *the VPN factory* (mechanism 1). Same contract,
-  same α, same role types, its own per‑mechanism accounting, with the owner setting the α
-  split between pools. See <https://vpn.dev>.
-
-The two *miner tiers* (pool on‑ramp + top‑level miners) live **within one mechanism**,
-divided by the weight‑level share θ — not by the mechanism split. Mechanisms are reserved
-for the product‑line split, because a second mechanism would halve the 256‑UID space below
-the ~200 top miners.
+Release 1.0 fixes `mechanism_count = 1`. Pool UIDs and direct head UIDs share one native
+weight vector; validators normalize the head to `θ` and the pool tail to `1−θ` before
+CRv4 commit. A second sub-mechanism is explicitly out of scope because it would partition
+the finite UID budget and undermine the intended ~200-member head.
 
 ---
 
@@ -167,7 +161,9 @@ the ~200 top miners.
 | [`VALIDATOR.md`](VALIDATOR.md) | The off‑chain routing‑verification (`/verify`) protocol. |
 | [`COMPARISON.md`](COMPARISON.md) | Design‑decision comparison versus the Bittensor field. |
 | [`diagrams/`](diagrams/) | The diagrams above (SVG sources + generators). |
-| `evm/` | The ST contract (Solidity, Subtensor EVM) and its ABI. |
+| `evm/` | Reserve sink, settlement vault, UUPS coordinator, tests, and generated artifacts. |
 | `validator/` | The validator binary. |
-| `miner/`, `cli/`, `stctl/` | Miner/operator tooling and the subnet control CLI. |
+| `miner/`, `cli/` | Release miner/operator tooling. |
+| `stctl/` | Explicitly quarantined pre-1.0 monolith diagnostic; not a release write path. |
 | `crv4/`, `merkle/`, `ss58/`, `stabi/` | Supporting libraries (commit‑reveal v4, Merkle trees, address encoding, contract bindings). |
+| `sim-testnet/` | Spend-capped Go harness for testnet setup, launch, scenarios, evidence, and analysis. |

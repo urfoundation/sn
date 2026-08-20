@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import {STBase} from "./utils/STBase.sol";
 import {STSubnet} from "../src/STSubnet.sol";
@@ -108,9 +107,7 @@ contract GovernanceTest is STBase {
         st.upgradeToAndCall(address(v2), "");
 
         vm.prank(rando);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, rando)
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, rando));
         st.upgradeToAndCall(address(v2), "");
     }
 
@@ -175,9 +172,8 @@ contract GovernanceTest is STBase {
     }
 
     function test_guardian_hasNoOwnerPowers() public {
-        bytes memory unauthorized = abi.encodeWithSelector(
-            OwnableUpgradeable.OwnableUnauthorizedAccount.selector, guardian
-        );
+        bytes memory unauthorized =
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, guardian);
         vm.startPrank(guardian);
         vm.expectRevert(unauthorized);
         st.setEpochParams(100, 10, 20, 30);

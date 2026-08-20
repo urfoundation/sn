@@ -142,9 +142,7 @@ abstract contract STBase is Test {
 
     /// @dev Yuma emission accrual on a pool's own hotkey (D-4 stake delta).
     function _accrue(bytes32 minerHotkey, uint256 amount) internal {
-        staking.setStake(
-            minerHotkey, proxyMirror, staking.stakes(minerHotkey, proxyMirror) + amount
-        );
+        staking.setStake(minerHotkey, proxyMirror, staking.stakes(minerHotkey, proxyMirror) + amount);
     }
 
     function _treasuryStake() internal view returns (uint256) {

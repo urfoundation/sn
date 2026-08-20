@@ -163,27 +163,19 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // Events (the off-chain sync in st_controller is built on these — SP-4)
     // ---------------------------------------------------------------------
 
-    event OperatorRegistered(
-        uint256 indexed noId, bytes32 coldkey, uint16 minerUid, bytes32 minerHotkey
-    );
+    event OperatorRegistered(uint256 indexed noId, bytes32 coldkey, uint16 minerUid, bytes32 minerHotkey);
     event OperatorAddressSet(uint256 indexed noId, address addr);
     event OperatorActiveSet(uint256 indexed noId, bool active);
 
     // Head tier (WHITEPAPER §8.4/§11.4): the two lookup keys (hotkey, clientId)
     // are indexed so validators can filter the binding log cheaply.
-    event HeadBound(
-        bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant
-    );
-    event HeadUnbound(
-        bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant
-    );
+    event HeadBound(bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant);
+    event HeadUnbound(bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant);
 
     event Deposited(uint256 indexed e, uint256 indexed noId, address from, uint256 amount);
     /// @dev The buyback audit event (§7.4/§12.4): the running locked total per
     ///      credit. Dashboards read this + getStake(reserveHotkey).
-    event BuybackReserved(
-        uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal
-    );
+    event BuybackReserved(uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal);
 
     event EpochRolled(uint256 indexed closedEpoch, uint256 indexed newEpoch, uint64 closeBlock);
     event PoolSwept(uint256 indexed noId, uint256 measured, uint256 swept, bool moveOk);
@@ -235,10 +227,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     modifier onlyOperatorOrOwner(uint256 noId) {
-        require(
-            msg.sender == owner() || msg.sender == operatorAddress[noId],
-            "ST: not operator"
-        );
+        require(msg.sender == owner() || msg.sender == operatorAddress[noId], "ST: not operator");
         _;
     }
 
@@ -319,9 +308,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function _rollEpochs() internal {
         uint256 rolls = 0;
-        while (
-            block.number >= uint256(epochStartBlock) + uint256(tEpoch) && rolls < MAX_ROLLS_PER_CALL
-        ) {
+        while (block.number >= uint256(epochStartBlock) + uint256(tEpoch) && rolls < MAX_ROLLS_PER_CALL) {
             uint256 e = epoch;
             uint64 closeB = epochStartBlock + tEpoch; // intended boundary, not roll block
             epochCloseBlock[e] = closeB;
@@ -422,12 +409,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         _burnedRegister(netuid, minerHotkey);
         uint16 uid = _findUid(minerHotkey);
 
-        operators[noId] = Operator({
-            coldkey: coldkey,
-            minerUid: uid,
-            minerHotkey: minerHotkey,
-            active: true
-        });
+        operators[noId] = Operator({coldkey: coldkey, minerUid: uid, minerHotkey: minerHotkey, active: true});
         operatorIds.push(noId);
         emit OperatorRegistered(noId, coldkey, uid, minerHotkey);
     }
@@ -469,9 +451,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         returns (bytes32)
     {
         return keccak256(
-            abi.encodePacked(
-                HEAD_BIND_DOMAIN, block.chainid, address(this), registrant, hotkey, clientId
-            )
+            abi.encodePacked(HEAD_BIND_DOMAIN, block.chainid, address(this), registrant, hotkey, clientId)
         );
     }
 
@@ -499,10 +479,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     ///      private key cannot pass check (1), so no quality theft). Re-binding
     ///      the identical pair is idempotent. Every write keeps both maps paired,
     ///      so the mapping stays a clean bijection.
-    function bindHead(bytes32 hotkey, bytes32 clientId, bytes calldata clientIdSig)
-        external
-        nonReentrant
-    {
+    function bindHead(bytes32 hotkey, bytes32 clientId, bytes calldata clientIdSig) external nonReentrant {
         require(hotkey != bytes32(0) && clientId != bytes32(0), "ST: zero key");
         require(clientIdSig.length == 64, "ST: sig length");
 
@@ -511,8 +488,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         bytes32 r = bytes32(clientIdSig[0:32]);
         bytes32 s = bytes32(clientIdSig[32:64]);
         require(
-            _ed25519Verify(headBindDigest(msg.sender, hotkey, clientId), clientId, r, s),
-            "ST: bad client sig"
+            _ed25519Verify(headBindDigest(msg.sender, hotkey, clientId), clientId, r, s), "ST: bad client sig"
         );
 
         // (2) hotkey control — a live UID whose coldkey mirrors the caller.
@@ -610,7 +586,9 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(payoutRoot != bytes32(0), "ST: root 0");
         uint64 closeB = epochCloseBlock[e];
         require(e < epoch && closeB != 0, "ST: epoch open");
-        require(block.number <= uint256(closeB) + uint256(epochWindows[e].commitWindowBlocks), "ST: commit window");
+        require(
+            block.number <= uint256(closeB) + uint256(epochWindows[e].commitWindowBlocks), "ST: commit window"
+        );
         require(!finalized[e], "ST: finalized");
 
         noCommit[e][noId] = NoCommit({payoutRoot: payoutRoot, off: off});
@@ -640,7 +618,8 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint64 closeB = epochCloseBlock[e];
         require(e < epoch && closeB != 0, "ST: epoch open");
         require(
-            block.number >= uint256(closeB) + uint256(epochWindows[e].finalizeOffsetBlocks), "ST: finalize window"
+            block.number >= uint256(closeB) + uint256(epochWindows[e].finalizeOffsetBlocks),
+            "ST: finalize window"
         );
         require(!finalized[e], "ST: finalized");
 
@@ -686,13 +665,10 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     ///         `coldkey` as stake on treasuryHotkey via transferStake.
     ///         amount = shareBps · poolTotal / 10_000, cumulative-capped at
     ///         poolTotal (a NO whose shares exceed 1 only drains its own pool).
-    function claimMiner(
-        uint256 e,
-        uint256 noId,
-        bytes32 coldkey,
-        uint256 shareBps,
-        bytes32[] calldata proof
-    ) external nonReentrant {
+    function claimMiner(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, bytes32[] calldata proof)
+        external
+        nonReentrant
+    {
         require(finalized[e], "ST: not finalized");
         require(coldkey != bytes32(0), "ST: coldkey 0");
         require(shareBps > 0 && shareBps <= BPS, "ST: shareBps");
@@ -831,20 +807,18 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         virtual
         returns (bool ok)
     {
-        (ok,) = address(_staking()).call(
-            abi.encodeCall(
-                IStaking.moveStake, (fromHotkey, toHotkey, uint256(netuid), uint256(netuid), amount)
-            )
-        );
+        (ok,) = address(_staking())
+            .call(
+                abi.encodeCall(
+                    IStaking.moveStake, (fromHotkey, toHotkey, uint256(netuid), uint256(netuid), amount)
+                )
+            );
     }
 
     /// @dev Strict move for the deposit -> reserve leg (§7.4): unlike the sweep
     ///      (where a precompile hiccup must not brick the epoch machine), a
     ///      deposit must either fully reserve or revert the whole credit.
-    function _moveStakeStrict(bytes32 fromHotkey, bytes32 toHotkey, uint256 amount)
-        internal
-        virtual
-    {
+    function _moveStakeStrict(bytes32 fromHotkey, bytes32 toHotkey, uint256 amount) internal virtual {
         _staking().moveStake(fromHotkey, toHotkey, uint256(netuid), uint256(netuid), amount);
     }
 

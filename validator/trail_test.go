@@ -147,14 +147,11 @@ func (self *mockVerifyServer) finalResponse(state *mockTrailState) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	digest := connect.VerifyFinalDigest(finalMessage)
 	// v1 server-attested coverage: M−1 server-assigned completed hops (the
 	// seed is excluded, §7.6).
 	coverage := uint64(state.m - 1)
-	// FINAL signs the 32-byte EFFORT digest (the on-chain 0x402 seam), which
-	// binds coverage into the signature (review A2).
-	effortDigest := connect.VerifyEffortDigest(digest, coverage)
-	finalSig := ed25519.Sign(self.serverKey, effortDigest[:])
+	// Release 1.0 signs the raw canonical FINAL message.
+	finalSig := ed25519.Sign(self.serverKey, finalMessage)
 	if self.poisonFinal {
 		finalSig = make([]byte, ed25519.SignatureSize)
 		rand.Read(finalSig)
@@ -394,25 +391,12 @@ func TestTrailHappyPath(t *testing.T) {
 	if !bytes.Equal(record.FinalDigest, wantDigest[:]) {
 		t.Fatal("final digest mismatch")
 	}
-	// Both leaf signatures verify over the EFFORT digest
-	// sha256(finalDigest ‖ coverage) — the exact value the contract recomputes
-	// and the 0x402 precompile checks, binding the server-attested coverage in
-	// (review A2).
-	effortDigest := connect.VerifyEffortDigest(wantDigest, record.Coverage)
 	vpk := validatorKey.Public().(ed25519.PublicKey)
-	if !ed25519.Verify(vpk, effortDigest[:], record.VpkSig) {
-		t.Fatal("vpk co-signature does not verify over the effort digest")
+	if !ed25519.Verify(vpk, finalMessage, record.VpkSig) {
+		t.Fatal("vpk co-signature does not verify over canonical FINAL")
 	}
-	if !ed25519.Verify(server.serverKey.Public().(ed25519.PublicKey), effortDigest[:], record.FinalSig) {
-		t.Fatal("final_sig does not verify over the effort digest")
-	}
-	// Neither signature verifies over the BARE final digest anymore: coverage
-	// is bound in, so a forged coverage would break both.
-	if ed25519.Verify(vpk, record.FinalDigest, record.VpkSig) {
-		t.Fatal("vpk co-signature must not verify over the bare final digest")
-	}
-	if ed25519.Verify(server.serverKey.Public().(ed25519.PublicKey), record.FinalDigest, record.FinalSig) {
-		t.Fatal("final_sig must not verify over the bare final digest")
+	if !ed25519.Verify(server.serverKey.Public().(ed25519.PublicKey), finalMessage, record.FinalSig) {
+		t.Fatal("final_sig does not verify over canonical FINAL")
 	}
 	// pathId derivation.
 	wantPathId := TrailPathId(record.TrailId, record.Vpk, record.ServerKeyId)

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urnetwork.io/schemas/payout-artifact-v1.schema.json",
+  "title": "UR Subnet payout artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "chain_id", "netuid", "coordinator", "epoch", "no_id", "policy_hash", "start_block", "end_block", "snapshot_hash", "providers", "root", "total_usage_bytes", "share_bps_sum", "created_at", "operator_key", "operator_signature"],
+  "properties": {
+    "schema": {"const": "urnetwork-payout-artifact-v1"},
+    "chain_id": {"type": "integer", "minimum": 1}, "netuid": {"type": "integer", "minimum": 1},
+    "coordinator": {"$ref": "#/$defs/address"}, "epoch": {"type": "integer", "minimum": 0}, "no_id": {"type": "integer", "minimum": 1},
+    "policy_hash": {"$ref": "#/$defs/hash"}, "start_block": {"$ref": "#/$defs/block"}, "end_block": {"$ref": "#/$defs/block"}, "snapshot_hash": {"$ref": "#/$defs/hash"},
+    "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
+    "root": {"$ref": "#/$defs/hash"}, "total_usage_bytes": {"type": "integer", "minimum": 0}, "excluded_usage_bytes": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}, "share_bps_sum": {"const": 10000},
+    "created_at": {"type": "string", "format": "date-time"}, "operator_key": {"type": "string", "pattern": "^0x[0-9a-f]{64}$"}, "operator_signature": {"type": "string", "pattern": "^0x[0-9a-f]{128}$"},
+    "commit_tx": {"type": ["string", "null"], "pattern": "^0x[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^0x[0-9a-f]{64}$"}, "address": {"type": "string", "pattern": "^0x[0-9a-f]{40}$"},
+    "block": {"type": "object", "additionalProperties": false, "required": ["number", "hash"], "properties": {"number": {"type": "integer", "minimum": 0}, "hash": {"$ref": "#/$defs/hash"}}},
+    "provider": {"type": "object", "additionalProperties": false, "required": ["client_id", "client_key", "payout_coldkey", "usage_bytes", "reliability_ppm", "head_excluded", "eligible", "share_bps", "leaf"], "properties": {"client_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}, "client_key": {"type": "string", "pattern": "^0x[0-9a-f]{64}$"}, "payout_coldkey": {"type": "string", "pattern": "^0x[0-9a-f]{64}$"}, "usage_bytes": {"type": "integer", "minimum": 0}, "reliability_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}, "head_excluded": {"type": "boolean"}, "exclusion_reason": {"type": ["string", "null"]}, "eligible": {"type": "boolean"}, "share_bps": {"type": "integer", "minimum": 0, "maximum": 10000}, "leaf": {"$ref": "#/$defs/hash"}}}
+  }
+}

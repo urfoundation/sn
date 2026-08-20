@@ -119,6 +119,19 @@ func TestReadNetworkConfigMissing(t *testing.T) {
 	}
 }
 
+func TestProviderStateDirEnvironmentOverride(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "portable-state")
+	t.Setenv("URNETWORK_STATE_DIR", dir)
+	got, err := providerStateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.Abs(dir)
+	if got != want {
+		t.Fatalf("providerStateDir = %q, want %q", got, want)
+	}
+}
+
 func TestWriteThenReadNetworkConfig(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeNetworkConfig(dir, "https://example.com", "wss://example.com"); err != nil {

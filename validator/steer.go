@@ -302,8 +302,9 @@ type QualityAggregator interface {
 	PoolQuality(noId *big.Int, quality map[connect.Id]float64, exposure map[connect.Id]uint64) float64
 }
 
-// GlobalMeanQuality is the v1 aggregator: the exposure-weighted mean of all
-// measured providers, identical for every NO (documented limitation).
+// GlobalMeanQuality is retained only for deterministic legacy/library tests.
+// No production CLI path constructs it: release-1.0 steering requires the
+// strict multi-NO configuration and computes an independent Q_n per operator.
 type GlobalMeanQuality struct{}
 
 func (GlobalMeanQuality) PoolQuality(_ *big.Int, quality map[connect.Id]float64, exposure map[connect.Id]uint64) float64 {

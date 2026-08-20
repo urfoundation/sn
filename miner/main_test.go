@@ -6,8 +6,11 @@ package miner
 // errors instead of process exits.
 
 import (
+	"context"
+	"net"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/docopt/docopt-go"
 	"github.com/urnetwork/connect"
@@ -85,6 +88,44 @@ func TestMainUsageProvideWallet(t *testing.T) {
 	}
 }
 
+func TestTestEgressSourceIPBindsControlAndExitDialer(t *testing.T) {
+	opts := parseArgsForTest(t, []string{"provide", "--test-egress-source-ip=127.64.0.6"})
+	dial, err := testEgressDialContext(opts)
+	if err != nil || dial == nil {
+		t.Fatalf("test egress dialer = %v, %v", dial, err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	conn, err := dial.DialContext(ctx, "tcp4", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("source-bound dial: %v", err)
+	}
+	defer conn.Close()
+	accepted, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accepted.Close()
+	remote, ok := accepted.RemoteAddr().(*net.TCPAddr)
+	if !ok || remote.IP.String() != "127.64.0.6" {
+		t.Fatalf("observed source = %v, want 127.64.0.6", accepted.RemoteAddr())
+	}
+
+	invalid := parseArgsForTest(t, []string{"provide", "--test-egress-source-ip=198.51.100.1"})
+	if _, err := testEgressDialContext(invalid); err == nil {
+		t.Fatal("non-loopback test source IP was accepted")
+	}
+	plain := parseArgsForTest(t, []string{"provide"})
+	if got, err := testEgressDialContext(plain); err != nil || got != nil {
+		t.Fatalf("ordinary provide installed test dialer: %v, %v", got, err)
+	}
+}
+
 func TestMainUsageAuthProvideWallet(t *testing.T) {
 	opts := parseArgsForTest(t, []string{"auth-provide", "code", "--wallet=5Grw"})
 	if authProvide, _ := opts.Bool("auth-provide"); !authProvide {
@@ -137,6 +178,35 @@ func TestMainUsageClaim(t *testing.T) {
 	}
 	if rpcUrls, ok := opts["--rpc"].([]string); ok && 0 < len(rpcUrls) {
 		t.Fatalf("--rpc unexpectedly set: %v", rpcUrls)
+	}
+}
+
+func TestMainUsageFleetLifecycle(t *testing.T) {
+	manifest := parseArgsForTest(t, []string{"fleet", "manifest", "--manifest=fleet.json"})
+	if ok, _ := manifest.Bool("fleet"); !ok {
+		t.Fatal("fleet command not parsed")
+	}
+	if ok, _ := manifest.Bool("manifest"); !ok {
+		t.Fatal("manifest command not parsed")
+	}
+	publish := parseArgsForTest(t, []string{"fleet", "publish", "--manifest=fleet.json", "--substrate=ws://one", "--substrate=ws://two", "--hotkey_seed_file=hot.seed"})
+	if got := publish["--substrate"].([]string); len(got) != 2 {
+		t.Fatalf("substrate failover = %v", got)
+	}
+	bind := parseArgsForTest(t, []string{"fleet", "bind", "--manifest=fleet.json", "--client_id=0x01", "--client_seed_file=client.seed", "--hotkey_seed_file=hot.seed", "--valid_from_epoch=2", "--valid_to_epoch=10", "--rpc=http://one", "--relayer_key_file=relay.key", "--dry-run"})
+	if ok, _ := bind.Bool("bind"); !ok {
+		t.Fatal("bind command not parsed")
+	}
+	if dry, _ := bind.Bool("--dry-run"); !dry {
+		t.Fatal("bind dry-run not parsed")
+	}
+	status := parseArgsForTest(t, []string{"fleet", "status", "--manifest=fleet.json", "--client_id=0x01", "--substrate=ws://one", "--rpc=http://one"})
+	if ok, _ := status.Bool("status"); !ok {
+		t.Fatal("status command not parsed")
+	}
+	revoke := parseArgsForTest(t, []string{"fleet", "revoke", "--manifest=fleet.json", "--client_id=0x01", "--client_seed_file=client.seed", "--effective_epoch=3", "--rpc=http://one", "--relayer_key_file=relay.key"})
+	if ok, _ := revoke.Bool("revoke"); !ok {
+		t.Fatal("revoke command not parsed")
 	}
 }
 

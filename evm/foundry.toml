@@ -16,6 +16,9 @@ optimizer = true
 optimizer_runs = 200
 # 12-arg flat initializer (kept flat for tooling) needs IR codegen.
 via_ir = true
+# The coordinator layout is a release artifact. Keep it in every normal build
+# so generator freshness and upgrade-safety checks cannot silently hash null.
+extra_output = ["storageLayout"]
 # Vendored subtensor precompile interfaces (src/interfaces/) are kept
 # byte-identical to upstream and ship without SPDX headers / with float pragmas:
 # 1878 = missing SPDX license identifier, 3420 = pragma mismatch note.

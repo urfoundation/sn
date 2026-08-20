@@ -2,9 +2,11 @@
 
 **A Bittensor subnet for a decentralized privacy network.**
 
-Version 0.5 (design). Target chain: Bittensor / Subtensor — **testnet first, then mainnet** (D28).
+Version 1.0 (launch specification). Target chain: Bittensor / Subtensor — **testnet first, then mainnet**
+(D28). Version 1.0 promotes the completed v0.5 design to the normative release specification without
+changing its scope.
 
-> **v0.5 — validator effort bounty removed from scope (D29).** The fee‑funded validator effort bounty is
+> **v1.0 — validator effort bounty removed from scope (D29).** The fee‑funded validator effort bounty is
 > **no longer a committed deferred phase** — it is **out of v1 scope entirely**, and whether to add any
 > validator‑effort incentive at all (and in what shape) is a **post‑launch open question**, to be decided
 > from what the live network shows about independent‑validator coverage. v1 pays validators **native Yuma
@@ -58,7 +60,8 @@ locked α (its **conviction**) sets its **tier**, and the tier sets the deposit 
 with less up‑front α (§7.3). Miners in both tiers are paid **from emission only** (§7.4, §12.4).
 
 **Two miner tiers, in parallel.** The pool is the **on-ramp** — a place to start, with a **baseline
-reward** and a low barrier (no UID, no registration burn), weighted by `implied_usage × quality`. Above
+reward** and a low barrier (the provider needs no UID or registration burn; the vault owns one shared
+pool UID per NO), weighted by `implied_usage × quality`. Above
 it sits the **supply apex**: the **top ~200 fleets by distinct routable egress-IP count** ("**top-level
 miners**") each claim their own miner UID and are **steered emission directly by validators on that
 routable-IP breadth** — not on traffic volume; a fleet's score is its count of unique routable exit IPs,
@@ -69,9 +72,10 @@ with deregistration churn running that tournament. Both tiers share **one** mech
 (§14); a governance split **θ** sets how much of the 41% miner emission flows to the head vs. the pools
 (§8.4–8.5).
 
-The subnet **launches centralized‑but‑bounded** — an owner multisig behind an upgradeable contract, with
-**finalized claims made un‑clawback‑able from day one** — and hardens to a **timelocked,
-guardian‑protected** contract, then broader governance. v1 rewards independently *measured liveness*;
+The subnet **launches centralized‑but‑bounded** — an upgradeable policy coordinator owned by a dedicated
+testnet key and, on mainnet, a 2-of-3 multisig — while the reserve and settlement vault are
+**non-upgradeable from day one**. Finalized claims are therefore un-clawbackable even by a hostile
+coordinator upgrade. Governance later adds a timelock around coordinator changes. v1 rewards independently *measured liveness*;
 closing the gap to honest‑relay, payout‑grade verification is the `VALIDATOR.md` §10 roadmap.
 
 **At a glance**
@@ -83,8 +87,8 @@ closing the gap to honest‑relay, payout‑grade verification is the `VALIDATOR
 - **Deposits are conviction stake:** every deposit is locked into a contract **buyback reserve**, never
   paid back out; its cumulative amount sets the NO's **tier → deposit rate** (staking lowers the rate —
   onboarding + alignment); miners are paid from **emission only** (§7.3, §7.4, §12.4).
-- **Scales to 100k+ providers:** pool UIDs + off‑chain **Merkle** payout claims (providers and validators
-  inside a pool are *not* UIDs).
+- **Scales to 100k+ providers:** pool UIDs + off‑chain **Merkle** payout claims (providers inside a pool
+  are *not* UIDs; validators remain independent native UIDs).
 - **Two miner tiers:** a per-NO **pool** (on-ramp — `implied_usage × quality`, Merkle claim) *and*
   **top-level miners** (the top ~200 **fleets by distinct routable egress-IP count**, split-adjusted, as
   direct native UIDs), split by a governed share **θ** (§8.4–8.5).
@@ -126,7 +130,8 @@ alternatives):
    why `seed/INCENTIVES.md` calls it the **ST (subnet‑token) contract**.
 3. **Miner pools, scored by real Yuma consensus.** Each NO is **one miner‑pool UID**; its 100k+
    providers are paid *inside* the pool by Merkle claim. **Many independent validators** (no NO owns
-   them) score the pools `deposit × measured‑quality` — so **validators' evaluation drives the miner
+   them) score the pools `implied_usage × measured‑quality`, where implied usage is
+   `deposit / rate(conviction tier)` — so **validators' evaluation drives the miner
    emission, the Bittensor way** — and Yuma's median/clipping/vtrust/bonds do real work. (Validators earn
    **native dividends only**; a fee‑funded **effort bounty** for third‑party trail volume is **out of scope**
    — the owner is the majority validator at launch and runs the trails itself, §9.2; the bounty is a parked
@@ -135,8 +140,8 @@ alternatives):
    emission; a **7‑day epoch** (≈ 50 400 blocks) is the application‑layer accounting/settlement
    period.
 5. **Two miner tiers in one mechanism.** Alongside the per-NO pools (the on-ramp), the **top ~200
-   providers hold their own miner UIDs** and are steered **directly** by validators on pure measured
-   quality, paid **natively** (§8.4). Both tiers live in **one** mechanism — a second mechanism would
+   fleets hold their own miner UIDs** and are steered **directly** by validators on split-adjusted
+   distinct routable egress-prefix breadth, paid **natively** (§8.4). Both tiers live in **one** mechanism — a second mechanism would
    halve the 256-UID space below 200 (§14) — and a governance split **θ** divides the 41% miner emission
    between the head and the pools (§8.5).
 
@@ -156,8 +161,8 @@ Money flows in three coupled channels, all in α:
    tier** (no on‑chain oracle — §7.1). Deposits per NO are the costly **signal of real demand**; the α is
    **never distributed** — the contract locks every deposit into the **buyback reserve** (§7.4), and a
    NO's cumulative locked α (its **conviction**) sets the **tier → rate** that governs how much it must
-   post (§7.3). The contract keeps **no deposit ledger** — the `Deposited` events are the published record
-   (§7.5, D25).
+   post (§7.3). The coordinator keeps only cap/audit counters; canonical `Deposit` and
+   `ConvictionAdded` events are the public weighting record (§7.5, D25).
 
 2. **Emission (Yuma consensus over NO pools).** Every NO has **one contract‑custodied miner‑pool UID**
    (all its providers). **Independent validators** — anyone who stakes α and runs `VALIDATOR.md` trails —
@@ -165,7 +170,7 @@ Money flows in three coupled channels, all in α:
    = the NO's deposits ÷ its tier rate, §8.1) and submit those weights, so the **validators' evaluation
    drives the miner emission — the Bittensor way**. With many independent validators, **Yuma Consensus
    does real work**: stake‑weighted median + **clipping**, so no NO can inflate its own pool or knife a
-   rival. Miner emission (41%) lands on the miner‑pool UIDs, **owned by the contract's coldkey** — no
+   rival. Miner emission (41%) lands on miner‑pool UIDs **owned by the immutable vault coldkey** — no
    emission ever touches a NO's keys. **The 41% splits across two tiers** (§8.4–8.5): a governance share
    **θ** to **top-level miners** (the top ~200 fleets by **split-adjusted distinct routable egress-IP
    count**, as their own native UIDs), and `1−θ` to the NO pools above. Validator emission (41%) flows
@@ -217,7 +222,7 @@ widens it as the validator set and data mature (§12.3).
           │ commits root              ▼ claim α          └───────────────┬───────────────┘
           ▼ (never holds α)   providers (100k+, TAIL)                    ▼ direct, trust-minimized
    customers ($) ──▶ revenue         (Merkle proof)          a top provider's own coldkey
-          └────────── start in a pool ─▶ graduate to a top slot ─▶ fall back if quality slips ──┘
+          └────────── start in a pool ─▶ graduate to a top slot ─▶ fall back if breadth slips ──┘
 
  Bittensor coinbase: 18% owner · 41% miner (Yuma, split θ / 1−θ above) · 41% validator (NATIVE ∝ stake×vtrust)
  buyback reserve: ΣD staked to the owner-validator hotkey — locked, dividend-compounding, never distributed (§7.4)
@@ -300,17 +305,21 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   contract is therefore a coldkey** (its mapped SS58). The staking precompile uses *the calling
   contract's address as the coldkey* — so a pooling contract centrally custodies α and must do its
   own share accounting.
-- **Precompiles the ST contract uses** (address → purpose):
+- **Runtime precompiles used by the release contracts and conformance harness** (address → purpose):
 
   | Address | Name | What the contract calls it for |
   |---|---|---|
-  | `0x…0805` | **Staking V2** | `addStake`/`removeStake` (α↔TAO), `transferStake`/`moveStake` (slippage‑free α moves), `getStake`, `approve`/`transferStakeFrom` (pull deposits), `getAlphaStakedValidators` |
-  | `0x…0804` | **Neuron** | `setWeights` / `commitWeights` / `revealWeights` — **each independent validator submits its pool scores** under commit‑reveal; `burnedRegister` (miner‑pool UIDs); `serveAxon` |
-  | `0x…0802` | **Metagraph** | `getEmission`, `getDividends`, `getIncentive`, `getVtrust`, `getValidatorStatus`, `getHotkey`/`getColdkey`, `getStake` (read consensus results) |
-  | `0x…0808` | **Alpha** | `getAlphaPrice`/`getMovingAlphaPrice`, `getAlphaOutEmission`, pool reserves, `simSwapAlphaForTao` (α price / emission / slippage reads) |
-  | `0x…0800` | **BalanceTransfer** | move TAO EVM↔Substrate (`transfer(bytes32 ss58)`) |
-  | `0x…0402` | **Ed25519Verify** | `verify(message, pubkey, r, s)` — **verify `VALIDATOR.md` Ed25519 proofs on‑chain** for disputes |
-  | `0x…0807` | **StorageQuery** | raw reads of e.g. `Commitments.CommitmentOf` if the contract must read a commitment (brittle; prefer passing roots in directly) |
+  | `0x…0009` | **Blake2f** | derive the exact H160 → AccountId32 mirror used by every contract coldkey |
+  | `0x…0402` | **Ed25519Verify** | verify client consent for fleet binding and revocation |
+  | `0x…0403` | **Sr25519Verify** | verify the registered Bittensor hotkey's fleet-binding signature |
+  | `0x…0804` | **Neuron** | `burnedRegister` vault-owned pool hotkeys and prove live `(netuid, hotkey) → UID` bindings |
+  | `0x…0805` | **Staking V2** | exact `getStake`, `moveStake`, and `transferStake` operations for isolated deposits, immutable reserve custody, emission capture, and claims |
+  | `0x…0802` | **Metagraph** | read-only conformance/observation of UID 0 and metagraph identity; production settlement does not trust a point-in-time emission getter |
+
+  Independent validators submit CRv4 through native Substrate extrinsics, not through an EVM
+  precompile. Runtime 447 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
+  finalized indexer mirrors `(hotkey, commitment hash, finalized block/hash)` into the coordinator; the
+  coordinator then checks the mirror, both signatures, freshness and the live UID atomically.
 
   > Precompile ABIs are **not formally versioned** (issue #2455). Pin a Subtensor release tag, target
   > **Staking V2** (`0x805`, not the legacy `0x801`), and re‑verify addresses/ABIs before launch.
@@ -326,11 +335,11 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
 | **Provider (miner)** | a `client_id` **inside** a NO's miner pool — **not a UID** (100k+ providers can't each be a UID) | carries traffic; **claims its α directly from the contract** with a Merkle proof against its NO's payout root. The **on-ramp / tail** tier; can **graduate** to a top-level slot (§8.4). |
 | **Top-level miner (head)** | **its own miner UID**; a **fleet** — its `client_id`s **bound to its hotkey** (§11.4) | the **supply apex**: the top ~200 fleets by **split-adjusted distinct routable egress-IP count**, steered **directly** by validators (`weight = score`); **native** emission to its own coldkey — no contract custody, no Merkle claim; maintained by deregistration churn (§8.4). |
 | **Validator** (was "verifier") | an **independent** Bittensor validator UID; stakes its **own** α | runs `/verify` trails (the failure‑data signal), scores pools `implied_usage × Q_n` under commit‑reveal (§10). Earns **native dividends** (∝ stake × vtrust) — its **only** reward; a validator effort bounty is **out of scope** (D29, parked in §9.3). No NO, no pool. |
-| **ST contract** | a coldkey (mapped SS58) that **owns each NO's miner‑pool UID** and the **buyback reserve** | custodies **miner** emission and stakes every deposit into the locked reserve (§7.4); settles every pool by Merkle claim. Does **not** custody validator emission (it is native). |
+| **ST contract set** | three distinct mapped coldkeys: coordinator, immutable settlement vault, immutable reserve sink | the vault owns pool UIDs and claims escrow; the reserve sink owns permanently locked conviction; the coordinator owns neither and only applies policy. Does **not** custody validator emission (it is native). |
 
 **Why pools (miner side only).** A NO has up to 100k providers — they cannot be UIDs (subnet cap ≈ 256),
 so each NO gets **one miner‑pool UID** and its providers are paid *inside* it by Merkle claim. That
-miner‑pool UID is **owned outright by the contract's coldkey** (a pure accrual slot), so the NO never
+miner‑pool UID is **owned outright by the immutable vault's coldkey** (a pure accrual slot), so the NO never
 holds the emission destined for its providers. **Validators are not pooled** — they are independent
 Bittensor validator UIDs (own hotkey, own stake, native dividends), which is both simpler and the
 **independence** the measurement needs (§9.5). This removes the per‑NO validator pool, the take‑0 custody
@@ -362,7 +371,7 @@ as `vpk` also works but couples key rotation to the wallet; binding is preferred
 | `T_tempo` | tempo length in blocks (360) |
 | `T_epoch` | UR settlement epoch in blocks (50 400 ≈ 7 days) |
 | `e` | epoch index (monotone counter in the contract) |
-| `D_n` | α deposited by NO `n` during epoch `e` (summed from the `Deposited` event log — no on‑chain ledger, §7.5) |
+| `D_n` | α deposited by NO `n` during epoch `e` (summed from finalized `Deposit` events; coordinator counters enforce caps but do not weight, §7.5) |
 | `conviction_n` | NO `n`'s cumulative locked α (all‑time deposits + voluntary stake) → its tier (§7.2) |
 | `rate(tier_n)` | published α‑per‑usage rate for `n`'s conviction tier; zero tier = baseline (§7.3) |
 | `implied_usage_n` | `D_n / rate(tier_n)` — the demand signal validators weight (§8.1) |
@@ -390,8 +399,8 @@ scores **every NO pool** from its own `VALIDATOR.md` trails and submits it under
 
 ```
 each tempo, every independent validator v:
-    for each NO pool p:  score[p] = deposit_p  ×  quality_v(p)      // quality from v's OWN trails
-    normalize to u16 (max → 65535);  Neuron(0x804).commitWeights(...)   // reveal auto-fires later (§10)
+    for each NO pool p:  score[p] = (deposit_p / rate(tier_p)) × quality_v(p)
+    normalize to u16; submit native CRv4 commit extrinsic            // reveal auto-fires later (§10)
 ```
 
 The chain takes the **stake‑weighted median** of the validators' scores, **clips** outliers to
@@ -415,8 +424,8 @@ incrementing counter with a fixed block length `T_epoch`. The epoch lifecycle (t
 ```
   t = 0         Epoch e closes. Snapshot D_n (per-NO deposit totals) and the miner-pool emissions.
   t ≤ +4h       Each NO must commit its payout-list root for e (the share tree).  [README: "data ... 4h after"]
-  t < +48h      Audit window: committed roots are public; a bad head binding is disputable on-chain (§11.3).
-  +48h          contract.finalizeEpoch(e): snapshot per-NO poolTotal (emission-only, §8.3). Claims open (no global root).
+  t < +48h      Audit window: committed roots and content-addressed payout artifacts are public and reproducible (§11.3).
+  +48h          coordinator.finalizeOperatorEpoch(e,n): immutable per-NO entitlement opens in the vault.
                 Unclaimed α rolls into epoch e+1 (or a grace pool) after a TTL.
                 (The +24h effort-claim step + challenge window belong to the parked bounty design, §9.3/D29 — not in v1.)
 ```
@@ -428,153 +437,127 @@ cadence; only **settlement** waits for the epoch boundary + windows.
 
 ## 6. The ST contract
 
-A single Solidity contract (upgradeable behind a proxy; control & governance model in §6.4) on the
-Subtensor EVM. It is simultaneously: a **coldkey** custodying α, the **deposit ledger**, the **buyback
-reserve** (every deposit staked and locked, §7.4), the **emission custodian** (it owns the miner‑pool
-UIDs and captures their incentive), and the **settlement/claims** engine. It is **not** the subnet's
-validator — **independent validators** (§9) set the weights and earn dividends natively; the contract
-holds and pays out the **miner emission only** (an effort bounty is out of scope, §9.3/D29).
+Release 1.0 is a three-contract system on the Subtensor EVM. The split is a custody boundary, not merely
+code organization:
 
-**No-custody is a v1 must-have — in spirit, not immutability (D21).** The *owner and NOs never hold or
-distribute α*: the contract is the sole custodian of in-transit α and every payout is a **direct on-chain
-pull claim** (`transferStake`), with the **head paid natively** (§8.4). All α moves on-chain; no person ever
-holds participants' α in an off-chain wallet. This property is required at v1 — but it does **not** mean the
-contract is frozen: for v1 the contract stays **upgradeable + owner-multisig + guardian** (normal bug-fix
-latitude) and is progressively locked down (§6.4).
+1. **`STReserveSink` is non-upgradeable.** Its mapped coldkey owns all deposit and voluntary-conviction
+   principal on one immutable reserve hotkey. It can record additional principal but contains no call,
+   move, transfer, withdrawal, proxy or upgrade path that can source that stake.
+2. **`STSettlementVault` is non-upgradeable.** Its mapped coldkey owns each NO pool UID and the escrow
+   hotkey. It captures pool emission, fixes each entitlement once, pays permissionless direct Merkle
+   claims, expires unclaimed amounts into the same NO's carry, and has no pause, sweep or upgrade path.
+3. **`STCoordinator` is UUPS-upgradeable.** It contains admission, future-effective policy/operator
+   versions, isolated deposit attribution, roots, finalized commitment mirrors and fleet bindings. Its
+   address is fixed once as the sink's recorder and vault's coordinator. An upgrade can change policy for
+   open/future work, but immutable vault state prevents it from rewriting or blocking an already-finalized
+   entitlement, and immutable sink bytecode prevents it from moving reserve stake.
+
+The contract set is **not** the subnet validator. Independent validators (§9–§10) compute and submit
+native weights and receive native dividends. Only tail miner emission enters the vault; head emission is
+native (§8.4), deposits enter only the reserve, and the effort bounty is out of scope (§9.3/D29).
 
 ### 6.1 State (essential)
 
-```solidity
-uint16  public netuid;
-bytes32 public treasuryHotkey;         // contract's own hotkey for staking idle/treasury α (NOT the subnet validator)
-address public owner;                  // BringYour, Inc. governance (multisig)
-uint256 public epoch;                  // current epoch index e
-uint64  public epochStartBlock;        // start of current epoch
-uint64  public constant T_EPOCH = 50_400;
+Essential state is deliberately partitioned:
 
-// --- registries ---
-struct Operator {
-    bytes32 coldkey;
-    uint16  minerUid;  bytes32 minerHotkey;   // miner-pool UID: owned outright by THIS contract (accrual slot)
-    bool    active;
-}
-mapping(uint256 => Operator) public operators;              // noId -> Operator
-// (validator effort registry, trailsRoot/effort/feePool: OUT OF SCOPE — parked bounty design, §9.3/D29)
+- The coordinator stores block-derived policy snapshots, versioned operator roles, per-NO nonces and
+  caps, epoch demand totals, cumulative conviction, content-hashed payout-root commitments, finalized
+  commitment mirrors, and versioned many-client fleet bindings. Its demand counters enforce caps and
+  audit events; the contract never turns them into weights.
+- The reserve sink stores only immutable identity, cumulative principal and per-NO principal audit
+  totals. `liveStake() >= principal` is executable at every finalized block.
+- The settlement vault stores immutable pool identities and one entitlement per `(epoch,noId)`:
+  `payoutRoot`, `artifactHash`, captured funding, total (including same-NO carry), claimed amount,
+  expiry block and state. Global `totalCaptured = totalPaid + escrowAccounted` and
+  `escrowAccounted = pendingFunding + outstandingLiability` are executable conservation identities.
 
-// --- deposits: NO on-chain weighting ledger (D25) ---
-// DT[e][noId] / totalDT are GONE — the contract does no deposit weighting or
-// attribution. Deposits are published by the Deposited(e, noId, from, amount)
-// event log; validators sum per-NO (this epoch -> demand signal; all-time ->
-// conviction/tier) and weight the pools themselves (§8.1).
-
-// --- conviction buyback reserve (§7.4): every deposit is staked here, never distributed ---
-bytes32 public reserveHotkey;   // the owner-validator hotkey the reserve is staked to (set at initialize)
-uint256 public buybackTotal;    // cumulative deposits moved to the reserve; dividends compound on top,
-                                // so live reserve = getStake(reserveHotkey) ≥ buybackTotal, auditable every block
-
-// --- per-epoch operator commitment, keyed (epoch, noId) ---
-struct NoCommit { bytes32 payoutRoot; bytes off; }          // payoutRoot = Merkle root of (provider_coldkey, share) leaves, Σ share = 1
-mapping(uint256 => mapping(uint256 => NoCommit)) public noCommit;
-
-// --- per-epoch settlement: snapshotted at finalizeEpoch; NO global claim roots ---
-mapping(uint256 => mapping(uint256 => uint256)) public poolTotal;   // epoch -> noId -> miner pool = emission_n ONLY (deposits are reserved, §7.4)
-mapping(uint256 => mapping(uint256 => uint256)) public claimedMiner; // epoch -> noId -> α already paid from pool n (≤ poolTotal)
-mapping(uint256 => mapping(bytes32 => bool)) public minerClaimedBy; // epoch -> keccak(noId,coldkey) -> claimed
-```
+There is no on-chain tier/rate/weight computation and no validator-effort registry.
 
 ### 6.2 Interfaces (selected)
 
+Selected release interfaces are:
+
 ```solidity
-// --- registration ---
-function registerOperator(uint256 noId, bytes32 coldkey, bytes32 minerHotkey) external; // owner-gated v1; contract burnedRegisters the miner-pool UID (owns it)
-// (registerValidator / the vpk registry: out of scope — parked bounty design, §9.3/D29)
+// Coordinator: scoped roles, exact nonce/deadline, and per-NO deposit hotkey.
+registerOperator(noId, coldkey, poolHotkey, depositHotkey,
+                 depositSigner, rootSigner, effectiveEpoch)
+deposit(noId, amount, nonce, deadlineBlock)
+addConviction(noId, amount, nonce, deadlineBlock)
+closeOperatorEpoch(epoch, noId)
+deferMissedEmission(epoch, noId)
+commitOperatorRoot(epoch, noId, payoutRoot, artifactHash)
+finalizeOperatorEpoch(epoch, noId)
 
-// --- deposits (α held as stake; see §6.3) ---
-function deposit(uint256 noId, uint256 alphaAmount) external;   // DT: credits the steering signal (gb/users optional
-                                                                // off-chain metadata, §7.1), then the FULL amount is
-                                                                // moved to the buyback reserve (moveStake -> reserveHotkey, §7.4)
+// Versioned commitment and binding authorization.
+mirrorCommitment(hotkey, commitmentHash, finalizedBlock, finalizedBlockHash)
+bindFleetMember(binding, clientEd25519Signature, hotkeySr25519Signature)
+revokeFleetBinding(clientId, generation, effectiveEpoch, clientSignature)
+cleanupFleetBinding(clientId)
 
-// Weights are NOT set here: each INDEPENDENT validator signs its OWN commit/reveal setWeights via the
-// Neuron precompile (§10), earning native dividends. The contract custodies only the MINER emission.
-
-// --- per-epoch operator publishing (within +4h) ---
-function commitOperator(uint256 e, uint256 noId, bytes32 payoutRoot, bytes calldata off) external; // payoutRoot over (provider, share) leaves, Σ share = 1
-
-// --- settlement (no global claim roots; amounts derive from on-chain state) ---
-function finalizeEpoch(uint256 e) external;   // after +48h: snapshot per-NO poolTotal = measured emission (via 0x802) — deposits are NOT added
-function claimMiner(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, bytes32[] calldata proof) external; // verify (coldkey,shareBps) vs payoutRoot[e][noId]; pay shareBps·poolTotal[e][noId], capped
-
-// --- governance ---
-function setHyperparam(...) external;                          // owner relays to subnet precompile
-// (setFeeParams(φ, ω): out of scope — parked bounty design, §9.3/D29. reserveHotkey is set once at initialize — §7.4)
+// Immutable vault; claim has no coordinator/pause authorization check.
+claim(epoch, noId, coldkey, shareBps, proof)
+expireEntitlement(epoch, noId)
 ```
+
+Policy, operator roles, guardian and commitment-oracle rotations are future-effective. Independent
+validators submit native CRv4 themselves; no EVM function sets subnet weights.
 
 ### 6.3 How the contract holds and moves α
 
-- **Emission capture (the key property).** The contract's coldkey **owns every NO's miner‑pool UID**
-  outright (a pure accrual slot), so Yuma credits its incentive as **α stake the contract holds** — the
-  **41% miner emission** lands in the contract automatically, with no action by and no custody by any NO.
-  The contract reads realized per‑pool emission on‑chain (Metagraph `0x802` `getIncentive`/`getEmission`)
-  to build settlement (§8).
+- **Emission capture (the key property).** The immutable vault's coldkey owns every NO miner-pool UID.
+  At the exact epoch boundary (within a bounded close grace), `captureEmission` reads the complete stake
+  on that pool hotkey and moves it to the vault's escrow hotkey. A missed close records zero for that
+  epoch and defers the still-on-pool stake to the next timely boundary; a late keeper can never assign a
+  multi-epoch delta to the first missed epoch.
 - **Validator emission is native.** Independent validators stake their **own** α and earn their **41%
   dividends natively** to their own hotkeys ∝ stake × vtrust — the contract neither stakes for them nor
   custodies their dividends. (Native dividends are the **whole** validator reward; a fee‑funded effort
   bounty **(X)** is out of scope, §9.3/§13.6/D29.)
-- **Custody as stake, on two hotkeys.** All α the contract holds is staked under its coldkey (no AMM
-  exposure; α stays α), split across **two hotkeys with different jobs**: `treasuryHotkey` is the
-  **claims escrow** (swept pool emission awaiting `claimMiner`, its balance exactly tracked by the
-  push‑then‑credit ledger), and `reserveHotkey` — the owner's validator hotkey — holds the **buyback
-  reserve** (§7.4). The split is load‑bearing: dividends compound on the reserve hotkey, and mixing them
-  into the escrow would break the exact `getStake(treasury) ≥ accountedStake + amount` deposit check
-  (an un‑attributable surplus an authorized caller could book as a phantom deposit).
-- **Deposits in → the reserve.** A NO pushes α onto `(coldkey = mirror(contract), treasuryHotkey)` with
-  `transferStake` (**slippage‑free**), then calls `deposit`, which attributes it, credits `DT` (the
-  steering signal), and immediately `moveStake`s the **full amount** to `reserveHotkey` (same coldkey,
-  same netuid — slippage‑free). From that point the α is **reserve, not budget**: it compounds validator
-  dividends (auto‑restaked by the chain) and is **never paid out** (§7.4).
-- **Payouts out — emission only.** On claim, the contract pays with
-  `transferStake(recipientColdkey, treasuryHotkey, netuid, netuid, alpha)` — again slippage‑free —
-  sourced **only from swept pool emission**. Recipients receive α **as stake** they can keep (earning)
-  or `removeStake` to TAO (their slippage). **No function sources a transfer from `reserveHotkey`.**
+- **Deposits in → isolated staging → immutable reserve.** Each NO has a distinct coordinator-owned
+  `depositHotkey`. The operator first sends an exact amount to that isolated position through a native,
+  signer-scoped transfer intent. Its distinct `depositSigner` then calls `deposit` or `addConviction`
+  with the next nonce and deadline. In one EVM transaction the coordinator verifies signer, nonce,
+  policy/caps and available stake; moves exactly `amount` to the reserve hotkey; transfers it to the
+  reserve sink's coldkey; records principal; and emits the policy-bound event. Any failed step reverts
+  all EVM accounting. No NO can attribute another NO's staged funds.
+- **Payouts out — emission only.** On claim, the immutable vault uses `transferStake` from its escrow
+  hotkey to the recipient coldkey. Recipients receive α as stake. Deposit/conviction principal is held
+  by a different contract coldkey whose bytecode has no outbound operation.
 - **TAO is only touched** for gas and the owner's discretionary conversions. Participants never pay AMM
   slippage to *use* the system; only to exit α→TAO.
 
 ### 6.4 Control, custody, and the launch governance model
 
-Because the contract is **custody‑critical** (§13.1) — it holds all deposits and all captured emission —
-*how it is controlled is part of the spec.* Control is a bundle of distinct privileged powers: **upgrade
-authority** (the proxy admin), **admission** (`registerOperator` gating), **dispute/referee** decisions
-(§9.6, §11.3), **parameters** (epoch windows, θ, the reference rate, hyperparameters), and the
-**treasury** (the owner cut; the buyback reserve is contract‑locked, not owner‑spendable, §7.4). We launch with these centralized
-but *bounded* (Phase 0), then harden custody (Phase 1). Deeper decentralization —
+Because the contract set is custody-critical (§13.1), *how each component is controlled is part of the
+spec.* The upgrade authority reaches only the coordinator. The reserve sink and settlement vault have
+no owner or upgrade authority after their one-time recorder/coordinator links are fixed. Coordinator
+control is a bundle of admission, future-effective role/policy changes, finalized commitment mirroring,
+pause of new-risk surfaces, and UUPS upgrade authority. We launch these policy powers centralized but
+bounded (Phase 0), then add delay (Phase 1). Deeper decentralization —
 trustless inputs, on‑chain governance, immutability, and handing off the Bittensor subnet‑owner role —
 is deferred (§6.4.3) until the mechanism is proven (notably the `VALIDATOR.md` §10 defenses).
 
-**Invariant across every phase — earned claims are sacrosanct.** Once `finalizeEpoch(e)` writes the
-claim roots for epoch `e`, the α backing those claims is committed: **no upgrade, pause, or admin action
-may block or claw back a finalized claim.** Per‑epoch settlement is append‑only; admin power reaches only
-*future* epochs. This single invariant bounds the blast radius of every privileged power below, and it is
-implemented from day one.
+**Invariant across every phase — earned claims are sacrosanct.** Once
+`finalizeOperatorEpoch(e,noId)` causes the vault to fix an entitlement, its root, artifact hash, total and
+expiry cannot be rewritten. `claim` is implemented in the non-upgradeable vault and has no pause/admin
+gate, so **no coordinator upgrade, pause, operator deactivation, owner or guardian action may block or
+claw back that finalized claim.**
 
-**Sibling invariant — the buyback reserve is one‑way.** No contract function sources a transfer from
-`reserveHotkey`: deposits (and the dividends they compound) can only ever *enter* the reserve (§7.4).
-Like the claims invariant this is **code‑enforced now and governance‑credible over time** — the chain
-itself imposes no stake lock (no unbonding period; `removeStake`/`transferStake` are immediate for
-whoever controls a coldkey, §2.3), so the lock is exactly as strong as the contract having no exit path
-plus the upgrade governance around it (Phase 0 multisig → Phase 1 timelock → §6.4.3 immutabilization).
-The reserve is publicly auditable every block: `getStake(reserveHotkey)` vs. `buybackTotal`.
+**Sibling invariant — the buyback reserve is one‑way.** The reserve sink has no outbound stake function,
+generic call, delegatecall, owner, proxy or upgrade path. Deposits and dividends can only enter its
+mapped coldkey position. This is a physical bytecode boundary from day one, not a promise made by an
+upgradeable proxy. The reserve is publicly auditable every finalized block:
+`getStake(reserveHotkey, sinkColdkey, netuid) >= principal`.
 
 #### 6.4.1 Phase 0 — Launch (central control, fast bug‑fixes)
 
-- **Owner = an M‑of‑N multisig** (BringYour, Inc. + signers): the proxy admin and holder of every
-  privileged role.
-- **Upgradeable proxy** (transparent or UUPS) → the owner can patch settlement/claim logic and tune
-  parameters. This is intentional: early bug‑fix and tuning capability, and central control. Honest
-  consequence: **the owner can change the rules for *future* epochs** (never the in‑flight one, per the
-  invariant). Accepted for launch.
-- **Owner‑gated admission** (`registerOperator` owner‑only; verifiers permissionless‑with‑bond or
-  gated) and **owner as referee** for the non‑cryptographic
-  disputes (§9.6) — the cryptographic disputes (§11.3) already need no owner.
+- **Testnet owner = one dedicated, generated, value-capped EOA; mainnet owner = a distinct 2-of-3 Safe.**
+  Neither key is used by an operator, validator, depositor, root task, keeper or server process.
+- **Upgradeable UUPS coordinator only.** The owner can patch open/future coordination logic. It cannot
+  replace the reserve sink or vault bytecode and cannot modify finalized entitlement state.
+- **Owner-gated admission** (`registerOperator` owner-only). Per-NO deposit and root signers are distinct
+  scoped roles; finalization/cleanup are permissionless; the guardian can pause only new-risk coordinator
+  surfaces and only the owner can unpause.
 - **Treasury:** the 18% owner cut accrues to the owner multisig (a governance treasury later, §6.4.3).
   The buyback reserve is **not** treasury — it is contract‑locked (§7.4).
 
@@ -583,11 +566,11 @@ The reserve is publicly auditable every block: `getStake(reserveHotkey)` vs. `bu
 The highest‑leverage step; it answers "the owner can affect the 7‑day rewards" by adding *delay and
 visibility*, not by removing the ability to fix bugs.
 
-- **Timelock on every upgrade and parameter change**, delay **≥ 1 epoch (target 2 epochs ≈ 14 days)**.
+- **Timelock on every coordinator upgrade and parameter change**, delay **≥ 1 epoch (target 2 epochs ≈ 14 days)**.
   Any change to reward logic or parameters is queued in public for a full epoch before it can take
   effect, so participants can audit it and `claim`/exit ahead of it. With the §6.4 invariant, the owner
-  provably **cannot alter any epoch already in flight** — only announce changes to future ones, with
-  notice.
+  cannot alter finalized vault entitlements; ordinary policy/operator changes are already constrained to
+  future epochs.
 - **Role split (least privilege):**
   - a **larger M‑of‑N multisig** holds the **timelock** (proposes/executes upgrades + parameter
     changes); and
@@ -599,15 +582,12 @@ visibility*, not by removing the ability to fix bugs.
 
 #### 6.4.3 Deferred to later phases (designed‑for, not in this version)
 
-Recorded so the seam is built now: making the **inputs** trustless (median / α‑native oracle,
-permissionless bonded admission, optimistic + cryptographic disputes so `finalizeEpoch` needs no owner
-signature); **on‑chain governance** of the timelock (α‑stake‑weighted via the staking / `0x80D`
-precompiles, or participant/reputation‑weighted — basis TBD); **immutabilizing** the custody/settlement
-core behind bounded parameter governance; and transferring the **Bittensor subnet‑owner role** to a DAO
-coldkey or via subnet **leasing/crowdloan**. To keep these cheap, **split the contract now** into an
-(eventually frozen) **custody/settlement core** and a lighter‑governance **policy module** (admission,
-oracle, parameters), so each future step is a module swap behind the timelock rather than a monolith
-rewrite.
+Recorded so the seam is built now: making the **inputs** trustless (median / α-native oracle,
+permissionless bonded admission and stronger cryptographic inputs for operator-epoch finalization);
+**on-chain governance** of the timelock (α-stake-weighted via the staking / `0x80D`
+precompiles, or participant/reputation‑weighted — basis TBD); and transferring the **Bittensor
+subnet-owner role** to broader governance. The designed-for seam already exists: custody/settlement and
+reserve are immutable, while admission, oracle and parameters live in the replaceable coordinator.
 
 ---
 
@@ -618,11 +598,12 @@ rewrite.
 `seed/INCENTIVES.md` frames deposits as "per used GB and active user … based on the global fixed rate set by
 an oracle." We **drop the on‑chain oracle entirely**: per‑GB / per‑user usage is **self‑reported and
 unverifiable on‑chain**, so pricing it on‑chain buys nothing — the only quantity the protocol can act on
-is *the α actually deposited*. A NO just calls `deposit(α)`.
+is *the α actually deposited*. A NO stages α on its isolated deposit hotkey and its scoped signer calls
+`deposit(noId,amount,nonce,deadline)`.
 
 The **"global fixed rate"** survives as an **off‑chain published reference** — now a **schedule of
 deposit rates per conviction tier** (§7.3): `rate(tier)` = the α a NO posts per unit of real usage.
-Under v0.4 (D25) this schedule is read by **the validators** (who set the weights, §8.1) as well as by
+In release 1.0 (D25) this schedule is read by **the validators** (who set the weights, §8.1) as well as by
 NOs (to size their deposits); it is **never a value the contract consumes**. NOs may still report
 `(gb_n, users_n)` as **optional, unverified metadata** for transparency, but it enters no on‑chain
 computation. This keeps a whole subsystem (`setRates`, on‑chain rate storage, the TAO/USD feed) and a
@@ -630,7 +611,8 @@ trusted input out of the contract.
 
 ### 7.2 A deposit is conviction stake (D25)
 
-The deposit *is* the claim: `D_n` (α) is the NO's costly, on‑chain bid for emission weight. The protocol
+The deposit anchors the claim: `D_n` (α) is the NO's costly, on‑chain input, and validators turn it into
+the weightable demand signal `implied_usage_n = D_n / rate(tier_n)`. The protocol
 never verifies GB — infeasible and a non‑goal. The deposit is a **costly signal** funded by the NO's
 **real customer revenue**, and it is **conviction stake**: staked into the locked reserve (§7.4) and
 **sunk** — never returned through any path, in particular not by routing it back through self‑owned
@@ -669,8 +651,10 @@ supply, rather than recycled to participants who would re‑sell it.
   the actual demand pressure, and the sourcing commitment is published alongside the §7.1 rate schedule
   (on‑chain code cannot see where α came from; the policy makes the buyback claim falsifiable).
   `deposit(noId, amount)` `moveStake`s the **full amount** to the **reserve hotkey** — the owner's
-  validator hotkey (§6.3) — and emits `Deposited(e, noId, from, amount)` + `BuybackReserved`. It records
-  **no on‑chain weighting ledger** (D25: `DT`/`totalDT` are gone); the events are the published record.
+  validator hotkey (§6.3), transfers it into the immutable sink coldkey, and emits `Deposit` plus
+  `ReservePrincipalAdded`. `addConviction` follows the same one-way path but emits `ConvictionAdded` and
+  does not increase epoch demand. Coordinator counters enforce exact nonces/caps; neither contract
+  computes weights from them (D25). The finalized events are the public weighting record.
 - **The lock.** No contract code path ever sources a transfer from the reserve (the §6.4 sibling
   invariant). Staking per se enforces nothing — dTAO stake has **no unbonding period** (§2.3) — so the
   lock is the contract's *missing exit path* plus the upgrade governance around it, and it is auditable
@@ -693,11 +677,12 @@ supply, rather than recycled to participants who would re‑sell it.
 ### 7.5 Publishing deposits — the events are the record
 
 `seed/INCENTIVES.md`: "NO publishes list of their deposits and signs with wallet." No extra commitment is
-needed: each deposit is already an **on‑chain event** (`Deposited(e, noId, from, amount)`) signed by the
-operator's tx, so a NO's per‑epoch deposits and cumulative conviction are publicly and authoritatively
+needed: each deposit is already an **on‑chain event** (`Deposit(noId,e,funder,amount,policyHash,nonce)`)
+authorized by the scoped deposit signer, so a NO's per‑epoch deposits and cumulative conviction are publicly and authoritatively
 **summable straight from the event log** — that *is* the signed, published deposit list. Validators read
 it directly (§8.1): this‑epoch deposits for the demand signal, all‑time for the conviction/tier. The
-contract stores **no** per‑NO deposit ledger (D25) — the log is the single source of truth.
+coordinator stores only nonces and cap/audit totals, not a weighting oracle (D25); finalized logs are the
+portable source of truth used by validators and independent replayers.
 
 ---
 
@@ -710,7 +695,7 @@ score **themselves**, from **published data**, and submit it as Yuma weights; Yu
 scores and emits to the pool UIDs — so the miners' reward *is* the validators' evaluation. Each validator
 reads, per NO `n`, straight off chain state and its own trails:
 
-- **`epoch_deposit_n`** — this epoch's deposits, summed from the `Deposited` event log (§7.5);
+- **`epoch_deposit_n`** — this epoch's deposits, summed from finalized `Deposit` events (§7.5);
 - **`tier_n`** — the NO's conviction tier, from its cumulative locked α (§7.2), and the published
   **`rate(tier_n)`** (§7.3);
 - **`Q_n`** — the pool's aggregate provider quality, from the validator's own `VALIDATOR.md` trails.
@@ -730,11 +715,11 @@ the lower rate is a *discount, not a penalty*, and the weight still tracks **rea
 emission_n  ≈  0.41 · E_epoch · (1−θ) · ŵ_n,   ŵ_n = consensus(implied_usage_n · Q_n) / Σ_m consensus(implied_usage_m · Q_m)
 ```
 
-**as α stake the contract holds** (it owns the pool UID — the NO never receives it). Demand (implied
+**as α stake the immutable vault holds** (the vault owns the pool UID — the NO never receives it). Demand (implied
 usage) anchors `ŵ_n` to revenue‑backed usage (§7); the consensus‑measured `Q_n` modulates it — a NO with
-poor providers earns less even at high demand (swing capped at bootstrap, §12.3). The contract reads
-`emission_n` on‑chain (`0x802 getIncentive`/`getEmission`) for settlement and stores no demand signal of
-its own. (Validators each apply the same published rate schedule + their own `Q_n`; Yuma's
+poor providers earn less even at high demand (swing capped at bootstrap, §12.3). The immutable vault
+captures the realized stake on each pool hotkey at the epoch boundary; it never estimates settlement
+from a point-in-time incentive/emission view. (Validators each apply the same published rate schedule + their own `Q_n`; Yuma's
 median/clip/vtrust over many independent validators is what turns those into the pool's pay, §10.)
 
 ### 8.2 Within an operator — the payout list (the NO's lever, but auditable)
@@ -756,10 +741,11 @@ entire on‑chain footprint for the miner channel — a *direction*, never custo
 
 ### 8.3 Settlement — providers claim per‑NO, directly from the contract
 
-At `finalizeEpoch` the contract snapshots, **per NO `n`**, its **pool total**
+At the epoch boundary the vault captures, **per NO `n`**, its realized pool emission into immutable
+escrow. After the root window the coordinator fixes an entitlement whose total is
 
 ```
-poolTotal_n  =  emission_n        // miner emission ONLY (read on-chain, 0x802); deposits are reserved (§7.4)
+poolTotal_n  =  captured_emission_n + same_operator_carry_n
 ```
 
 There is **no global claim root**: a provider `p`
@@ -767,17 +753,18 @@ claims against its NO's *own* committed `payoutRoot`, which holds **fractional s
 and the contract derives the α amount from **on‑chain state**:
 
 ```
-claimMiner(e, n, p, s_{n,p}, proof):
+vault.claim(e, n, p, s_{n,p}, proof):
     verify (p, s_{n,p}) ∈ payoutRoot[e][n]
     pay   s_{n,p} · poolTotal_n              (slippage-free transferStake)
-    require claimedMiner[e][n] + amount ≤ poolTotal_n      // a pool can't be over-drained
+    require claimed[e][n] + amount ≤ poolTotal_n      // a pool can't be over-drained
 ```
 
-So the amount is a deterministic function of on‑chain state (the pool's swept emission) × the NO's
-committed share — **nothing is computed off‑chain at finalize**, removing the one remaining "who computed
-this root" trust step. The contract caps cumulative payout per pool at `poolTotal_n`: a NO whose shares
-sum to > 1 just drains its own pool early (hurting its own providers — a reputation cost); shares < 1
-leave a remainder that rolls over. A provider attached to several NOs makes **one claim per NO** (the
+So the amount is a deterministic function of immutable on-chain entitlement state × the NO's committed
+share. Release artifacts allocate exactly 10,000 bps with deterministic largest-remainder rounding;
+the vault independently caps cumulative payout at the entitlement total. A malformed root whose shares
+exceed 10,000 bps cannot overdraw escrow. An unclaimed or under-allocated remainder expires after the
+snapshotted TTL+grace and becomes only that same NO's carry; a missed root follows the same isolation.
+A provider attached to several NOs makes **one claim per NO** (the
 trade for dropping the global root). **Every α of the miner channel flows contract → provider; the
 operator holds none of it.**
 
@@ -792,29 +779,29 @@ fleets by routable-IP breadth** *also* get the **canonical Bittensor treatment**
 miner UID**, is **steered directly by validators**, and is **paid natively**. This is the supply apex of
 §1 — and it is *more* trust-minimized than the pool (no operator in the payout path).
 
-**The metric — distinct routable egress IPs, not traffic (D27).** A "top miner" is ranked by **how many
-unique IPs it can route through**, not how much traffic flows — the real VPN supply signal. Because
-eligibility enforces **one provider (`client_id`) ⇄ one egress IP** (`VALIDATOR.md` §8.2), the ranked
-unit is a **fleet**: an operator that presents **many** routable exit IPs across the `client_id`s it
-runs. A fleet's score is the count of **distinct routable egress-IP-hashes** its `client_id`s serve,
-**split when shared**: each distinct IP-hash contributes **1.0 total, divided equally among every top
-miner claiming it** (if fleets A and B both route IP Q → 0.5 each), so overlapping IP pools can't be
-double-counted to inflate rank. An IP counts only if it is *routable* — the validator completed a real
+**The metric — routable egress breadth, not traffic (D27).** Exact source addresses are used only for
+unambiguous hop attribution: one eligible exact address maps to one `client_id`, and ambiguity excludes
+it (`VALIDATOR.md` §8.2). The public scoring unit is separately
+`HMAC(policy_key, family || masked_prefix || domain)` at the policy granularity (initially /29 IPv4 and
+/48 IPv6). A fleet's score is the count of **distinct routable scoring hashes** its bound clients serve,
+**split when shared**: each hash contributes **1.0 total, divided equally among every eligible head fleet
+observed on it**. Thus distinct exact IPs in one co-located prefix deliberately collapse and cannot
+double-count supply. A score unit counts only if it is *routable* — the validator completed a real
 trail hop through it (`VALIDATOR.md` §7), so liveness is baked into the metric and there is no separate
 quality term.
 
 ```
 for top-level-miner UID u (a fleet — a hotkey with bound client_ids C_u, §11.4):
-    IPs(u)   = { distinct egress-IP-hash h : some c ∈ C_u routed a verified trail hop from h }   # VALIDATOR.md §7
+    IPs(u)   = { distinct keyed prefix hash h : some c ∈ C_u routed a verified trail hop from h } # VALIDATOR.md §7
     claim(h) = #{ top miners u' : h ∈ IPs(u') }                                                  # split across sharers
     score(u) = Σ over h ∈ IPs(u) of  1 / claim(h)         # split-adjusted unique routable-IP count
     head_weight[u] = score(u)                             # weight IS the IP score (decision B)
 ```
 
 Every validator computes `score(u)` **from its own trails** — the trail/proof wire carries a per-hop
-**egress-IP-hash** (`VALIDATOR.md` §8, a hash at a configurable subnet granularity — default /29 IPv4,
-/48 IPv6 — never the raw IP), so a validator can count each fleet's distinct routable IPs and the sharing
-splits without trusting anyone. This is the **verify-the-top-200** requirement: a validator only weights
+**egress-IP-hash** (`VALIDATOR.md` §8, a keyed hash at a configurable subnet granularity — default /29
+IPv4, /48 IPv6 — never the raw IP), so a validator can count each fleet's routable score units and the
+sharing splits without trusting anyone. This is the **verify-the-top-200** requirement: a validator only weights
 a claimed top miner as high as its *own* observed IP score justifies.
 
 **Identity — the fleet `client_id`s ⇄ hotkey binding (§11.4).** A fleet publishes a **dual-signed
@@ -869,7 +856,7 @@ pool[]  =  { implied_usage_n × Q_n }  normalized so Σ pool = 1 − θ  # impli
 w       =  head ⊕ pool                # one vector over all miner UIDs; commit-reveal; apply max_weight_limit
 ```
 
-Both shares go to **real recipients** (top miners; contract-owned pool UIDs), so the **June-2026
+Both shares go to **real recipients** (top miners; vault-owned pool UIDs), so the **June-2026
 `(1 − miner_burned)` penalty does *not* apply** — that penalty only bites emission *withheld to an
 owner/immune key* (Spec 421, subtensor PR #2781). **Do not "reserve baseline" by burning to an owner UID** —
 it would shrink the subnet's whole cross-subnet allocation. Because Yuma clips to the κ-stake-weighted
@@ -1088,10 +1075,10 @@ force validator‑software upgrades (§15.1).
 
 | Datum | Where | Why |
 |---|---|---|
-| `D_n`, deposit events, `buybackTotal`, `poolTotal[e][n]` | contract storage | the demand signal, the reserve, and claim *amounts* — all on‑chain |
-| `payoutRoot[e][noId]` (fractional shares, Σ = 1) | contract storage (in `commitOperator`) | the contract verifies each provider's *share* against it at claim time |
-| payout‑share leaves, completed‑trail proof blobs | **off‑chain** (IPFS/HTTPS, pointer in `off`) | bulk data; only the committed roots are trusted (trail proofs would go on‑chain only under the parked bounty design, §9.3/D29 — not in v1) |
-| public mirror of roots | **commitments pallet** (optional, free) | SDK‑native public audit without touching the contract |
+| finalized `Deposit` / `ConvictionAdded` / `ReservePrincipalAdded` events and cap counters | coordinator + reserve sink | demand and conviction audit inputs; validators reproduce them from finalized history |
+| immutable `entitlement[e][noId]` and conservation counters | settlement vault | captured/carry total, root, artifact hash, claimed amount, expiry and exact custody accounting |
+| payout artifact and completed-trail/statistics artifacts | **server API + content-addressed `server/blob` MinIO** | canonical bulk inputs; publicly retrievable by SHA-256 and independently reproducible |
+| fleet manifest hash | **commitments pallet + finalized coordinator mirror** | hotkey-authorized native anchor used by every binding member |
 
 This directly answers `seed/INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
 payout table (fractional shares) so every provider verifies *its own* payout with an `O(log N)` proof,
@@ -1101,21 +1088,22 @@ derives the α at claim time (§8.3) — there is **no global, off‑chain‑com
 ### 11.2 Claiming
 
 ```solidity
-function claimMiner(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, bytes32[] proof) external {
-    bytes32 leaf = keccak256(abi.encode(coldkey, shareBps));
-    require(MerkleProof.verify(proof, noCommit[e][noId].payoutRoot, leaf), "bad proof");
+function claim(uint256 e, uint256 noId, bytes32 coldkey, uint256 shareBps, bytes32[] proof) external {
+    bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(coldkey, shareBps))));
+    require(MerkleProof.verify(proof, entitlement[e][noId].payoutRoot, leaf), "bad proof");
     bytes32 k = keccak256(abi.encode(noId, coldkey));
     require(!minerClaimedBy[e][k], "claimed");  minerClaimedBy[e][k] = true;
-    uint256 amt = shareBps * poolTotal[e][noId] / 10_000;
-    claimedMiner[e][noId] += amt;  require(claimedMiner[e][noId] <= poolTotal[e][noId], "pool over-drained");
-    _payAlpha(coldkey, amt);       // slippage-free transferStake
+    uint256 amt = shareBps * entitlement[e][noId].total / 10_000;
+    entitlement[e][noId].claimed += amt;
+    require(entitlement[e][noId].claimed <= entitlement[e][noId].total, "pool over-drained");
+    transferStake(coldkey, escrowHotkey, netuid, netuid, amt);
 }
 
 ```
 
 Claims are pull‑based, so settlement is `O(1)` on‑chain regardless of participant count. The **miner**
-amount is `share × poolTotal` (share proven against the NO's committed root, pool total read from
-on‑chain state) — **no global claim root is computed off‑chain**. (`claimValidator` — the bounty claim,
+amount is `share × entitlement.total` (share proven against the NO's committed root, total fixed from
+captured emission plus same-NO carry) — **no global claim root is computed off-chain**. (`claimValidator` — the bounty claim,
 `feePool · effort / Σ effort` — is part of the parked bounty design, not in v1, §9.3/D29.)
 
 ### 11.3 Disputes
@@ -1123,11 +1111,13 @@ on‑chain state) — **no global claim root is computed off‑chain**. (`claimV
 The v1 on‑chain dispute surface is deliberately small — deposits are reserved (nothing distributable to
 dispute), pool amounts are read from chain state, and effort claims do not exist yet:
 
-- **Bad payout share.** A provider's claim must prove `(coldkey, share)` against its NO's committed
-  `payoutRoot`; the per‑pool cap (`claimedMiner ≤ poolTotal`) means a NO whose shares sum to > 1 only
-  drains its own pool.
-- **Bad `client_id ⇄ hotkey` binding.** A contested/stolen head binding is adjudicated on‑chain via the
-  `0x402` Ed25519 check + a metagraph read (§11.4).
+- **Bad payout artifact/share.** The operator API and validators reject any artifact that does not
+  reproduce its content hash/root or exactly allocate 10,000 bps. Independently, every claim proves
+  `(coldkey,share)` against the immutable entitlement and the vault cannot pay more than its total.
+- **Bad `client_id ⇄ hotkey` binding.** Invalid consent never enters state: the coordinator checks the
+  complete replay-bound payload, Ed25519 and sr25519 signatures, matching finalized commitment, validity
+  interval and live UID before recording a future-effective version (§11.4). Client-signed revocation
+  and permissionless stale cleanup cover later compromise/deregistration.
 - **(Parked bounty design, not in v1 — §9.3/D29.)** Effort claims would be **optimistic**: a validator commits a Merkle
   root of its trails + a claimed effort total; the contract `0x402`‑verifies a **random sample** of the
   committed leaves (`FINAL` against the NO's server key, `verifier_sig` against the validator's `vpk`),
@@ -1135,9 +1125,9 @@ dispute), pool amounts are read from chain state, and effort claims do not exist
   leaf voids the whole claim and forfeits the validator's stake at risk, so a fabricated trail is never
   worth the gamble and the contract never verifies *every* trail (it scales).
 
-Statistical disputes (a validator's trails look self‑dealt or coverage‑gamed, `VALIDATOR.md` §7.7) are
-**not** resolved on‑chain in v1; they inform governance (validator de‑listing, stake forfeiture). The
-on‑chain layer handles only what is cryptographically decidable.
+Statistical disputes (a validator's trails look self-dealt or coverage-gamed, `VALIDATOR.md` §7.7) are
+**not** resolved on-chain in v1. They remain public evidence and affect Yuma trust naturally; the
+contract layer handles only deterministic custody and cryptographic authorization.
 
 ### 11.4 The fleet `client_id`s ⇄ hotkey binding (top-level miners)
 
@@ -1150,23 +1140,30 @@ pattern (Epistula / ORO-AI `bittensor-auth`) — with a **dual signature** so a 
 
 **Dual-signed association.** A provider claiming a top slot proves control of **both** keys:
 
+The canonical byte payload is the ASCII domain `urnetwork/fleet-binding/v1`, followed without padding
+by `chain_id:u64be`, `netuid:u16be`, `coordinator:20`, `fleet_id:32`, `hotkey:32`, `client_id:16`,
+`client_key:32`, `generation:u64be`, `valid_from_epoch:u64be`, `valid_to_epoch:u64be`, and
+`commitment_hash:32`. Both keys sign `keccak256(payload)`:
+
 ```
-msg        = "urnetwork/bind/v1" ‖ client_id(16) ‖ hotkey_ss58(32)
-sig_client = Ed25519.Sign(client_sk, msg)   // client_sk = the per-client key (VALIDATOR.md §2 vpk/ckey) → proves client_id ownership
-sig_hotkey = sr25519.Sign(hotkey_sk, msg)   // proves UID / hotkey ownership
+sig_client = Ed25519.Sign(client_sk, keccak256(payload))
+sig_hotkey = sr25519.SignSubstrateContext(hotkey_sk, keccak256(payload))
 ```
+
+Chain, netuid, coordinator, epochs, generation and commitment hash are signed replay boundaries.
+`client_id` is the 16-byte UR identity; `client_key` is its distinct 32-byte Ed25519 public key.
 
 This is the shape of SN51 Celium's anti-theft `associate_evm_key` (both keys sign the linkage); a *single*
 hotkey signature would let a miner **steal another provider's measured quality** by claiming its `client_id`.
 
 **Where it lives.**
-- **Commitments pallet** (free, `Pays::No`, keyed `(netuid, hotkey)`, §2.4): the miner hotkey commits its
-  `client_id`(s) — a short list, or a Merkle root if it runs several. Validators read it as a **free state
-  query** and build `client_id → UID`, **failing closed** if the hotkey is not a live UID (a stale-snapshot
-  guard).
-- **ST-contract anchor** (for disputes): the contract stores the binding (or its hash) and adjudicates a
-  contested/stolen binding on-chain — verifying `sig_client` via the **`0x402` Ed25519 precompile** and
-  hotkey ownership via a metagraph read — reusing the §11.3 dispute rail. A bad binding is slashable.
+- **Commitments pallet** (free, `Pays::No`, keyed `(netuid,hotkey)`, §2.4): the hotkey publishes the
+  canonical fleet-manifest hash. The finalized chain index mirrors that exact value and finalized
+  block/hash through the coordinator's narrowly scoped commitment-oracle role.
+- **Coordinator anchor:** each client member is inserted incrementally. The coordinator requires the
+  mirrored commitment to match and be fresh, verifies client consent at `0x402`, hotkey authorization at
+  `0x403`, and live UID resolution at `0x804`, then records the generation and epoch interval. Versions
+  cannot overlap; membership starts no earlier than the next epoch and is bounded in duration.
 
 **Identity ⊥ score.** The binding proves *ownership* only; `VALIDATOR.md` proves *routable-IP breadth*.
 They stay separate (as every comparable subnet does — Targon keeps the hotkey out of its TEE
@@ -1230,8 +1227,9 @@ designs, §9.3/§13.6) is an open post‑launch question, not a committed roadma
 
 ### 12.3 What this does and does not secure
 
-- **Secured:** cross‑operator emission tracks `deposit × consensus‑quality` (costly, revenue‑backed
-  demand × independently‑measured liveness) — **validators' evaluation drives the miner payout**, the
+- **Secured:** cross‑operator emission tracks `implied_usage × consensus‑quality`, with implied usage
+  equal to `deposit / rate(conviction tier)` (costly, revenue‑backed demand × independently‑measured
+  liveness) — **validators' evaluation drives the miner payout**, the
   Bittensor mechanism — via median + clipping + vtrust over many **independent** validators, plus the
   self‑weight mask and the fully‑sunk deposit (§10, §12.1); provider quality also bites **within the
   pool** (auditable payout list) and via reputation.
@@ -1265,7 +1263,7 @@ liquid out:  L_e  ≈  0.41·E_e                      // miner emission (both ti
 
 `E_e` (α issuance) is on a fixed, halving schedule; `B_e` scales with **usage revenue**. Define the
 **demand ratio** `R_e = (B_e + Y_e) / L_e` — publishable every epoch straight from chain state
-(`Deposited` events + `getStake(reserveHotkey)`; the §16.1 indexer's headline stat). Three regimes:
+(finalized `Deposit` events + `getStake(reserveHotkey,sinkColdkey,netuid)`; the §16.1 indexer's headline stat). Three regimes:
 
 - **Bootstrap (`R_e ≪ 1`).** Emission dominates; miners are paid an issuance subsidy while usage grows —
   the standard subnet posture, with the buyback as a visible, growing bid under the token.
@@ -1283,10 +1281,11 @@ liquid out:  L_e  ≈  0.41·E_e                      // miner emission (both ti
 
 Honest caveats, stated once: **(1)** miner income is now **price‑mediated** — if the market does not
 price the buyback, high usage no longer lifts miner pay directly (the bet every revenue‑subnet makes;
-the old deposit‑funded floor is gone, §7.4). **(2)** The reserve is a **growing honeypot** custodied by
-an upgradeable contract — the §6.4 phases (timelock → immutabilization) carry real weight. **(3)** The
-lock is **governance‑credible, not physical**: dTAO stake has no unbonding (§2.3), so credibility = no
-exit path in code + the upgrade process around it (§6.4). **(4)** Reserve‑as‑consensus‑stake
+the old deposit‑funded floor is gone, §7.4). **(2)** The reserve is a **growing honeypot**, but release
+1.0 places it behind a non-upgradeable sink with no outbound bytecode; the remaining risk is a runtime
+change to contract-coldkey/precompile semantics, continuously conformance-gated. **(3)** dTAO stake has
+no native unbonding lock (§2.3), so the physical lock is supplied by the immutable sink's missing exit
+path. **(4)** Reserve‑as‑consensus‑stake
 concentrates Yuma power with the owner **by design** (§7.4); decentralizing the validator set later must be
 a deliberate, budgeted step, its committed lever **re‑delegating reserve slices** (§6.4.3).
 
@@ -1296,14 +1295,14 @@ a deliberate, budgeted step, its committed lever **re‑delegating reserve slice
 
 ### 13.1 Settlement: contract custodies the miner pools; validators are independent (chosen)
 
-The contract **owns each NO's miner‑pool UID** outright, so the **tail's share of the 41% miner emission**
-accrues to the contract and is paid out by direct Merkle claim (the **head is native** — top-level miners
+The immutable settlement vault **owns each NO's miner‑pool UID** outright, so the **tail's share of the
+41% miner emission** accrues to the vault and is paid out by direct Merkle claim (the **head is native** — top-level miners
 own their UIDs and are paid to their own coldkey, §8.4) — *a network operator never custodies emission destined
 for its providers* (the hard requirement). The **weights are set by independent validators** (§9, §10),
 not the contract, so Yuma consensus does real work; their **41% dividends are native** (no middleman to
 remove; a fee‑funded effort bounty is out of scope, §9.3/§13.6/D29). Implications: the contract is
-**custody‑critical** for the miner emission + the buyback reserve (audited code; §6.4 timelock/guardian
-governance), and it owns **one miner‑pool UID per NO**, so budget `max_allowed_uids` and registration
+custody-critical for miner emission while a separate immutable sink owns the buyback reserve; the
+upgradeable coordinator owns neither. The vault owns **one miner-pool UID per NO**, so budget `max_allowed_uids` and registration
 burns to the **NO count** — providers are *not* UIDs, they live inside the pools. No α→TAO→α churn.
 *Rejected:* **per‑provider UIDs** (100k+ ≫ the ~256 cap — the reason for pools, though the **top ~200 do get their own UID** — the head tier, §8.4); letting emission land on
 NO hotkeys (violates no‑custody); a **single** contract miner UID with the contract as sole validator
@@ -1343,8 +1342,10 @@ from day one — we ramp its *strength*, we do not defer the mechanism.
 ### 13.5 No on‑chain oracle (simplified out)
 
 Because per‑GB / per‑user usage is self‑reported and unverifiable on‑chain, an on‑chain rate has no
-enforcement power — the weight is just *α deposited* (§7.1). v1 therefore has **no oracle**: the "global
-fixed rate" is an off‑chain governance‑published reference NOs use to price customers and size deposits.
+enforcement power. The objective on-chain input is *α deposited*; validators combine it with the
+governance-published conviction-tier rate to derive implied usage (§7.1, §8.1). v1 therefore has **no
+oracle**: the rate schedule is a signed, content-addressed off-chain policy that NOs use to size deposits
+and validators independently use to reproduce weights.
 (If a future version ever needs an on‑chain α/USD value — e.g. to denominate the deposit fee in USD —
 the `0x808` α price is already trustless and only TAO/USD would need a committed validator‑median feed.)
 
@@ -1381,7 +1382,7 @@ effort proxy. v1's validator side is simply: **stake α, run trails, earn native
 
 The miner side runs **both** a per-NO pool (§8.1–8.3) *and* a direct top-level-miner channel (§8.4), in
 parallel. *Why both:* a new provider needs a low-barrier **place to start with a baseline reward** (the
-pool — no UID, no burn), while the best providers deserve the **canonical, trust-minimized** Bittensor
+provider needs no UID or burn; the vault burn-registers the shared NO pool UID), while the best providers deserve the **canonical, trust-minimized** Bittensor
 treatment (their own UID, steered directly, paid natively). A provider **starts in a pool and graduates**
 to a top slot, the chain's deregistration churn running the tournament. This is **novel** on Bittensor: the
 field has the pool pattern (ComputeHorde, TPN, Vanta) *and* the direct-UID pattern, but **no subnet tiers
@@ -1398,38 +1399,26 @@ The two tiers share **one mechanism's** 256-UID metagraph, and the 41% miner emi
 by a governance share **θ** baked into validator software (SN13-style weight reservation, §8.5).
 *Rejected:* **two sub-mechanisms** (mechanism 0 = pools, mechanism 1 = top miners) split by
 `mechanism_emission_split` — clean in theory, but `mechanism_count × max_UIDs < 256` would **halve the UID
-space to ~127**, too few for ~200 top miners (so mechanisms stay reserved for the product-line split, §14);
+space to ~127**, too few for ~200 top miners (so release 1.0 fixes `mechanism_count = 1`, §14);
 and **reserving the split by burning to an owner/immune UID** — post-Spec-421 the `(1 − miner_burned)` term
 would shrink the subnet's whole cross-subnet allocation (§8.5). θ trades demand-coupling (in the tail)
 against the merit apex (the head); it is a governed dial, started tail-weighted and ramped (§8.5, §12.3).
 
 ---
 
-## 14. Multi‑pool structure (Pool 0 / Pool 1)
+## 14. One mechanism and its UID budget
 
-`README.md` describes **Mining Pool 0 / Validator Pool 0** ("the core network") and **Mining Pool 1 /
-Validator Pool 1** ("the VPN factory", vpn.dev). Bittensor's **sub‑mechanism** feature (a subnet may
-run multiple mechanisms, each with its own weight matrix and bond pool, with an owner‑set
-`mechanism_emission_split`) maps onto this directly:
+Release 1.0 uses exactly **one** mechanism. The pool on-ramp and direct head are two scoring channels in
+one CRv4 vector, divided by θ (§8.5), not Subtensor sub-mechanisms. A second mechanism would divide the
+global ~256-UID capacity and make the target head impossible; the release preflight therefore requires
+`mechanism_count = 1` and refuses to register roles unless all missing identities fit the intended
+`max_allowed_uids` snapshot.
 
-- **Pool 0 = mechanism 0 (core network).** Fully specified by this document.
-- **Pool 1 = mechanism 1 (VPN factory).** Same contract, same α, same role types; its own miner‑pool
-  UIDs and deposit/payout accounting, with validators scoring per‑mechanism (`set_mechanism_weights`).
-  The owner sets the α split between pools.
-
-The ST contract namespaces all per‑epoch state by `(poolId, epoch, …)`; everything in §§5–12 applies
-per pool. v1 launches Pool 0; Pool 1 is added by registering the second mechanism and enabling its
-accounting — no new mechanism design required.
-
-**Tiers ≠ mechanisms — and the UID budget.** The two *miner tiers* (pool on-ramp + top-level miners,
-§8.4–8.5) live **within one mechanism**, divided by the weight-level share θ — *not* by
-`mechanism_emission_split`. Mechanisms are reserved for the **product-line** split (Pool 0 core / Pool 1
-VPN factory), because `mechanism_count × max_UIDs < 256` means a 2nd mechanism halves the per-mechanism UID
-space to ~127 — too few for ~200 top miners. So within Pool 0's one mechanism the **256 UIDs are shared**:
-`256 ≥ (top-level miners ~200) + (one pool UID per NO) + (validator UIDs)`. Reserve `V` validator slots and
-`P` NO-pool slots; the head is `256 − V − P` (e.g. V=36, P=20 → 200). Validators are not a fixed partition
-— they are the UIDs holding a permit (top-k by stake), so stand up far fewer than `max_allowed_validators`
-and the rest of the 256 are miners.
+The budget is `max_allowed_uids ≥ head fleets + one vault-owned pool UID per NO + validator UIDs + the
+owner/escrow identities that require registration`. Validators are not a separate fixed partition: they
+are live UIDs holding permits according to native stake. New product lines remain an off-chain/operator
+classification unless a future whitepaper revision supplies a new economic model and explicit UID
+budget; they are not a latent release-1.0 mechanism switch.
 
 ---
 
@@ -1441,16 +1430,16 @@ and the rest of the 256 are miners.
 |---|---|---|
 | `tempo` | **360** | native ~72‑min weight/emission cadence (§5.1) |
 | `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
-| `max_allowed_validators` | **128** default, root-only; reserve **≤ 56** so ~200 miner slots fit | permit count (top-k by stake, §9.7) — *not* a slot partition; unused permit slots are miner UIDs |
+| `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
 | `max_weight_limit` | **set a real cap** (e.g. low single-digit %) | chain default is *no cap* (65535); without it one UID could dominate the head (§8.4) |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
-| `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 quality-dip risk); must exceed `commit_reveal_period × tempo` |
+| `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 breadth-sampling dip risk); must exceed `commit_reveal_period × tempo` |
 | `min_allowed_weights` | **1** | a validator scores all miner UIDs (pools + top-level miners); avoid the 1024 default |
 | `weights_version_key` | bump on scoring‑logic upgrades | force validator‑software upgrades (§10) |
 | `serving_rate_limit` | default 50 | axons optional (custom HTTP protocol, §16) |
-| `registration` | burn‑based, `min_burn`/`max_burn` tuned | Sybil cost on miner‑pool UIDs + validators |
+| `registration` | burn‑based, `min_burn`/`max_burn` tuned | Sybil cost on pool, fleet, validator, and escrow hotkeys; every burn is plan-bounded |
 | `bonds_penalty` / `alpha_low`/`alpha_high` | tune (Liquid Alpha) | shape early‑discovery reward vs. stability (§2.2) |
 
 > Several genesis defaults are governance‑mutable and have drifted from docs (e.g. `tao_weight = 0.18`
@@ -1491,29 +1480,33 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
 
 ### 16.1 Components
 
-1. **ST contract (Solidity, Cancun / 0.8.24).** State + interfaces of §6; precompile bindings
-   (Staking V2 `0x805`, Neuron `0x804`, Metagraph `0x802`, Alpha `0x808`, Ed25519 `0x402`); Merkle
-   verifier (OZ); the **buyback reserve** (deposit → `moveStake` → locked, §7.4); proxy + owner multisig
-   governance. **New work.** (No `submitTrails` effort verifier — the bounty is out of scope, §9.3/D29.)
-2. **Subnet bootstrap.** `register_network`; set hyperparameters (§15.1); as each NO onboards, the
-   contract `burnedRegister`s its **miner‑pool UID** (owned outright); stand up an initial set of
-   **independent validators** (owner‑run at first) so consensus has measurement from day one; register
-   mechanism 1 for Pool 1 later. **Top-level miners self-`burnedRegister`** their own (provider-owned, not
+1. **ST contract set (Solidity, Cancun / 0.8.24).** Non-upgradeable `STReserveSink` and
+   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-447 bindings (`0x09`, `0x402`, `0x403`,
+   `0x804`, `0x805`), OZ Merkle verification, scoped roles and scheduled policy (§6). The reviewed
+   artifacts and deployed runtime hashes are release-locked. (No effort verifier — §9.3/D29.)
+2. **Subnet convergence.** Validate the supplied, wallet-owned existing testnet netuid; explicitly set
+   and verify every launch hyperparameter (§15.1); during installation the immutable vault first
+   burn-registers its claims-escrow hotkey under its own mapped coldkey, and coordinator initialization
+   fails unless that live registration exists. As each NO onboards, the immutable vault
+   `burnedRegister`s its **miner‑pool UID**; stand up an initial set of
+   **independent validators** (owner-run at first) so consensus has measurement from day one. The release
+   remains one mechanism. **Top-level miners self-`burnedRegister`** their own (provider-owned, not
    contract-owned) UIDs and publish the §11.4 binding.
 3. **Validator software (independent).** Stake α; run `VALIDATOR.md` trails; each tempo score **both tiers** (pools `implied_usage × quality` —
    implied usage = deposit ÷ conviction‑tier rate, computed off the published deposit events; head on its **routable‑IP breadth score**), read the `client_id ⇄ hotkey` binding (§11.4), split by θ, and submit
    commit-reveal weights (standard Bittensor validator loop → native dividends) — **no central
-   keeper sets weights**. A separate **permissionless settlement poke** triggers `finalizeEpoch` after
+   keeper sets weights**. A separate **permissionless settlement poke** triggers per-NO finalization after
    the +48h window. (No trail‑proof submission — the effort bounty is out of scope, §9.3/D29.)
 4. **Network‑Operator software.** Runs the privacy servers + the `VALIDATOR.md` `/verify` server
    (SEED/EXTEND/FINAL, poisoning, idempotency, the four Ed25519 signatures, the egress‑IP index);
-   `deposit`s each epoch (conviction stake — the contract keeps no DT ledger, D25); computes provider reliability + payout list; commits the **`payoutRoot`**
+   stages and `deposit`s each epoch through its isolated hotkey/signer (conviction stake; no contract
+   weighting, D25); computes provider reliability + payout list; publishes a content-addressed artifact and commits the **`payoutRoot`**
    (fractional shares); serves leaves. (No validator pool — it co‑signs trails as the `/verify` server.)
 5. **Provider software.** Carries ingress/egress; registers a `client_id`; verifies its payout leaf
-   against `payoutRoot`; `claimMiner`s. **If it reaches the top ~200:** `burnedRegister`s its own UID,
+   against `payoutRoot`; calls the immutable vault's `claim`. **If it reaches the top ~200:** `burnedRegister`s its own UID,
    publishes the dual-signed `client_id ⇄ hotkey` binding (§11.4), and earns **natively** (no claim, §8.4).
 6. **Validator client (was "verifier").** Stake α; run `/verify` trails; submit commit‑reveal pool
-   scores (native dividends); participate in binding disputes. (No `registerValidator(vpk)` /
+   scores (native dividends); independently reject stale/invalid bindings. (No `registerValidator(vpk)` /
    `submitTrails` / `claimValidator` — those belong to the parked bounty design, §9.3/D29.)
 7. **Indexer/explorer.** Surfaces `D_n`, pool quality `Q_n`, consensus weights, vtrust, the
    **independent‑validator stake share**, the **buyback reserve + demand ratio `R_e`** (§12.4), and
@@ -1535,53 +1528,55 @@ test.finney); **mainnet is the later Phase‑E promotion** (M3), gated behind a 
 which the M4+ production phases run on finney. The SP‑1/SP‑2/SP‑3 harness is endpoint‑parameterized, so
 it re‑targets with zero code change. Operational detail: `docs/LAUNCH.md`.)*
 
-1. **M0 — Rehearsal + probes (no subnet yet).** (a) **SP‑3 localnet** (docker subtensor pinned to the
-   LIVE finney runtime tag, fast blocks): the full genesis dry‑run — deploy, pool‑UID registration +
+1. **M0 — Rehearsal + probes.** (a) **SP‑3 localnet** (docker subtensor pinned to the reviewed runtime,
+   fast blocks): the full convergence dry-run — deploy, pool-UID registration +
    custody/move α (`0x805`), **≥ 2 validators** scoring `implied_usage × quality` under commit‑reveal
-   (`0x804`) so consensus/clipping/vtrust behavior is exercised, deposits → reserve, the epoch
+   through native Substrate CRv4 so consensus/clipping/vtrust behavior is exercised, deposits → reserve, the epoch
    lifecycle, and the failure drills (pause, missed commit, upgrade‑under‑fire, sweep retry).
-   (b) **Testnet dust probes** (chain 945, against an *existing* testnet netuid, before our subnet
-   exists): the SP‑1 battery — custody semantics, rao units, `0x402` gas, blake2f, and **reserve‑hotkey
+   (b) **Testnet dust probes** (chain 945, against the supplied existing testnet netuid): the SP-1
+   battery — custody semantics, rao units, `0x402`/`0x403`, blake2f, metagraph/neuron/staking, exact
+   move/transfer conservation, commitment replace/restore, and **reserve-hotkey
    dividend auto‑compounding + take** — plus SP‑2 `check-metadata` against the test.finney
    runtime (`docs/LAUNCH.md` Phases A/B).
-2. **M1 — Testnet subnet bring‑up (Phase 0 governance from block one).** One scripted window
-   (`docs/LAUNCH.md` Phase C): register the subnet + defensive hyperparameters; **own UIDs first**
-   (owner‑validator hotkey = reserve hotkey, take 0); deploy under the owner multisig with **short
+2. **M1 — Testnet subnet convergence (Phase 0 governance from block one).** One approved,
+   content-hashed `sim-testnet` plan validates ownership, applies defensive hyperparameters, registers
+   scoped UIDs, and deploys under a dedicated testnet single owner with **short
    epochs** and a **dust deposit cap** (D‑3); `start`; first CRv4 commit; then prove ON TESTNET with
-   tiny values: `deposit` → `BuybackReserved` (full amount onto the reserve), miner emission
-   accrual to the contract‑owned pool UID, **per‑NO** `claimMiner` against `payoutRoot` ×
-   emission‑only `poolTotal` end‑to‑end. **Head:** register a provider‑owned **top‑level‑miner UID**,
+   tiny values: isolated `deposit` → `ReservePrincipalAdded` (full amount into the immutable sink), miner emission
+   accrual to the vault-owned pool UID, **per-NO** vault `claim` against `payoutRoot` ×
+   emission-only entitlement end-to-end. **Head:** register a provider-owned **top-level-miner UID**,
    publish the §11.4 binding, and verify **routable‑IP‑breadth** native steering split from the pools by θ.
 3. **M2 — Buyback reserve verified live (testnet).** Several short testnet epochs green: dividends
-   **auto‑compound** onto the reserve stake (`getStake(reserveHotkey) > buybackTotal`), the **one‑way
+   **auto‑compound** onto the reserve stake (`getStake(reserveHotkey,sinkColdkey,netuid) > principal`), the **one‑way
    invariant** + on‑chain audit hold, and the upgrade/pause drills leave finalized claims and the
-   reserve untouched. (The effort‑bounty rail — `registerValidator`/`submitTrails`/`claimValidator` — is
+   immutable reserve untouched. (The effort-bounty rail — `registerValidator`/`submitTrails`/`claimValidator` — is
    **out of scope**, so there is no such milestone in v1; it stays parked, §9.3/D29.)
-4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** `setEpochParams` to the 7‑day epoch
+4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** schedule the 7-day policy
    (+4h/+48h windows, F2‑snapshotted so in‑flight epochs are untouched); the deposit cap raised stepwise
    toward the sized policy; settlement‑poke automation; the reference rate + sourcing commitment
    published; the `R_e` demand‑ratio dashboard live (§12.4). After ≥ N clean testnet epochs, **promote to
    mainnet**: re‑run the M0 probes + M1 genesis against **finney** (chain 964), now under the hard‑gate
    posture (real TAO; genesis is one irreversible window). The M4+ production phases run on mainnet.
-5. **M4 — Production Pool 0 (Phase 0 governance, §6.4.1).** Full parameters, **quality‑factor swing
+5. **M4 — Production rollout (one mechanism; Phase 0 governance, §6.4.1).** Full parameters, **quality‑factor swing
    capped until the independent‑validator stake share is healthy** and `VALIDATOR.md` §10 advances
    (§12.3).
-6. **M5 — Harden custody (Phase 1, §6.4.2):** timelock (≥ 1 epoch) on upgrades/params + a pause‑only
-   guardian; then **Pool 1 (VPN factory)** via mechanism 1.
+6. **M5 — Harden coordinator governance (Phase 1, §6.4.2):** timelock (≥ 1 epoch) on
+   upgrades/params; immutable custody and the pause-only guardian already exist from release 1.0.
 7. **M6 — Decentralize further (deferred, §6.4.3):** trustless oracle (§13.5), permissionless bonded
    admission, on‑chain governance; advance the `VALIDATOR.md` §10 roadmap.
 
 ### 16.4 Pre‑launch verification checklist (load‑bearing live values)
 
 *(D28: these checks run against **testnet** (chain 945 dust probes) + the SP‑3 localnet — they are the
-Phase A/B gates of `docs/LAUNCH.md`, and all must be green before the subnet is registered; re‑run them
+Phase A/B gates of `docs/LAUNCH.md`, and all must be green before the supplied subnet is modified; re-run them
 against finney at the Phase‑E mainnet promotion.)*
 
-- Precompile addresses/ABIs at the pinned Subtensor release (Staking **V2** `0x805`; Neuron `0x804`
-  `setWeights`; Ed25519 `0x402`; Alpha `0x808`).
+- Precompile addresses/ABIs at the pinned Subtensor release (Blake2f `0x09`, Ed25519 `0x402`, sr25519
+  `0x403`, Metagraph `0x802`, Neuron `0x804`, Staking V2 `0x805`) using good/bad vectors and
+  value-bearing exact-delta tests. CRv4 is checked through native Substrate metadata/calls.
 - `tao_weight` (expect 0.18), `max_allowed_validators`, `min_allowed_weights`,
   `commit_reveal_weights_enabled` default, `SubnetOwnerCut` — query live, set explicitly.
-- Subnet creation cost (`btcli subnet burn-cost`) and registration burn bounds.
+- Existing-netuid ownership, capacity and every registration burn bound.
 - Confirm `transferStake`/`moveStake` within‑netuid are slippage‑free on the live runtime; confirm the
   staking precompile's "contract address = coldkey" custody semantics.
 - Confirm an **independent validator** earns a permit at expected stake and that its **native
@@ -1590,10 +1585,11 @@ against finney at the Phase‑E mainnet promotion.)*
   (target take = 0, §7.4).
 - Confirm **`max_allowed_uids` = 256 is a hard ceiling** and `mechanism_count = 1` (a 2nd mechanism halves
   UID space, §14); confirm a **provider-owned top-level-miner UID** earns **native** emission to its own
-  coldkey (no take, not shared) and that the §11.4 `client_id ⇄ hotkey` binding verifies via `0x402`.
-- Confirm contract-owned **pool UIDs are not treated as owner/immune**, so the head/tail θ split does **not**
+  coldkey (no take, not shared) and that the §11.4 binding verifies via `0x402` + `0x403`, a matching
+  finalized commitment and live UID.
+- Confirm vault-owned **pool UIDs are not treated as owner/immune**, so the head/tail θ split does **not**
   trigger the post-Spec-421 `(1 − miner_burned)` penalty (§8.5); set `max_weight_limit` and a high
-  `immunity_period` to protect the head from quality-dip eviction.
+  `immunity_period` to protect the head from breadth-sampling-dip eviction.
 
 ---
 
@@ -1601,18 +1597,18 @@ against finney at the Phase‑E mainnet promotion.)*
 
 | Question | Resolution |
 |---|---|
-| **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Commit a 32‑byte Merkle root per NO per epoch; the contract stores roots that gate claims and the **free** commitments pallet can mirror them; bulk leaves are served off‑chain; each provider verifies its own payout with an `O(log N)` proof (§11). (No on‑chain oracle: the global rate is an off‑chain reference, §7.1.) |
-| **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24, chain 964, permissionless deploy. With Subtensor‑specific **precompiles**, validators set commit‑reveal weights and the contract stakes/transfers α, reads the metagraph/α‑price, and verifies Ed25519 — everything this design needs (§2.5). |
-| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = deposit ÷ conviction‑tier rate, computed by the validator off the published event log + rate schedule — the contract weighs nothing, D25) on the per‑NO miner‑pool UIDs; the chain's incentive/dividend split delivers emission to the **miner pools** (which the contract owns → re‑splits to providers per Merkle payout roots, §§8, 11) and ∝ stake × vtrust to **validators natively**. (Native dividends are the whole validator reward; a validator *effort* subsidy is out of scope, §9.3/D29.) No deviation from standard Yuma — it *is* Yuma, with many independent validators (§9). **Plus a second tier:** the top ~200 **fleets by split‑adjusted routable‑IP breadth** hold their own UIDs, steered on that score with native emission, split from the pools by θ (§8.4–8.5). |
+| **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Commit a 32-byte Merkle root plus artifact hash per NO/epoch in the coordinator; immutable entitlement state gates claims; canonical bulk bytes live in `server/blob` MinIO and are served by the public server API. Each provider verifies an `O(log N)` proof (§11). The commitments pallet anchors fleet manifests, not payout bulk data. |
+| **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24: chain 945 testnet and 964 mainnet. Subtensor precompiles let the contracts stake/transfer α and verify binding identities; validators submit CRv4 through native Substrate extrinsics (§2.5). |
+| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = deposit ÷ conviction-tier rate, computed from finalized events + signed policy — contracts weigh nothing, D25) on per-NO miner-pool UIDs; the chain delivers emission to vault-owned pools (re-split by Merkle claim) and native dividends to validators. A second head tier holds provider-owned UIDs and receives native emission by split-adjusted routable-prefix breadth under θ (§8.4–8.5). |
 
 ---
 
 ## 18. Glossary
 
-- **NO (Network Operator)** — runs servers; operates **one miner‑pool UID** (contract‑owned) but holds no
-  emission; deposits DT; runs the `/verify` server (co‑signs trails); commits the payout root for its
+- **NO (Network Operator)** — runs servers; operates **one miner-pool UID** (vault-owned) but holds no
+  emission; posts isolated conviction deposits; runs the `/verify` server (co-signs trails); commits the payout root for its
   providers. No validator.
-- **Miner‑pool UID** — the on‑chain miner: one per NO, contract‑owned. The 100k+ providers are **inside**
+- **Miner-pool UID** — the on-chain miner: one per NO, immutable-vault-owned. The 100k+ providers are **inside**
   it (not UIDs) and are paid by Merkle claim.
 - **Provider / miner (tail)** — carries traffic; inside a NO's miner pool (the on-ramp tier); **claims its
   α directly from the contract** per the NO payout root. Can **graduate** to a top-level slot (§8.4).
@@ -1633,15 +1629,16 @@ against finney at the Phase‑E mainnet promotion.)*
   owner is the majority validator early (§9.2).
 - **Deposit / conviction stake / buyback reserve** — an NO's deposit (∝ usage) is locked in full to the
   **reserve hotkey** (never distributed, dividend‑compounding, §7.4); its cumulative locked α = its
-  **conviction**, which sets its **tier → deposit rate** (§7.3). The contract keeps no deposit ledger —
-  the `Deposited` events are the record (§7.5, D25).
+  **conviction**, which sets its **tier → deposit rate** (§7.3). Coordinator counters enforce caps but do
+  not weight; finalized `Deposit`, `ConvictionAdded`, and sink-principal events are the portable record (§7.5, D25).
 - **implied usage** — `deposit_n / rate(tier_n)`: the demand signal validators weight for the pool tier
   (§8.1); staking for a lower rate keeps weight tracking real usage rather than raw α.
 - **Effort bounty** — a fee‑funded reward that *would* pay ∝ verified, coverage‑weighted, server‑assigned
   completed trails; **out of v1 scope** and **not a committed phase** — a parked future‑iteration candidate
   (§9.3, §13.6, D29).
-- **ST contract** — the subnet‑token (α) EVM contract: ledger + **custodian of miner emission and the
-  buyback reserve** + settlement. **Not** the validator (§9–§10).
+- **ST contract set** — UUPS policy coordinator plus an immutable settlement-vault coldkey and an
+  immutable reserve-sink coldkey. Custody is physically separated from upgradeable policy. **Not** the
+  validator (§9–§10).
 - **`D_n` / `Q_n` / `ŵ_n`** — NO's epoch deposit total (from the event log) / its consensus‑measured pool
   quality / its resulting validator‑computed weight (∝ `implied_usage_n × Q_n`, §8.1).
 - **Validated path** — a completed `VALIDATOR.md` trail proof, id `keccak256(trail_id‖vpk‖server_key_id)`;
@@ -1650,7 +1647,7 @@ against finney at the Phase‑E mainnet promotion.)*
 
 ---
 
-*End of WHITEPAPER.md v0.5 — validator effort bounty removed from scope (v1 = native dividends only; the
+*End of WHITEPAPER.md v1.0 — validator effort bounty removed from scope (v1 = native dividends only; the
 `(X)`/`(Y)` bounty designs are parked, not a committed phase; §9, §13.6; decision D29 in
 `WHITEPAPER_DISCUSS.md`) — layered on v0.4 conviction staking + validator-computed weights + IP-breadth head
 (D25–D28), v0.3 deposits-as-buybacks (locked, dividend-compounding reserve; miner pay = emission-only; §7.4,

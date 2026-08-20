@@ -7,3 +7,6 @@ cli/validator/validator
 cli/snclaim/snclaim
 
 evm/lib
+sim-testnet/runs/
+sim-testnet/build/
+/build/

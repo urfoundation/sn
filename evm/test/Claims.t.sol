@@ -76,22 +76,16 @@ contract ClaimsTest is STBase {
         root = vectorsJson.readBytes32(string.concat(base, ".root"));
 
         uint256 n = 0;
-        while (
-            vm.keyExistsJson(
-                vectorsJson, string.concat(base, ".leaves[", vm.toString(n), "].coldkey")
-            )
-        ) {
+        while (vm.keyExistsJson(vectorsJson, string.concat(base, ".leaves[", vm.toString(n), "].coldkey"))) {
             n++;
         }
         leaves = new VectorLeaf[](n);
         for (uint256 i = 0; i < n; i++) {
             string memory li = vm.toString(i);
-            leaves[i].coldkey =
-                vectorsJson.readBytes32(string.concat(base, ".leaves[", li, "].coldkey"));
+            leaves[i].coldkey = vectorsJson.readBytes32(string.concat(base, ".leaves[", li, "].coldkey"));
             leaves[i].shareBps =
                 vm.parseUint(vectorsJson.readString(string.concat(base, ".leaves[", li, "].value")));
-            leaves[i].proof =
-                vectorsJson.readBytes32Array(string.concat(base, ".proofs[", li, "]"));
+            leaves[i].proof = vectorsJson.readBytes32Array(string.concat(base, ".proofs[", li, "]"));
         }
     }
 
@@ -365,8 +359,7 @@ contract ClaimsTest is STBase {
         // Σ paid + carry + custody-of-remainders + reserve == Σ in, to the rao
         uint256 totalIn = 1_000e9 + 400e9 + 500e9 + 250e9;
         assertEq(
-            paid + st.carry(NO2_ID) + (st.poolTotal(0, NO_ID) - st.claimedMiner(0, NO_ID))
-                + _reserveStake(),
+            paid + st.carry(NO2_ID) + (st.poolTotal(0, NO_ID) - st.claimedMiner(0, NO_ID)) + _reserveStake(),
             totalIn
         );
         assertEq(st.accountedStake(), st.carry(NO2_ID));

@@ -13,18 +13,10 @@ package validator
 //   - SEED / EXTEND: Ed25519 by the validator key over the RAW canonical
 //     message bytes.
 //   - ASSIGN: Ed25519 by the server key over the RAW canonical message.
-//   - FINAL: Ed25519 signatures over the EFFORT digest
-//     VerifyEffortDigest(VerifyFinalDigest(finalMessage), coverage) =
-//     sha256(finalDigest ‖ uint256_be(coverage)) — NOT the raw FINAL bytes and
-//     NOT the bare final digest — because the on-chain 0x402 precompile that
-//     decides effort-leaf disputes verifies only 32-byte messages AND the leaf
-//     must bind the server-attested coverage so it cannot be forged (review
-//     A2). The validator's vpk co-signature (VpkSig below) signs the SAME
-//     effort digest. The leaf carries the RAW finalDigest and coverage;
-//     (final_sig, vpk_sig, final_digest, coverage) are exactly the (serverSig,
-//     vpkSig, finalDigest, coverage) fields of the on-chain TrailLeaf, and the
-//     contract recomputes the effort digest from finalDigest+coverage to verify
-//     both signatures.
+//   - FINAL: the server signs the raw canonical FINAL message, like the other
+//     active wire messages. The validator verifies it and locally co-signs the
+//     same bytes for the public audit record. No parked effort-bounty digest is
+//     part of release 1.0.
 //
 // Stats semantics (VALIDATOR.md §7):
 //   - exposure recorded when an ASSIGN names the pending hop (§7.2),
@@ -115,11 +107,9 @@ func (self *ServerKeyRing) Key(id byte) (ed25519.PublicKey, error) {
 }
 
 // ProofRecord is one completed, locally verified trail persisted as a JSONL
-// line in <state_dir>/proofs.jsonl. It carries everything the effort-bounty
-// phase's submit-trails flow (deferred — WHITEPAPER §9.3, D23; implementation
-// parked at docs/parked/) needs to rebuild the epoch's 9-field effort leaves
-// (PathId, Coverage, ServerKeyId, FinalDigest, FinalSig, VpkSig) plus the
-// full published proof for audits/disputes.
+// line in <state_dir>/proofs.jsonl. It carries the full published proof plus
+// compact identities and the validator's local co-signature for independent
+// release-1.0 audits.
 type ProofRecord struct {
 	Version int `json:"v"`
 	// Epoch is the contract epoch open at completion time (0 = unknown —
@@ -135,19 +125,13 @@ type ProofRecord struct {
 	FinalSig    []byte                   `json:"final_sig"`
 	VerifierSig []byte                   `json:"verifier_sig"`
 
-	// FinalDigest = VerifyFinalDigest(canonical FINAL message) — the RAW final
-	// digest. Both leaf signatures are over the EFFORT digest
-	// VerifyEffortDigest(FinalDigest, Coverage): FinalSig is the server's and
-	// VpkSig is the validator's Ed25519 co-signature. The contract recomputes
-	// the effort digest from FinalDigest + Coverage to verify them (review A2).
+	// FinalDigest is the compact sha256 identity of the canonical FINAL.
+	// FinalSig and VpkSig both sign the reconstructable raw FINAL bytes.
 	FinalDigest []byte `json:"final_digest"`
 	VpkSig      []byte `json:"vpk_sig"`
 
-	// Coverage is the SERVER-ATTESTED coverage taken from proof.Coverage and
-	// bound into both leaf signatures via the effort digest (review A2). The v1
-	// formula is M − 1 server-assigned completed hops (seed excluded, §7.6);
-	// acceptFinal warns if the signed value disagrees but keeps what the server
-	// signed rather than recomputing it locally.
+	// Coverage is deterministic M − 1 server-assigned completed hops (seed
+	// excluded, §7.6). A server value that disagrees is rejected.
 	Coverage uint64 `json:"coverage"`
 	// PathId = keccak256(trail_id(16) ‖ vpk(32) ‖ server_key_id(1))
 	// (WHITEPAPER §9.1).
@@ -173,7 +157,7 @@ type ProofStore struct {
 }
 
 func NewProofStore(dir string) (*ProofStore, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := ensurePrivateStateDir(dir); err != nil {
 		return nil, err
 	}
 	return &ProofStore{path: filepath.Join(dir, "proofs.jsonl")}, nil
@@ -554,14 +538,12 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 //   - header matches the walked trail identity,
 //   - hop ids equal the walked trail, times monotone nondecreasing,
 //   - final_sig verifies under the PUBLISHED server key for server_key_id
-//     over the EFFORT digest VerifyEffortDigest(VerifyFinalDigest(FINAL
-//     message), proof.Coverage) — the server-attested coverage is bound in,
+//     over the raw canonical FINAL message,
 //   - verifier_sig verifies under our vpk over the depth-M EXTEND message
 //     (it should byte-equal our own signature),
 //
-// then co-signs the SAME effort digest with the vpk. The record carries the
-// RAW finalDigest and the server-attested coverage; the contract recomputes
-// the effort digest from them to check both leaf signatures.
+// then co-signs that same FINAL message with the vpk. The record carries its
+// compact digest and deterministic coverage as audit metadata.
 func (self *TrailEngine) acceptFinal(
 	proof *connect.VerifyProof,
 	trailId connect.Id,
@@ -606,23 +588,16 @@ func (self *TrailEngine) acceptFinal(
 	}
 	finalDigest := connect.VerifyFinalDigest(finalMessage)
 
-	// Coverage is SERVER-ATTESTED: the server binds it into final_sig via the
-	// effort digest, so the leaf commits a value the validator cannot forge
-	// (review A2). Trust proof.Coverage rather than recomputing it; v1 should
-	// always equal M−1 (server-assigned completed hops, seed excluded, §7.6) —
-	// flag a disagreement but keep the signed value.
-	coverage := proof.Coverage
-	if coverage != uint64(m-1) {
-		fmt.Printf("warning: server-attested coverage %d != M-1=%d for trail %s (using the signed value)\n", coverage, m-1, trailId)
+	// Coverage is deterministic metadata in v1: M-1 server-assigned completed
+	// hops, with the validator-chosen seed excluded. A mismatch is a protocol
+	// error; it is never accepted as an independently supplied economic value.
+	coverage := uint64(m - 1)
+	if proof.Coverage != coverage {
+		return nil, fmt.Errorf("proof coverage %d != M-1=%d", proof.Coverage, coverage)
 	}
 
-	// CRITICAL SEAM: final_sig signs the 32-byte EFFORT digest
-	// sha256(finalDigest ‖ coverage), not the FINAL digest alone — the exact
-	// value the 0x402 precompile checks in effort-leaf disputes, binding
-	// coverage into the signature (review A2).
-	effortDigest := connect.VerifyEffortDigest(finalDigest, coverage)
-	if !ed25519.Verify(serverKey, effortDigest[:], proof.FinalSig) {
-		return nil, fmt.Errorf("final_sig does not verify over the effort digest under server key %d", proof.ServerKeyId)
+	if !ed25519.Verify(serverKey, finalMessage, proof.FinalSig) {
+		return nil, fmt.Errorf("final_sig does not verify over canonical FINAL under server key %d", proof.ServerKeyId)
 	}
 
 	// verifier_sig is the depth-M EXTEND signature (§3.3) — ours.
@@ -638,9 +613,8 @@ func (self *TrailEngine) acceptFinal(
 		fmt.Printf("warning: proof verifier_sig differs from the signature we sent for trail %s\n", trailId)
 	}
 
-	// Co-sign the EFFORT digest: this is the on-chain TrailLeaf vpkSig, and it
-	// too attests coverage — both leaf signatures are over the effort digest.
-	vpkSig := ed25519.Sign(self.vsk, effortDigest[:])
+	// Local validator audit co-signature over the same canonical FINAL bytes.
+	vpkSig := ed25519.Sign(self.vsk, finalMessage)
 
 	epoch := uint64(0)
 	if self.epochFn != nil {
@@ -657,9 +631,9 @@ func (self *TrailEngine) acceptFinal(
 		ServerKeyId:    proof.ServerKeyId,
 		FinalSig:       append([]byte{}, proof.FinalSig...),
 		VerifierSig:    append([]byte{}, proof.VerifierSig...),
-		FinalDigest:    finalDigest[:], // RAW final digest; contract derives the effort digest from this + coverage
+		FinalDigest:    finalDigest[:], // compact artifact identity for canonical FINAL
 		VpkSig:         vpkSig,
-		Coverage:       coverage, // server-attested; bound into both leaf signatures
+		Coverage:       coverage,
 		CompleteTimeMs: proof.Hops[m-1].TimeMs,
 	}
 	pathId := TrailPathId(trailId, self.vpk, proof.ServerKeyId)

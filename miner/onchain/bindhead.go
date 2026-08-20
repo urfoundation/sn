@@ -77,11 +77,11 @@ func cmdBindHead(opts docopt.Opts) error {
 	// for a different registrant/hotkey/client_id/contract/chain cannot pass —
 	// catching the mismatch locally with a clear message rather than an opaque
 	// on-chain "ST: bad client sig" revert.
-	digestRet, err := ethCall(ctx, client, contract, stSubnet.PackHeadBindDigest(from, hotkey, clientID))
+	digestRet, err := ethCall(ctx, client, contract, legacySTSubnet.PackHeadBindDigest(from, hotkey, clientID))
 	if err != nil {
 		return fmt.Errorf("headBindDigest(%s,...): %w", from.Hex(), err)
 	}
-	digest, err := stSubnet.UnpackHeadBindDigest(digestRet)
+	digest, err := legacySTSubnet.UnpackHeadBindDigest(digestRet)
 	if err != nil {
 		return fmt.Errorf("headBindDigest decode: %w", err)
 	}
@@ -132,7 +132,7 @@ func cmdBindHead(opts docopt.Opts) error {
 		if lg.Address != contract {
 			continue
 		}
-		ev, uerr := stSubnet.UnpackHeadBoundEvent(lg)
+		ev, uerr := legacySTSubnet.UnpackHeadBoundEvent(lg)
 		if uerr != nil {
 			continue
 		}
@@ -211,7 +211,7 @@ func cmdUnbindHead(opts docopt.Opts) error {
 		if lg.Address != contract {
 			continue
 		}
-		ev, uerr := stSubnet.UnpackHeadUnboundEvent(lg)
+		ev, uerr := legacySTSubnet.UnpackHeadUnboundEvent(lg)
 		if uerr != nil {
 			continue
 		}

@@ -5,11 +5,12 @@ import {IStaking, ISTAKING_ADDRESS} from "../interfaces/stakingV2.sol";
 import {INeuron, INeuron_ADDRESS} from "../interfaces/neuron.sol";
 import {IMetagraph, IMetagraph_ADDRESS} from "../interfaces/metagraph.sol";
 import {IEd25519Verify, IED25519VERIFY_ADDRESS} from "../interfaces/ed25519Verify.sol";
+import {ISR25519Verify, ISR25519VERIFY_ADDRESS} from "../interfaces/sr25519Verify.sol";
 import {Blake2b} from "../lib/Blake2b.sol";
 
 /// @title STSubnetProbe — the SP-1 precompile-conformance probe (throwaway).
 ///
-/// @notice A deploy-and-discard contract for verifying, ON THE LIVE MAINNET
+/// @notice A deploy-and-discard contract for verifying, ON A LIVE SUBTENSOR
 ///         RUNTIME, every subtensor-precompile assumption STSubnet depends on
 ///         (PLAN.md SP-1, `docs/LAUNCH.md` Phase B). It reproduces STSubnet's
 ///         exact precompile-access shapes (same vendored interfaces, same
@@ -21,7 +22,7 @@ import {Blake2b} from "../lib/Blake2b.sol";
 ///      bytecode. Forge's local simulation has no implementation for them, so
 ///      a `forge script` that calls them reverts in simulation and never
 ///      reaches the node. The faithful path is to DEPLOY this probe once, then
-///      call its views with `cast call <probe> ... --rpc-url mainnet` (a raw
+///      call its views with `cast call <probe> ... --rpc-url testnet` (a raw
 ///      eth_call executed ON the node, hitting the real precompiles) and its
 ///      state fns with `cast send`. The custody assumption — "a contract's
 ///      coldkey is mirror(contract)" — can only be tested from a contract, so
@@ -55,6 +56,13 @@ contract STSubnetProbe {
     bytes32 internal constant ED_R = 0x2e530da93345ff099a7c46cb9aab8d964a7a016852b567e074f64f9cf1d5cf30;
     bytes32 internal constant ED_S = 0x35a13c64140c12e523a8e5fec6541fa846be95974aa399f81fc907d020955f0e;
 
+    /// @dev sr25519 KAT shared with protocol/testdata/fleet-binding-v1.json.
+    ///      This is a real go-subkey/Substrate-context signature over SR_MSG.
+    bytes32 internal constant SR_MSG = 0x0de356fd56fc28d72efe5724a81b2462a7f2bb3f041f48128e2d511b0ae05ba7;
+    bytes32 internal constant SR_PK = 0x94ad8d1ead1a2bff9bbbac89aa89b13df2fe9ec929a09c90bc5ddb1dff723b47;
+    bytes32 internal constant SR_R = 0xf4edfe605b1a20514ce7cd0323e32eee364d10b706292028f234d3edde2b5527;
+    bytes32 internal constant SR_S = 0xc93b12e32a60f8f531875060d67b9feca33c9a42bf8bb20debef3aab4b4bf087;
+
     // ------------------------------------------------------------------
     // Config / state
     // ------------------------------------------------------------------
@@ -77,6 +85,15 @@ contract STSubnetProbe {
     );
     event Seeded(bytes32 indexed hotkey, uint256 amountArg, uint256 valueSent, uint256 stakeAfter);
     event DividendSnapshot(bytes32 indexed hotkey, uint256 baseline, uint64 blockNumber);
+    event TransferredOut(
+        bytes32 indexed destinationColdkey,
+        bytes32 indexed hotkey,
+        uint256 amount,
+        uint256 sourceBefore,
+        uint256 sourceAfter,
+        uint256 destinationBefore,
+        uint256 destinationAfter
+    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "probe: not owner");
@@ -92,7 +109,7 @@ contract STSubnetProbe {
 
     // ------------------------------------------------------------------
     // Read battery — free (gas only). Call ON THE NODE:
-    //   cast call <probe> "readBattery(bytes32)((...))" <sampleHotkey> --rpc-url mainnet
+    //   cast call <probe> "readBattery(bytes32,bytes32)((...))" <liveHotkey> <absentHotkey> --rpc-url testnet
     // Every precompile touch is individually try/caught, so one missing
     // precompile does not mask the others — the struct shows exactly which
     // assumptions hold on the live runtime.
@@ -108,17 +125,31 @@ contract STSubnetProbe {
         bool edOk;
         bool edVerifyGood; // KAT verifies true
         bool edVerifyBad; // tampered sig verifies false
+        // 0x403 sr25519 (fleet hotkey binding)
+        bool srOk;
+        bool srVerifyGood;
+        bool srVerifyBad;
         // 0x802 metagraph reads (uid resolution, coldkey binding)
         bool mgOk;
         uint16 uidCount;
         bytes32 uid0Hotkey;
         bytes32 uid0Coldkey;
+        // 0x804 neuron reverse lookup (registration and live binding)
+        bool neuronOk;
+        bool sampleExists;
+        uint16 sampleUid;
+        bool absentRejected;
         // 0x805 staking view (custody + the reserve/escrow audit)
         bool stakeViewOk;
         uint256 sampleSelfStake; // getStake(sampleHotkey, mirror(this), netuid)
+        uint256 nominatorMinimum;
     }
 
-    function readBattery(bytes32 sampleHotkey) external view returns (Battery memory b) {
+    function readBattery(bytes32 sampleHotkey, bytes32 absentHotkey)
+        external
+        view
+        returns (Battery memory b)
+    {
         // --- 0x09 blake2f, via the exact library STSubnet uses ---
         try this.mirrorExt(MIRROR_KAT_ADDR) returns (bytes32 m) {
             b.blakeOk = true;
@@ -134,9 +165,23 @@ contract STSubnetProbe {
             b.edOk = true;
             b.edVerifyGood = good;
         } catch {}
-        try IEd25519Verify(IED25519VERIFY_ADDRESS).verify(ED_MSG, ED_PK, ED_R, ED_S ^ bytes32(uint256(1)))
-        returns (bool bad) {
+        try IEd25519Verify(IED25519VERIFY_ADDRESS)
+            .verify(ED_MSG, ED_PK, ED_R, ED_S ^ bytes32(uint256(1))) returns (
+            bool bad
+        ) {
             b.edVerifyBad = !bad; // want: tampered sig is REJECTED
+        } catch {}
+
+        // --- 0x403 sr25519 verify ---
+        try ISR25519Verify(ISR25519VERIFY_ADDRESS).verify(SR_MSG, SR_PK, SR_R, SR_S) returns (bool good) {
+            b.srOk = true;
+            b.srVerifyGood = good;
+        } catch {}
+        try ISR25519Verify(ISR25519VERIFY_ADDRESS)
+            .verify(SR_MSG, SR_PK, SR_R, SR_S ^ bytes32(uint256(1))) returns (
+            bool bad
+        ) {
+            b.srVerifyBad = !bad;
         } catch {}
 
         // --- 0x802 metagraph ---
@@ -153,11 +198,24 @@ contract STSubnetProbe {
             }
         } catch {}
 
+        // --- 0x804 neuron reverse lookup ---
+        try INeuron(INeuron_ADDRESS).getUid(netuid, sampleHotkey) returns (bool exists, uint16 uid) {
+            b.neuronOk = true;
+            b.sampleExists = exists;
+            b.sampleUid = uid;
+        } catch {}
+        try INeuron(INeuron_ADDRESS).getUid(netuid, absentHotkey) returns (bool exists, uint16) {
+            b.absentRejected = !exists;
+        } catch {}
+
         // --- 0x805 staking view: the probe's OWN stake at sampleHotkey ---
         bytes32 selfCk = Blake2b.mirror(address(this));
         try IStaking(ISTAKING_ADDRESS).getStake(sampleHotkey, selfCk, uint256(netuid)) returns (uint256 v) {
             b.stakeViewOk = true;
             b.sampleSelfStake = v;
+        } catch {}
+        try IStaking(ISTAKING_ADDRESS).getNominatorMinRequiredStake() returns (uint256 v) {
+            b.nominatorMinimum = v;
         } catch {}
     }
 
@@ -185,7 +243,8 @@ contract STSubnetProbe {
     ///         RAO-vs-18-dec unit scale is read off directly.
     function seedFromTao(bytes32 hotkey, uint256 raoAmount) external payable onlyOwner {
         IStaking(ISTAKING_ADDRESS).addStake{value: msg.value}(hotkey, raoAmount, uint256(netuid));
-        uint256 after_ = IStaking(ISTAKING_ADDRESS).getStake(hotkey, Blake2b.mirror(address(this)), uint256(netuid));
+        uint256 after_ =
+            IStaking(ISTAKING_ADDRESS).getStake(hotkey, Blake2b.mirror(address(this)), uint256(netuid));
         emit Seeded(hotkey, raoAmount, msg.value, after_);
     }
 
@@ -213,7 +272,16 @@ contract STSubnetProbe {
     ///         probe funds AND exercises transferStake from a contract (the
     ///         payout path STSubnet uses for claims).
     function transferOut(bytes32 destColdkey, bytes32 hotkey, uint256 amount) external onlyOwner {
-        IStaking(ISTAKING_ADDRESS).transferStake(destColdkey, hotkey, uint256(netuid), uint256(netuid), amount);
+        bytes32 self = Blake2b.mirror(address(this));
+        uint256 sourceBefore = IStaking(ISTAKING_ADDRESS).getStake(hotkey, self, uint256(netuid));
+        uint256 destinationBefore = IStaking(ISTAKING_ADDRESS).getStake(hotkey, destColdkey, uint256(netuid));
+        IStaking(ISTAKING_ADDRESS)
+            .transferStake(destColdkey, hotkey, uint256(netuid), uint256(netuid), amount);
+        uint256 sourceAfter = IStaking(ISTAKING_ADDRESS).getStake(hotkey, self, uint256(netuid));
+        uint256 destinationAfter = IStaking(ISTAKING_ADDRESS).getStake(hotkey, destColdkey, uint256(netuid));
+        emit TransferredOut(
+            destColdkey, hotkey, amount, sourceBefore, sourceAfter, destinationBefore, destinationAfter
+        );
     }
 
     // ------------------------------------------------------------------
@@ -224,7 +292,8 @@ contract STSubnetProbe {
     // ------------------------------------------------------------------
 
     function snapshot(bytes32 hotkey) external onlyOwner {
-        uint256 base = IStaking(ISTAKING_ADDRESS).getStake(hotkey, Blake2b.mirror(address(this)), uint256(netuid));
+        uint256 base =
+            IStaking(ISTAKING_ADDRESS).getStake(hotkey, Blake2b.mirror(address(this)), uint256(netuid));
         divBaseline[hotkey] = base;
         divBaselineBlock[hotkey] = uint64(block.number);
         emit DividendSnapshot(hotkey, base, uint64(block.number));

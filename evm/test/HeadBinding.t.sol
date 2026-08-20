@@ -14,12 +14,8 @@ import {Blake2b} from "../src/lib/Blake2b.sol";
 ///      anti-theft property (a miner cannot claim a client_id it does not
 ///      operate). Uses free metagraph uids >= 5 (base setUp occupies 0..2).
 contract HeadBindingTest is STBase {
-    event HeadBound(
-        bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant
-    );
-    event HeadUnbound(
-        bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant
-    );
+    event HeadBound(bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant);
+    event HeadUnbound(bytes32 indexed hotkey, bytes32 indexed clientId, uint16 uid, address registrant);
 
     // ------------------------------------------------------------------
     // headBindDigest — domain-separated, replay-proof (like vpkBindDigest)
@@ -32,12 +28,7 @@ contract HeadBindingTest is STBase {
         bytes32 hk = keccak256("hb-hk");
         bytes32 cid = keccak256("hb-cid");
         bytes memory preimage = abi.encodePacked(
-            keccak256("UR_ST_HEAD_BIND_V1"),
-            uint256(block.chainid),
-            address(st),
-            registrant,
-            hk,
-            cid
+            keccak256("UR_ST_HEAD_BIND_V1"), uint256(block.chainid), address(st), registrant, hk, cid
         );
         assertEq(preimage.length, 168);
         assertEq(st.headBindDigest(registrant, hk, cid), keccak256(preimage));
@@ -75,9 +66,7 @@ contract HeadBindingTest is STBase {
 
         // 0x402 rejects exactly this (digest, clientId, r, s) tuple — the caller
         // does not actually hold client_id's Ed25519 key.
-        ed.setBad(
-            st.headBindDigest(w, hk, cid), cid, keccak256("sig-r"), keccak256("sig-s"), true
-        );
+        ed.setBad(st.headBindDigest(w, hk, cid), cid, keccak256("sig-r"), keccak256("sig-s"), true);
         vm.prank(w);
         vm.expectRevert("ST: bad client sig");
         st.bindHead(hk, cid, _sig());
@@ -133,9 +122,7 @@ contract HeadBindingTest is STBase {
         address att = makeAddr("attacker");
         bytes32 h2 = keccak256("attacker-hotkey");
         metagraph.setNeuron(6, h2, Blake2b.mirror(att));
-        ed.setBad(
-            st.headBindDigest(att, h2, cid), cid, keccak256("sig-r"), keccak256("sig-s"), true
-        );
+        ed.setBad(st.headBindDigest(att, h2, cid), cid, keccak256("sig-r"), keccak256("sig-s"), true);
 
         vm.prank(att);
         vm.expectRevert("ST: bad client sig");

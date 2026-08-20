@@ -9,9 +9,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	// "net"
 	mathrand "math/rand"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -78,6 +79,7 @@ Usage:
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58>]
+		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
         [-v...]
     provider auth-provide ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
@@ -85,6 +87,7 @@ Usage:
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58>]
+		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
         [-v...]
     provider wallet set <coldkey_ss58>
@@ -93,9 +96,17 @@ Usage:
     provider claim [--epoch=<epoch>] [--rpc=<rpc_url>]... [--key_file=<key_file>] [--dry-run]
         [--api_url=<api_url>]
         [-v...]
-    provider bind-head --hotkey=<hex> --registrant=<registrant> --contract=<contract> [--rpc=<rpc_url>]... [--key_file=<key_file>] [--dry-run]
+    provider claim-daemon --config=<path>
         [-v...]
-    provider unbind-head --hotkey=<hex> [--contract=<contract>] [--rpc=<rpc_url>]... [--key_file=<key_file>] [--dry-run]
+    provider fleet manifest --manifest=<path>
+        [-v...]
+    provider fleet publish --manifest=<path> --substrate=<ws_url>... --hotkey_seed_file=<path>
+        [-v...]
+    provider fleet bind --manifest=<path> --client_id=<hex> --client_seed_file=<path> --hotkey_seed_file=<path> --valid_from_epoch=<e> --valid_to_epoch=<e> --rpc=<rpc_url>... --relayer_key_file=<path> [--dry-run]
+        [-v...]
+    provider fleet status --manifest=<path> --client_id=<hex> --substrate=<ws_url>... --rpc=<rpc_url>...
+        [-v...]
+    provider fleet revoke --manifest=<path> --client_id=<hex> --client_seed_file=<path> --effective_epoch=<e> --rpc=<rpc_url>... --relayer_key_file=<path> [--dry-run]
         [-v...]
     provider proxy auth add [<key>] <proxy_user> <proxy_password> [-f]
     provider proxy auth remove [<key>] [--all]
@@ -113,6 +124,7 @@ Options:
     -f                               Force overwrite the JWT token store file or proxy value, if exists.
                                      By default, existing values will not be overwritten.
     --api_url=<api_url>              Specify a custom API URL to use.
+	--config=<path>                    Strict release-1.0 daemon/component configuration.
     --connect_url=<connect_url>      Specify a custom connect URL to use.
     <api_url>                        API URL to save as the chosen network (http:// or https://).
     <connect_url>                    Connect URL to save as the chosen network (ws:// or wss://).
@@ -125,11 +137,22 @@ Options:
     --max-memory=<mem>               Set the maximum amount of memory in bytes, or the suffixes b, kib, mib, gib may be used [This is a soft limit].
     --wallet=<coldkey_ss58>          Also set the subnet claim wallet at startup, same as provider wallet set.
                                      A failure is logged and does not block providing.
+	--test-egress-source-ip=<source_ip>  Integration-harness-only IPv4 loopback source bound to both
+	                                     platform control and provider exit sockets.
     <coldkey_ss58>                   Subnet claim wallet: an ss58 coldkey address (prefix 42).
     --epoch=<epoch>                  Epoch to fetch the subnet pool claim for. Defaults to the last
                                      finalized epoch, which is the epoch before the current one.
     --rpc=<rpc_url>                  EVM json-rpc endpoint used to check the payout root on-chain.
                                      May be repeated; endpoints are tried in order until one answers.
+	--substrate=<ws_url>               Substrate websocket endpoint; repeatable ordered failover.
+	--manifest=<path>                  Canonical urnetwork-fleet-manifest-v1 JSON file.
+	--client_id=<hex>                  Stable 16-byte UR client identity from the fleet manifest.
+	--client_seed_file=<path>          Raw or hex 32-byte Ed25519 client key seed.
+	--hotkey_seed_file=<path>          Hex/raw 32-byte sr25519 fleet hotkey seed.
+	--valid_from_epoch=<e>             First settlement epoch in which a binding is active.
+	--valid_to_epoch=<e>               Last settlement epoch in which a binding is active.
+	--effective_epoch=<e>              Future epoch at which a fleet revocation takes effect.
+	--relayer_key_file=<path>          EVM transaction relayer key; it receives no binding ownership.
     --key_file=<key_file>            Path to a hex-encoded 32-byte secp256k1 EVM private key. When given,
                                      claim / bind-head / unbind-head sign and submit the transaction (via
                                      the sn/miner/onchain path) instead of only printing the calldata.
@@ -179,10 +202,14 @@ func Run(args []string) {
 		}
 	} else if claim_, _ := opts.Bool("claim"); claim_ {
 		claim(opts)
-	} else if bindHead_, _ := opts.Bool("bind-head"); bindHead_ {
-		bindHead(opts)
-	} else if unbindHead_, _ := opts.Bool("unbind-head"); unbindHead_ {
-		unbindHead(opts)
+	} else if claimDaemon, _ := opts.Bool("claim-daemon"); claimDaemon {
+		if err := runClaimDaemon(fleetOpt(opts, "--config")); err != nil {
+			panic(err)
+		}
+	} else if fleet_, _ := opts.Bool("fleet"); fleet_ {
+		if err := fleetCommand(opts); err != nil {
+			panic(err)
+		}
 	} else if auth_, _ := opts.Bool("auth"); auth_ {
 		auth(opts)
 	} else if provide_, _ := opts.Bool("provide"); provide_ {
@@ -317,6 +344,34 @@ func auth(opts docopt.Opts) {
 	}
 }
 
+// testEgressDialContext returns the narrow source-bind seam used by
+// sim-testnet to run several independently attributable provider exits on one
+// Linux host. Requiring an IPv4 loopback address makes the flag incapable of
+// selecting a production interface or exporting traffic outside the host.
+func testEgressDialContext(opts docopt.Opts) (*connect.DialContextSettings, error) {
+	raw, err := opts.String("--test-egress-source-ip")
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
+	if err != nil || !addr.Is4() || !addr.IsLoopback() {
+		return nil, fmt.Errorf("--test-egress-source-ip must be an IPv4 loopback address")
+	}
+	source := net.IP(append([]byte(nil), addr.AsSlice()...))
+	return &connect.DialContextSettings{DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
+		dialer := &net.Dialer{}
+		switch network {
+		case "tcp", "tcp4":
+			dialer.LocalAddr = &net.TCPAddr{IP: append(net.IP(nil), source...)}
+		case "udp", "udp4":
+			dialer.LocalAddr = &net.UDPAddr{IP: append(net.IP(nil), source...)}
+		default:
+			return nil, fmt.Errorf("test egress source %s does not support network %q", addr, network)
+		}
+		return dialer.DialContext(ctx, network, destination)
+	}}, nil
+}
+
 func provide(opts docopt.Opts) {
 	port, _ := opts.Int("--port")
 
@@ -330,6 +385,10 @@ func provide(opts docopt.Opts) {
 	if err != nil {
 		fmt.Printf("network config error: %s\n", err)
 		os.Exit(1)
+	}
+	testEgressDialer, err := testEgressDialContext(opts)
+	if err != nil {
+		panic(err)
 	}
 
 	maxMemoryHumanReadable, err := opts.String("--max-memory")
@@ -379,6 +438,7 @@ func provide(opts docopt.Opts) {
 
 		clientStrategySettings := connect.DefaultClientStrategySettings()
 		clientStrategySettings.ProxySettings = proxySettings
+		clientStrategySettings.DialContextSettings = testEgressDialer
 		networkSpace := sdk.NewNetworkSpaceWithUrls(proxyCtx, apiUrl, connectUrl, clientStrategySettings)
 		api := networkSpace.GetApi()
 
@@ -440,6 +500,7 @@ func provide(opts docopt.Opts) {
 		settings := sdk.DefaultDeviceLocalSettings()
 		settings.KeyMaterial = sdk.NewDeviceLocalKeyMaterial(seed, certPem, keyPem)
 		settings.MemoryTargetByteCount = sdk.ByteCount(providerMemoryTarget)
+		settings.ProviderDialContextSettings = testEgressDialer
 		instanceId := sdk.NewId()
 		device, err := sdk.NewDeviceLocal(
 			networkSpace,
@@ -559,6 +620,13 @@ func provide(opts docopt.Opts) {
 // `network.json`, `.provider.key` and `.provider.cert` live. Does not
 // create it.
 func providerStateDir() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("URNETWORK_STATE_DIR")); override != "" {
+		absolute, err := filepath.Abs(override)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Clean(absolute), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

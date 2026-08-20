@@ -18,22 +18,31 @@ import (
 	"github.com/urfoundation/sn/stabi"
 )
 
-// claimMinerSelector is the 4-byte selector of
-// claimMiner(uint256,uint256,bytes32,uint256,bytes32[]); it must match what
-// stabi.PackClaimMiner emits (0x4c207962 — cross-checked in tests against an
-// independently keccak-derived value).
-var claimMinerSelector = [4]byte{0x4c, 0x20, 0x79, 0x62}
+// claimSelector is the release-1.0 immutable-vault claim selector:
+// claim(uint256,uint256,bytes32,uint256,bytes32[]).
+var claimSelector = func() [4]byte {
+	data := stSettlementVault.PackClaim(big.NewInt(0), big.NewInt(0), [32]byte{}, big.NewInt(0), nil)
+	var out [4]byte
+	copy(out[:], data[:4])
+	return out
+}()
 
 // raoPerAlpha: 1 α = 1e9 rao. All contract amounts are rao.
 const raoPerAlpha = 1_000_000_000
 
-// stSubnet holds the abigen v2 packers/unpackers for STSubnet.
-var stSubnet = stabi.NewSTSubnet()
+// stSettlementVault is the only release claim target. It is immutable and is
+// returned separately from the upgradeable coordinator by the server API.
+var stSettlementVault = stabi.NewSTSettlementVault()
+var stCoordinator = stabi.NewSTCoordinator()
 
-// parsedABI lazily parses the embedded STSubnet ABI (for raw-calldata
+// legacySTSubnet remains only for decoding an explicitly legacy command. New
+// release configuration and the sim-testnet harness never select it.
+var legacySTSubnet = stabi.NewSTSubnet()
+
+// parsedABI lazily parses the embedded settlement-vault ABI (for raw-calldata
 // decoding and custom-error rendering).
 var parsedABI = sync.OnceValues(func() (*abi.ABI, error) {
-	return stabi.STSubnetMetaData.ParseABI()
+	return stabi.STSettlementVaultMetaData.ParseABI()
 })
 
 // claimIntent is a decoded claimMiner(e, noId, coldkey, shareBps, proof) call.
@@ -47,7 +56,7 @@ type claimIntent struct {
 
 // buildClaimCalldata ABI-packs the intent via the stabi bindings.
 func buildClaimCalldata(in *claimIntent) ([]byte, error) {
-	return stSubnet.TryPackClaimMiner(in.E, in.NoID, in.Coldkey, in.ShareBps, in.Proof)
+	return stSettlementVault.TryPackClaim(in.E, in.NoID, in.Coldkey, in.ShareBps, in.Proof)
 }
 
 // parseClaimCalldata validates user-supplied raw calldata: even-length hex,
@@ -67,13 +76,13 @@ func parseClaimCalldata(s string) ([]byte, *claimIntent, error) {
 	if len(data) < 4 {
 		return nil, nil, fmt.Errorf("calldata: %d bytes, need at least the 4-byte selector", len(data))
 	}
-	if [4]byte(data[:4]) != claimMinerSelector {
-		return nil, nil, fmt.Errorf("calldata: selector 0x%x is not claimMiner 0x%x — refusing to sign",
-			data[:4], claimMinerSelector[:])
+	if [4]byte(data[:4]) != claimSelector {
+		return nil, nil, fmt.Errorf("calldata: selector 0x%x is not settlement-vault claim 0x%x — refusing to sign",
+			data[:4], claimSelector[:])
 	}
 	intent, err := decodeClaimCalldata(data)
 	if err != nil {
-		return nil, nil, fmt.Errorf("calldata: selector ok but arguments do not decode as claimMiner: %w", err)
+		return nil, nil, fmt.Errorf("calldata: selector ok but arguments do not decode as claim: %w", err)
 	}
 	return data, intent, nil
 }
@@ -88,8 +97,8 @@ func decodeClaimCalldata(data []byte) (*claimIntent, error) {
 	if err != nil {
 		return nil, err
 	}
-	if method.Name != "claimMiner" {
-		return nil, fmt.Errorf("method %q, want claimMiner", method.Name)
+	if method.Name != "claim" {
+		return nil, fmt.Errorf("method %q, want claim", method.Name)
 	}
 	vals, err := method.Inputs.Unpack(data[4:])
 	if err != nil {
@@ -261,10 +270,9 @@ func parseContract(s string) (common.Address, error) {
 	return common.HexToAddress(s), nil
 }
 
-// minerClaimedByKey computes the dedup key the contract stores in
-// minerClaimedBy[e][key]: keccak256(abi.encode(uint256 noId, bytes32 coldkey))
-// (STSubnet.claimMiner).
-func minerClaimedByKey(noID *big.Int, coldkey [32]byte) [32]byte {
+// leafClaimKey computes the immutable vault's per-epoch claim key:
+// keccak256(abi.encode(noId, coldkey)).
+func leafClaimKey(noID *big.Int, coldkey [32]byte) [32]byte {
 	return [32]byte(crypto.Keccak256Hash(common.BigToHash(noID).Bytes(), coldkey[:]))
 }
 

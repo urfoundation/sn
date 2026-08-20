@@ -16,9 +16,7 @@ contract EpochLifecycleTest is STBase {
     uint256 constant EMISSION = 500e9;
 
     event Deposited(uint256 indexed e, uint256 indexed noId, address from, uint256 amount);
-    event BuybackReserved(
-        uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal
-    );
+    event BuybackReserved(uint256 indexed e, uint256 indexed noId, uint256 amount, uint256 buybackTotal);
     event EpochRolled(uint256 indexed closedEpoch, uint256 indexed newEpoch, uint64 closeBlock);
     event PoolSwept(uint256 indexed noId, uint256 measured, uint256 swept, bool moveOk);
     event PoolCarried(uint256 indexed e, uint256 indexed noId, uint256 carried);

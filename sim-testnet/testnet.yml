@@ -1,0 +1,88 @@
+schema_version: 1
+profile: release-1.0
+
+repositories:
+  discovery: auto
+  sn: auto
+  server: auto
+  vault: auto
+  platform_config: auto
+
+manifests:
+  public: ../deploy/testnet/public.yml
+  policy: ../deploy/testnet/policy-v1.yml
+  release_lock: ../deploy/testnet/release.lock.yml
+  hyperparameters: ../deploy/testnet/hyperparams.yml
+
+deployment:
+  deployment_id: ur-subnet-testnet-v1
+  network: bittensor-testnet
+  subnet: existing
+  netuid_from: vault://main/st.yml#testnet-netuid
+  persistent: true
+  detach_after_launch: true
+
+launch_inputs:
+  wallet: vault://main/st.yml#testnet-wallet
+  chain_id: vault://main/st.yml#testnet-chain-id
+  authority: vault://main/st.yml#testnet-authority
+  object_store_hostname: vault://main/st.yml#testnet-minio-hostname
+  trusted_proxy_cidrs: vault://main/st.yml#testnet-trusted-proxy-cidrs
+  operator_api_origins: vault://main/st.yml#testnet-operator-api-origins
+
+topology:
+  operators: 2
+  miners: 8
+  validators: 2
+  head_fleets: 2
+  clients_per_head_fleet: 3
+  operator_assignment: balanced
+
+contracts:
+  install: true
+  artifact_source: ../evm/out
+  governance_profile: testnet-single-owner
+  verify_runtime_code_hash: true
+
+dependencies:
+  mode: managed_containers
+  postgres_image_from_lock: dependencies.postgres
+  redis_image_from_lock: dependencies.redis
+  object_store: server-blob
+
+artifacts:
+  writer: server-blob
+  history_api: server-api
+  content_addressed: true
+  minio_prefix: blob/sim-testnet/${deployment_id}
+
+processes:
+  build_from_release_lock: true
+  logs: runs/${deployment_id}/processes
+  restart_policy: on_failure_bounded
+
+scenarios:
+  launch: smoke
+  release: release-1.0
+  short_epochs: 20
+  production_epochs: 2
+  voluntary_conviction_rao: 1000000000
+  quality_fault_operator: 2
+  quality_fault_start_blocks: 5
+  quality_fault_duration_blocks: 20
+
+budgets:
+  maximum_subnet_creations: 0
+  maximum_total_tao_rao_from: vault://main/st.yml#testnet-spending-limit-tao-rao
+  maximum_total_alpha_rao_from: vault://main/st.yml#testnet-spending-limit-alpha-rao
+  maximum_evm_gas_tao_wei_from: vault://main/st.yml#testnet-spending-limit-evm-gas-wei
+  maximum_registrations: 32
+
+secrets:
+  generated_role_store: runtime-secret://testnet/sim-testnet/${deployment_id}
+
+analysis:
+  publish_public_manifest: true
+  write_json: true
+  write_html: true
+  serve_read_only_dashboard: true

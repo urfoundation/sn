@@ -54,15 +54,31 @@ type ChainClient struct {
 	rpcUrl       string
 	chainId      *big.Int
 	st           *stabi.STSubnet
+	coordinator  *stabi.STCoordinator
 	contract     *bind.BoundContract
 	contractAddr common.Address
+	release      bool
 }
 
 // DialChain tries rpcUrls in order until one answers eth_chainId
 // (§11.1: every chain consumer takes an ordered endpoint list).
 func DialChain(rpcUrls []string, contractAddr common.Address) (*ChainClient, error) {
+	return dialChain(rpcUrls, contractAddr, false)
+}
+
+// DialReleaseChain binds the immutable release-1.0 coordinator ABI. Keeping
+// this constructor distinct from DialChain prevents a legacy STSubnet address
+// from being accepted accidentally by production configuration.
+func DialReleaseChain(rpcUrls []string, contractAddr common.Address) (*ChainClient, error) {
+	return dialChain(rpcUrls, contractAddr, true)
+}
+
+func dialChain(rpcUrls []string, contractAddr common.Address, release bool) (*ChainClient, error) {
 	if len(rpcUrls) == 0 {
 		return nil, fmt.Errorf("no --rpc endpoints configured")
+	}
+	if release && contractAddr == (common.Address{}) {
+		return nil, fmt.Errorf("contract address is zero")
 	}
 	var errs []error
 	for _, url := range rpcUrls {
@@ -85,12 +101,129 @@ func DialChain(rpcUrls []string, contractAddr common.Address) (*ChainClient, err
 			rpcUrl:       url,
 			chainId:      chainId,
 			st:           stabi.NewSTSubnet(),
+			coordinator:  stabi.NewSTCoordinator(),
 			contractAddr: contractAddr,
+			release:      release,
 		}
-		c.contract = c.st.Instance(client, contractAddr)
+		if release {
+			c.contract = c.coordinator.Instance(client, contractAddr)
+		} else {
+			c.contract = c.st.Instance(client, contractAddr)
+		}
 		return c, nil
 	}
 	return nil, fmt.Errorf("no rpc endpoint answered: %w", errors.Join(errs...))
+}
+
+// FinalizedBlock identifies the canonical EVM head used by every production
+// view in one steering iteration. Bittensor's EVM RPC supports the standard
+// "finalized" block tag; go-ethereum represents it as rpc.FinalizedBlockNumber.
+func (self *ChainClient) FinalizedBlock() (uint64, [32]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+	defer cancel()
+	header, err := self.client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+	if err != nil {
+		return 0, [32]byte{}, fmt.Errorf("finalized EVM head: %w", err)
+	}
+	return header.Number.Uint64(), [32]byte(header.Hash()), nil
+}
+
+func chainViewAt[T any](c *ChainClient, block uint64, calldata []byte, unpack func([]byte) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+	defer cancel()
+	return bind.Call(c.contract, &bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(block)}, calldata, unpack)
+}
+
+func (self *ChainClient) requireRelease() error {
+	if !self.release || self.coordinator == nil {
+		return errors.New("release coordinator binding is not active")
+	}
+	return nil
+}
+
+// ReleaseSnapshot is the minimal coordinator state read at one finalized EVM
+// block. Its policy hash is compared with the locally canonical policy before
+// any native-chain submission.
+type ReleaseSnapshot struct {
+	BlockNumber uint64
+	BlockHash   [32]byte
+	Epoch       *big.Int
+	Policy      stabi.STCoordinatorPolicySnapshot
+}
+
+func (self *ChainClient) ReleaseSnapshot() (*ReleaseSnapshot, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	block, hash, err := self.FinalizedBlock()
+	if err != nil {
+		return nil, err
+	}
+	epoch, err := chainViewAt(self, block, self.coordinator.PackCurrentEpoch(), self.coordinator.UnpackCurrentEpoch)
+	if err != nil {
+		return nil, fmt.Errorf("currentEpoch at finalized block %d: %w", block, err)
+	}
+	policy, err := chainViewAt(self, block, self.coordinator.PackPolicyAt(epoch), self.coordinator.UnpackPolicyAt)
+	if err != nil {
+		return nil, fmt.Errorf("policyAt(%s) at finalized block %d: %w", epoch, block, err)
+	}
+	return &ReleaseSnapshot{BlockNumber: block, BlockHash: hash, Epoch: epoch, Policy: policy}, nil
+}
+
+func (self *ChainClient) ReleaseNetuidAt(block uint64) (uint16, error) {
+	if err := self.requireRelease(); err != nil {
+		return 0, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackNetuid(), self.coordinator.UnpackNetuid)
+}
+
+func (self *ChainClient) ReleaseOperatorCountAt(block uint64) (*big.Int, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackOperatorCount(), self.coordinator.UnpackOperatorCount)
+}
+
+func (self *ChainClient) ReleaseOperatorIDAt(block uint64, index *big.Int) (*big.Int, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackOperatorIdAt(index), self.coordinator.UnpackOperatorIdAt)
+}
+
+func (self *ChainClient) ReleaseOperatorAt(block uint64, noID, epoch *big.Int) (stabi.STCoordinatorOperatorVersion, error) {
+	if err := self.requireRelease(); err != nil {
+		return stabi.STCoordinatorOperatorVersion{}, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackOperatorAt(noID, epoch), self.coordinator.UnpackOperatorAt)
+}
+
+func (self *ChainClient) ReleaseEpochDepositAt(block uint64, epoch, noID *big.Int) (*big.Int, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackEpochDeposits(epoch, noID), self.coordinator.UnpackEpochDeposits)
+}
+
+func (self *ChainClient) ReleaseEpochConvictionAddedAt(block uint64, epoch, noID *big.Int) (*big.Int, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackEpochConvictionAdded(epoch, noID), self.coordinator.UnpackEpochConvictionAdded)
+}
+
+func (self *ChainClient) ReleaseConvictionAt(block uint64, noID *big.Int) (*big.Int, error) {
+	if err := self.requireRelease(); err != nil {
+		return nil, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackCumulativeConviction(noID), self.coordinator.UnpackCumulativeConviction)
+}
+
+func (self *ChainClient) ReleaseBindingAt(block uint64, clientID [16]byte, epoch *big.Int) (stabi.BindingAtOutput, error) {
+	if err := self.requireRelease(); err != nil {
+		return stabi.BindingAtOutput{}, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackBindingAt(clientID, epoch), self.coordinator.UnpackBindingAt)
 }
 
 func (self *ChainClient) Close() {
@@ -379,9 +512,13 @@ func evmUint16Word(v uint16) [32]byte {
 }
 
 func (self *ChainClient) ethCall(to common.Address, calldata []byte) ([]byte, error) {
+	return self.ethCallAt(to, calldata, nil)
+}
+
+func (self *ChainClient) ethCallAt(to common.Address, calldata []byte, blockNumber *big.Int) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
 	defer cancel()
-	return self.client.CallContract(ctx, ethereum.CallMsg{To: &to, Data: calldata}, nil)
+	return self.client.CallContract(ctx, ethereum.CallMsg{To: &to, Data: calldata}, blockNumber)
 }
 
 // MetagraphUidCount calls IMetagraph.getUidCount(netuid) on 0x802.
@@ -421,15 +558,42 @@ func (self *ChainClient) MetagraphHotkey(netuid uint16, uid uint16) ([32]byte, e
 // bounded scan STSubnet._findUid performs (max_uids <= 256). Returns
 // (uid, true) when found.
 func (self *ChainClient) FindUidByHotkey(netuid uint16, hotkey [32]byte) (uint16, bool, error) {
-	n, err := self.MetagraphUidCount(netuid)
+	return self.FindUidByHotkeyAt(0, netuid, hotkey)
+}
+
+// FindUidByHotkeyAt resolves a live UID against one canonical EVM block.
+// block=0 preserves the development/latest-state behavior.
+func (self *ChainClient) FindUidByHotkeyAt(block uint64, netuid uint16, hotkey [32]byte) (uint16, bool, error) {
+	var blockNumber *big.Int
+	if block != 0 {
+		blockNumber = new(big.Int).SetUint64(block)
+	}
+	selector := evmSelector("getUidCount(uint16)")
+	argNetuid := evmUint16Word(netuid)
+	out, err := self.ethCallAt(metagraphAddress, append(selector[:], argNetuid[:]...), blockNumber)
 	if err != nil {
 		return 0, false, err
 	}
+	if len(out) < 32 {
+		return 0, false, fmt.Errorf("metagraph getUidCount: short return (%d bytes)", len(out))
+	}
+	n := uint16(out[len(out)-2])<<8 | uint16(out[len(out)-1])
 	for uid := uint16(0); uid < n; uid++ {
-		hk, err := self.MetagraphHotkey(netuid, uid)
+		selector := evmSelector("getHotkey(uint16,uint16)")
+		argUID := evmUint16Word(uid)
+		calldata := make([]byte, 0, 68)
+		calldata = append(calldata, selector[:]...)
+		calldata = append(calldata, argNetuid[:]...)
+		calldata = append(calldata, argUID[:]...)
+		out, err := self.ethCallAt(metagraphAddress, calldata, blockNumber)
 		if err != nil {
 			return 0, false, err
 		}
+		if len(out) < 32 {
+			return 0, false, fmt.Errorf("metagraph getHotkey: short return (%d bytes)", len(out))
+		}
+		var hk [32]byte
+		copy(hk[:], out[len(out)-32:])
 		if hk == hotkey {
 			return uid, true, nil
 		}

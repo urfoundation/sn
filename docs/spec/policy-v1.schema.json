@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urnetwork.io/schemas/policy-v1.schema.json",
+  "title": "UR Subnet release 1.0 policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policy"],
+  "properties": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "policy_id", "effective_epoch", "settlement", "production_cadence", "steering", "deposit", "verify", "binding", "safety"],
+      "properties": {
+        "schema": {"const": "urnetwork-policy-v1"},
+        "policy_id": {"type": "integer", "minimum": 1},
+        "effective_epoch": {"type": "integer", "minimum": 0},
+        "settlement": {"$ref": "#/$defs/settlement"},
+        "production_cadence": {"$ref": "#/$defs/productionCadence"},
+        "steering": {"$ref": "#/$defs/steering"},
+        "deposit": {"$ref": "#/$defs/deposit"},
+        "verify": {"$ref": "#/$defs/verify"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "safety": {"$ref": "#/$defs/safety"}
+      }
+    }
+  },
+  "$defs": {
+    "u64": {"type": "integer", "minimum": 0},
+    "positive": {"type": "integer", "minimum": 1},
+    "rational": {
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {"numerator": {"$ref": "#/$defs/u64"}, "denominator": {"$ref": "#/$defs/positive"}}
+    },
+    "settlement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["epoch_blocks", "root_commit_window_blocks", "finalize_offset_blocks", "close_grace_blocks", "claim_ttl_epochs", "claim_grace_epochs", "missed_root_action", "expired_claim_action", "shares_total_bps", "rounding"],
+      "properties": {
+        "epoch_blocks": {"$ref": "#/$defs/positive"}, "root_commit_window_blocks": {"$ref": "#/$defs/positive"}, "finalize_offset_blocks": {"$ref": "#/$defs/positive"}, "close_grace_blocks": {"$ref": "#/$defs/positive"},
+        "claim_ttl_epochs": {"$ref": "#/$defs/positive"}, "claim_grace_epochs": {"$ref": "#/$defs/u64"},
+        "missed_root_action": {"const": "carry_same_operator"}, "expired_claim_action": {"const": "carry_same_operator"},
+        "shares_total_bps": {"const": 10000}, "rounding": {"const": "largest_remainder_then_client_id_ascending"}
+      }
+    },
+    "productionCadence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["after_accelerated_epochs", "epoch_blocks", "root_commit_window_blocks", "finalize_offset_blocks", "close_grace_blocks"],
+      "properties": {
+        "after_accelerated_epochs": {"$ref": "#/$defs/positive"},
+        "epoch_blocks": {"$ref": "#/$defs/positive"},
+        "root_commit_window_blocks": {"$ref": "#/$defs/positive"},
+        "finalize_offset_blocks": {"$ref": "#/$defs/positive"},
+        "close_grace_blocks": {"$ref": "#/$defs/positive"}
+      }
+    },
+    "steering": {
+      "type": "object", "additionalProperties": false,
+      "required": ["theta", "quality_transform", "head_score_ema", "empty_channel", "arithmetic"],
+      "properties": {
+        "theta": {"$ref": "#/$defs/rational"}, "head_score_ema": {"$ref": "#/$defs/rational"},
+        "quality_transform": {"type": "object", "additionalProperties": false, "required": ["kind", "minimum_ppm", "maximum_ppm"], "properties": {"kind": {"const": "clamp_ppm"}, "minimum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}, "maximum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}}},
+        "empty_channel": {"const": "cede_to_nonempty"}, "arithmetic": {"const": "integer_rational_v1"}
+      }
+    },
+    "deposit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["unit", "epoch_cap_rao_per_operator", "total_test_campaign_cap_rao", "tier_snapshot", "tiers", "zero_or_invalid_rate"],
+      "properties": {
+        "unit": {"const": "rao_per_gib"}, "epoch_cap_rao_per_operator": {"$ref": "#/$defs/positive"}, "total_test_campaign_cap_rao": {"$ref": "#/$defs/positive"},
+        "tier_snapshot": {"const": "conviction_before_epoch"}, "zero_or_invalid_rate": {"const": "halt"},
+        "tiers": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["min_conviction_rao", "rate_numerator_rao_per_gib", "rate_denominator"], "properties": {"min_conviction_rao": {"$ref": "#/$defs/u64"}, "rate_numerator_rao_per_gib": {"$ref": "#/$defs/positive"}, "rate_denominator": {"$ref": "#/$defs/positive"}}}}
+      }
+    },
+    "verify": {
+      "type": "object", "additionalProperties": false,
+      "required": ["trail_depth", "step_timeout_seconds", "step_timeout_grace_seconds", "trail_ttl_grace_seconds", "egress_ttl_seconds", "egress_refresh_seconds", "reliability_a_min", "stats_period_seconds", "egress_ipv4_prefix", "egress_ipv6_prefix", "egress_hash_key_id", "soft_guardrails_enabled", "hard_seed_per_minute_per_source", "hard_extend_per_minute_per_source", "hard_active_trails_per_source"],
+      "properties": {
+        "trail_depth": {"type": "integer", "minimum": 2}, "step_timeout_seconds": {"$ref": "#/$defs/positive"}, "step_timeout_grace_seconds": {"$ref": "#/$defs/u64"}, "trail_ttl_grace_seconds": {"$ref": "#/$defs/u64"}, "egress_ttl_seconds": {"$ref": "#/$defs/positive"}, "egress_refresh_seconds": {"$ref": "#/$defs/positive"}, "reliability_a_min": {"$ref": "#/$defs/positive"}, "stats_period_seconds": {"$ref": "#/$defs/positive"}, "egress_ipv4_prefix": {"type": "integer", "minimum": 0, "maximum": 32}, "egress_ipv6_prefix": {"type": "integer", "minimum": 0, "maximum": 128}, "egress_hash_key_id": {"type": "string", "minLength": 1}, "soft_guardrails_enabled": {"type": "boolean"}, "hard_seed_per_minute_per_source": {"$ref": "#/$defs/positive"}, "hard_extend_per_minute_per_source": {"$ref": "#/$defs/positive"}, "hard_active_trails_per_source": {"$ref": "#/$defs/positive"}
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "changes_effective_next_epoch", "maximum_validity_epochs", "commitments_required", "client_signature", "hotkey_signature"],
+      "properties": {"schema": {"const": "urnetwork-fleet-binding-v1"}, "changes_effective_next_epoch": {"const": true}, "maximum_validity_epochs": {"$ref": "#/$defs/positive"}, "commitments_required": {"const": true}, "client_signature": {"const": "ed25519"}, "hotkey_signature": {"const": "sr25519"}}
+    },
+    "safety": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimum_healthy_no_count", "minimum_live_validator_count", "maximum_finalized_head_lag_blocks", "stop_on_runtime_change", "stop_on_policy_mismatch", "stop_on_index_gap"],
+      "properties": {"minimum_healthy_no_count": {"type": "integer", "minimum": 2}, "minimum_live_validator_count": {"type": "integer", "minimum": 2}, "maximum_finalized_head_lag_blocks": {"$ref": "#/$defs/u64"}, "stop_on_runtime_change": {"const": true}, "stop_on_policy_mismatch": {"const": true}, "stop_on_index_gap": {"const": true}}
+    }
+  }
+}

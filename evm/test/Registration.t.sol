@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {OwnableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -17,9 +16,7 @@ import {Blake2b} from "../src/lib/Blake2b.sol";
 ///      parked at docs/parked/.) blake2b known-answer vectors live in the
 ///      smoke suite (test_blake2b_vectors).
 contract RegistrationTest is STBase {
-    event OperatorRegistered(
-        uint256 indexed noId, bytes32 coldkey, uint16 minerUid, bytes32 minerHotkey
-    );
+    event OperatorRegistered(uint256 indexed noId, bytes32 coldkey, uint16 minerUid, bytes32 minerHotkey);
 
     // ------------------------------------------------------------------
     // registerOperator — burnedRegister via mocked 0x804
@@ -49,9 +46,7 @@ contract RegistrationTest is STBase {
 
     function test_registerOperator_guards() public {
         vm.prank(rando);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, rando)
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, rando));
         st.registerOperator(9, keccak256("c"), keccak256("h"));
 
         vm.startPrank(owner);
@@ -111,21 +106,15 @@ contract RegistrationTest is STBase {
         STSubnet impl = new STSubnet();
 
         vm.expectRevert("ST: treasury hotkey 0");
-        new ERC1967Proxy(
-            address(impl), _initData(bytes32(0), RESERVE, 100, 10, 20, 30, bytes32(0))
-        );
+        new ERC1967Proxy(address(impl), _initData(bytes32(0), RESERVE, 100, 10, 20, 30, bytes32(0)));
 
         vm.expectRevert("ST: reserve hotkey 0");
-        new ERC1967Proxy(
-            address(impl), _initData(TREASURY, bytes32(0), 100, 10, 20, 30, bytes32(0))
-        );
+        new ERC1967Proxy(address(impl), _initData(TREASURY, bytes32(0), 100, 10, 20, 30, bytes32(0)));
 
         // §7.4: dividends compound on the reserve hotkey; sharing it with the
         // escrow would break the exact push-then-credit deposit check
         vm.expectRevert("ST: reserve==treasury");
-        new ERC1967Proxy(
-            address(impl), _initData(TREASURY, TREASURY, 100, 10, 20, 30, bytes32(0))
-        );
+        new ERC1967Proxy(address(impl), _initData(TREASURY, TREASURY, 100, 10, 20, 30, bytes32(0)));
 
         vm.expectRevert("ST: tEpoch 0");
         new ERC1967Proxy(address(impl), _initData(TREASURY, RESERVE, 0, 10, 20, 30, bytes32(0)));
@@ -142,9 +131,8 @@ contract RegistrationTest is STBase {
         // is passed in instead of computed on-chain
         STSubnet impl = new STSubnet();
         bytes32 explicitCk = keccak256("explicit-mirror");
-        ERC1967Proxy p = new ERC1967Proxy(
-            address(impl), _initData(TREASURY, RESERVE, 100, 10, 20, 30, explicitCk)
-        );
+        ERC1967Proxy p =
+            new ERC1967Proxy(address(impl), _initData(TREASURY, RESERVE, 100, 10, 20, 30, explicitCk));
         assertEq(STSubnet(payable(address(p))).selfColdkey(), explicitCk);
     }
 
