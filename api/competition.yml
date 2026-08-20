@@ -378,6 +378,7 @@ components:
         - ramp_ms
         - prewarm_ms
         - settle_ms
+        - client_warmup_timeout_ms
         - duration_ms
         - request_timeout_ms
         - pipeline_interval_ms
@@ -436,6 +437,9 @@ components:
         settle_ms:
           type: integer
           minimum: 0
+        client_warmup_timeout_ms:
+          type: integer
+          minimum: 1
         duration_ms:
           type: integer
           minimum: 1
