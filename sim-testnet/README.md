@@ -194,6 +194,69 @@ retaining old proof verification, runs two complete production epochs, and genui
 restarts (new PID, healthy replacement) every operator service, miner/claim daemon
 and validator without overlapping faults.
 
+## Continuous adversarial campaign
+
+The `release-1.0` and `production-soak` scenarios always load the release-locked
+[`adversarial-matrix-v1.json`](../docs/spec/adversarial-matrix-v1.json). Its 54
+rows cover Yuma/YC3 cabals, stale and reveal-following weight copies, liquid-alpha
+bond timing and validator-permit churn, all eight published Subtensor security
+advisories, historical runtime atomicity/accounting/identity/resource failures,
+subnet reserve/registration/liquidity/eviction pressure, hidden root-basket rewards,
+proxy-stake MEV/slippage, four security-relevant Bittensor SDK/transport issue
+families (missing signatures, finality-era expiry, plaintext unauthenticated
+transport, and constant body hashes), runtime/precompile drift, identity
+and proxy churn, commitment-field parser confusion, operator/verification abuse, artifact equivocation, contract
+authorization/custody, settlement, and dependency failures.
+
+Seven attributed actors start before the happy path and remain active until
+after its final reconciliation:
+
+- bounded operator API and real `/verify` pressure, including simultaneous
+  identical EXTENDs, replays, invalid signatures, poison-shape comparisons, and
+  per-source vpk rotation;
+- independent private/public finalized-RPC agreement plus common-height subnet
+  UID, spot/moving-price, and TAO/alpha-reserve reads;
+- artifact fetch/reconstruction/tamper pressure and fleet identity-generation
+  mutations; and
+- deterministic consensus, liquid-alpha, custody, unit/domain, rounding,
+  root-index, and upstream reserve-flow emulation.
+
+Every fifth sample is a control and the other four are adversarial. Release
+configuration requires at least 100 non-skipped samples per actor, both phases,
+zero unexpected actor errors, p99 latency at most 15 seconds, attack/control p95
+latency no worse than 20×, at most eight
+operator requests/second and two RPC requests/second. Expected 400/409/429
+rejections are recorded separately from faults. Campaign evidence includes the
+matrix hash, lifecycle overlap, request/in-flight totals, latency distributions,
+per-vector required and actually sampled metric names, and full-run minima/maxima
+for on-chain numeric sentinels in
+`runs/<deployment-id>/runs/<run-id>/adversaries.json`.
+
+The release schedules non-overlapping outages for every simulator-owned
+PostgreSQL/Redis pair and the simulator-owned loopback Subtensor RPC proxy, then
+rolls every persistent process. It records exact downstream impact windows and
+requires healthy replacement PIDs. The external shared Subtensor and MinIO
+services are not destructively faulted; MinIO remains under continuous
+history/reconstruction/tamper pressure.
+
+Every run also writes `anomalies.json`. It is built from failed assertions,
+deployment warnings, component errors, unresolved claims, supervisor health and
+restart deltas, incomplete faults, and adversary actor/vector failures. Scheduled
+restart faults are reconciled exactly; any excess or missing restart is an
+anomaly. A release run passes only when this append-only ledger is `clean` with
+zero entries. Failed runs leave entries `open` for the root-cause, minimized
+reproduction, regression, and clean-rerun evidence required by the mainnet
+readiness dossier.
+
+Shared-testnet safety is structural: live actors touch only loopback operator
+endpoints, our deployment/netuid identities, and capped read RPC. Chain-wide
+flooding, proxy takeover, cooldown bypass, and global state-bloat exploits run
+only against the exact pinned local runtime; their live actors are read-only
+sentinels or bounded state-machine emulators. Any unexplained error, drift,
+latency breach, missing sample, process restart, or happy-path discrepancy fails
+the scenario and remains a root-cause investigation item—it is never waived as
+“adversarial noise.”
+
 For independent inspection, use any signed deployment-manifest evidence URL from
 `runs/ur-subnet-testnet-v1/public/deployment-manifest.locators.json` on a clean
 compatible checkout:

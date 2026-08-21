@@ -127,36 +127,41 @@ type ScenarioObservation struct {
 	PrecompileConformance      *PrecompileConformanceEvidence `json:"precompile_conformance,omitempty"`
 	PrecompileConformanceValid bool                           `json:"precompile_conformance_valid"`
 	PrecompileConformanceError string                         `json:"precompile_conformance_error,omitempty"`
+	ExpectedFaultIDs           []string                       `json:"expected_fault_ids,omitempty"`
+	ExpectedFaultTargets       []string                       `json:"expected_fault_targets,omitempty"`
 	ObservationHash            string                         `json:"observation_hash"`
 }
 
 type ScenarioResult struct {
-	Schema               string                `json:"schema"`
-	Release              string                `json:"release"`
-	RunID                string                `json:"run_id"`
-	DeploymentID         string                `json:"deployment_id"`
-	Name                 string                `json:"name"`
-	ScenarioDefinition   string                `json:"scenario_definition_hash"`
-	ScenarioMatrix       string                `json:"scenario_matrix_hash,omitempty"`
-	ConfigHash           string                `json:"config_hash"`
-	PolicyHash           string                `json:"policy_hash"`
-	ChainID              uint64                `json:"chain_id"`
-	GenesisHash          string                `json:"genesis_hash"`
-	Netuid               uint16                `json:"netuid"`
-	StartedAt            string                `json:"started_at"`
-	CompletedAt          string                `json:"completed_at"`
-	StartHead            ChainHead             `json:"start_finalized_head"`
-	EndHead              ChainHead             `json:"end_finalized_head"`
-	StartEpoch           uint64                `json:"start_epoch"`
-	EndEpoch             uint64                `json:"end_epoch"`
-	AssertionCount       int                   `json:"assertion_count"`
-	FailedAssertionCount int                   `json:"failed_assertion_count"`
-	Assertions           []AssertionRecord     `json:"assertions"`
-	Faults               []ScenarioFaultRecord `json:"faults,omitempty"`
-	ValueReconciliation  map[string]string     `json:"value_reconciliation"`
-	PublishedEvidence    []PublishedEvidence   `json:"published_evidence,omitempty"`
-	EvidenceHash         string                `json:"evidence_hash"`
-	Result               string                `json:"result"`
+	Schema               string                     `json:"schema"`
+	Release              string                     `json:"release"`
+	RunID                string                     `json:"run_id"`
+	DeploymentID         string                     `json:"deployment_id"`
+	Name                 string                     `json:"name"`
+	ScenarioDefinition   string                     `json:"scenario_definition_hash"`
+	ScenarioMatrix       string                     `json:"scenario_matrix_hash,omitempty"`
+	AdversarialMatrix    string                     `json:"adversarial_matrix_hash,omitempty"`
+	ConfigHash           string                     `json:"config_hash"`
+	PolicyHash           string                     `json:"policy_hash"`
+	ChainID              uint64                     `json:"chain_id"`
+	GenesisHash          string                     `json:"genesis_hash"`
+	Netuid               uint16                     `json:"netuid"`
+	StartedAt            string                     `json:"started_at"`
+	CompletedAt          string                     `json:"completed_at"`
+	StartHead            ChainHead                  `json:"start_finalized_head"`
+	EndHead              ChainHead                  `json:"end_finalized_head"`
+	StartEpoch           uint64                     `json:"start_epoch"`
+	EndEpoch             uint64                     `json:"end_epoch"`
+	AssertionCount       int                        `json:"assertion_count"`
+	FailedAssertionCount int                        `json:"failed_assertion_count"`
+	Assertions           []AssertionRecord          `json:"assertions"`
+	Faults               []ScenarioFaultRecord      `json:"faults,omitempty"`
+	Adversaries          *AdversaryCampaignEvidence `json:"adversaries,omitempty"`
+	Anomalies            *ScenarioAnomalyLedger     `json:"anomalies"`
+	ValueReconciliation  map[string]string          `json:"value_reconciliation"`
+	PublishedEvidence    []PublishedEvidence        `json:"published_evidence,omitempty"`
+	EvidenceHash         string                     `json:"evidence_hash"`
+	Result               string                     `json:"result"`
 }
 
 type ScenarioEvidenceBundle struct {
@@ -182,11 +187,12 @@ type scenarioCheck struct {
 }
 
 type scenarioDefinition struct {
-	Name       string
-	GoalEpochs uint64
-	Checks     []scenarioCheck
-	Faults     []scenarioFaultSpec
-	MatrixHash string
+	Name                  string
+	GoalEpochs            uint64
+	Checks                []scenarioCheck
+	Faults                []scenarioFaultSpec
+	MatrixHash            string
+	AdversarialMatrixHash string
 }
 
 type scenarioEvaluation struct {
@@ -204,6 +210,8 @@ type scenarioRunOptions struct {
 	Roles        *RoleSecrets
 	Publish      bool
 	FaultDriver  scenarioFaultDriver
+	Adversaries  adversaryCampaign
+	Prepare      func(context.Context) error
 }
 
 func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation, error) {
@@ -1331,6 +1339,69 @@ func uint64Set(values []uint64) map[uint64]bool {
 	return result
 }
 
+func annotateScenarioExpectedFaults(observation *ScenarioObservation, records []ScenarioFaultRecord) error {
+	if observation == nil {
+		return nil
+	}
+	observation.ExpectedFaultIDs = nil
+	observation.ExpectedFaultTargets = nil
+	seenTargets := map[string]bool{}
+	for _, record := range records {
+		if record.Status != "active" {
+			continue
+		}
+		observation.ExpectedFaultIDs = append(observation.ExpectedFaultIDs, record.ID)
+		for _, target := range append(append([]string(nil), record.Targets...), record.Impacts...) {
+			if !seenTargets[target] {
+				seenTargets[target] = true
+				observation.ExpectedFaultTargets = append(observation.ExpectedFaultTargets, target)
+			}
+		}
+	}
+	sort.Strings(observation.ExpectedFaultIDs)
+	sort.Strings(observation.ExpectedFaultTargets)
+	observation.ObservationHash = ""
+	var err error
+	observation.ObservationHash, err = canonicalHashHex(observation)
+	return err
+}
+
+func scenarioFaultTargets(records []ScenarioFaultRecord, head uint64, includeDue bool) []string {
+	seen := map[string]bool{}
+	for _, record := range records {
+		expected := record.Status == "active"
+		if includeDue && record.Status == "pending" && head >= record.TriggerBlock {
+			expected = true
+		}
+		if expected {
+			for _, target := range append(append([]string(nil), record.Targets...), record.Impacts...) {
+				seen[target] = true
+			}
+		}
+	}
+	targets := make([]string, 0, len(seen))
+	for target := range seen {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	return targets
+}
+
+func enableContinuousAdversaries(cfg *ResolvedConfig, definition *scenarioDefinition) error {
+	if cfg == nil || cfg.Config == nil || definition == nil {
+		return errors.New("continuous adversarial scenario configuration is incomplete")
+	}
+	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		return fmt.Errorf("adversarial scenario matrix: %w", err)
+	}
+	if err := validateAdversarialActorCoverage(matrix, releaseAdversaryActorIDs); err != nil {
+		return err
+	}
+	definition.AdversarialMatrixHash = matrix.Hash
+	return nil
+}
+
 func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition, error) {
 	if name == "" {
 		name = cfg.Config.Scenarios.Launch
@@ -1371,6 +1442,9 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		definition.Checks = append(definition.Checks, scenarioCheck{ID: "scenario_matrix_coverage", Check: func(*scenarioEvaluation) (bool, string) {
 			return true, fmt.Sprintf("20/20 matrix rows mapped; hash=%s", matrix.Hash)
 		}})
+		if err := enableContinuousAdversaries(cfg, &definition); err != nil {
+			return scenarioDefinition{}, err
+		}
 		return definition, nil
 	case "production-soak":
 		if cfg.Config.Scenarios.ProductionEpochs < 2 {
@@ -1382,6 +1456,9 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		definition.Faults = productionRollingFaults(cfg)
 		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
 		definition.Checks = append(definition.Checks, productionScenarioChecks()...)
+		if err := enableContinuousAdversaries(cfg, &definition); err != nil {
+			return scenarioDefinition{}, err
+		}
 		return definition, nil
 	default:
 		if fault, ok := namedProcessFault(cfg, name); ok {
@@ -1408,7 +1485,15 @@ func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Du
 		return 2 * time.Minute
 	}
 	seconds := blocks*cfg.Public.Chain.ExpectedBlockSeconds + 10*cfg.Public.Chain.ExpectedBlockSeconds + 120
-	return time.Duration(seconds) * time.Second
+	timeout := time.Duration(seconds) * time.Second
+	if definition.AdversarialMatrixHash != "" {
+		minimum := time.Duration(cfg.Config.Scenarios.Adversaries.MinimumSamplesPerActor+2) * time.Duration(cfg.Config.Scenarios.Adversaries.SampleIntervalMilliseconds) * time.Millisecond
+		minimum += time.Duration(cfg.Config.Scenarios.Adversaries.RequestTimeoutMilliseconds) * time.Millisecond
+		if timeout < minimum {
+			timeout = minimum
+		}
+	}
+	return timeout
 }
 
 func productionScenarioChecks() []scenarioCheck {
@@ -1500,7 +1585,7 @@ func appendFaultAssertions(assertions []AssertionRecord, records []ScenarioFault
 	now := time.Now().UTC()
 	for _, record := range records {
 		passed := record.Status == "restored" && record.AppliedBlock >= record.TriggerBlock && record.RestoredBlock >= record.RestoreBlock && len(record.Processes) == len(record.Targets)
-		if passed && record.Kind == "process-restart" {
+		if passed && (record.Kind == "process-restart" || record.Kind == "container-restart") {
 			if len(record.RestoredProcesses) != len(record.Processes) {
 				passed = false
 			} else {
@@ -1547,16 +1632,43 @@ func writeInitialScenarioFailure(cfg *ResolvedConfig, runDir, runID, definitionH
 	assertion := AssertionRecord{ID: "initial_observation", Passed: false, Message: failure.Error(), StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano), DurationSeconds: completed.Sub(started).Seconds(), ObservationHash: observationHash}
 	result := &ScenarioResult{
 		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: runID,
-		DeploymentID: cfg.Config.Deployment.DeploymentID, Name: definition.Name, ScenarioDefinition: definitionHash, ScenarioMatrix: definition.MatrixHash,
+		DeploymentID: cfg.Config.Deployment.DeploymentID, Name: definition.Name, ScenarioDefinition: definitionHash, ScenarioMatrix: definition.MatrixHash, AdversarialMatrix: definition.AdversarialMatrixHash,
 		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
 		StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano),
-		AssertionCount: 1, FailedAssertionCount: 1, Assertions: []AssertionRecord{assertion}, Result: "fail",
+		Assertions: []AssertionRecord{assertion}, Result: "fail",
 	}
+	attachScenarioAnomalyGate(result, completed, nil, observation)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 	if err := writeScenarioOutputs(cfg, runDir, result, observation); err != nil {
 		return result, err
 	}
 	return result, failure
+}
+
+func finalizeAdversaryEvidence(campaign adversaryCampaign, runDir string, started time.Time, observationHash string, completed time.Time) (*AdversaryCampaignEvidence, []AssertionRecord, error) {
+	if campaign == nil {
+		return nil, nil, nil
+	}
+	campaign.MarkHappyPathCompleted(completed)
+	stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	evidence, stopErr := campaign.Stop(stopCtx)
+	if evidence != nil {
+		b, err := json.MarshalIndent(evidence, "", "  ")
+		if err == nil {
+			err = atomicWrite(filepath.Join(runDir, "adversaries.json"), append(b, '\n'), 0o644)
+		}
+		if err != nil {
+			stopErr = errors.Join(stopErr, err)
+		}
+	}
+	assertions := adversaryAssertions(evidence, started, observationHash)
+	if stopErr != nil {
+		now := time.Now().UTC()
+		assertions = append(assertions, AssertionRecord{ID: "adversary_campaign_stop", Passed: false, Message: stopErr.Error(), StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: observationHash})
+		sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
+	}
+	return evidence, assertions, stopErr
 }
 
 func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir string, definition scenarioDefinition, probe scenarioProbe, options scenarioRunOptions) (*ScenarioResult, error) {
@@ -1576,40 +1688,93 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return nil, err
 	}
 	definitionHash, _ := canonicalHashHex(struct {
-		Name       string              `json:"name"`
-		GoalEpochs uint64              `json:"goal_epochs"`
-		Checks     []string            `json:"checks"`
-		Faults     []scenarioFaultSpec `json:"faults,omitempty"`
-		MatrixHash string              `json:"scenario_matrix_hash,omitempty"`
-	}{definition.Name, definition.GoalEpochs, func() []string {
+		Name                  string              `json:"name"`
+		GoalEpochs            uint64              `json:"goal_epochs"`
+		Checks                []string            `json:"checks"`
+		Faults                []scenarioFaultSpec `json:"faults,omitempty"`
+		MatrixHash            string              `json:"scenario_matrix_hash,omitempty"`
+		AdversarialMatrixHash string              `json:"adversarial_matrix_hash,omitempty"`
+	}{Name: definition.Name, GoalEpochs: definition.GoalEpochs, Checks: func() []string {
 		ids := make([]string, len(definition.Checks))
 		for i := range definition.Checks {
 			ids[i] = definition.Checks[i].ID
 		}
 		return ids
-	}(), definition.Faults, definition.MatrixHash})
+	}(), Faults: definition.Faults, MatrixHash: definition.MatrixHash, AdversarialMatrixHash: definition.AdversarialMatrixHash})
+	if definition.AdversarialMatrixHash != "" {
+		if options.Adversaries == nil {
+			return nil, errors.New("release scenario requires a continuous adversarial campaign")
+		}
+		if err := options.Adversaries.Start(ctx); err != nil {
+			return nil, fmt.Errorf("start continuous adversarial campaign: %w", err)
+		}
+		options.Adversaries.MarkHappyPathStarted(options.Now().UTC())
+	}
+	adversariesFinalized := false
+	observationHistory := []*ScenarioObservation{}
+	defer func() {
+		if options.Adversaries == nil || adversariesFinalized {
+			return
+		}
+		options.Adversaries.MarkHappyPathCompleted(options.Now().UTC())
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = options.Adversaries.Stop(cleanupCtx)
+	}()
+	initialFailure := func(observation *ScenarioObservation, failure error) (*ScenarioResult, error) {
+		failureHistory := append([]*ScenarioObservation(nil), observationHistory...)
+		if observation != nil && (len(failureHistory) == 0 || failureHistory[len(failureHistory)-1] != observation) {
+			failureHistory = append(failureHistory, observation)
+		}
+		result, resultErr := writeInitialScenarioFailure(cfg, runDir, runID, definitionHash, definition, started, observation, failure)
+		observationHash := ""
+		if len(failureHistory) != 0 {
+			observationHash = failureHistory[len(failureHistory)-1].ObservationHash
+		}
+		evidence, adversaryRecords, stopErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, observationHash, options.Now().UTC())
+		adversariesFinalized = true
+		var rewriteErr error
+		if result != nil {
+			result.Adversaries = evidence
+			result.Assertions = append(result.Assertions, adversaryRecords...)
+			attachScenarioAnomalyGate(result, options.Now().UTC(), nil, observation, failureHistory...)
+			result.EvidenceHash, _ = canonicalScenarioResultHash(result)
+			rewriteErr = writeScenarioOutputs(cfg, runDir, result, observation)
+		}
+		return result, errors.Join(resultErr, stopErr, rewriteErr)
+	}
+	// Preparation is part of the measured happy path. In particular, release
+	// governance and key-rotation actions run while adversaries are active, and
+	// a preparation failure is persisted with the same anomaly/evidence gates
+	// as a failure after the first chain observation.
+	if options.Prepare != nil {
+		if err := options.Prepare(ctx); err != nil {
+			return initialFailure(nil, fmt.Errorf("prepare scenario: %w", err))
+		}
+	}
 	if len(definition.Faults) != 0 {
 		if options.FaultDriver == nil {
-			return nil, errors.New("scenario fault schedule requires a fault driver")
+			return initialFailure(nil, errors.New("scenario fault schedule requires a fault driver"))
 		}
 		if err := options.FaultDriver.Recover(ctx); err != nil {
-			return nil, fmt.Errorf("recover prior scenario fault: %w", err)
+			return initialFailure(nil, fmt.Errorf("recover prior scenario fault: %w", err))
 		}
 	}
 
 	start, err := probe.Snapshot(ctx)
 	if err != nil {
-		return writeInitialScenarioFailure(cfg, runDir, runID, definitionHash, definition, started, nil, fmt.Errorf("initial scenario observation: %w", err))
+		return initialFailure(nil, fmt.Errorf("initial scenario observation: %w", err))
 	}
 	if start.Status == nil || start.Status.Contracts == nil {
-		return writeInitialScenarioFailure(cfg, runDir, runID, definitionHash, definition, started, start, errors.New("scenario requires an installed contract deployment"))
+		return initialFailure(start, errors.New("scenario requires an installed contract deployment"))
 	}
+	observationHistory = append(observationHistory, start)
 	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), start); err != nil {
-		return nil, err
+		return initialFailure(start, fmt.Errorf("persist initial scenario observation: %w", err))
 	}
 	faults, err := initializeFaultRecords(start.Status.Contracts.FinalizedHead.Number, definition.Faults)
 	if err != nil {
-		return nil, err
+		return initialFailure(start, fmt.Errorf("initialize scenario faults: %w", err))
 	}
 	defer func() {
 		if options.FaultDriver == nil {
@@ -1626,8 +1791,10 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	deadline := started.Add(options.Timeout)
 	var faultErr error
 	var terminalErr error
+	var runtimeAssertions []AssertionRecord
+	snapshotFailureCount := 0
 scenarioLoop:
-	for (!assertionsPass(assertions) || !faultsComplete(faults)) && options.Now().Before(deadline) {
+	for (!assertionsPass(assertions) || !faultsComplete(faults) || (options.Adversaries != nil && !options.Adversaries.Ready())) && options.Now().Before(deadline) {
 		timer := time.NewTimer(options.PollInterval)
 		select {
 		case <-ctx.Done():
@@ -1638,21 +1805,55 @@ scenarioLoop:
 		}
 		next, snapshotErr := probe.Snapshot(ctx)
 		if snapshotErr != nil {
+			snapshotFailureCount++
+			now := options.Now().UTC()
+			runtimeAssertions = append(runtimeAssertions, AssertionRecord{
+				ID: fmt.Sprintf("scenario_snapshot_%06d", snapshotFailureCount), Passed: false,
+				Message:   fmt.Sprintf("transient scenario observation failed: %v", snapshotErr),
+				StartedAt: started.Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano),
+				DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+			})
 			continue
 		}
+		previous := current
 		current = next
+		if err := annotateScenarioExpectedFaults(current, faults); err != nil {
+			return initialFailure(current, fmt.Errorf("annotate expected scenario faults: %w", err))
+		}
+		observationHistory = append(observationHistory, current)
+		if current.Status == nil || current.Status.Contracts == nil {
+			snapshotFailureCount++
+			now := options.Now().UTC()
+			runtimeAssertions = append(runtimeAssertions, AssertionRecord{
+				ID: fmt.Sprintf("scenario_snapshot_%06d", snapshotFailureCount), Passed: false,
+				Message:   "scenario observation lost deployment or contract state",
+				StartedAt: started.Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano),
+				DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+			})
+			terminalErr = errors.New("scenario observation lost deployment or contract state")
+			current = previous
+			break scenarioLoop
+		}
 		if len(faults) != 0 {
+			if options.Adversaries != nil {
+				// Attribute endpoint failures before applying a due process fault;
+				// the actor may have an in-flight request when SIGTERM/SIGSTOP lands.
+				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, current.Status.Contracts.FinalizedHead.Number, true))
+			}
 			faultErr = advanceFaults(ctx, current.Status.Contracts.FinalizedHead, definition.Faults, faults, options.FaultDriver)
+			if options.Adversaries != nil {
+				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, current.Status.Contracts.FinalizedHead.Number, false))
+			}
 			faultBytes, _ := json.MarshalIndent(struct {
 				Schema string                `json:"schema"`
 				Faults []ScenarioFaultRecord `json:"faults"`
 			}{"urnetwork-sim-faults-v1", faults}, "", "  ")
 			if err := atomicWrite(filepath.Join(runDir, "faults.json"), append(faultBytes, '\n'), 0o644); err != nil {
-				return nil, err
+				return initialFailure(current, fmt.Errorf("persist scenario faults: %w", err))
 			}
 		}
 		if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
-			return nil, err
+			return initialFailure(current, fmt.Errorf("persist scenario observation: %w", err))
 		}
 		assertions = appendFaultAssertions(evaluateScenario(cfg, definition, start, current, started), faults, started, current)
 		if faultErr != nil {
@@ -1665,26 +1866,27 @@ scenarioLoop:
 		sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
 	}
 	completed := options.Now().UTC()
-	failed := 0
-	for _, assertion := range assertions {
-		if !assertion.Passed {
-			failed++
-		}
+	adversaryEvidence, adversaryRecords, adversaryErr := finalizeAdversaryEvidence(options.Adversaries, runDir, started, current.ObservationHash, completed)
+	adversariesFinalized = true
+	assertions = append(assertions, runtimeAssertions...)
+	assertions = append(assertions, adversaryRecords...)
+	if adversaryErr != nil && terminalErr == nil {
+		terminalErr = adversaryErr
 	}
+	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
+	completed = options.Now().UTC()
 	result := &ScenarioResult{
 		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: runID,
-		DeploymentID: cfg.Config.Deployment.DeploymentID, Name: definition.Name, ScenarioDefinition: definitionHash, ScenarioMatrix: definition.MatrixHash,
+		DeploymentID: cfg.Config.Deployment.DeploymentID, Name: definition.Name, ScenarioDefinition: definitionHash, ScenarioMatrix: definition.MatrixHash, AdversarialMatrix: definition.AdversarialMatrixHash,
 		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
 		StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano),
 		StartHead: start.Status.Contracts.FinalizedHead, EndHead: current.Status.Contracts.FinalizedHead,
 		StartEpoch: start.Status.Contracts.CurrentEpoch, EndEpoch: current.Status.Contracts.CurrentEpoch,
-		AssertionCount: len(assertions), FailedAssertionCount: failed, Assertions: assertions, Faults: faults,
+		Assertions: assertions, Faults: faults, Adversaries: adversaryEvidence,
 		ValueReconciliation: map[string]string{"captured_rao": current.Status.Contracts.TotalCaptured, "paid_rao": current.Status.Contracts.TotalPaid, "outstanding_liability_rao": current.Status.Contracts.Outstanding, "reserve_principal_rao": current.Status.Contracts.ReservePrincipal, "reserve_live_stake_rao": current.Status.Contracts.ReserveLiveStake},
 		Result:              "pass",
 	}
-	if failed != 0 {
-		result.Result = "fail"
-	}
+	attachScenarioAnomalyGate(result, completed, start, current, observationHistory...)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 	if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 		return nil, err
@@ -1698,44 +1900,59 @@ scenarioLoop:
 			publishErr = verifyPublishedEvidenceOrigins(ctx, cfg, options.Roles, published)
 		}
 		if publishErr != nil {
-			result.Result = "fail"
-			result.FailedAssertionCount++
-			result.AssertionCount++
 			result.Assertions = append(result.Assertions, AssertionRecord{ID: "evidence_publication", Passed: false, Message: publishErr.Error(), StartedAt: result.StartedAt, CompletedAt: options.Now().UTC().Format(time.RFC3339Nano), ObservationHash: current.ObservationHash})
 		} else {
 			result.PublishedEvidence = published
 		}
+		attachScenarioAnomalyGate(result, options.Now().UTC(), start, current, observationHistory...)
 		result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 		if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 			return nil, err
 		}
 	}
+	finalEvidenceFailure := func(id string, failure error) (*ScenarioResult, error) {
+		now := options.Now().UTC()
+		result.Assertions = append(result.Assertions, AssertionRecord{
+			ID: id, Passed: false, Message: failure.Error(), StartedAt: result.StartedAt,
+			CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(),
+			ObservationHash: current.ObservationHash,
+		})
+		attachScenarioAnomalyGate(result, now, start, current, observationHistory...)
+		result.EvidenceHash, _ = canonicalScenarioResultHash(result)
+		return result, errors.Join(failure, writeScenarioOutputs(cfg, runDir, result, current))
+	}
 	if result.Result == "pass" {
 		if err := scanEvidenceSecrets(stateDir, runDir, options.Roles, cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword); err != nil {
-			return result, err
+			return finalEvidenceFailure("evidence_secret_scan", err)
 		}
 		hashes, err := evidenceFileHashes(runDir)
 		if err != nil {
-			return result, err
+			return finalEvidenceFailure("evidence_file_hashes", err)
 		}
 		if options.Roles == nil {
 			complete := map[string]any{"schema": "urnetwork-sim-complete-v1", "run_id": runID, "result_hash": result.EvidenceHash, "files": hashes}
-			b, _ := json.MarshalIndent(complete, "", "  ")
+			b, marshalErr := json.MarshalIndent(complete, "", "  ")
+			if marshalErr != nil {
+				return finalEvidenceFailure("complete_evidence_encoding", marshalErr)
+			}
 			if err := atomicWrite(filepath.Join(runDir, "complete.json"), append(b, '\n'), 0o644); err != nil {
-				return result, err
+				return finalEvidenceFailure("complete_evidence_write", err)
 			}
 		} else {
 			owner, ok := options.Roles.EVM["testnet-owner"]
 			if !ok {
-				return result, errors.New("testnet owner role is missing")
+				return finalEvidenceFailure("complete_evidence_signer", errors.New("testnet owner role is missing"))
 			}
 			complete, err := signEvidence(cfg, "scenario-complete", runID, map[string]any{"result_hash": result.EvidenceHash, "files": hashes}, owner)
 			if err != nil {
-				return result, err
+				return finalEvidenceFailure("complete_evidence_signature", err)
 			}
-			b, _ := json.MarshalIndent(complete, "", "  ")
+			b, marshalErr := json.MarshalIndent(complete, "", "  ")
+			if marshalErr != nil {
+				return finalEvidenceFailure("complete_evidence_encoding", marshalErr)
+			}
 			if err := atomicWrite(filepath.Join(runDir, "complete.json"), append(b, '\n'), 0o644); err != nil {
-				return result, err
+				return finalEvidenceFailure("complete_evidence_write", err)
 			}
 		}
 	}
@@ -1753,6 +1970,16 @@ func canonicalScenarioResultHash(result *ScenarioResult) (string, error) {
 }
 
 func writeScenarioOutputs(cfg *ResolvedConfig, runDir string, result *ScenarioResult, observation *ScenarioObservation) error {
+	if result.Anomalies == nil {
+		return errors.New("scenario result has no anomaly ledger")
+	}
+	anomalies, err := json.MarshalIndent(result.Anomalies, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := atomicWrite(filepath.Join(runDir, "anomalies.json"), append(anomalies, '\n'), 0o644); err != nil {
+		return err
+	}
 	assertions, err := json.MarshalIndent(assertionFile{Schema: "urnetwork-sim-assertions-v1", Assertions: result.Assertions}, "", "  ")
 	if err != nil {
 		return err
@@ -1837,7 +2064,7 @@ func fetchVerifyPublicKeys(ctx context.Context, endpoint string) (map[byte]strin
 }
 
 func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir string) error {
-	driver := &liveScenarioFaultDriver{stateDir: stateDir}
+	driver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}
 	record := verifyKeyRotationEvidence{Schema: "urnetwork-verify-key-rotation-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, PolicyHash: cfg.PolicyHash}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		configBytes, expected, err := operatorVerifyConfig(cfg, operator, true)
@@ -1897,72 +2124,94 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	if err != nil {
 		return err
 	}
-	if name == "precompile-conformance" {
-		if executor == nil {
-			return errors.New("precompile conformance requires the approved deployment executor")
-		}
-		count := 0
-		for _, action := range executor.plan.Actions {
-			if strings.HasPrefix(action.ID, "precompile.") {
-				if err := executor.Execute(ctx, action); err != nil {
-					return err
-				}
-				count++
-			}
-		}
-		if count != 10 {
-			return fmt.Errorf("approved plan has %d precompile actions, want exactly 10", count)
-		}
-	}
-	if name == "release-1.0" {
-		if executor == nil {
-			return errors.New("release scenario requires the approved deployment executor")
-		}
-		precompile, readErr := loadPrecompileEvidence(stateDir)
-		if readErr != nil {
-			return fmt.Errorf("release scenario requires a completed precompile-conformance gate: %w", readErr)
-		}
-		if executor.payloads == nil {
-			return errors.New("release scenario requires installed deployment payloads")
-		}
-		if identityErr := validatePrecompileEvidenceIdentity(cfg, &executor.payloads.Manifest, precompile); identityErr != nil {
-			return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
-		}
-		if !precompileEvidenceComplete(precompile) {
-			return errors.New("release scenario requires a completed precompile-conformance gate")
-		}
-		waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
-		if err := waitForGovernanceDrillReady(ctx, executor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
-			return err
-		}
-		for _, action := range executor.plan.Actions {
-			if strings.HasPrefix(action.ID, "governance.") {
-				if err := executor.Execute(ctx, action); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if name == "production-soak" {
-		if executor == nil {
-			return errors.New("production soak requires the approved deployment executor")
-		}
-		for _, action := range executor.plan.Actions {
-			if action.ID == "production.schedule-policy" || action.ID == "production.hyperparameter.immunity_period" {
-				if err := executor.Execute(ctx, action); err != nil {
-					return err
-				}
-			}
-		}
-		if err := rotateOperatorVerifyKeys(ctx, cfg, stateDir); err != nil {
-			return fmt.Errorf("rotate operator verify keys: %w", err)
-		}
-	}
 	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
 	if err != nil {
 		return err
 	}
+	var campaign adversaryCampaign
+	if definition.AdversarialMatrixHash != "" {
+		matrix, matrixErr := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+		if matrixErr != nil {
+			return matrixErr
+		}
+		if matrix.Hash != definition.AdversarialMatrixHash {
+			return errors.New("adversarial matrix changed after scenario definition validation")
+		}
+		actors, actorErr := newLiveAdversaryActors(cfg, stateDir, roles)
+		if actorErr != nil {
+			return actorErr
+		}
+		liveCampaign, campaignErr := newAdversaryCampaign(cfg.Config.Scenarios.Adversaries, matrix, actors)
+		if campaignErr != nil {
+			return campaignErr
+		}
+		campaign = liveCampaign
+	}
+	prepare := func(prepareCtx context.Context) error {
+		if name == "precompile-conformance" {
+			if executor == nil {
+				return errors.New("precompile conformance requires the approved deployment executor")
+			}
+			count := 0
+			for _, action := range executor.plan.Actions {
+				if strings.HasPrefix(action.ID, "precompile.") {
+					if err := executor.Execute(prepareCtx, action); err != nil {
+						return err
+					}
+					count++
+				}
+			}
+			if count != 10 {
+				return fmt.Errorf("approved plan has %d precompile actions, want exactly 10", count)
+			}
+		}
+		if name == "release-1.0" {
+			if executor == nil {
+				return errors.New("release scenario requires the approved deployment executor")
+			}
+			precompile, readErr := loadPrecompileEvidence(stateDir)
+			if readErr != nil {
+				return fmt.Errorf("release scenario requires a completed precompile-conformance gate: %w", readErr)
+			}
+			if executor.payloads == nil {
+				return errors.New("release scenario requires installed deployment payloads")
+			}
+			if identityErr := validatePrecompileEvidenceIdentity(cfg, &executor.payloads.Manifest, precompile); identityErr != nil {
+				return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
+			}
+			if !precompileEvidenceComplete(precompile) {
+				return errors.New("release scenario requires a completed precompile-conformance gate")
+			}
+			waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
+			if err := waitForGovernanceDrillReady(prepareCtx, executor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
+				return err
+			}
+			for _, action := range executor.plan.Actions {
+				if strings.HasPrefix(action.ID, "governance.") {
+					if err := executor.Execute(prepareCtx, action); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if name == "production-soak" {
+			if executor == nil {
+				return errors.New("production soak requires the approved deployment executor")
+			}
+			for _, action := range executor.plan.Actions {
+				if action.ID == "production.schedule-policy" || action.ID == "production.hyperparameter.immunity_period" {
+					if err := executor.Execute(prepareCtx, action); err != nil {
+						return err
+					}
+				}
+			}
+			if err := rotateOperatorVerifyKeys(prepareCtx, cfg, stateDir); err != nil {
+				return fmt.Errorf("rotate operator verify keys: %w", err)
+			}
+		}
+		return nil
+	}
 	probe := &liveScenarioProbe{cfg: cfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
-	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir}})
+	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, Adversaries: campaign, Prepare: prepare})
 	return err
 }

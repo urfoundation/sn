@@ -21,6 +21,27 @@ type staticScenarioProbe struct {
 	calls        int
 }
 
+type transientErrorScenarioProbe struct {
+	start, recovered *ScenarioObservation
+	calls            int
+}
+
+func (p *transientErrorScenarioProbe) Snapshot(context.Context) (*ScenarioObservation, error) {
+	p.calls++
+	switch p.calls {
+	case 1:
+		copy := *p.start
+		copy.ObservationHash, _ = canonicalHashHex(copy)
+		return &copy, nil
+	case 2:
+		return nil, errors.New("temporary finalized-head RPC failure")
+	default:
+		copy := *p.recovered
+		copy.ObservationHash, _ = canonicalHashHex(copy)
+		return &copy, nil
+	}
+}
+
 func (p *staticScenarioProbe) Snapshot(context.Context) (*ScenarioObservation, error) {
 	if p.err != nil {
 		return nil, p.err
@@ -64,7 +85,7 @@ func TestScenarioRunnerWritesCompleteEvidenceOnlyOnPass(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	runDir := filepath.Join(dir, "runs", result.RunID)
-	for _, name := range []string{"observations.jsonl", "assertions.json", "analysis.json", "analysis.html", "junit.xml", "result.json", "complete.json"} {
+	for _, name := range []string{"observations.jsonl", "assertions.json", "anomalies.json", "analysis.json", "analysis.html", "junit.xml", "result.json", "complete.json"} {
 		if _, err := os.Stat(filepath.Join(runDir, name)); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -74,6 +95,11 @@ func TestScenarioRunnerWritesCompleteEvidenceOnlyOnPass(t *testing.T) {
 	if json.Unmarshal(b, &complete) != nil || complete["schema"] != "urnetwork-sim-complete-v1" {
 		t.Fatalf("invalid complete evidence: %s", b)
 	}
+	var anomalies ScenarioAnomalyLedger
+	b, _ = os.ReadFile(filepath.Join(runDir, "anomalies.json"))
+	if json.Unmarshal(b, &anomalies) != nil || anomalies.Status != "clean" || len(anomalies.Entries) != 0 {
+		t.Fatalf("passing run anomaly ledger = %+v (%s)", anomalies, b)
+	}
 }
 
 func TestScenarioRunnerFailureHasNoCompleteMarker(t *testing.T) {
@@ -81,7 +107,7 @@ func TestScenarioRunnerFailureHasNoCompleteMarker(t *testing.T) {
 	dir := t.TempDir()
 	definition := scenarioDefinition{Name: "unit-fail", Checks: []scenarioCheck{{ID: "never", Check: func(*scenarioEvaluation) (bool, string) { return false, "not yet" }}}}
 	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, &staticScenarioProbe{observations: []*ScenarioObservation{testScenarioObservation(cfg, 0)}}, scenarioRunOptions{PollInterval: time.Millisecond, Timeout: 3 * time.Millisecond})
-	if err == nil || result == nil || result.Result != "fail" || result.FailedAssertionCount != 1 {
+	if err == nil || result == nil || result.Result != "fail" || result.FailedAssertionCount != 2 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	runDir := filepath.Join(dir, "runs", result.RunID)
@@ -91,6 +117,35 @@ func TestScenarioRunnerFailureHasNoCompleteMarker(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(runDir, "result.json")); err != nil {
 		t.Fatal(err)
 	}
+	var anomalies ScenarioAnomalyLedger
+	b, _ := os.ReadFile(filepath.Join(runDir, "anomalies.json"))
+	if json.Unmarshal(b, &anomalies) != nil || anomalies.Status != "open" || len(anomalies.Entries) == 0 {
+		t.Fatalf("failed run anomaly ledger = %+v (%s)", anomalies, b)
+	}
+}
+
+func TestScenarioRunnerRetainsTransientSnapshotFailureAfterRecovery(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	start := testScenarioObservation(cfg, 0)
+	recovered := testScenarioObservation(cfg, 1)
+	definition := scenarioDefinition{Name: "unit-transient-rpc", Checks: []scenarioCheck{{ID: "epoch-advanced", Check: func(e *scenarioEvaluation) (bool, string) {
+		return e.Current.Status.Contracts.CurrentEpoch >= 1, "wait for recovered epoch"
+	}}}}
+	probe := &transientErrorScenarioProbe{start: start, recovered: recovered}
+	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, probe, scenarioRunOptions{PollInterval: time.Microsecond, Timeout: time.Second})
+	if err == nil || result == nil || result.Result != "fail" || probe.calls < 3 {
+		t.Fatalf("result=%+v error=%v calls=%d", result, err, probe.calls)
+	}
+	found := false
+	for _, assertion := range result.Assertions {
+		if strings.HasPrefix(assertion.ID, "scenario_snapshot_") && !assertion.Passed && strings.Contains(assertion.Message, "temporary finalized-head RPC failure") {
+			found = true
+		}
+	}
+	if !found || result.Anomalies == nil || result.Anomalies.Status != "open" {
+		t.Fatalf("transient snapshot failure was lost: assertions=%+v anomalies=%+v", result.Assertions, result.Anomalies)
+	}
 }
 
 func TestScenarioRunnerPersistsInitialObservationFailure(t *testing.T) {
@@ -98,17 +153,49 @@ func TestScenarioRunnerPersistsInitialObservationFailure(t *testing.T) {
 	dir := t.TempDir()
 	definition := scenarioDefinition{Name: "unit-initial-failure", Checks: []scenarioCheck{{ID: "unused", Check: func(*scenarioEvaluation) (bool, string) { return true, "" }}}}
 	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, &staticScenarioProbe{err: errors.New("rpc unavailable")}, scenarioRunOptions{})
-	if err == nil || result == nil || result.Result != "fail" || result.FailedAssertionCount != 1 {
+	if err == nil || result == nil || result.Result != "fail" || result.FailedAssertionCount != 2 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	runDir := filepath.Join(dir, "runs", result.RunID)
-	for _, name := range []string{"result.json", "assertions.json", "analysis.json", "junit.xml"} {
+	for _, name := range []string{"result.json", "assertions.json", "anomalies.json", "analysis.json", "junit.xml"} {
 		if _, statErr := os.Stat(filepath.Join(runDir, name)); statErr != nil {
 			t.Fatalf("missing %s: %v", name, statErr)
 		}
 	}
 	if _, statErr := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("initial failure wrote complete marker: %v", statErr)
+	}
+}
+
+func TestScenarioPreparationRunsUnderAdversariesAndPersistsFailure(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	campaign := &scenarioAdversaryStub{evidence: healthyAdversaryEvidence()}
+	definition := scenarioDefinition{
+		Name: "unit-preparation-failure", AdversarialMatrixHash: campaign.evidence.MatrixHash,
+		Checks: []scenarioCheck{{ID: "unused", Check: func(*scenarioEvaluation) (bool, string) { return true, "" }}},
+	}
+	probe := &staticScenarioProbe{err: errors.New("probe must not run after preparation failure")}
+	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, probe, scenarioRunOptions{
+		Adversaries: campaign,
+		Prepare: func(context.Context) error {
+			if !campaign.started || campaign.happyStarted.IsZero() {
+				t.Fatal("scenario preparation ran before the adversarial campaign")
+			}
+			return errors.New("governance preparation failed")
+		},
+	})
+	if err == nil || result == nil || result.Result != "fail" || campaign.startCalls != 1 || campaign.stopCalls != 1 || probe.calls != 0 {
+		t.Fatalf("result=%+v err=%v campaign=%+v probe_calls=%d", result, err, campaign, probe.calls)
+	}
+	runDir := filepath.Join(dir, "runs", result.RunID)
+	for _, name := range []string{"result.json", "assertions.json", "anomalies.json", "adversaries.json"} {
+		if _, statErr := os.Stat(filepath.Join(runDir, name)); statErr != nil {
+			t.Fatalf("missing %s: %v", name, statErr)
+		}
+	}
+	if result.Anomalies == nil || result.Anomalies.Status != "open" || len(result.Anomalies.Entries) == 0 {
+		t.Fatalf("preparation failure anomaly ledger=%+v", result.Anomalies)
 	}
 }
 
@@ -223,7 +310,8 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if definition.GoalEpochs != 3 || len(definition.Faults) != 24 {
+	wantFaults := (2*cfg.Config.Topology.Operators + 1) + (1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators)
+	if definition.GoalEpochs != 3 || len(definition.Faults) != wantFaults {
 		t.Fatalf("production definition = %+v", definition)
 	}
 	start := testScenarioObservation(cfg, 20)

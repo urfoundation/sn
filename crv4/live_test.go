@@ -159,6 +159,9 @@ func TestLiveDryRunExtrinsicEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCommitExtrinsic: %v", err)
 	}
+	if !SignedExtrinsicUsesImmortalEra(ext) {
+		t.Fatal("release CRv4 commit does not contain exactly one immortal era")
+	}
 	hexEnc, err := EncodeExtrinsic(ext)
 	if err != nil {
 		t.Fatalf("EncodeExtrinsic: %v", err)

@@ -29,6 +29,24 @@ func (d *fakeFaultDriver) Restore(_ context.Context, spec scenarioFaultSpec) ([]
 
 func (d *fakeFaultDriver) Recover(context.Context) error { d.recovered++; return nil }
 
+type fakeContainerRuntime struct {
+	stopped []string
+	started []string
+	nextPID int
+}
+
+func (runtime *fakeContainerRuntime) Stop(_ context.Context, spec managedContainerSpec) (int, error) {
+	runtime.stopped = append(runtime.stopped, spec.Name)
+	runtime.nextPID++
+	return 100 + runtime.nextPID, nil
+}
+
+func (runtime *fakeContainerRuntime) Start(_ context.Context, spec managedContainerSpec) (int, error) {
+	runtime.started = append(runtime.started, spec.Name)
+	runtime.nextPID++
+	return 200 + runtime.nextPID, nil
+}
+
 func TestFaultStateMachineUsesFinalizedBlocks(t *testing.T) {
 	specs := []scenarioFaultSpec{{ID: "miner-offline", Kind: "process-pause", Targets: []string{"miner-8"}, TriggerOffsetBlocks: 2, DurationBlocks: 3}}
 	records, err := initializeFaultRecords(100, specs)
@@ -43,6 +61,42 @@ func TestFaultStateMachineUsesFinalizedBlocks(t *testing.T) {
 	}
 	if !faultsComplete(records) || len(driver.applied) != 1 || len(driver.restored) != 1 || records[0].AppliedBlock != 102 || records[0].RestoredBlock != 105 {
 		t.Fatalf("records=%+v driver=%+v", records, driver)
+	}
+}
+
+func TestFaultImpactAttributionIncludesDependencyConsumersOnlyWhileActive(t *testing.T) {
+	specs := []scenarioFaultSpec{{
+		ID: "postgres", Kind: "container-restart", Targets: []string{"operator-1-postgres"},
+		Impacts: []string{"operator-1-api", "validator-1"}, TriggerOffsetBlocks: 2, DurationBlocks: 3,
+	}}
+	records, err := initializeFaultRecords(100, specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := scenarioFaultTargets(records, 101, true); len(got) != 0 {
+		t.Fatalf("pre-fault targets=%v", got)
+	}
+	got := scenarioFaultTargets(records, 102, true)
+	want := []string{"operator-1-api", "operator-1-postgres", "validator-1"}
+	if len(got) != len(want) {
+		t.Fatalf("due fault targets=%v, want=%v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("due fault targets=%v, want=%v", got, want)
+		}
+	}
+	records[0].Status = "active"
+	observation := &ScenarioObservation{ObservationHash: "old"}
+	if err := annotateScenarioExpectedFaults(observation, records); err != nil {
+		t.Fatal(err)
+	}
+	if len(observation.ExpectedFaultTargets) != len(want) || observation.ObservationHash == "old" {
+		t.Fatalf("annotated observation=%+v", observation)
+	}
+	records[0].Status = "restored"
+	if got := scenarioFaultTargets(records, 200, false); len(got) != 0 {
+		t.Fatalf("restored fault targets=%v", got)
 	}
 }
 
@@ -66,18 +120,31 @@ func TestReleaseQualityFaultSelectsOnlyTailCohort(t *testing.T) {
 func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	faults := productionRollingFaults(cfg)
-	want := 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	dependencyCount := 2*cfg.Config.Topology.Operators + 1
+	persistentCount := 1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	want := dependencyCount + persistentCount
 	if len(faults) != want {
 		t.Fatalf("fault count = %d, want %d", len(faults), want)
 	}
 	seen := map[string]bool{}
 	var priorEnd uint64
-	for _, fault := range faults {
-		if fault.Kind != "process-restart" || len(fault.Targets) != 1 || seen[fault.Targets[0]] || fault.TriggerOffsetBlocks <= priorEnd {
+	for index, fault := range faults {
+		wantKind := "container-restart"
+		if index == dependencyCount-1 {
+			wantKind = "process-pause"
+		} else if index >= dependencyCount {
+			wantKind = "process-restart"
+		}
+		if fault.Kind != wantKind || len(fault.Targets) != 1 || (index >= dependencyCount && seen[fault.Targets[0]]) || fault.TriggerOffsetBlocks <= priorEnd {
 			t.Fatalf("overlapping or duplicate fault: %+v prior_end=%d", fault, priorEnd)
 		}
-		seen[fault.Targets[0]] = true
+		if index >= dependencyCount {
+			seen[fault.Targets[0]] = true
+		}
 		priorEnd = fault.TriggerOffsetBlocks + fault.DurationBlocks
+	}
+	if !seen[workloadRPCProxyProcessID] {
+		t.Fatal("persistent workload RPC proxy was not restart-tested")
 	}
 }
 
@@ -87,13 +154,15 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := 1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	dependencyCount := 2*cfg.Config.Topology.Operators + 1
+	persistentCount := 1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	want := 1 + dependencyCount + persistentCount
 	if len(faults) != want || faults[0].ID != "quality-cohort" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)
 	}
 	priorEnd := faults[0].TriggerOffsetBlocks + faults[0].DurationBlocks
 	for _, fault := range faults[1:] {
-		if fault.Kind != "process-restart" || fault.TriggerOffsetBlocks <= priorEnd {
+		if fault.TriggerOffsetBlocks <= priorEnd {
 			t.Fatalf("release faults overlap: %+v prior_end=%d", fault, priorEnd)
 		}
 		priorEnd = fault.TriggerOffsetBlocks + fault.DurationBlocks
@@ -101,23 +170,57 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 }
 
 func TestRestartFaultAssertionRequiresReplacementPID(t *testing.T) {
-	base := ScenarioFaultRecord{
-		ID: "restart", Kind: "process-restart", Targets: []string{"validator-1"},
-		TriggerBlock: 10, RestoreBlock: 12, AppliedBlock: 10, RestoredBlock: 12, Status: "restored",
-		Processes: []FaultProcessEvidence{{ID: "validator-1", PID: 100}},
+	for _, kind := range []string{"process-restart", "container-restart"} {
+		base := ScenarioFaultRecord{
+			ID: "restart", Kind: kind, Targets: []string{"validator-1"},
+			TriggerBlock: 10, RestoreBlock: 12, AppliedBlock: 10, RestoredBlock: 12, Status: "restored",
+			Processes: []FaultProcessEvidence{{ID: "validator-1", PID: 100}},
+		}
+		observation := &ScenarioObservation{ObservationHash: "0xobservation"}
+		replaced := base
+		replaced.RestoredProcesses = []FaultProcessEvidence{{ID: "validator-1", PID: 101}}
+		assertions := appendFaultAssertions(nil, []ScenarioFaultRecord{replaced}, time.Now(), observation)
+		if len(assertions) != 1 || !assertions[0].Passed {
+			t.Fatalf("%s replacement PID was not accepted: %+v", kind, assertions)
+		}
+		unchanged := base
+		unchanged.RestoredProcesses = []FaultProcessEvidence{{ID: "validator-1", PID: 100}}
+		assertions = appendFaultAssertions(nil, []ScenarioFaultRecord{unchanged}, time.Now(), observation)
+		if len(assertions) != 1 || assertions[0].Passed {
+			t.Fatalf("%s unchanged PID was accepted: %+v", kind, assertions)
+		}
 	}
-	observation := &ScenarioObservation{ObservationHash: "0xobservation"}
-	replaced := base
-	replaced.RestoredProcesses = []FaultProcessEvidence{{ID: "validator-1", PID: 101}}
-	assertions := appendFaultAssertions(nil, []ScenarioFaultRecord{replaced}, time.Now(), observation)
-	if len(assertions) != 1 || !assertions[0].Passed {
-		t.Fatalf("replacement PID was not accepted: %+v", assertions)
+}
+
+func TestLiveFaultDriverRestartsOnlySimulatorOwnedDependency(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	runtime := &fakeContainerRuntime{}
+	driver := &liveScenarioFaultDriver{stateDir: t.TempDir(), cfg: cfg, containers: runtime}
+	fault := scenarioFaultSpec{
+		ID: "postgres-outage", Kind: "container-restart", Targets: []string{"operator-1-postgres"},
+		Impacts: operatorDependencyImpacts(cfg, 1), TriggerOffsetBlocks: 1, DurationBlocks: 1,
 	}
-	unchanged := base
-	unchanged.RestoredProcesses = []FaultProcessEvidence{{ID: "validator-1", PID: 100}}
-	assertions = appendFaultAssertions(nil, []ScenarioFaultRecord{unchanged}, time.Now(), observation)
-	if len(assertions) != 1 || assertions[0].Passed {
-		t.Fatalf("unchanged PID was accepted: %+v", assertions)
+	before, err := driver.Apply(context.Background(), fault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 1 || before[0].ID != "operator-1-postgres" || before[0].Role != "postgresql" || before[0].PID <= 1 || len(runtime.stopped) != 1 {
+		t.Fatalf("container apply evidence=%+v runtime=%+v", before, runtime)
+	}
+	after, err := driver.Restore(context.Background(), fault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].PID == before[0].PID || len(runtime.started) != 1 || after[0].Identity != before[0].Identity {
+		t.Fatalf("container restore evidence=%+v runtime=%+v", after, runtime)
+	}
+	if _, err := os.Stat(driver.activePath()); !os.IsNotExist(err) {
+		t.Fatalf("active dependency fault survived restore: %v", err)
+	}
+	bad := fault
+	bad.Targets = []string{"shared-subtensor"}
+	if _, err := driver.Apply(context.Background(), bad); err == nil {
+		t.Fatal("non-simulator dependency was accepted as a container fault target")
 	}
 }
 

@@ -126,8 +126,8 @@ Options:
     --api_url=<api_url>              Specify a custom API URL to use.
 	--config=<path>                    Strict release-1.0 daemon/component configuration.
     --connect_url=<connect_url>      Specify a custom connect URL to use.
-    <api_url>                        API URL to save as the chosen network (http:// or https://).
-    <connect_url>                    Connect URL to save as the chosen network (ws:// or wss://).
+    <api_url>                        API URL to save (https://, or http:// only for an explicit loopback host).
+    <connect_url>                    Connect URL to save (wss://, or ws:// only for an explicit loopback host).
     --reset                          With choose_network, clear the saved network and revert to the main network.
     --show                           With choose_network, print the network currently in effect and exit.
     --user_auth=<user_auth>	         Login with a username.

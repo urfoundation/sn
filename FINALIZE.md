@@ -1,15 +1,17 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation complete locally; testnet inputs, alpha bootstrap and isolated dependency preflight complete; full `sim-testnet` launch is fail-closed while the private Subtensor archive catches up, 2026-08-20 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; testnet inputs, alpha bootstrap and isolated dependency preflight complete; full `sim-testnet` launch is fail-closed while the private Subtensor archive catches up, 2026-08-21 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
 This document is both the original audit plan and its completion record. The F0-F6
-engineering work is implemented in this checkout. M0A-M3 remain execution proof
+engineering work is implemented in this checkout. M0A-M3 and MR remain execution proof
 gates, not missing code. The `testnet-` values are filled and netuid 521 is activated
 with sufficient alpha. M0A still requires the shared private Subtensor node to reach
-the runtime-447 finalized tip; M0B-M3 require a green read-only `doctor` and explicit approval of the
-exact spend-bounded plan hash. The full local integration topology has not been
+the runtime-447 finalized tip; M0B-M3 and MR require a green read-only `doctor` and an
+exact spend-bounded plan hash. The user has granted standing authorization in
+this testnet session to generate, verify, and apply that exact plan once the
+doctor is green; this does not authorize any mainnet write. The full local integration topology has not been
 launched; only the separately approved, bounded activation/alpha bootstrap was
 written to testnet.
 
@@ -20,7 +22,7 @@ written to testnet.
 The release-1.0 implementation runs its **read-only testnet preflight** against the
 reachable private RPC and fails closed until that archive is current. It is not yet
 a testnet-validated release: Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
-authenticated live readiness checks, but the full M0A topology and live M0B-M3 campaign have not
+authenticated live readiness checks, but the full M0A topology and live M0B-M3/MR campaign have not
 run. Wallet control, netuid 521, balances, runtime call shapes, subnet activation
 and sufficient campaign alpha have been independently verified. The remaining
 distinction is fail-closed in code; no default or unprefixed mainnet value can
@@ -59,7 +61,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3 | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-20 final read-only preflight observed two peers and private finalized block 2,134,528/runtime 186 against public block 7,827,242/runtime 447. A full archive catch-up is expected to take roughly 10–24 hours. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and explicit approval of the regenerated plan hash; vault inputs and alpha are ready. |
+| M0A-M3/MR | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-20 final read-only preflight observed two peers and private finalized block 2,134,528/runtime 186 against public block 7,827,242/runtime 447. A full archive catch-up is expected to take roughly 10–24 hours. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and the exact regenerated plan hash; vault inputs, alpha, and standing testnet authorization are ready. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -155,6 +157,108 @@ signed dry-run extrinsic=416 bytes (not submitted)
 This proves current metadata decoding and construction, not funded submission or reveal. The public EVM service rejected `eth_getLogs` as a disallowed method; it cannot be the event-indexing fallback.
 
 The authoritative upstream references for the runtime/operations work are the [RaoFoundation Subtensor v447 source](https://github.com/RaoFoundation/subtensor/tree/v447), its [node operation guide](https://github.com/RaoFoundation/subtensor/blob/v447/docs/guides/running-a-node.mdx), and its [EVM guide](https://github.com/RaoFoundation/subtensor/blob/v447/docs/guides/evm/index.mdx). The node guide states that public endpoints are rate limited, lite nodes retain only recent state, and historical/indexer workloads need archive access.
+
+### 2.4 Bittensor adversarial research and executable coverage
+
+The release threat catalogue is the checked-in, canonically hashed
+[`docs/spec/adversarial-matrix-v1.json`](docs/spec/adversarial-matrix-v1.json).
+It has 54 mandatory rows: 12 live-safe exercises, 27 bounded emulations, nine
+local-runtime-only attacks with continuous live sentinels, and six
+observation-only risks. A matrix row is incomplete unless it names sources,
+preconditions, execution mode, concurrent actors, oracle, metrics, stop
+conditions, and checked-in tests. The loader rejects missing rows, unknown
+actors, missing tests, unsafe modes, any omission of a published advisory, an
+unreviewed/mismapped issue source, or a row for which no mapped actor can emit a
+declared metric. Runtime evidence is stricter: every passing vector must contain
+at least one actually sampled metric named by that vector.
+
+The final upstream delta review on 2026-08-21 paginated the complete public
+RaoFoundation `bittensor` and `subtensor` issue histories, not only open issues
+or label-filtered search results. The matrix now cites 113 distinct sources,
+including all eight published Subtensor advisories, 63 concrete Subtensor issue
+reports, and every security-relevant issue in the current Bittensor SDK history;
+the latter repository has no issue newer than #3407. Removed issue #3092 contains
+no public failure description and therefore cannot support a test oracle. New
+upstream issues after this snapshot must be reviewed and either mapped or
+explicitly rejected with rationale before regenerating the release lock.
+
+The primary-source review produced these attack families:
+
+| Family | Upstream evidence | Release exercise |
+|---|---|---|
+| Minority cabal, selfish weight, rival knifing, threshold crossing and zero-utility behavior | [Yuma Consensus](https://www.bittensor.com/docs/internals/consensus) and [stake-based consensus research](https://www.bittensor.com/content/consensus_v2) | Continuous stake sweeps below and at kappa; honest-vector preservation, cabal clipping and the exact protection boundary are asserted. |
+| Stale copying, reveal following and free riding | [weight-copying paper](https://docs.bittensor.com/papers/BT-Consensus-based-Weights.pdf) and [CCS poster](https://docs.bittensor.com/papers/ACM_CCS2024_Poster.pdf) | A delayed copier, stale-vector swap and reveal follower run alongside honest validators; commit/reveal lifecycle and finalized ordering are separately checked. |
+| YC3/liquid-alpha bond timing and participation churn | [runtime bond equations](https://www.bittensor.com/docs/internals/consensus), [bond EMA parameters](https://www.bittensor.com/docs/hyperparameters/bonds-moving-avg), [validator permit behavior](https://www.bittensor.com/docs/hyperparameters/max-validators), and the [v446 consensus-mode change](https://www.bittensor.com/releases/v446-upgrade) | The actor sweeps current/previous consensus and sigmoid steepness. An early independent evaluator must retain more than its 60% stake share, a delayed copier less than its 40% share, and permit loss must clear accumulated bonds. |
+| Validator/UID/hotkey churn, Sybil fleets and affiliation masking | Runtime identity/pruning semantics plus the protocol fleet model | Generation, commitment, signature, effective-epoch, live-UID and shared-prefix mutations run continuously; stale or affiliated identities must remain excluded. |
+| Economic and availability pressure | Registration limits, moving-price pruning, reserve-flow accounting, root-basket exits, proxy-stake transaction ordering, RPC/archive behavior and operator dependencies | Common-finalized private/public reads retain UID count, spot/moving alpha price, TAO/alpha reserve minima, lag and hashes while bounded API/RPC pressure, proportional root-exit and sandwich/slippage models, and scheduled process faults run. |
+| UR protocol attacks | Whitepaper/validator threat model and implementation audit | Real concurrent EXTEND/replay, poison distinguishability, vpk rotation, malformed signatures, artifact tamper/equivocation, domain/nonce/expiry replay, rounding/overflow, malicious upgrade, late keeper, carry/claim and dependency-loss actors overlap every happy path. |
+
+The [RaoFoundation advisory index](https://github.com/RaoFoundation/subtensor/security/advisories)
+currently publishes eight advisories. All eight are explicit matrix inputs:
+
+| Advisory | Vector and disposition |
+|---|---|
+| [GHSA-h98r-p37h-h4mv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-h98r-p37h-h4mv) | Fee-free weight block fill; reproduce only on the pinned local runtime, monitor live inclusion/RPC latency. |
+| [GHSA-m759-m8mv-q3m5](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-m759-m8mv-q3m5), [GHSA-qh57-vpv2-3fvp](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-qh57-vpv2-3fvp), [GHSA-xm63-2wwx-pm6w](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-xm63-2wwx-pm6w) | Restricted-proxy coldkey/identity/owner alias bypasses; exact local-runtime authorization tests plus live identity/runtime sentinels. No testnet actor touches a third-party proxy. |
+| [GHSA-vpjj-mhgr-cphg](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-vpjj-mhgr-cphg), [GHSA-wc2g-rc74-vgw3](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-wc2g-rc74-vgw3) | Hotkey cooldown and ChildkeyTake migration; local-runtime reproduction plus continuous generation/binding checks. |
+| [GHSA-rhmm-mqf8-v6gv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-rhmm-mqf8-v6gv) | Root coldkey-index bloat; v447 dense swap-remove/bijection model and runtime pin. |
+| [GHSA-6c95-q3r3-rgwq](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-6c95-q3r3-rgwq) | RootClaimed hotkey-swap watermark inflation; all root-destination cleanliness fields and future owed amount are modeled. |
+
+The archived Python SDK/transport repository has separate, recent
+security-relevant reports. They are release-locked inputs rather than being
+mistaken for Subtensor-runtime advisories:
+
+| Bittensor issue | Vector and release exercise |
+|---|---|
+| [Missing signature accepted by `default_verify` #3392](https://github.com/RaoFoundation/bittensor/issues/3392) | The operator rejects absent and invalid SEED signatures before any trail/DB state exists. The live verify actor alternates both shapes and requires zero unauthorized trails. |
+| [Finalized-head anchored 8-block MEV era #3395](https://github.com/RaoFoundation/bittensor/issues/3395) | The RPC actor continuously records best/finalized lag and whether it consumes an eight-block SDK window. UR's CRv4 signer is regression-tested to use its nonce-protected immortal extrinsic rather than inheriting this SDK wrapper failure. |
+| [Plaintext unauthenticated Dendrite transport #3406](https://github.com/RaoFoundation/bittensor/issues/3406) | Release miners reject non-loopback `http://`/`ws://` operator origins, including one-shot flag overrides. Real loopback FINALs are signed and every canonical/signature mutation must fail. |
+| [Constant empty-field Synapse body hash #3407](https://github.com/RaoFoundation/bittensor/issues/3407) | Every field of a real valid FINAL is mutated independently; canonical validation plus validator/server signatures reject all mutations and the accepted constant-hash count remains zero. |
+
+Runtime v447 postdates the advisories' patched mainnet spec 419, but version
+ordering alone is not accepted as proof: source commit
+`1f090af85d1771c5d8ece1f0910576fbd129906e`, runtime spec, metadata, precompile
+behavior and local regression tests are release-locked together.
+
+Relevant open upstream issues were also reviewed, rather than silently treating
+an advisory-only search as exhaustive:
+
+| Open issue | Release/mainnet disposition |
+|---|---|
+| [Precompile versioning #2455](https://github.com/RaoFoundation/subtensor/issues/2455) | Continuous code/selector/read-battery and runtime drift gate; any change puts writers in safe-read-only mode. |
+| [Depressed-reserve flow #2737](https://github.com/RaoFoundation/subtensor/issues/2737) and [partial coinbase swap accounting #2740](https://github.com/RaoFoundation/subtensor/issues/2740) | Live reserve/price minima plus a signed-flow model run continuously. Mainnet is no-go until the pinned runtime fixes these paths or an exact-runtime proof establishes that the deployed mechanism cannot reach them. |
+| [Invisible root-basket entitlement after unstake #3008](https://github.com/RaoFoundation/subtensor/issues/3008) | A continuous exact proportional-claim/remainder model now covers partial and complete exits, including uint64 boundaries. The release does not root-stake, and MR must independently prove every release coldkey has zero hidden root-basket entitlement; any future root path must atomically inventory and claim it. |
+| [Subnet eviction/first refusal #3024](https://github.com/RaoFoundation/subtensor/issues/3024) | Continuous UID and moving/spot-price sentinel. Mainnet requires a nonzero moving price, immunity/pruning-rank review and an alert/runbook before value launch. |
+| [Metagraph commitment field type confusion #3064](https://github.com/RaoFoundation/subtensor/issues/3064) | Continuous full-registration parser mutations cover `ResetBondsFlag`, multi-field values ending in SHA-256, truncation, trailing bytes and zero hashes. The release accepts only the exact pinned runtime-447 one-field SHA-256 encoding and never relies on a generic metagraph shape. |
+| [Proxy staking without MEV shield #3066](https://github.com/RaoFoundation/subtensor/issues/3066) | A constant-product same-direction front-run model continuously records victim loss and proves a minimum-output bound rejects the hostile ordering. Testnet and mainnet release flows refuse unshielded proxy staking; direct 2-of-3 governance does not waive execution-price limits on any value-bearing swap. |
+
+Closed issues are regression evidence, not erased from the threat model. The
+second source-history pass added ten continuous model/sentinel rows:
+
+| Historical failure family | Primary issues | Concurrent release oracle |
+|---|---|---|
+| Non-atomic composite calls and false success | [failed precompile refund #2156](https://github.com/RaoFoundation/subtensor/issues/2156), [orphaned injection #2661](https://github.com/RaoFoundation/subtensor/issues/2661), [claim paid without transfer #2662](https://github.com/RaoFoundation/subtensor/issues/2662), [partial alpha-fee withdrawal #2664](https://github.com/RaoFoundation/subtensor/issues/2664), [non-atomic recycle/burn #2666](https://github.com/RaoFoundation/subtensor/issues/2666), [price-limit stranded TAO #2735](https://github.com/RaoFoundation/subtensor/issues/2735) | Copy-on-write forced-failure cases require byte-exact rollback, no paid watermark/event, no stranded input and a retryable pending value. |
+| Identity, lock and reward migration loss | [child assignments #2146](https://github.com/RaoFoundation/subtensor/issues/2146), [root dividends #2515](https://github.com/RaoFoundation/subtensor/issues/2515), [aggregate lock over-reduction #2665](https://github.com/RaoFoundation/subtensor/issues/2665), [conviction #2726](https://github.com/RaoFoundation/subtensor/issues/2726), [perpetual-lock downgrade #2739](https://github.com/RaoFoundation/subtensor/issues/2739) | Every security field migrates bijectively; contributor lock mass equals the aggregate, perpetual state remains perpetual, and the old identity is empty. |
+| Order, issuance, reserve and emission drift | [issuance/burn #2274](https://github.com/RaoFoundation/subtensor/issues/2274), [zero-share order charge #2792](https://github.com/RaoFoundation/subtensor/issues/2792), [reserve migration shrink #2793](https://github.com/RaoFoundation/subtensor/issues/2793), [partial-fill double debit #2795](https://github.com/RaoFoundation/subtensor/issues/2795), [dust issuance #2738](https://github.com/RaoFoundation/subtensor/issues/2738), [flow toggle spike #2667](https://github.com/RaoFoundation/subtensor/issues/2667) | Zero/over-fill rejects are state-neutral, replay is idempotent, account sums equal issuance after explicit dust burn, migration includes every reserve component, and pending emissions are never dropped or injected as stale one-block flow. |
+| Runtime/RPC resource exhaustion and panic | [failed-call load #2394](https://github.com/RaoFoundation/subtensor/issues/2394), [transaction-pool panic #2405](https://github.com/RaoFoundation/subtensor/issues/2405), [unbounded root iteration #2411](https://github.com/RaoFoundation/subtensor/issues/2411), [archive-node memory growth #2724](https://github.com/RaoFoundation/subtensor/issues/2724), [unmetered Alpha views #2741](https://github.com/RaoFoundation/subtensor/issues/2741) | Collection/work bounds reject before mutation; capped live RPC/API actors measure finality and latency. Chain-wide load reproduction is M0A-only. |
+| Randomness, registration and liquidity liveness | [concentrated-liquidity freeze #2228](https://github.com/RaoFoundation/subtensor/issues/2228), [drand watermark jump #2794](https://github.com/RaoFoundation/subtensor/issues/2794), [initial owner floor price #2844](https://github.com/RaoFoundation/subtensor/issues/2844), [unequal lock under-backing #3026](https://github.com/RaoFoundation/subtensor/issues/3026) | Far-future randomness rounds are state-neutral rejects; queued registration escrow backs the sum, unpriced owner allocation is zero, failed swaps are atomic/retryable, and live prices/reserves stay above reviewed minima. |
+| Graph/lifecycle cleanup | [child self-loop #2109](https://github.com/RaoFoundation/subtensor/issues/2109), [empty child set #2110](https://github.com/RaoFoundation/subtensor/issues/2110), [zero-row state bloat #2398](https://github.com/RaoFoundation/subtensor/issues/2398), [weights/bonds cleanup #2399](https://github.com/RaoFoundation/subtensor/issues/2399), [lease-derived stranded stake #2663](https://github.com/RaoFoundation/subtensor/issues/2663) | Empty/self/indirect-cycle graph changes reject, dense indexes remain bijective, and lease termination repatriates alpha/locks and clears every derived-coldkey row before removing authority. |
+
+The issue-history audit also binds earlier operational regressions to those same
+oracles: broken rate-limit state ([#2102](https://github.com/RaoFoundation/subtensor/issues/2102)); registration-burn observability/price drift ([#2104](https://github.com/RaoFoundation/subtensor/issues/2104), [#2291](https://github.com/RaoFoundation/subtensor/issues/2291)); stale service/subnet identity ([#2200](https://github.com/RaoFoundation/subtensor/issues/2200), [#2572](https://github.com/RaoFoundation/subtensor/issues/2572)); missing staking indexes ([#2201](https://github.com/RaoFoundation/subtensor/issues/2201)); mechanism-emission and keep-claim errors ([#2194](https://github.com/RaoFoundation/subtensor/issues/2194), [#2195](https://github.com/RaoFoundation/subtensor/issues/2195)); shared-pool precision ([#2336](https://github.com/RaoFoundation/subtensor/issues/2336)); and frozen/lagging RPC nodes plus finalized-head access ([#2553](https://github.com/RaoFoundation/subtensor/issues/2553), [#2639](https://github.com/RaoFoundation/subtensor/issues/2639), [#3068](https://github.com/RaoFoundation/subtensor/issues/3068)). These do not create duplicate rows; their primary URLs are mapped to the exact existing vector and enforced by the matrix loader.
+
+Safety is part of the implementation. Shared-testnet actors use only our
+loopback operator APIs, our identities/netuid and capped read RPC. Chain-wide
+flooding, proxy takeover, cooldown bypass and global state-bloat reproduction are
+confined to the pinned local runtime. All seven actors start before the happy
+path and stop only after final reconciliation. Each needs at least 100
+non-skipped samples spanning control and attack phases, zero unexpected errors,
+and p99 latency at or below 15 seconds. Expected 400/409/429 responses are
+classified separately. `adversaries.json` retains actor lifecycle, request and
+in-flight counts, latency distributions, each vector's required and actually
+measured metric names, per-vector status, and full-campaign min/max/last numeric
+sentinels. An anomaly is a release failure and root-cause
+work item, never accepted as background adversarial noise.
 
 ## 3. Normative interpretation of the whitepaper
 
@@ -1287,7 +1391,57 @@ The minimum `release-1.0` scenario performs:
 
 Named scenarios then add the M2 faults without rebuilding the deployment. A scenario never passes merely because child processes exit zero; assertions read finalized chain state, public artifacts, and independent service endpoints.
 
-#### 8.1.10 Journal, resume, and idempotency
+#### 8.1.10 Continuous adversarial actors
+
+`release-1.0` and `production-soak` must start the release-locked adversarial
+campaign before marking the happy path started, keep it active through traffic,
+weights, faults, settlement, claims and final reconciliation, then stop and join
+every actor afterward. The required actors are:
+
+1. `operator-api-pressure` for bounded status/stats/proofs/history/resource pressure;
+2. `verify-replay-poison` for real loopback signed trails, simultaneous EXTEND,
+   deterministic replay, malformed signatures, poison-shape comparison and
+   per-source vpk-rotation rate limits;
+3. `rpc-consistency-pressure` for chain ID, finalized/common-height agreement,
+   unknown-method rejection, precompile UID/price/reserve survival and runtime drift;
+4. `artifact-integrity-pressure` for history availability, reconstruction and tamper rejection;
+5. `identity-churn-emulation` for fleet generation, signature, commitment and live-UID replay;
+6. `consensus-cabal-emulation` for cabal/knifing/stale-copy/kappa plus YC3
+   liquid-alpha and permit-dropout sweeps; and
+7. `custody-boundary-emulation` for cross-domain replay, exact units, overflow,
+   rounding, registration/deposit races, immutable custody, carry/double-claim,
+   settlement allocation and patched/upstream runtime state models.
+
+During the same run, the harness stops and restarts each simulator-owned
+PostgreSQL and Redis container, pauses the simulator-owned loopback Subtensor
+RPC proxy, and rolls every persistent workload process on a non-overlapping
+block schedule. Fault evidence names both the exact target and downstream
+impacts, requires replacement PIDs and healthy recovery, and authorizes expected
+actor rejections only inside that exact window plus one request-timeout grace.
+The shared Subtensor node and MinIO service are never stopped or firewalled;
+Subtensor is isolated behind the workload proxy, while MinIO remains under
+continuous read, reconstruction and tamper-detection pressure.
+
+The checked-in profile fixes the deterministic seed, 5-second sampling cadence,
+10-second request timeout, 100 non-skipped samples per actor, zero unexpected
+errors, 15-second p99 ceiling, eight operator requests/second and two RPC
+requests/second. The request gates count deliberately simultaneous pairs. Every
+fifth sample is a control, so latency and response-size drift are attributable
+rather than inferred from an attack-only trace. A skipped setup-dependent sample
+does not satisfy the floor.
+
+The campaign result is part of the scenario result, signed bundle, independent
+analysis and go/no-go decision. It must prove actor start before and stop after
+the happy path, all 54 vectors present, every vector mapped to active actors and
+checked-in tests, every vector backed by at least one named sampled metric, no
+leaked goroutine, and no unsafe shared-testnet action. Any
+actor error, unexpected status, common-height disagreement, missing artifact,
+subnet disappearance, reserve reaching zero, latency breach, process restart or
+happy-path timing regression fails the run. Local-runtime-only rows may report
+sentinel-plus-release-test coverage but may never claim the exploit ran on the
+shared chain.
+
+#### 8.1.11 Journal, resume, and idempotency
 
 Use an append-only state machine such as:
 
@@ -1303,7 +1457,7 @@ Before a side effect, journal its canonical intent and signer/nonce/call hash. A
 
 Tests must inject a crash after every state transition and every “intent/broadcast/inclusion/finality/postcondition” point, then prove `resume` converges without duplicate hyperparameter, contract, registration, deposit, root, or claim actions.
 
-#### 8.1.11 On-chain and operational analysis
+#### 8.1.12 On-chain and operational analysis
 
 Every live deployment gets a local public, redacted manifest at `sim-testnet/runs/<deployment-id>/public.json` and a content-addressed copy in the existing MinIO store through `server/blob`. The server API exposes that manifest and every run artifact as the canonical public history surface. `inspect` queries current finalized truth and displays at least:
 
@@ -1316,7 +1470,7 @@ Every live deployment gets a local public, redacted manifest at `sim-testnet/run
 
 The persistent deployment must be analyzable even when the supervisor host is down: on-chain addresses plus the server API/MinIO artifact history, server key histories, receipts, and redacted manifest are sufficient for a separate `sim-testnet inspect --manifest <url-or-file>` process on any compatible checkout host to recover its public state.
 
-#### 8.1.12 Evidence and exit behavior
+#### 8.1.13 Evidence and exit behavior
 
 Each deployment/run directory contains:
 
@@ -1332,6 +1486,8 @@ receipts/evm/*.json
 artifacts/operators/*
 artifacts/validators/*
 assertions.json
+adversaries.json            # matrix-bound continuous actor/vector evidence
+anomalies.json              # zero-entry gate over warnings, failures, and restart deltas
 analysis.json
 analysis.html
 junit.xml
@@ -1339,9 +1495,9 @@ result.json
 complete.json               # aggregate hashes, written only after full verification
 ```
 
-All JSON has schemas and canonical encoding. A passing `result.json` names the exact deployment/run, finalized block range, code/release/policy hashes, assertion counts, value reconciliation, and aggregate evidence hash. Missing/truncated logs, unresolved transactions, unavailable public artifacts, secret-scan findings, or a failed invariant make the command nonzero and prevent `complete.json`.
+All JSON has schemas and canonical encoding. A passing `result.json` names the exact deployment/run, finalized block range, code/release/policy hashes, assertion counts, value reconciliation, and aggregate evidence hash. `anomalies.json` is synthesized from every failed assertion, deployment warning, component error, unresolved claim, unhealthy or missing process, unexpected supervisor restart, incomplete injected fault, and adversary error. Scheduled restart deltas must reconcile exactly; a passing run has a `clean`, zero-entry ledger. Failed runs retain open entries until the MR dossier records root cause, minimized reproduction, regression, and a clean rerun. Missing/truncated logs, unresolved transactions, unavailable public artifacts, secret-scan findings, an open anomaly, or a failed invariant make the command nonzero and prevent `complete.json`.
 
-#### 8.1.13 Tests for the harness itself
+#### 8.1.14 Tests for the harness itself
 
 - Strict config/schema/canonical-hash and forbidden-mainnet tests.
 - Golden setup plan and budget calculation tests.
@@ -1523,17 +1679,36 @@ Run at least **20 consecutive accelerated epochs** as named `sim-testnet scenari
 - wallet/payout-key rotation at a future boundary; and
 - a simulated runtime-version change causing writes to stop and conformance-gated recovery.
 
-Measure realized head/tail shares, lowest head vs highest tail/provider reward, coverage, reliability convergence, Yuma clipping/vtrust/dividends, reserve principal and compounded delta, transaction deadline margin, RPC load, gas, artifact availability, and independent-validator stake share.
+Every run starts the seven-actor, 54-vector campaign before its first happy-path
+observation and keeps it active through fault recovery and final reconciliation.
+Each actor must contribute at least 100 non-skipped samples with interleaved
+control/attack phases. Measure absolute p50/p95/p99, attack/control p95 ratio,
+request and in-flight counts, expected rejections, finalized private/public lag
+and equality, subnet UID/spot/moving price/reserves, root-basket and proxy-MEV
+model outputs, artifact availability, and all happy-path deadline/restart SLOs.
+The release bounds are zero unexpected actor errors, p99 at most 15 seconds,
+attack/control p95 at most 20×, eight operator requests/second and two RPC
+requests/second. Also measure realized head/tail shares, lowest head vs highest
+tail/provider reward, coverage, reliability convergence, Yuma clipping/vtrust/
+dividends and liquid-alpha bonds, reserve principal and compounded delta,
+transaction deadline margin, gas and independent-validator stake share.
 
 Exit gate:
 
 - 20/20 epochs reconcile exactly;
 - zero missed hard deadline except the intentional missed-root drill;
 - every injected failure follows its documented recovery path;
+- all 54 researched vectors have passing concurrent coverage, at least one
+  sampled vector-declared metric, and their exact local-runtime tests pass
+  against the release-locked runtime where live
+  execution would be unsafe;
+- all seven actors meet their sample, zero-error, absolute-latency,
+  attack/control-ratio and QPS gates while overlapping every happy-path phase;
 - no manual on-chain/storage mutation;
 - at least two validators independently reconstruct their vectors from their own trails;
 - every public artifact remains retrievable/reproducible;
-- no open critical/high security or custody issue;
+- no open critical/high security or custody issue and no unexplained warning,
+  retry burst, latency shift, process exit, metric discontinuity or test flake;
 - `sim-testnet analyze` reconstructs all 20 epochs without trusted local DB state; and
 - the deployment returns to a healthy `LIVE` state after every intentional fault and remains available for investigation.
 
@@ -1544,6 +1719,8 @@ Schedule the 50,400-block epoch, +1,200-block root window, and +14,400-block fin
 Run at least **two complete 7-day epochs** using the `release-1.0` scenario, including their finalization windows and representative claims. During the soak:
 
 - keep at least two active NOs and two live validators;
+- keep the complete seven-actor adversarial campaign active under the same
+  zero-error/latency/QPS gates; do not replace it with a quiet-path soak;
 - run both long-tail and multi-client head cohorts continuously;
 - perform one planned rolling restart/failover of every service;
 - perform one key rotation and one policy update scheduled a full epoch ahead;
@@ -1553,7 +1730,53 @@ Run at least **two complete 7-day epochs** using the `release-1.0` scenario, inc
 - publish the economics/audit report (`D_n`, tier/rate, `Q_n`, weights, theta realization, vtrust, validator stake share, pool totals/claims/carry, reserve and `R_e`); and
 - ensure no runtime/interface/config drift occurred.
 
-M3 exit is **testnet release candidate**, not automatic mainnet approval. The persistent deployment, public manifest, analysis report, RPC identifiers, contracts, UIDs, and artifacts remain accessible for review after the final result. Mainnet requires repeating live precompile/CRv4 probes against finney, a fresh economic/governance review, external audit closure, mainnet-specific chain IDs/endpoints/contracts/config, and an explicit value-at-risk decision.
+M3 exit is **testnet release candidate**, not automatic mainnet approval. The persistent deployment, public manifest, analysis report, RPC identifiers, contracts, UIDs, and artifacts remain accessible for review after the final result.
+
+### MR — Mainnet-readiness closure
+
+MR is a release review before the Whitepaper's M4 production rollout, not
+permission for `sim-testnet` to write mainnet. Start
+from a clean compatible checkout and independently reconstruct the complete M0B–
+M3 result. Build an append-only anomaly ledger from every nonzero exit, warning,
+error/rejection not explicitly expected by its oracle, retry burst, timeout,
+reorg/rewind, restart, metric discontinuity, resource spike, flaky test and
+manual intervention observed during the campaign. Each entry must identify the
+first bad invariant, minimized reproduction, root cause, affected boundary,
+fix/operational disposition, deterministic regression and rerun evidence. A
+symptom label, “testnet noise,” third-party blame or successful retry does not
+close an entry.
+
+Then perform the mainnet-delta rehearsal without broadcasting:
+
+1. pin the exact finney genesis hash, runtime source/spec/transaction versions,
+   metadata, precompile code/selectors and RPC capability/history set;
+2. repeat all read-only SP1/SP2 probes and generate a mainnet plan whose chain,
+   endpoints, netuid, balances, roles, 2-of-3 Safe, ≥1-epoch timelock, contract
+   addresses/nonces, value-at-risk and rollback boundaries are mainnet-specific;
+3. run that exact plan against the pinned local-runtime clone and a fork/replay
+   environment with the 54-vector campaign, including kappa/liquid-alpha,
+   registration/burn, reserve/pruning, failed-swap accounting and precompile
+   drift cases;
+4. prove no release signer uses an unshielded staking proxy, no release coldkey
+   has an unreported root-basket entitlement, subnet moving price/survival margin
+   is nonzero and monitored, and reserve/accounting minima stay above the
+   reviewed thresholds;
+5. complete independent Solidity/runtime/operator security review, dependency
+   and container provenance/SBOM scan, secret/key ceremony and recovery drill,
+   backup restore from a clean host, alert delivery/on-call drill, capacity/load
+   review and disaster/RPC/MinIO outage rehearsal; and
+6. publish a signed MR dossier linking exact code/config/plan/runtime/evidence
+   hashes, the closed anomaly ledger, audit dispositions and explicit human
+   approvals for economics, governance and value at risk.
+
+MR fails while any anomaly or critical/high finding is unresolved, any required
+test is waived/flaky, or open upstream Subtensor issue #2737/#2740 can reach the
+deployed runtime path without a pinned fix. It also fails for zero moving price,
+unknown eviction margin, unshielded proxy staking, hidden root-basket rewards,
+unproven archive/failover, mutable/online owner custody, incomplete 2-of-3 Safe
+and timelock rehearsal, or any difference between the rehearsed and proposed
+mainnet plan not re-reviewed. Passing MR means the release is ready for a
+separate, explicit mainnet launch authorization; it does not grant it.
 
 ## 10. Go/no-go gates
 
@@ -1577,12 +1800,21 @@ Do not modify the supplied subnet or deploy the value-bearing release when any o
 - broad hermetic server/system tests are not green;
 - Solidity format/fuzz/invariant/static-analysis gate is not green;
 - no public reproducible payout/weight artifact;
+- the release scenario does not run every required adversarial actor before,
+  during and after the happy path, or any vector/sample/error/latency/QPS gate fails;
 - `sim-testnet` cannot validate/configure the supplied netuid, install the contracts, launch all real roles, or produce a passing persistent deployment from one approved command;
 - the live deployment cannot be inspected/reconstructed from a second machine using public manifest + finalized chain/operator data;
 - any critical/high security finding is open; or
 - campaign cap/balance/rollback/runbook is missing.
 
-Do not raise beyond dust when M1 is incomplete. Do not switch to production cadence when M2 is incomplete. Do not call the testnet release candidate complete until M3 is complete.
+For mainnet, additionally stop on any open/unexplained anomaly, reachable
+Subtensor #2737/#2740 accounting path without a pinned fix, zero/unknown subnet
+moving-price or eviction margin, hidden root-basket entitlement, unshielded proxy
+staking, incomplete independent audit, untested backup/alert/failover path, or a
+mainnet governance/value plan that is not the rehearsed 2-of-3 Safe + timelock
+configuration.
+
+Do not raise beyond dust when M1 is incomplete. Do not switch to production cadence when M2 is incomplete. Do not call the testnet release candidate complete until M3 is complete. Do not call it mainnet-ready until MR is complete, and never treat MR as launch authorization.
 
 ### Release-candidate success criteria
 
@@ -1595,6 +1827,8 @@ All of the following are required:
 - exact multi-epoch value conservation and one-way reserve hold;
 - finalized claims survive all pause/upgrade/operator drills;
 - every CRv4 cycle is tracked through finalized application;
+- all 54 adversarial vectors have matrix-bound passing evidence from seven
+  continuously overlapping actors, and every anomaly ledger entry is resolved;
 - finality-safe replay from deployment block reproduces all decisions;
 - public artifacts independently reconstruct every payout root and committed weight vector;
 - the passing release result was produced by `sim-testnet scenario release-1.0` against the persistent real-testnet deployment, and `sim-testnet status`, `inspect`, and `analyze` remain green afterward;
@@ -1626,6 +1860,7 @@ F0 specification/fixtures
   -> M1 genesis
   -> M2 adversarial epochs
   -> M3 production-cadence soak
+  -> MR mainnet-delta rehearsal + zero-anomaly closure
 ```
 
 The implementation is grouped along these reviewable boundaries:
@@ -1648,7 +1883,7 @@ Each PR updates the requirement matrix and includes migration/backward-compatibi
 
 ## 12. Closed design decisions and remaining live proof obligations
 
-The code-side dispositions below are implemented. Rows assigned to M0B-M3 still
+The code-side dispositions below are implemented. Rows assigned to M0B-M3/MR still
 require real-chain evidence and cannot be promoted to “proven” by local mocks.
 
 | Decision/proof | Recommended disposition | Must close by |
@@ -1688,19 +1923,24 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    `PONG`. Containers and PostgreSQL volumes now carry matching complete spec hashes.
 3. Build `sim-testnet`, then run read-only `doctor`. Resolve every failure; archive
    the redacted report. No partial preflight may be waived.
-4. Run read-only `plan`, review the existing-netuid ownership proof, identities,
-   runtime/precompile facts, every action and the three maximum-spend totals. Record
-   the exact `plan_hash` as the explicit approval artifact.
-5. Only after that review, run `launch --apply --plan-hash ... --detach`. The harness
+4. Run read-only `plan` and its checker, verify the existing-netuid ownership
+   proof, identities, runtime/precompile facts, every action and the three
+   maximum-spend totals, and record the exact `plan_hash`. The user has already
+   authorized automatic application of this bounded **testnet** plan once doctor
+   and plan checks are green; no further pause is required and no mainnet write
+   is authorized.
+5. Run `launch --apply --plan-hash ... --detach` with that exact hash. The harness
    installs/converges the release and runs smoke; no manual Forge, `btcli`, SQL or
    contract call is part of the release path.
 6. Keep the deployment running, execute `release-1.0` and `production-soak`, and use
    a second compatible checkout to run `inspect`/`analyze` from a published evidence
-   locator. M0B-M3 must all pass before the release is called testnet-validated.
+   locator. M0B-M3 must pass before the release is called testnet-validated, and
+   the MR zero-anomaly/mainnet-delta gate must pass before it is called
+   mainnet-ready.
 
 ## Appendix A — Reproducible audit commands
 
-### Final local release-gate record (2026-08-20 UTC)
+### Final local release-gate record (2026-08-21 UTC)
 
 The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its final run
 completed successfully after the release lock was frozen:
@@ -1710,9 +1950,10 @@ completed successfully after the release lock was frozen:
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** across 22 analyzed contracts and 64 detectors. |
-| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized build completed in 625.07 seconds. The largest deployable release runtime is `STCoordinator` at 20,075 bytes, leaving 4,501 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,907 bytes with 3,669 bytes remaining. |
+| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized build completed in 539.38 seconds. The largest deployable release runtime is `STCoordinator` at 20,075 bytes, leaving 4,501 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,907 bytes with 3,669 bytes remaining. |
 | `forge test --summary` | **108 passed, 0 failed, 0 skipped**, including 4,608 stateful reserve/vault invariant-handler calls. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, `api/...`/`model` compilation, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. |
+| Operator PostgreSQL/Redis integration suites | Pass against the isolated local profile for the complete verify-trail flow, poisoning/failure paths, concurrent fenced mutation, cached-response replay isolation, orphan cleanup, exact/prefix egress indexes, token-owned lock mutual exclusion and stale-release safety, expiry sweeping, and loaded-trail lock-TTL coverage. |
 | Subtensor infrastructure regressions | **20 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across `sn`, `server`, `connect`, `sdk`, `vault` and `xops`. |
 
@@ -1729,11 +1970,13 @@ deployment-relevant drift.
 
 The digest-pinned PostgreSQL 18/Redis 8 pairs have been created and live-checked on
 the two isolated loopback addresses with authenticated semantic probes and matching
-container/volume provenance labels. The operator transaction, poisoning, replay and
-orphan-cleanup suites remain a launch gate because they require the rendered
-per-operator runtime vault/config, not merely open dependency ports. Set
-`RUN_SERVER_DB_TESTS=1` under that profile. Invoking the flag without `WARP_ENV` was
-confirmed to fail closed before connecting. The operator/miner/validator topology was
+container/volume provenance labels. The operator transaction, poisoning, replay,
+lock-fencing, expiry and orphan-cleanup suites passed against an isolated local
+PostgreSQL/Redis profile on 2026-08-21; its cleanup removed only that profile and
+left the four persistent simulator-owned stores running. The managed launch profile
+must rerun the same suites with its rendered per-operator runtime vault/config by
+setting `RUN_SERVER_DB_TESTS=1`; invoking the flag without `WARP_ENV` fails closed
+before connecting. The operator/miner/validator topology was
 not launched because the private Subtensor archive is still syncing through historical
 runtimes toward the runtime-447 tip; the overlay listener itself is reachable and independent.
 Separately approved bootstrap extrinsics activated netuid 521 and
@@ -1788,7 +2031,8 @@ Release 1.0 may be declared testnet-validated only when:
 - every non-deferred whitepaper requirement maps to production code and a passing acceptance test;
 - all public/secret configuration is defined, generated, validated, and reproducibly locked;
 - `sim-testnet launch` can validate/configure the supplied real-testnet netuid, install/verify the release contracts, start the real operator/miner/validator topology on any compatible checkout host, and leave it healthy and persistent;
-- M0A, M0B, M1, M2, and M3 evidence gates pass;
+- M0A, M0B, M1, M2, and M3 evidence gates pass, including the continuously
+  overlapping 54-vector campaign;
 - the immutable custody/settlement invariants survive adversarial upgrades and fault drills;
 - two independent validator deployments measure per-NO quality and complete live CRv4 cycles;
 - provider pool claims and multi-client native head rewards both reconcile end to end;
@@ -1796,5 +2040,12 @@ Release 1.0 may be declared testnet-validated only when:
 - observability, recovery, security review, and public reproducibility are live;
 - a separate machine can use the redacted deployment manifest to inspect and independently analyze the working on-chain subnet; and
 - an explicit release-candidate approval names the exact release/config/evidence hashes.
+
+It may be declared **mainnet-ready** only after MR also passes: the complete
+anomaly ledger is root-caused and closed, finney deltas and the exact mainnet
+plan pass the no-broadcast local/fork rehearsal, upstream runtime blockers are
+fixed or proven unreachable, independent reviews and operational recovery drills
+are closed, and the signed dossier names the 2-of-3 Safe/timelock and approved
+value at risk. Mainnet readiness is not authorization to broadcast that plan.
 
 Until then, “green unit tests” means a component is safe to continue developing—not that release 1.0 is deployable.

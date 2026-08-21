@@ -123,6 +123,23 @@ func runMain(args []string) error {
 		defer cancel()
 		return supervise(ctx, stateDir, manifest)
 	}
+	if len(args) > 0 && args[0] == "__rpc_proxy" {
+		fs := flag.NewFlagSet("__rpc_proxy", flag.ContinueOnError)
+		var config rpcProxyConfig
+		fs.StringVar(&config.ListenAddress, "listen", "", "")
+		fs.StringVar(&config.HealthAddress, "health", "", "")
+		fs.StringVar(&config.Upstream, "upstream", "", "")
+		fs.StringVar(&config.TLSServerName, "tls-server-name", "", "")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return errors.New("invalid internal RPC proxy invocation")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return runRPCProxy(ctx, config)
+	}
 	cmd, o, err := parseCLI(args)
 	if err != nil {
 		usage()

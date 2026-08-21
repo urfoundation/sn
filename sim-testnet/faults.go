@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -16,6 +18,7 @@ type scenarioFaultSpec struct {
 	ID                  string   `json:"id"`
 	Kind                string   `json:"kind"`
 	Targets             []string `json:"targets"`
+	Impacts             []string `json:"impacts,omitempty"`
 	TriggerOffsetBlocks uint64   `json:"trigger_offset_blocks"`
 	DurationBlocks      uint64   `json:"duration_blocks"`
 }
@@ -31,6 +34,7 @@ type ScenarioFaultRecord struct {
 	ID                string                 `json:"id"`
 	Kind              string                 `json:"kind"`
 	Targets           []string               `json:"targets"`
+	Impacts           []string               `json:"impacts,omitempty"`
 	TriggerBlock      uint64                 `json:"trigger_block"`
 	RestoreBlock      uint64                 `json:"restore_block"`
 	AppliedBlock      uint64                 `json:"applied_block,omitempty"`
@@ -49,7 +53,121 @@ type scenarioFaultDriver interface {
 	Recover(context.Context) error
 }
 
-type liveScenarioFaultDriver struct{ stateDir string }
+type scenarioContainerRuntime interface {
+	Stop(context.Context, managedContainerSpec) (int, error)
+	Start(context.Context, managedContainerSpec) (int, error)
+}
+
+type liveScenarioFaultDriver struct {
+	stateDir   string
+	cfg        *ResolvedConfig
+	containers scenarioContainerRuntime
+}
+
+type dockerScenarioContainerRuntime struct{ docker dockerCLI }
+
+type scenarioContainerState struct {
+	Running bool
+	PID     int
+}
+
+func (runtime *dockerScenarioContainerRuntime) inspect(ctx context.Context, spec managedContainerSpec) (scenarioContainerState, error) {
+	specHash, err := managedContainerSpecHash(spec)
+	if err != nil {
+		return scenarioContainerState{}, err
+	}
+	format := "{{.State.Running}}|{{.State.Pid}}|{{.Config.Image}}|{{index .Config.Labels \"" + managedContainerSpecHashLabel + "\"}}"
+	output, err := runtime.docker.commandContext(ctx, "container", "inspect", "--format", format, spec.Name).CombinedOutput()
+	if err != nil {
+		return scenarioContainerState{}, fmt.Errorf("inspect simulator dependency %s: %w: %s", spec.Name, err, strings.TrimSpace(string(output)))
+	}
+	parts := strings.Split(strings.TrimSpace(string(output)), "|")
+	if len(parts) != 4 || parts[2] != spec.Image || parts[3] != specHash {
+		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s no longer matches its release-locked container spec", spec.Name)
+	}
+	pid, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return scenarioContainerState{}, fmt.Errorf("simulator dependency %s has invalid PID %q", spec.Name, parts[1])
+	}
+	return scenarioContainerState{Running: parts[0] == "true", PID: pid}, nil
+}
+
+func (runtime *dockerScenarioContainerRuntime) Stop(ctx context.Context, spec managedContainerSpec) (int, error) {
+	before, err := runtime.inspect(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+	if !before.Running || before.PID <= 1 {
+		return 0, fmt.Errorf("simulator dependency %s is not running", spec.Name)
+	}
+	output, err := runtime.docker.commandContext(ctx, "stop", "--time", "5", spec.Name).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("stop simulator dependency %s: %w: %s", spec.Name, err, strings.TrimSpace(string(output)))
+	}
+	after, err := runtime.inspect(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+	if after.Running || after.PID != 0 {
+		return 0, fmt.Errorf("simulator dependency %s remained running after stop", spec.Name)
+	}
+	return before.PID, nil
+}
+
+func (runtime *dockerScenarioContainerRuntime) Start(ctx context.Context, spec managedContainerSpec) (int, error) {
+	state, err := runtime.inspect(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+	if !state.Running {
+		output, startErr := runtime.docker.commandContext(ctx, "start", spec.Name).CombinedOutput()
+		if startErr != nil {
+			return 0, fmt.Errorf("start simulator dependency %s: %w: %s", spec.Name, startErr, strings.TrimSpace(string(output)))
+		}
+	}
+	if err := waitContainerReady(ctx, runtime.docker, spec); err != nil {
+		return 0, err
+	}
+	state, err = runtime.inspect(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+	if !state.Running || state.PID <= 1 {
+		return 0, fmt.Errorf("simulator dependency %s did not return with a live PID", spec.Name)
+	}
+	return state.PID, nil
+}
+
+type dependencyFaultTarget struct {
+	spec managedContainerSpec
+	role string
+}
+
+func dependencyFaultTargets(cfg *ResolvedConfig) (map[string]dependencyFaultTarget, error) {
+	specs, err := dependencyContainerSpecs(cfg)
+	if err != nil {
+		return nil, err
+	}
+	targets := make(map[string]dependencyFaultTarget, len(specs))
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		base := (operator - 1) * 2
+		targets[fmt.Sprintf("operator-%d-postgres", operator)] = dependencyFaultTarget{spec: specs[base], role: "postgresql"}
+		targets[fmt.Sprintf("operator-%d-redis", operator)] = dependencyFaultTarget{spec: specs[base+1], role: "redis"}
+	}
+	return targets, nil
+}
+
+func (d *liveScenarioFaultDriver) containerRuntime(ctx context.Context) (scenarioContainerRuntime, error) {
+	if d.containers != nil {
+		return d.containers, nil
+	}
+	docker, err := resolveDockerCLI(ctx)
+	if err != nil {
+		return nil, err
+	}
+	d.containers = &dockerScenarioContainerRuntime{docker: docker}
+	return d.containers, nil
+}
 
 type activeFaultFile struct {
 	Schema    string                 `json:"schema"`
@@ -127,7 +245,102 @@ func (d *liveScenarioFaultDriver) signal(spec scenarioFaultSpec, signal syscall.
 	return result, nil
 }
 
-func (d *liveScenarioFaultDriver) Apply(_ context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+func (d *liveScenarioFaultDriver) applyContainerFault(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	if d.cfg == nil || spec.Kind != "container-restart" || len(spec.Targets) == 0 {
+		return nil, fmt.Errorf("unsupported container fault %q", spec.Kind)
+	}
+	targets, err := dependencyFaultTargets(d.cfg)
+	if err != nil {
+		return nil, err
+	}
+	runtime, err := d.containerRuntime(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := append([]string(nil), spec.Targets...)
+	sort.Strings(ids)
+	result := make([]FaultProcessEvidence, 0, len(ids))
+	stopped := make([]dependencyFaultTarget, 0, len(ids))
+	rollback := func() {
+		for index := len(stopped) - 1; index >= 0; index-- {
+			_, _ = runtime.Start(context.Background(), stopped[index].spec)
+		}
+	}
+	for _, id := range ids {
+		target, ok := targets[id]
+		if !ok {
+			rollback()
+			return nil, fmt.Errorf("container fault target %q is not a simulator-owned PostgreSQL/Redis dependency", id)
+		}
+		pid, stopErr := runtime.Stop(ctx, target.spec)
+		if stopErr != nil {
+			rollback()
+			return nil, stopErr
+		}
+		stopped = append(stopped, target)
+		result = append(result, FaultProcessEvidence{ID: id, Role: target.role, Identity: target.spec.Name, PID: pid})
+	}
+	return result, nil
+}
+
+func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	if d.cfg == nil || spec.Kind != "container-restart" || len(spec.Targets) == 0 {
+		return nil, fmt.Errorf("unsupported container fault %q", spec.Kind)
+	}
+	targets, err := dependencyFaultTargets(d.cfg)
+	if err != nil {
+		return nil, err
+	}
+	runtime, err := d.containerRuntime(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prior := map[string]int{}
+	if activeBytes, readErr := os.ReadFile(d.activePath()); readErr == nil {
+		var active activeFaultFile
+		if json.Unmarshal(activeBytes, &active) != nil || active.Schema != "urnetwork-sim-active-faults-v1" {
+			return nil, errors.New("invalid active container fault evidence")
+		}
+		for _, process := range active.Processes {
+			prior[process.ID] = process.PID
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return nil, readErr
+	}
+	ids := append([]string(nil), spec.Targets...)
+	sort.Strings(ids)
+	result := make([]FaultProcessEvidence, 0, len(ids))
+	for _, id := range ids {
+		target, ok := targets[id]
+		if !ok {
+			return nil, fmt.Errorf("container fault target %q is not a simulator-owned PostgreSQL/Redis dependency", id)
+		}
+		pid, startErr := runtime.Start(ctx, target.spec)
+		if startErr != nil {
+			return nil, startErr
+		}
+		if prior[id] > 1 && pid == prior[id] {
+			return nil, fmt.Errorf("simulator dependency %s restarted without replacing PID %d", target.spec.Name, pid)
+		}
+		result = append(result, FaultProcessEvidence{ID: id, Role: target.role, Identity: target.spec.Name, PID: pid})
+	}
+	return result, nil
+}
+
+func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	if spec.Kind == "container-restart" {
+		processes, err := d.applyContainerFault(ctx, spec)
+		if err != nil {
+			return nil, err
+		}
+		active := activeFaultFile{Schema: "urnetwork-sim-active-faults-v1", Faults: []scenarioFaultSpec{spec}, Processes: processes}
+		b, _ := json.MarshalIndent(active, "", "  ")
+		if err := atomicWrite(d.activePath(), append(b, '\n'), 0o600); err != nil {
+			_, _ = d.restoreContainerFault(context.Background(), spec)
+			return nil, err
+		}
+		return processes, nil
+	}
 	signal := syscall.SIGSTOP
 	if spec.Kind == "process-restart" {
 		signal = syscall.SIGTERM
@@ -150,7 +363,9 @@ func (d *liveScenarioFaultDriver) Apply(_ context.Context, spec scenarioFaultSpe
 func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
 	var processes []FaultProcessEvidence
 	var err error
-	if spec.Kind == "process-restart" {
+	if spec.Kind == "container-restart" {
+		processes, err = d.restoreContainerFault(ctx, spec)
+	} else if spec.Kind == "process-restart" {
 		processes, err = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
 	} else {
 		processes, err = d.signal(spec, syscall.SIGCONT)
@@ -260,11 +475,74 @@ func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, boo
 	return spec, true
 }
 
+func operatorDependencyImpacts(cfg *ResolvedConfig, operator int) []string {
+	impacts := []string{
+		fmt.Sprintf("operator-%d-api", operator),
+		fmt.Sprintf("operator-%d-connect", operator),
+		fmt.Sprintf("operator-%d-taskworker", operator),
+	}
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		if operatorForMiner(cfg, miner) == operator {
+			impacts = append(impacts, fmt.Sprintf("miner-%d", miner), fmt.Sprintf("miner-%d-claims", miner))
+		}
+	}
+	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
+		impacts = append(impacts, fmt.Sprintf("validator-%d", validator))
+	}
+	sort.Strings(impacts)
+	return impacts
+}
+
+func rpcProxyImpacts(cfg *ResolvedConfig) []string {
+	impacts := []string{workloadRPCProxyProcessID}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		impacts = append(impacts,
+			fmt.Sprintf("operator-%d-api", operator),
+			fmt.Sprintf("operator-%d-connect", operator),
+			fmt.Sprintf("operator-%d-taskworker", operator),
+		)
+	}
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		impacts = append(impacts, fmt.Sprintf("miner-%d-claims", miner))
+	}
+	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
+		impacts = append(impacts, fmt.Sprintf("validator-%d", validator))
+	}
+	sort.Strings(impacts)
+	return impacts
+}
+
+// dependencyOutageFaults stops only simulator-owned PostgreSQL/Redis
+// containers and the simulator-owned loopback RPC proxy. It never stops,
+// signals, rate-limits, or firewall-blocks the shared Subtensor or MinIO
+// services.
+func dependencyOutageFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64) []scenarioFaultSpec {
+	duration := max64(5, cfg.Config.Scenarios.QualityFaultDurationBlocks)
+	spacing := duration + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
+	var faults []scenarioFaultSpec
+	index := uint64(0)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		for _, dependency := range []string{"postgres", "redis"} {
+			faults = append(faults, scenarioFaultSpec{
+				ID: fmt.Sprintf("%s-%s-%d", prefix, dependency, operator), Kind: "container-restart",
+				Targets: []string{fmt.Sprintf("operator-%d-%s", operator, dependency)}, Impacts: operatorDependencyImpacts(cfg, operator),
+				TriggerOffsetBlocks: firstOffset + spacing*index, DurationBlocks: duration,
+			})
+			index++
+		}
+	}
+	faults = append(faults, scenarioFaultSpec{
+		ID: prefix + "-rpc-path", Kind: "process-pause", Targets: []string{workloadRPCProxyProcessID}, Impacts: rpcProxyImpacts(cfg),
+		TriggerOffsetBlocks: firstOffset + spacing*index, DurationBlocks: duration,
+	})
+	return faults
+}
+
 // productionRollingFaults exercises bounded failover of every persistent
 // operator, miner/claim-relayer, and validator process without overlapping
 // faults. Each target must recover before the next target is paused.
 func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64) []scenarioFaultSpec {
-	var targets []string
+	targets := []string{workloadRPCProxyProcessID}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		for _, role := range []string{"api", "connect", "taskworker"} {
 			targets = append(targets, fmt.Sprintf("operator-%d-%s", operator, role))
@@ -290,7 +568,11 @@ func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64
 
 func productionRollingFaults(cfg *ResolvedConfig) []scenarioFaultSpec {
 	duration := max64(5, cfg.Config.Scenarios.QualityFaultDurationBlocks)
-	return rollingProcessFaults(cfg, "production", duration+max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks))
+	first := duration + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
+	faults := dependencyOutageFaults(cfg, "production-dependency", first)
+	last := faults[len(faults)-1]
+	rollingFirst := last.TriggerOffsetBlocks + last.DurationBlocks + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
+	return append(faults, rollingProcessFaults(cfg, "production", rollingFirst)...)
 }
 
 func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
@@ -300,7 +582,11 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	}
 	firstRestart := quality.TriggerOffsetBlocks + quality.DurationBlocks + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
 	faults := []scenarioFaultSpec{quality}
-	faults = append(faults, rollingProcessFaults(cfg, "release", firstRestart)...)
+	dependencies := dependencyOutageFaults(cfg, "release-dependency", firstRestart)
+	faults = append(faults, dependencies...)
+	last := dependencies[len(dependencies)-1]
+	rollingFirst := last.TriggerOffsetBlocks + last.DurationBlocks + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
+	faults = append(faults, rollingProcessFaults(cfg, "release", rollingFirst)...)
 	return faults, nil
 }
 
@@ -310,7 +596,7 @@ func initializeFaultRecords(start uint64, specs []scenarioFaultSpec) ([]Scenario
 		if spec.ID == "" || spec.Kind == "" || len(spec.Targets) == 0 || spec.TriggerOffsetBlocks == 0 || spec.DurationBlocks == 0 || start > ^uint64(0)-spec.TriggerOffsetBlocks || start+spec.TriggerOffsetBlocks > ^uint64(0)-spec.DurationBlocks {
 			return nil, fmt.Errorf("invalid fault schedule at index %d", i)
 		}
-		records[i] = ScenarioFaultRecord{ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending"}
+		records[i] = ScenarioFaultRecord{ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), Impacts: append([]string(nil), spec.Impacts...), TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending"}
 	}
 	return records, nil
 }

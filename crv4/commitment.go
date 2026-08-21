@@ -25,6 +25,12 @@ const (
 	CommitmentsPalletName = "Commitments"
 	CallSetCommitment     = "set_commitment"
 	dataSHA256Variant     = byte(131)
+	// Runtime v447 stores Registration<TaoBalance, MaxFields, BlockNumber>
+	// as a transparent u64 deposit, u32 block, then CommitmentInfo. The
+	// release lock pins all three types; accepting only the exact byte length
+	// prevents a multi-field registration that merely ends in Sha256 from
+	// masquerading as the one-field fleet commitment protocol.
+	registrationV447PrefixBytes = 8 + 4
 )
 
 // SHA256CommitmentData is the only commitment Data variant accepted by the
@@ -62,6 +68,32 @@ func EncodeFleetCommitmentInfo(hash [32]byte) ([]byte, error) {
 		return nil, err
 	}
 	return codec.Encode(info)
+}
+
+// DecodeFleetCommitmentRegistrationV447 accepts exactly the release protocol's
+// Registration encoding: deposit:u64, block:u32, and one nonzero Data::Sha256
+// field. It intentionally rejects every other valid Subtensor Data shape and
+// every multi-field value. This keeps an arbitrary native commitment from
+// becoming parser confusion or an authorization oracle for fleet mirroring.
+func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
+	var commitmentHash [32]byte
+	wantInfoLen := 1 + 1 + len(commitmentHash) // Vec length(1), Sha256 variant, hash
+	if len(raw) != registrationV447PrefixBytes+wantInfoLen {
+		return commitmentHash, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV447PrefixBytes+wantInfoLen)
+	}
+	info := raw[registrationV447PrefixBytes:]
+	if info[0] != 0x04 || info[1] != dataSHA256Variant {
+		return commitmentHash, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
+	}
+	copy(commitmentHash[:], info[2:])
+	if commitmentHash == ([32]byte{}) {
+		return commitmentHash, fmt.Errorf("crv4: finalized commitment hash is zero")
+	}
+	encoded, err := EncodeFleetCommitmentInfo(commitmentHash)
+	if err != nil || !bytes.Equal(info, encoded) {
+		return [32]byte{}, fmt.Errorf("crv4: non-canonical commitment encoding")
+	}
+	return commitmentHash, nil
 }
 
 // NewSetFleetCommitmentCall builds the runtime metadata-bound call.
@@ -132,9 +164,8 @@ func (c *Chain) FleetCommitmentFinalized(netuid uint16, hotkey [32]byte) (*Final
 	return c.FleetCommitmentAt(netuid, hotkey, hash)
 }
 
-// FleetCommitmentAt verifies the release's one-field Sha256 encoding directly
-// from CommitmentOf storage. Registration ends with CommitmentInfo, so the
-// suffix is unambiguous even if runtime Balance/BlockNumber widths evolve.
+// FleetCommitmentAt verifies the release's exact runtime-447 one-field Sha256
+// registration directly from CommitmentOf storage.
 func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash types.Hash) (*FinalizedCommitment, error) {
 	if netuid == 0 || hotkey == ([32]byte{}) || blockHash == (types.Hash{}) {
 		return nil, fmt.Errorf("crv4: invalid commitment lookup identity/block")
@@ -150,22 +181,9 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if raw == nil {
 		return nil, fmt.Errorf("crv4: no finalized commitment for hotkey 0x%x on netuid %d", hotkey, netuid)
 	}
-	wantLen := 1 + 1 + 32 // Vec length(1), Sha256 variant, hash
-	if len(*raw) < wantLen {
-		return nil, fmt.Errorf("crv4: malformed commitment registration (%d bytes)", len(*raw))
-	}
-	tail := []byte(*raw)[len(*raw)-wantLen:]
-	if tail[0] != 0x04 || tail[1] != dataSHA256Variant {
-		return nil, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
-	}
-	var commitmentHash [32]byte
-	copy(commitmentHash[:], tail[2:])
-	if commitmentHash == ([32]byte{}) {
-		return nil, fmt.Errorf("crv4: finalized commitment hash is zero")
-	}
-	encoded, _ := EncodeFleetCommitmentInfo(commitmentHash)
-	if !bytes.Equal(tail, encoded) {
-		return nil, fmt.Errorf("crv4: non-canonical commitment encoding")
+	commitmentHash, err := DecodeFleetCommitmentRegistrationV447([]byte(*raw))
+	if err != nil {
+		return nil, err
 	}
 
 	lastKey, err := types.CreateStorageKey(c.Meta, CommitmentsPalletName, "LastCommitment", encodeNetuid(netuid), hotkey[:])

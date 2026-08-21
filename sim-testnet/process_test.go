@@ -106,14 +106,39 @@ func TestRestartBackoffIsBounded(t *testing.T) {
 
 func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 	specs := []ProcessSpec{
+		{ID: workloadRPCProxyProcessID, Role: "dependency-rpc-proxy"},
 		{ID: "operator-1-api", Role: "operator-api"},
 		{ID: "operator-1-connect", Role: "operator-connect"},
 		{ID: "operator-1-taskworker", Role: "operator-taskworker"},
 		{ID: "operator-2-api", Role: "operator-api"},
 	}
 	got := selectProvisioningServerSpecs(specs)
-	if len(got) != 2 || got[0].ID != "operator-1-api" || got[1].ID != "operator-2-api" {
+	if len(got) != 3 || got[0].ID != workloadRPCProxyProcessID || got[1].ID != "operator-1-api" || got[2].ID != "operator-2-api" {
 		t.Fatalf("provisioning specs = %+v", got)
+	}
+}
+
+func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Authority = "wss://private-rpc.example:443"
+	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
+		"sim-testnet": "/release/sim-testnet", "server-api": "/release/api",
+		"server-connect": "/release/connect", "server-taskworker": "/release/taskworker",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) == 0 || specs[0].ID != workloadRPCProxyProcessID || specs[0].HealthURL != "http://"+workloadRPCProxyHealthAddress+"/healthz" {
+		t.Fatalf("missing workload RPC proxy spec: %+v", specs)
+	}
+	args := strings.Join(specs[0].Args, " ")
+	if !strings.Contains(args, "--upstream=private-rpc.example:443") || !strings.Contains(args, "--tls-server-name=private-rpc.example") {
+		t.Fatalf("RPC proxy lost upstream TLS identity: %q", args)
+	}
+	for _, spec := range specs[1:] {
+		if spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
+			t.Fatalf("%s bypasses workload RPC proxy: %q", spec.ID, spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
+		}
 	}
 }
 

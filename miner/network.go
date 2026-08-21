@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -36,7 +37,21 @@ type networkConfig struct {
 	ConnectUrl string `json:"connect_url"`
 }
 
-// validateApiUrl requires an http or https URL.
+// isLoopbackURLHost recognizes the only hosts for which release transport may
+// remain plaintext. It deliberately does not resolve DNS: allowing an
+// arbitrary hostname because it happened to resolve to loopback during
+// validation would permit a later DNS rebinding to put credentials on the
+// network in cleartext.
+func isLoopbackURLHost(u *url.URL) bool {
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// validateApiUrl requires HTTPS except for an explicit loopback HTTP URL.
 func validateApiUrl(rawUrl string) error {
 	if rawUrl == "" {
 		return errors.New("invalid api_url: empty")
@@ -51,10 +66,13 @@ func validateApiUrl(rawUrl string) error {
 	if u.Host == "" {
 		return fmt.Errorf("invalid api_url %q: missing host", rawUrl)
 	}
+	if u.Scheme == "http" && !isLoopbackURLHost(u) {
+		return fmt.Errorf("invalid api_url %q: plaintext http is allowed only for loopback; use https", rawUrl)
+	}
 	return nil
 }
 
-// validateConnectUrl requires a ws or wss URL.
+// validateConnectUrl requires WSS except for an explicit loopback WS URL.
 func validateConnectUrl(rawUrl string) error {
 	if rawUrl == "" {
 		return errors.New("invalid connect_url: empty")
@@ -68,6 +86,9 @@ func validateConnectUrl(rawUrl string) error {
 	}
 	if u.Host == "" {
 		return fmt.Errorf("invalid connect_url %q: missing host", rawUrl)
+	}
+	if u.Scheme == "ws" && !isLoopbackURLHost(u) {
+		return fmt.Errorf("invalid connect_url %q: plaintext ws is allowed only for loopback; use wss", rawUrl)
 	}
 	return nil
 }
@@ -229,6 +250,9 @@ func resetNetworkConfig(dir string) error {
 // --api_url flag > saved network config > DefaultApiUrl.
 func resolveApiUrlIn(opts docopt.Opts, dir string) (string, error) {
 	if apiUrl, err := opts.String("--api_url"); err == nil {
+		if err := validateApiUrl(apiUrl); err != nil {
+			return "", err
+		}
 		return apiUrl, nil
 	}
 	cfg, ok, err := readNetworkConfig(dir)
@@ -246,6 +270,9 @@ func resolveApiUrlIn(opts docopt.Opts, dir string) (string, error) {
 // --connect_url flag > saved network config > DefaultConnectUrl.
 func resolveConnectUrlIn(opts docopt.Opts, dir string) (string, error) {
 	if connectUrl, err := opts.String("--connect_url"); err == nil {
+		if err := validateConnectUrl(connectUrl); err != nil {
+			return "", err
+		}
 		return connectUrl, nil
 	}
 	cfg, ok, err := readNetworkConfig(dir)
@@ -264,6 +291,9 @@ func resolveConnectUrlIn(opts docopt.Opts, dir string) (string, error) {
 // which is what the flag did before a saved config existed.
 func resolveApiUrl(opts docopt.Opts) (string, error) {
 	if apiUrl, err := opts.String("--api_url"); err == nil {
+		if err := validateApiUrl(apiUrl); err != nil {
+			return "", err
+		}
 		return apiUrl, nil
 	}
 	dir, err := providerStateDir()
@@ -277,6 +307,9 @@ func resolveApiUrl(opts docopt.Opts) (string, error) {
 // state directory. See resolveApiUrl for the flag short-circuit.
 func resolveConnectUrl(opts docopt.Opts) (string, error) {
 	if connectUrl, err := opts.String("--connect_url"); err == nil {
+		if err := validateConnectUrl(connectUrl); err != nil {
+			return "", err
+		}
 		return connectUrl, nil
 	}
 	dir, err := providerStateDir()

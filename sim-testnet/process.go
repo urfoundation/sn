@@ -131,7 +131,10 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
 		return err
 	}
-	serverSpecs := buildServerSpecs(cfg, stateDir, bins)
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins)
+	if err != nil {
+		return err
+	}
 	provisioningSpecs := selectProvisioningServerSpecs(serverSpecs)
 	temporary, err := startTemporary(ctx, provisioningSpecs)
 	if err != nil {
@@ -493,8 +496,30 @@ func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedConta
 	return fmt.Errorf("container %s readiness output %q, want %q", spec.Name, lastOutput, spec.ReadyExpected)
 }
 
-func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) []ProcessSpec {
-	var out []ProcessSpec
+func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) ([]ProcessSpec, error) {
+	proxy, err := rpcProxyConfigForAuthority(cfg.Authority)
+	if err != nil {
+		return nil, fmt.Errorf("workload RPC proxy: %w", err)
+	}
+	if bins["sim-testnet"] == "" {
+		return nil, errors.New("workload RPC proxy requires the sim-testnet release binary")
+	}
+	proxyArgs := []string{
+		"__rpc_proxy",
+		"--listen=" + proxy.ListenAddress,
+		"--health=" + proxy.HealthAddress,
+		"--upstream=" + proxy.Upstream,
+	}
+	if proxy.TLSServerName != "" {
+		proxyArgs = append(proxyArgs, "--tls-server-name="+proxy.TLSServerName)
+	}
+	out := []ProcessSpec{{
+		ID: workloadRPCProxyProcessID, Role: "dependency-rpc-proxy", Identity: "private-subtensor-rpc",
+		Command: bins["sim-testnet"], Args: proxyArgs, WorkDir: cfg.Repos.SN,
+		StdoutPath: filepath.Join(stateDir, "processes", workloadRPCProxyProcessID+".stdout.log"),
+		StderrPath: filepath.Join(stateDir, "processes", workloadRPCProxyProcessID+".stderr.log"),
+		HealthURL:  "http://" + workloadRPCProxyHealthAddress + "/healthz", RestartLimit: 5,
+	}}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		ip := fmt.Sprintf("127.0.0.%d", 10+i)
 		baseEnv := operatorBaseEnv(cfg, stateDir, i, ip)
@@ -508,7 +533,7 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: []string{fmt.Sprintf("--port=%d", svc.port)}, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", svc.port), RestartLimit: 5})
 		}
 	}
-	return out
+	return out, nil
 }
 
 // Account provisioning requires only each operator's API. Starting connect
@@ -518,7 +543,7 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 	out := make([]ProcessSpec, 0)
 	for _, spec := range specs {
-		if spec.Role == "operator-api" {
+		if spec.Role == "dependency-rpc-proxy" || spec.Role == "operator-api" {
 			out = append(out, spec)
 		}
 	}
@@ -527,7 +552,7 @@ func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 
 func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip string) map[string]string {
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator))
-	return map[string]string{"WARP_ENV": fmt.Sprintf("sim-testnet-op-%d", operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": filepath.Join(cfg.Repos.PlatformConfig, "local"), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": stripScheme(cfg.Authority), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "BRINGYOUR_TRUSTED_PROXY_CIDRS": cfg.TrustedProxyCIDRs, "URNETWORK_ST_PROFILE": "testnet"}
+	return map[string]string{"WARP_ENV": fmt.Sprintf("sim-testnet-op-%d", operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": filepath.Join(cfg.Repos.PlatformConfig, "local"), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "BRINGYOUR_TRUSTED_PROXY_CIDRS": cfg.TrustedProxyCIDRs, "URNETWORK_ST_PROFILE": "testnet"}
 }
 
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {

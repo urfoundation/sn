@@ -45,7 +45,7 @@ echo "[release-1.0] operator pure/unit suites"
 (
   cd "$workspace/server"
   go test ./st ./startifact
-  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifySourceIp|VerifyClampM|VerifyCachedResponseRoundTrip)'
+  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifySourceIp|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
   go test ./session -run 'Test(ParseTrustedProxyPrefixes|ResolveClientAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^TestVerifyEgressExactIndexAndPrefixScoreAreIndependent$'
@@ -68,8 +68,8 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
   echo "[release-1.0] operator PostgreSQL/Redis integration suites"
   (
     cd "$workspace/server"
-    go test ./controller -run 'TestVerifyController(FullTrailFlow|PoisonAndFailurePaths)'
-    go test ./model -run 'Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp)'
+    go test ./controller -run 'TestVerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)'
+    go test ./model -run 'Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail)'
   )
 else
   echo "[release-1.0] DB suites deferred to managed launch profile (set RUN_SERVER_DB_TESTS=1 when WARP_ENV/PostgreSQL/Redis are available)"

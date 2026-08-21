@@ -35,6 +35,13 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			Launch: "smoke", Release: "release-1.0", ShortEpochs: 20, ProductionEpochs: 2,
 			VoluntaryConvictionRao: 1_000_000_000, QualityFaultOperator: 2,
 			QualityFaultStartBlocks: 5, QualityFaultDurationBlocks: 20,
+			Adversaries: AdversaryConfig{
+				Enabled: true, Matrix: "docs/spec/adversarial-matrix-v1.json", Seed: 52120260820,
+				SampleIntervalMilliseconds: 5000, RequestTimeoutMilliseconds: 10000,
+				MinimumSamplesPerActor: 100, MaximumActorErrorRatePPM: 0,
+				MaximumP99LatencyMilliseconds: 15000, MaximumAttackControlP95Ratio: 20_000_000, MaximumOperatorRequestsPerSec: 8,
+				MaximumRPCRequestsPerSec: 2,
+			},
 		},
 		Budgets: BudgetConfig{
 			MaximumSubnetCreations: 0, MaximumRegistrations: 32, MaximumRegistrationBurnRao: 250_000_000,

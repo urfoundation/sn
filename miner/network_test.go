@@ -22,7 +22,13 @@ func TestValidateApiUrl(t *testing.T) {
 		wantErr bool
 	}{
 		{"https://example.com", false},
-		{"http://example.com", false},
+		{"http://example.com", true},
+		{"http://127.0.0.1:8080", false},
+		{"http://127.99.4.2", false},
+		{"http://[::1]:8080", false},
+		{"http://localhost:8080", false},
+		{"http://localhost.:8080", false},
+		{"http://localhost.example.com", true},
 		{"ws://example.com", true},
 		{"wss://example.com", true},
 		{"ftp://example.com", true},
@@ -46,8 +52,13 @@ func TestValidateConnectUrl(t *testing.T) {
 		url     string
 		wantErr bool
 	}{
-		{"ws://example.com", false},
+		{"ws://example.com", true},
 		{"wss://example.com", false},
+		{"ws://127.0.0.1:8080", false},
+		{"ws://127.99.4.2", false},
+		{"ws://[::1]:8080", false},
+		{"ws://localhost:8080", false},
+		{"ws://localhost.example.com", true},
 		{"http://example.com", true},
 		{"https://example.com", true},
 		{"ftp://example.com", true},
@@ -63,6 +74,45 @@ func TestValidateConnectUrl(t *testing.T) {
 		if !c.wantErr && err != nil {
 			t.Errorf("validateConnectUrl(%q): unexpected error: %s", c.url, err)
 		}
+	}
+}
+
+func TestReleaseTransportRejectsExternalPlaintext(t *testing.T) {
+	for _, rawURL := range []string{
+		"http://example.com",
+		"http://192.0.2.10:8080",
+		"http://[2001:db8::1]:8080",
+		"http://127.0.0.1.evil.example",
+	} {
+		if err := validateApiUrl(rawURL); err == nil {
+			t.Errorf("external plaintext API endpoint %q was accepted", rawURL)
+		}
+	}
+	for _, rawURL := range []string{
+		"ws://example.com",
+		"ws://192.0.2.10:8080",
+		"ws://[2001:db8::1]:8080",
+		"ws://localhost.evil.example",
+	} {
+		if err := validateConnectUrl(rawURL); err == nil {
+			t.Errorf("external plaintext connect endpoint %q was accepted", rawURL)
+		}
+	}
+
+	dir := t.TempDir()
+	apiOpts := parseArgsForTest(t, []string{"provide", "--api_url=http://example.com"})
+	if _, err := resolveApiUrlIn(apiOpts, dir); err == nil {
+		t.Fatal("one-shot external plaintext API override bypassed release validation")
+	}
+	connectOpts := parseArgsForTest(t, []string{"provide", "--connect_url=ws://example.com"})
+	if _, err := resolveConnectUrlIn(connectOpts, dir); err == nil {
+		t.Fatal("one-shot external plaintext connect override bypassed release validation")
+	}
+	if _, err := resolveApiUrlIn(parseArgsForTest(t, []string{"provide", "--api_url=http://127.0.0.1:8080"}), dir); err != nil {
+		t.Fatalf("simulator loopback API endpoint rejected: %v", err)
+	}
+	if _, err := resolveConnectUrlIn(parseArgsForTest(t, []string{"provide", "--connect_url=ws://127.0.0.1:18080"}), dir); err != nil {
+		t.Fatalf("simulator loopback connect endpoint rejected: %v", err)
 	}
 }
 

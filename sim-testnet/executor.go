@@ -1489,8 +1489,8 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		st := map[string]any{
 			"profile":                                    "testnet",
 			"testnet-enabled":                            true,
-			"testnet-authority":                          cfg.Authority,
-			"testnet-rpc-urls":                           []string{evmHTTP(cfg.Authority)},
+			"testnet-authority":                          workloadRPCAuthority(),
+			"testnet-rpc-urls":                           []string{evmHTTP(workloadRPCAuthority())},
 			"testnet-chain-id":                           testnetChainID,
 			"testnet-genesis-hash":                       testnetGenesis,
 			"testnet-deployment-id":                      cfg.Config.Deployment.DeploymentID,
@@ -1619,7 +1619,7 @@ func copyTree(src, dst string, mode os.FileMode) error {
 }
 
 func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) error {
-	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(cfg.Authority)}, "substrate": []string{substrateWS(cfg.Authority)}}
+	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadRPCAuthority())}}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		v := cloneMap(base)
 		v["validator_id"] = i
@@ -1676,7 +1676,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 			"schema_version":  1,
 			"release":         "1.0",
 			"api_url":         fmt.Sprintf("http://127.0.0.1:%d", 18080+v["operator_no_id"].(int)),
-			"rpc":             []string{evmHTTP(cfg.Authority)},
+			"rpc":             []string{evmHTTP(workloadRPCAuthority())},
 			"key_file":        claimKeyPath,
 			"state_dir":       filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "claims"),
 			"poll_seconds":    10,

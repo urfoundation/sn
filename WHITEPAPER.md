@@ -1551,6 +1551,28 @@ test.finney); **mainnet is the later Phase‑E promotion** (M3), gated behind a 
 which the M4+ production phases run on finney. The SP‑1/SP‑2/SP‑3 harness is endpoint‑parameterized, so
 it re‑targets with zero code change. Operational detail: `docs/LAUNCH.md`.)*
 
+For every M0–M3 integration/soak run, the release‑locked adversarial campaign is
+part of the normative test environment, not a separate quiet‑path exercise. Its
+actors start before the happy path, remain active through weights, faults,
+settlement, claims and final reconciliation, and stop afterward. The campaign
+covers known Yuma/weight‑copying/liquid‑alpha and identity‑churn behavior,
+published Subtensor advisories and open runtime/economic risks, RPC/archive
+inconsistency, operator verification replay/poison/resource pressure, artifact
+equivocation, custody/authorization and dependency failure. Shared‑testnet
+activity is limited to our identities/netuid, loopback services and capped reads;
+chain‑wide exploit reproduction runs only on the pinned local runtime. A release
+run requires interleaved controls, bounded load, zero unexpected errors, explicit
+latency/resilience evidence and a root‑caused disposition for every anomaly. The
+v1.0 release catalogue contains 54 mandatory vectors, including all published
+Subtensor advisories and the known Bittensor SDK missing‑signature,
+finality‑era‑expiry, plaintext unauthenticated transport and constant‑body‑hash
+failures. Every vector must name a checked‑in oracle/test and produce at least one
+of its own declared metrics during the overlapping campaign; actor health alone
+is not evidence. Simulator‑owned PostgreSQL, Redis and the workload RPC path are
+faulted on a non‑overlapping block schedule while happy‑path traffic continues;
+shared Subtensor and MinIO infrastructure is observed but not destructively
+faulted.
+
 1. **M0 — Rehearsal + probes.** (a) **SP‑3 localnet** (docker subtensor pinned to the reviewed runtime,
    fast blocks): the full convergence dry-run — deploy, pool-UID registration +
    custody/move α (`0x805`), **≥ 2 validators** scoring `implied_usage × quality` under commit‑reveal

@@ -48,6 +48,9 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 50_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 {
 			t.Fatalf("validator %d config incomplete: %+v", i, loaded)
 		}
+		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadRPCAuthority() {
+			t.Fatalf("validator %d bypasses the simulator-owned RPC proxy: rpc=%v substrate=%v", i, loaded.RPC, loaded.Substrate)
+		}
 		wantControlled := controlledNOIDsForValidator(i)
 		if len(loaded.ControlledNOIDs) != len(wantControlled) || (len(wantControlled) != 0 && loaded.ControlledNOIDs[0] != wantControlled[0]) {
 			t.Fatalf("validator %d controlled NOs = %v, want %v", i, loaded.ControlledNOIDs, wantControlled)
@@ -59,7 +62,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("miner %d claim daemon rendered config: %v", i, err)
 		}
-		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 {
+		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() {
 			t.Fatalf("miner %d claim config incomplete: %+v", i, loaded)
 		}
 		wantKey := filepath.Join(stateDir, "secrets", "miner-"+strconv.Itoa(i)+"-claim-relayer.key")
@@ -80,7 +83,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(b)
-	if !strings.Contains(text, "testnet-coordinator-address") || !strings.Contains(text, "testnet-deposit-tiers") || !strings.Contains(text, "rate_numerator_rao_per_gib") || strings.Contains(text, "\ndeposit_key:") || strings.Contains(text, "\nops_key:") {
+	if !strings.Contains(text, "testnet-coordinator-address") || !strings.Contains(text, "testnet-deposit-tiers") || !strings.Contains(text, "rate_numerator_rao_per_gib") || !strings.Contains(text, workloadRPCAuthority()) || strings.Contains(text, cfg.Authority) || strings.Contains(text, "\ndeposit_key:") || strings.Contains(text, "\nops_key:") {
 		t.Fatalf("operator st config did not stay testnet-scoped:\n%s", text)
 	}
 	minio, err := os.ReadFile(filepath.Join(stateDir, "runtime", "operator-1", "vault", "minio.yml"))
@@ -99,6 +102,9 @@ func TestOperatorEnvironmentUsesDiscoveredPlatformConfig(t *testing.T) {
 	want := filepath.Join(cfg.Repos.PlatformConfig, "local")
 	if env["WARP_CONFIG_HOME"] != want {
 		t.Fatalf("WARP_CONFIG_HOME = %q, want %q", env["WARP_CONFIG_HOME"], want)
+	}
+	if env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
+		t.Fatalf("operator bypasses workload RPC proxy: %q", env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
 	}
 }
 

@@ -471,6 +471,43 @@ func (c *Chain) NewSignedExtrinsic(kp *Keypair, call types.Call, nonce uint32) (
 	return &ext, nil
 }
 
+// SignedExtrinsicUsesImmortalEra inspects the actual signed-extension field,
+// rather than assuming the caller used NewSignedExtrinsic. Release CRv4
+// persists and replays exact signed bytes, so an unexpected mortal era would
+// create a hidden expiry boundary during finality lag (RaoFoundation/
+// bittensor#3395). Exactly one explicit immortal era is required.
+func SignedExtrinsicUsesImmortalEra(ext *extrinsic.Extrinsic) bool {
+	if ext == nil || ext.Signature == nil {
+		return false
+	}
+	seen := false
+	for _, field := range ext.Signature.SignedFields {
+		if field == nil || field.Name != extrinsic.EraSignedField {
+			continue
+		}
+		if seen {
+			return false
+		}
+		seen = true
+		var era types.ExtrinsicEra
+		switch value := field.Value.(type) {
+		case types.ExtrinsicEra:
+			era = value
+		case *types.ExtrinsicEra:
+			if value == nil {
+				return false
+			}
+			era = *value
+		default:
+			return false
+		}
+		if !era.IsImmortalEra {
+			return false
+		}
+	}
+	return seen
+}
+
 // SubmitAndWatchFinalized broadcasts ext and waits for canonical finality. It
 // rejects pool terminal states, retractions, and finalized dispatch failures.
 // Callers should additionally verify their operation-specific storage

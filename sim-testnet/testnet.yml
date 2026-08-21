@@ -71,6 +71,18 @@ scenarios:
   quality_fault_operator: 2
   quality_fault_start_blocks: 5
   quality_fault_duration_blocks: 20
+  adversaries:
+    enabled: true
+    matrix: docs/spec/adversarial-matrix-v1.json
+    seed: 52120260820
+    sample_interval_milliseconds: 5000
+    request_timeout_milliseconds: 10000
+    minimum_samples_per_actor: 100
+    maximum_actor_error_rate_ppm: 0
+    maximum_p99_latency_milliseconds: 15000
+    maximum_attack_control_p95_ratio_ppm: 20000000
+    maximum_operator_requests_per_second: 8
+    maximum_rpc_requests_per_second: 2
 
 budgets:
   maximum_subnet_creations: 0

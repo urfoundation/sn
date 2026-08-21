@@ -132,14 +132,34 @@ type ProcessConfig struct {
 	RestartPolicy        string `yaml:"restart_policy" json:"restart_policy"`
 }
 type ScenarioConfig struct {
-	Launch                     string `yaml:"launch" json:"launch"`
-	Release                    string `yaml:"release" json:"release"`
-	ShortEpochs                int    `yaml:"short_epochs" json:"short_epochs"`
-	ProductionEpochs           int    `yaml:"production_epochs" json:"production_epochs"`
-	VoluntaryConvictionRao     uint64 `yaml:"voluntary_conviction_rao" json:"voluntary_conviction_rao"`
-	QualityFaultOperator       int    `yaml:"quality_fault_operator" json:"quality_fault_operator"`
-	QualityFaultStartBlocks    uint64 `yaml:"quality_fault_start_blocks" json:"quality_fault_start_blocks"`
-	QualityFaultDurationBlocks uint64 `yaml:"quality_fault_duration_blocks" json:"quality_fault_duration_blocks"`
+	Launch                     string          `yaml:"launch" json:"launch"`
+	Release                    string          `yaml:"release" json:"release"`
+	ShortEpochs                int             `yaml:"short_epochs" json:"short_epochs"`
+	ProductionEpochs           int             `yaml:"production_epochs" json:"production_epochs"`
+	VoluntaryConvictionRao     uint64          `yaml:"voluntary_conviction_rao" json:"voluntary_conviction_rao"`
+	QualityFaultOperator       int             `yaml:"quality_fault_operator" json:"quality_fault_operator"`
+	QualityFaultStartBlocks    uint64          `yaml:"quality_fault_start_blocks" json:"quality_fault_start_blocks"`
+	QualityFaultDurationBlocks uint64          `yaml:"quality_fault_duration_blocks" json:"quality_fault_duration_blocks"`
+	Adversaries                AdversaryConfig `yaml:"adversaries" json:"adversaries"`
+}
+
+// AdversaryConfig bounds the continuous hostile traffic and local economic
+// emulation which run alongside the release and production-soak happy paths.
+// The shared testnet campaign is deliberately read-only outside our own
+// operator APIs, identities and netuid; chain-wide exploit reproduction is
+// reserved for the exact local-runtime gate described by the matrix.
+type AdversaryConfig struct {
+	Enabled                       bool   `yaml:"enabled" json:"enabled"`
+	Matrix                        string `yaml:"matrix" json:"matrix"`
+	Seed                          uint64 `yaml:"seed" json:"seed"`
+	SampleIntervalMilliseconds    int    `yaml:"sample_interval_milliseconds" json:"sample_interval_milliseconds"`
+	RequestTimeoutMilliseconds    int    `yaml:"request_timeout_milliseconds" json:"request_timeout_milliseconds"`
+	MinimumSamplesPerActor        int    `yaml:"minimum_samples_per_actor" json:"minimum_samples_per_actor"`
+	MaximumActorErrorRatePPM      uint32 `yaml:"maximum_actor_error_rate_ppm" json:"maximum_actor_error_rate_ppm"`
+	MaximumP99LatencyMilliseconds int    `yaml:"maximum_p99_latency_milliseconds" json:"maximum_p99_latency_milliseconds"`
+	MaximumAttackControlP95Ratio  uint64 `yaml:"maximum_attack_control_p95_ratio_ppm" json:"maximum_attack_control_p95_ratio_ppm"`
+	MaximumOperatorRequestsPerSec int    `yaml:"maximum_operator_requests_per_second" json:"maximum_operator_requests_per_second"`
+	MaximumRPCRequestsPerSec      int    `yaml:"maximum_rpc_requests_per_second" json:"maximum_rpc_requests_per_second"`
 }
 type BudgetConfig struct {
 	MaximumSubnetCreations     int    `yaml:"maximum_subnet_creations" json:"maximum_subnet_creations"`
@@ -420,6 +440,22 @@ func (c *HarnessConfig) Validate() error {
 	}
 	if c.Scenarios.VoluntaryConvictionRao == 0 || c.Scenarios.QualityFaultOperator < 1 || c.Scenarios.QualityFaultOperator > c.Topology.Operators || c.Scenarios.QualityFaultStartBlocks == 0 || c.Scenarios.QualityFaultDurationBlocks == 0 {
 		return errors.New("release scenario requires voluntary conviction and a bounded quality-cohort fault")
+	}
+	adversaries := c.Scenarios.Adversaries
+	if !adversaries.Enabled || adversaries.Matrix != "docs/spec/adversarial-matrix-v1.json" || adversaries.Seed == 0 {
+		return errors.New("release scenario requires the pinned continuous adversarial campaign")
+	}
+	if adversaries.SampleIntervalMilliseconds < 250 || adversaries.SampleIntervalMilliseconds > 60_000 || adversaries.RequestTimeoutMilliseconds < 250 || adversaries.RequestTimeoutMilliseconds > 60_000 {
+		return errors.New("adversarial sample interval and request timeout must be in [250,60000] milliseconds")
+	}
+	if adversaries.MinimumSamplesPerActor < 100 || adversaries.MaximumActorErrorRatePPM != 0 || adversaries.MaximumP99LatencyMilliseconds < adversaries.RequestTimeoutMilliseconds {
+		return errors.New("adversarial evidence thresholds are incomplete or unsafe")
+	}
+	if adversaries.MaximumAttackControlP95Ratio < 1_000_000 || adversaries.MaximumAttackControlP95Ratio > 50_000_000 {
+		return errors.New("adversarial attack/control p95 ratio must be in [1000000,50000000] ppm")
+	}
+	if adversaries.MaximumOperatorRequestsPerSec < 1 || adversaries.MaximumOperatorRequestsPerSec > 20 || adversaries.MaximumRPCRequestsPerSec < 1 || adversaries.MaximumRPCRequestsPerSec > 5 {
+		return errors.New("adversarial request ceilings exceed the shared-testnet safety envelope")
 	}
 	if c.Dependencies.ObjectStore != "server-blob" || c.Artifacts.Writer != "server-blob" || c.Artifacts.HistoryAPI != "server-api" || !c.Artifacts.ContentAddressed {
 		return errors.New("artifacts must use content-addressed server/blob and server API history")
