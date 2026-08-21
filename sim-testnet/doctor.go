@@ -82,6 +82,12 @@ func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
 	r := DoctorReport{Schema: "urnetwork-sim-doctor-v1", GeneratedAt: time.Now().UTC().Format(time.RFC3339), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Ready: true}
 	r.add("host/linux-amd64", true, validateHostPlatform(runtime.GOOS, runtime.GOARCH), runtime.GOOS+"/"+runtime.GOARCH)
+	defaultStateRoot := filepath.Dir(cfg.ConfigPath)
+	freeBytes, diskErr := filesystemFreeBytes(defaultStateRoot)
+	if diskErr == nil {
+		diskErr = validateReleaseStateFreeBytes(freeBytes)
+	}
+	r.add("host/default-state-disk", true, diskErr, fmt.Sprintf("path=%s free_bytes=%d minimum_bytes=%d", defaultStateRoot, freeBytes, minimumReleaseStateFreeBytes))
 	for _, tool := range []string{"go", "git", "docker"} {
 		p, err := exec.LookPath(tool)
 		r.add("tool/"+tool, true, err, p)

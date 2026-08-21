@@ -1163,7 +1163,7 @@ analysis:
   serve_read_only_dashboard: true
 ```
 
-All references resolve relative to the config file or a discovered repository root, never the current working directory or `/home/by`. CLI repository overrides make the same profile runnable on any host with compatible checkouts. `doctor` verifies repository identity/commit, decrypted vault readability, tool/container/runtime capabilities, free ports/disk, private RPC access, and the server API/blob-store configuration and readiness before planning.
+All references resolve relative to the config file or a discovered repository root, never the current working directory or `/home/by`. CLI repository overrides make the same profile runnable on any host with compatible checkouts. `doctor` verifies repository identity/commit, decrypted vault readability, tool/container/runtime capabilities, default state-disk capacity, private RPC access, and the server API/blob-store configuration and readiness before planning. The immediately pre-apply host gate rechecks the selected state filesystem and every simulator-owned process port before constructing a transaction-capable executor.
 
 The wallet literal is redacted before any diagnostic serialization. Zero/empty vault inputs, an owner mismatch for the supplied netuid, an unpinned dependency, or an unavailable server API/MinIO store is fatal. The receipt materializer copies only the verified public netuid/owner, budgets, and derived public keys into the redacted deployment manifest.
 
@@ -1264,7 +1264,7 @@ sim-testnet stop      gracefully stop local processes only; preserve deployment/
 sim-testnet retire    explicit future-effective deactivation plan; dry-run by default
 ```
 
-Every mutating command is dry-run by default and requires `--apply --plan-hash <hash>`. `launch --detach` returns only after a checksum-locked persistent supervisor/service has taken ownership of child processes and a fresh `status` call proves readiness. The supervisor starts after host reboot, runs journal reconciliation before adopting/restarting children, and never repeats a chain write merely because its local PID state was lost. Foreground mode streams logs and handles signals without corrupting the journal. `go run` remains acceptable for read-only commands and foreground development, but a detached release deployment uses the built binary recorded in the release manifest.
+Every mutating command is dry-run by default and requires `--apply --plan-hash <hash>`. `launch --detach` returns only after a checksum-locked persistent supervisor/service has taken ownership of child processes and a fresh `status` call proves readiness. Host reboot is an intentional stop boundary: neither the disabled supervisor unit nor the managed PostgreSQL/Redis containers auto-start. An explicit `resume` first reruns doctor and reconciles the journal and finalized chain, then starts dependencies and adopts/restarts children without repeating a chain write merely because local PID state was lost. Foreground mode streams logs and handles signals without corrupting the journal. `go run` remains acceptable for read-only commands and foreground development, but a detached release deployment uses the built binary recorded in the release manifest.
 
 The first target host is this workspace host, but nothing may encode its hostname, IP, `/home/by` layout, or machine-specific repository paths. Repository discovery starts from the config/executable and verifies Go module/Git identities; `--sn-repo`, `--server-repo`, and `--vault-repo` override discovery. All run paths are resolved from an explicit state directory. Host integrations (container engine and systemd user/system service) are capability-detected behind interfaces, and `doctor` prints the exact missing prerequisite. Any supported Linux host with the locked repositories checked out, readable testnet vault, RPC reachability, and required runtime capabilities must produce the same plan hash.
 
@@ -1973,7 +1973,9 @@ the two isolated loopback addresses with authenticated semantic probes and match
 container/volume provenance labels. The operator transaction, poisoning, replay,
 lock-fencing, expiry and orphan-cleanup suites passed against an isolated local
 PostgreSQL/Redis profile on 2026-08-21; its cleanup removed only that profile and
-left the four persistent simulator-owned stores running. The managed launch profile
+left the four persistent simulator-owned stores running. The real server/blob
+service account also passed an idempotent content-addressed MinIO write/read/list
+canary against the overlay endpoint. The managed launch profile
 must rerun the same suites with its rendered per-operator runtime vault/config by
 setting `RUN_SERVER_DB_TESTS=1`; invoking the flag without `WARP_ENV` fails closed
 before connecting. The operator/miner/validator topology was

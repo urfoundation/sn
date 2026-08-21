@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -95,6 +96,69 @@ func TestSupervisorServiceNamesAndArgumentsAreSafe(t *testing.T) {
 	}
 	if got, err := systemdQuote("/tmp/path with spaces"); err != nil || got != `"/tmp/path with spaces"` {
 		t.Fatalf("quoted argument = %q, %v", got, err)
+	}
+}
+
+func TestPersistentSupervisorRequiresExplicitResumeAfterReboot(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.ConfigPath = "/release/testnet.yml"
+	unit, err := persistentSupervisorUnit(cfg, "/release/sim-testnet", "/release/state", "/release/supervisor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(unit, "[Install]") || strings.Contains(unit, "WantedBy=") {
+		t.Fatalf("supervisor unit is boot-installable:\n%s", unit)
+	}
+	actions := persistentSupervisorSystemctlActions("urnetwork-sim-test.service")
+	joined := ""
+	for _, action := range actions {
+		joined += strings.Join(action, " ") + "\n"
+	}
+	if strings.Contains(joined, "enable") || strings.Contains(joined, "--now") || !strings.Contains(joined, "disable") || !strings.Contains(joined, "start") {
+		t.Fatalf("supervisor actions can persist across reboot:\n%s", joined)
+	}
+}
+
+func TestReleaseHostPreflightRejectsFullDiskAndOccupiedPort(t *testing.T) {
+	if err := validateReleaseStateFreeBytes(minimumReleaseStateFreeBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReleaseStateFreeBytes(minimumReleaseStateFreeBytes - 1); err == nil {
+		t.Fatal("undersized release filesystem was accepted")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := validateAvailableListenAddresses([]string{address}); err == nil || !strings.Contains(err.Error(), address) {
+		t.Fatalf("occupied simulator listener was accepted: %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateAvailableListenAddresses([]string{address}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	addresses := releaseProcessListenAddresses(cfg)
+	want := 2 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.Miners
+	if len(addresses) != want {
+		t.Fatalf("release listener count=%d, want %d: %v", len(addresses), want, addresses)
+	}
+	seen := map[string]bool{}
+	for _, address := range addresses {
+		if seen[address] {
+			t.Fatalf("duplicate release listener %s", address)
+		}
+		seen[address] = true
+		host, _, err := net.SplitHostPort(address)
+		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
+			t.Fatalf("release listener is not loopback-confined: %q (%v)", address, err)
+		}
 	}
 }
 
@@ -230,6 +294,9 @@ func TestManagedDependencySpecsMirrorServerLocalAndIsolateOperators(t *testing.T
 	if len(postgresOne.DataVolumes) != 1 || postgresOne.DataVolumes[0] != "unit-test-deployment-pg-1-data" || postgresOne.ReadyExpected != "512:256MB:en_US.UTF-8" {
 		t.Fatalf("PostgreSQL durable/readiness contract drifted: volumes=%v expected=%q", postgresOne.DataVolumes, postgresOne.ReadyExpected)
 	}
+	if postgresOne.RestartPolicy != "no" || redisOne.RestartPolicy != "no" || postgresTwo.RestartPolicy != "no" || redisTwo.RestartPolicy != "no" {
+		t.Fatalf("managed dependencies can restart after reboot: %q/%q/%q/%q", postgresOne.RestartPolicy, redisOne.RestartPolicy, postgresTwo.RestartPolicy, redisTwo.RestartPolicy)
+	}
 	postgresProbe := strings.Join(postgresOne.ReadyProbe, " ")
 	if !strings.Contains(postgresProbe, "PGPASSWORD=") || !strings.Contains(postgresProbe, "psql -h 127.0.0.1 -U bringyour -d bringyour") || !strings.Contains(postgresProbe, "max_connections") {
 		t.Fatalf("PostgreSQL readiness is not an authenticated settings query: %q", postgresProbe)
@@ -273,6 +340,7 @@ func TestManagedContainerSpecHashCoversCreationSettings(t *testing.T) {
 		Name:              "one",
 		Image:             "image@sha256:" + strings.Repeat("a", 64),
 		ConfigurationHash: "sha256:" + strings.Repeat("b", 64),
+		RestartPolicy:     "no",
 		RunArgs:           []string{"-p", "127.0.0.11:5432:5432"},
 		Command:           []string{"server", "--limit", "1"},
 		DataVolumes:       []string{"one-data"},
@@ -315,6 +383,34 @@ func TestManagedContainerSpecHashCoversCreationSettings(t *testing.T) {
 	}
 	if third == first {
 		t.Fatal("server/local configuration drift did not change the spec hash")
+	}
+	changed = spec
+	changed.RestartPolicy = "unless-stopped"
+	third, err = managedContainerSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Fatal("container restart-policy drift did not change the spec hash")
+	}
+	dataFirst, err := managedContainerDataSpecHash(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataThird, err := managedContainerDataSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataThird != dataFirst {
+		t.Fatal("container-only restart policy invalidated compatible persistent data")
+	}
+	changed.ConfigurationHash = "sha256:" + strings.Repeat("c", 64)
+	dataThird, err = managedContainerDataSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataThird == dataFirst {
+		t.Fatal("data-affecting configuration drift preserved the volume hash")
 	}
 }
 

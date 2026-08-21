@@ -295,6 +295,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return err
 		}
 	}
+	if cmd == "launch" || cmd == "resume" {
+		if err := preflightReleaseHost(stateDir, cfg); err != nil {
+			return fmt.Errorf("release host preflight: %w", err)
+		}
+	}
 	ex, err := NewExecutor(ctx, cfg, stateDir, p, j, roles)
 	if err != nil {
 		return err
