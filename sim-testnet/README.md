@@ -214,8 +214,9 @@ after its final reconciliation:
 - bounded operator API and real `/verify` pressure, including simultaneous
   identical EXTENDs, replays, invalid signatures, poison-shape comparisons, and
   per-source vpk rotation;
-- independent private/public finalized-RPC agreement plus common-height subnet
-  UID, spot/moving-price, and TAO/alpha-reserve reads;
+- independent private/public finalized-RPC agreement, observed runtime-spec and
+  transaction-version identity, plus common-height subnet UID,
+  spot/moving-price, and TAO/alpha-reserve reads;
 - artifact fetch/reconstruction/tamper pressure and fleet identity-generation
   mutations; and
 - deterministic consensus, liquid-alpha, custody, unit/domain, rounding,

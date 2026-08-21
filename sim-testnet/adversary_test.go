@@ -30,6 +30,44 @@ type scenarioAdversaryStub struct {
 	happyComplete time.Time
 }
 
+// shutdownCancellationAdversary emits one real failure, then waits for the
+// campaign parent to cancel its second sample. The second result must not enter
+// resilience evidence because it was manufactured by lifecycle teardown.
+type shutdownCancellationAdversary struct {
+	calls         atomic.Uint64
+	secondEntered chan struct{}
+}
+
+// startCancellationAdversary exposes whether a rejected campaign start
+// created any actor work.
+type startCancellationAdversary struct {
+	calls atomic.Uint64
+}
+
+// ID identifies the pre-canceled start probe.
+func (self *startCancellationAdversary) ID() string { return "start-cancellation" }
+
+// Sample records an actor launch which must never happen for a pre-canceled
+// campaign parent.
+func (self *startCancellationAdversary) Sample(context.Context, adversarySamplePhase, uint64) adversarySampleResult {
+	self.calls.Add(1)
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess}
+}
+
+// ID identifies the lifecycle probe independently of the release actor set.
+func (self *shutdownCancellationAdversary) ID() string { return "shutdown-cancellation" }
+
+// Sample separates an observable actor failure from the cancellation-only
+// result with an explicit second-call barrier.
+func (self *shutdownCancellationAdversary) Sample(ctx context.Context, _ adversarySamplePhase, _ uint64) adversarySampleResult {
+	if self.calls.Add(1) == 1 {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "observable actor failure"}
+	}
+	close(self.secondEntered)
+	<-ctx.Done()
+	return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: ctx.Err().Error()}
+}
+
 func (self *scenarioAdversaryStub) Start(context.Context) error {
 	self.started = true
 	self.startCalls++
@@ -187,6 +225,52 @@ func TestAdversaryRequestGateCapsRate(t *testing.T) {
 	}
 }
 
+func TestAdversaryCampaignDoesNotCountShutdownCancellation(t *testing.T) {
+	actor := &shutdownCancellationAdversary{secondEntered: make(chan struct{})}
+	state := &adversaryActorState{evidence: AdversaryActorEvidence{ID: actor.ID()}}
+	campaign := &liveAdversaryCampaign{
+		cfg: AdversaryConfig{
+			SampleIntervalMilliseconds: 1,
+			RequestTimeoutMilliseconds: 30_000,
+		},
+		now:    time.Now,
+		states: map[string]*adversaryActorState{actor.ID(): state},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan struct{}, 1)
+	var workers sync.WaitGroup
+	workers.Add(1)
+	go campaign.runActor(ctx, &workers, ready, actor)
+	<-ready
+	<-actor.secondEntered
+	cancel()
+	workers.Wait()
+	if state.evidence.Samples != 1 || state.evidence.Errors != 1 || state.evidence.LastDetail != "observable actor failure" {
+		t.Fatalf("shutdown cancellation changed actor evidence: %+v", state.evidence)
+	}
+}
+
+func TestAdversaryCampaignRejectsCanceledParentBeforeActorLaunch(t *testing.T) {
+	actor := &startCancellationAdversary{}
+	campaign := &liveAdversaryCampaign{
+		cfg: AdversaryConfig{
+			SampleIntervalMilliseconds: 1,
+			RequestTimeoutMilliseconds: 30_000,
+		},
+		actors: []adversaryActor{actor},
+		now:    time.Now,
+		states: map[string]*adversaryActorState{},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := campaign.Start(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled campaign start error=%v", err)
+	}
+	if actor.calls.Load() != 0 || campaign.started || len(campaign.states) != 0 {
+		t.Fatalf("pre-canceled start launched actor calls=%d started=%t states=%d", actor.calls.Load(), campaign.started, len(campaign.states))
+	}
+}
+
 func TestAdversaryFaultWindowAttributesOnlyExactTargetAndBoundedGrace(t *testing.T) {
 	now := time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
 	window := newAdversaryFaultWindow(10 * time.Second)
@@ -249,6 +333,37 @@ func TestAdversaryMetricSnapshotOwnsCampaignHistory(t *testing.T) {
 	state.evidence.Metrics["subnet_uid_count"] = AdversaryMetricEvidence{Samples: 3, Minimum: 0, Maximum: 9, Last: 0}
 	if metric := snapshot.Metrics["subnet_uid_count"]; metric.Samples != 2 || metric.Minimum != 1 || metric.Last != 9 {
 		t.Fatalf("snapshot metric changed with live campaign state: %+v", metric)
+	}
+}
+
+func TestAdversaryLatencyRatioUsesOneMillisecondControlFloor(t *testing.T) {
+	state := &adversaryActorState{
+		evidence:         AdversaryActorEvidence{ID: "latency-floor", Samples: 2, ControlSamples: 1, AttackSamples: 1},
+		latencies:        []int64{0, 100},
+		controlLatencies: []int64{0},
+		attackLatencies:  []int64{100},
+	}
+	evidence := actorEvidenceSnapshot(state)
+	if evidence.ControlP95Milliseconds != 0 || evidence.AttackP95Milliseconds != 100 || evidence.AttackControlP95RatioPPM != 100_000_000 {
+		t.Fatalf("sub-millisecond control bypassed the latency ratio: %+v", evidence)
+	}
+	evidence.Status = "stopped"
+	evidence.P99LatencyMilliseconds = 100
+	campaign := &AdversaryCampaignEvidence{
+		StartedBeforeHappyPath: true, StoppedAfterHappyPath: true,
+		MinimumSamplesPerActor: 1, MaximumP99Milliseconds: 1_000,
+		MaximumAttackControlRatio: 20_000_000,
+		Actors:                    []AdversaryActorEvidence{evidence},
+	}
+	assertions := adversaryAssertions(campaign, time.Now().Add(-time.Second), "observation")
+	foundFailure := false
+	for _, assertion := range assertions {
+		if assertion.ID == "adversary_latency-floor_resilience" && !assertion.Passed {
+			foundFailure = true
+		}
+	}
+	if !foundFailure {
+		t.Fatal("sub-millisecond control did not enforce the latency-ratio gate")
 	}
 }
 
@@ -821,6 +936,93 @@ func TestAdversarialRPCBlockDecoderRejectsMalformedAndErrors(t *testing.T) {
 	}
 	if _, err := decodeRPCQuantity(rpcResponse{Result: json.RawMessage(`945`)}); err == nil {
 		t.Fatal("non-hex RPC quantity was accepted")
+	}
+}
+
+func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *testing.T) {
+	encode := func(name string, spec, transaction uint32) rpcResponse {
+		result, err := json.Marshal(rpcRuntimeVersion{SpecName: name, SpecVersion: spec, TransactionVersion: transaction})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rpcResponse{Result: result}
+	}
+	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 447, 1))
+	if err != nil || validateRPCRuntimeIdentity(valid, valid, 447, 1) != nil {
+		t.Fatalf("valid runtime identity rejected: %+v %v", valid, err)
+	}
+	cases := []rpcResponse{
+		{Result: json.RawMessage(`{}`)},
+		{Result: json.RawMessage(`null`)},
+		{Error: &struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		}{Code: -32000, Message: "unavailable"}},
+	}
+	for index, response := range cases {
+		if _, decodeErr := decodeRPCRuntimeVersion(response); decodeErr == nil {
+			t.Errorf("malformed runtime response %d was accepted", index)
+		}
+	}
+	identities := []struct {
+		private rpcRuntimeVersion
+		public  rpcRuntimeVersion
+	}{
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 448, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 447, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 447, TransactionVersion: 2}},
+	}
+	for index, identity := range identities {
+		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 447, 1); identityErr == nil {
+			t.Errorf("drifting runtime identity %d was accepted", index)
+		}
+	}
+}
+
+func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
+	newServer := func(spec uint32) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			defer request.Body.Close()
+			var call struct {
+				ID     uint64 `json:"id"`
+				Method string `json:"method"`
+			}
+			if json.NewDecoder(request.Body).Decode(&call) != nil {
+				http.Error(writer, "malformed request", http.StatusBadRequest)
+				return
+			}
+			var result any
+			switch call.Method {
+			case "eth_getBlockByNumber":
+				result = rpcBlock{Number: "0x64", Hash: "0x" + strings.Repeat("ab", 32)}
+			case "state_getRuntimeVersion":
+				result = rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1}
+			default:
+				_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "error": map[string]any{"code": -32601, "message": "unknown method"}})
+				return
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
+		}))
+	}
+	private := newServer(447)
+	defer private.Close()
+	public := newServer(448)
+	defer public.Close()
+	cfg := testResolvedConfig(t)
+	cfg.Authority = strings.TrimPrefix(private.URL, "http://")
+	cfg.Public.Chain.EVMPublicReadEndpoint = public.URL
+	cfg.Release.Runtime.SpecVersion = 447
+	cfg.Release.Runtime.TransactionVersion = 1
+	actor := &rpcAdversary{
+		cfg: cfg,
+		http: &adversaryHTTP{
+			gate:    &adversaryRequestGate{now: time.Now},
+			timeout: time.Second,
+		},
+	}
+	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
+	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs private=447 public=448 expected=447") {
+		t.Fatalf("observed runtime drift result=%+v", result)
 	}
 }
 

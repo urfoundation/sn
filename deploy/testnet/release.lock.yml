@@ -34,7 +34,7 @@ repositories:
   sn_audited_base_commit: "11c13216651952367692af008c7edece2a95a60e"
   server_audited_base_commit: "b67877066060f260547cba372c6a1d5934a0dcde"
   vault_audited_base_commit: "8951973e65a3251b7888f133955045f0cefb81c5"
-  sn_go_source_hash: "sha256:fb78f8b9fd1f35d0ba5a9bf864f5c26f53b76df34e9e7293120fd6c93b29cd3e"
+  sn_go_source_hash: "sha256:79af174de9287b2905a9a31b65fbc91c4d9ff67c1b5750bd9e404b8f321ae8f2"
   server_go_source_hash: "sha256:c35cf075f45447b567363422e912dc9a40e9b519a99800c0f319bf212f66bcf5"
   connect_go_source_hash: "sha256:03f12d6763c11fbd19486d2ac140b9161dbcf7aabdd6c7d7b0939f35dd3432ab"
   sdk_go_source_hash: "sha256:e4bc3de30af087919025b4bba4ba18daabc82dc57eab1d1d0610291d2f6df010"
@@ -43,7 +43,7 @@ repositories:
   proxy_go_source_hash: "sha256:d2e4e6ed005fd4fc5d4a6c00e2591f27fd296572be04ee6145a61a40fdb296e0"
   userwireguard_go_source_hash: "sha256:0690d9274209c48ee95d71a3e12e775c0d8d8f1eb819e7968ab20fe4b530bcdd"
   platform_config_source_hash: "sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a"
-  protocol_source_hash: "sha256:c4d9f3ca60dbf3e9494e3d4c34cb312ce0003a247d6ff056278f7cf73eb4aef8"
+  protocol_source_hash: "sha256:9d095b9b85216907b84e8598998de9c85f95df8075926957828e923c85f5f040"
 dependencies:
   postgres: "postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941"
   redis: "redis:8-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576"

@@ -51,6 +51,7 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 	),
 	"rpc-consistency-pressure": adversaryMetricSet(
 		"finalized_head_lag_blocks", "finalized_lag_blocks", "head_lag_blocks", "hash_disagreement_count", "archive_error_rate_ppm", "rpc_latency_ms", "runtime_spec",
+		"transaction_version",
 		"best_finalized_lag_blocks", "sdk_mev_shield_expired_observations", "subnet_spot_alpha_price", "subnet_moving_alpha_price", "subnet_uid_count",
 		"subnet_tao_reserve_rao", "subnet_alpha_reserve_rao", "spot_price", "moving_price", "tao_reserve_rao", "alpha_reserve_rao",
 	),
@@ -299,6 +300,9 @@ func vectorIDsByActor(matrix *AdversarialMatrix) map[string][]string {
 }
 
 func (self *liveAdversaryCampaign) Start(parent context.Context) error {
+	if err := parent.Err(); err != nil {
+		return err
+	}
 	self.mu.Lock()
 	if self.started {
 		if !self.stopping && !self.stopped {
@@ -355,6 +359,14 @@ func (self *liveAdversaryCampaign) runActor(ctx context.Context, workers *sync.W
 		sampleCtx, cancel := context.WithTimeout(ctx, time.Duration(self.cfg.RequestTimeoutMilliseconds)*time.Millisecond)
 		result := actor.Sample(sampleCtx, phase, sequence)
 		cancel()
+		// Campaign cancellation deliberately interrupts an in-flight sample. It
+		// is lifecycle cleanup, not an adversarial observation; recording it
+		// would turn every otherwise healthy zero-error campaign into a teardown
+		// failure. A sample-local timeout still records normally because its
+		// parent remains live.
+		if ctx.Err() != nil {
+			return
+		}
 		self.record(actor.ID(), phase, self.now().Sub(started), result)
 		sequence++
 		select {
@@ -522,9 +534,8 @@ func actorEvidenceSnapshot(state *adversaryActorState) AdversaryActorEvidence {
 	if evidence.Samples != 0 {
 		evidence.ErrorRatePPM = uint32(evidence.Errors * 1_000_000 / evidence.Samples)
 	}
-	if evidence.ControlP95Milliseconds > 0 {
-		evidence.AttackControlP95RatioPPM = uint64(evidence.AttackP95Milliseconds) * 1_000_000 / uint64(evidence.ControlP95Milliseconds)
-	}
+	controlFloorMilliseconds := max64(1, uint64(evidence.ControlP95Milliseconds))
+	evidence.AttackControlP95RatioPPM = uint64(evidence.AttackP95Milliseconds) * 1_000_000 / controlFloorMilliseconds
 	return evidence
 }
 

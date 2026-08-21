@@ -252,7 +252,7 @@
       "oracle": "Pinned spec/transaction/state versions, API capability probes, code hashes and finalized checkpoint agreement remain exact; any drift halts.",
       "metrics": ["runtime_spec", "transaction_version", "precompile_code_hash", "metadata_hash"],
       "stop_conditions": ["any_runtime_or_code_hash_drift"],
-      "local_tests": ["sim-testnet/TestDoctorReadOnlyPrecompileBattery", "sim-testnet/TestPrecompileEvidenceHashAndIdentityFailClosed"]
+      "local_tests": ["sim-testnet/TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions", "sim-testnet/TestDoctorReadOnlyPrecompileBattery", "sim-testnet/TestPrecompileEvidenceHashAndIdentityFailClosed", "sim-testnet/TestRPCAdversaryRejectsObservedRuntimeDrift"]
     },
     {
       "id": "registration-burn-price-race",
