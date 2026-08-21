@@ -61,7 +61,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-20 final read-only preflight observed two peers and private finalized block 2,134,528/runtime 186 against public block 7,827,242/runtime 447. A full archive catch-up is expected to take roughly 10–24 hours. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and the exact regenerated plan hash; vault inputs, alpha, and standing testnet authorization are ready. |
+| M0A-M3/MR | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-21 13:32 UTC read-only snapshot observed 20 peers, private sync-state block 2,895,368/runtime 196, and advertised public head 7,831,409/runtime 447. Initial archive sync can take days; no fixed completion time is assumed. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and the exact regenerated plan hash; vault inputs, alpha, and standing testnet authorization are ready. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -1910,9 +1910,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    `sim-testnet:9944` now resolves to the deployed **private** overlay gateway at
    `172.28.208.185`; the temporary public-endpoint proxy has been removed. Wait for
    that node to finish full sync and expose finalized runtime 447/EVM APIs. The
-   full archive catch-up is expected to take roughly 10–24 hours. The 2026-08-20
-   final read-only preflight observed two peers and private finalized block
-   2,134,528/runtime 186 against public block 7,827,242/runtime 447 with active syncing;
+   initial archive catch-up may take days. The 2026-08-21 13:32 UTC read-only
+   snapshot observed 20 peers and private sync-state block 2,895,368/runtime 196
+   against advertised public head 7,831,409/runtime 447 with active syncing;
    the readiness gate also requires peers, canonical checkpoint agreement and no
    more than three finalized blocks of lag. Do not change
    unprefixed mainnet custody values.
@@ -1950,11 +1950,11 @@ completed successfully after the release lock was frozen:
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** across 22 analyzed contracts and 64 detectors. |
-| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized build completed in 539.38 seconds. The largest deployable release runtime is `STCoordinator` at 20,075 bytes, leaving 4,501 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,907 bytes with 3,669 bytes remaining. |
+| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized build completed in 614.50 seconds. The largest deployable release runtime is `STCoordinator` at 20,075 bytes, leaving 4,501 bytes under the EIP-170 limit. The testnet-only governance adversary is 20,907 bytes with 3,669 bytes remaining. |
 | `forge test --summary` | **108 passed, 0 failed, 0 skipped**, including 4,608 stateful reserve/vault invariant-handler calls. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, `api/...`/`model` compilation, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. |
 | Operator PostgreSQL/Redis integration suites | Pass against the isolated local profile for the complete verify-trail flow, poisoning/failure paths, concurrent fenced mutation, cached-response replay isolation, orphan cleanup, exact/prefix egress indexes, token-owned lock mutual exclusion and stale-release safety, expiry sweeping, and loaded-trail lock-TTL coverage. |
-| Subtensor infrastructure regressions | **20 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
+| Subtensor infrastructure regressions | **23 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across `sn`, `server`, `connect`, `sdk`, `vault` and `xops`. |
 
 The contract generator now applies canonical Go formatting before writing its
