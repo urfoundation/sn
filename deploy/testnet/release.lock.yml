@@ -50,6 +50,6 @@ dependencies:
 interfaces:
   precompile_interfaces_source_hash: "sha256:7873f48b2ac560880193dfe8e4715f124473bed43a97db8b855da7921effaed3"
 infrastructure:
-  gateway_config_hash: "sha256:65db129efefddbea3a9130462d9c5a5131821d619a5316b49d7855823d1200b1"
-  node_config_hash: "sha256:5beb7a223eaacf4d3169b4d498f28ce4e95a93556ac0f9dbaa2fe57d08204519"
+  gateway_config_hash: "sha256:8a28de741295abc5e9fcf4396c9fd11dfd1ad620baa3b53aa0a28490a178a96a"
+  node_config_hash: "sha256:20b5ddd84e64e2eb6878e5237df65cb9b3dcbd89160b1b431461b15d4e5c7399"
   server_local_config_hash: "sha256:06e97da3bfb4bfc0fbe3a25b4fa76d8404bb4d3e75d93683ebd44c58d2e2dd6b"
