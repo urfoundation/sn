@@ -434,7 +434,7 @@
       "oracle": "Shadow/poison routing remains indistinguishable, randomized continuous probes overlap happy traffic, and service quality changes appear in independent operator-specific scores.",
       "metrics": ["route_distinguishability_ppm", "quality_delta_by_no", "abandonment_rate_ppm"],
       "stop_conditions": ["stable_probe_classifier", "global_score_leakage"],
-      "local_tests": ["server/controller/TestVerifySourceIpPrecedence", "sim-testnet/TestReleaseChecksExerciseAffiliatedAndIndependentValidators"]
+      "local_tests": ["server/controller/TestVerifyUsesUrForwardedAddress", "sim-testnet/TestReleaseChecksExerciseAffiliatedAndIndependentValidators"]
     },
     {
       "id": "provider-collusion-short-circuit",

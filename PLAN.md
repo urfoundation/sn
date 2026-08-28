@@ -261,8 +261,8 @@ only completed proofs + periodic stat rollups.
   key index.
 - `GET /verify/keys` — published server Ed25519 public keys by `server_key_id` (proof verification;
   unauthenticated, like `GET /key/([^/]+)` at `api.go:96`).
-- Source IP via `session.NewClientSessionFromRequest` order (`client_session.go:41`): `X-UR-Forwarded-For` →
-  `X-Forwarded-For` → `RemoteAddr`.
+- Source IP via `session.NewClientSessionFromRequest`: the ingress-overwritten
+  `X-UR-Forwarded-For`, with `RemoteAddr` only when that header is absent or malformed.
 
 **`model/verify_model.go`** — Redis layout (cluster hash-tag rule: everything pipelined for one trail shares
 `{vtr_<trail_id>}`):

@@ -45,8 +45,8 @@ echo "[release-1.0] operator pure/unit suites"
 (
   cd "$workspace/server"
   go test ./st ./startifact
-  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifySourceIp|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
-  go test ./session -run 'Test(ParseTrustedProxyPrefixes|ResolveClientAddress)'
+  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
+  go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^TestVerifyEgressExactIndexAndPrefixScoreAreIndependent$'
   go test ./api/... ./model -run '^$'

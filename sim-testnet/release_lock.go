@@ -209,6 +209,25 @@ func moduleRoot(parent, name string) (string, error) {
 	return root, nil
 }
 
+// Lock the rendered RPC behavior, not only the playbook that happens to install
+// it. A template or included-task change can otherwise alter the endpoint while
+// leaving the release lock green.
+var subtensorGatewayReleaseFiles = []string{
+	"main/ansible/playbook-subtensor.yml",
+	"main/ansible/tasks/subtensor-gateway.yml",
+	"main/ansible/host_files/snow/subtensor/nginx.conf.j2",
+	"main/ansible/host_files/snow/subtensor/nginx-overlay.conf.j2",
+}
+
+// The node lock binds both side-by-side service definitions and the independent
+// lightnode readiness proof used before sim-testnet-light is allowed to run.
+var subtensorNodeReleaseFiles = []string{
+	"main/ansible/host_files/snow/subtensor/vars.yml",
+	"main/ansible/host_files/snow/subtensor/docker-compose.yml.j2",
+	"main/ansible/host_files/snow/subtensor/subtensor.service",
+	"main/ansible/tasks/subtensor-lightnode-preflight.yml",
+}
+
 func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if cfg == nil || cfg.Repos.SN == "" || cfg.Repos.Server == "" {
 		return nil, errors.New("release repository paths are incomplete")
@@ -279,11 +298,11 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	}
 
 	xops := filepath.Join(parent, "xops")
-	observation.Infrastructure["gateway_config_hash"], err = digestNamedFiles(xops, []string{"main/ansible/playbook-subtensor.yml"})
+	observation.Infrastructure["gateway_config_hash"], err = digestNamedFiles(xops, subtensorGatewayReleaseFiles)
 	if err != nil {
 		return nil, fmt.Errorf("hash RPC gateway config: %w", err)
 	}
-	observation.Infrastructure["node_config_hash"], err = digestNamedFiles(xops, []string{"main/ansible/host_files/snow/subtensor/vars.yml", "main/ansible/host_files/snow/subtensor/docker-compose.yml.j2"})
+	observation.Infrastructure["node_config_hash"], err = digestNamedFiles(xops, subtensorNodeReleaseFiles)
 	if err != nil {
 		return nil, fmt.Errorf("hash Subtensor node config: %w", err)
 	}

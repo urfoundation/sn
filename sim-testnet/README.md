@@ -90,10 +90,15 @@ From the `sn` repository:
 
 ```bash
 go build -trimpath -o build/sim-testnet ./sim-testnet
+go build -trimpath -o build/sim-testnet-light ./sim-testnet
 
 ./build/sim-testnet doctor \
   --config sim-testnet/testnet.yml \
   --format json
+
+# Same release checks and topology, isolated state/artifact names, and the
+# side-by-side warp-synced lightnode RPC selected by the executable name.
+./build/sim-testnet-light doctor --format json
 
 ./build/sim-testnet plan \
   --config sim-testnet/testnet.yml \

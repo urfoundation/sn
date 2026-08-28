@@ -1,3 +1,7 @@
+# Read-only-compatible lightnode transport profile for smoke-testing the full
+# release harness. It preserves the fixed release topology and checks, while
+# isolating local state/artifact namespaces and routing private chain RPC through
+# the warp-synced lightnode configured in vault/main/st.yml.
 schema_version: 1
 profile: release-1.0
 
@@ -15,7 +19,7 @@ manifests:
   hyperparameters: ../deploy/testnet/hyperparams.yml
 
 deployment:
-  deployment_id: ur-subnet-testnet-v1
+  deployment_id: ur-subnet-testnet-light-v1
   network: bittensor-testnet
   subnet: existing
   netuid_from: vault://main/st.yml#testnet-netuid
@@ -26,7 +30,7 @@ launch_inputs:
   wallet: vault://main/st.yml#testnet-wallet
   wallet_password: vault://main/st.yml#testnet-wallet-password
   chain_id: vault://main/st.yml#testnet-chain-id
-  authority: vault://main/st.yml#testnet-authority
+  authority: vault://main/st.yml#testnet-lightnode-authority
   object_store_hostname: vault://main/st.yml#testnet-minio-hostname
   operator_api_origins: vault://main/st.yml#testnet-operator-api-origins
 
@@ -54,7 +58,7 @@ artifacts:
   writer: server-blob
   history_api: server-api
   content_addressed: true
-  minio_prefix: blob/sim-testnet/${deployment_id}
+  minio_prefix: blob/sim-testnet-light/${deployment_id}
 
 processes:
   build_from_release_lock: true
@@ -92,7 +96,7 @@ budgets:
   maximum_registration_burn_rao: 100000000
 
 secrets:
-  generated_role_store: runtime-secret://testnet/sim-testnet/${deployment_id}
+  generated_role_store: runtime-secret://testnet/sim-testnet-light/${deployment_id}
 
 analysis:
   publish_public_manifest: true

@@ -86,7 +86,6 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 		Netuid             uint16
 		Authority          string
 		ObjectStoreHost    string
-		TrustedProxyCIDRs  string
 		OperatorAPIOrigins []string
 		WalletPublic       string
 		WalletHotkeyPublic string
@@ -95,7 +94,7 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 		MaximumEVMGasWei   uint64
 	}{
 		ChainID: cfg.ChainID, Netuid: cfg.Netuid, Authority: cfg.Authority,
-		ObjectStoreHost: cfg.ObjectStoreHost, TrustedProxyCIDRs: cfg.TrustedProxyCIDRs,
+		ObjectStoreHost:    cfg.ObjectStoreHost,
 		OperatorAPIOrigins: append([]string(nil), cfg.OperatorAPIOrigins...),
 		WalletPublic:       cfg.WalletPublic, WalletHotkeyPublic: cfg.WalletHotkeyPublic,
 		MaximumTAORao: cfg.MaximumTAORao, MaximumAlphaRao: cfg.MaximumAlphaRao,

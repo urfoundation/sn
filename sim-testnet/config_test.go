@@ -50,6 +50,25 @@ func TestHarnessConfigRequiresTestnetOnlyReferences(t *testing.T) {
 	}
 }
 
+func TestLightHarnessConfigPreservesReleaseChecksAndUsesLightnode(t *testing.T) {
+	var cfg HarnessConfig
+	if err := strictYAML("testnet-light.yml", &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LaunchInputs.Authority != "vault://main/st.yml#testnet-lightnode-authority" {
+		t.Fatalf("light authority = %q", cfg.LaunchInputs.Authority)
+	}
+	if cfg.Deployment.DeploymentID != "ur-subnet-testnet-light-v1" {
+		t.Fatalf("light deployment id = %q", cfg.Deployment.DeploymentID)
+	}
+	if cfg.Topology.Operators != 2 || cfg.Topology.Miners != 8 || cfg.Topology.Validators != 2 || cfg.Scenarios.Launch != "smoke" {
+		t.Fatalf("light profile weakened release topology or smoke: %+v / %+v", cfg.Topology, cfg.Scenarios)
+	}
+}
+
 func TestHarnessConfigRequiresRegistrationBurnLimit(t *testing.T) {
 	r := testResolvedConfig(t)
 	r.Config.Budgets.MaximumRegistrationBurnRao = 0
@@ -147,8 +166,12 @@ func TestVaultRelativePathsRejectTraversalAndSymlinkEscape(t *testing.T) {
 	if err := os.WriteFile(inside, []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := resolveVaultRelativePath(vault, "vault-file:secret", "vault-file:", true); err != nil || got != inside {
-		t.Fatalf("inside path = %q, %v", got, err)
+	canonicalInside, err := filepath.EvalSymlinks(inside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveVaultRelativePath(vault, "vault-file:secret", "vault-file:", true); err != nil || got != canonicalInside {
+		t.Fatalf("inside path = %q, want %q: %v", got, canonicalInside, err)
 	}
 	if _, err := resolveVaultRelativePath(vault, "vault-file:../secret", "vault-file:", true); err == nil {
 		t.Fatal("vault traversal was accepted")
@@ -171,8 +194,12 @@ func TestVaultWalletFilesRejectTraversalSymlinkAndPublicSecretPermissions(t *tes
 	if err := os.WriteFile(inside, []byte("encrypted"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := resolveVaultWalletFile(wallet, "coldkey", true); err != nil || got != inside {
-		t.Fatalf("inside wallet file = %q, %v", got, err)
+	canonicalInside, err := filepath.EvalSymlinks(inside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveVaultWalletFile(wallet, "coldkey", true); err != nil || got != canonicalInside {
+		t.Fatalf("inside wallet file = %q, want %q: %v", got, canonicalInside, err)
 	}
 	if _, err := resolveVaultWalletFile(wallet, "../coldkey", true); err == nil {
 		t.Fatal("wallet file traversal was accepted")

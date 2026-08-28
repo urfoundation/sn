@@ -35,6 +35,18 @@ func TestRunMainHelpAndVersionDoNotLoadConfiguration(t *testing.T) {
 	}
 }
 
+func TestLightExecutableSelectsLightnodeProfile(t *testing.T) {
+	if got := configPathForExecutable("/release/build/sim-testnet-light"); got != "sim-testnet/testnet-light.yml" {
+		t.Fatalf("light executable config = %q", got)
+	}
+	if got := configPathForExecutable(`C:\\release\\sim-testnet-light.exe`); got != "sim-testnet/testnet-light.yml" {
+		t.Fatalf("Windows light executable config = %q", got)
+	}
+	if got := configPathForExecutable("/release/build/sim-testnet"); got != "sim-testnet/testnet.yml" {
+		t.Fatalf("release executable config = %q", got)
+	}
+}
+
 func TestParseCLIRejectsInvalidSurface(t *testing.T) {
 	for _, args := range [][]string{
 		nil,
