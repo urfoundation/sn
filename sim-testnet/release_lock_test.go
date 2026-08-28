@@ -60,6 +60,21 @@ func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	}
 }
 
+func TestSubtensorReleaseLockCoversLightnodeRuntimeSurface(t *testing.T) {
+	gateway := strings.Join(subtensorGatewayReleaseFiles, "\n")
+	for _, required := range []string{"playbook-subtensor.yml", "subtensor-gateway.yml", "nginx.conf.j2"} {
+		if !strings.Contains(gateway, required) {
+			t.Fatalf("gateway release files do not cover %s", required)
+		}
+	}
+	node := strings.Join(subtensorNodeReleaseFiles, "\n")
+	for _, required := range []string{"vars.yml", "docker-compose.yml.j2", "subtensor.service", "subtensor-lightnode-preflight.yml"} {
+		if !strings.Contains(node, required) {
+			t.Fatalf("node release files do not cover %s", required)
+		}
+	}
+}
+
 func TestFoundryStorageLayoutHashIsCanonicalAndComplete(t *testing.T) {
 	dir := t.TempDir()
 	first := `{"storageLayout":{"types":{"t_struct(Config)12_storage":{"label":"struct C.Config","members":[{"astId":13,"contract":"C","label":"value","slot":"0","offset":0,"type":"t_uint"}]},"t_uint":{"label":"uint256"}},"storage":[{"astId":12,"contract":"C","slot":"0","offset":0,"type":"t_struct(Config)12_storage","label":"owner"}]}}`

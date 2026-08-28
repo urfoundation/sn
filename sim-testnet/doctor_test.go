@@ -353,17 +353,6 @@ func TestDoctorHostPlatformGateFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTrustedProxyCIDRsAreConfinedToLoopback(t *testing.T) {
-	if err := validateCIDRs("127.0.0.0/8, ::1/128"); err != nil {
-		t.Fatal(err)
-	}
-	for _, cidrs := range []string{"0.0.0.0/0", "10.0.0.0/8", "127.0.0.0/7", "::/0", "::1/64"} {
-		if err := validateCIDRs(cidrs); err == nil {
-			t.Errorf("non-loopback trusted proxy range %q was accepted", cidrs)
-		}
-	}
-}
-
 func TestBlobConfigRequiresApplicationCredentialsAndExactBucket(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "minio.yml")
 	valid := []byte("authority: minio:23900\ntls: false\nbucket: blob\naccess_key: application\nsecret_key: private\n")

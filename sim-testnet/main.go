@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
 
 var version = "1.0"
+var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
 	Config, SNRepo, ServerRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, Format string
@@ -65,7 +67,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var o cliOptions
-	fs.StringVar(&o.Config, "config", "sim-testnet/testnet.yml", "")
+	fs.StringVar(&o.Config, "config", defaultConfigPath, "")
 	fs.StringVar(&o.StateDir, "state-dir", "", "")
 	fs.StringVar(&o.SNRepo, "sn-repo", "", "")
 	fs.StringVar(&o.ServerRepo, "server-repo", "", "")
@@ -90,10 +92,22 @@ func parseCLI(args []string) (string, cliOptions, error) {
 }
 
 func main() {
+	defaultConfigPath = configPathForExecutable(os.Args[0])
 	if err := runMain(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "sim-testnet: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// The light smoke-test binary is built from the exact release harness. Its
+// executable name selects only the isolated lightnode transport profile; all
+// release topology, source-lock, wallet, and scenario checks remain shared.
+func configPathForExecutable(executable string) string {
+	name := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(executable, `\\`, "/")), ".exe")
+	if name == "sim-testnet-light" {
+		return "sim-testnet/testnet-light.yml"
+	}
+	return "sim-testnet/testnet.yml"
 }
 
 func runMain(args []string) error {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -112,6 +113,7 @@ type managedContainerSpec struct {
 	Name              string
 	Image             string
 	ConfigurationHash string
+	RestartPolicy     string
 	RunArgs           []string
 	Command           []string
 	DataVolumes       []string
@@ -121,6 +123,100 @@ type managedContainerSpec struct {
 }
 
 const managedContainerSpecHashLabel = "com.urnetwork.sim-testnet.spec-hash"
+
+const minimumReleaseStateFreeBytes uint64 = 20 * 1024 * 1024 * 1024
+
+// Return available bytes to an unprivileged writer, which is the capacity the
+// simulator can actually consume rather than root-reserved filesystem space.
+func filesystemFreeBytes(path string) (uint64, error) {
+	var state syscall.Statfs_t
+	if err := syscall.Statfs(path, &state); err != nil {
+		return 0, err
+	}
+	blocks := uint64(state.Bavail)
+	blockSize := uint64(state.Bsize)
+	if blockSize != 0 && blocks > ^uint64(0)/blockSize {
+		return 0, errors.New("filesystem free-byte count overflows uint64")
+	}
+	return blocks * blockSize, nil
+}
+
+// Keep enough headroom for binaries, isolated databases, process logs, and
+// complete evidence even when a soak produces unusually verbose diagnostics.
+func validateReleaseStateFreeBytes(available uint64) error {
+	if available < minimumReleaseStateFreeBytes {
+		return fmt.Errorf("release state filesystem has %d free bytes, require at least %d", available, minimumReleaseStateFreeBytes)
+	}
+	return nil
+}
+
+// Enumerate every simulator-owned TCP listener that must be acquired before
+// temporary provisioning or the persistent topology can start.
+func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
+	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		for _, port := range []int{18080 + operator, 19080 + operator, 20080 + operator} {
+			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
+		}
+	}
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 21080+miner))
+	}
+	sort.Strings(addresses)
+	return addresses
+}
+
+// Bind every required address while no topology owns it. This is deliberately
+// immediately pre-apply; a stale or unrelated listener fails before chain work.
+func validateAvailableListenAddresses(addresses []string) error {
+	for _, address := range addresses {
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			return fmt.Errorf("required simulator listener %s is unavailable: %w", address, err)
+		}
+		if err := listener.Close(); err != nil {
+			return fmt.Errorf("close simulator listener probe %s: %w", address, err)
+		}
+	}
+	return nil
+}
+
+// Distinguish a healthy already-running deployment from stale files or an
+// unrelated process occupying one of its ports.
+func currentSupervisorReady(stateDir string) (bool, error) {
+	b, err := os.ReadFile(filepath.Join(stateDir, "supervisor.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var manifest SupervisorFile
+	if err := json.Unmarshal(b, &manifest); err != nil {
+		return false, fmt.Errorf("decode current supervisor manifest: %w", err)
+	}
+	return supervisorReadyNow(stateDir, manifest)
+}
+
+// Recheck the actual requested state filesystem and listeners after local
+// dependencies/builds but before constructing a transaction-capable executor.
+func preflightReleaseHost(stateDir string, cfg *ResolvedConfig) error {
+	available, err := filesystemFreeBytes(stateDir)
+	if err != nil {
+		return fmt.Errorf("inspect release state filesystem: %w", err)
+	}
+	if err := validateReleaseStateFreeBytes(available); err != nil {
+		return err
+	}
+	ready, err := currentSupervisorReady(stateDir)
+	if err != nil {
+		return err
+	}
+	if ready {
+		return nil
+	}
+	return validateAvailableListenAddresses(releaseProcessListenAddresses(cfg))
+}
 
 // Provision API-assigned identities, finish their chain bindings, then hand
 // the checksum-locked process topology to the persistent supervisor.
@@ -349,6 +445,7 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 			Name:              pgName,
 			Image:             postgresImage,
 			ConfigurationHash: localConfigHash,
+			RestartPolicy:     "no",
 			RunArgs:           postgresArgs,
 			Command:           postgresCommand,
 			DataVolumes:       []string{pgName + "-data"},
@@ -371,6 +468,7 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 			Name:              redisName,
 			Image:             redisImage,
 			ConfigurationHash: localConfigHash,
+			RestartPolicy:     "no",
 			RunArgs:           redisArgs,
 			Command:           redisCommand,
 			ReadyProbe:        []string{"redis-cli", "ping"},
@@ -384,6 +482,32 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 // managedContainerSpecHash binds the image and every creation argument. It
 // prevents an old same-image container from silently reusing stale settings.
 func managedContainerSpecHash(spec managedContainerSpec) (string, error) {
+	canonical := struct {
+		Image             string   `json:"image"`
+		ConfigurationHash string   `json:"configuration_hash"`
+		RestartPolicy     string   `json:"restart_policy"`
+		RunArgs           []string `json:"run_args"`
+		Command           []string `json:"command"`
+		DataVolumes       []string `json:"data_volumes"`
+	}{
+		Image:             spec.Image,
+		ConfigurationHash: spec.ConfigurationHash,
+		RestartPolicy:     spec.RestartPolicy,
+		RunArgs:           spec.RunArgs,
+		Command:           spec.Command,
+		DataVolumes:       spec.DataVolumes,
+	}
+	b, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// Bind only settings that determine persistent data compatibility. Container
+// lifecycle policy can change without invalidating an initialized database.
+func managedContainerDataSpecHash(spec managedContainerSpec) (string, error) {
 	canonical := struct {
 		Image             string   `json:"image"`
 		ConfigurationHash string   `json:"configuration_hash"`
@@ -408,12 +532,19 @@ func managedContainerSpecHash(spec managedContainerSpec) (string, error) {
 // ensureContainer creates or starts a simulator-owned container only when its
 // digest-pinned image and complete creation spec match the requested release.
 func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContainerSpec) error {
+	if spec.RestartPolicy != "no" {
+		return fmt.Errorf("container %s restart policy is %q, want no", spec.Name, spec.RestartPolicy)
+	}
 	specHash, err := managedContainerSpecHash(spec)
 	if err != nil {
 		return fmt.Errorf("hash container %s spec: %w", spec.Name, err)
 	}
+	dataSpecHash, err := managedContainerDataSpecHash(spec)
+	if err != nil {
+		return fmt.Errorf("hash container %s data spec: %w", spec.Name, err)
+	}
 	for _, volume := range spec.DataVolumes {
-		if err := ensureManagedVolume(ctx, docker, volume, specHash); err != nil {
+		if err := ensureManagedVolume(ctx, docker, volume, dataSpecHash); err != nil {
 			return err
 		}
 	}
@@ -431,7 +562,7 @@ func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContaine
 	} else if detail := strings.ToLower(string(out)); !strings.Contains(detail, "no such object") && !strings.Contains(detail, "no such container") {
 		return fmt.Errorf("inspect container %s: %w: %s", spec.Name, inspectErr, strings.TrimSpace(string(out)))
 	}
-	cmdArgs := []string{"run", "-d", "--name", spec.Name, "--restart", "unless-stopped", "--label", managedContainerSpecHashLabel + "=" + specHash}
+	cmdArgs := []string{"run", "-d", "--name", spec.Name, "--restart", spec.RestartPolicy, "--label", managedContainerSpecHashLabel + "=" + specHash}
 	cmdArgs = append(cmdArgs, spec.RunArgs...)
 	cmdArgs = append(cmdArgs, spec.Image)
 	cmdArgs = append(cmdArgs, spec.Command...)
@@ -552,7 +683,7 @@ func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 
 func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip string) map[string]string {
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator))
-	return map[string]string{"WARP_ENV": fmt.Sprintf("sim-testnet-op-%d", operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": filepath.Join(cfg.Repos.PlatformConfig, "local"), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "BRINGYOUR_TRUSTED_PROXY_CIDRS": cfg.TrustedProxyCIDRs, "URNETWORK_ST_PROFILE": "testnet"}
+	return map[string]string{"WARP_ENV": fmt.Sprintf("sim-testnet-op-%d", operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": filepath.Join(cfg.Repos.PlatformConfig, "local"), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet"}
 }
 
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {
@@ -936,36 +1067,30 @@ func systemdQuote(value string) (string, error) {
 	return strconv.Quote(value), nil
 }
 
-func startPersistentSupervisor(ctx context.Context, cfg *ResolvedConfig, binary, stateDir, specPath string) error {
-	systemctl, err := exec.LookPath("systemctl")
-	if err != nil {
-		return fmt.Errorf("persistent detached launch requires systemd user services: %w", err)
-	}
-	name := "urnetwork-sim-" + serviceToken(cfg.Config.Deployment.DeploymentID) + ".service"
-	if name == "urnetwork-sim-.service" {
-		return fmt.Errorf("deployment id cannot form a systemd service name")
-	}
+// Build a deliberately non-installable user unit. An explicit launch/resume
+// starts it only after journal and chain reconciliation; reboot leaves it down.
+func persistentSupervisorUnit(cfg *ResolvedConfig, binary, stateDir, specPath string) (string, error) {
 	configArg, err := systemdQuote(cfg.ConfigPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	stateArg, err := systemdQuote(stateDir)
 	if err != nil {
-		return err
+		return "", err
 	}
 	manifestArg, err := systemdQuote(specPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	binaryArg, err := systemdQuote(binary)
 	if err != nil {
-		return err
+		return "", err
 	}
 	workArg, err := systemdQuote(filepath.Dir(binary))
 	if err != nil {
-		return err
+		return "", err
 	}
-	unit := fmt.Sprintf(`[Unit]
+	return fmt.Sprintf(`[Unit]
 Description=UR Network real-testnet simulation %s
 After=network-online.target docker.service
 Wants=network-online.target
@@ -978,10 +1103,27 @@ Restart=on-failure
 RestartSec=5
 KillMode=control-group
 TimeoutStopSec=30
+`, cfg.Config.Deployment.DeploymentID, workArg, binaryArg, configArg, stateArg, manifestArg), nil
+}
 
-[Install]
-WantedBy=default.target
-`, cfg.Config.Deployment.DeploymentID, workArg, binaryArg, configArg, stateArg, manifestArg)
+// Remove any legacy boot activation before starting the unit for this boot.
+func persistentSupervisorSystemctlActions(name string) [][]string {
+	return [][]string{{"--user", "daemon-reload"}, {"--user", "disable", name}, {"--user", "start", name}}
+}
+
+func startPersistentSupervisor(ctx context.Context, cfg *ResolvedConfig, binary, stateDir, specPath string) error {
+	systemctl, err := exec.LookPath("systemctl")
+	if err != nil {
+		return fmt.Errorf("persistent detached launch requires systemd user services: %w", err)
+	}
+	name := "urnetwork-sim-" + serviceToken(cfg.Config.Deployment.DeploymentID) + ".service"
+	if name == "urnetwork-sim-.service" {
+		return fmt.Errorf("deployment id cannot form a systemd service name")
+	}
+	unit, err := persistentSupervisorUnit(cfg, binary, stateDir, specPath)
+	if err != nil {
+		return err
+	}
 	configHome, err := os.UserConfigDir()
 	if err != nil {
 		return err
@@ -994,7 +1136,7 @@ WantedBy=default.target
 	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.service.json"), metadata); err != nil {
 		return err
 	}
-	for _, args := range [][]string{{"--user", "daemon-reload"}, {"--user", "enable", "--now", name}} {
+	for _, args := range persistentSupervisorSystemctlActions(name) {
 		cmd := exec.CommandContext(ctx, systemctl, args...)
 		if output, runErr := cmd.CombinedOutput(); runErr != nil {
 			return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), runErr, strings.TrimSpace(string(output)))

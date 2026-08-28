@@ -60,6 +60,9 @@ call below the approved cap.
 ## Host prerequisites
 
 - Linux amd64, Go 1.26.x, Git, and a running user systemd manager.
+- At least 20 GiB free on the simulator state filesystem. Immediately before a
+  launch/resume can construct a chain-capable executor, the harness also binds
+  every required loopback process port and rejects any unrelated or stale listener.
 - Docker with direct permission for the invoking user or passwordless `sudo -n
   docker`. The harness prefers direct access and never opens an interactive sudo
   prompt. One isolated PostgreSQL 18 and Redis 8 pair is created per operator from the exact digests in
@@ -87,10 +90,15 @@ From the `sn` repository:
 
 ```bash
 go build -trimpath -o build/sim-testnet ./sim-testnet
+go build -trimpath -o build/sim-testnet-light ./sim-testnet
 
 ./build/sim-testnet doctor \
   --config sim-testnet/testnet.yml \
   --format json
+
+# Same release checks and topology, isolated state/artifact names, and the
+# side-by-side warp-synced lightnode RPC selected by the executable name.
+./build/sim-testnet-light doctor --format json
 
 ./build/sim-testnet plan \
   --config sim-testnet/testnet.yml \
@@ -154,6 +162,12 @@ postcondition. If the command is interrupted, use the same approval:
   --detach
 ```
 
+Host reboot is an intentional stop boundary. The supervisor unit is started but
+never enabled, managed PostgreSQL/Redis containers use Docker restart policy
+`no`, and loginctl linger is not required. After a reboot, run `resume` explicitly;
+it re-runs doctor and reconciles the journal and finalized chain before starting
+any dependency or process.
+
 Before smoke, `launch` automatically runs the named `precompile-conformance`
 scenario. It finalized-reads and replaces/restores a native commitment, deploys
 the locked disposable probe, checks Blake2/Ed25519/sr25519/metagraph/neuron/staking,
@@ -214,8 +228,9 @@ after its final reconciliation:
 - bounded operator API and real `/verify` pressure, including simultaneous
   identical EXTENDs, replays, invalid signatures, poison-shape comparisons, and
   per-source vpk rotation;
-- independent private/public finalized-RPC agreement plus common-height subnet
-  UID, spot/moving-price, and TAO/alpha-reserve reads;
+- independent private/public finalized-RPC agreement, observed runtime-spec and
+  transaction-version identity, plus common-height subnet UID,
+  spot/moving-price, and TAO/alpha-reserve reads;
 - artifact fetch/reconstruction/tamper pressure and fleet identity-generation
   mutations; and
 - deterministic consensus, liquid-alpha, custody, unit/domain, rounding,
@@ -298,7 +313,17 @@ go test -race ./crv4 ./miner/... ./protocol ./sim-testnet ./validator
 
 PATH=/home/by/.foundry/bin:$PATH \
   bash -c 'cd evm && forge fmt --check && forge build --sizes && forge test --summary'
+
+cd ../server
+WARP_ENV=main \
+BRINGYOUR_MINIO_HOSTNAME=172.28.208.177 \
+SIM_TESTNET_LIVE_BLOB=1 \
+go test . -run '^TestLiveBlobStoreContentAddressedCanary$' -count=1
 ```
+
+The opt-in blob test writes one fixed content-addressed canary, then reads and
+lists it through the real server/blob service account. Repeated runs overwrite
+the same bytes at the same key; ordinary tests never access external storage.
 
 Database-backed server tests additionally need the hermetic PostgreSQL/Redis/vault
 profile that `launch` materializes after verified contract addresses exist. Running

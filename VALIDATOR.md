@@ -626,9 +626,9 @@ time/region} rather than reading marginal ratios.
 ### 8.1 The mapping (partly new work)
 
 The hop `client_id` comes from the request **source IP**, which is the egress IP of
-the provider the validator routed through. Extract the source IP exactly as
-`session/client_session.go:41` does — headers in order **`X-UR-Forwarded-For`**, then
-**`X-Forwarded-For`** (+`X-Forwarded-Source-Port`), then `r.RemoteAddr`.
+the provider the validator routed through. Extract it exactly as
+`session/client_session.go` does: **`X-UR-Forwarded-For`**, which Warp must
+overwrite, then `r.RemoteAddr` only when that header is absent or malformed.
 
 The egress IPs exist in `proxy_client.client_ipv4` / `proxy_client_ipv4`
 (`db_migrations.go`), but there is **no reverse index** `egress_ipv4 → client_id`

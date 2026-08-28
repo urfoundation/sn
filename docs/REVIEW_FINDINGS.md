@@ -266,8 +266,8 @@ on effort-leaf consumers requiring a `verify_trail` row (never written for poiso
 a bare FINAL sig. Keep that invariant explicit in the validator's leaf-building.
 
 ### V11 — CRITICAL DEPENDENCY (currently satisfied) · everything rests on the nginx source-IP override — ADD ASSERTION
-`warp/warpctl/config.go:2125` (+2278,2322,2468): nginx overwrites `X-UR-Forwarded-For`/
-`X-Forwarded-For` with `$remote_addr`, so source IP isn't spoofable through normal ingress —
+`warp/warpctl/config.go` overwrites `X-UR-Forwarded-For` with `$remote_addr` and
+strips alternate forwarding headers, so source IP isn't spoofable through normal ingress —
 this is what makes §8 attribution + per-IP limits sound. If ANY ingress path reaches
 `POST /verify` without it (second ingress, misconfig, direct-to-app, header rename): arbitrary
 egress attribution / provider-identity theft, rate-limit bypass, targeted eligibility eviction,

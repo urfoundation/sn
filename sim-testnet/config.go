@@ -97,7 +97,6 @@ type LaunchInputs struct {
 	ChainID             string `yaml:"chain_id" json:"chain_id"`
 	Authority           string `yaml:"authority" json:"authority"`
 	ObjectStoreHostname string `yaml:"object_store_hostname" json:"object_store_hostname"`
-	TrustedProxyCIDRs   string `yaml:"trusted_proxy_cidrs" json:"trusted_proxy_cidrs"`
 	OperatorAPIOrigins  string `yaml:"operator_api_origins" json:"operator_api_origins"`
 }
 type TopologyConfig struct {
@@ -301,7 +300,6 @@ type ResolvedConfig struct {
 	ChainID              uint64
 	Authority            string
 	ObjectStoreHost      string
-	TrustedProxyCIDRs    string
 	OperatorAPIOrigins   []string
 	WalletSecret         string
 	WalletMaterial       string
@@ -470,7 +468,7 @@ func (c *HarnessConfig) Validate() error {
 	if c.Budgets.MaximumRegistrationBurnRao == 0 {
 		return errors.New("maximum registration burn must be nonzero")
 	}
-	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "wallet password": c.LaunchInputs.WalletPassword, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "trusted proxy CIDRs": c.LaunchInputs.TrustedProxyCIDRs, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
+	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "wallet password": c.LaunchInputs.WalletPassword, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
 		if !strings.HasPrefix(ref, "vault://main/st.yml#testnet-") {
 			return fmt.Errorf("%s must reference a testnet-prefixed st.yml key", name)
 		}
@@ -567,11 +565,6 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		return err
 	}
 	r.ObjectStoreHost = strings.TrimSpace(fmt.Sprint(v))
-	v, err = get(r.Config.LaunchInputs.TrustedProxyCIDRs)
-	if err != nil {
-		return err
-	}
-	r.TrustedProxyCIDRs = strings.TrimSpace(fmt.Sprint(v))
 	v, err = get(r.Config.LaunchInputs.OperatorAPIOrigins)
 	if err != nil {
 		return err
@@ -609,8 +602,8 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		if r.Authority == "" {
 			return errors.New("testnet-authority is empty")
 		}
-		if r.ObjectStoreHost == "" || r.TrustedProxyCIDRs == "" {
-			return errors.New("testnet object-store hostname and trusted-proxy CIDRs must be nonempty")
+		if r.ObjectStoreHost == "" {
+			return errors.New("testnet object-store hostname must be nonempty")
 		}
 		if len(r.OperatorAPIOrigins) != r.Config.Topology.Operators {
 			return fmt.Errorf("testnet-operator-api-origins must contain %d public origins", r.Config.Topology.Operators)
@@ -1131,18 +1124,31 @@ func findModule(start, module string) string {
 	}
 }
 func findSiblingModule(parent, module string) string {
+	// Prefer the conventional sibling name before scanning. Workspaces may
+	// contain hidden snapshots or performance baselines with the same module
+	// declaration; selecting one of those makes source locking nondeterministic.
+	name := module
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		name = name[i+1:]
+	}
+	if preferred := filepath.Join(parent, name); moduleMatches(preferred, module) {
+		return preferred
+	}
 	ents, _ := os.ReadDir(parent)
 	for _, e := range ents {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		d := filepath.Join(parent, e.Name())
-		b, err := os.ReadFile(filepath.Join(d, "go.mod"))
-		if err == nil && strings.Contains(string(b), "module "+module) {
+		if moduleMatches(d, module) {
 			return d
 		}
 	}
 	return ""
+}
+func moduleMatches(dir, module string) bool {
+	b, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+	return err == nil && strings.Contains(string(b), "module "+module)
 }
 func cleanAbs(p string) string { a, _ := filepath.Abs(p); return filepath.Clean(a) }
 func fileExists(p string) bool { _, e := os.Stat(p); return e == nil }
@@ -1150,16 +1156,15 @@ func fileExists(p string) bool { _, e := os.Stat(p); return e == nil }
 // MarshalJSON prevents an accidental serialization of loaded wallet material.
 func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 	type public struct {
-		ConfigPath        string         `json:"config_path"`
-		Config            *HarnessConfig `json:"config"`
-		Netuid            uint16         `json:"netuid"`
-		ChainID           uint64         `json:"chain_id"`
-		Authority         string         `json:"authority"`
-		ObjectStore       string         `json:"object_store_hostname"`
-		TrustedProxyCIDRs string         `json:"trusted_proxy_cidrs"`
-		WalletPublic      string         `json:"wallet_public"`
-		PolicyHash        string         `json:"policy_hash"`
-		ConfigHash        string         `json:"config_hash"`
+		ConfigPath   string         `json:"config_path"`
+		Config       *HarnessConfig `json:"config"`
+		Netuid       uint16         `json:"netuid"`
+		ChainID      uint64         `json:"chain_id"`
+		Authority    string         `json:"authority"`
+		ObjectStore  string         `json:"object_store_hostname"`
+		WalletPublic string         `json:"wallet_public"`
+		PolicyHash   string         `json:"policy_hash"`
+		ConfigHash   string         `json:"config_hash"`
 	}
 	authority, _, err := authorityURLs(r.Authority)
 	if err != nil {
@@ -1168,15 +1173,14 @@ func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 		authority = redactURL(authority)
 	}
 	return json.Marshal(public{
-		ConfigPath:        r.ConfigPath,
-		Config:            r.Config,
-		Netuid:            r.Netuid,
-		ChainID:           r.ChainID,
-		Authority:         authority,
-		ObjectStore:       r.ObjectStoreHost,
-		TrustedProxyCIDRs: r.TrustedProxyCIDRs,
-		WalletPublic:      r.WalletPublic,
-		PolicyHash:        r.PolicyHash,
-		ConfigHash:        r.ConfigHash,
+		ConfigPath:   r.ConfigPath,
+		Config:       r.Config,
+		Netuid:       r.Netuid,
+		ChainID:      r.ChainID,
+		Authority:    authority,
+		ObjectStore:  r.ObjectStoreHost,
+		WalletPublic: r.WalletPublic,
+		PolicyHash:   r.PolicyHash,
+		ConfigHash:   r.ConfigHash,
 	})
 }

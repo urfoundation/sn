@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
@@ -82,6 +81,12 @@ func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
 	r := DoctorReport{Schema: "urnetwork-sim-doctor-v1", GeneratedAt: time.Now().UTC().Format(time.RFC3339), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Ready: true}
 	r.add("host/linux-amd64", true, validateHostPlatform(runtime.GOOS, runtime.GOARCH), runtime.GOOS+"/"+runtime.GOARCH)
+	defaultStateRoot := filepath.Dir(cfg.ConfigPath)
+	freeBytes, diskErr := filesystemFreeBytes(defaultStateRoot)
+	if diskErr == nil {
+		diskErr = validateReleaseStateFreeBytes(freeBytes)
+	}
+	r.add("host/default-state-disk", true, diskErr, fmt.Sprintf("path=%s free_bytes=%d minimum_bytes=%d", defaultStateRoot, freeBytes, minimumReleaseStateFreeBytes))
 	for _, tool := range []string{"go", "git", "docker"} {
 		p, err := exec.LookPath(tool)
 		r.add("tool/"+tool, true, err, p)
@@ -117,7 +122,6 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	r.add("vault/budgets", true, allNonzero(cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei), fmt.Sprintf("tao_rao=%d alpha_rao=%d evm_gas_wei=%d", cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei))
 	r.add("vault/governance", true, validateGovernanceSeparation(cfg.Vault), "testnet=single-owner mainnet=safe-2-of-3")
 	r.add("config/independent-rpcs", true, validateIndependentRPCEndpoints(cfg), "private write/finality endpoints are distinct from public postcondition endpoints")
-	r.add("config/trusted-proxies", true, validateCIDRs(cfg.TrustedProxyCIDRs), cfg.TrustedProxyCIDRs)
 	checkBlobConfig(ctx, &r, cfg)
 	if err := ctx.Err(); err == nil {
 		checkSubstrate(&r, cfg, false)
@@ -209,29 +213,6 @@ func validateGovernanceSeparation(vault map[string]any) error {
 	}
 	if err := expectString(vault["contract_governance"], "safe-2-of-3"); err != nil {
 		return fmt.Errorf("mainnet governance: %w", err)
-	}
-	return nil
-}
-
-func validateCIDRs(raw string) error {
-	count := 0
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		prefix, err := netip.ParsePrefix(item)
-		if err != nil {
-			return fmt.Errorf("invalid trusted proxy CIDR %q: %w", item, err)
-		}
-		masked := prefix.Masked()
-		if !masked.Addr().IsLoopback() || (!masked.Addr().Is4() && masked.Bits() != 128) {
-			return fmt.Errorf("trusted proxy CIDR %q is outside loopback", item)
-		}
-		count++
-	}
-	if count == 0 {
-		return fmt.Errorf("trusted proxy CIDR set is empty")
 	}
 	return nil
 }

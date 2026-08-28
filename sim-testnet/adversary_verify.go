@@ -162,12 +162,12 @@ func (self *verifyAdversary) post(ctx context.Context, operator int, source stri
 	if err != nil {
 		return 0, nil, err
 	}
-	return self.http.do(ctx, http.MethodPost, self.endpoint(operator), source, body, 4<<20)
+	return self.http.do(ctx, http.MethodPost, self.endpoint(operator), source, body, 4*1024*1024)
 }
 
 func (self *verifyAdversary) serverKeys(ctx context.Context, operator int) (map[byte]ed25519.PublicKey, uint64, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/keys", 18080+operator)
-	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 1<<20)
+	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 1*1024*1024)
 	if err != nil || status/100 != 2 {
 		return nil, 1, fmt.Errorf("verify keys status=%d error=%v", status, err)
 	}
@@ -375,7 +375,7 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 			if marshalErr != nil {
 				return "", requests, verifyIntegrityEvidence{}, marshalErr
 			}
-			pair, pairErr := self.http.doConcurrentPair(ctx, http.MethodPost, self.endpoint(operator), source, body, 4<<20)
+			pair, pairErr := self.http.doConcurrentPair(ctx, http.MethodPost, self.endpoint(operator), source, body, 4*1024*1024)
 			requests += 2
 			if pairErr != nil {
 				return "", requests, verifyIntegrityEvidence{}, pairErr
@@ -463,7 +463,7 @@ func (self *verifyAdversary) walk(ctx context.Context, operator int, sequence ui
 
 func (self *verifyAdversary) requireUniqueProof(ctx context.Context, operator int, trailID connect.Id) (uint64, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/verify/proofs?limit=10000", 18080+operator)
-	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 32<<20)
+	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 32*1024*1024)
 	if err != nil || status != http.StatusOK {
 		return 1, fmt.Errorf("verify proof index status=%d error=%v", status, err)
 	}

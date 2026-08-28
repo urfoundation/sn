@@ -24,7 +24,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		LaunchInputs: LaunchInputs{
 			Wallet: "vault://main/st.yml#testnet-wallet", WalletPassword: "vault://main/st.yml#testnet-wallet-password", ChainID: "vault://main/st.yml#testnet-chain-id",
 			Authority: "vault://main/st.yml#testnet-authority", ObjectStoreHostname: "vault://main/st.yml#testnet-minio-hostname",
-			TrustedProxyCIDRs: "vault://main/st.yml#testnet-trusted-proxy-cidrs", OperatorAPIOrigins: "vault://main/st.yml#testnet-operator-api-origins",
+			OperatorAPIOrigins: "vault://main/st.yml#testnet-operator-api-origins",
 		},
 		Topology:     TopologyConfig{Operators: 2, Miners: 8, Validators: 2, HeadFleets: 2, ClientsPerHeadFleet: 3, OperatorAssignment: "balanced"},
 		Contracts:    ContractConfig{Install: true, GovernanceProfile: "testnet-single-owner", VerifyRuntimeCodeHash: true},
@@ -86,7 +86,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			PlatformConfig: filepath.Join(filepath.Dir(snRepo), "config"),
 		},
 		Netuid: 7, ChainID: testnetChainID, Authority: "127.0.0.1:9944", ObjectStoreHost: "127.0.0.1",
-		TrustedProxyCIDRs: "127.0.0.0/8,::1/128", OperatorAPIOrigins: []string{"https://no1.example", "https://no2.example"}, WalletSecret: "unit test wallet reference", WalletMaterial: "unit test wallet secret", WalletPasswordSecret: "unit test password reference", WalletPassword: "unit test password secret", WalletPublic: "5UnitTestWallet", WalletHotkeyPublic: "5UnitTestHotkey",
+		OperatorAPIOrigins: []string{"https://no1.example", "https://no2.example"}, WalletSecret: "unit test wallet reference", WalletMaterial: "unit test wallet secret", WalletPasswordSecret: "unit test password reference", WalletPassword: "unit test password secret", WalletPublic: "5UnitTestWallet", WalletHotkeyPublic: "5UnitTestHotkey",
 		MaximumTAORao: 10_000_000_000, MaximumAlphaRao: 6_000_000_000, MaximumEVMGasWei: 1_000_000_000_000_000_000,
 		PolicyHash: policyHash, ConfigHash: configHash,
 	}
