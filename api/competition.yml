@@ -705,6 +705,7 @@ components:
         - state
         - submitted_at
         - cache_key
+        - api_image_digest
       properties:
         job_id:
           type: string
@@ -731,6 +732,12 @@ components:
             - type: "null"
         cache_key:
           $ref: "#/components/schemas/Sha256"
+        api_image_digest:
+          $ref: "#/components/schemas/ImageDigest"
+          description: Exact main API container content identity that admitted the job; control-plane provenance, not a scoring input.
+        worker_image_digest:
+          $ref: "#/components/schemas/ImageDigest"
+          description: Exact main worker container content identity for the current or terminal attempt; control-plane provenance, not a scoring input.
         score:
           oneOf:
             - $ref: "#/components/schemas/CompetitionScoreResult"
