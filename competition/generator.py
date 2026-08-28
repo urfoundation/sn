@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .client import CompetitionClient
 from .models import RoundCommitment
@@ -16,8 +16,8 @@ class CompetitionGenerator:
         values = [opens_at, closes_at, reveal_at]
         if any(value.tzinfo is None or value.utcoffset() is None for value in values):
             raise ValueError("round timestamps must be timezone-aware")
-        if not opens_at < closes_at <= reveal_at:
-            raise ValueError("require opens_at < closes_at <= reveal_at")
+        if closes_at - opens_at != timedelta(days=7) or reveal_at != closes_at:
+            raise ValueError("require one seven-day window and reveal_at == closes_at")
         response = self.client.post(
             "/competition/generate-round",
             {

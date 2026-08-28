@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.8.16
+  version: 2026.8.28
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -77,6 +77,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CompetitionInfoResult"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
+  /competition/leaderboard:
+    get:
+      operationId: CompetitionLeaderboard
+      tags: [Competition]
+      security: []
+      summary: Published final results for completed epochs
+      description: |
+        Returns only finalized epochs. Entries are deterministically ordered by
+        normalized score, raw score, submission time, and job id. Public rows
+        identify the immutable job and patch, not bearer-token principals.
+      responses:
+        "200":
+          description: Finalized epoch leaderboards and winners.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionSeasonLeaderboardResult"
         "503":
           $ref: "#/components/responses/CompetitionUnavailable"
 
@@ -309,6 +329,7 @@ components:
         - evaluator_image_digest
         - patch_policy
         - evaluation_policy
+        - season_policy
       properties:
         competition_id:
           type: string
@@ -329,6 +350,8 @@ components:
           $ref: "#/components/schemas/CompetitionPatchPolicy"
         evaluation_policy:
           $ref: "#/components/schemas/CompetitionEvaluationPolicy"
+        season_policy:
+          $ref: "#/components/schemas/CompetitionSeasonPolicy"
         active_round:
           oneOf:
             - $ref: "#/components/schemas/CompetitionRoundResult"
@@ -471,6 +494,23 @@ components:
           type: integer
           minimum: 1
 
+    CompetitionSeasonPolicy:
+      type: object
+      additionalProperties: false
+      required: [epoch_count, submission_window_seconds, preparation_window_seconds]
+      properties:
+        epoch_count:
+          type: integer
+          const: 6
+        submission_window_seconds:
+          type: integer
+          const: 604800
+        preparation_window_seconds:
+          description: Time reserved for the same-round rebaseline before submissions open.
+          type: integer
+          minimum: 0
+          maximum: 604800
+
     CompetitionGenerateRoundArgs:
       type: object
       additionalProperties: false
@@ -491,6 +531,7 @@ components:
       additionalProperties: false
       required:
         - round_id
+        - epoch
         - status
         - workload_commitment
         - providers_sha256
@@ -503,9 +544,13 @@ components:
         round_id:
           type: string
           format: uuid
+        epoch:
+          type: integer
+          minimum: 1
+          maximum: 6
         status:
           type: string
-          enum: [scheduled, open, closed, revealed, canceled]
+          enum: [scheduled, open, grading, finalized, canceled]
         workload_commitment:
           $ref: "#/components/schemas/Sha256"
         providers_sha256:
@@ -526,6 +571,16 @@ components:
         created_at:
           type: string
           format: date-time
+        finalized_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        winner_job_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
         revealed_seed:
           description: Present only at or after reveal_at.
           oneOf:
@@ -536,6 +591,75 @@ components:
           description: Present only at or after reveal_at.
           type: string
           pattern: "^/competition/round/[0-9a-f-]+/providers\\.yml$"
+
+    CompetitionSeasonLeaderboardResult:
+      type: object
+      additionalProperties: false
+      required: [competition_id, epochs]
+      properties:
+        competition_id:
+          type: string
+          minLength: 1
+        epochs:
+          type: array
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/CompetitionLeaderboardResult"
+
+    CompetitionLeaderboardResult:
+      type: object
+      additionalProperties: false
+      required: [competition_id, round_id, epoch, status, finalized_at, entries]
+      properties:
+        competition_id:
+          type: string
+          minLength: 1
+        round_id:
+          type: string
+          format: uuid
+        epoch:
+          type: integer
+          minimum: 1
+          maximum: 6
+        status:
+          type: string
+          const: finalized
+        finalized_at:
+          type: string
+          format: date-time
+        winner_job_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompetitionLeaderboardEntry"
+
+    CompetitionLeaderboardEntry:
+      type: object
+      additionalProperties: false
+      required: [rank, job_id, patch_sha256, submitted_at, winner, score, submitter_count]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        job_id:
+          type: string
+          format: uuid
+        patch_sha256:
+          $ref: "#/components/schemas/Sha256"
+        submitted_at:
+          type: string
+          format: date-time
+        winner:
+          type: boolean
+        score:
+          $ref: "#/components/schemas/CompetitionScoreResult"
+        submitter_count:
+          type: integer
+          minimum: 1
 
     CompetitionScoreArgs:
       type: object

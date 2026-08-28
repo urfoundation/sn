@@ -8,13 +8,13 @@ is deliberately consumed as an archive artifact, outside this active model.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Mapping
 import re
 import uuid
 
 
-ROUND_STATES = frozenset({"scheduled", "open", "closed", "revealed", "canceled"})
+ROUND_STATES = frozenset({"scheduled", "open", "grading", "finalized", "canceled"})
 JOB_STATES = frozenset({"queued", "running", "succeeded", "failed", "canceled"})
 ERROR_KINDS = frozenset({"auth", "submission", "infrastructure"})
 ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
@@ -52,6 +52,7 @@ class CompetitionApiError(Exception):
 @dataclass(frozen=True)
 class RoundCommitment:
     round_id: str
+    epoch: int
     status: str
     workload_commitment: str
     providers_sha256: str
@@ -72,10 +73,14 @@ class RoundCommitment:
         closes_at = _required_datetime(value, "closes_at")
         reveal_at = _required_datetime(value, "reveal_at")
         _required_datetime(value, "created_at")
-        if not opens_at < closes_at <= reveal_at:
-            raise ValueError("round timestamps violate opens_at < closes_at <= reveal_at")
+        if closes_at - opens_at != timedelta(days=7) or reveal_at != closes_at:
+            raise ValueError("round timestamps must encode one seven-day submission window")
+        epoch = _required_int(value, "epoch")
+        if not 1 <= epoch <= 6:
+            raise ValueError("epoch must be in 1..6")
         return cls(
             round_id=_required_uuid(value, "round_id"),
+            epoch=epoch,
             status=_required_enum(value, "status", ROUND_STATES),
             workload_commitment=_required_sha256(value, "workload_commitment"),
             providers_sha256=_required_sha256(value, "providers_sha256"),
@@ -85,6 +90,90 @@ class RoundCommitment:
             reveal_at=_required_str(value, "reveal_at"),
             created_at=_required_str(value, "created_at"),
         )
+
+
+@dataclass(frozen=True)
+class LeaderboardEntry:
+    rank: int
+    job_id: str
+    patch_sha256: str
+    submitted_at: str
+    winner: bool
+    score: Mapping[str, Any]
+    submitter_count: int
+
+    @classmethod
+    def from_json(cls, value: Mapping[str, Any]) -> "LeaderboardEntry":
+        rank = _required_int(value, "rank")
+        submitter_count = _required_int(value, "submitter_count")
+        score = value.get("score")
+        if rank < 1 or submitter_count < 1 or not isinstance(score, Mapping):
+            raise ValueError("leaderboard rank, submitter_count, or score is invalid")
+        return cls(
+            rank=rank,
+            job_id=_required_uuid(value, "job_id"),
+            patch_sha256=_required_sha256(value, "patch_sha256"),
+            submitted_at=_required_datetime_string(value, "submitted_at"),
+            winner=_required_bool(value, "winner"),
+            score=score,
+            submitter_count=submitter_count,
+        )
+
+
+@dataclass(frozen=True)
+class EpochLeaderboard:
+    competition_id: str
+    round_id: str
+    epoch: int
+    finalized_at: str
+    winner_job_id: str | None
+    entries: tuple[LeaderboardEntry, ...]
+
+    @classmethod
+    def from_json(cls, value: Mapping[str, Any]) -> "EpochLeaderboard":
+        if _required_str(value, "status") != "finalized":
+            raise ValueError("published leaderboard must be finalized")
+        epoch = _required_int(value, "epoch")
+        if not 1 <= epoch <= 6:
+            raise ValueError("leaderboard epoch must be in 1..6")
+        winner = value.get("winner_job_id")
+        if winner is not None:
+            winner = _required_uuid(value, "winner_job_id")
+        raw_entries = value.get("entries")
+        if not isinstance(raw_entries, list):
+            raise ValueError("leaderboard entries must be an array")
+        entries = tuple(LeaderboardEntry.from_json(entry) for entry in raw_entries)
+        if any(entry.rank != index for index, entry in enumerate(entries, 1)):
+            raise ValueError("leaderboard ranks are not contiguous")
+        if winner is not None and sum(entry.job_id == winner and entry.winner for entry in entries) != 1:
+            raise ValueError("leaderboard winner identity is inconsistent")
+        return cls(
+            competition_id=_required_str(value, "competition_id"),
+            round_id=_required_uuid(value, "round_id"),
+            epoch=epoch,
+            finalized_at=_required_datetime_string(value, "finalized_at"),
+            winner_job_id=winner,
+            entries=entries,
+        )
+
+
+@dataclass(frozen=True)
+class SeasonLeaderboard:
+    competition_id: str
+    epochs: tuple[EpochLeaderboard, ...]
+
+    @classmethod
+    def from_json(cls, value: Mapping[str, Any]) -> "SeasonLeaderboard":
+        competition_id = _required_str(value, "competition_id")
+        raw_epochs = value.get("epochs")
+        if not isinstance(raw_epochs, list) or len(raw_epochs) > 6:
+            raise ValueError("leaderboard epochs must be an array of at most six items")
+        epochs = tuple(EpochLeaderboard.from_json(epoch) for epoch in raw_epochs)
+        if any(epoch.competition_id != competition_id for epoch in epochs):
+            raise ValueError("leaderboard competition identity is inconsistent")
+        if any(epoch.epoch != index for index, epoch in enumerate(epochs, 1)):
+            raise ValueError("leaderboard epoch sequence is not contiguous")
+        return cls(competition_id=competition_id, epochs=epochs)
 
 
 @dataclass(frozen=True)

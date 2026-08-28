@@ -10,7 +10,13 @@ from unittest import mock
 
 from competition.client import CompetitionClient, MAX_JSON_RESPONSE_BYTES
 from competition.generator import CompetitionGenerator
-from competition.models import AcceptedScore, CompetitionApiError, RoundCommitment, ScoreJob
+from competition.models import (
+    AcceptedScore,
+    CompetitionApiError,
+    RoundCommitment,
+    ScoreJob,
+    SeasonLeaderboard,
+)
 from competition.normalizer import normalize_score, takeover_eligible, takeover_threshold
 from competition.reveal import GENERATOR_DOMAIN, ROUND_DOMAIN, verify_reveal
 from competition.runner import CompetitionRunner
@@ -35,13 +41,14 @@ CACHE_KEY = "b" * 64
 def round_result(**overrides):
     value = {
         "round_id": ROUND_ID,
+        "epoch": 1,
         "status": "scheduled",
         "workload_commitment": "c" * 64,
         "providers_sha256": "d" * 64,
         "score_schema": 1,
         "opens_at": "2026-08-17T09:00:00Z",
-        "closes_at": "2026-08-17T10:00:00Z",
-        "reveal_at": "2026-08-17T11:00:00Z",
+        "closes_at": "2026-08-24T09:00:00Z",
+        "reveal_at": "2026-08-24T09:00:00Z",
         "created_at": "2026-08-17T08:00:00Z",
     }
     value.update(overrides)
@@ -155,6 +162,7 @@ class ActiveRoundModelTest(unittest.TestCase):
         value = {
             "round_id": "r", "status": "open", "workload_commitment": "a" * 64,
             "providers_sha256": "b" * 64,
+            "epoch": 1,
             "score_schema": 1, "opens_at": "o", "closes_at": "c",
             "reveal_at": "x", "created_at": "n", "revealed_seed": "b" * 64,
         }
@@ -198,8 +206,8 @@ class GeneratorTest(unittest.TestCase):
         generator.client = mock.Mock()
         generator.client.post.return_value = round_result()
         opens_at = datetime(2026, 8, 17, 11, 0, tzinfo=timezone(timedelta(hours=2)))
-        closes_at = opens_at + timedelta(hours=1)
-        reveal_at = closes_at + timedelta(hours=1)
+        closes_at = opens_at + timedelta(days=7)
+        reveal_at = closes_at
 
         result = generator.generate(opens_at, closes_at, reveal_at)
 
@@ -208,8 +216,8 @@ class GeneratorTest(unittest.TestCase):
             "/competition/generate-round",
             {
                 "opens_at": "2026-08-17T09:00:00Z",
-                "closes_at": "2026-08-17T10:00:00Z",
-                "reveal_at": "2026-08-17T11:00:00Z",
+                "closes_at": "2026-08-24T09:00:00Z",
+                "reveal_at": "2026-08-24T09:00:00Z",
             },
         )
 
@@ -225,6 +233,54 @@ class GeneratorTest(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 generator.generate(*values)
         generator.client.post.assert_not_called()
+
+
+class LeaderboardModelTest(unittest.TestCase):
+    def test_finalized_six_epoch_contract(self) -> None:
+        score = {
+            "score_schema": 1,
+            "raw_score": 80.0,
+            "normalized_score": 125.0,
+            "placeable": True,
+            "takeover_eligible": True,
+            "gates": {"G1": {"passed": True, "details": {}}},
+        }
+        result = SeasonLeaderboard.from_json({
+            "competition_id": "sim-latency-season-1",
+            "epochs": [{
+                "competition_id": "sim-latency-season-1",
+                "round_id": ROUND_ID,
+                "epoch": 1,
+                "status": "finalized",
+                "finalized_at": "2026-08-25T00:00:00Z",
+                "winner_job_id": JOB_ID,
+                "entries": [{
+                    "rank": 1,
+                    "job_id": JOB_ID,
+                    "patch_sha256": PATCH_SHA256,
+                    "submitted_at": "2026-08-20T00:00:00Z",
+                    "winner": True,
+                    "score": score,
+                    "submitter_count": 1,
+                }],
+            }],
+        })
+        self.assertEqual(result.epochs[0].winner_job_id, JOB_ID)
+
+    def test_winner_identity_mismatch_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            SeasonLeaderboard.from_json({
+                "competition_id": "sim-latency-season-1",
+                "epochs": [{
+                    "competition_id": "sim-latency-season-1",
+                    "round_id": ROUND_ID,
+                    "epoch": 1,
+                    "status": "finalized",
+                    "finalized_at": "2026-08-25T00:00:00Z",
+                    "winner_job_id": JOB_ID,
+                    "entries": [],
+                }],
+            })
 
 
 class RunnerTest(unittest.TestCase):

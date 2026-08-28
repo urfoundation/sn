@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Mapping
 
-from .models import CompetitionApiError
+from .models import CompetitionApiError, SeasonLeaderboard
 
 
 MAX_JSON_RESPONSE_BYTES = 1024 * 1024
@@ -35,6 +35,9 @@ class CompetitionClient:
 
     def post(self, path: str, body: Mapping[str, Any]) -> Mapping[str, Any]:
         return self._request("POST", path, body)
+
+    def leaderboard(self) -> SeasonLeaderboard:
+        return SeasonLeaderboard.from_json(self.get("/competition/leaderboard"))
 
     def download_revealed_workload(self, round_id: str, expected_sha256: str) -> bytes:
         try:
