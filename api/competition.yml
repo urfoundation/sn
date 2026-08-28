@@ -8,9 +8,11 @@ info:
     connect/api/bringyour.yml. Competition paths are namespaced under
     /competition.
 
-    Round workload seeds are never returned while a round is active. The API
-    publishes a seed commitment and the generated providers.yml SHA-256 until
-    the configured reveal time, then exposes both seed and immutable file.
+    Round workload seeds and score results are never returned while a round is
+    active or grading. The API publishes a seed commitment and the generated
+    providers.yml SHA-256 until every admitted job is terminal and the winner
+    is finalized after ordered honesty review, then exposes the seed, immutable
+    workload, and results.
     Identical canonical patch bytes in one round map to one durable job/result.
   contact:
     name: URnetwork
@@ -89,7 +91,9 @@ paths:
       description: |
         Returns only finalized epochs. Entries are deterministically ordered by
         normalized score, raw score, submission time, and job id. Public rows
-        identify the immutable job and patch, not bearer-token principals.
+        identify the immutable job and patch, not bearer-token principals. An
+        epoch is not published until admission has closed, every accepted job
+        is terminal, and winner selection commits atomically.
       responses:
         "200":
           description: Finalized epoch leaderboards and winners.
@@ -132,7 +136,7 @@ paths:
       operationId: CompetitionGetRoundWorkload
       tags: [Competition]
       security: []
-      summary: Download the committed workload after reveal
+      summary: Download the committed workload after epoch finalization
       parameters:
         - name: roundId
           in: path
@@ -171,7 +175,13 @@ paths:
       description: |
         The response is asynchronous. Submitting identical canonical patch
         bytes for the same round returns the existing job and cannot buy
-        another draw from evaluator noise.
+        another draw from evaluator noise. Accepted unique jobs are unbounded
+        per epoch and enter the single FIFO immediately. The Apex adapter
+        collects the published $20 USD submission fee exactly once before
+        forwarding an admission. Any patch operation targeting
+        `connect/sim-latency/**` is a terminal invalid submission; the
+        simulator, runner, and scorer implementation is not an editable
+        competition surface.
       requestBody:
         required: true
         content:
@@ -205,17 +215,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CompetitionError"
-        "429":
-          description: Queue admission limit reached.
-          headers:
-            Retry-After:
-              schema:
-                type: integer
-                minimum: 1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CompetitionError"
         "503":
           $ref: "#/components/responses/CompetitionUnavailable"
 
@@ -233,7 +232,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Current durable state; detailed diagnostics obey reveal policy.
+          description: Current durable processing state; score and failure results are embargoed until post-review epoch finalization.
           content:
             application/json:
               schema:
@@ -377,6 +376,7 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
+          description: Must explicitly include `connect/sim-latency/**`; that tree is also denied independently by the validator.
           items:
             type: string
 
@@ -489,15 +489,17 @@ components:
           maximum: 0.5
         queue_limit:
           type: integer
-          minimum: 1
+          const: 0
+          description: Frozen sentinel for unbounded unique submissions per epoch.
         score_timeout_seconds:
           type: integer
-          minimum: 1
+          const: 10800
+          description: Total execution budget for one submission across all attempts and retry backoff; queue wait before its first claim is excluded.
 
     CompetitionSeasonPolicy:
       type: object
       additionalProperties: false
-      required: [epoch_count, submission_window_seconds, preparation_window_seconds]
+      required: [epoch_count, submission_window_seconds, preparation_window_seconds, submission_fee_usd]
       properties:
         epoch_count:
           type: integer
@@ -510,6 +512,10 @@ components:
           type: integer
           minimum: 0
           maximum: 604800
+        submission_fee_usd:
+          type: integer
+          const: 20
+          description: Fee collected exactly once by the Apex adapter for each admitted submission.
 
     CompetitionGenerateRoundArgs:
       type: object
@@ -582,13 +588,13 @@ components:
               format: uuid
             - type: "null"
         revealed_seed:
-          description: Present only at or after reveal_at.
+          description: Present only after reveal_at and atomic post-review epoch finalization.
           oneOf:
             - type: string
               pattern: "^[0-9a-f]{64}$"
             - type: "null"
         providers_url:
-          description: Present only at or after reveal_at.
+          description: Present only after reveal_at and atomic post-review epoch finalization.
           type: string
           pattern: "^/competition/round/[0-9a-f-]+/providers\\.yml$"
 
@@ -640,7 +646,7 @@ components:
     CompetitionLeaderboardEntry:
       type: object
       additionalProperties: false
-      required: [rank, job_id, patch_sha256, submitted_at, winner, score, submitter_count]
+      required: [rank, job_id, patch_sha256, submitted_at, winner, honesty_review, score, submitter_count]
       properties:
         rank:
           type: integer
@@ -655,6 +661,13 @@ components:
           format: date-time
         winner:
           type: boolean
+        honesty_review:
+          type: string
+          enum: [approved, rejected, not_reviewed]
+          description: >-
+            Final operator honesty-review disposition. Rejected significant
+            candidates remain visible after the epoch embargo lifts but cannot
+            be selected or promoted as the winner.
         score:
           $ref: "#/components/schemas/CompetitionScoreResult"
         submitter_count:
@@ -705,6 +718,7 @@ components:
         - state
         - submitted_at
         - cache_key
+        - evaluator_image_digest
         - api_image_digest
       properties:
         job_id:
@@ -732,6 +746,9 @@ components:
             - type: "null"
         cache_key:
           $ref: "#/components/schemas/Sha256"
+        evaluator_image_digest:
+          $ref: "#/components/schemas/ImageDigest"
+          description: Exact epoch evaluator container content identity frozen in the job's immutable round policy.
         api_image_digest:
           $ref: "#/components/schemas/ImageDigest"
           description: Exact main API container content identity that admitted the job; control-plane provenance, not a scoring input.
@@ -749,22 +766,23 @@ components:
 
     CompetitionJobState:
       type: string
-      enum: [queued, running, succeeded, failed, canceled]
+      description: completed is the outcome-neutral state returned during the result embargo.
+      enum: [queued, running, completed, succeeded, failed, canceled]
 
     CompetitionScoreResult:
       type: object
       additionalProperties: false
-      required: [score_schema, placeable, gates]
+      required: [score_schema, placeable, gates, significance]
       properties:
         score_schema:
           type: integer
           const: 1
         raw_score:
-          description: Present only after the round reveal.
+          description: Present only after atomic post-review epoch finalization.
           type: number
           exclusiveMinimum: 0
         normalized_score:
-          description: Present for a completed placeable score, including during an active round.
+          description: Present only after atomic post-review epoch finalization.
           type: number
           minimum: 1
           maximum: 200
@@ -776,9 +794,109 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/CompetitionGate"
+        significance:
+          $ref: "#/components/schemas/CompetitionScoreSignificance"
         diagnostics:
           type: object
           additionalProperties: true
+
+    CompetitionScoreSignificance:
+      type: object
+      additionalProperties: false
+      required:
+        - method
+        - alpha
+        - replicate_count
+        - baseline_mean_raw_score
+        - candidate_mean_raw_score
+        - baseline_sample_variance
+        - candidate_sample_variance
+        - observed_improvement_percent
+        - takeover_margin_percent
+        - minimum_significant_improvement_percent
+        - required_improvement_percent
+        - one_sided_p_value
+        - statistically_significant
+        - next_epoch_minimum_improvement_percent
+        - recommended_next_epoch_takeover_margin_percent
+        - recommended_next_epoch_takeover_margin_supported
+      properties:
+        method:
+          type: string
+          const: one-sided-welch-t
+        alpha:
+          type: number
+          const: 0.05
+        replicate_count:
+          type: integer
+          minimum: 1
+          maximum: 9
+        baseline_mean_raw_score:
+          type: number
+          exclusiveMinimum: 0
+        candidate_mean_raw_score:
+          type: number
+          exclusiveMinimum: 0
+        baseline_sample_variance:
+          description: Sample variance (n-1) of baseline replicate raw scores; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+            - type: "null"
+        candidate_sample_variance:
+          description: Sample variance (n-1) of candidate replicate raw scores; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+            - type: "null"
+        observed_improvement_percent:
+          type: number
+        takeover_margin_percent:
+          description: Empirically calibrated aggregate-score floor frozen for this epoch.
+          type: number
+          exclusiveMinimum: 0
+          maximum: 50
+        minimum_significant_improvement_percent:
+          description: One-sided Welch critical difference divided by the baseline mean; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+            - type: "null"
+        required_improvement_percent:
+          description: Greater of the epoch takeover floor and measured Welch threshold; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+            - type: "null"
+        one_sided_p_value:
+          description: Candidate-lower-than-baseline Welch p-value; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 1
+            - type: "null"
+        welch_t:
+          type: number
+        welch_degrees_of_freedom:
+          type: number
+          exclusiveMinimum: 0
+        statistically_significant:
+          type: boolean
+        next_epoch_minimum_improvement_percent:
+          description: Minimum detectable improvement derived from candidate variance as the next incumbent; null only for R=1.
+          oneOf:
+            - type: number
+              minimum: 0
+            - type: "null"
+        recommended_next_epoch_takeover_margin_percent:
+          description: Conservative next-epoch margin, never below this epoch's calibrated takeover floor; null only for R=1.
+          oneOf:
+            - type: number
+              exclusiveMinimum: 0
+            - type: "null"
+        recommended_next_epoch_takeover_margin_supported:
+          description: True only when the recommendation is within the scorer's supported (0%, 50%] range.
+          type: boolean
 
     CompetitionGate:
       type: object
