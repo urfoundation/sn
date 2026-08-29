@@ -268,7 +268,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   stake** and is drained each tempo.
 - **Stake weight** = `alpha_stake + tao_weight × tao_stake`. `tao_weight` is global, root-governed,
   and encoded as `u64 / u64::MAX`; testnet currently resolves to **0.018** (1.8%), while the pinned
-  v447 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
+  v451 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
   observe mainnet independently rather than assuming either value.
 
 ### 2.3 dTAO economics
@@ -320,7 +320,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   | `0x…0802` | **Metagraph** | read-only conformance/observation of UID 0 and metagraph identity; production settlement does not trust a point-in-time emission getter |
 
   Independent validators submit CRv4 through native Substrate extrinsics, not through an EVM
-  precompile. Runtime 447 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
+  precompile. Runtime 451 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
   finalized indexer mirrors `(hotkey, commitment hash, finalized block/hash)` into the coordinator; the
   coordinator then checks the mirror, both signatures, freshness and the live UID atomically.
 
@@ -849,7 +849,7 @@ That *is* the tournament, driven by the weights validators set:
 **Weight shaping (best practice for ~200 concurrent fleets).** Steer **proportionally** to `score`, *not*
 winner-take-all; apply the signed policy's `max_weight_limit_u16` before every CRv4 commit; and drive
 `VALIDATOR.md` trails at a rate (validator-configurable, §D26) that gives every top UID regular coverage
-so honest-but-idle fleets don't stale-decay. Runtime v447's native getter is hard-coded to `65535`
+so honest-but-idle fleets don't stale-decay. Runtime v451's native getter is hard-coded to `65535`
 (no cap), despite retaining a `MaxWeightsLimit` storage item, so release 1.0 validators enforce the
 policy cap locally and finalized-vector analysis rejects violations. The two-NO testnet bootstrap uses
 `32768` (the smallest feasible two-recipient cap); a production policy lowers the cap toward a low
@@ -1074,7 +1074,7 @@ Yuma combines the validators' vectors with their stake:
 
 Hyperparameters: `commit_reveal_weights_enabled = true`, `liquid_alpha_enabled = true` (reward early
 pool discovery), `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), and
-`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v447 cannot impose a
+`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v451 cannot impose a
 lower native `max_weight_limit`; the signed policy cap and finalized-vector audit described above are
 therefore mandatory release gates.
 
@@ -1453,7 +1453,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
 | `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
-| native `max_weight_limit` / signed policy cap | v447 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v447's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
+| native `max_weight_limit` / signed policy cap | v451 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v451's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
 | `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 breadth-sampling dip risk); must exceed `commit_reveal_period × tempo` |
@@ -1464,7 +1464,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `bonds_penalty` / `alpha_low`/`alpha_high` | tune (Liquid Alpha) | shape early‑discovery reward vs. stability (§2.2) |
 
 > Several genesis defaults are governance‑mutable and have drifted from docs (e.g. testnet's global
-> `tao_weight` is 1.8% while the pinned v447 fallback is about 5.27%; `max_validators` is 64 vs 128;
+> `tao_weight` is 1.8% while the pinned v451 fallback is about 5.27%; `max_validators` is 64 vs 128;
 > the `commit_reveal` default flipped). Query and compatibility-gate the live finalized values; set
 > only owner-controlled fields explicitly and do not rely on documented defaults (§16 checklist).
 
@@ -1503,7 +1503,7 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
 ### 16.1 Components
 
 1. **ST contract set (Solidity, Cancun / 0.8.24).** Non-upgradeable `STReserveSink` and
-   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-447 bindings (`0x09`, `0x402`, `0x403`,
+   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-451 bindings (`0x09`, `0x402`, `0x403`,
    `0x804`, `0x805`), OZ Merkle verification, scoped roles and scheduled policy (§6). The reviewed
    artifacts and deployed runtime hashes are release-locked. (No effort verifier — §9.3/D29.)
 2. **Subnet convergence.** Validate the supplied, wallet-owned existing testnet netuid; explicitly set

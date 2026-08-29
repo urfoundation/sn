@@ -506,7 +506,7 @@ many public docs are stale — pin a `subtensor` release tag and verify against 
 **Specific stale‑doc / live‑value flags (query the live chain, set explicitly):**
 - `commit_reveal_weights_enabled` default flipped across versions — we want **true** (D6); confirm.
 - `tao_weight` is a root-governed global and must be read live: testnet currently uses **0.018**
-  (raw `332041393326771929`), while the pinned v447 genesis fallback is about 5.27%.
+  (raw `332041393326771929`), while the pinned v451 genesis fallback is about 5.27%.
   `SubnetOwnerCut` ≈ 18% is a separate configurable value.
 - Subnet cap is **128** (not 256, a common misconception); `max_allowed_uids` **256**,
   `max_allowed_validators` **64** — relevant to NO/validator counts.
@@ -528,7 +528,7 @@ many public docs are stale — pin a `subtensor` release tag and verify against 
   split amongst parents") — so each top miner needs its own UID; you cannot pool miner emission via childkeys.
 - **`set_weights` is the only steering lever**; any tier/quota/θ logic must be encoded in the weight vector
   and adopted by a **stake-majority of validators** to survive Yuma's κ=0.5 median clipping.
-- **Runtime v447's effective `max_weight_limit` is always 65535 (no cap)** — its getter ignores the
+- **Runtime v451's effective `max_weight_limit` is always 65535 (no cap)** — its getter ignores the
   retained storage item. Release validators must apply a signed-policy cap and audit finalized vectors;
   native enforcement requires runtime support. Proportional (not winner-take-all) weighting fits ~200
   concurrent providers; Wilson-interval + latency scoring (FileTAO / TPN) is field best-practice and

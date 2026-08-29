@@ -1,4 +1,4 @@
-// Live opt-in probes bind the checked-in release harness to runtime 447 and
+// Live opt-in probes bind the checked-in release harness to runtime 451 and
 // provide an explicitly confirmed, bounded bootstrap for netuid 521.
 package main
 
@@ -37,6 +37,7 @@ func TestLiveStakeNetuid521Alpha(t *testing.T) {
 		limitPrice   = uint64(473_744)
 		targetAlpha  = uint64(6_000_000_000)
 		publicRPC    = "wss://test.finney.opentensor.ai:443"
+		publicEVMRPC = "https://test.chain.opentensor.ai"
 	)
 	if os.Getenv("SIM_TESTNET_STAKE_ALPHA") != confirmation {
 		t.Skip("explicit live-stake confirmation is absent")
@@ -48,7 +49,9 @@ func TestLiveStakeNetuid521Alpha(t *testing.T) {
 	if cfg.Netuid != 521 || stakeTAORao > cfg.MaximumTAORao || targetAlpha > cfg.MaximumAlphaRao {
 		t.Fatal("live stake request exceeds the configured netuid or spending limits")
 	}
-	cfg.Authority = publicRPC
+	cfg.OperationalSubstrate = publicRPC
+	cfg.OperationalEVM = publicEVMRPC
+	cfg.OperationalRPCMode = rpcModePublicOverride
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	before, beforeErr := ReadSetupFacts(ctx, cfg)
@@ -260,7 +263,9 @@ func TestLiveBalanceProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Authority = "wss://test.finney.opentensor.ai:443"
+	cfg.OperationalSubstrate = "wss://test.finney.opentensor.ai:443"
+	cfg.OperationalEVM = "https://test.chain.opentensor.ai"
+	cfg.OperationalRPCMode = rpcModePublicOverride
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	facts, setupErr := ReadSetupFacts(ctx, cfg)
@@ -272,7 +277,7 @@ func TestLiveBalanceProbe(t *testing.T) {
 	if setupErr != nil {
 		t.Logf("setup readiness: %v", setupErr)
 	}
-	chain, err := crv4.DialChain(cfg.Authority)
+	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
 	}

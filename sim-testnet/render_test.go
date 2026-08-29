@@ -48,7 +48,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 50_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 {
 			t.Fatalf("validator %d config incomplete: %+v", i, loaded)
 		}
-		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadRPCAuthority() {
+		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadSubstrateRPCAuthority() {
 			t.Fatalf("validator %d bypasses the simulator-owned RPC proxy: rpc=%v substrate=%v", i, loaded.RPC, loaded.Substrate)
 		}
 		wantControlled := controlledNOIDsForValidator(i)

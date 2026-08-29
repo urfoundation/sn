@@ -163,7 +163,7 @@ contract STSettlementVault {
         // flag back with the transaction, while a hostile callback can never
         // observe an unclaimed one-shot registration capability.
         escrowRegistered = true;
-        // Runtime 447 charges this contract's SS58-mirror balance. msg.value
+        // Runtime 451 charges this contract's SS58-mirror balance. msg.value
         // funds that balance before execution; forwarding it to the precompile
         // would move the funds away before the runtime dispatch can burn them.
         INeuron(INeuron_ADDRESS).registerLimit(netuid, escrowHotkey, maximumBurnRao);

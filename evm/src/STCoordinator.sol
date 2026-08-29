@@ -604,7 +604,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Mirrors a commitment only after the indexer has independently
-    /// observed it in finalized pallet state. Runtime 447 has no EVM metadata
+    /// observed it in finalized pallet state. Runtime 451 has no EVM metadata
     /// commitment getter, so this narrowly scoped oracle is an explicit seam.
     function mirrorCommitment(
         bytes32 hotkey,

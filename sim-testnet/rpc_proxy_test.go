@@ -115,3 +115,13 @@ func TestRPCProxyConfigIsLoopbackScopedAndPreservesTLSIdentity(t *testing.T) {
 		t.Fatalf("TLS proxy config=%+v", config)
 	}
 }
+
+func TestRPCProxyConfigAddsDefaultPublicTLSPort(t *testing.T) {
+	config, err := rpcProxyConfigForEndpoint("https://test.chain.opentensor.ai", workloadRPCProxyAddress, workloadRPCProxyHealthAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Upstream != "test.chain.opentensor.ai:443" || config.TLSServerName != "test.chain.opentensor.ai" {
+		t.Fatalf("public RPC proxy config = %+v", config)
+	}
+}

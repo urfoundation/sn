@@ -1,7 +1,8 @@
 package crv4
 
-// Runtime-447 commitments pallet support used by fleet promotion. The exact
-// encoding is pinned to RaoFoundation/subtensor v447:
+// Runtime-451 commitments pallet support used by fleet promotion. The exact
+// encoding is pinned to RaoFoundation/subtensor release-v451 commit
+// d78d9cc6a6ee4d805f74a35414baaef8be025a5f:
 //
 //   Commitments.set_commitment(netuid: u16, info: CommitmentInfo)
 //   CommitmentInfo { fields: BoundedVec<Data> }
@@ -25,12 +26,12 @@ const (
 	CommitmentsPalletName = "Commitments"
 	CallSetCommitment     = "set_commitment"
 	dataSHA256Variant     = byte(131)
-	// Runtime v447 stores Registration<TaoBalance, MaxFields, BlockNumber>
+	// Runtime v451 stores Registration<TaoBalance, MaxFields, BlockNumber>
 	// as a transparent u64 deposit, u32 block, then CommitmentInfo. The
 	// release lock pins all three types; accepting only the exact byte length
 	// prevents a multi-field registration that merely ends in Sha256 from
 	// masquerading as the one-field fleet commitment protocol.
-	registrationV447PrefixBytes = 8 + 4
+	registrationV451PrefixBytes = 8 + 4
 )
 
 // SHA256CommitmentData is the only commitment Data variant accepted by the
@@ -70,18 +71,18 @@ func EncodeFleetCommitmentInfo(hash [32]byte) ([]byte, error) {
 	return codec.Encode(info)
 }
 
-// DecodeFleetCommitmentRegistrationV447 accepts exactly the release protocol's
+// DecodeFleetCommitmentRegistrationV451 accepts exactly the release protocol's
 // Registration encoding: deposit:u64, block:u32, and one nonzero Data::Sha256
 // field. It intentionally rejects every other valid Subtensor Data shape and
 // every multi-field value. This keeps an arbitrary native commitment from
 // becoming parser confusion or an authorization oracle for fleet mirroring.
-func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
+func DecodeFleetCommitmentRegistrationV451(raw []byte) ([32]byte, error) {
 	var commitmentHash [32]byte
 	wantInfoLen := 1 + 1 + len(commitmentHash) // Vec length(1), Sha256 variant, hash
-	if len(raw) != registrationV447PrefixBytes+wantInfoLen {
-		return commitmentHash, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV447PrefixBytes+wantInfoLen)
+	if len(raw) != registrationV451PrefixBytes+wantInfoLen {
+		return commitmentHash, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV451PrefixBytes+wantInfoLen)
 	}
-	info := raw[registrationV447PrefixBytes:]
+	info := raw[registrationV451PrefixBytes:]
 	if info[0] != 0x04 || info[1] != dataSHA256Variant {
 		return commitmentHash, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
 	}
@@ -94,6 +95,13 @@ func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
 		return [32]byte{}, fmt.Errorf("crv4: non-canonical commitment encoding")
 	}
 	return commitmentHash, nil
+}
+
+// DecodeFleetCommitmentRegistrationV447 remains as a source-compatible alias
+// for consumers that adopted the codec when it was first release-pinned. The
+// v451 audit proved this storage shape unchanged.
+func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
+	return DecodeFleetCommitmentRegistrationV451(raw)
 }
 
 // NewSetFleetCommitmentCall builds the runtime metadata-bound call.
@@ -164,7 +172,7 @@ func (c *Chain) FleetCommitmentFinalized(netuid uint16, hotkey [32]byte) (*Final
 	return c.FleetCommitmentAt(netuid, hotkey, hash)
 }
 
-// FleetCommitmentAt verifies the release's exact runtime-447 one-field Sha256
+// FleetCommitmentAt verifies the release's exact runtime-451 one-field Sha256
 // registration directly from CommitmentOf storage.
 func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash types.Hash) (*FinalizedCommitment, error) {
 	if netuid == 0 || hotkey == ([32]byte{}) || blockHash == (types.Hash{}) {
@@ -181,7 +189,7 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if raw == nil {
 		return nil, fmt.Errorf("crv4: no finalized commitment for hotkey 0x%x on netuid %d", hotkey, netuid)
 	}
-	commitmentHash, err := DecodeFleetCommitmentRegistrationV447([]byte(*raw))
+	commitmentHash, err := DecodeFleetCommitmentRegistrationV451([]byte(*raw))
 	if err != nil {
 		return nil, err
 	}

@@ -176,14 +176,46 @@ func TestIndependentRPCEndpointsMustBeDistinct(t *testing.T) {
 	}
 
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "ws://127.0.0.1:9944"
-	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "must not resolve") {
+	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "shared") {
 		t.Fatalf("private Substrate endpoint was accepted as independent: %v", err)
 	}
 
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://public-substrate.example:443"
 	cfg.Public.Chain.EVMPublicReadEndpoint = "http://127.0.0.1:9944"
-	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "must not resolve") {
+	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "shared") {
 		t.Fatalf("private EVM endpoint was accepted as independent: %v", err)
+	}
+}
+
+func TestPublicRPCOverrideCannotClaimIndependentBackendAssurance(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.LaunchInputs.PublicSubstrateRPCOverride = "wss://test.finney.opentensor.ai:443"
+	cfg.Config.LaunchInputs.PublicEVMRPCOverride = "https://test.chain.opentensor.ai"
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalSubstrate = cfg.Config.LaunchInputs.PublicSubstrateRPCOverride
+	cfg.OperationalEVM = cfg.Config.LaunchInputs.PublicEVMRPCOverride
+	cfg.Public.Chain.SubstratePublicReadEndpoint = cfg.OperationalSubstrate
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	if err := validateOperationalRPCRouting(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if independentRPCRequired(cfg) {
+		t.Fatal("public override was treated as an independent RPC deployment")
+	}
+	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "shared") {
+		t.Fatalf("shared public operational/verifier endpoints were accepted as independent: %v", err)
+	}
+}
+
+func TestRuntimeCodeHashValidationIsExact(t *testing.T) {
+	want := "0x" + strings.Repeat("ab", 32)
+	if err := validateRuntimeCodeHash(want[:2]+strings.ToUpper(want[2:]), want); err != nil {
+		t.Fatalf("case-equivalent runtime hash rejected: %v", err)
+	}
+	for _, observed := range []string{"", "0x12", "0x" + strings.Repeat("zz", 32), "0x" + strings.Repeat("cd", 32)} {
+		if err := validateRuntimeCodeHash(observed, want); err == nil {
+			t.Fatalf("invalid or drifting runtime hash %q was accepted", observed)
+		}
 	}
 }
 
@@ -276,9 +308,9 @@ func TestApprovedSetupFactsUseOnlyTheRemainingBudget(t *testing.T) {
 func TestSubstrateReadinessAcceptsLiveCanonicalPeer(t *testing.T) {
 	checkpointHash := gsrpcTypes.Hash{1}
 	observation := substrateReadinessObservation{
-		Health:           substrateHealth{Peers: 2, ShouldHavePeers: true},
-		PrivateFinalized: 100, PublicFinalized: 102, Checkpoint: 100,
-		PrivateCheckpointHash: checkpointHash, PublicCheckpointHash: checkpointHash,
+		Health:               substrateHealth{Peers: 2, ShouldHavePeers: true},
+		OperationalFinalized: 100, PublicFinalized: 102, Checkpoint: 100,
+		OperationalCheckpointHash: checkpointHash, PublicCheckpointHash: checkpointHash,
 	}
 	if err := validateSubstrateReadiness(observation, 3); err != nil {
 		t.Fatal(err)
@@ -312,9 +344,9 @@ func TestSubnetActivationRequiresFinalizedEmissionAfterDelay(t *testing.T) {
 func TestSubstrateReadinessRejectsPeerlessStaleNode(t *testing.T) {
 	checkpointHash := gsrpcTypes.Hash{1}
 	observation := substrateReadinessObservation{
-		Health:           substrateHealth{ShouldHavePeers: true},
-		PrivateFinalized: 100, PublicFinalized: 104, Checkpoint: 100,
-		PrivateCheckpointHash: checkpointHash, PublicCheckpointHash: checkpointHash,
+		Health:               substrateHealth{ShouldHavePeers: true},
+		OperationalFinalized: 100, PublicFinalized: 104, Checkpoint: 100,
+		OperationalCheckpointHash: checkpointHash, PublicCheckpointHash: checkpointHash,
 	}
 	err := validateSubstrateReadiness(observation, 3)
 	if err == nil || !strings.Contains(err.Error(), "zero connected peers") || !strings.Contains(err.Error(), "lags public by 4 blocks") {
@@ -324,9 +356,9 @@ func TestSubstrateReadinessRejectsPeerlessStaleNode(t *testing.T) {
 
 func TestSubstrateReadinessRejectsSyncingFork(t *testing.T) {
 	observation := substrateReadinessObservation{
-		Health:           substrateHealth{Peers: 2, IsSyncing: true, ShouldHavePeers: true},
-		PrivateFinalized: 100, PublicFinalized: 100, Checkpoint: 100,
-		PrivateCheckpointHash: gsrpcTypes.Hash{1}, PublicCheckpointHash: gsrpcTypes.Hash{2},
+		Health:               substrateHealth{Peers: 2, IsSyncing: true, ShouldHavePeers: true},
+		OperationalFinalized: 100, PublicFinalized: 100, Checkpoint: 100,
+		OperationalCheckpointHash: gsrpcTypes.Hash{1}, PublicCheckpointHash: gsrpcTypes.Hash{2},
 	}
 	err := validateSubstrateReadiness(observation, 3)
 	if err == nil || !strings.Contains(err.Error(), "still syncing") || !strings.Contains(err.Error(), "canonical hashes disagree") {
@@ -336,7 +368,7 @@ func TestSubstrateReadinessRejectsSyncingFork(t *testing.T) {
 
 func TestDoctorFailurePreservesObservationDetail(t *testing.T) {
 	report := DoctorReport{}
-	report.add("rpc/substrate-private-readiness", true, errors.New("node is still syncing"), "peers=2 private_finalized=100 public_finalized=200")
+	report.add("rpc/substrate-operational-readiness", true, errors.New("node is still syncing"), "peers=2 operational_finalized=100 public_finalized=200")
 	if len(report.Checks) != 1 || report.Checks[0].OK || !strings.Contains(report.Checks[0].Detail, "peers=2") || !strings.Contains(report.Checks[0].Detail, "node is still syncing") {
 		t.Fatalf("failed check lost its observation detail: %+v", report.Checks)
 	}

@@ -373,7 +373,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 		if !passed {
 			_ = writePrecompileEvidence(e.stateDir, evidence)
-			return errors.New("runtime-447 precompile battery failed closed")
+			return errors.New("runtime-451 precompile battery failed closed")
 		}
 		return writePrecompileEvidence(e.stateDir, evidence)
 
@@ -805,7 +805,7 @@ func (e *Executor) verifyCurrentPrecompileBattery(ctx context.Context, head Chai
 	}
 	tuple, ok := abi.ConvertType(values[0], new(precompileBatteryTuple)).(*precompileBatteryTuple)
 	if !ok || !batteryTupleCompatible(evidence, tuple, e.plan.LiveFacts.NominatorMinimumRao) {
-		return errors.New("independent runtime-447 precompile battery is incompatible")
+		return errors.New("independent runtime-451 precompile battery is incompatible")
 	}
 	uid, found, err := e.substrate.UID(sample)
 	if err != nil || !found || uid != evidence.SampleUID {

@@ -126,11 +126,7 @@ func readRetirementPlan(ctx context.Context, cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return nil, fmt.Errorf("retirement requires installed contracts: %w", err)
 	}
-	_, endpoint, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return nil, err
-	}
-	client, err := ethclient.DialContext(ctx, endpoint)
+	client, err := ethclient.DialContext(ctx, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
 	}

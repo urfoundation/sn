@@ -82,18 +82,22 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 		return "", errors.New("resolved configuration is unavailable")
 	}
 	return canonicalHashHex(struct {
-		ChainID            uint64
-		Netuid             uint16
-		Authority          string
-		ObjectStoreHost    string
-		OperatorAPIOrigins []string
-		WalletPublic       string
-		WalletHotkeyPublic string
-		MaximumTAORao      uint64
-		MaximumAlphaRao    uint64
-		MaximumEVMGasWei   uint64
+		ChainID              uint64
+		Netuid               uint16
+		PrivateAuthority     string
+		OperationalRPCMode   string
+		OperationalSubstrate string
+		OperationalEVM       string
+		ObjectStoreHost      string
+		OperatorAPIOrigins   []string
+		WalletPublic         string
+		WalletHotkeyPublic   string
+		MaximumTAORao        uint64
+		MaximumAlphaRao      uint64
+		MaximumEVMGasWei     uint64
 	}{
-		ChainID: cfg.ChainID, Netuid: cfg.Netuid, Authority: cfg.Authority,
+		ChainID: cfg.ChainID, Netuid: cfg.Netuid, PrivateAuthority: cfg.Authority,
+		OperationalRPCMode: cfg.OperationalRPCMode, OperationalSubstrate: cfg.OperationalSubstrate, OperationalEVM: cfg.OperationalEVM,
 		ObjectStoreHost:    cfg.ObjectStoreHost,
 		OperatorAPIOrigins: append([]string(nil), cfg.OperatorAPIOrigins...),
 		WalletPublic:       cfg.WalletPublic, WalletHotkeyPublic: cfg.WalletHotkeyPublic,
@@ -439,8 +443,8 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", DependsOn: []string{lastFleet}})
 	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "write and finalized-read an exact one-field SHA-256 conformance commitment from the registered test hotkey", DependsOn: []string{"topology.launch"}})
 	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the conformance commitment with the canonical fleet hash and prove the restored finalized bytes", DependsOn: []string{"precompile.commitment-write"}})
-	add(Action{ID: "precompile.probe-deploy", Kind: "evm-transaction", Target: "disposable-precompile-probe", Description: "deploy the locked, owner-gated runtime-447 conformance probe at its precomputed nonce", Spend: Spend{EVMGasWei: probeGasCaps["precompile.probe-deploy"]}, DependsOn: []string{"precompile.commitment-restore"}})
-	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-447-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.probe-deploy"}})
+	add(Action{ID: "precompile.probe-deploy", Kind: "evm-transaction", Target: "disposable-precompile-probe", Description: "deploy the locked, owner-gated runtime-451 conformance probe at its precomputed nonce", Spend: Spend{EVMGasWei: probeGasCaps["precompile.probe-deploy"]}, DependsOn: []string{"precompile.commitment-restore"}})
+	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-451-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.probe-deploy"}})
 	add(Action{ID: "precompile.seed", Kind: "evm-transaction", Target: "validator:1", Description: "convert the approved TAO dust ceiling into probe-coldkey alpha and record exact live units", Parameters: map[string]string{"maximum_tao_rao": fmt.Sprint(facts.ProbeTAORao), "nominator_minimum_rao": fmt.Sprint(facts.NominatorMinimumRao)}, Spend: Spend{EVMGasWei: probeGasCaps["precompile.seed"]}, DependsOn: []string{"precompile.read-battery"}})
 	add(Action{ID: "precompile.move-forward", Kind: "evm-transaction", Target: "validator:2", Description: "move half the observed probe alpha from validator 1 to validator 2 and prove exact slippage-free deltas", Spend: Spend{EVMGasWei: probeGasCaps["precompile.move-forward"]}, DependsOn: []string{"precompile.seed"}})
 	add(Action{ID: "precompile.move-back", Kind: "evm-transaction", Target: "validator:1", Description: "move the same alpha back and prove exact round-trip custody", Spend: Spend{EVMGasWei: probeGasCaps["precompile.move-back"]}, DependsOn: []string{"precompile.move-forward"}})

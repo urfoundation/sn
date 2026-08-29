@@ -153,7 +153,7 @@ func validateReleaseStateFreeBytes(available uint64) error {
 // Enumerate every simulator-owned TCP listener that must be acquired before
 // temporary provisioning or the persistent topology can start.
 func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
-	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress}
+	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress, workloadSubstrateProxyAddress, workloadSubstrateHealthAddress}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		for _, port := range []int{18080 + operator, 19080 + operator, 20080 + operator} {
 			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
@@ -628,29 +628,33 @@ func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedConta
 }
 
 func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) ([]ProcessSpec, error) {
-	proxy, err := rpcProxyConfigForAuthority(cfg.Authority)
-	if err != nil {
-		return nil, fmt.Errorf("workload RPC proxy: %w", err)
-	}
 	if bins["sim-testnet"] == "" {
 		return nil, errors.New("workload RPC proxy requires the sim-testnet release binary")
 	}
-	proxyArgs := []string{
-		"__rpc_proxy",
-		"--listen=" + proxy.ListenAddress,
-		"--health=" + proxy.HealthAddress,
-		"--upstream=" + proxy.Upstream,
+	proxyInputs := []struct {
+		id, identity, endpoint, listen, health string
+	}{
+		{id: workloadRPCProxyProcessID, identity: "operational-evm-rpc", endpoint: cfg.OperationalEVM, listen: workloadRPCProxyAddress, health: workloadRPCProxyHealthAddress},
+		{id: workloadSubstrateProcessID, identity: "operational-substrate-rpc", endpoint: cfg.OperationalSubstrate, listen: workloadSubstrateProxyAddress, health: workloadSubstrateHealthAddress},
 	}
-	if proxy.TLSServerName != "" {
-		proxyArgs = append(proxyArgs, "--tls-server-name="+proxy.TLSServerName)
+	out := make([]ProcessSpec, 0, 2+3*cfg.Config.Topology.Operators)
+	for _, input := range proxyInputs {
+		proxy, err := rpcProxyConfigForEndpoint(input.endpoint, input.listen, input.health)
+		if err != nil {
+			return nil, fmt.Errorf("workload %s proxy: %w", input.identity, err)
+		}
+		proxyArgs := []string{"__rpc_proxy", "--listen=" + proxy.ListenAddress, "--health=" + proxy.HealthAddress, "--upstream=" + proxy.Upstream}
+		if proxy.TLSServerName != "" {
+			proxyArgs = append(proxyArgs, "--tls-server-name="+proxy.TLSServerName)
+		}
+		out = append(out, ProcessSpec{
+			ID: input.id, Role: "dependency-rpc-proxy", Identity: input.identity,
+			Command: bins["sim-testnet"], Args: proxyArgs, WorkDir: cfg.Repos.SN,
+			StdoutPath: filepath.Join(stateDir, "processes", input.id+".stdout.log"),
+			StderrPath: filepath.Join(stateDir, "processes", input.id+".stderr.log"),
+			HealthURL:  "http://" + input.health + "/healthz", RestartLimit: 5,
+		})
 	}
-	out := []ProcessSpec{{
-		ID: workloadRPCProxyProcessID, Role: "dependency-rpc-proxy", Identity: "private-subtensor-rpc",
-		Command: bins["sim-testnet"], Args: proxyArgs, WorkDir: cfg.Repos.SN,
-		StdoutPath: filepath.Join(stateDir, "processes", workloadRPCProxyProcessID+".stdout.log"),
-		StderrPath: filepath.Join(stateDir, "processes", workloadRPCProxyProcessID+".stderr.log"),
-		HealthURL:  "http://" + workloadRPCProxyHealthAddress + "/healthz", RestartLimit: 5,
-	}}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		ip := fmt.Sprintf("127.0.0.%d", 10+i)
 		baseEnv := operatorBaseEnv(cfg, stateDir, i, ip)

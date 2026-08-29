@@ -310,7 +310,7 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFaults := (2*cfg.Config.Topology.Operators + 1) + (1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators)
+	wantFaults := (2*cfg.Config.Topology.Operators + 1) + (2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators)
 	if definition.GoalEpochs != 3 || len(definition.Faults) != wantFaults {
 		t.Fatalf("production definition = %+v", definition)
 	}

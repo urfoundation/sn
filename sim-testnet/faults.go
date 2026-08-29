@@ -494,7 +494,7 @@ func operatorDependencyImpacts(cfg *ResolvedConfig, operator int) []string {
 }
 
 func rpcProxyImpacts(cfg *ResolvedConfig) []string {
-	impacts := []string{workloadRPCProxyProcessID}
+	impacts := []string{workloadRPCProxyProcessID, workloadSubstrateProcessID}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		impacts = append(impacts,
 			fmt.Sprintf("operator-%d-api", operator),
@@ -532,7 +532,7 @@ func dependencyOutageFaults(cfg *ResolvedConfig, prefix string, firstOffset uint
 		}
 	}
 	faults = append(faults, scenarioFaultSpec{
-		ID: prefix + "-rpc-path", Kind: "process-pause", Targets: []string{workloadRPCProxyProcessID}, Impacts: rpcProxyImpacts(cfg),
+		ID: prefix + "-rpc-path", Kind: "process-pause", Targets: []string{workloadRPCProxyProcessID, workloadSubstrateProcessID}, Impacts: rpcProxyImpacts(cfg),
 		TriggerOffsetBlocks: firstOffset + spacing*index, DurationBlocks: duration,
 	})
 	return faults
@@ -542,7 +542,7 @@ func dependencyOutageFaults(cfg *ResolvedConfig, prefix string, firstOffset uint
 // operator, miner/claim-relayer, and validator process without overlapping
 // faults. Each target must recover before the next target is paused.
 func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64) []scenarioFaultSpec {
-	targets := []string{workloadRPCProxyProcessID}
+	targets := []string{workloadRPCProxyProcessID, workloadSubstrateProcessID}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		for _, role := range []string{"api", "connect", "taskworker"} {
 			targets = append(targets, fmt.Sprintf("operator-%d-%s", operator, role))

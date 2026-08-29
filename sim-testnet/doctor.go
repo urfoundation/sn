@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,14 +122,21 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	r.add("vault/netuid", true, nonzero(uint64(cfg.Netuid), "testnet-netuid is zero"), fmt.Sprint(cfg.Netuid))
 	r.add("vault/budgets", true, allNonzero(cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei), fmt.Sprintf("tao_rao=%d alpha_rao=%d evm_gas_wei=%d", cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei))
 	r.add("vault/governance", true, validateGovernanceSeparation(cfg.Vault), "testnet=single-owner mainnet=safe-2-of-3")
-	r.add("config/independent-rpcs", true, validateIndependentRPCEndpoints(cfg), "private write/finality endpoints are distinct from public postcondition endpoints")
+	routingDetail := fmt.Sprintf("mode=%s substrate=%s evm=%s", cfg.OperationalRPCMode, redactURL(cfg.OperationalSubstrate), redactURL(cfg.OperationalEVM))
+	r.add("config/operational-rpcs", true, validateOperationalRPCRouting(cfg), routingDetail)
+	independentHard := independentRPCRequired(cfg)
+	independenceDetail := "operational and postcondition RPC endpoints are distinct"
+	if !independentHard {
+		independenceDetail = "public override intentionally shares the operational and postcondition RPC provider; backend independence is not asserted"
+	}
+	r.add("config/independent-rpcs", independentHard, validateIndependentRPCEndpoints(cfg), independenceDetail)
 	checkBlobConfig(ctx, &r, cfg)
 	if err := ctx.Err(); err == nil {
 		checkSubstrate(&r, cfg, false)
 		checkSubstrate(&r, cfg, true)
 		topology := checkSubstrateTopology(cfg)
-		r.add("rpc/substrate-private-readiness", true, topology.ReadinessErr, topology.ReadinessDetail)
-		r.add("rpc/substrate-physical-independence", true, topology.IndependenceErr, topology.IndependenceDetail)
+		r.add("rpc/substrate-operational-readiness", true, topology.ReadinessErr, topology.ReadinessDetail)
+		r.add("rpc/substrate-physical-independence", independentHard, topology.IndependenceErr, topology.IndependenceDetail)
 		checkEVM(ctx, &r, cfg)
 		facts, factsErr := ReadSetupFacts(ctx, cfg)
 		detail := ""
@@ -171,6 +179,12 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	}
 	sort.SliceStable(r.Checks, func(i, j int) bool { return r.Checks[i].Name < r.Checks[j].Name })
 	return r
+}
+
+// Public override mode is deliberately a preliminary testnet assurance level;
+// mainnet promotion still requires a separately operated observation backend.
+func independentRPCRequired(cfg *ResolvedConfig) bool {
+	return cfg == nil || cfg.OperationalRPCMode != rpcModePublicOverride
 }
 
 // The release binaries and pinned dependency images are qualified only on the
@@ -385,17 +399,12 @@ func finalizedLogProbe(blockNumber uint64) map[string]any {
 	return map[string]any{"fromBlock": block, "toBlock": block}
 }
 
-func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
+func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 	name := "public"
 	endpoint := cfg.Public.Chain.SubstratePublicReadEndpoint
-	if private {
-		name = "private"
-		ws, _, err := authorityURLs(cfg.Authority)
-		if err != nil {
-			r.add("rpc/substrate-private", true, err, "")
-			return
-		}
-		endpoint = ws
+	if operational {
+		name = "operational"
+		endpoint = cfg.OperationalSubstrate
 	}
 	chain, err := crv4.DialChain(endpoint)
 	if err != nil {
@@ -412,6 +421,11 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 	}
 	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s spec=%d tx=%d", redactURL(endpoint), chain.GenesisHash.Hex(), chain.Runtime.SpecVersion, chain.Runtime.TransactionVersion))
 	if err == nil {
+		codeHash, codeHashErr := finalizedRuntimeCodeHash(chain)
+		if codeHashErr == nil {
+			codeHashErr = validateRuntimeCodeHash(codeHash, cfg.Release.Runtime.CodeHash)
+		}
+		r.add("runtime/code-hash-"+name, true, codeHashErr, codeHash)
 		metadata, metadataErr := chain.CheckMetadata()
 		metadataDetail := ""
 		if metadata != nil {
@@ -439,7 +453,7 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 		ownerErr, detail := verifySubnetOwner(chain, cfg.Netuid, cfg.WalletPublic)
 		r.add("subnet/owner-"+name, true, ownerErr, detail)
 	}
-	if private {
+	if operational {
 		var logs any
 		finalizedHash, finalizedErr := chain.API.RPC.Chain.GetFinalizedHead()
 		var finalizedNumber uint64
@@ -453,8 +467,47 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, private bool) {
 		if finalizedErr == nil {
 			finalizedErr = chain.API.Client.Call(&logs, "eth_getLogs", finalizedLogProbe(finalizedNumber))
 		}
-		r.add("rpc/private-eth_getLogs", true, finalizedErr, fmt.Sprintf("exact finalized block=%d", finalizedNumber))
+		r.add("rpc/operational-eth_getLogs", true, finalizedErr, fmt.Sprintf("exact finalized block=%d", finalizedNumber))
 	}
+}
+
+// Pin the exact on-chain Wasm at a finalized block. A spec version alone is
+// not a content identity and can be reused accidentally by an upstream build.
+func finalizedRuntimeCodeHash(chain *crv4.Chain) (string, error) {
+	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return "", err
+	}
+	var codeHash string
+	if err := chain.API.Client.Call(&codeHash, "state_getStorageHash", "0x3a636f6465", finalized.Hex()); err != nil {
+		return "", err
+	}
+	if err := validateRuntimeCodeHash(codeHash, codeHash); err != nil {
+		return "", err
+	}
+	return strings.ToLower(codeHash), nil
+}
+
+func validateRuntimeCodeHash(observed, expected string) error {
+	validate := func(label, value string) error {
+		if len(value) != 66 || !strings.HasPrefix(value, "0x") {
+			return fmt.Errorf("invalid %s runtime code hash %q", label, value)
+		}
+		if _, err := hex.DecodeString(value[2:]); err != nil {
+			return fmt.Errorf("invalid %s runtime code hash %q: %w", label, value, err)
+		}
+		return nil
+	}
+	if err := validate("finalized", observed); err != nil {
+		return err
+	}
+	if err := validate("release-lock", expected); err != nil {
+		return err
+	}
+	if !strings.EqualFold(observed, expected) {
+		return fmt.Errorf("finalized runtime code hash %s, want %s", observed, expected)
+	}
+	return nil
 }
 
 func validateSubnetActivation(state SubnetActivationState) error {
@@ -508,31 +561,31 @@ func substratePeerIDs(chain *crv4.Chain) ([]string, error) {
 }
 
 // Reject any physical identity shared by the write and observation endpoints.
-func disjointSubstratePeers(privatePeers, publicPeers []string) error {
+func disjointSubstratePeers(operationalPeers, publicPeers []string) error {
 	public := map[string]bool{}
 	for _, peer := range publicPeers {
 		public[peer] = true
 	}
-	for _, peer := range privatePeers {
+	for _, peer := range operationalPeers {
 		if public[peer] {
-			return fmt.Errorf("private and public RPCs expose the same physical Subtensor peer %s", peer)
+			return fmt.Errorf("operational and public RPCs expose the same physical Subtensor peer %s", peer)
 		}
 	}
 	return nil
 }
 
-// Reject a private endpoint which is only another route to the public backend.
-func checkSubstratePeerIndependence(privateChain, publicChain *crv4.Chain) (string, error) {
-	privatePeers, err := substratePeerIDs(privateChain)
+// Reject an operational endpoint which is only another route to the public backend.
+func checkSubstratePeerIndependence(operationalChain, publicChain *crv4.Chain) (string, error) {
+	operationalPeers, err := substratePeerIDs(operationalChain)
 	if err != nil {
-		return "", fmt.Errorf("private RPC physical identity: %w", err)
+		return "", fmt.Errorf("operational RPC physical identity: %w", err)
 	}
 	publicPeers, err := substratePeerIDs(publicChain)
 	if err != nil {
 		return "", fmt.Errorf("public RPC physical identity: %w", err)
 	}
-	detail := fmt.Sprintf("private=%s public=%s", strings.Join(privatePeers, ","), strings.Join(publicPeers, ","))
-	return detail, disjointSubstratePeers(privatePeers, publicPeers)
+	detail := fmt.Sprintf("operational=%s public=%s", strings.Join(operationalPeers, ","), strings.Join(publicPeers, ","))
+	return detail, disjointSubstratePeers(operationalPeers, publicPeers)
 }
 
 // substrateHealth is the node's direct declaration of whether it is connected
@@ -545,14 +598,14 @@ type substrateHealth struct {
 }
 
 // substrateReadinessObservation binds peer health to a canonical checkpoint
-// independently read from the private and public physical nodes.
+// independently read from the operational and public physical nodes.
 type substrateReadinessObservation struct {
-	Health                substrateHealth
-	PrivateFinalized      uint64
-	PublicFinalized       uint64
-	Checkpoint            uint64
-	PrivateCheckpointHash types.Hash
-	PublicCheckpointHash  types.Hash
+	Health                    substrateHealth
+	OperationalFinalized      uint64
+	PublicFinalized           uint64
+	Checkpoint                uint64
+	OperationalCheckpointHash types.Hash
+	PublicCheckpointHash      types.Hash
 }
 
 // substrateTopologyChecks keeps the independent readiness and physical-node
@@ -580,13 +633,13 @@ func validateSubstrateReadiness(observation substrateReadinessObservation, maxim
 	if observation.Health.IsSyncing {
 		problems = append(problems, "node is still syncing")
 	}
-	if observation.PublicFinalized > observation.PrivateFinalized && observation.PublicFinalized-observation.PrivateFinalized > maximumLag {
-		problems = append(problems, fmt.Sprintf("private finalized head lags public by %d blocks (maximum %d)", observation.PublicFinalized-observation.PrivateFinalized, maximumLag))
+	if observation.PublicFinalized > observation.OperationalFinalized && observation.PublicFinalized-observation.OperationalFinalized > maximumLag {
+		problems = append(problems, fmt.Sprintf("operational finalized head lags public by %d blocks (maximum %d)", observation.PublicFinalized-observation.OperationalFinalized, maximumLag))
 	}
-	if observation.Checkpoint == 0 || observation.PrivateCheckpointHash == (types.Hash{}) || observation.PublicCheckpointHash == (types.Hash{}) {
+	if observation.Checkpoint == 0 || observation.OperationalCheckpointHash == (types.Hash{}) || observation.PublicCheckpointHash == (types.Hash{}) {
 		problems = append(problems, "canonical checkpoint is unavailable")
-	} else if observation.PrivateCheckpointHash != observation.PublicCheckpointHash {
-		problems = append(problems, fmt.Sprintf("private/public canonical hashes disagree at block %d", observation.Checkpoint))
+	} else if observation.OperationalCheckpointHash != observation.PublicCheckpointHash {
+		problems = append(problems, fmt.Sprintf("operational/public canonical hashes disagree at block %d", observation.Checkpoint))
 	}
 	if len(problems) != 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -608,29 +661,29 @@ func finalizedSubstrateNumber(chain *crv4.Chain) (uint64, error) {
 }
 
 // Observe both physical endpoints at one common finalized checkpoint.
-func checkSubstrateReadiness(privateChain, publicChain *crv4.Chain, maximumLag uint64) (string, error) {
+func checkSubstrateReadiness(operationalChain, publicChain *crv4.Chain, maximumLag uint64) (string, error) {
 	var observation substrateReadinessObservation
 	var err error
-	if err := privateChain.API.Client.Call(&observation.Health, "system_health"); err != nil {
-		return "", fmt.Errorf("private system_health: %w", err)
+	if err := operationalChain.API.Client.Call(&observation.Health, "system_health"); err != nil {
+		return "", fmt.Errorf("operational system_health: %w", err)
 	}
-	observation.PrivateFinalized, err = finalizedSubstrateNumber(privateChain)
+	observation.OperationalFinalized, err = finalizedSubstrateNumber(operationalChain)
 	if err != nil {
-		return "", fmt.Errorf("private finalized head: %w", err)
+		return "", fmt.Errorf("operational finalized head: %w", err)
 	}
 	observation.PublicFinalized, err = finalizedSubstrateNumber(publicChain)
 	if err != nil {
 		return "", fmt.Errorf("public finalized head: %w", err)
 	}
-	observation.Checkpoint = observation.PrivateFinalized
+	observation.Checkpoint = observation.OperationalFinalized
 	if observation.PublicFinalized < observation.Checkpoint {
 		observation.Checkpoint = observation.PublicFinalized
 	}
 	var observationErrors []error
 	if observation.Checkpoint != 0 {
-		observation.PrivateCheckpointHash, err = privateChain.API.RPC.Chain.GetBlockHash(observation.Checkpoint)
+		observation.OperationalCheckpointHash, err = operationalChain.API.RPC.Chain.GetBlockHash(observation.Checkpoint)
 		if err != nil {
-			observationErrors = append(observationErrors, fmt.Errorf("private checkpoint %d: %w", observation.Checkpoint, err))
+			observationErrors = append(observationErrors, fmt.Errorf("operational checkpoint %d: %w", observation.Checkpoint, err))
 		}
 		observation.PublicCheckpointHash, err = publicChain.API.RPC.Chain.GetBlockHash(observation.Checkpoint)
 		if err != nil {
@@ -640,23 +693,19 @@ func checkSubstrateReadiness(privateChain, publicChain *crv4.Chain, maximumLag u
 	if readinessErr := validateSubstrateReadiness(observation, maximumLag); readinessErr != nil {
 		observationErrors = append(observationErrors, readinessErr)
 	}
-	detail := fmt.Sprintf("peers=%d syncing=%t private_finalized=%d public_finalized=%d checkpoint=%d", observation.Health.Peers, observation.Health.IsSyncing, observation.PrivateFinalized, observation.PublicFinalized, observation.Checkpoint)
+	detail := fmt.Sprintf("peers=%d syncing=%t operational_finalized=%d public_finalized=%d checkpoint=%d", observation.Health.Peers, observation.Health.IsSyncing, observation.OperationalFinalized, observation.PublicFinalized, observation.Checkpoint)
 	return detail, errors.Join(observationErrors...)
 }
 
 // Check live consensus state and backend independence with one connection per
 // endpoint, reducing public RPC pressure and keeping both observations close.
 func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
-	privateEndpoint, _, err := authorityURLs(cfg.Authority)
+	operationalChain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
+		err = fmt.Errorf("operational RPC: %w", err)
 		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
 	}
-	privateChain, err := crv4.DialChain(privateEndpoint)
-	if err != nil {
-		err = fmt.Errorf("private RPC: %w", err)
-		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
-	}
-	defer privateChain.API.Client.Close()
+	defer operationalChain.API.Client.Close()
 	publicChain, err := crv4.DialChain(cfg.Public.Chain.SubstratePublicReadEndpoint)
 	if err != nil {
 		err = fmt.Errorf("public RPC: %w", err)
@@ -665,8 +714,8 @@ func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
 	defer publicChain.API.Client.Close()
 
 	result := substrateTopologyChecks{}
-	result.ReadinessDetail, result.ReadinessErr = checkSubstrateReadiness(privateChain, publicChain, uint64(cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks))
-	result.IndependenceDetail, result.IndependenceErr = checkSubstratePeerIndependence(privateChain, publicChain)
+	result.ReadinessDetail, result.ReadinessErr = checkSubstrateReadiness(operationalChain, publicChain, uint64(cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks))
+	result.IndependenceDetail, result.IndependenceErr = checkSubstratePeerIndependence(operationalChain, publicChain)
 	return result
 }
 
@@ -871,10 +920,6 @@ var (
 )
 
 func validateIndependentRPCEndpoints(cfg *ResolvedConfig) error {
-	privateWS, privateHTTP, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return err
-	}
 	host := func(raw string) (string, error) {
 		u, err := url.Parse(raw)
 		if err != nil || u.Host == "" {
@@ -882,7 +927,7 @@ func validateIndependentRPCEndpoints(cfg *ResolvedConfig) error {
 		}
 		return strings.ToLower(u.Host), nil
 	}
-	privateSubstrate, err := host(privateWS)
+	operationalSubstrate, err := host(cfg.OperationalSubstrate)
 	if err != nil {
 		return err
 	}
@@ -890,7 +935,7 @@ func validateIndependentRPCEndpoints(cfg *ResolvedConfig) error {
 	if err != nil {
 		return err
 	}
-	privateEVM, err := host(privateHTTP)
+	operationalEVM, err := host(cfg.OperationalEVM)
 	if err != nil {
 		return err
 	}
@@ -898,19 +943,27 @@ func validateIndependentRPCEndpoints(cfg *ResolvedConfig) error {
 	if err != nil {
 		return err
 	}
-	if privateSubstrate == publicSubstrate || privateEVM == publicEVM {
-		return errors.New("public postcondition RPC must not resolve to the private authority")
+	if operationalSubstrate == publicSubstrate || operationalEVM == publicEVM {
+		return errors.New("public postcondition RPC is shared with the operational endpoint")
+	}
+	return nil
+}
+
+// Recompute endpoint selection so an in-memory or deserialization mismatch
+// cannot route writes differently from the configuration bound into the plan.
+func validateOperationalRPCRouting(cfg *ResolvedConfig) error {
+	substrate, evm, mode, err := resolveOperationalRPCs(cfg.Authority, cfg.Config.LaunchInputs.PublicSubstrateRPCOverride, cfg.Config.LaunchInputs.PublicEVMRPCOverride)
+	if err != nil {
+		return err
+	}
+	if substrate != cfg.OperationalSubstrate || evm != cfg.OperationalEVM || mode != cfg.OperationalRPCMode {
+		return errors.New("resolved operational RPC routing does not match the launch configuration")
 	}
 	return nil
 }
 
 func checkEVM(parent context.Context, r *DoctorReport, cfg *ResolvedConfig) {
-	_, httpURL, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		r.add("rpc/evm-private", true, err, "")
-		return
-	}
-	checkEVMEndpoint(parent, r, cfg, "private", httpURL)
+	checkEVMEndpoint(parent, r, cfg, "operational", cfg.OperationalEVM)
 	checkEVMEndpoint(parent, r, cfg, "public", cfg.Public.Chain.EVMPublicReadEndpoint)
 }
 
@@ -933,18 +986,18 @@ func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConf
 	}
 	head, headErr := finalizedEVMHead(ctx, client)
 	suffix := ""
-	if name != "private" {
+	if name != "operational" {
 		suffix = "-" + name
 	}
 	r.add("runtime/evm-finality"+suffix, true, headErr, fmt.Sprintf("number=%d hash=%s", head.Number, head.Hash))
 	if headErr != nil {
 		return
 	}
-	if name == "private" {
+	if name == "operational" {
 		var historicalErr error
 		var historicalBlock uint64
 		if head.Number < 2 {
-			historicalErr = errors.New("private EVM finalized head is too early for historical-state verification")
+			historicalErr = errors.New("operational EVM finalized head is too early for historical-state verification")
 		} else {
 			historicalBlock = head.Number - 1
 			_, historicalErr = client.BalanceAt(ctx, common.Address{}, new(big.Int).SetUint64(historicalBlock))

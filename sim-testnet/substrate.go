@@ -37,7 +37,7 @@ type SubstrateManager struct {
 	cfg      *ResolvedConfig
 }
 
-// subtensorAccountInfo matches runtime 447's System.Account value. Subtensor's
+// subtensorAccountInfo matches runtime 451's System.Account value. Subtensor's
 // Balance is u64 (rao), while the generic GSRPC AccountInfo assumes u128 and
 // therefore cannot decode this runtime's AccountData.
 type subtensorAccountInfo struct {
@@ -86,11 +86,7 @@ var stakingPrecompileAddress = common.HexToAddress("0x00000000000000000000000000
 // the supplied testnet wallet. A single source position is intentional: each
 // planned transfer is then atomic, bounded, and trivially resumable.
 func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, error) {
-	ws, httpURL, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return nil, err
-	}
-	chain, err := crv4.DialChain(ws)
+	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +140,7 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	if len(hotkeys) == 0 {
 		return facts, fmt.Errorf("testnet wallet has no staking hotkeys")
 	}
-	evm, err := ethclient.DialContext(ctx, httpURL)
+	evm, err := ethclient.DialContext(ctx, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
 	}
@@ -206,17 +202,13 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 }
 
 func DialSubstrateManager(cfg *ResolvedConfig, stateDir string, j *Journal) (*SubstrateManager, error) {
-	ws, _, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return nil, err
-	}
-	chain, err := crv4.DialChain(ws)
+	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
 		return nil, err
 	}
 	if strings.ToLower(chain.GenesisHash.Hex()) != testnetGenesis || uint32(chain.Runtime.SpecVersion) != cfg.Public.Chain.ExpectedRuntimeSpec {
 		chain.API.Client.Close()
-		return nil, fmt.Errorf("private RPC runtime identity mismatch")
+		return nil, fmt.Errorf("operational RPC runtime identity mismatch")
 	}
 	signer, err := signature.KeyringPairFromSecret(cfg.WalletMaterial, 42)
 	if err != nil {
@@ -607,7 +599,7 @@ func (m *SubstrateManager) DecreaseTakeCall(hotkey [32]byte, take uint16) (types
 	if err != nil {
 		return types.Call{}, err
 	}
-	// Runtime v447 encodes sp_runtime::PerU16 exactly as its u16 parts.
+	// Runtime v451 encodes sp_runtime::PerU16 exactly as its u16 parts.
 	return types.NewCall(m.chain.Meta, crv4.PalletName+".decrease_take", *account, types.NewU16(take))
 }
 

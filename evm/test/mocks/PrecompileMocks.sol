@@ -158,7 +158,7 @@ contract MockEd25519 {
     }
 }
 
-/// @dev Mock of runtime-447 sr25519 verifier (0x403), with the same failure
+/// @dev Mock of runtime-451 sr25519 verifier (0x403), with the same failure
 /// controls as the Ed25519 mock. Real randomized sr25519 vectors are exercised
 /// by the Go fixture and live preflight.
 contract MockSr25519 {

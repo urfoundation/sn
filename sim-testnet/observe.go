@@ -429,10 +429,7 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		endpoint = publicManifest.EVMRPC
 	}
 	if endpoint == "" {
-		_, endpoint, err = authorityURLs(cfg.Authority)
-		if err != nil {
-			return nil, err
-		}
+		endpoint = cfg.OperationalEVM
 	}
 	client, err := ethclient.DialContext(ctx, endpoint)
 	if err != nil {

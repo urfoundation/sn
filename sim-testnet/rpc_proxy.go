@@ -1,10 +1,10 @@
 package main
 
-// rpc_proxy.go provides a simulator-owned transport boundary in front of the
-// shared private Subtensor node. Workload processes use this loopback proxy;
-// sim-testnet's independent observations continue to use the configured
-// private/public RPCs directly. This lets fault campaigns remove the workload
-// RPC path without mutating host firewall state or interrupting a shared node.
+// rpc_proxy.go provides simulator-owned transport boundaries in front of the
+// selected Substrate and EVM RPCs. Workload processes use these loopback
+// proxies; sim-testnet's independent observations use the selected operational
+// RPCs directly. This lets fault campaigns remove workload RPC paths without
+// mutating host firewall state or interrupting a shared node.
 
 import (
 	"context"
@@ -21,9 +21,12 @@ import (
 )
 
 const (
-	workloadRPCProxyAddress       = "127.0.0.10:19944"
-	workloadRPCProxyHealthAddress = "127.0.0.10:19945"
-	workloadRPCProxyProcessID     = "subtensor-rpc-proxy"
+	workloadRPCProxyAddress        = "127.0.0.10:19944"
+	workloadRPCProxyHealthAddress  = "127.0.0.10:19945"
+	workloadRPCProxyProcessID      = "subtensor-rpc-proxy"
+	workloadSubstrateProxyAddress  = "127.0.0.10:19946"
+	workloadSubstrateHealthAddress = "127.0.0.10:19947"
+	workloadSubstrateProcessID     = "subtensor-substrate-rpc-proxy"
 )
 
 type rpcProxyConfig struct {
@@ -35,21 +38,40 @@ type rpcProxyConfig struct {
 
 func workloadRPCAuthority() string { return workloadRPCProxyAddress }
 
+func workloadSubstrateRPCAuthority() string { return workloadSubstrateProxyAddress }
+
 func rpcProxyConfigForAuthority(authority string) (rpcProxyConfig, error) {
 	wsURL, _, err := authorityURLs(authority)
 	if err != nil {
 		return rpcProxyConfig{}, err
 	}
-	u, err := url.Parse(wsURL)
-	if err != nil || u.Hostname() == "" || u.Port() == "" {
-		return rpcProxyConfig{}, fmt.Errorf("private RPC authority %q has no explicit host and port", authority)
+	return rpcProxyConfigForEndpoint(wsURL, workloadRPCProxyAddress, workloadRPCProxyHealthAddress)
+}
+
+// Terminate optional upstream TLS while preserving a plain loopback endpoint
+// for release components. Default scheme ports keep official public URLs bare.
+func rpcProxyConfigForEndpoint(endpoint, listenAddress, healthAddress string) (rpcProxyConfig, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return rpcProxyConfig{}, fmt.Errorf("RPC endpoint %q has no host", endpoint)
+	}
+	port := u.Port()
+	if port == "" {
+		switch u.Scheme {
+		case "http", "ws":
+			port = "80"
+		case "https", "wss":
+			port = "443"
+		default:
+			return rpcProxyConfig{}, fmt.Errorf("RPC endpoint %q has unsupported scheme", endpoint)
+		}
 	}
 	config := rpcProxyConfig{
-		ListenAddress: workloadRPCProxyAddress,
-		HealthAddress: workloadRPCProxyHealthAddress,
-		Upstream:      u.Host,
+		ListenAddress: listenAddress,
+		HealthAddress: healthAddress,
+		Upstream:      net.JoinHostPort(u.Hostname(), port),
 	}
-	if u.Scheme == "wss" {
+	if u.Scheme == "https" || u.Scheme == "wss" {
 		config.TLSServerName = u.Hostname()
 	}
 	if err := validateRPCProxyConfig(config); err != nil {

@@ -30,6 +30,8 @@ type ActionPostcondition struct {
 	PlanHash                      string         `json:"plan_hash"`
 	ActionID                      string         `json:"action_id"`
 	IntentHash                    string         `json:"intent_hash"`
+	OperationalRPCMode            string         `json:"operational_rpc_mode"`
+	IndependentRPC                bool           `json:"independent_rpc"`
 	SubstrateFinalized            ChainHead      `json:"substrate_finalized"`
 	EVMFinalized                  ChainHead      `json:"evm_finalized"`
 	Observed                      map[string]any `json:"observed"`
@@ -74,26 +76,27 @@ func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*Ac
 	return &ActionPostcondition{
 		Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
 		PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash,
+		OperationalRPCMode: e.cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(e.cfg),
 		SubstrateFinalized: ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()}, EVMFinalized: evmHead,
 		Observed: observed, IndependentSubstrateFinalized: independentSubstrate,
 		IndependentEVMFinalized: independentEVM, IndependentObserved: independentObserved,
 	}, nil
 }
 
-func checkpointVisibility(private, independent ChainHead, canonicalAtPrivate string) (bool, error) {
-	if private.Number == 0 || private.Hash == "" || independent.Hash == "" {
+func checkpointVisibility(operational, independent ChainHead, canonicalAtOperational string) (bool, error) {
+	if operational.Number == 0 || operational.Hash == "" || independent.Hash == "" {
 		return false, errors.New("checkpoint identity is incomplete")
 	}
-	if independent.Number < private.Number {
+	if independent.Number < operational.Number {
 		return false, nil
 	}
-	if !strings.EqualFold(canonicalAtPrivate, private.Hash) {
-		return false, fmt.Errorf("independent RPC canonical hash %s at block %d differs from private finalized hash %s", canonicalAtPrivate, private.Number, private.Hash)
+	if !strings.EqualFold(canonicalAtOperational, operational.Hash) {
+		return false, fmt.Errorf("independent RPC canonical hash %s at block %d differs from operational finalized hash %s", canonicalAtOperational, operational.Number, operational.Hash)
 	}
 	return true, nil
 }
 
-func (e *Executor) waitIndependentCheckpoints(ctx context.Context, privateSubstrate, privateEVM ChainHead) (ChainHead, ChainHead, error) {
+func (e *Executor) waitIndependentCheckpoints(ctx context.Context, operationalSubstrate, operationalEVM ChainHead) (ChainHead, ChainHead, error) {
 	if e.independentSubstrate == nil || e.independentEVM == nil {
 		return ChainHead{}, ChainHead{}, errors.New("independent RPC clients are unavailable")
 	}
@@ -105,23 +108,23 @@ func (e *Executor) waitIndependentCheckpoints(ctx context.Context, privateSubstr
 		independentSubstrateHash, independentSubstrateNumber, substrateErr := e.independentSubstrate.finalizedHead()
 		independentSubstrate := ChainHead{Number: independentSubstrateNumber, Hash: independentSubstrateHash.Hex()}
 		substrateReady := false
-		if substrateErr == nil && independentSubstrateNumber >= privateSubstrate.Number {
-			canonical, readErr := e.independentSubstrate.chain.API.RPC.Chain.GetBlockHash(privateSubstrate.Number)
+		if substrateErr == nil && independentSubstrateNumber >= operationalSubstrate.Number {
+			canonical, readErr := e.independentSubstrate.chain.API.RPC.Chain.GetBlockHash(operationalSubstrate.Number)
 			if readErr != nil {
 				substrateErr = readErr
 			} else {
-				substrateReady, substrateErr = checkpointVisibility(privateSubstrate, independentSubstrate, canonical.Hex())
+				substrateReady, substrateErr = checkpointVisibility(operationalSubstrate, independentSubstrate, canonical.Hex())
 			}
 		}
 
 		independentEVM, evmErr := finalizedEVMHead(waitCtx, e.independentEVM)
 		evmReady := false
-		if evmErr == nil && independentEVM.Number >= privateEVM.Number {
+		if evmErr == nil && independentEVM.Number >= operationalEVM.Number {
 			var canonical string
-			if readErr := e.independentEVM.Client().CallContext(waitCtx, &canonical, "chain_getBlockHash", privateEVM.Number); readErr != nil {
+			if readErr := e.independentEVM.Client().CallContext(waitCtx, &canonical, "chain_getBlockHash", operationalEVM.Number); readErr != nil {
 				evmErr = readErr
 			} else {
-				evmReady, evmErr = checkpointVisibility(privateEVM, independentEVM, canonical)
+				evmReady, evmErr = checkpointVisibility(operationalEVM, independentEVM, canonical)
 			}
 		}
 		if substrateErr != nil {
@@ -135,7 +138,7 @@ func (e *Executor) waitIndependentCheckpoints(ctx context.Context, privateSubstr
 		}
 		select {
 		case <-waitCtx.Done():
-			return ChainHead{}, ChainHead{}, fmt.Errorf("independent RPCs did not finalize the private checkpoints within five minutes: %w", waitCtx.Err())
+			return ChainHead{}, ChainHead{}, fmt.Errorf("independent RPCs did not finalize the operational checkpoints within five minutes: %w", waitCtx.Err())
 		case <-ticker.C:
 		}
 	}
@@ -246,7 +249,7 @@ func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
 	if err := json.Unmarshal(b, &record); err != nil {
 		return err
 	}
-	if record.Schema != "urnetwork-sim-action-postcondition-v1" || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != e.plan.PlanHash || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
+	if record.Schema != "urnetwork-sim-action-postcondition-v1" || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != e.plan.PlanHash || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
 		return errors.New("persisted action postcondition identity mismatch")
 	}
 	if record.IndependentSubstrateFinalized.Number == 0 || record.IndependentSubstrateFinalized.Hash == "" || record.IndependentEVMFinalized.Number == 0 || record.IndependentEVMFinalized.Hash == "" || record.IndependentObserved == nil {

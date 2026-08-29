@@ -145,7 +145,7 @@ func TestReleaseHostPreflightRejectsFullDiskAndOccupiedPort(t *testing.T) {
 func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	addresses := releaseProcessListenAddresses(cfg)
-	want := 2 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.Miners
+	want := 4 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.Miners
 	if len(addresses) != want {
 		t.Fatalf("release listener count=%d, want %d: %v", len(addresses), want, addresses)
 	}
@@ -171,20 +171,22 @@ func TestRestartBackoffIsBounded(t *testing.T) {
 func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 	specs := []ProcessSpec{
 		{ID: workloadRPCProxyProcessID, Role: "dependency-rpc-proxy"},
+		{ID: workloadSubstrateProcessID, Role: "dependency-rpc-proxy"},
 		{ID: "operator-1-api", Role: "operator-api"},
 		{ID: "operator-1-connect", Role: "operator-connect"},
 		{ID: "operator-1-taskworker", Role: "operator-taskworker"},
 		{ID: "operator-2-api", Role: "operator-api"},
 	}
 	got := selectProvisioningServerSpecs(specs)
-	if len(got) != 3 || got[0].ID != workloadRPCProxyProcessID || got[1].ID != "operator-1-api" || got[2].ID != "operator-2-api" {
+	if len(got) != 4 || got[0].ID != workloadRPCProxyProcessID || got[1].ID != workloadSubstrateProcessID || got[2].ID != "operator-1-api" || got[3].ID != "operator-2-api" {
 		t.Fatalf("provisioning specs = %+v", got)
 	}
 }
 
 func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	cfg.Authority = "wss://private-rpc.example:443"
+	cfg.OperationalEVM = "https://evm-rpc.example"
+	cfg.OperationalSubstrate = "wss://substrate-rpc.example:443"
 	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
 		"sim-testnet": "/release/sim-testnet", "server-api": "/release/api",
 		"server-connect": "/release/connect", "server-taskworker": "/release/taskworker",
@@ -192,14 +194,15 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) == 0 || specs[0].ID != workloadRPCProxyProcessID || specs[0].HealthURL != "http://"+workloadRPCProxyHealthAddress+"/healthz" {
+	if len(specs) < 2 || specs[0].ID != workloadRPCProxyProcessID || specs[0].HealthURL != "http://"+workloadRPCProxyHealthAddress+"/healthz" || specs[1].ID != workloadSubstrateProcessID || specs[1].HealthURL != "http://"+workloadSubstrateHealthAddress+"/healthz" {
 		t.Fatalf("missing workload RPC proxy spec: %+v", specs)
 	}
-	args := strings.Join(specs[0].Args, " ")
-	if !strings.Contains(args, "--upstream=private-rpc.example:443") || !strings.Contains(args, "--tls-server-name=private-rpc.example") {
-		t.Fatalf("RPC proxy lost upstream TLS identity: %q", args)
+	evmArgs := strings.Join(specs[0].Args, " ")
+	substrateArgs := strings.Join(specs[1].Args, " ")
+	if !strings.Contains(evmArgs, "--upstream=evm-rpc.example:443") || !strings.Contains(evmArgs, "--tls-server-name=evm-rpc.example") || !strings.Contains(substrateArgs, "--upstream=substrate-rpc.example:443") || !strings.Contains(substrateArgs, "--tls-server-name=substrate-rpc.example") {
+		t.Fatalf("RPC proxies lost protocol-specific upstream TLS identities: evm=%q substrate=%q", evmArgs, substrateArgs)
 	}
-	for _, spec := range specs[1:] {
+	for _, spec := range specs[2:] {
 		if spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 			t.Fatalf("%s bypasses workload RPC proxy: %q", spec.ID, spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
 		}

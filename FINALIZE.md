@@ -1,27 +1,37 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; testnet inputs, alpha bootstrap and isolated dependency preflight complete; full `sim-testnet` launch is fail-closed while the private Subtensor archive catches up, 2026-08-21 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; official public testnet operational-RPC preflight and bounded plan green against runtime 451; full `sim-testnet` launch has not yet been started, 2026-08-29 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
 This document is both the original audit plan and its completion record. The F0-F6
 engineering work is implemented in this checkout. M0A-M3 and MR remain execution proof
 gates, not missing code. The `testnet-` values are filled and netuid 521 is activated
-with sufficient alpha. M0A still requires the shared private Subtensor node to reach
-the runtime-447 finalized tip; M0B-M3 and MR require a green read-only `doctor` and an
-exact spend-bounded plan hash. The user has granted standing authorization in
-this testnet session to generate, verify, and apply that exact plan once the
-doctor is green; this does not authorize any mainnet write. The full local integration topology has not been
+with sufficient alpha. The bounded testnet M0A/M0B acceptance path may use the official
+public RPC override while the private archive catches up. On 2026-08-29 the
+read-only public-mode `doctor` returned `ready=true` with every hard check green,
+and the read-only bounded plan generated successfully. The user has granted standing
+authorization in this testnet session to apply that exact plan; this does not
+authorize any mainnet write. The full local integration topology has not been
 launched; only the separately approved, bounded activation/alpha bootstrap was
 written to testnet.
+
+The public override is intentionally a lower assurance level. It selects a typed
+Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
+runtime 451 by spec, transaction version and finalized Wasm code hash, and records
+`independent_rpc=false` in postconditions and public manifests. It is suitable for
+current-state acceptance, bounded event reads and testnet writes. It does not close
+the archive, sustained-load or physically independent observation gates; the complete
+production soak and final mainnet-promotion decision must be repeated after the private
+node is synced.
 
 **Version terminology:** Whitepaper 1.0 is the normative specification and release 1.0 is the software/protocol release that implements it. “v1” inside the whitepaper is shorthand for this same 1.0 release. The former Whitepaper v0.5 design has been promoted to 1.0 without adding the explicitly parked validator-effort bounty.
 
 ## 1. Executive verdict
 
-The release-1.0 implementation runs its **read-only testnet preflight** against the
-reachable private RPC and fails closed until that archive is current. It is not yet
-a testnet-validated release: Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
+The release-1.0 implementation passes its **read-only testnet preflight** against the
+official public operational RPC pair. It is not yet a testnet-validated release:
+Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
 authenticated live readiness checks, but the full M0A topology and live M0B-M3/MR campaign have not
 run. Wallet control, netuid 521, balances, runtime call shapes, subnet activation
 and sufficient campaign alpha have been independently verified. The remaining
@@ -34,7 +44,7 @@ All 17 blockers found by the initial audit are addressed:
 |---|---|
 | Global validator quality | Versioned operator registry, isolated per-NO samples/statistics and exact `implied_usage × Q` vectors. |
 | One-client head binding | Canonical multi-client fleet manifests, Ed25519 client signatures, sr25519 hotkey signatures, finalized native commitments and live UID checks. |
-| EVM-mirror binding authorization | Runtime-447 sr25519 verifier plus commitment-oracle mirroring; normal Substrate hotkeys authorize fleets without owning an H160 mirror. |
+| EVM-mirror binding authorization | Runtime-451 sr25519 verifier plus commitment-oracle mirroring; normal Substrate hotkeys authorize fleets without owning an H160 mirror. |
 | Cross-NO deposit theft | Atomic signer/nonce/policy-bound deposit and conviction calls; exact received-funds accounting and adversarial tests. |
 | Late-roll emission attribution | One boundary capture per pool/epoch with explicit defer/carry transitions and conservation invariants. |
 | Upgradeable custody | Non-upgradeable `STReserveSink` and `STSettlementVault`; only the coordination layer is UUPS. Finalized claims remain outside upgrade/pause/admin reach. |
@@ -43,7 +53,7 @@ All 17 blockers found by the initial audit are addressed:
 | Single-operator validator | Multi-NO authenticated endpoints, per-NO trail stores, finality-bound inputs, independent intent journal and per-NO quality output. |
 | Unsafe event ingestion | Block-hash checkpoints, confirmation/finality gates, rewind/replay, explicit deployment origin and durable transaction intent/recovery. |
 | Unexercised CRv4 lifecycle | Exact rational normalization, policy/hash gates, commit/reveal/finality intent states, restart recovery and live-campaign assertions. Funded live proof remains M0B. |
-| Obsolete Subtensor image | `xops` pins runtime v447 by immutable digest, archive retention and the required safe RPC gateway methods, with Ansible regression tests. |
+| Obsolete Subtensor image | `xops` independently pins the v447 node binary image and expected on-chain runtime 451, with archive retention, required safe RPC gateway methods and Ansible regression tests. |
 | Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Wallet/password references, netuid, local origins and three spend ceilings are populated; generated deployment values are written to an isolated runtime profile. |
 | Missing verify key | Harness-derived, versioned per-operator verify keys with rotation/overlap and signed evidence; no secret enters the public manifest. |
 | Distinguishable poisoning | Full-depth routable shadow/padding paths with uniform response surface and constant-envelope failure handling, covered by operator tests. |
@@ -55,13 +65,13 @@ All 17 blockers found by the initial audit are addressed:
 | Gate | State | Principal evidence |
 |---|---|---|
 | F0 specification | Implemented | Whitepaper v1.0, `docs/spec/`, canonical Go/Solidity encodings and golden-vector tests. |
-| F1 infrastructure | Implemented locally | v447 digest/archive/RPC Ansible configuration, capability doctor and regression tests. The live gateway is reachable; finalized catch-up/canonical-head proof remains M0B. |
+| F1 infrastructure | Implemented locally | Digest-pinned v447 node binary, runtime-451 identity/archive/RPC Ansible configuration, public operational override, capability doctor and regression tests. Private finalized catch-up/canonical-head proof remains a mainnet-promotion gate. |
 | F2 contracts | Implemented and locally verified | Split reserve/vault/coordinator deployment, generated ABIs/bytecode, and a passing Foundry suite including fuzz and stateful invariants. |
 | F3 operator | Implemented and locally verified | Finality-safe index, exact artifacts, public history, multi-NO verification, key rotation, poisoning and proxy attribution/release cleanup. DB-backed launch proof is M1. |
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Fail-closed at private-node catch-up | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The overlay Subtensor peer is reachable, physically independent and actively syncing; the 2026-08-21 13:32 UTC read-only snapshot observed 20 peers, private sync-state block 2,895,368/runtime 196, and advertised public head 7,831,409/runtime 447. Initial archive sync can take days; no fixed completion time is assumed. The full campaign requires peers, `isSyncing=false`, at most three finalized blocks of lag, canonical checkpoint agreement, green `doctor`, and the exact regenerated plan hash; vault inputs, alpha, and standing testnet authorization are ready. |
+| M0A-M3/MR | Public preflight and plan green; launch pending | Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. The official operational endpoints passed every hard doctor gate at runtime 451, and the exact spend-bounded plan was generated. Its RPC evidence is explicitly non-independent. Final production-load/mainnet-promotion evidence additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -154,9 +164,21 @@ CommitRevealWeightsVersion=4
 signed dry-run extrinsic=416 bytes (not submitted)
 ```
 
-This proves current metadata decoding and construction, not funded submission or reveal. The public EVM service rejected `eth_getLogs` as a disallowed method; it cannot be the event-indexing fallback.
+That snapshot proved the then-current metadata decoding and construction, not funded submission or reveal. At that time the public EVM service rejected `eth_getLogs` as a disallowed method.
 
-The authoritative upstream references for the runtime/operations work are the [RaoFoundation Subtensor v447 source](https://github.com/RaoFoundation/subtensor/tree/v447), its [node operation guide](https://github.com/RaoFoundation/subtensor/blob/v447/docs/guides/running-a-node.mdx), and its [EVM guide](https://github.com/RaoFoundation/subtensor/blob/v447/docs/guides/evm/index.mdx). The node guide states that public endpoints are rate limited, lite nodes retain only recent state, and historical/indexer workloads need archive access.
+The 2026-08-29 refresh observed spec 451, transaction/state version 1/1, EVM
+chain ID 945 and finalized Wasm code hash
+`0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08`
+from the official endpoints. Exact bounded finalized-block `eth_getLogs` is now
+available, but this does not imply archive retention or capacity for unbounded
+indexing. The runtime review is pinned to the
+[runtime-451 source commit](https://github.com/RaoFoundation/subtensor/tree/d78d9cc6a6ee4d805f74a35414baaef8be025a5f),
+including the [v451 release merge](https://github.com/RaoFoundation/subtensor/pull/3126)
+and [root-basket cleanup](https://github.com/RaoFoundation/subtensor/pull/3127).
+The v447→v451 audit found the release's epoch/liquid-alpha and effective
+max-weight-limit paths unchanged, while the v451 root-basket failure handling is
+now an explicit adversarial model. Metadata, call shapes, storage gates and the
+complete precompile battery remain mandatory live checks before any write.
 
 ### 2.4 Bittensor adversarial research and executable coverage
 
@@ -201,7 +223,7 @@ currently publishes eight advisories. All eight are explicit matrix inputs:
 | [GHSA-h98r-p37h-h4mv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-h98r-p37h-h4mv) | Fee-free weight block fill; reproduce only on the pinned local runtime, monitor live inclusion/RPC latency. |
 | [GHSA-m759-m8mv-q3m5](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-m759-m8mv-q3m5), [GHSA-qh57-vpv2-3fvp](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-qh57-vpv2-3fvp), [GHSA-xm63-2wwx-pm6w](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-xm63-2wwx-pm6w) | Restricted-proxy coldkey/identity/owner alias bypasses; exact local-runtime authorization tests plus live identity/runtime sentinels. No testnet actor touches a third-party proxy. |
 | [GHSA-vpjj-mhgr-cphg](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-vpjj-mhgr-cphg), [GHSA-wc2g-rc74-vgw3](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-wc2g-rc74-vgw3) | Hotkey cooldown and ChildkeyTake migration; local-runtime reproduction plus continuous generation/binding checks. |
-| [GHSA-rhmm-mqf8-v6gv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-rhmm-mqf8-v6gv) | Root coldkey-index bloat; v447 dense swap-remove/bijection model and runtime pin. |
+| [GHSA-rhmm-mqf8-v6gv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-rhmm-mqf8-v6gv) | Root coldkey-index bloat; v451 dense swap-remove/bijection model and runtime pin. |
 | [GHSA-6c95-q3r3-rgwq](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-6c95-q3r3-rgwq) | RootClaimed hotkey-swap watermark inflation; all root-destination cleanliness fields and future owed amount are modeled. |
 
 The archived Python SDK/transport repository has separate, recent
@@ -215,9 +237,9 @@ mistaken for Subtensor-runtime advisories:
 | [Plaintext unauthenticated Dendrite transport #3406](https://github.com/RaoFoundation/bittensor/issues/3406) | Release miners reject non-loopback `http://`/`ws://` operator origins, including one-shot flag overrides. Real loopback FINALs are signed and every canonical/signature mutation must fail. |
 | [Constant empty-field Synapse body hash #3407](https://github.com/RaoFoundation/bittensor/issues/3407) | Every field of a real valid FINAL is mutated independently; canonical validation plus validator/server signatures reject all mutations and the accepted constant-hash count remains zero. |
 
-Runtime v447 postdates the advisories' patched mainnet spec 419, but version
+Runtime v451 postdates the advisories' patched mainnet spec 419, but version
 ordering alone is not accepted as proof: source commit
-`1f090af85d1771c5d8ece1f0910576fbd129906e`, runtime spec, metadata, precompile
+`d78d9cc6a6ee4d805f74a35414baaef8be025a5f`, finalized Wasm code hash, runtime spec, metadata, precompile
 behavior and local regression tests are release-locked together.
 
 Relevant open upstream issues were also reviewed, rather than silently treating
@@ -229,7 +251,7 @@ an advisory-only search as exhaustive:
 | [Depressed-reserve flow #2737](https://github.com/RaoFoundation/subtensor/issues/2737) and [partial coinbase swap accounting #2740](https://github.com/RaoFoundation/subtensor/issues/2740) | Live reserve/price minima plus a signed-flow model run continuously. Mainnet is no-go until the pinned runtime fixes these paths or an exact-runtime proof establishes that the deployed mechanism cannot reach them. |
 | [Invisible root-basket entitlement after unstake #3008](https://github.com/RaoFoundation/subtensor/issues/3008) | A continuous exact proportional-claim/remainder model now covers partial and complete exits, including uint64 boundaries. The release does not root-stake, and MR must independently prove every release coldkey has zero hidden root-basket entitlement; any future root path must atomically inventory and claim it. |
 | [Subnet eviction/first refusal #3024](https://github.com/RaoFoundation/subtensor/issues/3024) | Continuous UID and moving/spot-price sentinel. Mainnet requires a nonzero moving price, immunity/pruning-rank review and an alert/runbook before value launch. |
-| [Metagraph commitment field type confusion #3064](https://github.com/RaoFoundation/subtensor/issues/3064) | Continuous full-registration parser mutations cover `ResetBondsFlag`, multi-field values ending in SHA-256, truncation, trailing bytes and zero hashes. The release accepts only the exact pinned runtime-447 one-field SHA-256 encoding and never relies on a generic metagraph shape. |
+| [Metagraph commitment field type confusion #3064](https://github.com/RaoFoundation/subtensor/issues/3064) | Continuous full-registration parser mutations cover `ResetBondsFlag`, multi-field values ending in SHA-256, truncation, trailing bytes and zero hashes. The release accepts only the exact pinned runtime-451 one-field SHA-256 encoding and never relies on a generic metagraph shape. |
 | [Proxy staking without MEV shield #3066](https://github.com/RaoFoundation/subtensor/issues/3066) | A constant-product same-direction front-run model continuously records victim loss and proves a minimum-output bound rejects the hostile ordering. Testnet and mainnet release flows refuse unshielded proxy staking; direct 2-of-3 governance does not waive execution-price limits on any value-bearing swap. |
 
 Closed issues are regression evidence, not erased from the threat model. The
@@ -430,13 +452,13 @@ As observed on 2026-08-20, the official `:testnet` multi-architecture manifest r
 ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de
 ```
 
-Treat that digest as the initially filled value, but require the deployment preflight to prove it follows the live runtime `specVersion = 447`. If testnet upgrades before the deployment PR lands, update the digest, source commit, vendored interfaces, and live fixtures together.
+Treat the node-image digest and on-chain Wasm as separate identities. The deployment preflight must prove live `specVersion = 451`, transaction version 1 and the locked Wasm code hash. If testnet upgrades again, keep writers disabled while the source commit, code hash, interfaces and live fixtures are reviewed together; change the node image only when its own binary review requires it.
 
 History design is now chosen for testnet:
 
 - The server API is the public history surface for every release artifact and receipt. Immutable bytes are stored through the existing `server/blob` abstraction in the already deployed MinIO bucket; the API exposes content-addressed retrieval and indexes artifacts by deployment, run, netuid, epoch, operator, validator, and finalized transaction.
 - The server's ST indexer and the independent `sim-testnet` journal both begin before the first contract deployment/registration action. They persist finalized block number/hash, relevant events/logs, transaction/extrinsic receipts, post-state, and artifact hashes. PostgreSQL is the query index; MinIO is the append-only evidence store. A detected gap or block-hash mismatch halts writers until reconciliation succeeds.
-- The private Subtensor RPC remains the source for finality and current state, while a second endpoint verifies finalized heads and postconditions. The API/MinIO history does not replace live on-chain verification; it makes all evidence since the deployment boundary durable even when the node is pruned.
+- The selected operational Subtensor pair is the source for finality and current state, while a second endpoint verifies finalized heads and postconditions when an independent backend is available. Public override mode must record that it lacks this independence. The API/MinIO history does not replace live on-chain verification; it makes all evidence since the deployment boundary durable even when the node is pruned.
 - Public endpoints may be read-only fallbacks for head/runtime comparisons and receipt verification. They are not an event-indexing source: the public EVM endpoint denied `eth_getLogs` during this audit.
 
 Add a deployment preflight and continuous probes for:
@@ -478,7 +500,7 @@ The reserve should be owned by a non-upgradeable one-way sink contract/coldkey d
 
 #### F2.2 Atomic deposits and conviction
 
-Eliminate shared unattributed treasury deltas. Before choosing the exact interface, execute a runtime-447 dust spike covering all available staking/precompile call directions from an EVM contract. Then select one of these, in order:
+Eliminate shared unattributed treasury deltas. Before choosing the exact interface, execute a runtime-451 dust spike covering all available staking/precompile call directions from an EVM contract. Then select one of these, in order:
 
 1. a single transaction in which the coordinator authenticates `noId` and pulls/moves exactly `amount` from that operator's scoped source; or
 2. a per-operator escrow/coldkey/hotkey whose delta cannot be claimed by another `noId` and whose intent includes amount, epoch, nonce, deadline, and funder; or
@@ -539,7 +561,7 @@ commitment_hash = 32 bytes
 Each client signs the payload with Ed25519; the registered hotkey signs it with sr25519. A relayer may submit it, so no EVM-mirror coldkey assumption is required. The coordinator verifies:
 
 - client signature via `0x402`;
-- hotkey signature via the runtime-447 sr25519 precompile (`0x403`);
+- hotkey signature via the runtime-451 sr25519 precompile (`0x403`);
 - live `(netuid, hotkey) -> UID` via Neuron `getUid` (`0x804`);
 - commitment hash equality with a commitment written by that hotkey through the Substrate commitments pallet; and
 - generation, effective epoch, expiry, and non-replay rules.
@@ -573,7 +595,7 @@ Required local test layers:
 - gas snapshots at maximum supported operators/fleet members/proof depth;
 - storage-layout checks for the coordinator;
 - cross-language Merkle/signature fixtures; and
-- a runtime-447 local fork/localnet suite using real precompile code, not `vm.etch` mocks alone.
+- a runtime-451 local fork/localnet suite using real precompile code, not `vm.etch` mocks alone.
 
 Run Slither/static analysis, dependency/license checks, bytecode/source verification, and an independent security review before the value cap exceeds dust.
 
@@ -689,7 +711,7 @@ Permissionless validators still need a legitimate UR network identity to perform
 
 #### F4.3 Chain-driven CRv4 lifecycle
 
-- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, the effective native `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state. For v447, compatibility-gate the hard-coded native no-cap value and persist/audit the signed policy cap separately.
+- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, the effective native `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state. For v451, compatibility-gate the hard-coded native no-cap value and persist/audit the signed policy cap separately.
 - Schedule from native epoch/boundary state, not a process-start wall-clock ticker.
 - Before commit, store the complete input artifact, uids/weights, payload bytes, timelock ciphertext, drand round, runtime versions, account nonce, and expected reveal window.
 - Submit, then track transaction pool, inclusion block/hash, finality, `TimelockedWeightsCommitted`/equivalent event/state, reveal, application, and resulting metagraph weights. A returned `author_submitExtrinsic` hash is not success.
@@ -754,7 +776,7 @@ Acceptance:
 
 Deliverables:
 
-- CI matrix for Go, Solidity format/build/test/fuzz/invariants, schemas/vectors, server integration, runtime-447 localnet, containers, Ansible lint/check mode, dependency review, secret scanning, and reproducible artifacts.
+- CI matrix for Go, Solidity format/build/test/fuzz/invariants, schemas/vectors, server integration, runtime-451 localnet, containers, Ansible lint/check mode, dependency review, secret scanning, and reproducible artifacts.
 - The complete `sim-testnet` Go program in section 8.1, including native subnet/contract setup, persistent process supervision, crash-resume journaling, release scenario, independent inspection, and analysis output.
 - Release manifest tying all repository commits, container digests, bytecode hashes, ABI/schema/policy hashes, runtime identity, and generated config.
 - Threat-model review covering owner/guardian/operator/validator/provider compromise, RPC equivocation, reorgs, MEV/front-running, nonce races, precompile/runtime upgrades, malicious artifacts, Sybil/shared IP, direct ingress spoof, poison distinguishability, and availability.
@@ -816,19 +838,21 @@ chain:
 
 runtime:
   spec_name: node-subtensor
-  spec_version: 447
+  spec_version: 451
   transaction_version: 1
   state_version: 1
   commit_reveal_version: 4
-  source_tag: v447
-  source_commit: "1f090af85d1771c5d8ece1f0910576fbd129906e"
+  source_tag: release-v451
+  source_commit: "d78d9cc6a6ee4d805f74a35414baaef8be025a5f"
+  code_hash: "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08"
   node_image: "ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de"
 
 rpc:
   private_substrate_ws: "ws://sim-testnet:9944"
   private_evm_http: "http://sim-testnet:9944"
-  public_substrate_read_fallback: "wss://test.finney.opentensor.ai:443"
-  public_evm_read_fallback: "https://test.chain.opentensor.ai"
+  operational_mode: public-override
+  public_substrate_override: "wss://test.finney.opentensor.ai:443"
+  public_evm_override: "https://test.chain.opentensor.ai"
   public_fallback_allows_event_indexing: false
   finality_method: chain_getFinalizedHead
 
@@ -963,7 +987,7 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `max_allowed_uids` | 256 | Verify hard/live maximum and registration capacity. |
 | `max_allowed_validators` | ≤56 desired capacity budget | Query whether owner/root controls it; never assume 128. |
 | `mechanism_count` | 1 | Hard gate. |
-| native `max_weight_limit` / signed policy cap | native 65535 on v447; signed 32768 for the two-NO bootstrap | v447's effective getter is hard-coded to no cap. Enforce the signed cap in every release validator and finalized-vector audit; lower it toward a low single-digit percentage only when positive-recipient breadth makes that cap feasible. |
+| native `max_weight_limit` / signed policy cap | native 65535 on v451; signed 32768 for the two-NO bootstrap | v451's effective getter is hard-coded to no cap. Enforce the signed cap in every release validator and finalized-vector audit; lower it toward a low single-digit percentage only when positive-recipient breadth makes that cap feasible. |
 | `commit_reveal_weights_enabled` | true | Hard gate. |
 | `commit_reveal_period` | query then explicitly set/record | Immunity must exceed the full reveal interval. |
 | `liquid_alpha_enabled` | true | Verify live. |
@@ -1331,7 +1355,7 @@ Use metadata-driven Substrate calls rather than shelling out to `btcli` for corr
 - fund the EVM deployer and scoped online signers within configured limits;
 - fund the EVM caller/contract mirror where registration and gas semantics require it;
 - limit-register contract-owned pool hotkeys and provider-owned head hotkeys with the exact approved
-  rao ceiling, passing zero value to the neuron precompile because runtime 447 burns from the funded
+  rao ceiling, passing zero value to the neuron precompile because runtime 451 burns from the funded
   caller mirror; contract calls supply the full ceiling and return the unburned surplus atomically;
 - publish commitments from the correct sr25519 hotkeys;
 - register operators, signer roles, fleet members, policy, and effective epochs in the coordinator; and
@@ -1523,7 +1547,7 @@ Acceptance for the harness:
 1. **Protocol fixtures:** Go/Solidity/fixture generator agree on all encodings and deterministic math.
 2. **Go:** all `sn` packages; all relevant server packages under a hermetic `WARP_ENV`; race tests for chain/transaction/indexer paths; fuzz tests for decoders and proof inputs.
 3. **Solidity:** `forge fmt --check`, build warnings as errors where supported, 100% of existing tests adapted to the new architecture, fuzz/stateful invariants, gas snapshots, storage layout, and static analysis.
-4. **Runtime-447 localnet:** use the same source/image lock as testnet with fast blocks; real precompiles and Substrate metadata, not just mocks.
+4. **Runtime-451 localnet:** use the same source/Wasm identity lock as testnet with fast blocks; real precompiles and Substrate metadata, not just mocks.
 5. **System harness:** PostgreSQL, Redis, the server/blob MinIO backend/API (or its interface-compatible local CI fixture), two NO servers, two validators with distinct state/keys, long-tail providers, one multi-client head fleet, coordinator/vault, and a canonical indexer.
 6. **Fault injection:** RPC loss/equivocation, reorg/checkpoint mismatch, process kill at each transaction state, server restart, missed root, precompile failure, nonce replacement, runtime version change, malformed operator, and clock skew.
 
@@ -1570,7 +1594,7 @@ The evidence directory has an index and aggregate hash signed by the release own
 
 ## 9. Staged live-testnet validation campaign (pending operator configuration)
 
-### M0A — Runtime-447 local rehearsal
+### M0A — Runtime-451 local rehearsal
 
 Run a fast-block local network built from the exact locked Subtensor source/image and exercise the complete production topology. Do not use Anvil as the only chain because it cannot establish Subtensor precompile, staking, registration, finality, commitment, or CRv4 semantics.
 
@@ -1605,7 +1629,7 @@ Use the configured testnet wallet only after `doctor` loads its wallet and passw
 
 Run this stage through `sim-testnet doctor` and an approved `sim-testnet plan`; add the value-bearing probe as a named, journaled `precompile-conformance` scenario. Ad-hoc commands may diagnose a failure, but only the harness evidence satisfies the gate.
 
-The read-only subset is already partially green at spec 447, but rerun it from the actual server and validator hosts. Then deploy a disposable, value-capped probe and execute:
+The read-only subset is pinned at spec 451, but rerun it from the actual server and validator hosts. Then deploy a disposable, value-capped probe and execute:
 
 1. chain ID, genesis, runtime, finality, gas/fee, Solidity/Cancun, and code-hash checks;
 2. good/bad Ed25519 and sr25519 vectors;
@@ -1637,7 +1661,7 @@ M1 is driven by one resumable command, not a manual runbook:
 ```
 
 M1 begins with an audited configuration/deployment window with a precomputed balance/burn/value cap and
-a stop condition after every finalized action. Runtime 447 raises the burn after successful
+a stop condition after every finalized action. Runtime 451 raises the burn after successful
 registrations, so approval binds one per-registration maximum and every native/EVM action uses the
 runtime-enforced limit call; it never assumes later burns equal the first observation. Internally,
 `sim-testnet` must:
@@ -1888,11 +1912,11 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 | Decision/proof | Recommended disposition | Must close by |
 |---|---|---|
-| Can runtime 447 support a truly atomic contract-side deposit pull? | Run the F2 dust spike; otherwise use isolated per-NO escrow plus signed nonce intent. Never shared delta. | Before F2 interface freeze |
+| Can runtime 451 support a truly atomic contract-side deposit pull? | Run the F2 dust spike; otherwise use isolated per-NO escrow plus signed nonce intent. Never shared delta. | Before F2 interface freeze |
 | How is exact per-pool emission observed at boundaries? | Use finalized per-hotkey stake/emission snapshots and a boundary keeper SLO; validate dividend/take effects and late-call math live. | M0B |
 | Can the non-upgradeable vault own/register/rotate pool hotkeys safely? | Prove burned registration/coldkey semantics and rotation on localnet/dust; prefer a new future-epoch pool over mutable historical identity. | M0B |
 | Is testnet history durable without an archive node? | The server ST indexer plus independent harness journal starts before the first write; PostgreSQL indexes finalized evidence, existing MinIO stores immutable bytes, and the server API serves all artifacts/receipts. Any gap halts writes. | F1 |
-| What exact commitment payload/size API exists at spec 447? | Generate from live metadata and execute wallet-signed write/read/replace. | M0B |
+| What exact commitment payload/size API exists at spec 451? | Generate from live metadata and execute wallet-signed write/read/replace. | M0B |
 | How is a permissionless validator admitted to UR routing APIs? | Public documented validator enrollment tied to live chain hotkey/permit and scoped credentials, with neutral rate policy. | F4/M0A |
 | Can poison traffic be made indistinguishable end-to-end? | Build real shadow routes and measure distinguishability; otherwise narrow the claim and threat model. | F3/M0A |
 | How are egress hashes both private and cross-NO comparable? | Versioned subnet keyed hash with protected key distribution and a public key ID/commitment; review enumeration/leakage. If rejected, constrain fleet comparison scope honestly. | F0 |
@@ -1905,31 +1929,32 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## 13. Immediate next actions
 
-1. The testnet-prefixed values are filled. On each execution host, keep the
-   wallet password owner-only (`chmod 600 vault/subtensor/testnet_wallet.password`).
-   `sim-testnet:9944` now resolves to the deployed **private** overlay gateway at
-   `172.28.208.185`; the temporary public-endpoint proxy has been removed. Wait for
-   that node to finish full sync and expose finalized runtime 447/EVM APIs. The
-   initial archive catch-up may take days. The 2026-08-21 13:32 UTC read-only
-   snapshot observed 20 peers and private sync-state block 2,895,368/runtime 196
-   against advertised public head 7,831,409/runtime 447 with active syncing;
-   the readiness gate also requires peers, canonical checkpoint agreement and no
-   more than three finalized blocks of lag. Do not change
-   unprefixed mainnet custody values.
-2. Docker and Foundry are installed. The harness supports direct Docker group access
+1. **Completed 2026-08-29:** the testnet-prefixed values are filled and the updated
+   harness passed read-only `doctor` with `ready=true`. Every hard gate passed,
+   including both official endpoints, exact runtime-451 Wasm, release lock,
+   precompiles, subnet 521 ownership/activation/capacity, wallet/budgets, Docker,
+   MinIO and local supervision. The two expected false checks are non-hard and
+   explicitly record that public operational/postcondition routes share one
+   provider and physical peer; no independence claim is made.
+2. Let `sim-testnet:9944` continue syncing at the private overlay gateway. Once it
+   is at head, remove both override fields (or use the private light/archive
+   profile), rerun doctor, and repeat the production-load campaign. That gate
+   requires peers, `isSyncing=false`, canonical checkpoint agreement, no more than
+   three finalized blocks of lag and a physically independent observer.
+3. **Completed:** Docker and Foundry are installed. The harness supports direct Docker group access
    or passwordless `sudo -n docker`. The two digest-pinned PostgreSQL 18 and Redis 8
    pairs have passed their live managed-dependency probe: PostgreSQL authenticated as
    the derived application role and returned `512:256MB:en_US.UTF-8`; Redis returned
    `PONG`. Containers and PostgreSQL volumes now carry matching complete spec hashes.
-3. Build `sim-testnet`, then run read-only `doctor`. Resolve every failure; archive
-   the redacted report. No partial preflight may be waived.
-4. Run read-only `plan` and its checker, verify the existing-netuid ownership
-   proof, identities, runtime/precompile facts, every action and the three
-   maximum-spend totals, and record the exact `plan_hash`. The user has already
-   authorized automatic application of this bounded **testnet** plan once doctor
-   and plan checks are green; no further pause is required and no mainnet write
-   is authorized.
-5. Run `launch --apply --plan-hash ... --detach` with that exact hash. The harness
+4. **Completed 2026-08-29:** the read-only plan passed its checker with maximum
+   spends of `3978000008` TAO rao, `5200000000` alpha rao,
+   `3000000000000000000` EVM gas wei, nine registrations and zero subnet
+   creations. Its current exact `plan_hash` is
+   `0x97a87ad3cd2fae176f88764ae7f4dcdd557877789fe50cc6ce665d4fff4a715d`.
+   Regenerate it after any locked input changes; an old hash cannot authorize a
+   changed plan. The user has authorized automatic application of this bounded
+   **testnet** plan; no mainnet write is authorized.
+5. Run `launch --apply --plan-hash ... --detach` with the freshly regenerated exact hash. The harness
    installs/converges the release and runs smoke; no manual Forge, `btcli`, SQL or
    contract call is part of the release path.
 6. Keep the deployment running, execute `release-1.0` and `production-soak`, and use
@@ -1979,11 +2004,26 @@ canary against the overlay endpoint. The managed launch profile
 must rerun the same suites with its rendered per-operator runtime vault/config by
 setting `RUN_SERVER_DB_TESTS=1`; invoking the flag without `WARP_ENV` fails closed
 before connecting. The operator/miner/validator topology was
-not launched because the private Subtensor archive is still syncing through historical
-runtimes toward the runtime-447 tip; the overlay listener itself is reachable and independent.
+not launched in that 2026-08-21 record because the private Subtensor archive was
+still syncing through historical runtimes. The 2026-08-29 public override removes
+that dependency for bounded acceptance, but does not retroactively provide the
+missing archive/load/independence evidence.
 Separately approved bootstrap extrinsics activated netuid 521 and
 acquired alpha; their hashes and finalized postconditions are recorded in section
 7.2 and are not substituted for release-campaign evidence.
+
+The read-only 2026-08-29 public-mode refresh additionally passed `go test ./...`,
+`go vet ./...`, race-enabled `sim-testnet`/`crv4`/`validator` tests, all 108 Foundry
+tests and the focused Subtensor Ansible suite. Live `doctor` returned `ready=true`;
+runtime spec/transaction version were 451/1, EVM chain ID was 945, finalized Wasm
+matched `0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08`,
+and exact finalized-block `eth_getLogs`, historical state, metadata, release call
+shapes and all read-only precompile batteries passed. The successful read-only plan
+used release-lock hash
+`0x1f52299355ea6c127739c24723e9d79a3f40b7648644eb36b960d4af795f8ba4`
+and the spend/plan values recorded in section 13. These results prove public-mode
+launch readiness, not physical backend independence, archive depth or sustained
+load capacity.
 
 Run the same local gate with:
 
