@@ -24,13 +24,15 @@ import (
 )
 
 const (
-	releaseProfile         = "release-1.0"
-	testnetChainID         = uint64(945)
-	testnetGenesis         = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
-	btwalletNACLPrefix     = "$NACL"
-	btwalletArgonTime      = uint32(8)
-	btwalletArgonMemoryKiB = uint32(512 * 1024)
-	btwalletArgonThreads   = uint8(1)
+	releaseProfile          = "release-1.0"
+	rpcModePrivateAuthority = "private-authority"
+	rpcModePublicOverride   = "public-override"
+	testnetChainID          = uint64(945)
+	testnetGenesis          = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
+	btwalletNACLPrefix      = "$NACL"
+	btwalletArgonTime       = uint32(8)
+	btwalletArgonMemoryKiB  = uint32(512 * 1024)
+	btwalletArgonThreads    = uint8(1)
 )
 
 var btwalletNACLSalt = [16]byte{0x13, 0x71, 0x83, 0xdf, 0xf1, 0x5a, 0x09, 0xbc, 0x9c, 0x90, 0xb5, 0x51, 0x87, 0x39, 0xe9, 0xb1}
@@ -92,12 +94,14 @@ type DeploymentConfig struct {
 	DetachAfterLaunch bool   `yaml:"detach_after_launch" json:"detach_after_launch"`
 }
 type LaunchInputs struct {
-	Wallet              string `yaml:"wallet" json:"wallet"`
-	WalletPassword      string `yaml:"wallet_password" json:"wallet_password"`
-	ChainID             string `yaml:"chain_id" json:"chain_id"`
-	Authority           string `yaml:"authority" json:"authority"`
-	ObjectStoreHostname string `yaml:"object_store_hostname" json:"object_store_hostname"`
-	OperatorAPIOrigins  string `yaml:"operator_api_origins" json:"operator_api_origins"`
+	Wallet                     string `yaml:"wallet" json:"wallet"`
+	WalletPassword             string `yaml:"wallet_password" json:"wallet_password"`
+	ChainID                    string `yaml:"chain_id" json:"chain_id"`
+	Authority                  string `yaml:"authority" json:"authority"`
+	PublicSubstrateRPCOverride string `yaml:"public_substrate_rpc_override" json:"public_substrate_rpc_override"`
+	PublicEVMRPCOverride       string `yaml:"public_evm_rpc_override" json:"public_evm_rpc_override"`
+	ObjectStoreHostname        string `yaml:"object_store_hostname" json:"object_store_hostname"`
+	OperatorAPIOrigins         string `yaml:"operator_api_origins" json:"operator_api_origins"`
 }
 type TopologyConfig struct {
 	Operators           int    `yaml:"operators" json:"operators"`
@@ -218,6 +222,7 @@ type ReleaseLock struct {
 	Release       string `yaml:"release" json:"release"`
 	Runtime       struct {
 		SourceRepository, SourceTag, SourceCommit string
+		CodeHash                                  string
 		SpecVersion, TransactionVersion           uint32
 		Image                                     string
 	} `yaml:"runtime" json:"runtime"`
@@ -237,6 +242,7 @@ func (r *ReleaseLock) UnmarshalYAML(n *yaml.Node) error {
 			SourceRepository   string `yaml:"source_repository"`
 			SourceTag          string `yaml:"source_tag"`
 			SourceCommit       string `yaml:"source_commit"`
+			CodeHash           string `yaml:"code_hash"`
 			SpecVersion        uint32 `yaml:"spec_version"`
 			TransactionVersion uint32 `yaml:"transaction_version"`
 			Image              string `yaml:"image"`
@@ -255,6 +261,7 @@ func (r *ReleaseLock) UnmarshalYAML(n *yaml.Node) error {
 	r.Runtime.SourceRepository = aux.Runtime.SourceRepository
 	r.Runtime.SourceTag = aux.Runtime.SourceTag
 	r.Runtime.SourceCommit = aux.Runtime.SourceCommit
+	r.Runtime.CodeHash = aux.Runtime.CodeHash
 	r.Runtime.SpecVersion = aux.Runtime.SpecVersion
 	r.Runtime.TransactionVersion = aux.Runtime.TransactionVersion
 	r.Runtime.Image = aux.Runtime.Image
@@ -299,6 +306,9 @@ type ResolvedConfig struct {
 	Netuid               uint16
 	ChainID              uint64
 	Authority            string
+	OperationalRPCMode   string
+	OperationalSubstrate string
+	OperationalEVM       string
 	ObjectStoreHost      string
 	OperatorAPIOrigins   []string
 	WalletSecret         string
@@ -468,6 +478,9 @@ func (c *HarnessConfig) Validate() error {
 	if c.Budgets.MaximumRegistrationBurnRao == 0 {
 		return errors.New("maximum registration burn must be nonzero")
 	}
+	if _, _, _, err := resolveOperationalRPCs("127.0.0.1:9944", c.LaunchInputs.PublicSubstrateRPCOverride, c.LaunchInputs.PublicEVMRPCOverride); err != nil {
+		return fmt.Errorf("public RPC override: %w", err)
+	}
 	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "wallet password": c.LaunchInputs.WalletPassword, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
 		if !strings.HasPrefix(ref, "vault://main/st.yml#testnet-") {
 			return fmt.Errorf("%s must reference a testnet-prefixed st.yml key", name)
@@ -560,6 +573,10 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 	if r.Authority, err = resolveEnvTemplates(r.Authority, require); err != nil {
 		return fmt.Errorf("testnet authority: %w", err)
 	}
+	r.OperationalSubstrate, r.OperationalEVM, r.OperationalRPCMode, err = resolveOperationalRPCs(r.Authority, r.Config.LaunchInputs.PublicSubstrateRPCOverride, r.Config.LaunchInputs.PublicEVMRPCOverride)
+	if err != nil {
+		return fmt.Errorf("testnet operational RPCs: %w", err)
+	}
 	v, err = get(r.Config.LaunchInputs.ObjectStoreHostname)
 	if err != nil {
 		return err
@@ -610,6 +627,48 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		}
 	}
 	return nil
+}
+
+// Select a protocol-typed public pair only when both values are supplied.
+// Keeping the private authority resolved preserves a deterministic fallback
+// without deriving one protocol's URL from the other public gateway.
+func resolveOperationalRPCs(authority, substrateOverride, evmOverride string) (substrate, evm, mode string, err error) {
+	substrateOverride = strings.TrimSpace(substrateOverride)
+	evmOverride = strings.TrimSpace(evmOverride)
+	if (substrateOverride == "") != (evmOverride == "") {
+		return "", "", "", errors.New("Substrate and EVM overrides must be set together")
+	}
+	if substrateOverride == "" {
+		substrate, evm, err = authorityURLs(authority)
+		if err != nil {
+			return "", "", "", err
+		}
+		return substrate, evm, rpcModePrivateAuthority, nil
+	}
+	validate := func(label, raw string, schemes ...string) (string, error) {
+		u, parseErr := url.Parse(raw)
+		if parseErr != nil || u.Host == "" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return "", fmt.Errorf("%s override must be a credential-free bare RPC URL", label)
+		}
+		validScheme := false
+		for _, scheme := range schemes {
+			validScheme = validScheme || u.Scheme == scheme
+		}
+		if !validScheme {
+			return "", fmt.Errorf("%s override has unsupported scheme %q", label, u.Scheme)
+		}
+		u.Path = ""
+		return u.String(), nil
+	}
+	substrate, err = validate("Substrate", substrateOverride, "ws", "wss")
+	if err != nil {
+		return "", "", "", err
+	}
+	evm, err = validate("EVM", evmOverride, "http", "https")
+	if err != nil {
+		return "", "", "", err
+	}
+	return substrate, evm, rpcModePublicOverride, nil
 }
 
 // Minimal Bittensor wallet keyfile envelope. Public files must contain only
@@ -1156,15 +1215,18 @@ func fileExists(p string) bool { _, e := os.Stat(p); return e == nil }
 // MarshalJSON prevents an accidental serialization of loaded wallet material.
 func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 	type public struct {
-		ConfigPath   string         `json:"config_path"`
-		Config       *HarnessConfig `json:"config"`
-		Netuid       uint16         `json:"netuid"`
-		ChainID      uint64         `json:"chain_id"`
-		Authority    string         `json:"authority"`
-		ObjectStore  string         `json:"object_store_hostname"`
-		WalletPublic string         `json:"wallet_public"`
-		PolicyHash   string         `json:"policy_hash"`
-		ConfigHash   string         `json:"config_hash"`
+		ConfigPath           string         `json:"config_path"`
+		Config               *HarnessConfig `json:"config"`
+		Netuid               uint16         `json:"netuid"`
+		ChainID              uint64         `json:"chain_id"`
+		PrivateAuthority     string         `json:"private_authority"`
+		OperationalRPCMode   string         `json:"operational_rpc_mode"`
+		OperationalSubstrate string         `json:"operational_substrate_rpc"`
+		OperationalEVM       string         `json:"operational_evm_rpc"`
+		ObjectStore          string         `json:"object_store_hostname"`
+		WalletPublic         string         `json:"wallet_public"`
+		PolicyHash           string         `json:"policy_hash"`
+		ConfigHash           string         `json:"config_hash"`
 	}
 	authority, _, err := authorityURLs(r.Authority)
 	if err != nil {
@@ -1173,14 +1235,9 @@ func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 		authority = redactURL(authority)
 	}
 	return json.Marshal(public{
-		ConfigPath:   r.ConfigPath,
-		Config:       r.Config,
-		Netuid:       r.Netuid,
-		ChainID:      r.ChainID,
-		Authority:    authority,
-		ObjectStore:  r.ObjectStoreHost,
-		WalletPublic: r.WalletPublic,
-		PolicyHash:   r.PolicyHash,
-		ConfigHash:   r.ConfigHash,
+		ConfigPath: r.ConfigPath, Config: r.Config, Netuid: r.Netuid, ChainID: r.ChainID,
+		PrivateAuthority: authority, OperationalRPCMode: r.OperationalRPCMode,
+		OperationalSubstrate: redactURL(r.OperationalSubstrate), OperationalEVM: redactURL(r.OperationalEVM),
+		ObjectStore: r.ObjectStoreHost, WalletPublic: r.WalletPublic, PolicyHash: r.PolicyHash, ConfigHash: r.ConfigHash,
 	})
 }

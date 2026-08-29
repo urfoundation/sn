@@ -343,8 +343,8 @@ func compareLockSection(name string, locked map[string]any, observed map[string]
 }
 
 func validateReleaseLock(cfg *ResolvedConfig) error {
-	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "v447" || cfg.Release.Runtime.SourceCommit != "1f090af85d1771c5d8ece1f0910576fbd129906e" || cfg.Release.Runtime.SpecVersion != 447 || cfg.Release.Runtime.TransactionVersion != 1 {
-		return errors.New("release lock runtime identity is not the reviewed v447 release")
+	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "release-v451" || cfg.Release.Runtime.SourceCommit != "d78d9cc6a6ee4d805f74a35414baaef8be025a5f" || cfg.Release.Runtime.SpecVersion != 451 || cfg.Release.Runtime.TransactionVersion != 1 || !strings.EqualFold(cfg.Release.Runtime.CodeHash, "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08") {
+		return errors.New("release lock runtime identity is not the reviewed testnet runtime 451 release")
 	}
 	if !strings.Contains(cfg.Release.Runtime.Image, "@sha256:") || strings.Contains(cfg.Release.Runtime.Image, "placeholder") {
 		return fmt.Errorf("runtime image is not digest-pinned")

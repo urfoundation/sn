@@ -72,7 +72,8 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 		"watermark_change_on_reject", "graph_nodes", "cycle_rejections", "empty_set_rejections", "maximum_traversal_nodes", "repatriated_alpha_rao", "repatriated_lock_rao",
 		"residual_derived_rows", "value_delta_rao", "queued_lock_liability_rao", "escrow_backing_rao", "owner_unpriced_alpha_rao", "eviction_margin", "pending_emission_rao", "stranded_input_rao",
 		"replay_rejects", "cross_no_rejects", "tier_snapshot_rate", "cap_remaining_rao", "custody_probe_rejects", "claim_availability", "keeper_delay_blocks", "same_no_carry_rao",
-		"double_claim_rejects", "uncertain_claims",
+		"double_claim_rejects", "uncertain_claims", "terminal_holding_writeoffs", "healthy_holding_claims", "retryable_holding_preserved",
+		"pending_basket_deposit_rao", "root_stake_change_rao", "pending_basket_stake_change_blocked",
 	),
 	"consensus-cabal-emulation": adversaryMetricSet(
 		"consensus_delta_ppm", "honest_consensus_delta_ppm", "honest_incentive_delta_ppm", "follower_consensus_delta_ppm", "active_stake_ppm", "validator_permit_count",

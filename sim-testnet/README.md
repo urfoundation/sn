@@ -37,18 +37,32 @@ The checked-in testnet governance value is `single-owner`; the harness generates
 a dedicated capped testnet owner and a separate guardian. Unprefixed values are
 mainnet-only and retain `safe-2-of-3`; `sim-testnet` refuses to resolve them.
 
-`testnet-authority` must resolve `sim-testnet:9944` to the deployed runtime-447
-RPC gateway from the execution host. Map that name to the reachable local or
-overlay gateway address for the execution host. Evidence uses the existing
-shared `server/blob` MinIO configuration and bucket; no second object store is
-started. MinIO and Subtensor are the only external shared services.
+`testnet-authority` remains the private fallback and must resolve
+`sim-testnet:9944` from any execution host. The primary profile currently sets
+both `public_substrate_rpc_override` and `public_evm_rpc_override`, so operational
+reads, writes and workload proxies use the official public testnet services while
+the private archive syncs. The fields are a pair: set both typed URLs or neither.
+Removing both selects the private authority without changing vault data. The
+lightnode profile deliberately omits them and therefore exercises private
+fallback routing.
 
-Runtime 447 distinguishes atomic alpha transfers (`TransferToggle`, managed by
+Public override mode is testnet acceptance mode, not independent infrastructure
+proof. The official service is shared and rate limited, and its operational and
+postcondition routes may be the same backend. `doctor` reports that distinction
+as non-hard, and every postcondition/public manifest records
+`independent_rpc=false`. Current-state checks, bounded release-window event reads
+and testnet transactions may proceed; archive/history stress, high-rate campaigns
+and the final mainnet-promotion soak must be repeated against the synced private
+node plus a physically independent observer. Evidence uses the existing shared
+`server/blob` MinIO configuration and bucket; no second object store is started.
+MinIO and Subtensor are the only external shared services.
+
+Runtime 451 distinguishes atomic alpha transfers (`TransferToggle`, managed by
 `sudo_set_toggle_transfer`) from the one-time trading/emission activation
 (`SubtokenEnabled`, managed by the subnet owner's `start_call`). The harness
 checks these as distinct storage postconditions.
 
-Runtime 447 also raises a subnet's burn after successful registration. The
+Runtime 451 also raises a subnet's burn after successful registration. The
 release plan therefore reserves at most `100000000` rao per registration and
 binds that same ceiling into every native `register_limit` and EVM
 `registerLimit` action. EVM callers are funded at their SS58 mirrors and pass
@@ -77,8 +91,9 @@ call below the approved cap.
   resource files; `--sn-repo`, `--server-repo`, `--vault-repo`, and
   `--platform-config-repo` are available when the layout differs. Both executable
   Go sources and the non-secret operator config tree are content-locked.
-- Network reachability to the private Substrate/EVM gateway, public comparison
-  endpoints, and existing MinIO service.
+- Network reachability to the selected operational Substrate/EVM pair, public
+  comparison endpoints, and existing MinIO service. Private fallback additionally
+  requires the overlay gateway.
 - Foundry 1.7.1 only for developer rebuild/review. A launch embeds locked bytecode
   and never compiles Solidity at runtime.
 
@@ -107,10 +122,12 @@ go build -trimpath -o build/sim-testnet-light ./sim-testnet
 
 `doctor` checks the release lock, repository source hashes, wallet proof,
 ownership, balances, budget, runtime/genesis/chain identity, metadata and call
-shapes, finalized subnet-token/emission activation, recent historical EVM state,
-gateway methods, connected consensus peers, the signed finalized-head lag
-bound, a canonical common checkpoint, distinct physical private/public Subtensor
-peers, precompiles, MinIO's exact HTTP live endpoint, the Docker daemon and systemd.
+shapes, the exact finalized runtime Wasm hash, finalized subnet-token/emission
+activation, recent historical EVM state, gateway methods, the signed finalized-head
+lag bound, a canonical common checkpoint, precompiles, MinIO's exact HTTP live
+endpoint, the Docker daemon and systemd. Private mode additionally hard-requires
+connected consensus peers and distinct physical operational/observation backends;
+public override mode records those unavailable assurances without overstating them.
 `plan` repeats those gates, reads finalized setup facts, and prints every intended
 action, dependency, maximum spend and the canonical `plan_hash`. That approval
 hash binds the complete release lock, harness/public/hyperparameter manifests and

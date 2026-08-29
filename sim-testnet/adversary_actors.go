@@ -368,13 +368,13 @@ func decodeRPCRuntimeVersion(response rpcResponse) (rpcRuntimeVersion, error) {
 
 func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec, expectedTransaction uint32) error {
 	if private.SpecName != "node-subtensor" || public.SpecName != private.SpecName {
-		return fmt.Errorf("runtime spec names private=%q public=%q", private.SpecName, public.SpecName)
+		return fmt.Errorf("runtime spec names operational=%q public=%q", private.SpecName, public.SpecName)
 	}
 	if private.SpecVersion != public.SpecVersion || private.SpecVersion != expectedSpec {
-		return fmt.Errorf("runtime specs private=%d public=%d expected=%d", private.SpecVersion, public.SpecVersion, expectedSpec)
+		return fmt.Errorf("runtime specs operational=%d public=%d expected=%d", private.SpecVersion, public.SpecVersion, expectedSpec)
 	}
 	if private.TransactionVersion != public.TransactionVersion || private.TransactionVersion != expectedTransaction {
-		return fmt.Errorf("transaction versions private=%d public=%d expected=%d", private.TransactionVersion, public.TransactionVersion, expectedTransaction)
+		return fmt.Errorf("transaction versions operational=%d public=%d expected=%d", private.TransactionVersion, public.TransactionVersion, expectedTransaction)
 	}
 	return nil
 }
@@ -420,7 +420,7 @@ func validateSubnetPrecompileSentinels(privateSpot, publicSpot, privateMoving, p
 		}
 	}
 	if privateSpot.Cmp(publicSpot) != 0 || privateMoving.Cmp(publicMoving) != 0 || privateUIDs.Cmp(publicUIDs) != 0 {
-		return errors.New("private and public subnet precompile sentinels disagree")
+		return errors.New("operational and public subnet precompile sentinels disagree")
 	}
 	return nil
 }
@@ -443,10 +443,7 @@ func mevShieldFinalityEraExpiryModel(finalized, best, period uint64) (lag uint64
 
 func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
 	started := time.Now()
-	_, privateEndpoint, err := authorityURLs(self.cfg.Authority)
-	if err != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
-	}
+	privateEndpoint := self.cfg.OperationalEVM
 	publicEndpoint := self.cfg.Public.Chain.EVMPublicReadEndpoint
 	if phase == adversaryControlPhase {
 		privateChain, privateErr := self.call(ctx, privateEndpoint, "eth_chainId", []any{}, sequence*2+1)
@@ -454,9 +451,9 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		privateID, privateDecodeErr := decodeRPCQuantity(privateChain)
 		publicID, publicDecodeErr := decodeRPCQuantity(publicChain)
 		if privateErr != nil || publicErr != nil || privateDecodeErr != nil || publicDecodeErr != nil || privateID != publicID || privateID != 945 {
-			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("chain-id private=%s/%d public=%s/%d errors=%v/%v/%v/%v", privateChain.Result, privateID, publicChain.Result, publicID, privateErr, publicErr, privateDecodeErr, publicDecodeErr), Requests: 2, MaxInFlight: 1}
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("chain-id operational=%s/%d public=%s/%d errors=%v/%v/%v/%v", privateChain.Result, privateID, publicChain.Result, publicID, privateErr, publicErr, privateDecodeErr, publicDecodeErr), Requests: 2, MaxInFlight: 1}
 		}
-		return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: "private/public EVM chain id 945", Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: "operational/public EVM chain id 945", Requests: 2, MaxInFlight: 1}
 	}
 	if sequence%3 == 1 {
 		response, callErr := self.call(ctx, privateEndpoint, "urnetwork_adversarial_unknownMethod", []any{}, sequence+1)
@@ -468,12 +465,12 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	privateResponse, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{"finalized", false}, sequence*10+1)
 	publicResponse, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{"finalized", false}, sequence*10+2)
 	if privateErr != nil || publicErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized heads: private=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
 	}
 	privateFinalized, privateNumber, privateErr := decodeRPCBlock(privateResponse)
 	publicFinalized, publicNumber, publicErr := decodeRPCBlock(publicResponse)
 	if privateErr != nil || publicErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("decode finalized heads: private=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("decode finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
 	}
 	lag := privateNumber
 	if publicNumber > lag {
@@ -482,19 +479,19 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		lag -= publicNumber
 	}
 	if lag > uint64(self.cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized lag=%d private=%d public=%d", lag, privateNumber, publicNumber), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized lag=%d operational=%d public=%d", lag, privateNumber, publicNumber), Requests: 2, MaxInFlight: 1}
 	}
 	privateLatestResponse, privateLatestErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*10+13)
 	publicLatestResponse, publicLatestErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*10+14)
 	_, privateLatest, privateLatestDecodeErr := decodeRPCBlock(privateLatestResponse)
 	_, publicLatest, publicLatestDecodeErr := decodeRPCBlock(publicLatestResponse)
 	if privateLatestErr != nil || publicLatestErr != nil || privateLatestDecodeErr != nil || publicLatestDecodeErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("best heads: private=%v/%v public=%v/%v", privateLatestErr, privateLatestDecodeErr, publicLatestErr, publicLatestDecodeErr), Requests: 4, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("best heads: operational=%v/%v public=%v/%v", privateLatestErr, privateLatestDecodeErr, publicLatestErr, publicLatestDecodeErr), Requests: 4, MaxInFlight: 1}
 	}
 	privateBestLag, privateSDKExpired, privateExpiryErr := mevShieldFinalityEraExpiryModel(privateNumber, privateLatest, 8)
 	publicBestLag, publicSDKExpired, publicExpiryErr := mevShieldFinalityEraExpiryModel(publicNumber, publicLatest, 8)
 	if privateExpiryErr != nil || publicExpiryErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("MEV-shield era model private=%v public=%v", privateExpiryErr, publicExpiryErr), Requests: 4, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("MEV-shield era model operational=%v public=%v", privateExpiryErr, publicExpiryErr), Requests: 4, MaxInFlight: 1}
 	}
 	bestFinalizedLag := max64(privateBestLag, publicBestLag)
 	sdkMEVShieldExpired := privateSDKExpired || publicSDKExpired
@@ -508,14 +505,14 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	privateAt, _, decodePrivateErr := decodeRPCBlock(privateCommon)
 	publicAt, _, decodePublicErr := decodeRPCBlock(publicCommon)
 	if privateErr != nil || publicErr != nil || decodePrivateErr != nil || decodePublicErr != nil || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d private=%s public=%s errors=%v/%v/%v/%v", commonNumber, privateAt.Hash, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 6, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%s public=%s errors=%v/%v/%v/%v", commonNumber, privateAt.Hash, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 6, MaxInFlight: 1}
 	}
 	privateRuntimeResponse, privateRuntimeErr := self.call(ctx, privateEndpoint, "state_getRuntimeVersion", []any{privateFinalized.Hash}, sequence*20+15)
 	publicRuntimeResponse, publicRuntimeErr := self.call(ctx, publicEndpoint, "state_getRuntimeVersion", []any{publicFinalized.Hash}, sequence*20+16)
 	privateRuntime, privateRuntimeDecodeErr := decodeRPCRuntimeVersion(privateRuntimeResponse)
 	publicRuntime, publicRuntimeDecodeErr := decodeRPCRuntimeVersion(publicRuntimeResponse)
 	if privateRuntimeErr != nil || publicRuntimeErr != nil || privateRuntimeDecodeErr != nil || publicRuntimeDecodeErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity private=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 8, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity operational=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 8, MaxInFlight: 1}
 	}
 	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, self.cfg.Release.Runtime.SpecVersion, self.cfg.Release.Runtime.TransactionVersion); runtimeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: runtimeErr.Error(), Requests: 8, MaxInFlight: 1}
@@ -628,16 +625,16 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	prefix := make([]byte, 12) // runtime-447 TaoBalance:u64 + BlockNumber:u32
+	prefix := make([]byte, 12) // runtime-451 TaoBalance:u64 + BlockNumber:u32
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000+sequence)
 	binary.LittleEndian.PutUint32(prefix[8:], uint32(1+sequence%math.MaxUint32))
 	canonical := append(append([]byte(nil), prefix...), info...)
-	decoded, err := crv4.DecodeFleetCommitmentRegistrationV447(canonical)
+	decoded, err := crv4.DecodeFleetCommitmentRegistrationV451(canonical)
 	if err != nil || decoded != hash {
 		return 0, fmt.Errorf("canonical commitment registration rejected hash=%x error=%v", decoded, err)
 	}
 
-	// 0x87 is Data::ResetBondsFlag in runtime 447. The first case is a
+	// 0x87 is Data::ResetBondsFlag in runtime 451. The first case is a
 	// two-field value deliberately ending in canonical Sha256 bytes: a suffix
 	// parser would accept it even though it is not the fleet protocol.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -649,7 +646,7 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 		canonical[:len(canonical)-1],
 	}
 	for index, encoded := range cases {
-		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV447(encoded); decodeErr == nil {
+		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV451(encoded); decodeErr == nil {
 			return uint64(index), fmt.Errorf("commitment type-confusion case %d decoded as %x", index, got)
 		}
 	}
@@ -854,6 +851,42 @@ func proportionalRootBasketClaim(principal, basketReward, unstake uint64) (claim
 	}
 	claimed = claim.Uint64()
 	return claimed, basketReward - claimed, nil
+}
+
+// rootBasketFailureIsolationModel covers the runtime-451 hotfix: a terminally
+// shallow holding is explicitly written off, an unrelated healthy holding can
+// still settle, and an unknown/retryable failure remains intact. Pending basket
+// deposits likewise remain accounted while an independent root-stake change
+// proceeds instead of globally blocking the coldkey.
+func rootBasketFailureIsolationModel(pendingDeposit, stakeChange uint64) (terminalWriteoffs, healthyClaims, retryablePreserved uint64, blocked bool, err error) {
+	if pendingDeposit == 0 || stakeChange == 0 {
+		return 0, 0, 0, false, errors.New("root basket isolation model requires nonzero pending deposit and stake change")
+	}
+	type holding struct {
+		alpha    uint64
+		failure  string
+		settled  bool
+		preserve bool
+	}
+	holdings := []holding{{alpha: 11}, {alpha: 13, failure: "terminal"}, {alpha: 17, failure: "retryable"}}
+	for index := range holdings {
+		switch holdings[index].failure {
+		case "":
+			holdings[index].settled = true
+			healthyClaims++
+		case "terminal":
+			holdings[index].alpha = 0
+			terminalWriteoffs++
+		case "retryable":
+			holdings[index].preserve = true
+			retryablePreserved++
+		}
+	}
+	blocked = false
+	if terminalWriteoffs != 1 || healthyClaims != 1 || retryablePreserved != 1 || holdings[2].alpha != 17 || !holdings[2].preserve || pendingDeposit+stakeChange < pendingDeposit {
+		return terminalWriteoffs, healthyClaims, retryablePreserved, blocked, errors.New("root basket failure classes were not isolated")
+	}
+	return terminalWriteoffs, healthyClaims, retryablePreserved, blocked, nil
 }
 
 type stakingMEVResult struct {
@@ -1514,6 +1547,10 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 	if err != nil || rootClaim+rootRemaining != rootReward || (rootUnstake == rootPrincipal && rootRemaining != 0) {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("root basket settlement claim=%d remaining=%d error=%v", rootClaim, rootRemaining, err)}
 	}
+	terminalWriteoffs, healthyClaims, retryablePreserved, stakeChangeBlocked, err := rootBasketFailureIsolationModel(1_000+sequence, 100+sequence)
+	if err != nil || stakeChangeBlocked {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime-451 root basket failure isolation error=%v blocked=%t", err, stakeChangeBlocked)}
+	}
 	mev, err := emulateProxyStakeMEV(1_000_000_000_000, 2_000_000_000_000, 1_000_000_000, attackerStake, 10_000)
 	if err != nil || (phase == adversaryControlPhase && (mev.UnshieldedLossPPM != 0 || mev.ProtectedWouldReject)) || (phase == adversaryAttackPhase && (mev.UnshieldedLossPPM == 0 || !mev.ProtectedWouldReject)) {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("proxy stake MEV baseline=%d unshielded=%d loss_ppm=%d protected_reject=%t error=%v", mev.BaselineOut, mev.UnshieldedOut, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, err)}
@@ -1596,84 +1633,90 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
 	metrics := map[string]uint64{
-		"allocation_sum_delta_rao":           0,
-		"domain_mutations_rejected":          uint64(domains - 1),
-		"domain_mismatch_rejects":            uint64(domains - 1),
-		"nonce_replays_rejected":             1,
-		"expired_signatures_rejected":        1,
-		"unit_boundary_cases":                3,
-		"budget_delta":                       0,
-		"rounding_delta_rao":                 0,
-		"maximum_leaves":                     uint64(len(shares)),
-		"dense_index_entries":                uint64(rootIndexEntries),
-		"live_root_coldkeys":                 uint64(rootIndexEntries),
-		"dead_index_entries":                 0,
-		"dirty_destination_rejects":          5,
-		"claimed_watermark_delta":            37,
-		"future_owed_delta":                  0,
-		"root_basket_proportional_claim_rao": rootClaim,
-		"root_basket_remaining_reward_rao":   rootRemaining,
-		"unclaimed_root_basket_rao":          rootRemaining,
-		"proxy_stake_unshielded_loss_ppm":    mev.UnshieldedLossPPM,
-		"proxy_stake_protected_rejection":    boolUint64(mev.ProtectedWouldReject),
-		"staking_execution_price_delta_ppm":  mev.UnshieldedLossPPM,
-		"negative_flow_contribution":         0,
-		"runtime_forced_rollback_cases":      rollbackCases,
-		"forced_rollback_cases":              rollbackCases,
-		"partial_state_deltas":               0,
-		"partial_writes":                     0,
-		"false_paid_claims":                  0,
-		"reserve_drift_rao":                  0,
-		"runtime_identity_fields_migrated":   migratedFields,
-		"migrated_fields":                    migratedFields,
-		"missing_fields":                     0,
-		"lock_mass_delta":                    0,
-		"old_identity_residuals":             0,
-		"runtime_order_cases":                orderCases,
-		"order_cases":                        orderCases,
-		"double_debit_rao":                   0,
-		"overfill_rao":                       0,
-		"zero_share_charges":                 0,
-		"runtime_accounting_cases":           accountingCases,
-		"issuance_delta_rao":                 0,
-		"migration_reserve_delta_rao":        0,
-		"dropped_emission_rao":               0,
-		"stale_flow_injection_rao":           0,
-		"runtime_bounded_work_units":         boundedWork,
-		"bounded_items":                      128 + sequence%128,
-		"rejected_over_limit":                1,
-		"drand_future_round_rejections":      1,
-		"accepted_round_delta":               1,
-		"rejected_round_delta":               99,
-		"watermark_change_on_reject":         0,
-		"childkey_graph_nodes":               5,
-		"graph_nodes":                        5,
-		"cycle_rejections":                   1,
-		"empty_set_rejections":               1,
-		"maximum_traversal_nodes":            16,
-		"lease_repatriated_alpha_rao":        leaseFinal.BeneficiaryAlpha - leaseInitial.BeneficiaryAlpha,
-		"repatriated_alpha_rao":              leaseFinal.BeneficiaryAlpha - leaseInitial.BeneficiaryAlpha,
-		"repatriated_lock_rao":               leaseFinal.BeneficiaryLock - leaseInitial.BeneficiaryLock,
-		"residual_derived_rows":              0,
-		"value_delta_rao":                    0,
-		"registration_lock_liability_rao":    registrationLiability,
-		"queued_lock_liability_rao":          registrationLiability,
-		"escrow_backing_rao":                 420 + 2*(sequence%10),
-		"owner_unpriced_alpha_rao":           0,
-		"eviction_margin":                    20,
-		"liquidity_atomic_retry_cases":       liquidityCases,
-		"pending_emission_rao":               100_000,
-		"stranded_input_rao":                 0,
-		"replay_rejects":                     replayRejects,
-		"cross_no_rejects":                   crossNORejects,
-		"tier_snapshot_rate":                 tierSnapshotRate,
-		"cap_remaining_rao":                  capRemaining,
-		"custody_probe_rejects":              custodyProbeRejects,
-		"claim_availability":                 claimAvailability,
-		"keeper_delay_blocks":                keeperDelay,
-		"same_no_carry_rao":                  sameNOCarry,
-		"double_claim_rejects":               doubleClaimRejects,
-		"uncertain_claims":                   uncertainClaims,
+		"allocation_sum_delta_rao":            0,
+		"domain_mutations_rejected":           uint64(domains - 1),
+		"domain_mismatch_rejects":             uint64(domains - 1),
+		"nonce_replays_rejected":              1,
+		"expired_signatures_rejected":         1,
+		"unit_boundary_cases":                 3,
+		"budget_delta":                        0,
+		"rounding_delta_rao":                  0,
+		"maximum_leaves":                      uint64(len(shares)),
+		"dense_index_entries":                 uint64(rootIndexEntries),
+		"live_root_coldkeys":                  uint64(rootIndexEntries),
+		"dead_index_entries":                  0,
+		"dirty_destination_rejects":           5,
+		"claimed_watermark_delta":             37,
+		"future_owed_delta":                   0,
+		"root_basket_proportional_claim_rao":  rootClaim,
+		"root_basket_remaining_reward_rao":    rootRemaining,
+		"unclaimed_root_basket_rao":           rootRemaining,
+		"terminal_holding_writeoffs":          terminalWriteoffs,
+		"healthy_holding_claims":              healthyClaims,
+		"retryable_holding_preserved":         retryablePreserved,
+		"pending_basket_deposit_rao":          1_000 + sequence,
+		"root_stake_change_rao":               100 + sequence,
+		"pending_basket_stake_change_blocked": boolUint64(stakeChangeBlocked),
+		"proxy_stake_unshielded_loss_ppm":     mev.UnshieldedLossPPM,
+		"proxy_stake_protected_rejection":     boolUint64(mev.ProtectedWouldReject),
+		"staking_execution_price_delta_ppm":   mev.UnshieldedLossPPM,
+		"negative_flow_contribution":          0,
+		"runtime_forced_rollback_cases":       rollbackCases,
+		"forced_rollback_cases":               rollbackCases,
+		"partial_state_deltas":                0,
+		"partial_writes":                      0,
+		"false_paid_claims":                   0,
+		"reserve_drift_rao":                   0,
+		"runtime_identity_fields_migrated":    migratedFields,
+		"migrated_fields":                     migratedFields,
+		"missing_fields":                      0,
+		"lock_mass_delta":                     0,
+		"old_identity_residuals":              0,
+		"runtime_order_cases":                 orderCases,
+		"order_cases":                         orderCases,
+		"double_debit_rao":                    0,
+		"overfill_rao":                        0,
+		"zero_share_charges":                  0,
+		"runtime_accounting_cases":            accountingCases,
+		"issuance_delta_rao":                  0,
+		"migration_reserve_delta_rao":         0,
+		"dropped_emission_rao":                0,
+		"stale_flow_injection_rao":            0,
+		"runtime_bounded_work_units":          boundedWork,
+		"bounded_items":                       128 + sequence%128,
+		"rejected_over_limit":                 1,
+		"drand_future_round_rejections":       1,
+		"accepted_round_delta":                1,
+		"rejected_round_delta":                99,
+		"watermark_change_on_reject":          0,
+		"childkey_graph_nodes":                5,
+		"graph_nodes":                         5,
+		"cycle_rejections":                    1,
+		"empty_set_rejections":                1,
+		"maximum_traversal_nodes":             16,
+		"lease_repatriated_alpha_rao":         leaseFinal.BeneficiaryAlpha - leaseInitial.BeneficiaryAlpha,
+		"repatriated_alpha_rao":               leaseFinal.BeneficiaryAlpha - leaseInitial.BeneficiaryAlpha,
+		"repatriated_lock_rao":                leaseFinal.BeneficiaryLock - leaseInitial.BeneficiaryLock,
+		"residual_derived_rows":               0,
+		"value_delta_rao":                     0,
+		"registration_lock_liability_rao":     registrationLiability,
+		"queued_lock_liability_rao":           registrationLiability,
+		"escrow_backing_rao":                  420 + 2*(sequence%10),
+		"owner_unpriced_alpha_rao":            0,
+		"eviction_margin":                     20,
+		"liquidity_atomic_retry_cases":        liquidityCases,
+		"pending_emission_rao":                100_000,
+		"stranded_input_rao":                  0,
+		"replay_rejects":                      replayRejects,
+		"cross_no_rejects":                    crossNORejects,
+		"tier_snapshot_rate":                  tierSnapshotRate,
+		"cap_remaining_rao":                   capRemaining,
+		"custody_probe_rejects":               custodyProbeRejects,
+		"claim_availability":                  claimAvailability,
+		"keeper_delay_blocks":                 keeperDelay,
+		"same_no_carry_rao":                   sameNOCarry,
+		"double_claim_rejects":                doubleClaimRejects,
+		"uncertain_claims":                    uncertainClaims,
 	}
 	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("domain_mutations=%d leaves=%d exact_bps=%d dense_root_index=%d root_basket_claim=%d/%d proxy_mev_loss_ppm=%d protected_reject=%t runtime_models=%d/%d/%d/%d/%d dirty_root_swap_rejected=true", domains, len(shares), total, rootIndexEntries, rootClaim, rootReward, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, rollbackCases, migratedFields, orderCases, accountingCases, liquidityCases), Metrics: metrics}
 }
@@ -1734,7 +1777,7 @@ func clampUnit(value float64) float64 {
 	return value
 }
 
-// liquidAlphaValue mirrors runtime v447's per validator-miner sigmoid: buying
+// liquidAlphaValue mirrors runtime v451's per validator-miner sigmoid: buying
 // compares weight with the selected consensus, selling compares the old bond
 // with weight, and the result is clamped between alpha_low and alpha_high.
 func liquidAlphaValue(consensus, weight, bond, alphaLow, alphaHigh, steepness float64) (float64, error) {
@@ -1772,7 +1815,7 @@ func emulateLiquidAlphaCopyAndDropout(sequence uint64) (liquidAlphaSweep, error)
 	steepness := steepnesses[sequence%uint64(len(steepnesses))]
 	selectedConsensus := 1.0
 	if sequence%2 == 0 {
-		// v446/v447 permits previous-consensus mode. Sweep the first epoch's
+		// Runtime v451 retains previous-consensus mode. Sweep the first epoch's
 		// absent/zero previous value as well as current consensus.
 		selectedConsensus = 0
 	}

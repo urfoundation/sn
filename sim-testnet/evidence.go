@@ -265,28 +265,32 @@ func verifyPublishedEvidenceOrigin(ctx context.Context, cfg *ResolvedConfig, rol
 }
 
 type PublicDeploymentManifest struct {
-	Schema          string                     `json:"schema"`
-	Release         string                     `json:"release"`
-	DeploymentID    string                     `json:"deployment_id"`
-	GeneratedAt     string                     `json:"generated_at"`
-	ChainID         uint64                     `json:"chain_id"`
-	GenesisHash     string                     `json:"genesis_hash"`
-	RuntimeSpec     uint32                     `json:"runtime_spec"`
-	Netuid          uint16                     `json:"netuid"`
-	EVMRPC          string                     `json:"evm_rpc"`
-	SubstrateRPC    string                     `json:"substrate_rpc"`
-	ConfigHash      string                     `json:"config_hash"`
-	PolicyHash      string                     `json:"policy_hash"`
-	PlanHash        string                     `json:"plan_hash"`
-	ReleaseLockHash string                     `json:"release_lock_hash"`
-	Contracts       *ContractDeployment        `json:"contracts"`
-	Identities      json.RawMessage            `json:"identities"`
-	SetupEvidence   map[string]json.RawMessage `json:"setup_evidence"`
-	Operators       []PublicOperator           `json:"operators"`
-	Topology        TopologyConfig             `json:"topology"`
-	ArtifactStores  []string                   `json:"artifact_history_endpoints"`
-	EvidenceStores  []string                   `json:"release_evidence_history_endpoints"`
-	Commands        map[string]string          `json:"commands"`
+	Schema                  string                     `json:"schema"`
+	Release                 string                     `json:"release"`
+	DeploymentID            string                     `json:"deployment_id"`
+	GeneratedAt             string                     `json:"generated_at"`
+	ChainID                 uint64                     `json:"chain_id"`
+	GenesisHash             string                     `json:"genesis_hash"`
+	RuntimeSpec             uint32                     `json:"runtime_spec"`
+	Netuid                  uint16                     `json:"netuid"`
+	EVMRPC                  string                     `json:"evm_rpc"`
+	SubstrateRPC            string                     `json:"substrate_rpc"`
+	OperationalEVMRPC       string                     `json:"operational_evm_rpc,omitempty"`
+	OperationalSubstrateRPC string                     `json:"operational_substrate_rpc,omitempty"`
+	OperationalRPCMode      string                     `json:"operational_rpc_mode"`
+	IndependentRPC          bool                       `json:"independent_rpc"`
+	ConfigHash              string                     `json:"config_hash"`
+	PolicyHash              string                     `json:"policy_hash"`
+	PlanHash                string                     `json:"plan_hash"`
+	ReleaseLockHash         string                     `json:"release_lock_hash"`
+	Contracts               *ContractDeployment        `json:"contracts"`
+	Identities              json.RawMessage            `json:"identities"`
+	SetupEvidence           map[string]json.RawMessage `json:"setup_evidence"`
+	Operators               []PublicOperator           `json:"operators"`
+	Topology                TopologyConfig             `json:"topology"`
+	ArtifactStores          []string                   `json:"artifact_history_endpoints"`
+	EvidenceStores          []string                   `json:"release_evidence_history_endpoints"`
+	Commands                map[string]string          `json:"commands"`
 }
 
 type PublicOperator struct {
@@ -314,7 +318,11 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	if err != nil {
 		return nil, err
 	}
-	manifest := &PublicDeploymentManifest{Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, Netuid: cfg.Netuid, EVMRPC: cfg.Public.Chain.EVMPublicReadEndpoint, SubstrateRPC: cfg.Public.Chain.SubstratePublicReadEndpoint, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ReleaseLockHash: releaseLockHash, Contracts: contracts, Identities: append(json.RawMessage(nil), identities...), SetupEvidence: setupEvidence, Topology: cfg.Config.Topology, Commands: map[string]string{}}
+	manifest := &PublicDeploymentManifest{Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, Netuid: cfg.Netuid, EVMRPC: cfg.Public.Chain.EVMPublicReadEndpoint, SubstrateRPC: cfg.Public.Chain.SubstratePublicReadEndpoint, OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ReleaseLockHash: releaseLockHash, Contracts: contracts, Identities: append(json.RawMessage(nil), identities...), SetupEvidence: setupEvidence, Topology: cfg.Config.Topology, Commands: map[string]string{}}
+	if cfg.OperationalRPCMode == rpcModePublicOverride {
+		manifest.OperationalEVMRPC = cfg.OperationalEVM
+		manifest.OperationalSubstrateRPC = cfg.OperationalSubstrate
+	}
 	if plan != nil {
 		manifest.PlanHash = plan.PlanHash
 	}

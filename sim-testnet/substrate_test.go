@@ -10,7 +10,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 )
 
-func TestSubtensorAccountInfoDecodesRuntime447U64Balances(t *testing.T) {
+func TestSubtensorAccountInfoDecodesRuntime451U64Balances(t *testing.T) {
 	raw := make([]byte, 56)
 	binary.LittleEndian.PutUint32(raw[0:4], 7)
 	binary.LittleEndian.PutUint32(raw[4:8], 2)

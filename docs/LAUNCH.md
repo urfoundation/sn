@@ -14,15 +14,16 @@ two loopback operator API origins, MinIO overlay host, private RPC hostname and
 single-owner testnet governance. Unprefixed settings remain mainnet-only; mainnet
 contract custody remains 2-of-3 Safe governance.
 
-The remaining live gate is the shared private Subtensor node. On 2026-08-20,
-`sim-testnet` resolves to overlay address `172.28.208.185` and exposes an independent
-physical peer, but the archive is still full-syncing toward the runtime-447 testnet
-head; a 10–24 hour initial catch-up is expected. `doctor` requires a positive peer
-count, `system_health.isSyncing=false`, a
-private finalized head no more than the signed policy's three-block limit behind the
-public comparison endpoint, the same canonical hash at their common checkpoint,
-runtime 447, and working EVM APIs. Do not substitute a proxy to the public endpoints:
-the physical-peer-independence gate detects and rejects that topology.
+The checked-in `sim-testnet/testnet.yml` currently selects the official public
+Substrate and EVM testnet RPCs as its operational pair. Both typed override URLs
+must be present; deleting both returns deterministically to `testnet-authority`.
+The private archive at `sim-testnet:9944` remains the required fallback for heavy
+workloads, historical/archive proof and the final independent-backend campaign
+after it finishes syncing. Public mode records the shared observation backend as
+non-independent in doctor, postconditions and manifests; that assurance gap is
+non-blocking for bounded testnet acceptance but blocking for mainnet promotion.
+Runtime spec 451 and its exact finalized Wasm code hash remain hard gates in both
+modes.
 
 Filling configuration is not approval to spend. Every mutating command is a dry
 run unless it receives both `--apply` and the exact hash of the reviewed plan.
@@ -79,7 +80,7 @@ metagraph/neuron/staking, proves exact stake moves, waits for a dividend cycle a
 recovers all probe-attributable alpha to a controlled provider coldkey.
 Every registration uses runtime `register_limit`/`registerLimit` with the reviewed
 `100000000` rao ceiling. EVM registrations fund the caller mirror and send zero
-value to the neuron precompile, matching runtime-447 deduction semantics.
+value to the neuron precompile, matching runtime-451 deduction semantics.
 Contract registrations supply that full ceiling and atomically refund the
 unburned difference.
 Transactions are journaled through intent, signed bytes and nonce,

@@ -121,7 +121,7 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 	cfg := testResolvedConfig(t)
 	faults := productionRollingFaults(cfg)
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	persistentCount := 2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
 	want := dependencyCount + persistentCount
 	if len(faults) != want {
 		t.Fatalf("fault count = %d, want %d", len(faults), want)
@@ -135,7 +135,11 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 		} else if index >= dependencyCount {
 			wantKind = "process-restart"
 		}
-		if fault.Kind != wantKind || len(fault.Targets) != 1 || (index >= dependencyCount && seen[fault.Targets[0]]) || fault.TriggerOffsetBlocks <= priorEnd {
+		wantTargets := 1
+		if index == dependencyCount-1 {
+			wantTargets = 2
+		}
+		if fault.Kind != wantKind || len(fault.Targets) != wantTargets || (index >= dependencyCount && seen[fault.Targets[0]]) || fault.TriggerOffsetBlocks <= priorEnd {
 			t.Fatalf("overlapping or duplicate fault: %+v prior_end=%d", fault, priorEnd)
 		}
 		if index >= dependencyCount {
@@ -144,7 +148,10 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 		priorEnd = fault.TriggerOffsetBlocks + fault.DurationBlocks
 	}
 	if !seen[workloadRPCProxyProcessID] {
-		t.Fatal("persistent workload RPC proxy was not restart-tested")
+		t.Fatal("persistent workload EVM RPC proxy was not restart-tested")
+	}
+	if !seen[workloadSubstrateProcessID] {
+		t.Fatal("persistent workload Substrate RPC proxy was not restart-tested")
 	}
 }
 
@@ -155,7 +162,7 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 		t.Fatal(err)
 	}
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 1 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	persistentCount := 2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
 	want := 1 + dependencyCount + persistentCount
 	if len(faults) != want || faults[0].ID != "quality-cohort" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)

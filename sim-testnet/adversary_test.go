@@ -553,7 +553,7 @@ func TestRPCAdversaryRejectsZeroMovingPriceAndSentinelDrift(t *testing.T) {
 		t.Fatal("zero moving price was accepted despite the mainnet-readiness stop condition")
 	}
 	if err := validateSubnetPrecompileSentinels(positive(10), positive(11), positive(9), positive(9), positive(2), positive(2), positive(100), positive(200)); err == nil {
-		t.Fatal("private/public spot-price drift was accepted")
+		t.Fatal("operational/public spot-price drift was accepted")
 	}
 }
 
@@ -619,6 +619,16 @@ func TestRootBasketUnstakeSettlesProportionalHiddenReward(t *testing.T) {
 	claimed, remaining, err := proportionalRootBasketClaim(math.MaxUint64, math.MaxUint64, math.MaxUint64)
 	if err != nil || claimed != math.MaxUint64 || remaining != 0 {
 		t.Fatalf("maximum root basket settlement=%d/%d error=%v", claimed, remaining, err)
+	}
+}
+
+func TestRuntime451RootBasketFailureIsolation(t *testing.T) {
+	terminal, healthy, retryable, blocked, err := rootBasketFailureIsolationModel(1_000, 100)
+	if err != nil || terminal != 1 || healthy != 1 || retryable != 1 || blocked {
+		t.Fatalf("root basket isolation terminal=%d healthy=%d retryable=%d blocked=%t error=%v", terminal, healthy, retryable, blocked, err)
+	}
+	if _, _, _, _, err := rootBasketFailureIsolationModel(0, 100); err == nil {
+		t.Fatal("zero pending-deposit control was accepted")
 	}
 }
 
@@ -803,7 +813,7 @@ func TestReleaseLockCoversEveryPublishedSubtensorAdvisory(t *testing.T) {
 	if err := strictYAML(filepath.Join(cfg.Repos.SN, "deploy", "testnet", "release.lock.yml"), lock); err != nil {
 		t.Fatal(err)
 	}
-	if lock.Runtime.SourceTag != "v447" || lock.Runtime.SourceCommit != "1f090af85d1771c5d8ece1f0910576fbd129906e" || lock.Runtime.SpecVersion < 419 {
+	if lock.Runtime.SourceTag != "release-v451" || lock.Runtime.SourceCommit != "d78d9cc6a6ee4d805f74a35414baaef8be025a5f" || lock.Runtime.SpecVersion != 451 || lock.Runtime.CodeHash == "" {
 		t.Fatalf("release runtime does not postdate the published advisory fixes: %+v", lock.Runtime)
 	}
 	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
@@ -947,8 +957,8 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		}
 		return rpcResponse{Result: result}
 	}
-	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 447, 1))
-	if err != nil || validateRPCRuntimeIdentity(valid, valid, 447, 1) != nil {
+	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 451, 1))
+	if err != nil || validateRPCRuntimeIdentity(valid, valid, 451, 1) != nil {
 		t.Fatalf("valid runtime identity rejected: %+v %v", valid, err)
 	}
 	cases := []rpcResponse{
@@ -968,12 +978,12 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		private rpcRuntimeVersion
 		public  rpcRuntimeVersion
 	}{
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 448, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 447, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 447, TransactionVersion: 2}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 451, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 451, TransactionVersion: 2}},
 	}
 	for index, identity := range identities {
-		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 447, 1); identityErr == nil {
+		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 451, 1); identityErr == nil {
 			t.Errorf("drifting runtime identity %d was accepted", index)
 		}
 	}
@@ -1004,14 +1014,14 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
 		}))
 	}
-	private := newServer(447)
+	private := newServer(451)
 	defer private.Close()
-	public := newServer(448)
+	public := newServer(452)
 	defer public.Close()
 	cfg := testResolvedConfig(t)
-	cfg.Authority = strings.TrimPrefix(private.URL, "http://")
+	cfg.OperationalEVM = private.URL
 	cfg.Public.Chain.EVMPublicReadEndpoint = public.URL
-	cfg.Release.Runtime.SpecVersion = 447
+	cfg.Release.Runtime.SpecVersion = 451
 	cfg.Release.Runtime.TransactionVersion = 1
 	actor := &rpcAdversary{
 		cfg: cfg,
@@ -1021,7 +1031,7 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 		},
 	}
 	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
-	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs private=447 public=448 expected=447") {
+	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=451 public=452 expected=451") {
 		t.Fatalf("observed runtime drift result=%+v", result)
 	}
 }

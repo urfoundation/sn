@@ -276,11 +276,7 @@ func inspectVoluntaryConviction(ctx context.Context, cfg *ResolvedConfig, stateD
 	if err != nil || len(roles.OperatorDepositSigners) == 0 {
 		return nil, false, "planned operator-1 deposit signer is unavailable"
 	}
-	_, endpoint, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return nil, false, err.Error()
-	}
-	return inspectVoluntaryConvictionBytes(ctx, cfg, b, contracts, endpoint, roles.OperatorDepositSigners[0])
+	return inspectVoluntaryConvictionBytes(ctx, cfg, b, contracts, cfg.OperationalEVM, roles.OperatorDepositSigners[0])
 }
 
 func inspectVoluntaryConvictionBytes(ctx context.Context, cfg *ResolvedConfig, b []byte, contracts *ContractView, endpoint, expectedFunder string) (*VoluntaryConvictionEvidence, bool, string) {
@@ -352,11 +348,7 @@ func inspectNativeCustodyRoles(cfg *ResolvedConfig, stateDir string) (bool, uint
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
-	ws, _, err := authorityURLs(cfg.Authority)
-	if err != nil {
-		return false, 0, nil, false, 0, err.Error()
-	}
-	return inspectNativeCustodyRolesBytes(cfg, b, ws)
+	return inspectNativeCustodyRolesBytes(cfg, b, cfg.OperationalSubstrate)
 }
 
 func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint string) (bool, uint16, *uint16, bool, uint16, string) {

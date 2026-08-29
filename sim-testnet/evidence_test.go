@@ -86,6 +86,9 @@ func TestVerifyPublishedEvidenceOriginChecksContentSignerAndHistory(t *testing.T
 func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.ConfigPath = "/machine-specific/repo/sim-testnet/testnet.yml"
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalSubstrate = "wss://test.substrate.example"
+	cfg.OperationalEVM = "https://test.chain.example"
 	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.example"
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://test.substrate.example"
 	dir := t.TempDir()
@@ -129,6 +132,9 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	}
 	if first.EVMRPC == "" || first.SubstrateRPC == "" {
 		t.Fatalf("public RPC endpoints missing: %+v", first)
+	}
+	if first.OperationalRPCMode != rpcModePublicOverride || first.IndependentRPC || first.OperationalEVMRPC != cfg.OperationalEVM || first.OperationalSubstrateRPC != cfg.OperationalSubstrate {
+		t.Fatalf("public override assurance was overstated in manifest: %+v", first)
 	}
 	wantEvidence := 1 + cfg.Config.Topology.HeadFleets*(2+cfg.Config.Topology.ClientsPerHeadFleet)
 	if len(first.SetupEvidence) != wantEvidence || first.Operators[0].APIURL != "https://no1.example" || strings.Contains(first.Operators[0].APIURL, "127.0.0.1") {

@@ -62,6 +62,7 @@ func TestPersistedPostconditionRequiresIndependentEvidence(t *testing.T) {
 	record := &ActionPostcondition{
 		Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		PlanHash: plan.PlanHash, ActionID: "safe.action", IntentHash: "0xintent",
+		OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true,
 		SubstrateFinalized:            ChainHead{Number: 9, Hash: "0xprivate-substrate"},
 		EVMFinalized:                  ChainHead{Number: 9, Hash: "0xprivate-evm"},
 		Observed:                      map[string]any{"ready": true},

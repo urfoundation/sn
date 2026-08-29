@@ -8,7 +8,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 )
 
-func TestFleetCommitmentInfoExactRuntime447Scale(t *testing.T) {
+func TestFleetCommitmentInfoExactRuntime451Scale(t *testing.T) {
 	var hash [32]byte
 	for i := range hash {
 		hash[i] = byte(i + 1)
@@ -51,7 +51,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 	for index := range hash {
 		hash[index] = byte(index + 1)
 	}
-	prefix := make([]byte, registrationV447PrefixBytes)
+	prefix := make([]byte, registrationV451PrefixBytes)
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000)
 	binary.LittleEndian.PutUint32(prefix[8:12], 7_827_242)
 	info, err := EncodeFleetCommitmentInfo(hash)
@@ -59,13 +59,13 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonical := append(append([]byte(nil), prefix...), info...)
-	got, err := DecodeFleetCommitmentRegistrationV447(canonical)
+	got, err := DecodeFleetCommitmentRegistrationV451(canonical)
 	if err != nil || got != hash {
 		t.Fatalf("canonical registration hash=%x error=%v", got, err)
 	}
 
 	// Each input is a valid-looking or near-valid alternative that a generic
-	// metagraph parser can encounter. In particular, 0x87 is the runtime-447
+	// metagraph parser can encounter. In particular, 0x87 is the runtime-451
 	// ResetBondsFlag variant and the first mutation is a two-field vector that
 	// deliberately ends in the otherwise canonical Sha256 bytes.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -79,7 +79,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 		"trailing byte":               trailing,
 		"truncated registration":      canonical[:len(canonical)-1],
 	} {
-		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV447(encoded); decodeErr == nil {
+		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV451(encoded); decodeErr == nil {
 			t.Errorf("%s decoded as %x", name, decoded)
 		}
 	}

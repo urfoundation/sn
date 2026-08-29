@@ -230,7 +230,7 @@ func (e *Executor) boundedRegistrationBurn(action Action) (uint64, uint64, error
 	return burn, limit, nil
 }
 
-// Contract registration receives the full approved ceiling. Runtime 447 burns
+// Contract registration receives the full approved ceiling. Runtime 451 burns
 // the current rao price and the release contracts return any surplus.
 func registrationFundingWei(limitRao uint64) *big.Int {
 	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
@@ -392,7 +392,7 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), append(b, '\n'), 0o600); err != nil {
 		return err
 	}
-	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "authority": redactURL(cfg.Authority), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash, "resolved_inputs_hash": p.ResolvedInputsHash, "release_lock_hash": p.ReleaseLockHash}
+	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "private_authority": redactURL(cfg.Authority), "operational_rpc_mode": cfg.OperationalRPCMode, "operational_substrate_rpc": redactURL(cfg.OperationalSubstrate), "operational_evm_rpc": redactURL(cfg.OperationalEVM), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash, "resolved_inputs_hash": p.ResolvedInputsHash, "release_lock_hash": p.ReleaseLockHash}
 	y, err := yaml.Marshal(redacted)
 	if err != nil {
 		return err
@@ -1624,7 +1624,7 @@ func copyTree(src, dst string, mode os.FileMode) error {
 }
 
 func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) error {
-	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadRPCAuthority())}}
+	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		v := cloneMap(base)
 		v["validator_id"] = i

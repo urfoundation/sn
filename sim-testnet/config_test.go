@@ -69,6 +69,55 @@ func TestLightHarnessConfigPreservesReleaseChecksAndUsesLightnode(t *testing.T) 
 	}
 }
 
+func TestReleaseHarnessSelectsOfficialPublicRPCOverrides(t *testing.T) {
+	var cfg HarnessConfig
+	if err := strictYAML("testnet.yml", &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	substrate, evm, mode, err := resolveOperationalRPCs("private.example:9944", cfg.LaunchInputs.PublicSubstrateRPCOverride, cfg.LaunchInputs.PublicEVMRPCOverride)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode != rpcModePublicOverride || substrate != "wss://test.finney.opentensor.ai:443" || evm != "https://test.chain.opentensor.ai" {
+		t.Fatalf("operational RPC selection = %q %q %q", mode, substrate, evm)
+	}
+}
+
+func TestOperationalRPCOverrideRequiresAProtocolTypedPair(t *testing.T) {
+	if _, _, _, err := resolveOperationalRPCs("private.example:9944", "wss://test.finney.opentensor.ai:443", ""); err == nil {
+		t.Fatal("half-configured public RPC override was accepted")
+	}
+	if _, _, _, err := resolveOperationalRPCs("private.example:9944", "https://test.finney.opentensor.ai", "https://test.chain.opentensor.ai"); err == nil {
+		t.Fatal("HTTP Substrate override was accepted")
+	}
+	if _, _, _, err := resolveOperationalRPCs("private.example:9944", "wss://test.finney.opentensor.ai:443", "wss://test.chain.opentensor.ai"); err == nil {
+		t.Fatal("WebSocket EVM override was accepted")
+	}
+	for _, endpoints := range [][2]string{
+		{"wss://:443", "https://test.chain.opentensor.ai"},
+		{"wss://user@test.finney.opentensor.ai:443", "https://test.chain.opentensor.ai"},
+		{"wss://test.finney.opentensor.ai:443/rpc", "https://test.chain.opentensor.ai"},
+		{"wss://test.finney.opentensor.ai:443", "https://test.chain.opentensor.ai?token=secret"},
+	} {
+		if _, _, _, err := resolveOperationalRPCs("private.example:9944", endpoints[0], endpoints[1]); err == nil {
+			t.Fatalf("unsafe public RPC override was accepted: %q %q", endpoints[0], endpoints[1])
+		}
+	}
+}
+
+func TestOperationalRPCFallsBackToPrivateAuthority(t *testing.T) {
+	substrate, evm, mode, err := resolveOperationalRPCs("private.example:9944", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode != rpcModePrivateAuthority || substrate != "ws://private.example:9944" || evm != "http://private.example:9944" {
+		t.Fatalf("private fallback = %q %q %q", mode, substrate, evm)
+	}
+}
+
 func TestHarnessConfigRequiresRegistrationBurnLimit(t *testing.T) {
 	r := testResolvedConfig(t)
 	r.Config.Budgets.MaximumRegistrationBurnRao = 0

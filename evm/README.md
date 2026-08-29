@@ -59,7 +59,7 @@ Each contract has a distinct H160-mirrored Substrate coldkey.
    hotkey, transfers it to the immutable sink coldkey, records principal, and
    emits the policy-bound event. Any failed runtime call reverts all accounting.
 3. During installation the immutable vault limit-registers its escrow hotkey
-   exactly once under its own mapped coldkey. Runtime 447 burns from the funded
+   exactly once under its own mapped coldkey. Runtime 451 burns from the funded
    caller mirror, so the vault calls the neuron precompile with zero call value.
    It also owns one pool hotkey per NO. A timely boundary call moves the
    complete realized pool stake to that escrow; a missed boundary defers the

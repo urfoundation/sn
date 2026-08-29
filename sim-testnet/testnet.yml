@@ -27,6 +27,8 @@ launch_inputs:
   wallet_password: vault://main/st.yml#testnet-wallet-password
   chain_id: vault://main/st.yml#testnet-chain-id
   authority: vault://main/st.yml#testnet-authority
+  public_substrate_rpc_override: "wss://test.finney.opentensor.ai:443"
+  public_evm_rpc_override: "https://test.chain.opentensor.ai"
   object_store_hostname: vault://main/st.yml#testnet-minio-hostname
   operator_api_origins: vault://main/st.yml#testnet-operator-api-origins
 
