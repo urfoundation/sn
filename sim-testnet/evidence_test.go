@@ -105,7 +105,7 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := []string{"voluntary-conviction.json"}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		names = append(names, fmt.Sprintf("fleet-%d.json", fleet), fmt.Sprintf("fleet-%d.commitment.json", fleet))
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 			names = append(names, fmt.Sprintf("fleet-%d-member-%d.binding.json", fleet, member))
@@ -136,7 +136,7 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	if first.OperationalRPCMode != rpcModePublicOverride || first.IndependentRPC || first.OperationalEVMRPC != cfg.OperationalEVM || first.OperationalSubstrateRPC != cfg.OperationalSubstrate {
 		t.Fatalf("public override assurance was overstated in manifest: %+v", first)
 	}
-	wantEvidence := 1 + cfg.Config.Topology.HeadFleets*(2+cfg.Config.Topology.ClientsPerHeadFleet)
+	wantEvidence := 1 + cfg.Config.Topology.fleetCandidates()*(2+cfg.Config.Topology.ClientsPerHeadFleet)
 	if len(first.SetupEvidence) != wantEvidence || first.Operators[0].APIURL != "https://no1.example" || strings.Contains(first.Operators[0].APIURL, "127.0.0.1") {
 		t.Fatalf("manifest is not independently reachable/complete: %+v", first)
 	}

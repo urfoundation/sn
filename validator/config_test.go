@@ -26,6 +26,7 @@ func validReleaseConfig(t *testing.T) ReleaseConfig {
 		SchemaVersion:   1,
 		Production:      true,
 		Release:         "1.0",
+		DeploymentID:    "test-deployment",
 		ValidatorID:     1,
 		ChainID:         945,
 		GenesisHash:     "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
@@ -44,8 +45,8 @@ func validReleaseConfig(t *testing.T) ReleaseConfig {
 		PollSeconds:     2,
 		Policy:          *p,
 		Operators: []OperatorConfig{
-			{NoID: 1, APIURL: "https://one.example", ConnectURL: "wss://one.example/connect", StateDir: filepath.Join(root, "no-1"), Concurrency: 2},
-			{NoID: 2, APIURL: "https://two.example", ConnectURL: "wss://two.example/connect", StateDir: filepath.Join(root, "no-2"), Concurrency: 2},
+			{NoID: 1, APIURL: "https://one.example", ConnectURL: "wss://one.example/connect", ArtifactSigner: "0x1111111111111111111111111111111111111111", StateDir: filepath.Join(root, "no-1"), Concurrency: 2},
+			{NoID: 2, APIURL: "https://two.example", ConnectURL: "wss://two.example/connect", ArtifactSigner: "0x2222222222222222222222222222222222222222", StateDir: filepath.Join(root, "no-2"), Concurrency: 2},
 		},
 	}
 }
@@ -110,5 +111,18 @@ func TestReleaseConfigRequiresMinimumNOsAndExplicitControlledNOs(t *testing.T) {
 	cfg.ControlledNOIDs = []uint64{99}
 	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil {
 		t.Fatal("unknown controlled NO accepted")
+	}
+}
+
+func TestReleaseConfigRequiresDistinctOperatorArtifactSigners(t *testing.T) {
+	cfg := validReleaseConfig(t)
+	cfg.Operators[1].ArtifactSigner = cfg.Operators[0].ArtifactSigner
+	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil || !strings.Contains(err.Error(), "artifact_signer aliases") {
+		t.Fatalf("shared artifact signer error = %v", err)
+	}
+	cfg = validReleaseConfig(t)
+	cfg.Operators[0].ArtifactSigner = ""
+	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil || !strings.Contains(err.Error(), "artifact_signer") {
+		t.Fatalf("missing artifact signer error = %v", err)
 	}
 }

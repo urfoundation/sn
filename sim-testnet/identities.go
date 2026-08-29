@@ -69,15 +69,10 @@ func BuildRoleSecrets(cfg *ResolvedConfig) (*RoleSecrets, error) {
 		}
 	}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
-		for _, purpose := range []string{"deposit", "root", "artifact"} {
+		for _, purpose := range []string{"deposit", "root", "artifact", "claim-relayer"} {
 			if err := addEVM(fmt.Sprintf("operator-%d-%s", i, purpose)); err != nil {
 				return nil, err
 			}
-		}
-	}
-	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-		if err := addEVM(fmt.Sprintf("miner-%d-claim-relayer", i)); err != nil {
-			return nil, err
 		}
 	}
 	addSub := func(label string) error {
@@ -95,8 +90,15 @@ func BuildRoleSecrets(cfg *ResolvedConfig) (*RoleSecrets, error) {
 			return nil, err
 		}
 	}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		for _, label := range []string{fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet)} {
+			if err := addSub(label); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for churn := 1; churn <= cfg.Config.Topology.ChurnFloorUIDs; churn++ {
+		for _, label := range []string{churnHotkeyLabel(churn), churnColdkeyLabel(churn)} {
 			if err := addSub(label); err != nil {
 				return nil, err
 			}
@@ -152,6 +154,8 @@ func validatorHotkeyLabel(index int) string {
 
 func fleetHotkeyLabel(index int) string  { return fmt.Sprintf("fleet-%d-hotkey", index) }
 func fleetColdkeyLabel(index int) string { return fmt.Sprintf("fleet-%d-coldkey", index) }
+func churnHotkeyLabel(index int) string  { return fmt.Sprintf("churn-%d-hotkey", index) }
+func churnColdkeyLabel(index int) string { return fmt.Sprintf("churn-%d-coldkey", index) }
 
 func fleetMemberMinerIndex(cfg *ResolvedConfig, fleet, member int) int {
 	return (fleet-1)*cfg.Config.Topology.ClientsPerHeadFleet + member

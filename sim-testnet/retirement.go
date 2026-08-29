@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/urfoundation/sn/stabi"
 )
@@ -126,7 +125,7 @@ func readRetirementPlan(ctx context.Context, cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return nil, fmt.Errorf("retirement requires installed contracts: %w", err)
 	}
-	client, err := ethclient.DialContext(ctx, cfg.OperationalEVM)
+	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
 	}

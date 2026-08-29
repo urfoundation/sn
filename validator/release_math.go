@@ -99,18 +99,9 @@ func sumExactInputs(inputs []ExactWeightInput, masked map[uint16]bool) (map[uint
 }
 
 func depositRateAt(policy protocol.DepositPolicy, conviction *big.Int) (*big.Rat, error) {
-	if conviction == nil || conviction.Sign() < 0 {
-		return nil, errors.New("invalid conviction")
-	}
-	var selected *protocol.DepositTier
-	for i := range policy.Tiers {
-		tier := &policy.Tiers[i]
-		if conviction.Cmp(new(big.Int).SetUint64(tier.MinConvictionRao)) >= 0 {
-			selected = tier
-		}
-	}
-	if selected == nil || selected.RateNumeratorRaoPerGiB == 0 || selected.RateDenominator == 0 {
-		return nil, errors.New("no valid deposit rate for conviction")
+	selected, err := protocol.DepositTierAt(policy, conviction)
+	if err != nil {
+		return nil, err
 	}
 	return new(big.Rat).SetFrac(
 		new(big.Int).SetUint64(selected.RateNumeratorRaoPerGiB),

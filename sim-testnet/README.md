@@ -2,10 +2,12 @@
 
 `sim-testnet` is the only supported release-1.0 testnet installer and integration
 test. It converges an **existing** Bittensor testnet subnet, deploys the reviewed
-reserve/vault/coordinator contract set, provisions two operators, eight miners,
-two validators, two independently keyed three-client head fleets and two tail
-miners, then leaves the topology running for inspection and named scenarios.
-Each head fleet stays within one operator and whole fleets are balanced across
+reserve/vault/coordinator contract set, provisions two operators, 1,000 real
+miner identities in 20 production swarms, two validators, 202 independently
+keyed four-client head-candidate fleets, and 192 long-tail miners, then leaves
+the topology running for inspection and named scenarios. Exactly 200 of the 202
+candidate fleets receive native head slots. Each fleet stays within one operator
+and whole fleets are balanced across
 operators, so the affiliated-validator self-dealing mask leaves an independent
 head and pool instead of contaminating every head UID.
 
@@ -217,13 +219,18 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
 `release-1.0` requires 20 accelerated epochs, real two-NO verification,
 independently applied CRv4 vectors and self masks, isolated deposits and conviction,
 public roots, claims from both pools, cryptographically reconstructed head bindings,
-a nonzero native head weight, exact signed-policy max-weight-cap compliance, reserve
-principal plus auto-compounded yield, process fault recovery and exact rao
-conservation. `production-soak` schedules the canonical
-50,400-block policy and immunity period, rotates each operator verification key while
-retaining old proof verification, runs two complete production epochs, and genuinely
-restarts (new PID, healthy replacement) every operator service, miner/claim daemon
-and validator without overlapping faults.
+a nonzero native head weight, a real promotion/demotion transition across the
+200-slot boundary, exact selected/rejected native reward channels, one-tier payout
+exclusion, exact signed-policy max-weight-cap compliance, reserve principal plus
+auto-compounded yield, process fault recovery and exact rao conservation.
+`production-soak` schedules the testnet-only 2,400-block (approximately eight-hour)
+policy and immunity period, deliberately under-deposits one operator and proves
+that both validators zero its pool until an exact later deposit recovers it,
+rotates each operator verification key while retaining old proof verification,
+runs three consecutive fully observed production epochs, and genuinely restarts
+(new PID, healthy replacement) every operator service, miner/claim daemon and
+validator without overlapping faults. Mainnet remains locked to the whitepaper's
+separately reviewed 50,400-block/seven-day cadence.
 
 ## Continuous adversarial campaign
 

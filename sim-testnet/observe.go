@@ -243,17 +243,22 @@ func Analyze(ctx context.Context, cfg *ResolvedConfig, stateDir, manifest string
 		var expectedSigners map[int]string
 		observation.PublicIdentityCount, expectedSigners = inspectPublicIdentityBytes(cfg, public.Identities)
 		observation.PublicIdentitiesValid = observation.PublicIdentityCount > 0
+		minerClients, minerClientsErr := inspectMinerClientIDsBytes(cfg, public.Identities)
+		if minerClientsErr != nil {
+			observation.PublicIdentitiesValid = false
+		}
 		expectedCoordinator := common.Address{}
 		if public.Contracts != nil {
 			expectedCoordinator = public.Contracts.CoordinatorProxy
 		}
-		observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.HeadFleetUIDs = inspectFleetEvidenceBytes(cfg, public.SetupEvidence, expectedCoordinator)
+		observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.CandidateFleetUIDs = inspectFleetEvidenceBytes(cfg, public.SetupEvidence, expectedCoordinator)
 		observation.ReserveValidatorRegistered, observation.ReserveValidatorUID, observation.ReserveDelegateTake, observation.EscrowHotkeyRegistered, observation.EscrowHotkeyUID, observation.NativeCustodyError = inspectNativeCustodyRolesBytes(cfg, public.Identities, public.SubstrateRPC)
+		observation.NativeRewards, observation.NativeRewardsError = inspectNativeRewards(cfg, public.SubstrateRPC)
 		depositSigner := publicEVMRole(public.Identities, "operator-1-deposit")
 		observation.VoluntaryConviction, observation.VoluntaryConvictionValid, observation.VoluntaryConvictionError = inspectVoluntaryConvictionBytes(ctx, cfg, public.SetupEvidence["voluntary_conviction"], view, public.EVMRPC, depositSigner)
 		observation.Operators = nil
 		for _, operator := range public.Operators {
-			observation.Operators = append(observation.Operators, probe.inspectOperatorAt(ctx, view, operator.NoID, expectedSigners[operator.NoID], operator.APIURL))
+			observation.Operators = append(observation.Operators, probe.inspectOperatorAt(ctx, view, operator.NoID, expectedSigners[operator.NoID], operator.APIURL, minerClients))
 		}
 		observation.ObservationHash = ""
 		observation.ObservationHash, err = canonicalHashHex(observation)
@@ -431,7 +436,7 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if endpoint == "" {
 		endpoint = cfg.OperationalEVM
 	}
-	client, err := ethclient.DialContext(ctx, endpoint)
+	client, err := dialConfiguredEVMClient(ctx, cfg, endpoint)
 	if err != nil {
 		return nil, err
 	}

@@ -8,11 +8,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/urfoundation/sn/payoutartifact"
+	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
 type staticScenarioProbe struct {
@@ -244,7 +248,7 @@ func TestScenarioDefinitionsAreStrict(t *testing.T) {
 	for _, check := range release.Checks {
 		checks[check.ID] = true
 	}
-	for _, required := range []string{"native_head_weight_observed", "validator_self_uids_masked", "reserve_yield_auto_compounds", "validator_pool_scores_are_non_global", "claims_finalized_per_no", "signed_weight_cap_enforced"} {
+	for _, required := range []string{"native_head_weight_observed", "head_slot_boundary_enforced", "head_selected_paid_rejected_zero_weight", "head_promotion_demotion_transition", "native_head_pool_and_validator_rewards", "payout_artifacts_enforce_one_tier", "tier_exclusive_claim_outcomes", "validator_self_uids_masked", "reserve_yield_auto_compounds", "validator_pool_scores_are_non_global", "claims_finalized_per_no", "signed_weight_cap_enforced"} {
 		if !checks[required] {
 			t.Fatalf("release scenario is missing %s", required)
 		}
@@ -253,32 +257,61 @@ func TestScenarioDefinitionsAreStrict(t *testing.T) {
 
 func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 	cfg := testResolvedConfig(t)
+	headUIDs := make([]uint16, cfg.Config.Topology.fleetCandidates())
+	eligible := make([]uint16, cfg.Config.Topology.fleetCandidates())
+	for index := range eligible {
+		eligible[index] = uint16(20 + index)
+		if index < len(headUIDs) {
+			headUIDs[index] = eligible[index]
+		}
+	}
+	selected := append([]uint16(nil), eligible[:cfg.Config.Topology.HeadSlots]...)
+	rejected := append([]uint16(nil), eligible[cfg.Config.Topology.HeadSlots:]...)
+	affiliated := ValidatorObservation{
+		ValidatorID: 1, SelfUID: 5, MaskedUIDs: []uint16{5, 10},
+		EligibleHeadUIDs: eligible, SelectedHeadUIDs: selected, RejectedHeadUIDs: rejected,
+		AppliedWeights: []IntentWeightObservation{{UID: 11, Numerator: "1", Denominator: "1", Value: 100}},
+	}
+	independent := ValidatorObservation{
+		ValidatorID: 2, SelfUID: 6, MaskedUIDs: []uint16{6},
+		EligibleHeadUIDs: eligible, SelectedHeadUIDs: selected, RejectedHeadUIDs: rejected,
+		AppliedWeights: []IntentWeightObservation{
+			{UID: 10, Numerator: "2", Denominator: "1", Value: 100},
+			{UID: 11, Numerator: "1", Denominator: "1", Value: 50},
+		},
+	}
+	for index, uid := range eligible {
+		denominator := "1"
+		if index < 2 {
+			denominator = "2"
+		}
+		if index%cfg.Config.Topology.Operators == 0 {
+			affiliated.MaskedUIDs = append(affiliated.MaskedUIDs, uid)
+		} else if index < len(selected) {
+			affiliated.AppliedWeights = append(affiliated.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: "1", Denominator: denominator, Value: 300})
+		}
+		if index < len(selected) {
+			independent.AppliedWeights = append(independent.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: "1", Denominator: denominator, Value: 300})
+		}
+	}
+	if !slices.Contains(affiliated.MaskedUIDs, rejected[0]) {
+		t.Fatalf("affiliated rejected challenger UID %d was not masked", rejected[0])
+	}
 	observation := &ScenarioObservation{
 		FleetBindingsValid: true,
-		HeadFleetUIDs:      []uint16{20, 21},
+		CandidateFleetUIDs: headUIDs,
 		Status: &DeploymentStatus{Contracts: &ContractView{Operators: []OperatorView{
 			{NoID: 1, PoolUID: 10, PoolLive: true},
 			{NoID: 2, PoolUID: 11, PoolLive: true},
 		}}},
-		Validators: []ValidatorObservation{
-			{ValidatorID: 1, SelfUID: 5, MaskedUIDs: []uint16{5, 10, 20}, AppliedWeights: []IntentWeightObservation{
-				{UID: 11, Numerator: "1", Denominator: "1", Value: 32768},
-				{UID: 21, Numerator: "1", Denominator: "2", Value: 32767},
-			}},
-			{ValidatorID: 2, SelfUID: 6, MaskedUIDs: []uint16{6}, AppliedWeights: []IntentWeightObservation{
-				{UID: 10, Numerator: "2", Denominator: "1", Value: 32767},
-				{UID: 11, Numerator: "1", Denominator: "1", Value: 16383},
-				{UID: 20, Numerator: "1", Denominator: "2", Value: 8192},
-				{UID: 21, Numerator: "1", Denominator: "2", Value: 8192},
-			}},
-		},
+		Validators: []ValidatorObservation{affiliated, independent},
 	}
 	evaluation := &scenarioEvaluation{Cfg: cfg, Current: observation}
 	checks := map[string]scenarioCheck{}
 	for _, check := range releaseScenarioChecks() {
 		checks[check.ID] = check
 	}
-	for _, id := range []string{"native_head_weight_observed", "two_fleet_shared_prefix_split", "validator_self_uids_masked", "validator_pool_scores_are_non_global", "signed_weight_cap_enforced"} {
+	for _, id := range []string{"native_head_weight_observed", "head_slot_boundary_enforced", "two_fleet_shared_prefix_split", "validator_self_uids_masked", "validator_pool_scores_are_non_global", "signed_weight_cap_enforced"} {
 		passed, message := checks[id].Check(evaluation)
 		if !passed {
 			t.Errorf("%s: %s", id, message)
@@ -287,6 +320,178 @@ func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 	observation.Validators[0].MaskedUIDs = []uint16{5}
 	if passed, _ := checks["validator_self_uids_masked"].Check(evaluation); passed {
 		t.Fatal("affiliated validator passed without masking its controlled pool/fleets")
+	}
+}
+
+func TestHeadSlotBoundaryFailsClosedOnMalformedClassification(t *testing.T) {
+	base := ValidatorObservation{
+		EligibleHeadUIDs: []uint16{10, 11, 12},
+		SelectedHeadUIDs: []uint16{10, 11},
+		RejectedHeadUIDs: []uint16{12},
+	}
+	if ok, detail := validateHeadSlotBoundary(base, 2, 3); !ok {
+		t.Fatalf("valid boundary rejected: %s", detail)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ValidatorObservation)
+	}{
+		{name: "duplicate eligible", mutate: func(value *ValidatorObservation) { value.EligibleHeadUIDs[2] = 11 }},
+		{name: "selected rejected overlap", mutate: func(value *ValidatorObservation) { value.RejectedHeadUIDs[0] = 11 }},
+		{name: "unclassified eligible", mutate: func(value *ValidatorObservation) { value.SelectedHeadUIDs = value.SelectedHeadUIDs[:1] }},
+		{name: "stale binding", mutate: func(value *ValidatorObservation) { value.StaleHeadBindings = 1 }},
+	}
+	for _, testCase := range cases {
+		value := base
+		value.EligibleHeadUIDs = append([]uint16(nil), base.EligibleHeadUIDs...)
+		value.SelectedHeadUIDs = append([]uint16(nil), base.SelectedHeadUIDs...)
+		value.RejectedHeadUIDs = append([]uint16(nil), base.RejectedHeadUIDs...)
+		testCase.mutate(&value)
+		if ok, _ := validateHeadSlotBoundary(value, 2, 3); ok {
+			t.Fatalf("%s classification was accepted: %+v", testCase.name, value)
+		}
+	}
+}
+
+func TestHeadSelectionHistoryRecordsPromotionAndDemotion(t *testing.T) {
+	intent := func(epoch uint64, selected, rejected []uint16) validatorpkg.SteeringIntent {
+		return validatorpkg.SteeringIntent{Status: "applied", SubnetEpoch: epoch, EligibleHeadUIDs: []uint16{10, 11, 12}, SelectedHeadUIDs: selected, RejectedHeadUIDs: rejected}
+	}
+	history := summarizeHeadSelectionHistory([]validatorpkg.SteeringIntent{
+		intent(1, []uint16{10, 11}, []uint16{12}),
+		intent(2, []uint16{11, 12}, []uint16{10}),
+		intent(3, []uint16{10, 11}, []uint16{12}),
+		{Status: "pending", EligibleHeadUIDs: []uint16{10, 11, 12}, SelectedHeadUIDs: []uint16{10, 12}, RejectedHeadUIDs: []uint16{11}},
+	}, 2, 3)
+	if history.DecisionEpochs != 3 || history.Transitions != 2 || !slices.Equal(history.Promoted, []uint16{10, 12}) || !slices.Equal(history.Demoted, []uint16{10, 12}) {
+		t.Fatalf("head selection history=%+v", history)
+	}
+	static := summarizeHeadSelectionHistory([]validatorpkg.SteeringIntent{
+		intent(1, []uint16{10, 11}, []uint16{12}),
+		intent(2, []uint16{11, 10}, []uint16{12}),
+	}, 2, 3)
+	if static.Transitions != 0 || len(static.Promoted) != 0 || len(static.Demoted) != 0 {
+		t.Fatalf("ordering-only change counted as transition: %+v", static)
+	}
+}
+
+func TestPayoutTierMembershipExcludesEveryLiveCandidate(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.Miners = 10
+	cfg.Config.Topology.HeadFleets = 2
+	cfg.Config.Topology.ChallengerFleets = 1
+	cfg.Config.Topology.ClientsPerHeadFleet = 2
+	clients := map[[16]byte]int{}
+	artifact := &payoutArtifact{NoID: 1}
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		var clientID [16]byte
+		clientID[0], clientID[1] = byte(miner), byte(miner>>8)
+		clients[clientID] = miner
+		if operatorForMiner(cfg, miner) != 1 {
+			continue
+		}
+		provider := payoutartifact.ProviderInput{ClientID: clientID}
+		if miner <= cfg.Config.Topology.fleetCandidateMiners() {
+			provider.HeadExcluded = true
+			provider.ExclusionReason = "head_fleet_active"
+		} else {
+			provider.Eligible = true
+			artifact.Leaves = append(artifact.Leaves, payoutartifact.Leaf{ClientID: clientID})
+		}
+		artifact.Providers = append(artifact.Providers, provider)
+	}
+	summary, err := summarizePayoutTierMembership(cfg, 1, artifact, clients)
+	if err != nil || summary.CandidateProviders != 4 || summary.CandidateHeadExcluded != 4 || summary.CandidateLeaves != 0 || summary.PoolTailProviders != 2 || summary.PoolTailLeaves != 2 {
+		t.Fatalf("canonical membership=%+v error=%v", summary, err)
+	}
+	mutated := *artifact
+	mutated.Providers = append([]payoutartifact.ProviderInput(nil), artifact.Providers...)
+	mutated.Providers[0].HeadExcluded = false
+	if _, err := summarizePayoutTierMembership(cfg, 1, &mutated, clients); err == nil {
+		t.Fatal("candidate returned to its pool while its fleet UID remained live")
+	}
+	mutated = *artifact
+	mutated.Leaves = append(append([]payoutartifact.Leaf(nil), artifact.Leaves...), payoutartifact.Leaf{ClientID: artifact.Providers[0].ClientID})
+	if _, err := summarizePayoutTierMembership(cfg, 1, &mutated, clients); err == nil {
+		t.Fatal("candidate received a pool leaf while head-excluded")
+	}
+	mutated = *artifact
+	mutated.Providers = append([]payoutartifact.ProviderInput(nil), artifact.Providers[:len(artifact.Providers)-1]...)
+	if _, err := summarizePayoutTierMembership(cfg, 1, &mutated, clients); err == nil {
+		t.Fatal("incomplete operator provider population was accepted")
+	}
+}
+
+func TestNativeRewardChecksBindTopBoundaryPoolsAndValidatorDividends(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.Miners = 10
+	cfg.Config.Topology.HeadSlots = 2
+	cfg.Config.Topology.HeadFleets = 2
+	cfg.Config.Topology.ChallengerFleets = 1
+	cfg.Config.Topology.ClientsPerHeadFleet = 2
+	rewards := &NativeRewardObservation{
+		FinalizedHead: ChainHead{Number: 100, Hash: "0xhead"},
+		EmissionRao:   make([]string, 8), Incentive: make([]uint16, 8), Dividends: make([]uint16, 8),
+	}
+	for index := range rewards.EmissionRao {
+		rewards.EmissionRao[index] = "0"
+	}
+	for _, uid := range []uint16{1, 2, 5, 6} {
+		rewards.EmissionRao[uid], rewards.Incentive[uid] = "10", 1
+	}
+	for _, uid := range []uint16{3, 4} {
+		rewards.EmissionRao[uid], rewards.Dividends[uid] = "5", 1
+	}
+	validators := []ValidatorObservation{
+		{ValidatorID: 1, SelfUID: 3, EligibleHeadUIDs: []uint16{5, 6, 7}, SelectedHeadUIDs: []uint16{5, 6}, RejectedHeadUIDs: []uint16{7}, AppliedWeights: []IntentWeightObservation{{UID: 5, Value: 10}, {UID: 6, Value: 10}, {UID: 7}}},
+		{ValidatorID: 2, SelfUID: 4, EligibleHeadUIDs: []uint16{5, 6, 7}, SelectedHeadUIDs: []uint16{6, 5}, RejectedHeadUIDs: []uint16{7}, AppliedWeights: []IntentWeightObservation{{UID: 5, Value: 10}, {UID: 6, Value: 10}, {UID: 7}}},
+	}
+	observation := &ScenarioObservation{
+		CandidateFleetUIDs: []uint16{5, 6, 7}, NativeRewards: rewards, Validators: validators,
+		Status: &DeploymentStatus{Contracts: &ContractView{Operators: []OperatorView{{NoID: 1, PoolUID: 1, PoolLive: true}, {NoID: 2, PoolUID: 2, PoolLive: true}}}},
+	}
+	if ok, detail := validateHeadWeightDecision(cfg, observation); !ok {
+		t.Fatalf("head decision: %s", detail)
+	}
+	if ok, detail := validateNativeRewardChannels(cfg, observation); !ok {
+		t.Fatalf("native channels: %s", detail)
+	}
+	observation.Validators[1].RejectedHeadUIDs[0] = 6
+	if ok, _ := validateHeadWeightDecision(cfg, observation); ok {
+		t.Fatal("validators with divergent/overlapping top boundaries were accepted")
+	}
+	observation.Validators[1].RejectedHeadUIDs[0] = 7
+	rewards.EmissionRao[7], rewards.Incentive[7] = "1", 1
+	if ok, _ := validateNativeRewardChannels(cfg, observation); ok {
+		t.Fatal("rejected head with native payout was accepted")
+	}
+}
+
+func TestInspectValidatorIntentReadsVersionFourHeadAndDepositEvidence(t *testing.T) {
+	stateDir := t.TempDir()
+	intentDir := filepath.Join(stateDir, "runtime", "validator-1", "state")
+	if err := os.MkdirAll(intentDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	intent := validatorpkg.SteeringIntent{
+		Schema: "urnetwork-validator-steering-intent-v4", SubnetEpoch: 9, SelfUID: 4, MaskedUIDs: []uint16{4},
+		EligibleHeadUIDs: []uint16{10, 11, 12}, SelectedHeadUIDs: []uint16{10, 11}, RejectedHeadUIDs: []uint16{12},
+		StaleHeadBindings: []validatorpkg.StaleHeadBinding{}, Status: "applied",
+		DepositAudits: []validatorpkg.DepositAudit{{NoID: 1, Epoch: 4, SourceEpoch: 3, Status: validatorpkg.DepositAuditCompliant, Compliant: true, Disposition: "pool_weight_eligible", RequiredDepositRao: "1", ObservedDepositRao: "1", ConvictionBeforeRao: "0", ArtifactHash: "sha256:test"}},
+		UIDs:          []uint16{10, 11}, Scores: []validatorpkg.RationalJSON{{Numerator: "2", Denominator: "1"}, {Numerator: "1", Denominator: "1"}}, Values: []uint16{2, 1},
+	}
+	hash, err := intent.ReconstructedVectorHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.VectorHash = hash
+	store := map[string]any{"schema": "urnetwork-validator-steering-intent-v4", "current": intent, "history": []any{}}
+	if err := writePublicJSON(filepath.Join(intentDir, "steering-intents.json"), store); err != nil {
+		t.Fatal(err)
+	}
+	observed := inspectValidatorIntent(stateDir, 1, 2, 3)
+	if observed.Error != "" || observed.CurrentEpoch != 9 || len(observed.EligibleHeadUIDs) != 3 || len(observed.SelectedHeadUIDs) != 2 || len(observed.RejectedHeadUIDs) != 1 || observed.StaleHeadBindings != 0 || len(observed.DepositAudits) != 1 || !observed.DepositAudits[0].Compliant {
+		t.Fatalf("version four intent evidence was not preserved: %+v", observed)
 	}
 }
 
@@ -310,16 +515,18 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFaults := (2*cfg.Config.Topology.Operators + 1) + (2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators)
-	if definition.GoalEpochs != 3 || len(definition.Faults) != wantFaults {
+	wantFaults := (2*cfg.Config.Topology.Operators + 1) + (2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators)
+	if definition.GoalEpochs != 4 || len(definition.Faults) != wantFaults {
 		t.Fatalf("production definition = %+v", definition)
 	}
 	start := testScenarioObservation(cfg, 20)
-	current := testScenarioObservation(cfg, 23)
-	current.Status.Contracts.Policy = PolicyView{
-		EffectiveEpoch: 21, EpochBlocks: 50_400, RootCommitWindowBlocks: 1_200,
-		FinalizeOffsetBlocks: 14_400, CloseGraceBlocks: 120,
+	current := testScenarioObservation(cfg, 24)
+	productionPolicy := PolicyView{
+		EffectiveEpoch: 21, EpochBlocks: 2_400, RootCommitWindowBlocks: 200,
+		FinalizeOffsetBlocks: 1_200, CloseGraceBlocks: 20,
 	}
+	start.Status.Contracts.Policy = productionPolicy
+	current.Status.Contracts.Policy = productionPolicy
 	assertions := evaluateScenario(cfg, definition, start, current, time.Now())
 	byID := map[string]bool{}
 	for _, assertion := range assertions {
@@ -331,7 +538,7 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if _, ok := byID["verify_key_rotation_preserves_history"]; !ok {
 		t.Fatal("production soak omitted verify-key rotation evidence")
 	}
-	minimum := time.Duration((300+2*50_400+14_400)*12+120) * time.Second
+	minimum := time.Duration((300+3*2_400+1_200)*12+120) * time.Second
 	if got := scenarioTimeout(cfg, definition); got < minimum {
 		t.Fatalf("production timeout %s is below %s", got, minimum)
 	}

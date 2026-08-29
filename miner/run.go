@@ -10,9 +10,7 @@ import (
 	"flag"
 	"fmt"
 	mathrand "math/rand"
-	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,8 +51,6 @@ func initGlog() {
 	flag.Set("logtostderr", "true")
 	flag.Set("stderrthreshold", "INFO")
 	flag.Set("v", "0")
-	// unlike unix, the android/ios standard is for diagnostics to go to stdout
-	os.Stderr = os.Stdout
 }
 
 // mainUsage returns the docopt usage string. Package-level (rather than
@@ -353,23 +349,11 @@ func testEgressDialContext(opts docopt.Opts) (*connect.DialContextSettings, erro
 	if err != nil || strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}
-	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
-	if err != nil || !addr.Is4() || !addr.IsLoopback() {
+	settings, err := testEgressDialContextForIP(raw)
+	if err != nil {
 		return nil, fmt.Errorf("--test-egress-source-ip must be an IPv4 loopback address")
 	}
-	source := net.IP(append([]byte(nil), addr.AsSlice()...))
-	return &connect.DialContextSettings{DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
-		dialer := &net.Dialer{}
-		switch network {
-		case "tcp", "tcp4":
-			dialer.LocalAddr = &net.TCPAddr{IP: append(net.IP(nil), source...)}
-		case "udp", "udp4":
-			dialer.LocalAddr = &net.UDPAddr{IP: append(net.IP(nil), source...)}
-		default:
-			return nil, fmt.Errorf("test egress source %s does not support network %q", addr, network)
-		}
-		return dialer.DialContext(ctx, network, destination)
-	}}, nil
+	return settings, nil
 }
 
 func provide(opts docopt.Opts) {

@@ -117,12 +117,14 @@ func estimateGas(ctx context.Context, client interface {
 
 // txRequest is a prepared contract call for runTx.
 type txRequest struct {
-	contract common.Address
-	from     common.Address
-	key      *ecdsa.PrivateKey
-	calldata []byte
-	gasLimit uint64 // 0 = estimate + 20% headroom
-	dryRun   bool
+	contract  common.Address
+	from      common.Address
+	key       *ecdsa.PrivateKey
+	calldata  []byte
+	gasLimit  uint64 // 0 = estimate + 20% headroom
+	dryRun    bool
+	prepared  func(common.Hash, []byte) error
+	broadcast func(common.Hash) error
 }
 
 // runTx runs the submit lifecycle shared by submit/bind-head/unbind-head: an
@@ -188,15 +190,20 @@ func runTx(
 	if err != nil {
 		return nil, fmt.Errorf("encode signed transaction: %w", err)
 	}
-	// This line is intentionally emitted and flushed through stdout before the
-	// broadcast call. The release claim daemon fsyncs the exact RLP in its
-	// write-ahead queue from this record; Write does not return until that
-	// durable callback completes, so a crash cannot create a hashless send.
-	if _, err := fmt.Printf("prepared: tx %s raw 0x%x\n", signed.Hash(), raw); err != nil {
-		return nil, fmt.Errorf("persist prepared transaction: %w", err)
+	if req.prepared != nil {
+		if err := req.prepared(signed.Hash(), append([]byte(nil), raw...)); err != nil {
+			return nil, fmt.Errorf("persist prepared transaction: %w", err)
+		}
+	} else if _, err := fmt.Printf("prepared: tx %s raw 0x%x\n", signed.Hash(), raw); err != nil {
+		return nil, fmt.Errorf("print prepared transaction: %w", err)
 	}
 	if err := client.SendTransaction(ctx, signed); err != nil {
 		return nil, fmt.Errorf("send: %w", revertError(err))
+	}
+	if req.broadcast != nil {
+		if err := req.broadcast(signed.Hash()); err != nil {
+			return nil, fmt.Errorf("persist broadcast transaction: %w", err)
+		}
 	}
 	fmt.Printf("sent: tx %s (nonce %d, gas %d, gasPrice %s)\n", signed.Hash(), nonce, gasLimit, gasPrice)
 	fmt.Println("waiting to be mined...")

@@ -70,6 +70,7 @@ type SteeringPolicy struct {
 	Theta             Rational         `json:"theta" yaml:"theta"`
 	QualityTransform  QualityTransform `json:"quality_transform" yaml:"quality_transform"`
 	HeadScoreEMA      Rational         `json:"head_score_ema" yaml:"head_score_ema"`
+	MaximumHeadFleets uint16           `json:"maximum_head_fleets" yaml:"maximum_head_fleets"`
 	MaxWeightLimitU16 uint16           `json:"max_weight_limit_u16" yaml:"max_weight_limit_u16"`
 	EmptyChannel      string           `json:"empty_channel" yaml:"empty_channel"`
 	Arithmetic        string           `json:"arithmetic" yaml:"arithmetic"`
@@ -90,8 +91,61 @@ type DepositPolicy struct {
 	EpochCapRaoPerOperator  uint64        `json:"epoch_cap_rao_per_operator" yaml:"epoch_cap_rao_per_operator"`
 	TotalTestCampaignCapRao uint64        `json:"total_test_campaign_cap_rao" yaml:"total_test_campaign_cap_rao"`
 	TierSnapshot            string        `json:"tier_snapshot" yaml:"tier_snapshot"`
+	UsageLagEpochs          uint64        `json:"usage_lag_epochs" yaml:"usage_lag_epochs"`
+	UsageArtifact           string        `json:"usage_artifact" yaml:"usage_artifact"`
+	MismatchAction          string        `json:"mismatch_action" yaml:"mismatch_action"`
+	UnavailableAction       string        `json:"unavailable_action" yaml:"unavailable_action"`
 	Tiers                   []DepositTier `json:"tiers" yaml:"tiers"`
 	ZeroOrInvalidRate       string        `json:"zero_or_invalid_rate" yaml:"zero_or_invalid_rate"`
+}
+
+// DepositTierAt returns the exact conviction snapshot tier used by both an
+// operator sizing its demand deposit and validators auditing that deposit.
+func DepositTierAt(policy DepositPolicy, conviction *big.Int) (DepositTier, error) {
+	if conviction == nil || conviction.Sign() < 0 || len(policy.Tiers) == 0 {
+		return DepositTier{}, errors.New("invalid conviction tier input")
+	}
+	selected := policy.Tiers[0]
+	if selected.MinConvictionRao != 0 || selected.RateNumeratorRaoPerGiB == 0 || selected.RateDenominator == 0 {
+		return DepositTier{}, errors.New("invalid conviction tier zero")
+	}
+	for index, tier := range policy.Tiers {
+		if tier.RateNumeratorRaoPerGiB == 0 || tier.RateDenominator == 0 || (index > 0 && tier.MinConvictionRao <= policy.Tiers[index-1].MinConvictionRao) {
+			return DepositTier{}, errors.New("invalid conviction tier schedule")
+		}
+		if conviction.Cmp(new(big.Int).SetUint64(tier.MinConvictionRao)) >= 0 {
+			selected = tier
+		}
+	}
+	return selected, nil
+}
+
+// RequiredDepositRao evaluates the canonical floor-and-cap formula without
+// machine-word intermediate arithmetic:
+//
+//	floor(usage_bytes * rate_numerator / (GiB * rate_denominator))
+//
+// The result is capped by the per-operator epoch cap. A zero usage value is a
+// valid zero deposit; malformed rates or conviction fail closed.
+func RequiredDepositRao(usageBytes uint64, conviction *big.Int, policy DepositPolicy) (*big.Int, DepositTier, error) {
+	tier, err := DepositTierAt(policy, conviction)
+	if err != nil {
+		return nil, DepositTier{}, err
+	}
+	if policy.EpochCapRaoPerOperator == 0 {
+		return nil, DepositTier{}, errors.New("deposit epoch cap is zero")
+	}
+	amount := new(big.Int).Mul(new(big.Int).SetUint64(usageBytes), new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB))
+	divisor := new(big.Int).Mul(new(big.Int).SetUint64(tier.RateDenominator), new(big.Int).SetUint64(1<<30))
+	if divisor.Sign() == 0 {
+		return nil, DepositTier{}, errors.New("deposit rate divisor is zero")
+	}
+	amount.Quo(amount, divisor)
+	capRao := new(big.Int).SetUint64(policy.EpochCapRaoPerOperator)
+	if amount.Cmp(capRao) > 0 {
+		amount.Set(capRao)
+	}
+	return amount, tier, nil
 }
 
 type VerifyPolicy struct {
@@ -132,6 +186,7 @@ type SafetyPolicy struct {
 
 type Policy struct {
 	Schema            string           `json:"schema" yaml:"schema"`
+	NetworkProfile    string           `json:"network_profile" yaml:"network_profile"`
 	PolicyID          uint64           `json:"policy_id" yaml:"policy_id"`
 	EffectiveEpoch    uint64           `json:"effective_epoch" yaml:"effective_epoch"`
 	Settlement        SettlementPolicy `json:"settlement" yaml:"settlement"`
@@ -174,6 +229,9 @@ func (p Policy) Validate() error {
 	if p.Schema != PolicySchema {
 		return fmt.Errorf("policy schema %q, want %q", p.Schema, PolicySchema)
 	}
+	if p.NetworkProfile != "testnet" && p.NetworkProfile != "mainnet" {
+		return errors.New("network_profile must be testnet or mainnet")
+	}
 	if p.PolicyID == 0 {
 		return errors.New("policy_id is zero")
 	}
@@ -190,6 +248,12 @@ func (p Policy) Validate() error {
 	}
 	if production.CloseGraceBlocks > production.RootCommitWindowBlocks || production.RootCommitWindowBlocks > production.FinalizeOffsetBlocks || production.EpochBlocks <= s.EpochBlocks {
 		return errors.New("invalid production cadence")
+	}
+	if p.NetworkProfile == "testnet" && production.EpochBlocks != 2_400 {
+		return errors.New("testnet UR block must be exactly 2400 chain blocks")
+	}
+	if p.NetworkProfile == "mainnet" && production.EpochBlocks != 50_400 {
+		return errors.New("mainnet UR block must be exactly 50400 chain blocks")
 	}
 	if s.ClaimTTLEpochs == 0 || s.ClaimGraceEpochs > s.ClaimTTLEpochs {
 		return errors.New("invalid claim ttl/grace")
@@ -212,6 +276,9 @@ func (p Policy) Validate() error {
 	if p.Steering.HeadScoreEMA.Numerator > p.Steering.HeadScoreEMA.Denominator {
 		return errors.New("head_score_ema exceeds one")
 	}
+	if p.Steering.MaximumHeadFleets == 0 || p.Steering.MaximumHeadFleets > 200 {
+		return errors.New("maximum_head_fleets must be in [1,200]")
+	}
 	if p.Steering.MaxWeightLimitU16 == 0 {
 		return errors.New("max_weight_limit_u16 is zero")
 	}
@@ -226,7 +293,7 @@ func (p Policy) Validate() error {
 	if d.Unit != "rao_per_gib" || d.EpochCapRaoPerOperator == 0 || d.TotalTestCampaignCapRao == 0 {
 		return errors.New("invalid deposit unit or cap")
 	}
-	if d.TierSnapshot != "conviction_before_epoch" || d.ZeroOrInvalidRate != "halt" {
+	if d.TierSnapshot != "conviction_before_epoch" || d.UsageLagEpochs != 1 || d.UsageArtifact != "signed_payout_artifact_total_usage_bytes" || d.MismatchAction != "zero_pool_weight" || d.UnavailableAction != "zero_pool_weight_after_root_window" || d.ZeroOrInvalidRate != "halt" {
 		return errors.New("unsupported deposit snapshot/failure policy")
 	}
 	if len(d.Tiers) == 0 || d.Tiers[0].MinConvictionRao != 0 {

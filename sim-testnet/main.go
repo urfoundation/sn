@@ -11,6 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	serverapi "github.com/urnetwork/server/api"
+	serverconnect "github.com/urnetwork/server/connect"
+	servertaskworker "github.com/urnetwork/server/taskworker"
+
+	minercomponent "github.com/urfoundation/sn/miner"
+	validatorcomponent "github.com/urfoundation/sn/validator"
 )
 
 var version = "1.0"
@@ -144,6 +151,8 @@ func runMain(args []string) error {
 		fs.StringVar(&config.HealthAddress, "health", "", "")
 		fs.StringVar(&config.Upstream, "upstream", "", "")
 		fs.StringVar(&config.TLSServerName, "tls-server-name", "", "")
+		fs.BoolVar(&config.HTTP, "http", false, "")
+		fs.IntVar(&config.MaximumRequestsPerMinute, "maximum-requests-per-minute", 0, "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -153,6 +162,50 @@ func runMain(args []string) error {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return runRPCProxy(ctx, config)
+	}
+	if len(args) > 0 && (args[0] == "__miner_swarm" || args[0] == "__claim_swarm" || args[0] == "__validator") {
+		component := args[0]
+		fs := flag.NewFlagSet(component, flag.ContinueOnError)
+		var configPath string
+		fs.StringVar(&configPath, "config", "", "")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if configPath == "" || fs.NArg() != 0 {
+			return fmt.Errorf("invalid internal %s invocation", component)
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if component == "__miner_swarm" {
+			return minercomponent.RunProviderSwarm(ctx, configPath)
+		}
+		if component == "__claim_swarm" {
+			return minercomponent.RunClaimSwarm(ctx, configPath)
+		}
+		return validatorcomponent.RunRelease(ctx, configPath)
+	}
+	if len(args) > 0 && (args[0] == "__server_api" || args[0] == "__server_connect" || args[0] == "__server_taskworker") {
+		component := args[0]
+		fs := flag.NewFlagSet(component, flag.ContinueOnError)
+		var port, count, batchSize int
+		fs.IntVar(&port, "port", 0, "")
+		fs.IntVar(&count, "count", 8, "")
+		fs.IntVar(&batchSize, "batch_size", 4, "")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if port == 0 || fs.NArg() != 0 {
+			return fmt.Errorf("invalid internal %s invocation", component)
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if component == "__server_api" {
+			return serverapi.Run(ctx, serverapi.RunOptions{Port: port})
+		}
+		if component == "__server_connect" {
+			return serverconnect.Run(ctx, serverconnect.RunOptions{Port: port})
+		}
+		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
 	}
 	cmd, o, err := parseCLI(args)
 	if err != nil {

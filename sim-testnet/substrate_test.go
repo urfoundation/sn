@@ -3,12 +3,60 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 )
+
+func TestFinalizedCheckpointWaitsForReadSurfaceAfterSubscription(t *testing.T) {
+	target := ChainHead{Number: 100, Hash: "0x" + strings.Repeat("11", 32)}
+	calls := 0
+	err := waitForFinalizedCheckpoint(context.Background(), target, time.Millisecond, func() (ChainHead, string, error) {
+		calls++
+		switch calls {
+		case 1:
+			return ChainHead{Number: 99, Hash: "0x" + strings.Repeat("22", 32)}, "", nil
+		case 2:
+			return ChainHead{}, "", errors.New("temporary RPC front lag")
+		default:
+			return ChainHead{Number: 101, Hash: "0x" + strings.Repeat("33", 32)}, target.Hash, nil
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("checkpoint observations = %d, want 3", calls)
+	}
+}
+
+func TestFinalizedCheckpointRejectsCanonicalMismatch(t *testing.T) {
+	target := ChainHead{Number: 100, Hash: "0x" + strings.Repeat("11", 32)}
+	err := waitForFinalizedCheckpoint(context.Background(), target, time.Millisecond, func() (ChainHead, string, error) {
+		return ChainHead{Number: 100, Hash: target.Hash}, "0x" + strings.Repeat("22", 32), nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "differs") {
+		t.Fatalf("canonical mismatch was accepted: %v", err)
+	}
+}
+
+func TestFinalizedCheckpointWaitHonorsContext(t *testing.T) {
+	target := ChainHead{Number: 100, Hash: "0x" + strings.Repeat("11", 32)}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	err := waitForFinalizedCheckpoint(ctx, target, time.Millisecond, func() (ChainHead, string, error) {
+		return ChainHead{Number: 99, Hash: target.Hash}, "", nil
+	})
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("checkpoint wait ignored its deadline: %v", err)
+	}
+}
 
 func TestSubtensorAccountInfoDecodesRuntime451U64Balances(t *testing.T) {
 	raw := make([]byte, 56)
@@ -30,6 +78,35 @@ func TestSubtensorAccountInfoDecodesRuntime451U64Balances(t *testing.T) {
 	}
 	if got.Data.Free != 12_345_678_901 || got.Data.Reserved != 22 || got.Data.Frozen != 33 || got.Data.Flags.Int == nil || got.Data.Flags.Uint64() != 44 {
 		t.Fatalf("account data decoded incorrectly: %+v", got.Data)
+	}
+}
+
+func TestRuntimeExistentialDepositDecodesExactU64Rao(t *testing.T) {
+	raw := make([]byte, 8)
+	binary.LittleEndian.PutUint64(raw, 500)
+	got, err := decodeRuntimeExistentialDepositRao(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 500 {
+		t.Fatalf("existential deposit = %d, want 500 rao", got)
+	}
+}
+
+func TestRuntimeExistentialDepositRejectsShapeAndZeroDrift(t *testing.T) {
+	valid := make([]byte, 8)
+	binary.LittleEndian.PutUint64(valid, 500)
+	for name, raw := range map[string][]byte{
+		"empty":     nil,
+		"truncated": valid[:7],
+		"trailing":  append(append([]byte(nil), valid...), 0),
+		"zero":      make([]byte, 8),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeRuntimeExistentialDepositRao(raw); err == nil {
+				t.Fatalf("%s existential-deposit encoding was accepted", name)
+			}
+		})
 	}
 }
 

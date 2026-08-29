@@ -199,7 +199,7 @@ func cmdUnbindHead(opts docopt.Opts) error {
 				fmt.Printf("  gas (est):  unavailable (%v); using --gas_limit=%d\n", gasErr, gasLimit)
 			}
 		}
-	})
+	}, SubmitHooks{})
 	if err != nil {
 		return err
 	}

@@ -15,7 +15,7 @@ owner_controlled:
   transfer_enabled: true
 production_owner_controlled:
   # Applied with the production-cadence policy transition, after M2.
-  immunity_period: 50400
+  immunity_period: 2400
 observed_compatibility_gates:
   max_weight_limit:
     storage: MaxWeightsLimit

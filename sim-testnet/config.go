@@ -94,23 +94,37 @@ type DeploymentConfig struct {
 	DetachAfterLaunch bool   `yaml:"detach_after_launch" json:"detach_after_launch"`
 }
 type LaunchInputs struct {
-	Wallet                     string `yaml:"wallet" json:"wallet"`
-	WalletPassword             string `yaml:"wallet_password" json:"wallet_password"`
-	ChainID                    string `yaml:"chain_id" json:"chain_id"`
-	Authority                  string `yaml:"authority" json:"authority"`
-	PublicSubstrateRPCOverride string `yaml:"public_substrate_rpc_override" json:"public_substrate_rpc_override"`
-	PublicEVMRPCOverride       string `yaml:"public_evm_rpc_override" json:"public_evm_rpc_override"`
-	ObjectStoreHostname        string `yaml:"object_store_hostname" json:"object_store_hostname"`
-	OperatorAPIOrigins         string `yaml:"operator_api_origins" json:"operator_api_origins"`
+	Wallet                            string `yaml:"wallet" json:"wallet"`
+	WalletPassword                    string `yaml:"wallet_password" json:"wallet_password"`
+	ChainID                           string `yaml:"chain_id" json:"chain_id"`
+	Authority                         string `yaml:"authority" json:"authority"`
+	PublicSubstrateRPCOverride        string `yaml:"public_substrate_rpc_override" json:"public_substrate_rpc_override"`
+	PublicEVMRPCOverride              string `yaml:"public_evm_rpc_override" json:"public_evm_rpc_override"`
+	PublicEVMMaximumRequestsPerMinute int    `yaml:"public_evm_maximum_requests_per_minute" json:"public_evm_maximum_requests_per_minute"`
+	ObjectStoreHostname               string `yaml:"object_store_hostname" json:"object_store_hostname"`
+	OperatorAPIOrigins                string `yaml:"operator_api_origins" json:"operator_api_origins"`
 }
 type TopologyConfig struct {
 	Operators           int    `yaml:"operators" json:"operators"`
 	Miners              int    `yaml:"miners" json:"miners"`
 	Validators          int    `yaml:"validators" json:"validators"`
+	HeadSlots           int    `yaml:"head_slots" json:"head_slots"`
 	HeadFleets          int    `yaml:"head_fleets" json:"head_fleets"`
+	ChallengerFleets    int    `yaml:"challenger_fleets" json:"challenger_fleets"`
 	ClientsPerHeadFleet int    `yaml:"clients_per_head_fleet" json:"clients_per_head_fleet"`
+	ChurnFloorUIDs      int    `yaml:"churn_floor_uids" json:"churn_floor_uids"`
+	MinerSwarmProcesses int    `yaml:"miner_swarm_processes" json:"miner_swarm_processes"`
 	OperatorAssignment  string `yaml:"operator_assignment" json:"operator_assignment"`
 }
+
+func (self TopologyConfig) fleetCandidates() int {
+	return self.HeadFleets + self.ChallengerFleets
+}
+
+func (self TopologyConfig) fleetCandidateMiners() int {
+	return self.fleetCandidates() * self.ClientsPerHeadFleet
+}
+
 type ContractConfig struct {
 	Install               bool   `yaml:"install" json:"install"`
 	ArtifactSource        string `yaml:"artifact_source" json:"artifact_source"`
@@ -434,8 +448,12 @@ func (c *HarnessConfig) Validate() error {
 		return errors.New("release harness only accepts the existing Bittensor testnet subnet and forbids subnet creation")
 	}
 	headMembers := c.Topology.HeadFleets * c.Topology.ClientsPerHeadFleet
-	if c.Topology.Operators != 2 || c.Topology.Miners != 8 || c.Topology.Validators != 2 || c.Topology.HeadFleets != 2 || c.Topology.ClientsPerHeadFleet != 3 || headMembers != 6 {
-		return errors.New("release-1.0 testnet topology is fixed at two operators, eight miners, two validators, and two independently keyed three-client head fleets")
+	allFleetMembers := c.Topology.fleetCandidateMiners()
+	if c.Topology.Operators != 2 || c.Topology.Miners != 1_000 || c.Topology.Validators != 2 || c.Topology.HeadSlots != 200 || c.Topology.HeadFleets != 200 || c.Topology.ChallengerFleets != 2 || c.Topology.ClientsPerHeadFleet != 4 || c.Topology.ChurnFloorUIDs != 47 || c.Topology.MinerSwarmProcesses != 20 || headMembers != 800 || allFleetMembers != 808 {
+		return errors.New("release-1.0 testnet topology is fixed at two operators, 1000 miners in 20 swarms, two validators, 200 four-client head fleets, two four-client challengers, and 47 churn-floor UIDs alongside the two finalized bootstrap UIDs")
+	}
+	if c.Topology.Miners%c.Topology.MinerSwarmProcesses != 0 || c.Topology.Miners <= allFleetMembers {
+		return errors.New("miner swarms must divide the topology exactly and leave an unbound pool tail")
 	}
 	if c.Topology.OperatorAssignment != "balanced" || c.Dependencies.Mode != "managed_containers" || c.Processes.RestartPolicy != "on_failure_bounded" {
 		return errors.New("release topology requires balanced assignment, managed containers, and bounded restart supervision")
@@ -443,8 +461,8 @@ func (c *HarnessConfig) Validate() error {
 	if c.Contracts.GovernanceProfile != "testnet-single-owner" || !c.Contracts.Install || !c.Contracts.VerifyRuntimeCodeHash {
 		return errors.New("invalid contract release settings")
 	}
-	if c.Scenarios.Launch != "smoke" || c.Scenarios.Release != "release-1.0" || c.Scenarios.ShortEpochs < 20 || c.Scenarios.ProductionEpochs < 2 {
-		return errors.New("release scenarios require smoke launch, release-1.0, at least 20 accelerated epochs, and two production epochs")
+	if c.Scenarios.Launch != "smoke" || c.Scenarios.Release != "release-1.0" || c.Scenarios.ShortEpochs < 20 || c.Scenarios.ProductionEpochs < 3 {
+		return errors.New("release scenarios require smoke launch, release-1.0, at least 20 accelerated epochs, and three testnet UR blocks")
 	}
 	if c.Scenarios.VoluntaryConvictionRao == 0 || c.Scenarios.QualityFaultOperator < 1 || c.Scenarios.QualityFaultOperator > c.Topology.Operators || c.Scenarios.QualityFaultStartBlocks == 0 || c.Scenarios.QualityFaultDurationBlocks == 0 {
 		return errors.New("release scenario requires voluntary conviction and a bounded quality-cohort fault")
@@ -469,17 +487,24 @@ func (c *HarnessConfig) Validate() error {
 		return errors.New("artifacts must use content-addressed server/blob and server API history")
 	}
 	// Each NO consumes a deposit and pool UID; validators include the reserve
-	// validator; every fleet consumes one UID; and the immutable claims escrow
-	// needs its own valid hotkey for moveStake/transferStake.
-	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.HeadFleets + 1
+	// validator; initial and challenger fleets consume one registration each;
+	// churn-floor UIDs fill capacity; and claims escrow needs a live hotkey.
+	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1
 	if c.Budgets.MaximumRegistrations < requiredRegistrations {
 		return errors.New("registration budget is below topology requirement")
+	}
+	setupRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.HeadFleets + c.Topology.ChurnFloorUIDs + 1
+	if setupRegistrations != 254 {
+		return fmt.Errorf("initial topology consumes %d registrations, want 254 alongside the two finalized bootstrap UIDs", setupRegistrations)
 	}
 	if c.Budgets.MaximumRegistrationBurnRao == 0 {
 		return errors.New("maximum registration burn must be nonzero")
 	}
 	if _, _, _, err := resolveOperationalRPCs("127.0.0.1:9944", c.LaunchInputs.PublicSubstrateRPCOverride, c.LaunchInputs.PublicEVMRPCOverride); err != nil {
 		return fmt.Errorf("public RPC override: %w", err)
+	}
+	if c.LaunchInputs.PublicEVMMaximumRequestsPerMinute < 1 || c.LaunchInputs.PublicEVMMaximumRequestsPerMinute > 60 {
+		return errors.New("public EVM request ceiling must be in [1,60] requests per minute")
 	}
 	for name, ref := range map[string]string{"wallet": c.LaunchInputs.Wallet, "wallet password": c.LaunchInputs.WalletPassword, "chain_id": c.LaunchInputs.ChainID, "authority": c.LaunchInputs.Authority, "object store hostname": c.LaunchInputs.ObjectStoreHostname, "operator API origins": c.LaunchInputs.OperatorAPIOrigins, "netuid": c.Deployment.NetuidFrom, "tao budget": c.Budgets.MaximumTotalTAORaoFrom, "alpha budget": c.Budgets.MaximumTotalAlphaRaoFrom, "gas budget": c.Budgets.MaximumEVMGasWeiFrom} {
 		if !strings.HasPrefix(ref, "vault://main/st.yml#testnet-") {
@@ -1061,19 +1086,44 @@ func (r *ResolvedConfig) Validate() error {
 	if len(r.Policy.Deposit.Tiers) < 2 || r.Policy.Deposit.Tiers[1].MinConvictionRao != r.Config.Scenarios.VoluntaryConvictionRao {
 		return errors.New("voluntary conviction must equal the first nonzero tier boundary")
 	}
-	perOperator, ok := checkedMul(r.Policy.Deposit.EpochCapRaoPerOperator, uint64(r.Config.Scenarios.ShortEpochs))
-	if !ok {
-		return errors.New("accelerated campaign deposit requirement overflows uint64")
+	required, err := releaseCampaignDepositRequirement(r)
+	if err != nil {
+		return err
 	}
-	required, ok := checkedMul(perOperator, uint64(r.Config.Topology.Operators))
-	if !ok {
-		return errors.New("accelerated campaign deposit requirement overflows uint64")
-	}
-	required, ok = checkedAdd(required, r.Config.Scenarios.VoluntaryConvictionRao)
-	if !ok || r.Policy.Deposit.TotalTestCampaignCapRao < required {
-		return fmt.Errorf("campaign cap %d cannot fund %d accelerated epochs plus voluntary conviction; require at least %d", r.Policy.Deposit.TotalTestCampaignCapRao, r.Config.Scenarios.ShortEpochs, required)
+	if r.Policy.Deposit.TotalTestCampaignCapRao < required {
+		return fmt.Errorf("campaign cap %d cannot fund accelerated epochs, the dishonest production deposit, recovery, and three fully observed UR blocks; require at least %d", r.Policy.Deposit.TotalTestCampaignCapRao, required)
 	}
 	return nil
+}
+
+// releaseCampaignDepositRequirement includes every epoch that can begin before
+// the production-soak terminal observation. The first production epoch uses a
+// one-rao dishonest deposit for NO 2; all other positions reserve their full
+// per-epoch cap. One extra production epoch is conservatively discarded as
+// partial, and the terminal boundary may trigger the following epoch's deposit.
+func releaseCampaignDepositRequirement(r *ResolvedConfig) (uint64, error) {
+	if r == nil || r.Config == nil || r.Config.Topology.Operators < 2 || r.Config.Scenarios.ShortEpochs < 1 || r.Config.Scenarios.ProductionEpochs < 1 {
+		return 0, errors.New("release campaign topology is incomplete")
+	}
+	epochsPerOperator, ok := checkedAdd(uint64(r.Config.Scenarios.ShortEpochs), uint64(r.Config.Scenarios.ProductionEpochs)+2)
+	if !ok {
+		return 0, errors.New("release campaign epoch count overflows uint64")
+	}
+	allEpochs, ok := checkedMul(epochsPerOperator, uint64(r.Config.Topology.Operators))
+	if !ok {
+		return 0, errors.New("release campaign epoch count overflows uint64")
+	}
+	fullCap, ok := checkedMul(allEpochs, r.Policy.Deposit.EpochCapRaoPerOperator)
+	if !ok || fullCap < r.Policy.Deposit.EpochCapRaoPerOperator {
+		return 0, errors.New("release campaign deposit requirement overflows uint64")
+	}
+	// Replace NO 2's one full-cap production deposit with exactly one rao.
+	required := fullCap - r.Policy.Deposit.EpochCapRaoPerOperator + 1
+	required, ok = checkedAdd(required, r.Config.Scenarios.VoluntaryConvictionRao)
+	if !ok {
+		return 0, errors.New("release campaign deposit requirement overflows uint64")
+	}
+	return required, nil
 }
 
 func validateOperatorAPIOrigins(origins []string, operators int) ([]string, error) {

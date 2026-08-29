@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -11,6 +12,54 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+func TestEVMFundingDeltaAccountsForRuntimeExistentialDeposit(t *testing.T) {
+	wei := func(rao uint64) *big.Int {
+		return new(big.Int).Mul(new(big.Int).SetUint64(rao), new(big.Int).SetUint64(evmWeiPerRao))
+	}
+	for name, test := range map[string]struct {
+		usable, deposit, free uint64
+		balance               *big.Int
+		wantDelta             uint64
+	}{
+		"fresh mirror":              {usable: 1_000, deposit: 500, free: 0, balance: big.NewInt(0), wantDelta: 1_500},
+		"deposit-only mirror":       {usable: 1_000, deposit: 500, free: 500, balance: big.NewInt(0), wantDelta: 1_000},
+		"failed-run incident state": {usable: 1_000, deposit: 500, free: 1_000, balance: wei(500), wantDelta: 500},
+		"partially funded mirror":   {usable: 1_000, deposit: 500, free: 750, balance: wei(250), wantDelta: 750},
+		"already usable":            {usable: 1_000, deposit: 500, free: 1_500, balance: wei(1_000), wantDelta: 0},
+		"sub-rao EVM remainder":     {usable: 1_000, deposit: 500, free: 500, balance: big.NewInt(1), wantDelta: 1_000},
+	} {
+		t.Run(name, func(t *testing.T) {
+			delta, target, err := evmFundingDelta(test.usable, test.deposit, test.free, test.balance)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if delta != test.wantDelta || target.Cmp(wei(test.usable)) != 0 {
+				t.Fatalf("delta/target = %d/%s, want %d/%s", delta, target, test.wantDelta, wei(test.usable))
+			}
+		})
+	}
+}
+
+func TestEVMFundingDeltaRejectsImpossibleAndOverflowingState(t *testing.T) {
+	for name, test := range map[string]struct {
+		usable, deposit, free uint64
+		balance               *big.Int
+	}{
+		"below deposit":      {usable: 1_000, deposit: 500, free: 499, balance: big.NewInt(0)},
+		"EVM exceeds native": {usable: 1_000, deposit: 500, free: 0, balance: big.NewInt(1)},
+		"missing balance":    {usable: 1_000, deposit: 500, free: 0},
+		"zero usable":        {deposit: 500, free: 0, balance: big.NewInt(0)},
+		"zero deposit":       {usable: 1_000, free: 0, balance: big.NewInt(0)},
+		"maximum overflow":   {usable: math.MaxUint64, deposit: 1, free: 0, balance: big.NewInt(0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := evmFundingDelta(test.usable, test.deposit, test.free, test.balance); err == nil {
+				t.Fatalf("%s funding state was accepted", name)
+			}
+		})
+	}
+}
 
 func TestNeuronRegistrationTransactionUsesMirrorBalanceAndBindsLimit(t *testing.T) {
 	parsed, err := abi.JSON(strings.NewReader(neuronSetupABI))

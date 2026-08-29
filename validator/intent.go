@@ -17,7 +17,7 @@ import (
 	"github.com/urfoundation/sn/crv4"
 )
 
-const steeringIntentSchema = "urnetwork-validator-steering-intent-v2"
+const steeringIntentSchema = "urnetwork-validator-steering-intent-v4"
 
 var (
 	ErrSteeringIntentPending = errors.New("a steering intent for this subnet epoch is already pending")
@@ -27,6 +27,14 @@ var (
 type RationalJSON struct {
 	Numerator   string `json:"numerator"`
 	Denominator string `json:"denominator"`
+}
+
+type StaleHeadBinding struct {
+	NoID      uint64 `json:"no_id"`
+	ClientID  string `json:"client_id"`
+	RecordUID uint16 `json:"record_uid"`
+	LiveUID   uint16 `json:"live_uid"`
+	Found     bool   `json:"found"`
 }
 
 type SteeringIntent struct {
@@ -42,6 +50,11 @@ type SteeringIntent struct {
 	PolicyHash           string                   `json:"policy_hash"`
 	SelfUID              uint16                   `json:"self_uid"`
 	MaskedUIDs           []uint16                 `json:"masked_uids"`
+	EligibleHeadUIDs     []uint16                 `json:"eligible_head_uids"`
+	SelectedHeadUIDs     []uint16                 `json:"selected_head_uids"`
+	RejectedHeadUIDs     []uint16                 `json:"rejected_head_uids"`
+	StaleHeadBindings    []StaleHeadBinding       `json:"stale_head_bindings"`
+	DepositAudits        []DepositAudit           `json:"deposit_audits"`
 	UIDs                 []uint16                 `json:"uids"`
 	Scores               []RationalJSON           `json:"scores"`
 	Prepared             *crv4.PreparedSubmission `json:"prepared"`
@@ -113,6 +126,34 @@ func (i *SteeringIntent) computeVectorHash() (string, error) {
 	return "0x" + hex.EncodeToString(h[:]), nil
 }
 
+// ReconstructedVectorHash returns the canonical immutable intent hash without
+// trusting the stored VectorHash field. It is useful to independent evidence
+// tooling and deterministic cross-package fixtures.
+func (i *SteeringIntent) ReconstructedVectorHash() (string, error) {
+	if i == nil {
+		return "", errors.New("steering intent is nil")
+	}
+	return i.computeVectorHash()
+}
+
+// VerifyVectorHash proves that the immutable decision evidence still matches
+// the hash submitted with this intent. Release evidence readers use it so a
+// changed audit, mask, score, snapshot, or prepared transaction cannot remain
+// hidden behind an old vector hash.
+func (i *SteeringIntent) VerifyVectorHash() error {
+	if i == nil || i.VectorHash == "" {
+		return errors.New("steering intent has no vector hash")
+	}
+	want, err := i.ReconstructedVectorHash()
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(i.VectorHash, want) {
+		return fmt.Errorf("steering intent vector hash %s, reconstructed %s", i.VectorHash, want)
+	}
+	return nil
+}
+
 func (s *IntentStore) readLocked() (*steeringIntentFile, error) {
 	b, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -154,6 +195,14 @@ func (s *IntentStore) Begin(intent SteeringIntent) (*SteeringIntent, error) {
 	}
 	if intent.Prepared.Netuid != intent.Netuid || intent.Prepared.SubnetEpoch != intent.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, intent.UIDs) {
 		return nil, errors.New("steering intent does not match prepared submission")
+	}
+	if len(intent.DepositAudits) == 0 {
+		return nil, errors.New("steering intent has no operator deposit audits")
+	}
+	for index, audit := range intent.DepositAudits {
+		if audit.NoID == 0 || audit.Epoch != intent.SettlementEpoch || audit.Status == "" || audit.Disposition == "" || (index > 0 && audit.NoID <= intent.DepositAudits[index-1].NoID) {
+			return nil, errors.New("steering intent deposit audits are incomplete or non-canonical")
+		}
 	}
 	if f.Current != nil && f.Current.SubnetEpoch == intent.SubnetEpoch {
 		switch f.Current.Status {

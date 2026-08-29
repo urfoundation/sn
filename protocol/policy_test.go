@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,30 @@ import (
 func testPolicyPath(t *testing.T) string {
 	t.Helper()
 	return filepath.Join("..", "deploy", "testnet", "policy-v1.yml")
+}
+
+func TestRequiredDepositRaoUsesExactTierFloorAndCap(t *testing.T) {
+	policy, err := LoadPolicy(testPolicyPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, tier, err := RequiredDepositRao(2*(1<<30)+512, big.NewInt(0), policy.Deposit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if amount.Uint64() != 2_000_000 || tier.RateNumeratorRaoPerGiB != 1_000_000 {
+		t.Fatalf("baseline deposit/tier = %s/%+v", amount, tier)
+	}
+	amount, tier, err = RequiredDepositRao(200*(1<<30), big.NewInt(1_000_000_000), policy.Deposit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if amount.Uint64() != policy.Deposit.EpochCapRaoPerOperator || tier.RateNumeratorRaoPerGiB != 800_000 {
+		t.Fatalf("capped conviction-tier deposit = %s/%+v", amount, tier)
+	}
+	if _, _, err := RequiredDepositRao(1, big.NewInt(-1), policy.Deposit); err == nil {
+		t.Fatal("negative conviction was accepted")
+	}
 }
 
 func TestLoadPolicyCanonicalHash(t *testing.T) {
@@ -70,7 +95,7 @@ func TestPolicyCadenceWindowsFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Settlement.CloseGraceBlocks != 5 || p.ProductionCadence.EpochBlocks != 50_400 || p.ProductionCadence.AfterAcceleratedEpochs != 20 {
+	if p.NetworkProfile != "testnet" || p.Settlement.CloseGraceBlocks != 5 || p.ProductionCadence.EpochBlocks != 2_400 || p.ProductionCadence.AfterAcceleratedEpochs != 20 {
 		t.Fatalf("unexpected release cadence: settlement=%+v production=%+v", p.Settlement, p.ProductionCadence)
 	}
 	tests := []func(*Policy){

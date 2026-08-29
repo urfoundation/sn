@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"sync"
@@ -30,10 +31,12 @@ const (
 )
 
 type rpcProxyConfig struct {
-	ListenAddress string
-	HealthAddress string
-	Upstream      string
-	TLSServerName string
+	ListenAddress            string
+	HealthAddress            string
+	Upstream                 string
+	TLSServerName            string
+	HTTP                     bool
+	MaximumRequestsPerMinute int
 }
 
 func workloadRPCAuthority() string { return workloadRPCProxyAddress }
@@ -70,6 +73,7 @@ func rpcProxyConfigForEndpoint(endpoint, listenAddress, healthAddress string) (r
 		ListenAddress: listenAddress,
 		HealthAddress: healthAddress,
 		Upstream:      net.JoinHostPort(u.Hostname(), port),
+		HTTP:          u.Scheme == "http" || u.Scheme == "https",
 	}
 	if u.Scheme == "https" || u.Scheme == "wss" {
 		config.TLSServerName = u.Hostname()
@@ -108,6 +112,12 @@ func validateRPCProxyConfig(config rpcProxyConfig) error {
 	}
 	if config.Upstream == config.ListenAddress || config.Upstream == config.HealthAddress {
 		return errors.New("RPC proxy upstream cannot point at the proxy itself")
+	}
+	if config.MaximumRequestsPerMinute < 0 || config.MaximumRequestsPerMinute > 60 {
+		return errors.New("RPC proxy request ceiling must be in [0,60] requests per minute")
+	}
+	if config.MaximumRequestsPerMinute > 0 && !config.HTTP {
+		return errors.New("RPC proxy request ceiling requires HTTP mode")
 	}
 	return nil
 }
@@ -179,6 +189,9 @@ func runRPCProxy(ctx context.Context, config rpcProxyConfig) error {
 	if err := validateRPCProxyConfig(config); err != nil {
 		return err
 	}
+	if config.HTTP {
+		return runHTTPRPCProxy(ctx, config)
+	}
 	listener, err := net.Listen("tcp", config.ListenAddress)
 	if err != nil {
 		return fmt.Errorf("listen RPC proxy: %w", err)
@@ -233,5 +246,88 @@ func runRPCProxy(ctx context.Context, config rpcProxyConfig) error {
 			}
 		}
 		go proxyRPCConnection(ctx, config, client, connections)
+	}
+}
+
+// EVM workloads use a source-wide provider quota. Terminate HTTP locally so
+// every operator, miner, and validator shares one bounded gate and the same
+// Retry-After behavior as the setup executor. Substrate WebSockets retain the
+// raw fault-injection proxy above.
+func runHTTPRPCProxy(ctx context.Context, config rpcProxyConfig) error {
+	listener, err := net.Listen("tcp", config.ListenAddress)
+	if err != nil {
+		return fmt.Errorf("listen HTTP RPC proxy: %w", err)
+	}
+	healthListener, err := net.Listen("tcp", config.HealthAddress)
+	if err != nil {
+		listener.Close()
+		return fmt.Errorf("listen HTTP RPC proxy health: %w", err)
+	}
+	scheme := "http"
+	if config.TLSServerName != "" {
+		scheme = "https"
+	}
+	target := &url.URL{Scheme: scheme, Host: config.Upstream}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	direct := proxy.Director
+	proxy.Director = func(request *http.Request) {
+		direct(request)
+		request.Host = target.Host
+	}
+	if config.MaximumRequestsPerMinute > 0 {
+		gate, gateErr := newRPCRequestGate(config.MaximumRequestsPerMinute)
+		if gateErr != nil {
+			listener.Close()
+			healthListener.Close()
+			return gateErr
+		}
+		proxy.Transport = &rateLimitedRetryTransport{
+			base: http.DefaultTransport, gate: gate, maximum429Retries: publicEVMMaximum429Retries,
+			defaultRetryAfter: 5 * time.Second, maximumRetryAfter: publicEVMMaximumRetryAfter,
+		}
+	}
+	proxy.ErrorHandler = func(writer http.ResponseWriter, _ *http.Request, proxyErr error) {
+		http.Error(writer, proxyErr.Error(), http.StatusBadGateway)
+	}
+	dataServer := &http.Server{Handler: proxy, ReadHeaderTimeout: 5 * time.Second}
+	healthServer := &http.Server{ReadHeaderTimeout: 2 * time.Second, Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/healthz" {
+			http.NotFound(writer, request)
+			return
+		}
+		probeCtx, cancel := context.WithTimeout(request.Context(), 3*time.Second)
+		defer cancel()
+		connection, dialErr := config.dial(probeCtx)
+		if dialErr != nil {
+			http.Error(writer, "upstream unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		connection.Close()
+		writer.WriteHeader(http.StatusNoContent)
+	})}
+	errorsOut := make(chan error, 2)
+	serve := func(server *http.Server, listener net.Listener) {
+		err := server.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		errorsOut <- err
+	}
+	go serve(dataServer, listener)
+	go serve(healthServer, healthListener)
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		dataErr := dataServer.Shutdown(shutdownCtx)
+		healthErr := healthServer.Shutdown(shutdownCtx)
+		if dataErr != nil {
+			return dataErr
+		}
+		return healthErr
+	case serveErr := <-errorsOut:
+		_ = dataServer.Close()
+		_ = healthServer.Close()
+		return serveErr
 	}
 }

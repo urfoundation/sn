@@ -400,6 +400,14 @@ as `vpk` also works but couples key rotation to the wallet; binding is preferred
 
 Two cadences run concurrently.
 
+The values in this section are the **mainnet 1.0 cadence**. Testnet acceptance
+uses a deliberately shortened, future-effective 2,400-block UR epoch
+(approximately eight hours), a 200-block root window, a 1,200-block finalize
+offset, and a 20-block close grace. It must complete three consecutive fully
+observed epochs. This test-only snapshot exercises the identical state machine
+and must never be promoted as the mainnet policy, whose epoch remains 50,400
+blocks (approximately seven days) with separately reviewed +4h/+48h windows.
+
 ### 5.1 Tempo cadence (chain‑native; weights + emission)
 
 Each tempo (~72 min) the chain runs Yuma and drains α emission. Weight‑setting is **decentralized across
@@ -1596,11 +1604,16 @@ faulted.
    invariant** + on‑chain audit hold, and the upgrade/pause drills leave finalized claims and the
    immutable reserve untouched. (The effort-bounty rail — `registerValidator`/`submitTrails`/`claimValidator` — is
    **out of scope**, so there is no such milestone in v1; it stays parked, §9.3/D29.)
-4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** schedule the 7-day policy
-   (+4h/+48h windows, F2‑snapshotted so in‑flight epochs are untouched); the deposit cap raised stepwise
-   toward the sized policy; settlement‑poke automation; the reference rate + sourcing commitment
-   published; the `R_e` demand‑ratio dashboard live (§12.4). After ≥ N clean testnet epochs, **promote to
-   mainnet**: re‑run the M0 probes + M1 genesis against **finney** (chain 964), now under the hard‑gate
+4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** schedule the
+   testnet-only 2,400-block/eight-hour policy (+200-block root window,
+   +1,200-block finalize offset, F2‑snapshotted so in‑flight epochs are untouched)
+   and require three consecutive fully observed UR blocks under concurrent
+   adversarial load; the deposit cap raised stepwise toward the sized policy;
+   settlement‑poke automation; the reference rate + sourcing commitment
+   published; the `R_e` demand‑ratio dashboard live (§12.4). Then generate and
+   rehearse the separate 50,400-block/seven-day mainnet policy with reviewed
+   +4h/+48h windows. After the three clean testnet UR blocks and MR closure,
+   **promote to mainnet**: re‑run the M0 probes + M1 genesis against **finney** (chain 964), now under the hard‑gate
    posture (real TAO; genesis is one irreversible window). The M4+ production phases run on mainnet.
 5. **M4 — Production rollout (one mechanism; Phase 0 governance, §6.4.1).** Full parameters, **quality‑factor swing
    capped until the independent‑validator stake share is healthy** and `VALIDATOR.md` §10 advances

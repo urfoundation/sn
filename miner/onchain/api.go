@@ -80,6 +80,14 @@ type SubmitParams struct {
 	DryRun   bool
 }
 
+// SubmitHooks make the signed-transaction durability boundary explicit for
+// long-running relayers. Prepared runs after signing and before broadcast;
+// Broadcast runs immediately after SendTransaction succeeds.
+type SubmitHooks struct {
+	Prepared  func(common.Hash, []byte) error
+	Broadcast func(common.Hash) error
+}
+
 // Submit dials the first reachable rpc (failover), verifies the chain id, and
 // runs the shared submit lifecycle: an eth_call preflight (surfacing revert
 // reasons before spending gas), a gas estimate, a generic intent block, a stop
@@ -87,7 +95,11 @@ type SubmitParams struct {
 // receipt, or nil on a dry run. The snclaim CLI handlers share the same
 // lifecycle via the internal submit().
 func Submit(ctx context.Context, p SubmitParams) (*types.Receipt, error) {
-	return submit(ctx, p, nil)
+	return submit(ctx, p, nil, SubmitHooks{})
+}
+
+func SubmitWithHooks(ctx context.Context, p SubmitParams, hooks SubmitHooks) (*types.Receipt, error) {
+	return submit(ctx, p, nil, hooks)
 }
 
 // intentPrinter builds the per-command intent block once the connection is
@@ -98,7 +110,7 @@ type intentPrinter func(from common.Address, chainID *big.Int, rpcURL string) fu
 
 // submit is the shared dial + chain-id check + runTx path behind Submit and the
 // submit/unbind-head CLI handlers. mkPrint may be nil (generic intent block).
-func submit(ctx context.Context, p SubmitParams, mkPrint intentPrinter) (*types.Receipt, error) {
+func submit(ctx context.Context, p SubmitParams, mkPrint intentPrinter, hooks SubmitHooks) (*types.Receipt, error) {
 	from := crypto.PubkeyToAddress(p.Key.PublicKey)
 	client, chainID, rpcURL, err := dialFirst(ctx, p.Rpcs)
 	if err != nil {
@@ -131,11 +143,13 @@ func submit(ctx context.Context, p SubmitParams, mkPrint intentPrinter) (*types.
 	}
 
 	return runTx(ctx, client, chainID, txRequest{
-		contract: p.Contract,
-		from:     from,
-		key:      p.Key,
-		calldata: p.Calldata,
-		gasLimit: p.GasLimit,
-		dryRun:   p.DryRun,
+		contract:  p.Contract,
+		from:      from,
+		key:       p.Key,
+		calldata:  p.Calldata,
+		gasLimit:  p.GasLimit,
+		dryRun:    p.DryRun,
+		prepared:  hooks.Prepared,
+		broadcast: hooks.Broadcast,
 	}, printIntent)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,6 +125,28 @@ func TestPersistedPlanSurvivesChangedLiveBalances(t *testing.T) {
 	}
 	if _, err := loadPersistedPlan(cfg, dir); err == nil {
 		t.Fatal("tampered persisted plan was accepted")
+	}
+}
+
+func TestPersistedPlanRefreshIsLimitedToEmptyPrewriteState(t *testing.T) {
+	if !mayRefreshPersistedPlan(os.ErrNotExist, nil) {
+		t.Fatal("missing plan with an empty journal was not refreshable")
+	}
+	if !mayRefreshPersistedPlan(errPersistedPlanIdentityMismatch, nil) {
+		t.Fatal("release-drifted plan with an empty journal was not refreshable")
+	}
+	for name, planErr := range map[string]error{
+		"malformed plan": errors.New("invalid JSON"),
+		"valid plan":     nil,
+	} {
+		if mayRefreshPersistedPlan(planErr, nil) {
+			t.Errorf("%s was refreshable", name)
+		}
+	}
+	for _, stage := range []JournalStage{StageIntent, StageFailed, StageBroadcast, StageIncluded, StageFinalized, StageVerified} {
+		if mayRefreshPersistedPlan(errPersistedPlanIdentityMismatch, []JournalEntry{{Stage: stage}}) {
+			t.Errorf("plan was refreshable after journal stage %s", stage)
+		}
 	}
 }
 

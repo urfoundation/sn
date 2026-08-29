@@ -1,5 +1,6 @@
 policy:
   schema: urnetwork-policy-v1
+  network_profile: testnet
   policy_id: 1
   effective_epoch: 0
   settlement:
@@ -17,10 +18,12 @@ policy:
     # sim-testnet schedules this exact snapshot for currentEpoch+1 only after
     # the 20 accelerated epochs reconcile. The active short epoch is unchanged.
     after_accelerated_epochs: 20
-    epoch_blocks: 50400
-    root_commit_window_blocks: 1200
-    finalize_offset_blocks: 14400
-    close_grace_blocks: 120
+    # An eight-hour testnet UR block at the pinned 12 second chain cadence.
+    # Mainnet uses the separately locked 50,400-block/seven-day policy.
+    epoch_blocks: 2400
+    root_commit_window_blocks: 200
+    finalize_offset_blocks: 1200
+    close_grace_blocks: 20
   steering:
     theta:
       numerator: 3
@@ -32,6 +35,7 @@ policy:
     head_score_ema:
       numerator: 1
       denominator: 4
+    maximum_head_fleets: 200
     # Runtime 451 hardcodes the native getter to 65535. Release validators pin
     # this feasible two-NO bootstrap cap in the signed policy instead.
     max_weight_limit_u16: 32768
@@ -39,10 +43,18 @@ policy:
     arithmetic: integer_rational_v1
   deposit:
     unit: rao_per_gib
-    epoch_cap_rao_per_operator: 100000000
-    # 2 NOs × 20 epochs × 0.1 alpha, plus 1 alpha voluntary conviction.
-    total_test_campaign_cap_rao: 5000000000
+    epoch_cap_rao_per_operator: 90000000
+    # Funds both NOs through 20 accelerated epochs, one deliberately dishonest
+    # production deposit, its recovery, one conservatively discarded partial
+    # production epoch, three fully observed production epochs, the terminal
+    # boundary, and 1 alpha of voluntary conviction. Together with two 0.09
+    # alpha validator stakes, this remains below the 6-alpha wallet ceiling.
+    total_test_campaign_cap_rao: 5500000000
     tier_snapshot: conviction_before_epoch
+    usage_lag_epochs: 1
+    usage_artifact: signed_payout_artifact_total_usage_bytes
+    mismatch_action: zero_pool_weight
+    unavailable_action: zero_pool_weight_after_root_window
     tiers:
       - min_conviction_rao: 0
         rate_numerator_rao_per_gib: 1000000

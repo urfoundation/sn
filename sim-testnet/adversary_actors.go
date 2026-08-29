@@ -675,7 +675,7 @@ func registrationBurnRaceModel(limit uint64, maximumRegistrations int, sequence 
 
 func fleetEvidenceFiles(cfg *ResolvedConfig, stateDir string) (map[string]json.RawMessage, error) {
 	setup := map[string]json.RawMessage{}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		paths := map[string]string{
 			fmt.Sprintf("fleet_%d_manifest", fleet):   filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.json", fleet)),
 			fmt.Sprintf("fleet_%d_commitment", fleet): filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleet)),
@@ -715,11 +715,11 @@ func (self *identityAdversary) Sample(_ context.Context, phase adversarySamplePh
 		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: "contract deployment is not installed yet"}
 	}
 	commitmentsOK, count, bindingsOK, uids := inspectFleetEvidenceBytes(self.cfg, setup, deployment.CoordinatorProxy)
-	if !commitmentsOK || !bindingsOK || count != self.cfg.Config.Topology.HeadFleets*self.cfg.Config.Topology.ClientsPerHeadFleet {
+	if !commitmentsOK || !bindingsOK || count != self.cfg.Config.Topology.fleetCandidateMiners() {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("canonical fleet evidence invalid commitments=%t bindings=%t count=%d", commitmentsOK, bindingsOK, count)}
 	}
 	if phase == adversaryAttackPhase {
-		fleet := 1 + int(sequence%uint64(self.cfg.Config.Topology.HeadFleets))
+		fleet := 1 + int(sequence%uint64(self.cfg.Config.Topology.fleetCandidates()))
 		member := 1 + int(sequence%uint64(self.cfg.Config.Topology.ClientsPerHeadFleet))
 		key := fmt.Sprintf("fleet_%d_binding_%d", fleet, member)
 		var binding map[string]any
@@ -1871,13 +1871,15 @@ func emulateLiquidAlphaCopyAndDropout(sequence uint64) (liquidAlphaSweep, error)
 }
 
 type consensusAdversary struct {
-	stateDir string
+	stateDir        string
+	headSlots       int
+	candidateFleets int
 }
 
 func (self *consensusAdversary) ID() string { return "consensus-cabal-emulation" }
 
-func honestVectorFromIntent(stateDir string) (map[uint16]uint64, uint16, error) {
-	observation := inspectValidatorIntent(stateDir, 2)
+func honestVectorFromIntent(stateDir string, headSlots, candidateFleets int) (map[uint16]uint64, uint16, error) {
+	observation := inspectValidatorIntent(stateDir, 2, headSlots, candidateFleets)
 	if observation.Error != "" || len(observation.AppliedWeights) == 0 {
 		return nil, 0, errors.New("independent validator has no applied intent yet")
 	}
@@ -1920,7 +1922,7 @@ func equalWeights(left, right map[uint16]uint64) bool {
 }
 
 func (self *consensusAdversary) Sample(_ context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
-	honest, cabalUID, err := honestVectorFromIntent(self.stateDir)
+	honest, cabalUID, err := honestVectorFromIntent(self.stateDir, self.headSlots, self.candidateFleets)
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: err.Error()}
 	}
@@ -1928,7 +1930,7 @@ func (self *consensusAdversary) Sample(_ context.Context, phase adversarySampleP
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
-	intent := inspectValidatorIntent(self.stateDir, 2)
+	intent := inspectValidatorIntent(self.stateDir, 2, self.headSlots, self.candidateFleets)
 	pending := uint64(0)
 	if intent.CurrentStatus != "" && intent.CurrentStatus != "applied" && intent.CurrentStatus != "finalized" {
 		pending = 1
@@ -2023,7 +2025,7 @@ func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSec
 	}
 	return []adversaryActor{
 		&artifactAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},
-		&consensusAdversary{stateDir: stateDir},
+		&consensusAdversary{stateDir: stateDir, headSlots: cfg.Config.Topology.HeadSlots, candidateFleets: cfg.Config.Topology.fleetCandidates()},
 		&custodyAdversary{cfg: cfg},
 		&identityAdversary{cfg: cfg, stateDir: stateDir},
 		&operatorAPIAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},

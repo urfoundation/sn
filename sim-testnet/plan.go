@@ -10,7 +10,10 @@ import (
 	"math/big"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/urfoundation/sn/ss58"
 )
 
 type Spend struct {
@@ -55,7 +58,7 @@ type PublicRoles struct {
 	Deployer, Owner, Guardian, CommitmentOracle string   `json:",omitempty"`
 	OperatorDepositSigners                      []string `json:"operator_deposit_signers"`
 	OperatorRootSigners                         []string `json:"operator_root_signers"`
-	MinerClaimRelayers                          []string `json:"miner_claim_relayers"`
+	ClaimRelayers                               []string `json:"claim_relayers"`
 	Keeper                                      string   `json:"keeper"`
 }
 
@@ -106,9 +109,101 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 	})
 }
 
+func validateFreshSubnetTopology(cfg *ResolvedConfig, facts *SetupFacts) error {
+	if cfg == nil || facts == nil {
+		return errors.New("fresh subnet topology inputs are unavailable")
+	}
+	if facts.ExistingUIDCount == 0 || len(facts.ExistingUIDs) != int(facts.ExistingUIDCount) {
+		return fmt.Errorf("fresh release plan has inconsistent existing UID facts: count=%d identities=%d", facts.ExistingUIDCount, len(facts.ExistingUIDs))
+	}
+	expected, err := ss58.DecodeWithPrefix(cfg.WalletHotkeyPublic, ss58.BittensorPrefix)
+	if err != nil {
+		return fmt.Errorf("configured subnet owner hotkey: %w", err)
+	}
+	expectedColdkey, err := ss58.DecodeWithPrefix(cfg.WalletPublic, ss58.BittensorPrefix)
+	if err != nil {
+		return fmt.Errorf("configured subnet owner coldkey: %w", err)
+	}
+	owner, err := decodeHex32("finalized subnet owner hotkey", facts.SubnetOwnerHotkey)
+	if err != nil {
+		return err
+	}
+	uidZero, err := decodeHex32("finalized UID zero hotkey", facts.UIDZeroHotkey)
+	if err != nil {
+		return err
+	}
+	if owner != expected || uidZero != expected {
+		return fmt.Errorf("finalized owner and UID zero are not the configured subnet owner hotkey: owner=0x%x uid0=0x%x expected=0x%x", owner, uidZero, expected)
+	}
+	seen := map[[32]byte]bool{}
+	for index, identity := range facts.ExistingUIDs {
+		if int(identity.UID) != index || identity.RegistrationBlock == 0 {
+			return fmt.Errorf("existing UID fact %d is not a complete contiguous finalized identity", index)
+		}
+		hotkey, err := decodeHex32(fmt.Sprintf("existing UID %d hotkey", identity.UID), identity.Hotkey)
+		if err != nil {
+			return err
+		}
+		coldkey, err := decodeHex32(fmt.Sprintf("existing UID %d coldkey", identity.UID), identity.Coldkey)
+		if err != nil {
+			return err
+		}
+		if seen[hotkey] {
+			return fmt.Errorf("existing UID %d duplicates hotkey 0x%x", identity.UID, hotkey)
+		}
+		seen[hotkey] = true
+		if identity.UID == 0 {
+			if hotkey != expected || coldkey != expectedColdkey || !identity.SubnetOwner {
+				return errors.New("UID zero is not the configured immortal subnet-owner hotkey")
+			}
+		} else if identity.SubnetOwner || coldkey == expectedColdkey {
+			return fmt.Errorf("existing UID %d unexpectedly belongs to the subnet owner", identity.UID)
+		}
+	}
+	maximum := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["max_allowed_uids"])
+	plannedInitial := uint64(2*cfg.Config.Topology.Operators + cfg.Config.Topology.Validators + cfg.Config.Topology.HeadFleets + cfg.Config.Topology.ChurnFloorUIDs + 1)
+	if maximum == 0 || uint64(facts.ExistingUIDCount)+plannedInitial != maximum {
+		return fmt.Errorf("existing UIDs %d plus %d planned initial registrations do not exactly fill max_allowed_uids %d", facts.ExistingUIDCount, plannedInitial, maximum)
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		return fmt.Errorf("derive planned registration identities: %w", err)
+	}
+	plannedLabels := []string{"escrow-hotkey"}
+	for churn := 1; churn <= cfg.Config.Topology.ChurnFloorUIDs; churn++ {
+		plannedLabels = append(plannedLabels, churnHotkeyLabel(churn))
+	}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		plannedLabels = append(plannedLabels, fleetHotkeyLabel(fleet))
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		plannedLabels = append(plannedLabels, fmt.Sprintf("operator-%d-pool-hotkey", operator), fmt.Sprintf("operator-%d-deposit-hotkey", operator))
+	}
+	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
+		plannedLabels = append(plannedLabels, validatorHotkeyLabel(validator))
+	}
+	for _, label := range plannedLabels {
+		role, ok := roles.Substrate[label]
+		if !ok {
+			return fmt.Errorf("planned registration role %s is unavailable", label)
+		}
+		hotkey, err := decodeHex32(label, role.PublicKeyHex)
+		if err != nil {
+			return err
+		}
+		if seen[hotkey] {
+			return fmt.Errorf("planned registration role %s collides with an existing UID hotkey", label)
+		}
+	}
+	return nil
+}
+
 func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time) (*SetupPlan, error) {
-	if facts == nil || facts.BurnRao == 0 || facts.AlphaSourceHotkey == "" || facts.ProbeTAORao == 0 {
-		return nil, fmt.Errorf("finalized burn, alpha source, and probe-value facts are required")
+	if facts == nil || facts.BurnRao == 0 || facts.AlphaSourceHotkey == "" || facts.ExistentialDepositRao == 0 || facts.ProbeTAORao == 0 {
+		return nil, fmt.Errorf("finalized burn, alpha source, existential-deposit, and probe-value facts are required")
+	}
+	if err := validateFreshSubnetTopology(cfg, facts); err != nil {
+		return nil, err
 	}
 	registrationBurnLimit := cfg.Config.Budgets.MaximumRegistrationBurnRao
 	if registrationBurnLimit == 0 || facts.BurnRao > registrationBurnLimit {
@@ -166,19 +261,49 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	if facts.AlphaAvailableRao < alphaPlanned {
 		return nil, fmt.Errorf("wallet alpha source %s has %d rao, release setup requires %d", facts.AlphaSourceHotkey, facts.AlphaAvailableRao, alphaPlanned)
 	}
-	perOperatorCampaign, ok := checkedMul(cfg.Policy.Deposit.EpochCapRaoPerOperator, uint64(cfg.Config.Scenarios.ShortEpochs))
-	if !ok {
-		return nil, fmt.Errorf("per-operator campaign requirement overflow")
+	minimumCampaign, err := releaseCampaignDepositRequirement(cfg)
+	if err != nil {
+		return nil, err
 	}
-	minimumCampaign, ok := checkedMul(perOperatorCampaign, uint64(operatorCount))
-	if !ok {
-		return nil, fmt.Errorf("campaign requirement overflow")
-	}
-	minimumCampaign, ok = checkedAdd(minimumCampaign, cfg.Config.Scenarios.VoluntaryConvictionRao)
-	if !ok || depositTotal < minimumCampaign {
+	if depositTotal < minimumCampaign {
 		return nil, fmt.Errorf("campaign cap %d is below release requirement %d", depositTotal, minimumCampaign)
 	}
 	campaignRemainder := depositTotal - minimumCampaign
+	acceleratedPerOperator, ok := checkedMul(cfg.Policy.Deposit.EpochCapRaoPerOperator, uint64(cfg.Config.Scenarios.ShortEpochs))
+	if !ok {
+		return nil, fmt.Errorf("per-operator accelerated campaign requirement overflow")
+	}
+	productionDepositEpochs := uint64(cfg.Config.Scenarios.ProductionEpochs) + 2
+	operatorCampaign := make([]uint64, operatorCount)
+	for index := range operatorCampaign {
+		productionEpochs := productionDepositEpochs
+		productionDust := uint64(0)
+		if index == 1 {
+			productionEpochs--
+			productionDust = 1
+		}
+		production, mulOK := checkedMul(cfg.Policy.Deposit.EpochCapRaoPerOperator, productionEpochs)
+		if !mulOK {
+			return nil, fmt.Errorf("operator %d production campaign requirement overflow", index+1)
+		}
+		allocation, addOK := checkedAdd(acceleratedPerOperator, production)
+		if !addOK {
+			return nil, fmt.Errorf("operator %d campaign allocation overflow", index+1)
+		}
+		allocation, addOK = checkedAdd(allocation, productionDust)
+		if !addOK {
+			return nil, fmt.Errorf("operator %d dishonest campaign allocation overflow", index+1)
+		}
+		operatorCampaign[index] = allocation
+	}
+	operatorCampaign[0], ok = checkedAdd(operatorCampaign[0], cfg.Config.Scenarios.VoluntaryConvictionRao)
+	if !ok {
+		return nil, fmt.Errorf("operator 1 voluntary conviction allocation overflow")
+	}
+	operatorCampaign[operatorCount-1], ok = checkedAdd(operatorCampaign[operatorCount-1], campaignRemainder)
+	if !ok {
+		return nil, fmt.Errorf("operator %d campaign remainder overflow", operatorCount)
+	}
 
 	// The setup and live campaign share one gas ceiling. Every setup
 	// transaction gets a weighted cap; the unspent remainder is reserved for
@@ -194,7 +319,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		gasWeights[fmt.Sprintf("operator.deposit.register.%d", i)] = 3
 		gasWeights[fmt.Sprintf("operator.register.%d", i)] = 8
 	}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		gasWeights[fmt.Sprintf("fleet.mirror.%d", fleet)] = 3
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 			gasWeights[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)] = 4
@@ -248,10 +373,8 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		gasRoles = append(gasRoles,
 			gasRole{label: fmt.Sprintf("operator-%d-deposit", i+1), address: roles.OperatorDepositSigners[i], weight: 10, burns: 1},
 			gasRole{label: fmt.Sprintf("operator-%d-root", i+1), address: roles.OperatorRootSigners[i], weight: 10},
+			gasRole{label: fmt.Sprintf("operator-%d-claim-relayer", i+1), address: roles.ClaimRelayers[i], weight: 10},
 		)
-	}
-	for i := 0; i < cfg.Config.Topology.Miners; i++ {
-		gasRoles = append(gasRoles, gasRole{label: fmt.Sprintf("miner-%d-claim-relayer", i+1), address: roles.MinerClaimRelayers[i], weight: 4})
 	}
 	var roleWeight uint64
 	for _, role := range gasRoles {
@@ -272,17 +395,29 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		if !mulOK {
 			return nil, fmt.Errorf("%s burn budget overflow", role.label)
 		}
-		tao, addOK := checkedAdd(gasRao, burnRao)
+		usableTAORao, addOK := checkedAdd(gasRao, burnRao)
 		if !addOK {
 			return nil, fmt.Errorf("%s funding budget overflow", role.label)
 		}
 		if role.label == "deployer" {
-			tao, addOK = checkedAdd(tao, facts.ProbeTAORao)
+			usableTAORao, addOK = checkedAdd(usableTAORao, facts.ProbeTAORao)
 			if !addOK {
 				return nil, fmt.Errorf("precompile probe funding budget overflow")
 			}
 		}
-		add(Action{ID: "evm.fund-" + role.label, Kind: "substrate-extrinsic", Target: role.address, Description: "fund the scoped EVM role with its exact campaign gas and registration ceiling", Spend: Spend{TAORao: tao}, DependsOn: []string{"subnet.verify-owner"}})
+		maximumTransferRao, addOK := checkedAdd(usableTAORao, facts.ExistentialDepositRao)
+		if !addOK {
+			return nil, fmt.Errorf("%s existential-deposit funding budget overflow", role.label)
+		}
+		add(Action{
+			ID: "evm.fund-" + role.label, Kind: "substrate-extrinsic", Target: role.address,
+			Description: "fund the scoped EVM role with its exact usable campaign balance plus the runtime existential deposit",
+			Parameters: map[string]string{
+				"usable_evm_rao":          strconv.FormatUint(usableTAORao, 10),
+				"existential_deposit_rao": strconv.FormatUint(facts.ExistentialDepositRao, 10),
+			},
+			Spend: Spend{TAORao: maximumTransferRao}, DependsOn: []string{"subnet.verify-owner"},
+		})
 	}
 
 	keys := make([]string, 0, len(cfg.Hyperparameters.OwnerControlled))
@@ -290,11 +425,30 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	hyperparameterBarrier := "subnet.verify-owner"
 	for _, k := range keys {
-		add(Action{ID: "subnet.hyperparameter." + k, Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: fmt.Sprintf("converge %s to %v and verify finalized state", k, cfg.Hyperparameters.OwnerControlled[k]), DependsOn: []string{"subnet.verify-owner"}})
+		id := "subnet.hyperparameter." + k
+		add(Action{ID: id, Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: fmt.Sprintf("converge %s to %v and verify finalized state", k, cfg.Hyperparameters.OwnerControlled[k]), DependsOn: []string{hyperparameterBarrier}})
+		hyperparameterBarrier = id
+	}
+	roleFunding, ok := checkedAdd(registrationBurnLimit, 2_000_000)
+	if !ok {
+		return nil, fmt.Errorf("native role funding overflow")
+	}
+	// Churn-floor identities must be the oldest non-owner registrations. Runtime
+	// v451 breaks equal-emission prune ties by registration block and UID, even
+	// inside immunity. Registering custody or pool identities first would let a
+	// challenger evict a load-bearing role instead of the intended floor.
+	lastChurn := hyperparameterBarrier
+	for churn := 1; churn <= cfg.Config.Topology.ChurnFloorUIDs; churn++ {
+		fundID := fmt.Sprintf("churn.fund.%d", churn)
+		registerID := fmt.Sprintf("churn.register.%d", churn)
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("churn-coldkey:%d", churn), Description: "fund a deterministic churn-floor coldkey for one bounded registration", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lastChurn}})
+		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("churn-hotkey:%d", churn), Description: "limit-register an unbound zero-weight churn-floor UID before every load-bearing identity", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
+		lastChurn = registerID
 	}
 	prev := "evm.fund-deployer"
-	for _, entry := range []struct {
+	for entryIndex, entry := range []struct {
 		id, desc     string
 		registration bool
 	}{{"reserve-sink", "deploy immutable one-way reserve sink", false}, {"settlement-vault", "deploy immutable settlement vault", false}, {"coordinator-implementation", "deploy coordinator implementation", false}, {"vault-register-escrow", "register the claims escrow under the immutable vault coldkey with the approved burn ceiling", true}, {"coordinator-proxy", "deploy and initialize ERC1967 coordinator proxy", false}, {"governance-drill-implementation", "deploy the locked testnet-only hostile coordinator implementation", false}, {"vault-fix-coordinator", "fix coordinator on settlement vault exactly once", false}, {"sink-fix-recorder", "fix coordinator on reserve sink exactly once", false}} {
@@ -303,7 +457,11 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		if entry.registration {
 			registrations = 1
 		}
-		action := Action{ID: id, Kind: "evm-transaction", Target: entry.id, Description: entry.desc, Spend: Spend{EVMGasWei: gasCaps[id], Registrations: registrations}, DependsOn: []string{prev}}
+		dependencies := []string{prev}
+		if entryIndex == 0 {
+			dependencies = append(dependencies, lastChurn)
+		}
+		action := Action{ID: id, Kind: "evm-transaction", Target: entry.id, Description: entry.desc, Spend: Spend{EVMGasWei: gasCaps[id], Registrations: registrations}, DependsOn: dependencies}
 		if entry.registration {
 			action.Parameters = registrationParameters()
 		}
@@ -313,35 +471,19 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	setupDeps := []string{prev}
 	for i := 0; i < operatorCount; i++ {
 		depositRegistration := fmt.Sprintf("operator.deposit.register.%d", i+1)
-		add(Action{ID: depositRegistration, Kind: "evm-transaction", Target: roles.OperatorDepositSigners[i], Description: "limit-register the operator-isolated deposit hotkey under its EVM mirror coldkey", Parameters: registrationParameters(), Spend: Spend{EVMGasWei: gasCaps[depositRegistration], Registrations: 1}, DependsOn: []string{fmt.Sprintf("evm.fund-operator-%d-deposit", i+1)}})
+		add(Action{ID: depositRegistration, Kind: "evm-transaction", Target: roles.OperatorDepositSigners[i], Description: "limit-register the operator-isolated deposit hotkey under its EVM mirror coldkey", Parameters: registrationParameters(), Spend: Spend{EVMGasWei: gasCaps[depositRegistration], Registrations: 1}, DependsOn: []string{fmt.Sprintf("evm.fund-operator-%d-deposit", i+1), lastChurn}})
 		id := fmt.Sprintf("operator.register.%d", i+1)
 		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("no:%d", i+1), Description: "limit-register immutable pool hotkey and grant distinct deposit/root roles", Parameters: registrationParameters(), Spend: Spend{EVMGasWei: gasCaps[id], Registrations: 1}, DependsOn: []string{prev, "evm.fund-owner", depositRegistration}})
 		alphaID := fmt.Sprintf("alpha.transfer.operator-deposit.%d", i+1)
-		amount := perOperatorCampaign
-		if i == 0 {
-			amount, ok = checkedAdd(amount, cfg.Config.Scenarios.VoluntaryConvictionRao)
-			if !ok {
-				return nil, fmt.Errorf("operator 1 campaign allocation overflow")
-			}
-		}
-		if i == operatorCount-1 {
-			amount, ok = checkedAdd(amount, campaignRemainder)
-			if !ok {
-				return nil, fmt.Errorf("operator %d campaign allocation overflow", i+1)
-			}
-		}
+		amount := operatorCampaign[i]
 		add(Action{ID: alphaID, Kind: "substrate-extrinsic", Target: roles.OperatorDepositSigners[i], Description: "transfer exact existing subnet alpha into the coordinator-owned isolated deposit position", Spend: Spend{AlphaRao: amount}, DependsOn: []string{id}})
 		setupDeps = append(setupDeps, alphaID)
-	}
-	roleFunding, ok := checkedAdd(registrationBurnLimit, 2_000_000)
-	if !ok {
-		return nil, fmt.Errorf("native role funding overflow")
 	}
 	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
 		fundID := fmt.Sprintf("fleet.fund.%d", fleet)
 		registerID := fmt.Sprintf("fleet.register.%d", fleet)
 		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner"}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
 		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "limit-register an independently keyed provider-owned head fleet hotkey", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
 		commitmentFees := uint64(1_000_000)
 		if fleet == 1 {
@@ -351,10 +493,18 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-hotkey:%d", fleet), Description: "fund the fleet hotkey's exact bounded commitment-write fees", Spend: Spend{TAORao: commitmentFees}, DependsOn: []string{registerID}})
 		setupDeps = append(setupDeps, registerID, fundHotkeyID)
 	}
+	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
+		fleet := cfg.Config.Topology.HeadFleets + challenger
+		fundID := fmt.Sprintf("fleet.fund.%d", fleet)
+		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-coldkey:%d", fleet), Description: "fund a challenger fleet coldkey for one bounded churn registration", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
+		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-hotkey:%d", fleet), Description: "fund the challenger hotkey's bounded commitment-write fees", Spend: Spend{TAORao: 1_000_000}, DependsOn: []string{fundID}})
+		setupDeps = append(setupDeps, fundID, fundHotkeyID)
+	}
 	setupDeps = append(setupDeps, "evm.vault-register-escrow")
 	for i := 0; i < validatorCount; i++ {
 		fundID := fmt.Sprintf("validator.fund.%d", i+1)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator-coldkey:%d", i+1), Description: "fund the independent validator coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner"}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator-coldkey:%d", i+1), Description: "fund the independent validator coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
 		registerID := fmt.Sprintf("validator.register.%d", i+1)
 		description := "limit-register the independent validator hotkey and verify live UID"
 		if i == 0 {
@@ -382,7 +532,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	// but its fee is part of the original campaign ceiling. The M0B
 	// commitment replace/restore pair is also executed after this reservation
 	// is constructed and must be included explicitly.
-	nativeWrites += 3
+	nativeWrites += uint64(cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 3)
 	feeReserve, ok := checkedMul(nativeWrites, 1_000_000)
 	if !ok {
 		return nil, fmt.Errorf("native fee reserve overflow")
@@ -395,7 +545,8 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	retirementGas := runtimeGas / 20
 	governanceGas := runtimeGas / 10
 	precompileGas := runtimeGas / 8
-	if voluntaryGas == 0 || productionGas == 0 || retirementGas < uint64(operatorCount) || governanceGas < 10 || precompileGas < 10 {
+	dishonestDepositGas := runtimeGas / 40
+	if voluntaryGas == 0 || productionGas == 0 || retirementGas < uint64(operatorCount) || governanceGas < 10 || precompileGas < 10 || dishonestDepositGas == 0 {
 		return nil, fmt.Errorf("EVM runtime gas ceiling is too small for conviction, production transition, and retirement")
 	}
 	probeWeights := map[string]uint64{
@@ -421,7 +572,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		probeGasCaps[id] = cap
 		allocatedProbeGas += cap
 	}
-	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: runtimeGas - voluntaryGas - productionGas - retirementGas - governanceGas - precompileGas}, DependsOn: setupDeps})
+	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: runtimeGas - voluntaryGas - productionGas - retirementGas - governanceGas - precompileGas - dishonestDepositGas}, DependsOn: setupDeps})
 	setupDeps = append(setupDeps, "campaign.evm-gas-reserve")
 	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", DependsOn: setupDeps})
 	add(Action{ID: "accounts.provision", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "provision stable operator-scoped miner and validator identities", DependsOn: []string{"config.render"}})
@@ -441,7 +592,25 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		}
 	}
 	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", DependsOn: []string{lastFleet}})
-	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "write and finalized-read an exact one-field SHA-256 conformance commitment from the registered test hotkey", DependsOn: []string{"topology.launch"}})
+	lastChallenger := "topology.launch"
+	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
+		fleet := cfg.Config.Topology.HeadFleets + challenger
+		registerID := fmt.Sprintf("fleet.register.%d", fleet)
+		commitID := fmt.Sprintf("fleet.commitment.%d", fleet)
+		mirrorID := fmt.Sprintf("fleet.mirror.%d", fleet)
+		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet:%d", fleet), Description: fmt.Sprintf("register the measured challenger into the full subnet and prove it replaces churn-floor UID %d", challenger), Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{lastChallenger, fmt.Sprintf("fleet.fund.%d", fleet), fmt.Sprintf("churn.register.%d", challenger)}})
+		add(Action{ID: commitID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet:%d", fleet), Description: "publish the challenger fleet manifest commitment and verify finalized storage", DependsOn: []string{registerID, fmt.Sprintf("fleet.fund-hotkey.%d", fleet)}})
+		add(Action{ID: mirrorID, Kind: "evm-transaction", Target: fmt.Sprintf("challenger-fleet:%d", fleet), Description: "mirror the challenger commitment after its native registration finalizes", Spend: Spend{EVMGasWei: gasCaps[mirrorID]}, DependsOn: []string{commitID, "evm.fund-commitment-oracle"}})
+		lastChallenger = mirrorID
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			bindID := fmt.Sprintf("fleet.bind.%d.%d", fleet, member)
+			miner := fleetMemberMinerIndex(cfg, fleet, member)
+			add(Action{ID: bindID, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "relay one challenger member binding effective next epoch", Spend: Spend{EVMGasWei: gasCaps[bindID]}, DependsOn: []string{lastChallenger, "evm.fund-keeper"}})
+			lastChallenger = bindID
+		}
+	}
+	add(Action{ID: "churn.tournament-complete", Kind: "local", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "prove both live challengers replaced exactly the two oldest churn-floor UIDs while all 202 measured fleets remain registered", DependsOn: []string{lastChallenger}})
+	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "write and finalized-read an exact one-field SHA-256 conformance commitment from the registered test hotkey", DependsOn: []string{"churn.tournament-complete"}})
 	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the conformance commitment with the canonical fleet hash and prove the restored finalized bytes", DependsOn: []string{"precompile.commitment-write"}})
 	add(Action{ID: "precompile.probe-deploy", Kind: "evm-transaction", Target: "disposable-precompile-probe", Description: "deploy the locked, owner-gated runtime-451 conformance probe at its precomputed nonce", Spend: Spend{EVMGasWei: probeGasCaps["precompile.probe-deploy"]}, DependsOn: []string{"precompile.commitment-restore"}})
 	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-451-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.probe-deploy"}})
@@ -489,6 +658,12 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		Spend: Spend{EVMGasWei: productionGas}, DependsOn: []string{governanceDependency, "evm.fund-owner"},
 	})
 	add(Action{ID: "production.hyperparameter.immunity_period", Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "after M2, converge immunity_period to the production epoch length and verify finalized state", Parameters: map[string]string{"value": fmt.Sprint(production.EpochBlocks)}, DependsOn: []string{"production.schedule-policy"}})
+	add(Action{
+		ID: "campaign.dishonest-deposit.2", Kind: "evm-transaction", Target: "no:2",
+		Description: "post a deliberate one-rao demand deposit in the first fresh production-cadence epoch and prove live validators reject the signed-usage mismatch",
+		Parameters:  map[string]string{"no_id": "2", "amount_rao": "1", "target_epoch": "next_fresh_production_epoch"},
+		Spend:       Spend{EVMGasWei: dishonestDepositGas}, DependsOn: []string{"topology.launch", "campaign.evm-gas-reserve", "production.schedule-policy"},
+	})
 	add(Action{ID: "retirement.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve a separately approved gas ceiling for future-effective retirement of every operator", Parameters: map[string]string{"operators": fmt.Sprint(operatorCount)}, Spend: Spend{EVMGasWei: retirementGas}, DependsOn: []string{"topology.launch"}})
 	for _, a := range p.Actions {
 		var sumOK bool
@@ -598,6 +773,11 @@ func validatePlanBudget(p *SetupPlan) error {
 			}
 		}
 		seenActions[action.ID] = true
+		if strings.HasPrefix(action.ID, "evm.fund-") {
+			if _, err := evmFundingTerms(action, p.LiveFacts.ExistentialDepositRao); err != nil {
+				return err
+			}
+		}
 		if action.Spend.Registrations == 0 {
 			continue
 		}
@@ -614,6 +794,31 @@ func validatePlanBudget(p *SetupPlan) error {
 		return fmt.Errorf("subnet creation is forbidden")
 	}
 	return nil
+}
+
+// evmFundingTerms validates the approval-bound distinction between a role's
+// usable EVM balance and the one-time native existential deposit needed to
+// keep its mirror account alive.
+func evmFundingTerms(action Action, expectedExistentialDepositRao uint64) (uint64, error) {
+	if expectedExistentialDepositRao == 0 {
+		return 0, errors.New("approved existential deposit is zero")
+	}
+	if len(action.Parameters) != 2 {
+		return 0, fmt.Errorf("EVM funding action %s has %d parameters, want 2", action.ID, len(action.Parameters))
+	}
+	usable, err := strconv.ParseUint(action.Parameters["usable_evm_rao"], 10, 64)
+	if err != nil || usable == 0 {
+		return 0, fmt.Errorf("EVM funding action %s has invalid usable_evm_rao", action.ID)
+	}
+	deposit, err := strconv.ParseUint(action.Parameters["existential_deposit_rao"], 10, 64)
+	if err != nil || deposit != expectedExistentialDepositRao {
+		return 0, fmt.Errorf("EVM funding action %s existential deposit does not match approved %d rao", action.ID, expectedExistentialDepositRao)
+	}
+	maximumTransfer, ok := checkedAdd(usable, deposit)
+	if !ok || action.Spend.TAORao != maximumTransfer || action.Spend.AlphaRao != 0 || action.Spend.EVMGasWei != 0 || action.Spend.Registrations != 0 || action.Spend.SubnetCreations != 0 {
+		return 0, fmt.Errorf("EVM funding action %s maximum spend does not equal usable balance plus existential deposit", action.ID)
+	}
+	return usable, nil
 }
 
 func derivePublicRoles(cfg *ResolvedConfig) (PublicRoles, error) {
@@ -655,13 +860,11 @@ func derivePublicRoles(cfg *ResolvedConfig) (PublicRoles, error) {
 			return r, e
 		}
 		r.OperatorRootSigners = append(r.OperatorRootSigners, a)
-	}
-	for i := 0; i < cfg.Config.Topology.Miners; i++ {
-		a, e := address(fmt.Sprintf("miner-%d-claim-relayer", i+1))
+		a, e = address(fmt.Sprintf("operator-%d-claim-relayer", i+1))
 		if e != nil {
 			return r, e
 		}
-		r.MinerClaimRelayers = append(r.MinerClaimRelayers, a)
+		r.ClaimRelayers = append(r.ClaimRelayers, a)
 	}
 	return r, nil
 }

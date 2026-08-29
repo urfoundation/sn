@@ -212,6 +212,46 @@ func (self *ChainClient) ReleaseEpochConvictionAddedAt(block uint64, epoch, noID
 	return chainViewAt(self, block, self.coordinator.PackEpochConvictionAdded(epoch, noID), self.coordinator.UnpackEpochConvictionAdded)
 }
 
+// ReleaseEpochStartBlockAt reads one epoch's immutable lower boundary at the
+// same finalized EVM snapshot as the rest of a steering decision.
+func (self *ChainClient) ReleaseEpochStartBlockAt(block uint64, epoch *big.Int) (uint64, error) {
+	if err := self.requireRelease(); err != nil {
+		return 0, err
+	}
+	value, err := chainViewAt(self, block, self.coordinator.PackEpochStartBlock(epoch), self.coordinator.UnpackEpochStartBlock)
+	if err != nil {
+		return 0, err
+	}
+	if value == nil || !value.IsUint64() {
+		return 0, errors.New("epoch start block exceeds uint64")
+	}
+	return value.Uint64(), nil
+}
+
+// ReleaseEpochEndBlockAt reads one rolled epoch's immutable upper boundary.
+func (self *ChainClient) ReleaseEpochEndBlockAt(block uint64, epoch *big.Int) (uint64, error) {
+	if err := self.requireRelease(); err != nil {
+		return 0, err
+	}
+	value, err := chainViewAt(self, block, self.coordinator.PackEpochEndBlock(epoch), self.coordinator.UnpackEpochEndBlock)
+	if err != nil {
+		return 0, err
+	}
+	if value == nil || !value.IsUint64() {
+		return 0, errors.New("epoch end block exceeds uint64")
+	}
+	return value.Uint64(), nil
+}
+
+// ReleaseRootCommitmentAt reads the on-chain payout/content commitment used to
+// bind a public signed artifact to the entitlement path.
+func (self *ChainClient) ReleaseRootCommitmentAt(block uint64, epoch, noID *big.Int) (stabi.RootCommitmentsOutput, error) {
+	if err := self.requireRelease(); err != nil {
+		return stabi.RootCommitmentsOutput{}, err
+	}
+	return chainViewAt(self, block, self.coordinator.PackRootCommitments(epoch, noID), self.coordinator.UnpackRootCommitments)
+}
+
 func (self *ChainClient) ReleaseConvictionAt(block uint64, noID *big.Int) (*big.Int, error) {
 	if err := self.requireRelease(); err != nil {
 		return nil, err

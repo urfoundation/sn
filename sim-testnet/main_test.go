@@ -1,6 +1,15 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func TestImportedProductionModulesKeepJSONStdoutSeparateFromDiagnostics(t *testing.T) {
+	if os.Stdout == os.Stderr || os.Stdout.Fd() == os.Stderr.Fd() {
+		t.Fatal("an imported production module aliased stderr to stdout")
+	}
+}
 
 func TestParseCLIReleaseCommandsAndWriteGuardFlags(t *testing.T) {
 	for _, command := range []string{

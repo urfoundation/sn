@@ -30,9 +30,9 @@ func TestRoleSecretsAreDeterministicDistinctAndPublicViewIsRedacted(t *testing.T
 	if _, exists := a.Substrate["validator-1-hotkey"]; exists {
 		t.Fatal("validator 1 has an unused hotkey distinct from the reserve validator")
 	}
-	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-		if a.EVM[fmt.Sprintf("miner-%d-claim-relayer", i)].PrivateKeyHex == "" {
-			t.Fatalf("miner %d claim relayer role is missing", i)
+	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
+		if a.EVM[fmt.Sprintf("operator-%d-claim-relayer", i)].PrivateKeyHex == "" {
+			t.Fatalf("operator %d claim relayer role is missing", i)
 		}
 	}
 	seen := map[string]string{}

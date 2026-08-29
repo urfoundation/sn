@@ -132,8 +132,23 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	r.add("config/independent-rpcs", independentHard, validateIndependentRPCEndpoints(cfg), independenceDetail)
 	checkBlobConfig(ctx, &r, cfg)
 	if err := ctx.Err(); err == nil {
-		checkSubstrate(&r, cfg, false)
-		checkSubstrate(&r, cfg, true)
+		if sameRPCEndpoint(cfg.OperationalSubstrate, cfg.Public.Chain.SubstratePublicReadEndpoint) {
+			start := len(r.Checks)
+			checkSubstrate(&r, cfg, true)
+			aliasSameEndpointChecks(&r, start, map[string]string{
+				"rpc/substrate-operational":               "rpc/substrate-public",
+				"runtime/code-hash-operational":           "runtime/code-hash-public",
+				"runtime/metadata-operational":            "runtime/metadata-public",
+				"runtime/release-call-shapes-operational": "runtime/release-call-shapes-public",
+				"runtime/compatibility-gates-operational": "runtime/compatibility-gates-public",
+				"subnet/activation-operational":           "subnet/activation-public",
+				"subnet/uid-capacity-operational":         "subnet/uid-capacity-public",
+				"subnet/owner-operational":                "subnet/owner-public",
+			})
+		} else {
+			checkSubstrate(&r, cfg, false)
+			checkSubstrate(&r, cfg, true)
+		}
 		topology := checkSubstrateTopology(cfg)
 		r.add("rpc/substrate-operational-readiness", true, topology.ReadinessErr, topology.ReadinessDetail)
 		r.add("rpc/substrate-physical-independence", independentHard, topology.IndependenceErr, topology.IndependenceDetail)
@@ -141,7 +156,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		facts, factsErr := ReadSetupFacts(ctx, cfg)
 		detail := ""
 		if facts != nil {
-			detail = fmt.Sprintf("source=%s alpha_rao=%d burn_rao=%d finalized=%d", facts.AlphaSourceHotkey, facts.AlphaAvailableRao, facts.BurnRao, facts.FinalizedBlock)
+			detail = fmt.Sprintf("source=%s alpha_rao=%d burn_rao=%d existential_deposit_rao=%d finalized=%d", facts.AlphaSourceHotkey, facts.AlphaAvailableRao, facts.BurnRao, facts.ExistentialDepositRao, facts.FinalizedBlock)
 		}
 		r.add("wallet/finalized-alpha-source", true, factsErr, detail)
 		if factsErr == nil {
@@ -187,6 +202,51 @@ func independentRPCRequired(cfg *ResolvedConfig) bool {
 	return cfg == nil || cfg.OperationalRPCMode != rpcModePublicOverride
 }
 
+// sameRPCEndpoint recognizes syntactically equivalent URLs without treating
+// credentials, query strings, or distinct paths as interchangeable authorities.
+// Public override mode uses this to perform one honest observation instead of
+// opening duplicate connections and presenting them as independent evidence.
+func sameRPCEndpoint(left, right string) bool {
+	normalize := func(raw string) (string, bool) {
+		u, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return "", false
+		}
+		u.Scheme = strings.ToLower(u.Scheme)
+		u.Host = strings.ToLower(u.Host)
+		if u.Path == "" {
+			u.Path = "/"
+		}
+		if len(u.Path) > 1 {
+			u.Path = strings.TrimRight(u.Path, "/")
+		}
+		return u.String(), true
+	}
+	a, aOK := normalize(left)
+	b, bOK := normalize(right)
+	return aOK && bOK && a == b
+}
+
+func aliasSameEndpointChecks(report *DoctorReport, start int, names map[string]string) {
+	if report == nil || start < 0 || start > len(report.Checks) {
+		return
+	}
+	source := append([]Check(nil), report.Checks[start:]...)
+	for _, check := range source {
+		alias, ok := names[check.Name]
+		if !ok {
+			continue
+		}
+		check.Name = alias
+		if check.Detail == "" {
+			check.Detail = "same_endpoint_observation=true"
+		} else {
+			check.Detail += "; same_endpoint_observation=true"
+		}
+		report.Checks = append(report.Checks, check)
+	}
+}
+
 // The release binaries and pinned dependency images are qualified only on the
 // architecture declared by the deployment profile.
 func validateHostPlatform(goos, goarch string) error {
@@ -203,6 +263,9 @@ func validateApprovedSetupFacts(plan *SetupPlan, current *SetupFacts, remaining 
 		return errors.New("approved plan and finalized setup facts are required")
 	}
 	approved := plan.LiveFacts
+	if current.ExistentialDepositRao != approved.ExistentialDepositRao || current.ExistentialDepositRao == 0 {
+		return fmt.Errorf("runtime existential deposit changed from approved %d to %d rao", approved.ExistentialDepositRao, current.ExistentialDepositRao)
+	}
 	if remaining.Registrations > 0 && (plan.RegistrationBurnLimitRao == 0 || current.BurnRao > plan.RegistrationBurnLimitRao) {
 		return fmt.Errorf("registration burn is %d rao, remaining actions are capped at %d", current.BurnRao, plan.RegistrationBurnLimitRao)
 	}
@@ -706,6 +769,12 @@ func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
 		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
 	}
 	defer operationalChain.API.Client.Close()
+	if sameRPCEndpoint(cfg.OperationalSubstrate, cfg.Public.Chain.SubstratePublicReadEndpoint) {
+		result := substrateTopologyChecks{}
+		result.ReadinessDetail, result.ReadinessErr = checkSubstrateReadiness(operationalChain, operationalChain, uint64(cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks))
+		result.IndependenceDetail, result.IndependenceErr = checkSubstratePeerIndependence(operationalChain, operationalChain)
+		return result
+	}
 	publicChain, err := crv4.DialChain(cfg.Public.Chain.SubstratePublicReadEndpoint)
 	if err != nil {
 		err = fmt.Errorf("public RPC: %w", err)
@@ -830,6 +899,9 @@ func checkUIDCapacity(chain *crv4.Chain, cfg *ResolvedConfig) error {
 		return err
 	}
 	labels := []string{"escrow-hotkey"}
+	for churn := 1; churn <= cfg.Config.Topology.ChurnFloorUIDs; churn++ {
+		labels = append(labels, churnHotkeyLabel(churn))
+	}
 	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
 		labels = append(labels, fleetHotkeyLabel(fleet))
 	}
@@ -839,7 +911,7 @@ func checkUIDCapacity(chain *crv4.Chain, cfg *ResolvedConfig) error {
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		labels = append(labels, validatorHotkeyLabel(i))
 	}
-	missing := uint64(0)
+	uidKeys := make([]types.StorageKey, 0, len(labels))
 	for _, label := range labels {
 		hotkey, decodeErr := decodeHex32(label, roles.Substrate[label].PublicKeyHex)
 		if decodeErr != nil {
@@ -849,20 +921,64 @@ func checkUIDCapacity(chain *crv4.Chain, cfg *ResolvedConfig) error {
 		if keyErr != nil {
 			return keyErr
 		}
-		var uid types.U16
-		present, readErr := chain.API.RPC.State.GetStorage(uidKey, &uid, finalized)
-		if readErr != nil {
-			return readErr
-		}
-		if !present {
-			missing++
-		}
+		uidKeys = append(uidKeys, uidKey)
+	}
+	changeSets, err := chain.API.RPC.State.QueryStorageAt(uidKeys, finalized)
+	if err != nil {
+		return err
+	}
+	missing, err := countMissingStorageKeysAt(uidKeys, changeSets, finalized)
+	if err != nil {
+		return fmt.Errorf("batched finalized UID lookup: %w", err)
 	}
 	needed := uint64(current) + missing
 	if needed > maximum {
 		return fmt.Errorf("netuid %d has %d UIDs and needs %d missing release registrations, exceeding intended maximum %d", cfg.Netuid, current, missing, maximum)
 	}
 	return nil
+}
+
+// countMissingStorageKeysAt validates the complete response to one finalized
+// state_queryStorageAt batch. A provider that drops a key, returns another block,
+// or duplicates a row cannot make an unknown UID look absent or present.
+func countMissingStorageKeysAt(keys []types.StorageKey, changeSets []types.StorageChangeSet, block types.Hash) (uint64, error) {
+	if len(keys) == 0 {
+		return 0, errors.New("storage-key batch is empty")
+	}
+	expected := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		hexKey := key.Hex()
+		if expected[hexKey] {
+			return 0, fmt.Errorf("duplicate requested storage key %s", hexKey)
+		}
+		expected[hexKey] = true
+	}
+	if len(changeSets) != 1 {
+		return 0, fmt.Errorf("storage response has %d change sets, want one", len(changeSets))
+	}
+	set := changeSets[0]
+	if set.Block != block {
+		return 0, fmt.Errorf("storage response block %s, want %s", set.Block.Hex(), block.Hex())
+	}
+	seen := make(map[string]bool, len(set.Changes))
+	missing := uint64(0)
+	for _, change := range set.Changes {
+		hexKey := change.StorageKey.Hex()
+		if !expected[hexKey] {
+			return 0, fmt.Errorf("storage response contains unrequested key %s", hexKey)
+		}
+		if seen[hexKey] {
+			return 0, fmt.Errorf("storage response duplicates key %s", hexKey)
+		}
+		seen[hexKey] = true
+		if !change.HasStorageData {
+			missing++
+		}
+	}
+	if len(seen) != len(expected) {
+		return 0, fmt.Errorf("storage response contains %d of %d requested keys", len(seen), len(expected))
+	}
+	return missing, nil
 }
 
 func verifySubnetOwner(chain *crv4.Chain, netuid uint16, walletAddress string) (error, string) {
@@ -949,6 +1065,19 @@ func validateIndependentRPCEndpoints(cfg *ResolvedConfig) error {
 	return nil
 }
 
+// Writers must always reproduce the configured operational route. Physical
+// endpoint independence remains mandatory for private-authority releases, while
+// the explicitly lower-assurance public testnet override records it as absent.
+func validateExecutionRPCConfiguration(cfg *ResolvedConfig) error {
+	if err := validateOperationalRPCRouting(cfg); err != nil {
+		return err
+	}
+	if independentRPCRequired(cfg) {
+		return validateIndependentRPCEndpoints(cfg)
+	}
+	return nil
+}
+
 // Recompute endpoint selection so an in-memory or deserialization mismatch
 // cannot route writes differently from the configuration bound into the plan.
 func validateOperationalRPCRouting(cfg *ResolvedConfig) error {
@@ -963,14 +1092,33 @@ func validateOperationalRPCRouting(cfg *ResolvedConfig) error {
 }
 
 func checkEVM(parent context.Context, r *DoctorReport, cfg *ResolvedConfig) {
+	start := len(r.Checks)
 	checkEVMEndpoint(parent, r, cfg, "operational", cfg.OperationalEVM)
+	if sameRPCEndpoint(cfg.OperationalEVM, cfg.Public.Chain.EVMPublicReadEndpoint) {
+		aliasSameEndpointChecks(r, start, map[string]string{
+			"rpc/evm-operational":                 "rpc/evm-public",
+			"runtime/evm-finality":                "runtime/evm-finality-public",
+			"runtime/precompile-abi":              "runtime/precompile-abi-public",
+			"runtime/precompile-signatures":       "runtime/precompile-signatures-public",
+			"runtime/precompile-metagraph-neuron": "runtime/precompile-metagraph-neuron-public",
+			"runtime/precompile-staking":          "runtime/precompile-staking-public",
+		})
+		return
+	}
 	checkEVMEndpoint(parent, r, cfg, "public", cfg.Public.Chain.EVMPublicReadEndpoint)
 }
 
 func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConfig, name, httpURL string) {
-	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	timeout := 20 * time.Second
+	if configuredEVMRequestsPerMinute(cfg, httpURL) > 0 {
+		// A public provider can legitimately direct a source-wide 60-second
+		// cooldown. Keep the doctor bounded while allowing the transport to
+		// honor that policy instead of converting it into false unavailability.
+		timeout = 4 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	client, err := ethclient.DialContext(ctx, httpURL)
+	client, err := dialConfiguredEVMClient(ctx, cfg, httpURL)
 	if err == nil {
 		defer client.Close()
 		id, e := client.ChainID(ctx)

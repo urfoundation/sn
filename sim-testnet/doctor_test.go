@@ -205,6 +205,103 @@ func TestPublicRPCOverrideCannotClaimIndependentBackendAssurance(t *testing.T) {
 	if err := validateIndependentRPCEndpoints(cfg); err == nil || !strings.Contains(err.Error(), "shared") {
 		t.Fatalf("shared public operational/verifier endpoints were accepted as independent: %v", err)
 	}
+	if err := validateExecutionRPCConfiguration(cfg); err != nil {
+		t.Fatalf("public override could not enter its explicitly non-independent execution mode: %v", err)
+	}
+}
+
+func TestSameRPCEndpointNormalizesOnlyEquivalentAuthorities(t *testing.T) {
+	if !sameRPCEndpoint(" WSS://EXAMPLE.test:443 ", "wss://example.test:443/") {
+		t.Fatal("equivalent RPC URLs were not recognized")
+	}
+	for _, pair := range [][2]string{
+		{"wss://example.test/a", "wss://example.test/b"},
+		{"wss://example.test", "https://example.test"},
+		{"wss://user@example.test", "wss://example.test"},
+		{"wss://example.test?q=1", "wss://example.test?q=2"},
+		{"", ""},
+	} {
+		if sameRPCEndpoint(pair[0], pair[1]) {
+			t.Fatalf("distinct or invalid RPC URLs were aliased: %q %q", pair[0], pair[1])
+		}
+	}
+}
+
+func TestSameEndpointCheckAliasesPreserveFailureAndExcludeUnmappedProbes(t *testing.T) {
+	report := DoctorReport{Checks: []Check{{Name: "before", OK: true, Hard: true}}}
+	start := len(report.Checks)
+	report.Checks = append(report.Checks,
+		Check{Name: "rpc/substrate-operational", OK: false, Hard: true, Detail: "reset"},
+		Check{Name: "rpc/operational-eth_getLogs", OK: true, Hard: true, Detail: "bounded"},
+	)
+	aliasSameEndpointChecks(&report, start, map[string]string{"rpc/substrate-operational": "rpc/substrate-public"})
+	if len(report.Checks) != 4 {
+		t.Fatalf("checks=%+v", report.Checks)
+	}
+	alias := report.Checks[3]
+	if alias.Name != "rpc/substrate-public" || alias.OK || !alias.Hard || !strings.Contains(alias.Detail, "same_endpoint_observation=true") {
+		t.Fatalf("alias did not retain source result exactly: %+v", alias)
+	}
+	for _, check := range report.Checks[3:] {
+		if check.Name == "rpc/public-eth_getLogs" {
+			t.Fatalf("operational-only probe was aliased: %+v", check)
+		}
+	}
+}
+
+func TestCountMissingStorageKeysAtRequiresCompleteFinalizedBatch(t *testing.T) {
+	block := gsrpcTypes.NewHash([]byte{9})
+	keys := []gsrpcTypes.StorageKey{{1}, {2}, {3}}
+	changes := []gsrpcTypes.StorageChangeSet{{Block: block, Changes: []gsrpcTypes.KeyValueOption{
+		{StorageKey: keys[0], HasStorageData: true, StorageData: gsrpcTypes.StorageDataRaw{0}},
+		{StorageKey: keys[1], HasStorageData: false},
+		{StorageKey: keys[2], HasStorageData: true, StorageData: gsrpcTypes.StorageDataRaw{2}},
+	}}}
+	missing, err := countMissingStorageKeysAt(keys, changes, block)
+	if err != nil || missing != 1 {
+		t.Fatalf("missing=%d err=%v", missing, err)
+	}
+
+	tests := []struct {
+		name    string
+		keys    []gsrpcTypes.StorageKey
+		changes []gsrpcTypes.StorageChangeSet
+	}{
+		{name: "empty request", keys: nil, changes: changes},
+		{name: "duplicate request", keys: []gsrpcTypes.StorageKey{{1}, {1}}, changes: changes},
+		{name: "no change set", keys: keys},
+		{name: "wrong block", keys: keys, changes: []gsrpcTypes.StorageChangeSet{{Block: gsrpcTypes.NewHash([]byte{8}), Changes: changes[0].Changes}}},
+		{name: "missing response key", keys: keys, changes: []gsrpcTypes.StorageChangeSet{{Block: block, Changes: changes[0].Changes[:2]}}},
+		{name: "duplicate response key", keys: keys, changes: []gsrpcTypes.StorageChangeSet{{Block: block, Changes: []gsrpcTypes.KeyValueOption{changes[0].Changes[0], changes[0].Changes[0], changes[0].Changes[2]}}}},
+		{name: "unrequested response key", keys: keys, changes: []gsrpcTypes.StorageChangeSet{{Block: block, Changes: []gsrpcTypes.KeyValueOption{changes[0].Changes[0], changes[0].Changes[1], {StorageKey: gsrpcTypes.StorageKey{4}}}}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := countMissingStorageKeysAt(test.keys, test.changes, block); err == nil {
+				t.Fatal("malformed storage batch was accepted")
+			}
+		})
+	}
+}
+
+func TestExecutionRPCConfigurationKeepsPrivateIndependenceHard(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://public-substrate.example:443"
+	cfg.Public.Chain.EVMPublicReadEndpoint = "https://public-evm.example"
+	cfg.Public.Chain.SubstratePublicReadEndpoint = cfg.OperationalSubstrate
+	if err := validateExecutionRPCConfiguration(cfg); err == nil || !strings.Contains(err.Error(), "shared") {
+		t.Fatalf("private execution accepted a shared Substrate observer: %v", err)
+	}
+
+	cfg = testResolvedConfig(t)
+	cfg.Config.LaunchInputs.PublicSubstrateRPCOverride = "wss://configured.example:443"
+	cfg.Config.LaunchInputs.PublicEVMRPCOverride = "https://configured.example"
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalSubstrate = "wss://tampered.example:443"
+	cfg.OperationalEVM = "https://configured.example"
+	if err := validateExecutionRPCConfiguration(cfg); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("tampered public operational route was accepted: %v", err)
+	}
 }
 
 func TestRuntimeCodeHashValidationIsExact(t *testing.T) {
@@ -290,6 +387,11 @@ func TestApprovedSetupFactsUseOnlyTheRemainingBudget(t *testing.T) {
 	}
 	if err := validateApprovedSetupFacts(plan, &current, Spend{TAORao: 21, AlphaRao: 30}); err == nil || !strings.Contains(err.Error(), "remaining") {
 		t.Fatalf("insufficient remaining TAO was accepted: %v", err)
+	}
+	current = *testSetupFacts()
+	current.ExistentialDepositRao++
+	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err == nil || !strings.Contains(err.Error(), "existential deposit") {
+		t.Fatalf("runtime existential-deposit drift was accepted: %v", err)
 	}
 	current = *testSetupFacts()
 	current.BurnRao++

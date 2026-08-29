@@ -158,9 +158,10 @@ func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
 		for _, port := range []int{18080 + operator, 19080 + operator, 20080 + operator} {
 			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
 		}
+		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 22080+operator))
 	}
-	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 21080+miner))
+	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
+		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 21080+swarm))
 	}
 	sort.Strings(addresses)
 	return addresses
@@ -216,6 +217,58 @@ func preflightReleaseHost(stateDir string, cfg *ResolvedConfig) error {
 		return nil
 	}
 	return validateAvailableListenAddresses(releaseProcessListenAddresses(cfg))
+}
+
+// postTopologyTournamentActions returns the only setup actions which are
+// intentionally deferred until the real operator/miner/validator topology is
+// healthy. Keeping this selector pure makes it impossible for launch/resume to
+// silently stop at topology.launch while the approved challenger registrations
+// remain unexecuted.
+func postTopologyTournamentActions(plan *SetupPlan) ([]Action, error) {
+	if plan == nil {
+		return nil, errors.New("setup plan is unavailable")
+	}
+	seenTopology := false
+	selected := make([]Action, 0)
+	for _, action := range plan.Actions {
+		if !seenTopology {
+			if action.ID == "topology.launch" {
+				seenTopology = true
+			}
+			continue
+		}
+		if action.ID == "churn.tournament-complete" {
+			selected = append(selected, action)
+			return selected, nil
+		}
+		if !strings.HasPrefix(action.ID, "fleet.register.") &&
+			!strings.HasPrefix(action.ID, "fleet.commitment.") &&
+			!strings.HasPrefix(action.ID, "fleet.mirror.") &&
+			!strings.HasPrefix(action.ID, "fleet.bind.") {
+			return nil, fmt.Errorf("unexpected post-topology action %s before churn tournament barrier", action.ID)
+		}
+		selected = append(selected, action)
+	}
+	if !seenTopology {
+		return nil, errors.New("plan has no topology.launch action")
+	}
+	return nil, errors.New("plan has no churn.tournament-complete action after topology.launch")
+}
+
+func executePostTopologyTournament(ctx context.Context, plan *SetupPlan, executor *Executor) error {
+	if executor == nil {
+		return errors.New("post-topology tournament requires the approved setup executor")
+	}
+	actions, err := postTopologyTournamentActions(plan)
+	if err != nil {
+		return err
+	}
+	for _, action := range actions {
+		if err := executor.Execute(ctx, action); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Provision API-assigned identities, finish their chain bindings, then hand
@@ -306,6 +359,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		if err := executor.Execute(ctx, *topologyAction); err != nil {
 			return err
 		}
+		if err := executePostTopologyTournament(ctx, p, executor); err != nil {
+			return err
+		}
 		return publishDeploymentEvidence(ctx, cfg, stateDir, p, roles)
 	}
 	supervisorCtx, cancelSupervisor := context.WithCancel(ctx)
@@ -318,6 +374,11 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		return err
 	}
 	if err := executor.Execute(ctx, *topologyAction); err != nil {
+		cancelSupervisor()
+		<-supervisorErr
+		return err
+	}
+	if err := executePostTopologyTournament(ctx, p, executor); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -361,7 +422,7 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		return nil, err
 	}
-	targets := []struct{ name, dir, pkg string }{{"sim-testnet", cfg.Repos.SN, "./sim-testnet"}, {"miner", cfg.Repos.SN, "./cli/miner"}, {"validator", cfg.Repos.SN, "./cli/validator"}, {"server-api", cfg.Repos.Server, "./cli/api"}, {"server-connect", cfg.Repos.Server, "./cli/connect"}, {"server-taskworker", cfg.Repos.Server, "./cli/taskworker"}, {"server-ctl", cfg.Repos.Server, "./bringyourctl"}}
+	targets := []struct{ name, dir, pkg string }{{"sim-testnet", cfg.Repos.SN, "./sim-testnet"}, {"server-ctl", cfg.Repos.Server, "./bringyourctl"}}
 	result := map[string]string{}
 	for _, t := range targets {
 		path := filepath.Join(out, t.name)
@@ -643,9 +704,21 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		if err != nil {
 			return nil, fmt.Errorf("workload %s proxy: %w", input.identity, err)
 		}
+		if input.id == workloadRPCProxyProcessID {
+			proxy.MaximumRequestsPerMinute = configuredEVMRequestsPerMinute(cfg, input.endpoint)
+		}
+		if err := validateRPCProxyConfig(proxy); err != nil {
+			return nil, fmt.Errorf("workload %s proxy: %w", input.identity, err)
+		}
 		proxyArgs := []string{"__rpc_proxy", "--listen=" + proxy.ListenAddress, "--health=" + proxy.HealthAddress, "--upstream=" + proxy.Upstream}
 		if proxy.TLSServerName != "" {
 			proxyArgs = append(proxyArgs, "--tls-server-name="+proxy.TLSServerName)
+		}
+		if proxy.HTTP {
+			proxyArgs = append(proxyArgs, "--http")
+		}
+		if proxy.MaximumRequestsPerMinute > 0 {
+			proxyArgs = append(proxyArgs, fmt.Sprintf("--maximum-requests-per-minute=%d", proxy.MaximumRequestsPerMinute))
 		}
 		out = append(out, ProcessSpec{
 			ID: input.id, Role: "dependency-rpc-proxy", Identity: input.identity,
@@ -659,13 +732,17 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		ip := fmt.Sprintf("127.0.0.%d", 10+i)
 		baseEnv := operatorBaseEnv(cfg, stateDir, i, ip)
 		for _, svc := range []struct {
-			role, bin string
-			port      int
-		}{{"api", "server-api", 18080 + i}, {"connect", "server-connect", 19080 + i}, {"taskworker", "server-taskworker", 20080 + i}} {
+			role, bin, module string
+			port              int
+		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", "sim-testnet", "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
 			env := cloneStrings(baseEnv)
 			env["WARP_SERVICE"] = svc.role
 			id := fmt.Sprintf("operator-%d-%s", i, svc.role)
-			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: []string{fmt.Sprintf("--port=%d", svc.port)}, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", svc.port), RestartLimit: 5})
+			args := []string{fmt.Sprintf("--port=%d", svc.port)}
+			if svc.module != "" {
+				args = append([]string{svc.module}, args...)
+			}
+			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", svc.port), RestartLimit: 5})
 		}
 	}
 	return out, nil
@@ -711,33 +788,65 @@ func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, b
 }
 func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string, roles *RoleSecrets) []ProcessSpec {
 	var out []ProcessSpec
-	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-		op := operatorForMiner(cfg, i)
-		minerState := filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
-		id := fmt.Sprintf("miner-%d", i)
-		wallet := roles.Substrate[fmt.Sprintf("miner-%d-payout", i)].SS58
-		out = append(out, ProcessSpec{ID: id, Role: "miner", Identity: "0x" + roles.Clients[id].ClientIDHex, Command: bins["miner"], Args: []string{"provide", fmt.Sprintf("--api_url=http://127.0.0.1:%d", 18080+op), fmt.Sprintf("--connect_url=ws://127.0.0.1:%d", 19080+op), "--wallet=" + wallet, "--test-egress-source-ip=" + minerTestEgressSourceIP(i), fmt.Sprintf("--port=%d", 21080+i)}, WorkDir: cfg.Repos.SN, Env: map[string]string{"URNETWORK_STATE_DIR": minerState, "WARP_VERSION": "1.0"}, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", 21080+i), RestartLimit: 5})
-		claimID := fmt.Sprintf("miner-%d-claims", i)
-		out = append(out, ProcessSpec{ID: claimID, Role: "claim-daemon", Identity: "0x" + roles.Clients[id].ClientIDHex, Command: bins["miner"], Args: []string{"claim-daemon", "--config=" + filepath.Join(stateDir, "runtime", id, "claim-daemon.yml")}, WorkDir: cfg.Repos.SN, Env: map[string]string{"URNETWORK_STATE_DIR": minerState, "WARP_VERSION": "1.0"}, StdoutPath: filepath.Join(stateDir, "processes", claimID+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", claimID+".stderr.log"), RestartLimit: 5})
+	minersPerSwarm := cfg.Config.Topology.Miners / cfg.Config.Topology.MinerSwarmProcesses
+	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
+		id := fmt.Sprintf("miner-swarm-%d", swarm)
+		first := (swarm-1)*minersPerSwarm + 1
+		last := swarm * minersPerSwarm
+		out = append(out, ProcessSpec{
+			ID: id, Role: "miner-swarm", Identity: fmt.Sprintf("miners:%d-%d", first, last), Command: bins["sim-testnet"],
+			Args:    []string{"__miner_swarm", "--config=" + filepath.Join(stateDir, "runtime", id, "swarm.json")},
+			WorkDir: cfg.Repos.SN, Env: map[string]string{"WARP_VERSION": "1.0"},
+			StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"),
+			HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", 21080+swarm), RestartLimit: 5,
+		})
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		id := fmt.Sprintf("claim-relayer-%d", operator)
+		out = append(out, ProcessSpec{
+			ID: id, Role: "claim-relayer", Identity: fmt.Sprintf("no:%d", operator), Command: bins["sim-testnet"],
+			Args:    []string{"__claim_swarm", "--config=" + filepath.Join(stateDir, "runtime", id, "swarm.json")},
+			WorkDir: cfg.Repos.SN, Env: map[string]string{"WARP_VERSION": "1.0"},
+			StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"),
+			HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", 22080+operator), RestartLimit: 5,
+		})
 	}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		id := fmt.Sprintf("validator-%d", i)
-		args := []string{"run", "--config=" + filepath.Join(stateDir, "runtime", id, "validator.yml")}
-		out = append(out, ProcessSpec{ID: id, Role: "validator", Identity: roles.Substrate[validatorHotkeyLabel(i)].SS58, Command: bins["validator"], Args: args, WorkDir: cfg.Repos.SN, Env: map[string]string{"URNETWORK_STATE_DIR": filepath.Join(stateDir, "runtime", id, "state"), "WARP_VERSION": "1.0"}, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), RestartLimit: 5})
+		args := []string{"__validator", "--config=" + filepath.Join(stateDir, "runtime", id, "validator.yml")}
+		out = append(out, ProcessSpec{ID: id, Role: "validator", Identity: roles.Substrate[validatorHotkeyLabel(i)].SS58, Command: bins["sim-testnet"], Args: args, WorkDir: cfg.Repos.SN, Env: map[string]string{"URNETWORK_STATE_DIR": filepath.Join(stateDir, "runtime", id, "state"), "WARP_VERSION": "1.0"}, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), RestartLimit: 5})
 	}
 	return out
 }
 
-// minerTestEgressSourceIP gives every provider a distinct exact loopback
-// address. The six head providers deliberately occupy one /29, so their
-// signed trail hashes are identical and the two three-client fleets each get
-// an exact 1/2 prefix claim. The two tail providers use separate /29s. The
-// miner flag accepts loopback only, keeping this topology test-local.
+// minerTestEgressSourceIP gives every logical provider a distinct loopback
+// address. One member of each of the first two fleets shares a /29 while their
+// other members remain unique, proving a 1/2 split without pushing those
+// fleets below the top-200 boundary. Each four-member challenger collapses to
+// one distinct /29, so both remain positive but deterministically rank 201st
+// and 202nd until a selected fleet is degraded by the boundary fault.
 func minerTestEgressSourceIP(miner int) string {
-	if miner <= 6 {
-		return fmt.Sprintf("127.64.0.%d", miner)
+	if miner < 1 {
+		return ""
 	}
-	return fmt.Sprintf("127.65.%d.1", miner-7)
+	switch {
+	case miner == 1:
+		return "127.64.0.1"
+	case miner == 5:
+		return "127.64.0.2"
+	case miner >= 801 && miner <= 804:
+		return fmt.Sprintf("127.64.1.%d", miner-800)
+	case miner >= 805 && miner <= 808:
+		return fmt.Sprintf("127.64.2.%d", miner-804)
+	}
+	index := miner - 1
+	second := 65 + index/(32*256)
+	third := (index / 32) % 256
+	last := (index%32)*8 + 1
+	if second > 254 {
+		return ""
+	}
+	return fmt.Sprintf("127.%d.%d.%d", second, third, last)
 }
 
 // operatorForMiner keeps every head fleet within one operator so affiliation
@@ -748,7 +857,7 @@ func operatorForMiner(cfg *ResolvedConfig, miner int) int {
 		return 0
 	}
 	topology := cfg.Config.Topology
-	headMembers := topology.HeadFleets * topology.ClientsPerHeadFleet
+	headMembers := topology.fleetCandidateMiners()
 	if miner <= headMembers {
 		fleet := 1 + (miner-1)/topology.ClientsPerHeadFleet
 		return 1 + (fleet-1)%topology.Operators

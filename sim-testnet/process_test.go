@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math/big"
 	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -145,7 +148,7 @@ func TestReleaseHostPreflightRejectsFullDiskAndOccupiedPort(t *testing.T) {
 func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	addresses := releaseProcessListenAddresses(cfg)
-	want := 4 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.Miners
+	want := 4 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses
 	if len(addresses) != want {
 		t.Fatalf("release listener count=%d, want %d: %v", len(addresses), want, addresses)
 	}
@@ -183,14 +186,62 @@ func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 	}
 }
 
+func TestPostTopologyTournamentSelectionIsExactAndBounded(t *testing.T) {
+	plan := &SetupPlan{Actions: []Action{
+		{ID: "accounts.provision"},
+		{ID: "topology.launch"},
+		{ID: "fleet.register.201"},
+		{ID: "fleet.commitment.201"},
+		{ID: "fleet.mirror.201"},
+		{ID: "fleet.bind.201.1"},
+		{ID: "churn.tournament-complete"},
+		{ID: "precompile.commitment-write"},
+	}}
+	actions, err := postTopologyTournamentActions(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"fleet.register.201", "fleet.commitment.201", "fleet.mirror.201", "fleet.bind.201.1", "churn.tournament-complete"}
+	if len(actions) != len(want) {
+		t.Fatalf("selected %d tournament actions, want %d: %+v", len(actions), len(want), actions)
+	}
+	for i := range want {
+		if actions[i].ID != want[i] {
+			t.Fatalf("selected action %d=%s, want %s", i, actions[i].ID, want[i])
+		}
+	}
+}
+
+func TestPostTopologyTournamentSelectionRejectsMalformedBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		actions []Action
+		want    string
+	}{
+		{name: "nil plan", want: "unavailable"},
+		{name: "missing topology", actions: []Action{{ID: "churn.tournament-complete"}}, want: "topology.launch"},
+		{name: "missing barrier", actions: []Action{{ID: "topology.launch"}, {ID: "fleet.register.201"}}, want: "churn.tournament-complete"},
+		{name: "unexpected action", actions: []Action{{ID: "topology.launch"}, {ID: "precompile.commitment-write"}, {ID: "churn.tournament-complete"}}, want: "unexpected post-topology action"},
+	}
+	for _, test := range tests {
+		var plan *SetupPlan
+		if test.actions != nil {
+			plan = &SetupPlan{Actions: test.actions}
+		}
+		_, err := postTopologyTournamentActions(plan)
+		if err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("%s: error=%v, want substring %q", test.name, err, test.want)
+		}
+	}
+}
+
 func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.OperationalEVM = "https://evm-rpc.example"
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	cfg.OperationalRPCMode = rpcModePublicOverride
 	cfg.OperationalSubstrate = "wss://substrate-rpc.example:443"
-	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
-		"sim-testnet": "/release/sim-testnet", "server-api": "/release/api",
-		"server-connect": "/release/connect", "server-taskworker": "/release/taskworker",
-	})
+	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/release/sim-testnet"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,68 +250,152 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	}
 	evmArgs := strings.Join(specs[0].Args, " ")
 	substrateArgs := strings.Join(specs[1].Args, " ")
-	if !strings.Contains(evmArgs, "--upstream=evm-rpc.example:443") || !strings.Contains(evmArgs, "--tls-server-name=evm-rpc.example") || !strings.Contains(substrateArgs, "--upstream=substrate-rpc.example:443") || !strings.Contains(substrateArgs, "--tls-server-name=substrate-rpc.example") {
+	if !strings.Contains(evmArgs, "--upstream=evm-rpc.example:443") || !strings.Contains(evmArgs, "--tls-server-name=evm-rpc.example") || !strings.Contains(evmArgs, "--http") || !strings.Contains(evmArgs, "--maximum-requests-per-minute=40") || !strings.Contains(substrateArgs, "--upstream=substrate-rpc.example:443") || !strings.Contains(substrateArgs, "--tls-server-name=substrate-rpc.example") || strings.Contains(substrateArgs, "--http") || strings.Contains(substrateArgs, "--maximum-requests-per-minute") {
 		t.Fatalf("RPC proxies lost protocol-specific upstream TLS identities: evm=%q substrate=%q", evmArgs, substrateArgs)
 	}
 	for _, spec := range specs[2:] {
 		if spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 			t.Fatalf("%s bypasses workload RPC proxy: %q", spec.ID, spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
 		}
+		switch spec.Role {
+		case "operator-api":
+			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_api" {
+				t.Fatalf("%s bypasses the production API module runner: %+v", spec.ID, spec)
+			}
+		case "operator-connect":
+			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_connect" {
+				t.Fatalf("%s bypasses the production connect module runner: %+v", spec.ID, spec)
+			}
+		case "operator-taskworker":
+			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_taskworker" {
+				t.Fatalf("%s bypasses the production taskworker module runner: %+v", spec.ID, spec)
+			}
+		}
 	}
 }
 
-func TestClientSpecsGiveExactAddressesOneSharedHeadPrefix(t *testing.T) {
+func TestClientSpecsUseProductionModuleSwarmsAndDistinctPrefixes(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	specs := buildClientSpecs(cfg, t.TempDir(), map[string]string{"miner": "/bin/miner", "validator": "/bin/validator"}, roles)
-	sources := map[string]bool{}
-	var headPrefix netip.Prefix
-	miners := 0
+	specs := buildClientSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/bin/sim-testnet"}, roles)
+	providerSwarms := 0
+	claimSwarms := 0
 	for _, spec := range specs {
-		if spec.Role != "miner" {
-			continue
-		}
-		miners++
-		var source string
-		for _, arg := range spec.Args {
-			if strings.HasPrefix(arg, "--test-egress-source-ip=") {
-				source = strings.TrimPrefix(arg, "--test-egress-source-ip=")
+		switch spec.Role {
+		case "miner-swarm":
+			providerSwarms++
+			if spec.Command != "/bin/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__miner_swarm" {
+				t.Fatalf("provider swarm %s bypasses the production miner module wrapper: %+v", spec.ID, spec)
 			}
-		}
-		addr, err := netip.ParseAddr(source)
-		if err != nil || !addr.Is4() || !addr.IsLoopback() || sources[source] {
-			t.Fatalf("%s source identity = %q, err=%v duplicate=%t", spec.ID, source, err, sources[source])
-		}
-		sources[source] = true
-		if miners <= cfg.Config.Topology.HeadFleets*cfg.Config.Topology.ClientsPerHeadFleet {
-			prefix := netip.PrefixFrom(addr, cfg.Policy.Verify.EgressIPv4Prefix).Masked()
-			if !headPrefix.IsValid() {
-				headPrefix = prefix
-			} else if prefix != headPrefix {
-				t.Fatalf("head miner %s prefix = %s, want shared %s", spec.ID, prefix, headPrefix)
+		case "claim-relayer":
+			claimSwarms++
+			if spec.Command != "/bin/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__claim_swarm" {
+				t.Fatalf("claim swarm %s bypasses the production miner module wrapper: %+v", spec.ID, spec)
 			}
-		} else if netip.PrefixFrom(addr, cfg.Policy.Verify.EgressIPv4Prefix).Masked() == headPrefix {
-			t.Fatalf("tail miner %s leaked into shared head prefix", spec.ID)
 		}
 	}
-	if miners != cfg.Config.Topology.Miners || len(sources) != miners {
-		t.Fatalf("miner/source count = %d/%d, want %d", miners, len(sources), cfg.Config.Topology.Miners)
+	if providerSwarms != cfg.Config.Topology.MinerSwarmProcesses || claimSwarms != cfg.Config.Topology.Operators {
+		t.Fatalf("provider/claim swarm count = %d/%d, want %d/%d", providerSwarms, claimSwarms, cfg.Config.Topology.MinerSwarmProcesses, cfg.Config.Topology.Operators)
+	}
+	sources := map[string]bool{}
+	prefixes := map[netip.Prefix][]int{}
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		source := minerTestEgressSourceIP(miner)
+		addr, err := netip.ParseAddr(source)
+		if err != nil || !addr.Is4() || !addr.IsLoopback() || sources[source] {
+			t.Fatalf("miner-%d source identity = %q, err=%v duplicate=%t", miner, source, err, sources[source])
+		}
+		sources[source] = true
+		prefix := netip.PrefixFrom(addr, cfg.Policy.Verify.EgressIPv4Prefix).Masked()
+		prefixes[prefix] = append(prefixes[prefix], miner)
+	}
+	wantPrefixes := cfg.Config.Topology.Miners - 7
+	if len(sources) != cfg.Config.Topology.Miners || len(prefixes) != wantPrefixes {
+		t.Fatalf("source/prefix count = %d/%d, want %d/%d", len(sources), len(prefixes), cfg.Config.Topology.Miners, wantPrefixes)
+	}
+	multi := map[string]bool{"1,5": true, "801,802,803,804": true, "805,806,807,808": true}
+	for prefix, miners := range prefixes {
+		if len(miners) == 1 {
+			continue
+		}
+		parts := make([]string, len(miners))
+		for index, miner := range miners {
+			parts[index] = fmt.Sprint(miner)
+		}
+		key := strings.Join(parts, ",")
+		if !multi[key] {
+			t.Fatalf("unexpected shared prefix %s miners=%v", prefix, miners)
+		}
+		delete(multi, key)
+	}
+	if len(multi) != 0 {
+		t.Fatalf("expected shared-prefix cohorts were absent: %v", multi)
 	}
 }
 
 func TestBalancedOperatorAssignmentKeepsHeadFleetsIsolated(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	want := []int{1, 1, 1, 2, 2, 2, 1, 2}
+	want := map[int]int{1: 1, 4: 1, 5: 2, 8: 2, 801: 1, 804: 1, 805: 2, 808: 2, 809: 1, 810: 2, 1_000: 2}
 	for miner, operator := range want {
-		if got := operatorForMiner(cfg, miner+1); got != operator {
-			t.Fatalf("miner %d operator = %d, want %d", miner+1, got, operator)
+		if got := operatorForMiner(cfg, miner); got != operator {
+			t.Fatalf("miner %d operator = %d, want %d", miner, got, operator)
 		}
 	}
 	if operatorForMiner(cfg, 0) != 0 || operatorForMiner(cfg, cfg.Config.Topology.Miners+1) != 0 {
 		t.Fatal("invalid miner index was assigned to a live operator")
+	}
+}
+
+func TestTestEgressGeometryKeepsSharedFleetsAboveChallengers(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	fleetPrefixes := map[int]map[netip.Prefix]bool{}
+	claims := map[netip.Prefix]int{}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		fleetPrefixes[fleet] = map[netip.Prefix]bool{}
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			miner := fleetMemberMinerIndex(cfg, fleet, member)
+			address, err := netip.ParseAddr(minerTestEgressSourceIP(miner))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fleetPrefixes[fleet][netip.PrefixFrom(address, cfg.Policy.Verify.EgressIPv4Prefix).Masked()] = true
+		}
+		for prefix := range fleetPrefixes[fleet] {
+			claims[prefix]++
+		}
+	}
+	type rankedFleet struct {
+		fleet int
+		score *big.Rat
+	}
+	ranked := make([]rankedFleet, 0, len(fleetPrefixes))
+	for fleet, prefixes := range fleetPrefixes {
+		score := new(big.Rat)
+		for prefix := range prefixes {
+			score.Add(score, new(big.Rat).SetFrac64(1, int64(claims[prefix])))
+		}
+		ranked = append(ranked, rankedFleet{fleet: fleet, score: score})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if comparison := ranked[i].score.Cmp(ranked[j].score); comparison != 0 {
+			return comparison > 0
+		}
+		return ranked[i].fleet < ranked[j].fleet
+	})
+	selected := map[int]bool{}
+	for _, fleet := range ranked[:cfg.Config.Topology.HeadSlots] {
+		selected[fleet.fleet] = true
+	}
+	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+		if !selected[fleet] {
+			t.Fatalf("initial fleet %d fell below the top-200 boundary", fleet)
+		}
+	}
+	if ranked[0].score.Cmp(big.NewRat(4, 1)) != 0 || ranked[198].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[199].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[200].fleet != 201 || ranked[200].score.Cmp(big.NewRat(1, 1)) != 0 || ranked[201].fleet != 202 {
+		t.Fatalf("unexpected boundary geometry: top=%+v boundary=%+v", ranked[0], ranked[198:])
 	}
 }
 

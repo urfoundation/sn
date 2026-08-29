@@ -7,11 +7,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
@@ -277,6 +282,16 @@ func TestLiveBalanceProbe(t *testing.T) {
 	if setupErr != nil {
 		t.Logf("setup readiness: %v", setupErr)
 	}
+	rewards, rewardsErr := inspectNativeRewards(cfg, cfg.OperationalSubstrate)
+	if rewardsErr != "" || rewards == nil || facts == nil || len(rewards.EmissionRao) != int(facts.ExistingUIDCount) || len(rewards.Incentive) != int(facts.ExistingUIDCount) || len(rewards.Dividends) != int(facts.ExistingUIDCount) {
+		t.Fatalf("native reward vectors=%+v error=%s existing_uids=%v", rewards, rewardsErr, func() any {
+			if facts == nil {
+				return nil
+			}
+			return facts.ExistingUIDCount
+		}())
+	}
+	t.Logf("native rewards at block %d: emission=%v incentive=%v dividends=%v", rewards.FinalizedHead.Number, rewards.EmissionRao, rewards.Incentive, rewards.Dividends)
 	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
@@ -303,4 +318,69 @@ func TestLiveBalanceProbe(t *testing.T) {
 		values[i] = binary.LittleEndian.Uint64(quote[i*8 : (i+1)*8])
 	}
 	t.Logf("21m rao quote words: %v", values)
+}
+
+func TestLiveEVMMirrorBalanceSemantics(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_EVM_BALANCE") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_EVM_BALANCE=1 to compare finalized Substrate and EVM balances")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, err := roles.EVMAddress("deployer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror := ss58Mirror(address)
+	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chain.API.Client.Close()
+	key, err := types.CreateStorageKey(chain.Meta, "System", "Account", mirror[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var info subtensorAccountInfo
+	if ok, readErr := chain.API.RPC.State.GetStorage(key, &info, finalized); readErr != nil || !ok {
+		t.Fatalf("read finalized mirror account: present=%t error=%v", ok, readErr)
+	}
+	evm, err := ethclient.Dial(cfg.OperationalEVM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer evm.Close()
+	header, err := chain.API.RPC.Chain.GetHeader(finalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balance, err := evm.BalanceAt(context.Background(), common.Address(address), new(big.Int).SetUint64(uint64(header.Number)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	constant, err := chain.Meta.FindConstantValue("Balances", "ExistentialDeposit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	depositRao, err := decodeRuntimeExistentialDepositRao(constant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uint64(info.Data.Reserved) != 0 || uint64(info.Data.Frozen) != 0 || uint64(info.Data.Free) <= depositRao {
+		t.Fatalf("deployer mirror has unexpected account constraints: free=%d reserved=%d frozen=%d deposit=%d", info.Data.Free, info.Data.Reserved, info.Data.Frozen, depositRao)
+	}
+	want := new(big.Int).Mul(new(big.Int).SetUint64(uint64(info.Data.Free)-depositRao), new(big.Int).SetUint64(evmWeiPerRao))
+	if balance.Cmp(want) != 0 {
+		t.Fatalf("EVM reducible balance = %s, want (free-deposit)*1e9 = %s", balance, want)
+	}
+	t.Logf("address=%s free_rao=%d reserved_rao=%d frozen_rao=%d flags=%v evm_wei=%s", address, info.Data.Free, info.Data.Reserved, info.Data.Frozen, info.Data.Flags, balance)
 }

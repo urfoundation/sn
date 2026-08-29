@@ -25,6 +25,12 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		client.ClientIDHex = strings.Repeat("01", 16)
 		roles.Clients[label] = client
 	}
+	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
+		jwt := filepath.Join(stateDir, "runtime", "miner-"+strconv.Itoa(i), "state", "jwt")
+		if err := atomicWrite(jwt, []byte("fixture-network-jwt\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	deployment := ContractDeployment{
 		Schema: "urnetwork-contract-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		ReserveSink:               common.HexToAddress("0x1000000000000000000000000000000000000001"),
@@ -45,7 +51,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validator %d rendered config: %v", i, err)
 		}
-		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 50_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 {
+		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 2_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 {
 			t.Fatalf("validator %d config incomplete: %+v", i, loaded)
 		}
 		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadSubstrateRPCAuthority() {
@@ -62,10 +68,11 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("miner %d claim daemon rendered config: %v", i, err)
 		}
-		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() {
+		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || loaded.JWTFile == "" {
 			t.Fatalf("miner %d claim config incomplete: %+v", i, loaded)
 		}
-		wantKey := filepath.Join(stateDir, "secrets", "miner-"+strconv.Itoa(i)+"-claim-relayer.key")
+		operator := operatorForMiner(cfg, i)
+		wantKey := filepath.Join(stateDir, "secrets", "operator-"+strconv.Itoa(operator)+"-claim-relayer.key")
 		if loaded.KeyFile != wantKey {
 			t.Fatalf("miner %d claim key = %q, want %q", i, loaded.KeyFile, wantKey)
 		}
@@ -73,8 +80,24 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if strings.TrimSpace(string(keyBytes)) != "0x"+roles.EVM["miner-"+strconv.Itoa(i)+"-claim-relayer"].PrivateKeyHex {
-			t.Fatalf("miner %d does not use its isolated claim relayer", i)
+		if strings.TrimSpace(string(keyBytes)) != "0x"+roles.EVM["operator-"+strconv.Itoa(operator)+"-claim-relayer"].PrivateKeyHex {
+			t.Fatalf("miner %d does not use its operator-scoped claim relayer", i)
+		}
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		path := filepath.Join(stateDir, "runtime", "claim-relayer-"+strconv.Itoa(operator), "swarm.json")
+		loaded, err := minerpkg.LoadClaimSwarmConfig(path)
+		if err != nil {
+			t.Fatalf("operator %d claim swarm rendered config: %v", operator, err)
+		}
+		wantMembers := 0
+		for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+			if operatorForMiner(cfg, miner) == operator {
+				wantMembers++
+			}
+		}
+		if len(loaded.Members) != wantMembers || loaded.ListenAddress != "127.0.0.1:"+strconv.Itoa(22080+operator) {
+			t.Fatalf("operator %d claim swarm = %+v, want %d members", operator, loaded, wantMembers)
 		}
 	}
 	stPath := filepath.Join(stateDir, "runtime", "operator-1", "vault", "st.yml")

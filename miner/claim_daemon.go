@@ -35,6 +35,7 @@ type ClaimDaemonConfig struct {
 	APIURL         string   `yaml:"api_url" json:"api_url"`
 	RPC            []string `yaml:"rpc" json:"rpc"`
 	KeyFile        string   `yaml:"key_file" json:"key_file"`
+	JWTFile        string   `yaml:"jwt_file,omitempty" json:"jwt_file,omitempty"`
 	StateDir       string   `yaml:"state_dir" json:"state_dir"`
 	PollSeconds    int      `yaml:"poll_seconds" json:"poll_seconds"`
 	LookbackEpochs uint64   `yaml:"lookback_epochs" json:"lookback_epochs"`
@@ -69,6 +70,12 @@ func LoadClaimDaemonConfig(path string) (*ClaimDaemonConfig, error) {
 		}
 		*value = filepath.Clean(*value)
 	}
+	if cfg.JWTFile != "" {
+		if !filepath.IsAbs(cfg.JWTFile) {
+			cfg.JWTFile = filepath.Join(base, cfg.JWTFile)
+		}
+		cfg.JWTFile = filepath.Clean(cfg.JWTFile)
+	}
 	if cfg.PollSeconds == 0 {
 		cfg.PollSeconds = 30
 	}
@@ -80,6 +87,15 @@ func LoadClaimDaemonConfig(path string) (*ClaimDaemonConfig, error) {
 	}
 	if _, err := os.Stat(cfg.KeyFile); err != nil {
 		return nil, fmt.Errorf("claim relayer key: %w", err)
+	}
+	if cfg.JWTFile != "" {
+		info, err := os.Stat(cfg.JWTFile)
+		if err != nil {
+			return nil, fmt.Errorf("claim network JWT: %w", err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+			return nil, errors.New("claim network JWT must be a private regular file")
+		}
 	}
 	return &cfg, nil
 }
@@ -638,7 +654,75 @@ func reconcileClaimEntry(ctx context.Context, cfg *ClaimDaemonConfig, api claimA
 	return "", nil
 }
 
-func runClaimDaemon(configPath string) error {
+func submitClaimDirect(ctx context.Context, cfg *ClaimDaemonConfig, api claimAPI, entry *ClaimQueueEntry, submitLock *sync.Mutex, store *claimQueueStore, queue *ClaimQueue) error {
+	claim, err := api.SnPoolClaimSyncWithContext(ctx, &sdk.SnPoolClaimArgs{Epoch: entry.Epoch})
+	if err != nil {
+		return err
+	}
+	if claim.Error != nil {
+		return errors.New(claim.Error.Message)
+	}
+	vault, calldata, err := claimCalldata(claim)
+	if err != nil {
+		return err
+	}
+	if claim.ChainId < 0 {
+		return fmt.Errorf("negative claim chain id %d", claim.ChainId)
+	}
+	key, err := onchain.LoadKeyFile(cfg.KeyFile)
+	if err != nil {
+		return err
+	}
+	if submitLock == nil {
+		return errors.New("claim submit lock is nil")
+	}
+	submitLock.Lock()
+	defer submitLock.Unlock()
+	_, err = onchain.SubmitWithHooks(ctx, onchain.SubmitParams{
+		Contract: vault, Rpcs: cfg.RPC, Key: key, Calldata: calldata,
+		ChainID: new(big.Int).SetUint64(uint64(claim.ChainId)),
+	}, onchain.SubmitHooks{
+		Prepared: func(hash common.Hash, raw []byte) error {
+			priorHash, priorRaw := entry.TxHash, entry.RawTxHex
+			entry.TxHash = strings.ToLower(hash.Hex())
+			entry.RawTxHex = "0x" + hex.EncodeToString(raw)
+			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			if saveErr := store.save(queue); saveErr != nil {
+				entry.TxHash, entry.RawTxHex = priorHash, priorRaw
+				return saveErr
+			}
+			return nil
+		},
+		Broadcast: func(hash common.Hash) error {
+			if !strings.EqualFold(entry.TxHash, hash.Hex()) {
+				return errors.New("broadcast transaction hash differs from the durable prepared hash")
+			}
+			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			return store.save(queue)
+		},
+	})
+	return err
+}
+
+func readClaimDaemonJWT(cfg *ClaimDaemonConfig) (string, error) {
+	if cfg.JWTFile == "" {
+		return readNetworkJwt()
+	}
+	b, err := os.ReadFile(cfg.JWTFile)
+	if err != nil {
+		return "", err
+	}
+	jwt := strings.TrimSpace(string(b))
+	if jwt == "" {
+		return "", errors.New("claim network JWT is empty")
+	}
+	return jwt, nil
+}
+
+func runClaimDaemonWithLock(ctx context.Context, configPath string, submitLock *sync.Mutex, initialDelay time.Duration, onReady func()) error {
+	if ctx == nil {
+		return errors.New("claim daemon context is nil")
+	}
 	cfg, err := LoadClaimDaemonConfig(configPath)
 	if err != nil {
 		return err
@@ -654,28 +738,33 @@ func runClaimDaemon(configPath string) error {
 	if err := store.save(queue); err != nil {
 		return err
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	event := connect.NewEventWithContext(context.Background())
-	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	ctx := event.Ctx()
 	strategy := connect.NewClientStrategyWithDefaults(ctx)
 	api := sdk.NewApi(ctx, strategy, cfg.APIURL)
 	defer api.Close()
-	jwt, err := readNetworkJwt()
+	jwt, err := readClaimDaemonJWT(cfg)
 	if err != nil {
 		return err
 	}
 	api.SetByJwt(jwt)
+	if onReady != nil {
+		onReady()
+	}
+	if initialDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(initialDelay):
+		}
+	}
 	ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
 	defer ticker.Stop()
 	for {
-		current, err := api.SnEpochSync()
+		current, err := api.SnEpochSyncWithContext(ctx)
 		if err == nil {
 			discoverClaims(queue, current.Epoch, cfg.LookbackEpochs)
-			_ = store.save(queue)
+			if err := store.save(queue); err != nil {
+				return err
+			}
 		}
 		for epoch := int64(0); epoch <= queue.LastDiscovered; epoch++ {
 			entry := queue.Entries[fmt.Sprint(epoch)]
@@ -728,29 +817,7 @@ func runClaimDaemon(configPath string) error {
 			if err := store.save(queue); err != nil {
 				return err
 			}
-			var persistHashErr error
-			output, claimErr := executeClaim(ctx, executable, cfg, entry, func(hash, raw string) error {
-				entry.TxHash = hash
-				entry.RawTxHex = raw
-				entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-				if err := store.save(queue); err != nil {
-					persistHashErr = err
-					return err
-				}
-				return nil
-			}, func(hash string) {
-				entry.TxHash = hash
-				entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-				if err := store.save(queue); err != nil {
-					persistHashErr = err
-				}
-			})
-			if persistHashErr != nil {
-				return persistHashErr
-			}
-			if entry.TxHash == "" {
-				entry.TxHash = claimTxHash(output)
-			}
+			claimErr := submitClaimDirect(ctx, cfg, api, entry, submitLock, store, queue)
 			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 			if claimErr == nil {
 				entry.Status = "finalized"
@@ -773,4 +840,17 @@ func runClaimDaemon(configPath string) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// RunClaimDaemon runs the production claim worker using direct package calls;
+// it never shells out to the provider or snclaim CLIs.
+func RunClaimDaemon(ctx context.Context, configPath string) error {
+	var submitLock sync.Mutex
+	return runClaimDaemonWithLock(ctx, configPath, &submitLock, 0, nil)
+}
+
+func runClaimDaemon(configPath string) error {
+	event := connect.NewEventWithContext(context.Background())
+	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	return RunClaimDaemon(event.Ctx(), configPath)
 }

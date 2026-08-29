@@ -60,9 +60,28 @@ func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*Ac
 	if err != nil {
 		return nil, err
 	}
+	operationalSubstrate := ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()}
+	if !independentRPCRequired(e.cfg) {
+		// Public override mode intentionally names the same provider for both
+		// routes. Reissuing every read cannot add independence and can trip the
+		// provider's source-wide quota, so preserve a detached copy of the same
+		// observation while recording IndependentRPC=false.
+		independentObserved, cloneErr := cloneObservedPostState(observed)
+		if cloneErr != nil {
+			return nil, cloneErr
+		}
+		return &ActionPostcondition{
+			Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
+			PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash,
+			OperationalRPCMode: e.cfg.OperationalRPCMode, IndependentRPC: false,
+			SubstrateFinalized: operationalSubstrate, EVMFinalized: evmHead, Observed: observed,
+			IndependentSubstrateFinalized: operationalSubstrate, IndependentEVMFinalized: evmHead,
+			IndependentObserved: independentObserved,
+		}, nil
+	}
 	independentSubstrate, independentEVM, err := e.waitIndependentCheckpoints(
 		ctx,
-		ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()},
+		operationalSubstrate,
 		evmHead,
 	)
 	if err != nil {
@@ -81,6 +100,21 @@ func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*Ac
 		Observed: observed, IndependentSubstrateFinalized: independentSubstrate,
 		IndependentEVMFinalized: independentEVM, IndependentObserved: independentObserved,
 	}, nil
+}
+
+func cloneObservedPostState(observed map[string]any) (map[string]any, error) {
+	if observed == nil {
+		return nil, errors.New("action post-state observation is unavailable")
+	}
+	encoded, err := json.Marshal(observed)
+	if err != nil {
+		return nil, fmt.Errorf("encode shared-provider post-state: %w", err)
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		return nil, fmt.Errorf("decode shared-provider post-state: %w", err)
+	}
+	return cloned, nil
 }
 
 func checkpointVisibility(operational, independent ChainHead, canonicalAtOperational string) (bool, error) {
@@ -265,6 +299,51 @@ func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
 	return nil
 }
 
+func lifecycleHyperparameterExpectation(cfg *ResolvedConfig, name string, productionVerified bool) (any, string, error) {
+	if cfg == nil || cfg.Hyperparameters == nil {
+		return nil, "", errors.New("hyperparameter configuration is unavailable")
+	}
+	want, ok := cfg.Hyperparameters.OwnerControlled[name]
+	if !ok {
+		return nil, "", fmt.Errorf("owner hyperparameter %s is unavailable", name)
+	}
+	if name != "immunity_period" || !productionVerified {
+		return want, "", nil
+	}
+	want, ok = cfg.Hyperparameters.ProductionOwnerControlled[name]
+	if !ok {
+		return nil, "", fmt.Errorf("production owner hyperparameter %s is unavailable", name)
+	}
+	return want, "production.hyperparameter.immunity_period", nil
+}
+
+func validateUnmutatedSetupTopology(current SubnetTopologyFacts, planned SetupFacts) error {
+	owner, err := decodeHex32("planned subnet owner hotkey", planned.SubnetOwnerHotkey)
+	if err != nil {
+		return err
+	}
+	uidZero, err := decodeHex32("planned UID zero hotkey", planned.UIDZeroHotkey)
+	if err != nil {
+		return err
+	}
+	if current.UIDCount != planned.ExistingUIDCount || current.OwnerHotkey != owner || current.UIDZero != uidZero {
+		return fmt.Errorf("subnet topology changed after planning: current count=%d owner=0x%x uid0=0x%x; planned count=%d owner=0x%x uid0=0x%x", current.UIDCount, current.OwnerHotkey, current.UIDZero, planned.ExistingUIDCount, owner, uidZero)
+	}
+	return nil
+}
+
+func validateUnmutatedExistingUIDs(current, planned []ExistingUIDFact) error {
+	if len(current) != len(planned) {
+		return fmt.Errorf("existing UID identity count changed after planning: current=%d planned=%d", len(current), len(planned))
+	}
+	for index := range planned {
+		if current[index] != planned[index] {
+			return fmt.Errorf("existing UID %d changed after planning: current=%+v planned=%+v", index, current[index], planned[index])
+		}
+	}
+	return nil
+}
+
 func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainHead) (map[string]any, error) {
 	state := map[string]any{"kind": a.Kind, "target": a.Target}
 	set := func(key string, value any) (map[string]any, error) { state[key] = value; return state, nil }
@@ -274,15 +353,41 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 			return nil, err
 		} else {
 			state["netuid"], state["owner"] = e.cfg.Netuid, owner
+			if !e.registrationSetupProgressed() {
+				topology, topologyErr := e.substrate.SubnetTopology()
+				if topologyErr != nil {
+					return nil, topologyErr
+				}
+				if topologyErr := validateUnmutatedSetupTopology(topology, e.plan.LiveFacts); topologyErr != nil {
+					return nil, topologyErr
+				}
+				existing, existingErr := e.substrate.ExistingUIDFacts()
+				if existingErr != nil {
+					return nil, existingErr
+				}
+				if existingErr := validateUnmutatedExistingUIDs(existing, e.plan.LiveFacts.ExistingUIDs); existingErr != nil {
+					return nil, existingErr
+				}
+				state["initial_uid_count"] = topology.UIDCount
+				state["initial_owner_hotkey"] = "0x" + hex.EncodeToString(topology.OwnerHotkey[:])
+				state["preserved_bootstrap_uids"] = len(existing)
+			}
 			return state, nil
 		}
 	case strings.HasPrefix(a.ID, "subnet.hyperparameter."):
 		name := strings.TrimPrefix(a.ID, "subnet.hyperparameter.")
+		want, supersededBy, expectationErr := lifecycleHyperparameterExpectation(e.cfg, name, e.actionVerified("production.hyperparameter.immunity_period"))
+		if expectationErr != nil {
+			return nil, expectationErr
+		}
 		got, err := e.substrate.ReadHyper(name)
-		if err != nil || !hyperEqual(got, e.cfg.Hyperparameters.OwnerControlled[name], hyperShapes[name].Kind) {
+		if err != nil || !hyperEqual(got, want, hyperShapes[name].Kind) {
 			return nil, fmt.Errorf("hyperparameter %s postcondition is %v: %w", name, got, err)
 		}
 		state["name"], state["value"] = name, got
+		if supersededBy != "" {
+			state["superseded_by"] = supersededBy
+		}
 		return state, nil
 	case a.ID == "production.hyperparameter.immunity_period":
 		got, err := e.substrate.ReadHyper("immunity_period")
@@ -293,23 +398,39 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["name"], state["value"] = "immunity_period", got
 		return state, nil
 	case strings.HasPrefix(a.ID, "evm.fund-"):
+		usableRao, err := evmFundingTerms(a, e.plan.LiveFacts.ExistentialDepositRao)
+		if err != nil {
+			return nil, err
+		}
 		addr := common.HexToAddress(a.Target)
 		balance, err := e.deployer.client.BalanceAt(ctx, addr, new(big.Int).SetUint64(evmHead.Number))
-		want := new(big.Int).Mul(new(big.Int).SetUint64(a.Spend.TAORao), big.NewInt(1_000_000_000))
+		want := new(big.Int).Mul(new(big.Int).SetUint64(usableRao), new(big.Int).SetUint64(evmWeiPerRao))
 		if err != nil || balance.Cmp(want) < 0 {
 			return nil, fmt.Errorf("EVM funding postcondition balance=%v want>=%v: %w", balance, want, err)
 		}
-		state["address"], state["balance_wei"], state["minimum_wei"] = addr.Hex(), balance.String(), want.String()
+		state["address"], state["balance_wei"], state["minimum_wei"], state["existential_deposit_rao"] = addr.Hex(), balance.String(), want.String(), e.plan.LiveFacts.ExistentialDepositRao
 		return state, nil
 	case strings.HasPrefix(a.ID, "fleet.fund."):
 		return e.verifySubstrateFunding(a, fleetColdkeyLabel(suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "fleet.fund-hotkey."):
 		return e.verifySubstrateFunding(a, fleetHotkeyLabel(suffixInt(a.ID)), state)
+	case strings.HasPrefix(a.ID, "churn.fund."):
+		return e.verifySubstrateFunding(a, churnColdkeyLabel(suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "validator.fund."):
 		return e.verifySubstrateFunding(a, fmt.Sprintf("validator-%d-coldkey", suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "fleet.register."):
 		fleet := suffixInt(a.ID)
+		if fleet > e.cfg.Config.Topology.HeadFleets {
+			return e.verifyChallengerChurnPostcondition(fleet, state)
+		}
 		return e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state)
+	case strings.HasPrefix(a.ID, "churn.register."):
+		churn := suffixInt(a.ID)
+		challengerFleet := e.cfg.Config.Topology.HeadFleets + churn
+		if churn <= e.cfg.Config.Topology.ChallengerFleets && e.actionVerified(fmt.Sprintf("fleet.register.%d", challengerFleet)) {
+			return e.verifyPrunedChurnPostcondition(churn, state)
+		}
+		return e.verifyRegistration(churnHotkeyLabel(churn), churnColdkeyLabel(churn), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "validator.register."):
 		validator := suffixInt(a.ID)
 		return e.verifyRegistration(validatorHotkeyLabel(validator), fmt.Sprintf("validator-%d-coldkey", validator), common.Address{}, state)
@@ -354,6 +475,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		return e.verifyFleetBindingPostState(ctx, fleet, member, state)
 	case a.ID == "campaign.voluntary-conviction.1":
 		return e.verifyVoluntaryConvictionPostState(ctx, evmHead, state)
+	case a.ID == dishonestDepositActionID:
+		return e.verifyDishonestDepositPostState(ctx, a, evmHead, state)
 	case a.ID == "production.schedule-policy":
 		return e.verifyProductionPolicyPostState(ctx, evmHead, state)
 	case a.Kind == "budget-reserve":
@@ -361,7 +484,18 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["approved_limits"] = e.plan.Limits
 		return state, nil
 	case a.ID == "config.render":
-		return e.verifyRenderedConfigs(state)
+		state, err := e.verifyRenderedConfigs(state)
+		if err != nil {
+			return nil, err
+		}
+		count, err := e.verifyExactTopologyRoleSet(initialTopologyRoleLabels(e.cfg.Config.Topology))
+		if err != nil {
+			return nil, fmt.Errorf("pre-launch initial registration topology: %w", err)
+		}
+		state["initial_registered_roles"] = len(initialTopologyRoleLabels(e.cfg.Config.Topology))
+		state["preserved_bootstrap_uids"] = len(e.plan.LiveFacts.ExistingUIDs)
+		state["uid_count"] = count
+		return state, nil
 	case a.ID == "accounts.provision":
 		for miner := 1; miner <= e.cfg.Config.Topology.Miners; miner++ {
 			client := e.roles.Clients[fmt.Sprintf("miner-%d", miner)]
@@ -383,6 +517,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["supervisor_manifest_hash"], _ = canonicalHashHex(supervisor)
 		state["processes"] = len(supervisor.Specs)
 		return state, nil
+	case a.ID == "churn.tournament-complete":
+		return e.verifyChurnTournamentPostcondition(state)
 	case strings.HasPrefix(a.ID, "operator.retire."):
 		return e.verifyOperatorRetirementPostState(ctx, a, state)
 	default:
@@ -478,8 +614,12 @@ func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPol
 		return false
 	}
 	p := cfg.Policy.ProductionCadence
+	if p.AfterAcceleratedEpochs == ^uint64(0) {
+		return false
+	}
 	return evidence.Schema == "urnetwork-production-policy-evidence-v1" && evidence.DeploymentID == cfg.Config.Deployment.DeploymentID &&
-		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.EffectiveEpoch >= p.AfterAcceleratedEpochs && evidence.EffectiveBlock != 0 &&
+		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.ScheduledFromEpoch == p.AfterAcceleratedEpochs &&
+		evidence.EffectiveEpoch == p.AfterAcceleratedEpochs+1 && evidence.EffectiveBlock != 0 &&
 		evidence.PriorEpochBlocks == cfg.Policy.Settlement.EpochBlocks && evidence.EpochBlocks == p.EpochBlocks &&
 		evidence.RootCommitWindowBlocks == p.RootCommitWindowBlocks && evidence.FinalizeOffsetBlocks == p.FinalizeOffsetBlocks &&
 		evidence.CloseGraceBlocks == p.CloseGraceBlocks
@@ -578,6 +718,154 @@ func (e *Executor) verifyRegistration(label, coldkeyLabel string, mirror common.
 	}
 	state["role"], state["hotkey"], state["uid"] = label, "0x"+hex.EncodeToString(hotkey[:]), uid
 	state["coldkey"] = "0x" + hex.EncodeToString(owner[:])
+	return state, nil
+}
+
+func (e *Executor) verifyChallengerChurnPostcondition(fleet int, state map[string]any) (map[string]any, error) {
+	result, err := e.readChallengerChurnState(fleet)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateChallengerChurnPostState(result); err != nil {
+		return nil, err
+	}
+	if _, err := e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state); err != nil {
+		return nil, err
+	}
+	state["replaced_churn"] = fleet - e.cfg.Config.Topology.HeadFleets
+	state["replaced_uid"] = result.ExpectedUID
+	state["uid_count"] = result.UIDCount
+	return state, nil
+}
+
+func (e *Executor) verifyPrunedChurnPostcondition(churn int, state map[string]any) (map[string]any, error) {
+	fleet := e.cfg.Config.Topology.HeadFleets + churn
+	result, err := e.readChallengerChurnState(fleet)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateChallengerChurnPostState(result); err != nil {
+		return nil, err
+	}
+	state["role"] = churnHotkeyLabel(churn)
+	state["status"] = "intentionally_pruned"
+	state["replaced_by"] = fleetHotkeyLabel(fleet)
+	state["uid"] = result.ExpectedUID
+	return state, nil
+}
+
+func initialTopologyRoleLabels(topology TopologyConfig) []string {
+	labels := make([]string, 0, 254)
+	for churn := 1; churn <= topology.ChurnFloorUIDs; churn++ {
+		labels = append(labels, churnHotkeyLabel(churn))
+	}
+	labels = append(labels, "escrow-hotkey")
+	for operator := 1; operator <= topology.Operators; operator++ {
+		labels = append(labels, fmt.Sprintf("operator-%d-deposit-hotkey", operator), fmt.Sprintf("operator-%d-pool-hotkey", operator))
+	}
+	for fleet := 1; fleet <= topology.HeadFleets; fleet++ {
+		labels = append(labels, fleetHotkeyLabel(fleet))
+	}
+	for validator := 1; validator <= topology.Validators; validator++ {
+		labels = append(labels, validatorHotkeyLabel(validator))
+	}
+	return labels
+}
+
+func tournamentTopologyRoleLabels(topology TopologyConfig) []string {
+	labels := make([]string, 0, 254)
+	for fleet := 1; fleet <= topology.fleetCandidates(); fleet++ {
+		labels = append(labels, fleetHotkeyLabel(fleet))
+	}
+	for churn := topology.ChallengerFleets + 1; churn <= topology.ChurnFloorUIDs; churn++ {
+		labels = append(labels, churnHotkeyLabel(churn))
+	}
+	labels = append(labels, "escrow-hotkey")
+	for operator := 1; operator <= topology.Operators; operator++ {
+		labels = append(labels, fmt.Sprintf("operator-%d-deposit-hotkey", operator), fmt.Sprintf("operator-%d-pool-hotkey", operator))
+	}
+	for validator := 1; validator <= topology.Validators; validator++ {
+		labels = append(labels, validatorHotkeyLabel(validator))
+	}
+	return labels
+}
+
+func (e *Executor) verifyExactTopologyRoleSet(labels []string) (uint16, error) {
+	uids := map[uint16]string{}
+	for _, identity := range e.plan.LiveFacts.ExistingUIDs {
+		hotkey, err := decodeHex32(fmt.Sprintf("bootstrap UID %d hotkey", identity.UID), identity.Hotkey)
+		if err != nil {
+			return 0, err
+		}
+		coldkey, err := decodeHex32(fmt.Sprintf("bootstrap UID %d coldkey", identity.UID), identity.Coldkey)
+		if err != nil {
+			return 0, err
+		}
+		uid, found, err := e.substrate.UID(hotkey)
+		if err != nil || !found || uid != identity.UID {
+			return 0, fmt.Errorf("bootstrap identity UID %d moved or disappeared: current=%d found=%t: %w", identity.UID, uid, found, err)
+		}
+		owner, err := e.substrate.HotkeyOwner(hotkey)
+		if err != nil || owner != coldkey {
+			return 0, fmt.Errorf("bootstrap identity UID %d coldkey changed: current=0x%x planned=0x%x: %w", identity.UID, owner, coldkey, err)
+		}
+		uids[uid] = fmt.Sprintf("bootstrap-uid-%d", identity.UID)
+	}
+	for _, label := range labels {
+		hotkey, err := roleBytes32(e.roles, label)
+		if err != nil {
+			return 0, err
+		}
+		uid, found, err := e.substrate.UID(hotkey)
+		if err != nil || !found {
+			return 0, fmt.Errorf("planned identity %s is not live: %w", label, err)
+		}
+		if prior := uids[uid]; prior != "" {
+			return 0, fmt.Errorf("planned identities %s and %s share UID %d", prior, label, uid)
+		}
+		uids[uid] = label
+	}
+	count, err := e.substrate.UIDCount()
+	if err != nil {
+		return 0, err
+	}
+	wantCount := hyperparameterUint64(e.cfg.Hyperparameters.OwnerControlled["max_allowed_uids"])
+	liveMaximum, err := e.substrate.ReadHyper("max_allowed_uids")
+	if err != nil {
+		return 0, err
+	}
+	if got := hyperparameterUint64(liveMaximum); got != wantCount {
+		return 0, fmt.Errorf("live max_allowed_uids=%d, want approved value %d", got, wantCount)
+	}
+	if uint64(count) != wantCount || len(labels)+len(e.plan.LiveFacts.ExistingUIDs) != int(count) || len(uids) != int(count) {
+		return 0, fmt.Errorf("exact topology controlled=%d bootstrap=%d unique=%d UID count=%d maximum=%d", len(labels), len(e.plan.LiveFacts.ExistingUIDs), len(uids), count, wantCount)
+	}
+	return count, nil
+}
+
+func (e *Executor) verifyChurnTournamentPostcondition(state map[string]any) (map[string]any, error) {
+	for challenger := 1; challenger <= e.cfg.Config.Topology.ChallengerFleets; challenger++ {
+		fleet := e.cfg.Config.Topology.HeadFleets + challenger
+		result, err := e.readChallengerChurnState(fleet)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateChallengerChurnPostState(result); err != nil {
+			return nil, fmt.Errorf("challenger %d: %w", challenger, err)
+		}
+	}
+	labels := tournamentTopologyRoleLabels(e.cfg.Config.Topology)
+	count, err := e.verifyExactTopologyRoleSet(labels)
+	if err != nil {
+		return nil, err
+	}
+	state["candidate_fleets"] = e.cfg.Config.Topology.fleetCandidates()
+	state["selected_slots"] = e.cfg.Config.Topology.HeadSlots
+	state["pruned_churn_floor"] = e.cfg.Config.Topology.ChallengerFleets
+	state["remaining_churn_floor"] = e.cfg.Config.Topology.ChurnFloorUIDs - e.cfg.Config.Topology.ChallengerFleets
+	state["planned_live_identities"] = len(labels)
+	state["preserved_bootstrap_uids"] = len(e.plan.LiveFacts.ExistingUIDs)
+	state["uid_count"] = count
 	return state, nil
 }
 

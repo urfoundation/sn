@@ -9,9 +9,10 @@
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "policy_id", "effective_epoch", "settlement", "production_cadence", "steering", "deposit", "verify", "binding", "safety"],
+      "required": ["schema", "network_profile", "policy_id", "effective_epoch", "settlement", "production_cadence", "steering", "deposit", "verify", "binding", "safety"],
       "properties": {
         "schema": {"const": "urnetwork-policy-v1"},
+        "network_profile": {"enum": ["testnet", "mainnet"]},
         "policy_id": {"type": "integer", "minimum": 1},
         "effective_epoch": {"type": "integer", "minimum": 0},
         "settlement": {"$ref": "#/$defs/settlement"},
@@ -55,9 +56,10 @@
     },
     "steering": {
       "type": "object", "additionalProperties": false,
-      "required": ["theta", "quality_transform", "head_score_ema", "max_weight_limit_u16", "empty_channel", "arithmetic"],
+      "required": ["theta", "quality_transform", "head_score_ema", "maximum_head_fleets", "max_weight_limit_u16", "empty_channel", "arithmetic"],
       "properties": {
         "theta": {"$ref": "#/$defs/rational"}, "head_score_ema": {"$ref": "#/$defs/rational"},
+        "maximum_head_fleets": {"type": "integer", "minimum": 1, "maximum": 200},
         "max_weight_limit_u16": {"type": "integer", "minimum": 1, "maximum": 65535},
         "quality_transform": {"type": "object", "additionalProperties": false, "required": ["kind", "minimum_ppm", "maximum_ppm"], "properties": {"kind": {"const": "clamp_ppm"}, "minimum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}, "maximum_ppm": {"type": "integer", "minimum": 0, "maximum": 1000000}}},
         "empty_channel": {"const": "cede_to_nonempty"}, "arithmetic": {"const": "integer_rational_v1"}
@@ -65,10 +67,10 @@
     },
     "deposit": {
       "type": "object", "additionalProperties": false,
-      "required": ["unit", "epoch_cap_rao_per_operator", "total_test_campaign_cap_rao", "tier_snapshot", "tiers", "zero_or_invalid_rate"],
+      "required": ["unit", "epoch_cap_rao_per_operator", "total_test_campaign_cap_rao", "tier_snapshot", "usage_lag_epochs", "usage_artifact", "mismatch_action", "unavailable_action", "tiers", "zero_or_invalid_rate"],
       "properties": {
         "unit": {"const": "rao_per_gib"}, "epoch_cap_rao_per_operator": {"$ref": "#/$defs/positive"}, "total_test_campaign_cap_rao": {"$ref": "#/$defs/positive"},
-        "tier_snapshot": {"const": "conviction_before_epoch"}, "zero_or_invalid_rate": {"const": "halt"},
+        "tier_snapshot": {"const": "conviction_before_epoch"}, "usage_lag_epochs": {"const": 1}, "usage_artifact": {"const": "signed_payout_artifact_total_usage_bytes"}, "mismatch_action": {"const": "zero_pool_weight"}, "unavailable_action": {"const": "zero_pool_weight_after_root_window"}, "zero_or_invalid_rate": {"const": "halt"},
         "tiers": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["min_conviction_rao", "rate_numerator_rao_per_gib", "rate_denominator"], "properties": {"min_conviction_rao": {"$ref": "#/$defs/u64"}, "rate_numerator_rao_per_gib": {"$ref": "#/$defs/positive"}, "rate_denominator": {"$ref": "#/$defs/positive"}}}}
       }
     },

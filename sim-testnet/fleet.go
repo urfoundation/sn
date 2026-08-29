@@ -50,7 +50,7 @@ type FleetBindingEvidence struct {
 }
 
 func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int) (protocol.FleetManifest, []byte, [32]byte, error) {
-	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.HeadFleets {
+	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.fleetCandidates() {
 		return protocol.FleetManifest{}, nil, [32]byte{}, fmt.Errorf("fleet index %d out of range", fleetIndex)
 	}
 	deployment, err := loadContractDeployment(stateDir)

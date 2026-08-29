@@ -22,7 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"golang.org/x/crypto/blake2b"
 
 	"github.com/urfoundation/sn/crv4"
@@ -58,14 +57,92 @@ type subtensorAccountInfo struct {
 // the harness never guesses an AMM conversion or silently buys an unbounded
 // amount of subnet alpha while applying an approved plan.
 type SetupFacts struct {
-	BurnRao             uint64 `json:"burn_rao"`
-	AlphaSourceHotkey   string `json:"alpha_source_hotkey"`
-	AlphaAvailableRao   uint64 `json:"alpha_available_rao"`
-	NominatorMinimumRao uint64 `json:"nominator_minimum_rao"`
-	ProbeTAORao         uint64 `json:"probe_tao_rao"`
-	WalletFreeTAORao    uint64 `json:"wallet_free_tao_rao"`
-	FinalizedBlock      uint64 `json:"finalized_block"`
-	FinalizedBlockHash  string `json:"finalized_block_hash"`
+	BurnRao               uint64            `json:"burn_rao"`
+	AlphaSourceHotkey     string            `json:"alpha_source_hotkey"`
+	AlphaAvailableRao     uint64            `json:"alpha_available_rao"`
+	ExistingUIDCount      uint16            `json:"existing_uid_count"`
+	SubnetOwnerHotkey     string            `json:"subnet_owner_hotkey"`
+	UIDZeroHotkey         string            `json:"uid_zero_hotkey"`
+	ExistingUIDs          []ExistingUIDFact `json:"existing_uids"`
+	ExistentialDepositRao uint64            `json:"existential_deposit_rao"`
+	NominatorMinimumRao   uint64            `json:"nominator_minimum_rao"`
+	ProbeTAORao           uint64            `json:"probe_tao_rao"`
+	WalletFreeTAORao      uint64            `json:"wallet_free_tao_rao"`
+	FinalizedBlock        uint64            `json:"finalized_block"`
+	FinalizedBlockHash    string            `json:"finalized_block_hash"`
+}
+
+type ExistingUIDFact struct {
+	UID               uint16 `json:"uid"`
+	Hotkey            string `json:"hotkey"`
+	Coldkey           string `json:"coldkey"`
+	RegistrationBlock uint64 `json:"registration_block"`
+	SubnetOwner       bool   `json:"subnet_owner"`
+}
+
+type SubnetTopologyFacts struct {
+	UIDCount    uint16
+	OwnerHotkey [32]byte
+	UIDZero     [32]byte
+}
+
+type runtime451PruneNeuron struct {
+	UID               uint16
+	Hotkey            [32]byte
+	EmissionRao       uint64
+	RegistrationBlock uint64
+	Immune            bool
+	Immortal          bool
+}
+
+func runtime451PruneCandidate(neurons []runtime451PruneNeuron, minimumNonImmune uint16) (uint16, error) {
+	var bestImmune *runtime451PruneNeuron
+	var bestNonImmune *runtime451PruneNeuron
+	var nonImmune uint16
+	better := func(candidate runtime451PruneNeuron, current *runtime451PruneNeuron) bool {
+		return current == nil || candidate.EmissionRao < current.EmissionRao ||
+			(candidate.EmissionRao == current.EmissionRao && candidate.RegistrationBlock < current.RegistrationBlock) ||
+			(candidate.EmissionRao == current.EmissionRao && candidate.RegistrationBlock == current.RegistrationBlock && candidate.UID < current.UID)
+	}
+	for i := range neurons {
+		candidate := neurons[i]
+		if candidate.Immortal {
+			continue
+		}
+		if candidate.Immune {
+			if better(candidate, bestImmune) {
+				copy := candidate
+				bestImmune = &copy
+			}
+			continue
+		}
+		nonImmune++
+		if better(candidate, bestNonImmune) {
+			copy := candidate
+			bestNonImmune = &copy
+		}
+	}
+	if nonImmune > minimumNonImmune && bestNonImmune != nil {
+		return bestNonImmune.UID, nil
+	}
+	if bestImmune != nil {
+		return bestImmune.UID, nil
+	}
+	return 0, errors.New("runtime-451 prune set has no eligible neuron")
+}
+
+// Runtime 451 defines Balance as a fixed-width u64 in rao. Decode the
+// metadata constant exactly so a runtime type or unit change cannot silently
+// alter EVM mirror-account funding.
+func decodeRuntimeExistentialDepositRao(raw []byte) (uint64, error) {
+	if len(raw) != 8 {
+		return 0, fmt.Errorf("Balances.ExistentialDeposit SCALE length is %d, want 8", len(raw))
+	}
+	value := binary.LittleEndian.Uint64(raw)
+	if value == 0 {
+		return 0, errors.New("Balances.ExistentialDeposit is zero")
+	}
+	return value, nil
 }
 
 // Finalized activation facts distinguish the atomic-transfer toggle from the
@@ -103,6 +180,14 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		return nil, err
 	}
 	facts := &SetupFacts{FinalizedBlock: uint64(header.Number), FinalizedBlockHash: finalizedHash.Hex()}
+	existentialDeposit, err := chain.Meta.FindConstantValue("Balances", "ExistentialDeposit")
+	if err != nil {
+		return nil, fmt.Errorf("read Balances.ExistentialDeposit metadata constant: %w", err)
+	}
+	facts.ExistentialDepositRao, err = decodeRuntimeExistentialDepositRao(existentialDeposit)
+	if err != nil {
+		return nil, err
+	}
 	burnKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Burn", netuidArg(cfg.Netuid))
 	if err != nil {
 		return nil, err
@@ -114,6 +199,17 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		return nil, fmt.Errorf("subnet burn is unavailable or zero at finalized block %d", facts.FinalizedBlock)
 	}
 	facts.BurnRao = uint64(burn)
+	topology, err := readSubnetTopologyAt(chain, cfg.Netuid, finalizedHash)
+	if err != nil {
+		return nil, err
+	}
+	facts.ExistingUIDCount = topology.UIDCount
+	facts.SubnetOwnerHotkey = "0x" + fmt.Sprintf("%x", topology.OwnerHotkey)
+	facts.UIDZeroHotkey = "0x" + fmt.Sprintf("%x", topology.UIDZero)
+	facts.ExistingUIDs, err = readExistingUIDFactsAt(chain, cfg.Netuid, finalizedHash, topology)
+	if err != nil {
+		return nil, err
+	}
 	wallet, err := ss58.DecodeWithPrefix(cfg.WalletPublic, ss58.BittensorPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("testnet wallet public key: %w", err)
@@ -140,7 +236,7 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	if len(hotkeys) == 0 {
 		return facts, fmt.Errorf("testnet wallet has no staking hotkeys")
 	}
-	evm, err := ethclient.DialContext(ctx, cfg.OperationalEVM)
+	evm, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +394,177 @@ func readRequiredStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, stor
 	return nil
 }
 
+func readSubnetTopologyAt(chain *crv4.Chain, netuid uint16, finalized types.Hash) (SubnetTopologyFacts, error) {
+	var result SubnetTopologyFacts
+	countKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "SubnetworkN", netuidArg(netuid))
+	if err != nil {
+		return result, err
+	}
+	var count types.U16
+	if err := readRequiredStorageAt(chain, countKey, crv4.PalletName, "SubnetworkN", &count, finalized); err != nil {
+		return result, err
+	}
+	if count == 0 {
+		return result, fmt.Errorf("SubnetworkN is zero for netuid %d", netuid)
+	}
+	ownerKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "SubnetOwnerHotkey", netuidArg(netuid))
+	if err != nil {
+		return result, err
+	}
+	var owner types.AccountID
+	if err := readRequiredStorageAt(chain, ownerKey, crv4.PalletName, "SubnetOwnerHotkey", &owner, finalized); err != nil {
+		return result, err
+	}
+	uidZeroKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Keys", netuidArg(netuid), netuidArg(0))
+	if err != nil {
+		return result, err
+	}
+	var uidZero types.AccountID
+	if err := readRequiredStorageAt(chain, uidZeroKey, crv4.PalletName, "Keys", &uidZero, finalized); err != nil {
+		return result, err
+	}
+	result.UIDCount = uint16(count)
+	copy(result.OwnerHotkey[:], owner[:])
+	copy(result.UIDZero[:], uidZero[:])
+	return result, nil
+}
+
+func readExistingUIDFactsAt(chain *crv4.Chain, netuid uint16, finalized types.Hash, topology SubnetTopologyFacts) ([]ExistingUIDFact, error) {
+	result := make([]ExistingUIDFact, 0, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		uidBytes := netuidArg(uid)
+		hotkeyKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Keys", netuidArg(netuid), uidBytes)
+		if err != nil {
+			return nil, err
+		}
+		var hotkey types.AccountID
+		if err := readRequiredStorageAt(chain, hotkeyKey, crv4.PalletName, "Keys", &hotkey, finalized); err != nil {
+			return nil, err
+		}
+		ownerKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Owner", hotkey[:])
+		if err != nil {
+			return nil, err
+		}
+		var coldkey types.AccountID
+		if err := readRequiredStorageAt(chain, ownerKey, crv4.PalletName, "Owner", &coldkey, finalized); err != nil {
+			return nil, err
+		}
+		registrationKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BlockAtRegistration", netuidArg(netuid), uidBytes)
+		if err != nil {
+			return nil, err
+		}
+		var registrationBlock types.U64
+		if err := readRequiredStorageAt(chain, registrationKey, crv4.PalletName, "BlockAtRegistration", &registrationBlock, finalized); err != nil {
+			return nil, err
+		}
+		var key [32]byte
+		copy(key[:], hotkey[:])
+		result = append(result, ExistingUIDFact{
+			UID: uid, Hotkey: "0x" + fmt.Sprintf("%x", hotkey), Coldkey: "0x" + fmt.Sprintf("%x", coldkey),
+			RegistrationBlock: uint64(registrationBlock), SubnetOwner: key == topology.OwnerHotkey,
+		})
+	}
+	return result, nil
+}
+
+func (m *SubstrateManager) SubnetTopology() (SubnetTopologyFacts, error) {
+	finalized, _, err := m.finalizedHead()
+	if err != nil {
+		return SubnetTopologyFacts{}, err
+	}
+	return readSubnetTopologyAt(m.chain, m.cfg.Netuid, finalized)
+}
+
+func (m *SubstrateManager) ExistingUIDFacts() ([]ExistingUIDFact, error) {
+	finalized, _, err := m.finalizedHead()
+	if err != nil {
+		return nil, err
+	}
+	topology, err := readSubnetTopologyAt(m.chain, m.cfg.Netuid, finalized)
+	if err != nil {
+		return nil, err
+	}
+	return readExistingUIDFactsAt(m.chain, m.cfg.Netuid, finalized, topology)
+}
+
+// Runtime451PruneCandidate mirrors the pinned runtime's emission,
+// registration-age, immunity, and UID tie breakers at one finalized state.
+// The fresh-plan invariant proves the only subnet-owner-owned live identity is
+// SubnetOwnerHotkey, so it is the sole immortal entry in this release topology.
+func (m *SubstrateManager) Runtime451PruneCandidate() (uint16, error) {
+	finalized, block, err := m.finalizedHead()
+	if err != nil {
+		return 0, err
+	}
+	topology, err := readSubnetTopologyAt(m.chain, m.cfg.Netuid, finalized)
+	if err != nil {
+		return 0, err
+	}
+	readU16 := func(storage string) (uint16, error) {
+		key, keyErr := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, storage, netuidArg(m.cfg.Netuid))
+		if keyErr != nil {
+			return 0, keyErr
+		}
+		var value types.U16
+		if readErr := readRequiredStorageAt(m.chain, key, crv4.PalletName, storage, &value, finalized); readErr != nil {
+			return 0, readErr
+		}
+		return uint16(value), nil
+	}
+	immunityPeriod, err := readU16("ImmunityPeriod")
+	if err != nil {
+		return 0, err
+	}
+	minimumNonImmune, err := readU16("MinNonImmuneUids")
+	if err != nil {
+		return 0, err
+	}
+	emissionKey, err := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "Emission", netuidArg(m.cfg.Netuid))
+	if err != nil {
+		return 0, err
+	}
+	var emissions []types.U64
+	if _, err := readStorageAt(m.chain, emissionKey, crv4.PalletName, "Emission", &emissions, finalized); err != nil {
+		return 0, err
+	}
+	neurons := make([]runtime451PruneNeuron, 0, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		uidBytes := netuidArg(uid)
+		hotkeyKey, keyErr := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "Keys", netuidArg(m.cfg.Netuid), uidBytes)
+		if keyErr != nil {
+			return 0, keyErr
+		}
+		var hotkey types.AccountID
+		if readErr := readRequiredStorageAt(m.chain, hotkeyKey, crv4.PalletName, "Keys", &hotkey, finalized); readErr != nil {
+			return 0, readErr
+		}
+		registrationKey, keyErr := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "BlockAtRegistration", netuidArg(m.cfg.Netuid), uidBytes)
+		if keyErr != nil {
+			return 0, keyErr
+		}
+		var registered types.U64
+		if readErr := readRequiredStorageAt(m.chain, registrationKey, crv4.PalletName, "BlockAtRegistration", &registered, finalized); readErr != nil {
+			return 0, readErr
+		}
+		var key [32]byte
+		copy(key[:], hotkey[:])
+		emission := uint64(0)
+		if int(uid) < len(emissions) {
+			emission = uint64(emissions[uid])
+		}
+		registrationBlock := uint64(registered)
+		age := uint64(0)
+		if block >= registrationBlock {
+			age = block - registrationBlock
+		}
+		neurons = append(neurons, runtime451PruneNeuron{
+			UID: uid, Hotkey: key, EmissionRao: emission, RegistrationBlock: registrationBlock,
+			Immune: age < uint64(immunityPeriod), Immortal: key == topology.OwnerHotkey,
+		})
+	}
+	return runtime451PruneCandidate(neurons, minimumNonImmune)
+}
+
 func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
 	hash, err := m.chain.API.RPC.Chain.GetFinalizedHead()
 	if err != nil {
@@ -308,6 +575,63 @@ func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
 		return types.Hash{}, 0, err
 	}
 	return hash, uint64(header.Number), nil
+}
+
+// waitForFinalizedCheckpoint closes a real RPC race: a subscription may emit
+// a finalized extrinsic before a separately served chain_getFinalizedHead has
+// advanced to that block. Native post-state reads must not run until the
+// canonical finalized read surface can prove the transaction block.
+func waitForFinalizedCheckpoint(ctx context.Context, target ChainHead, interval time.Duration, observe func() (ChainHead, string, error)) error {
+	if target.Number == 0 || target.Hash == "" || interval <= 0 || observe == nil {
+		return errors.New("finalized checkpoint wait configuration is incomplete")
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		head, canonical, err := observe()
+		if err == nil {
+			lastErr = nil
+			ready, checkErr := checkpointVisibility(target, head, canonical)
+			if checkErr != nil {
+				return checkErr
+			}
+			if ready {
+				return nil
+			}
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("finalized checkpoint %d was not readable: %v: %w", target.Number, lastErr, ctx.Err())
+			}
+			return fmt.Errorf("finalized checkpoint %d was not readable: %w", target.Number, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (m *SubstrateManager) waitForFinalizedReadCheckpoint(ctx context.Context, block uint64, hash types.Hash) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	target := ChainHead{Number: block, Hash: hash.Hex()}
+	return waitForFinalizedCheckpoint(waitCtx, target, 500*time.Millisecond, func() (ChainHead, string, error) {
+		finalizedHash, finalizedBlock, err := m.finalizedHead()
+		if err != nil {
+			return ChainHead{}, "", err
+		}
+		head := ChainHead{Number: finalizedBlock, Hash: finalizedHash.Hex()}
+		if finalizedBlock < block {
+			return head, "", nil
+		}
+		canonical, err := m.chain.API.RPC.Chain.GetBlockHash(block)
+		if err != nil {
+			return head, "", err
+		}
+		return head, canonical.Hex(), nil
+	})
 }
 
 func (m *SubstrateManager) ReadHyper(name string) (any, error) {
@@ -426,15 +750,37 @@ func (m *SubstrateManager) FundCall(destination [32]byte, rao uint64) (types.Cal
 }
 
 func (m *SubstrateManager) FreeBalance(account [32]byte) (uint64, error) {
+	finalized, _, err := m.finalizedHead()
+	if err != nil {
+		return 0, err
+	}
+	return m.freeBalanceAtHash(account, finalized)
+}
+
+// FreeBalanceAtBlock reads the same native block used by an EVM balance
+// query. This prevents independently fronted RPC endpoints from producing a
+// mixed-height funding decision.
+func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error) {
+	_, finalizedBlock, err := m.finalizedHead()
+	if err != nil {
+		return 0, err
+	}
+	if block > finalizedBlock {
+		return 0, fmt.Errorf("native finalized head %d is behind requested EVM block %d", finalizedBlock, block)
+	}
+	hash, err := m.chain.API.RPC.Chain.GetBlockHash(block)
+	if err != nil {
+		return 0, err
+	}
+	return m.freeBalanceAtHash(account, hash)
+}
+
+func (m *SubstrateManager) freeBalanceAtHash(account [32]byte, finalized types.Hash) (uint64, error) {
 	key, err := types.CreateStorageKey(m.chain.Meta, "System", "Account", account[:])
 	if err != nil {
 		return 0, err
 	}
 	var info subtensorAccountInfo
-	finalized, _, err := m.finalizedHead()
-	if err != nil {
-		return 0, err
-	}
 	ok, err := m.chain.API.RPC.State.GetStorage(key, &info, finalized)
 	if err != nil {
 		return 0, err
@@ -641,6 +987,26 @@ func (m *SubstrateManager) UID(hotkey [32]byte) (uint16, bool, error) {
 	return uint16(uid), ok, err
 }
 
+func (m *SubstrateManager) UIDCount() (uint16, error) {
+	key, err := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "SubnetworkN", netuidArg(m.cfg.Netuid))
+	if err != nil {
+		return 0, err
+	}
+	var count types.U16
+	finalized, _, err := m.finalizedHead()
+	if err != nil {
+		return 0, err
+	}
+	ok, err := m.chain.API.RPC.State.GetStorage(key, &count, finalized)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, fmt.Errorf("SubnetworkN is absent for netuid %d", m.cfg.Netuid)
+	}
+	return uint16(count), nil
+}
+
 // Read the controlling coldkey for a hotkey from the same finalized runtime
 // storage used by registration. Owner is a ValueQuery; an unowned hotkey
 // resolves to the runtime's zero-account fallback and will fail exact matching.
@@ -668,8 +1034,11 @@ func validateHotkeyOwner(label string, actual, expected [32]byte) error {
 	return nil
 }
 
-func (m *SubstrateManager) appendRecoveredFinality(planHash string, a Action, hash types.Hash, receipt *crv4.FinalizedExtrinsic, recoveryBlock uint64, recoveryHash string) (types.Hash, uint64, error) {
+func (m *SubstrateManager) appendRecoveredFinality(ctx context.Context, planHash string, a Action, hash types.Hash, receipt *crv4.FinalizedExtrinsic, recoveryBlock uint64, recoveryHash string) (types.Hash, uint64, error) {
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: hash.Hex(), BlockNumber: receipt.BlockNumber, BlockHash: receipt.BlockHash.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash}); err != nil {
+		return hash, 0, err
+	}
+	if err := m.waitForFinalizedReadCheckpoint(ctx, receipt.BlockNumber, receipt.BlockHash); err != nil {
 		return hash, 0, err
 	}
 	return hash, receipt.BlockNumber, nil
@@ -679,13 +1048,13 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 	if receipt, found, err := m.chain.FindFinalizedExtrinsic(ctx, hash, recoveryBlock); err != nil {
 		return hash, 0, err
 	} else if found {
-		return m.appendRecoveredFinality(planHash, a, hash, receipt, recoveryBlock, recoveryHash)
+		return m.appendRecoveredFinality(ctx, planHash, a, hash, receipt, recoveryBlock, recoveryHash)
 	}
 	statuses := make(chan types.ExtrinsicStatus)
 	sub, err := m.chain.API.Client.Subscribe(ctx, "author", "submitAndWatchExtrinsic", "unwatchExtrinsic", "extrinsicUpdate", statuses, codec.HexEncodeToString(raw))
 	if err != nil {
 		if receipt, found, scanErr := m.chain.FindFinalizedExtrinsic(ctx, hash, recoveryBlock); scanErr == nil && found {
-			return m.appendRecoveredFinality(planHash, a, hash, receipt, recoveryBlock, recoveryHash)
+			return m.appendRecoveredFinality(ctx, planHash, a, hash, receipt, recoveryBlock, recoveryHash)
 		}
 		return types.Hash{}, 0, err
 	}
@@ -722,6 +1091,9 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 				}
 				n := uint64(header.Number)
 				if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: hash.Hex(), BlockNumber: n, BlockHash: status.AsFinalized.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash}); err != nil {
+					return hash, 0, err
+				}
+				if err := m.waitForFinalizedReadCheckpoint(ctx, n, status.AsFinalized); err != nil {
 					return hash, 0, err
 				}
 				return hash, n, nil

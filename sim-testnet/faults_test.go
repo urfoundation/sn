@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,14 +109,123 @@ func TestReleaseQualityFaultSelectsOnlyTailCohort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"miner-8"}
-	if len(fault.Targets) != len(want) {
+	if len(fault.Targets) == 0 {
 		t.Fatalf("targets = %v", fault.Targets)
 	}
-	for i := range want {
-		if fault.Targets[i] != want[i] {
-			t.Fatalf("targets = %v, want %v", fault.Targets, want)
+	if fault.Kind != "miner-control" {
+		t.Fatalf("quality fault kind = %s, want miner-control", fault.Kind)
+	}
+	for _, target := range fault.Targets {
+		var miner int
+		if _, scanErr := fmt.Sscanf(target, "miner-%d", &miner); scanErr != nil || miner <= cfg.Config.Topology.fleetCandidateMiners() || operatorForMiner(cfg, miner) != cfg.Config.Scenarios.QualityFaultOperator {
+			t.Fatalf("quality target %q is not in the configured operator tail", target)
 		}
+	}
+}
+
+func TestReleaseHeadBoundaryFaultTargetsOneSelectedFleetForSixTempos(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	fault, err := releaseHeadBoundaryFault(cfg, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fault.ID != "head-boundary" || fault.Kind != "miner-control" || fault.TriggerOffsetBlocks != 30 || len(fault.Targets) != cfg.Config.Topology.ClientsPerHeadFleet {
+		t.Fatalf("head boundary fault=%+v", fault)
+	}
+	wantDuration := 6*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	if fault.DurationBlocks != wantDuration {
+		t.Fatalf("duration=%d want=%d", fault.DurationBlocks, wantDuration)
+	}
+	for member, target := range fault.Targets {
+		want := fmt.Sprintf("miner-%d", fleetMemberMinerIndex(cfg, 3, member+1))
+		if target != want {
+			t.Fatalf("target[%d]=%s want=%s", member, target, want)
+		}
+	}
+}
+
+func TestHeadBoundaryDecayTemposTracksApprovedEMAExactly(t *testing.T) {
+	tests := []struct {
+		name        string
+		numerator   uint64
+		denominator uint64
+		want        uint64
+	}{
+		{name: "release quarter", numerator: 1, denominator: 4, want: 6},
+		{name: "faster half", numerator: 1, denominator: 2, want: 4},
+		{name: "immediate", numerator: 1, denominator: 1, want: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := headBoundaryDecayTempos(test.numerator, test.denominator)
+			if err != nil || got != test.want {
+				t.Fatalf("headBoundaryDecayTempos(%d/%d)=(%d,%v), want (%d,nil)", test.numerator, test.denominator, got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestHeadBoundaryDecayTemposRejectsNonDecayingOrInvalidEMA(t *testing.T) {
+	for _, value := range [][2]uint64{{0, 1}, {1, 0}, {2, 1}} {
+		if got, err := headBoundaryDecayTempos(value[0], value[1]); err == nil || got != 0 {
+			t.Fatalf("headBoundaryDecayTempos(%d/%d)=(%d,%v), want rejection", value[0], value[1], got, err)
+		}
+	}
+}
+
+func TestReleaseHeadBoundaryFaultAdaptsToPolicyEMA(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Policy.Steering.HeadScoreEMA.Numerator = 1
+	cfg.Policy.Steering.HeadScoreEMA.Denominator = 2
+	fault, err := releaseHeadBoundaryFault(cfg, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 4*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	if fault.DurationBlocks != want {
+		t.Fatalf("duration=%d want=%d", fault.DurationBlocks, want)
+	}
+}
+
+func TestLiveFaultDriverControlsLogicalMinerThroughOwningProductionSwarm(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	processSpec := ProcessSpec{ID: "miner-swarm-1", Role: "miner-swarm", Identity: "miners:1-50"}
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash", Specs: []ProcessSpec{processSpec}}
+	manifestHash, err := canonicalHashHex(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), ManifestHash: manifestHash, Processes: []ProcessState{{ID: processSpec.ID, Role: processSpec.Role, Identity: processSpec.Identity, PID: 1234, Healthy: true}}}
+	if err := writePublicJSON(filepath.Join(dir, "supervisor.json"), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(dir, "supervisor.state.json"), state); err != nil {
+		t.Fatal(err)
+	}
+	var actions []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		actions = append(actions, request.URL.Path)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"schema":"urnetwork-provider-swarm-v1"}`))
+	}))
+	defer server.Close()
+	driver := &liveScenarioFaultDriver{
+		stateDir: dir, cfg: cfg,
+		minerControlURL: func(_ int, target, action string) string { return server.URL + "/control/" + target + "/" + action },
+	}
+	fault := scenarioFaultSpec{ID: "logical-miner", Kind: "miner-control", Targets: []string{"miner-1"}, TriggerOffsetBlocks: 1, DurationBlocks: 1}
+	before, err := driver.Apply(context.Background(), fault)
+	if err != nil || len(before) != 1 || before[0].ID != "miner-1" || before[0].PID != 1234 {
+		t.Fatalf("logical miner apply = %+v, %v", before, err)
+	}
+	after, err := driver.Restore(context.Background(), fault)
+	if err != nil || len(after) != 1 || after[0].PID != before[0].PID {
+		t.Fatalf("logical miner restore = %+v, %v", after, err)
+	}
+	want := []string{"/control/miner-1/disable", "/control/miner-1/enable"}
+	if len(actions) != len(want) || actions[0] != want[0] || actions[1] != want[1] {
+		t.Fatalf("miner control actions = %v, want %v", actions, want)
 	}
 }
 
@@ -121,7 +233,7 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 	cfg := testResolvedConfig(t)
 	faults := productionRollingFaults(cfg)
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
+	persistentCount := 2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
 	want := dependencyCount + persistentCount
 	if len(faults) != want {
 		t.Fatalf("fault count = %d, want %d", len(faults), want)
@@ -153,6 +265,11 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 	if !seen[workloadSubstrateProcessID] {
 		t.Fatal("persistent workload Substrate RPC proxy was not restart-tested")
 	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		if !seen[fmt.Sprintf("claim-relayer-%d", operator)] {
+			t.Fatalf("operator %d production claim relayer was not restart-tested", operator)
+		}
+	}
 }
 
 func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing.T) {
@@ -162,9 +279,9 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 		t.Fatal(err)
 	}
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 2 + 3*cfg.Config.Topology.Operators + 2*cfg.Config.Topology.Miners + cfg.Config.Topology.Validators
-	want := 1 + dependencyCount + persistentCount
-	if len(faults) != want || faults[0].ID != "quality-cohort" {
+	persistentCount := 2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
+	want := 2 + dependencyCount + persistentCount
+	if len(faults) != want || faults[0].ID != "quality-cohort" || faults[1].ID != "head-boundary" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)
 	}
 	priorEnd := faults[0].TriggerOffsetBlocks + faults[0].DurationBlocks

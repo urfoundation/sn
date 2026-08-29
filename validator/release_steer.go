@@ -10,15 +10,18 @@ import (
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/urnetwork/connect"
 
 	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/payoutartifact"
 )
 
 type ReleaseMeasurementContext struct {
 	NoID      uint64
 	Stats     *StatsEngine
 	ClientKey ClientKeyFunc
+	Artifacts ArtifactReader
 }
 
 type ReleaseSteerer struct {
@@ -27,6 +30,7 @@ type ReleaseSteerer struct {
 	native    *crv4.Chain
 	hotkey    *crv4.Keypair
 	contexts  map[uint64]*ReleaseMeasurementContext
+	operators map[uint64]OperatorConfig
 	intents   *IntentStore
 	headEMA   *HeadEMAStore
 	lastFold  uint64
@@ -42,7 +46,7 @@ func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chai
 	}
 	byNO := map[uint64]*ReleaseMeasurementContext{}
 	for _, measurement := range contexts {
-		if measurement == nil || measurement.NoID == 0 || measurement.Stats == nil || measurement.ClientKey == nil {
+		if measurement == nil || measurement.NoID == 0 || measurement.Stats == nil || measurement.ClientKey == nil || measurement.Artifacts == nil {
 			return nil, errors.New("release measurement context is incomplete")
 		}
 		if byNO[measurement.NoID] != nil {
@@ -53,6 +57,10 @@ func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chai
 	if len(byNO) != len(cfg.Operators) {
 		return nil, fmt.Errorf("measurement context count %d, configured operators %d", len(byNO), len(cfg.Operators))
 	}
+	operators := make(map[uint64]OperatorConfig, len(cfg.Operators))
+	for _, operator := range cfg.Operators {
+		operators[operator.NoID] = operator
+	}
 	intents, err := NewIntentStore(cfg.StateDir)
 	if err != nil {
 		return nil, err
@@ -61,7 +69,7 @@ func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chai
 	if err != nil {
 		return nil, err
 	}
-	return &ReleaseSteerer{cfg: cfg, chain: chain, native: native, hotkey: hotkey, contexts: byNO, intents: intents, headEMA: headEMA}, nil
+	return &ReleaseSteerer{cfg: cfg, chain: chain, native: native, hotkey: hotkey, contexts: byNO, operators: operators, intents: intents, headEMA: headEMA}, nil
 }
 
 func (s *ReleaseSteerer) validatePinnedChains(snapshot *ReleaseSnapshot, nativeState *crv4.EpochScheduleState, nativeHash types.Hash) error {
@@ -138,14 +146,50 @@ func releaseSubmitOptions(cfg *ReleaseConfig) crv4.SubmitOptions {
 	return crv4.SubmitOptions{VersionKey: cfg.VersionKey, MaxWeightLimit: &maxWeightLimit}
 }
 
-func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInput, map[uint64]map[connect.Id]bool, map[uint16]bool, error) {
-	bound := map[uint64]map[connect.Id]bool{}
+type releaseHeadMember struct {
+	NoID     uint64
+	ClientID connect.Id
+}
+
+type releaseHeadResult struct {
+	Weights       []ExactWeightInput
+	Bound         map[uint64]map[connect.Id]bool
+	Controlled    map[uint16]bool
+	EligibleUIDs  []uint16
+	SelectedUIDs  []uint16
+	RejectedUIDs  []uint16
+	StaleBindings []StaleHeadBinding
+}
+
+// Every live, valid fleet binding is promoted out of its NO's pool accounting
+// for as long as that fleet owns a UID. Selection decides native head weight;
+// it does not put an unselected-but-still-registered fleet back into the pool.
+// Pool fallback begins only after deregistration makes the binding stale.
+func excludeLiveHeadMembers(bound map[uint64]map[connect.Id]bool, controlledNO map[uint64]bool, membersByUID map[uint16][]releaseHeadMember) map[uint16]bool {
 	controlledHead := map[uint16]bool{}
+	for uid, members := range membersByUID {
+		for _, member := range members {
+			if bound[member.NoID] == nil {
+				bound[member.NoID] = map[connect.Id]bool{}
+			}
+			bound[member.NoID][member.ClientID] = true
+			if controlledNO[member.NoID] {
+				controlledHead[uid] = true
+			}
+		}
+	}
+	return controlledHead
+}
+
+func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) (releaseHeadResult, error) {
+	bound := map[uint64]map[connect.Id]bool{}
 	controlledNO := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
 		controlledNO[noID] = true
 	}
 	fleets := map[FleetScoreKey]map[[32]byte]bool{}
+	membersByUID := map[uint16][]releaseHeadMember{}
+	var staleBindings []StaleHeadBinding
 	for noID, measurement := range s.contexts {
 		bound[noID] = map[connect.Id]bool{}
 		egress := measurement.Stats.EgressIpHashes()
@@ -153,7 +197,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInp
 			hashes := egress[clientID]
 			binding, err := s.chain.ReleaseBindingAt(snapshot.BlockNumber, [16]byte(clientID), snapshot.Epoch)
 			if err != nil {
-				return nil, nil, nil, fmt.Errorf("bindingAt no_id %d client %s: %w", noID, clientID, err)
+				return releaseHeadResult{}, fmt.Errorf("bindingAt no_id %d client %s: %w", noID, clientID, err)
 			}
 			if !binding.Active {
 				continue
@@ -163,17 +207,18 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInp
 				if err == nil {
 					err = errors.New("client key absent")
 				}
-				return nil, nil, nil, fmt.Errorf("active binding client key no_id %d client %s: %w", noID, clientID, err)
+				return releaseHeadResult{}, fmt.Errorf("active binding client key no_id %d client %s: %w", noID, clientID, err)
 			}
 			if clientKey != binding.Record.ClientKey {
-				return nil, nil, nil, fmt.Errorf("active binding client key mismatch for no_id %d client %s", noID, clientID)
+				return releaseHeadResult{}, fmt.Errorf("active binding client key mismatch for no_id %d client %s", noID, clientID)
 			}
 			uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, binding.Record.Hotkey)
-			if err != nil || !found || uid != binding.Record.Uid {
-				return nil, nil, nil, fmt.Errorf("stale head UID for client %s (record %d, live %d, found %t): %w", clientID, binding.Record.Uid, uid, found, err)
+			if err != nil {
+				return releaseHeadResult{}, fmt.Errorf("live head UID for client %s: %w", clientID, err)
 			}
-			if controlledNO[noID] {
-				controlledHead[uid] = true
+			if !found || uid != binding.Record.Uid {
+				staleBindings = append(staleBindings, StaleHeadBinding{NoID: noID, ClientID: clientID.String(), RecordUID: binding.Record.Uid, LiveUID: uid, Found: found})
+				continue
 			}
 			key := FleetScoreKey{FleetID: binding.Record.FleetId, Hotkey: binding.Record.Hotkey, Generation: binding.Record.Generation, UID: uid}
 			if fleets[key] == nil {
@@ -182,7 +227,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInp
 			for hash := range hashes {
 				fleets[key][hash] = true
 			}
-			bound[noID][clientID] = true
+			membersByUID[uid] = append(membersByUID[uid], releaseHeadMember{NoID: noID, ClientID: clientID})
 		}
 	}
 	claims := map[[32]byte]uint64{}
@@ -203,28 +248,59 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) ([]ExactWeightInp
 	}
 	ema, err := s.headEMA.Fold(raw, s.cfg.Policy.Steering.HeadScoreEMA)
 	if err != nil {
-		return nil, nil, nil, err
+		return releaseHeadResult{}, err
 	}
 	uids := make([]uint16, 0, len(ema))
 	for uid := range ema {
 		uids = append(uids, uid)
 	}
 	sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
-	head := make([]ExactWeightInput, 0, len(uids))
+	eligible := make([]ExactWeightInput, 0, len(uids))
 	for _, uid := range uids {
-		head = append(head, ExactWeightInput{UID: uid, Score: ema[uid]})
+		eligible = append(eligible, ExactWeightInput{UID: uid, Score: ema[uid]})
 	}
-	return head, bound, controlledHead, nil
+	selection, err := selectHeadFleets(eligible, s.cfg.Policy.Steering.MaximumHeadFleets)
+	if err != nil {
+		return releaseHeadResult{}, err
+	}
+	controlledHead := excludeLiveHeadMembers(bound, controlledNO, membersByUID)
+	sort.Slice(staleBindings, func(i, j int) bool {
+		if staleBindings[i].NoID != staleBindings[j].NoID {
+			return staleBindings[i].NoID < staleBindings[j].NoID
+		}
+		return staleBindings[i].ClientID < staleBindings[j].ClientID
+	})
+	return releaseHeadResult{
+		Weights:       selection.Selected,
+		Bound:         bound,
+		Controlled:    controlledHead,
+		EligibleUIDs:  append(headSelectionUIDs(selection.Selected), headSelectionUIDs(selection.Rejected)...),
+		SelectedUIDs:  headSelectionUIDs(selection.Selected),
+		RejectedUIDs:  headSelectionUIDs(selection.Rejected),
+		StaleBindings: staleBindings,
+	}, nil
 }
 
-func (s *ReleaseSteerer) gatherPools(snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool) ([]ExactWeightInput, map[uint16]bool, error) {
+func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {
 	count, err := s.chain.ReleaseOperatorCountAt(snapshot.BlockNumber)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if !count.IsInt64() || count.Sign() < 0 {
-		return nil, nil, errors.New("operator count is out of range")
+		return nil, nil, nil, errors.New("operator count is out of range")
 	}
+	if snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
+		return nil, nil, nil, errors.New("settlement epoch is out of range")
+	}
+	currentEpoch := snapshot.Epoch.Uint64()
+	currentStartBlock, err := s.chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, snapshot.Epoch)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("current epoch start block: %w", err)
+	}
+	if snapshot.Policy.RootCommitWindowBlocks > ^uint64(0)-currentStartBlock {
+		return nil, nil, nil, errors.New("artifact deadline overflows uint64")
+	}
+	artifactDeadline := currentStartBlock + snapshot.Policy.RootCommitWindowBlocks
 	controlled := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
 		controlled[noID] = true
@@ -232,15 +308,16 @@ func (s *ReleaseSteerer) gatherPools(snapshot *ReleaseSnapshot, bound map[uint64
 	masked := map[uint16]bool{}
 	active := 0
 	var pools []ExactWeightInput
+	var audits []DepositAudit
 	for index := int64(0); index < count.Int64(); index++ {
 		noIDBig, err := s.chain.ReleaseOperatorIDAt(snapshot.BlockNumber, big.NewInt(index))
 		if err != nil || !noIDBig.IsUint64() {
-			return nil, nil, fmt.Errorf("operator id at %d: %w", index, err)
+			return nil, nil, nil, fmt.Errorf("operator id at %d: %w", index, err)
 		}
 		noID := noIDBig.Uint64()
 		op, err := s.chain.ReleaseOperatorAt(snapshot.BlockNumber, noIDBig, snapshot.Epoch)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		if !op.Active {
 			continue
@@ -248,44 +325,127 @@ func (s *ReleaseSteerer) gatherPools(snapshot *ReleaseSnapshot, bound map[uint64
 		active++
 		measurement := s.contexts[noID]
 		if measurement == nil {
-			return nil, nil, fmt.Errorf("active no_id %d has no isolated measurement context", noID)
+			return nil, nil, nil, fmt.Errorf("active no_id %d has no isolated measurement context", noID)
 		}
 		uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, op.PoolHotkey)
 		if err != nil || !found {
-			return nil, nil, fmt.Errorf("active no_id %d pool hotkey has no live UID: %w", noID, err)
-		}
-		if controlled[noID] {
-			masked[uid] = true
-			continue
+			return nil, nil, nil, fmt.Errorf("active no_id %d pool hotkey has no live UID: %w", noID, err)
 		}
 		deposit, err := s.chain.ReleaseEpochDepositAt(snapshot.BlockNumber, snapshot.Epoch, noIDBig)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		conviction, err := s.chain.ReleaseConvictionAt(snapshot.BlockNumber, noIDBig)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		convictionAdded, err := s.chain.ReleaseEpochConvictionAddedAt(snapshot.BlockNumber, snapshot.Epoch, noIDBig)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		convictionBefore := new(big.Int).Sub(new(big.Int).Set(conviction), deposit)
 		convictionBefore.Sub(convictionBefore, convictionAdded)
 		if convictionBefore.Sign() < 0 {
-			return nil, nil, fmt.Errorf("no_id %d conviction snapshot underflow", noID)
+			return nil, nil, nil, fmt.Errorf("no_id %d conviction snapshot underflow", noID)
+		}
+
+		var audit DepositAudit
+		if currentEpoch < s.cfg.Policy.Deposit.UsageLagEpochs {
+			audit = baseDepositAudit(currentEpoch, 0, noID, deposit, convictionBefore)
+			audit.Status = DepositAuditBootstrap
+			audit.Disposition = "zero_pool_weight_bootstrap"
+			if deposit.Sign() == 0 {
+				audit.Compliant = true
+			} else {
+				audit.Status = DepositAuditMismatch
+				audit.Error = "bootstrap epoch deposit must be zero without a prior usage artifact"
+			}
+		} else {
+			sourceEpoch := currentEpoch - s.cfg.Policy.Deposit.UsageLagEpochs
+			sourceEpochBig := new(big.Int).SetUint64(sourceEpoch)
+			startBlock, startErr := s.chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, sourceEpochBig)
+			if startErr != nil {
+				return nil, nil, nil, fmt.Errorf("no_id %d source epoch start: %w", noID, startErr)
+			}
+			endBlock, endErr := s.chain.ReleaseEpochEndBlockAt(snapshot.BlockNumber, sourceEpochBig)
+			if endErr != nil {
+				return nil, nil, nil, fmt.Errorf("no_id %d source epoch end: %w", noID, endErr)
+			}
+			if startBlock == 0 || endBlock <= startBlock || endBlock != currentStartBlock || endBlock > snapshot.BlockNumber {
+				return nil, nil, nil, fmt.Errorf("source epoch %d has inconsistent finalized boundaries [%d,%d], current start %d, snapshot %d", sourceEpoch, startBlock, endBlock, currentStartBlock, snapshot.BlockNumber)
+			}
+			startHash, hashErr := s.chain.BlockHash(startBlock)
+			if hashErr != nil {
+				return nil, nil, nil, fmt.Errorf("source epoch %d start hash: %w", sourceEpoch, hashErr)
+			}
+			endHash, hashErr := s.chain.BlockHash(endBlock)
+			if hashErr != nil {
+				return nil, nil, nil, fmt.Errorf("source epoch %d end hash: %w", sourceEpoch, hashErr)
+			}
+			commitment, commitmentErr := s.chain.ReleaseRootCommitmentAt(snapshot.BlockNumber, sourceEpochBig, noIDBig)
+			if commitmentErr != nil {
+				return nil, nil, nil, fmt.Errorf("no_id %d source root commitment: %w", noID, commitmentErr)
+			}
+			if commitment.CommitBlock == 0 {
+				status := DepositAuditUnavailablePending
+				if snapshot.BlockNumber > artifactDeadline {
+					status = DepositAuditUnavailable
+				}
+				audit = FailedDepositAudit(currentEpoch, sourceEpoch, noID, deposit, convictionBefore, status, errors.New("source payout root is not committed on chain"))
+			} else {
+				artifact, artifactErr := measurement.Artifacts.Read(ctx, sourceEpoch, noID)
+				if artifactErr != nil {
+					status := DepositAuditInvalid
+					if errors.Is(artifactErr, ErrArtifactEquivocation) {
+						status = DepositAuditEquivocation
+					} else if errors.Is(artifactErr, ErrArtifactUnavailable) {
+						status = DepositAuditUnavailablePending
+						if snapshot.BlockNumber > artifactDeadline {
+							status = DepositAuditUnavailable
+						}
+					}
+					audit = FailedDepositAudit(currentEpoch, sourceEpoch, noID, deposit, convictionBefore, status, artifactErr)
+				} else {
+					sourceOperator, sourceOperatorErr := s.chain.ReleaseOperatorAt(snapshot.BlockNumber, noIDBig, sourceEpochBig)
+					if sourceOperatorErr != nil {
+						return nil, nil, nil, fmt.Errorf("no_id %d source operator version: %w", noID, sourceOperatorErr)
+					}
+					operatorCfg, ok := s.operators[noID]
+					if !ok {
+						return nil, nil, nil, fmt.Errorf("no_id %d artifact signer is not configured", noID)
+					}
+					audit = EvaluateDepositArtifact(artifact, DepositArtifactExpectation{
+						DeploymentID: s.cfg.DeploymentID, ChainID: s.cfg.ChainID, GenesisHash: s.cfg.GenesisHash,
+						Netuid: s.cfg.Netuid, Coordinator: common.HexToAddress(s.cfg.Coordinator), SettlementVault: common.HexToAddress(s.cfg.SettlementVault), PolicyHash: s.cfg.PolicyHash,
+						Epoch: sourceEpoch, NoID: noID, Signer: common.HexToAddress(operatorCfg.ArtifactSigner),
+						Start:      payoutartifact.Boundary{Number: startBlock, Hash: fmt.Sprintf("0x%x", startHash)},
+						End:        payoutartifact.Boundary{Number: endBlock, Hash: fmt.Sprintf("0x%x", endHash)},
+						PayoutRoot: commitment.PayoutRoot, ArtifactHash: commitment.ArtifactHash,
+						Committer: commitment.Committer, RootSigner: sourceOperator.RootSigner, CommitBlock: commitment.CommitBlock,
+					}, currentEpoch, deposit, convictionBefore, s.cfg.Policy.Deposit)
+				}
+			}
+		}
+		audits = append(audits, audit)
+		if controlled[noID] {
+			masked[uid] = true
+			continue
+		}
+		if !audit.Compliant || audit.Status == DepositAuditBootstrap {
+			continue
 		}
 		quality := PoolQualityPPM(measurement.Stats, bound[noID])
 		score, err := impliedUsageQuality(deposit, convictionBefore, quality, s.cfg.Policy)
 		if err != nil {
-			return nil, nil, fmt.Errorf("no_id %d weight: %w", noID, err)
+			return nil, nil, nil, fmt.Errorf("no_id %d weight: %w", noID, err)
 		}
 		pools = append(pools, ExactWeightInput{UID: uid, Score: score})
 	}
 	if active < s.cfg.Policy.Safety.MinimumHealthyNOCount {
-		return nil, nil, fmt.Errorf("active operator count %d below policy minimum %d", active, s.cfg.Policy.Safety.MinimumHealthyNOCount)
+		return nil, nil, nil, fmt.Errorf("active operator count %d below policy minimum %d", active, s.cfg.Policy.Safety.MinimumHealthyNOCount)
 	}
-	return pools, masked, nil
+	sort.Slice(audits, func(i, j int) bool { return audits[i].NoID < audits[j].NoID })
+	return pools, masked, audits, nil
 }
 
 func (s *ReleaseSteerer) foldSettlementEpoch(epoch uint64) error {
@@ -455,15 +615,15 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.foldSettlementEpoch(snapshot.Epoch.Uint64()); err != nil {
 		return err
 	}
-	head, bound, controlledHead, err := s.gatherHead(snapshot)
+	head, err := s.gatherHead(snapshot)
 	if err != nil {
 		return err
 	}
-	pools, masked, err := s.gatherPools(snapshot, bound)
+	pools, masked, depositAudits, err := s.gatherPools(ctx, snapshot, head.Bound)
 	if err != nil {
 		return err
 	}
-	for uid := range controlledHead {
+	for uid := range head.Controlled {
 		masked[uid] = true
 	}
 	selfUID, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, s.hotkey.PublicKey())
@@ -479,7 +639,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 		maskedUIDs = append(maskedUIDs, uid)
 	}
 	sort.Slice(maskedUIDs, func(i, j int) bool { return maskedUIDs[i] < maskedUIDs[j] })
-	uids, scores, err := BuildWeightVectorExact(pools, head, s.cfg.Policy.Steering.Theta, masked)
+	uids, scores, err := BuildWeightVectorExact(pools, head.Weights, s.cfg.Policy.Steering.Theta, masked)
 	if err != nil {
 		return err
 	}
@@ -506,6 +666,11 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 		PolicyHash:          s.cfg.PolicyHash,
 		SelfUID:             selfUID,
 		MaskedUIDs:          maskedUIDs,
+		EligibleHeadUIDs:    head.EligibleUIDs,
+		SelectedHeadUIDs:    head.SelectedUIDs,
+		RejectedHeadUIDs:    head.RejectedUIDs,
+		StaleHeadBindings:   head.StaleBindings,
+		DepositAudits:       depositAudits,
 		UIDs:                uids,
 		Scores:              encodedScores,
 		Prepared:            prepared,

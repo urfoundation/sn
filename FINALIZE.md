@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; official public testnet operational-RPC preflight and bounded plan green against runtime 451; full `sim-testnet` launch has not yet been started, 2026-08-29 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; aggregate Go/race/Slither/Foundry/operator/xops gate, official public-testnet operational-RPC preflight, and the 1,982-action bounded plan are green against runtime 451; full `sim-testnet` launch has not yet been started, 2026-08-29 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -57,7 +57,7 @@ All 17 blockers found by the initial audit are addressed:
 | Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Wallet/password references, netuid, local origins and three spend ceilings are populated; generated deployment values are written to an isolated runtime profile. |
 | Missing verify key | Harness-derived, versioned per-operator verify keys with rotation/overlap and signed evidence; no secret enters the public manifest. |
 | Distinguishable poisoning | Full-depth routable shadow/padding paths with uniform response surface and constant-envelope failure handling, covered by operator tests. |
-| No reproducible environment | Portable Go harness manages pinned PostgreSQL/Redis, builds locked binaries and supervises two NOs, eight miners, two validators, claim daemons and two independently keyed three-client head fleets. Existing `server/blob` MinIO is reused. |
+| No reproducible environment | Portable Go harness manages pinned PostgreSQL/Redis, builds locked binaries and supervises two NOs, 1,000 miner identities in 20 production swarms, two validators, claim daemons, 202 independently keyed four-client head-candidate fleets competing for 200 slots, and 192 long-tail miners. Existing `server/blob` MinIO is reused. |
 | Empty `sim-testnet` | Complete `doctor`, `plan`, `setup`, `launch`, `resume`, `status`, `inspect`, `analyze`, `scenario`, `tail`, `stop` and future-effective `retire` commands with an append-only transaction journal. |
 
 ### 1.1 Completion by workstream
@@ -964,18 +964,24 @@ policy:
     stop_on_index_gap: true
 ```
 
-The deposit rate values exist to exercise tiers and math at dust scale; publish them as such. Before the 7-day soak, replace them with an economically reviewed schedule and a sourcing commitment. The policy is hashed from canonical bytes and signed by governance; all components pin that hash.
+The deposit rate values exist to exercise tiers and math at dust scale; publish
+them as such. Before mainnet's seven-day cadence, replace them with an economically
+reviewed schedule and a sourcing commitment. The policy is hashed from canonical
+bytes and signed by governance; all components pin that hash.
 
-After M2, schedule—not mutate—the production-cadence snapshot:
+After M2, schedule—not mutate—the shortened testnet acceptance snapshot:
 
 ```yaml
 settlement:
-  epoch_blocks: 50400
-  root_commit_window_blocks: 1200    # +4 hours
-  finalize_offset_blocks: 14400      # +48 hours
+  epoch_blocks: 2400                 # approximately 8 hours
+  root_commit_window_blocks: 200
+  finalize_offset_blocks: 1200       # approximately +4 hours
+  close_grace_blocks: 20
 ```
 
-The effective epoch must leave the current short epoch untouched and be verified through both contract getters and events.
+The effective epoch must leave the current short epoch untouched and be verified
+through both contract getters and events. Mainnet uses a separate locked
+50,400-block/seven-day snapshot with reviewed +4h/+48h windows.
 
 ### 7.4 Subnet hyperparameter manifest
 
@@ -991,7 +997,7 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `commit_reveal_weights_enabled` | true | Hard gate. |
 | `commit_reveal_period` | query then explicitly set/record | Immunity must exceed the full reveal interval. |
 | `liquid_alpha_enabled` | true | Verify live. |
-| `immunity_period` | 7200 blocks for accelerated test; schedule 50400 before soak | Must exceed reveal interval and cover measurement ramp. |
+| `immunity_period` | 7200 blocks for accelerated test; schedule 2400 for the shortened testnet soak | Must exceed reveal interval and cover measurement ramp. Mainnet chooses its value with the separate 50,400-block cadence review. |
 | `min_allowed_weights` | 1 | Hard gate. |
 | `weights_version_key` | 1 for first release | Validator must read it from chain; bump on scoring changes. |
 | `serving_rate_limit` | 50 unless live semantics differ | Verify; axon remains optional. |
@@ -1592,7 +1598,7 @@ Every live test case emits a signed JSON evidence record containing:
 
 The evidence directory has an index and aggregate hash signed by the release owner. A dashboard is useful operationally, but it is not a substitute for immutable evidence.
 
-## 9. Staged live-testnet validation campaign (pending operator configuration)
+## 9. Staged live-testnet validation campaign (implementation complete; execution pending)
 
 ### M0A — Runtime-451 local rehearsal
 
@@ -1604,8 +1610,11 @@ Minimum topology:
 - coordinator, immutable settlement vault, and reserve sink;
 - two NO servers with separate PostgreSQL/Redis namespaces and keys;
 - two separately keyed validator processes;
-- at least twenty provider identities split across both NOs;
-- one three-client top fleet, a second fleet sharing one test prefix, and long-tail providers;
+- 1,000 provider identities split evenly across both NOs and executed by the real
+  miner module in 20 production swarms;
+- 202 independently keyed four-client fleet candidates competing for exactly 200
+  top-level slots, including shared-prefix cohorts, deterministic challengers and
+  192 long-tail providers;
 - the existing server/blob MinIO backend plus public server artifact-history API; and
 - canonical event index/replay verifier.
 
@@ -1679,7 +1688,10 @@ runtime-enforced limit call; it never assumes later burns equal the first observ
 11. make distinct dust deposits for both NOs and prove atomic attribution/reserve movement;
 12. route controlled traffic and trails with intentionally different quality;
 13. close the epoch, publish two full payout artifacts, commit roots, fund/finalize the vault, and execute claims from providers on both NOs;
-14. register a provider-owned top-miner UID, publish a three-client dual-signed commitment/binding, and observe its native head weight/emission under theta; and
+14. register all 202 provider-owned fleet UIDs, publish their four-client
+    dual-signed commitments/bindings, prove exactly 200 selected and two rejected,
+    then force and observe a real promotion/demotion transition plus selected,
+    rejected, pool and validator native reward channels under theta; and
 15. reconcile every rao, leaf, input, weight, receipt, reserve delta, and role from public evidence.
 
 Exit gate: one clean end-to-end epoch with two NOs, two validators, tail claims, head native steering, no double pay, and exact conservation. `sim-testnet status` is green, `inspect` reproduces the live finalized state from a second machine, and the persistent operator/miner/validator stack remains running under the dust cap for analysis.
@@ -1738,9 +1750,17 @@ Exit gate:
 
 ### M3 — Production-cadence testnet soak
 
-Schedule the 50,400-block epoch, +1,200-block root window, and +14,400-block finalize offset for a future boundary. Verify the preceding accelerated epoch is unchanged.
+Schedule the testnet-only 2,400-block epoch, +200-block root window,
++1,200-block finalize offset and +20-block close grace for a future boundary.
+Schedule the matching 2,400-block immunity period at that same release boundary.
+Verify the preceding accelerated epoch is unchanged. The mainnet plan remains a
+separate 50,400-block/seven-day cadence with its separately reviewed +4h/+48h
+windows; the shortened testnet cadence never becomes a mainnet default.
 
-Run at least **two complete 7-day epochs** using the `release-1.0` scenario, including their finalization windows and representative claims. During the soak:
+Run **three consecutive complete 2,400-block UR blocks** (approximately eight
+hours each) using `production-soak`, including their finalization windows and
+representative claims. Conservatively discard the production epoch that contains
+the first observation, so all three accepted epochs are fully observed. During the soak:
 
 - keep at least two active NOs and two live validators;
 - keep the complete seven-actor adversarial campaign active under the same
@@ -1947,10 +1967,10 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    the derived application role and returned `512:256MB:en_US.UTF-8`; Redis returned
    `PONG`. Containers and PostgreSQL volumes now carry matching complete spec hashes.
 4. **Completed 2026-08-29:** the read-only plan passed its checker with maximum
-   spends of `3978000008` TAO rao, `5200000000` alpha rao,
-   `3000000000000000000` EVM gas wei, nine registrations and zero subnet
+   spends of `4918005500` TAO rao, `5680000000` alpha rao,
+   `3000000000000000000` EVM gas wei, 256 registrations and zero subnet
    creations. Its current exact `plan_hash` is
-   `0x97a87ad3cd2fae176f88764ae7f4dcdd557877789fe50cc6ce665d4fff4a715d`.
+   `0x2922c8ba0099db7e3b639bb8425fc2e20ecb8dc6e8ce47f934bd86763a4f5238`.
    Regenerate it after any locked input changes; an old hash cannot authorize a
    changed plan. The user has authorized automatic application of this bounded
    **testnet** plan; no mainnet write is authorized.
@@ -2012,15 +2032,21 @@ Separately approved bootstrap extrinsics activated netuid 521 and
 acquired alpha; their hashes and finalized postconditions are recorded in section
 7.2 and are not substituted for release-campaign evidence.
 
-The read-only 2026-08-29 public-mode refresh additionally passed `go test ./...`,
-`go vet ./...`, race-enabled `sim-testnet`/`crv4`/`validator` tests, all 108 Foundry
-tests and the focused Subtensor Ansible suite. Live `doctor` returned `ready=true`;
-runtime spec/transaction version were 451/1, EVM chain ID was 945, finalized Wasm
+The read-only 2026-08-29 public-mode refresh additionally passed the aggregate
+`scripts/test-release-1.0-local.sh` gate: `go test ./...`, release-package race
+tests, Slither 0.11.6 with zero high/medium findings, a clean Solc 0.8.24 build,
+all 108 Foundry tests, generated payload/ABI freshness, operator/shared-client
+suites, and 25 focused Subtensor infrastructure tests. Live `doctor` returned
+`ready=true`; its UID-capacity proof uses one complete finalized
+`state_queryStorageAt` batch instead of 254 burst reads, and identical public
+operational/observer URLs are probed once and explicitly marked as one shared
+observation. Runtime spec/transaction version were 451/1,
+EVM chain ID was 945, finalized Wasm
 matched `0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08`,
 and exact finalized-block `eth_getLogs`, historical state, metadata, release call
 shapes and all read-only precompile batteries passed. The successful read-only plan
 used release-lock hash
-`0x1f52299355ea6c127739c24723e9d79a3f40b7648644eb36b960d4af795f8ba4`
+`0xe92c67bb34ef0508f5a9dd5b9f9b931848feea49c2b7c7a073d10b6b05444aab`
 and the spend/plan values recorded in section 13. These results prove public-mode
 launch readiness, not physical backend independence, archive depth or sustained
 load capacity.

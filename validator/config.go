@@ -29,6 +29,7 @@ type OperatorConfig struct {
 	NoID              uint64 `yaml:"no_id" json:"no_id"`
 	APIURL            string `yaml:"api_url" json:"api_url"`
 	ConnectURL        string `yaml:"connect_url" json:"connect_url"`
+	ArtifactSigner    string `yaml:"artifact_signer" json:"artifact_signer"`
 	StateDir          string `yaml:"state_dir" json:"state_dir"`
 	NetworkJWTFile    string `yaml:"network_jwt_file" json:"network_jwt_file"`
 	ClientJWTFile     string `yaml:"client_jwt_file" json:"client_jwt_file"`
@@ -40,6 +41,7 @@ type ReleaseConfig struct {
 	SchemaVersion   int              `yaml:"schema_version" json:"schema_version"`
 	Production      bool             `yaml:"production" json:"production"`
 	Release         string           `yaml:"release" json:"release"`
+	DeploymentID    string           `yaml:"deployment_id" json:"deployment_id"`
 	ValidatorID     uint64           `yaml:"validator_id" json:"validator_id"`
 	ChainID         uint64           `yaml:"chain_id" json:"chain_id"`
 	GenesisHash     string           `yaml:"genesis_hash" json:"genesis_hash"`
@@ -183,6 +185,9 @@ func (c ReleaseConfig) Validate() error {
 	if !c.Production {
 		return errors.New("release config must explicitly set production: true")
 	}
+	if strings.TrimSpace(c.DeploymentID) == "" || strings.ContainsAny(c.DeploymentID, "/\\.") {
+		return errors.New("deployment_id must be one nonempty safe segment")
+	}
 	if c.ValidatorID == 0 || c.ChainID == 0 || c.RuntimeSpec == 0 || c.Netuid == 0 || c.DeployBlock == 0 {
 		return errors.New("validator, chain, runtime, netuid and deploy block must be nonzero")
 	}
@@ -243,6 +248,7 @@ func (c ReleaseConfig) Validate() error {
 		return fmt.Errorf("configured operators %d below policy minimum %d", len(c.Operators), c.Policy.Safety.MinimumHealthyNOCount)
 	}
 	seenNO := map[uint64]bool{}
+	seenArtifactSigner := map[common.Address]uint64{}
 	seenPath := map[string]string{}
 	for i, op := range c.Operators {
 		if op.NoID == 0 || seenNO[op.NoID] {
@@ -255,6 +261,14 @@ func (c ReleaseConfig) Validate() error {
 		if err := validateEndpoint(fmt.Sprintf("operators[%d].connect_url", i), op.ConnectURL, "ws", "wss"); err != nil {
 			return err
 		}
+		if !common.IsHexAddress(op.ArtifactSigner) || common.HexToAddress(op.ArtifactSigner) == (common.Address{}) {
+			return fmt.Errorf("operators[%d].artifact_signer is missing or zero", i)
+		}
+		artifactSigner := common.HexToAddress(op.ArtifactSigner)
+		if priorNO, exists := seenArtifactSigner[artifactSigner]; exists {
+			return fmt.Errorf("operators[%d].artifact_signer aliases no_id %d", i, priorNO)
+		}
+		seenArtifactSigner[artifactSigner] = op.NoID
 		if op.Concurrency < 1 || op.Concurrency > 128 {
 			return fmt.Errorf("operators[%d].concurrency outside [1,128]", i)
 		}

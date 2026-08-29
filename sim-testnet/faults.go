@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -59,9 +62,10 @@ type scenarioContainerRuntime interface {
 }
 
 type liveScenarioFaultDriver struct {
-	stateDir   string
-	cfg        *ResolvedConfig
-	containers scenarioContainerRuntime
+	stateDir        string
+	cfg             *ResolvedConfig
+	containers      scenarioContainerRuntime
+	minerControlURL func(swarm int, target, action string) string
 }
 
 type dockerScenarioContainerRuntime struct{ docker dockerCLI }
@@ -245,6 +249,95 @@ func (d *liveScenarioFaultDriver) signal(spec scenarioFaultSpec, signal syscall.
 	return result, nil
 }
 
+func minerSwarmFor(cfg *ResolvedConfig, miner int) (int, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Config.Topology.MinerSwarmProcesses < 1 || cfg.Config.Topology.Miners < 1 || cfg.Config.Topology.Miners%cfg.Config.Topology.MinerSwarmProcesses != 0 || miner < 1 || miner > cfg.Config.Topology.Miners {
+		return 0, fmt.Errorf("miner %d cannot be mapped to a configured swarm", miner)
+	}
+	return 1 + (miner-1)/(cfg.Config.Topology.Miners/cfg.Config.Topology.MinerSwarmProcesses), nil
+}
+
+func (d *liveScenarioFaultDriver) controlURL(swarm int, target, action string) string {
+	if d.minerControlURL != nil {
+		return d.minerControlURL(swarm, target, action)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/control/%s/%s", 21080+swarm, target, action)
+}
+
+func (d *liveScenarioFaultDriver) controlMiners(ctx context.Context, spec scenarioFaultSpec, enable bool) ([]FaultProcessEvidence, error) {
+	if d.cfg == nil || spec.Kind != "miner-control" || len(spec.Targets) == 0 {
+		return nil, fmt.Errorf("unsupported miner control fault %q", spec.Kind)
+	}
+	states, processSpecs, err := d.processSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	targets := append([]string(nil), spec.Targets...)
+	sort.Strings(targets)
+	action := "disable"
+	rollbackAction := "enable"
+	if enable {
+		action, rollbackAction = "enable", "disable"
+	}
+	completed := make([]struct {
+		miner int
+		swarm int
+	}, 0, len(targets))
+	rollback := func() {
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer rollbackCancel()
+		for index := len(completed) - 1; index >= 0; index-- {
+			item := completed[index]
+			request, _ := http.NewRequestWithContext(rollbackCtx, http.MethodPost, d.controlURL(item.swarm, fmt.Sprintf("miner-%d", item.miner), rollbackAction), nil)
+			response, requestErr := http.DefaultClient.Do(request)
+			if requestErr == nil {
+				response.Body.Close()
+			}
+		}
+	}
+	result := make([]FaultProcessEvidence, 0, len(targets))
+	for _, target := range targets {
+		var miner int
+		if _, scanErr := fmt.Sscanf(target, "miner-%d", &miner); scanErr != nil || target != fmt.Sprintf("miner-%d", miner) {
+			rollback()
+			return nil, fmt.Errorf("invalid miner control target %q", target)
+		}
+		swarm, mapErr := minerSwarmFor(d.cfg, miner)
+		if mapErr != nil {
+			rollback()
+			return nil, mapErr
+		}
+		processID := fmt.Sprintf("miner-swarm-%d", swarm)
+		state, stateOK := states[processID]
+		processSpec, specOK := processSpecs[processID]
+		if !stateOK || !specOK || state.PID <= 1 || (!enable && !state.Healthy) {
+			rollback()
+			return nil, fmt.Errorf("miner control target %s has no healthy owning swarm", target)
+		}
+		request, requestErr := http.NewRequestWithContext(ctx, http.MethodPost, d.controlURL(swarm, target, action), nil)
+		if requestErr != nil {
+			rollback()
+			return nil, requestErr
+		}
+		response, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			rollback()
+			return nil, fmt.Errorf("%s %s: %w", action, target, requestErr)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+		response.Body.Close()
+		if readErr != nil || response.StatusCode/100 != 2 {
+			rollback()
+			return nil, fmt.Errorf("%s %s: HTTP %d: %s: %v", action, target, response.StatusCode, strings.TrimSpace(string(body)), readErr)
+		}
+		completed = append(completed, struct {
+			miner int
+			swarm int
+		}{miner: miner, swarm: swarm})
+		result = append(result, FaultProcessEvidence{ID: target, Role: "miner", Identity: processSpec.Identity, PID: state.PID})
+	}
+	return result, nil
+}
+
 func (d *liveScenarioFaultDriver) applyContainerFault(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
 	if d.cfg == nil || spec.Kind != "container-restart" || len(spec.Targets) == 0 {
 		return nil, fmt.Errorf("unsupported container fault %q", spec.Kind)
@@ -328,15 +421,25 @@ func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spe
 }
 
 func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
-	if spec.Kind == "container-restart" {
-		processes, err := d.applyContainerFault(ctx, spec)
+	if spec.Kind == "container-restart" || spec.Kind == "miner-control" {
+		var processes []FaultProcessEvidence
+		var err error
+		if spec.Kind == "container-restart" {
+			processes, err = d.applyContainerFault(ctx, spec)
+		} else {
+			processes, err = d.controlMiners(ctx, spec, false)
+		}
 		if err != nil {
 			return nil, err
 		}
 		active := activeFaultFile{Schema: "urnetwork-sim-active-faults-v1", Faults: []scenarioFaultSpec{spec}, Processes: processes}
 		b, _ := json.MarshalIndent(active, "", "  ")
 		if err := atomicWrite(d.activePath(), append(b, '\n'), 0o600); err != nil {
-			_, _ = d.restoreContainerFault(context.Background(), spec)
+			if spec.Kind == "container-restart" {
+				_, _ = d.restoreContainerFault(context.Background(), spec)
+			} else {
+				_, _ = d.controlMiners(context.Background(), spec, true)
+			}
 			return nil, err
 		}
 		return processes, nil
@@ -365,6 +468,8 @@ func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaul
 	var err error
 	if spec.Kind == "container-restart" {
 		processes, err = d.restoreContainerFault(ctx, spec)
+	} else if spec.Kind == "miner-control" {
+		processes, err = d.controlMiners(ctx, spec, true)
 	} else if spec.Kind == "process-restart" {
 		processes, err = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
 	} else {
@@ -441,7 +546,7 @@ func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 
 func releaseQualityFault(cfg *ResolvedConfig) (scenarioFaultSpec, error) {
 	var targets []string
-	for miner := cfg.Config.Topology.HeadFleets*cfg.Config.Topology.ClientsPerHeadFleet + 1; miner <= cfg.Config.Topology.Miners; miner++ {
+	for miner := cfg.Config.Topology.fleetCandidateMiners() + 1; miner <= cfg.Config.Topology.Miners; miner++ {
 		if operatorForMiner(cfg, miner) == cfg.Config.Scenarios.QualityFaultOperator {
 			targets = append(targets, fmt.Sprintf("miner-%d", miner))
 		}
@@ -449,7 +554,56 @@ func releaseQualityFault(cfg *ResolvedConfig) (scenarioFaultSpec, error) {
 	if len(targets) == 0 {
 		return scenarioFaultSpec{}, errors.New("quality fault has no non-head miners in the selected operator")
 	}
-	return scenarioFaultSpec{ID: "quality-cohort", Kind: "process-pause", Targets: targets, TriggerOffsetBlocks: cfg.Config.Scenarios.QualityFaultStartBlocks, DurationBlocks: cfg.Config.Scenarios.QualityFaultDurationBlocks}, nil
+	return scenarioFaultSpec{ID: "quality-cohort", Kind: "miner-control", Targets: targets, TriggerOffsetBlocks: cfg.Config.Scenarios.QualityFaultStartBlocks, DurationBlocks: cfg.Config.Scenarios.QualityFaultDurationBlocks}, nil
+}
+
+// headBoundaryDecayTempos returns one more complete EMA fold than the minimum
+// required to move a score of four strictly below the challenger score of one.
+// The extra fold makes the live transition observable even when a validator's
+// first post-fault sample lands immediately before a native tempo boundary.
+func headBoundaryDecayTempos(numerator, denominator uint64) (uint64, error) {
+	if denominator == 0 || numerator == 0 || numerator > denominator {
+		return 0, errors.New("head-boundary fault requires an EMA strictly above zero and at most one")
+	}
+	retained := new(big.Rat).SetFrac(
+		new(big.Int).SetUint64(denominator-numerator),
+		new(big.Int).SetUint64(denominator),
+	)
+	score := big.NewRat(4, 1)
+	challenger := big.NewRat(1, 1)
+	for folds := uint64(1); folds <= 256; folds++ {
+		score.Mul(score, retained)
+		if score.Cmp(challenger) < 0 {
+			return folds + 1, nil
+		}
+	}
+	return 0, errors.New("head-boundary EMA cannot cross the challenger within 256 tempos")
+}
+
+func releaseHeadBoundaryFault(cfg *ResolvedConfig, firstOffset uint64) (scenarioFaultSpec, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Config.Topology.HeadFleets < 3 {
+		return scenarioFaultSpec{}, errors.New("head-boundary fault requires at least three initial head fleets")
+	}
+	tempo := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"])
+	decayTempos, err := headBoundaryDecayTempos(
+		cfg.Policy.Steering.HeadScoreEMA.Numerator,
+		cfg.Policy.Steering.HeadScoreEMA.Denominator,
+	)
+	if err != nil {
+		return scenarioFaultSpec{}, err
+	}
+	if tempo == 0 || decayTempos > (^uint64(0)-cfg.Config.Scenarios.QualityFaultDurationBlocks)/tempo {
+		return scenarioFaultSpec{}, errors.New("head-boundary fault has an invalid approved tempo")
+	}
+	targets := make([]string, 0, cfg.Config.Topology.ClientsPerHeadFleet)
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		targets = append(targets, fmt.Sprintf("miner-%d", fleetMemberMinerIndex(cfg, 3, member)))
+	}
+	// The exact approved EMA determines how many complete native tempos are
+	// needed. The configured duration absorbs block-aligned fault scheduling
+	// and restoration delay after the conservative extra fold.
+	duration := decayTempos*tempo + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	return scenarioFaultSpec{ID: "head-boundary", Kind: "miner-control", Targets: targets, TriggerOffsetBlocks: firstOffset, DurationBlocks: duration}, nil
 }
 
 func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, bool) {
@@ -458,6 +612,7 @@ func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, boo
 	spec := scenarioFaultSpec{ID: name, Kind: "process-pause", TriggerOffsetBlocks: start, DurationBlocks: duration}
 	switch name {
 	case "fault-miner-offline":
+		spec.Kind = "miner-control"
 		spec.Targets = []string{fmt.Sprintf("miner-%d", cfg.Config.Topology.Miners)}
 	case "fault-operator-offline":
 		for _, role := range []string{"api", "connect", "taskworker"} {
@@ -466,7 +621,7 @@ func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, boo
 	case "fault-validator-offline":
 		spec.Targets = []string{fmt.Sprintf("validator-%d", cfg.Config.Topology.Validators)}
 	case "fault-claim-relayer-offline":
-		spec.Targets = []string{fmt.Sprintf("miner-%d-claims", cfg.Config.Topology.Miners)}
+		spec.Targets = []string{fmt.Sprintf("claim-relayer-%d", operatorForMiner(cfg, cfg.Config.Topology.Miners))}
 	case "fault-taskworker-offline":
 		spec.Targets = []string{fmt.Sprintf("operator-%d-taskworker", cfg.Config.Scenarios.QualityFaultOperator)}
 	default:
@@ -480,10 +635,11 @@ func operatorDependencyImpacts(cfg *ResolvedConfig, operator int) []string {
 		fmt.Sprintf("operator-%d-api", operator),
 		fmt.Sprintf("operator-%d-connect", operator),
 		fmt.Sprintf("operator-%d-taskworker", operator),
+		fmt.Sprintf("claim-relayer-%d", operator),
 	}
 	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
 		if operatorForMiner(cfg, miner) == operator {
-			impacts = append(impacts, fmt.Sprintf("miner-%d", miner), fmt.Sprintf("miner-%d-claims", miner))
+			impacts = append(impacts, fmt.Sprintf("miner-%d", miner))
 		}
 	}
 	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
@@ -500,10 +656,8 @@ func rpcProxyImpacts(cfg *ResolvedConfig) []string {
 			fmt.Sprintf("operator-%d-api", operator),
 			fmt.Sprintf("operator-%d-connect", operator),
 			fmt.Sprintf("operator-%d-taskworker", operator),
+			fmt.Sprintf("claim-relayer-%d", operator),
 		)
-	}
-	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		impacts = append(impacts, fmt.Sprintf("miner-%d-claims", miner))
 	}
 	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
 		impacts = append(impacts, fmt.Sprintf("validator-%d", validator))
@@ -548,8 +702,11 @@ func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64
 			targets = append(targets, fmt.Sprintf("operator-%d-%s", operator, role))
 		}
 	}
-	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
-		targets = append(targets, fmt.Sprintf("miner-%d", miner), fmt.Sprintf("miner-%d-claims", miner))
+	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
+		targets = append(targets, fmt.Sprintf("miner-swarm-%d", swarm))
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		targets = append(targets, fmt.Sprintf("claim-relayer-%d", operator))
 	}
 	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
 		targets = append(targets, fmt.Sprintf("validator-%d", validator))
@@ -580,8 +737,13 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	firstRestart := quality.TriggerOffsetBlocks + quality.DurationBlocks + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
-	faults := []scenarioFaultSpec{quality}
+	spacing := max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
+	head, err := releaseHeadBoundaryFault(cfg, quality.TriggerOffsetBlocks+quality.DurationBlocks+spacing)
+	if err != nil {
+		return nil, err
+	}
+	firstRestart := head.TriggerOffsetBlocks + head.DurationBlocks + spacing
+	faults := []scenarioFaultSpec{quality, head}
 	dependencies := dependencyOutageFaults(cfg, "release-dependency", firstRestart)
 	faults = append(faults, dependencies...)
 	last := dependencies[len(dependencies)-1]

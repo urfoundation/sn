@@ -64,7 +64,7 @@ func TestLightHarnessConfigPreservesReleaseChecksAndUsesLightnode(t *testing.T) 
 	if cfg.Deployment.DeploymentID != "ur-subnet-testnet-light-v1" {
 		t.Fatalf("light deployment id = %q", cfg.Deployment.DeploymentID)
 	}
-	if cfg.Topology.Operators != 2 || cfg.Topology.Miners != 8 || cfg.Topology.Validators != 2 || cfg.Scenarios.Launch != "smoke" {
+	if cfg.Topology.Operators != 2 || cfg.Topology.Miners != 1_000 || cfg.Topology.Validators != 2 || cfg.Topology.HeadSlots != 200 || cfg.Topology.MinerSwarmProcesses != 20 || cfg.Scenarios.Launch != "smoke" {
 		t.Fatalf("light profile weakened release topology or smoke: %+v / %+v", cfg.Topology, cfg.Scenarios)
 	}
 }
@@ -81,8 +81,18 @@ func TestReleaseHarnessSelectsOfficialPublicRPCOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode != rpcModePublicOverride || substrate != "wss://test.finney.opentensor.ai:443" || evm != "https://test.chain.opentensor.ai" {
+	if mode != rpcModePublicOverride || substrate != "wss://test.finney.opentensor.ai:443" || evm != "https://test.chain.opentensor.ai" || cfg.LaunchInputs.PublicEVMMaximumRequestsPerMinute != 40 {
 		t.Fatalf("operational RPC selection = %q %q %q", mode, substrate, evm)
+	}
+}
+
+func TestHarnessConfigBoundsPublicEVMRequestCeiling(t *testing.T) {
+	for _, value := range []int{0, 61} {
+		cfg := testResolvedConfig(t).Config
+		cfg.LaunchInputs.PublicEVMMaximumRequestsPerMinute = value
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "public EVM request ceiling") {
+			t.Fatalf("public EVM request ceiling %d was accepted: %v", value, err)
+		}
 	}
 }
 
@@ -123,6 +133,43 @@ func TestHarnessConfigRequiresRegistrationBurnLimit(t *testing.T) {
 	r.Config.Budgets.MaximumRegistrationBurnRao = 0
 	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "registration burn") {
 		t.Fatalf("zero registration burn limit was accepted: %v", err)
+	}
+}
+
+func TestReleaseCampaignBudgetCoversEveryProductionBoundary(t *testing.T) {
+	r := testResolvedConfig(t)
+	r.Release.Runtime.SpecVersion = r.Public.Chain.ExpectedRuntimeSpec
+	r.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	required, err := releaseCampaignDepositRequirement(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if required != 5_410_000_001 {
+		t.Fatalf("release campaign requirement = %d, want 5410000001", required)
+	}
+	r.Policy.Deposit.TotalTestCampaignCapRao = required
+	if err := r.Validate(); err != nil {
+		t.Fatalf("exact release campaign requirement was rejected: %v", err)
+	}
+	r.Policy.Deposit.TotalTestCampaignCapRao--
+	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "require at least 5410000001") {
+		t.Fatalf("underfunded release campaign was accepted: %v", err)
+	}
+}
+
+func TestReleaseCampaignBudgetFailsClosedOnIncompleteAndOverflowingInputs(t *testing.T) {
+	if _, err := releaseCampaignDepositRequirement(nil); err == nil {
+		t.Fatal("nil release campaign configuration was accepted")
+	}
+	r := testResolvedConfig(t)
+	r.Config.Topology.Operators = 1
+	if _, err := releaseCampaignDepositRequirement(r); err == nil {
+		t.Fatal("single-operator release campaign was accepted")
+	}
+	r = testResolvedConfig(t)
+	r.Policy.Deposit.EpochCapRaoPerOperator = ^uint64(0)
+	if _, err := releaseCampaignDepositRequirement(r); err == nil || !strings.Contains(err.Error(), "overflows") {
+		t.Fatalf("overflowing release campaign was accepted: %v", err)
 	}
 }
 

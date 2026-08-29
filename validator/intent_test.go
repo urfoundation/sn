@@ -59,8 +59,12 @@ func testSteeringIntent(t *testing.T, epoch uint64) SteeringIntent {
 		PolicyHash:          "0xpolicy",
 		SelfUID:             5,
 		MaskedUIDs:          []uint16{5, 7},
-		UIDs:                []uint16{2, 9},
-		Scores:              scores,
+		DepositAudits: []DepositAudit{
+			{NoID: 1, Epoch: 4, SourceEpoch: 3, Status: DepositAuditCompliant, Compliant: true, Disposition: "pool_weight_eligible", ConvictionBeforeRao: "0", RequiredDepositRao: "1", ObservedDepositRao: "1"},
+			{NoID: 2, Epoch: 4, SourceEpoch: 3, Status: DepositAuditMismatch, Disposition: "zero_pool_weight", ConvictionBeforeRao: "0", RequiredDepositRao: "1", ObservedDepositRao: "0"},
+		},
+		UIDs:   []uint16{2, 9},
+		Scores: scores,
 	}
 	intent.Prepared = testPreparedSubmission(t, epoch, intent.UIDs)
 	return intent
@@ -133,6 +137,24 @@ func TestSteeringIntentHashBindsProvenSelfMask(t *testing.T) {
 	}
 	if ha == hb {
 		t.Fatal("steering intent hash did not bind the validator self-mask")
+	}
+}
+
+func TestSteeringIntentVectorHashCommitsDepositAuditEvidence(t *testing.T) {
+	store, err := NewIntentStore(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.Begin(testSteeringIntent(t, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := created.VerifyVectorHash(); err != nil {
+		t.Fatal(err)
+	}
+	created.DepositAudits[0].ObservedDepositRao = "2"
+	if err := created.VerifyVectorHash(); err == nil {
+		t.Fatal("deposit-audit mutation retained the original steering vector hash")
 	}
 }
 

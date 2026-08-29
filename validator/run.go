@@ -55,7 +55,6 @@ func initGlog() {
 	flag.Set("logtostderr", "true")
 	flag.Set("stderrthreshold", "INFO")
 	flag.Set("v", "0")
-	os.Stderr = os.Stdout
 }
 
 func RequireVersion() string {

@@ -143,8 +143,15 @@ func (s *HeadEMAStore) Fold(raw map[FleetScoreKey]*big.Rat, alpha protocol.Ratio
 	if err := s.saveLocked(); err != nil {
 		return nil, err
 	}
+	// Persist missing identities while their EMA decays, but never return them
+	// to the live weight channel. Otherwise a pruned UID can keep receiving
+	// weight solely because its historical score is still nonzero.
 	out := map[uint16]*big.Rat{}
-	for _, entry := range s.values {
+	for key := range raw {
+		entry, ok := s.values[key.String()]
+		if !ok {
+			continue
+		}
 		if out[entry.Key.UID] == nil {
 			out[entry.Key.UID] = new(big.Rat)
 		}

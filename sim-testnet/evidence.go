@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,7 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urfoundation/sn/merkle"
+	"github.com/urfoundation/sn/payoutartifact"
 )
 
 const releaseEvidenceSchema = "urnetwork-release-evidence-v1"
@@ -376,7 +375,7 @@ func loadPublicSetupEvidence(cfg *ResolvedConfig, stateDir string) (map[string]j
 	paths := map[string]string{
 		"voluntary_conviction": filepath.Join(stateDir, "public", "voluntary-conviction.json"),
 	}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		paths[fmt.Sprintf("fleet_%d_manifest", fleet)] = filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.json", fleet))
 		paths[fmt.Sprintf("fleet_%d_commitment", fleet)] = filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleet))
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
@@ -394,118 +393,12 @@ func loadPublicSetupEvidence(cfg *ResolvedConfig, stateDir string) (map[string]j
 	return result, nil
 }
 
-// The following artifact mirror is intentionally independent of server code:
-// inspect/analyze must work without importing the server module or trusting
-// its database.
-type payoutBoundary struct {
-	Number uint64 `json:"number"`
-	Hash   string `json:"hash"`
-}
-type payoutProvider struct {
-	ClientID          [16]byte `json:"client_id"`
-	NetworkID         [16]byte `json:"network_id"`
-	Coldkey           [32]byte `json:"coldkey"`
-	UsageBytes        uint64   `json:"usage_bytes"`
-	Assignments       uint64   `json:"assignments"`
-	Confirmations     uint64   `json:"confirmations"`
-	ReliabilityPPM    uint32   `json:"reliability_ppm"`
-	Eligible          bool     `json:"eligible"`
-	HeadExcluded      bool     `json:"head_excluded"`
-	ExclusionReason   string   `json:"exclusion_reason,omitempty"`
-	BindingGeneration uint64   `json:"binding_generation,omitempty"`
-}
-type payoutLeaf struct {
-	Index    uint64     `json:"index"`
-	ClientID [16]byte   `json:"allocation_client_id"`
-	Coldkey  [32]byte   `json:"coldkey"`
-	ShareBPS uint64     `json:"share_bps"`
-	Proof    [][32]byte `json:"proof"`
-}
-type payoutArtifact struct {
-	Schema               string           `json:"schema"`
-	DeploymentID         string           `json:"deployment_id"`
-	ChainID              uint64           `json:"chain_id"`
-	GenesisHash          string           `json:"genesis_hash"`
-	Netuid               uint16           `json:"netuid"`
-	Coordinator          common.Address   `json:"coordinator"`
-	SettlementVault      common.Address   `json:"settlement_vault"`
-	Epoch                uint64           `json:"epoch"`
-	NoID                 uint64           `json:"no_id"`
-	PolicyHash           string           `json:"policy_hash"`
-	Start                payoutBoundary   `json:"start"`
-	End                  payoutBoundary   `json:"end"`
-	OperatorSnapshotHash string           `json:"operator_snapshot_hash"`
-	FleetSnapshotHash    string           `json:"fleet_snapshot_hash"`
-	ProviderSnapshotHash string           `json:"provider_snapshot_hash"`
-	Providers            []payoutProvider `json:"providers"`
-	Leaves               []payoutLeaf     `json:"leaves"`
-	PayoutRoot           [32]byte         `json:"payout_root"`
-	TotalUsageBytes      uint64           `json:"total_usage_bytes"`
-	EligibleUsageBytes   uint64           `json:"eligible_usage_bytes"`
-	ExcludedUsageBytes   uint64           `json:"excluded_usage_bytes"`
-	SharesTotalBPS       uint64           `json:"shares_total_bps"`
-	CreatedAt            string           `json:"created_at"`
-	Signer               common.Address   `json:"signer"`
-	ContentHash          string           `json:"content_hash"`
-	Signature            string           `json:"signature"`
-}
+// Analysis shares the production schema/verifier while remaining independent
+// of the server module and its database.
+type payoutArtifact = payoutartifact.Artifact
 
-func payoutUnsignedBytes(a *payoutArtifact) ([]byte, error) {
-	copy := *a
-	copy.ContentHash = ""
-	copy.Signature = ""
-	copy.Signer = common.Address{}
-	return json.Marshal(copy)
-}
-
-func verifyPayoutArtifact(a *payoutArtifact) error {
-	if a == nil || a.Schema != "urnetwork-payout-artifact-v1" || !strings.HasPrefix(a.ContentHash, "sha256:") {
-		return errors.New("invalid payout artifact schema")
-	}
-	b, err := payoutUnsignedBytes(a)
-	if err != nil {
-		return err
-	}
-	h := sha256.Sum256(b)
-	if a.ContentHash != "sha256:"+hex.EncodeToString(h[:]) {
-		return errors.New("payout artifact hash mismatch")
-	}
-	sig, err := hex.DecodeString(strings.TrimPrefix(a.Signature, "0x"))
-	if err != nil || len(sig) != crypto.SignatureLength {
-		return errors.New("invalid payout artifact signature")
-	}
-	pub, err := crypto.SigToPub(h[:], sig)
-	if err != nil || crypto.PubkeyToAddress(*pub) != a.Signer {
-		return errors.New("payout artifact signer mismatch")
-	}
-	leaves := make([]merkle.Leaf, len(a.Leaves))
-	var total uint64
-	for i, leaf := range a.Leaves {
-		if leaf.Index != uint64(i) || leaf.ShareBPS == 0 {
-			return errors.New("invalid payout leaf order")
-		}
-		total += leaf.ShareBPS
-		leaves[i] = merkle.PayoutLeaf(leaf.Coldkey, new(big.Int).SetUint64(leaf.ShareBPS))
-	}
-	if len(leaves) == 0 {
-		if a.PayoutRoot != ([32]byte{}) || a.SharesTotalBPS != 0 {
-			return errors.New("empty payout artifact has a root")
-		}
-		return nil
-	}
-	if total != 10_000 || a.SharesTotalBPS != 10_000 {
-		return fmt.Errorf("payout shares sum to %d", total)
-	}
-	tree, err := merkle.NewTree(leaves)
-	if err != nil || tree.Root() != a.PayoutRoot {
-		return errors.New("payout root mismatch")
-	}
-	for i, leaf := range a.Leaves {
-		if !merkle.Verify(a.PayoutRoot, leaves[i], leaf.Proof) {
-			return fmt.Errorf("payout proof %d is invalid", i)
-		}
-	}
-	return nil
+func verifyPayoutArtifact(artifact *payoutArtifact) error {
+	return payoutartifact.Verify(artifact)
 }
 
 type assertionFile struct {

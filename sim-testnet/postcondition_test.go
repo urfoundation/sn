@@ -30,6 +30,89 @@ func TestCheckpointVisibilityRequiresIndependentCanonicalFinality(t *testing.T) 
 	}
 }
 
+func TestUnmutatedSetupTopologyRequiresEveryPlannedIdentityField(t *testing.T) {
+	facts := *testSetupFacts()
+	owner, err := decodeHex32("owner", facts.SubnetOwnerHotkey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := SubnetTopologyFacts{UIDCount: facts.ExistingUIDCount, OwnerHotkey: owner, UIDZero: owner}
+	if err := validateUnmutatedSetupTopology(canonical, facts); err != nil {
+		t.Fatal(err)
+	}
+	tests := []SubnetTopologyFacts{
+		{UIDCount: 1, OwnerHotkey: owner, UIDZero: owner},
+		{UIDCount: 2, OwnerHotkey: [32]byte{1}, UIDZero: owner},
+		{UIDCount: 2, OwnerHotkey: owner, UIDZero: [32]byte{1}},
+	}
+	for index, changed := range tests {
+		if err := validateUnmutatedSetupTopology(changed, facts); err == nil {
+			t.Fatalf("changed topology %d was accepted: %+v", index, changed)
+		}
+	}
+	if err := validateUnmutatedExistingUIDs(facts.ExistingUIDs, facts.ExistingUIDs); err != nil {
+		t.Fatal(err)
+	}
+	missing := append([]ExistingUIDFact(nil), facts.ExistingUIDs[:1]...)
+	if err := validateUnmutatedExistingUIDs(missing, facts.ExistingUIDs); err == nil {
+		t.Fatal("missing existing UID was accepted")
+	}
+	changedIdentity := append([]ExistingUIDFact(nil), facts.ExistingUIDs...)
+	changedIdentity[1].RegistrationBlock++
+	if err := validateUnmutatedExistingUIDs(changedIdentity, facts.ExistingUIDs); err == nil {
+		t.Fatal("changed existing UID identity was accepted")
+	}
+}
+
+func TestTopologyRoleSetsExactlySwapChurnFloorForChallengers(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	initial := initialTopologyRoleLabels(cfg.Config.Topology)
+	tournament := tournamentTopologyRoleLabels(cfg.Config.Topology)
+	wantControlled := 256 - len(testSetupFacts().ExistingUIDs)
+	if len(initial) != wantControlled || len(tournament) != wantControlled {
+		t.Fatalf("role set sizes initial=%d tournament=%d, want %d", len(initial), len(tournament), wantControlled)
+	}
+	toSet := func(labels []string) map[string]bool {
+		out := make(map[string]bool, len(labels))
+		for _, label := range labels {
+			if out[label] {
+				t.Fatalf("duplicate topology role %q", label)
+			}
+			out[label] = true
+		}
+		return out
+	}
+	initialSet, tournamentSet := toSet(initial), toSet(tournament)
+	removed, added := map[string]bool{}, map[string]bool{}
+	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
+		fleet := cfg.Config.Topology.HeadFleets + challenger
+		removed[churnHotkeyLabel(challenger)] = true
+		added[fleetHotkeyLabel(fleet)] = true
+		if !initialSet[churnHotkeyLabel(challenger)] || initialSet[fleetHotkeyLabel(fleet)] {
+			t.Fatalf("initial topology does not contain churn %d exclusively", challenger)
+		}
+		if tournamentSet[churnHotkeyLabel(challenger)] || !tournamentSet[fleetHotkeyLabel(fleet)] {
+			t.Fatalf("tournament topology did not replace churn %d with fleet %d", challenger, fleet)
+		}
+	}
+	for label := range initialSet {
+		if removed[label] {
+			continue
+		}
+		if !tournamentSet[label] {
+			t.Fatalf("initial role %q disappeared from tournament", label)
+		}
+	}
+	for label := range tournamentSet {
+		if added[label] {
+			continue
+		}
+		if !initialSet[label] {
+			t.Fatalf("unexpected role %q appeared in tournament", label)
+		}
+	}
+}
+
 func TestIndependentReadExecutorRoutesEveryChainReader(t *testing.T) {
 	privateClient := new(ethclient.Client)
 	independentClient := new(ethclient.Client)
@@ -143,13 +226,23 @@ func TestProductionPolicyEvidenceRequiresCompleteCanonicalCadence(t *testing.T) 
 	p := cfg.Policy.ProductionCadence
 	evidence := ProductionPolicyEvidence{
 		Schema: "urnetwork-production-policy-evidence-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
-		PolicyHash: cfg.PolicyHash, EffectiveEpoch: p.AfterAcceleratedEpochs, EffectiveBlock: 100,
+		PolicyHash: cfg.PolicyHash, ScheduledFromEpoch: p.AfterAcceleratedEpochs, EffectiveEpoch: p.AfterAcceleratedEpochs + 1, EffectiveBlock: 100,
 		PriorEpochBlocks: cfg.Policy.Settlement.EpochBlocks, EpochBlocks: p.EpochBlocks,
 		RootCommitWindowBlocks: p.RootCommitWindowBlocks, FinalizeOffsetBlocks: p.FinalizeOffsetBlocks, CloseGraceBlocks: p.CloseGraceBlocks,
 	}
 	if !productionPolicyEvidenceMatches(cfg, evidence) {
 		t.Fatal("canonical production cadence evidence was rejected")
 	}
+	evidence.ScheduledFromEpoch++
+	if productionPolicyEvidenceMatches(cfg, evidence) {
+		t.Fatal("late production cadence schedule was accepted")
+	}
+	evidence.ScheduledFromEpoch--
+	evidence.EffectiveEpoch++
+	if productionPolicyEvidenceMatches(cfg, evidence) {
+		t.Fatal("wrong production effective epoch was accepted")
+	}
+	evidence.EffectiveEpoch--
 	evidence.CloseGraceBlocks++
 	if productionPolicyEvidenceMatches(cfg, evidence) {
 		t.Fatal("mutated production cadence evidence was accepted")

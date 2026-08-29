@@ -197,7 +197,7 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 		}
 		for _, claim := range observation.Claims {
 			source := fmt.Sprintf("claim:min%d:no%d", claim.MinerID, claim.NoID)
-			expected := expectedTargets[fmt.Sprintf("miner-%d", claim.MinerID)] || expectedTargets[fmt.Sprintf("miner-%d-claims", claim.MinerID)]
+			expected := expectedTargets[fmt.Sprintf("miner-%d", claim.MinerID)] || expectedTargets[fmt.Sprintf("claim-relayer-%d", claim.NoID)]
 			if !expected {
 				collector.add("claim-error", "critical", source, claim.Error, observation.ObservedAt)
 			}
@@ -209,6 +209,7 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 		collector.add("voluntary-conviction-error", "critical", "voluntary-conviction", observation.VoluntaryConvictionError, observation.ObservedAt)
 		collector.add("governance-drill-error", "critical", "governance-drill", observation.GovernanceDrillError, observation.ObservedAt)
 		collector.add("precompile-conformance-error", "critical", "precompile-conformance", observation.PrecompileConformanceError, observation.ObservedAt)
+		collector.add("dishonest-deposit-error", "critical", "dishonest-deposit", observation.DishonestDepositError, observation.ObservedAt)
 	}
 	collector.observationHash = observationHash
 

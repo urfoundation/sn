@@ -241,7 +241,7 @@ type EVMTxManager struct {
 }
 
 func DialEVMTxManager(ctx context.Context, cfg *ResolvedConfig, stateDir string, j *Journal, roles *RoleSecrets, roleLabel string) (*EVMTxManager, error) {
-	client, err := ethclient.DialContext(ctx, cfg.OperationalEVM)
+	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
 	if err != nil {
 		return nil, err
 	}

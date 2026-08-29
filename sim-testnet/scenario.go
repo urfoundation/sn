@@ -15,17 +15,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	gsrpcTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
+	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
 // AssertionRecord is the stable machine-readable assertion format shared by
@@ -62,6 +64,15 @@ type OperatorObservation struct {
 	MatchingArtifacts          int      `json:"matching_onchain_artifacts"`
 	ExpectedFinalizedArtifacts int      `json:"expected_finalized_artifacts"`
 	ArtifactHashes             []string `json:"artifact_hashes,omitempty"`
+	LatestArtifactEpoch        uint64   `json:"latest_artifact_epoch,omitempty"`
+	LatestArtifactProviders    int      `json:"latest_artifact_providers,omitempty"`
+	CandidateProviders         int      `json:"candidate_providers,omitempty"`
+	CandidateHeadExcluded      int      `json:"candidate_head_excluded,omitempty"`
+	CandidateLeaves            int      `json:"candidate_leaves,omitempty"`
+	PoolTailProviders          int      `json:"pool_tail_providers,omitempty"`
+	PoolTailHeadExcluded       int      `json:"pool_tail_head_excluded,omitempty"`
+	PoolTailLeaves             int      `json:"pool_tail_leaves,omitempty"`
+	TierMembershipValid        bool     `json:"tier_membership_valid"`
 	Error                      string   `json:"error,omitempty"`
 }
 
@@ -73,18 +84,27 @@ type IntentWeightObservation struct {
 }
 
 type ValidatorObservation struct {
-	ValidatorID      int                       `json:"validator_id"`
-	CurrentStatus    string                    `json:"current_status,omitempty"`
-	CurrentEpoch     uint64                    `json:"current_epoch,omitempty"`
-	VectorHash       string                    `json:"vector_hash,omitempty"`
-	ValuesHash       string                    `json:"values_hash,omitempty"`
-	FinalizedIntents int                       `json:"finalized_intents"`
-	AppliedIntents   int                       `json:"applied_intents"`
-	SelfUID          uint16                    `json:"self_uid"`
-	MaskedUIDs       []uint16                  `json:"masked_uids,omitempty"`
-	IntentHashes     []string                  `json:"intent_hashes,omitempty"`
-	AppliedWeights   []IntentWeightObservation `json:"applied_weights,omitempty"`
-	Error            string                    `json:"error,omitempty"`
+	ValidatorID        int                         `json:"validator_id"`
+	CurrentStatus      string                      `json:"current_status,omitempty"`
+	CurrentEpoch       uint64                      `json:"current_epoch,omitempty"`
+	VectorHash         string                      `json:"vector_hash,omitempty"`
+	ValuesHash         string                      `json:"values_hash,omitempty"`
+	FinalizedIntents   int                         `json:"finalized_intents"`
+	AppliedIntents     int                         `json:"applied_intents"`
+	SelfUID            uint16                      `json:"self_uid"`
+	MaskedUIDs         []uint16                    `json:"masked_uids,omitempty"`
+	EligibleHeadUIDs   []uint16                    `json:"eligible_head_uids,omitempty"`
+	SelectedHeadUIDs   []uint16                    `json:"selected_head_uids,omitempty"`
+	RejectedHeadUIDs   []uint16                    `json:"rejected_head_uids,omitempty"`
+	HeadDecisionEpochs int                         `json:"head_decision_epochs"`
+	HeadTransitions    int                         `json:"head_transitions"`
+	PromotedHeadUIDs   []uint16                    `json:"promoted_head_uids,omitempty"`
+	DemotedHeadUIDs    []uint16                    `json:"demoted_head_uids,omitempty"`
+	StaleHeadBindings  int                         `json:"stale_head_bindings"`
+	IntentHashes       []string                    `json:"intent_hashes,omitempty"`
+	AppliedWeights     []IntentWeightObservation   `json:"applied_weights,omitempty"`
+	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
+	Error              string                      `json:"error,omitempty"`
 }
 
 type ClaimObservation struct {
@@ -100,6 +120,13 @@ type ClaimObservation struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type NativeRewardObservation struct {
+	FinalizedHead ChainHead `json:"finalized_head"`
+	EmissionRao   []string  `json:"emission_rao"`
+	Incentive     []uint16  `json:"incentive"`
+	Dividends     []uint16  `json:"dividends"`
+}
+
 type ScenarioObservation struct {
 	Schema                     string                         `json:"schema"`
 	ObservedAt                 string                         `json:"observed_at"`
@@ -112,7 +139,9 @@ type ScenarioObservation struct {
 	FleetCommitmentValid       bool                           `json:"fleet_commitment_valid"`
 	FleetBindingCount          int                            `json:"fleet_binding_count"`
 	FleetBindingsValid         bool                           `json:"fleet_bindings_valid"`
-	HeadFleetUIDs              []uint16                       `json:"head_fleet_uids"`
+	CandidateFleetUIDs         []uint16                       `json:"candidate_fleet_uids"`
+	NativeRewards              *NativeRewardObservation       `json:"native_rewards,omitempty"`
+	NativeRewardsError         string                         `json:"native_rewards_error,omitempty"`
 	ReserveValidatorRegistered bool                           `json:"reserve_validator_registered"`
 	ReserveValidatorUID        uint16                         `json:"reserve_validator_uid"`
 	ReserveDelegateTake        *uint16                        `json:"reserve_delegate_take,omitempty"`
@@ -127,6 +156,9 @@ type ScenarioObservation struct {
 	PrecompileConformance      *PrecompileConformanceEvidence `json:"precompile_conformance,omitempty"`
 	PrecompileConformanceValid bool                           `json:"precompile_conformance_valid"`
 	PrecompileConformanceError string                         `json:"precompile_conformance_error,omitempty"`
+	DishonestDeposit           *DishonestDepositEvidence      `json:"dishonest_deposit,omitempty"`
+	DishonestDepositValid      bool                           `json:"dishonest_deposit_valid"`
+	DishonestDepositError      string                         `json:"dishonest_deposit_error,omitempty"`
 	ExpectedFaultIDs           []string                       `json:"expected_fault_ids,omitempty"`
 	ExpectedFaultTargets       []string                       `json:"expected_fault_targets,omitempty"`
 	ObservationHash            string                         `json:"observation_hash"`
@@ -227,8 +259,14 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 	identities, expectedSigners := inspectPublicIdentities(p.cfg, p.stateDir)
 	observation.PublicIdentityCount = identities
 	observation.PublicIdentitiesValid = identities > 0
-	observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.HeadFleetUIDs = inspectFleetEvidence(p.cfg, p.stateDir)
+	identityBytes, identityErr := os.ReadFile(filepath.Join(p.stateDir, "public", "identities.json"))
+	minerClients, minerClientsErr := inspectMinerClientIDsBytes(p.cfg, identityBytes)
+	if identityErr != nil || minerClientsErr != nil {
+		observation.PublicIdentitiesValid = false
+	}
+	observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.CandidateFleetUIDs = inspectFleetEvidence(p.cfg, p.stateDir)
 	observation.ReserveValidatorRegistered, observation.ReserveValidatorUID, observation.ReserveDelegateTake, observation.EscrowHotkeyRegistered, observation.EscrowHotkeyUID, observation.NativeCustodyError = inspectNativeCustodyRoles(p.cfg, p.stateDir)
+	observation.NativeRewards, observation.NativeRewardsError = inspectNativeRewards(p.cfg, p.cfg.OperationalSubstrate)
 	observation.VoluntaryConviction, observation.VoluntaryConvictionValid, observation.VoluntaryConvictionError = inspectVoluntaryConviction(ctx, p.cfg, p.stateDir, status.Contracts)
 	if evidence, readErr := func() (*GovernanceDrillEvidence, error) {
 		var value GovernanceDrillEvidence
@@ -253,11 +291,12 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		observation.PrecompileConformanceError = readErr.Error()
 	}
+	observation.DishonestDeposit, observation.DishonestDepositValid, observation.DishonestDepositError = inspectDishonestDepositEvidence(ctx, p.cfg, p.stateDir, status.Contracts)
 	for noID := 1; noID <= p.cfg.Config.Topology.Operators; noID++ {
-		observation.Operators = append(observation.Operators, p.inspectOperator(ctx, status.Contracts, noID, expectedSigners[noID]))
+		observation.Operators = append(observation.Operators, p.inspectOperator(ctx, status.Contracts, noID, expectedSigners[noID], minerClients))
 	}
 	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
-		observation.Validators = append(observation.Validators, inspectValidatorIntent(p.stateDir, validatorID))
+		observation.Validators = append(observation.Validators, inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates()))
 	}
 	for minerID := 1; minerID <= p.cfg.Config.Topology.Miners; minerID++ {
 		observation.Claims = append(observation.Claims, inspectClaimQueue(p.cfg, p.stateDir, minerID))
@@ -294,7 +333,7 @@ func inspectVoluntaryConvictionBytes(ctx context.Context, cfg *ResolvedConfig, b
 	if expectedFunder == "" || !strings.EqualFold(evidence.Funder, expectedFunder) {
 		return &evidence, false, "voluntary conviction funder is not the planned operator-1 deposit signer"
 	}
-	client, err := ethclient.DialContext(ctx, endpoint)
+	client, err := dialConfiguredEVMClient(ctx, cfg, endpoint)
 	if err != nil {
 		return &evidence, false, err.Error()
 	}
@@ -349,6 +388,59 @@ func inspectNativeCustodyRoles(cfg *ResolvedConfig, stateDir string) (bool, uint
 		return false, 0, nil, false, 0, err.Error()
 	}
 	return inspectNativeCustodyRolesBytes(cfg, b, cfg.OperationalSubstrate)
+}
+
+func inspectNativeRewards(cfg *ResolvedConfig, endpoint string) (*NativeRewardObservation, string) {
+	chain, err := crv4.DialChain(endpoint)
+	if err != nil {
+		return nil, err.Error()
+	}
+	defer chain.API.Client.Close()
+	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return nil, err.Error()
+	}
+	header, err := chain.API.RPC.Chain.GetHeader(finalized)
+	if err != nil {
+		return nil, err.Error()
+	}
+	read := func(storage string, value any) error {
+		key, keyErr := gsrpcTypes.CreateStorageKey(chain.Meta, crv4.PalletName, storage, netuidArg(cfg.Netuid))
+		if keyErr != nil {
+			return keyErr
+		}
+		return readRequiredStorageAt(chain, key, crv4.PalletName, storage, value, finalized)
+	}
+	var count gsrpcTypes.U16
+	if err := read("SubnetworkN", &count); err != nil {
+		return nil, err.Error()
+	}
+	var emission []gsrpcTypes.U64
+	if err := read("Emission", &emission); err != nil {
+		return nil, err.Error()
+	}
+	var incentive, dividends []gsrpcTypes.U16
+	if err := read("Incentive", &incentive); err != nil {
+		return nil, err.Error()
+	}
+	if err := read("Dividends", &dividends); err != nil {
+		return nil, err.Error()
+	}
+	if len(emission) != int(count) || len(incentive) != int(count) || len(dividends) != int(count) {
+		return nil, fmt.Sprintf("native reward vector lengths emission/incentive/dividends=%d/%d/%d, want UID count %d", len(emission), len(incentive), len(dividends), count)
+	}
+	result := &NativeRewardObservation{
+		FinalizedHead: ChainHead{Number: uint64(header.Number), Hash: finalized.Hex()},
+		EmissionRao:   make([]string, len(emission)),
+		Incentive:     make([]uint16, len(incentive)),
+		Dividends:     make([]uint16, len(dividends)),
+	}
+	for index := range emission {
+		result.EmissionRao[index] = strconv.FormatUint(uint64(emission[index]), 10)
+		result.Incentive[index] = uint16(incentive[index])
+		result.Dividends[index] = uint16(dividends[index])
+	}
+	return result, ""
 }
 
 func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint string) (bool, uint16, *uint16, bool, uint16, string) {
@@ -443,8 +535,8 @@ func inspectPublicIdentityBytesForManifest(b []byte, deploymentID string, topolo
 	if json.Unmarshal(b, &value) != nil || value.Schema != "urnetwork-sim-public-identities-v1" || value.DeploymentID != deploymentID {
 		return 0, nil
 	}
-	minimumEVM := 5 + 3*topology.Operators
-	minimumSubstrate := 2 + 2*topology.HeadFleets + 3*topology.Operators + 2*topology.Validators + topology.Miners
+	minimumEVM := 5 + 4*topology.Operators
+	minimumSubstrate := 2 + 2*topology.fleetCandidates() + 2*topology.ChurnFloorUIDs + 3*topology.Operators + (2*topology.Validators - 1) + topology.Miners
 	minimumClients := topology.Miners + topology.Validators*topology.Operators
 	if len(value.EVM) < minimumEVM || len(value.Substrate) < minimumSubstrate || len(value.Clients) < minimumClients {
 		return 0, nil
@@ -464,10 +556,39 @@ func inspectPublicIdentityBytesForManifest(b []byte, deploymentID string, topolo
 	return len(value.EVM) + len(value.Substrate) + len(value.Clients), signers
 }
 
+func inspectMinerClientIDsBytes(cfg *ResolvedConfig, b []byte) (map[[16]byte]int, error) {
+	if cfg == nil {
+		return nil, errors.New("miner identity configuration is unavailable")
+	}
+	var value struct {
+		Schema       string                       `json:"schema"`
+		DeploymentID string                       `json:"deployment_id"`
+		Clients      map[string]map[string]string `json:"clients"`
+	}
+	if json.Unmarshal(b, &value) != nil || value.Schema != "urnetwork-sim-public-identities-v1" || value.DeploymentID != cfg.Config.Deployment.DeploymentID {
+		return nil, errors.New("public miner identities are invalid")
+	}
+	result := make(map[[16]byte]int, cfg.Config.Topology.Miners)
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		encoded := value.Clients[fmt.Sprintf("miner-%d", miner)]["client_id"]
+		raw, ok := evidenceFixedHex(encoded, 16)
+		if !ok {
+			return nil, fmt.Errorf("miner-%d client id is invalid", miner)
+		}
+		var clientID [16]byte
+		copy(clientID[:], raw)
+		if prior := result[clientID]; prior != 0 {
+			return nil, fmt.Errorf("miners %d and %d share one client id", prior, miner)
+		}
+		result[clientID] = miner
+	}
+	return result, nil
+}
+
 func inspectFleetEvidence(cfg *ResolvedConfig, stateDir string) (bool, int, bool, []uint16) {
 	setup := map[string]json.RawMessage{}
 	paths := map[string]string{}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		paths[fmt.Sprintf("fleet_%d_manifest", fleet)] = filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.json", fleet))
 		paths[fmt.Sprintf("fleet_%d_commitment", fleet)] = filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleet))
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
@@ -496,10 +617,10 @@ func evidenceFixedHex(value string, size int) ([]byte, bool) {
 func inspectFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.RawMessage, expectedCoordinator common.Address) (bool, int, bool, []uint16) {
 	allCommitmentsValid, allBindingsValid := true, true
 	totalBindings := 0
-	uids := make([]uint16, 0, cfg.Config.Topology.HeadFleets)
+	uids := make([]uint16, 0, cfg.Config.Topology.fleetCandidates())
 	seenUIDs := map[uint16]bool{}
 	seenClients := map[[16]byte]bool{}
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		commitmentOK, count, bindingsOK, uid, clients := inspectOneFleetEvidenceBytes(cfg, setup, expectedCoordinator, fleet)
 		allCommitmentsValid = allCommitmentsValid && commitmentOK
 		allBindingsValid = allBindingsValid && bindingsOK
@@ -518,7 +639,7 @@ func inspectFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.RawMes
 			seenClients[client] = true
 		}
 	}
-	return allCommitmentsValid, totalBindings, allBindingsValid && len(uids) == cfg.Config.Topology.HeadFleets, uids
+	return allCommitmentsValid, totalBindings, allBindingsValid && len(uids) == cfg.Config.Topology.fleetCandidates(), uids
 }
 
 func inspectOneFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.RawMessage, expectedCoordinator common.Address, fleetIndex int) (bool, int, bool, uint16, [][16]byte) {
@@ -633,12 +754,81 @@ func bytesSHA256(b []byte) string {
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 
-func (p *liveScenarioProbe) inspectOperator(ctx context.Context, contracts *ContractView, noID int, expectedSigner string) OperatorObservation {
-	base := fmt.Sprintf("http://127.0.0.1:%d", 18080+noID)
-	return p.inspectOperatorAt(ctx, contracts, noID, expectedSigner, base)
+type payoutTierMembership struct {
+	Providers             int
+	CandidateProviders    int
+	CandidateHeadExcluded int
+	CandidateLeaves       int
+	PoolTailProviders     int
+	PoolTailHeadExcluded  int
+	PoolTailLeaves        int
 }
 
-func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *ContractView, noID int, expectedSigner, base string) OperatorObservation {
+func summarizePayoutTierMembership(cfg *ResolvedConfig, noID int, artifact *payoutArtifact, minerClients map[[16]byte]int) (payoutTierMembership, error) {
+	var result payoutTierMembership
+	if cfg == nil || artifact == nil || len(minerClients) != cfg.Config.Topology.Miners || artifact.NoID != uint64(noID) {
+		return result, errors.New("payout tier membership inputs are incomplete")
+	}
+	expectedCandidate, expectedTail := 0, 0
+	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		if operatorForMiner(cfg, miner) != noID {
+			continue
+		}
+		if miner <= cfg.Config.Topology.fleetCandidateMiners() {
+			expectedCandidate++
+		} else {
+			expectedTail++
+		}
+	}
+	leaves := make(map[[16]byte]bool, len(artifact.Leaves))
+	for _, leaf := range artifact.Leaves {
+		miner := minerClients[leaf.ClientID]
+		if miner == 0 || operatorForMiner(cfg, miner) != noID || leaves[leaf.ClientID] {
+			return result, fmt.Errorf("artifact leaf has an unknown, foreign, or duplicate client id")
+		}
+		leaves[leaf.ClientID] = true
+		if miner <= cfg.Config.Topology.fleetCandidateMiners() {
+			result.CandidateLeaves++
+		} else {
+			result.PoolTailLeaves++
+		}
+	}
+	providers := make(map[[16]byte]bool, len(artifact.Providers))
+	for _, provider := range artifact.Providers {
+		miner := minerClients[provider.ClientID]
+		if miner == 0 || operatorForMiner(cfg, miner) != noID || providers[provider.ClientID] {
+			return result, fmt.Errorf("artifact provider has an unknown, foreign, or duplicate client id")
+		}
+		providers[provider.ClientID] = true
+		result.Providers++
+		if miner <= cfg.Config.Topology.fleetCandidateMiners() {
+			result.CandidateProviders++
+			if provider.HeadExcluded {
+				result.CandidateHeadExcluded++
+			}
+			if !provider.HeadExcluded || provider.ExclusionReason != "head_fleet_active" || leaves[provider.ClientID] {
+				return result, fmt.Errorf("candidate miner %d is not exclusively excluded from its pool", miner)
+			}
+		} else {
+			result.PoolTailProviders++
+			if provider.HeadExcluded {
+				result.PoolTailHeadExcluded++
+				return result, fmt.Errorf("pool-tail miner %d is incorrectly head-excluded", miner)
+			}
+		}
+	}
+	if result.CandidateProviders != expectedCandidate || result.CandidateHeadExcluded != expectedCandidate || result.PoolTailProviders != expectedTail || result.CandidateLeaves != 0 || result.PoolTailHeadExcluded != 0 || result.PoolTailLeaves == 0 {
+		return result, fmt.Errorf("tier membership candidate=%d/%d excluded=%d leaves=%d tail=%d/%d excluded=%d leaves=%d", result.CandidateProviders, expectedCandidate, result.CandidateHeadExcluded, result.CandidateLeaves, result.PoolTailProviders, expectedTail, result.PoolTailHeadExcluded, result.PoolTailLeaves)
+	}
+	return result, nil
+}
+
+func (p *liveScenarioProbe) inspectOperator(ctx context.Context, contracts *ContractView, noID int, expectedSigner string, minerClients map[[16]byte]int) OperatorObservation {
+	base := fmt.Sprintf("http://127.0.0.1:%d", 18080+noID)
+	return p.inspectOperatorAt(ctx, contracts, noID, expectedSigner, base, minerClients)
+}
+
+func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *ContractView, noID int, expectedSigner, base string, minerClients map[[16]byte]int) OperatorObservation {
 	base = strings.TrimSuffix(base, "/")
 	o := OperatorObservation{NoID: noID, APIURL: base}
 	if contracts != nil {
@@ -732,6 +922,7 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 	}
 	historyURL := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", base, p.cfg.Config.Deployment.DeploymentID, p.cfg.Netuid)
 	historyBytes, _, err := p.get(ctx, historyURL, 16<<20)
+	var latestMatching *payoutArtifact
 	if err != nil {
 		problems = append(problems, "artifacts: "+err.Error())
 	} else {
@@ -762,7 +953,26 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 			o.ArtifactHashes = append(o.ArtifactHashes, artifact.ContentHash)
 			if payoutArtifactMatchesChain(&artifact, contracts) {
 				o.MatchingArtifacts++
+				if latestMatching == nil || artifact.Epoch > latestMatching.Epoch {
+					copy := artifact
+					latestMatching = &copy
+				}
 			}
+		}
+	}
+	if latestMatching != nil {
+		o.LatestArtifactEpoch = latestMatching.Epoch
+		membership, membershipErr := summarizePayoutTierMembership(p.cfg, noID, latestMatching, minerClients)
+		o.LatestArtifactProviders = membership.Providers
+		o.CandidateProviders = membership.CandidateProviders
+		o.CandidateHeadExcluded = membership.CandidateHeadExcluded
+		o.CandidateLeaves = membership.CandidateLeaves
+		o.PoolTailProviders = membership.PoolTailProviders
+		o.PoolTailHeadExcluded = membership.PoolTailHeadExcluded
+		o.PoolTailLeaves = membership.PoolTailLeaves
+		o.TierMembershipValid = membershipErr == nil
+		if membershipErr != nil {
+			problems = append(problems, "latest artifact tier membership: "+membershipErr.Error())
 		}
 	}
 	sort.Strings(o.ArtifactHashes)
@@ -813,43 +1023,64 @@ func payoutArtifactMatchesChain(a *payoutArtifact, contracts *ContractView) bool
 	return false
 }
 
-func inspectValidatorIntent(stateDir string, validatorID int) ValidatorObservation {
+type headSelectionHistory struct {
+	DecisionEpochs int
+	Transitions    int
+	Promoted       []uint16
+	Demoted        []uint16
+}
+
+func summarizeHeadSelectionHistory(intents []validatorpkg.SteeringIntent, headSlots, candidateFleets int) headSelectionHistory {
+	var result headSelectionHistory
+	var prior []uint16
+	promoted, demoted := map[uint16]bool{}, map[uint16]bool{}
+	for _, intent := range intents {
+		if intent.Status != "applied" || len(intent.EligibleHeadUIDs) != candidateFleets || len(intent.SelectedHeadUIDs) != headSlots || len(intent.RejectedHeadUIDs) != candidateFleets-headSlots || len(intent.StaleHeadBindings) != 0 {
+			continue
+		}
+		current := sortedUIDs(intent.SelectedHeadUIDs)
+		result.DecisionEpochs++
+		if prior != nil && !slices.Equal(prior, current) {
+			result.Transitions++
+			priorSet, currentSet := uint16Set(prior), uint16Set(current)
+			for _, uid := range current {
+				if !priorSet[uid] {
+					promoted[uid] = true
+				}
+			}
+			for _, uid := range prior {
+				if !currentSet[uid] {
+					demoted[uid] = true
+				}
+			}
+		}
+		prior = current
+	}
+	for uid := range promoted {
+		result.Promoted = append(result.Promoted, uid)
+	}
+	for uid := range demoted {
+		result.Demoted = append(result.Demoted, uid)
+	}
+	sort.Slice(result.Promoted, func(i, j int) bool { return result.Promoted[i] < result.Promoted[j] })
+	sort.Slice(result.Demoted, func(i, j int) bool { return result.Demoted[i] < result.Demoted[j] })
+	return result
+}
+
+func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFleets int) ValidatorObservation {
 	result := ValidatorObservation{ValidatorID: validatorID}
-	b, err := os.ReadFile(filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "steering-intents.json"))
+	all, err := readValidatorIntentFile(stateDir, validatorID)
 	if err != nil {
 		result.Error = err.Error()
 		return result
 	}
-	type intent struct {
-		SubnetEpoch uint64   `json:"subnet_epoch"`
-		SelfUID     uint16   `json:"self_uid"`
-		MaskedUIDs  []uint16 `json:"masked_uids"`
-		VectorHash  string   `json:"vector_hash"`
-		Status      string   `json:"status"`
-		UIDs        []uint16 `json:"uids"`
-		Scores      []struct {
-			Numerator   string `json:"numerator"`
-			Denominator string `json:"denominator"`
-		} `json:"scores"`
-		Values []uint16 `json:"values"`
+	if len(all) != 0 {
+		current := all[len(all)-1]
+		result.CurrentStatus = current.Status
+		result.CurrentEpoch = current.SubnetEpoch
+		result.VectorHash = current.VectorHash
 	}
-	var store struct {
-		Schema  string   `json:"schema"`
-		Current *intent  `json:"current"`
-		History []intent `json:"history"`
-	}
-	if json.Unmarshal(b, &store) != nil || store.Schema != "urnetwork-validator-steering-intent-v2" {
-		result.Error = "invalid steering intent schema"
-		return result
-	}
-	all := append([]intent(nil), store.History...)
-	if store.Current != nil {
-		all = append(all, *store.Current)
-		result.CurrentStatus = store.Current.Status
-		result.CurrentEpoch = store.Current.SubnetEpoch
-		result.VectorHash = store.Current.VectorHash
-	}
-	var latestApplied *intent
+	var latestApplied *validatorpkg.SteeringIntent
 	for index := range all {
 		item := &all[index]
 		if item.Status == "finalized" || item.Status == "applied" {
@@ -872,10 +1103,20 @@ func inspectValidatorIntent(stateDir string, validatorID int) ValidatorObservati
 	if latestApplied != nil && len(latestApplied.UIDs) == len(latestApplied.Scores) && len(latestApplied.UIDs) == len(latestApplied.Values) {
 		result.SelfUID = latestApplied.SelfUID
 		result.MaskedUIDs = append([]uint16(nil), latestApplied.MaskedUIDs...)
+		result.EligibleHeadUIDs = append([]uint16(nil), latestApplied.EligibleHeadUIDs...)
+		result.SelectedHeadUIDs = append([]uint16(nil), latestApplied.SelectedHeadUIDs...)
+		result.RejectedHeadUIDs = append([]uint16(nil), latestApplied.RejectedHeadUIDs...)
+		result.StaleHeadBindings = len(latestApplied.StaleHeadBindings)
+		result.DepositAudits = append([]validatorpkg.DepositAudit(nil), latestApplied.DepositAudits...)
 		for i, uid := range latestApplied.UIDs {
 			result.AppliedWeights = append(result.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: latestApplied.Scores[i].Numerator, Denominator: latestApplied.Scores[i].Denominator, Value: latestApplied.Values[i]})
 		}
 	}
+	history := summarizeHeadSelectionHistory(all, headSlots, candidateFleets)
+	result.HeadDecisionEpochs = history.DecisionEpochs
+	result.HeadTransitions = history.Transitions
+	result.PromotedHeadUIDs = history.Promoted
+	result.DemotedHeadUIDs = history.Demoted
 	sort.Strings(result.IntentHashes)
 	return result
 }
@@ -962,7 +1203,7 @@ func commonScenarioChecks() []scenarioCheck {
 			return e.Current.PublicIdentitiesValid, fmt.Sprintf("valid=%t count=%d", e.Current.PublicIdentitiesValid, e.Current.PublicIdentityCount)
 		}},
 		{ID: "fleet_commitment_and_bindings", Check: func(e *scenarioEvaluation) (bool, string) {
-			want := e.Cfg.Config.Topology.HeadFleets * e.Cfg.Config.Topology.ClientsPerHeadFleet
+			want := e.Cfg.Config.Topology.fleetCandidateMiners()
 			ok := e.Current.FleetCommitmentValid && e.Current.FleetBindingsValid && e.Current.FleetBindingCount == want
 			return ok, fmt.Sprintf("commitment=%t bindings=%d/%d valid=%t", e.Current.FleetCommitmentValid, e.Current.FleetBindingCount, want, e.Current.FleetBindingsValid)
 		}},
@@ -1021,6 +1262,165 @@ func epochScenarioChecks() []scenarioCheck {
 			return true, "all validator intents finalized and applied"
 		}},
 	}
+}
+
+func validateHeadSlotBoundary(validator ValidatorObservation, headSlots, candidateFleets int) (bool, string) {
+	if headSlots < 1 || candidateFleets <= headSlots {
+		return false, fmt.Sprintf("invalid boundary slots=%d candidates=%d", headSlots, candidateFleets)
+	}
+	if len(validator.EligibleHeadUIDs) != candidateFleets || len(validator.SelectedHeadUIDs) != headSlots || len(validator.RejectedHeadUIDs) != candidateFleets-headSlots {
+		return false, fmt.Sprintf("eligible/selected/rejected=%d/%d/%d want %d/%d/%d", len(validator.EligibleHeadUIDs), len(validator.SelectedHeadUIDs), len(validator.RejectedHeadUIDs), candidateFleets, headSlots, candidateFleets-headSlots)
+	}
+	if validator.StaleHeadBindings != 0 {
+		return false, fmt.Sprintf("stale_head_bindings=%d", validator.StaleHeadBindings)
+	}
+	eligible := map[uint16]bool{}
+	for _, uid := range validator.EligibleHeadUIDs {
+		if eligible[uid] {
+			return false, fmt.Sprintf("duplicate eligible UID %d", uid)
+		}
+		eligible[uid] = true
+	}
+	classified := map[uint16]string{}
+	for _, entry := range []struct {
+		label string
+		uids  []uint16
+	}{{label: "selected", uids: validator.SelectedHeadUIDs}, {label: "rejected", uids: validator.RejectedHeadUIDs}} {
+		for _, uid := range entry.uids {
+			if !eligible[uid] {
+				return false, fmt.Sprintf("%s UID %d is not eligible", entry.label, uid)
+			}
+			if prior := classified[uid]; prior != "" {
+				return false, fmt.Sprintf("UID %d is classified as both %s and %s", uid, prior, entry.label)
+			}
+			classified[uid] = entry.label
+		}
+	}
+	if len(classified) != len(eligible) {
+		return false, fmt.Sprintf("classified=%d eligible=%d", len(classified), len(eligible))
+	}
+	return true, fmt.Sprintf("eligible=%d selected=%d rejected=%d", len(eligible), len(validator.SelectedHeadUIDs), len(validator.RejectedHeadUIDs))
+}
+
+func sortedUIDs(values []uint16) []uint16 {
+	result := append([]uint16(nil), values...)
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+func validateHeadWeightDecision(cfg *ResolvedConfig, observation *ScenarioObservation) (bool, string) {
+	if cfg == nil || observation == nil || len(observation.Validators) != cfg.Config.Topology.Validators {
+		return false, "validator head decision evidence is incomplete"
+	}
+	candidateEvidence := uint16Set(observation.CandidateFleetUIDs)
+	if len(candidateEvidence) != cfg.Config.Topology.fleetCandidates() {
+		return false, fmt.Sprintf("candidate evidence UIDs=%d want=%d", len(candidateEvidence), cfg.Config.Topology.fleetCandidates())
+	}
+	var selectedConsensus, rejectedConsensus []uint16
+	positiveSelected := map[uint16]bool{}
+	for index, validator := range observation.Validators {
+		if ok, detail := validateHeadSlotBoundary(validator, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates()); !ok {
+			return false, fmt.Sprintf("validator=%d %s", validator.ValidatorID, detail)
+		}
+		selected, rejected := sortedUIDs(validator.SelectedHeadUIDs), sortedUIDs(validator.RejectedHeadUIDs)
+		if index == 0 {
+			selectedConsensus, rejectedConsensus = selected, rejected
+		} else if !slices.Equal(selectedConsensus, selected) || !slices.Equal(rejectedConsensus, rejected) {
+			return false, fmt.Sprintf("validator=%d head boundary differs from validator consensus", validator.ValidatorID)
+		}
+		weights, masked := map[uint16]uint16{}, uint16Set(validator.MaskedUIDs)
+		for _, weight := range validator.AppliedWeights {
+			weights[weight.UID] = weight.Value
+		}
+		for _, uid := range selected {
+			if !candidateEvidence[uid] {
+				return false, fmt.Sprintf("validator=%d selected unknown candidate UID=%d", validator.ValidatorID, uid)
+			}
+			if !masked[uid] && weights[uid] > 0 {
+				positiveSelected[uid] = true
+			}
+		}
+		for _, uid := range rejected {
+			if !candidateEvidence[uid] || weights[uid] != 0 {
+				return false, fmt.Sprintf("validator=%d rejected UID=%d applied weight=%d", validator.ValidatorID, uid, weights[uid])
+			}
+		}
+	}
+	if len(positiveSelected) != cfg.Config.Topology.HeadSlots {
+		return false, fmt.Sprintf("selected UIDs with a non-masked positive applied weight=%d want=%d", len(positiveSelected), cfg.Config.Topology.HeadSlots)
+	}
+	return true, fmt.Sprintf("candidate_fleets=%d selected_positive=%d rejected_zero=%d", len(candidateEvidence), len(positiveSelected), len(rejectedConsensus))
+}
+
+func nativeRewardAt(rewards *NativeRewardObservation, uid uint16) (*big.Int, uint16, uint16, bool) {
+	if rewards == nil || int(uid) >= len(rewards.EmissionRao) || int(uid) >= len(rewards.Incentive) || int(uid) >= len(rewards.Dividends) {
+		return nil, 0, 0, false
+	}
+	emission, ok := new(big.Int).SetString(rewards.EmissionRao[uid], 10)
+	if !ok || emission.Sign() < 0 {
+		return nil, 0, 0, false
+	}
+	return emission, rewards.Incentive[uid], rewards.Dividends[uid], true
+}
+
+func validateNativeRewardChannels(cfg *ResolvedConfig, observation *ScenarioObservation) (bool, string) {
+	if cfg == nil || observation == nil || observation.NativeRewards == nil || observation.NativeRewardsError != "" {
+		return false, "native reward vectors are unavailable: " + func() string {
+			if observation == nil {
+				return "observation unavailable"
+			}
+			return observation.NativeRewardsError
+		}()
+	}
+	if len(observation.Validators) != cfg.Config.Topology.Validators || len(observation.CandidateFleetUIDs) != cfg.Config.Topology.fleetCandidates() {
+		return false, "native reward role identities are incomplete"
+	}
+	selected, rejected := uint16Set(observation.Validators[0].SelectedHeadUIDs), uint16Set(observation.Validators[0].RejectedHeadUIDs)
+	paidHeads, unpaidHeads := 0, 0
+	for _, uid := range observation.CandidateFleetUIDs {
+		emission, incentive, _, ok := nativeRewardAt(observation.NativeRewards, uid)
+		if !ok {
+			return false, fmt.Sprintf("candidate UID=%d has no exact native reward row", uid)
+		}
+		switch {
+		case selected[uid]:
+			if emission.Sign() <= 0 || incentive == 0 {
+				return false, fmt.Sprintf("selected UID=%d emission=%s incentive=%d", uid, emission, incentive)
+			}
+			paidHeads++
+		case rejected[uid]:
+			if emission.Sign() != 0 || incentive != 0 {
+				return false, fmt.Sprintf("rejected UID=%d emission=%s incentive=%d", uid, emission, incentive)
+			}
+			unpaidHeads++
+		default:
+			return false, fmt.Sprintf("candidate UID=%d is absent from the consensus head decision", uid)
+		}
+	}
+	paidPools := 0
+	if observation.Status == nil || observation.Status.Contracts == nil {
+		return false, "pool UID state is unavailable"
+	}
+	for _, operator := range observation.Status.Contracts.Operators {
+		if !operator.PoolLive {
+			continue
+		}
+		emission, incentive, _, ok := nativeRewardAt(observation.NativeRewards, operator.PoolUID)
+		if !ok || emission.Sign() <= 0 || incentive == 0 {
+			return false, fmt.Sprintf("pool no=%d UID=%d emission=%v incentive=%d", operator.NoID, operator.PoolUID, emission, incentive)
+		}
+		paidPools++
+	}
+	paidValidators := 0
+	for _, validator := range observation.Validators {
+		emission, _, dividends, ok := nativeRewardAt(observation.NativeRewards, validator.SelfUID)
+		if !ok || emission.Sign() <= 0 || dividends == 0 {
+			return false, fmt.Sprintf("validator=%d UID=%d emission=%v dividends=%d", validator.ValidatorID, validator.SelfUID, emission, dividends)
+		}
+		paidValidators++
+	}
+	ok := paidHeads == cfg.Config.Topology.HeadSlots && unpaidHeads == cfg.Config.Topology.fleetCandidates()-cfg.Config.Topology.HeadSlots && paidPools == cfg.Config.Topology.Operators && paidValidators == cfg.Config.Topology.Validators
+	return ok, fmt.Sprintf("native paid_heads=%d rejected_unpaid=%d pools=%d validators=%d block=%d", paidHeads, unpaidHeads, paidPools, paidValidators, observation.NativeRewards.FinalizedHead.Number)
 }
 
 func releaseScenarioChecks() []scenarioCheck {
@@ -1092,6 +1492,27 @@ func releaseScenarioChecks() []scenarioCheck {
 			}
 			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, fmt.Sprintf("applied_vectors=%d", len(e.Current.Validators))
 		}},
+		{ID: "validator_deposit_audits_compliant", Check: func(e *scenarioEvaluation) (bool, string) {
+			for _, validator := range e.Current.Validators {
+				if len(validator.DepositAudits) != e.Cfg.Config.Topology.Operators {
+					return false, fmt.Sprintf("validator=%d audits=%d want=%d", validator.ValidatorID, len(validator.DepositAudits), e.Cfg.Config.Topology.Operators)
+				}
+				for _, audit := range validator.DepositAudits {
+					if !audit.Compliant || audit.Status != validatorpkg.DepositAuditCompliant || audit.Disposition != "pool_weight_eligible" || audit.ArtifactHash == "" || audit.RequiredDepositRao != audit.ObservedDepositRao {
+						return false, fmt.Sprintf("validator=%d no=%d status=%s required=%s observed=%s error=%s", validator.ValidatorID, audit.NoID, audit.Status, audit.RequiredDepositRao, audit.ObservedDepositRao, audit.Error)
+					}
+				}
+			}
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, "all validators independently accepted exact signed-usage deposits"
+		}},
+		{ID: "payout_artifacts_enforce_one_tier", Check: func(e *scenarioEvaluation) (bool, string) {
+			for _, operator := range e.Current.Operators {
+				if !operator.TierMembershipValid || operator.CandidateProviders == 0 || operator.CandidateHeadExcluded != operator.CandidateProviders || operator.CandidateLeaves != 0 || operator.PoolTailProviders == 0 || operator.PoolTailHeadExcluded != 0 || operator.PoolTailLeaves == 0 {
+					return false, fmt.Sprintf("no=%d epoch=%d candidates=%d excluded=%d leaves=%d tail=%d tail_excluded=%d tail_leaves=%d", operator.NoID, operator.LatestArtifactEpoch, operator.CandidateProviders, operator.CandidateHeadExcluded, operator.CandidateLeaves, operator.PoolTailProviders, operator.PoolTailHeadExcluded, operator.PoolTailLeaves)
+				}
+			}
+			return len(e.Current.Operators) == e.Cfg.Config.Topology.Operators, "every live fleet is excluded from pool artifacts and pool-tail providers retain leaves"
+		}},
 		{ID: "signed_weight_cap_enforced", Check: func(e *scenarioEvaluation) (bool, string) {
 			cap := e.Cfg.Policy.Steering.MaxWeightLimitU16
 			for _, validator := range e.Current.Validators {
@@ -1106,13 +1527,10 @@ func releaseScenarioChecks() []scenarioCheck {
 			if !e.Current.FleetBindingsValid {
 				return false, "fleet binding evidence is invalid"
 			}
-			if len(e.Current.HeadFleetUIDs) != e.Cfg.Config.Topology.HeadFleets {
-				return false, fmt.Sprintf("head fleet UIDs=%v, want %d", e.Current.HeadFleetUIDs, e.Cfg.Config.Topology.HeadFleets)
-			}
 			observed := map[uint16]bool{}
 			for _, validator := range e.Current.Validators {
 				masked := uint16Set(validator.MaskedUIDs)
-				for _, headUID := range e.Current.HeadFleetUIDs {
+				for _, headUID := range validator.SelectedHeadUIDs {
 					if masked[headUID] {
 						continue
 					}
@@ -1128,39 +1546,58 @@ func releaseScenarioChecks() []scenarioCheck {
 					}
 				}
 			}
-			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators && len(observed) == len(e.Current.HeadFleetUIDs), fmt.Sprintf("head_uids=%v observed=%v validators=%d", e.Current.HeadFleetUIDs, observed, len(e.Current.Validators))
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators && len(observed) >= e.Cfg.Config.Topology.HeadSlots, fmt.Sprintf("observed_selected_heads=%d validators=%d", len(observed), len(e.Current.Validators))
+		}},
+		{ID: "head_slot_boundary_enforced", Check: func(e *scenarioEvaluation) (bool, string) {
+			for _, validator := range e.Current.Validators {
+				if ok, detail := validateHeadSlotBoundary(validator, e.Cfg.Config.Topology.HeadSlots, e.Cfg.Config.Topology.fleetCandidates()); !ok {
+					return false, fmt.Sprintf("validator=%d %s", validator.ValidatorID, detail)
+				}
+			}
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, fmt.Sprintf("validators=%d selected=%d candidates=%d", len(e.Current.Validators), e.Cfg.Config.Topology.HeadSlots, e.Cfg.Config.Topology.fleetCandidates())
+		}},
+		{ID: "head_selected_paid_rejected_zero_weight", Check: func(e *scenarioEvaluation) (bool, string) {
+			return validateHeadWeightDecision(e.Cfg, e.Current)
+		}},
+		{ID: "head_promotion_demotion_transition", Check: func(e *scenarioEvaluation) (bool, string) {
+			for _, validator := range e.Current.Validators {
+				if validator.HeadDecisionEpochs < 2 || validator.HeadTransitions == 0 || len(validator.PromotedHeadUIDs) == 0 || len(validator.DemotedHeadUIDs) == 0 {
+					return false, fmt.Sprintf("validator=%d decisions=%d transitions=%d promoted=%v demoted=%v", validator.ValidatorID, validator.HeadDecisionEpochs, validator.HeadTransitions, validator.PromotedHeadUIDs, validator.DemotedHeadUIDs)
+				}
+			}
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, "every validator observed a top-200 entrant and exit under the bounded head fault"
+		}},
+		{ID: "native_head_pool_and_validator_rewards", Check: func(e *scenarioEvaluation) (bool, string) {
+			return validateNativeRewardChannels(e.Cfg, e.Current)
 		}},
 		{ID: "two_fleet_shared_prefix_split", Check: func(e *scenarioEvaluation) (bool, string) {
-			if len(e.Current.HeadFleetUIDs) != 2 {
-				return false, fmt.Sprintf("head_uids=%v", e.Current.HeadFleetUIDs)
+			if len(e.Current.CandidateFleetUIDs) < 2 {
+				return false, fmt.Sprintf("candidate_uids=%v", e.Current.CandidateFleetUIDs)
 			}
+			sharedUIDs := e.Current.CandidateFleetUIDs[:2]
 			want := new(big.Rat).SetFrac64(1, 2)
 			checked := 0
 			for _, validator := range e.Current.Validators {
 				masked := uint16Set(validator.MaskedUIDs)
-				if masked[e.Current.HeadFleetUIDs[0]] || masked[e.Current.HeadFleetUIDs[1]] {
-					continue
-				}
 				weights := map[uint16]*big.Rat{}
 				for _, weight := range validator.AppliedWeights {
-					n, nOK := new(big.Int).SetString(weight.Numerator, 10)
-					d, dOK := new(big.Int).SetString(weight.Denominator, 10)
-					if nOK && dOK && d.Sign() > 0 {
-						weights[weight.UID] = new(big.Rat).SetFrac(n, d)
+					numerator, numeratorOK := new(big.Int).SetString(weight.Numerator, 10)
+					denominator, denominatorOK := new(big.Int).SetString(weight.Denominator, 10)
+					if numeratorOK && denominatorOK && denominator.Sign() > 0 {
+						weights[weight.UID] = new(big.Rat).SetFrac(numerator, denominator)
 					}
 				}
-				first := weights[e.Current.HeadFleetUIDs[0]]
-				if first == nil || first.Cmp(want) != 0 {
-					return false, fmt.Sprintf("validator=%d first head score=%v, want 1/2", validator.ValidatorID, first)
-				}
-				for _, uid := range e.Current.HeadFleetUIDs[1:] {
+				for _, uid := range sharedUIDs {
+					if masked[uid] {
+						continue
+					}
 					if weights[uid] == nil || weights[uid].Cmp(want) != 0 {
-						return false, fmt.Sprintf("validator=%d head_uid=%d score=%v, want 1/2", validator.ValidatorID, uid, weights[uid])
+						return false, fmt.Sprintf("validator=%d shared head_uid=%d score=%v, want 1/2", validator.ValidatorID, uid, weights[uid])
 					}
+					checked++
 				}
-				checked++
 			}
-			return checked > 0, fmt.Sprintf("unaffiliated_validators=%d exact_head_scores=1/2", checked)
+			return checked >= 2, fmt.Sprintf("unmasked_shared_head_observations=%d exact_score=1/2", checked)
 		}},
 		{ID: "validator_self_uids_masked", Check: func(e *scenarioEvaluation) (bool, string) {
 			for _, validator := range e.Current.Validators {
@@ -1174,7 +1611,7 @@ func releaseScenarioChecks() []scenarioCheck {
 						}
 					}
 				}
-				for fleetIndex, uid := range e.Current.HeadFleetUIDs {
+				for fleetIndex, uid := range e.Current.CandidateFleetUIDs {
 					for member := 1; member <= e.Cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 						miner := fleetMemberMinerIndex(e.Cfg, fleetIndex+1, member)
 						noID := uint64(operatorForMiner(e.Cfg, miner))
@@ -1257,6 +1694,28 @@ func releaseScenarioChecks() []scenarioCheck {
 				}
 			}
 			return uncertain == 0, fmt.Sprintf("finalized_by_no=%v uncertain_or_failed=%d", finalized, uncertain)
+		}},
+		{ID: "tier_exclusive_claim_outcomes", Check: func(e *scenarioEvaluation) (bool, string) {
+			candidateNoClaim, tailFinalized := 0, 0
+			for _, claim := range e.Current.Claims {
+				if claim.Error != "" || claim.Uncertain != 0 || claim.Failed != 0 {
+					return false, fmt.Sprintf("miner=%d error=%s uncertain=%d failed=%d", claim.MinerID, claim.Error, claim.Uncertain, claim.Failed)
+				}
+				if claim.MinerID <= e.Cfg.Config.Topology.fleetCandidateMiners() {
+					if claim.NoClaim == 0 {
+						return false, fmt.Sprintf("candidate miner=%d finalized=%d no_claim=%d", claim.MinerID, claim.Finalized, claim.NoClaim)
+					}
+					candidateNoClaim++
+				} else {
+					if claim.Finalized == 0 {
+						return false, fmt.Sprintf("pool-tail miner=%d has no finalized claim", claim.MinerID)
+					}
+					tailFinalized++
+				}
+			}
+			wantCandidates := e.Cfg.Config.Topology.fleetCandidateMiners()
+			wantTail := e.Cfg.Config.Topology.Miners - wantCandidates
+			return candidateNoClaim == wantCandidates && tailFinalized == wantTail, fmt.Sprintf("candidate_no_claim=%d/%d tail_finalized=%d/%d", candidateNoClaim, wantCandidates, tailFinalized, wantTail)
 		}},
 		{ID: "pool_payments_observed", Check: func(e *scenarioEvaluation) (bool, string) {
 			if e.Current.Status == nil || e.Current.Status.Contracts == nil {
@@ -1439,14 +1898,15 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		}
 		return definition, nil
 	case "production-soak":
-		if cfg.Config.Scenarios.ProductionEpochs < 2 {
-			return scenarioDefinition{}, errors.New("production soak requires at least two complete production epochs")
+		if cfg.Config.Scenarios.ProductionEpochs < 3 {
+			return scenarioDefinition{}, errors.New("production soak requires three complete testnet UR blocks")
 		}
 		// One epoch reaches the scheduled boundary; the configured count then
 		// represents complete production epochs after that boundary.
 		definition.GoalEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs) + 1
 		definition.Faults = productionRollingFaults(cfg)
 		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
+		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
 		definition.Checks = append(definition.Checks, productionScenarioChecks()...)
 		if err := enableContinuousAdversaries(cfg, &definition); err != nil {
 			return scenarioDefinition{}, err
@@ -1466,7 +1926,10 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Duration {
 	blocks := definition.GoalEpochs * cfg.Policy.Settlement.EpochBlocks
 	if definition.Name == "production-soak" {
-		blocks = cfg.Policy.Settlement.EpochBlocks + uint64(cfg.Config.Scenarios.ProductionEpochs)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
+		// Preparation can consume the short-policy remainder and part of the
+		// first production epoch while proving the live deposit penalty. Exclude
+		// that partial epoch, then observe three complete production epochs.
+		blocks = cfg.Policy.Settlement.EpochBlocks + uint64(cfg.Config.Scenarios.ProductionEpochs+1)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
 	}
 	for _, fault := range definition.Faults {
 		if end := fault.TriggerOffsetBlocks + fault.DurationBlocks; end > blocks {
@@ -1490,6 +1953,62 @@ func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Du
 
 func productionScenarioChecks() []scenarioCheck {
 	return []scenarioCheck{
+		{ID: "three_consecutive_fully_observed_ur_blocks", Check: func(e *scenarioEvaluation) (bool, string) {
+			if e.Start == nil || e.Start.Status == nil || e.Start.Status.Contracts == nil || e.Current.Status == nil || e.Current.Status.Contracts == nil {
+				return false, "production observation boundaries are unavailable"
+			}
+			// Conservatively discard the epoch containing the first snapshot. It
+			// may be partial because preparation waits for the live mismatch.
+			firstFull := e.Start.Status.Contracts.CurrentEpoch + 1
+			complete := uint64(0)
+			if e.Current.Status.Contracts.CurrentEpoch > firstFull {
+				complete = e.Current.Status.Contracts.CurrentEpoch - firstFull
+			}
+			want := uint64(e.Cfg.Config.Scenarios.ProductionEpochs)
+			return complete >= want, fmt.Sprintf("first_full_epoch=%d complete=%d want=%d current=%d", firstFull, complete, want, e.Current.Status.Contracts.CurrentEpoch)
+		}},
+		{ID: "dishonest_operator_deposit_penalized_and_recovered", Check: func(e *scenarioEvaluation) (bool, string) {
+			if !e.Current.DishonestDepositValid || e.Current.DishonestDeposit == nil {
+				return false, "dishonest-deposit evidence unavailable: " + e.Current.DishonestDepositError
+			}
+			bad := e.Current.DishonestDeposit
+			poolUID := uint16(0)
+			poolFound := false
+			if e.Current.Status != nil && e.Current.Status.Contracts != nil {
+				for _, operator := range e.Current.Status.Contracts.Operators {
+					if operator.NoID == bad.Transaction.NoID && operator.PoolLive {
+						poolUID = operator.PoolUID
+						poolFound = true
+					}
+				}
+			}
+			if !poolFound {
+				return false, "dishonest operator pool UID is unavailable"
+			}
+			recoveredUnmasked := false
+			for _, validator := range e.Current.Validators {
+				var recovery *validatorpkg.DepositAudit
+				for auditIndex := range validator.DepositAudits {
+					if validator.DepositAudits[auditIndex].NoID == bad.Transaction.NoID {
+						copy := validator.DepositAudits[auditIndex]
+						recovery = &copy
+						break
+					}
+				}
+				if recovery == nil || recovery.Epoch <= bad.Transaction.Epoch || !recovery.Compliant || recovery.Status != validatorpkg.DepositAuditCompliant || recovery.RequiredDepositRao != recovery.ObservedDepositRao {
+					return false, fmt.Sprintf("validator=%d recovery_audit=%+v bad_epoch=%d", validator.ValidatorID, recovery, bad.Transaction.Epoch)
+				}
+				if slices.Contains(validator.MaskedUIDs, poolUID) {
+					continue
+				}
+				for _, weight := range validator.AppliedWeights {
+					if weight.UID == poolUID && weight.Value != 0 {
+						recoveredUnmasked = true
+					}
+				}
+			}
+			return recoveredUnmasked, fmt.Sprintf("bad_epoch=%d validators_penalizing=%d recovered_unmasked=%t", bad.Transaction.Epoch, len(bad.Validators), recoveredUnmasked)
+		}},
 		{ID: "verify_key_rotation_preserves_history", Check: func(e *scenarioEvaluation) (bool, string) {
 			for _, operator := range e.Current.Operators {
 				keys := map[byte]bool{}
@@ -1512,7 +2031,7 @@ func productionScenarioChecks() []scenarioCheck {
 			}
 			got := e.Current.Status.Contracts.Policy
 			want := e.Cfg.Policy.ProductionCadence
-			ok := got.EffectiveEpoch >= want.AfterAcceleratedEpochs && got.EpochBlocks == want.EpochBlocks && got.RootCommitWindowBlocks == want.RootCommitWindowBlocks && got.FinalizeOffsetBlocks == want.FinalizeOffsetBlocks && got.CloseGraceBlocks == want.CloseGraceBlocks
+			ok := want.AfterAcceleratedEpochs != ^uint64(0) && got.EffectiveEpoch == want.AfterAcceleratedEpochs+1 && got.EpochBlocks == want.EpochBlocks && got.RootCommitWindowBlocks == want.RootCommitWindowBlocks && got.FinalizeOffsetBlocks == want.FinalizeOffsetBlocks && got.CloseGraceBlocks == want.CloseGraceBlocks
 			return ok, fmt.Sprintf("effective=%d epoch=%d root=%d finalize=%d close=%d", got.EffectiveEpoch, got.EpochBlocks, got.RootCommitWindowBlocks, got.FinalizeOffsetBlocks, got.CloseGraceBlocks)
 		}},
 		{ID: "complete_production_epochs", Check: func(e *scenarioEvaluation) (bool, string) {
@@ -1560,7 +2079,21 @@ func appendObservation(path string, observation *ScenarioObservation) error {
 func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start, current *ScenarioObservation, started time.Time) []AssertionRecord {
 	goal := uint64(0)
 	if start != nil && start.Status != nil && start.Status.Contracts != nil {
-		goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
+		switch definition.Name {
+		case "release-1.0":
+			// Accelerated epochs are a deployment-absolute campaign. Setup,
+			// conformance, and governance can consume early epochs; adding 20
+			// to the scenario start would exceed the exact deposit campaign cap.
+			goal = uint64(cfg.Config.Scenarios.ShortEpochs)
+		case "production-soak":
+			// Discard the possibly partial epoch containing the first snapshot,
+			// then require three complete 2,400-block epochs. The anomaly ledger
+			// retains every observation, so any transient warning still fails the
+			// run rather than being hidden by later recovery.
+			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
+		default:
+			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
+		}
 	}
 	evaluation := &scenarioEvaluation{Cfg: cfg, Start: start, Current: current, GoalEpoch: goal, Definition: definition}
 	now := time.Now().UTC()
@@ -1735,21 +2268,23 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 		return result, errors.Join(resultErr, stopErr, rewriteErr)
 	}
-	// Preparation is part of the measured happy path. In particular, release
-	// governance and key-rotation actions run while adversaries are active, and
-	// a preparation failure is persisted with the same anomaly/evidence gates
-	// as a failure after the first chain observation.
-	if options.Prepare != nil {
-		if err := options.Prepare(ctx); err != nil {
-			return initialFailure(nil, fmt.Errorf("prepare scenario: %w", err))
-		}
-	}
 	if len(definition.Faults) != 0 {
 		if options.FaultDriver == nil {
 			return initialFailure(nil, errors.New("scenario fault schedule requires a fault driver"))
 		}
 		if err := options.FaultDriver.Recover(ctx); err != nil {
 			return initialFailure(nil, fmt.Errorf("recover prior scenario fault: %w", err))
+		}
+	}
+	// Preparation is part of the measured happy path. Recover a prior process
+	// fence first: a host interruption during boundary injection must not leave
+	// the taskworker stopped and then deadlock the resumed preparation itself.
+	// Release governance, key rotation, and dishonest-deposit actions run while
+	// adversaries are active, and any failure is persisted through the same
+	// anomaly/evidence gates as a failure after the first chain observation.
+	if options.Prepare != nil {
+		if err := options.Prepare(ctx); err != nil {
+			return initialFailure(nil, fmt.Errorf("prepare scenario: %w", err))
 		}
 	}
 
@@ -2199,6 +2734,9 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 			}
 			if err := rotateOperatorVerifyKeys(prepareCtx, cfg, stateDir); err != nil {
 				return fmt.Errorf("rotate operator verify keys: %w", err)
+			}
+			if err := runDishonestDepositPhase(prepareCtx, cfg, stateDir, executor); err != nil {
+				return fmt.Errorf("live dishonest operator deposit: %w", err)
 			}
 		}
 		return nil

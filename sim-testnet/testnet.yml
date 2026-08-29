@@ -29,15 +29,22 @@ launch_inputs:
   authority: vault://main/st.yml#testnet-authority
   public_substrate_rpc_override: "wss://test.finney.opentensor.ai:443"
   public_evm_rpc_override: "https://test.chain.opentensor.ai"
+  public_evm_maximum_requests_per_minute: 40
   object_store_hostname: vault://main/st.yml#testnet-minio-hostname
   operator_api_origins: vault://main/st.yml#testnet-operator-api-origins
 
 topology:
   operators: 2
-  miners: 8
+  miners: 1000
   validators: 2
-  head_fleets: 2
-  clients_per_head_fleet: 3
+  head_slots: 200
+  head_fleets: 200
+  challenger_fleets: 2
+  clients_per_head_fleet: 4
+  # Netuid 521 already has the owner UID and one external bootstrap UID. These
+  # 47 controlled floor identities make the initial 256-seat topology exact.
+  churn_floor_uids: 47
+  miner_swarm_processes: 20
   operator_assignment: balanced
 
 contracts:
@@ -67,7 +74,7 @@ scenarios:
   launch: smoke
   release: release-1.0
   short_epochs: 20
-  production_epochs: 2
+  production_epochs: 3
   voluntary_conviction_rao: 1000000000
   quality_fault_operator: 2
   quality_fault_start_blocks: 5
@@ -90,8 +97,8 @@ budgets:
   maximum_total_tao_rao_from: vault://main/st.yml#testnet-spending-limit-tao-rao
   maximum_total_alpha_rao_from: vault://main/st.yml#testnet-spending-limit-alpha-rao
   maximum_evm_gas_tao_wei_from: vault://main/st.yml#testnet-spending-limit-evm-gas-wei
-  maximum_registrations: 32
-  maximum_registration_burn_rao: 100000000
+  maximum_registrations: 260
+  maximum_registration_burn_rao: 1000000
 
 secrets:
   generated_role_store: runtime-secret://testnet/sim-testnet/${deployment_id}

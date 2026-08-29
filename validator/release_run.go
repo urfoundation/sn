@@ -57,6 +57,10 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 	if err != nil {
 		return nil, fmt.Errorf("no_id %d client key: %w", op.NoID, err)
 	}
+	artifactReader, err := NewHTTPArtifactReader(op.APIURL, cfg.DeploymentID, cfg.Netuid)
+	if err != nil {
+		return nil, fmt.Errorf("no_id %d artifact reader: %w", op.NoID, err)
+	}
 	strategy := connect.NewClientStrategyWithDefaults(ctx)
 	api := sdk.NewApi(ctx, strategy, op.APIURL)
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
@@ -117,8 +121,9 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		StepTimeout: time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
 	})
 	measurement := &ReleaseMeasurementContext{
-		NoID:  op.NoID,
-		Stats: stats,
+		NoID:      op.NoID,
+		Stats:     stats,
+		Artifacts: artifactReader,
 		ClientKey: func(id connect.Id) ([32]byte, bool, error) {
 			if cancelled.Load() {
 				return [32]byte{}, false, errors.New("operator authentication is no longer valid")
@@ -175,32 +180,32 @@ func dialPinnedNative(cfg *ReleaseConfig) (*crv4.Chain, error) {
 
 func typesHash(value [32]byte) [32]byte { return value }
 
-func runReleaseConfig(configPath string) {
+// RunRelease starts the production validator modules under a caller-owned
+// lifecycle. CLIs and integration harnesses share this exact entry point.
+func RunRelease(ctx context.Context, configPath string) error {
 	cfg, err := LoadReleaseConfig(configPath)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	event := connect.NewEventWithContext(context.Background())
-	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	ctx, cancel := context.WithCancel(event.Ctx())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	hotkeySeed, err := crv4.LoadSeedFile(cfg.HotkeySeedFile)
 	if err != nil {
-		panic(fmt.Errorf("production hotkey seed: %w", err))
+		return fmt.Errorf("production hotkey seed: %w", err)
 	}
 	hotkey, err := crv4.KeypairFromSeed(hotkeySeed)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	chain, err := DialReleaseChain(cfg.RPC, common.HexToAddress(cfg.Coordinator))
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer chain.Close()
 	native, err := dialPinnedNative(cfg)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer native.API.Client.Close()
 
@@ -208,7 +213,7 @@ func runReleaseConfig(configPath string) {
 	if snapshot, err := chain.ReleaseSnapshot(); err == nil {
 		settlementEpoch.Store(snapshot.Epoch.Uint64())
 	} else {
-		panic(err)
+		return err
 	}
 	go func() {
 		ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
@@ -232,7 +237,7 @@ func runReleaseConfig(configPath string) {
 			for _, started := range runtimes {
 				started.close()
 			}
-			panic(err)
+			return err
 		}
 		runtimes = append(runtimes, runtime)
 		go runtime.engine.Run(ctx, op.Concurrency)
@@ -248,7 +253,7 @@ func runReleaseConfig(configPath string) {
 	}
 	steerer, err := NewReleaseSteerer(cfg, chain, native, hotkey, measurements)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	go steerer.Run(ctx)
 	go func() {
@@ -269,4 +274,13 @@ func runReleaseConfig(configPath string) {
 	}()
 	fmt.Printf("validator release 1.0 running: validator=%d netuid=%d hotkey=%s operators=%d\n", cfg.ValidatorID, cfg.Netuid, hotkey.Address(), len(runtimes))
 	<-ctx.Done()
+	return nil
+}
+
+func runReleaseConfig(configPath string) {
+	event := connect.NewEventWithContext(context.Background())
+	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	if err := RunRelease(event.Ctx(), configPath); err != nil {
+		panic(err)
+	}
 }
