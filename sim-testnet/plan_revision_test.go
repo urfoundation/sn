@@ -102,7 +102,7 @@ func TestBuildPlanRevisionCarriesExactVerifiedIntentsAndRepairsFunding(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if revised.Schema != "urnetwork-sim-plan-v2" || revised.NativeTransactionFeeLimitRao != 4_000_000 || len(revised.PriorPlanHashes) != 1 || revised.PriorPlanHashes[0] != prior.PlanHash || !revised.allowedPlanHashes()[prior.PlanHash] {
+	if revised.Schema != "urnetwork-sim-plan-v3" || revised.NativeTransactionFeeLimitRao != 4_000_000 || len(revised.PriorPlanHashes) != 1 || revised.PriorPlanHashes[0] != prior.PlanHash || !revised.allowedPlanHashes()[prior.PlanHash] {
 		t.Fatalf("revision lineage/fee limit = schema=%s fee=%d prior=%v", revised.Schema, revised.NativeTransactionFeeLimitRao, revised.PriorPlanHashes)
 	}
 	if revised.LiveFacts.ExistingUIDCount != prior.LiveFacts.ExistingUIDCount || len(revised.LiveFacts.ExistingUIDs) != len(prior.LiveFacts.ExistingUIDs) {

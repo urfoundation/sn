@@ -1140,10 +1140,14 @@ launch_inputs:
 
 topology:
   operators: 2
-  miners: 8
+  miners: 1000
   validators: 2
-  head_fleets: 2
-  clients_per_head_fleet: 3
+  head_slots: 200
+  head_fleets: 200
+  challenger_fleets: 2
+  clients_per_head_fleet: 4
+  churn_floor_uids: 47
+  miner_swarm_processes: 20
   operator_assignment: balanced
 
 contracts:
@@ -1173,15 +1177,17 @@ scenarios:
   launch: smoke
   release: release-1.0
   short_epochs: 20
-  production_epochs: 2
+  production_epochs: 3
 
 budgets:
   maximum_subnet_creations: 0
   maximum_total_tao_rao_from: "vault://main/st.yml#testnet-spending-limit-tao-rao"
   maximum_total_alpha_rao_from: "vault://main/st.yml#testnet-spending-limit-alpha-rao"
   maximum_evm_gas_tao_wei_from: "vault://main/st.yml#testnet-spending-limit-evm-gas-wei"
-  maximum_registrations: 32
-  maximum_registration_burn_rao: 100000000
+  maximum_registrations: 260
+  maximum_registration_burn_rao: 1000000
+  maximum_native_transaction_fee_rao: 3000000
+  maximum_evm_fee_per_gas_wei: 100000000000
 
 secrets:
   generated_role_store: "runtime-secret://testnet/sim-testnet/${deployment_id}"
@@ -1966,14 +1972,19 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    pairs have passed their live managed-dependency probe: PostgreSQL authenticated as
    the derived application role and returned `512:256MB:en_US.UTF-8`; Redis returned
    `PONG`. Containers and PostgreSQL volumes now carry matching complete spec hashes.
-4. **Completed 2026-08-29:** the read-only plan passed its checker with maximum
-   spends of `4918005500` TAO rao, `5680000000` alpha rao,
-   `3000000000000000000` EVM gas wei, 256 registrations and zero subnet
-   creations. Its current exact `plan_hash` is
-   `0x2922c8ba0099db7e3b639bb8425fc2e20ecb8dc6e8ce47f934bd86763a4f5238`.
-   Regenerate it after any locked input changes; an old hash cannot authorize a
-   changed plan. The user has authorized automatic application of this bounded
-   **testnet** plan; no mainnet write is authorized.
+4. **In progress 2026-08-29:** the approved v2 apply finalized all 47 controlled
+   churn-floor registrations on netuid 521, ending with transaction
+   `0x090e7db6ce71e2e5d1b23d2c4301af05fb8a87836630e21b47497bfe1cf4247c`
+   at block 7,888,105. The first contract deployment then stopped before
+   broadcast because the old weighted setup allocation gave the reserve sink
+   only `2090195084874588` wei while the live padded estimate required
+   `21244608789688702` wei. Plan schema v3 fixes the root cause with independent
+   gas-unit and fee-price envelopes, arbitrary-precision aggregate wei, exact
+   per-signer explicit funding, and deterministic incident/boundary tests. The
+   vault ceilings are now 120 testTAO, 6 alpha, and 100 testTAO of EVM gas; the
+   current plan hash must be regenerated after the release lock is refreshed.
+   The user has authorized automatic application of the bounded **testnet**
+   revision; no mainnet write is authorized.
 5. Run `launch --apply --plan-hash ... --detach` with the freshly regenerated exact hash. The harness
    installs/converges the release and runs smoke; no manual Forge, `btcli`, SQL or
    contract call is part of the release path.

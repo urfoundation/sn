@@ -100,6 +100,7 @@ budgets:
   maximum_registrations: 260
   maximum_registration_burn_rao: 1000000
   maximum_native_transaction_fee_rao: 3000000
+  maximum_evm_fee_per_gas_wei: 100000000000
 
 secrets:
   generated_role_store: runtime-secret://testnet/sim-testnet/${deployment_id}

@@ -115,8 +115,24 @@ func dishonestDepositAction(plan *SetupPlan) (Action, error) {
 }
 
 func dishonestDepositParameters(action Action) (uint64, *big.Int, error) {
-	if action.ID != dishonestDepositActionID || action.Kind != "evm-transaction" || action.Target != "no:2" || len(action.Parameters) != 3 || action.Parameters["target_epoch"] != "next_fresh_production_epoch" {
+	if action.ID != dishonestDepositActionID || action.Kind != "evm-transaction" || action.Target != "no:2" || action.Parameters["target_epoch"] != "next_fresh_production_epoch" {
 		return 0, nil, errors.New("dishonest-deposit action identity is invalid")
+	}
+	allowed := map[string]bool{"no_id": true, "amount_rao": true, "target_epoch": true, evmMaximumGasUnitsParameter: true, evmMaximumFeePerGasParameter: true}
+	for key := range action.Parameters {
+		if !allowed[key] {
+			return 0, nil, fmt.Errorf("dishonest-deposit action has unknown parameter %q", key)
+		}
+	}
+	_, hasGasUnits := action.Parameters[evmMaximumGasUnitsParameter]
+	_, hasFeePerGas := action.Parameters[evmMaximumFeePerGasParameter]
+	if hasGasUnits != hasFeePerGas || len(action.Parameters) != 3 && len(action.Parameters) != 5 {
+		return 0, nil, errors.New("dishonest-deposit action has an incomplete EVM fee envelope")
+	}
+	if hasGasUnits {
+		if _, _, err := evmActionFeeEnvelope(action); err != nil {
+			return 0, nil, err
+		}
 	}
 	noID, err := strconv.ParseUint(action.Parameters["no_id"], 10, 64)
 	if err != nil || noID != 2 {

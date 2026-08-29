@@ -49,7 +49,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			},
 		},
 		Budgets: BudgetConfig{
-			MaximumSubnetCreations: 0, MaximumRegistrations: 260, MaximumRegistrationBurnRao: 1_000_000, MaximumNativeTransactionFeeRao: 3_000_000,
+			MaximumSubnetCreations: 0, MaximumRegistrations: 260, MaximumRegistrationBurnRao: 1_000_000, MaximumNativeTransactionFeeRao: 3_000_000, MaximumEVMFeePerGasWei: 100_000_000_000,
 			MaximumTotalTAORaoFrom:   "vault://main/st.yml#testnet-spending-limit-tao-rao",
 			MaximumTotalAlphaRaoFrom: "vault://main/st.yml#testnet-spending-limit-alpha-rao",
 			MaximumEVMGasWeiFrom:     "vault://main/st.yml#testnet-spending-limit-evm-gas-wei",
@@ -110,7 +110,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		Netuid: 7, ChainID: testnetChainID, Authority: "127.0.0.1:9944", OperationalRPCMode: rpcModePrivateAuthority,
 		OperationalSubstrate: "ws://127.0.0.1:9944", OperationalEVM: "http://127.0.0.1:9944", ObjectStoreHost: "127.0.0.1",
 		OperatorAPIOrigins: []string{"https://no1.example", "https://no2.example"}, WalletSecret: "unit test wallet reference", WalletMaterial: "unit test wallet secret", WalletPasswordSecret: "unit test password reference", WalletPassword: "unit test password secret", WalletPublic: testColdkeyPublic, WalletHotkeyPublic: testHotkeyPublic,
-		MaximumTAORao: 10_000_000_000, MaximumAlphaRao: 6_000_000_000, MaximumEVMGasWei: 1_000_000_000_000_000_000,
+		MaximumTAORao: 120_000_000_000, MaximumAlphaRao: 6_000_000_000, MaximumEVMGasWei: DecimalUint("100000000000000000000"),
 		PolicyHash: policyHash, ConfigHash: configHash,
 	}
 }
@@ -125,7 +125,7 @@ func testSetupFacts() *SetupFacts {
 			{UID: 0, Hotkey: "0x" + strings.Repeat("42", 32), Coldkey: "0x" + strings.Repeat("45", 32), RegistrationBlock: 50, SubnetOwner: true},
 			{UID: 1, Hotkey: "0x" + strings.Repeat("43", 32), Coldkey: "0x" + strings.Repeat("44", 32), RegistrationBlock: 60},
 		},
-		WalletFreeTAORao: 20_000_000_000,
+		WalletFreeTAORao: 200_000_000_000,
 		FinalizedBlock:   100, FinalizedBlockHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}
 }

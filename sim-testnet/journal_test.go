@@ -206,10 +206,10 @@ func TestPersistedPlanRefreshIsLimitedToEmptyPrewriteState(t *testing.T) {
 }
 
 func TestRemainingPlanSpendSubtractsVerifiedWritesButPreservesReserves(t *testing.T) {
-	plan := &SetupPlan{PlanHash: "plan", MaximumSpend: Spend{TAORao: 100, AlphaRao: 80, EVMGasWei: 70}}
+	plan := &SetupPlan{PlanHash: "plan", MaximumSpend: Spend{TAORao: 100, AlphaRao: 80, EVMGasWei: decimalUint64(70)}}
 	plan.Actions = []Action{
-		{ID: "written", IntentHash: "write-intent", Kind: "substrate-transaction", Spend: Spend{TAORao: 25, AlphaRao: 30, EVMGasWei: 10}},
-		{ID: "reserved", IntentHash: "reserve-intent", Kind: "budget-reserve", Spend: Spend{TAORao: 40, EVMGasWei: 20}},
+		{ID: "written", IntentHash: "write-intent", Kind: "substrate-transaction", Spend: Spend{TAORao: 25, AlphaRao: 30, EVMGasWei: decimalUint64(10)}},
+		{ID: "reserved", IntentHash: "reserve-intent", Kind: "budget-reserve", Spend: Spend{TAORao: 40, EVMGasWei: decimalUint64(20)}},
 	}
 	entries := []JournalEntry{
 		{PlanHash: "plan", ActionID: "written", IntentHash: "write-intent", Stage: StageVerified},
@@ -219,7 +219,7 @@ func TestRemainingPlanSpendSubtractsVerifiedWritesButPreservesReserves(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != 60 {
+	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != decimalUint64(60) {
 		t.Fatalf("remaining spend = %+v", remaining)
 	}
 	entries = append(entries, JournalEntry{PlanHash: "plan", ActionID: "written", IntentHash: "write-intent", Stage: StageFailed})
@@ -227,7 +227,7 @@ func TestRemainingPlanSpendSubtractsVerifiedWritesButPreservesReserves(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != 60 {
+	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != decimalUint64(60) {
 		t.Fatalf("later unrelated stage hid verified spend: %+v", remaining)
 	}
 }
@@ -258,6 +258,42 @@ func TestRemainingPlanSpendCarriesOnlyExactApprovedAncestorIntents(t *testing.T)
 	}
 }
 
+// Remove fields introduced after the requested legacy schema and rebuild the
+// exact action and plan hashes used by a persisted ancestor.
+func downgradePlanForCompatibilityTest(t *testing.T, plan *SetupPlan, schema string) {
+	t.Helper()
+	plan.Schema = schema
+	plan.MaximumEVMFeePerGasWei = 0
+	if schema == "urnetwork-sim-plan-v1" {
+		plan.NativeTransactionFeeLimitRao = 0
+		plan.BootstrapBurnHalfLifeBlocks = 0
+		plan.ProductionBurnHalfLifeBlocks = 0
+	}
+	plan.PriorPlanHashes = nil
+	for index := range plan.Actions {
+		if plan.Actions[index].Kind != "evm-transaction" {
+			continue
+		}
+		parameters := cloneStrings(plan.Actions[index].Parameters)
+		delete(parameters, evmMaximumGasUnitsParameter)
+		delete(parameters, evmMaximumFeePerGasParameter)
+		if len(parameters) == 0 {
+			parameters = nil
+		}
+		plan.Actions[index].Parameters = parameters
+		intentHash, err := actionIntentHash(plan.Actions[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan.Actions[index].IntentHash = intentHash
+	}
+	var err error
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadPersistedPlanAcceptsSelfHashedV1OnlyAsRevisionAncestor(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)
@@ -268,15 +304,7 @@ func TestReadPersistedPlanAcceptsSelfHashedV1OnlyAsRevisionAncestor(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan.Schema = "urnetwork-sim-plan-v1"
-	plan.NativeTransactionFeeLimitRao = 0
-	plan.BootstrapBurnHalfLifeBlocks = 0
-	plan.ProductionBurnHalfLifeBlocks = 0
-	plan.PriorPlanHashes = nil
-	plan.PlanHash, err = plan.hash()
-	if err != nil {
-		t.Fatal(err)
-	}
+	downgradePlanForCompatibilityTest(t, plan, "urnetwork-sim-plan-v1")
 	stateDir := t.TempDir()
 	encoded, err := json.Marshal(plan)
 	if err != nil {
@@ -290,7 +318,35 @@ func TestReadPersistedPlanAcceptsSelfHashedV1OnlyAsRevisionAncestor(t *testing.T
 		t.Fatalf("v1 ancestor = %+v, %v", ancestor, err)
 	}
 	if _, err := loadPersistedPlan(cfg, stateDir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
-		t.Fatalf("v1 ancestor was treated as an active v2 plan: %v", err)
+		t.Fatalf("v1 ancestor was treated as an active v3 plan: %v", err)
+	}
+}
+
+func TestReadPersistedPlanAcceptsSelfHashedV2AsRevisionAncestor(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	downgradePlanForCompatibilityTest(t, plan, "urnetwork-sim-plan-v2")
+	stateDir := t.TempDir()
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ancestor, err := readPersistedPlan(stateDir)
+	if err != nil || ancestor.PlanHash != plan.PlanHash {
+		t.Fatalf("v2 ancestor = %+v, %v", ancestor, err)
+	}
+	if _, err := loadPersistedPlan(cfg, stateDir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
+		t.Fatalf("v2 ancestor was treated as an active v3 plan: %v", err)
 	}
 }
 

@@ -120,7 +120,11 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 	r.add("release-lock", true, validateReleaseLock(cfg), cfg.Release.Release)
 	r.add("vault/wallet", true, nonempty(cfg.WalletMaterial, "testnet-wallet is empty"), cfg.WalletPublic)
 	r.add("vault/netuid", true, nonzero(uint64(cfg.Netuid), "testnet-netuid is zero"), fmt.Sprint(cfg.Netuid))
-	r.add("vault/budgets", true, allNonzero(cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei), fmt.Sprintf("tao_rao=%d alpha_rao=%d evm_gas_wei=%d", cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei))
+	budgetErr := allNonzero(cfg.MaximumTAORao, cfg.MaximumAlphaRao)
+	if budgetErr == nil && cfg.MaximumEVMGasWei.IsZero() {
+		budgetErr = errors.New("zero value")
+	}
+	r.add("vault/budgets", true, budgetErr, fmt.Sprintf("tao_rao=%d alpha_rao=%d evm_gas_wei=%s", cfg.MaximumTAORao, cfg.MaximumAlphaRao, cfg.MaximumEVMGasWei))
 	r.add("vault/governance", true, validateGovernanceSeparation(cfg.Vault), "testnet=single-owner mainnet=safe-2-of-3")
 	routingDetail := fmt.Sprintf("mode=%s substrate=%s evm=%s", cfg.OperationalRPCMode, redactURL(cfg.OperationalSubstrate), redactURL(cfg.OperationalEVM))
 	r.add("config/operational-rpcs", true, validateOperationalRPCRouting(cfg), routingDetail)
@@ -179,7 +183,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 				if approved != nil {
 					required = approved.Remaining
 				}
-				planDetail = fmt.Sprintf("tao_rao=%d/%d alpha_rao=%d/%d gas_wei=%d/%d registrations=%d/%d", required.TAORao, plan.Limits.TAORao, required.AlphaRao, plan.Limits.AlphaRao, required.EVMGasWei, plan.Limits.EVMGasWei, required.Registrations, plan.Limits.Registrations)
+				planDetail = fmt.Sprintf("tao_rao=%d/%d alpha_rao=%d/%d gas_wei=%s/%s registrations=%d/%d", required.TAORao, plan.Limits.TAORao, required.AlphaRao, plan.Limits.AlphaRao, required.EVMGasWei, plan.Limits.EVMGasWei, required.Registrations, plan.Limits.Registrations)
 				if approved == nil && facts.WalletFreeTAORao < plan.MaximumSpend.TAORao {
 					planErr = fmt.Errorf("wallet free TAO %d rao is below planned maximum outflow %d rao", facts.WalletFreeTAORao, plan.MaximumSpend.TAORao)
 				}
@@ -263,7 +267,7 @@ func validateApprovedSetupFacts(plan *SetupPlan, current *SetupFacts, remaining 
 		return errors.New("approved plan and finalized setup facts are required")
 	}
 	approved := plan.LiveFacts
-	if plan.Schema == "urnetwork-sim-plan-v2" {
+	if planUsesRegistrationEnvelope(plan.Schema) {
 		if current.MinBurnRao != approved.MinBurnRao || current.MaxBurnRao != approved.MaxBurnRao || current.BurnIncreaseMultQ64 != approved.BurnIncreaseMultQ64 {
 			return fmt.Errorf("registration economics changed from min/max/multiplier %d/%d/%s to %d/%d/%s", approved.MinBurnRao, approved.MaxBurnRao, approved.BurnIncreaseMultQ64, current.MinBurnRao, current.MaxBurnRao, current.BurnIncreaseMultQ64)
 		}

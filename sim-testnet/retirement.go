@@ -19,21 +19,21 @@ import (
 )
 
 type RetirementPlan struct {
-	Schema         string   `json:"schema"`
-	Release        string   `json:"release"`
-	DeploymentID   string   `json:"deployment_id"`
-	ChainID        uint64   `json:"chain_id"`
-	GenesisHash    string   `json:"genesis_hash"`
-	Netuid         uint16   `json:"netuid"`
-	Coordinator    string   `json:"coordinator"`
-	SetupPlanHash  string   `json:"setup_plan_hash"`
-	CurrentEpoch   uint64   `json:"current_epoch"`
-	EffectiveEpoch uint64   `json:"effective_epoch"`
-	Actions        []Action `json:"actions"`
-	MaximumSpend   Spend    `json:"maximum_spend"`
-	ReservedGasWei uint64   `json:"reserved_gas_wei"`
-	PlanHash       string   `json:"plan_hash"`
-	GeneratedAt    string   `json:"generated_at,omitempty"`
+	Schema         string      `json:"schema"`
+	Release        string      `json:"release"`
+	DeploymentID   string      `json:"deployment_id"`
+	ChainID        uint64      `json:"chain_id"`
+	GenesisHash    string      `json:"genesis_hash"`
+	Netuid         uint16      `json:"netuid"`
+	Coordinator    string      `json:"coordinator"`
+	SetupPlanHash  string      `json:"setup_plan_hash"`
+	CurrentEpoch   uint64      `json:"current_epoch"`
+	EffectiveEpoch uint64      `json:"effective_epoch"`
+	Actions        []Action    `json:"actions"`
+	MaximumSpend   Spend       `json:"maximum_spend"`
+	ReservedGasWei DecimalUint `json:"reserved_gas_wei"`
+	PlanHash       string      `json:"plan_hash"`
+	GeneratedAt    string      `json:"generated_at,omitempty"`
 }
 
 func (p RetirementPlan) hash() (string, error) {
@@ -42,13 +42,13 @@ func (p RetirementPlan) hash() (string, error) {
 	return canonicalHashHex(p)
 }
 
-func retirementGasReserve(setup *SetupPlan) (uint64, error) {
+func retirementGasReserve(setup *SetupPlan) (DecimalUint, error) {
 	for _, action := range setup.Actions {
-		if action.ID == "retirement.evm-gas-reserve" && action.Kind == "budget-reserve" && action.Spend.EVMGasWei != 0 {
+		if action.ID == "retirement.evm-gas-reserve" && action.Kind == "budget-reserve" && !action.Spend.EVMGasWei.IsZero() {
 			return action.Spend.EVMGasWei, nil
 		}
 	}
-	return 0, errors.New("approved setup plan has no retirement gas reserve")
+	return "", errors.New("approved setup plan has no retirement gas reserve")
 }
 
 func operatorVersion(values []any) (stabi.STCoordinatorOperatorVersion, error) {
@@ -80,16 +80,29 @@ func buildRetirementPlan(cfg *ResolvedConfig, setup *SetupPlan, deployment *Cont
 		Coordinator: deployment.CoordinatorProxy.Hex(), SetupPlanHash: setup.PlanHash,
 		CurrentEpoch: currentEpoch, EffectiveEpoch: effective, ReservedGasWei: reserved, GeneratedAt: generatedAt.UTC().Format(time.RFC3339),
 	}
-	var allocated uint64
+	allocated := decimalUint64(0)
 	for index, operator := range operators {
 		if !operator.Active || operator.DepositHotkey == ([32]byte{}) || operator.DepositSigner == (common.Address{}) || operator.RootSigner == (common.Address{}) {
 			return nil, fmt.Errorf("operator %d is not an active complete operator at epoch %d", index+1, currentEpoch)
 		}
-		cap := reserved / uint64(len(operators))
-		if index == len(operators)-1 {
-			cap = reserved - allocated
+		cap, capErr := divideDecimalUint(reserved, uint64(len(operators)))
+		if capErr != nil {
+			return nil, capErr
 		}
-		allocated += cap
+		if index == len(operators)-1 {
+			cap, capErr = subtractDecimalUint(reserved, allocated)
+			if capErr != nil {
+				return nil, capErr
+			}
+		}
+		allocated, capErr = addDecimalUint(allocated, cap)
+		if capErr != nil {
+			return nil, capErr
+		}
+		maximumGasUnits, capErr := divideDecimalUint(cap, setup.MaximumEVMFeePerGasWei)
+		if capErr != nil {
+			return nil, capErr
+		}
 		action := Action{
 			ID: fmt.Sprintf("operator.retire.%d.epoch.%d", index+1, effective), Kind: "evm-transaction", Target: fmt.Sprintf("no:%d", index+1),
 			Description: "schedule operator inactive at the next epoch while preserving prior entitlements and claim paths",
@@ -97,21 +110,20 @@ func buildRetirementPlan(cfg *ResolvedConfig, setup *SetupPlan, deployment *Cont
 				"no_id": fmt.Sprint(index + 1), "effective_epoch": fmt.Sprint(effective),
 				"deposit_hotkey": "0x" + hex.EncodeToString(operator.DepositHotkey[:]),
 				"deposit_signer": operator.DepositSigner.Hex(), "root_signer": operator.RootSigner.Hex(),
+				evmMaximumGasUnitsParameter: maximumGasUnits.String(), evmMaximumFeePerGasParameter: strconv.FormatUint(setup.MaximumEVMFeePerGasWei, 10),
 			},
 			Spend: Spend{EVMGasWei: cap},
 		}
-		hash, hashErr := canonicalHashHex(struct {
-			ID, Kind, Target, Description string
-			Parameters                    map[string]string
-			Spend                         Spend
-			DependsOn                     []string
-		}{action.ID, action.Kind, action.Target, action.Description, action.Parameters, action.Spend, action.DependsOn})
+		hash, hashErr := actionIntentHash(action)
 		if hashErr != nil {
 			return nil, hashErr
 		}
 		action.IntentHash = hash
 		p.Actions = append(p.Actions, action)
-		p.MaximumSpend.EVMGasWei += cap
+		p.MaximumSpend.EVMGasWei, capErr = addDecimalUint(p.MaximumSpend.EVMGasWei, cap)
+		if capErr != nil {
+			return nil, capErr
+		}
 	}
 	if p.MaximumSpend.EVMGasWei != reserved {
 		return nil, errors.New("retirement gas allocation does not equal its setup reserve")

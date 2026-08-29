@@ -187,6 +187,7 @@ type BudgetConfig struct {
 	MaximumRegistrations           int    `yaml:"maximum_registrations" json:"maximum_registrations"`
 	MaximumRegistrationBurnRao     uint64 `yaml:"maximum_registration_burn_rao" json:"maximum_registration_burn_rao"`
 	MaximumNativeTransactionFeeRao uint64 `yaml:"maximum_native_transaction_fee_rao" json:"maximum_native_transaction_fee_rao"`
+	MaximumEVMFeePerGasWei         uint64 `yaml:"maximum_evm_fee_per_gas_wei" json:"maximum_evm_fee_per_gas_wei"`
 }
 type SecretConfig struct {
 	GeneratedRoleStore string `yaml:"generated_role_store" json:"generated_role_store"`
@@ -335,7 +336,7 @@ type ResolvedConfig struct {
 	WalletHotkeyPublic   string
 	MaximumTAORao        uint64
 	MaximumAlphaRao      uint64
-	MaximumEVMGasWei     uint64
+	MaximumEVMGasWei     DecimalUint
 	PolicyHash           string
 	ConfigHash           string
 }
@@ -499,8 +500,8 @@ func (c *HarnessConfig) Validate() error {
 	if setupRegistrations != 254 {
 		return fmt.Errorf("initial topology consumes %d registrations, want 254 alongside the two finalized bootstrap UIDs", setupRegistrations)
 	}
-	if c.Budgets.MaximumRegistrationBurnRao == 0 || c.Budgets.MaximumNativeTransactionFeeRao == 0 {
-		return errors.New("maximum registration burn and native transaction fee must be nonzero")
+	if c.Budgets.MaximumRegistrationBurnRao == 0 || c.Budgets.MaximumNativeTransactionFeeRao == 0 || c.Budgets.MaximumEVMFeePerGasWei == 0 {
+		return errors.New("maximum registration burn, native transaction fee, and EVM fee per gas must be nonzero")
 	}
 	if _, _, _, err := resolveOperationalRPCs("127.0.0.1:9944", c.LaunchInputs.PublicSubstrateRPCOverride, c.LaunchInputs.PublicEVMRPCOverride); err != nil {
 		return fmt.Errorf("public RPC override: %w", err)
@@ -537,6 +538,29 @@ func parseUnsignedVaultValue(reference string, value any) (uint64, error) {
 	}
 }
 
+// Convert a vault scalar into an unbounded canonical EVM wei amount.
+func parseDecimalVaultValue(reference string, value any) (DecimalUint, error) {
+	var encoded string
+	switch typed := value.(type) {
+	case int:
+		if typed < 0 {
+			return "", fmt.Errorf("vault value %q is negative", reference)
+		}
+		encoded = strconv.Itoa(typed)
+	case uint64:
+		encoded = strconv.FormatUint(typed, 10)
+	case string:
+		encoded = strings.TrimSpace(typed)
+	default:
+		return "", fmt.Errorf("vault value %q is not a decimal unsigned integer", reference)
+	}
+	parsed, err := parseDecimalUint(encoded)
+	if err != nil {
+		return "", fmt.Errorf("vault value %q: %w", reference, err)
+	}
+	return parsed, nil
+}
+
 func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 	get := func(ref string) (any, error) {
 		const p = "vault://main/st.yml#"
@@ -559,6 +583,13 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 			return 0, e
 		}
 		return parseUnsignedVaultValue(ref, v)
+	}
+	decimalv := func(ref string) (DecimalUint, error) {
+		v, e := get(ref)
+		if e != nil {
+			return "", e
+		}
+		return parseDecimalVaultValue(ref, v)
 	}
 	v, err := get(r.Config.LaunchInputs.Wallet)
 	if err != nil {
@@ -623,7 +654,7 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 	if r.MaximumAlphaRao, err = uintv(r.Config.Budgets.MaximumTotalAlphaRaoFrom); err != nil {
 		return err
 	}
-	if r.MaximumEVMGasWei, err = uintv(r.Config.Budgets.MaximumEVMGasWeiFrom); err != nil {
+	if r.MaximumEVMGasWei, err = decimalv(r.Config.Budgets.MaximumEVMGasWeiFrom); err != nil {
 		return err
 	}
 	if r.WalletMaterial != "" {
@@ -640,7 +671,7 @@ func (r *ResolvedConfig) resolveVaultInputs(require bool) error {
 		if r.Netuid == 0 {
 			return errors.New("testnet-netuid is zero")
 		}
-		if r.MaximumTAORao == 0 || r.MaximumAlphaRao == 0 || r.MaximumEVMGasWei == 0 {
+		if r.MaximumTAORao == 0 || r.MaximumAlphaRao == 0 || r.MaximumEVMGasWei.IsZero() {
 			return errors.New("all three testnet spending limits must be nonzero")
 		}
 		if r.Authority == "" {

@@ -32,7 +32,7 @@ Required `testnet-` keys:
 | `testnet-netuid` | The existing nonzero netuid owned by that wallet. |
 | `testnet-spending-limit-tao-rao` | Maximum total testTAO outflow, as an integer number of rao. |
 | `testnet-spending-limit-alpha-rao` | Maximum existing subnet-alpha transferred into release roles, as integer rao. The wallet must already control a staking hotkey with at least this topology's planned alpha. |
-| `testnet-spending-limit-evm-gas-wei` | Maximum aggregate EVM gas funding/use, as integer wei. |
+| `testnet-spending-limit-evm-gas-wei` | Maximum aggregate EVM gas funding/use, as a canonical nonnegative decimal integer in wei. Quote values above `uint64` in YAML; the release profile uses `"100000000000000000000"` (100 testTAO). |
 | `testnet-operator-api-origins` | Exactly two distinct bare `http(s)://host[:port]` origins, in NO 1/NO 2 order. Each must externally route to the corresponding API port and expose `/status`, `/verify/*`, `/sn/artifact*`, and `/sn/evidence*`. Launch verifies the signed content and history through these origins before publishing a portable manifest. |
 
 The checked-in testnet governance value is `single-owner`; the harness generates
@@ -72,6 +72,18 @@ zero value to the neuron precompile; the runtime deducts the burn from the
 caller mirror. Contract registrations supply the full ceiling and return the
 unburned surplus, so an in-flight price increase cannot produce an underfunded
 call below the approved cap.
+
+Plan schema v3 binds every EVM transaction in two dimensions:
+`maximum_gas_units` and `maximum_fee_per_gas_wei`. The checked-in fee ceiling is
+100 gwei. Fixed setup unit limits are derived from the locked Foundry gas report
+and include the manager's 20% plus 25,000-unit live-estimate margin. Signer
+funding first covers the exact sum of that signer's explicit action ceilings;
+only the remaining campaign allowance is weighted across keeper, deposit, root,
+and claim-relayer roles. The aggregate campaign ceiling uses an arbitrary-size
+canonical decimal so it cannot wrap or stop at the former `uint64` limit of
+approximately 18.45 testTAO. Immediately before signing, the manager rejects a
+fee spike, padded gas growth, aggregate mismatch, or value-plus-gas balance
+shortfall without persisting or broadcasting transaction bytes.
 
 ## Host prerequisites
 

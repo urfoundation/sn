@@ -37,6 +37,10 @@ func TestRetirementPlanIsSeparateFutureEffectiveAndBounded(t *testing.T) {
 		t.Fatalf("retirement plan = %+v", a)
 	}
 	for noID, action := range a.Actions {
+		maximumGasUnits, maximumFeePerGas, envelopeErr := evmActionFeeEnvelope(action)
+		if envelopeErr != nil || maximumGasUnits == 0 || maximumFeePerGas != setup.MaximumEVMFeePerGasWei {
+			t.Fatalf("retirement EVM envelope = %d/%d, %v", maximumGasUnits, maximumFeePerGas, envelopeErr)
+		}
 		if action.Parameters["effective_epoch"] != "26" || action.Parameters["no_id"] != string(rune('1'+noID)) || !strings.Contains(action.Description, "preserving prior entitlements") || action.IntentHash == "" {
 			t.Fatalf("retirement action = %+v", action)
 		}

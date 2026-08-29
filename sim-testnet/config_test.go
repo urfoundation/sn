@@ -140,6 +140,11 @@ func TestHarnessConfigRequiresNativeRegistrationEconomicLimits(t *testing.T) {
 	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "native transaction fee") {
 		t.Fatalf("zero native transaction fee limit was accepted: %v", err)
 	}
+	r = testResolvedConfig(t)
+	r.Config.Budgets.MaximumEVMFeePerGasWei = 0
+	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "EVM fee per gas") {
+		t.Fatalf("zero EVM fee-per-gas limit was accepted: %v", err)
+	}
 }
 
 func TestHarnessConfigRejectsRegistrationBudgetOutsideApprovalRange(t *testing.T) {
@@ -403,6 +408,23 @@ func TestUnsignedVaultValuesRejectNegativeAndOverflow(t *testing.T) {
 	}
 	if value, err := parseUnsignedVaultValue("testnet-limit", " 42 "); err != nil || value != 42 {
 		t.Fatalf("valid unsigned value = %d, %v", value, err)
+	}
+}
+
+func TestDecimalVaultValueAcceptsCampaignGasBeyondUint64OnlyCanonically(t *testing.T) {
+	value, err := parseDecimalVaultValue("testnet-spending-limit-evm-gas-wei", " 100000000000000000000 ")
+	if err != nil || value != DecimalUint("100000000000000000000") {
+		t.Fatalf("large EVM gas vault value = %s, %v", value, err)
+	}
+	for name, input := range map[string]any{
+		"negative":       "-1",
+		"leading zero":   "01",
+		"fraction":       "1.5",
+		"floating value": 1.5,
+	} {
+		if _, err := parseDecimalVaultValue("testnet-spending-limit-evm-gas-wei", input); err == nil {
+			t.Errorf("%s decimal vault value %v was accepted", name, input)
+		}
 	}
 }
 

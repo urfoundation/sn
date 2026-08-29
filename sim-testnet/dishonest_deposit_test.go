@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
@@ -33,6 +34,26 @@ func TestDishonestDepositActionIsExactAndBounded(t *testing.T) {
 	wrongEpoch.Parameters["target_epoch"] = "current"
 	if _, _, err := dishonestDepositParameters(wrongEpoch); err == nil {
 		t.Fatal("dishonest action accepted an unfenced epoch")
+	}
+}
+
+func TestDishonestDepositPlannedEVMEnvelopeRemainsExactAndParseable(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := actionByID(t, plan, dishonestDepositActionID)
+	if _, _, err := dishonestDepositParameters(action); err != nil {
+		t.Fatalf("planned dishonest-deposit envelope was rejected: %v", err)
+	}
+	delete(action.Parameters, evmMaximumFeePerGasParameter)
+	if _, _, err := dishonestDepositParameters(action); err == nil {
+		t.Fatal("partial dishonest-deposit EVM envelope was accepted")
 	}
 }
 

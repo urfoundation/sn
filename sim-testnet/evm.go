@@ -271,6 +271,55 @@ func (m *EVMTxManager) PendingNonce(ctx context.Context) (uint64, error) {
 	return m.client.PendingNonceAt(ctx, crypto.PubkeyToAddress(m.key.PublicKey))
 }
 
+// Apply the fixed live-estimate margin without allowing a hostile or malformed
+// RPC result to wrap the uint64 gas limit.
+func paddedEVMGas(estimatedGas uint64) (uint64, error) {
+	padded, ok := checkedAdd(estimatedGas, estimatedGas/5)
+	if !ok {
+		return 0, errors.New("EVM gas estimate margin overflow")
+	}
+	padded, ok = checkedAdd(padded, 25_000)
+	if !ok {
+		return 0, errors.New("EVM gas estimate fixed margin overflow")
+	}
+	return padded, nil
+}
+
+// Enforce gas units, fee price, aggregate spend, value, and current signer
+// balance together before any transaction bytes are persisted or broadcast.
+func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, balance, value *big.Int) (uint64, *big.Int, error) {
+	maximumGasUnits, maximumFeePerGas, err := evmActionFeeEnvelope(action)
+	if err != nil {
+		return 0, nil, err
+	}
+	if feeCap == nil || feeCap.Sign() < 0 || !feeCap.IsUint64() || feeCap.Uint64() > maximumFeePerGas {
+		return 0, nil, fmt.Errorf("%s live fee cap %v exceeds approved fee-per-gas ceiling %d", action.ID, feeCap, maximumFeePerGas)
+	}
+	gas, err := paddedEVMGas(estimatedGas)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%s: %w", action.ID, err)
+	}
+	if gas > maximumGasUnits {
+		return 0, nil, fmt.Errorf("%s padded gas %d exceeds approved gas-unit ceiling %d", action.ID, gas, maximumGasUnits)
+	}
+	maximumCost := new(big.Int).Mul(new(big.Int).SetUint64(gas), feeCap)
+	actionCeiling, ceilingErr := action.Spend.EVMGasWei.Big()
+	if ceilingErr != nil {
+		return 0, nil, fmt.Errorf("%s action ceiling: %w", action.ID, ceilingErr)
+	}
+	if maximumCost.Cmp(actionCeiling) > 0 {
+		return 0, nil, fmt.Errorf("%s maximum gas cost %s exceeds action ceiling %s", action.ID, maximumCost, action.Spend.EVMGasWei)
+	}
+	if balance == nil || balance.Sign() < 0 || value == nil || value.Sign() < 0 {
+		return 0, nil, fmt.Errorf("%s has invalid signer balance or transaction value", action.ID)
+	}
+	required := new(big.Int).Add(new(big.Int).Set(maximumCost), value)
+	if balance.Cmp(required) < 0 {
+		return 0, nil, fmt.Errorf("%s signer balance %s is below value-plus-maximum-gas requirement %s", action.ID, balance, required)
+	}
+	return gas, maximumCost, nil
+}
+
 func (m *EVMTxManager) Send(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".rlp")
@@ -304,15 +353,25 @@ func (m *EVMTxManager) Send(ctx context.Context, planHash string, a Action, to *
 	if header.BaseFee != nil {
 		feeCap.Add(new(big.Int).Mul(header.BaseFee, big.NewInt(2)), tip)
 	}
+	_, maximumFeePerGas, err := evmActionFeeEnvelope(a)
+	if err != nil {
+		return nil, err
+	}
+	if !feeCap.IsUint64() || feeCap.Uint64() > maximumFeePerGas {
+		return nil, fmt.Errorf("%s live fee cap %s exceeds approved fee-per-gas ceiling %d", a.ID, feeCap, maximumFeePerGas)
+	}
 	msg := ethereum.CallMsg{From: from, To: to, Value: value, Data: data, GasTipCap: tip, GasFeeCap: feeCap}
-	gas, err := m.client.EstimateGas(ctx, msg)
+	estimatedGas, err := m.client.EstimateGas(ctx, msg)
 	if err != nil {
 		return nil, fmt.Errorf("estimate %s: %w", a.ID, err)
 	}
-	gas = gas + gas/5 + 25_000
-	maxCost := new(big.Int).Mul(new(big.Int).SetUint64(gas), feeCap)
-	if maxCost.BitLen() > 64 || maxCost.Uint64() > a.Spend.EVMGasWei {
-		return nil, fmt.Errorf("%s maximum gas %s exceeds action ceiling %d", a.ID, maxCost, a.Spend.EVMGasWei)
+	balance, err := m.client.BalanceAt(ctx, from, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read %s signer balance: %w", a.ID, err)
+	}
+	gas, _, err := validateEVMTransactionEnvelope(a, estimatedGas, feeCap, balance, value)
+	if err != nil {
+		return nil, err
 	}
 	tx := types.NewTx(&types.DynamicFeeTx{ChainID: m.chainID, Nonce: nonce, GasTipCap: tip, GasFeeCap: feeCap, Gas: gas, To: to, Value: value, Data: data})
 	signed, err := types.SignTx(tx, types.LatestSignerForChainID(m.chainID), m.key)

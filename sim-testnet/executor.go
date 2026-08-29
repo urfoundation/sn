@@ -194,12 +194,16 @@ func remainingPlanSpend(plan *SetupPlan, entries []JournalEntry) (Spend, error) 
 		if !verified[action.ID+"\x00"+action.IntentHash] || action.Kind == "budget-reserve" {
 			continue
 		}
-		if action.Spend.TAORao > remaining.TAORao || action.Spend.AlphaRao > remaining.AlphaRao || action.Spend.EVMGasWei > remaining.EVMGasWei || action.Spend.Registrations > remaining.Registrations || action.Spend.SubnetCreations > remaining.SubnetCreations {
+		gasComparison, gasErr := action.Spend.EVMGasWei.Cmp(remaining.EVMGasWei)
+		if gasErr != nil || action.Spend.TAORao > remaining.TAORao || action.Spend.AlphaRao > remaining.AlphaRao || gasComparison > 0 || action.Spend.Registrations > remaining.Registrations || action.Spend.SubnetCreations > remaining.SubnetCreations {
 			return Spend{}, fmt.Errorf("verified action %s spend exceeds the approved remaining budget", action.ID)
 		}
 		remaining.TAORao -= action.Spend.TAORao
 		remaining.AlphaRao -= action.Spend.AlphaRao
-		remaining.EVMGasWei -= action.Spend.EVMGasWei
+		remaining.EVMGasWei, gasErr = subtractDecimalUint(remaining.EVMGasWei, action.Spend.EVMGasWei)
+		if gasErr != nil {
+			return Spend{}, fmt.Errorf("subtract verified action %s gas spend: %w", action.ID, gasErr)
+		}
 		remaining.Registrations -= action.Spend.Registrations
 		remaining.SubnetCreations -= action.Spend.SubnetCreations
 	}
@@ -395,7 +399,7 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	if p.Schema != "urnetwork-sim-plan-v2" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
+	if p.Schema != "urnetwork-sim-plan-v3" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
 		return nil, errPersistedPlanIdentityMismatch
 	}
 	roles, err := derivePublicRoles(cfg)
@@ -422,7 +426,7 @@ func readPersistedPlan(stateDir string) (*SetupPlan, error) {
 	if err := json.Unmarshal(b, &p); err != nil {
 		return nil, fmt.Errorf("persisted setup plan: %w", err)
 	}
-	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" {
+	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" && p.Schema != "urnetwork-sim-plan-v3" {
 		return nil, fmt.Errorf("persisted setup plan has unsupported schema %q", p.Schema)
 	}
 	want := p.PlanHash

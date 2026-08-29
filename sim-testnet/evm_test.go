@@ -61,6 +61,68 @@ func TestEVMFundingDeltaRejectsImpossibleAndOverflowingState(t *testing.T) {
 	}
 }
 
+func TestReserveDeploymentEnvelopeReproducesAndFixesLiveGasIncident(t *testing.T) {
+	const (
+		estimatedGas = uint64(418_811)
+		liveFeeCap   = uint64(40_268_567_174)
+	)
+	incident := Action{
+		ID: "evm.reserve-sink", Kind: "evm-transaction",
+		Parameters: map[string]string{evmMaximumGasUnitsParameter: "20901", evmMaximumFeePerGasParameter: "100000000000"},
+		Spend:      Spend{EVMGasWei: DecimalUint("2090195084874588")},
+	}
+	balance := new(big.Int).SetUint64(1_000_000_000_000_000_000)
+	if _, _, err := validateEVMTransactionEnvelope(incident, estimatedGas, new(big.Int).SetUint64(liveFeeCap), balance, new(big.Int)); err == nil || !strings.Contains(err.Error(), "gas-unit ceiling") {
+		t.Fatalf("live under-allocation incident was not reproduced: %v", err)
+	}
+	corrected := incident
+	corrected.Parameters = map[string]string{evmMaximumGasUnitsParameter: "600000", evmMaximumFeePerGasParameter: "100000000000"}
+	corrected.Spend.EVMGasWei = DecimalUint("60000000000000000")
+	gas, maximumCost, err := validateEVMTransactionEnvelope(corrected, estimatedGas, new(big.Int).SetUint64(liveFeeCap), balance, new(big.Int))
+	if err != nil || gas != 527_573 || maximumCost == nil || maximumCost.String() != "21244608789688702" {
+		t.Fatalf("corrected live envelope = gas %d cost %v, %v", gas, maximumCost, err)
+	}
+}
+
+func TestEVMTransactionEnvelopeRejectsAdjacentGasFeeBalanceAndEncodingDrift(t *testing.T) {
+	baseline := Action{
+		ID: "evm.reserve-sink", Kind: "evm-transaction",
+		Parameters: map[string]string{evmMaximumGasUnitsParameter: "600000", evmMaximumFeePerGasParameter: "100000000000"},
+		Spend:      Spend{EVMGasWei: DecimalUint("60000000000000000")},
+	}
+	fee := new(big.Int).SetUint64(40_268_567_174)
+	balance := new(big.Int).SetUint64(1_000_000_000_000_000_000)
+	belowProduct := baseline
+	belowProduct.Spend.EVMGasWei = DecimalUint("59999999999999999")
+	excessRemainder := baseline
+	excessRemainder.Spend.EVMGasWei = DecimalUint("60000100000000000")
+	tests := []struct {
+		name      string
+		action    Action
+		estimate  uint64
+		fee       *big.Int
+		balance   *big.Int
+		value     *big.Int
+		wantError string
+	}{
+		{name: "fee above approval", action: baseline, estimate: 418_811, fee: new(big.Int).SetUint64(100_000_000_001), balance: balance, value: new(big.Int), wantError: "fee-per-gas ceiling"},
+		{name: "negative fee", action: baseline, estimate: 418_811, fee: big.NewInt(-1), balance: balance, value: new(big.Int), wantError: "fee-per-gas ceiling"},
+		{name: "fee above uint64", action: baseline, estimate: 418_811, fee: new(big.Int).Lsh(big.NewInt(1), 65), balance: balance, value: new(big.Int), wantError: "fee-per-gas ceiling"},
+		{name: "gas above approval", action: baseline, estimate: 480_001, fee: fee, balance: balance, value: new(big.Int), wantError: "gas-unit ceiling"},
+		{name: "estimate overflow", action: baseline, estimate: math.MaxUint64, fee: fee, balance: balance, value: new(big.Int), wantError: "overflow"},
+		{name: "missing balance", action: baseline, estimate: 418_811, fee: fee, value: new(big.Int), wantError: "invalid signer balance"},
+		{name: "missing value", action: baseline, estimate: 418_811, fee: fee, balance: balance, wantError: "invalid signer balance"},
+		{name: "value plus gas underfunded", action: baseline, estimate: 418_811, fee: fee, balance: new(big.Int).SetUint64(21_244_608_789_688_702), value: big.NewInt(1), wantError: "value-plus-maximum-gas"},
+		{name: "aggregate below product", action: belowProduct, estimate: 418_811, fee: fee, balance: balance, value: new(big.Int), wantError: "do not match"},
+		{name: "aggregate has hidden gas unit", action: excessRemainder, estimate: 418_811, fee: fee, balance: balance, value: new(big.Int), wantError: "do not match"},
+	}
+	for _, test := range tests {
+		if _, _, err := validateEVMTransactionEnvelope(test.action, test.estimate, test.fee, test.balance, test.value); err == nil || !strings.Contains(err.Error(), test.wantError) {
+			t.Errorf("%s error = %v, want %q", test.name, err, test.wantError)
+		}
+	}
+}
+
 func TestNeuronRegistrationTransactionUsesMirrorBalanceAndBindsLimit(t *testing.T) {
 	parsed, err := abi.JSON(strings.NewReader(neuronSetupABI))
 	if err != nil {

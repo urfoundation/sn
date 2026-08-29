@@ -65,7 +65,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		t.Fatalf("EVM funding actions = %d, want %d", evmFundingActions, wantEVMFundingActions)
 	}
 	if plan.MaximumSpend.EVMGasWei != cfg.MaximumEVMGasWei {
-		t.Fatalf("gas plan = %d, want exact campaign ceiling %d", plan.MaximumSpend.EVMGasWei, cfg.MaximumEVMGasWei)
+		t.Fatalf("gas plan = %s, want exact campaign ceiling %s", plan.MaximumSpend.EVMGasWei, cfg.MaximumEVMGasWei)
 	}
 	wantAlpha := cfg.Policy.Deposit.TotalTestCampaignCapRao + uint64(cfg.Config.Topology.Validators)*cfg.Policy.Deposit.EpochCapRaoPerOperator
 	if plan.MaximumSpend.AlphaRao != wantAlpha {
@@ -78,7 +78,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao {
 		t.Fatalf("registration burn limit = %d, want %d", plan.RegistrationBurnLimitRao, cfg.Config.Budgets.MaximumRegistrationBurnRao)
 	}
-	if plan.Schema != "urnetwork-sim-plan-v2" || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao {
+	if plan.Schema != "urnetwork-sim-plan-v3" || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || plan.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei {
 		t.Fatalf("plan schema/native fee limit = %q/%d", plan.Schema, plan.NativeTransactionFeeLimitRao)
 	}
 	if plan.BootstrapBurnHalfLifeBlocks != 1 || plan.ProductionBurnHalfLifeBlocks != 360 || plan.LiveFacts.MinBurnRao != 500_000 || plan.LiveFacts.BurnIncreaseMultQ64 != "23058430092136939520" {
@@ -122,7 +122,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		if !seen[id] {
 			t.Fatalf("precompile action %s is missing", id)
 		}
-		if actions[id].Kind == "evm-transaction" && actions[id].Spend.EVMGasWei == 0 {
+		if actions[id].Kind == "evm-transaction" && actions[id].Spend.EVMGasWei.IsZero() {
 			t.Fatalf("precompile transaction %s has no gas ceiling", id)
 		}
 	}
@@ -130,23 +130,23 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		t.Fatalf("precompile economic gate/dependency is not exact: seed=%+v governance=%+v", actions["precompile.seed"], actions["governance.guardian-pause"])
 	}
 	for _, id := range []string{"governance.guardian-pause", "governance.upgrade-adversary", "governance.probe-custody", "governance.restore-coordinator", "governance.guardian-unpause"} {
-		if !seen[id] || actions[id].Spend.EVMGasWei == 0 {
+		if !seen[id] || actions[id].Spend.EVMGasWei.IsZero() {
 			t.Fatalf("governance drill action %s is missing or unbudgeted", id)
 		}
 	}
 	production := actions["production.schedule-policy"]
-	if production.Parameters["epoch_blocks"] != "2400" || production.Parameters["after_accelerated_epochs"] != "20" || production.Spend.EVMGasWei == 0 || actions["retirement.evm-gas-reserve"].Spend.EVMGasWei == 0 {
+	if production.Parameters["epoch_blocks"] != "2400" || production.Parameters["after_accelerated_epochs"] != "20" || production.Spend.EVMGasWei.IsZero() || actions["retirement.evm-gas-reserve"].Spend.EVMGasWei.IsZero() {
 		t.Fatalf("production/retirement reservations are incomplete: production=%+v retirement=%+v", production, actions["retirement.evm-gas-reserve"])
 	}
 	dishonest := actions[dishonestDepositActionID]
-	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "1" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei == 0 || !slices.Contains(dishonest.DependsOn, "production.hyperparameter.immunity_period") {
+	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "1" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei.IsZero() || !slices.Contains(dishonest.DependsOn, "production.hyperparameter.immunity_period") {
 		t.Fatalf("dishonest deposit action is not exact and production-fenced: %+v", dishonest)
 	}
 	if !slices.Contains(actions["production.hyperparameter.burn_half_life"].DependsOn, "production.schedule-policy") || !slices.Contains(actions["production.hyperparameter.immunity_period"].DependsOn, "production.hyperparameter.burn_half_life") {
 		t.Fatalf("production hyperparameter transition is not an exact topological chain: burn=%+v immunity=%+v", actions["production.hyperparameter.burn_half_life"], actions["production.hyperparameter.immunity_period"])
 	}
 	voluntary := actions["campaign.voluntary-conviction.1"]
-	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Spend.EVMGasWei == 0 || actions["alpha.transfer.operator-deposit.1"].Spend.AlphaRao != 3_250_000_000 || actions["alpha.transfer.operator-deposit.2"].Spend.AlphaRao != 2_250_000_000 {
+	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Spend.EVMGasWei.IsZero() || actions["alpha.transfer.operator-deposit.1"].Spend.AlphaRao != 3_250_000_000 || actions["alpha.transfer.operator-deposit.2"].Spend.AlphaRao != 2_250_000_000 {
 		t.Fatalf("campaign allocations are not exact: voluntary=%+v op1=%+v op2=%+v", voluntary, actions["alpha.transfer.operator-deposit.1"], actions["alpha.transfer.operator-deposit.2"])
 	}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
@@ -349,7 +349,7 @@ func TestValidatePlanBudgetRejectsMismatchedMaximumSpend(t *testing.T) {
 	for _, mutation := range []func(*Spend){
 		func(spend *Spend) { spend.TAORao-- },
 		func(spend *Spend) { spend.AlphaRao-- },
-		func(spend *Spend) { spend.EVMGasWei-- },
+		func(spend *Spend) { spend.EVMGasWei = decimalUint64(1) },
 		func(spend *Spend) { spend.Registrations-- },
 	} {
 		plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
@@ -371,13 +371,133 @@ func TestMaximumActionSpendRejectsEveryIntegerOverflow(t *testing.T) {
 	}{
 		{name: "tao", actions: []Action{{Spend: Spend{TAORao: math.MaxUint64}}, {Spend: Spend{TAORao: 1}}}, want: "TAO"},
 		{name: "alpha", actions: []Action{{Spend: Spend{AlphaRao: math.MaxUint64}}, {Spend: Spend{AlphaRao: 1}}}, want: "alpha"},
-		{name: "gas", actions: []Action{{Spend: Spend{EVMGasWei: math.MaxUint64}}, {Spend: Spend{EVMGasWei: 1}}}, want: "gas"},
 		{name: "registrations", actions: []Action{{Spend: Spend{Registrations: math.MaxUint32}}, {Spend: Spend{Registrations: 1}}}, want: "registration"},
 		{name: "subnet creations", actions: []Action{{Spend: Spend{SubnetCreations: math.MaxUint32}}, {Spend: Spend{SubnetCreations: 1}}}, want: "subnet-creation"},
 	}
 	for _, test := range tests {
 		if _, err := maximumActionSpend(test.actions); err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Errorf("%s overflow error=%v, want substring %q", test.name, err, test.want)
+		}
+	}
+}
+
+func TestMaximumActionSpendSupportsAggregateEVMWeiBeyondUint64(t *testing.T) {
+	actions := []Action{
+		{Spend: Spend{EVMGasWei: decimalUint64(math.MaxUint64)}},
+		{Spend: Spend{EVMGasWei: DecimalUint("100000000000000000000")}},
+	}
+	maximum, err := maximumActionSpend(actions)
+	if err != nil || maximum.EVMGasWei != DecimalUint("118446744073709551615") {
+		t.Fatalf("arbitrary-precision gas maximum = %s, %v", maximum.EVMGasWei, err)
+	}
+}
+
+func TestPlanFundsEveryEVMSignerForItsExplicitWorstCaseBeforeCampaignShare(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := map[string]Action{}
+	required := map[string]DecimalUint{
+		"deployer": decimalUint64(0), "owner": decimalUint64(0), "guardian": decimalUint64(0),
+		"commitment-oracle": decimalUint64(0), "keeper": decimalUint64(0),
+		"operator-1-deposit": decimalUint64(0), "operator-2-deposit": decimalUint64(0),
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		required[fmt.Sprintf("operator-%d-root", operator)] = decimalUint64(0)
+		required[fmt.Sprintf("operator-%d-claim-relayer", operator)] = decimalUint64(0)
+	}
+	addRequired := func(role string, amount DecimalUint) {
+		updated, addErr := addDecimalUint(required[role], amount)
+		if addErr != nil {
+			t.Fatal(addErr)
+		}
+		required[role] = updated
+	}
+	for _, action := range plan.Actions {
+		actions[action.ID] = action
+		if action.Kind == "evm-transaction" {
+			maximumGasUnits, maximumFeePerGas, envelopeErr := evmActionFeeEnvelope(action)
+			if envelopeErr != nil || maximumGasUnits == 0 || maximumFeePerGas != plan.MaximumEVMFeePerGasWei {
+				t.Fatalf("action %s EVM envelope = %d/%d, %v", action.ID, maximumGasUnits, maximumFeePerGas, envelopeErr)
+			}
+		}
+		switch {
+		case action.Kind == "evm-transaction" && strings.HasPrefix(action.ID, "evm."):
+			addRequired("deployer", action.Spend.EVMGasWei)
+		case action.Kind == "evm-transaction" && strings.HasPrefix(action.ID, "precompile."):
+			addRequired("deployer", action.Spend.EVMGasWei)
+		case strings.HasPrefix(action.ID, "operator.register.") || action.ID == "production.schedule-policy":
+			addRequired("owner", action.Spend.EVMGasWei)
+		case strings.HasPrefix(action.ID, "operator.deposit.register."):
+			addRequired(fmt.Sprintf("operator-%d-deposit", suffixInt(action.ID)), action.Spend.EVMGasWei)
+		case strings.HasPrefix(action.ID, "fleet.mirror."):
+			addRequired("commitment-oracle", action.Spend.EVMGasWei)
+		case strings.HasPrefix(action.ID, "fleet.bind."):
+			addRequired("keeper", action.Spend.EVMGasWei)
+		case action.ID == "campaign.voluntary-conviction.1":
+			addRequired("operator-1-deposit", action.Spend.EVMGasWei)
+		case action.ID == dishonestDepositActionID:
+			addRequired("operator-2-deposit", action.Spend.EVMGasWei)
+		case action.ID == "governance.guardian-pause" || action.ID == "governance.guardian-unpause":
+			addRequired("guardian", action.Spend.EVMGasWei)
+		case strings.HasPrefix(action.ID, "governance."):
+			addRequired("owner", action.Spend.EVMGasWei)
+		}
+	}
+	addRequired("owner", actions["retirement.evm-gas-reserve"].Spend.EVMGasWei)
+	if gasUnits, _, err := evmActionFeeEnvelope(actions["evm.reserve-sink"]); err != nil || gasUnits != 600_000 {
+		t.Fatalf("reserve deployment gas units = %d, %v", gasUnits, err)
+	}
+	nonGasRao := map[string]uint64{
+		"deployer":           cfg.Config.Budgets.MaximumRegistrationBurnRao + plan.LiveFacts.ProbeTAORao,
+		"owner":              uint64(cfg.Config.Topology.Operators) * cfg.Config.Budgets.MaximumRegistrationBurnRao,
+		"operator-1-deposit": cfg.Config.Budgets.MaximumRegistrationBurnRao,
+		"operator-2-deposit": cfg.Config.Budgets.MaximumRegistrationBurnRao,
+	}
+	for role, requiredWei := range required {
+		funding := actions["evm.fund-"+role]
+		usableRao, parseErr := strconv.ParseUint(funding.Parameters["usable_evm_rao"], 10, 64)
+		if parseErr != nil || usableRao < nonGasRao[role] {
+			t.Fatalf("role %s usable funding = %d, %v", role, usableRao, parseErr)
+		}
+		availableWei := multiplyUint64Decimal(usableRao-nonGasRao[role], evmWeiPerRao)
+		comparison, compareErr := availableWei.Cmp(requiredWei)
+		if compareErr != nil || comparison < 0 || requiredWei.IsZero() && availableWei.IsZero() {
+			t.Errorf("role %s gas funding %s is below explicit action ceilings %s: %v", role, availableWei, requiredWei, compareErr)
+		}
+	}
+}
+
+func TestSetupEVMGasUnitLimitsCoverLockedAndLiveEstimatesAfterManagerPadding(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	limits := setupEVMGasUnitLimits(cfg)
+	observations := []struct {
+		id     string
+		rawGas uint64
+	}{
+		{id: "evm.reserve-sink", rawGas: 418_811},
+		{id: "evm.settlement-vault", rawGas: 1_575_034},
+		{id: "evm.coordinator-implementation", rawGas: 4_420_224},
+		{id: "evm.vault-register-escrow", rawGas: 147_626 + 126_776},
+		{id: "evm.coordinator-proxy", rawGas: 481_355 + 356_604},
+		{id: "evm.governance-drill-implementation", rawGas: 4_599_958},
+		{id: "evm.vault-fix-coordinator", rawGas: 31_153},
+		{id: "evm.sink-fix-recorder", rawGas: 47_731},
+		{id: "operator.deposit.register.1", rawGas: 126_776},
+		{id: "operator.register.1", rawGas: 392_574},
+		{id: "fleet.mirror.1", rawGas: 76_057},
+		{id: "fleet.bind.1.1", rawGas: 256_592},
+	}
+	for _, observation := range observations {
+		padded, err := paddedEVMGas(observation.rawGas)
+		if err != nil || limits[observation.id] < padded {
+			t.Errorf("%s unit limit %d is below padded observation %d from raw %d: %v", observation.id, limits[observation.id], padded, observation.rawGas, err)
 		}
 	}
 }
@@ -498,7 +618,7 @@ func TestBuildPlanFailsClosedOnEveryBudget(t *testing.T) {
 		"alpha limit":         func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumAlphaRao = 1 },
 		"alpha availability":  func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaAvailableRao = 1 },
 		"tao limit":           func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumTAORao = 1 },
-		"gas limit":           func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumEVMGasWei = 1 },
+		"gas limit":           func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumEVMGasWei = decimalUint64(1) },
 		"registration burn":   func(c *ResolvedConfig, f *SetupFacts) { f.BurnRao = c.Config.Budgets.MaximumRegistrationBurnRao + 1 },
 		"existential deposit": func(_ *ResolvedConfig, f *SetupFacts) { f.ExistentialDepositRao = 0 },
 	} {
@@ -530,7 +650,7 @@ func TestEVMFundingTermsRejectEveryApprovalDrift(t *testing.T) {
 		"deposit drift":      func(a *Action) { a.Parameters["existential_deposit_rao"] = "501" },
 		"spend below":        func(a *Action) { a.Spend.TAORao-- },
 		"spend above":        func(a *Action) { a.Spend.TAORao++ },
-		"cross-budget spend": func(a *Action) { a.Spend.EVMGasWei = 1 },
+		"cross-budget spend": func(a *Action) { a.Spend.EVMGasWei = decimalUint64(1) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			action := base

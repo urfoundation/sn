@@ -17,11 +17,11 @@ import (
 )
 
 type Spend struct {
-	TAORao          uint64 `json:"tao_rao"`
-	AlphaRao        uint64 `json:"alpha_rao"`
-	EVMGasWei       uint64 `json:"evm_gas_wei"`
-	Registrations   uint32 `json:"registrations"`
-	SubnetCreations uint32 `json:"subnet_creations"`
+	TAORao          uint64      `json:"tao_rao"`
+	AlphaRao        uint64      `json:"alpha_rao"`
+	EVMGasWei       DecimalUint `json:"evm_gas_wei"`
+	Registrations   uint32      `json:"registrations"`
+	SubnetCreations uint32      `json:"subnet_creations"`
 }
 type Action struct {
 	ID          string            `json:"id"`
@@ -33,6 +33,12 @@ type Action struct {
 	DependsOn   []string          `json:"depends_on,omitempty"`
 	IntentHash  string            `json:"intent_hash"`
 }
+
+const (
+	evmMaximumGasUnitsParameter  = "maximum_gas_units"
+	evmMaximumFeePerGasParameter = "maximum_fee_per_gas_wei"
+)
+
 type SetupPlan struct {
 	Schema                       string      `json:"schema"`
 	Release                      string      `json:"release"`
@@ -45,6 +51,7 @@ type SetupPlan struct {
 	LiveFacts                    SetupFacts  `json:"live_facts"`
 	RegistrationBurnLimitRao     uint64      `json:"registration_burn_limit_rao"`
 	NativeTransactionFeeLimitRao uint64      `json:"native_transaction_fee_limit_rao,omitempty"`
+	MaximumEVMFeePerGasWei       uint64      `json:"maximum_evm_fee_per_gas_wei,omitempty"`
 	BootstrapBurnHalfLifeBlocks  uint16      `json:"bootstrap_burn_half_life_blocks,omitempty"`
 	ProductionBurnHalfLifeBlocks uint16      `json:"production_burn_half_life_blocks,omitempty"`
 	PriorPlanHashes              []string    `json:"prior_plan_hashes,omitempty"`
@@ -72,6 +79,47 @@ func configuredPlanLimits(cfg *ResolvedConfig) Spend {
 		TAORao: cfg.MaximumTAORao, AlphaRao: cfg.MaximumAlphaRao, EVMGasWei: cfg.MaximumEVMGasWei,
 		Registrations: uint32(cfg.Config.Budgets.MaximumRegistrations), SubnetCreations: uint32(cfg.Config.Budgets.MaximumSubnetCreations),
 	}
+}
+
+// Distinguish legacy plans from registration-envelope plans and the current
+// EVM fee-envelope revision without parsing arbitrary schema strings.
+func planUsesRegistrationEnvelope(schema string) bool {
+	return schema == "urnetwork-sim-plan-v2" || schema == "urnetwork-sim-plan-v3"
+}
+
+// Identify plans whose EVM transactions bind gas units and fee price
+// independently in addition to their aggregate wei ceiling.
+func planUsesEVMFeeEnvelope(schema string) bool {
+	return schema == "urnetwork-sim-plan-v3"
+}
+
+// Derive setup unit ceilings from the locked Foundry gas report with margin
+// for live runtime/precompile accounting and the manager's padded estimate.
+func setupEVMGasUnitLimits(cfg *ResolvedConfig) map[string]uint64 {
+	limits := map[string]uint64{
+		"evm.reserve-sink":                    600_000,
+		"evm.settlement-vault":                2_200_000,
+		"evm.coordinator-implementation":      6_000_000,
+		"evm.vault-register-escrow":           1_000_000,
+		"evm.coordinator-proxy":               1_500_000,
+		"evm.governance-drill-implementation": 6_000_000,
+		"evm.vault-fix-coordinator":           150_000,
+		"evm.sink-fix-recorder":               150_000,
+	}
+	if cfg == nil || cfg.Config == nil {
+		return limits
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		limits[fmt.Sprintf("operator.deposit.register.%d", operator)] = 1_000_000
+		limits[fmt.Sprintf("operator.register.%d", operator)] = 600_000
+	}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		limits[fmt.Sprintf("fleet.mirror.%d", fleet)] = 150_000
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			limits[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)] = 400_000
+		}
+	}
+	return limits
 }
 
 // Bind every executable field used to distinguish an action across plan
@@ -128,7 +176,7 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 		WalletHotkeyPublic   string
 		MaximumTAORao        uint64
 		MaximumAlphaRao      uint64
-		MaximumEVMGasWei     uint64
+		MaximumEVMGasWei     DecimalUint
 	}{
 		ChainID: cfg.ChainID, Netuid: cfg.Netuid, PrivateAuthority: cfg.Authority,
 		OperationalRPCMode: cfg.OperationalRPCMode, OperationalSubstrate: cfg.OperationalSubstrate, OperationalEVM: cfg.OperationalEVM,
@@ -260,8 +308,18 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	p := &SetupPlan{Schema: "urnetwork-sim-plan-v2", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
+	p := &SetupPlan{Schema: "urnetwork-sim-plan-v3", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, MaximumEVMFeePerGasWei: cfg.Config.Budgets.MaximumEVMFeePerGasWei, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
 	add := func(a Action) {
+		if a.Kind == "evm-transaction" {
+			parameters := make(map[string]string, len(a.Parameters)+2)
+			for key, value := range a.Parameters {
+				parameters[key] = value
+			}
+			maximumGasUnits, _ := divideDecimalUint(a.Spend.EVMGasWei, p.MaximumEVMFeePerGasWei)
+			parameters[evmMaximumGasUnitsParameter] = maximumGasUnits.String()
+			parameters[evmMaximumFeePerGasParameter] = strconv.FormatUint(p.MaximumEVMFeePerGasWei, 10)
+			a.Parameters = parameters
+		}
 		h, _ := actionIntentHash(a)
 		a.IntentHash = h
 		p.Actions = append(p.Actions, a)
@@ -332,92 +390,204 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		return nil, fmt.Errorf("operator %d campaign remainder overflow", operatorCount)
 	}
 
-	// The setup and live campaign share one gas ceiling. Every setup
-	// transaction gets a weighted cap; the unspent remainder is reserved for
-	// operator deposits/roots, keepers, and claims during the scenario.
-	gasWeights := map[string]uint64{
-		"evm.reserve-sink": 5, "evm.settlement-vault": 8,
-		"evm.coordinator-implementation": 25, "evm.coordinator-proxy": 15,
-		"evm.governance-drill-implementation": 25,
-		"evm.vault-register-escrow":           5,
-		"evm.vault-fix-coordinator":           2, "evm.sink-fix-recorder": 2,
-	}
-	for i := 1; i <= operatorCount; i++ {
-		gasWeights[fmt.Sprintf("operator.deposit.register.%d", i)] = 3
-		gasWeights[fmt.Sprintf("operator.register.%d", i)] = 8
-	}
-	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
-		gasWeights[fmt.Sprintf("fleet.mirror.%d", fleet)] = 3
-		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
-			gasWeights[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)] = 4
-		}
-	}
-	setupGasBudget, ok := mulDivFloor(cfg.MaximumEVMGasWei, 55, 100)
-	if !ok {
-		return nil, fmt.Errorf("EVM setup gas calculation overflow")
-	}
-	var totalWeight uint64
-	for _, weight := range gasWeights {
-		totalWeight += weight
-	}
-	gasCaps := map[string]uint64{}
-	var allocatedSetupGas uint64
-	gasIDs := make([]string, 0, len(gasWeights))
-	for id := range gasWeights {
+	// Gas-report-derived unit ceilings prevent the many low-cost fleet calls
+	// from diluting the fixed deployment caps. Multiplying by one reviewed fee
+	// ceiling makes both dimensions explicit and leaves the exact remainder for
+	// the live campaign.
+	gasUnitLimits := setupEVMGasUnitLimits(cfg)
+	gasCaps := map[string]DecimalUint{}
+	allocatedSetupGas := decimalUint64(0)
+	gasIDs := make([]string, 0, len(gasUnitLimits))
+	for id := range gasUnitLimits {
 		gasIDs = append(gasIDs, id)
 	}
 	sort.Strings(gasIDs)
 	for _, id := range gasIDs {
-		gasCaps[id], ok = mulDivFloor(setupGasBudget, gasWeights[id], totalWeight)
-		if !ok {
-			return nil, fmt.Errorf("EVM gas cap calculation overflow for %s", id)
+		gasCaps[id] = multiplyUint64Decimal(gasUnitLimits[id], cfg.Config.Budgets.MaximumEVMFeePerGasWei)
+		var addErr error
+		allocatedSetupGas, addErr = addDecimalUint(allocatedSetupGas, gasCaps[id])
+		if addErr != nil {
+			return nil, fmt.Errorf("EVM setup gas total: %w", addErr)
 		}
-		allocatedSetupGas += gasCaps[id]
 	}
-	if len(gasIDs) > 0 {
-		gasCaps[gasIDs[0]] += setupGasBudget - allocatedSetupGas
-		allocatedSetupGas = setupGasBudget
+	setupComparison, err := allocatedSetupGas.Cmp(cfg.MaximumEVMGasWei)
+	if err != nil || allocatedSetupGas.IsZero() || setupComparison >= 0 {
+		return nil, fmt.Errorf("EVM gas ceiling %s does not cover setup %s plus a live campaign reserve: %w", cfg.MaximumEVMGasWei, allocatedSetupGas, err)
 	}
-	if setupGasBudget == 0 || allocatedSetupGas > cfg.MaximumEVMGasWei {
-		return nil, fmt.Errorf("EVM gas ceiling is too small")
+	runtimeGas, err := subtractDecimalUint(cfg.MaximumEVMGasWei, allocatedSetupGas)
+	if err != nil {
+		return nil, fmt.Errorf("EVM runtime gas reserve: %w", err)
+	}
+	voluntaryGas, err := divideDecimalUint(runtimeGas, 20)
+	if err != nil {
+		return nil, err
+	}
+	productionGas, err := divideDecimalUint(runtimeGas, 20)
+	if err != nil {
+		return nil, err
+	}
+	retirementGas, err := divideDecimalUint(runtimeGas, 20)
+	if err != nil {
+		return nil, err
+	}
+	governanceGas, err := divideDecimalUint(runtimeGas, 10)
+	if err != nil {
+		return nil, err
+	}
+	precompileGas, err := multiplyDivideDecimalUint(runtimeGas, 1, 8)
+	if err != nil {
+		return nil, err
+	}
+	dishonestDepositGas, err := divideDecimalUint(runtimeGas, 40)
+	if err != nil {
+		return nil, err
+	}
+	minimumRetirement := decimalUint64(uint64(operatorCount))
+	retirementComparison, comparisonErr := retirementGas.Cmp(minimumRetirement)
+	if comparisonErr != nil || voluntaryGas.IsZero() || productionGas.IsZero() || retirementComparison < 0 || governanceGas.IsZero() || precompileGas.IsZero() || dishonestDepositGas.IsZero() {
+		return nil, fmt.Errorf("EVM runtime gas ceiling is too small for conviction, production transition, and retirement")
+	}
+	campaignGas, err := subtractDecimalUints(runtimeGas, voluntaryGas, productionGas, retirementGas, governanceGas, precompileGas, dishonestDepositGas)
+	if err != nil || campaignGas.IsZero() {
+		return nil, fmt.Errorf("live campaign gas reserve: %w", err)
 	}
 
-	// Fund each online role once. Funding is counted as TAO outflow; gas is
-	// counted only on the transaction actions, avoiding the old double count.
+	// Fund every signer for its exact explicit action ceilings first. Only the
+	// live campaign reserve is weighted across deposit, root, claim, and keeper
+	// roles, so many fleet calls cannot dilute a fixed deployment allowance.
 	type gasRole struct {
 		label, address string
-		weight         uint64
+		campaignWeight uint64
 		burns          uint64
 	}
 	gasRoles := []gasRole{
-		{label: "deployer", address: roles.Deployer, weight: 30, burns: 1},
-		{label: "owner", address: roles.Owner, weight: 15, burns: uint64(operatorCount)},
-		{label: "guardian", address: roles.Guardian, weight: 5},
-		{label: "commitment-oracle", address: roles.CommitmentOracle, weight: 5},
-		{label: "keeper", address: roles.Keeper, weight: 10},
+		{label: "deployer", address: roles.Deployer, burns: 1},
+		{label: "owner", address: roles.Owner, burns: uint64(operatorCount)},
+		{label: "guardian", address: roles.Guardian},
+		{label: "commitment-oracle", address: roles.CommitmentOracle},
+		{label: "keeper", address: roles.Keeper, campaignWeight: 4},
 	}
 	for i := 0; i < operatorCount; i++ {
 		gasRoles = append(gasRoles,
-			gasRole{label: fmt.Sprintf("operator-%d-deposit", i+1), address: roles.OperatorDepositSigners[i], weight: 10, burns: 1},
-			gasRole{label: fmt.Sprintf("operator-%d-root", i+1), address: roles.OperatorRootSigners[i], weight: 10},
-			gasRole{label: fmt.Sprintf("operator-%d-claim-relayer", i+1), address: roles.ClaimRelayers[i], weight: 10},
+			gasRole{label: fmt.Sprintf("operator-%d-deposit", i+1), address: roles.OperatorDepositSigners[i], campaignWeight: 1, burns: 1},
+			gasRole{label: fmt.Sprintf("operator-%d-root", i+1), address: roles.OperatorRootSigners[i], campaignWeight: 1},
+			gasRole{label: fmt.Sprintf("operator-%d-claim-relayer", i+1), address: roles.ClaimRelayers[i], campaignWeight: 1},
 		)
 	}
-	var roleWeight uint64
+	roleGas := map[string]DecimalUint{}
 	for _, role := range gasRoles {
-		roleWeight += role.weight
+		roleGas[role.label] = decimalUint64(0)
 	}
-	var fundedGas uint64
-	for index, role := range gasRoles {
-		gas, gasOK := mulDivFloor(cfg.MaximumEVMGasWei, role.weight, roleWeight)
-		if !gasOK {
-			return nil, fmt.Errorf("%s gas funding calculation overflow", role.label)
+	addRoleGas := func(label string, amount DecimalUint) error {
+		if _, ok := roleGas[label]; !ok {
+			return fmt.Errorf("unknown EVM gas role %s", label)
 		}
-		if index == len(gasRoles)-1 {
-			gas = cfg.MaximumEVMGasWei - fundedGas
+		updated, addErr := addDecimalUint(roleGas[label], amount)
+		if addErr != nil {
+			return fmt.Errorf("%s EVM gas allocation: %w", label, addErr)
 		}
-		fundedGas += gas
-		gasRao := ceilDiv(gas, 1_000_000_000)
+		roleGas[label] = updated
+		return nil
+	}
+	for _, id := range []string{
+		"evm.reserve-sink", "evm.settlement-vault", "evm.coordinator-implementation", "evm.vault-register-escrow",
+		"evm.coordinator-proxy", "evm.governance-drill-implementation", "evm.vault-fix-coordinator", "evm.sink-fix-recorder",
+	} {
+		if err := addRoleGas("deployer", gasCaps[id]); err != nil {
+			return nil, err
+		}
+	}
+	if err := addRoleGas("deployer", precompileGas); err != nil {
+		return nil, err
+	}
+	if err := addRoleGas("owner", productionGas); err != nil {
+		return nil, err
+	}
+	if err := addRoleGas("owner", retirementGas); err != nil {
+		return nil, err
+	}
+	ownerGovernanceGas, err := multiplyDivideDecimalUint(governanceGas, 4, 5)
+	if err != nil {
+		return nil, err
+	}
+	guardianGovernanceGas, err := subtractDecimalUint(governanceGas, ownerGovernanceGas)
+	if err != nil {
+		return nil, err
+	}
+	if err := addRoleGas("owner", ownerGovernanceGas); err != nil {
+		return nil, err
+	}
+	if err := addRoleGas("guardian", guardianGovernanceGas); err != nil {
+		return nil, err
+	}
+	for operator := 1; operator <= operatorCount; operator++ {
+		if err := addRoleGas("owner", gasCaps[fmt.Sprintf("operator.register.%d", operator)]); err != nil {
+			return nil, err
+		}
+		if err := addRoleGas(fmt.Sprintf("operator-%d-deposit", operator), gasCaps[fmt.Sprintf("operator.deposit.register.%d", operator)]); err != nil {
+			return nil, err
+		}
+	}
+	if err := addRoleGas("operator-1-deposit", voluntaryGas); err != nil {
+		return nil, err
+	}
+	if err := addRoleGas("operator-2-deposit", dishonestDepositGas); err != nil {
+		return nil, err
+	}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		if err := addRoleGas("commitment-oracle", gasCaps[fmt.Sprintf("fleet.mirror.%d", fleet)]); err != nil {
+			return nil, err
+		}
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			if err := addRoleGas("keeper", gasCaps[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)]); err != nil {
+				return nil, err
+			}
+		}
+	}
+	var campaignWeight uint64
+	remainingWeightedRoles := 0
+	for _, role := range gasRoles {
+		campaignWeight += role.campaignWeight
+		if role.campaignWeight > 0 {
+			remainingWeightedRoles++
+		}
+	}
+	if campaignWeight == 0 {
+		return nil, errors.New("EVM campaign gas has no funded role")
+	}
+	allocatedCampaignGas := decimalUint64(0)
+	for _, role := range gasRoles {
+		if role.campaignWeight == 0 {
+			continue
+		}
+		share, shareErr := multiplyDivideDecimalUint(campaignGas, role.campaignWeight, campaignWeight)
+		remainingWeightedRoles--
+		if remainingWeightedRoles == 0 {
+			share, shareErr = subtractDecimalUint(campaignGas, allocatedCampaignGas)
+		}
+		if shareErr != nil {
+			return nil, fmt.Errorf("%s campaign gas share: %w", role.label, shareErr)
+		}
+		allocatedCampaignGas, shareErr = addDecimalUint(allocatedCampaignGas, share)
+		if shareErr != nil {
+			return nil, shareErr
+		}
+		if err := addRoleGas(role.label, share); err != nil {
+			return nil, err
+		}
+	}
+	fundedGas := decimalUint64(0)
+	for _, role := range gasRoles {
+		gas := roleGas[role.label]
+		var gasErr error
+		fundedGas, gasErr = addDecimalUint(fundedGas, gas)
+		if gasErr != nil {
+			return nil, fmt.Errorf("%s cumulative gas funding: %w", role.label, gasErr)
+		}
+		gasRao, gasErr := ceilDivideDecimalUintToUint64(gas, 1_000_000_000)
+		if gasErr != nil {
+			return nil, fmt.Errorf("%s gas funding rao: %w", role.label, gasErr)
+		}
 		burnRao, mulOK := checkedMul(role.burns, registrationBurnLimit)
 		if !mulOK {
 			return nil, fmt.Errorf("%s burn budget overflow", role.label)
@@ -438,13 +608,16 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		}
 		add(Action{
 			ID: "evm.fund-" + role.label, Kind: "substrate-extrinsic", Target: role.address,
-			Description: "fund the scoped EVM role with its exact usable campaign balance plus the runtime existential deposit",
+			Description: "fund the scoped EVM role with its exact explicit and campaign gas allowance plus registration value and the runtime existential deposit",
 			Parameters: map[string]string{
 				"usable_evm_rao":          strconv.FormatUint(usableTAORao, 10),
 				"existential_deposit_rao": strconv.FormatUint(facts.ExistentialDepositRao, 10),
 			},
 			Spend: Spend{TAORao: maximumTransferRao}, DependsOn: []string{"subnet.verify-owner"},
 		})
+	}
+	if fundedComparison, fundedErr := fundedGas.Cmp(cfg.MaximumEVMGasWei); fundedErr != nil || fundedComparison != 0 {
+		return nil, fmt.Errorf("EVM role gas funding %s does not equal campaign ceiling %s: %w", fundedGas, cfg.MaximumEVMGasWei, fundedErr)
 	}
 
 	keys := make([]string, 0, len(cfg.Hyperparameters.OwnerControlled))
@@ -584,40 +757,36 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	}
 	add(Action{ID: "wallet.native-fee-reserve", Kind: "budget-reserve", Target: cfg.WalletPublic, Description: "reserve the approved fee ceiling for every planned native extrinsic", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "native_writes": fmt.Sprint(nativeWrites)}, Spend: Spend{TAORao: feeReserve}, DependsOn: []string{"subnet.verify-owner"}})
 	setupDeps = append(setupDeps, "wallet.native-fee-reserve")
-	runtimeGas := cfg.MaximumEVMGasWei - allocatedSetupGas
-	voluntaryGas := runtimeGas / 20
-	productionGas := runtimeGas / 20
-	retirementGas := runtimeGas / 20
-	governanceGas := runtimeGas / 10
-	precompileGas := runtimeGas / 8
-	dishonestDepositGas := runtimeGas / 40
-	if voluntaryGas == 0 || productionGas == 0 || retirementGas < uint64(operatorCount) || governanceGas < 10 || precompileGas < 10 || dishonestDepositGas == 0 {
-		return nil, fmt.Errorf("EVM runtime gas ceiling is too small for conviction, production transition, and retirement")
-	}
 	probeWeights := map[string]uint64{
 		"precompile.probe-deploy": 3, "precompile.seed": 2,
 		"precompile.move-forward": 1, "precompile.move-back": 1,
 		"precompile.snapshot": 1, "precompile.transfer-out": 2,
 	}
-	probeGasCaps := map[string]uint64{}
-	var allocatedProbeGas uint64
+	probeGasCaps := map[string]DecimalUint{}
+	allocatedProbeGas := decimalUint64(0)
 	probeIDs := make([]string, 0, len(probeWeights))
 	for id := range probeWeights {
 		probeIDs = append(probeIDs, id)
 	}
 	sort.Strings(probeIDs)
 	for i, id := range probeIDs {
-		cap, capOK := mulDivFloor(precompileGas, probeWeights[id], 10)
-		if !capOK {
-			return nil, fmt.Errorf("precompile gas cap overflow for %s", id)
+		cap, capErr := multiplyDivideDecimalUint(precompileGas, probeWeights[id], 10)
+		if capErr != nil {
+			return nil, fmt.Errorf("precompile gas cap for %s: %w", id, capErr)
 		}
 		if i == len(probeIDs)-1 {
-			cap = precompileGas - allocatedProbeGas
+			cap, capErr = subtractDecimalUint(precompileGas, allocatedProbeGas)
+			if capErr != nil {
+				return nil, fmt.Errorf("precompile final gas remainder: %w", capErr)
+			}
 		}
 		probeGasCaps[id] = cap
-		allocatedProbeGas += cap
+		allocatedProbeGas, capErr = addDecimalUint(allocatedProbeGas, cap)
+		if capErr != nil {
+			return nil, fmt.Errorf("precompile cumulative gas: %w", capErr)
+		}
 	}
-	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: runtimeGas - voluntaryGas - productionGas - retirementGas - governanceGas - precompileGas - dishonestDepositGas}, DependsOn: setupDeps})
+	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: campaignGas}, DependsOn: setupDeps})
 	setupDeps = append(setupDeps, "campaign.evm-gas-reserve")
 	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", DependsOn: setupDeps})
 	add(Action{ID: "accounts.provision", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "provision stable operator-scoped miner and validator identities", DependsOn: []string{"config.render"}})
@@ -676,16 +845,22 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		{"governance.guardian-unpause", "guardian", "unpause new-risk surfaces after immutable claims and custody are reverified", 1},
 	}
 	governanceDependency := "precompile.transfer-out"
-	var allocatedGovernance uint64
+	allocatedGovernance := decimalUint64(0)
 	for i, drill := range governanceActions {
-		cap, capOK := mulDivFloor(governanceGas, drill.weight, 10)
-		if !capOK {
-			return nil, fmt.Errorf("governance gas cap overflow")
+		cap, capErr := multiplyDivideDecimalUint(governanceGas, drill.weight, 10)
+		if capErr != nil {
+			return nil, fmt.Errorf("governance gas cap: %w", capErr)
 		}
 		if i == len(governanceActions)-1 {
-			cap = governanceGas - allocatedGovernance
+			cap, capErr = subtractDecimalUint(governanceGas, allocatedGovernance)
+			if capErr != nil {
+				return nil, fmt.Errorf("governance final gas remainder: %w", capErr)
+			}
 		}
-		allocatedGovernance += cap
+		allocatedGovernance, capErr = addDecimalUint(allocatedGovernance, cap)
+		if capErr != nil {
+			return nil, fmt.Errorf("governance cumulative gas: %w", capErr)
+		}
 		add(Action{ID: drill.id, Kind: "evm-transaction", Target: drill.target, Description: drill.description, Spend: Spend{EVMGasWei: cap}, DependsOn: []string{governanceDependency}})
 		governanceDependency = drill.id
 	}
@@ -751,9 +926,10 @@ func maximumActionSpend(actions []Action) (Spend, error) {
 		if !ok {
 			return Spend{}, errors.New("alpha plan overflow")
 		}
-		maximum.EVMGasWei, ok = checkedAdd(maximum.EVMGasWei, action.Spend.EVMGasWei)
-		if !ok {
-			return Spend{}, errors.New("gas plan overflow")
+		var gasErr error
+		maximum.EVMGasWei, gasErr = addDecimalUint(maximum.EVMGasWei, action.Spend.EVMGasWei)
+		if gasErr != nil {
+			return Spend{}, fmt.Errorf("gas plan: %w", gasErr)
 		}
 		if math.MaxUint32-maximum.Registrations < action.Spend.Registrations {
 			return Spend{}, errors.New("registration plan overflow")
@@ -855,7 +1031,7 @@ func (p SetupPlan) hash() (string, error) {
 	p.LiveFacts.FinalizedBlockHash = ""
 	p.LiveFacts.AlphaAvailableRao = 0
 	p.LiveFacts.WalletFreeTAORao = 0
-	if p.Schema == "urnetwork-sim-plan-v2" {
+	if planUsesRegistrationEnvelope(p.Schema) {
 		// Runtime 451 decays Burn on every block. V2 binds MinBurn, MaxBurn,
 		// BurnIncreaseMult, the approved half-life lifecycle, and the hard
 		// registration limit instead; apply rechecks the moving spot value.
@@ -873,8 +1049,12 @@ func validatePlanBudget(p *SetupPlan) error {
 	if p.MaximumSpend.AlphaRao > p.Limits.AlphaRao {
 		return fmt.Errorf("alpha plan maximum %d exceeds limit %d", p.MaximumSpend.AlphaRao, p.Limits.AlphaRao)
 	}
-	if p.MaximumSpend.EVMGasWei > p.Limits.EVMGasWei {
-		return fmt.Errorf("gas plan maximum %d exceeds limit %d", p.MaximumSpend.EVMGasWei, p.Limits.EVMGasWei)
+	gasComparison, err := p.MaximumSpend.EVMGasWei.Cmp(p.Limits.EVMGasWei)
+	if err != nil {
+		return fmt.Errorf("compare gas plan maximum and limit: %w", err)
+	}
+	if gasComparison > 0 {
+		return fmt.Errorf("gas plan maximum %s exceeds limit %s", p.MaximumSpend.EVMGasWei, p.Limits.EVMGasWei)
 	}
 	if p.MaximumSpend.Registrations > p.Limits.Registrations {
 		return fmt.Errorf("registration plan %d exceeds limit %d", p.MaximumSpend.Registrations, p.Limits.Registrations)
@@ -882,13 +1062,16 @@ func validatePlanBudget(p *SetupPlan) error {
 	if p.MaximumSpend.Registrations > 0 && p.RegistrationBurnLimitRao == 0 {
 		return errors.New("registration plan has no per-registration burn limit")
 	}
-	if p.Schema == "urnetwork-sim-plan-v2" && p.NativeTransactionFeeLimitRao == 0 {
+	if planUsesRegistrationEnvelope(p.Schema) && p.NativeTransactionFeeLimitRao == 0 {
 		return errors.New("release plan has no per-transaction native fee limit")
 	}
-	if p.Schema == "urnetwork-sim-plan-v2" && (p.BootstrapBurnHalfLifeBlocks != 1 || p.ProductionBurnHalfLifeBlocks == 0) {
+	if planUsesRegistrationEnvelope(p.Schema) && (p.BootstrapBurnHalfLifeBlocks != 1 || p.ProductionBurnHalfLifeBlocks == 0) {
 		return errors.New("release plan has no bounded bootstrap/production burn half-life lifecycle")
 	}
-	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" {
+	if planUsesEVMFeeEnvelope(p.Schema) && p.MaximumEVMFeePerGasWei == 0 {
+		return errors.New("release plan has no per-gas EVM fee limit")
+	}
+	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" && p.Schema != "urnetwork-sim-plan-v3" {
 		return fmt.Errorf("unsupported setup plan schema %q", p.Schema)
 	}
 	seenPriorPlans := map[string]bool{}
@@ -913,6 +1096,15 @@ func validatePlanBudget(p *SetupPlan) error {
 		if action.IntentHash == "" || action.IntentHash != intentHash {
 			return fmt.Errorf("action %s intent hash does not bind its executable fields", action.ID)
 		}
+		if planUsesEVMFeeEnvelope(p.Schema) && action.Kind == "evm-transaction" {
+			_, maximumFeePerGas, envelopeErr := evmActionFeeEnvelope(action)
+			if envelopeErr != nil {
+				return envelopeErr
+			}
+			if maximumFeePerGas != p.MaximumEVMFeePerGasWei {
+				return fmt.Errorf("EVM action %s fee-per-gas limit %d differs from plan limit %d", action.ID, maximumFeePerGas, p.MaximumEVMFeePerGasWei)
+			}
+		}
 		for _, dependency := range action.DependsOn {
 			if !seenActions[dependency] {
 				return fmt.Errorf("action %s depends on missing or later action %s", action.ID, dependency)
@@ -936,13 +1128,30 @@ func validatePlanBudget(p *SetupPlan) error {
 	if err != nil {
 		return err
 	}
-	if maximumSpend != p.MaximumSpend {
+	spendMatches, spendErr := equalSpend(maximumSpend, p.MaximumSpend)
+	if spendErr != nil {
+		return fmt.Errorf("compare action spend total to plan maximum: %w", spendErr)
+	}
+	if !spendMatches {
 		return fmt.Errorf("action spend total %+v does not equal plan maximum %+v", maximumSpend, p.MaximumSpend)
 	}
 	if p.MaximumSpend.SubnetCreations != 0 || p.Limits.SubnetCreations != 0 {
 		return fmt.Errorf("subnet creation is forbidden")
 	}
 	return nil
+}
+
+// Compare spend vectors while treating the zero value and canonical decimal
+// zero as the same aggregate EVM amount.
+func equalSpend(left, right Spend) (bool, error) {
+	if left.TAORao != right.TAORao || left.AlphaRao != right.AlphaRao || left.Registrations != right.Registrations || left.SubnetCreations != right.SubnetCreations {
+		return false, nil
+	}
+	comparison, err := left.EVMGasWei.Cmp(right.EVMGasWei)
+	if err != nil {
+		return false, err
+	}
+	return comparison == 0, nil
 }
 
 // Return the exact plan lineage whose journaled action intents may be carried
@@ -964,6 +1173,32 @@ func (self *SetupPlan) allowedPlanHashes() map[string]bool {
 	return result
 }
 
+// Decode the two-dimensional EVM approval and prove its product is the exact
+// representable portion of the action's aggregate wei ceiling.
+func evmActionFeeEnvelope(action Action) (uint64, uint64, error) {
+	if action.Kind != "evm-transaction" || action.Spend.EVMGasWei.IsZero() {
+		return 0, 0, fmt.Errorf("action %s has no EVM transaction gas ceiling", action.ID)
+	}
+	maximumGasUnits, err := strconv.ParseUint(action.Parameters[evmMaximumGasUnitsParameter], 10, 64)
+	if err != nil || maximumGasUnits == 0 {
+		return 0, 0, fmt.Errorf("EVM action %s has invalid %s", action.ID, evmMaximumGasUnitsParameter)
+	}
+	maximumFeePerGas, err := strconv.ParseUint(action.Parameters[evmMaximumFeePerGasParameter], 10, 64)
+	if err != nil || maximumFeePerGas == 0 {
+		return 0, 0, fmt.Errorf("EVM action %s has invalid %s", action.ID, evmMaximumFeePerGasParameter)
+	}
+	maximumCost := new(big.Int).Mul(new(big.Int).SetUint64(maximumGasUnits), new(big.Int).SetUint64(maximumFeePerGas))
+	actionCeiling, err := action.Spend.EVMGasWei.Big()
+	if err != nil {
+		return 0, 0, fmt.Errorf("EVM action %s aggregate wei ceiling: %w", action.ID, err)
+	}
+	remainder := new(big.Int).Sub(new(big.Int).Set(actionCeiling), maximumCost)
+	if remainder.Sign() < 0 || remainder.Cmp(new(big.Int).SetUint64(maximumFeePerGas)) >= 0 {
+		return 0, 0, fmt.Errorf("EVM action %s gas-unit and fee ceilings do not match its aggregate wei ceiling", action.ID)
+	}
+	return maximumGasUnits, maximumFeePerGas, nil
+}
+
 // evmFundingTerms validates the approval-bound distinction between a role's
 // usable EVM balance and the one-time native existential deposit needed to
 // keep its mirror account alive.
@@ -983,7 +1218,7 @@ func evmFundingTerms(action Action, expectedExistentialDepositRao uint64) (uint6
 		return 0, fmt.Errorf("EVM funding action %s existential deposit does not match approved %d rao", action.ID, expectedExistentialDepositRao)
 	}
 	maximumTransfer, ok := checkedAdd(usable, deposit)
-	if !ok || action.Spend.TAORao != maximumTransfer || action.Spend.AlphaRao != 0 || action.Spend.EVMGasWei != 0 || action.Spend.Registrations != 0 || action.Spend.SubnetCreations != 0 {
+	if !ok || action.Spend.TAORao != maximumTransfer || action.Spend.AlphaRao != 0 || !action.Spend.EVMGasWei.IsZero() || action.Spend.Registrations != 0 || action.Spend.SubnetCreations != 0 {
 		return 0, fmt.Errorf("EVM funding action %s maximum spend does not equal usable balance plus existential deposit", action.ID)
 	}
 	return usable, nil
