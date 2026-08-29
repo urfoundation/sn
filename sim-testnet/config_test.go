@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,6 +139,14 @@ func TestHarnessConfigRequiresNativeRegistrationEconomicLimits(t *testing.T) {
 	r.Config.Budgets.MaximumNativeTransactionFeeRao = 0
 	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "native transaction fee") {
 		t.Fatalf("zero native transaction fee limit was accepted: %v", err)
+	}
+}
+
+func TestHarnessConfigRejectsRegistrationBudgetOutsideApprovalRange(t *testing.T) {
+	cfg := testResolvedConfig(t).Config
+	cfg.Budgets.MaximumRegistrations = int(math.MaxUint32) + 1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "uint32 approval range") {
+		t.Fatalf("unrepresentable registration budget was accepted: %v", err)
 	}
 }
 

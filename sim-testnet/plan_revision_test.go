@@ -114,12 +114,74 @@ func TestBuildPlanRevisionCarriesExactVerifiedIntentsAndRepairsFunding(t *testin
 	if got := actionByID(t, revised, "churn.fund.1").Spend.TAORao; got != 5_000_500 {
 		t.Fatalf("revised role funding = %d, want burn+fee+keep-alive 5000500", got)
 	}
+	if actionByID(t, revised, "churn.fund.1").IntentHash == actionByID(t, prior, "churn.fund.1").IntentHash {
+		t.Fatal("funding without its own verified transfer evidence was treated as consumed")
+	}
 	remaining, err := remainingPlanSpend(revised, entries)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if remaining.Registrations != revised.MaximumSpend.Registrations-1 {
 		t.Fatalf("ancestor registration was not deducted: remaining=%d maximum=%d", remaining.Registrations, revised.MaximumSpend.Registrations)
+	}
+}
+
+func TestBuildPlanRevisionPreservesDurablyConsumedRegistrationFunding(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	funding := actionByID(t, prior, "churn.fund.1")
+	registration := actionByID(t, prior, "churn.register.1")
+	entries := []JournalEntry{
+		{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: prior.PlanHash, ActionID: funding.ID, IntentHash: funding.IntentHash, Stage: StageVerified},
+		{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: prior.PlanHash, ActionID: registration.ID, IntentHash: registration.IntentHash, Stage: StageVerified},
+	}
+	cfg.Config.Budgets.MaximumNativeTransactionFeeRao = 4_000_000
+	revised, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, partialRevisionFacts(t, cfg, 1), entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	carried := actionByID(t, revised, funding.ID)
+	if carried.IntentHash != funding.IntentHash || carried.Spend != funding.Spend {
+		t.Fatalf("consumed funding was rewritten: prior=%+v revised=%+v", funding, carried)
+	}
+	if repaired := actionByID(t, revised, "churn.fund.2"); repaired.Spend.TAORao != 5_000_500 || repaired.IntentHash == actionByID(t, prior, repaired.ID).IntentHash {
+		t.Fatalf("unconsumed adjacent funding was not repaired: %+v", repaired)
+	}
+	remaining, err := remainingPlanSpend(revised, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.TAORao != revised.MaximumSpend.TAORao-funding.Spend.TAORao || remaining.Registrations != revised.MaximumSpend.Registrations-1 {
+		t.Fatalf("carried funding/registration spend was not deducted exactly: maximum=%+v remaining=%+v", revised.MaximumSpend, remaining)
+	}
+}
+
+func TestBuildPlanRevisionRepairsFundingWhenRegistrationIntentChanges(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	funding := actionByID(t, prior, "churn.fund.1")
+	registration := actionByID(t, prior, "churn.register.1")
+	entries := []JournalEntry{
+		{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: prior.PlanHash, ActionID: funding.ID, IntentHash: funding.IntentHash, Stage: StageVerified},
+		{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: prior.PlanHash, ActionID: registration.ID, IntentHash: registration.IntentHash, Stage: StageVerified},
+	}
+	cfg.Config.Budgets.MaximumRegistrationBurnRao = 900_000
+	revised, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, partialRevisionFacts(t, cfg, 1), entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repairedFunding := actionByID(t, revised, funding.ID)
+	repairedRegistration := actionByID(t, revised, registration.ID)
+	if repairedRegistration.IntentHash == registration.IntentHash || repairedFunding.IntentHash == funding.IntentHash || repairedFunding.Spend.TAORao != 3_900_500 {
+		t.Fatalf("changed registration retained consumed funding: registration=%+v funding=%+v", repairedRegistration, repairedFunding)
 	}
 }
 

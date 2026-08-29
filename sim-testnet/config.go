@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -491,8 +492,8 @@ func (c *HarnessConfig) Validate() error {
 	// validator; initial and challenger fleets consume one registration each;
 	// churn-floor UIDs fill capacity; and claims escrow needs a live hotkey.
 	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1
-	if c.Budgets.MaximumRegistrations < requiredRegistrations {
-		return errors.New("registration budget is below topology requirement")
+	if c.Budgets.MaximumRegistrations < requiredRegistrations || uint64(c.Budgets.MaximumRegistrations) > uint64(math.MaxUint32) {
+		return errors.New("registration budget is outside the topology requirement and uint32 approval range")
 	}
 	setupRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.HeadFleets + c.Topology.ChurnFloorUIDs + 1
 	if setupRegistrations != 254 {

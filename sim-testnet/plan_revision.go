@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -419,6 +420,75 @@ func validatePlanRevisionIdentity(cfg *ResolvedConfig, prior *SetupPlan, roles P
 	return validatePlanBudget(prior)
 }
 
+// Name the registration that terminally consumes one independently funded
+// native coldkey. Other funding roles retain their current revised targets.
+func registrationConsumerForFunding(actionID string) (string, bool) {
+	for _, pair := range []struct {
+		fundingPrefix, registrationPrefix string
+	}{
+		{fundingPrefix: "churn.fund.", registrationPrefix: "churn.register."},
+		{fundingPrefix: "fleet.fund.", registrationPrefix: "fleet.register."},
+		{fundingPrefix: "validator.fund.", registrationPrefix: "validator.register."},
+	} {
+		if !strings.HasPrefix(actionID, pair.fundingPrefix) {
+			continue
+		}
+		suffix := strings.TrimPrefix(actionID, pair.fundingPrefix)
+		index, err := strconv.Atoi(suffix)
+		if err != nil || index <= 0 || strconv.Itoa(index) != suffix {
+			return "", false
+		}
+		return pair.registrationPrefix + suffix, true
+	}
+	return "", false
+}
+
+// Retain an ancestor funding intent only after both its exact transfer and its
+// unchanged consuming registration have durable proofs. An interrupted or
+// changed registration keeps the newly reviewed repair funding instead.
+func preserveConsumedRegistrationFunding(revised, prior *SetupPlan, entries []JournalEntry) error {
+	if revised == nil || prior == nil {
+		return errors.New("revised and prior plans are required to preserve consumed funding")
+	}
+	priorActions := make(map[string]Action, len(prior.Actions))
+	revisedActions := make(map[string]Action, len(revised.Actions))
+	for _, action := range prior.Actions {
+		priorActions[action.ID] = action
+	}
+	for _, action := range revised.Actions {
+		revisedActions[action.ID] = action
+	}
+	verifiedIntents := map[string]bool{}
+	allowedPlans := prior.allowedPlanHashes()
+	for _, entry := range entries {
+		if allowedPlans[entry.PlanHash] && entry.Stage == StageVerified {
+			verifiedIntents[entry.ActionID+"\x00"+entry.IntentHash] = true
+		}
+	}
+	for index, revisedFunding := range revised.Actions {
+		consumerID, ok := registrationConsumerForFunding(revisedFunding.ID)
+		if !ok {
+			continue
+		}
+		priorFunding, fundingExists := priorActions[revisedFunding.ID]
+		priorConsumer, priorConsumerExists := priorActions[consumerID]
+		revisedConsumer, revisedConsumerExists := revisedActions[consumerID]
+		if !fundingExists || !priorConsumerExists || !revisedConsumerExists || priorConsumer.IntentHash != revisedConsumer.IntentHash {
+			continue
+		}
+		if !verifiedIntents[priorFunding.ID+"\x00"+priorFunding.IntentHash] || !verifiedIntents[priorConsumer.ID+"\x00"+priorConsumer.IntentHash] {
+			continue
+		}
+		revised.Actions[index] = priorFunding
+	}
+	maximumSpend, err := maximumActionSpend(revised.Actions)
+	if err != nil {
+		return err
+	}
+	revised.MaximumSpend = maximumSpend
+	return nil
+}
+
 // Build a deterministic revision from already finalized, caller-supplied facts.
 func buildPlanRevisionFromFacts(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, generatedAt time.Time) (*SetupPlan, error) {
 	roles, err := derivePublicRoles(cfg)
@@ -460,6 +530,9 @@ func buildPlanRevisionFromFacts(cfg *ResolvedConfig, stateDir string, prior *Set
 			revised.PriorPlanHashes = append(revised.PriorPlanHashes, hash)
 			seen[hash] = true
 		}
+	}
+	if err := preserveConsumedRegistrationFunding(revised, prior, entries); err != nil {
+		return nil, fmt.Errorf("preserve consumed registration funding: %w", err)
 	}
 	revised.PlanHash, err = revised.hash()
 	if err != nil {

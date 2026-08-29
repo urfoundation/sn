@@ -66,6 +66,33 @@ type PublicRoles struct {
 	Keeper                                      string   `json:"keeper"`
 }
 
+// Project resolved campaign ceilings into the exact approval representation.
+func configuredPlanLimits(cfg *ResolvedConfig) Spend {
+	return Spend{
+		TAORao: cfg.MaximumTAORao, AlphaRao: cfg.MaximumAlphaRao, EVMGasWei: cfg.MaximumEVMGasWei,
+		Registrations: uint32(cfg.Config.Budgets.MaximumRegistrations), SubnetCreations: uint32(cfg.Config.Budgets.MaximumSubnetCreations),
+	}
+}
+
+// Bind every executable field used to distinguish an action across plan
+// revisions and journal recovery.
+func actionIntentHash(action Action) (string, error) {
+	return canonicalHashHex(struct {
+		ID, Kind, Target, Description string
+		Parameters                    map[string]string
+		Spend                         Spend
+		DependsOn                     []string
+	}{
+		ID:          action.ID,
+		Kind:        action.Kind,
+		Target:      action.Target,
+		Description: action.Description,
+		Parameters:  action.Parameters,
+		Spend:       action.Spend,
+		DependsOn:   action.DependsOn,
+	})
+}
+
 func BuildPlan(ctx context.Context, cfg *ResolvedConfig) (*SetupPlan, error) {
 	doc := RunDoctor(ctx, cfg)
 	if err := doc.Error(); err != nil {
@@ -235,20 +262,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
 	p := &SetupPlan{Schema: "urnetwork-sim-plan-v2", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
 	add := func(a Action) {
-		h, _ := canonicalHashHex(struct {
-			ID, Kind, Target, Description string
-			Parameters                    map[string]string
-			Spend                         Spend
-			DependsOn                     []string
-		}{
-			ID:          a.ID,
-			Kind:        a.Kind,
-			Target:      a.Target,
-			Description: a.Description,
-			Parameters:  a.Parameters,
-			Spend:       a.Spend,
-			DependsOn:   a.DependsOn,
-		})
+		h, _ := actionIntentHash(a)
 		a.IntentHash = h
 		p.Actions = append(p.Actions, a)
 	}
@@ -707,24 +721,11 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		Spend:       Spend{EVMGasWei: dishonestDepositGas}, DependsOn: []string{"topology.launch", "campaign.evm-gas-reserve", productionDependency},
 	})
 	add(Action{ID: "retirement.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve a separately approved gas ceiling for future-effective retirement of every operator", Parameters: map[string]string{"operators": fmt.Sprint(operatorCount)}, Spend: Spend{EVMGasWei: retirementGas}, DependsOn: []string{"topology.launch"}})
-	for _, a := range p.Actions {
-		var sumOK bool
-		p.MaximumSpend.TAORao, sumOK = checkedAdd(p.MaximumSpend.TAORao, a.Spend.TAORao)
-		if !sumOK {
-			return nil, fmt.Errorf("TAO plan overflow")
-		}
-		p.MaximumSpend.AlphaRao, sumOK = checkedAdd(p.MaximumSpend.AlphaRao, a.Spend.AlphaRao)
-		if !sumOK {
-			return nil, fmt.Errorf("alpha plan overflow")
-		}
-		p.MaximumSpend.EVMGasWei, sumOK = checkedAdd(p.MaximumSpend.EVMGasWei, a.Spend.EVMGasWei)
-		if !sumOK {
-			return nil, fmt.Errorf("gas plan overflow")
-		}
-		p.MaximumSpend.Registrations += a.Spend.Registrations
-		p.MaximumSpend.SubnetCreations += a.Spend.SubnetCreations
+	p.MaximumSpend, err = maximumActionSpend(p.Actions)
+	if err != nil {
+		return nil, err
 	}
-	p.Limits = Spend{TAORao: cfg.MaximumTAORao, AlphaRao: cfg.MaximumAlphaRao, EVMGasWei: cfg.MaximumEVMGasWei, Registrations: uint32(cfg.Config.Budgets.MaximumRegistrations), SubnetCreations: uint32(cfg.Config.Budgets.MaximumSubnetCreations)}
+	p.Limits = configuredPlanLimits(cfg)
 	if err := validatePlanBudget(p); err != nil {
 		return nil, err
 	}
@@ -734,6 +735,36 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	}
 	p.PlanHash = planHash
 	return p, nil
+}
+
+// Sum the approval ceiling from its canonical action list without permitting
+// any integer field to wrap.
+func maximumActionSpend(actions []Action) (Spend, error) {
+	var maximum Spend
+	for _, action := range actions {
+		var ok bool
+		maximum.TAORao, ok = checkedAdd(maximum.TAORao, action.Spend.TAORao)
+		if !ok {
+			return Spend{}, errors.New("TAO plan overflow")
+		}
+		maximum.AlphaRao, ok = checkedAdd(maximum.AlphaRao, action.Spend.AlphaRao)
+		if !ok {
+			return Spend{}, errors.New("alpha plan overflow")
+		}
+		maximum.EVMGasWei, ok = checkedAdd(maximum.EVMGasWei, action.Spend.EVMGasWei)
+		if !ok {
+			return Spend{}, errors.New("gas plan overflow")
+		}
+		if math.MaxUint32-maximum.Registrations < action.Spend.Registrations {
+			return Spend{}, errors.New("registration plan overflow")
+		}
+		maximum.Registrations += action.Spend.Registrations
+		if math.MaxUint32-maximum.SubnetCreations < action.Spend.SubnetCreations {
+			return Spend{}, errors.New("subnet-creation plan overflow")
+		}
+		maximum.SubnetCreations += action.Spend.SubnetCreations
+	}
+	return maximum, nil
 }
 
 // Runtime 451 bumps burn immediately after a registration and decays it on
@@ -871,10 +902,16 @@ func validatePlanBudget(p *SetupPlan) error {
 		seenPriorPlans[hash] = true
 	}
 	seenActions := make(map[string]bool, len(p.Actions))
-	var actionRegistrations uint64
 	for _, action := range p.Actions {
 		if action.ID == "" || seenActions[action.ID] {
 			return fmt.Errorf("setup plan has an empty or duplicate action id %q", action.ID)
+		}
+		intentHash, err := actionIntentHash(action)
+		if err != nil {
+			return fmt.Errorf("hash action %s intent: %w", action.ID, err)
+		}
+		if action.IntentHash == "" || action.IntentHash != intentHash {
+			return fmt.Errorf("action %s intent hash does not bind its executable fields", action.ID)
 		}
 		for _, dependency := range action.DependsOn {
 			if !seenActions[dependency] {
@@ -890,14 +927,17 @@ func validatePlanBudget(p *SetupPlan) error {
 		if action.Spend.Registrations == 0 {
 			continue
 		}
-		actionRegistrations += uint64(action.Spend.Registrations)
 		limit, err := strconv.ParseUint(action.Parameters["maximum_burn_rao"], 10, 64)
 		if err != nil || limit != p.RegistrationBurnLimitRao {
 			return fmt.Errorf("registration action %s does not bind the plan burn limit", action.ID)
 		}
 	}
-	if actionRegistrations != uint64(p.MaximumSpend.Registrations) {
-		return fmt.Errorf("registration actions total %d, plan maximum is %d", actionRegistrations, p.MaximumSpend.Registrations)
+	maximumSpend, err := maximumActionSpend(p.Actions)
+	if err != nil {
+		return err
+	}
+	if maximumSpend != p.MaximumSpend {
+		return fmt.Errorf("action spend total %+v does not equal plan maximum %+v", maximumSpend, p.MaximumSpend)
 	}
 	if p.MaximumSpend.SubnetCreations != 0 || p.Limits.SubnetCreations != 0 {
 		return fmt.Errorf("subnet creation is forbidden")

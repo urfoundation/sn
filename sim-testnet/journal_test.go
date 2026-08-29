@@ -158,6 +158,31 @@ func TestPersistedPlanRejectsApprovalBoundTampering(t *testing.T) {
 	}
 }
 
+func TestPersistedPlanRejectsSelfConsistentConfiguredLimitDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Limits.TAORao++
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	b, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(dir, "plan.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadPersistedPlan(cfg, dir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
+		t.Fatalf("self-consistent configured-limit drift error=%v, want identity mismatch", err)
+	}
+}
+
 func TestPersistedPlanRefreshIsLimitedToEmptyPrewriteState(t *testing.T) {
 	if !mayRefreshPersistedPlan(os.ErrNotExist, nil) {
 		t.Fatal("missing plan with an empty journal was not refreshable")

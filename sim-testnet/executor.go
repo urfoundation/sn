@@ -395,7 +395,7 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	if p.Schema != "urnetwork-sim-plan-v2" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
+	if p.Schema != "urnetwork-sim-plan-v2" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
 		return nil, errPersistedPlanIdentityMismatch
 	}
 	roles, err := derivePublicRoles(cfg)

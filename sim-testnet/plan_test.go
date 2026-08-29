@@ -325,6 +325,63 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	}
 }
 
+func TestValidatePlanBudgetRejectsMismatchedActionIntent(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	for _, mutation := range []func(*SetupPlan){
+		func(plan *SetupPlan) { plan.Actions[0].Description += " changed" },
+		func(plan *SetupPlan) { plan.Actions[0].IntentHash = "0x" + strings.Repeat("12", 32) },
+	} {
+		plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutation(plan)
+		if err := validatePlanBudget(plan); err == nil || !strings.Contains(err.Error(), "intent hash") {
+			t.Errorf("mismatched action intent was accepted: %v", err)
+		}
+	}
+}
+
+func TestValidatePlanBudgetRejectsMismatchedMaximumSpend(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	for _, mutation := range []func(*Spend){
+		func(spend *Spend) { spend.TAORao-- },
+		func(spend *Spend) { spend.AlphaRao-- },
+		func(spend *Spend) { spend.EVMGasWei-- },
+		func(spend *Spend) { spend.Registrations-- },
+	} {
+		plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutation(&plan.MaximumSpend)
+		if err := validatePlanBudget(plan); err == nil || !strings.Contains(err.Error(), "does not equal plan maximum") {
+			t.Errorf("mismatched maximum spend was accepted: %v", err)
+		}
+	}
+}
+
+func TestMaximumActionSpendRejectsEveryIntegerOverflow(t *testing.T) {
+	tests := []struct {
+		name    string
+		actions []Action
+		want    string
+	}{
+		{name: "tao", actions: []Action{{Spend: Spend{TAORao: math.MaxUint64}}, {Spend: Spend{TAORao: 1}}}, want: "TAO"},
+		{name: "alpha", actions: []Action{{Spend: Spend{AlphaRao: math.MaxUint64}}, {Spend: Spend{AlphaRao: 1}}}, want: "alpha"},
+		{name: "gas", actions: []Action{{Spend: Spend{EVMGasWei: math.MaxUint64}}, {Spend: Spend{EVMGasWei: 1}}}, want: "gas"},
+		{name: "registrations", actions: []Action{{Spend: Spend{Registrations: math.MaxUint32}}, {Spend: Spend{Registrations: 1}}}, want: "registration"},
+		{name: "subnet creations", actions: []Action{{Spend: Spend{SubnetCreations: math.MaxUint32}}, {Spend: Spend{SubnetCreations: 1}}}, want: "subnet-creation"},
+	}
+	for _, test := range tests {
+		if _, err := maximumActionSpend(test.actions); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s overflow error=%v, want substring %q", test.name, err, test.want)
+		}
+	}
+}
+
 func TestLegacyPlanHashStillBindsSpotBurnForStoredV1Compatibility(t *testing.T) {
 	plan := &SetupPlan{Schema: "urnetwork-sim-plan-v1", LiveFacts: SetupFacts{BurnRao: 500_000}}
 	first, err := plan.hash()
@@ -513,6 +570,9 @@ func TestPlanValidationRejectsDuplicateAndForwardActionDependencies(t *testing.T
 			{ID: "second", DependsOn: []string{"first"}},
 		},
 	}
+	for index := range base.Actions {
+		base.Actions[index].IntentHash, _ = actionIntentHash(base.Actions[index])
+	}
 	if err := validatePlanBudget(base); err != nil {
 		t.Fatalf("valid action graph rejected: %v", err)
 	}
@@ -525,6 +585,7 @@ func TestPlanValidationRejectsDuplicateAndForwardActionDependencies(t *testing.T
 	forward := *base
 	forward.Actions = append([]Action(nil), base.Actions...)
 	forward.Actions[0].DependsOn = []string{"second"}
+	forward.Actions[0].IntentHash, _ = actionIntentHash(forward.Actions[0])
 	if err := validatePlanBudget(&forward); err == nil || !strings.Contains(err.Error(), "missing or later") {
 		t.Fatalf("forward dependency was accepted: %v", err)
 	}
