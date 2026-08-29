@@ -81,6 +81,24 @@ type FinalizedExtrinsic struct {
 	BlockNumber   uint64
 }
 
+// Carries a canonical finalized dispatch failure separately from transport,
+// metadata, and event-decoding errors. Recovery code may retry a failed intent
+// under a newly approved plan, but must never treat an unknown error as proof
+// that the prior transaction had no effect.
+type FinalizedDispatchError struct {
+	ExtrinsicHash types.Hash
+	BlockHash     types.Hash
+	Detail        string
+}
+
+// Render the exact extrinsic identity and decoded runtime detail.
+func (self *FinalizedDispatchError) Error() string {
+	if self == nil {
+		return "crv4: finalized dispatch failed"
+	}
+	return fmt.Sprintf("crv4: extrinsic %s dispatch failed: %s", self.ExtrinsicHash.Hex(), self.Detail)
+}
+
 // extrinsicIndex returns the index of hash in the exact block body. Substrate
 // extrinsic hashes are Blake2b-256 over the SCALE bytes, not the block's JSON
 // string or an Ethereum-style Keccak hash.
@@ -131,7 +149,7 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 		}
 		switch event.Name {
 		case "System.ExtrinsicFailed", "ExtrinsicFailed":
-			return fmt.Errorf("crv4: extrinsic %s dispatch failed: %s", extrinsicHash.Hex(), formatDecodedEventFields(event.Fields))
+			return &FinalizedDispatchError{ExtrinsicHash: extrinsicHash, BlockHash: blockHash, Detail: formatDecodedEventFields(c.Meta, event.Fields)}
 		case "System.ExtrinsicSuccess", "ExtrinsicSuccess":
 			success = true
 		}
@@ -142,15 +160,143 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 	return nil
 }
 
-// Preserve structured dispatch detail instead of rendering nested registry
-// pointers, which hides the pallet index and error bytes needed to diagnose a
-// failed finalized extrinsic.
-func formatDecodedEventFields(fields registry.DecodedFields) string {
+// Preserve structured dispatch detail and resolve a pallet error through the
+// exact finalized runtime metadata. Unknown or malformed variants retain the
+// raw numeric fields so diagnostics never hide the only available evidence.
+func formatDecodedEventFields(meta *types.Metadata, fields registry.DecodedFields) string {
 	encoded, err := json.Marshal(fields)
 	if err != nil {
 		return fmt.Sprintf("event fields unavailable: %v", err)
 	}
-	return string(encoded)
+	raw := string(encoded)
+	errorID, ok := decodedModuleErrorID(fields)
+	if !ok || meta == nil {
+		return raw
+	}
+	errorRegistry, err := registry.NewFactory().CreateErrorRegistry(meta)
+	if err != nil {
+		return raw
+	}
+	decoder := errorRegistry[errorID]
+	if decoder == nil || decoder.Name == "" {
+		return raw
+	}
+	return fmt.Sprintf("%s (module_index=%d error=%v): %s", decoder.Name, errorID.ModuleIndex, errorID.ErrorIndex, raw)
+}
+
+// Locate only the canonical nested sp_runtime::ModuleError shape. Generic
+// fields named index/error elsewhere in an event must not be misclassified as
+// a dispatch module error.
+func decodedModuleErrorID(fields registry.DecodedFields) (registry.ErrorID, bool) {
+	return decodedModuleErrorIDWithin(fields, false)
+}
+
+// Walk nested decoded fields while remembering whether the canonical module
+// error wrapper has been entered.
+func decodedModuleErrorIDWithin(fields registry.DecodedFields, withinModuleError bool) (registry.ErrorID, bool) {
+	if withinModuleError {
+		var (
+			moduleIndex types.U8
+			errorIndex  [4]types.U8
+			indexOK     bool
+			errorOK     bool
+		)
+		for _, field := range fields {
+			if field == nil {
+				continue
+			}
+			switch field.Name {
+			case "index":
+				moduleIndex, indexOK = decodedU8(field.Value)
+			case "error":
+				errorIndex, errorOK = decodedErrorIndex(field.Value)
+			}
+		}
+		if indexOK && errorOK {
+			return registry.ErrorID{ModuleIndex: moduleIndex, ErrorIndex: errorIndex}, true
+		}
+	}
+	for _, field := range fields {
+		if field == nil {
+			continue
+		}
+		nested, ok := field.Value.(registry.DecodedFields)
+		if !ok {
+			if decoded, sliceOK := field.Value.([]*registry.DecodedField); sliceOK {
+				nested, ok = registry.DecodedFields(decoded), true
+			}
+		}
+		if !ok {
+			continue
+		}
+		if errorID, found := decodedModuleErrorIDWithin(nested, withinModuleError || strings.Contains(field.Name, "ModuleError")); found {
+			return errorID, true
+		}
+	}
+	return registry.ErrorID{}, false
+}
+
+// Normalize integer representations emitted by adjacent registry decoders
+// without truncating a wider value.
+func decodedU8(value any) (types.U8, bool) {
+	switch typed := value.(type) {
+	case types.U8:
+		return typed, true
+	case uint8:
+		return types.U8(typed), true
+	case uint16:
+		return types.U8(typed), typed <= 255
+	case uint32:
+		return types.U8(typed), typed <= 255
+	case uint64:
+		return types.U8(typed), typed <= 255
+	case int:
+		return types.U8(typed), typed >= 0 && typed <= 255
+	default:
+		return 0, false
+	}
+}
+
+// Normalize the runtime's fixed four-byte module error payload exactly.
+func decodedErrorIndex(value any) ([4]types.U8, bool) {
+	var result [4]types.U8
+	switch typed := value.(type) {
+	case [4]types.U8:
+		return typed, true
+	case [4]uint8:
+		for index, element := range typed {
+			result[index] = types.U8(element)
+		}
+		return result, true
+	case []types.U8:
+		if len(typed) != len(result) {
+			return result, false
+		}
+		copy(result[:], typed)
+		return result, true
+	case []uint8:
+		if len(typed) != len(result) {
+			return result, false
+		}
+		for index, element := range typed {
+			result[index] = types.U8(element)
+		}
+		return result, true
+	case []any:
+		if len(typed) != len(result) {
+			return result, false
+		}
+		for index, element := range typed {
+			decoded, ok := decodedU8(element)
+			if !ok {
+				return [4]types.U8{}, false
+			}
+			result[index] = decoded
+		}
+		return result, true
+	default:
+		return result, false
+	}
 }
 
 // FindFinalizedExtrinsic searches canonical finalized block bodies beginning

@@ -296,7 +296,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 			return err
 		}
 		if action.ID == "precompile.commitment-write" {
-			if _, prior := e.journal.LatestTransaction(action.ID, action.IntentHash); !prior {
+			if _, prior := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash); !prior {
 				current, readErr := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
 				if readErr != nil || current.Hash != canonical {
 					return conformanceMismatch("canonical fleet commitment is unavailable before replacement", readErr)
@@ -319,7 +319,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 			evidence.Commitment.WriteCommitmentBlock = observed.CommitmentBlock
 			return writePrecompileEvidence(e.stateDir, evidence)
 		}
-		if _, prior := e.journal.LatestTransaction(action.ID, action.IntentHash); !prior {
+		if _, prior := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash); !prior {
 			current, readErr := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
 			if readErr != nil || current.Hash != probeHash || evidence.Commitment.WriteTransactionHash == "" {
 				return conformanceMismatch("replacement commitment is unavailable before restore", readErr)

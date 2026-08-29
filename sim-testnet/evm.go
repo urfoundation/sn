@@ -272,7 +272,7 @@ func (m *EVMTxManager) PendingNonce(ctx context.Context) (uint64, error) {
 }
 
 func (m *EVMTxManager) Send(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
-	if prior, ok := m.journal.LatestTransaction(a.ID, a.IntentHash); ok {
+	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".rlp")
 		raw, err := os.ReadFile(rawPath)
 		if err != nil {

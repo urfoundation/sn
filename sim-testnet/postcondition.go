@@ -40,11 +40,23 @@ type ActionPostcondition struct {
 	IndependentObserved           map[string]any `json:"independent_observed"`
 }
 
-func postconditionRelativePath(actionID string) (string, error) {
+func legacyPostconditionRelativePath(actionID string) (string, error) {
 	if actionID == "" || strings.ContainsAny(actionID, `/\\`) || filepath.Base(actionID) != actionID {
 		return "", fmt.Errorf("unsafe action id %q", actionID)
 	}
 	return filepath.ToSlash(filepath.Join("receipts", "postconditions", actionID+".json")), nil
+}
+
+// Scope new receipts by plan hash so a revised action cannot overwrite the
+// durable evidence referenced by an ancestor journal entry.
+func postconditionRelativePath(planHash, actionID string) (string, error) {
+	if _, err := decodeHex32("postcondition plan hash", planHash); err != nil {
+		return "", err
+	}
+	if _, err := legacyPostconditionRelativePath(actionID); err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(filepath.Join("receipts", "postconditions", stringsTrim0x(planHash), actionID+".json")), nil
 }
 
 func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*ActionPostcondition, error) {
@@ -249,7 +261,7 @@ func (e *Executor) independentReadExecutor() *Executor {
 }
 
 func (e *Executor) persistActionPostcondition(record *ActionPostcondition) (string, string, error) {
-	relative, err := postconditionRelativePath(record.ActionID)
+	relative, err := postconditionRelativePath(record.PlanHash, record.ActionID)
 	if err != nil {
 		return "", "", err
 	}
@@ -271,8 +283,9 @@ func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
 	if entry.PostconditionPath == "" {
 		return errors.New("verified journal entry has no postcondition path")
 	}
-	wantPath, err := postconditionRelativePath(entry.ActionID)
-	if err != nil || entry.PostconditionPath != wantPath {
+	wantPath, err := postconditionRelativePath(entry.PlanHash, entry.ActionID)
+	legacyPath, legacyErr := legacyPostconditionRelativePath(entry.ActionID)
+	if (err != nil || entry.PostconditionPath != wantPath) && (legacyErr != nil || entry.PostconditionPath != legacyPath) {
 		return fmt.Errorf("postcondition path %q is not canonical", entry.PostconditionPath)
 	}
 	b, err := os.ReadFile(filepath.Join(e.stateDir, filepath.FromSlash(entry.PostconditionPath)))
@@ -283,7 +296,7 @@ func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
 	if err := json.Unmarshal(b, &record); err != nil {
 		return err
 	}
-	if record.Schema != "urnetwork-sim-action-postcondition-v1" || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != e.plan.PlanHash || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
+	if record.Schema != "urnetwork-sim-action-postcondition-v1" || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
 		return errors.New("persisted action postcondition identity mismatch")
 	}
 	if record.IndependentSubstrateFinalized.Number == 0 || record.IndependentSubstrateFinalized.Hash == "" || record.IndependentEVMFinalized.Number == 0 || record.IndependentEVMFinalized.Hash == "" || record.IndependentObserved == nil {
@@ -307,14 +320,14 @@ func lifecycleHyperparameterExpectation(cfg *ResolvedConfig, name string, produc
 	if !ok {
 		return nil, "", fmt.Errorf("owner hyperparameter %s is unavailable", name)
 	}
-	if name != "immunity_period" || !productionVerified {
+	if !productionVerified {
 		return want, "", nil
 	}
 	want, ok = cfg.Hyperparameters.ProductionOwnerControlled[name]
 	if !ok {
 		return nil, "", fmt.Errorf("production owner hyperparameter %s is unavailable", name)
 	}
-	return want, "production.hyperparameter.immunity_period", nil
+	return want, "production.hyperparameter." + name, nil
 }
 
 func validateUnmutatedSetupTopology(current SubnetTopologyFacts, planned SetupFacts) error {
@@ -376,7 +389,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 	case strings.HasPrefix(a.ID, "subnet.hyperparameter."):
 		name := strings.TrimPrefix(a.ID, "subnet.hyperparameter.")
-		want, supersededBy, expectationErr := lifecycleHyperparameterExpectation(e.cfg, name, e.actionVerified("production.hyperparameter.immunity_period"))
+		productionActionID := "production.hyperparameter." + name
+		want, supersededBy, expectationErr := lifecycleHyperparameterExpectation(e.cfg, name, e.actionVerified(productionActionID))
 		if expectationErr != nil {
 			return nil, expectationErr
 		}
@@ -389,13 +403,18 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 			state["superseded_by"] = supersededBy
 		}
 		return state, nil
-	case a.ID == "production.hyperparameter.immunity_period":
-		got, err := e.substrate.ReadHyper("immunity_period")
-		want := e.cfg.Hyperparameters.ProductionOwnerControlled["immunity_period"]
-		if err != nil || !hyperEqual(got, want, hyperShapes["immunity_period"].Kind) {
-			return nil, fmt.Errorf("production immunity_period postcondition is %v: %w", got, err)
+	case strings.HasPrefix(a.ID, "production.hyperparameter."):
+		name := strings.TrimPrefix(a.ID, "production.hyperparameter.")
+		shape, ok := hyperShapes[name]
+		want, canonical := e.cfg.Hyperparameters.ProductionOwnerControlled[name]
+		if !ok || !canonical {
+			return nil, fmt.Errorf("production hyperparameter %q is not canonical or supported", name)
 		}
-		state["name"], state["value"] = "immunity_period", got
+		got, err := e.substrate.ReadHyper(name)
+		if err != nil || !hyperEqual(got, want, shape.Kind) {
+			return nil, fmt.Errorf("production %s postcondition is %v: %w", name, got, err)
+		}
+		state["name"], state["value"] = name, got
 		return state, nil
 	case strings.HasPrefix(a.ID, "evm.fund-"):
 		usableRao, err := evmFundingTerms(a, e.plan.LiveFacts.ExistentialDepositRao)

@@ -263,6 +263,14 @@ func validateApprovedSetupFacts(plan *SetupPlan, current *SetupFacts, remaining 
 		return errors.New("approved plan and finalized setup facts are required")
 	}
 	approved := plan.LiveFacts
+	if plan.Schema == "urnetwork-sim-plan-v2" {
+		if current.MinBurnRao != approved.MinBurnRao || current.MaxBurnRao != approved.MaxBurnRao || current.BurnIncreaseMultQ64 != approved.BurnIncreaseMultQ64 {
+			return fmt.Errorf("registration economics changed from min/max/multiplier %d/%d/%s to %d/%d/%s", approved.MinBurnRao, approved.MaxBurnRao, approved.BurnIncreaseMultQ64, current.MinBurnRao, current.MaxBurnRao, current.BurnIncreaseMultQ64)
+		}
+		if current.BurnHalfLifeBlocks != plan.BootstrapBurnHalfLifeBlocks && current.BurnHalfLifeBlocks != plan.ProductionBurnHalfLifeBlocks {
+			return fmt.Errorf("registration burn half-life changed outside the approved lifecycle values: current=%d bootstrap=%d production=%d", current.BurnHalfLifeBlocks, plan.BootstrapBurnHalfLifeBlocks, plan.ProductionBurnHalfLifeBlocks)
+		}
+	}
 	if current.ExistentialDepositRao != approved.ExistentialDepositRao || current.ExistentialDepositRao == 0 {
 		return fmt.Errorf("runtime existential deposit changed from approved %d to %d rao", approved.ExistentialDepositRao, current.ExistentialDepositRao)
 	}

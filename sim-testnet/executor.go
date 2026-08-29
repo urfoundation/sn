@@ -184,8 +184,9 @@ func remainingPlanSpend(plan *SetupPlan, entries []JournalEntry) (Spend, error) 
 	}
 	remaining := plan.MaximumSpend
 	verified := map[string]bool{}
+	allowedPlans := plan.allowedPlanHashes()
 	for _, entry := range entries {
-		if entry.PlanHash == plan.PlanHash && entry.Stage == StageVerified {
+		if allowedPlans[entry.PlanHash] && entry.Stage == StageVerified {
 			verified[entry.ActionID+"\x00"+entry.IntentHash] = true
 		}
 	}
@@ -248,8 +249,8 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	p, planErr := loadPersistedPlan(cfg, stateDir)
 	if !o.Apply {
-		if errors.Is(planErr, os.ErrNotExist) {
-			p, planErr = BuildPlan(ctx, cfg)
+		if planErr != nil {
+			p, planErr = BuildPlanForState(ctx, cfg, stateDir)
 		}
 		if planErr != nil {
 			return planErr
@@ -267,6 +268,12 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	entries := j.Entries()
 	if mayRefreshPersistedPlan(planErr, entries) {
 		p, planErr = BuildPlan(ctx, cfg)
+	} else if errors.Is(planErr, errPersistedPlanIdentityMismatch) {
+		prior, priorErr := readPersistedPlan(stateDir)
+		if priorErr != nil {
+			return priorErr
+		}
+		p, planErr = BuildPlanRevision(ctx, cfg, stateDir, prior, entries)
 	}
 	if planErr != nil {
 		return planErr
@@ -318,6 +325,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		return err
 	}
 	defer ex.Close()
+	if err := ex.verifyCarriedActionHistory(ctx); err != nil {
+		return fmt.Errorf("carried plan history preflight: %w", err)
+	}
 	// Chain/environment setup always stops at the disabled configuration
 	// boundary. LaunchDeployment then starts temporary operator APIs, provisions
 	// their server-assigned client identities, anchors the fleet, and only then
@@ -368,13 +378,9 @@ func mayRefreshPersistedPlan(planErr error, entries []JournalEntry) bool {
 }
 
 func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
-	b, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
+	p, err := readPersistedPlan(stateDir)
 	if err != nil {
 		return nil, err
-	}
-	var p SetupPlan
-	if err := json.Unmarshal(b, &p); err != nil {
-		return nil, fmt.Errorf("persisted setup plan: %w", err)
 	}
 	if cfg.Release == nil {
 		return nil, fmt.Errorf("current release lock is unavailable")
@@ -387,16 +393,10 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	if err != nil {
 		return nil, fmt.Errorf("hash current resolved launch inputs: %w", err)
 	}
-	if p.Schema != "urnetwork-sim-plan-v1" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash {
+	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
+	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
+	if p.Schema != "urnetwork-sim-plan-v2" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
 		return nil, errPersistedPlanIdentityMismatch
-	}
-	want := p.PlanHash
-	got, err := p.hash()
-	if err != nil {
-		return nil, err
-	}
-	if want == "" || got != want {
-		return nil, fmt.Errorf("persisted setup plan hash mismatch: got %s want %s", got, want)
 	}
 	roles, err := derivePublicRoles(cfg)
 	if err != nil {
@@ -407,6 +407,35 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	} else if persistedRoleHash, _ := canonicalHashHex(p.Roles); roleHash != persistedRoleHash {
 		return nil, fmt.Errorf("persisted setup roles do not match deterministic role derivation")
 	}
+	return p, nil
+}
+
+// Decode a stored plan against its own canonical hash. Current release/config
+// identity is checked separately so a valid ancestor can seed an explicit
+// revision without making a corrupted or hand-edited file refreshable.
+func readPersistedPlan(stateDir string) (*SetupPlan, error) {
+	b, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
+	if err != nil {
+		return nil, err
+	}
+	var p SetupPlan
+	if err := json.Unmarshal(b, &p); err != nil {
+		return nil, fmt.Errorf("persisted setup plan: %w", err)
+	}
+	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" {
+		return nil, fmt.Errorf("persisted setup plan has unsupported schema %q", p.Schema)
+	}
+	want := p.PlanHash
+	got, err := p.hash()
+	if err != nil {
+		return nil, err
+	}
+	if want == "" || got != want {
+		return nil, fmt.Errorf("persisted setup plan hash mismatch: got %s want %s", got, want)
+	}
+	if err := validatePlanBudget(&p); err != nil {
+		return nil, fmt.Errorf("persisted setup plan: %w", err)
+	}
 	return &p, nil
 }
 
@@ -415,7 +444,22 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 	if err != nil {
 		return err
 	}
-	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), append(b, '\n'), 0o600); err != nil {
+	planBytes := append(b, '\n')
+	if prior, priorErr := readPersistedPlan(stateDir); priorErr == nil && prior.PlanHash != p.PlanHash {
+		priorBytes, marshalErr := json.MarshalIndent(prior, "", "  ")
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), append(priorBytes, '\n'), 0o600); err != nil {
+			return err
+		}
+	} else if priorErr != nil && !errors.Is(priorErr, os.ErrNotExist) {
+		return priorErr
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(p.PlanHash)+".json"), planBytes, 0o600); err != nil {
+		return err
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), planBytes, 0o600); err != nil {
 		return err
 	}
 	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "private_authority": redactURL(cfg.Authority), "operational_rpc_mode": cfg.OperationalRPCMode, "operational_substrate_rpc": redactURL(cfg.OperationalSubstrate), "operational_evm_rpc": redactURL(cfg.OperationalEVM), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash, "resolved_inputs_hash": p.ResolvedInputsHash, "release_lock_hash": p.ReleaseLockHash}
@@ -453,18 +497,53 @@ func actionRequiresCurrentPostcondition(action Action) bool {
 	}
 }
 
-func (e *Executor) verifyConsumedActionHistory(action Action) error {
+func (e *Executor) consumedActionTransaction(action Action, verified JournalEntry) (JournalEntry, error) {
 	if action.Kind != "substrate-extrinsic" {
-		return fmt.Errorf("consumed action %s is not a native extrinsic", action.ID)
+		return JournalEntry{}, fmt.Errorf("consumed action %s is not a native extrinsic", action.ID)
 	}
-	transaction, ok := e.journal.LatestTransaction(action.ID, action.IntentHash)
+	if verified.Stage != StageVerified || verified.ActionID != action.ID || verified.IntentHash != action.IntentHash || !e.plan.allowedPlanHashes()[verified.PlanHash] {
+		return JournalEntry{}, fmt.Errorf("consumed action %s has invalid verified plan evidence", action.ID)
+	}
+	transaction, ok := e.journal.LatestTransaction(verified.PlanHash, action.ID, action.IntentHash)
 	if !ok || transaction.Stage != StageFinalized {
-		return fmt.Errorf("consumed action %s has no finalized transaction evidence", action.ID)
+		return JournalEntry{}, fmt.Errorf("consumed action %s has no finalized transaction evidence", action.ID)
+	}
+	return transaction, nil
+}
+
+func (e *Executor) verifyConsumedActionHistory(action Action, verified JournalEntry) error {
+	transaction, err := e.consumedActionTransaction(action, verified)
+	if err != nil {
+		return err
 	}
 	return e.verifySubstrateTransactionEvidence(
 		ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
 		transaction.TransactionHash,
 	)
+}
+
+// Revalidate one terminal action using live state where it still holds, then
+// fall back to its finalized transaction only for intentionally consumable
+// point-in-time balances. This also supports convergence actions that adopted
+// a balance already present and therefore have no transaction of their own.
+func (e *Executor) verifyVerifiedActionState(ctx context.Context, action Action, verified JournalEntry) error {
+	if err := e.verifyPersistedPostcondition(verified); err != nil {
+		return fmt.Errorf("persisted postcondition: %w", err)
+	}
+	if actionRequiresCurrentPostcondition(action) {
+		if _, err := e.verifyActionPostcondition(ctx, action); err != nil {
+			return fmt.Errorf("current postcondition: %w", err)
+		}
+		return nil
+	}
+	_, currentErr := e.verifyActionPostcondition(ctx, action)
+	if currentErr == nil {
+		return nil
+	}
+	if historyErr := e.verifyConsumedActionHistory(action, verified); historyErr != nil {
+		return fmt.Errorf("current postcondition: %v; historical postcondition: %w", currentErr, historyErr)
+	}
+	return nil
 }
 
 type initialRegistrationPlanPosition struct {
@@ -604,7 +683,7 @@ func (e *Executor) verifyInitialRegistrationPreState(ctx context.Context, action
 		return fmt.Errorf("live max_allowed_uids=%d does not match approved value %d", maximum, approvedMaximum)
 	}
 	wantPreState := uint64(e.plan.LiveFacts.ExistingUIDCount) + position.PriorRegistrations
-	_, hasTransaction := e.journal.LatestTransaction(action.ID, action.IntentHash)
+	_, hasTransaction := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash)
 	currentObserved := hasTransaction && uint64(count) == wantPreState+uint64(action.Spend.Registrations)
 	if currentObserved {
 		if _, err := e.verifyActionPostcondition(ctx, action); err != nil {
@@ -623,16 +702,9 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 	if err := e.verifyActionDependencies(a); err != nil {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
-	if prior, ok := e.journal.LastStage(a.ID, a.IntentHash, e.plan.PlanHash); ok && prior.Stage == StageVerified {
-		if err := e.verifyPersistedPostcondition(prior); err != nil {
-			return fmt.Errorf("action %s persisted postcondition: %w", a.ID, err)
-		}
-		if actionRequiresCurrentPostcondition(a) {
-			if _, err := e.verifyActionPostcondition(ctx, a); err != nil {
-				return fmt.Errorf("action %s current postcondition: %w", a.ID, err)
-			}
-		} else if err := e.verifyConsumedActionHistory(a); err != nil {
-			return fmt.Errorf("action %s historical postcondition: %w", a.ID, err)
+	if prior, ok := e.verifiedActionEntry(a); ok {
+		if err := e.verifyVerifiedActionState(ctx, a, prior); err != nil {
+			return fmt.Errorf("action %s: %w", a.ID, err)
 		}
 		return nil
 	}
@@ -677,8 +749,7 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 		if !ok {
 			return fmt.Errorf("dependency %s is absent from the approved plan", dependencyID)
 		}
-		entry, ok := e.journal.LastStage(dependency.ID, dependency.IntentHash, e.plan.PlanHash)
-		if !ok || entry.Stage != StageVerified {
+		if _, ok := e.verifiedActionEntry(dependency); !ok {
 			return fmt.Errorf("dependency %s is not postcondition-verified", dependencyID)
 		}
 	}
@@ -717,8 +788,8 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return nil
 	case a.ID == "production.schedule-policy":
 		return e.scheduleProductionPolicy(ctx, a)
-	case a.ID == "production.hyperparameter.immunity_period":
-		return e.setProductionHyperparameter(ctx, a, "immunity_period")
+	case strings.HasPrefix(a.ID, "production.hyperparameter."):
+		return e.setProductionHyperparameter(ctx, a, strings.TrimPrefix(a.ID, "production.hyperparameter."))
 	case strings.HasPrefix(a.ID, "operator.retire."):
 		return e.scheduleOperatorRetirement(ctx, a)
 	case strings.HasPrefix(a.ID, "evm.fund-"):
@@ -1397,7 +1468,7 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 		}
 		return value, nil
 	}
-	prior, hasPrior := e.journal.LatestTransaction(a.ID, a.IntentHash)
+	prior, hasPrior := e.journal.LatestTransaction(e.plan.PlanHash, a.ID, a.IntentHash)
 	if added, readErr := readAdded(head.Number, epoch); readErr != nil {
 		return readErr
 	} else if added.Sign() != 0 && !hasPrior {
@@ -1840,8 +1911,46 @@ func (e *Executor) actionVerified(id string) bool {
 	if err != nil || e.journal == nil {
 		return false
 	}
-	entry, ok := e.journal.LastStage(action.ID, action.IntentHash, e.plan.PlanHash)
-	return ok && entry.Stage == StageVerified
+	_, ok := e.verifiedActionEntry(action)
+	return ok
+}
+
+// Resolve an exact verified intent from the active plan or one explicitly
+// named ancestor. The caller still revalidates the durable and, where needed,
+// current postcondition before relying on it.
+func (e *Executor) verifiedActionEntry(action Action) (JournalEntry, bool) {
+	if e == nil || e.plan == nil || e.journal == nil {
+		return JournalEntry{}, false
+	}
+	allowedPlans := e.plan.allowedPlanHashes()
+	entries := e.journal.Entries()
+	for index := len(entries) - 1; index >= 0; index-- {
+		entry := entries[index]
+		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && entry.IntentHash == action.IntentHash && entry.Stage == StageVerified {
+			return entry, true
+		}
+	}
+	return JournalEntry{}, false
+}
+
+// Verify every exact ancestor intent before the revised plan performs its
+// first mutation. This prevents a missing receipt, stale live postcondition,
+// or unavailable finalized transaction from being discovered only after new
+// funding has already been submitted.
+func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
+	if e == nil || e.plan == nil || e.journal == nil {
+		return errors.New("plan/journal is unavailable")
+	}
+	for _, action := range e.plan.Actions {
+		entry, ok := e.verifiedActionEntry(action)
+		if !ok || entry.PlanHash == e.plan.PlanHash {
+			continue
+		}
+		if err := e.verifyVerifiedActionState(ctx, action, entry); err != nil {
+			return fmt.Errorf("action %s: %w", action.ID, err)
+		}
+	}
+	return nil
 }
 
 func (e *Executor) registrationSetupProgressed() bool {
@@ -1888,8 +1997,8 @@ func (e *Executor) registrationPostconditionUID(actionID string) (uint16, error)
 	if err != nil {
 		return 0, err
 	}
-	entry, ok := e.journal.LastStage(action.ID, action.IntentHash, e.plan.PlanHash)
-	if !ok || entry.Stage != StageVerified {
+	entry, ok := e.verifiedActionEntry(action)
+	if !ok {
 		return 0, fmt.Errorf("registration action %s is not verified", actionID)
 	}
 	if err := e.verifyPersistedPostcondition(entry); err != nil {

@@ -49,7 +49,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			},
 		},
 		Budgets: BudgetConfig{
-			MaximumSubnetCreations: 0, MaximumRegistrations: 260, MaximumRegistrationBurnRao: 1_000_000,
+			MaximumSubnetCreations: 0, MaximumRegistrations: 260, MaximumRegistrationBurnRao: 1_000_000, MaximumNativeTransactionFeeRao: 3_000_000,
 			MaximumTotalTAORaoFrom:   "vault://main/st.yml#testnet-spending-limit-tao-rao",
 			MaximumTotalAlphaRaoFrom: "vault://main/st.yml#testnet-spending-limit-alpha-rao",
 			MaximumEVMGasWeiFrom:     "vault://main/st.yml#testnet-spending-limit-evm-gas-wei",
@@ -78,8 +78,8 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 	}}
 	release.Runtime.CodeHash = "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08"
 	hyperparameters := &Hyperparameters{SchemaVersion: 1, Profile: releaseProfile, OwnerControlled: map[string]any{
-		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true,
-	}, ProductionOwnerControlled: map[string]any{"immunity_period": 2400}}
+		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "burn_half_life": 1, "immunity_period": 7200,
+	}, ProductionOwnerControlled: map[string]any{"burn_half_life": 360, "immunity_period": 2400}}
 	configHash, err := releaseConfigHash(cfg, public, hyperparameters)
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,8 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 
 func testSetupFacts() *SetupFacts {
 	return &SetupFacts{
-		BurnRao: 500_000, AlphaSourceHotkey: "0x" + strings.Repeat("11", 32),
+		BurnRao: 500_000, MinBurnRao: 500_000, MaxBurnRao: 100_000_000_000,
+		BurnHalfLifeBlocks: 360, BurnIncreaseMultQ64: "23058430092136939520", AlphaSourceHotkey: "0x" + strings.Repeat("11", 32),
 		AlphaAvailableRao: 6_000_000_000, ExistentialDepositRao: 500, NominatorMinimumRao: 1_000, ProbeTAORao: 1_000,
 		ExistingUIDCount: 2, SubnetOwnerHotkey: "0x" + strings.Repeat("42", 32), UIDZeroHotkey: "0x" + strings.Repeat("42", 32),
 		ExistingUIDs: []ExistingUIDFact{

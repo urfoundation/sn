@@ -34,25 +34,29 @@ type Action struct {
 	IntentHash  string            `json:"intent_hash"`
 }
 type SetupPlan struct {
-	Schema                   string      `json:"schema"`
-	Release                  string      `json:"release"`
-	ReleaseLockHash          string      `json:"release_lock_hash"`
-	DeploymentID             string      `json:"deployment_id"`
-	ChainID                  uint64      `json:"chain_id"`
-	GenesisHash              string      `json:"genesis_hash"`
-	Netuid                   uint16      `json:"netuid"`
-	Owner                    string      `json:"owner"`
-	LiveFacts                SetupFacts  `json:"live_facts"`
-	RegistrationBurnLimitRao uint64      `json:"registration_burn_limit_rao"`
-	ConfigHash               string      `json:"config_hash"`
-	ResolvedInputsHash       string      `json:"resolved_inputs_hash"`
-	PolicyHash               string      `json:"policy_hash"`
-	Roles                    PublicRoles `json:"roles"`
-	Actions                  []Action    `json:"actions"`
-	MaximumSpend             Spend       `json:"maximum_spend"`
-	Limits                   Spend       `json:"limits"`
-	PlanHash                 string      `json:"plan_hash"`
-	GeneratedAt              string      `json:"generated_at,omitempty"`
+	Schema                       string      `json:"schema"`
+	Release                      string      `json:"release"`
+	ReleaseLockHash              string      `json:"release_lock_hash"`
+	DeploymentID                 string      `json:"deployment_id"`
+	ChainID                      uint64      `json:"chain_id"`
+	GenesisHash                  string      `json:"genesis_hash"`
+	Netuid                       uint16      `json:"netuid"`
+	Owner                        string      `json:"owner"`
+	LiveFacts                    SetupFacts  `json:"live_facts"`
+	RegistrationBurnLimitRao     uint64      `json:"registration_burn_limit_rao"`
+	NativeTransactionFeeLimitRao uint64      `json:"native_transaction_fee_limit_rao,omitempty"`
+	BootstrapBurnHalfLifeBlocks  uint16      `json:"bootstrap_burn_half_life_blocks,omitempty"`
+	ProductionBurnHalfLifeBlocks uint16      `json:"production_burn_half_life_blocks,omitempty"`
+	PriorPlanHashes              []string    `json:"prior_plan_hashes,omitempty"`
+	ConfigHash                   string      `json:"config_hash"`
+	ResolvedInputsHash           string      `json:"resolved_inputs_hash"`
+	PolicyHash                   string      `json:"policy_hash"`
+	Roles                        PublicRoles `json:"roles"`
+	Actions                      []Action    `json:"actions"`
+	MaximumSpend                 Spend       `json:"maximum_spend"`
+	Limits                       Spend       `json:"limits"`
+	PlanHash                     string      `json:"plan_hash"`
+	GeneratedAt                  string      `json:"generated_at,omitempty"`
 }
 type PublicRoles struct {
 	Deployer, Owner, Guardian, CommitmentOracle string   `json:",omitempty"`
@@ -209,6 +213,9 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	if registrationBurnLimit == 0 || facts.BurnRao > registrationBurnLimit {
 		return nil, fmt.Errorf("finalized registration burn %d exceeds configured per-registration limit %d", facts.BurnRao, registrationBurnLimit)
 	}
+	if err := validateRegistrationEconomics(cfg, facts, registrationBurnLimit); err != nil {
+		return nil, err
+	}
 	if cfg.Release == nil {
 		return nil, fmt.Errorf("release lock is required")
 	}
@@ -220,7 +227,13 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	if err != nil {
 		return nil, fmt.Errorf("hash resolved launch inputs: %w", err)
 	}
-	p := &SetupPlan{Schema: "urnetwork-sim-plan-v1", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
+	nativeFeeLimit := cfg.Config.Budgets.MaximumNativeTransactionFeeRao
+	if nativeFeeLimit == 0 {
+		return nil, fmt.Errorf("native transaction fee limit is required")
+	}
+	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
+	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
+	p := &SetupPlan{Schema: "urnetwork-sim-plan-v2", Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, GeneratedAt: generatedAt.Format(time.RFC3339)}
 	add := func(a Action) {
 		h, _ := canonicalHashHex(struct {
 			ID, Kind, Target, Description string
@@ -431,9 +444,16 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		add(Action{ID: id, Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: fmt.Sprintf("converge %s to %v and verify finalized state", k, cfg.Hyperparameters.OwnerControlled[k]), DependsOn: []string{hyperparameterBarrier}})
 		hyperparameterBarrier = id
 	}
-	roleFunding, ok := checkedAdd(registrationBurnLimit, 2_000_000)
-	if !ok {
-		return nil, fmt.Errorf("native role funding overflow")
+	roleFunding, err := registrationRoleFunding(registrationBurnLimit, nativeFeeLimit, facts.ExistentialDepositRao)
+	if err != nil {
+		return nil, err
+	}
+	registrationFundingParameters := func() map[string]string {
+		return map[string]string{
+			"maximum_burn_rao":       fmt.Sprint(registrationBurnLimit),
+			"maximum_fee_rao":        fmt.Sprint(nativeFeeLimit),
+			"keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao),
+		}
 	}
 	// Churn-floor identities must be the oldest non-owner registrations. Runtime
 	// v451 breaks equal-emission prune ties by registration block and UID, even
@@ -443,7 +463,7 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	for churn := 1; churn <= cfg.Config.Topology.ChurnFloorUIDs; churn++ {
 		fundID := fmt.Sprintf("churn.fund.%d", churn)
 		registerID := fmt.Sprintf("churn.register.%d", churn)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("churn-coldkey:%d", churn), Description: "fund a deterministic churn-floor coldkey for one bounded registration", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lastChurn}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("churn-coldkey:%d", churn), Description: "fund a deterministic churn-floor coldkey for one bounded registration while preserving its runtime keep-alive balance", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lastChurn}})
 		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("churn-hotkey:%d", churn), Description: "limit-register an unbound zero-weight churn-floor UID before every load-bearing identity", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
 		lastChurn = registerID
 	}
@@ -483,28 +503,39 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		fundID := fmt.Sprintf("fleet.fund.%d", fleet)
 		registerID := fmt.Sprintf("fleet.register.%d", fleet)
 		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn, bounded fees, and runtime keep-alive balance", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
 		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "limit-register an independently keyed provider-owned head fleet hotkey", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
-		commitmentFees := uint64(1_000_000)
+		commitmentFees := nativeFeeLimit
 		if fleet == 1 {
 			// Canonical publish plus the M0B replace/restore pair.
-			commitmentFees = 3_000_000
+			commitmentFees, ok = checkedMul(nativeFeeLimit, 3)
+			if !ok {
+				return nil, fmt.Errorf("head fleet commitment fee reserve overflow")
+			}
 		}
-		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-hotkey:%d", fleet), Description: "fund the fleet hotkey's exact bounded commitment-write fees", Spend: Spend{TAORao: commitmentFees}, DependsOn: []string{registerID}})
+		commitmentFunding, fundingErr := registrationRoleFunding(0, commitmentFees, facts.ExistentialDepositRao)
+		if fundingErr != nil {
+			return nil, fmt.Errorf("head fleet %d commitment funding: %w", fleet, fundingErr)
+		}
+		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-hotkey:%d", fleet), Description: "fund the fleet hotkey's exact bounded commitment-write fees and runtime keep-alive balance", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(commitmentFees), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: commitmentFunding}, DependsOn: []string{registerID}})
 		setupDeps = append(setupDeps, registerID, fundHotkeyID)
 	}
 	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
 		fleet := cfg.Config.Topology.HeadFleets + challenger
 		fundID := fmt.Sprintf("fleet.fund.%d", fleet)
 		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-coldkey:%d", fleet), Description: "fund a challenger fleet coldkey for one bounded churn registration", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
-		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-hotkey:%d", fleet), Description: "fund the challenger hotkey's bounded commitment-write fees", Spend: Spend{TAORao: 1_000_000}, DependsOn: []string{fundID}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-coldkey:%d", fleet), Description: "fund a challenger fleet coldkey for one bounded churn registration while preserving its runtime keep-alive balance", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
+		commitmentFunding, fundingErr := registrationRoleFunding(0, nativeFeeLimit, facts.ExistentialDepositRao)
+		if fundingErr != nil {
+			return nil, fmt.Errorf("challenger fleet %d commitment funding: %w", fleet, fundingErr)
+		}
+		add(Action{ID: fundHotkeyID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("challenger-fleet-hotkey:%d", fleet), Description: "fund the challenger hotkey's bounded commitment-write fees and runtime keep-alive balance", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: commitmentFunding}, DependsOn: []string{fundID}})
 		setupDeps = append(setupDeps, fundID, fundHotkeyID)
 	}
 	setupDeps = append(setupDeps, "evm.vault-register-escrow")
 	for i := 0; i < validatorCount; i++ {
 		fundID := fmt.Sprintf("validator.fund.%d", i+1)
-		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator-coldkey:%d", i+1), Description: "fund the independent validator coldkey for one burn and bounded fees", Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("validator-coldkey:%d", i+1), Description: "fund the independent validator coldkey for one burn, bounded fees, and runtime keep-alive balance", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
 		registerID := fmt.Sprintf("validator.register.%d", i+1)
 		description := "limit-register the independent validator hotkey and verify live UID"
 		if i == 0 {
@@ -533,11 +564,11 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	// commitment replace/restore pair is also executed after this reservation
 	// is constructed and must be included explicitly.
 	nativeWrites += uint64(cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 3)
-	feeReserve, ok := checkedMul(nativeWrites, 1_000_000)
+	feeReserve, ok := checkedMul(nativeWrites, nativeFeeLimit)
 	if !ok {
 		return nil, fmt.Errorf("native fee reserve overflow")
 	}
-	add(Action{ID: "wallet.native-fee-reserve", Kind: "budget-reserve", Target: cfg.WalletPublic, Description: "reserve a one-millirao maximum fee for every planned native extrinsic", Spend: Spend{TAORao: feeReserve}, DependsOn: []string{"subnet.verify-owner"}})
+	add(Action{ID: "wallet.native-fee-reserve", Kind: "budget-reserve", Target: cfg.WalletPublic, Description: "reserve the approved fee ceiling for every planned native extrinsic", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "native_writes": fmt.Sprint(nativeWrites)}, Spend: Spend{TAORao: feeReserve}, DependsOn: []string{"subnet.verify-owner"}})
 	setupDeps = append(setupDeps, "wallet.native-fee-reserve")
 	runtimeGas := cfg.MaximumEVMGasWei - allocatedSetupGas
 	voluntaryGas := runtimeGas / 20
@@ -657,12 +688,23 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 		},
 		Spend: Spend{EVMGasWei: productionGas}, DependsOn: []string{governanceDependency, "evm.fund-owner"},
 	})
-	add(Action{ID: "production.hyperparameter.immunity_period", Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "after M2, converge immunity_period to the production epoch length and verify finalized state", Parameters: map[string]string{"value": fmt.Sprint(production.EpochBlocks)}, DependsOn: []string{"production.schedule-policy"}})
+	productionNames := make([]string, 0, len(cfg.Hyperparameters.ProductionOwnerControlled))
+	for name := range cfg.Hyperparameters.ProductionOwnerControlled {
+		productionNames = append(productionNames, name)
+	}
+	sort.Strings(productionNames)
+	productionDependency := "production.schedule-policy"
+	for _, name := range productionNames {
+		id := "production.hyperparameter." + name
+		value := cfg.Hyperparameters.ProductionOwnerControlled[name]
+		add(Action{ID: id, Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: fmt.Sprintf("after M2, converge %s to its production value and verify finalized state", name), Parameters: map[string]string{"value": fmt.Sprint(value)}, DependsOn: []string{productionDependency}})
+		productionDependency = id
+	}
 	add(Action{
 		ID: "campaign.dishonest-deposit.2", Kind: "evm-transaction", Target: "no:2",
 		Description: "post a deliberate one-rao demand deposit in the first fresh production-cadence epoch and prove live validators reject the signed-usage mismatch",
 		Parameters:  map[string]string{"no_id": "2", "amount_rao": "1", "target_epoch": "next_fresh_production_epoch"},
-		Spend:       Spend{EVMGasWei: dishonestDepositGas}, DependsOn: []string{"topology.launch", "campaign.evm-gas-reserve", "production.schedule-policy"},
+		Spend:       Spend{EVMGasWei: dishonestDepositGas}, DependsOn: []string{"topology.launch", "campaign.evm-gas-reserve", productionDependency},
 	})
 	add(Action{ID: "retirement.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve a separately approved gas ceiling for future-effective retirement of every operator", Parameters: map[string]string{"operators": fmt.Sprint(operatorCount)}, Spend: Spend{EVMGasWei: retirementGas}, DependsOn: []string{"topology.launch"}})
 	for _, a := range p.Actions {
@@ -692,6 +734,48 @@ func buildPlan(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, genera
 	}
 	p.PlanHash = planHash
 	return p, nil
+}
+
+// Runtime 451 bumps burn immediately after a registration and decays it on
+// every following block. The bootstrap sets a one-block half-life, so an
+// observed multiplier no greater than two guarantees every sequential
+// registration returns to at most the same approved ceiling by the next block.
+func validateRegistrationEconomics(cfg *ResolvedConfig, facts *SetupFacts, registrationBurnLimit uint64) error {
+	if cfg == nil || cfg.Hyperparameters == nil || facts == nil {
+		return errors.New("registration economics configuration is unavailable")
+	}
+	if facts.MinBurnRao == 0 || facts.MaxBurnRao < facts.MinBurnRao || facts.BurnRao < facts.MinBurnRao || facts.BurnRao > facts.MaxBurnRao || facts.BurnRao > registrationBurnLimit || facts.MinBurnRao > registrationBurnLimit {
+		return fmt.Errorf("registration burn bounds current=%d min=%d max=%d are incompatible with limit %d", facts.BurnRao, facts.MinBurnRao, facts.MaxBurnRao, registrationBurnLimit)
+	}
+	bootstrapHalfLife := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"])
+	productionHalfLife := hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"])
+	if bootstrapHalfLife != 1 || productionHalfLife == 0 || (uint64(facts.BurnHalfLifeBlocks) != bootstrapHalfLife && uint64(facts.BurnHalfLifeBlocks) != productionHalfLife) {
+		return fmt.Errorf("registration burn half-life current=%d bootstrap=%d production=%d does not provide the approved one-block bootstrap envelope", facts.BurnHalfLifeBlocks, bootstrapHalfLife, productionHalfLife)
+	}
+	multiplier, ok := new(big.Int).SetString(facts.BurnIncreaseMultQ64, 10)
+	if !ok || multiplier.Sign() <= 0 {
+		return fmt.Errorf("registration burn multiplier %q is not a positive Q64 integer", facts.BurnIncreaseMultQ64)
+	}
+	oneQ64 := new(big.Int).Lsh(big.NewInt(1), 64)
+	twoQ64 := new(big.Int).Lsh(big.NewInt(2), 64)
+	if multiplier.Cmp(oneQ64) < 0 || multiplier.Cmp(twoQ64) > 0 {
+		return fmt.Errorf("registration burn multiplier Q64 %s is outside the one-through-two bootstrap envelope", multiplier)
+	}
+	return nil
+}
+
+// Bound a native registration coldkey for the runtime charge, the signed
+// extrinsic fee, and the balance that Preservation::Preserve must leave alive.
+func registrationRoleFunding(burnLimitRao, feeLimitRao, keepAliveRao uint64) (uint64, error) {
+	chargedRao, ok := checkedAdd(burnLimitRao, feeLimitRao)
+	if !ok {
+		return 0, errors.New("native registration burn and fee funding overflow")
+	}
+	fundingRao, ok := checkedAdd(chargedRao, keepAliveRao)
+	if !ok {
+		return 0, errors.New("native registration keep-alive funding overflow")
+	}
+	return fundingRao, nil
 }
 
 func ceilDiv(value, divisor uint64) uint64 {
@@ -740,6 +824,12 @@ func (p SetupPlan) hash() (string, error) {
 	p.LiveFacts.FinalizedBlockHash = ""
 	p.LiveFacts.AlphaAvailableRao = 0
 	p.LiveFacts.WalletFreeTAORao = 0
+	if p.Schema == "urnetwork-sim-plan-v2" {
+		// Runtime 451 decays Burn on every block. V2 binds MinBurn, MaxBurn,
+		// BurnIncreaseMult, the approved half-life lifecycle, and the hard
+		// registration limit instead; apply rechecks the moving spot value.
+		p.LiveFacts.BurnRao = 0
+	}
 	return canonicalHashHex(p)
 }
 func validatePlanBudget(p *SetupPlan) error {
@@ -760,6 +850,25 @@ func validatePlanBudget(p *SetupPlan) error {
 	}
 	if p.MaximumSpend.Registrations > 0 && p.RegistrationBurnLimitRao == 0 {
 		return errors.New("registration plan has no per-registration burn limit")
+	}
+	if p.Schema == "urnetwork-sim-plan-v2" && p.NativeTransactionFeeLimitRao == 0 {
+		return errors.New("release plan has no per-transaction native fee limit")
+	}
+	if p.Schema == "urnetwork-sim-plan-v2" && (p.BootstrapBurnHalfLifeBlocks != 1 || p.ProductionBurnHalfLifeBlocks == 0) {
+		return errors.New("release plan has no bounded bootstrap/production burn half-life lifecycle")
+	}
+	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" {
+		return fmt.Errorf("unsupported setup plan schema %q", p.Schema)
+	}
+	seenPriorPlans := map[string]bool{}
+	for _, hash := range p.PriorPlanHashes {
+		if _, err := decodeHex32("prior plan hash", hash); err != nil {
+			return err
+		}
+		if seenPriorPlans[hash] || hash == p.PlanHash {
+			return fmt.Errorf("setup plan has a duplicate or self-referential prior plan hash %s", hash)
+		}
+		seenPriorPlans[hash] = true
 	}
 	seenActions := make(map[string]bool, len(p.Actions))
 	var actionRegistrations uint64
@@ -794,6 +903,25 @@ func validatePlanBudget(p *SetupPlan) error {
 		return fmt.Errorf("subnet creation is forbidden")
 	}
 	return nil
+}
+
+// Return the exact plan lineage whose journaled action intents may be carried
+// into this approved revision after their durable and live postconditions are
+// revalidated.
+func (self *SetupPlan) allowedPlanHashes() map[string]bool {
+	result := map[string]bool{}
+	if self == nil {
+		return result
+	}
+	if self.PlanHash != "" {
+		result[self.PlanHash] = true
+	}
+	for _, hash := range self.PriorPlanHashes {
+		if hash != "" {
+			result[hash] = true
+		}
+	}
+	return result
 }
 
 // evmFundingTerms validates the approval-bound distinction between a role's

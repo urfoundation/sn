@@ -233,7 +233,7 @@ func runMain(args []string) error {
 		report := RunDoctor(ctx, resolved)
 		return printResult(o.Format, report, report.Error())
 	case "plan":
-		p, err := BuildPlan(ctx, resolved)
+		p, err := BuildPlanForState(ctx, resolved, stateDir)
 		if err != nil {
 			return err
 		}

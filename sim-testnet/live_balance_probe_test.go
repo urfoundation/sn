@@ -113,7 +113,7 @@ func TestLiveStakeNetuid521Alpha(t *testing.T) {
 		if hashErr != nil {
 			t.Fatal(hashErr)
 		}
-		if _, exists := journal.LatestTransaction(enableAction.ID, enableAction.IntentHash); !exists {
+		if _, exists := journal.LatestTransaction(enablePlanHash, enableAction.ID, enableAction.IntentHash); !exists {
 			if err := journal.Append(JournalEntry{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: enablePlanHash, ActionID: enableAction.ID, IntentHash: enableAction.IntentHash, Stage: StageIntent}); err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestLiveStakeNetuid521Alpha(t *testing.T) {
 		if hashErr != nil {
 			t.Fatal(hashErr)
 		}
-		if _, exists := journal.LatestTransaction(startAction.ID, startAction.IntentHash); !exists {
+		if _, exists := journal.LatestTransaction(startPlanHash, startAction.ID, startAction.IntentHash); !exists {
 			if err := journal.Append(JournalEntry{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: startPlanHash, ActionID: startAction.ID, IntentHash: startAction.IntentHash, Stage: StageIntent}); err != nil {
 				t.Fatal(err)
 			}
@@ -233,7 +233,7 @@ func TestLiveStakeNetuid521Alpha(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := journal.LatestTransaction(action.ID, action.IntentHash); !exists {
+	if _, exists := journal.LatestTransaction(planHash, action.ID, action.IntentHash); !exists {
 		if err := journal.Append(JournalEntry{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
 			t.Fatal(err)
 		}

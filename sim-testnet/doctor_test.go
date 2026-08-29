@@ -378,7 +378,7 @@ func TestDockerDaemonCheckRejectsUnavailableServer(t *testing.T) {
 }
 
 func TestApprovedSetupFactsUseOnlyTheRemainingBudget(t *testing.T) {
-	plan := &SetupPlan{LiveFacts: *testSetupFacts(), RegistrationBurnLimitRao: testSetupFacts().BurnRao + 10, Limits: Spend{TAORao: 100, AlphaRao: 100}}
+	plan := &SetupPlan{Schema: "urnetwork-sim-plan-v1", LiveFacts: *testSetupFacts(), RegistrationBurnLimitRao: testSetupFacts().BurnRao + 10, Limits: Spend{TAORao: 100, AlphaRao: 100}}
 	current := *testSetupFacts()
 	current.WalletFreeTAORao = 20
 	current.AlphaAvailableRao = 30
@@ -404,6 +404,37 @@ func TestApprovedSetupFactsUseOnlyTheRemainingBudget(t *testing.T) {
 	}
 	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err != nil {
 		t.Fatalf("burn blocked a resume after every registration was verified: %v", err)
+	}
+}
+
+func TestApprovedSetupFactsBindRegistrationEconomicsAcrossLifecycle(t *testing.T) {
+	approved := *testSetupFacts()
+	plan := &SetupPlan{
+		Schema: "urnetwork-sim-plan-v2", LiveFacts: approved,
+		RegistrationBurnLimitRao: 1_000_000, NativeTransactionFeeLimitRao: 3_000_000,
+		BootstrapBurnHalfLifeBlocks: 1, ProductionBurnHalfLifeBlocks: 360,
+	}
+	current := approved
+	current.BurnHalfLifeBlocks = 1
+	if err := validateApprovedSetupFacts(plan, &current, Spend{Registrations: 1}); err != nil {
+		t.Fatalf("approved bootstrap half-life was rejected: %v", err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*SetupFacts)
+		want   string
+	}{
+		{name: "minimum burn drift", mutate: func(facts *SetupFacts) { facts.MinBurnRao++ }, want: "registration economics changed"},
+		{name: "maximum burn drift", mutate: func(facts *SetupFacts) { facts.MaxBurnRao-- }, want: "registration economics changed"},
+		{name: "multiplier drift", mutate: func(facts *SetupFacts) { facts.BurnIncreaseMultQ64 = "18446744073709551616" }, want: "registration economics changed"},
+		{name: "half-life outside lifecycle", mutate: func(facts *SetupFacts) { facts.BurnHalfLifeBlocks = 17 }, want: "outside the approved lifecycle"},
+	}
+	for _, test := range tests {
+		current := approved
+		test.mutate(&current)
+		if err := validateApprovedSetupFacts(plan, &current, Spend{Registrations: 1}); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s: error=%v, want substring %q", test.name, err, test.want)
+		}
 	}
 }
 

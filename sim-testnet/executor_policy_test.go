@@ -180,12 +180,16 @@ func TestInitialImmunityPostconditionTracksOnlyItsVerifiedSuccessor(t *testing.T
 	if err != nil || production != 2400 || successor != "production.hyperparameter.immunity_period" {
 		t.Fatalf("production expectation=%v successor=%q err=%v", production, successor, err)
 	}
-	tempo, successor, err := lifecycleHyperparameterExpectation(cfg, "tempo", true)
+	tempo, successor, err := lifecycleHyperparameterExpectation(cfg, "tempo", false)
 	if err != nil || tempo != 360 || successor != "" {
 		t.Fatalf("unrelated expectation=%v successor=%q err=%v", tempo, successor, err)
 	}
 	delete(cfg.Hyperparameters.ProductionOwnerControlled, "immunity_period")
 	if _, _, err := lifecycleHyperparameterExpectation(cfg, "immunity_period", true); err == nil {
 		t.Fatal("missing production immunity value was accepted")
+	}
+	burnHalfLife, successor, err := lifecycleHyperparameterExpectation(cfg, "burn_half_life", true)
+	if err != nil || burnHalfLife != 360 || successor != "production.hyperparameter.burn_half_life" {
+		t.Fatalf("production burn half-life expectation=%v successor=%q err=%v", burnHalfLife, successor, err)
 	}
 }

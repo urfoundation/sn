@@ -179,12 +179,13 @@ type AdversaryConfig struct {
 	MaximumRPCRequestsPerSec      int    `yaml:"maximum_rpc_requests_per_second" json:"maximum_rpc_requests_per_second"`
 }
 type BudgetConfig struct {
-	MaximumSubnetCreations     int    `yaml:"maximum_subnet_creations" json:"maximum_subnet_creations"`
-	MaximumTotalTAORaoFrom     string `yaml:"maximum_total_tao_rao_from" json:"maximum_total_tao_rao_from"`
-	MaximumTotalAlphaRaoFrom   string `yaml:"maximum_total_alpha_rao_from" json:"maximum_total_alpha_rao_from"`
-	MaximumEVMGasWeiFrom       string `yaml:"maximum_evm_gas_tao_wei_from" json:"maximum_evm_gas_tao_wei_from"`
-	MaximumRegistrations       int    `yaml:"maximum_registrations" json:"maximum_registrations"`
-	MaximumRegistrationBurnRao uint64 `yaml:"maximum_registration_burn_rao" json:"maximum_registration_burn_rao"`
+	MaximumSubnetCreations         int    `yaml:"maximum_subnet_creations" json:"maximum_subnet_creations"`
+	MaximumTotalTAORaoFrom         string `yaml:"maximum_total_tao_rao_from" json:"maximum_total_tao_rao_from"`
+	MaximumTotalAlphaRaoFrom       string `yaml:"maximum_total_alpha_rao_from" json:"maximum_total_alpha_rao_from"`
+	MaximumEVMGasWeiFrom           string `yaml:"maximum_evm_gas_tao_wei_from" json:"maximum_evm_gas_tao_wei_from"`
+	MaximumRegistrations           int    `yaml:"maximum_registrations" json:"maximum_registrations"`
+	MaximumRegistrationBurnRao     uint64 `yaml:"maximum_registration_burn_rao" json:"maximum_registration_burn_rao"`
+	MaximumNativeTransactionFeeRao uint64 `yaml:"maximum_native_transaction_fee_rao" json:"maximum_native_transaction_fee_rao"`
 }
 type SecretConfig struct {
 	GeneratedRoleStore string `yaml:"generated_role_store" json:"generated_role_store"`
@@ -497,8 +498,8 @@ func (c *HarnessConfig) Validate() error {
 	if setupRegistrations != 254 {
 		return fmt.Errorf("initial topology consumes %d registrations, want 254 alongside the two finalized bootstrap UIDs", setupRegistrations)
 	}
-	if c.Budgets.MaximumRegistrationBurnRao == 0 {
-		return errors.New("maximum registration burn must be nonzero")
+	if c.Budgets.MaximumRegistrationBurnRao == 0 || c.Budgets.MaximumNativeTransactionFeeRao == 0 {
+		return errors.New("maximum registration burn and native transaction fee must be nonzero")
 	}
 	if _, _, _, err := resolveOperationalRPCs("127.0.0.1:9944", c.LaunchInputs.PublicSubstrateRPCOverride, c.LaunchInputs.PublicEVMRPCOverride); err != nil {
 		return fmt.Errorf("public RPC override: %w", err)
@@ -1070,8 +1071,27 @@ func (r *ResolvedConfig) Validate() error {
 	if r.Policy.ProductionCadence.AfterAcceleratedEpochs != uint64(r.Config.Scenarios.ShortEpochs) {
 		return fmt.Errorf("production cadence requires %d accelerated epochs, scenario config requests %d", r.Policy.ProductionCadence.AfterAcceleratedEpochs, r.Config.Scenarios.ShortEpochs)
 	}
-	if len(r.Hyperparameters.ProductionOwnerControlled) != 1 || hyperparameterUint64(r.Hyperparameters.ProductionOwnerControlled["immunity_period"]) != r.Policy.ProductionCadence.EpochBlocks {
-		return errors.New("production hyperparameters must set immunity_period to the production epoch length")
+	for name, value := range r.Hyperparameters.OwnerControlled {
+		shape, ok := hyperShapes[name]
+		if !ok {
+			return fmt.Errorf("owner hyperparameter %q is unsupported", name)
+		}
+		if _, err := normalizeYAMLValue(value, shape.Kind); err != nil {
+			return fmt.Errorf("owner hyperparameter %s: %w", name, err)
+		}
+	}
+	for name, value := range r.Hyperparameters.ProductionOwnerControlled {
+		shape, supported := hyperShapes[name]
+		_, bootstrapped := r.Hyperparameters.OwnerControlled[name]
+		if !supported || !bootstrapped {
+			return fmt.Errorf("production hyperparameter %q is unsupported or has no bootstrap value", name)
+		}
+		if _, err := normalizeYAMLValue(value, shape.Kind); err != nil {
+			return fmt.Errorf("production hyperparameter %s: %w", name, err)
+		}
+	}
+	if len(r.Hyperparameters.ProductionOwnerControlled) != 2 || hyperparameterUint64(r.Hyperparameters.ProductionOwnerControlled["immunity_period"]) != r.Policy.ProductionCadence.EpochBlocks || hyperparameterUint64(r.Hyperparameters.OwnerControlled["burn_half_life"]) != 1 || hyperparameterUint64(r.Hyperparameters.ProductionOwnerControlled["burn_half_life"]) != 360 {
+		return errors.New("production hyperparameters must restore burn_half_life to 360 and set immunity_period to the production epoch length after a one-block bootstrap burn half-life")
 	}
 	if len(r.OperatorAPIOrigins) != 0 {
 		origins, err := validateOperatorAPIOrigins(r.OperatorAPIOrigins, r.Config.Topology.Operators)

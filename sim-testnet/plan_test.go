@@ -78,12 +78,28 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao {
 		t.Fatalf("registration burn limit = %d, want %d", plan.RegistrationBurnLimitRao, cfg.Config.Budgets.MaximumRegistrationBurnRao)
 	}
+	if plan.Schema != "urnetwork-sim-plan-v2" || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao {
+		t.Fatalf("plan schema/native fee limit = %q/%d", plan.Schema, plan.NativeTransactionFeeLimitRao)
+	}
+	if plan.BootstrapBurnHalfLifeBlocks != 1 || plan.ProductionBurnHalfLifeBlocks != 360 || plan.LiveFacts.MinBurnRao != 500_000 || plan.LiveFacts.BurnIncreaseMultQ64 != "23058430092136939520" {
+		t.Fatalf("registration economics are not approval-bound: %+v", plan)
+	}
 	for _, action := range plan.Actions {
 		if action.Spend.Registrations > 0 && action.Parameters["maximum_burn_rao"] != fmt.Sprint(plan.RegistrationBurnLimitRao) {
 			t.Fatalf("registration action %s does not bind the reviewed burn limit: %+v", action.ID, action)
 		}
 	}
-	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen[dishonestDepositActionID] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
+	roleFunding := plan.RegistrationBurnLimitRao + plan.NativeTransactionFeeLimitRao + plan.LiveFacts.ExistentialDepositRao
+	if actions["churn.fund.1"].Spend.TAORao != roleFunding || actions["fleet.fund.1"].Spend.TAORao != roleFunding || actions["validator.fund.1"].Spend.TAORao != roleFunding {
+		t.Fatalf("native registration roles are not funded for burn, fee, and keep-alive: churn=%d fleet=%d validator=%d want=%d", actions["churn.fund.1"].Spend.TAORao, actions["fleet.fund.1"].Spend.TAORao, actions["validator.fund.1"].Spend.TAORao, roleFunding)
+	}
+	if actions["churn.fund.1"].Parameters["maximum_burn_rao"] != fmt.Sprint(plan.RegistrationBurnLimitRao) || actions["churn.fund.1"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) || actions["churn.fund.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) {
+		t.Fatalf("native registration funding components are not approval-bound: %+v", actions["churn.fund.1"])
+	}
+	if actions["fleet.fund-hotkey.1"].Spend.TAORao != 3*plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.2"].Spend.TAORao != plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) || actions["wallet.native-fee-reserve"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) {
+		t.Fatalf("native commitment/global fee reserves are not approval-bound: fleet1=%d fleet2=%d wallet=%+v", actions["fleet.fund-hotkey.1"].Spend.TAORao, actions["fleet.fund-hotkey.2"].Spend.TAORao, actions["wallet.native-fee-reserve"])
+	}
+	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen[dishonestDepositActionID] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.burn_half_life"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
 		t.Fatalf("release setup actions missing: %v", seen)
 	}
 	lastChurn := fmt.Sprintf("churn.register.%d", cfg.Config.Topology.ChurnFloorUIDs)
@@ -123,8 +139,11 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		t.Fatalf("production/retirement reservations are incomplete: production=%+v retirement=%+v", production, actions["retirement.evm-gas-reserve"])
 	}
 	dishonest := actions[dishonestDepositActionID]
-	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "1" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei == 0 || !slices.Contains(dishonest.DependsOn, "production.schedule-policy") {
+	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "1" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei == 0 || !slices.Contains(dishonest.DependsOn, "production.hyperparameter.immunity_period") {
 		t.Fatalf("dishonest deposit action is not exact and production-fenced: %+v", dishonest)
+	}
+	if !slices.Contains(actions["production.hyperparameter.burn_half_life"].DependsOn, "production.schedule-policy") || !slices.Contains(actions["production.hyperparameter.immunity_period"].DependsOn, "production.hyperparameter.burn_half_life") {
+		t.Fatalf("production hyperparameter transition is not an exact topological chain: burn=%+v immunity=%+v", actions["production.hyperparameter.burn_half_life"], actions["production.hyperparameter.immunity_period"])
 	}
 	voluntary := actions["campaign.voluntary-conviction.1"]
 	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Spend.EVMGasWei == 0 || actions["alpha.transfer.operator-deposit.1"].Spend.AlphaRao != 3_250_000_000 || actions["alpha.transfer.operator-deposit.2"].Spend.AlphaRao != 2_250_000_000 {
@@ -146,6 +165,77 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 				t.Fatalf("fleet %d member %d binding is missing", fleet, member)
 			}
 		}
+	}
+}
+
+func TestRegistrationEconomicsAcceptsRuntime451BoundedBootstrap(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	facts := testSetupFacts()
+	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {
+		t.Fatalf("bounded runtime-451 registration economics were rejected: %v", err)
+	}
+	facts.BurnHalfLifeBlocks = 1
+	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {
+		t.Fatalf("already-bootstrapped registration economics were rejected: %v", err)
+	}
+}
+
+func TestRegistrationEconomicsRejectsUnsafeBoundsAndMultiplier(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ResolvedConfig, *SetupFacts, *uint64)
+		want   string
+	}{
+		{name: "zero minimum", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.MinBurnRao = 0 }, want: "burn bounds"},
+		{name: "inverted bounds", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.MaxBurnRao = facts.MinBurnRao - 1 }, want: "burn bounds"},
+		{name: "current below minimum", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.BurnRao = facts.MinBurnRao - 1 }, want: "burn bounds"},
+		{name: "current above maximum", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.BurnRao = facts.MaxBurnRao + 1 }, want: "burn bounds"},
+		{name: "minimum above cap", mutate: func(_ *ResolvedConfig, facts *SetupFacts, limit *uint64) { *limit = facts.MinBurnRao - 1 }, want: "burn bounds"},
+		{name: "current above cap", mutate: func(_ *ResolvedConfig, facts *SetupFacts, limit *uint64) { *limit = facts.BurnRao - 1 }, want: "burn bounds"},
+		{name: "bootstrap not one block", mutate: func(cfg *ResolvedConfig, _ *SetupFacts, _ *uint64) {
+			cfg.Hyperparameters.OwnerControlled["burn_half_life"] = 2
+		}, want: "half-life"},
+		{name: "current outside lifecycle", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.BurnHalfLifeBlocks = 17 }, want: "half-life"},
+		{name: "missing production restore", mutate: func(cfg *ResolvedConfig, _ *SetupFacts, _ *uint64) {
+			delete(cfg.Hyperparameters.ProductionOwnerControlled, "burn_half_life")
+		}, want: "half-life"},
+		{name: "malformed multiplier", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) { facts.BurnIncreaseMultQ64 = "1.26" }, want: "positive Q64"},
+		{name: "multiplier below one", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) {
+			facts.BurnIncreaseMultQ64 = "18446744073709551615"
+		}, want: "one-through-two"},
+		{name: "multiplier above two", mutate: func(_ *ResolvedConfig, facts *SetupFacts, _ *uint64) {
+			facts.BurnIncreaseMultQ64 = "36893488147419103233"
+		}, want: "one-through-two"},
+	}
+	for _, test := range tests {
+		cfg := testResolvedConfig(t)
+		facts := testSetupFacts()
+		limit := cfg.Config.Budgets.MaximumRegistrationBurnRao
+		test.mutate(cfg, facts, &limit)
+		if err := validateRegistrationEconomics(cfg, facts, limit); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s: error=%v, want substring %q", test.name, err, test.want)
+		}
+	}
+}
+
+func TestRegistrationRoleFundingPreservesRuntimeKeepAliveBalance(t *testing.T) {
+	const burnLimitRao, feeLimitRao, keepAliveRao = uint64(1_000_000), uint64(3_000_000), uint64(500)
+	legacyFunding := burnLimitRao + feeLimitRao
+	if legacyFunding-feeLimitRao-keepAliveRao >= burnLimitRao {
+		t.Fatal("legacy burn-plus-fee funding unexpectedly satisfies the runtime preserve check")
+	}
+	funding, err := registrationRoleFunding(burnLimitRao, feeLimitRao, keepAliveRao)
+	if err != nil || funding != 4_000_500 {
+		t.Fatalf("registration funding=%d error=%v, want 4000500", funding, err)
+	}
+	if funding-feeLimitRao-keepAliveRao < burnLimitRao {
+		t.Fatal("corrected funding does not leave the full burn spendable after the fee and keep-alive reserve")
+	}
+	if _, err := registrationRoleFunding(math.MaxUint64, 1, 0); err == nil || !strings.Contains(err.Error(), "burn and fee") {
+		t.Fatalf("burn/fee overflow was accepted: %v", err)
+	}
+	if _, err := registrationRoleFunding(math.MaxUint64-1, 1, 1); err == nil || !strings.Contains(err.Error(), "keep-alive") {
+		t.Fatalf("keep-alive overflow was accepted: %v", err)
 	}
 }
 
@@ -217,8 +307,8 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.PlanHash == c.PlanHash {
-		t.Fatal("finalized burn did not change plan hash")
+	if a.PlanHash != c.PlanHash {
+		t.Fatal("moving spot burn changed the v2 approval hash despite the runtime-enforced registration ceiling")
 	}
 	if a.MaximumSpend.TAORao != c.MaximumSpend.TAORao {
 		t.Fatal("moving observed burn changed the reviewed registration ceiling")
@@ -229,9 +319,78 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roleCount := uint64(5 + 3*cfg.Config.Topology.Operators)
+	roleCount := uint64(5 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.ChurnFloorUIDs + cfg.Config.Topology.Validators + 2*cfg.Config.Topology.fleetCandidates())
 	if a.PlanHash == d.PlanHash || d.MaximumSpend.TAORao-a.MaximumSpend.TAORao != roleCount {
 		t.Fatalf("existential-deposit drift was not bound exactly: hashes=%s/%s tao=%d/%d roles=%d", a.PlanHash, d.PlanHash, a.MaximumSpend.TAORao, d.MaximumSpend.TAORao, roleCount)
+	}
+}
+
+func TestLegacyPlanHashStillBindsSpotBurnForStoredV1Compatibility(t *testing.T) {
+	plan := &SetupPlan{Schema: "urnetwork-sim-plan-v1", LiveFacts: SetupFacts{BurnRao: 500_000}}
+	first, err := plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.LiveFacts.BurnRao++
+	second, err := plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("legacy v1 spot burn ceased to be hash-bound")
+	}
+}
+
+func TestPlanHashBindsTheRegistrationEconomicsEnvelope(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	baseline, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*SetupFacts)
+	}{
+		{name: "minimum", mutate: func(facts *SetupFacts) { facts.MinBurnRao++; facts.BurnRao++ }},
+		{name: "maximum", mutate: func(facts *SetupFacts) { facts.MaxBurnRao-- }},
+		{name: "half-life", mutate: func(facts *SetupFacts) { facts.BurnHalfLifeBlocks = 1 }},
+		{name: "multiplier", mutate: func(facts *SetupFacts) { facts.BurnIncreaseMultQ64 = "23242897532874035200" }},
+	}
+	for _, test := range tests {
+		facts := testSetupFacts()
+		test.mutate(facts)
+		changed, err := buildPlan(cfg, facts, roles, time.Unix(1, 0))
+		if err != nil {
+			t.Errorf("%s: %v", test.name, err)
+			continue
+		}
+		if changed.PlanHash == baseline.PlanHash {
+			t.Errorf("%s drift did not change the v2 plan hash", test.name)
+		}
+	}
+}
+
+func TestPlanHashAndFundingBindNativeTransactionFeeLimit(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	first, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Config.Budgets.MaximumNativeTransactionFeeRao++
+	second, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.PlanHash == second.PlanHash || second.NativeTransactionFeeLimitRao != first.NativeTransactionFeeLimitRao+1 {
+		t.Fatalf("native fee drift did not change the plan: %s/%s limits=%d/%d", first.PlanHash, second.PlanHash, first.NativeTransactionFeeLimitRao, second.NativeTransactionFeeLimitRao)
+	}
+	wantIncrease := uint64(cfg.Config.Topology.ChurnFloorUIDs + cfg.Config.Topology.fleetCandidates() + cfg.Config.Topology.Validators)
+	// Every registration coldkey and every source-wallet fee reservation grows
+	// with the ceiling; commitment hotkeys add their own bounded writes too.
+	if second.MaximumSpend.TAORao <= first.MaximumSpend.TAORao+wantIncrease {
+		t.Fatalf("native fee drift was not propagated through adjacent reserves: %d -> %d", first.MaximumSpend.TAORao, second.MaximumSpend.TAORao)
 	}
 }
 
@@ -348,6 +507,7 @@ func TestRegistrationBurnLimitBindsPlanAndAction(t *testing.T) {
 
 func TestPlanValidationRejectsDuplicateAndForwardActionDependencies(t *testing.T) {
 	base := &SetupPlan{
+		Schema: "urnetwork-sim-plan-v1",
 		Actions: []Action{
 			{ID: "first"},
 			{ID: "second", DependsOn: []string{"first"}},

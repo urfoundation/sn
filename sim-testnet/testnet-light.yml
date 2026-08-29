@@ -101,6 +101,7 @@ budgets:
   maximum_evm_gas_tao_wei_from: vault://main/st.yml#testnet-spending-limit-evm-gas-wei
   maximum_registrations: 260
   maximum_registration_burn_rao: 1000000
+  maximum_native_transaction_fee_rao: 3000000
 
 secrets:
   generated_role_store: runtime-secret://testnet/sim-testnet-light/${deployment_id}

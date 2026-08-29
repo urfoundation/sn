@@ -255,6 +255,25 @@ func TestScenarioDefinitionsAreStrict(t *testing.T) {
 	}
 }
 
+func TestProductionTransitionIncludesEveryHyperparameterAndNothingElse(t *testing.T) {
+	tests := []struct {
+		action Action
+		want   bool
+	}{
+		{action: Action{ID: "production.schedule-policy"}, want: true},
+		{action: Action{ID: "production.hyperparameter.immunity_period"}, want: true},
+		{action: Action{ID: "production.hyperparameter.burn_half_life"}, want: true},
+		{action: Action{ID: "production.hyperparameter."}, want: true},
+		{action: Action{ID: "subnet.hyperparameter.burn_half_life"}, want: false},
+		{action: Action{ID: "campaign.dishonest-deposit.2"}, want: false},
+	}
+	for _, test := range tests {
+		if got := isProductionTransitionAction(test.action); got != test.want {
+			t.Errorf("isProductionTransitionAction(%q)=%t, want %t", test.action.ID, got, test.want)
+		}
+	}
+}
+
 func TestReleaseChecksExerciseAffiliatedAndIndependentValidators(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	headUIDs := make([]uint16, cfg.Config.Topology.fleetCandidates())

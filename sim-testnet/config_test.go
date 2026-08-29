@@ -128,11 +128,16 @@ func TestOperationalRPCFallsBackToPrivateAuthority(t *testing.T) {
 	}
 }
 
-func TestHarnessConfigRequiresRegistrationBurnLimit(t *testing.T) {
+func TestHarnessConfigRequiresNativeRegistrationEconomicLimits(t *testing.T) {
 	r := testResolvedConfig(t)
 	r.Config.Budgets.MaximumRegistrationBurnRao = 0
 	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "registration burn") {
 		t.Fatalf("zero registration burn limit was accepted: %v", err)
+	}
+	r = testResolvedConfig(t)
+	r.Config.Budgets.MaximumNativeTransactionFeeRao = 0
+	if err := r.Config.Validate(); err == nil || !strings.Contains(err.Error(), "native transaction fee") {
+		t.Fatalf("zero native transaction fee limit was accepted: %v", err)
 	}
 }
 
@@ -471,6 +476,34 @@ func TestCompatibilityGateSchemaAndEvaluationFailClosed(t *testing.T) {
 	}
 	if err := evaluateCompatibilityGate(CompatibilityGate{Rule: "nonzero"}, []uint64{0}); err == nil {
 		t.Fatal("zero nonzero-gate value accepted")
+	}
+}
+
+func TestResolvedConfigRequiresCanonicalBurnHalfLifeLifecycle(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ResolvedConfig)
+		want   string
+	}{
+		{name: "missing bootstrap burn half-life", mutate: func(cfg *ResolvedConfig) { delete(cfg.Hyperparameters.OwnerControlled, "burn_half_life") }, want: "no bootstrap value"},
+		{name: "non-one bootstrap burn half-life", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["burn_half_life"] = 2 }, want: "one-block bootstrap"},
+		{name: "missing production restore", mutate: func(cfg *ResolvedConfig) { delete(cfg.Hyperparameters.ProductionOwnerControlled, "burn_half_life") }, want: "restore burn_half_life"},
+		{name: "incorrect production restore", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"] = 359 }, want: "restore burn_half_life"},
+		{name: "unsupported bootstrap key", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["burn_magic"] = 1 }, want: "unsupported"},
+		{name: "unsupported production key", mutate: func(cfg *ResolvedConfig) {
+			delete(cfg.Hyperparameters.ProductionOwnerControlled, "burn_half_life")
+			cfg.Hyperparameters.ProductionOwnerControlled["burn_magic"] = 360
+		}, want: "unsupported"},
+		{name: "invalid unsigned bootstrap value", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["tempo"] = -1 }, want: "owner hyperparameter tempo"},
+	}
+	for _, test := range tests {
+		cfg := testResolvedConfig(t)
+		cfg.Release.Runtime.SpecVersion = cfg.Public.Chain.ExpectedRuntimeSpec
+		cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+		test.mutate(cfg)
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s: error=%v, want substring %q", test.name, err, test.want)
+		}
 	}
 }
 

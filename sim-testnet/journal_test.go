@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -118,13 +119,42 @@ func TestPersistedPlanSurvivesChangedLiveBalances(t *testing.T) {
 		t.Fatal("persisted plan survived resolved launch-input drift")
 	}
 	cfg.Authority = originalAuthority
+	loaded.LiveFacts.FinalizedBlock++
+	loaded.LiveFacts.FinalizedBlockHash = "0x" + strings.Repeat("ef", 32)
+	loaded.LiveFacts.AlphaAvailableRao++
+	loaded.LiveFacts.WalletFreeTAORao++
 	loaded.LiveFacts.BurnRao++
 	b, _ = json.Marshal(loaded)
 	if err := os.WriteFile(filepath.Join(dir, "plan.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	observed, err := loadPersistedPlan(cfg, dir)
+	if err != nil {
+		t.Fatalf("observation-only drift invalidated the approved plan: %v", err)
+	}
+	if observed.PlanHash != plan.PlanHash || observed.LiveFacts.BurnRao != plan.LiveFacts.BurnRao+1 {
+		t.Fatalf("persisted observation drift was not preserved: %+v", observed.LiveFacts)
+	}
+}
+
+func TestPersistedPlanRejectsApprovalBoundTampering(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.LiveFacts.MinBurnRao++
+	dir := t.TempDir()
+	b, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(dir, "plan.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := loadPersistedPlan(cfg, dir); err == nil {
-		t.Fatal("tampered persisted plan was accepted")
+		t.Fatal("approval-bound registration economics tampering was accepted")
 	}
 }
 
@@ -174,6 +204,68 @@ func TestRemainingPlanSpendSubtractsVerifiedWritesButPreservesReserves(t *testin
 	}
 	if remaining.TAORao != 75 || remaining.AlphaRao != 50 || remaining.EVMGasWei != 60 {
 		t.Fatalf("later unrelated stage hid verified spend: %+v", remaining)
+	}
+}
+
+func TestRemainingPlanSpendCarriesOnlyExactApprovedAncestorIntents(t *testing.T) {
+	plan := &SetupPlan{
+		PlanHash: "active", PriorPlanHashes: []string{"ancestor"}, MaximumSpend: Spend{TAORao: 100},
+		Actions: []Action{{ID: "action", IntentHash: "exact", Spend: Spend{TAORao: 25}}},
+	}
+	entries := []JournalEntry{
+		{PlanHash: "unapproved", ActionID: "action", IntentHash: "exact", Stage: StageVerified},
+		{PlanHash: "ancestor", ActionID: "action", IntentHash: "wrong", Stage: StageVerified},
+	}
+	remaining, err := remainingPlanSpend(plan, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.TAORao != 100 {
+		t.Fatalf("unapproved or inexact evidence reduced remaining spend to %d", remaining.TAORao)
+	}
+	entries = append(entries, JournalEntry{PlanHash: "ancestor", ActionID: "action", IntentHash: "exact", Stage: StageVerified})
+	remaining, err = remainingPlanSpend(plan, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remaining.TAORao != 75 {
+		t.Fatalf("exact approved ancestor evidence left %d rao", remaining.TAORao)
+	}
+}
+
+func TestReadPersistedPlanAcceptsSelfHashedV1OnlyAsRevisionAncestor(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Schema = "urnetwork-sim-plan-v1"
+	plan.NativeTransactionFeeLimitRao = 0
+	plan.BootstrapBurnHalfLifeBlocks = 0
+	plan.ProductionBurnHalfLifeBlocks = 0
+	plan.PriorPlanHashes = nil
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ancestor, err := readPersistedPlan(stateDir)
+	if err != nil || ancestor.PlanHash != plan.PlanHash {
+		t.Fatalf("v1 ancestor = %+v, %v", ancestor, err)
+	}
+	if _, err := loadPersistedPlan(cfg, stateDir); !errors.Is(err, errPersistedPlanIdentityMismatch) {
+		t.Fatalf("v1 ancestor was treated as an active v2 plan: %v", err)
 	}
 }
 
@@ -240,16 +332,16 @@ func TestLatestTransactionSurvivesRetryIntentAndRejectsStaleIntent(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	got, ok := j.LatestTransaction("deposit", "current")
+	got, ok := j.LatestTransaction("p", "deposit", "current")
 	if !ok || got.TransactionHash != "0xcurrent" {
 		t.Fatalf("latest transaction = %+v, %t", got, ok)
 	}
-	if _, ok := j.LatestTransaction("deposit", "missing"); ok {
+	if _, ok := j.LatestTransaction("p", "deposit", "missing"); ok {
 		t.Fatal("stale transaction matched a different intent")
 	}
 }
 
-func TestJournalRejectsMixedDeploymentAndPlanForOneIntent(t *testing.T) {
+func TestJournalRejectsMixedDeploymentButScopesOneIntentByPlan(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -270,8 +362,8 @@ func TestJournalRejectsMixedDeploymentAndPlanForOneIntent(t *testing.T) {
 	}
 	mixedPlan := base
 	mixedPlan.PlanHash = "plan-b"
-	if err := j.Append(mixedPlan); err == nil {
-		t.Fatal("one intent crossed plan hashes")
+	if err := j.Append(mixedPlan); err != nil {
+		t.Fatalf("a revised plan could not carry the same exact intent: %v", err)
 	}
 	missing := base
 	missing.IntentHash = ""
@@ -286,6 +378,17 @@ func TestJournalRejectsMixedDeploymentAndPlanForOneIntent(t *testing.T) {
 	replacement.TransactionHash = "0xbbb"
 	if err := j.Append(replacement); err == nil {
 		t.Fatal("one action intent accepted a replacement transaction")
+	}
+	revised := replacement
+	revised.PlanHash = "plan-b"
+	if err := j.Append(revised); err != nil {
+		t.Fatalf("revised plan transaction was not scoped independently: %v", err)
+	}
+	if got, ok := j.LatestTransaction("plan-a", "tx", "intent"); !ok || got.TransactionHash != "0xaaa" {
+		t.Fatalf("original plan transaction = %+v, %t", got, ok)
+	}
+	if got, ok := j.LatestTransaction("plan-b", "tx", "intent"); !ok || got.TransactionHash != "0xbbb" {
+		t.Fatalf("revised plan transaction = %+v, %t", got, ok)
 	}
 }
 
@@ -326,5 +429,73 @@ func TestActionDependenciesRequireExactVerifiedPlanIntent(t *testing.T) {
 	}
 	if _, ok := j.LastStage(dependency.ID, dependency.IntentHash, "plan-b"); ok {
 		t.Fatal("last-stage lookup crossed plan hashes")
+	}
+}
+
+func TestConsumedActionHistoryUsesItsVerifiedAncestorPlan(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	action := Action{ID: "evm.fund-owner", IntentHash: "same-intent", Kind: "substrate-extrinsic"}
+	finalized := JournalEntry{
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageFinalized, TransactionHash: "0xancestor-transaction", BlockNumber: 10, BlockHash: "0xancestor-block",
+	}
+	if err := journal.Append(finalized); err != nil {
+		t.Fatal(err)
+	}
+	verified := JournalEntry{
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/evm.fund-owner.json",
+	}
+	if err := journal.Append(verified); err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{plan: &SetupPlan{PlanHash: "active", PriorPlanHashes: []string{"ancestor"}}, journal: journal}
+	transaction, err := executor.consumedActionTransaction(action, verified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transaction.PlanHash != "ancestor" || transaction.TransactionHash != finalized.TransactionHash {
+		t.Fatalf("ancestor transaction = %+v", transaction)
+	}
+	wrongPlan := verified
+	wrongPlan.PlanHash = "unapproved"
+	if _, err := executor.consumedActionTransaction(action, wrongPlan); err == nil {
+		t.Fatal("unapproved ancestor evidence was accepted")
+	}
+}
+
+func TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	action := Action{ID: "subnet.verify-owner", IntentHash: "same-intent", Kind: "substrate-read"}
+	verified := JournalEntry{
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageVerified, PostconditionHash: "0xmissing", PostconditionPath: "receipts/postconditions/subnet.verify-owner.json",
+	}
+	if err := journal.Append(verified); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testResolvedConfig(t)
+	executor := &Executor{
+		cfg: cfg, stateDir: dir, journal: journal,
+		plan: &SetupPlan{PlanHash: "active", PriorPlanHashes: []string{"ancestor"}, Actions: []Action{action}},
+	}
+	if err := executor.verifyCarriedActionHistory(context.Background()); err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("missing ancestor receipt was not rejected before chain access: %v", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/registry/retriever"
@@ -64,6 +65,13 @@ func TestLiveFinalizedExtrinsicEvents(t *testing.T) {
 	}
 	if matched == 0 {
 		t.Fatal("finalized extrinsic has no decoded events")
+	}
+	if expected := os.Getenv("SIM_TESTNET_EVENT_EXPECT_ERROR"); expected != "" {
+		verifyErr := chain.VerifyFinalizedExtrinsic(blockHash, txHash)
+		if verifyErr == nil || !strings.Contains(verifyErr.Error(), expected) {
+			t.Fatalf("dispatch error = %v, want substring %q", verifyErr, expected)
+		}
+		t.Logf("resolved_dispatch_error=%s", verifyErr)
 	}
 	storage := os.Getenv("SIM_TESTNET_EVENT_U16_STORAGE")
 	netuidText := os.Getenv("SIM_TESTNET_EVENT_NETUID")

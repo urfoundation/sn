@@ -140,7 +140,7 @@ func TestIndependentReadExecutorRoutesEveryChainReader(t *testing.T) {
 
 func TestPersistedPostconditionRequiresIndependentEvidence(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	plan := &SetupPlan{PlanHash: "0xplan"}
+	plan := &SetupPlan{PlanHash: "0x" + strings.Repeat("ab", 32)}
 	e := &Executor{cfg: cfg, plan: plan, stateDir: t.TempDir()}
 	record := &ActionPostcondition{
 		Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
@@ -157,7 +157,7 @@ func TestPersistedPostconditionRequiresIndependentEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := JournalEntry{ActionID: record.ActionID, IntentHash: record.IntentHash, PostconditionPath: path, PostconditionHash: hash}
+	entry := JournalEntry{PlanHash: plan.PlanHash, ActionID: record.ActionID, IntentHash: record.IntentHash, PostconditionPath: path, PostconditionHash: hash}
 	if err := e.verifyPersistedPostcondition(entry); err != nil {
 		t.Fatalf("complete independent postcondition was rejected: %v", err)
 	}
@@ -176,6 +176,58 @@ func TestPersistedPostconditionRequiresIndependentEvidence(t *testing.T) {
 	}
 	if err := e.verifyPersistedPostcondition(entry); err == nil || !strings.Contains(err.Error(), "independent RPC evidence") {
 		t.Fatalf("postcondition without independent observations was accepted: %v", err)
+	}
+}
+
+func TestPlanScopedPostconditionsPreserveAndVerifyAncestorEvidence(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	ancestorHash := "0x" + strings.Repeat("aa", 32)
+	activeHash := "0x" + strings.Repeat("bb", 32)
+	stateDir := t.TempDir()
+	executor := &Executor{cfg: cfg, plan: &SetupPlan{PlanHash: ancestorHash}, stateDir: stateDir}
+	buildRecord := func(planHash, observed string) *ActionPostcondition {
+		return &ActionPostcondition{
+			Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
+			PlanHash: planHash, ActionID: "same.action", IntentHash: "same-intent",
+			OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true,
+			SubstrateFinalized:            ChainHead{Number: 9, Hash: "0xprivate-substrate"},
+			EVMFinalized:                  ChainHead{Number: 9, Hash: "0xprivate-evm"},
+			Observed:                      map[string]any{"state": observed},
+			IndependentSubstrateFinalized: ChainHead{Number: 10, Hash: "0xpublic-substrate"},
+			IndependentEVMFinalized:       ChainHead{Number: 10, Hash: "0xpublic-evm"},
+			IndependentObserved:           map[string]any{"state": observed},
+		}
+	}
+	ancestorPath, ancestorDigest, err := executor.persistActionPostcondition(buildRecord(ancestorHash, "ancestor"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ancestorBytes, err := os.ReadFile(filepath.Join(stateDir, filepath.FromSlash(ancestorPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.plan = &SetupPlan{PlanHash: activeHash, PriorPlanHashes: []string{ancestorHash}}
+	activePath, activeDigest, err := executor.persistActionPostcondition(buildRecord(activeHash, "active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ancestorPath == activePath {
+		t.Fatalf("ancestor and active receipts share %q", activePath)
+	}
+	unchanged, err := os.ReadFile(filepath.Join(stateDir, filepath.FromSlash(ancestorPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(unchanged) != string(ancestorBytes) {
+		t.Fatal("active receipt overwrote ancestor evidence")
+	}
+	for _, entry := range []JournalEntry{
+		{PlanHash: ancestorHash, ActionID: "same.action", IntentHash: "same-intent", PostconditionPath: ancestorPath, PostconditionHash: ancestorDigest},
+		{PlanHash: activeHash, ActionID: "same.action", IntentHash: "same-intent", PostconditionPath: activePath, PostconditionHash: activeDigest},
+	} {
+		if err := executor.verifyPersistedPostcondition(entry); err != nil {
+			t.Errorf("plan-scoped receipt %s was rejected: %v", entry.PlanHash, err)
+		}
 	}
 }
 

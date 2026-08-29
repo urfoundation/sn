@@ -2726,7 +2726,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 				return errors.New("production soak requires the approved deployment executor")
 			}
 			for _, action := range executor.plan.Actions {
-				if action.ID == "production.schedule-policy" || action.ID == "production.hyperparameter.immunity_period" {
+				if isProductionTransitionAction(action) {
 					if err := executor.Execute(prepareCtx, action); err != nil {
 						return err
 					}
@@ -2744,4 +2744,11 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	probe := &liveScenarioProbe{cfg: cfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
 	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, Adversaries: campaign, Prepare: prepare})
 	return err
+}
+
+// Select every approved action that moves the accelerated test campaign into
+// production cadence. New production hyperparameters must not be silently
+// omitted by an allowlist that predates them.
+func isProductionTransitionAction(action Action) bool {
+	return action.ID == "production.schedule-policy" || strings.HasPrefix(action.ID, "production.hyperparameter.")
 }

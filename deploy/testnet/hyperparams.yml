@@ -2,6 +2,10 @@ schema_version: 1
 profile: release-1.0
 netuid_from: "vault://main/st.yml#testnet-netuid"
 owner_controlled:
+  # Runtime 451 multiplies burn immediately after each registration. A
+  # one-block half-life returns the next sequential registration to MinBurn;
+  # production restores the runtime default after bootstrap/tournament churn.
+  burn_half_life: 1
   tempo: 360
   max_allowed_uids: 256
   mechanism_count: 1
@@ -15,6 +19,7 @@ owner_controlled:
   transfer_enabled: true
 production_owner_controlled:
   # Applied with the production-cadence policy transition, after M2.
+  burn_half_life: 360
   immunity_period: 2400
 observed_compatibility_gates:
   max_weight_limit:
@@ -36,7 +41,7 @@ observed_compatibility_gates:
     scope: netuid
     kind: u64
     rule: nonzero
-    decision: all release registrations use runtime-enforced register_limit calls capped at 100000000 rao by the approved spend plan
+    decision: all release registrations use runtime-enforced register_limit calls capped at 1000000 rao; bootstrap burn_half_life=1 bounds sequential registrations and production restores 360
   bonds_penalty:
     storage: BondsPenalty
     scope: netuid

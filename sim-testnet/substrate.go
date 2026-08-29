@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -36,6 +37,70 @@ type SubstrateManager struct {
 	cfg      *ResolvedConfig
 }
 
+// Retains the provider's integer token so parsing never passes through float64.
+type nativeTransactionFeeResponse struct {
+	PartialFee json.RawMessage `json:"partialFee"`
+}
+
+// Parse the standard payment_queryInfo fee without accepting JSON floats,
+// signs, overflow, or provider-specific loss of integer precision.
+func parseNativeTransactionFee(raw json.RawMessage) (uint64, error) {
+	value := strings.TrimSpace(string(raw))
+	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+		var decoded string
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			return 0, fmt.Errorf("decode native transaction fee: %w", err)
+		}
+		value = strings.TrimSpace(decoded)
+	}
+	base := 10
+	if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+		base = 16
+		value = value[2:]
+	}
+	if value == "" {
+		return 0, errors.New("native transaction fee is empty")
+	}
+	fee, err := strconv.ParseUint(value, base, 64)
+	if err != nil {
+		return 0, fmt.Errorf("native transaction fee %q is not an unsigned uint64: %w", value, err)
+	}
+	return fee, nil
+}
+
+// Enforce the approval-bound per-extrinsic ceiling.
+func validateNativeTransactionFee(estimated, limit uint64) error {
+	if limit == 0 {
+		return errors.New("native transaction fee limit is zero")
+	}
+	if estimated > limit {
+		return fmt.Errorf("estimated native transaction fee %d rao exceeds approved limit %d rao", estimated, limit)
+	}
+	return nil
+}
+
+// Quote the exact signed bytes immediately before broadcast. The funded role
+// balance remains the hard loss boundary if the runtime multiplier changes
+// between this read and inclusion.
+func (self *SubstrateManager) approveNativeTransactionFee(ctx context.Context, raw []byte) (uint64, uint64, error) {
+	if self == nil || self.chain == nil || self.chain.API == nil || self.chain.API.Client == nil || self.cfg == nil || self.cfg.Config == nil {
+		return 0, 0, errors.New("native transaction fee quote dependencies are unavailable")
+	}
+	var response nativeTransactionFeeResponse
+	if err := self.chain.API.Client.CallContext(ctx, &response, "payment_queryInfo", codec.HexEncodeToString(raw)); err != nil {
+		return 0, 0, fmt.Errorf("quote native transaction fee: %w", err)
+	}
+	estimated, err := parseNativeTransactionFee(response.PartialFee)
+	if err != nil {
+		return 0, 0, err
+	}
+	limit := self.cfg.Config.Budgets.MaximumNativeTransactionFeeRao
+	if err := validateNativeTransactionFee(estimated, limit); err != nil {
+		return estimated, limit, err
+	}
+	return estimated, limit, nil
+}
+
 // subtensorAccountInfo matches runtime 451's System.Account value. Subtensor's
 // Balance is u64 (rao), while the generic GSRPC AccountInfo assumes u128 and
 // therefore cannot decode this runtime's AccountData.
@@ -58,6 +123,10 @@ type subtensorAccountInfo struct {
 // amount of subnet alpha while applying an approved plan.
 type SetupFacts struct {
 	BurnRao               uint64            `json:"burn_rao"`
+	MinBurnRao            uint64            `json:"min_burn_rao,omitempty"`
+	MaxBurnRao            uint64            `json:"max_burn_rao,omitempty"`
+	BurnHalfLifeBlocks    uint16            `json:"burn_half_life_blocks,omitempty"`
+	BurnIncreaseMultQ64   string            `json:"burn_increase_mult_q64,omitempty"`
 	AlphaSourceHotkey     string            `json:"alpha_source_hotkey"`
 	AlphaAvailableRao     uint64            `json:"alpha_available_rao"`
 	ExistingUIDCount      uint16            `json:"existing_uid_count"`
@@ -80,6 +149,15 @@ type ExistingUIDFact struct {
 	SubnetOwner       bool   `json:"subnet_owner"`
 }
 
+// Captures the runtime auction state needed to prove a bounded bootstrap.
+type registrationEconomics struct {
+	BurnRao             uint64
+	MinBurnRao          uint64
+	MaxBurnRao          uint64
+	BurnHalfLifeBlocks  uint16
+	BurnIncreaseMultQ64 string
+}
+
 type SubnetTopologyFacts struct {
 	UIDCount    uint16
 	OwnerHotkey [32]byte
@@ -93,6 +171,64 @@ type runtime451PruneNeuron struct {
 	RegistrationBlock uint64
 	Immune            bool
 	Immortal          bool
+}
+
+// Read every auction parameter from one finalized state root.
+func readRegistrationEconomicsAt(chain *crv4.Chain, netuid uint16, finalized types.Hash) (registrationEconomics, error) {
+	var result registrationEconomics
+	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.State == nil || chain.Meta == nil {
+		return result, errors.New("registration economics chain dependencies are unavailable")
+	}
+	readU64 := func(storage string) (uint64, error) {
+		key, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, storage, netuidArg(netuid))
+		if err != nil {
+			return 0, err
+		}
+		var value types.U64
+		if err := readRequiredStorageAt(chain, key, crv4.PalletName, storage, &value, finalized); err != nil {
+			return 0, err
+		}
+		return uint64(value), nil
+	}
+	var err error
+	if result.BurnRao, err = readU64("Burn"); err != nil {
+		return result, fmt.Errorf("read Burn: %w", err)
+	} else if result.BurnRao == 0 {
+		return result, errors.New("Burn is zero")
+	}
+	if result.MinBurnRao, err = readU64("MinBurn"); err != nil {
+		return result, fmt.Errorf("read MinBurn: %w", err)
+	} else if result.MinBurnRao == 0 {
+		return result, errors.New("MinBurn is zero")
+	}
+	if result.MaxBurnRao, err = readU64("MaxBurn"); err != nil {
+		return result, fmt.Errorf("read MaxBurn: %w", err)
+	} else if result.MaxBurnRao == 0 {
+		return result, errors.New("MaxBurn is zero")
+	}
+	halfLifeKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BurnHalfLife", netuidArg(netuid))
+	if err != nil {
+		return result, err
+	}
+	var halfLife types.U16
+	if err := readRequiredStorageAt(chain, halfLifeKey, crv4.PalletName, "BurnHalfLife", &halfLife, finalized); err != nil {
+		return result, fmt.Errorf("read BurnHalfLife: %w", err)
+	} else if halfLife == 0 {
+		return result, errors.New("BurnHalfLife is zero")
+	}
+	result.BurnHalfLifeBlocks = uint16(halfLife)
+	multiplierKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BurnIncreaseMult", netuidArg(netuid))
+	if err != nil {
+		return result, err
+	}
+	var multiplier types.U128
+	if err := readRequiredStorageAt(chain, multiplierKey, crv4.PalletName, "BurnIncreaseMult", &multiplier, finalized); err != nil {
+		return result, fmt.Errorf("read BurnIncreaseMult: %w", err)
+	} else if multiplier.Int == nil || multiplier.Sign() <= 0 {
+		return result, errors.New("BurnIncreaseMult is zero")
+	}
+	result.BurnIncreaseMultQ64 = multiplier.String()
+	return result, nil
 }
 
 func runtime451PruneCandidate(neurons []runtime451PruneNeuron, minimumNonImmune uint16) (uint16, error) {
@@ -188,17 +324,15 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	if err != nil {
 		return nil, err
 	}
-	burnKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Burn", netuidArg(cfg.Netuid))
+	registrationEconomics, err := readRegistrationEconomicsAt(chain, cfg.Netuid, finalizedHash)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read registration economics at finalized block %d: %w", facts.FinalizedBlock, err)
 	}
-	var burn types.U64
-	if ok, err := chain.API.RPC.State.GetStorage(burnKey, &burn, finalizedHash); err != nil {
-		return nil, err
-	} else if !ok || burn == 0 {
-		return nil, fmt.Errorf("subnet burn is unavailable or zero at finalized block %d", facts.FinalizedBlock)
-	}
-	facts.BurnRao = uint64(burn)
+	facts.BurnRao = registrationEconomics.BurnRao
+	facts.MinBurnRao = registrationEconomics.MinBurnRao
+	facts.MaxBurnRao = registrationEconomics.MaxBurnRao
+	facts.BurnHalfLifeBlocks = registrationEconomics.BurnHalfLifeBlocks
+	facts.BurnIncreaseMultQ64 = registrationEconomics.BurnIncreaseMultQ64
 	topology, err := readSubnetTopologyAt(chain, cfg.Netuid, finalizedHash)
 	if err != nil {
 		return nil, err
@@ -334,6 +468,7 @@ func (m *SubstrateManager) Close() { m.chain.API.Client.Close() }
 type hyperShape struct{ Storage, Call, Kind string }
 
 var hyperShapes = map[string]hyperShape{
+	"burn_half_life":                {Storage: "BurnHalfLife", Call: "sudo_set_burn_half_life", Kind: "u16"},
 	"tempo":                         {Storage: "Tempo", Call: "sudo_set_tempo", Kind: "u16"},
 	"max_allowed_uids":              {Storage: "MaxAllowedUids", Call: "sudo_set_max_allowed_uids", Kind: "u16"},
 	"mechanism_count":               {Storage: "MechanismCountCurrent", Call: "sudo_set_mechanism_count", Kind: "u8"},
@@ -796,7 +931,7 @@ func (m *SubstrateManager) Send(ctx context.Context, planHash string, a Action, 
 }
 
 func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair) (types.Hash, uint64, error) {
-	if prior, ok := m.journal.LatestTransaction(a.ID, a.IntentHash); ok {
+	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".scale")
 		raw, err := os.ReadFile(rawPath)
 		if err != nil {
@@ -807,7 +942,7 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 		if !strings.EqualFold(hash.Hex(), prior.TransactionHash) {
 			return types.Hash{}, 0, fmt.Errorf("persisted substrate transaction hash mismatch: got %s want %s", hash.Hex(), prior.TransactionHash)
 		}
-		return m.watchRaw(ctx, planHash, a, raw, hash, prior.RecoveryBlock, prior.RecoveryBlockHash)
+		return m.watchRaw(ctx, planHash, a, raw, hash, prior.RecoveryBlock, prior.RecoveryBlockHash, false)
 	}
 	var nonce uint32
 	if err := m.chain.API.Client.Call(&nonce, "system_accountNextIndex", signer.Address); err != nil {
@@ -824,6 +959,10 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 	}
 	h := blake2b.Sum256(raw)
 	hash := types.Hash(h)
+	feeEstimate, feeLimit, err := m.approveNativeTransactionFee(ctx, raw)
+	if err != nil {
+		return types.Hash{}, 0, err
+	}
 	path := filepath.Join(m.stateDir, "transactions", stringsTrim0x(hash.Hex())+".scale")
 	if err := atomicWrite(path, raw, 0o600); err != nil {
 		return types.Hash{}, 0, err
@@ -832,10 +971,10 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
-	if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageBroadcast, Signer: signer.Address, Nonce: strconv.FormatUint(uint64(nonce), 10), TransactionHash: hash.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash.Hex()}); err != nil {
+	if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageBroadcast, Signer: signer.Address, Nonce: strconv.FormatUint(uint64(nonce), 10), TransactionHash: hash.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash.Hex(), FeeEstimateRao: feeEstimate, FeeLimitRao: feeLimit}); err != nil {
 		return types.Hash{}, 0, err
 	}
-	return m.watchRaw(ctx, planHash, a, raw, hash, recoveryBlock, recoveryHash.Hex())
+	return m.watchRaw(ctx, planHash, a, raw, hash, recoveryBlock, recoveryHash.Hex(), true)
 }
 
 func (m *SubstrateManager) RoleSigner(roles *RoleSecrets, label string) (signature.KeyringPair, error) {
@@ -1044,11 +1183,16 @@ func (m *SubstrateManager) appendRecoveredFinality(ctx context.Context, planHash
 	return hash, receipt.BlockNumber, nil
 }
 
-func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Action, raw []byte, hash types.Hash, recoveryBlock uint64, recoveryHash string) (types.Hash, uint64, error) {
+func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Action, raw []byte, hash types.Hash, recoveryBlock uint64, recoveryHash string, feeChecked bool) (types.Hash, uint64, error) {
 	if receipt, found, err := m.chain.FindFinalizedExtrinsic(ctx, hash, recoveryBlock); err != nil {
 		return hash, 0, err
 	} else if found {
 		return m.appendRecoveredFinality(ctx, planHash, a, hash, receipt, recoveryBlock, recoveryHash)
+	}
+	if !feeChecked {
+		if _, _, err := m.approveNativeTransactionFee(ctx, raw); err != nil {
+			return hash, 0, err
+		}
 	}
 	statuses := make(chan types.ExtrinsicStatus)
 	sub, err := m.chain.API.Client.Subscribe(ctx, "author", "submitAndWatchExtrinsic", "unwatchExtrinsic", "extrinsicUpdate", statuses, codec.HexEncodeToString(raw))

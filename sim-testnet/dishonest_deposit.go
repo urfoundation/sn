@@ -198,7 +198,7 @@ func (e *Executor) executeDishonestDeposit(ctx context.Context, action Action) e
 	if err != nil {
 		return err
 	}
-	if prior, ok := e.journal.LatestTransaction(action.ID, action.IntentHash); ok {
+	if prior, ok := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash); ok {
 		receipt, sendErr := manager.Send(ctx, e.plan.PlanHash, action, &address, new(big.Int), nil)
 		if sendErr != nil {
 			return sendErr
