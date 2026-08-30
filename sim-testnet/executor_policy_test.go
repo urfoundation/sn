@@ -5,24 +5,29 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	ethTypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+
 	"github.com/urfoundation/sn/stabi"
 )
 
-func TestProductionScheduleEpochRejectsEarlyAndLateFirstWrites(t *testing.T) {
+func TestProductionScheduleEpochUsesCompletedLiveCampaignAndAllowsLateResume(t *testing.T) {
 	for _, test := range []struct {
-		name             string
-		current          uint64
-		alreadyScheduled bool
-		wantError        string
+		name               string
+		current            uint64
+		scheduledEffective uint64
+		wantError          string
 	}{
-		{name: "early first write", current: 19, wantError: "requires 20 reconciled"},
-		{name: "exact first write", current: 20},
-		{name: "late first write", current: 21, wantError: "must be scheduled at exact epoch 20"},
-		{name: "early adoption", current: 19, alreadyScheduled: true, wantError: "requires 20 reconciled"},
-		{name: "same-epoch adoption", current: 20, alreadyScheduled: true},
-		{name: "later adoption", current: 25, alreadyScheduled: true},
+		{name: "campaign incomplete", current: 45, wantError: "through epoch 46"},
+		{name: "exact campaign boundary", current: 46},
+		{name: "late first write", current: 52},
+		{name: "late interrupted adoption", current: 58, scheduledEffective: 53},
+		{name: "schedule overlaps campaign", current: 52, scheduledEffective: 46, wantError: "does not follow"},
+		{name: "early adoption", current: 45, scheduledEffective: 47, wantError: "through epoch 46"},
 	} {
-		err := validateProductionScheduleEpoch(test.current, 20, test.alreadyScheduled)
+		err := validateProductionScheduleEpoch(test.current, 46, test.scheduledEffective)
 		if test.wantError == "" && err != nil {
 			t.Fatalf("%s: unexpected error: %v", test.name, err)
 		}
@@ -32,7 +37,7 @@ func TestProductionScheduleEpochRejectsEarlyAndLateFirstWrites(t *testing.T) {
 	}
 }
 
-func TestProductionPolicyMatchRequiresExactBoundaryAndCompleteCaps(t *testing.T) {
+func TestProductionPolicyMatchAllowsCampaignRelativeEpochAndRequiresCompleteCaps(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	hash, err := decodeHash(cfg.PolicyHash)
 	if err != nil {
@@ -51,14 +56,94 @@ func TestProductionPolicyMatchRequiresExactBoundaryAndCompleteCaps(t *testing.T)
 	if !productionPolicyMatches(cfg, policy) {
 		t.Fatal("canonical production policy was rejected")
 	}
-	policy.EffectiveEpoch++
-	if productionPolicyMatches(cfg, policy) {
-		t.Fatal("late production policy was accepted")
+	policy.EffectiveEpoch = 53
+	if !productionPolicyMatches(cfg, policy) {
+		t.Fatal("campaign-relative production policy was rejected")
 	}
-	policy.EffectiveEpoch--
+	policy.EffectiveEpoch = 0
+	if productionPolicyMatches(cfg, policy) {
+		t.Fatal("zero-effective production policy was accepted")
+	}
+	policy.EffectiveEpoch = 53
 	policy.EpochDepositCapRao = nil
 	if productionPolicyMatches(cfg, policy) {
 		t.Fatal("production policy with a missing deposit cap was accepted")
+	}
+}
+
+func TestProductionPolicyReceiptBindsExactScheduledSnapshot(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	hash, err := decodeHash(cfg.PolicyHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Policy.ProductionCadence
+	policy := stabi.STCoordinatorPolicySnapshot{
+		PolicyHash: hash, EffectiveEpoch: 53, EffectiveBlock: 12_345,
+		EpochBlocks: p.EpochBlocks, RootCommitWindowBlocks: p.RootCommitWindowBlocks,
+		FinalizeOffsetBlocks: p.FinalizeOffsetBlocks, CloseGraceBlocks: p.CloseGraceBlocks,
+		ClaimTTLEpochs: cfg.Policy.Settlement.ClaimTTLEpochs, ClaimGraceEpochs: cfg.Policy.Settlement.ClaimGraceEpochs,
+		MaximumBindingValidityEpochs: cfg.Policy.Binding.MaximumValidityEpochs, CommitmentMaxAgeBlocks: p.EpochBlocks * 2,
+		EpochDepositCapRao:    new(big.Int).SetUint64(cfg.Policy.Deposit.EpochCapRaoPerOperator),
+		CampaignDepositCapRao: new(big.Int).SetUint64(cfg.Policy.Deposit.TotalTestCampaignCapRao),
+	}
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := parsed.Events["PolicyScheduled"]
+	data, err := event.Inputs.NonIndexed().Pack(policy.EffectiveBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator := common.HexToAddress("0x1234")
+	receipt := &ethTypes.Receipt{Status: ethTypes.ReceiptStatusSuccessful, Logs: []*ethTypes.Log{{
+		Address: coordinator,
+		Topics:  []common.Hash{event.ID, common.BigToHash(big.NewInt(1)), common.BytesToHash(policy.PolicyHash[:]), common.BigToHash(new(big.Int).SetUint64(policy.EffectiveEpoch))},
+		Data:    data,
+	}}}
+	if err := productionPolicyReceiptMatches(receipt, coordinator, policy, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := productionPolicyReceiptMatches(receipt, coordinator, policy, 2); err == nil {
+		t.Fatal("wrong policy-history index was accepted")
+	}
+	receipt.Status = ethTypes.ReceiptStatusFailed
+	if err := productionPolicyReceiptMatches(receipt, coordinator, policy, 1); err == nil {
+		t.Fatal("reverted production policy receipt was accepted")
+	}
+}
+
+func TestProductionPolicyRecoveryTransactionBindsOwnerTargetValueAndCalldata(t *testing.T) {
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainID := big.NewInt(945)
+	owner := crypto.PubkeyToAddress(key.PublicKey)
+	coordinator := common.HexToAddress("0x1234")
+	data := []byte{1, 2, 3, 4}
+	sign := func(target common.Address, value *big.Int, input []byte) *ethTypes.Transaction {
+		t.Helper()
+		transaction := ethTypes.NewTx(&ethTypes.DynamicFeeTx{ChainID: chainID, Nonce: 7, GasTipCap: big.NewInt(1), GasFeeCap: big.NewInt(2), Gas: 100_000, To: &target, Value: value, Data: input})
+		signed, signErr := ethTypes.SignTx(transaction, ethTypes.LatestSignerForChainID(chainID), key)
+		if signErr != nil {
+			t.Fatal(signErr)
+		}
+		return signed
+	}
+	canonical := sign(coordinator, big.NewInt(0), data)
+	if err := validateProductionPolicyTransaction(canonical, chainID, owner, coordinator, data); err != nil {
+		t.Fatal(err)
+	}
+	for _, transaction := range []*ethTypes.Transaction{
+		sign(common.HexToAddress("0x5678"), big.NewInt(0), data),
+		sign(coordinator, big.NewInt(1), data),
+		sign(coordinator, big.NewInt(0), []byte{1, 2, 3, 5}),
+	} {
+		if err := validateProductionPolicyTransaction(transaction, chainID, owner, coordinator, data); err == nil {
+			t.Fatal("mutated recovery transaction was accepted")
+		}
 	}
 }
 

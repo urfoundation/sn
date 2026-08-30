@@ -845,20 +845,22 @@ func (e *Executor) verifyVoluntaryConvictionPostState(ctx context.Context, head 
 	return state, nil
 }
 
-func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPolicyEvidence) bool {
-	if cfg == nil {
+func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPolicyEvidence, gate *ReleaseCampaignGate) bool {
+	if cfg == nil || gate == nil {
 		return false
 	}
 	p := cfg.Policy.ProductionCadence
-	if p.AfterAcceleratedEpochs == ^uint64(0) {
+	if evidence.ScheduledFromEpoch == ^uint64(0) {
 		return false
 	}
-	return evidence.Schema == "urnetwork-production-policy-evidence-v1" && evidence.DeploymentID == cfg.Config.Deployment.DeploymentID &&
-		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.ScheduledFromEpoch == p.AfterAcceleratedEpochs &&
-		evidence.EffectiveEpoch == p.AfterAcceleratedEpochs+1 && evidence.EffectiveBlock != 0 &&
+	return evidence.Schema == "urnetwork-production-policy-evidence-v2" && evidence.DeploymentID == cfg.Config.Deployment.DeploymentID &&
+		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.ReleaseRunID == gate.RunID &&
+		strings.EqualFold(evidence.ReleaseResultHash, gate.ResultHash) && strings.EqualFold(evidence.ReleaseCompleteHash, gate.CompleteContentHash) &&
+		evidence.CampaignStartEpoch == gate.StartEpoch && evidence.CampaignEndEpoch == gate.EndEpoch && evidence.ScheduledFromEpoch >= gate.EndEpoch &&
+		evidence.EffectiveEpoch == evidence.ScheduledFromEpoch+1 && evidence.EffectiveBlock != 0 &&
 		evidence.PriorEpochBlocks == cfg.Policy.Settlement.EpochBlocks && evidence.EpochBlocks == p.EpochBlocks &&
 		evidence.RootCommitWindowBlocks == p.RootCommitWindowBlocks && evidence.FinalizeOffsetBlocks == p.FinalizeOffsetBlocks &&
-		evidence.CloseGraceBlocks == p.CloseGraceBlocks
+		evidence.CloseGraceBlocks == p.CloseGraceBlocks && validConformanceTransaction(evidence.TransactionHash, evidence.FinalizedBlockHash, evidence.FinalizedBlock)
 }
 
 func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head ChainHead, state map[string]any) (map[string]any, error) {
@@ -869,13 +871,16 @@ func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head Cha
 	if err := readJSONFile(filepath.Join(e.stateDir, "public", "production-policy.json"), &evidence); err != nil {
 		return nil, err
 	}
-	if !productionPolicyEvidenceMatches(e.cfg, evidence) {
+	gate, err := loadReleaseCampaignGate(e.cfg, e.stateDir, e.roles)
+	if err != nil {
+		return nil, fmt.Errorf("production release gate: %w", err)
+	}
+	if !productionPolicyEvidenceMatches(e.cfg, evidence, gate) {
 		return nil, errors.New("production policy evidence does not match the approved cadence")
 	}
-	if evidence.TransactionHash != "" || evidence.FinalizedBlock != 0 || evidence.FinalizedBlockHash != "" {
-		if _, err := verifyFinalizedEVMReceipt(ctx, e.owner.client, head, evidence.TransactionHash, evidence.FinalizedBlock, evidence.FinalizedBlockHash); err != nil {
-			return nil, fmt.Errorf("production policy transaction: %w", err)
-		}
+	receipt, err := verifyFinalizedEVMReceipt(ctx, e.owner.client, head, evidence.TransactionHash, evidence.FinalizedBlock, evidence.FinalizedBlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("production policy transaction: %w", err)
 	}
 	coordinator := stabi.NewSTCoordinator()
 	address := e.payloads.Manifest.CoordinatorProxy
@@ -887,6 +892,9 @@ func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head Cha
 	policy, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyByIndex(lastIndex), coordinator.UnpackPolicyByIndex)
 	if err != nil || !productionPolicyMatches(e.cfg, policy) || policy.EffectiveEpoch != evidence.EffectiveEpoch || policy.EffectiveBlock != evidence.EffectiveBlock {
 		return nil, stateMismatchError(err, "finalized production policy does not match evidence")
+	}
+	if err := productionPolicyReceiptMatches(receipt, address, policy, count.Uint64()-1); err != nil {
+		return nil, err
 	}
 	state["effective_epoch"], state["effective_block"], state["epoch_blocks"] = policy.EffectiveEpoch, policy.EffectiveBlock, policy.EpochBlocks
 	state["policy_count"] = count.String()

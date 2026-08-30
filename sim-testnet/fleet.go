@@ -5,10 +5,12 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum"
@@ -50,6 +52,101 @@ type FleetBindingEvidence struct {
 }
 
 const fleetCommitmentEvidenceSchemaV2 = "urnetwork-fleet-commitment-evidence-v2"
+
+const futureEpochInclusionSafetyBlocks uint64 = 16
+
+type futureEpochTransactionWindow struct {
+	HeadBlock       uint64
+	CurrentEpoch    uint64
+	EpochStartBlock uint64
+	EpochEndBlock   uint64
+	EffectiveEpoch  uint64
+}
+
+// Refuse to sign a next-epoch transaction close enough to the boundary that
+// estimation or inclusion could observe a different current epoch.
+func selectFutureEpochTransactionWindow(headBlock, currentEpoch, epochStartBlock, epochEndBlock uint64) (futureEpochTransactionWindow, bool, error) {
+	window := futureEpochTransactionWindow{
+		HeadBlock:       headBlock,
+		CurrentEpoch:    currentEpoch,
+		EpochStartBlock: epochStartBlock,
+		EpochEndBlock:   epochEndBlock,
+	}
+	if epochStartBlock > headBlock || headBlock >= epochEndBlock || epochEndBlock-epochStartBlock <= futureEpochInclusionSafetyBlocks {
+		return window, false, fmt.Errorf("inconsistent future-epoch window: head=%d epoch=%d start=%d end=%d", headBlock, currentEpoch, epochStartBlock, epochEndBlock)
+	}
+	if currentEpoch == ^uint64(0) {
+		return window, false, errors.New("future-effective epoch overflows uint64")
+	}
+	window.EffectiveEpoch = currentEpoch + 1
+	remaining := epochEndBlock - headBlock
+	return window, remaining > futureEpochInclusionSafetyBlocks, nil
+}
+
+// Read all epoch coordinates at one latest block so finalized-state lag cannot
+// produce an already-active transaction payload.
+func readFutureEpochTransactionWindow(ctx context.Context, manager *EVMTxManager, addr common.Address, coordinator *stabi.STCoordinator) (futureEpochTransactionWindow, bool, error) {
+	if manager == nil || manager.client == nil || coordinator == nil {
+		return futureEpochTransactionWindow{}, false, errors.New("future-epoch transaction reader is unavailable")
+	}
+	headBlock, err := manager.client.BlockNumber(ctx)
+	if err != nil {
+		return futureEpochTransactionWindow{}, false, err
+	}
+	epoch, err := rawCoordinatorCallAt(ctx, manager, addr, coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch, headBlock)
+	if err != nil || !epoch.IsUint64() {
+		return futureEpochTransactionWindow{}, false, stateMismatchError(err, "latest coordinator epoch is not uint64")
+	}
+	start, err := rawCoordinatorCallAt(ctx, manager, addr, coordinator.PackEpochStartBlock(epoch), coordinator.UnpackEpochStartBlock, headBlock)
+	if err != nil || !start.IsUint64() {
+		return futureEpochTransactionWindow{}, false, stateMismatchError(err, "latest epoch start is not uint64")
+	}
+	end, err := rawCoordinatorCallAt(ctx, manager, addr, coordinator.PackEpochEndBlock(epoch), coordinator.UnpackEpochEndBlock, headBlock)
+	if err != nil || !end.IsUint64() {
+		return futureEpochTransactionWindow{}, false, stateMismatchError(err, "latest epoch end is not uint64")
+	}
+	return selectFutureEpochTransactionWindow(headBlock, epoch.Uint64(), start.Uint64(), end.Uint64())
+}
+
+// Wait only across the unsafe tail of an epoch; cancellation remains owned by
+// the enclosing simulator action.
+func waitFutureEpochTransactionWindow(ctx context.Context, manager *EVMTxManager, addr common.Address, coordinator *stabi.STCoordinator) (futureEpochTransactionWindow, error) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		window, ready, err := readFutureEpochTransactionWindow(ctx, manager, addr, coordinator)
+		if err != nil {
+			return futureEpochTransactionWindow{}, err
+		}
+		if ready {
+			return window, nil
+		}
+		select {
+		case <-ctx.Done():
+			return futureEpochTransactionWindow{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// Preserve the exact policy validity length while rejecting both zero-length
+// policy input and uint64 wraparound.
+func fleetBindingValidityEnd(validFrom, maximumValidityEpochs uint64) (uint64, error) {
+	if maximumValidityEpochs == 0 {
+		return 0, errors.New("fleet binding maximum validity is zero")
+	}
+	validTo, ok := checkedAdd(validFrom, maximumValidityEpochs-1)
+	if !ok {
+		return 0, errors.New("fleet binding validity overflows uint64")
+	}
+	return validTo, nil
+}
+
+// Retry only an unbroadcast attempt invalidated by an epoch transition. Any
+// persisted transaction or same-epoch revert must remain a hard failure.
+func retryFleetBindingAfterEpochTransition(currentEpoch, validFrom uint64, transactionPersisted bool) bool {
+	return !transactionPersisted && currentEpoch >= validFrom
+}
 
 func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int) (protocol.FleetManifest, []byte, [32]byte, error) {
 	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.fleetCandidates() {
@@ -269,65 +366,72 @@ func (e *Executor) bindFleetMember(ctx context.Context, a Action, fleetIndex, me
 	member := manifest.Members[memberIndex-1]
 	coordinator := stabi.NewSTCoordinator()
 	addr := common.BytesToAddress(manifest.Coordinator[:])
-	epoch, err := rawCoordinatorCall(ctx, e.keeper, addr, coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch)
-	if err != nil {
-		return err
-	}
-	if !epoch.IsUint64() {
-		return fmt.Errorf("coordinator epoch exceeds uint64")
-	}
-	validFrom := epoch.Uint64() + 1
-	validTo := validFrom + e.cfg.Policy.Binding.MaximumValidityEpochs - 1
-	binding, err := manifest.Binding(member, validFrom, validTo)
-	if err != nil {
-		return err
-	}
-	if prior, readErr := rawCoordinatorCall(ctx, e.keeper, addr, coordinator.PackBindingAt(member.ClientID, new(big.Int).SetUint64(validFrom)), coordinator.UnpackBindingAt); readErr == nil && prior.Active && prior.Record.Generation == binding.Generation && prior.Record.CommitmentHash == binding.CommitmentHash {
-		return nil
-	}
-
 	minerIndex := fleetMemberMinerIndex(e.cfg, fleetIndex, memberIndex)
 	clientRole := e.roles.Clients[fmt.Sprintf("miner-%d", minerIndex)]
 	seed, err := hex.DecodeString(clientRole.SeedHex)
 	if err != nil || len(seed) != ed25519.SeedSize {
 		return fmt.Errorf("fleet member %d client seed invalid", memberIndex)
 	}
-	clientSignature, err := binding.SignClient(ed25519.NewKeyFromSeed(seed))
-	if err != nil {
-		return err
-	}
 	hotRole := e.roles.Substrate[fleetHotkeyLabel(fleetIndex)]
 	hotkey, err := crv4.KeypairFromSeedHex(hotRole.SeedHex)
 	if err != nil {
 		return err
 	}
-	digest, err := binding.Digest()
-	if err != nil {
-		return err
+	clientPrivateKey := ed25519.NewKeyFromSeed(seed)
+	for {
+		window, err := waitFutureEpochTransactionWindow(ctx, e.keeper, addr, coordinator)
+		if err != nil {
+			return err
+		}
+		validFrom := window.EffectiveEpoch
+		validTo, err := fleetBindingValidityEnd(validFrom, e.cfg.Policy.Binding.MaximumValidityEpochs)
+		if err != nil {
+			return err
+		}
+		binding, err := manifest.Binding(member, validFrom, validTo)
+		if err != nil {
+			return err
+		}
+		if prior, readErr := rawCoordinatorCall(ctx, e.keeper, addr, coordinator.PackBindingAt(member.ClientID, new(big.Int).SetUint64(validFrom)), coordinator.UnpackBindingAt); readErr == nil && prior.Active && prior.Record.Generation == binding.Generation && prior.Record.CommitmentHash == binding.CommitmentHash {
+			return nil
+		}
+		clientSignature, err := binding.SignClient(clientPrivateKey)
+		if err != nil {
+			return err
+		}
+		digest, err := binding.Digest()
+		if err != nil {
+			return err
+		}
+		hotkeySignature, err := hotkey.Sign(digest[:])
+		if err != nil {
+			return err
+		}
+		if !binding.VerifyClient(clientSignature) || !binding.VerifyHotkey(hotkeySignature) {
+			return errors.New("locally generated fleet signatures did not verify")
+		}
+		contractBinding := stabi.STCoordinatorFleetBinding{ChainId: binding.ChainID, Netuid: binding.Netuid, Coordinator: addr, FleetId: binding.FleetID, Hotkey: binding.Hotkey, ClientId: binding.ClientID, ClientKey: binding.ClientKey, Generation: binding.Generation, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch, CommitmentHash: binding.CommitmentHash}
+		data, err := coordinator.TryPackBindFleetMember(contractBinding, clientSignature, hotkeySignature)
+		if err != nil {
+			return err
+		}
+		receipt, sendErr := e.keeper.Send(ctx, e.plan.PlanHash, a, &addr, big.NewInt(0), data)
+		if sendErr != nil {
+			_, transactionPersisted := e.keeper.journal.LatestTransaction(e.plan.PlanHash, a.ID, a.IntentHash)
+			latest, _, readErr := readFutureEpochTransactionWindow(ctx, e.keeper, addr, coordinator)
+			if readErr == nil && retryFleetBindingAfterEpochTransition(latest.CurrentEpoch, validFrom, transactionPersisted) {
+				continue
+			}
+			return sendErr
+		}
+		post, err := rawCoordinatorCall(ctx, e.keeper, addr, coordinator.PackBindingAt(member.ClientID, new(big.Int).SetUint64(validFrom)), coordinator.UnpackBindingAt)
+		if err != nil {
+			return err
+		}
+		if !post.Active || post.Record.FleetId != binding.FleetID || post.Record.Hotkey != binding.Hotkey || post.Record.ClientKey != binding.ClientKey || post.Record.CommitmentHash != binding.CommitmentHash || post.Record.Generation != binding.Generation || post.Record.ValidFromEpoch != validFrom || post.Record.ValidToEpoch != validTo {
+			return fmt.Errorf("fleet binding postcondition mismatch for member %d", memberIndex)
+		}
+		evidence := FleetBindingEvidence{Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: "0x" + hex.EncodeToString(member.ClientID[:]), ClientKey: "0x" + hex.EncodeToString(member.ClientKey[:]), FleetID: "0x" + hex.EncodeToString(binding.FleetID[:]), Hotkey: "0x" + hex.EncodeToString(binding.Hotkey[:]), Generation: binding.Generation, ValidFromEpoch: validFrom, ValidToEpoch: validTo, CommitmentHash: "0x" + hex.EncodeToString(binding.CommitmentHash[:]), BindingDigest: "0x" + hex.EncodeToString(digest[:]), ClientSignature: "0x" + hex.EncodeToString(clientSignature), HotkeySignature: "0x" + hex.EncodeToString(hotkeySignature), TransactionHash: receipt.TxHash.Hex(), BlockNumber: receipt.BlockNumber.Uint64(), BlockHash: receipt.BlockHash.Hex(), UID: post.Record.Uid}
+		return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", fleetIndex, memberIndex)), evidence)
 	}
-	hotkeySignature, err := hotkey.Sign(digest[:])
-	if err != nil {
-		return err
-	}
-	if !binding.VerifyClient(clientSignature) || !binding.VerifyHotkey(hotkeySignature) {
-		return fmt.Errorf("locally generated fleet signatures did not verify")
-	}
-	contractBinding := stabi.STCoordinatorFleetBinding{ChainId: binding.ChainID, Netuid: binding.Netuid, Coordinator: addr, FleetId: binding.FleetID, Hotkey: binding.Hotkey, ClientId: binding.ClientID, ClientKey: binding.ClientKey, Generation: binding.Generation, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch, CommitmentHash: binding.CommitmentHash}
-	data, err := coordinator.TryPackBindFleetMember(contractBinding, clientSignature, hotkeySignature)
-	if err != nil {
-		return err
-	}
-	receipt, err := e.keeper.Send(ctx, e.plan.PlanHash, a, &addr, big.NewInt(0), data)
-	if err != nil {
-		return err
-	}
-	post, err := rawCoordinatorCall(ctx, e.keeper, addr, coordinator.PackBindingAt(member.ClientID, new(big.Int).SetUint64(validFrom)), coordinator.UnpackBindingAt)
-	if err != nil {
-		return err
-	}
-	if !post.Active || post.Record.FleetId != binding.FleetID || post.Record.Hotkey != binding.Hotkey || post.Record.ClientKey != binding.ClientKey || post.Record.CommitmentHash != binding.CommitmentHash || post.Record.Generation != binding.Generation || post.Record.ValidFromEpoch != validFrom || post.Record.ValidToEpoch != validTo {
-		return fmt.Errorf("fleet binding postcondition mismatch for member %d", memberIndex)
-	}
-	evidence := FleetBindingEvidence{Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: "0x" + hex.EncodeToString(member.ClientID[:]), ClientKey: "0x" + hex.EncodeToString(member.ClientKey[:]), FleetID: "0x" + hex.EncodeToString(binding.FleetID[:]), Hotkey: "0x" + hex.EncodeToString(binding.Hotkey[:]), Generation: binding.Generation, ValidFromEpoch: validFrom, ValidToEpoch: validTo, CommitmentHash: "0x" + hex.EncodeToString(binding.CommitmentHash[:]), BindingDigest: "0x" + hex.EncodeToString(digest[:]), ClientSignature: "0x" + hex.EncodeToString(clientSignature), HotkeySignature: "0x" + hex.EncodeToString(hotkeySignature), TransactionHash: receipt.TxHash.Hex(), BlockNumber: receipt.BlockNumber.Uint64(), BlockHash: receipt.BlockHash.Hex(), UID: post.Record.Uid}
-	return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", fleetIndex, memberIndex)), evidence)
 }

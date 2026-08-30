@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -1326,15 +1327,19 @@ func (e *Executor) scheduleBootstrapPolicy(ctx context.Context, a Action) error 
 		}
 		return nil
 	}
-	if current == ^uint64(0) || e.cfg.Policy.Settlement.EpochBlocks > ^uint64(0)/2 {
+	if e.cfg.Policy.Settlement.EpochBlocks > ^uint64(0)/2 {
 		return errors.New("bootstrap policy arithmetic overflows uint64")
+	}
+	window, err := waitFutureEpochTransactionWindow(ctx, e.owner, proxy, stabi.NewSTCoordinator())
+	if err != nil {
+		return err
 	}
 	hash, err := decodeHash(e.cfg.PolicyHash)
 	if err != nil {
 		return err
 	}
 	next := stabi.STCoordinatorPolicySnapshot{
-		PolicyHash: hash, EffectiveEpoch: current + 1,
+		PolicyHash: hash, EffectiveEpoch: window.EffectiveEpoch,
 		EpochBlocks:                  e.cfg.Policy.Settlement.EpochBlocks,
 		RootCommitWindowBlocks:       e.cfg.Policy.Settlement.RootCommitWindowBlocks,
 		FinalizeOffsetBlocks:         e.cfg.Policy.Settlement.FinalizeOffsetBlocks,
@@ -1389,6 +1394,11 @@ type ProductionPolicyEvidence struct {
 	Schema                 string `json:"schema"`
 	DeploymentID           string `json:"deployment_id"`
 	PolicyHash             string `json:"policy_hash"`
+	ReleaseRunID           string `json:"release_run_id"`
+	ReleaseResultHash      string `json:"release_result_hash"`
+	ReleaseCompleteHash    string `json:"release_complete_hash"`
+	CampaignStartEpoch     uint64 `json:"campaign_start_epoch"`
+	CampaignEndEpoch       uint64 `json:"campaign_end_epoch"`
 	ScheduledFromEpoch     uint64 `json:"scheduled_from_epoch"`
 	EffectiveEpoch         uint64 `json:"effective_epoch"`
 	EffectiveBlock         uint64 `json:"effective_block"`
@@ -1422,10 +1432,7 @@ func productionPolicyMatches(cfg *ResolvedConfig, policy stabi.STCoordinatorPoli
 		return false
 	}
 	p := cfg.Policy.ProductionCadence
-	if p.AfterAcceleratedEpochs == ^uint64(0) {
-		return false
-	}
-	return policy.PolicyHash == wantHash && policy.EffectiveEpoch == p.AfterAcceleratedEpochs+1 && policy.EffectiveBlock != 0 &&
+	return policy.PolicyHash == wantHash && policy.EffectiveEpoch != 0 && policy.EffectiveBlock != 0 &&
 		policy.EpochBlocks == p.EpochBlocks && policy.RootCommitWindowBlocks == p.RootCommitWindowBlocks &&
 		policy.FinalizeOffsetBlocks == p.FinalizeOffsetBlocks && policy.CloseGraceBlocks == p.CloseGraceBlocks &&
 		policy.ClaimTTLEpochs == cfg.Policy.Settlement.ClaimTTLEpochs && policy.ClaimGraceEpochs == cfg.Policy.Settlement.ClaimGraceEpochs &&
@@ -1434,16 +1441,16 @@ func productionPolicyMatches(cfg *ResolvedConfig, policy stabi.STCoordinatorPoli
 		policy.CampaignDepositCapRao.Cmp(new(big.Int).SetUint64(cfg.Policy.Deposit.TotalTestCampaignCapRao)) == 0
 }
 
-// validateProductionScheduleEpoch distinguishes a first write from adoption
-// after an interrupted write. A new schedule is approval-bound to the exact
-// end of the accelerated campaign; an already canonical on-chain policy may be
-// adopted later, but never before that gate was reached.
-func validateProductionScheduleEpoch(currentEpoch, afterAcceleratedEpochs uint64, alreadyScheduled bool) error {
-	if currentEpoch < afterAcceleratedEpochs {
-		return fmt.Errorf("production cadence requires %d reconciled accelerated epochs; current epoch is %d", afterAcceleratedEpochs, currentEpoch)
+// validateProductionScheduleEpoch gates both a first write and interrupted
+// adoption on the authenticated live campaign. Setup epochs are irrelevant;
+// a canonical schedule may be written later, but its effective epoch must be
+// strictly after the release evidence boundary.
+func validateProductionScheduleEpoch(currentEpoch, campaignEndEpoch, scheduledEffectiveEpoch uint64) error {
+	if currentEpoch < campaignEndEpoch {
+		return fmt.Errorf("production cadence requires release campaign through epoch %d; current epoch is %d", campaignEndEpoch, currentEpoch)
 	}
-	if !alreadyScheduled && currentEpoch != afterAcceleratedEpochs {
-		return fmt.Errorf("production cadence must be scheduled at exact epoch %d; current epoch %d exceeds the approved campaign", afterAcceleratedEpochs, currentEpoch)
+	if scheduledEffectiveEpoch != 0 && scheduledEffectiveEpoch <= campaignEndEpoch {
+		return fmt.Errorf("production cadence effective epoch %d does not follow release campaign epoch %d", scheduledEffectiveEpoch, campaignEndEpoch)
 	}
 	return nil
 }
@@ -1457,6 +1464,99 @@ func policySnapshotEqual(a, b stabi.STCoordinatorPolicySnapshot) bool {
 		a.CampaignDepositCapRao != nil && b.CampaignDepositCapRao != nil && a.CampaignDepositCapRao.Cmp(b.CampaignDepositCapRao) == 0
 }
 
+func productionPolicyReceiptMatches(receipt *ethTypes.Receipt, coordinator common.Address, policy stabi.STCoordinatorPolicySnapshot, index uint64) error {
+	if receipt == nil || receipt.Status != ethTypes.ReceiptStatusSuccessful {
+		return errors.New("production policy receipt is not successful")
+	}
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		return err
+	}
+	event, ok := parsed.Events["PolicyScheduled"]
+	if !ok {
+		return errors.New("Coordinator ABI lacks PolicyScheduled")
+	}
+	for _, log := range receipt.Logs {
+		if log.Address != coordinator || len(log.Topics) != 4 || log.Topics[0] != event.ID || !log.Topics[1].Big().IsUint64() || log.Topics[1].Big().Uint64() != index || log.Topics[2] != common.BytesToHash(policy.PolicyHash[:]) || !log.Topics[3].Big().IsUint64() || log.Topics[3].Big().Uint64() != policy.EffectiveEpoch {
+			continue
+		}
+		values, unpackErr := event.Inputs.NonIndexed().Unpack(log.Data)
+		if unpackErr == nil && len(values) == 1 {
+			if effectiveBlock, blockOK := values[0].(uint64); blockOK && effectiveBlock == policy.EffectiveBlock {
+				return nil
+			}
+		}
+	}
+	return errors.New("finalized production receipt lacks the exact PolicyScheduled event")
+}
+
+func validateProductionPolicyTransaction(transaction *ethTypes.Transaction, chainID *big.Int, signer, coordinator common.Address, data []byte) error {
+	if transaction == nil || chainID == nil || chainID.Sign() <= 0 || signer == (common.Address{}) || coordinator == (common.Address{}) || len(data) == 0 {
+		return errors.New("production policy transaction approval context is incomplete")
+	}
+	observedSigner, err := ethTypes.Sender(ethTypes.LatestSignerForChainID(chainID), transaction)
+	if err != nil {
+		return err
+	}
+	if observedSigner != signer || transaction.To() == nil || *transaction.To() != coordinator || transaction.Value().Sign() != 0 || !bytes.Equal(transaction.Data(), data) {
+		return errors.New("persisted production policy transaction does not match the approved owner, target, value, and snapshot")
+	}
+	return nil
+}
+
+// Recover only the exact approved schedule transaction after a process dies
+// between finality and evidence persistence. A structurally similar policy
+// written out of band is never adopted.
+func (e *Executor) recoverProductionPolicyReceipt(ctx context.Context, action Action, parsed abi.ABI, coordinator common.Address, policy stabi.STCoordinatorPolicySnapshot, index uint64) (*ethTypes.Receipt, error) {
+	if e == nil || e.plan == nil || e.journal == nil || e.owner == nil {
+		return nil, errors.New("production policy recovery context is incomplete")
+	}
+	var finalized *JournalEntry
+	allowedPlans := e.plan.allowedPlanHashes()
+	entries := e.journal.Entries()
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) && entry.Stage == StageFinalized {
+			copy := entry
+			finalized = &copy
+			break
+		}
+	}
+	if finalized == nil || !validConformanceTransaction(finalized.TransactionHash, finalized.BlockHash, finalized.BlockNumber) {
+		return nil, errors.New("canonical production policy has no approved finalized transaction")
+	}
+	raw, err := os.ReadFile(filepath.Join(e.stateDir, "transactions", stringsTrim0x(finalized.TransactionHash)+".rlp"))
+	if err != nil {
+		return nil, err
+	}
+	var transaction ethTypes.Transaction
+	if err := transaction.UnmarshalBinary(raw); err != nil || !strings.EqualFold(transaction.Hash().Hex(), finalized.TransactionHash) {
+		return nil, stateMismatchError(err, "persisted production policy transaction hash mismatch")
+	}
+	wantSigner := crypto.PubkeyToAddress(e.owner.key.PublicKey)
+	input := policy
+	input.EffectiveBlock = 0
+	wantData, err := parsed.Pack("schedulePolicy", input)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateProductionPolicyTransaction(&transaction, e.owner.chainID, wantSigner, coordinator, wantData); err != nil {
+		return nil, err
+	}
+	head, err := finalizedEVMHead(ctx, e.owner.client)
+	if err != nil {
+		return nil, err
+	}
+	receipt, err := verifyFinalizedEVMReceipt(ctx, e.owner.client, head, finalized.TransactionHash, finalized.BlockNumber, finalized.BlockHash)
+	if err != nil {
+		return nil, err
+	}
+	if err := productionPolicyReceiptMatches(receipt, coordinator, policy, index); err != nil {
+		return nil, err
+	}
+	return receipt, nil
+}
+
 func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error {
 	if err := e.ensurePayloads(ctx); err != nil {
 		return err
@@ -1466,6 +1566,10 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 		return err
 	}
 	address := e.payloads.Manifest.CoordinatorProxy
+	gate, err := loadReleaseCampaignGate(e.cfg, e.stateDir, e.roles)
+	if err != nil {
+		return fmt.Errorf("production release gate: %w", err)
+	}
 	epochValues, err := contractCall(ctx, e.owner.client, address, parsed, "currentEpoch")
 	if err != nil || len(epochValues) != 1 {
 		return stateMismatchError(err, "read current epoch returned %d values", len(epochValues))
@@ -1494,11 +1598,29 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 		return err
 	}
 	alreadyScheduled := productionPolicyMatches(e.cfg, lastPolicy)
-	if err := validateProductionScheduleEpoch(currentEpoch, p.AfterAcceleratedEpochs, alreadyScheduled); err != nil {
+	scheduledEffectiveEpoch := uint64(0)
+	if alreadyScheduled {
+		scheduledEffectiveEpoch = lastPolicy.EffectiveEpoch
+	}
+	if err := validateProductionScheduleEpoch(currentEpoch, gate.EndEpoch, scheduledEffectiveEpoch); err != nil {
 		return err
 	}
 	if alreadyScheduled {
-		return e.writeProductionPolicyEvidence(lastPolicy, lastPolicy.EffectiveEpoch-1, nil)
+		evidencePath := filepath.Join(e.stateDir, "public", "production-policy.json")
+		var evidence ProductionPolicyEvidence
+		if readErr := decodeStrictJSONFile(evidencePath, &evidence); readErr == nil {
+			if !productionPolicyEvidenceMatches(e.cfg, evidence, gate) || evidence.EffectiveEpoch != lastPolicy.EffectiveEpoch || evidence.EffectiveBlock != lastPolicy.EffectiveBlock {
+				return errors.New("existing production policy evidence does not match the canonical schedule")
+			}
+			return nil
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return fmt.Errorf("read production policy evidence: %w", readErr)
+		}
+		receipt, recoverErr := e.recoverProductionPolicyReceipt(ctx, a, parsed, address, lastPolicy, count.Uint64()-1)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		return e.writeProductionPolicyEvidence(lastPolicy, lastPolicy.EffectiveEpoch-1, gate, receipt)
 	}
 	// A migrated deployment has one historical policy plus the canonical
 	// accelerated snapshot. A fresh deployment has only the latter. Anything
@@ -1517,15 +1639,22 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	if prior.EpochBlocks != e.cfg.Policy.Settlement.EpochBlocks || prior.RootCommitWindowBlocks != e.cfg.Policy.Settlement.RootCommitWindowBlocks || prior.FinalizeOffsetBlocks != e.cfg.Policy.Settlement.FinalizeOffsetBlocks || prior.CloseGraceBlocks != e.cfg.Policy.Settlement.CloseGraceBlocks {
 		return errors.New("active accelerated policy is not canonical; refusing production transition")
 	}
-	if currentEpoch == ^uint64(0) || p.EpochBlocks > ^uint64(0)/2 {
+	if p.EpochBlocks > ^uint64(0)/2 {
 		return errors.New("production policy arithmetic overflows uint64")
+	}
+	window, err := waitFutureEpochTransactionWindow(ctx, e.owner, address, stabi.NewSTCoordinator())
+	if err != nil {
+		return err
+	}
+	if err := validateProductionScheduleEpoch(window.CurrentEpoch, gate.EndEpoch, 0); err != nil {
+		return err
 	}
 	hash, err := decodeHash(e.cfg.PolicyHash)
 	if err != nil {
 		return err
 	}
 	next := stabi.STCoordinatorPolicySnapshot{
-		PolicyHash: hash, EffectiveEpoch: currentEpoch + 1,
+		PolicyHash: hash, EffectiveEpoch: window.EffectiveEpoch,
 		EpochBlocks: p.EpochBlocks, RootCommitWindowBlocks: p.RootCommitWindowBlocks,
 		FinalizeOffsetBlocks: p.FinalizeOffsetBlocks, CloseGraceBlocks: p.CloseGraceBlocks,
 		ClaimTTLEpochs: e.cfg.Policy.Settlement.ClaimTTLEpochs, ClaimGraceEpochs: e.cfg.Policy.Settlement.ClaimGraceEpochs,
@@ -1557,13 +1686,17 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	if err != nil || !policySnapshotEqual(currentPost, prior) {
 		return errors.New("production scheduling changed the active accelerated policy")
 	}
-	return e.writeProductionPolicyEvidence(post, currentEpoch, receipt)
+	return e.writeProductionPolicyEvidence(post, window.CurrentEpoch, gate, receipt)
 }
 
-func (e *Executor) writeProductionPolicyEvidence(policy stabi.STCoordinatorPolicySnapshot, scheduledFrom uint64, receipt *ethTypes.Receipt) error {
+func (e *Executor) writeProductionPolicyEvidence(policy stabi.STCoordinatorPolicySnapshot, scheduledFrom uint64, gate *ReleaseCampaignGate, receipt *ethTypes.Receipt) error {
+	if gate == nil {
+		return errors.New("production policy evidence requires the release campaign gate")
+	}
 	evidence := ProductionPolicyEvidence{
-		Schema: "urnetwork-production-policy-evidence-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
-		PolicyHash: e.cfg.PolicyHash, ScheduledFromEpoch: scheduledFrom, EffectiveEpoch: policy.EffectiveEpoch,
+		Schema: "urnetwork-production-policy-evidence-v2", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
+		PolicyHash: e.cfg.PolicyHash, ReleaseRunID: gate.RunID, ReleaseResultHash: gate.ResultHash, ReleaseCompleteHash: gate.CompleteContentHash,
+		CampaignStartEpoch: gate.StartEpoch, CampaignEndEpoch: gate.EndEpoch, ScheduledFromEpoch: scheduledFrom, EffectiveEpoch: policy.EffectiveEpoch,
 		EffectiveBlock: policy.EffectiveBlock, PriorEpochBlocks: e.cfg.Policy.Settlement.EpochBlocks,
 		EpochBlocks: policy.EpochBlocks, RootCommitWindowBlocks: policy.RootCommitWindowBlocks,
 		FinalizeOffsetBlocks: policy.FinalizeOffsetBlocks, CloseGraceBlocks: policy.CloseGraceBlocks,
@@ -2030,11 +2163,11 @@ func (e *Executor) registerOperator(ctx context.Context, a Action) error {
 	if err := e.verifyContractRegistrationReplacementPrecondition(a, operatorPoolHotkeyLabelForGeneration(n, e.payloads.Manifest.RegistrationRoleGeneration), n+1); err != nil {
 		return fmt.Errorf("operator %d pool replacement precondition: %w", n, err)
 	}
-	epochOut, err := contractCall(ctx, e.owner.client, e.payloads.Manifest.CoordinatorProxy, coordABI, "currentEpoch")
+	window, err := waitFutureEpochTransactionWindow(ctx, e.owner, e.payloads.Manifest.CoordinatorProxy, stabi.NewSTCoordinator())
 	if err != nil {
 		return err
 	}
-	epoch := epochOut[0].(*big.Int).Uint64()
+	epoch := window.CurrentEpoch
 	cold, err := roleBytes32(e.roles, fmt.Sprintf("operator-%d-coldkey", n))
 	if err != nil {
 		return err

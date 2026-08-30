@@ -287,12 +287,14 @@ func (e *Executor) scheduleOperatorRetirement(ctx context.Context, a Action) err
 		}
 		return nil
 	}
-	currentValues, err := contractCall(ctx, e.owner.client, address, parsed, "currentEpoch")
-	if err != nil || len(currentValues) != 1 {
-		return stateMismatchError(err, "read current epoch returned %d values", len(currentValues))
+	window, ready, err := readFutureEpochTransactionWindow(ctx, e.owner, address, stabi.NewSTCoordinator())
+	if err != nil {
+		return err
 	}
-	current := currentValues[0].(*big.Int)
-	if !current.IsUint64() || current.Uint64() >= effective {
+	if !ready {
+		return errors.New("retirement approval has insufficient next-epoch inclusion time; regenerate the plan")
+	}
+	if window.CurrentEpoch >= effective {
 		return errors.New("retirement approval expired; regenerate the next-epoch plan")
 	}
 	data, err := parsed.Pack("scheduleOperator", new(big.Int).SetUint64(noID), hotkey, depositSigner, rootSigner, false, effective)

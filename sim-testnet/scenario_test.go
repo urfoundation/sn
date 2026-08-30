@@ -179,17 +179,20 @@ func TestScenarioPreparationRunsUnderAdversariesAndPersistsFailure(t *testing.T)
 		Name: "unit-preparation-failure", AdversarialMatrixHash: campaign.evidence.MatrixHash,
 		Checks: []scenarioCheck{{ID: "unused", Check: func(*scenarioEvaluation) (bool, string) { return true, "" }}},
 	}
-	probe := &staticScenarioProbe{err: errors.New("probe must not run after preparation failure")}
+	probe := &staticScenarioProbe{observations: []*ScenarioObservation{testScenarioObservation(cfg, 7)}}
 	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, probe, scenarioRunOptions{
 		Adversaries: campaign,
 		Prepare: func(context.Context) error {
 			if !campaign.started || campaign.happyStarted.IsZero() {
 				t.Fatal("scenario preparation ran before the adversarial campaign")
 			}
+			if probe.calls != 1 {
+				t.Fatalf("campaign boundary observations=%d, want one before preparation", probe.calls)
+			}
 			return errors.New("governance preparation failed")
 		},
 	})
-	if err == nil || result == nil || result.Result != "fail" || campaign.startCalls != 1 || campaign.stopCalls != 1 || probe.calls != 0 {
+	if err == nil || result == nil || result.Result != "fail" || campaign.startCalls != 1 || campaign.stopCalls != 1 || probe.calls != 1 {
 		t.Fatalf("result=%+v err=%v campaign=%+v probe_calls=%d", result, err, campaign, probe.calls)
 	}
 	runDir := filepath.Join(dir, "runs", result.RunID)
@@ -200,6 +203,62 @@ func TestScenarioPreparationRunsUnderAdversariesAndPersistsFailure(t *testing.T)
 	}
 	if result.Anomalies == nil || result.Anomalies.Status != "open" || len(result.Anomalies.Entries) == 0 {
 		t.Fatalf("preparation failure anomaly ledger=%+v", result.Anomalies)
+	}
+}
+
+func TestReleaseScenarioCountsTwentyEpochsFromDelayedLiveTopology(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Scenarios.ShortEpochs = 20
+	definition := scenarioDefinition{
+		Name: "release-1.0", GoalEpochs: 20,
+		Checks: []scenarioCheck{{ID: "live-campaign-boundary", Check: func(e *scenarioEvaluation) (bool, string) {
+			return e.Current.Status.Contracts.CurrentEpoch >= e.GoalEpoch, "wait for twenty live epochs"
+		}}},
+	}
+	start := testScenarioObservation(cfg, 26)
+	before := testScenarioObservation(cfg, 45)
+	atBoundary := testScenarioObservation(cfg, 46)
+	started := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	assertions := evaluateScenario(cfg, definition, start, before, started)
+	if len(assertions) != 1 || assertions[0].Passed {
+		t.Fatalf("epoch 45 passed delayed campaign boundary: %+v", assertions)
+	}
+	assertions = evaluateScenario(cfg, definition, start, atBoundary, started)
+	if len(assertions) != 1 || !assertions[0].Passed {
+		t.Fatalf("epoch 46 did not complete delayed campaign boundary: %+v", assertions)
+	}
+}
+
+func TestScenarioPreparationIsInsideMeasuredCampaignBoundary(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	start := testScenarioObservation(cfg, 26)
+	prepared := testScenarioObservation(cfg, 27)
+	complete := testScenarioObservation(cfg, 46)
+	probe := &staticScenarioProbe{observations: []*ScenarioObservation{start, prepared, complete}}
+	definition := scenarioDefinition{
+		Name: "release-1.0", GoalEpochs: 20,
+		Checks: []scenarioCheck{{ID: "campaign-complete", Check: func(e *scenarioEvaluation) (bool, string) {
+			return e.Current.Status.Contracts.CurrentEpoch >= e.GoalEpoch, "wait for campaign boundary"
+		}}},
+	}
+	preparedCalls := 0
+	result, err := runScenarioWithProbe(context.Background(), cfg, dir, definition, probe, scenarioRunOptions{
+		PollInterval: time.Microsecond,
+		Timeout:      time.Second,
+		Prepare: func(context.Context) error {
+			preparedCalls++
+			if probe.calls != 1 {
+				t.Fatalf("preparation began after %d observations, want exactly the live boundary", probe.calls)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preparedCalls != 1 || result.StartEpoch != 26 || result.EndEpoch != 46 || probe.calls != 3 {
+		t.Fatalf("result=%+v prepare_calls=%d probe_calls=%d", result, preparedCalls, probe.calls)
 	}
 }
 

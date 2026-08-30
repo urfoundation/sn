@@ -832,27 +832,48 @@ func TestVoluntaryConvictionPostconditionIdentityAndEventAreExact(t *testing.T) 
 func TestProductionPolicyEvidenceRequiresCompleteCanonicalCadence(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	p := cfg.Policy.ProductionCadence
+	gate := &ReleaseCampaignGate{RunID: "release-run", ResultHash: "0x" + strings.Repeat("11", 32), CompleteContentHash: "sha256:" + strings.Repeat("22", 32), StartEpoch: 26, EndEpoch: 46}
 	evidence := ProductionPolicyEvidence{
-		Schema: "urnetwork-production-policy-evidence-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
-		PolicyHash: cfg.PolicyHash, ScheduledFromEpoch: p.AfterAcceleratedEpochs, EffectiveEpoch: p.AfterAcceleratedEpochs + 1, EffectiveBlock: 100,
+		Schema: "urnetwork-production-policy-evidence-v2", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PolicyHash: cfg.PolicyHash, ReleaseRunID: gate.RunID, ReleaseResultHash: gate.ResultHash, ReleaseCompleteHash: gate.CompleteContentHash,
+		CampaignStartEpoch: gate.StartEpoch, CampaignEndEpoch: gate.EndEpoch, ScheduledFromEpoch: 52, EffectiveEpoch: 53, EffectiveBlock: 100,
 		PriorEpochBlocks: cfg.Policy.Settlement.EpochBlocks, EpochBlocks: p.EpochBlocks,
 		RootCommitWindowBlocks: p.RootCommitWindowBlocks, FinalizeOffsetBlocks: p.FinalizeOffsetBlocks, CloseGraceBlocks: p.CloseGraceBlocks,
+		TransactionHash: "0x" + strings.Repeat("44", 32), FinalizedBlock: 101, FinalizedBlockHash: "0x" + strings.Repeat("55", 32),
 	}
-	if !productionPolicyEvidenceMatches(cfg, evidence) {
+	if !productionPolicyEvidenceMatches(cfg, evidence, gate) {
 		t.Fatal("canonical production cadence evidence was rejected")
 	}
 	evidence.ScheduledFromEpoch++
-	if productionPolicyEvidenceMatches(cfg, evidence) {
-		t.Fatal("late production cadence schedule was accepted")
-	}
-	evidence.ScheduledFromEpoch--
 	evidence.EffectiveEpoch++
-	if productionPolicyEvidenceMatches(cfg, evidence) {
-		t.Fatal("wrong production effective epoch was accepted")
+	if !productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("later campaign-relative production cadence was rejected")
 	}
-	evidence.EffectiveEpoch--
+	evidence.ScheduledFromEpoch = gate.EndEpoch - 1
+	evidence.EffectiveEpoch = gate.EndEpoch
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("production cadence before the release boundary was accepted")
+	}
+	evidence.ScheduledFromEpoch = 52
+	evidence.EffectiveEpoch = 54
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("non-consecutive production effective epoch was accepted")
+	}
+	evidence.EffectiveEpoch = 53
+	evidence.ReleaseResultHash = "0x" + strings.Repeat("33", 32)
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("wrong release result hash was accepted")
+	}
+	evidence.ReleaseResultHash = gate.ResultHash
+	evidence.ScheduledFromEpoch = ^uint64(0)
+	evidence.EffectiveEpoch++
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("overflowing production schedule was accepted")
+	}
+	evidence.ScheduledFromEpoch = 52
+	evidence.EffectiveEpoch = 53
 	evidence.CloseGraceBlocks++
-	if productionPolicyEvidenceMatches(cfg, evidence) {
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
 		t.Fatal("mutated production cadence evidence was accepted")
 	}
 }

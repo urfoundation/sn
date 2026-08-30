@@ -246,6 +246,26 @@ type scenarioRunOptions struct {
 	Prepare      func(context.Context) error
 }
 
+// Hash every executable part of a scenario definition. Live release evidence
+// and the production-transition gate share this function so a verifier cannot
+// accidentally authenticate a different check or fault schedule.
+func scenarioDefinitionHash(definition scenarioDefinition) (string, error) {
+	return canonicalHashHex(struct {
+		Name                  string              `json:"name"`
+		GoalEpochs            uint64              `json:"goal_epochs"`
+		Checks                []string            `json:"checks"`
+		Faults                []scenarioFaultSpec `json:"faults,omitempty"`
+		MatrixHash            string              `json:"scenario_matrix_hash,omitempty"`
+		AdversarialMatrixHash string              `json:"adversarial_matrix_hash,omitempty"`
+	}{Name: definition.Name, GoalEpochs: definition.GoalEpochs, Checks: func() []string {
+		ids := make([]string, len(definition.Checks))
+		for i := range definition.Checks {
+			ids[i] = definition.Checks[i].ID
+		}
+		return ids
+	}(), Faults: definition.Faults, MatrixHash: definition.MatrixHash, AdversarialMatrixHash: definition.AdversarialMatrixHash})
+}
+
 func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation, error) {
 	status, err := Status(ctx, p.cfg, p.stateDir)
 	if err != nil {
@@ -2047,7 +2067,7 @@ func productionScenarioChecks() []scenarioCheck {
 			}
 			got := e.Current.Status.Contracts.Policy
 			want := e.Cfg.Policy.ProductionCadence
-			ok := want.AfterAcceleratedEpochs != ^uint64(0) && got.EffectiveEpoch == want.AfterAcceleratedEpochs+1 && got.EpochBlocks == want.EpochBlocks && got.RootCommitWindowBlocks == want.RootCommitWindowBlocks && got.FinalizeOffsetBlocks == want.FinalizeOffsetBlocks && got.CloseGraceBlocks == want.CloseGraceBlocks
+			ok := got.EffectiveEpoch != 0 && got.EffectiveEpoch <= e.Current.Status.Contracts.CurrentEpoch && got.EpochBlocks == want.EpochBlocks && got.RootCommitWindowBlocks == want.RootCommitWindowBlocks && got.FinalizeOffsetBlocks == want.FinalizeOffsetBlocks && got.CloseGraceBlocks == want.CloseGraceBlocks
 			return ok, fmt.Sprintf("effective=%d epoch=%d root=%d finalize=%d close=%d", got.EffectiveEpoch, got.EpochBlocks, got.RootCommitWindowBlocks, got.FinalizeOffsetBlocks, got.CloseGraceBlocks)
 		}},
 		{ID: "complete_production_epochs", Check: func(e *scenarioEvaluation) (bool, string) {
@@ -2096,11 +2116,6 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 	goal := uint64(0)
 	if start != nil && start.Status != nil && start.Status.Contracts != nil {
 		switch definition.Name {
-		case "release-1.0":
-			// Accelerated epochs are a deployment-absolute campaign. Setup,
-			// conformance, and governance can consume early epochs; adding 20
-			// to the scenario start would exceed the exact deposit campaign cap.
-			goal = uint64(cfg.Config.Scenarios.ShortEpochs)
 		case "production-soak":
 			// Discard the possibly partial epoch containing the first snapshot,
 			// then require three complete 2,400-block epochs. The anomaly ledger
@@ -2108,6 +2123,10 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 			// run rather than being hidden by later recovery.
 			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
 		default:
+			// Campaign epochs are relative to the first live-topology
+			// observation. Contract deployment and fleet setup can take many
+			// accelerated epochs on a public finalized RPC; counting those as
+			// release coverage would let a delayed launch pass immediately.
 			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
 		}
 	}
@@ -2228,20 +2247,10 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
 		return nil, err
 	}
-	definitionHash, _ := canonicalHashHex(struct {
-		Name                  string              `json:"name"`
-		GoalEpochs            uint64              `json:"goal_epochs"`
-		Checks                []string            `json:"checks"`
-		Faults                []scenarioFaultSpec `json:"faults,omitempty"`
-		MatrixHash            string              `json:"scenario_matrix_hash,omitempty"`
-		AdversarialMatrixHash string              `json:"adversarial_matrix_hash,omitempty"`
-	}{Name: definition.Name, GoalEpochs: definition.GoalEpochs, Checks: func() []string {
-		ids := make([]string, len(definition.Checks))
-		for i := range definition.Checks {
-			ids[i] = definition.Checks[i].ID
-		}
-		return ids
-	}(), Faults: definition.Faults, MatrixHash: definition.MatrixHash, AdversarialMatrixHash: definition.AdversarialMatrixHash})
+	definitionHash, err := scenarioDefinitionHash(definition)
+	if err != nil {
+		return nil, fmt.Errorf("hash scenario definition: %w", err)
+	}
 	if definition.AdversarialMatrixHash != "" {
 		if options.Adversaries == nil {
 			return nil, errors.New("release scenario requires a continuous adversarial campaign")
@@ -2292,18 +2301,6 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			return initialFailure(nil, fmt.Errorf("recover prior scenario fault: %w", err))
 		}
 	}
-	// Preparation is part of the measured happy path. Recover a prior process
-	// fence first: a host interruption during boundary injection must not leave
-	// the taskworker stopped and then deadlock the resumed preparation itself.
-	// Release governance, key rotation, and dishonest-deposit actions run while
-	// adversaries are active, and any failure is persisted through the same
-	// anomaly/evidence gates as a failure after the first chain observation.
-	if options.Prepare != nil {
-		if err := options.Prepare(ctx); err != nil {
-			return initialFailure(nil, fmt.Errorf("prepare scenario: %w", err))
-		}
-	}
-
 	start, err := probe.Snapshot(ctx)
 	if err != nil {
 		return initialFailure(nil, fmt.Errorf("initial scenario observation: %w", err))
@@ -2315,9 +2312,33 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), start); err != nil {
 		return initialFailure(start, fmt.Errorf("persist initial scenario observation: %w", err))
 	}
-	faults, err := initializeFaultRecords(start.Status.Contracts.FinalizedHead.Number, definition.Faults)
+	current := start
+	// Take the campaign boundary before preparation. Public-RPC deployment can
+	// consume arbitrary epochs, while precompile, governance, key rotation, and
+	// dishonest-deposit preparation are part of the live happy path and must be
+	// observed under the already-running adversarial campaign. Recover a prior
+	// process fence first so an interrupted boundary injection cannot deadlock a
+	// resumed preparation.
+	if options.Prepare != nil {
+		if err := options.Prepare(ctx); err != nil {
+			return initialFailure(start, fmt.Errorf("prepare scenario: %w", err))
+		}
+		prepared, prepareErr := probe.Snapshot(ctx)
+		if prepareErr != nil {
+			return initialFailure(start, fmt.Errorf("post-preparation scenario observation: %w", prepareErr))
+		}
+		if prepared.Status == nil || prepared.Status.Contracts == nil {
+			return initialFailure(prepared, errors.New("post-preparation observation lost deployment or contract state"))
+		}
+		current = prepared
+		observationHistory = append(observationHistory, current)
+		if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
+			return initialFailure(current, fmt.Errorf("persist post-preparation scenario observation: %w", err))
+		}
+	}
+	faults, err := initializeFaultRecords(current.Status.Contracts.FinalizedHead.Number, definition.Faults)
 	if err != nil {
-		return initialFailure(start, fmt.Errorf("initialize scenario faults: %w", err))
+		return initialFailure(current, fmt.Errorf("initialize scenario faults: %w", err))
 	}
 	defer func() {
 		if options.FaultDriver == nil {
@@ -2329,7 +2350,6 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			}
 		}
 	}()
-	current := start
 	assertions := appendFaultAssertions(evaluateScenario(cfg, definition, start, current, started), faults, started, current)
 	deadline := started.Add(options.Timeout)
 	var faultErr error
@@ -2654,6 +2674,29 @@ func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir
 	return writePublicJSON(filepath.Join(stateDir, "public", "verify-key-rotation.json"), record)
 }
 
+// Execute the complete approved precompile battery. Keeping the selector in
+// one place ensures the standalone conformance scenario and the release
+// campaign exercise the identical plan actions.
+func executePrecompileActions(ctx context.Context, executor *Executor) error {
+	if executor == nil || executor.plan == nil {
+		return errors.New("precompile conformance requires the approved deployment executor")
+	}
+	count := 0
+	for _, action := range executor.plan.Actions {
+		if !strings.HasPrefix(action.ID, "precompile.") {
+			continue
+		}
+		if err := executor.Execute(ctx, action); err != nil {
+			return err
+		}
+		count++
+	}
+	if count != 10 {
+		return fmt.Errorf("approved plan has %d precompile actions, want exactly 10", count)
+	}
+	return nil
+}
+
 func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, _ *Journal, executor *Executor) error {
 	// Validate the immutable definition before any live action. A malformed
 	// release matrix must not be able to leave the coordinator paused/upgraded.
@@ -2686,29 +2729,25 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	}
 	prepare := func(prepareCtx context.Context) error {
 		if name == "precompile-conformance" {
-			if executor == nil {
-				return errors.New("precompile conformance requires the approved deployment executor")
-			}
-			count := 0
-			for _, action := range executor.plan.Actions {
-				if strings.HasPrefix(action.ID, "precompile.") {
-					if err := executor.Execute(prepareCtx, action); err != nil {
-						return err
-					}
-					count++
-				}
-			}
-			if count != 10 {
-				return fmt.Errorf("approved plan has %d precompile actions, want exactly 10", count)
-			}
+			return executePrecompileActions(prepareCtx, executor)
 		}
 		if name == "release-1.0" {
 			if executor == nil {
 				return errors.New("release scenario requires the approved deployment executor")
 			}
 			precompile, readErr := loadPrecompileEvidence(stateDir)
-			if readErr != nil {
-				return fmt.Errorf("release scenario requires a completed precompile-conformance gate: %w", readErr)
+			if readErr != nil || !precompileEvidenceComplete(precompile) {
+				// Run conformance inside the release campaign so continuous
+				// adversaries cover the actual precompile happy path. A prior
+				// standalone run is adopted only after the same postconditions are
+				// revalidated by Executor.Execute.
+				if err := executePrecompileActions(prepareCtx, executor); err != nil {
+					return fmt.Errorf("release precompile conformance: %w", err)
+				}
+				precompile, readErr = loadPrecompileEvidence(stateDir)
+				if readErr != nil {
+					return fmt.Errorf("release precompile evidence: %w", readErr)
+				}
 			}
 			if executor.payloads == nil {
 				return errors.New("release scenario requires installed deployment payloads")
@@ -2717,7 +2756,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 				return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
 			}
 			if !precompileEvidenceComplete(precompile) {
-				return errors.New("release scenario requires a completed precompile-conformance gate")
+				return errors.New("release scenario precompile-conformance gate is incomplete")
 			}
 			waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
 			if err := waitForGovernanceDrillReady(prepareCtx, executor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
