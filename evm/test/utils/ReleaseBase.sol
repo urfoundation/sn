@@ -9,9 +9,10 @@ import {STSettlementVault} from "../../src/STSettlementVault.sol";
 import {STReserveSink} from "../../src/STReserveSink.sol";
 import {ISTAKING_ADDRESS} from "../../src/interfaces/stakingV2.sol";
 import {INeuron_ADDRESS} from "../../src/interfaces/neuron.sol";
+import {IALPHA_ADDRESS} from "../../src/interfaces/alpha.sol";
 import {IED25519VERIFY_ADDRESS} from "../../src/interfaces/ed25519Verify.sol";
 import {ISR25519VERIFY_ADDRESS} from "../../src/interfaces/sr25519Verify.sol";
-import {MockStakingV2, MockNeuron, MockEd25519, MockSr25519} from "../mocks/PrecompileMocks.sol";
+import {MockStakingV2, MockNeuron, MockAlpha, MockEd25519, MockSr25519} from "../mocks/PrecompileMocks.sol";
 import {MerkleBuilder} from "./MerkleBuilder.sol";
 
 abstract contract ReleaseBase is Test {
@@ -22,6 +23,7 @@ abstract contract ReleaseBase is Test {
     uint64 internal constant CLOSE_GRACE = 5;
     uint64 internal constant START_BLOCK = 1_000;
     uint64 internal constant REGISTRATION_BURN_LIMIT = 100_000_000;
+    uint64 internal constant MINIMUM_TRANSFER_TAO_RAO = 1;
 
     uint256 internal constant NO1 = 1;
     uint256 internal constant NO2 = 2;
@@ -55,6 +57,7 @@ abstract contract ReleaseBase is Test {
 
     MockStakingV2 internal staking = MockStakingV2(ISTAKING_ADDRESS);
     MockNeuron internal neuron = MockNeuron(INeuron_ADDRESS);
+    MockAlpha internal alpha = MockAlpha(IALPHA_ADDRESS);
     MockEd25519 internal ed = MockEd25519(IED25519VERIFY_ADDRESS);
     MockSr25519 internal sr = MockSr25519(ISR25519VERIFY_ADDRESS);
 
@@ -63,11 +66,15 @@ abstract contract ReleaseBase is Test {
         vm.roll(START_BLOCK);
         vm.etch(ISTAKING_ADDRESS, address(new MockStakingV2()).code);
         vm.etch(INeuron_ADDRESS, address(new MockNeuron()).code);
+        vm.etch(IALPHA_ADDRESS, address(new MockAlpha()).code);
         vm.etch(IED25519VERIFY_ADDRESS, address(new MockEd25519()).code);
         vm.etch(ISR25519VERIFY_ADDRESS, address(new MockSr25519()).code);
 
         sink = new STReserveSink(NETUID, RESERVE_HOTKEY, SINK_COLDKEY, address(this));
-        vault = new STSettlementVault(NETUID, ESCROW_HOTKEY, VAULT_COLDKEY, 1, address(this));
+        vault = new STSettlementVault(
+            NETUID, ESCROW_HOTKEY, VAULT_COLDKEY, 1, MINIMUM_TRANSFER_TAO_RAO, address(this)
+        );
+        alpha.setAlphaPrice(NETUID, 1 ether);
         neuron.setUid(NETUID, ESCROW_HOTKEY, 10);
         vault.registerEscrow(REGISTRATION_BURN_LIMIT);
         implementation = new STCoordinator();
@@ -86,7 +93,6 @@ abstract contract ReleaseBase is Test {
         staking.setColdkey(address(coordinator), COORD_COLDKEY);
         staking.setColdkey(address(vault), VAULT_COLDKEY);
         staking.setColdkey(address(sink), SINK_COLDKEY);
-
         neuron.setUid(NETUID, POOL1, 11);
         neuron.setUid(NETUID, POOL2, 12);
         vm.startPrank(owner);
@@ -119,7 +125,11 @@ abstract contract ReleaseBase is Test {
 
     function _pushDeposit(uint256 noId, uint256 amount) internal {
         bytes32 hotkey = noId == NO1 ? DEPOSIT1 : DEPOSIT2;
-        staking.setStake(hotkey, COORD_COLDKEY, staking.stakes(hotkey, COORD_COLDKEY) + amount);
+        staking.setStake(
+            hotkey,
+            COORD_COLDKEY,
+            staking.stakes(hotkey, COORD_COLDKEY) + amount + coordinator.RESERVE_ROUNDING_ALLOWANCE_RAO()
+        );
     }
 
     function _deposit(uint256 noId, uint256 amount, uint256 nonce) internal {

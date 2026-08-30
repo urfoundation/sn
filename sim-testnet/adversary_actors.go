@@ -625,16 +625,16 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	prefix := make([]byte, 12) // runtime-451 TaoBalance:u64 + BlockNumber:u32
+	prefix := make([]byte, 12) // runtime-452 TaoBalance:u64 + BlockNumber:u32
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000+sequence)
 	binary.LittleEndian.PutUint32(prefix[8:], uint32(1+sequence%math.MaxUint32))
 	canonical := append(append([]byte(nil), prefix...), info...)
-	decoded, err := crv4.DecodeFleetCommitmentRegistrationV451(canonical)
+	decoded, err := crv4.DecodeFleetCommitmentRegistrationV452(canonical)
 	if err != nil || decoded != hash {
 		return 0, fmt.Errorf("canonical commitment registration rejected hash=%x error=%v", decoded, err)
 	}
 
-	// 0x87 is Data::ResetBondsFlag in runtime 451. The first case is a
+	// 0x87 is Data::ResetBondsFlag in runtime 452. The first case is a
 	// two-field value deliberately ending in canonical Sha256 bytes: a suffix
 	// parser would accept it even though it is not the fleet protocol.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -646,7 +646,7 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 		canonical[:len(canonical)-1],
 	}
 	for index, encoded := range cases {
-		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV451(encoded); decodeErr == nil {
+		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV452(encoded); decodeErr == nil {
 			return uint64(index), fmt.Errorf("commitment type-confusion case %d decoded as %x", index, got)
 		}
 	}
@@ -853,7 +853,7 @@ func proportionalRootBasketClaim(principal, basketReward, unstake uint64) (claim
 	return claimed, basketReward - claimed, nil
 }
 
-// rootBasketFailureIsolationModel covers the runtime-451 hotfix: a terminally
+// rootBasketFailureIsolationModel covers the runtime-452 hotfix: a terminally
 // shallow holding is explicitly written off, an unrelated healthy holding can
 // still settle, and an unknown/retryable failure remains intact. Pending basket
 // deposits likewise remain accounted while an independent root-stake change
@@ -1009,6 +1009,59 @@ func runtimeCompositeRollbackModel(sequence uint64) (uint64, error) {
 		}
 	}
 	return uint64(len(cases)), nil
+}
+
+type settlementTransferFloorState struct {
+	PoolStake   uint64
+	Captured    uint64
+	Escrow      uint64
+	Outstanding uint64
+	ClaimCredit uint64
+	Paid        uint64
+}
+
+// settlementTransferFloorModel mirrors the runtime-452 DefaultMinTransfer
+// boundary while the live campaign is running. Capture dust must stay on the
+// pool; accepted sub-floor claims become durable credit; a later qualifying
+// aggregate pays exactly; and a runtime failure preserves the full credit.
+func settlementTransferFloorModel(defaultMinimumRao, priceQ9 uint64) (uint64, error) {
+	minimumAlpha, err := minimumAlphaTransferRao(defaultMinimumRao, priceQ9, 0)
+	if err != nil || minimumAlpha < 2 {
+		return 0, errors.New("settlement transfer floor is invalid")
+	}
+	below := minimumAlpha - 1
+	if equivalent, equivalentErr := alphaTransferTAOEquivalentRao(below, priceQ9); equivalentErr != nil || equivalent >= defaultMinimumRao {
+		return 0, errors.New("sub-floor capture boundary was not conservative")
+	}
+	state := settlementTransferFloorState{PoolStake: below}
+	if state.Captured != 0 || state.Escrow != 0 || state.PoolStake != below {
+		return 0, errors.New("sub-floor capture changed custody accounting")
+	}
+	state.PoolStake = minimumAlpha
+	state.Captured = minimumAlpha
+	state.Escrow = minimumAlpha
+	state.Outstanding = minimumAlpha
+	first := minimumAlpha / 2
+	state.ClaimCredit += first
+	if equivalent, equivalentErr := alphaTransferTAOEquivalentRao(state.ClaimCredit, priceQ9); equivalentErr != nil || equivalent >= defaultMinimumRao {
+		return 0, errors.New("sub-floor claim credit paid prematurely")
+	}
+	state.ClaimCredit += minimumAlpha - first
+	failure := state
+	if failure.ClaimCredit != minimumAlpha || failure.Paid != 0 || failure.Escrow != minimumAlpha || failure.Outstanding != minimumAlpha {
+		return 0, errors.New("runtime failure did not preserve accepted claim credit")
+	}
+	if equivalent, equivalentErr := alphaTransferTAOEquivalentRao(state.ClaimCredit, priceQ9); equivalentErr != nil || equivalent < defaultMinimumRao {
+		return 0, errors.New("aggregated claim credit did not reach the runtime floor")
+	}
+	state.Paid += state.ClaimCredit
+	state.Escrow -= state.ClaimCredit
+	state.Outstanding -= state.ClaimCredit
+	state.ClaimCredit = 0
+	if state.Paid != minimumAlpha || state.Escrow != 0 || state.Outstanding != 0 || state.Captured != state.Paid+state.Escrow {
+		return 0, errors.New("qualifying claim credit did not settle exactly")
+	}
+	return 5, nil
 }
 
 type runtimeIdentitySecurityState struct {
@@ -1549,7 +1602,7 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 	}
 	terminalWriteoffs, healthyClaims, retryablePreserved, stakeChangeBlocked, err := rootBasketFailureIsolationModel(1_000+sequence, 100+sequence)
 	if err != nil || stakeChangeBlocked {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime-451 root basket failure isolation error=%v blocked=%t", err, stakeChangeBlocked)}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime-452 root basket failure isolation error=%v blocked=%t", err, stakeChangeBlocked)}
 	}
 	mev, err := emulateProxyStakeMEV(1_000_000_000_000, 2_000_000_000_000, 1_000_000_000, attackerStake, 10_000)
 	if err != nil || (phase == adversaryControlPhase && (mev.UnshieldedLossPPM != 0 || mev.ProtectedWouldReject)) || (phase == adversaryAttackPhase && (mev.UnshieldedLossPPM == 0 || !mev.ProtectedWouldReject)) {
@@ -1560,6 +1613,10 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
 	rollbackCases, err := runtimeCompositeRollbackModel(sequence)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	transferFloorCases, err := settlementTransferFloorModel(self.cfg.Public.Chain.ExpectedDefaultMinTransferRao, 568_309)
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
@@ -1666,6 +1723,10 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 		"partial_state_deltas":                0,
 		"partial_writes":                      0,
 		"false_paid_claims":                   0,
+		"settlement_transfer_floor_cases":     transferFloorCases,
+		"premature_claim_payments":            0,
+		"lost_claim_credit_rao":               0,
+		"captured_subfloor_emission_rao":      0,
 		"reserve_drift_rao":                   0,
 		"runtime_identity_fields_migrated":    migratedFields,
 		"migrated_fields":                     migratedFields,
@@ -1777,7 +1838,7 @@ func clampUnit(value float64) float64 {
 	return value
 }
 
-// liquidAlphaValue mirrors runtime v451's per validator-miner sigmoid: buying
+// liquidAlphaValue mirrors runtime v452's per validator-miner sigmoid: buying
 // compares weight with the selected consensus, selling compares the old bond
 // with weight, and the result is clamped between alpha_low and alpha_high.
 func liquidAlphaValue(consensus, weight, bond, alphaLow, alphaHigh, steepness float64) (float64, error) {
@@ -1815,7 +1876,7 @@ func emulateLiquidAlphaCopyAndDropout(sequence uint64) (liquidAlphaSweep, error)
 	steepness := steepnesses[sequence%uint64(len(steepnesses))]
 	selectedConsensus := 1.0
 	if sequence%2 == 0 {
-		// Runtime v451 retains previous-consensus mode. Sweep the first epoch's
+		// Runtime v452 retains previous-consensus mode. Sweep the first epoch's
 		// absent/zero previous value as well as current consensus.
 		selectedConsensus = 0
 	}

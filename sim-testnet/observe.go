@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type ChainHead struct {
@@ -28,16 +29,52 @@ type ChainHead struct {
 	Hash   string `json:"hash"`
 }
 
+// finalizedEVMHeadContextKey binds all nested reads in one postcondition to
+// the exact finalized checkpoint selected by its caller. Without this, helper
+// functions such as rawCoordinatorCall each resolve "finalized" again and a
+// single durable observation can silently mix blocks (as well as multiplying
+// public-RPC requests during resume audits).
+type finalizedEVMHeadContextKey struct{}
+
+func withFinalizedEVMHead(ctx context.Context, head ChainHead) (context.Context, error) {
+	if ctx == nil {
+		return nil, errors.New("EVM finalized-head context is unavailable")
+	}
+	if head.Number == 0 || head.Hash == "" {
+		return nil, errors.New("EVM finalized checkpoint identity is incomplete")
+	}
+	if _, err := decodeHex32("EVM finalized block hash", head.Hash); err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, finalizedEVMHeadContextKey{}, ChainHead{
+		Number: head.Number,
+		Hash:   strings.ToLower(head.Hash),
+	}), nil
+}
+
+func boundFinalizedEVMHead(ctx context.Context) (ChainHead, bool) {
+	if ctx == nil {
+		return ChainHead{}, false
+	}
+	head, ok := ctx.Value(finalizedEVMHeadContextKey{}).(ChainHead)
+	return head, ok
+}
+
 type ContractView struct {
 	Deployment         *ContractDeployment `json:"deployment,omitempty"`
+	CoordinatorUpgrade CoordinatorUpgrade  `json:"coordinator_upgrade"`
 	FinalizedHead      ChainHead           `json:"finalized_head"`
 	CurrentEpoch       uint64              `json:"current_epoch"`
 	OperatorCount      uint64              `json:"operator_count"`
 	PolicyHash         string              `json:"policy_hash,omitempty"`
 	ConservationHolds  bool                `json:"conservation_holds"`
+	MinimumTransferRao uint64              `json:"minimum_transfer_tao_rao"`
 	TotalCaptured      string              `json:"total_captured_rao,omitempty"`
 	TotalPaid          string              `json:"total_paid_rao,omitempty"`
+	EscrowAccounted    string              `json:"escrow_accounted_rao,omitempty"`
+	PendingFunding     string              `json:"pending_funding_rao,omitempty"`
 	Outstanding        string              `json:"outstanding_liability_rao,omitempty"`
+	LiveEscrowStake    string              `json:"live_escrow_stake_rao,omitempty"`
 	ReservePrincipal   string              `json:"reserve_principal_rao,omitempty"`
 	ReserveLiveStake   string              `json:"reserve_live_stake_rao,omitempty"`
 	RuntimeCodeHashes  map[string]string   `json:"runtime_code_hashes,omitempty"`
@@ -252,7 +289,11 @@ func Analyze(ctx context.Context, cfg *ResolvedConfig, stateDir, manifest string
 			expectedCoordinator = public.Contracts.CoordinatorProxy
 		}
 		observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.CandidateFleetUIDs = inspectFleetEvidenceBytes(cfg, public.SetupEvidence, expectedCoordinator)
-		observation.ReserveValidatorRegistered, observation.ReserveValidatorUID, observation.ReserveDelegateTake, observation.EscrowHotkeyRegistered, observation.EscrowHotkeyUID, observation.NativeCustodyError = inspectNativeCustodyRolesBytes(cfg, public.Identities, public.SubstrateRPC)
+		generation := uint64(0)
+		if public.Contracts != nil {
+			generation = public.Contracts.RegistrationRoleGeneration
+		}
+		observation.ReserveValidatorRegistered, observation.ReserveValidatorUID, observation.ReserveDelegateTake, observation.EscrowHotkeyRegistered, observation.EscrowHotkeyUID, observation.NativeCustodyError = inspectNativeCustodyRolesBytes(cfg, public.Identities, public.SubstrateRPC, generation)
 		observation.NativeRewards, observation.NativeRewardsError = inspectNativeRewards(cfg, public.SubstrateRPC)
 		depositSigner := publicEVMRole(public.Identities, "operator-1-deposit")
 		observation.VoluntaryConviction, observation.VoluntaryConvictionValid, observation.VoluntaryConvictionError = inspectVoluntaryConvictionBytes(ctx, cfg, public.SetupEvidence["voluntary_conviction"], view, public.EVMRPC, depositSigner)
@@ -429,6 +470,12 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, fmt.Errorf("contract manifest: %w", err)
 	}
+	upgrade := CoordinatorUpgrade{}
+	if publicManifest != nil {
+		upgrade = publicManifest.CoordinatorUpgrade
+	} else if plan, planErr := readPersistedPlan(stateDir); planErr == nil {
+		upgrade = plan.CoordinatorUpgrade
+	}
 	endpoint := ""
 	if publicManifest != nil {
 		endpoint = publicManifest.EVMRPC
@@ -507,7 +554,23 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
+	minimumTransfer, err := callUint64(callScalar(deployment.SettlementVault, vault, "minimumTransferTaoRao"))
+	if err != nil {
+		return nil, fmt.Errorf("minimumTransferTaoRao: %w", err)
+	}
+	escrowAccounted, err := callDecimal(callScalar(deployment.SettlementVault, vault, "escrowAccounted"))
+	if err != nil {
+		return nil, err
+	}
+	pendingFunding, err := callDecimal(callScalar(deployment.SettlementVault, vault, "pendingFunding"))
+	if err != nil {
+		return nil, err
+	}
 	outstanding, err := callDecimal(callScalar(deployment.SettlementVault, vault, "outstandingLiability"))
+	if err != nil {
+		return nil, err
+	}
+	liveEscrowStake, err := callDecimal(callScalar(deployment.SettlementVault, vault, "liveEscrowStake"))
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +588,9 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if deployment.PrecompileProbe != (common.Address{}) {
 		addresses = append(addresses, deployment.PrecompileProbe)
 	}
+	if upgrade.Implementation != (common.Address{}) {
+		addresses = append(addresses, upgrade.Implementation)
+	}
 	for _, address := range addresses {
 		code, codeErr := client.CodeAt(ctx, address, new(big.Int).SetUint64(head.Number))
 		if codeErr != nil {
@@ -532,15 +598,26 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		}
 		hash := crypto.Keccak256Hash(code).Hex()
 		hashes[address.Hex()] = hash
-		if want := deployment.RuntimeHashes[address.Hex()]; want == "" || !strings.EqualFold(want, hash) {
+		want := deployment.RuntimeHashes[address.Hex()]
+		if address == upgrade.Implementation {
+			want = upgrade.RuntimeCodeHash
+		}
+		if want == "" || !strings.EqualFold(want, hash) {
 			matches = false
 		}
+	}
+	if upgrade.Implementation != (common.Address{}) {
+		raw, storageErr := client.StorageAt(ctx, deployment.CoordinatorProxy, common.HexToHash(erc1967ImplementationSlot), new(big.Int).SetUint64(head.Number))
+		if storageErr != nil {
+			return nil, storageErr
+		}
+		matches = matches && len(raw) == 32 && common.BytesToAddress(raw[12:]) == upgrade.Implementation
 	}
 	operators, epochs, err := inspectOperatorEpochs(ctx, client, deployment, coord, vault, head.Number, currentEpoch, operatorCount, policy)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractView{Deployment: deployment, FinalizedHead: head, CurrentEpoch: currentEpoch, OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, TotalCaptured: totalCaptured, TotalPaid: totalPaid, Outstanding: outstanding, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, Policy: policy, Operators: operators, Epochs: epochs}, nil
+	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, Policy: policy, Operators: operators, Epochs: epochs}, nil
 }
 
 func readDeploymentReference(ctx context.Context, source string) ([]byte, error) {
@@ -588,7 +665,7 @@ func loadDeploymentReference(ctx context.Context, stateDir, source string) (*Con
 	}
 	var public PublicDeploymentManifest
 	if json.Unmarshal(b, &public) == nil && public.Schema == "urnetwork-sim-public-deployment-v1" {
-		if public.Release != "1.0" || public.DeploymentID == "" || public.ChainID != testnetChainID || !strings.EqualFold(public.GenesisHash, testnetGenesis) || public.RuntimeSpec == 0 || public.Netuid == 0 || public.Contracts == nil || public.EVMRPC == "" || public.SubstrateRPC == "" || public.ConfigHash == "" || public.PolicyHash == "" || public.ReleaseLockHash == "" || len(public.SetupEvidence) == 0 || len(public.Operators) == 0 {
+		if public.Release != "1.0" || public.DeploymentID == "" || public.ChainID != testnetChainID || !strings.EqualFold(public.GenesisHash, testnetGenesis) || public.RuntimeSpec == 0 || public.Netuid == 0 || public.Contracts == nil || public.CoordinatorUpgrade.Implementation == (common.Address{}) || public.EVMRPC == "" || public.SubstrateRPC == "" || public.ConfigHash == "" || public.PolicyHash == "" || public.ReleaseLockHash == "" || len(public.SetupEvidence) == 0 || len(public.Operators) == 0 {
 			return nil, nil, errors.New("invalid public deployment manifest identity")
 		}
 		if envelope.Schema == releaseEvidenceSchema {
@@ -621,7 +698,7 @@ func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deploy
 	for i := uint64(0); i < operatorCount; i++ {
 		idValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "operatorIdAt", block, new(big.Int).SetUint64(i))
 		if err != nil || len(idValues) != 1 {
-			return nil, nil, fmt.Errorf("operatorIdAt(%d): %w", i, err)
+			return nil, nil, stateMismatchError(err, "operatorIdAt(%d) returned %d values", i, len(idValues))
 		}
 		idBig, ok := idValues[0].(*big.Int)
 		if !ok || !idBig.IsUint64() {
@@ -631,19 +708,19 @@ func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deploy
 		operatorIDs = append(operatorIDs, noID)
 		opValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "operatorAt", block, idBig, new(big.Int).SetUint64(currentEpoch))
 		if err != nil || len(opValues) != 1 {
-			return nil, nil, fmt.Errorf("operatorAt(%d): %w", noID, err)
+			return nil, nil, stateMismatchError(err, "operatorAt(%d) returned %d values", noID, len(opValues))
 		}
 		poolValues, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "pools", block, idBig)
 		if err != nil || len(poolValues) != 3 {
-			return nil, nil, fmt.Errorf("pools(%d): %w", noID, err)
+			return nil, nil, stateMismatchError(err, "pools(%d) returned %d values", noID, len(poolValues))
 		}
 		conviction, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "cumulativeConviction", block, idBig)
 		if err != nil || len(conviction) != 1 {
-			return nil, nil, fmt.Errorf("cumulativeConviction(%d): %w", noID, err)
+			return nil, nil, stateMismatchError(err, "cumulativeConviction(%d) returned %d values", noID, len(conviction))
 		}
 		carry, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "carry", block, idBig)
 		if err != nil || len(carry) != 1 {
-			return nil, nil, fmt.Errorf("carry(%d): %w", noID, err)
+			return nil, nil, stateMismatchError(err, "carry(%d) returned %d values", noID, len(carry))
 		}
 		operators = append(operators, OperatorView{NoID: noID, Coldkey: tupleHex(opValues[0], "Coldkey"), PoolHotkey: tupleHex(opValues[0], "PoolHotkey"), DepositHotkey: tupleHex(opValues[0], "DepositHotkey"), DepositSigner: tupleAddress(opValues[0], "DepositSigner"), RootSigner: tupleAddress(opValues[0], "RootSigner"), EffectiveEpoch: tupleUint64(opValues[0], "EffectiveEpoch"), Active: tupleBool(opValues[0], "Active"), PoolUID: valueUint16(poolValues[1]), PoolLive: valueBool(poolValues[2]), ConvictionRao: valueDecimal(conviction[0]), CarryRao: valueDecimal(carry[0])})
 	}
@@ -674,11 +751,11 @@ func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deploy
 			}
 			root, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "rootCommitments", block, e, n)
 			if err != nil || len(root) != 4 {
-				return nil, nil, fmt.Errorf("rootCommitments(%d,%d): %w", epoch, noID, err)
+				return nil, nil, stateMismatchError(err, "rootCommitments(%d,%d) returned %d values", epoch, noID, len(root))
 			}
 			entitlement, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "entitlement", block, e, n)
 			if err != nil || len(entitlement) != 1 {
-				return nil, nil, fmt.Errorf("entitlement(%d,%d): %w", epoch, noID, err)
+				return nil, nil, stateMismatchError(err, "entitlement(%d,%d) returned %d values", epoch, noID, len(entitlement))
 			}
 			epochView.Operators = append(epochView.Operators, EpochOperatorView{NoID: noID, DepositRao: valueDecimal(deposit[0]), ConvictionAddedRao: valueDecimal(added[0]), PayoutRoot: valueHex(root[0]), ArtifactHash: valueHex(root[1]), Committer: valueAddress(root[2]), CommitBlock: valueUint64(root[3]), FundedRao: tupleDecimal(entitlement[0], "Funded"), TotalRao: tupleDecimal(entitlement[0], "Total"), ClaimedRao: tupleDecimal(entitlement[0], "Claimed"), ExpiryBlock: tupleUint64(entitlement[0], "ExpiryBlock"), Status: uint8(tupleUint64(entitlement[0], "Status"))})
 		}
@@ -702,23 +779,86 @@ func contractCallAt(ctx context.Context, client *ethclient.Client, address commo
 	return contractABI.Unpack(method, out)
 }
 
-func finalizedEVMHead(ctx context.Context, client *ethclient.Client) (ChainHead, error) {
-	var hash string
-	if err := client.Client().CallContext(ctx, &hash, "chain_getFinalizedHead"); err != nil {
-		return ChainHead{}, err
+type evmBlockReader interface {
+	EVMBlockByNumber(context.Context, *big.Int) (ChainHead, error)
+}
+
+type ethEVMBlockReader struct {
+	client *ethclient.Client
+}
+
+// Read the explicit number and hash returned by eth_getBlockByNumber.
+// Subtensor's synthetic EVM block hash is neither its Substrate block hash nor
+// go-ethereum's locally recomputed Header.Hash(), so both shortcuts are wrong.
+func (self ethEVMBlockReader) EVMBlockByNumber(ctx context.Context, number *big.Int) (ChainHead, error) {
+	if self.client == nil || number == nil {
+		return ChainHead{}, errors.New("EVM block reader is unavailable")
 	}
-	var header struct {
+	argument := ""
+	if number.Sign() < 0 {
+		if !number.IsInt64() || rpc.BlockNumber(number.Int64()) != rpc.FinalizedBlockNumber {
+			return ChainHead{}, fmt.Errorf("unsupported EVM block selector %s", number)
+		}
+		argument = rpc.FinalizedBlockNumber.String()
+	} else {
+		argument = "0x" + number.Text(16)
+	}
+	var block *struct {
 		Number string `json:"number"`
 		Hash   string `json:"hash"`
 	}
-	if err := client.Client().CallContext(ctx, &header, "chain_getHeader", hash); err != nil {
+	if err := self.client.Client().CallContext(ctx, &block, "eth_getBlockByNumber", argument, false); err != nil {
 		return ChainHead{}, err
 	}
-	n, ok := new(big.Int).SetString(strings.TrimPrefix(header.Number, "0x"), 16)
-	if !ok || !n.IsUint64() {
-		return ChainHead{}, fmt.Errorf("invalid finalized block number %q", header.Number)
+	if block == nil {
+		return ChainHead{}, ethereum.NotFound
 	}
-	return ChainHead{Number: n.Uint64(), Hash: hash}, nil
+	parsed, ok := new(big.Int).SetString(strings.TrimPrefix(block.Number, "0x"), 16)
+	if !ok || !parsed.IsUint64() {
+		return ChainHead{}, fmt.Errorf("invalid EVM block number %q", block.Number)
+	}
+	if _, err := decodeHex32("EVM block hash", block.Hash); err != nil {
+		return ChainHead{}, err
+	}
+	if number.Sign() >= 0 && parsed.Cmp(number) != 0 {
+		return ChainHead{}, fmt.Errorf("EVM block response number %d does not match request %s", parsed.Uint64(), number)
+	}
+	return ChainHead{Number: parsed.Uint64(), Hash: strings.ToLower(block.Hash)}, nil
+}
+
+// Read the EVM block selected by the finalized tag in its explicit RPC hash
+// domain.
+func finalizedEVMHeadFromReader(ctx context.Context, reader evmBlockReader) (ChainHead, error) {
+	if reader == nil {
+		return ChainHead{}, errors.New("EVM finalized-block reader is unavailable")
+	}
+	return reader.EVMBlockByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+}
+
+func finalizedEVMHead(ctx context.Context, client *ethclient.Client) (ChainHead, error) {
+	if head, ok := boundFinalizedEVMHead(ctx); ok {
+		return head, nil
+	}
+	if client == nil {
+		return ChainHead{}, errors.New("EVM finalized-header client is unavailable")
+	}
+	return finalizedEVMHeadFromReader(ctx, ethEVMBlockReader{client: client})
+}
+
+// Resolve one numbered block in the EVM RPC hash domain and reject an RPC
+// response whose embedded height does not match the requested checkpoint.
+func canonicalEVMBlockHash(ctx context.Context, reader evmBlockReader, number uint64) (string, error) {
+	if reader == nil || number == 0 {
+		return "", errors.New("EVM canonical checkpoint is incomplete")
+	}
+	head, err := reader.EVMBlockByNumber(ctx, new(big.Int).SetUint64(number))
+	if err != nil {
+		return "", err
+	}
+	if head.Number != number || head.Hash == "" {
+		return "", fmt.Errorf("EVM canonical header at block %d has a mismatched or missing number", number)
+	}
+	return head.Hash, nil
 }
 
 func callBigUint(v any, err error) (uint64, error) {
@@ -730,6 +870,21 @@ func callBigUint(v any, err error) (uint64, error) {
 		return 0, fmt.Errorf("expected uint256, got %T", v)
 	}
 	return n.Uint64(), nil
+}
+
+func callUint64(v any, err error) (uint64, error) {
+	if err != nil {
+		return 0, err
+	}
+	switch n := v.(type) {
+	case uint64:
+		return n, nil
+	case *big.Int:
+		if n != nil && n.IsUint64() {
+			return n.Uint64(), nil
+		}
+	}
+	return 0, fmt.Errorf("expected uint64, got %T", v)
 }
 
 func callBool(v any, err error) (bool, error) {

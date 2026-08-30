@@ -109,6 +109,46 @@ contract ReleaseBindingPolicyTest is ReleaseBase {
         coordinator.bindFleetMember(badSig, sig, _signature(8));
     }
 
+    function test_commitmentMirrorIsMonotonicAndRejectsSameHeightEquivocation() public {
+        bytes32 firstBlockHash = keccak256("finalized-block-1000");
+        vm.prank(oracle);
+        coordinator.mirrorCommitment(HEAD_HOTKEY, COMMITMENT, uint64(block.number), firstBlockHash);
+
+        // An exact retry is idempotent, but finalized history cannot move
+        // backward or name two states at one height.
+        vm.prank(oracle);
+        coordinator.mirrorCommitment(HEAD_HOTKEY, COMMITMENT, uint64(block.number), firstBlockHash);
+
+        vm.prank(oracle);
+        vm.expectRevert(STCoordinator.StaleCommitment.selector);
+        coordinator.mirrorCommitment(
+            HEAD_HOTKEY, COMMITMENT, uint64(block.number - 1), keccak256("older-block")
+        );
+
+        vm.prank(oracle);
+        vm.expectRevert(STCoordinator.StaleCommitment.selector);
+        coordinator.mirrorCommitment(
+            HEAD_HOTKEY, keccak256("equivocating-commitment"), uint64(block.number), firstBlockHash
+        );
+
+        vm.prank(oracle);
+        vm.expectRevert(STCoordinator.StaleCommitment.selector);
+        coordinator.mirrorCommitment(
+            HEAD_HOTKEY, COMMITMENT, uint64(block.number), keccak256("equivocating-block")
+        );
+
+        vm.roll(block.number + 1);
+        bytes32 nextCommitment = keccak256("next-commitment");
+        bytes32 nextBlockHash = keccak256("finalized-block-1001");
+        vm.prank(oracle);
+        coordinator.mirrorCommitment(HEAD_HOTKEY, nextCommitment, uint64(block.number), nextBlockHash);
+        (bytes32 commitment, bytes32 finalizedHash, uint64 finalizedBlock) =
+            coordinator.mirroredCommitments(HEAD_HOTKEY);
+        assertEq(commitment, nextCommitment);
+        assertEq(finalizedHash, nextBlockHash);
+        assertEq(finalizedBlock, block.number);
+    }
+
     function test_clientSignedRevocationIsNextEpochOnly() public {
         _prepareFleet();
         bytes16 clientId = bytes16(uint128(9));

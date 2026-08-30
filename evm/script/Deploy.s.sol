@@ -37,6 +37,7 @@ contract Deploy is Script {
         bytes32 reserveHotkey;
         bytes32 escrowHotkey;
         uint64 registrationBurnLimitRao;
+        uint64 minimumTransferTaoRao;
         STCoordinator.PolicySnapshot policy;
     }
 
@@ -65,6 +66,7 @@ contract Deploy is Script {
             cfg.escrowHotkey,
             Blake2b.mirror(deployed.settlementVault),
             cfg.policy.epochBlocks * cfg.policy.claimTTLEpochs,
+            cfg.minimumTransferTaoRao,
             cfg.deployer
         );
         STCoordinator implementation = new STCoordinator();
@@ -108,6 +110,7 @@ contract Deploy is Script {
     /// Required: ST_NETUID, ST_DEPLOYER, ST_OWNER, ST_GUARDIAN,
     /// ST_COMMITMENT_ORACLE, ST_RESERVE_HOTKEY, ST_ESCROW_HOTKEY,
     /// ST_POLICY_HASH, ST_REGISTRATION_BURN_LIMIT_RAO,
+    /// ST_MINIMUM_TRANSFER_TAO_RAO,
     /// ST_EPOCH_DEPOSIT_CAP_RAO and
     /// ST_CAMPAIGN_DEPOSIT_CAP_RAO. Window fields have profile defaults.
     function _loadConfig(bool mainnet) internal view returns (Config memory cfg) {
@@ -123,6 +126,11 @@ contract Deploy is Script {
         // Casting is safe because the explicit upper bound is enforced above.
         // forge-lint: disable-next-line(unsafe-typecast)
         cfg.registrationBurnLimitRao = uint64(registrationBurnLimitRao);
+        uint256 minimumTransferTaoRao = vm.envUint("ST_MINIMUM_TRANSFER_TAO_RAO");
+        require(minimumTransferTaoRao <= type(uint64).max, "Deploy: minimum transfer overflow");
+        // Casting is safe because the explicit upper bound is enforced above.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        cfg.minimumTransferTaoRao = uint64(minimumTransferTaoRao);
         bytes32 policyHash = vm.envBytes32("ST_POLICY_HASH");
 
         require(cfg.netuid != 0 && cfg.deployer != address(0) && cfg.owner != address(0), "Deploy: identity");
@@ -134,7 +142,9 @@ contract Deploy is Script {
             "Deploy: roles must be distinct"
         );
         require(cfg.reserveHotkey != bytes32(0) && cfg.escrowHotkey != bytes32(0), "Deploy: hotkeys");
-        require(cfg.registrationBurnLimitRao != 0, "Deploy: registration burn");
+        require(
+            cfg.registrationBurnLimitRao != 0 && cfg.minimumTransferTaoRao != 0, "Deploy: runtime minimums"
+        );
         require(cfg.reserveHotkey != cfg.escrowHotkey && policyHash != bytes32(0), "Deploy: policy");
         if (mainnet) {
             _requireMainnetSafe(cfg.owner);

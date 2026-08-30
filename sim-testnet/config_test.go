@@ -51,6 +51,27 @@ func TestHarnessConfigRequiresTestnetOnlyReferences(t *testing.T) {
 	}
 }
 
+func TestHarnessConfigRejectsUnsafeValidatorBootstrapAndAlphaMargin(t *testing.T) {
+	tests := []func(*HarnessConfig){
+		func(c *HarnessConfig) { c.AlphaTransfers.MinimumTAOEquivalentMarginBPS = 0 },
+		func(c *HarnessConfig) { c.AlphaTransfers.MinimumTAOEquivalentMarginBPS = 5_001 },
+		func(c *HarnessConfig) { c.ValidatorBootstrap.ReserveMinimumShareBPS = 5_000 },
+		func(c *HarnessConfig) {
+			c.ValidatorBootstrap.ReserveTargetShareBPS = c.ValidatorBootstrap.ReserveMinimumShareBPS
+		},
+		func(c *HarnessConfig) { c.ValidatorBootstrap.ReserveTargetShareBPS = 9_001 },
+		func(c *HarnessConfig) { c.ValidatorBootstrap.IndependentTargetAlphaRao = 0 },
+		func(c *HarnessConfig) { c.ValidatorBootstrap.MinimumSourceRemainingAlphaRao = 0 },
+	}
+	for index, mutate := range tests {
+		cfg := testResolvedConfig(t).Config
+		mutate(cfg)
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("unsafe alpha/validator bootstrap mutation %d was accepted", index)
+		}
+	}
+}
+
 func TestLightHarnessConfigPreservesReleaseChecksAndUsesLightnode(t *testing.T) {
 	var cfg HarnessConfig
 	if err := strictYAML("testnet-light.yml", &cfg); err != nil {
@@ -163,15 +184,15 @@ func TestReleaseCampaignBudgetCoversEveryProductionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if required != 5_410_000_001 {
-		t.Fatalf("release campaign requirement = %d, want 5410000001", required)
+	if required != 496_000_000_000 {
+		t.Fatalf("release campaign requirement = %d, want 496000000000", required)
 	}
 	r.Policy.Deposit.TotalTestCampaignCapRao = required
 	if err := r.Validate(); err != nil {
 		t.Fatalf("exact release campaign requirement was rejected: %v", err)
 	}
 	r.Policy.Deposit.TotalTestCampaignCapRao--
-	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "require at least 5410000001") {
+	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "require at least 496000000000") {
 		t.Fatalf("underfunded release campaign was accepted: %v", err)
 	}
 }
@@ -510,7 +531,7 @@ func TestCompatibilityGateSchemaAndEvaluationFailClosed(t *testing.T) {
 	}
 }
 
-func TestResolvedConfigRequiresCanonicalBurnHalfLifeLifecycle(t *testing.T) {
+func TestResolvedConfigRequiresCanonicalHyperparameterLifecycle(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*ResolvedConfig)
@@ -520,6 +541,8 @@ func TestResolvedConfigRequiresCanonicalBurnHalfLifeLifecycle(t *testing.T) {
 		{name: "non-one bootstrap burn half-life", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["burn_half_life"] = 2 }, want: "one-block bootstrap"},
 		{name: "missing production restore", mutate: func(cfg *ResolvedConfig) { delete(cfg.Hyperparameters.ProductionOwnerControlled, "burn_half_life") }, want: "restore burn_half_life"},
 		{name: "incorrect production restore", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"] = 359 }, want: "restore burn_half_life"},
+		{name: "expired bootstrap immunity window", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["immunity_period"] = 7_200 }, want: "reviewed 50000-block"},
+		{name: "overwide bootstrap immunity window", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["immunity_period"] = 50_001 }, want: "reviewed 50000-block"},
 		{name: "unsupported bootstrap key", mutate: func(cfg *ResolvedConfig) { cfg.Hyperparameters.OwnerControlled["burn_magic"] = 1 }, want: "unsupported"},
 		{name: "unsupported production key", mutate: func(cfg *ResolvedConfig) {
 			delete(cfg.Hyperparameters.ProductionOwnerControlled, "burn_half_life")
@@ -535,6 +558,16 @@ func TestResolvedConfigRequiresCanonicalBurnHalfLifeLifecycle(t *testing.T) {
 		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Errorf("%s: error=%v, want substring %q", test.name, err, test.want)
 		}
+	}
+}
+
+func TestResolvedConfigRequiresRuntimeDefaultMinTransfer(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Release.Runtime.SpecVersion = cfg.Public.Chain.ExpectedRuntimeSpec
+	cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	cfg.Public.Chain.ExpectedDefaultMinTransferRao = 0
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "runtime transfer minimum") {
+		t.Fatalf("zero public runtime transfer minimum was accepted: %v", err)
 	}
 }
 

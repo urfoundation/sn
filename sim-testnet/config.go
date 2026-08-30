@@ -25,35 +25,38 @@ import (
 )
 
 const (
-	releaseProfile          = "release-1.0"
-	rpcModePrivateAuthority = "private-authority"
-	rpcModePublicOverride   = "public-override"
-	testnetChainID          = uint64(945)
-	testnetGenesis          = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
-	btwalletNACLPrefix      = "$NACL"
-	btwalletArgonTime       = uint32(8)
-	btwalletArgonMemoryKiB  = uint32(512 * 1024)
-	btwalletArgonThreads    = uint8(1)
+	releaseProfile                       = "release-1.0"
+	rpcModePrivateAuthority              = "private-authority"
+	rpcModePublicOverride                = "public-override"
+	testnetChainID                       = uint64(945)
+	testnetGenesis                       = "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105"
+	testnetBootstrapImmunityPeriodBlocks = uint64(50_000)
+	btwalletNACLPrefix                   = "$NACL"
+	btwalletArgonTime                    = uint32(8)
+	btwalletArgonMemoryKiB               = uint32(512 * 1024)
+	btwalletArgonThreads                 = uint8(1)
 )
 
 var btwalletNACLSalt = [16]byte{0x13, 0x71, 0x83, 0xdf, 0xf1, 0x5a, 0x09, 0xbc, 0x9c, 0x90, 0xb5, 0x51, 0x87, 0x39, 0xe9, 0xb1}
 
 type HarnessConfig struct {
-	SchemaVersion int              `yaml:"schema_version" json:"schema_version"`
-	Profile       string           `yaml:"profile" json:"profile"`
-	Repositories  RepositoryConfig `yaml:"repositories" json:"repositories"`
-	Manifests     ManifestConfig   `yaml:"manifests" json:"manifests"`
-	Deployment    DeploymentConfig `yaml:"deployment" json:"deployment"`
-	LaunchInputs  LaunchInputs     `yaml:"launch_inputs" json:"launch_inputs"`
-	Topology      TopologyConfig   `yaml:"topology" json:"topology"`
-	Contracts     ContractConfig   `yaml:"contracts" json:"contracts"`
-	Dependencies  DependencyConfig `yaml:"dependencies" json:"dependencies"`
-	Artifacts     ArtifactConfig   `yaml:"artifacts" json:"artifacts"`
-	Processes     ProcessConfig    `yaml:"processes" json:"processes"`
-	Scenarios     ScenarioConfig   `yaml:"scenarios" json:"scenarios"`
-	Budgets       BudgetConfig     `yaml:"budgets" json:"budgets"`
-	Secrets       SecretConfig     `yaml:"secrets" json:"secrets"`
-	Analysis      AnalysisConfig   `yaml:"analysis" json:"analysis"`
+	SchemaVersion      int                      `yaml:"schema_version" json:"schema_version"`
+	Profile            string                   `yaml:"profile" json:"profile"`
+	Repositories       RepositoryConfig         `yaml:"repositories" json:"repositories"`
+	Manifests          ManifestConfig           `yaml:"manifests" json:"manifests"`
+	Deployment         DeploymentConfig         `yaml:"deployment" json:"deployment"`
+	LaunchInputs       LaunchInputs             `yaml:"launch_inputs" json:"launch_inputs"`
+	Topology           TopologyConfig           `yaml:"topology" json:"topology"`
+	AlphaTransfers     AlphaTransferConfig      `yaml:"alpha_transfers" json:"alpha_transfers"`
+	ValidatorBootstrap ValidatorBootstrapConfig `yaml:"validator_bootstrap" json:"validator_bootstrap"`
+	Contracts          ContractConfig           `yaml:"contracts" json:"contracts"`
+	Dependencies       DependencyConfig         `yaml:"dependencies" json:"dependencies"`
+	Artifacts          ArtifactConfig           `yaml:"artifacts" json:"artifacts"`
+	Processes          ProcessConfig            `yaml:"processes" json:"processes"`
+	Scenarios          ScenarioConfig           `yaml:"scenarios" json:"scenarios"`
+	Budgets            BudgetConfig             `yaml:"budgets" json:"budgets"`
+	Secrets            SecretConfig             `yaml:"secrets" json:"secrets"`
+	Analysis           AnalysisConfig           `yaml:"analysis" json:"analysis"`
 }
 
 type RepositoryConfig struct {
@@ -118,6 +121,24 @@ type TopologyConfig struct {
 	OperatorAssignment  string `yaml:"operator_assignment" json:"operator_assignment"`
 }
 
+// AlphaTransferConfig keeps the runtime's TAO-equivalent transfer floor
+// independent from demand-deposit sizing. The margin is enforced again at
+// broadcast time so a moving Dynamic TAO price fails before signing rather
+// than producing a known-invalid extrinsic.
+type AlphaTransferConfig struct {
+	MinimumTAOEquivalentMarginBPS uint16 `yaml:"minimum_tao_equivalent_margin_bps" json:"minimum_tao_equivalent_margin_bps"`
+}
+
+// ValidatorBootstrapConfig is test-harness deployment policy, not settlement
+// policy. Keeping it outside protocol.Policy prevents validator funding from
+// changing an already deployed coordinator's signed policy hash.
+type ValidatorBootstrapConfig struct {
+	ReserveTargetShareBPS          uint16 `yaml:"reserve_target_share_bps" json:"reserve_target_share_bps"`
+	ReserveMinimumShareBPS         uint16 `yaml:"reserve_minimum_share_bps" json:"reserve_minimum_share_bps"`
+	IndependentTargetAlphaRao      uint64 `yaml:"independent_target_alpha_rao" json:"independent_target_alpha_rao"`
+	MinimumSourceRemainingAlphaRao uint64 `yaml:"minimum_source_remaining_alpha_rao" json:"minimum_source_remaining_alpha_rao"`
+}
+
 func (self TopologyConfig) fleetCandidates() int {
 	return self.HeadFleets + self.ChallengerFleets
 }
@@ -155,6 +176,7 @@ type ScenarioConfig struct {
 	ShortEpochs                int             `yaml:"short_epochs" json:"short_epochs"`
 	ProductionEpochs           int             `yaml:"production_epochs" json:"production_epochs"`
 	VoluntaryConvictionRao     uint64          `yaml:"voluntary_conviction_rao" json:"voluntary_conviction_rao"`
+	DishonestDepositRao        uint64          `yaml:"dishonest_deposit_rao" json:"dishonest_deposit_rao"`
 	QualityFaultOperator       int             `yaml:"quality_fault_operator" json:"quality_fault_operator"`
 	QualityFaultStartBlocks    uint64          `yaml:"quality_fault_start_blocks" json:"quality_fault_start_blocks"`
 	QualityFaultDurationBlocks uint64          `yaml:"quality_fault_duration_blocks" json:"quality_fault_duration_blocks"`
@@ -213,6 +235,7 @@ type PublicManifest struct {
 		ExpectedTransactionVersion        uint32 `yaml:"expected_transaction_version"`
 		ExpectedStateVersion              uint8  `yaml:"expected_state_version"`
 		ExpectedBlockSeconds              uint64 `yaml:"expected_block_seconds"`
+		ExpectedDefaultMinTransferRao     uint64 `yaml:"expected_default_min_transfer_rao"`
 		SubstratePublicReadEndpoint       string `yaml:"substrate_public_read_endpoint"`
 		EVMPublicReadEndpoint             string `yaml:"evm_public_read_endpoint"`
 		PrivateAuthorityFrom              string `yaml:"private_authority_from"`
@@ -458,6 +481,16 @@ func (c *HarnessConfig) Validate() error {
 	if c.Topology.Miners%c.Topology.MinerSwarmProcesses != 0 || c.Topology.Miners <= allFleetMembers {
 		return errors.New("miner swarms must divide the topology exactly and leave an unbound pool tail")
 	}
+	if c.AlphaTransfers.MinimumTAOEquivalentMarginBPS == 0 || c.AlphaTransfers.MinimumTAOEquivalentMarginBPS > 5_000 {
+		return errors.New("alpha transfer TAO-equivalent margin must be in [1,5000] basis points")
+	}
+	validators := c.ValidatorBootstrap
+	if validators.ReserveMinimumShareBPS <= 5_000 || validators.ReserveTargetShareBPS <= validators.ReserveMinimumShareBPS || validators.ReserveTargetShareBPS > 9_000 {
+		return errors.New("validator bootstrap must target a bounded reserve supermajority above its greater-than-50-percent minimum")
+	}
+	if validators.IndependentTargetAlphaRao == 0 || validators.MinimumSourceRemainingAlphaRao == 0 {
+		return errors.New("validator bootstrap requires independent stake and a nonzero source remainder")
+	}
 	if c.Topology.OperatorAssignment != "balanced" || c.Dependencies.Mode != "managed_containers" || c.Processes.RestartPolicy != "on_failure_bounded" {
 		return errors.New("release topology requires balanced assignment, managed containers, and bounded restart supervision")
 	}
@@ -467,7 +500,7 @@ func (c *HarnessConfig) Validate() error {
 	if c.Scenarios.Launch != "smoke" || c.Scenarios.Release != "release-1.0" || c.Scenarios.ShortEpochs < 20 || c.Scenarios.ProductionEpochs < 3 {
 		return errors.New("release scenarios require smoke launch, release-1.0, at least 20 accelerated epochs, and three testnet UR blocks")
 	}
-	if c.Scenarios.VoluntaryConvictionRao == 0 || c.Scenarios.QualityFaultOperator < 1 || c.Scenarios.QualityFaultOperator > c.Topology.Operators || c.Scenarios.QualityFaultStartBlocks == 0 || c.Scenarios.QualityFaultDurationBlocks == 0 {
+	if c.Scenarios.VoluntaryConvictionRao == 0 || c.Scenarios.DishonestDepositRao != dishonestDepositRao || c.Scenarios.QualityFaultOperator < 1 || c.Scenarios.QualityFaultOperator > c.Topology.Operators || c.Scenarios.QualityFaultStartBlocks == 0 || c.Scenarios.QualityFaultDurationBlocks == 0 {
 		return errors.New("release scenario requires voluntary conviction and a bounded quality-cohort fault")
 	}
 	adversaries := c.Scenarios.Adversaries
@@ -1088,8 +1121,8 @@ func (r *ResolvedConfig) Validate() error {
 	if r.Public.SchemaVersion != 1 || r.Public.Profile != releaseProfile || r.Public.Chain.ChainID != testnetChainID || strings.ToLower(r.Public.Chain.GenesisHash) != testnetGenesis {
 		return errors.New("public manifest is not the pinned Bittensor testnet release profile")
 	}
-	if r.Public.Chain.ExpectedBlockSeconds == 0 {
-		return errors.New("public manifest must declare a nonzero block cadence")
+	if r.Public.Chain.ExpectedBlockSeconds == 0 || r.Public.Chain.ExpectedDefaultMinTransferRao == 0 {
+		return errors.New("public manifest must declare a nonzero block cadence and runtime transfer minimum")
 	}
 	if r.ChainID != 0 && r.ChainID != testnetChainID {
 		return fmt.Errorf("vault testnet chain id %d, want %d", r.ChainID, testnetChainID)
@@ -1125,6 +1158,9 @@ func (r *ResolvedConfig) Validate() error {
 	if len(r.Hyperparameters.ProductionOwnerControlled) != 2 || hyperparameterUint64(r.Hyperparameters.ProductionOwnerControlled["immunity_period"]) != r.Policy.ProductionCadence.EpochBlocks || hyperparameterUint64(r.Hyperparameters.OwnerControlled["burn_half_life"]) != 1 || hyperparameterUint64(r.Hyperparameters.ProductionOwnerControlled["burn_half_life"]) != 360 {
 		return errors.New("production hyperparameters must restore burn_half_life to 360 and set immunity_period to the production epoch length after a one-block bootstrap burn half-life")
 	}
+	if hyperparameterUint64(r.Hyperparameters.OwnerControlled["immunity_period"]) != testnetBootstrapImmunityPeriodBlocks {
+		return fmt.Errorf("bootstrap immunity_period must be the reviewed %d-block testnet recovery window", testnetBootstrapImmunityPeriodBlocks)
+	}
 	if len(r.OperatorAPIOrigins) != 0 {
 		origins, err := validateOperatorAPIOrigins(r.OperatorAPIOrigins, r.Config.Topology.Operators)
 		if err != nil {
@@ -1138,6 +1174,9 @@ func (r *ResolvedConfig) Validate() error {
 	if len(r.Policy.Deposit.Tiers) < 2 || r.Policy.Deposit.Tiers[1].MinConvictionRao != r.Config.Scenarios.VoluntaryConvictionRao {
 		return errors.New("voluntary conviction must equal the first nonzero tier boundary")
 	}
+	if r.Config.Scenarios.DishonestDepositRao < r.Config.Scenarios.VoluntaryConvictionRao || r.Config.Scenarios.DishonestDepositRao >= r.Policy.Deposit.EpochCapRaoPerOperator {
+		return errors.New("dishonest deposit must be runtime-viable and strictly below the honest per-operator epoch cap")
+	}
 	required, err := releaseCampaignDepositRequirement(r)
 	if err != nil {
 		return err
@@ -1150,7 +1189,7 @@ func (r *ResolvedConfig) Validate() error {
 
 // releaseCampaignDepositRequirement includes every epoch that can begin before
 // the production-soak terminal observation. The first production epoch uses a
-// one-rao dishonest deposit for NO 2; all other positions reserve their full
+// configured underpayment by NO 2; all other positions reserve their full
 // per-epoch cap. One extra production epoch is conservatively discarded as
 // partial, and the terminal boundary may trigger the following epoch's deposit.
 func releaseCampaignDepositRequirement(r *ResolvedConfig) (uint64, error) {
@@ -1169,8 +1208,9 @@ func releaseCampaignDepositRequirement(r *ResolvedConfig) (uint64, error) {
 	if !ok || fullCap < r.Policy.Deposit.EpochCapRaoPerOperator {
 		return 0, errors.New("release campaign deposit requirement overflows uint64")
 	}
-	// Replace NO 2's one full-cap production deposit with exactly one rao.
-	required := fullCap - r.Policy.Deposit.EpochCapRaoPerOperator + 1
+	// Replace NO 2's one full-cap production deposit with the configured,
+	// runtime-viable underpayment.
+	required := fullCap - r.Policy.Deposit.EpochCapRaoPerOperator + r.Config.Scenarios.DishonestDepositRao
 	required, ok = checkedAdd(required, r.Config.Scenarios.VoluntaryConvictionRao)
 	if !ok {
 		return 0, errors.New("release campaign deposit requirement overflows uint64")

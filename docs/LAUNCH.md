@@ -22,7 +22,7 @@ workloads, historical/archive proof and the final independent-backend campaign
 after it finishes syncing. Public mode records the shared observation backend as
 non-independent in doctor, postconditions and manifests; that assurance gap is
 non-blocking for bounded testnet acceptance but blocking for mainnet promotion.
-Runtime spec 451 and its exact finalized Wasm code hash remain hard gates in both
+Runtime spec 452 and its exact finalized Wasm code hash remain hard gates in both
 modes.
 
 Filling configuration is not approval to spend. Every mutating command is a dry
@@ -59,6 +59,20 @@ two local APIs start and before public evidence is accepted.
 
 The harness operates only on the existing configured netuid. It refuses subnet
 creation and checks that the wallet owns the subnet before planning writes.
+It independently sizes validator bootstrap stake rather than reusing the demand-
+deposit cap: the reserve validator targets 65% of registered alpha, the second
+validator receives 1,000 alpha, and a finalized barrier requires the reserve to
+retain at least 60%. Plan/apply read and recheck the runtime transfer floor,
+price, source balance, coldkey total, stored conviction lock, miner collateral,
+registration set, and 2,000-alpha source remainder before any transfer is signed.
+The transfer floor is runtime `DefaultMinTransfer` (not `InitialMinStake`). Its
+value is resolved from `InitialMinTransfer` in the exact finalized block's
+metadata after authenticating that block's Wasm hash, and must equal the public
+manifest's `expected_default_min_transfer_rao`. The same value is embedded
+immutably in the settlement vault. Sub-floor pool emission remains on its pool to accumulate;
+sub-floor provider entitlements remain durable coldkey credit until an exact
+runtime payment succeeds. Public history and scenario evidence distinguish
+logical `Claimed`, `ClaimPaymentDeferred`, and measured `ClaimPaid` events.
 
 ## Approved convergence and persistent launch
 
@@ -83,7 +97,7 @@ metagraph/neuron/staking, proves exact stake moves, waits for a dividend cycle a
 recovers all probe-attributable alpha to a controlled provider coldkey.
 Every registration uses runtime `register_limit`/`registerLimit` with the reviewed
 `100000000` rao ceiling. EVM registrations fund the caller mirror and send zero
-value to the neuron precompile, matching runtime-451 deduction semantics.
+value to the neuron precompile, matching runtime-452 deduction semantics.
 Contract registrations supply that full ceiling and atomically refund the
 unburned difference.
 Transactions are journaled through intent, signed bytes and nonce,

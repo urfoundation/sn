@@ -37,7 +37,7 @@ type STSettlementVaultEntitlement struct {
 
 // STSettlementVaultMetaData contains all meta data concerning the STSettlementVault contract.
 var STSettlementVaultMetaData = bind.MetaData{
-	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"netuid_\",\"type\":\"uint16\",\"internalType\":\"uint16\"},{\"name\":\"escrowHotkey_\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"selfColdkey_\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"minimumClaimTTLBlocks_\",\"type\":\"uint64\",\"internalType\":\"uint64\"},{\"name\":\"bootstrap_\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"receive\",\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"BPS\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"bootstrap\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"captureEmission\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"carry\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"claim\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"proof\",\"type\":\"bytes32[]\",\"internalType\":\"bytes32[]\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"conservationHolds\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"coordinator\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"deferEmission\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"entitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"\",\"type\":\"tuple\",\"internalType\":\"structSTSettlementVault.Entitlement\",\"components\":[{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"funded\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"total\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"claimed\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"internalType\":\"uint64\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumSTSettlementVault.EpochStatus\"}]}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowAccounted\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowHotkey\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowRegistered\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"expireEntitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"finalizeEntitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"leafClaimed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"claimKey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"claimed\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"liveEscrowStake\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"markRootMissed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"minimumClaimTTLBlocks\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"netuid\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"outstandingLiability\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"payoutLeaf\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"pendingFunding\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"poolHotkeyUsed\",\"inputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"used\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pools\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"},{\"name\":\"active\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerEscrow\",\"inputs\":[{\"name\":\"maximumBurnRao\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"registerPool\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"poolHotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"maximumBurnRao\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"selfColdkey\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"setCoordinatorOnce\",\"inputs\":[{\"name\":\"coordinator_\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setPoolActive\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"active\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"totalCaptured\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"totalPaid\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"Claimed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"coldkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"relayer\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"CoordinatorFixed\",\"inputs\":[{\"name\":\"coordinator\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EmissionCaptured\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"poolHotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EmissionDeferred\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EntitlementExpired\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"unclaimed\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"operatorCarry\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EntitlementFinalized\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"total\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EscrowRegistered\",\"inputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"indexed\":false,\"internalType\":\"uint16\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"PoolActiveSet\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"active\",\"type\":\"bool\",\"indexed\":false,\"internalType\":\"bool\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"PoolRegistered\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"hotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"indexed\":false,\"internalType\":\"uint16\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"RootMissed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"carried\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"AlreadyClaimed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"AlreadyInitialized\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ClaimExpired\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidConfiguration\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidProof\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidTransition\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NativeRefundFailed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Reentrancy\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Unauthorized\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Underfunded\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"UnknownPool\",\"inputs\":[]}]",
+	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"netuid_\",\"type\":\"uint16\",\"internalType\":\"uint16\"},{\"name\":\"escrowHotkey_\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"selfColdkey_\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"minimumClaimTTLBlocks_\",\"type\":\"uint64\",\"internalType\":\"uint64\"},{\"name\":\"minimumTransferTaoRao_\",\"type\":\"uint64\",\"internalType\":\"uint64\"},{\"name\":\"bootstrap_\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"receive\",\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"BPS\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"bootstrap\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"captureEmission\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"carry\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"claim\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"proof\",\"type\":\"bytes32[]\",\"internalType\":\"bytes32[]\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"claimCredit\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"conservationHolds\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"coordinator\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"deferEmission\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"entitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"\",\"type\":\"tuple\",\"internalType\":\"structSTSettlementVault.Entitlement\",\"components\":[{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"funded\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"total\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"claimed\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"internalType\":\"uint64\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumSTSettlementVault.EpochStatus\"}]}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowAccounted\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowHotkey\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"escrowRegistered\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"expireEntitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"finalizeEntitlement\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"leafClaimed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"claimKey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"claimed\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"liveEscrowStake\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"markRootMissed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"minimumClaimTTLBlocks\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"minimumTransferTaoRao\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"netuid\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"outstandingLiability\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"payoutLeaf\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"pure\"},{\"type\":\"function\",\"name\":\"pendingFunding\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"poolHotkeyUsed\",\"inputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"used\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pools\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"},{\"name\":\"active\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerEscrow\",\"inputs\":[{\"name\":\"maximumBurnRao\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"registerPool\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"poolHotkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"maximumBurnRao\",\"type\":\"uint64\",\"internalType\":\"uint64\"}],\"outputs\":[{\"name\":\"uid\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"selfColdkey\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"setCoordinatorOnce\",\"inputs\":[{\"name\":\"coordinator_\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setPoolActive\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"active\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"totalCaptured\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"totalPaid\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"withdrawClaimCredit\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"amount\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"event\",\"name\":\"ClaimPaid\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"relayer\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"ClaimPaymentDeferred\",\"inputs\":[{\"name\":\"coldkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"creditAlphaRao\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"taoEquivalentRao\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"minimumTransferTaoRao\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"},{\"name\":\"reason\",\"type\":\"uint8\",\"indexed\":false,\"internalType\":\"enumSTSettlementVault.PaymentDeferralReason\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Claimed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"coldkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"shareBps\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"relayer\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"CoordinatorFixed\",\"inputs\":[{\"name\":\"coordinator\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EmissionCaptured\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"poolHotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"amount\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EmissionDeferred\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EmissionDustDeferred\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"poolHotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"observedAlphaRao\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"taoEquivalentRao\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"minimumTransferTaoRao\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EntitlementExpired\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"unclaimed\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"operatorCarry\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EntitlementFinalized\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"payoutRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"artifactHash\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"total\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"expiryBlock\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EscrowRegistered\",\"inputs\":[{\"name\":\"hotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"indexed\":false,\"internalType\":\"uint16\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"PoolActiveSet\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"active\",\"type\":\"bool\",\"indexed\":false,\"internalType\":\"bool\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"PoolRegistered\",\"inputs\":[{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"hotkey\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"uid\",\"type\":\"uint16\",\"indexed\":false,\"internalType\":\"uint16\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"RootMissed\",\"inputs\":[{\"name\":\"epoch\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"noId\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"carried\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"AlreadyClaimed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"AlreadyInitialized\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ClaimExpired\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidConfiguration\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidProof\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidTransition\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NativeRefundFailed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NothingToWithdraw\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Reentrancy\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"RuntimeAccountingMismatch\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"RuntimePriceUnavailable\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"RuntimeTransferFailed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"TransferBelowMinimum\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Unauthorized\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"Underfunded\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"UnknownPool\",\"inputs\":[]}]",
 	ID:  "STSettlementVault",
 }
 
@@ -64,9 +64,9 @@ func (c *STSettlementVault) Instance(backend bind.ContractBackend, addr common.A
 // PackConstructor is the Go binding used to pack the parameters required for
 // contract deployment.
 //
-// Solidity: constructor(uint16 netuid_, bytes32 escrowHotkey_, bytes32 selfColdkey_, uint64 minimumClaimTTLBlocks_, address bootstrap_) returns()
-func (sTSettlementVault *STSettlementVault) PackConstructor(netuid_ uint16, escrowHotkey_ [32]byte, selfColdkey_ [32]byte, minimumClaimTTLBlocks_ uint64, bootstrap_ common.Address) []byte {
-	enc, err := sTSettlementVault.abi.Pack("", netuid_, escrowHotkey_, selfColdkey_, minimumClaimTTLBlocks_, bootstrap_)
+// Solidity: constructor(uint16 netuid_, bytes32 escrowHotkey_, bytes32 selfColdkey_, uint64 minimumClaimTTLBlocks_, uint64 minimumTransferTaoRao_, address bootstrap_) returns()
+func (sTSettlementVault *STSettlementVault) PackConstructor(netuid_ uint16, escrowHotkey_ [32]byte, selfColdkey_ [32]byte, minimumClaimTTLBlocks_ uint64, minimumTransferTaoRao_ uint64, bootstrap_ common.Address) []byte {
+	enc, err := sTSettlementVault.abi.Pack("", netuid_, escrowHotkey_, selfColdkey_, minimumClaimTTLBlocks_, minimumTransferTaoRao_, bootstrap_)
 	if err != nil {
 		panic(err)
 	}
@@ -241,6 +241,41 @@ func (sTSettlementVault *STSettlementVault) TryPackClaim(epoch *big.Int, noId *b
 // Solidity: function claim(uint256 epoch, uint256 noId, bytes32 coldkey, uint256 shareBps, bytes32[] proof) returns(uint256 amount)
 func (sTSettlementVault *STSettlementVault) UnpackClaim(data []byte) (*big.Int, error) {
 	out, err := sTSettlementVault.abi.Unpack("claim", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
+// PackClaimCredit is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xdebbe9e2.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function claimCredit(bytes32 coldkey) view returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) PackClaimCredit(coldkey [32]byte) []byte {
+	enc, err := sTSettlementVault.abi.Pack("claimCredit", coldkey)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackClaimCredit is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xdebbe9e2.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function claimCredit(bytes32 coldkey) view returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) TryPackClaimCredit(coldkey [32]byte) ([]byte, error) {
+	return sTSettlementVault.abi.Pack("claimCredit", coldkey)
+}
+
+// UnpackClaimCredit is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xdebbe9e2.
+//
+// Solidity: function claimCredit(bytes32 coldkey) view returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) UnpackClaimCredit(data []byte) (*big.Int, error) {
+	out, err := sTSettlementVault.abi.Unpack("claimCredit", data)
 	if err != nil {
 		return new(big.Int), err
 	}
@@ -644,6 +679,41 @@ func (sTSettlementVault *STSettlementVault) TryPackMinimumClaimTTLBlocks() ([]by
 // Solidity: function minimumClaimTTLBlocks() view returns(uint64)
 func (sTSettlementVault *STSettlementVault) UnpackMinimumClaimTTLBlocks(data []byte) (uint64, error) {
 	out, err := sTSettlementVault.abi.Unpack("minimumClaimTTLBlocks", data)
+	if err != nil {
+		return *new(uint64), err
+	}
+	out0 := *abi.ConvertType(out[0], new(uint64)).(*uint64)
+	return out0, nil
+}
+
+// PackMinimumTransferTaoRao is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x47dd1c15.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function minimumTransferTaoRao() view returns(uint64)
+func (sTSettlementVault *STSettlementVault) PackMinimumTransferTaoRao() []byte {
+	enc, err := sTSettlementVault.abi.Pack("minimumTransferTaoRao")
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackMinimumTransferTaoRao is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0x47dd1c15.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function minimumTransferTaoRao() view returns(uint64)
+func (sTSettlementVault *STSettlementVault) TryPackMinimumTransferTaoRao() ([]byte, error) {
+	return sTSettlementVault.abi.Pack("minimumTransferTaoRao")
+}
+
+// UnpackMinimumTransferTaoRao is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0x47dd1c15.
+//
+// Solidity: function minimumTransferTaoRao() view returns(uint64)
+func (sTSettlementVault *STSettlementVault) UnpackMinimumTransferTaoRao(data []byte) (uint64, error) {
+	out, err := sTSettlementVault.abi.Unpack("minimumTransferTaoRao", data)
 	if err != nil {
 		return *new(uint64), err
 	}
@@ -1091,6 +1161,129 @@ func (sTSettlementVault *STSettlementVault) UnpackTotalPaid(data []byte) (*big.I
 	return out0, nil
 }
 
+// PackWithdrawClaimCredit is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xac399a93.  This method will panic if any
+// invalid/nil inputs are passed.
+//
+// Solidity: function withdrawClaimCredit(bytes32 coldkey) returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) PackWithdrawClaimCredit(coldkey [32]byte) []byte {
+	enc, err := sTSettlementVault.abi.Pack("withdrawClaimCredit", coldkey)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
+// TryPackWithdrawClaimCredit is the Go binding used to pack the parameters required for calling
+// the contract method with ID 0xac399a93.  This method will return an error
+// if any inputs are invalid/nil.
+//
+// Solidity: function withdrawClaimCredit(bytes32 coldkey) returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) TryPackWithdrawClaimCredit(coldkey [32]byte) ([]byte, error) {
+	return sTSettlementVault.abi.Pack("withdrawClaimCredit", coldkey)
+}
+
+// UnpackWithdrawClaimCredit is the Go binding that unpacks the parameters returned
+// from invoking the contract method with ID 0xac399a93.
+//
+// Solidity: function withdrawClaimCredit(bytes32 coldkey) returns(uint256 amount)
+func (sTSettlementVault *STSettlementVault) UnpackWithdrawClaimCredit(data []byte) (*big.Int, error) {
+	out, err := sTSettlementVault.abi.Unpack("withdrawClaimCredit", data)
+	if err != nil {
+		return new(big.Int), err
+	}
+	out0 := abi.ConvertType(out[0], new(big.Int)).(*big.Int)
+	return out0, nil
+}
+
+// STSettlementVaultClaimPaid represents a ClaimPaid event raised by the STSettlementVault contract.
+type STSettlementVaultClaimPaid struct {
+	Coldkey [32]byte
+	Amount  *big.Int
+	Relayer common.Address
+	Raw     *types.Log // Blockchain specific contextual infos
+}
+
+const STSettlementVaultClaimPaidEventName = "ClaimPaid"
+
+// ContractEventName returns the user-defined event name.
+func (STSettlementVaultClaimPaid) ContractEventName() string {
+	return STSettlementVaultClaimPaidEventName
+}
+
+// UnpackClaimPaidEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ClaimPaid(bytes32 indexed coldkey, uint256 amount, address indexed relayer)
+func (sTSettlementVault *STSettlementVault) UnpackClaimPaidEvent(log *types.Log) (*STSettlementVaultClaimPaid, error) {
+	event := "ClaimPaid"
+	if len(log.Topics) == 0 || log.Topics[0] != sTSettlementVault.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(STSettlementVaultClaimPaid)
+	if len(log.Data) > 0 {
+		if err := sTSettlementVault.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range sTSettlementVault.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// STSettlementVaultClaimPaymentDeferred represents a ClaimPaymentDeferred event raised by the STSettlementVault contract.
+type STSettlementVaultClaimPaymentDeferred struct {
+	Coldkey               [32]byte
+	CreditAlphaRao        *big.Int
+	TaoEquivalentRao      *big.Int
+	MinimumTransferTaoRao uint64
+	Reason                uint8
+	Raw                   *types.Log // Blockchain specific contextual infos
+}
+
+const STSettlementVaultClaimPaymentDeferredEventName = "ClaimPaymentDeferred"
+
+// ContractEventName returns the user-defined event name.
+func (STSettlementVaultClaimPaymentDeferred) ContractEventName() string {
+	return STSettlementVaultClaimPaymentDeferredEventName
+}
+
+// UnpackClaimPaymentDeferredEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event ClaimPaymentDeferred(bytes32 indexed coldkey, uint256 creditAlphaRao, uint256 taoEquivalentRao, uint64 minimumTransferTaoRao, uint8 reason)
+func (sTSettlementVault *STSettlementVault) UnpackClaimPaymentDeferredEvent(log *types.Log) (*STSettlementVaultClaimPaymentDeferred, error) {
+	event := "ClaimPaymentDeferred"
+	if len(log.Topics) == 0 || log.Topics[0] != sTSettlementVault.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(STSettlementVaultClaimPaymentDeferred)
+	if len(log.Data) > 0 {
+		if err := sTSettlementVault.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range sTSettlementVault.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
 // STSettlementVaultClaimed represents a Claimed event raised by the STSettlementVault contract.
 type STSettlementVaultClaimed struct {
 	Epoch    *big.Int
@@ -1246,6 +1439,52 @@ func (sTSettlementVault *STSettlementVault) UnpackEmissionDeferredEvent(log *typ
 		return nil, errors.New("event signature mismatch")
 	}
 	out := new(STSettlementVaultEmissionDeferred)
+	if len(log.Data) > 0 {
+		if err := sTSettlementVault.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
+			return nil, err
+		}
+	}
+	var indexed abi.Arguments
+	for _, arg := range sTSettlementVault.abi.Events[event].Inputs {
+		if arg.Indexed {
+			indexed = append(indexed, arg)
+		}
+	}
+	if err := abi.ParseTopics(out, indexed, log.Topics[1:]); err != nil {
+		return nil, err
+	}
+	out.Raw = log
+	return out, nil
+}
+
+// STSettlementVaultEmissionDustDeferred represents a EmissionDustDeferred event raised by the STSettlementVault contract.
+type STSettlementVaultEmissionDustDeferred struct {
+	Epoch                 *big.Int
+	NoId                  *big.Int
+	PoolHotkey            [32]byte
+	ObservedAlphaRao      *big.Int
+	TaoEquivalentRao      *big.Int
+	MinimumTransferTaoRao uint64
+	Raw                   *types.Log // Blockchain specific contextual infos
+}
+
+const STSettlementVaultEmissionDustDeferredEventName = "EmissionDustDeferred"
+
+// ContractEventName returns the user-defined event name.
+func (STSettlementVaultEmissionDustDeferred) ContractEventName() string {
+	return STSettlementVaultEmissionDustDeferredEventName
+}
+
+// UnpackEmissionDustDeferredEvent is the Go binding that unpacks the event data emitted
+// by contract.
+//
+// Solidity: event EmissionDustDeferred(uint256 indexed epoch, uint256 indexed noId, bytes32 indexed poolHotkey, uint256 observedAlphaRao, uint256 taoEquivalentRao, uint64 minimumTransferTaoRao)
+func (sTSettlementVault *STSettlementVault) UnpackEmissionDustDeferredEvent(log *types.Log) (*STSettlementVaultEmissionDustDeferred, error) {
+	event := "EmissionDustDeferred"
+	if len(log.Topics) == 0 || log.Topics[0] != sTSettlementVault.abi.Events[event].ID {
+		return nil, errors.New("event signature mismatch")
+	}
+	out := new(STSettlementVaultEmissionDustDeferred)
 	if len(log.Data) > 0 {
 		if err := sTSettlementVault.abi.UnpackIntoInterface(out, event, log.Data); err != nil {
 			return nil, err
@@ -1548,8 +1787,23 @@ func (sTSettlementVault *STSettlementVault) UnpackError(raw []byte) (any, error)
 	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["NativeRefundFailed"].ID.Bytes()[:4]) {
 		return sTSettlementVault.UnpackNativeRefundFailedError(raw[4:])
 	}
+	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["NothingToWithdraw"].ID.Bytes()[:4]) {
+		return sTSettlementVault.UnpackNothingToWithdrawError(raw[4:])
+	}
 	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["Reentrancy"].ID.Bytes()[:4]) {
 		return sTSettlementVault.UnpackReentrancyError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["RuntimeAccountingMismatch"].ID.Bytes()[:4]) {
+		return sTSettlementVault.UnpackRuntimeAccountingMismatchError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["RuntimePriceUnavailable"].ID.Bytes()[:4]) {
+		return sTSettlementVault.UnpackRuntimePriceUnavailableError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["RuntimeTransferFailed"].ID.Bytes()[:4]) {
+		return sTSettlementVault.UnpackRuntimeTransferFailedError(raw[4:])
+	}
+	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["TransferBelowMinimum"].ID.Bytes()[:4]) {
+		return sTSettlementVault.UnpackTransferBelowMinimumError(raw[4:])
 	}
 	if bytes.Equal(raw[:4], sTSettlementVault.abi.Errors["Unauthorized"].ID.Bytes()[:4]) {
 		return sTSettlementVault.UnpackUnauthorizedError(raw[4:])
@@ -1724,6 +1978,29 @@ func (sTSettlementVault *STSettlementVault) UnpackNativeRefundFailedError(raw []
 	return out, nil
 }
 
+// STSettlementVaultNothingToWithdraw represents a NothingToWithdraw error raised by the STSettlementVault contract.
+type STSettlementVaultNothingToWithdraw struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error NothingToWithdraw()
+func STSettlementVaultNothingToWithdrawErrorID() common.Hash {
+	return common.HexToHash("0xd0d04f60bf4f7629141a1f00f5d2908fa0f3e15bf4cbf8bb8edc6fcbdf2509fa")
+}
+
+// UnpackNothingToWithdrawError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error NothingToWithdraw()
+func (sTSettlementVault *STSettlementVault) UnpackNothingToWithdrawError(raw []byte) (*STSettlementVaultNothingToWithdraw, error) {
+	out := new(STSettlementVaultNothingToWithdraw)
+	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "NothingToWithdraw", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // STSettlementVaultReentrancy represents a Reentrancy error raised by the STSettlementVault contract.
 type STSettlementVaultReentrancy struct {
 }
@@ -1742,6 +2019,98 @@ func STSettlementVaultReentrancyErrorID() common.Hash {
 func (sTSettlementVault *STSettlementVault) UnpackReentrancyError(raw []byte) (*STSettlementVaultReentrancy, error) {
 	out := new(STSettlementVaultReentrancy)
 	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "Reentrancy", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// STSettlementVaultRuntimeAccountingMismatch represents a RuntimeAccountingMismatch error raised by the STSettlementVault contract.
+type STSettlementVaultRuntimeAccountingMismatch struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error RuntimeAccountingMismatch()
+func STSettlementVaultRuntimeAccountingMismatchErrorID() common.Hash {
+	return common.HexToHash("0x2bd1ed7d24b1da053721d64e4a287a7ad1b37138c31a5847af6e59aa54f85b99")
+}
+
+// UnpackRuntimeAccountingMismatchError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error RuntimeAccountingMismatch()
+func (sTSettlementVault *STSettlementVault) UnpackRuntimeAccountingMismatchError(raw []byte) (*STSettlementVaultRuntimeAccountingMismatch, error) {
+	out := new(STSettlementVaultRuntimeAccountingMismatch)
+	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "RuntimeAccountingMismatch", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// STSettlementVaultRuntimePriceUnavailable represents a RuntimePriceUnavailable error raised by the STSettlementVault contract.
+type STSettlementVaultRuntimePriceUnavailable struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error RuntimePriceUnavailable()
+func STSettlementVaultRuntimePriceUnavailableErrorID() common.Hash {
+	return common.HexToHash("0x98e10d492b6d7b5cd393d24709c2115856b7756ed523388723f84fdbebd418cf")
+}
+
+// UnpackRuntimePriceUnavailableError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error RuntimePriceUnavailable()
+func (sTSettlementVault *STSettlementVault) UnpackRuntimePriceUnavailableError(raw []byte) (*STSettlementVaultRuntimePriceUnavailable, error) {
+	out := new(STSettlementVaultRuntimePriceUnavailable)
+	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "RuntimePriceUnavailable", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// STSettlementVaultRuntimeTransferFailed represents a RuntimeTransferFailed error raised by the STSettlementVault contract.
+type STSettlementVaultRuntimeTransferFailed struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error RuntimeTransferFailed()
+func STSettlementVaultRuntimeTransferFailedErrorID() common.Hash {
+	return common.HexToHash("0xfa2bac2e575840b1dbf852e8ecb073f029604bfc6557eaeb107938d8376c8f5b")
+}
+
+// UnpackRuntimeTransferFailedError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error RuntimeTransferFailed()
+func (sTSettlementVault *STSettlementVault) UnpackRuntimeTransferFailedError(raw []byte) (*STSettlementVaultRuntimeTransferFailed, error) {
+	out := new(STSettlementVaultRuntimeTransferFailed)
+	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "RuntimeTransferFailed", raw); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// STSettlementVaultTransferBelowMinimum represents a TransferBelowMinimum error raised by the STSettlementVault contract.
+type STSettlementVaultTransferBelowMinimum struct {
+}
+
+// ErrorID returns the hash of canonical representation of the error's signature.
+//
+// Solidity: error TransferBelowMinimum()
+func STSettlementVaultTransferBelowMinimumErrorID() common.Hash {
+	return common.HexToHash("0xc6634409b9e04ae00ba354382b49127bb433f2ce702821fb0ca1f58e992d0387")
+}
+
+// UnpackTransferBelowMinimumError is the Go binding used to decode the provided
+// error data into the corresponding Go error struct.
+//
+// Solidity: error TransferBelowMinimum()
+func (sTSettlementVault *STSettlementVault) UnpackTransferBelowMinimumError(raw []byte) (*STSettlementVaultTransferBelowMinimum, error) {
+	out := new(STSettlementVaultTransferBelowMinimum)
+	if err := sTSettlementVault.abi.UnpackIntoInterface(out, "TransferBelowMinimum", raw); err != nil {
 		return nil, err
 	}
 	return out, nil

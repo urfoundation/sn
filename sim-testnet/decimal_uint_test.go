@@ -31,6 +31,19 @@ func TestDecimalUintJSONPreservesLargeAndLegacyNumbers(t *testing.T) {
 	}
 }
 
+func TestSpendSemanticZeroSurvivesDecimalJSONCanonicalization(t *testing.T) {
+	if !spendIsZero(Spend{}) || !spendIsZero(Spend{EVMGasWei: "0"}) {
+		t.Fatal("empty and canonical decimal zero spends differ semantically")
+	}
+	for _, nonzero := range []Spend{
+		{TAORao: 1}, {AlphaRao: 1}, {EVMGasWei: "1"}, {Registrations: 1}, {SubnetCreations: 1},
+	} {
+		if spendIsZero(nonzero) {
+			t.Fatalf("nonzero spend was accepted as zero: %+v", nonzero)
+		}
+	}
+}
+
 // Reject every alternate numeric spelling so one approved amount has one
 // hash representation.
 func TestDecimalUintJSONRejectsNoncanonicalAndUnsafeValues(t *testing.T) {

@@ -387,7 +387,11 @@ func inspectNativeCustodyRoles(cfg *ResolvedConfig, stateDir string) (bool, uint
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
-	return inspectNativeCustodyRolesBytes(cfg, b, cfg.OperationalSubstrate)
+	deployment, err := loadContractDeployment(stateDir)
+	if err != nil {
+		return false, 0, nil, false, 0, err.Error()
+	}
+	return inspectNativeCustodyRolesBytes(cfg, b, cfg.OperationalSubstrate, deployment.RegistrationRoleGeneration)
 }
 
 func inspectNativeRewards(cfg *ResolvedConfig, endpoint string) (*NativeRewardObservation, string) {
@@ -443,7 +447,7 @@ func inspectNativeRewards(cfg *ResolvedConfig, endpoint string) (*NativeRewardOb
 	return result, ""
 }
 
-func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint string) (bool, uint16, *uint16, bool, uint16, string) {
+func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint string, generation uint64) (bool, uint16, *uint16, bool, uint16, string) {
 	var identities struct {
 		Substrate map[string]map[string]string `json:"substrate"`
 	}
@@ -463,7 +467,7 @@ func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint stri
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
-	escrow, err := decode("escrow-hotkey")
+	escrow, err := decode(escrowHotkeyLabelForGeneration(generation))
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
@@ -659,8 +663,9 @@ func inspectOneFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.Raw
 	}
 	commitmentValue, commitmentOK := evidenceFixedHex(commitment.CommitmentHash, 32)
 	hotkeyValue, hotkeyOK := evidenceFixedHex(commitment.Hotkey, 32)
+	_, extrinsicHashOK := evidenceFixedHex(commitment.ExtrinsicHash, 32)
 	_, finalizedHashOK := evidenceFixedHex(commitment.FinalizedBlockHash, 32)
-	if commitment.Schema != "urnetwork-fleet-commitment-evidence-v1" || commitment.CommitmentBlock == 0 || commitment.FinalizedBlock < commitment.CommitmentBlock || !commitmentOK || !hotkeyOK || !finalizedHashOK || !bytes.Equal(commitmentValue, commitmentHash[:]) || !bytes.Equal(hotkeyValue, manifest.Hotkey[:]) {
+	if commitment.Schema != fleetCommitmentEvidenceSchemaV2 || commitment.CommitmentBlock == 0 || commitment.FinalizedBlock != commitment.CommitmentBlock || !commitmentOK || !hotkeyOK || !extrinsicHashOK || !finalizedHashOK || !bytes.Equal(commitmentValue, commitmentHash[:]) || !bytes.Equal(hotkeyValue, manifest.Hotkey[:]) {
 		return false, 0, false, 0, nil
 	}
 	valid := true
@@ -1195,9 +1200,20 @@ func commonScenarioChecks() []scenarioCheck {
 			c := e.Current.Status.Contracts
 			captured, a := new(big.Int).SetString(c.TotalCaptured, 10)
 			paid, b := new(big.Int).SetString(c.TotalPaid, 10)
-			outstanding, d := new(big.Int).SetString(c.Outstanding, 10)
-			ok := a && b && d && c.ConservationHolds && captured.Cmp(new(big.Int).Add(paid, outstanding)) == 0
-			return ok, fmt.Sprintf("captured=%s paid=%s outstanding=%s", c.TotalCaptured, c.TotalPaid, c.Outstanding)
+			escrow, d := new(big.Int).SetString(c.EscrowAccounted, 10)
+			pending, f := new(big.Int).SetString(c.PendingFunding, 10)
+			outstanding, g := new(big.Int).SetString(c.Outstanding, 10)
+			live, h := new(big.Int).SetString(c.LiveEscrowStake, 10)
+			ok := a && b && d && f && g && h && c.ConservationHolds && captured.Cmp(new(big.Int).Add(paid, escrow)) == 0 && escrow.Cmp(new(big.Int).Add(pending, outstanding)) == 0 && live.Cmp(escrow) >= 0
+			return ok, fmt.Sprintf("captured=%s paid=%s escrow=%s pending=%s outstanding=%s live=%s", c.TotalCaptured, c.TotalPaid, c.EscrowAccounted, c.PendingFunding, c.Outstanding, c.LiveEscrowStake)
+		}},
+		{ID: "runtime_transfer_minimum_bound", Check: func(e *scenarioEvaluation) (bool, string) {
+			if e.Current.Status == nil || e.Current.Status.Contracts == nil {
+				return false, "contract state unavailable"
+			}
+			got := e.Current.Status.Contracts.MinimumTransferRao
+			want := e.Cfg.Public.Chain.ExpectedDefaultMinTransferRao
+			return got == want, fmt.Sprintf("vault=%d manifest=%d", got, want)
 		}},
 		{ID: "public_identities", Check: func(e *scenarioEvaluation) (bool, string) {
 			return e.Current.PublicIdentitiesValid, fmt.Sprintf("valid=%t count=%d", e.Current.PublicIdentitiesValid, e.Current.PublicIdentityCount)
@@ -2410,7 +2426,7 @@ scenarioLoop:
 		StartHead: start.Status.Contracts.FinalizedHead, EndHead: current.Status.Contracts.FinalizedHead,
 		StartEpoch: start.Status.Contracts.CurrentEpoch, EndEpoch: current.Status.Contracts.CurrentEpoch,
 		Assertions: assertions, Faults: faults, Adversaries: adversaryEvidence,
-		ValueReconciliation: map[string]string{"captured_rao": current.Status.Contracts.TotalCaptured, "paid_rao": current.Status.Contracts.TotalPaid, "outstanding_liability_rao": current.Status.Contracts.Outstanding, "reserve_principal_rao": current.Status.Contracts.ReservePrincipal, "reserve_live_stake_rao": current.Status.Contracts.ReserveLiveStake},
+		ValueReconciliation: map[string]string{"captured_rao": current.Status.Contracts.TotalCaptured, "paid_rao": current.Status.Contracts.TotalPaid, "escrow_accounted_rao": current.Status.Contracts.EscrowAccounted, "pending_funding_rao": current.Status.Contracts.PendingFunding, "outstanding_liability_rao": current.Status.Contracts.Outstanding, "live_escrow_stake_rao": current.Status.Contracts.LiveEscrowStake, "reserve_principal_rao": current.Status.Contracts.ReservePrincipal, "reserve_live_stake_rao": current.Status.Contracts.ReserveLiveStake},
 		Result:              "pass",
 	}
 	attachScenarioAnomalyGate(result, completed, start, current, observationHistory...)
@@ -2627,17 +2643,11 @@ func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir
 		}
 		observed, err = fetchVerifyPublicKeys(ctx, endpoint)
 		if err != nil || !strings.EqualFold(observed[0], expected[0]) || !strings.EqualFold(observed[1], expected[1]) {
-			if err == nil {
-				err = errors.New("published key set does not match the deterministic rotation")
-			}
-			return fmt.Errorf("operator %d did not publish both verify keys after rotation: %w", operator, err)
+			return stateMismatchError(err, "operator %d did not publish both verify keys after rotation", operator)
 		}
 		states, _, err = driver.processSnapshot()
 		if err != nil || states[processID].PID <= 1 {
-			if err == nil {
-				err = errors.New("API process is not live")
-			}
-			return fmt.Errorf("operator %d API state unavailable after key rotation: %w", operator, err)
+			return stateMismatchError(err, "operator %d API state unavailable after key rotation", operator)
 		}
 		record.Operators = append(record.Operators, verifyKeyRotationOperator{NoID: operator, OldPublicKey: expected[0], NewPublicKey: expected[1], BeforePID: beforePID, AfterPID: states[processID].PID})
 	}

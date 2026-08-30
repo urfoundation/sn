@@ -152,7 +152,7 @@ func readRetirementPlan(ctx context.Context, cfg *ResolvedConfig, stateDir strin
 	}
 	currentValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, parsed, "currentEpoch", head.Number)
 	if err != nil || len(currentValues) != 1 {
-		return nil, fmt.Errorf("read finalized current epoch: %w", err)
+		return nil, stateMismatchError(err, "read finalized current epoch returned %d values", len(currentValues))
 	}
 	current, ok := currentValues[0].(*big.Int)
 	if !ok || !current.IsUint64() {
@@ -202,7 +202,7 @@ func runRetirement(ctx context.Context, cfg *ResolvedConfig, stateDir string, op
 	if err != nil {
 		return err
 	}
-	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: setup, Remaining: remaining})
+	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: setup, Remaining: remaining, StateDir: stateDir})
 	if err := doctor.Error(); err != nil {
 		return fmt.Errorf("doctor must pass immediately before retirement apply: %w", err)
 	}
@@ -289,7 +289,7 @@ func (e *Executor) scheduleOperatorRetirement(ctx context.Context, a Action) err
 	}
 	currentValues, err := contractCall(ctx, e.owner.client, address, parsed, "currentEpoch")
 	if err != nil || len(currentValues) != 1 {
-		return fmt.Errorf("read current epoch: %w", err)
+		return stateMismatchError(err, "read current epoch returned %d values", len(currentValues))
 	}
 	current := currentValues[0].(*big.Int)
 	if !current.IsUint64() || current.Uint64() >= effective {

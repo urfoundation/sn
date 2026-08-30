@@ -1,4 +1,4 @@
-// Live opt-in probes bind the checked-in release harness to runtime 451 and
+// Live opt-in probes bind the checked-in release harness to runtime 452 and
 // provide an explicitly confirmed, bounded bootstrap for netuid 521.
 package main
 
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,46 @@ import (
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
 )
+
+func TestLiveNativeMirrorBalances(t *testing.T) {
+	raw := strings.TrimSpace(os.Getenv("SIM_TESTNET_NATIVE_MIRRORS"))
+	if raw == "" {
+		t.Skip("set SIM_TESTNET_NATIVE_MIRRORS to a comma-separated EVM address list")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chain.API.Client.Close()
+	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, err := chain.API.RPC.Chain.GetHeader(finalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range strings.Split(raw, ",") {
+		text = strings.TrimSpace(text)
+		if !common.IsHexAddress(text) {
+			t.Fatalf("invalid EVM address %q", text)
+		}
+		address := common.HexToAddress(text)
+		free, readErr := readFreeBalanceAtHash(chain, ss58.EvmMirrorPubkey(address), finalized)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		mirror, encodeErr := ss58.EvmMirrorAddress(address, ss58.BittensorPrefix)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		t.Logf("finalized_block=%d evm=%s mirror=%s free_rao=%d", header.Number, address.Hex(), mirror, free)
+	}
+}
 
 func TestLiveVaultWalletResolution(t *testing.T) {
 	if os.Getenv("SIM_TESTNET_LIVE_WALLET") != "1" {
@@ -264,7 +305,9 @@ func TestLiveBalanceProbe(t *testing.T) {
 	if os.Getenv("SIM_TESTNET_LIVE_READ") != "1" {
 		t.Skip("set SIM_TESTNET_LIVE_READ=1 to run public testnet read checks")
 	}
-	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: false})
+	// The finalized fact set includes the deterministic deployer nonce and
+	// therefore needs the same role-secret derivation inputs as plan/doctor.
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -392,26 +392,57 @@ func claim(opts docopt.Opts) {
 	}
 }
 
-// printMinerClaimed decodes and prints the immutable-vault Claimed event(s)
-// contract emitted for this claim receipt.
-func printMinerClaimed(receipt *types.Receipt, contract common.Address) {
-	decoded := false
+type minerClaimReceiptEvents struct {
+	Claimed  []*stabi.STSettlementVaultClaimed
+	Paid     []*stabi.STSettlementVaultClaimPaid
+	Deferred []*stabi.STSettlementVaultClaimPaymentDeferred
+}
+
+func decodeMinerClaimReceipt(receipt *types.Receipt, contract common.Address) minerClaimReceiptEvents {
+	result := minerClaimReceiptEvents{}
+	if receipt == nil {
+		return result
+	}
 	for _, lg := range receipt.Logs {
 		if lg.Address != contract {
 			continue
 		}
-		ev, err := stSettlementVault.UnpackClaimedEvent(lg)
-		if err != nil {
+		if ev, err := stSettlementVault.UnpackClaimedEvent(lg); err == nil {
+			result.Claimed = append(result.Claimed, ev)
 			continue
 		}
+		if ev, err := stSettlementVault.UnpackClaimPaidEvent(lg); err == nil {
+			result.Paid = append(result.Paid, ev)
+			continue
+		}
+		if ev, err := stSettlementVault.UnpackClaimPaymentDeferredEvent(lg); err == nil {
+			result.Deferred = append(result.Deferred, ev)
+		}
+	}
+	return result
+}
+
+// printMinerClaimed distinguishes acceptance of a Merkle entitlement from the
+// runtime transfer. Small entitlements remain durable claim credit until they
+// aggregate above Subtensor's DefaultMinTransfer floor.
+func printMinerClaimed(receipt *types.Receipt, contract common.Address) {
+	events := decodeMinerClaimReceipt(receipt, contract)
+	for _, ev := range events.Claimed {
 		fmt.Printf("Claimed: epoch %s, noId %s\n", ev.Epoch, ev.NoId)
 		fmt.Printf("  coldkey:  0x%x\n", ev.Coldkey)
 		fmt.Printf("  shareBps: %s\n", ev.ShareBps)
-		fmt.Printf("  paid:     %s rao\n", ev.Amount)
-		decoded = true
+		fmt.Printf("  credited: %s rao\n", ev.Amount)
 	}
-	if !decoded {
+	for _, ev := range events.Paid {
+		fmt.Printf("ClaimPaid: coldkey 0x%x, paid %s rao\n", ev.Coldkey, ev.Amount)
+	}
+	for _, ev := range events.Deferred {
+		fmt.Printf("ClaimPaymentDeferred: coldkey 0x%x, credit %s rao, TAO equivalent %s rao, minimum %d rao, reason %d\n", ev.Coldkey, ev.CreditAlphaRao, ev.TaoEquivalentRao, ev.MinimumTransferTaoRao, ev.Reason)
+	}
+	if len(events.Claimed) == 0 {
 		fmt.Printf("warning: no Claimed event decoded from the receipt\n")
+	} else if len(events.Paid) == 0 && len(events.Deferred) == 0 {
+		fmt.Printf("claim accepted with zero credit; no runtime transfer was required\n")
 	}
 }
 

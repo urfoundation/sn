@@ -68,7 +68,7 @@ func testScenarioObservation(cfg *ResolvedConfig, epoch uint64) *ScenarioObserva
 		Deployment:    &ContractDeployment{Schema: "urnetwork-contract-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, CoordinatorProxy: common.HexToAddress("0x0000000000000000000000000000000000000011"), SettlementVault: common.HexToAddress("0x0000000000000000000000000000000000000022")},
 		FinalizedHead: ChainHead{Number: 100 + epoch, Hash: "0x" + strings.Repeat("ab", 32)}, CurrentEpoch: epoch,
 		OperatorCount: 2, PolicyHash: cfg.PolicyHash, RuntimeCodeMatches: true, ConservationHolds: true,
-		TotalCaptured: "10", TotalPaid: "3", Outstanding: "7", ReservePrincipal: "2", ReserveLiveStake: "3",
+		MinimumTransferRao: 100_000, TotalCaptured: "10", TotalPaid: "3", EscrowAccounted: "7", PendingFunding: "2", Outstanding: "5", LiveEscrowStake: "7", ReservePrincipal: "2", ReserveLiveStake: "3",
 	}
 	return &ScenarioObservation{Schema: "urnetwork-sim-scenario-observation-v1", ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), Status: &DeploymentStatus{Schema: "urnetwork-sim-status-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, Contracts: contracts, Healthy: true}}
 }

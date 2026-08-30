@@ -49,6 +49,8 @@ type FleetBindingEvidence struct {
 	UID             uint16 `json:"uid"`
 }
 
+const fleetCommitmentEvidenceSchemaV2 = "urnetwork-fleet-commitment-evidence-v2"
+
 func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int) (protocol.FleetManifest, []byte, [32]byte, error) {
 	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.fleetCandidates() {
 		return protocol.FleetManifest{}, nil, [32]byte{}, fmt.Errorf("fleet index %d out of range", fleetIndex)
@@ -114,9 +116,6 @@ func (e *Executor) publishFleetCommitment(ctx context.Context, a Action, fleetIn
 	if err != nil {
 		return err
 	}
-	if existing, readErr := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey); readErr == nil && existing.Hash == hash {
-		return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleetIndex)), FleetCommitmentEvidence{Schema: "urnetwork-fleet-commitment-evidence-v1", ManifestURI: manifestName, CommitmentHash: "0x" + hex.EncodeToString(hash[:]), Hotkey: "0x" + hex.EncodeToString(hotkey[:]), CommitmentBlock: existing.CommitmentBlock, FinalizedBlock: existing.FinalizedAt, FinalizedBlockHash: existing.FinalizedHash.Hex()})
-	}
 	call, err := e.substrate.chain.NewSetFleetCommitmentCall(e.cfg.Netuid, hash)
 	if err != nil {
 		return err
@@ -125,18 +124,22 @@ func (e *Executor) publishFleetCommitment(ctx context.Context, a Action, fleetIn
 	if err != nil {
 		return err
 	}
-	txHash, _, err := e.substrate.SendAs(ctx, e.plan.PlanHash, a, call, signer)
+	txHash, transactionBlock, err := e.substrate.SendAs(ctx, e.plan.PlanHash, a, call, signer)
 	if err != nil {
 		return err
 	}
-	observed, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+	transactionBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(transactionBlock)
 	if err != nil {
 		return err
 	}
-	if observed.Hash != hash {
-		return fmt.Errorf("finalized fleet commitment mismatch: got 0x%x want 0x%x", observed.Hash, hash)
+	observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+	if err != nil {
+		return err
 	}
-	evidence := FleetCommitmentEvidence{Schema: "urnetwork-fleet-commitment-evidence-v1", ManifestURI: manifestName, CommitmentHash: "0x" + hex.EncodeToString(hash[:]), Hotkey: "0x" + hex.EncodeToString(hotkey[:]), ExtrinsicHash: txHash.Hex(), CommitmentBlock: observed.CommitmentBlock, FinalizedBlock: observed.FinalizedAt, FinalizedBlockHash: observed.FinalizedHash.Hex()}
+	if err := crv4.ValidateFleetCommitmentWrite(hash, transactionBlock, observed); err != nil {
+		return err
+	}
+	evidence := FleetCommitmentEvidence{Schema: fleetCommitmentEvidenceSchemaV2, ManifestURI: manifestName, CommitmentHash: "0x" + hex.EncodeToString(hash[:]), Hotkey: "0x" + hex.EncodeToString(hotkey[:]), ExtrinsicHash: txHash.Hex(), CommitmentBlock: observed.CommitmentBlock, FinalizedBlock: transactionBlock, FinalizedBlockHash: transactionBlockHash.Hex()}
 	return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleetIndex)), evidence)
 }
 
@@ -149,8 +152,18 @@ func loadFleetCommitmentEvidence(stateDir string, fleetIndex int) (*FleetCommitm
 	if err := json.Unmarshal(b, &evidence); err != nil {
 		return nil, err
 	}
-	if evidence.Schema != "urnetwork-fleet-commitment-evidence-v1" {
+	if evidence.Schema != fleetCommitmentEvidenceSchemaV2 || evidence.ManifestURI != fmt.Sprintf("fleet-%d.json", fleetIndex) || evidence.CommitmentBlock == 0 || evidence.FinalizedBlock != evidence.CommitmentBlock {
 		return nil, fmt.Errorf("invalid fleet commitment evidence schema")
+	}
+	for label, value := range map[string]string{
+		"fleet commitment":                 evidence.CommitmentHash,
+		"fleet commitment hotkey":          evidence.Hotkey,
+		"fleet commitment extrinsic":       evidence.ExtrinsicHash,
+		"fleet commitment finalized block": evidence.FinalizedBlockHash,
+	} {
+		if _, err := decodeHex32(label, value); err != nil {
+			return nil, err
+		}
 	}
 	return &evidence, nil
 }
@@ -163,6 +176,14 @@ func decodeHex32(label, value string) ([32]byte, error) {
 	}
 	copy(out[:], b)
 	return out, nil
+}
+
+// Compare every field the oracle attests. Matching only the commitment and
+// block hash can preserve a type-confused or stale block height indefinitely.
+func fleetMirrorMatches(current stabi.MirroredCommitmentsOutput, commitmentHash [32]byte, commitmentBlock uint64, finalizedBlockHash [32]byte) bool {
+	return current.CommitmentHash == commitmentHash &&
+		current.FinalizedBlock == commitmentBlock &&
+		current.FinalizedBlockHash == finalizedBlockHash
 }
 
 func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetIndex int) error {
@@ -182,14 +203,22 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	if err != nil {
 		return err
 	}
-	if observed.Hash != hash || observed.CommitmentBlock != evidence.CommitmentBlock {
+	if err := crv4.ValidateFleetCommitmentWrite(hash, evidence.FinalizedBlock, observed); err != nil {
+		return fmt.Errorf("native commitment evidence no longer verifies: %w", err)
+	}
+	canonicalHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(evidence.FinalizedBlock)
+	if err != nil || canonicalHash != finalizedHash {
+		return stateMismatchError(err, "native commitment block %d is not canonical", evidence.FinalizedBlock)
+	}
+	currentNative, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, manifest.Hotkey)
+	if err != nil || currentNative.Hash != hash || currentNative.CommitmentBlock != evidence.CommitmentBlock {
 		return fmt.Errorf("native commitment evidence no longer verifies")
 	}
 	coordinator := stabi.NewSTCoordinator()
-	if current, readErr := rawCoordinatorCall(ctx, e.oracle, common.BytesToAddress(manifest.Coordinator[:]), coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments); readErr == nil && current.CommitmentHash == hash && current.FinalizedBlockHash == [32]byte(finalizedHash) {
+	if current, readErr := rawCoordinatorCall(ctx, e.oracle, common.BytesToAddress(manifest.Coordinator[:]), coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments); readErr == nil && fleetMirrorMatches(current, hash, evidence.FinalizedBlock, [32]byte(finalizedHash)) {
 		return nil
 	}
-	data, err := coordinator.TryPackMirrorCommitment(manifest.Hotkey, hash, observed.CommitmentBlock, [32]byte(finalizedHash))
+	data, err := coordinator.TryPackMirrorCommitment(manifest.Hotkey, hash, evidence.FinalizedBlock, [32]byte(finalizedHash))
 	if err != nil {
 		return err
 	}
@@ -201,7 +230,7 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	if err != nil {
 		return err
 	}
-	if current.CommitmentHash != hash || current.FinalizedBlockHash != [32]byte(finalizedHash) || current.FinalizedBlock != observed.CommitmentBlock {
+	if !fleetMirrorMatches(current, hash, evidence.FinalizedBlock, [32]byte(finalizedHash)) {
 		return fmt.Errorf("coordinator commitment mirror postcondition mismatch")
 	}
 	return nil
@@ -214,6 +243,15 @@ func rawCoordinatorCall[T any](ctx context.Context, manager *EVMTxManager, addr 
 		return zero, err
 	}
 	out, err := manager.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, new(big.Int).SetUint64(head.Number))
+	if err != nil {
+		return zero, err
+	}
+	return unpack(out)
+}
+
+func rawCoordinatorCallAt[T any](ctx context.Context, manager *EVMTxManager, addr common.Address, data []byte, unpack func([]byte) (T, error), block uint64) (T, error) {
+	var zero T
+	out, err := manager.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, new(big.Int).SetUint64(block))
 	if err != nil {
 		return zero, err
 	}

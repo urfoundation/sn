@@ -25,7 +25,23 @@ func TestRequiredDepositRaoUsesExactTierFloorAndCap(t *testing.T) {
 	if amount.Uint64() != 2_000_000 || tier.RateNumeratorRaoPerGiB != 1_000_000 {
 		t.Fatalf("baseline deposit/tier = %s/%+v", amount, tier)
 	}
-	amount, tier, err = RequiredDepositRao(200*(1<<30), big.NewInt(1_000_000_000), policy.Deposit)
+	conviction := big.NewInt(1_000_000_000)
+	tier, err = DepositTierAt(policy.Deposit, conviction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Derive an input whose uncapped result is strictly above the locked cap.
+	// A fixed GiB fixture silently stopped testing the cap when the runtime-valid
+	// testnet deposit cap increased.
+	capPlusOne := new(big.Int).Add(new(big.Int).SetUint64(policy.Deposit.EpochCapRaoPerOperator), big.NewInt(1))
+	usageNumerator := new(big.Int).Mul(capPlusOne, new(big.Int).SetUint64(1<<30))
+	usageNumerator.Mul(usageNumerator, new(big.Int).SetUint64(tier.RateDenominator))
+	usageBytes := new(big.Int).Quo(usageNumerator, new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB))
+	usageBytes.Add(usageBytes, big.NewInt(1))
+	if !usageBytes.IsUint64() {
+		t.Fatalf("cap-crossing usage does not fit uint64: %s", usageBytes)
+	}
+	amount, tier, err = RequiredDepositRao(usageBytes.Uint64(), conviction, policy.Deposit)
 	if err != nil {
 		t.Fatal(err)
 	}

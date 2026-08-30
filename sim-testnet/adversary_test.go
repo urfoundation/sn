@@ -158,12 +158,13 @@ func TestAdversarialMatrixKeepsChainWideAttacksOffSharedTestnet(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantLocal := map[string]bool{
-		"weights-withhold-late-invalid-reveal":  true,
-		"weights-fee-free-block-fill":           true,
-		"hotkey-swap-reputation-reset":          true,
-		"proxy-scope-alias-bypass":              true,
-		"root-staking-index-state-bloat":        true,
-		"root-claimed-swap-watermark-inflation": true,
+		"weights-withhold-late-invalid-reveal":    true,
+		"weights-fee-free-block-fill":             true,
+		"hotkey-swap-reputation-reset":            true,
+		"proxy-scope-alias-bypass":                true,
+		"root-staking-index-state-bloat":          true,
+		"root-claimed-swap-watermark-inflation":   true,
+		"runtime-signed-precompile-foreign-frame": true,
 	}
 	for _, row := range matrix.Rows {
 		if wantLocal[row.ID] && row.ExecutionMode != "local-runtime-only" {
@@ -622,7 +623,7 @@ func TestRootBasketUnstakeSettlesProportionalHiddenReward(t *testing.T) {
 	}
 }
 
-func TestRuntime451RootBasketFailureIsolation(t *testing.T) {
+func TestRuntime452RootBasketFailureIsolation(t *testing.T) {
 	terminal, healthy, retryable, blocked, err := rootBasketFailureIsolationModel(1_000, 100)
 	if err != nil || terminal != 1 || healthy != 1 || retryable != 1 || blocked {
 		t.Fatalf("root basket isolation terminal=%d healthy=%d retryable=%d blocked=%t error=%v", terminal, healthy, retryable, blocked, err)
@@ -671,6 +672,21 @@ func TestRuntimeCompositeFailureModelRollsBackEveryWrite(t *testing.T) {
 	})
 	if err == nil || got != initial {
 		t.Fatalf("failed transaction state=%+v error=%v", got, err)
+	}
+}
+
+func TestSettlementTransferFloorModelDefersDustAndAggregatesCredit(t *testing.T) {
+	cases, err := settlementTransferFloorModel(100_000, 568_309)
+	if err != nil || cases != 5 {
+		t.Fatalf("settlement transfer-floor cases=%d error=%v", cases, err)
+	}
+}
+
+func TestSettlementTransferFloorModelRejectsMissingRuntimeEconomics(t *testing.T) {
+	for _, economics := range [][2]uint64{{0, 568_309}, {100_000, 0}} {
+		if _, err := settlementTransferFloorModel(economics[0], economics[1]); err == nil {
+			t.Fatalf("invalid settlement economics %v were accepted", economics)
+		}
 	}
 }
 
@@ -813,7 +829,7 @@ func TestReleaseLockCoversEveryPublishedSubtensorAdvisory(t *testing.T) {
 	if err := strictYAML(filepath.Join(cfg.Repos.SN, "deploy", "testnet", "release.lock.yml"), lock); err != nil {
 		t.Fatal(err)
 	}
-	if lock.Runtime.SourceTag != "release-v451" || lock.Runtime.SourceCommit != "d78d9cc6a6ee4d805f74a35414baaef8be025a5f" || lock.Runtime.SpecVersion != 451 || lock.Runtime.CodeHash == "" {
+	if lock.Runtime.SourceTag != "testnet" || lock.Runtime.SourceCommit != "da06f033663896ef2fdbbfc3ecc68ca908fba0f5" || lock.Runtime.SpecVersion != 452 || lock.Runtime.CodeHash == "" {
 		t.Fatalf("release runtime does not postdate the published advisory fixes: %+v", lock.Runtime)
 	}
 	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
@@ -957,8 +973,8 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		}
 		return rpcResponse{Result: result}
 	}
-	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 451, 1))
-	if err != nil || validateRPCRuntimeIdentity(valid, valid, 451, 1) != nil {
+	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 452, 1))
+	if err != nil || validateRPCRuntimeIdentity(valid, valid, 452, 1) != nil {
 		t.Fatalf("valid runtime identity rejected: %+v %v", valid, err)
 	}
 	cases := []rpcResponse{
@@ -978,12 +994,12 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		private rpcRuntimeVersion
 		public  rpcRuntimeVersion
 	}{
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 451, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 451, TransactionVersion: 2}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 452, TransactionVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 2}},
 	}
 	for index, identity := range identities {
-		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 451, 1); identityErr == nil {
+		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 452, 1); identityErr == nil {
 			t.Errorf("drifting runtime identity %d was accepted", index)
 		}
 	}
@@ -1014,14 +1030,14 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
 		}))
 	}
-	private := newServer(451)
+	private := newServer(452)
 	defer private.Close()
-	public := newServer(452)
+	public := newServer(453)
 	defer public.Close()
 	cfg := testResolvedConfig(t)
 	cfg.OperationalEVM = private.URL
 	cfg.Public.Chain.EVMPublicReadEndpoint = public.URL
-	cfg.Release.Runtime.SpecVersion = 451
+	cfg.Release.Runtime.SpecVersion = 452
 	cfg.Release.Runtime.TransactionVersion = 1
 	actor := &rpcAdversary{
 		cfg: cfg,
@@ -1031,7 +1047,7 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 		},
 	}
 	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
-	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=451 public=452 expected=451") {
+	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=452 public=453 expected=452") {
 		t.Fatalf("observed runtime drift result=%+v", result)
 	}
 }

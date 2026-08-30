@@ -152,10 +152,13 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 				}
 				captured, capturedOK := new(big.Int).SetString(contracts.TotalCaptured, 10)
 				paid, paidOK := new(big.Int).SetString(contracts.TotalPaid, 10)
+				escrow, escrowOK := new(big.Int).SetString(contracts.EscrowAccounted, 10)
+				pending, pendingOK := new(big.Int).SetString(contracts.PendingFunding, 10)
 				outstanding, outstandingOK := new(big.Int).SetString(contracts.Outstanding, 10)
-				conservationOK := capturedOK && paidOK && outstandingOK && captured.Sign() >= 0 && paid.Sign() >= 0 && outstanding.Sign() >= 0 && captured.Cmp(new(big.Int).Add(paid, outstanding)) == 0
+				liveEscrow, liveEscrowOK := new(big.Int).SetString(contracts.LiveEscrowStake, 10)
+				conservationOK := capturedOK && paidOK && escrowOK && pendingOK && outstandingOK && liveEscrowOK && captured.Sign() >= 0 && paid.Sign() >= 0 && escrow.Sign() >= 0 && pending.Sign() >= 0 && outstanding.Sign() >= 0 && liveEscrow.Sign() >= 0 && captured.Cmp(new(big.Int).Add(paid, escrow)) == 0 && escrow.Cmp(new(big.Int).Add(pending, outstanding)) == 0 && liveEscrow.Cmp(escrow) >= 0
 				if !contracts.ConservationHolds || !conservationOK {
-					collector.add("value-conservation", "critical", "contracts:rao-conservation", fmt.Sprintf("flag=%t captured=%q paid=%q outstanding=%q", contracts.ConservationHolds, contracts.TotalCaptured, contracts.TotalPaid, contracts.Outstanding), observation.ObservedAt)
+					collector.add("value-conservation", "critical", "contracts:rao-conservation", fmt.Sprintf("flag=%t captured=%q paid=%q escrow=%q pending=%q outstanding=%q live=%q", contracts.ConservationHolds, contracts.TotalCaptured, contracts.TotalPaid, contracts.EscrowAccounted, contracts.PendingFunding, contracts.Outstanding, contracts.LiveEscrowStake), observation.ObservedAt)
 				}
 				if status.PolicyHash != "" && !strings.EqualFold(status.PolicyHash, contracts.PolicyHash) {
 					collector.add("contract-policy-drift", "critical", "contracts:policy", fmt.Sprintf("status=%s contract=%s", status.PolicyHash, contracts.PolicyHash), observation.ObservedAt)

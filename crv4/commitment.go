@@ -1,8 +1,8 @@
 package crv4
 
-// Runtime-451 commitments pallet support used by fleet promotion. The exact
-// encoding is pinned to RaoFoundation/subtensor release-v451 commit
-// d78d9cc6a6ee4d805f74a35414baaef8be025a5f:
+// Runtime-452 commitments pallet support used by fleet promotion. The exact
+// encoding is pinned to RaoFoundation/subtensor testnet commit
+// da06f033663896ef2fdbbfc3ecc68ca908fba0f5:
 //
 //   Commitments.set_commitment(netuid: u16, info: CommitmentInfo)
 //   CommitmentInfo { fields: BoundedVec<Data> }
@@ -15,6 +15,7 @@ package crv4
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/scale"
@@ -26,12 +27,12 @@ const (
 	CommitmentsPalletName = "Commitments"
 	CallSetCommitment     = "set_commitment"
 	dataSHA256Variant     = byte(131)
-	// Runtime v451 stores Registration<TaoBalance, MaxFields, BlockNumber>
+	// Runtime v452 stores Registration<TaoBalance, MaxFields, BlockNumber>
 	// as a transparent u64 deposit, u32 block, then CommitmentInfo. The
 	// release lock pins all three types; accepting only the exact byte length
 	// prevents a multi-field registration that merely ends in Sha256 from
 	// masquerading as the one-field fleet commitment protocol.
-	registrationV451PrefixBytes = 8 + 4
+	registrationV452PrefixBytes = 8 + 4
 )
 
 // SHA256CommitmentData is the only commitment Data variant accepted by the
@@ -71,37 +72,66 @@ func EncodeFleetCommitmentInfo(hash [32]byte) ([]byte, error) {
 	return codec.Encode(info)
 }
 
-// DecodeFleetCommitmentRegistrationV451 accepts exactly the release protocol's
-// Registration encoding: deposit:u64, block:u32, and one nonzero Data::Sha256
-// field. It intentionally rejects every other valid Subtensor Data shape and
-// every multi-field value. This keeps an arbitrary native commitment from
-// becoming parser confusion or an authorization oracle for fleet mirroring.
-func DecodeFleetCommitmentRegistrationV451(raw []byte) ([32]byte, error) {
+// Decode the exact runtime registration and retain its fixed-width storage
+// block. Header block numbers use compact SCALE in GSRPC, while this field is
+// a plain u32; conflating them silently changes values whose low bits select a
+// compact mode.
+func decodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, uint64, error) {
 	var commitmentHash [32]byte
 	wantInfoLen := 1 + 1 + len(commitmentHash) // Vec length(1), Sha256 variant, hash
-	if len(raw) != registrationV451PrefixBytes+wantInfoLen {
-		return commitmentHash, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV451PrefixBytes+wantInfoLen)
+	if len(raw) != registrationV452PrefixBytes+wantInfoLen {
+		return commitmentHash, 0, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV452PrefixBytes+wantInfoLen)
 	}
-	info := raw[registrationV451PrefixBytes:]
+	commitmentBlock := uint64(binary.LittleEndian.Uint32(raw[8:registrationV452PrefixBytes]))
+	if commitmentBlock == 0 {
+		return commitmentHash, 0, fmt.Errorf("crv4: fleet commitment registration block is zero")
+	}
+	info := raw[registrationV452PrefixBytes:]
 	if info[0] != 0x04 || info[1] != dataSHA256Variant {
-		return commitmentHash, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
+		return commitmentHash, 0, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
 	}
 	copy(commitmentHash[:], info[2:])
 	if commitmentHash == ([32]byte{}) {
-		return commitmentHash, fmt.Errorf("crv4: finalized commitment hash is zero")
+		return commitmentHash, 0, fmt.Errorf("crv4: finalized commitment hash is zero")
 	}
 	encoded, err := EncodeFleetCommitmentInfo(commitmentHash)
 	if err != nil || !bytes.Equal(info, encoded) {
-		return [32]byte{}, fmt.Errorf("crv4: non-canonical commitment encoding")
+		return [32]byte{}, 0, fmt.Errorf("crv4: non-canonical commitment encoding")
 	}
-	return commitmentHash, nil
+	return commitmentHash, commitmentBlock, nil
 }
 
-// DecodeFleetCommitmentRegistrationV447 remains as a source-compatible alias
-// for consumers that adopted the codec when it was first release-pinned. The
-// v451 audit proved this storage shape unchanged.
+// DecodeFleetCommitmentRegistrationV452 accepts only the release protocol's
+// one-field registration and exposes its canonical commitment hash.
+func DecodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, error) {
+	commitmentHash, _, err := decodeFleetCommitmentRegistrationV452(raw)
+	return commitmentHash, err
+}
+
+// DecodeFleetCommitmentRegistrationV451 preserves the API introduced under
+// the preceding runtime after the v452 audit proved the shape unchanged.
+func DecodeFleetCommitmentRegistrationV451(raw []byte) ([32]byte, error) {
+	return DecodeFleetCommitmentRegistrationV452(raw)
+}
+
+// DecodeFleetCommitmentRegistrationV447 preserves the first release-pinned
+// API after the v452 audit proved the shape unchanged.
 func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
-	return DecodeFleetCommitmentRegistrationV451(raw)
+	return DecodeFleetCommitmentRegistrationV452(raw)
+}
+
+// Decode the pallet's fixed-width u32 storage value exactly. In particular,
+// do not use types.BlockNumber: its SCALE decoder is intentionally compact for
+// header fields and turns 0x9d7c7800 (7,896,221) into 7,975.
+func decodeFleetCommitmentBlockV452(raw []byte) (uint64, error) {
+	if len(raw) != 4 {
+		return 0, fmt.Errorf("crv4: LastCommitment has %d bytes, want 4", len(raw))
+	}
+	commitmentBlock := uint64(binary.LittleEndian.Uint32(raw))
+	if commitmentBlock == 0 {
+		return 0, fmt.Errorf("crv4: LastCommitment is zero")
+	}
+	return commitmentBlock, nil
 }
 
 // NewSetFleetCommitmentCall builds the runtime metadata-bound call.
@@ -131,6 +161,22 @@ type FinalizedCommitment struct {
 	ExtrinsicHash   types.Hash
 }
 
+// Require the finalized storage registration to come from the exact block
+// containing the approved write. Hash equality alone is insufficient when a
+// prior identical commitment has aged past the coordinator's freshness bound.
+func ValidateFleetCommitmentWrite(expected [32]byte, finalizedBlock uint64, observed *FinalizedCommitment) error {
+	if expected == ([32]byte{}) || finalizedBlock == 0 || observed == nil {
+		return fmt.Errorf("crv4: finalized commitment write proof is incomplete")
+	}
+	if observed.Hash != expected {
+		return fmt.Errorf("crv4: finalized commitment postcondition mismatch: got 0x%x want 0x%x", observed.Hash, expected)
+	}
+	if observed.CommitmentBlock != finalizedBlock || observed.FinalizedAt != finalizedBlock || observed.FinalizedHash == (types.Hash{}) {
+		return fmt.Errorf("crv4: finalized commitment block proof is %d at %d, want exact write block %d", observed.CommitmentBlock, observed.FinalizedAt, finalizedBlock)
+	}
+	return nil
+}
+
 // SetFleetCommitment submits the hotkey-signed commitment, waits for finality,
 // and proves the exact hash in finalized storage. This postcondition also
 // catches an included DispatchError event without requiring runtime-specific
@@ -156,8 +202,8 @@ func (c *Chain) SetFleetCommitment(ctx context.Context, kp *Keypair, netuid uint
 	if err != nil {
 		return nil, err
 	}
-	if observed.Hash != hash {
-		return nil, fmt.Errorf("crv4: finalized commitment postcondition mismatch: got 0x%x want 0x%x", observed.Hash, hash)
+	if err := ValidateFleetCommitmentWrite(hash, receipt.BlockNumber, observed); err != nil {
+		return nil, err
 	}
 	observed.ExtrinsicHash = receipt.ExtrinsicHash
 	return observed, nil
@@ -172,7 +218,7 @@ func (c *Chain) FleetCommitmentFinalized(netuid uint16, hotkey [32]byte) (*Final
 	return c.FleetCommitmentAt(netuid, hotkey, hash)
 }
 
-// FleetCommitmentAt verifies the release's exact runtime-451 one-field Sha256
+// FleetCommitmentAt verifies the release's exact runtime-452 one-field Sha256
 // registration directly from CommitmentOf storage.
 func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash types.Hash) (*FinalizedCommitment, error) {
 	if netuid == 0 || hotkey == ([32]byte{}) || blockHash == (types.Hash{}) {
@@ -189,7 +235,7 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if raw == nil {
 		return nil, fmt.Errorf("crv4: no finalized commitment for hotkey 0x%x on netuid %d", hotkey, netuid)
 	}
-	commitmentHash, err := DecodeFleetCommitmentRegistrationV451([]byte(*raw))
+	commitmentHash, registrationBlock, err := decodeFleetCommitmentRegistrationV452([]byte(*raw))
 	if err != nil {
 		return nil, err
 	}
@@ -198,13 +244,19 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if err != nil {
 		return nil, fmt.Errorf("crv4: last commitment storage key: %w", err)
 	}
-	var commitmentBlock types.BlockNumber
-	ok, err := c.API.RPC.State.GetStorage(lastKey, &commitmentBlock, blockHash)
+	lastRaw, err := c.API.RPC.State.GetStorageRaw(lastKey, blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("crv4: last commitment storage: %w", err)
 	}
-	if !ok {
+	if lastRaw == nil {
 		return nil, fmt.Errorf("crv4: commitment exists without LastCommitment")
+	}
+	commitmentBlock, err := decodeFleetCommitmentBlockV452([]byte(*lastRaw))
+	if err != nil {
+		return nil, err
+	}
+	if registrationBlock != commitmentBlock {
+		return nil, fmt.Errorf("crv4: commitment registration block %d differs from LastCommitment %d", registrationBlock, commitmentBlock)
 	}
 	header, err := c.API.RPC.Chain.GetHeader(blockHash)
 	if err != nil {

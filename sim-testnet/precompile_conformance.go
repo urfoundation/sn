@@ -192,7 +192,7 @@ func loadPrecompileEvidence(stateDir string) (*PrecompileConformanceEvidence, er
 	got, err := canonicalHashHex(&evidence)
 	evidence.EvidenceHash = want
 	if err != nil || want == "" || got != want {
-		return nil, fmt.Errorf("precompile evidence hash mismatch: got %s want %s: %w", got, want, err)
+		return nil, stateMismatchError(err, "precompile evidence hash mismatch: got %s want %s", got, want)
 	}
 	return &evidence, nil
 }
@@ -232,11 +232,11 @@ func (e *Executor) precompileIdentities(ctx context.Context) (*PrecompileConform
 	}
 	uid, found, err := e.substrate.UID(sample)
 	if err != nil || !found {
-		return nil, sample, move, recovery, fmt.Errorf("precompile sample hotkey has no finalized UID: %w", err)
+		return nil, sample, move, recovery, stateMismatchError(err, "precompile sample hotkey has no finalized UID")
 	}
 	absent := derive32(e.cfg, "precompile/absent-hotkey")
 	if _, found, err := e.substrate.UID(absent); err != nil || found {
-		return nil, sample, move, recovery, fmt.Errorf("precompile absent-hotkey control is registered or unreadable: found=%t err=%w", found, err)
+		return nil, sample, move, recovery, stateMismatchError(err, "precompile absent-hotkey control is registered or unreadable: found=%t", found)
 	}
 	deployer, err := e.roles.EVMAddress("deployer")
 	if err != nil {
@@ -306,12 +306,19 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 			if err != nil {
 				return err
 			}
-			txHash, _, err := e.substrate.SendAs(ctx, e.plan.PlanHash, action, call, signer)
+			txHash, transactionBlock, err := e.substrate.SendAs(ctx, e.plan.PlanHash, action, call, signer)
 			if err != nil {
 				return err
 			}
-			observed, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
-			if err != nil || observed.Hash != probeHash {
+			transactionBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(transactionBlock)
+			if err != nil {
+				return err
+			}
+			observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+			if err != nil {
+				return conformanceMismatch("replacement commitment finalized mismatch", err)
+			}
+			if err := crv4.ValidateFleetCommitmentWrite(probeHash, transactionBlock, observed); err != nil {
 				return conformanceMismatch("replacement commitment finalized mismatch", err)
 			}
 			evidence.Commitment.WriteTransactionHash = txHash.Hex()
@@ -329,13 +336,23 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		if err != nil {
 			return err
 		}
-		txHash, _, err := e.substrate.SendAs(ctx, e.plan.PlanHash, action, call, signer)
+		txHash, transactionBlock, err := e.substrate.SendAs(ctx, e.plan.PlanHash, action, call, signer)
 		if err != nil {
 			return err
 		}
-		observed, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
-		if err != nil || observed.Hash != canonical || observed.CommitmentBlock <= evidence.Commitment.WriteCommitmentBlock {
+		transactionBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(transactionBlock)
+		if err != nil {
+			return err
+		}
+		observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+		if err != nil {
 			return conformanceMismatch("canonical commitment restore finalized mismatch", err)
+		}
+		if err := crv4.ValidateFleetCommitmentWrite(canonical, transactionBlock, observed); err != nil {
+			return conformanceMismatch("canonical commitment restore finalized mismatch", err)
+		}
+		if observed.CommitmentBlock <= evidence.Commitment.WriteCommitmentBlock {
+			return conformanceMismatch("canonical commitment restore did not advance the registration block", nil)
 		}
 		evidence.Commitment.RestoreTransactionHash = txHash.Hex()
 		evidence.Commitment.RestoreFinalizedHead = ChainHead{Number: observed.FinalizedAt, Hash: observed.FinalizedHash.Hex()}
@@ -373,7 +390,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 		if !passed {
 			_ = writePrecompileEvidence(e.stateDir, evidence)
-			return errors.New("runtime-451 precompile battery failed closed")
+			return errors.New("runtime-452 precompile battery failed closed")
 		}
 		return writePrecompileEvidence(e.stateDir, evidence)
 
@@ -594,7 +611,7 @@ func readDividendAtFinalized(ctx context.Context, client *ethclient.Client, prob
 	}
 	values, err := contractCallAt(ctx, client, probe, parsed, "dividendDelta", head.Number, hotkey)
 	if err != nil || len(values) != 3 {
-		return 0, 0, 0, fmt.Errorf("dividendDelta returned %d values: %w", len(values), err)
+		return 0, 0, 0, stateMismatchError(err, "dividendDelta returned %d values", len(values))
 	}
 	baseline, ok := values[0].(*big.Int)
 	if !ok || !baseline.IsUint64() {
@@ -801,15 +818,15 @@ func (e *Executor) verifyCurrentPrecompileBattery(ctx context.Context, head Chai
 	}
 	values, err := contractCallAt(ctx, e.deployer.client, e.payloads.Manifest.PrecompileProbe, parsed, "readBattery", head.Number, sample, absent)
 	if err != nil || len(values) != 1 {
-		return fmt.Errorf("independent readBattery returned %d values: %w", len(values), err)
+		return stateMismatchError(err, "independent readBattery returned %d values", len(values))
 	}
 	tuple, ok := abi.ConvertType(values[0], new(precompileBatteryTuple)).(*precompileBatteryTuple)
 	if !ok || !batteryTupleCompatible(evidence, tuple, e.plan.LiveFacts.NominatorMinimumRao) {
-		return errors.New("independent runtime-451 precompile battery is incompatible")
+		return errors.New("independent runtime-452 precompile battery is incompatible")
 	}
 	uid, found, err := e.substrate.UID(sample)
 	if err != nil || !found || uid != evidence.SampleUID {
-		return fmt.Errorf("independent native sample UID=%d found=%t, want %d: %w", uid, found, evidence.SampleUID, err)
+		return stateMismatchError(err, "independent native sample UID=%d found=%t, want %d", uid, found, evidence.SampleUID)
 	}
 	return nil
 }
@@ -849,7 +866,7 @@ func (e *Executor) verifyPrecompileChainEvidence(ctx context.Context, action Act
 		}
 		baseline, current, since, err := readDividendAtFinalized(ctx, e.deployer.client, e.payloads.Manifest.PrecompileProbe, parsed, sample)
 		if err != nil || baseline != evidence.Dividend.BaselineRao || since != evidence.Dividend.SinceBlock || current < evidence.Dividend.CurrentRao {
-			return fmt.Errorf("independent dividend state baseline=%d current=%d since=%d: %w", baseline, current, since, err)
+			return stateMismatchError(err, "independent dividend state baseline=%d current=%d since=%d", baseline, current, since)
 		}
 		return nil
 	case "precompile.transfer-out":

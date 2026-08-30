@@ -11,15 +11,15 @@ import (
 func TestDishonestDepositActionIsExactAndBounded(t *testing.T) {
 	action := Action{
 		ID: dishonestDepositActionID, Kind: "evm-transaction", Target: "no:2",
-		Parameters: map[string]string{"no_id": "2", "amount_rao": "1", "target_epoch": "next_fresh_production_epoch"},
+		Parameters: map[string]string{"no_id": "2", "amount_rao": "5000000000", "target_epoch": "next_fresh_production_epoch", "reserve_runtime_share_transitions": "2", "reserve_rounding_allowance_rao": "2"},
 	}
 	noID, amount, err := dishonestDepositParameters(action)
-	if err != nil || noID != 2 || amount.String() != "1" {
+	if err != nil || noID != 2 || amount.String() != "5000000000" {
 		t.Fatalf("canonical dishonest action = %d/%v, %v", noID, amount, err)
 	}
 	wrongAmount := action
 	wrongAmount.Parameters = cloneStrings(action.Parameters)
-	wrongAmount.Parameters["amount_rao"] = "2"
+	wrongAmount.Parameters["amount_rao"] = "5000000001"
 	if _, _, err := dishonestDepositParameters(wrongAmount); err == nil {
 		t.Fatal("dishonest action accepted a widened alpha amount")
 	}
@@ -34,6 +34,12 @@ func TestDishonestDepositActionIsExactAndBounded(t *testing.T) {
 	wrongEpoch.Parameters["target_epoch"] = "current"
 	if _, _, err := dishonestDepositParameters(wrongEpoch); err == nil {
 		t.Fatal("dishonest action accepted an unfenced epoch")
+	}
+	wrongReserve := action
+	wrongReserve.Parameters = cloneStrings(action.Parameters)
+	wrongReserve.Parameters["reserve_rounding_allowance_rao"] = "1"
+	if _, _, err := dishonestDepositParameters(wrongReserve); err == nil {
+		t.Fatal("dishonest action accepted a one-leg reserve allowance")
 	}
 }
 
@@ -51,9 +57,34 @@ func TestDishonestDepositPlannedEVMEnvelopeRemainsExactAndParseable(t *testing.T
 	if _, _, err := dishonestDepositParameters(action); err != nil {
 		t.Fatalf("planned dishonest-deposit envelope was rejected: %v", err)
 	}
+	if _, err := decodeHex32("planned deployment manifest hash", action.Parameters[deploymentManifestHashParameter]); err != nil {
+		t.Fatal(err)
+	}
 	delete(action.Parameters, evmMaximumFeePerGasParameter)
 	if _, _, err := dishonestDepositParameters(action); err == nil {
 		t.Fatal("partial dishonest-deposit EVM envelope was accepted")
+	}
+}
+
+func TestDishonestDepositRejectsMissingAndMalformedDeploymentBinding(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := actionByID(t, plan, dishonestDepositActionID)
+	missing := action
+	missing.Parameters = cloneStrings(action.Parameters)
+	delete(missing.Parameters, deploymentManifestHashParameter)
+	if _, _, err := dishonestDepositParameters(missing); err == nil {
+		t.Fatal("dishonest-deposit action without a deployment binding was accepted")
+	}
+	malformed := action
+	malformed.Parameters = cloneStrings(action.Parameters)
+	malformed.Parameters[deploymentManifestHashParameter] = "0x12"
+	if _, _, err := dishonestDepositParameters(malformed); err == nil {
+		t.Fatal("dishonest-deposit action with a malformed deployment binding was accepted")
 	}
 }
 

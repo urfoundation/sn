@@ -62,6 +62,39 @@ func TestProductionPolicyMatchRequiresExactBoundaryAndCompleteCaps(t *testing.T)
 	}
 }
 
+func TestBootstrapPolicyMatchBindsEveryAcceleratedFieldAndCap(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	hash, err := decodeHash(cfg.PolicyHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := stabi.STCoordinatorPolicySnapshot{
+		PolicyHash: hash, EffectiveEpoch: 14, EffectiveBlock: 1_000,
+		EpochBlocks:                  cfg.Policy.Settlement.EpochBlocks,
+		RootCommitWindowBlocks:       cfg.Policy.Settlement.RootCommitWindowBlocks,
+		FinalizeOffsetBlocks:         cfg.Policy.Settlement.FinalizeOffsetBlocks,
+		CloseGraceBlocks:             cfg.Policy.Settlement.CloseGraceBlocks,
+		ClaimTTLEpochs:               cfg.Policy.Settlement.ClaimTTLEpochs,
+		ClaimGraceEpochs:             cfg.Policy.Settlement.ClaimGraceEpochs,
+		MaximumBindingValidityEpochs: cfg.Policy.Binding.MaximumValidityEpochs,
+		CommitmentMaxAgeBlocks:       cfg.Policy.Settlement.EpochBlocks * 2,
+		EpochDepositCapRao:           new(big.Int).SetUint64(cfg.Policy.Deposit.EpochCapRaoPerOperator),
+		CampaignDepositCapRao:        new(big.Int).SetUint64(cfg.Policy.Deposit.TotalTestCampaignCapRao),
+	}
+	if !bootstrapPolicyMatches(cfg, policy) {
+		t.Fatal("canonical accelerated policy was rejected")
+	}
+	policy.EpochDepositCapRao = new(big.Int).Sub(policy.EpochDepositCapRao, big.NewInt(1))
+	if bootstrapPolicyMatches(cfg, policy) {
+		t.Fatal("accelerated policy with a one-rao cap drift was accepted")
+	}
+	policy.EpochDepositCapRao = new(big.Int).SetUint64(cfg.Policy.Deposit.EpochCapRaoPerOperator)
+	policy.CommitmentMaxAgeBlocks++
+	if bootstrapPolicyMatches(cfg, policy) {
+		t.Fatal("accelerated policy with a commitment-age drift was accepted")
+	}
+}
+
 func TestResumeCurrentPostconditionClassificationIsNarrow(t *testing.T) {
 	tests := []struct {
 		id   string
@@ -106,6 +139,17 @@ func TestInitialRegistrationPositionStopsAtTopologyBarrier(t *testing.T) {
 	challenger, err := initialRegistrationPosition(plan, "fleet.register.201")
 	if err != nil || challenger.Applicable {
 		t.Fatalf("challenger position=%+v error=%v, want non-applicable", challenger, err)
+	}
+	replacement := &SetupPlan{Deployment: ContractDeployment{RegistrationRoleGeneration: 1}, Actions: []Action{
+		{ID: "evm.vault-register-escrow", Spend: Spend{Registrations: 1}},
+		{ID: "operator.register.1", Spend: Spend{Registrations: 1}},
+		{ID: "topology.launch"},
+	}}
+	for _, actionID := range []string{"evm.vault-register-escrow", "operator.register.1"} {
+		position, positionErr := initialRegistrationPosition(replacement, actionID)
+		if positionErr != nil || position.Applicable {
+			t.Fatalf("replacement %s position=%+v error=%v, want stronger non-initial precondition", actionID, position, positionErr)
+		}
 	}
 	for _, malformed := range []*SetupPlan{
 		nil,
@@ -170,10 +214,10 @@ func TestHyperparameterUint64AcceptsRuntimeUnsignedShapes(t *testing.T) {
 
 func TestInitialImmunityPostconditionTracksOnlyItsVerifiedSuccessor(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	cfg.Hyperparameters.OwnerControlled["immunity_period"] = 7200
+	cfg.Hyperparameters.OwnerControlled["immunity_period"] = testnetBootstrapImmunityPeriodBlocks
 	cfg.Hyperparameters.ProductionOwnerControlled["immunity_period"] = 2400
 	initial, successor, err := lifecycleHyperparameterExpectation(cfg, "immunity_period", false)
-	if err != nil || initial != 7200 || successor != "" {
+	if err != nil || initial != testnetBootstrapImmunityPeriodBlocks || successor != "" {
 		t.Fatalf("initial expectation=%v successor=%q err=%v", initial, successor, err)
 	}
 	production, successor, err := lifecycleHyperparameterExpectation(cfg, "immunity_period", true)

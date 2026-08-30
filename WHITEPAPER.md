@@ -268,7 +268,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   stake** and is drained each tempo.
 - **Stake weight** = `alpha_stake + tao_weight × tao_stake`. `tao_weight` is global, root-governed,
   and encoded as `u64 / u64::MAX`; testnet currently resolves to **0.018** (1.8%), while the pinned
-  v451 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
+  v452 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
   observe mainnet independently rather than assuming either value.
 
 ### 2.3 dTAO economics
@@ -320,7 +320,7 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   | `0x…0802` | **Metagraph** | read-only conformance/observation of UID 0 and metagraph identity; production settlement does not trust a point-in-time emission getter |
 
   Independent validators submit CRv4 through native Substrate extrinsics, not through an EVM
-  precompile. Runtime 451 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
+  precompile. Runtime 452 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
   finalized indexer mirrors `(hotkey, commitment hash, finalized block/hash)` into the coordinator; the
   coordinator then checks the mirror, both signatures, freshness and the live UID atomically.
 
@@ -485,7 +485,9 @@ Essential state is deliberately partitioned:
   totals. `liveStake() >= principal` is executable at every finalized block.
 - The settlement vault stores immutable pool identities and one entitlement per `(epoch,noId)`:
   `payoutRoot`, `artifactHash`, captured funding, total (including same-NO carry), claimed amount,
-  expiry block and state. Global `totalCaptured = totalPaid + escrowAccounted` and
+  expiry block and state. It also stores an immutable finalized-runtime `minimumTransferTaoRao`,
+  durable per-coldkey `claimCredit`, and the exact custody counters. Global
+  `totalCaptured = totalPaid + escrowAccounted` and
   `escrowAccounted = pendingFunding + outstandingLiability` are executable conservation identities.
 
 There is no on-chain tier/rate/weight computation and no validator-effort registry.
@@ -513,6 +515,7 @@ cleanupFleetBinding(clientId)
 
 // Immutable vault; claim has no coordinator/pause authorization check.
 claim(epoch, noId, coldkey, shareBps, proof)
+withdrawClaimCredit(coldkey)
 expireEntitlement(epoch, noId)
 ```
 
@@ -525,7 +528,12 @@ validators submit native CRv4 themselves; no EVM function sets subnet weights.
   At the exact epoch boundary (within a bounded close grace), `captureEmission` reads the complete stake
   on that pool hotkey and moves it to the vault's escrow hotkey. A missed close records zero for that
   epoch and defers the still-on-pool stake to the next timely boundary; a late keeper can never assign a
-  multi-epoch delta to the first missed epoch.
+  multi-epoch delta to the first missed epoch. Runtime 452 rejects a same-subnet move whose live
+  TAO-equivalent value is below `DefaultMinTransfer`. The vault binds that value as an immutable after
+  the deployment path authenticates the exact finalized runtime Wasm and its `InitialMinTransfer`
+  metadata constant. If a pool observation is below it, the epoch records zero captured funding and emits an
+  explicit dust deferral while the α remains on the same pool hotkey to accumulate; a price-read failure
+  reverts for retry. Only an exact measured pool decrease and escrow increase enter the accounting ledger.
 - **Validator emission is native.** Independent validators stake their **own** α and earn their **41%
   dividends natively** to their own hotkeys ∝ stake × vtrust — the contract neither stakes for them nor
   custodies their dividends. (Native dividends are the **whole** validator reward; a fee‑funded effort
@@ -534,12 +542,20 @@ validators submit native CRv4 themselves; no EVM function sets subnet weights.
   `depositHotkey`. The operator first sends an exact amount to that isolated position through a native,
   signer-scoped transfer intent. Its distinct `depositSigner` then calls `deposit` or `addConviction`
   with the next nonce and deadline. In one EVM transaction the coordinator verifies signer, nonce,
-  policy/caps and available stake; moves exactly `amount` to the reserve hotkey; transfers it to the
-  reserve sink's coldkey; records principal; and emits the policy-bound event. Any failed step reverts
-  all EVM accounting. No NO can attribute another NO's staged funds.
-- **Payouts out — emission only.** On claim, the immutable vault uses `transferStake` from its escrow
-  hotkey to the recipient coldkey. Recipients receive α as stake. Deposit/conviction principal is held
-  by a different contract coldkey whose bytecode has no outbound operation.
+  policy/caps and available stake; stages `amount` plus a bounded two-rao runtime rounding allowance;
+  moves it to the reserve hotkey; transfers it to the reserve sink's coldkey; records exactly `amount`
+  principal; and emits the policy-bound event. Runtime 452 may floor one rao at each of those two
+  destination share-pool transitions, so the sink must receive between `amount` and `amount+2`; any
+  wider delta or failed step reverts all EVM accounting. No NO can attribute another NO's staged funds.
+- **Payouts out — emission only.** A valid Merkle claim first fixes the provider's entitlement as durable
+  credit for that exact coldkey. The vault aggregates credits across NOs/epochs because runtime 452 also
+  rejects a sub-`DefaultMinTransfer` `transferStake`. Once the credit's live TAO-equivalent value reaches
+  the immutable floor, the vault transfers the full credit from escrow to that coldkey and admits the
+  payment only after measuring exact source and destination deltas. A sub-floor credit, price outage, or
+  runtime failure emits a payment-deferral event and preserves the credit for permissionless retry via
+  `withdrawClaimCredit`; it cannot be redirected and survives entitlement expiry. Recipients receive α
+  as stake. Deposit/conviction principal is held by a different contract coldkey whose bytecode has no
+  outbound operation.
 - **TAO is only touched** for gas and the owner's discretionary conversions. Participants never pay AMM
   slippage to *use* the system; only to exit α→TAO.
 
@@ -667,9 +683,11 @@ supply, rather than recycled to participants who would re‑sell it.
 - **The flow.** The NO funds deposits by **buying α on‑market** from customer revenue — the buy leg is
   the actual demand pressure, and the sourcing commitment is published alongside the §7.1 rate schedule
   (on‑chain code cannot see where α came from; the policy makes the buyback claim falsifiable).
-  `deposit(noId, amount)` `moveStake`s the **full amount** to the **reserve hotkey** — the owner's
-  validator hotkey (§6.3), transfers it into the immutable sink coldkey, and emits `Deposit` plus
-  `ReservePrincipalAdded`. `addConviction` follows the same one-way path but emits `ConvictionAdded` and
+  `deposit(noId, amount)` stages the **full amount** plus at most two rounding rao, `moveStake`s it to the
+  **reserve hotkey** — the owner's validator hotkey (§6.3) — and transfers it into the immutable sink
+  coldkey. The two destination share-pool views may each floor one rao; finalized sink credit must still
+  cover the full principal, while any zero-to-two-rao excess is an irreversible reserve donation. It emits
+  `Deposit` plus `ReservePrincipalAdded`. `addConviction` follows the same one-way path but emits `ConvictionAdded` and
   does not increase epoch demand. Coordinator counters enforce exact nonces/caps; neither contract
   computes weights from them (D25). The finalized events are the public weighting record.
 - **The lock.** No contract code path ever sources a transfer from the reserve (the §6.4 sibling
@@ -772,15 +790,23 @@ and the contract derives the α amount from **on‑chain state**:
 ```
 vault.claim(e, n, p, s_{n,p}, proof):
     verify (p, s_{n,p}) ∈ payoutRoot[e][n]
-    pay   s_{n,p} · poolTotal_n              (slippage-free transferStake)
+    amount = s_{n,p} · poolTotal_n
     require claimed[e][n] + amount ≤ poolTotal_n      // a pool can't be over-drained
+    mark the leaf claimed; claimCredit[p] += amount
+    if TAOEquivalent(claimCredit[p]) ≥ immutable DefaultMinTransfer:
+        transfer the full credit to p and verify exact escrow/p deltas
+    else:
+        preserve credit for a later claim or permissionless retry
 ```
 
 So the amount is a deterministic function of immutable on-chain entitlement state × the NO's committed
 share. Release artifacts allocate exactly 10,000 bps with deterministic largest-remainder rounding;
 the vault independently caps cumulative payout at the entitlement total. A malformed root whose shares
 exceed 10,000 bps cannot overdraw escrow. An unclaimed or under-allocated remainder expires after the
-snapshotted TTL+grace and becomes only that same NO's carry; a missed root follows the same isolation.
+snapshotted TTL+grace and becomes only that same NO's carry; already-claimed credit is excluded from that
+remainder and remains payable after expiry. A missed root follows the same isolation. `Claimed` records
+logical entitlement acceptance, `ClaimPaymentDeferred` records durable unpaid credit, and `ClaimPaid`
+records the measured runtime transfer; public history must not conflate them.
 A provider attached to several NOs makes **one claim per NO** (the
 trade for dropping the global root). **Every α of the miner channel flows contract → provider; the
 operator holds none of it.**
@@ -857,7 +883,7 @@ That *is* the tournament, driven by the weights validators set:
 **Weight shaping (best practice for ~200 concurrent fleets).** Steer **proportionally** to `score`, *not*
 winner-take-all; apply the signed policy's `max_weight_limit_u16` before every CRv4 commit; and drive
 `VALIDATOR.md` trails at a rate (validator-configurable, §D26) that gives every top UID regular coverage
-so honest-but-idle fleets don't stale-decay. Runtime v451's native getter is hard-coded to `65535`
+so honest-but-idle fleets don't stale-decay. Runtime v452's native getter is hard-coded to `65535`
 (no cap), despite retaining a `MaxWeightsLimit` storage item, so release 1.0 validators enforce the
 policy cap locally and finalized-vector analysis rejects violations. The two-NO testnet bootstrap uses
 `32768` (the smallest feasible two-recipient cap); a production policy lowers the cap toward a low
@@ -1082,7 +1108,7 @@ Yuma combines the validators' vectors with their stake:
 
 Hyperparameters: `commit_reveal_weights_enabled = true`, `liquid_alpha_enabled = true` (reward early
 pool discovery), `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), and
-`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v451 cannot impose a
+`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v452 cannot impose a
 lower native `max_weight_limit`; the signed policy cap and finalized-vector audit described above are
 therefore mandatory release gates.
 
@@ -1461,7 +1487,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
 | `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
-| native `max_weight_limit` / signed policy cap | v451 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v451's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
+| native `max_weight_limit` / signed policy cap | v452 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v452's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
 | `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 breadth-sampling dip risk); must exceed `commit_reveal_period × tempo` |
@@ -1472,7 +1498,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `bonds_penalty` / `alpha_low`/`alpha_high` | tune (Liquid Alpha) | shape early‑discovery reward vs. stability (§2.2) |
 
 > Several genesis defaults are governance‑mutable and have drifted from docs (e.g. testnet's global
-> `tao_weight` is 1.8% while the pinned v451 fallback is about 5.27%; `max_validators` is 64 vs 128;
+> `tao_weight` is 1.8% while the pinned v452 fallback is about 5.27%; `max_validators` is 64 vs 128;
 > the `commit_reveal` default flipped). Query and compatibility-gate the live finalized values; set
 > only owner-controlled fields explicitly and do not rely on documented defaults (§16 checklist).
 
@@ -1511,7 +1537,7 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
 ### 16.1 Components
 
 1. **ST contract set (Solidity, Cancun / 0.8.24).** Non-upgradeable `STReserveSink` and
-   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-451 bindings (`0x09`, `0x402`, `0x403`,
+   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-452 bindings (`0x09`, `0x402`, `0x403`,
    `0x804`, `0x805`), OZ Merkle verification, scoped roles and scheduled policy (§6). The reviewed
    artifacts and deployed runtime hashes are release-locked. (No effort verifier — §9.3/D29.)
 2. **Subnet convergence.** Validate the supplied, wallet-owned existing testnet netuid; explicitly set
@@ -1599,6 +1625,12 @@ faulted.
    accrual to the vault-owned pool UID, **per-NO** vault `claim` against `payoutRoot` ×
    emission-only entitlement end-to-end. **Head:** register a provider-owned **top-level-miner UID**,
    publish the §11.4 binding, and verify **routable‑IP‑breadth** native steering split from the pools by θ.
+   The demand-deposit cap does **not** size validator stake. Bootstrap the reserve validator to a
+   majority of registered α and fund a separately keyed independent validator position; bind both exact
+   transfers to a finalized runtime minimum/price snapshot and stop before signing if source stake,
+   conviction locks, miner collateral, registration, retained-source balance, or the reserve-majority
+   postcondition has drifted. Testnet values may be simulator-funded, but the positions have distinct
+   coldkeys/hotkeys and the independent validator executes and signs its own scoring lifecycle.
 3. **M2 — Buyback reserve verified live (testnet).** Several short testnet epochs green: dividends
    **auto‑compound** onto the reserve stake (`getStake(reserveHotkey,sinkColdkey,netuid) > principal`), the **one‑way
    invariant** + on‑chain audit hold, and the upgrade/pause drills leave finalized claims and the

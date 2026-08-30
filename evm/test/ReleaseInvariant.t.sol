@@ -66,7 +66,12 @@ contract ReleaseInvariantHandler is Test {
             !convictionOnly
                 && coordinator.epochDeposits(coordinator.currentEpoch(), noId) + amount > p.epochDepositCapRao
         ) return;
-        staking.setStake(depositHotkey, coordColdkey, staking.stakes(depositHotkey, coordColdkey) + amount);
+        staking.setStake(
+            depositHotkey,
+            coordColdkey,
+            staking.stakes(depositHotkey, coordColdkey) + amount
+                + coordinator.RESERVE_ROUNDING_ALLOWANCE_RAO()
+        );
         uint256 nonce = coordinator.nextDepositNonce(noId);
         vm.prank(signer);
         if (convictionOnly) {
@@ -83,6 +88,7 @@ contract ReleaseInvariantTest is ReleaseBase {
 
     function setUp() public override {
         super.setUp();
+        staking.setMoveStakeShortfall(1);
         handler = new ReleaseInvariantHandler(
             coordinator,
             vault,

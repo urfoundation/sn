@@ -209,6 +209,9 @@ func preflightReleaseHost(stateDir string, cfg *ResolvedConfig) error {
 	if err := validateReleaseStateFreeBytes(available); err != nil {
 		return err
 	}
+	if err := validateOperatorConfigOverlays(cfg, stateDir); err != nil {
+		return fmt.Errorf("operator config overlay: %w", err)
+	}
 	ready, err := currentSupervisorReady(stateDir)
 	if err != nil {
 		return err
@@ -764,7 +767,7 @@ func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 
 func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip string) map[string]string {
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator))
-	return map[string]string{"WARP_ENV": fmt.Sprintf("sim-testnet-op-%d", operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": filepath.Join(cfg.Repos.PlatformConfig, "local"), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet"}
+	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet"}
 }
 
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {
@@ -1271,15 +1274,28 @@ func supervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
 	if err := json.Unmarshal(b, &state); err != nil {
 		return false, err
 	}
-	if state.ManifestHash != wantHash || state.SupervisorPID <= 1 || len(state.Processes) != len(want.Specs) || syscall.Kill(state.SupervisorPID, syscall.Signal(0)) != nil {
-		return false, nil
+	return supervisorStateReady(state, wantHash, want.Specs), nil
+}
+
+func supervisorStateReady(state SupervisorState, wantHash string, specs []ProcessSpec) bool {
+	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != wantHash || state.SupervisorPID <= 1 || len(state.Processes) != len(specs) || syscall.Kill(state.SupervisorPID, syscall.Signal(0)) != nil {
+		return false
+	}
+	want := make(map[string]ProcessSpec, len(specs))
+	for _, spec := range specs {
+		if spec.ID == "" || want[spec.ID].ID != "" {
+			return false
+		}
+		want[spec.ID] = spec
 	}
 	for _, process := range state.Processes {
-		if process.PID <= 1 || !process.Healthy || syscall.Kill(process.PID, syscall.Signal(0)) != nil {
-			return false, nil
+		spec, ok := want[process.ID]
+		if !ok || process.Role != spec.Role || process.Identity != spec.Identity || process.PID <= 1 || !process.Healthy || syscall.Kill(process.PID, syscall.Signal(0)) != nil {
+			return false
 		}
+		delete(want, process.ID)
 	}
-	return true, nil
+	return len(want) == 0
 }
 
 func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, timeout time.Duration) error {
@@ -1288,30 +1304,46 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 		return err
 	}
 	deadline := time.Now().Add(timeout)
+	var lastErr error
+	var lastState *SupervisorState
 	for time.Now().Before(deadline) {
 		b, readErr := os.ReadFile(filepath.Join(stateDir, "supervisor.state.json"))
 		if readErr == nil {
 			var state SupervisorState
-			if json.Unmarshal(b, &state) == nil && state.ManifestHash == wantHash && state.SupervisorPID > 1 && len(state.Processes) == len(want.Specs) {
-				ready := true
-				for _, process := range state.Processes {
-					if process.PID <= 1 || !process.Healthy || syscall.Kill(process.PID, syscall.Signal(0)) != nil {
-						ready = false
-						break
-					}
-				}
-				if ready {
+			if decodeErr := json.Unmarshal(b, &state); decodeErr != nil {
+				lastErr = fmt.Errorf("decode supervisor state: %w", decodeErr)
+			} else {
+				lastErr = nil
+				lastState = &state
+				if supervisorStateReady(state, wantHash, want.Specs) {
 					return nil
 				}
 			}
+		} else {
+			lastErr = readErr
 		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		if remaining > 500*time.Millisecond {
+			remaining = 500 * time.Millisecond
+		}
+		timer := time.NewTimer(remaining)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-time.After(500 * time.Millisecond):
+		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("supervisor readiness timeout")
+	if lastErr != nil {
+		return fmt.Errorf("supervisor readiness timeout: %w", lastErr)
+	}
+	if lastState != nil {
+		return fmt.Errorf("supervisor readiness timeout: supervisor_pid=%d manifest_hash=%s processes=%+v", lastState.SupervisorPID, lastState.ManifestHash, lastState.Processes)
+	}
+	return fmt.Errorf("supervisor readiness timeout: no state observed")
 }
 
 func supervise(ctx context.Context, stateDir, specPath string) error {
@@ -1366,7 +1398,7 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	var mu sync.Mutex
 	exits := make(chan exitNotice, len(sf.Specs)*2)
 	restarts := make(chan restartNotice, len(sf.Specs))
-	publish := func() {
+	publish := func() error {
 		mu.Lock()
 		defer mu.Unlock()
 		s := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano), SupervisorPID: os.Getpid(), ManifestHash: manifestHash}
@@ -1374,8 +1406,14 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 			s.Processes = append(s.Processes, r.state)
 		}
 		sort.Slice(s.Processes, func(i, j int) bool { return s.Processes[i].ID < s.Processes[j].ID })
-		raw, _ := json.MarshalIndent(s, "", "  ")
-		_ = atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), append(raw, '\n'), 0o600)
+		raw, err := json.MarshalIndent(s, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode supervisor state: %w", err)
+		}
+		if err := atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), append(raw, '\n'), 0o600); err != nil {
+			return fmt.Errorf("publish supervisor state: %w", err)
+		}
+		return nil
 	}
 	start := func(r *running) error {
 		cmd, exited, err := startSpecWithExit(ctx, r.spec)
@@ -1408,19 +1446,32 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 			return err
 		}
 	}
-	publish()
+	defer func() {
+		var commands []*exec.Cmd
+		for _, current := range runs {
+			commands = append(commands, current.cmd)
+		}
+		stopCommands(commands)
+	}()
+	if err := publish(); err != nil {
+		return err
+	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			var cmds []*exec.Cmd
-			for _, r := range runs {
-				cmds = append(cmds, r.cmd)
+			var commands []*exec.Cmd
+			for _, current := range runs {
+				commands = append(commands, current.cmd)
 			}
-			stopCommands(cmds)
-			publish()
-			return nil
+			stopCommands(commands)
+			for _, current := range runs {
+				current.state.PID = 0
+				current.state.Healthy = false
+				current.state.ExitError = "supervisor stopped"
+			}
+			return publish()
 		case notice := <-exits:
 			r := runs[notice.id]
 			if r == nil || notice.generation != r.generation {
@@ -1447,7 +1498,9 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 					}
 				}(r.spec.ID)
 			}
-			publish()
+			if err := publish(); err != nil {
+				return err
+			}
 		case notice := <-restarts:
 			r := runs[notice.id]
 			if r == nil || notice.generation != r.generation || r.state.PID != 0 {
@@ -1458,12 +1511,16 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 				// Feed the same bounded state machine without inventing a PID.
 				exits <- exitNotice{id: r.spec.ID, generation: r.generation, err: err}
 			}
-			publish()
+			if err := publish(); err != nil {
+				return err
+			}
 		case <-ticker.C:
 			for _, r := range runs {
 				r.state.Healthy = r.state.PID > 1 && healthOK(r.spec.HealthURL)
 			}
-			publish()
+			if err := publish(); err != nil {
+				return err
+			}
 		}
 	}
 }

@@ -121,7 +121,12 @@ func TestPersistedPlanSurvivesChangedLiveBalances(t *testing.T) {
 	cfg.Authority = originalAuthority
 	loaded.LiveFacts.FinalizedBlock++
 	loaded.LiveFacts.FinalizedBlockHash = "0x" + strings.Repeat("ef", 32)
-	loaded.LiveFacts.AlphaAvailableRao++
+	loaded.LiveFacts.AlphaAvailableRao += 10
+	loaded.LiveFacts.AlphaSourceStoredLockRao += 3
+	loaded.LiveFacts.AlphaSourceCollateralRao += 5
+	loaded.LiveFacts.WalletNetuidAlphaRao += 20
+	loaded.LiveFacts.WalletNetuidCollateralRao += 7
+	loaded.LiveFacts.AlphaTransferableRao += 5
 	loaded.LiveFacts.WalletFreeTAORao++
 	loaded.LiveFacts.BurnRao++
 	b, _ = json.Marshal(loaded)
@@ -578,5 +583,104 @@ func TestCarriedActionHistoryFailsBeforeMutationWhenReceiptIsMissing(t *testing.
 	}
 	if err := executor.verifyCarriedActionHistory(context.Background()); err == nil || !strings.Contains(err.Error(), "no such file") {
 		t.Fatalf("missing ancestor receipt was not rejected before chain access: %v", err)
+	}
+}
+
+func TestOrderedConcurrentAuditsAreBoundedAndReportPlanOrder(t *testing.T) {
+	const workers = 4
+	started := make(chan int, workers)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- runOrderedConcurrentAudits(workers, workers, func(index int) error {
+			started <- index
+			<-release
+			return nil
+		})
+	}()
+	for index := 0; index < workers; index++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("carried audits did not make bounded concurrent progress")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	err := runOrderedConcurrentAudits(6, 3, func(index int) error {
+		switch index {
+		case 1:
+			return errors.New("first-in-plan")
+		case 4:
+			return errors.New("later-in-plan")
+		default:
+			return nil
+		}
+	})
+	if err == nil || err.Error() != "first-in-plan" {
+		t.Fatalf("concurrent audit returned a nondeterministic error: %v", err)
+	}
+}
+
+func TestCarriedActionAuditCacheAvoidsSecondLiveVerificationPass(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	action := Action{ID: "subnet.verify-owner", IntentHash: "same-intent", Kind: "substrate-read"}
+	verified := JournalEntry{
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/subnet.verify-owner.json",
+	}
+	if err := journal.Append(verified); err != nil {
+		t.Fatal(err)
+	}
+	plan := &SetupPlan{PlanHash: "active", PriorPlanHashes: []string{"ancestor"}, Actions: []Action{action}}
+	uncached := &Executor{cfg: testResolvedConfig(t), stateDir: dir, plan: plan, journal: journal}
+	if err := uncached.Execute(context.Background(), action); err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("pre-fix duplicate verification failure was not reproduced: %v", err)
+	}
+	cached := &Executor{
+		cfg: testResolvedConfig(t), stateDir: dir, plan: plan, journal: journal,
+		carriedVerificationKeys: map[string]bool{carriedVerificationKey(verified): true},
+	}
+	if err := cached.Execute(context.Background(), action); err != nil {
+		t.Fatalf("already audited ancestor was verified twice: %v", err)
+	}
+}
+
+func TestCarriedActionAuditCacheCannotBypassCurrentOrDifferentEvidence(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	action := Action{ID: "subnet.verify-owner", IntentHash: "same-intent", Kind: "substrate-read"}
+	verified := JournalEntry{
+		DeploymentID: "deployment", PlanHash: "active", ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/subnet.verify-owner.json",
+	}
+	if err := journal.Append(verified); err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{
+		cfg: testResolvedConfig(t), stateDir: dir,
+		plan: &SetupPlan{PlanHash: "active", PriorPlanHashes: []string{"ancestor"}, Actions: []Action{action}}, journal: journal,
+		carriedVerificationKeys: map[string]bool{carriedVerificationKey(verified): true},
+	}
+	if err := executor.Execute(context.Background(), action); err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("current-plan evidence bypassed resume verification: %v", err)
 	}
 }

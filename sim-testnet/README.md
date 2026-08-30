@@ -31,7 +31,7 @@ Required `testnet-` keys:
 | `testnet-wallet-password` | A contained, non-symlink `vault-file:relative/path` to the encrypted wallet password. On execution hosts it must be owner-readable with no group/other permission bits (for example `chmod 600 vault/subtensor/testnet_wallet.password`). It is never accepted as a CLI flag or emitted in evidence. |
 | `testnet-netuid` | The existing nonzero netuid owned by that wallet. |
 | `testnet-spending-limit-tao-rao` | Maximum total testTAO outflow, as an integer number of rao. |
-| `testnet-spending-limit-alpha-rao` | Maximum existing subnet-alpha transferred into release roles, as integer rao. The wallet must already control a staking hotkey with at least this topology's planned alpha. |
+| `testnet-spending-limit-alpha-rao` | Maximum existing subnet-alpha transferred into release roles, as integer rao. The wallet must already control a registered staking hotkey with enough transferable alpha after conviction-lock and miner-collateral restrictions. The release profile reserves 20,000 alpha for demand custody plus reserve/independent validator bootstrap. |
 | `testnet-spending-limit-evm-gas-wei` | Maximum aggregate EVM gas funding/use, as a canonical nonnegative decimal integer in wei. Quote values above `uint64` in YAML; the release profile uses `"100000000000000000000"` (100 testTAO). |
 | `testnet-operator-api-origins` | Exactly two distinct bare `http(s)://host[:port]` origins, in NO 1/NO 2 order. Each must externally route to the corresponding API port and expose `/status`, `/verify/*`, `/sn/artifact*`, and `/sn/evidence*`. Launch verifies the signed content and history through these origins before publishing a portable manifest. |
 
@@ -59,12 +59,53 @@ node plus a physically independent observer. Evidence uses the existing shared
 `server/blob` MinIO configuration and bucket; no second object store is started.
 MinIO and Subtensor are the only external shared services.
 
-Runtime 451 distinguishes atomic alpha transfers (`TransferToggle`, managed by
+Runtime 452 distinguishes atomic alpha transfers (`TransferToggle`, managed by
 `sudo_set_toggle_transfer`) from the one-time trading/emission activation
 (`SubtokenEnabled`, managed by the subnet owner's `start_call`). The harness
 checks these as distinct storage postconditions.
 
-Runtime 451 also raises a subnet's burn after successful registration. The
+Plan schema v5 also keeps demand deposits and validator stake economically
+separate. The campaign deposit cap does not size validators. At one finalized
+checkpoint the harness reads the runtime transfer floor and alpha price, every
+registered hotkey's stake, the source position, coldkey-wide stake, stored
+conviction lock, and position/coldkey miner collateral. It then allocates the
+reserve validator to a 65% target share, allocates 1,000 alpha to the independent
+validator, requires the reserve to remain above 60%, and retains at least 2,000
+alpha at the source. The exact amounts are approval-bound and rechecked against
+live price, registration, lock, collateral, majority, and remainder immediately
+before signing. A changed or unavailable constraint stops without broadcasting.
+Runtime 452 stores each coldkey's entitlement as a `SafeFloat` share even though
+`transfer_stake_and_hotkey` conserves the exact integer amount in the hotkey
+aggregate. `getStake` may consequently floor the destination entitlement by one
+rao. Plan schema v8 binds that maximum shortfall explicitly, adds one rao to
+fresh bootstrap allocations, and sizes reserve majority from the minimum credit.
+Recovery verifies the destination at the transaction's parent and inclusion
+blocks; it never derives a pre-state from an already-mutated live balance. A
+finalized v5-v7 transfer that stopped at the old exact-balance observer is locally
+reconciled and may execute only one separately budgeted runtime-minimum repair,
+never the campaign allocation a second time.
+
+Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
+the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
+452 may floor each destination entitlement by one rao, so every reserve call
+stages exactly two allowance rao and requires the final sink delta to remain in
+`[principal, principal+2]`. The plan binds the number of reserve calls and this
+per-call allowance in schema v9. Schema v8 remains byte-for-byte authenticatable
+as a revision ancestor; its meaning is not strengthened in place. Revisions
+retain every verified repair in cumulative spend and add only one runtime-minimum
+top-up if conservative verified credit is below the stricter absolute campaign
+requirement.
+
+An already-live immutable custody generation is never redeployed merely because
+the coordinator changes. A repeated UUPS revision binds the exact next deployer
+nonce and CREATE address, the finalized ERC-1967 implementation slot and active
+runtime, every prior full runtime hash, and normalized executable hashes for the
+reserve, vault, and precompile probe. Normalization removes only constructor
+immutables and Solidity metadata; any executable custody drift fails closed.
+The new implementation is additive, while the reserve/vault/proxy addresses and
+their historical evidence remain unchanged.
+
+Runtime 452 also raises a subnet's burn after successful registration. The
 release plan therefore reserves at most `100000000` rao per registration and
 binds that same ceiling into every native `register_limit` and EVM
 `registerLimit` action. EVM callers are funded at their SS58 mirrors and pass
@@ -73,7 +114,7 @@ caller mirror. Contract registrations supply the full ceiling and return the
 unburned surplus, so an in-flight price increase cannot produce an underfunded
 call below the approved cap.
 
-Plan schema v3 binds every EVM transaction in two dimensions:
+Plan schema v5 binds every EVM transaction in two dimensions:
 `maximum_gas_units` and `maximum_fee_per_gas_wei`. The checked-in fee ceiling is
 100 gwei. Fixed setup unit limits are derived from the locked Foundry gas report
 and include the manager's 20% plus 25,000-unit live-estimate margin. Signer
@@ -148,6 +189,15 @@ hash binds the complete release lock, harness/public/hyperparameter manifests an
 all non-secret values resolved from the vault, not only their YAML references. The
 signed policy has its own canonical hash. Neither command submits a transaction or
 extrinsic.
+
+Runtime-452 transfer economics are approval-bound explicitly: the exact
+finalized Wasm hash must match the release lock, and that block's
+`SubtensorModule.InitialMinTransfer` metadata constant—the value used by the
+runtime's internal `DefaultMinTransfer` function—must equal
+`public.yml:chain.expected_default_min_transfer_rao`. Every planned alpha
+transfer is sized from it at the same finalized snapshot, and the value is an
+immutable settlement-vault constructor/runtime word. Historical v5-v8 plans
+keep their authenticated wire semantics; current approvals use plan schema v9.
 
 The public-chain integration probes are opt-in:
 
@@ -233,8 +283,10 @@ independently applied CRv4 vectors and self masks, isolated deposits and convict
 public roots, claims from both pools, cryptographically reconstructed head bindings,
 a nonzero native head weight, a real promotion/demotion transition across the
 200-slot boundary, exact selected/rejected native reward channels, one-tier payout
-exclusion, exact signed-policy max-weight-cap compliance, reserve principal plus
-auto-compounded yield, process fault recovery and exact rao conservation.
+exclusion, actual `ClaimPaid` settlement (distinct from accepted/deferred claim
+credit), exact signed-policy max-weight-cap compliance, reserve principal plus
+auto-compounded yield, process fault recovery and both exact vault conservation
+identities (`captured = paid + escrow`, `escrow = pending + outstanding`).
 `production-soak` schedules the testnet-only 2,400-block (approximately eight-hour)
 policy and immunity period, deliberately under-deposits one operator and proves
 that both validators zero its pool until an exact later deposit recovers it,
@@ -247,7 +299,7 @@ separately reviewed 50,400-block/seven-day cadence.
 ## Continuous adversarial campaign
 
 The `release-1.0` and `production-soak` scenarios always load the release-locked
-[`adversarial-matrix-v1.json`](../docs/spec/adversarial-matrix-v1.json). Its 54
+[`adversarial-matrix-v1.json`](../docs/spec/adversarial-matrix-v1.json). Its 56
 rows cover Yuma/YC3 cabals, stale and reveal-following weight copies, liquid-alpha
 bond timing and validator-permit churn, all eight published Subtensor security
 advisories, historical runtime atomicity/accounting/identity/resource failures,
@@ -256,7 +308,8 @@ proxy-stake MEV/slippage, four security-relevant Bittensor SDK/transport issue
 families (missing signatures, finality-era expiry, plaintext unauthenticated
 transport, and constant body hashes), runtime/precompile drift, identity
 and proxy churn, commitment-field parser confusion, operator/verification abuse, artifact equivocation, contract
-authorization/custody, settlement, and dependency failures.
+authorization/custody, settlement, runtime transfer-floor/durable-credit, and
+dependency failures.
 
 Seven attributed actors start before the happy path and remain active until
 after its final reconciliation:

@@ -2,10 +2,70 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func runTestGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, args...)...)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+}
+
+func TestCleanGitSubtreeHashRejectsRuntimeAssetDrift(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	if err := os.Mkdir(filepath.Join(root, "all"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	asset := filepath.Join(root, "all", "asset.mmdb")
+	if err := os.WriteFile(asset, []byte("reviewed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "all/asset.mmdb")
+	runTestGit(t, root, "commit", "-qm", "review shared assets")
+	first, err := cleanGitSubtreeHash(root, "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(asset, []byte("drifted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanGitSubtreeHash(root, "all"); err == nil || !strings.Contains(err.Error(), "differs from reviewed HEAD") {
+		t.Fatalf("modified shared asset was accepted: %v", err)
+	}
+	if err := os.WriteFile(asset, []byte("reviewed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	untracked := filepath.Join(root, "all", "unreviewed.yml")
+	if err := os.WriteFile(untracked, []byte("unreviewed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanGitSubtreeHash(root, "all"); err == nil {
+		t.Fatal("untracked shared asset was accepted")
+	}
+	if err := os.Remove(untracked); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(asset, []byte("reviewed-v2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "all/asset.mmdb")
+	runTestGit(t, root, "commit", "-qm", "update shared assets")
+	second, err := cleanGitSubtreeHash(root, "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("reviewed shared asset update did not change release-lock hash")
+	}
+}
 
 func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	dir := t.TempDir()
@@ -117,10 +177,10 @@ func TestReleaseLockMatchesCheckout(t *testing.T) {
 func TestReleaseLockRejectsGeneratedRuntimeDrift(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Release = &ReleaseLock{SchemaVersion: 1, Release: "1.0"}
-	cfg.Release.Runtime.SourceTag = "release-v451"
-	cfg.Release.Runtime.SourceCommit = "d78d9cc6a6ee4d805f74a35414baaef8be025a5f"
-	cfg.Release.Runtime.CodeHash = "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08"
-	cfg.Release.Runtime.SpecVersion = 451
+	cfg.Release.Runtime.SourceTag = "testnet"
+	cfg.Release.Runtime.SourceCommit = "da06f033663896ef2fdbbfc3ecc68ca908fba0f5"
+	cfg.Release.Runtime.CodeHash = "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc"
+	cfg.Release.Runtime.SpecVersion = 452
 	cfg.Release.Runtime.TransactionVersion = 1
 	cfg.Release.Runtime.Image = "image@sha256:" + strings.Repeat("0", 64)
 	cfg.Release.Dependencies = map[string]string{"postgres": "postgres@sha256:" + strings.Repeat("0", 64)}

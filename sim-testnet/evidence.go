@@ -283,6 +283,7 @@ type PublicDeploymentManifest struct {
 	PlanHash                string                     `json:"plan_hash"`
 	ReleaseLockHash         string                     `json:"release_lock_hash"`
 	Contracts               *ContractDeployment        `json:"contracts"`
+	CoordinatorUpgrade      CoordinatorUpgrade         `json:"coordinator_upgrade"`
 	Identities              json.RawMessage            `json:"identities"`
 	SetupEvidence           map[string]json.RawMessage `json:"setup_evidence"`
 	Operators               []PublicOperator           `json:"operators"`
@@ -324,6 +325,7 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	}
 	if plan != nil {
 		manifest.PlanHash = plan.PlanHash
+		manifest.CoordinatorUpgrade = plan.CoordinatorUpgrade
 	}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		if len(cfg.OperatorAPIOrigins) != cfg.Config.Topology.Operators {
@@ -386,7 +388,7 @@ func loadPublicSetupEvidence(cfg *ResolvedConfig, stateDir string) (map[string]j
 	for name, path := range paths {
 		b, err := os.ReadFile(path)
 		if err != nil || !json.Valid(b) {
-			return nil, fmt.Errorf("public setup evidence %s is missing or invalid: %w", name, err)
+			return nil, stateMismatchError(err, "public setup evidence %s is missing or invalid", name)
 		}
 		result[name] = append(json.RawMessage(nil), bytes.TrimSpace(b)...)
 	}

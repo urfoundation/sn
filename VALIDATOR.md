@@ -839,11 +839,11 @@ for each NO-pool UID n:
 normalize pool so Σ pool = 1 − θ
 
 w = head ⊕ pool                            # ONE vector over all miner UIDs
-apply signed-policy max_weight_limit_u16   # v451 native getter is 65535/no-cap; fail if infeasible
+apply signed-policy max_weight_limit_u16   # v452 native getter is 65535/no-cap; fail if infeasible
 commit / reveal w                          # commit-reveal ON: the score / θ signal is subjective, anti-copy
 ```
 
-Runtime v451 retains `MaxWeightsLimit` storage but its effective getter is
+Runtime v452 retains `MaxWeightsLimit` storage but its effective getter is
 hard-coded to `65535`, so changing that storage does not impose a native cap.
 Release 1.0 validators therefore load the cap from the exact signed policy,
 apply it before serialization, persist it with the intent, and audit the

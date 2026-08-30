@@ -55,19 +55,30 @@ Each contract has a distinct H160-mirrored Substrate coldkey.
 1. Every NO has an isolated coordinator-owned deposit hotkey plus a scoped EVM
    deposit signer. The native funding intent stages an exact alpha amount there.
 2. `deposit` or `addConviction` checks signer, nonce, deadline, policy caps, and
-   available stake. In one EVM transaction it moves the amount to the reserve
-   hotkey, transfers it to the immutable sink coldkey, records principal, and
-   emits the policy-bound event. Any failed runtime call reverts all accounting.
+   available stake. In one EVM transaction it stages the principal plus a
+   two-rao runtime-452 allowance, moves it to the reserve hotkey, transfers it
+   to the immutable sink coldkey, records only the requested principal, and
+   emits the policy-bound event. Each of the two destination share pools may
+   floor one rao; the sink must still receive at least the full principal and
+   can receive at most the two staged donation rao. Any failed runtime call or
+   wider delta reverts all accounting.
 3. During installation the immutable vault limit-registers its escrow hotkey
-   exactly once under its own mapped coldkey. Runtime 451 burns from the funded
+   exactly once under its own mapped coldkey. Runtime 452 burns from the funded
    caller mirror, so the vault calls the neuron precompile with zero call value.
    It also owns one pool hotkey per NO. A timely boundary call moves the
-   complete realized pool stake to that escrow; a missed boundary defers the
-   still-on-pool stake rather than misattributing a multi-epoch delta.
+   complete realized pool stake to that escrow. The immutable
+   `ST_MINIMUM_TRANSFER_TAO_RAO` must equal finalized runtime-452
+   `DefaultMinTransfer`: a smaller observation remains on the pool to
+   accumulate, while a missed boundary defers it rather than misattributing a
+   multi-epoch delta. Exact pool/escrow deltas are measured before accounting.
 4. The NO commits a root plus canonical artifact hash. Finalization fixes one
    vault entitlement containing captured emission plus same-NO carry. Claims use
-   the shared double-hashed OZ Merkle leaf and transfer alpha stake directly to
-   the provider coldkey. Expired/unclaimed value remains only that NO's carry.
+   the shared double-hashed OZ Merkle leaf. An accepted share first becomes
+   durable credit for the provider coldkey. Sub-floor credits aggregate across
+   claims; qualifying credit transfers directly to that coldkey only after
+   exact source/destination deltas. Runtime/price failures preserve the credit,
+   which can be retried permissionlessly. Expired unclaimed value remains only
+   that NO's carry; accepted credit is never returned to carry.
 
 The executable vault identities are:
 
@@ -105,8 +116,10 @@ deregistration, or UID reuse.
 ERC1967 proxy, limit-registers the vault-owned escrow with the required
 runtime-enforced `ST_REGISTRATION_BURN_LIMIT_RAO` (funded at the full ceiling;
 the actual burn is charged and surplus is returned), then irreversibly fixes
-the proxy as sink recorder
-and vault coordinator. It accepts only Bittensor testnet chain 945 or mainnet chain 964.
+the proxy as sink recorder and vault coordinator. The required
+`ST_MINIMUM_TRANSFER_TAO_RAO` is embedded in vault creation/runtime bytecode and
+must match the finalized public chain manifest. It accepts only Bittensor
+testnet chain 945 or mainnet chain 964.
 Testnet requires a dedicated EOA owner. Mainnet calls the standard Safe
 `getThreshold()`/`getOwners()` views and refuses deployment unless the owner is
 exactly a 2-of-3 Safe with three distinct nonzero owners. Deployer, owner,

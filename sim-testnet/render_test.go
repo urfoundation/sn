@@ -121,10 +121,14 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 func TestOperatorEnvironmentUsesDiscoveredPlatformConfig(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Repos.PlatformConfig = filepath.Join(t.TempDir(), "portable-config")
-	env := operatorBaseEnv(cfg, t.TempDir(), 1, "127.0.0.11")
-	want := filepath.Join(cfg.Repos.PlatformConfig, "local")
+	stateDir := t.TempDir()
+	env := operatorBaseEnv(cfg, stateDir, 1, "127.0.0.11")
+	want := operatorConfigHome(stateDir, 1)
 	if env["WARP_CONFIG_HOME"] != want {
 		t.Fatalf("WARP_CONFIG_HOME = %q, want %q", env["WARP_CONFIG_HOME"], want)
+	}
+	if env["WARP_ENV"] != operatorEnvironment(1) || env["WARP_ENV"] == "local" {
+		t.Fatalf("operator environment lost its isolated non-local identity: %q", env["WARP_ENV"])
 	}
 	if env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 		t.Fatalf("operator bypasses workload RPC proxy: %q", env["BRINGYOUR_SUBTENSOR_HOSTNAME"])

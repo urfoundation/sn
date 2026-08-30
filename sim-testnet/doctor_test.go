@@ -12,12 +12,104 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	gsrpcTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
+
+func TestDoctorPlanBudgetForStateUsesJournaledProgressAcrossReleaseDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := doctorPlanBudgetForState(cfg, t.TempDir())
+	if err != nil || fresh != nil {
+		t.Fatalf("fresh doctor budget=%+v error=%v", fresh, err)
+	}
+	registration := actionByID(t, plan, "churn.register.1")
+	journal, err := OpenJournal(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postconditionPath, err := postconditionRelativePath(plan.PlanHash, registration.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Append(JournalEntry{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash,
+		ActionID: registration.ID, IntentHash: registration.IntentHash, Stage: StageVerified,
+		PostconditionHash: "0xpostcondition", PostconditionPath: postconditionPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	driftedRelease := *cfg.Release
+	driftedRelease.Release = "1.0-runtime-drift"
+	cfg.Release = &driftedRelease
+	approved, err := doctorPlanBudgetForState(cfg, stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved == nil || approved.Plan.PlanHash != plan.PlanHash || approved.Remaining.Registrations != plan.MaximumSpend.Registrations-1 {
+		t.Fatalf("partial doctor budget=%+v", approved)
+	}
+	journalPath := filepath.Join(stateDir, "journal.jsonl")
+	tampered, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered = []byte(strings.Replace(string(tampered), `"stage":"postcondition_verified"`, `"stage":"failed"`, 1))
+	if err := os.WriteFile(journalPath, tampered, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := doctorPlanBudgetForState(cfg, stateDir); err == nil {
+		t.Fatal("doctor accepted a tampered partial-progress journal")
+	}
+}
+
+func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := &doctorPlanBudget{Plan: plan, Remaining: plan.MaximumSpend, StateDir: t.TempDir()}
+	current := partialRevisionFacts(t, cfg, cfg.Config.Topology.ChurnFloorUIDs)
+	if err := validateApprovedDoctorFacts(cfg, approved, current); err != nil {
+		t.Fatalf("journaled partial registration prefix was rejected: %v", err)
+	}
+	drifted := *current
+	drifted.ExistingUIDs = append([]ExistingUIDFact(nil), current.ExistingUIDs...)
+	drifted.ExistingUIDs[len(drifted.ExistingUIDs)-1].Hotkey = "0x" + strings.Repeat("ab", 32)
+	if err := validateApprovedDoctorFacts(cfg, approved, &drifted); err == nil || !strings.Contains(err.Error(), "expected registration prefix") {
+		t.Fatalf("adjacent unapproved UID drift was accepted: %v", err)
+	}
+}
 
 type doctorRPCFixture struct {
 	parsed       abi.ABI
@@ -404,6 +496,82 @@ func TestApprovedSetupFactsUseOnlyTheRemainingBudget(t *testing.T) {
 	}
 	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err != nil {
 		t.Fatalf("burn blocked a resume after every registration was verified: %v", err)
+	}
+}
+
+func TestApprovedSetupFactsRejectsSourceRemainderAndTransferabilityLoss(t *testing.T) {
+	plan := &SetupPlan{
+		Schema: "urnetwork-sim-plan-v5", LiveFacts: *testSetupFacts(),
+		RegistrationBurnLimitRao:     testSetupFacts().BurnRao + 10,
+		MinimumSourceRemainingRao:    2_000_000_000_000,
+		BootstrapBurnHalfLifeBlocks:  1,
+		ProductionBurnHalfLifeBlocks: 360,
+		Limits:                       Spend{TAORao: 100_000_000_000, AlphaRao: 20_000_000_000_000},
+	}
+	current := *testSetupFacts()
+	current.AlphaAvailableRao = plan.MinimumSourceRemainingRao + 9
+	if err := validateApprovedSetupFacts(plan, &current, Spend{AlphaRao: 10}); err == nil || !strings.Contains(err.Error(), "minimum remainder") {
+		t.Fatalf("source remainder loss was accepted: %v", err)
+	}
+	current = *testSetupFacts()
+	current.AlphaTransferableRao = 9
+	if err := validateApprovedSetupFacts(plan, &current, Spend{AlphaRao: 10}); err == nil || !strings.Contains(err.Error(), "transferable") {
+		t.Fatalf("lock/collateral capacity loss was accepted: %v", err)
+	}
+}
+
+func TestApprovedSetupFactsRebindPreV5AlphaMinimumOnlyThroughRevision(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Schema = "urnetwork-sim-plan-v4"
+	plan.AlphaTransferMarginBPS = 0
+	plan.MinimumSourceRemainingRao = 0
+	plan.LiveFacts.InitialMinStakeRao = 0
+	current := *testSetupFacts()
+	if err := validateApprovedSetupFacts(plan, &current, plan.MaximumSpend); err != nil {
+		t.Fatalf("pre-v5 ancestor could not reach revision: %v", err)
+	}
+	current.InitialMinStakeRao = 0
+	if err := validateApprovedSetupFacts(plan, &current, plan.MaximumSpend); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("missing live transfer minimum was accepted: %v", err)
+	}
+	plan.Schema = "urnetwork-sim-plan-v5"
+	current.InitialMinStakeRao = testSetupFacts().InitialMinStakeRao
+	if err := validateApprovedSetupFacts(plan, &current, plan.MaximumSpend); err == nil || !strings.Contains(err.Error(), "changed from approved") {
+		t.Fatalf("v5 plan without an approved transfer minimum was accepted: %v", err)
+	}
+}
+
+func TestApprovedSetupFactsV8BindsDefaultMinTransfer(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := *testSetupFacts()
+	plan, err := buildPlan(cfg, &approved, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := approved
+	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err != nil {
+		t.Fatalf("unchanged runtime DefaultMinTransfer was rejected: %v", err)
+	}
+	current.DefaultMinTransferRao++
+	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err == nil || !strings.Contains(err.Error(), "DefaultMinTransfer changed") {
+		t.Fatalf("runtime DefaultMinTransfer drift was accepted: %v", err)
+	}
+	current = approved
+	current.DefaultMinTransferRao = 0
+	if err := validateApprovedSetupFacts(plan, &current, Spend{}); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("missing runtime DefaultMinTransfer was accepted: %v", err)
 	}
 }
 

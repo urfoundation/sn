@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -21,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"gopkg.in/yaml.v3"
 
@@ -31,19 +34,20 @@ import (
 )
 
 type Executor struct {
-	cfg                  *ResolvedConfig
-	stateDir             string
-	plan                 *SetupPlan
-	journal              *Journal
-	roles                *RoleSecrets
-	substrate            *SubstrateManager
-	independentSubstrate *SubstrateManager
-	independentEVM       *ethclient.Client
-	deployer, owner      *EVMTxManager
-	guardian             *EVMTxManager
-	oracle, keeper       *EVMTxManager
-	deposits             map[int]*EVMTxManager
-	payloads             *DeploymentPayloads
+	cfg                     *ResolvedConfig
+	stateDir                string
+	plan                    *SetupPlan
+	journal                 *Journal
+	roles                   *RoleSecrets
+	substrate               *SubstrateManager
+	independentSubstrate    *SubstrateManager
+	independentEVM          *ethclient.Client
+	deployer, owner         *EVMTxManager
+	guardian                *EVMTxManager
+	oracle, keeper          *EVMTxManager
+	deposits                map[int]*EVMTxManager
+	payloads                *DeploymentPayloads
+	carriedVerificationKeys map[string]bool
 }
 
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
@@ -191,7 +195,14 @@ func remainingPlanSpend(plan *SetupPlan, entries []JournalEntry) (Spend, error) 
 		}
 	}
 	for _, action := range plan.Actions {
-		if !verified[action.ID+"\x00"+action.IntentHash] || action.Kind == "budget-reserve" {
+		verifiedAction := verified[action.ID+"\x00"+action.IntentHash]
+		for _, accepted := range action.AcceptedPriorIntentHashes {
+			verifiedAction = verifiedAction || verified[action.ID+"\x00"+accepted]
+		}
+		if action.Kind == "substrate-reconciliation" {
+			verifiedAction = verifiedAction || hasFinalizedAlphaRecoveryEvidence(plan, action, entries)
+		}
+		if !verifiedAction || action.Kind == "budget-reserve" {
 			continue
 		}
 		gasComparison, gasErr := action.Spend.EVMGasWei.Cmp(remaining.EVMGasWei)
@@ -208,6 +219,25 @@ func remainingPlanSpend(plan *SetupPlan, entries []JournalEntry) (Spend, error) 
 		remaining.SubnetCreations -= action.Spend.SubnetCreations
 	}
 	return remaining, nil
+}
+
+func hasFinalizedAlphaRecoveryEvidence(plan *SetupPlan, action Action, entries []JournalEntry) bool {
+	if plan == nil || action.Kind != "substrate-reconciliation" {
+		return false
+	}
+	planHash := action.Parameters[alphaRecoveryPlanHashParameter]
+	intentHash := action.Parameters[alphaRecoveryIntentHashParameter]
+	transactionHash := action.Parameters[alphaRecoveryTransactionHashParameter]
+	block, err := strconv.ParseUint(action.Parameters[alphaRecoveryBlockParameter], 10, 64)
+	if err != nil || block == 0 || !plan.allowedPlanHashes()[planHash] || intentHash == "" || transactionHash == "" {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.PlanHash == planHash && entry.ActionID == action.ID && entry.IntentHash == intentHash && entry.Stage == StageFinalized && strings.EqualFold(entry.TransactionHash, transactionHash) && entry.BlockNumber == block && strings.EqualFold(entry.BlockHash, action.Parameters[alphaRecoveryBlockHashParameter]) {
+			return true
+		}
+	}
+	return false
 }
 
 // Extract the exact reviewed ceiling from both the plan and action. Every
@@ -241,7 +271,7 @@ func (e *Executor) boundedRegistrationBurn(action Action) (uint64, uint64, error
 	return burn, limit, nil
 }
 
-// Contract registration receives the full approved ceiling. Runtime 451 burns
+// Contract registration receives the full approved ceiling. Runtime 452 burns
 // the current rao price and the release contracts return any surplus.
 func registrationFundingWei(limitRao uint64) *big.Int {
 	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
@@ -293,7 +323,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// safety checks against the exact unverified spend so a persisted plan
 	// cannot bypass changed RPCs, services, facts, repository locks, or host
 	// readiness, while an honest partial deployment remains resumable.
-	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining})
+	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
 	if err := doctor.Error(); err != nil {
 		return fmt.Errorf("doctor must pass immediately before apply: %w", err)
 	}
@@ -308,6 +338,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// executor. In particular, a missing Docker daemon or a broken build must
 	// never be discovered after contracts or registrations have been written.
 	if requiresManagedDependencies(cmd) {
+		if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
+			return fmt.Errorf("prepare operator config overlays: %w", err)
+		}
 		if err := startDependencies(ctx, cfg); err != nil {
 			return err
 		}
@@ -399,7 +432,7 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
-	if p.Schema != "urnetwork-sim-plan-v3" || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
+	if p.Schema != currentSetupPlanSchema || p.Release != "1.0" || p.ReleaseLockHash == "" || p.ReleaseLockHash != releaseLockHash || p.ResolvedInputsHash == "" || p.ResolvedInputsHash != resolvedHash || p.DeploymentID != cfg.Config.Deployment.DeploymentID || p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis || p.Netuid != cfg.Netuid || p.ConfigHash != cfg.ConfigHash || p.PolicyHash != cfg.PolicyHash || p.Limits != configuredPlanLimits(cfg) || p.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || p.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || p.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || p.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || p.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao || p.BootstrapBurnHalfLifeBlocks != bootstrapBurnHalfLife || p.ProductionBurnHalfLifeBlocks != productionBurnHalfLife {
 		return nil, errPersistedPlanIdentityMismatch
 	}
 	roles, err := derivePublicRoles(cfg)
@@ -418,21 +451,43 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 // identity is checked separately so a valid ancestor can seed an explicit
 // revision without making a corrupted or hand-edited file refreshable.
 func readPersistedPlan(stateDir string) (*SetupPlan, error) {
-	b, err := os.ReadFile(filepath.Join(stateDir, "plan.json"))
+	return readPersistedPlanFile(filepath.Join(stateDir, "plan.json"))
+}
+
+// Authenticate one stored plan snapshot against the canonical hash encoded in
+// that file. Ancestor recovery uses the same decoder as the active plan so a
+// hand-edited history file cannot authorize a carried transaction.
+func readPersistedPlanFile(path string) (*SetupPlan, error) {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
+	return decodePersistedPlanBytes(b)
+}
+
+// Authenticate one already-read wire image so archival can preserve the exact
+// reviewed bytes without a read/decode/re-read race or a struct re-marshal.
+func decodePersistedPlanBytes(b []byte) (*SetupPlan, error) {
 	var p SetupPlan
 	if err := json.Unmarshal(b, &p); err != nil {
 		return nil, fmt.Errorf("persisted setup plan: %w", err)
 	}
-	if p.Schema != "urnetwork-sim-plan-v1" && p.Schema != "urnetwork-sim-plan-v2" && p.Schema != "urnetwork-sim-plan-v3" {
+	if !supportedSetupPlanSchema(p.Schema) {
 		return nil, fmt.Errorf("persisted setup plan has unsupported schema %q", p.Schema)
 	}
 	want := p.PlanHash
-	got, err := p.hash()
+	got, err := persistedSetupPlanHash(b, p.Schema)
 	if err != nil {
 		return nil, err
+	}
+	if want != "" && got != want {
+		legacy, applicable, legacyErr := legacyArchivedSetupPlanHash(b, p.Schema)
+		if legacyErr != nil {
+			return nil, legacyErr
+		}
+		if applicable && legacy == want {
+			got = legacy
+		}
 	}
 	if want == "" || got != want {
 		return nil, fmt.Errorf("persisted setup plan hash mismatch: got %s want %s", got, want)
@@ -449,15 +504,19 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 		return err
 	}
 	planBytes := append(b, '\n')
-	if prior, priorErr := readPersistedPlan(stateDir); priorErr == nil && prior.PlanHash != p.PlanHash {
-		priorBytes, marshalErr := json.MarshalIndent(prior, "", "  ")
-		if marshalErr != nil {
-			return marshalErr
+	priorPath := filepath.Join(stateDir, "plan.json")
+	priorBytes, priorErr := os.ReadFile(priorPath)
+	if priorErr == nil {
+		prior, decodeErr := decodePersistedPlanBytes(priorBytes)
+		if decodeErr != nil {
+			return decodeErr
 		}
-		if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), append(priorBytes, '\n'), 0o600); err != nil {
-			return err
+		if prior.PlanHash != p.PlanHash {
+			if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), priorBytes, 0o600); err != nil {
+				return err
+			}
 		}
-	} else if priorErr != nil && !errors.Is(priorErr, os.ErrNotExist) {
+	} else if !errors.Is(priorErr, os.ErrNotExist) {
 		return priorErr
 	}
 	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(p.PlanHash)+".json"), planBytes, 0o600); err != nil {
@@ -496,6 +555,8 @@ func actionRequiresCurrentPostcondition(action Action) bool {
 		return false
 	case strings.HasPrefix(action.ID, "alpha.transfer.operator-deposit."):
 		return false
+	case strings.HasPrefix(action.ID, "alpha.repair."):
+		return false
 	default:
 		return true
 	}
@@ -505,7 +566,7 @@ func (e *Executor) consumedActionTransaction(action Action, verified JournalEntr
 	if action.Kind != "substrate-extrinsic" {
 		return JournalEntry{}, fmt.Errorf("consumed action %s is not a native extrinsic", action.ID)
 	}
-	if verified.Stage != StageVerified || verified.ActionID != action.ID || verified.IntentHash != action.IntentHash || !e.plan.allowedPlanHashes()[verified.PlanHash] {
+	if verified.Stage != StageVerified || verified.ActionID != action.ID || !actionAcceptsIntent(action, verified.IntentHash) || !e.plan.allowedPlanHashes()[verified.PlanHash] {
 		return JournalEntry{}, fmt.Errorf("consumed action %s has invalid verified plan evidence", action.ID)
 	}
 	transaction, ok := e.journal.LatestTransaction(verified.PlanHash, action.ID, action.IntentHash)
@@ -515,15 +576,99 @@ func (e *Executor) consumedActionTransaction(action Action, verified JournalEntr
 	return transaction, nil
 }
 
-func (e *Executor) verifyConsumedActionHistory(action Action, verified JournalEntry) error {
-	transaction, err := e.consumedActionTransaction(action, verified)
-	if err != nil {
-		return err
+func observedPostconditionMatches(recorded, replayed map[string]any) error {
+	if recorded == nil || replayed == nil {
+		return errors.New("historical postcondition observation is unavailable")
 	}
-	return e.verifySubstrateTransactionEvidence(
-		ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
-		transaction.TransactionHash,
-	)
+	recordedHash, err := canonicalHashHex(recorded)
+	if err != nil {
+		return fmt.Errorf("hash recorded historical observation: %w", err)
+	}
+	replayedHash, err := canonicalHashHex(replayed)
+	if err != nil {
+		return fmt.Errorf("hash replayed historical observation: %w", err)
+	}
+	if replayedHash != recordedHash {
+		return fmt.Errorf("historical postcondition replay hash %s differs from recorded %s", replayedHash, recordedHash)
+	}
+	return nil
+}
+
+// A funding action can converge without broadcasting when an earlier plan
+// already left enough native value at its EVM mirror. Once an approved
+// descendant spends that value, neither the live balance nor a transaction
+// belonging to the converged action can prove the point-in-time assertion.
+// V3+ receipts bind the exact EVM-RPC hash domain, so replay both finalized
+// observations at their recorded blocks and require byte-equivalent state.
+func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, action Action, record *ActionPostcondition) error {
+	if record == nil || (record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") {
+		return errors.New("consumed EVM funding action has no replayable v3+ postcondition")
+	}
+	if e.deployer == nil || e.deployer.client == nil {
+		return errors.New("operational EVM history client is unavailable")
+	}
+	finalized, err := finalizedEVMHead(ctx, e.deployer.client)
+	if err != nil {
+		return fmt.Errorf("operational finalized EVM head: %w", err)
+	}
+	if err := verifyEVMCheckpoint(ctx, e.deployer.client, finalized, record.EVMFinalized); err != nil {
+		return fmt.Errorf("operational historical EVM checkpoint: %w", err)
+	}
+	replayed, err := e.actionPostState(ctx, action, record.EVMFinalized)
+	if err != nil {
+		return fmt.Errorf("operational historical EVM state: %w", err)
+	}
+	if err := observedPostconditionMatches(record.Observed, replayed); err != nil {
+		return fmt.Errorf("operational historical EVM state: %w", err)
+	}
+
+	if !independentRPCRequired(e.cfg) {
+		if record.IndependentEVMFinalized.Number != record.EVMFinalized.Number || !strings.EqualFold(record.IndependentEVMFinalized.Hash, record.EVMFinalized.Hash) {
+			return errors.New("shared-provider historical EVM checkpoints differ")
+		}
+		if err := observedPostconditionMatches(record.Observed, record.IndependentObserved); err != nil {
+			return fmt.Errorf("shared-provider historical EVM clone: %w", err)
+		}
+		return nil
+	}
+	if e.independentEVM == nil {
+		return errors.New("independent EVM history client is unavailable")
+	}
+	observer := e.independentReadExecutor()
+	independentFinalized, err := finalizedEVMHead(ctx, e.independentEVM)
+	if err != nil {
+		return fmt.Errorf("independent finalized EVM head: %w", err)
+	}
+	if err := verifyEVMCheckpoint(ctx, e.independentEVM, independentFinalized, record.IndependentEVMFinalized); err != nil {
+		return fmt.Errorf("independent historical EVM checkpoint: %w", err)
+	}
+	independentReplayed, err := observer.actionPostState(ctx, action, record.IndependentEVMFinalized)
+	if err != nil {
+		return fmt.Errorf("independent historical EVM state: %w", err)
+	}
+	if err := observedPostconditionMatches(record.IndependentObserved, independentReplayed); err != nil {
+		return fmt.Errorf("independent historical EVM state: %w", err)
+	}
+	return nil
+}
+
+func (e *Executor) verifyConsumedActionHistory(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition) error {
+	transaction, err := e.consumedActionTransaction(action, verified)
+	if err == nil {
+		return e.verifySubstrateTransactionEvidence(
+			ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
+			transaction.TransactionHash,
+		)
+	}
+	transactionErr := err
+	if action.Kind == "substrate-extrinsic" && strings.HasPrefix(action.ID, "evm.fund-") {
+		if replayErr := e.verifyConsumedEVMFundingPostcondition(ctx, action, record); replayErr == nil {
+			return nil
+		} else {
+			return fmt.Errorf("finalized transaction evidence: %v; finalized historical EVM postcondition: %w", transactionErr, replayErr)
+		}
+	}
+	return transactionErr
 }
 
 // Revalidate one terminal action using live state where it still holds, then
@@ -531,20 +676,100 @@ func (e *Executor) verifyConsumedActionHistory(action Action, verified JournalEn
 // point-in-time balances. This also supports convergence actions that adopted
 // a balance already present and therefore have no transaction of their own.
 func (e *Executor) verifyVerifiedActionState(ctx context.Context, action Action, verified JournalEntry) error {
-	if err := e.verifyPersistedPostcondition(verified); err != nil {
+	record, err := e.readPersistedPostcondition(verified)
+	if err != nil {
 		return fmt.Errorf("persisted postcondition: %w", err)
 	}
+	return e.verifyVerifiedActionStateWithRecord(ctx, action, verified, record, nil)
+}
+
+// These postconditions are wholly local or native-chain observations. Keep
+// the allowlist explicit and conservative: an unfamiliar future action uses
+// an EVM checkpoint until its verifier is classified deliberately.
+func actionPostStateRequiresEVMCheckpoint(action Action) bool {
+	switch {
+	case action.ID == "subnet.verify-owner":
+		return false
+	case strings.HasPrefix(action.ID, "subnet.hyperparameter."):
+		return false
+	case strings.HasPrefix(action.ID, "production.hyperparameter."):
+		return false
+	case strings.HasPrefix(action.ID, "fleet.fund."):
+		return false
+	case strings.HasPrefix(action.ID, "fleet.fund-hotkey."):
+		return false
+	case strings.HasPrefix(action.ID, "churn.fund."):
+		return false
+	case strings.HasPrefix(action.ID, "validator.fund."):
+		return false
+	case strings.HasPrefix(action.ID, "fleet.register."):
+		return false
+	case strings.HasPrefix(action.ID, "churn.register."):
+		return false
+	case strings.HasPrefix(action.ID, "validator.register."):
+		return false
+	case strings.HasPrefix(action.ID, "operator.deposit.register."):
+		return false
+	case strings.HasPrefix(action.ID, "validator.take-zero."):
+		return false
+	case action.ID == "validator.reserve-majority":
+		return false
+	case strings.HasPrefix(action.ID, "fleet.commitment."):
+		return false
+	case action.Kind == "budget-reserve":
+		return false
+	case action.ID == "config.render":
+		return false
+	case action.ID == "accounts.provision":
+		return false
+	case action.ID == "topology.launch":
+		return false
+	case action.ID == "churn.tournament-complete":
+		return false
+	default:
+		return true
+	}
+}
+
+// Revalidate only the semantic state. The receipt already authenticates the
+// original dual-chain checkpoints, so resolving two new heads for every
+// carried action adds no evidence. EVM-dependent actions share one immutable
+// checkpoint for the entire preflight; native/local actions make no EVM call.
+func (e *Executor) verifyCurrentActionPostState(ctx context.Context, action Action, sharedEVMHead *ChainHead) error {
+	evmHead := ChainHead{}
+	if actionPostStateRequiresEVMCheckpoint(action) {
+		if sharedEVMHead != nil {
+			evmHead = *sharedEVMHead
+		} else {
+			if e == nil || e.deployer == nil || e.deployer.client == nil {
+				return errors.New("EVM postcondition client is unavailable")
+			}
+			var err error
+			evmHead, err = finalizedEVMHead(ctx, e.deployer.client)
+			if err != nil {
+				return fmt.Errorf("EVM finalized checkpoint: %w", err)
+			}
+		}
+		if evmHead.Number == 0 || evmHead.Hash == "" {
+			return errors.New("EVM finalized checkpoint identity is incomplete")
+		}
+	}
+	_, err := e.actionPostState(ctx, action, evmHead)
+	return err
+}
+
+func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead *ChainHead) error {
 	if actionRequiresCurrentPostcondition(action) {
-		if _, err := e.verifyActionPostcondition(ctx, action); err != nil {
+		if err := e.verifyCurrentActionPostState(ctx, action, sharedEVMHead); err != nil {
 			return fmt.Errorf("current postcondition: %w", err)
 		}
 		return nil
 	}
-	_, currentErr := e.verifyActionPostcondition(ctx, action)
+	currentErr := e.verifyCurrentActionPostState(ctx, action, sharedEVMHead)
 	if currentErr == nil {
 		return nil
 	}
-	if historyErr := e.verifyConsumedActionHistory(action, verified); historyErr != nil {
+	if historyErr := e.verifyConsumedActionHistory(ctx, action, verified, record); historyErr != nil {
 		return fmt.Errorf("current postcondition: %v; historical postcondition: %w", currentErr, historyErr)
 	}
 	return nil
@@ -585,6 +810,12 @@ func initialRegistrationPosition(plan *SetupPlan, actionID string) (initialRegis
 	}
 	if actionIndex < 0 {
 		return initialRegistrationPlanPosition{}, fmt.Errorf("approved plan has no action %s", actionID)
+	}
+	if plan.Deployment.RegistrationRoleGeneration > 0 && (actionID == "evm.vault-register-escrow" || strings.HasPrefix(actionID, "operator.register.")) {
+		// A replacement generation starts only after the prior deterministic
+		// topology is full. These actions have stronger per-UID runtime-prune,
+		// global-owner, and exact in-place replacement checks of their own.
+		return initialRegistrationPlanPosition{}, nil
 	}
 	if actionIndex >= topologyIndex || plan.Actions[actionIndex].Spend.Registrations == 0 {
 		return initialRegistrationPlanPosition{}, nil
@@ -707,6 +938,9 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
 	if prior, ok := e.verifiedActionEntry(a); ok {
+		if prior.PlanHash != e.plan.PlanHash && e.carriedVerificationKeys[carriedVerificationKey(prior)] {
+			return nil
+		}
 		if err := e.verifyVerifiedActionState(ctx, a, prior); err != nil {
 			return fmt.Errorf("action %s: %w", a.ID, err)
 		}
@@ -792,6 +1026,12 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return nil
 	case a.ID == "production.schedule-policy":
 		return e.scheduleProductionPolicy(ctx, a)
+	case a.ID == "evm.coordinator-upgrade-activate":
+		return e.activateCoordinatorUpgrade(ctx, a)
+	case a.ID == "policy.schedule-bootstrap":
+		return e.scheduleBootstrapPolicy(ctx, a)
+	case a.ID == "policy.await-bootstrap":
+		return e.awaitBootstrapPolicy(ctx)
 	case strings.HasPrefix(a.ID, "production.hyperparameter."):
 		return e.setProductionHyperparameter(ctx, a, strings.TrimPrefix(a.ID, "production.hyperparameter."))
 	case strings.HasPrefix(a.ID, "operator.retire."):
@@ -800,7 +1040,7 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return e.fundEVM(ctx, a)
 	case strings.HasPrefix(a.ID, "operator.deposit.register."):
 		return e.registerDepositHotkey(ctx, a, suffixInt(a.ID))
-	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy":
+	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation":
 		return e.executeDeployment(ctx, a)
 	case strings.HasPrefix(a.ID, "precompile."):
 		return e.executePrecompileConformance(ctx, a)
@@ -846,12 +1086,24 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return e.registerNative(ctx, a, fmt.Sprintf("validator-%d-coldkey", n), validatorHotkeyLabel(n))
 	case a.ID == "validator.take-zero.1":
 		return e.setReserveTakeZero(ctx, a)
+	case a.Kind == "substrate-reconciliation" && strings.HasPrefix(a.ID, "alpha.transfer."):
+		return e.reconcileAlphaTransfer(ctx, a)
+	case strings.HasPrefix(a.ID, "alpha.repair."):
+		kind, index, err := alphaTransferTargetFromActionID(a.ID)
+		if err != nil {
+			return err
+		}
+		return e.repairAlphaTransfer(ctx, a, kind, index)
 	case strings.HasPrefix(a.ID, "alpha.transfer.operator-deposit."):
 		return e.transferAlpha(ctx, a, "operator-deposit", suffixInt(a.ID))
 	case strings.HasPrefix(a.ID, "alpha.transfer.validator."):
 		return e.transferAlpha(ctx, a, "validator", suffixInt(a.ID))
+	case a.ID == "validator.reserve-majority":
+		return e.verifyReserveValidatorMajority()
 	case a.ID == "campaign.voluntary-conviction.1":
 		return e.addVoluntaryConviction(ctx, a)
+	case a.ID == voluntaryConvictionReconciliationActionID:
+		return e.reconcileDuplicateVoluntaryConviction(ctx, a)
 	case a.ID == dishonestDepositActionID:
 		return e.executeDishonestDeposit(ctx, a)
 	case a.Kind == "budget-reserve":
@@ -864,6 +1116,272 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return nil
 	default:
 		return fmt.Errorf("no executor for %s", a.ID)
+	}
+}
+
+func bootstrapPolicyMatches(cfg *ResolvedConfig, policy stabi.STCoordinatorPolicySnapshot) bool {
+	if cfg == nil || policy.EpochDepositCapRao == nil || policy.CampaignDepositCapRao == nil {
+		return false
+	}
+	hash, err := decodeHash(cfg.PolicyHash)
+	if err != nil {
+		return false
+	}
+	return policy.PolicyHash == hash && policy.EffectiveBlock != 0 &&
+		policy.EpochBlocks == cfg.Policy.Settlement.EpochBlocks &&
+		policy.RootCommitWindowBlocks == cfg.Policy.Settlement.RootCommitWindowBlocks &&
+		policy.FinalizeOffsetBlocks == cfg.Policy.Settlement.FinalizeOffsetBlocks &&
+		policy.CloseGraceBlocks == cfg.Policy.Settlement.CloseGraceBlocks &&
+		policy.ClaimTTLEpochs == cfg.Policy.Settlement.ClaimTTLEpochs &&
+		policy.ClaimGraceEpochs == cfg.Policy.Settlement.ClaimGraceEpochs &&
+		policy.MaximumBindingValidityEpochs == cfg.Policy.Binding.MaximumValidityEpochs &&
+		policy.CommitmentMaxAgeBlocks == cfg.Policy.Settlement.EpochBlocks*2 &&
+		policy.EpochDepositCapRao.Cmp(new(big.Int).SetUint64(cfg.Policy.Deposit.EpochCapRaoPerOperator)) == 0 &&
+		policy.CampaignDepositCapRao.Cmp(new(big.Int).SetUint64(cfg.Policy.Deposit.TotalTestCampaignCapRao)) == 0
+}
+
+func coordinatorUpgradeActivationBaseline(plan *SetupPlan, payloads *DeploymentPayloads) (common.Address, string, error) {
+	if plan == nil || payloads == nil {
+		return common.Address{}, "", errors.New("coordinator activation baseline is unavailable")
+	}
+	address := payloads.Manifest.CoordinatorImplementation
+	hashes, err := normalizedDeploymentRuntimeHashes(payloads.Manifest)
+	if err != nil {
+		return common.Address{}, "", err
+	}
+	runtimeHash := hashes[address]
+	if plan.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v2" {
+		if !common.IsHexAddress(plan.CoordinatorUpgradeBaseline.ActiveImplementation) {
+			return common.Address{}, "", errors.New("repeated coordinator activation has no valid active implementation")
+		}
+		address = common.HexToAddress(plan.CoordinatorUpgradeBaseline.ActiveImplementation)
+		runtimeHash = plan.CoordinatorUpgradeBaseline.ActiveImplementationHash
+	}
+	if address == (common.Address{}) || address == payloads.CoordinatorUpgrade.Implementation {
+		return common.Address{}, "", errors.New("coordinator activation baseline is empty or self-referential")
+	}
+	if _, err := decodeHex32("coordinator activation baseline runtime", runtimeHash); err != nil {
+		return common.Address{}, "", err
+	}
+	return address, runtimeHash, nil
+}
+
+func validateCoordinatorUpgradeActivationPrestate(active common.Address, activeCode []byte, upgrade CoordinatorUpgrade, baselineAddress common.Address, baselineHash string) (bool, error) {
+	if active == upgrade.Implementation {
+		return true, nil
+	}
+	if active != baselineAddress {
+		return false, fmt.Errorf("coordinator proxy implementation %s is neither baseline %s nor approved upgrade", active, baselineAddress)
+	}
+	got := crypto.Keccak256Hash(activeCode).Hex()
+	if len(activeCode) == 0 || !strings.EqualFold(got, baselineHash) {
+		return false, fmt.Errorf("coordinator activation baseline runtime=%s want=%s", got, baselineHash)
+	}
+	return false, nil
+}
+
+func (e *Executor) activateCoordinatorUpgrade(ctx context.Context, a Action) error {
+	if err := e.ensurePayloads(ctx); err != nil {
+		return err
+	}
+	upgrade := e.payloads.CoordinatorUpgrade
+	if a.Parameters["implementation"] != upgrade.Implementation.Hex() || !strings.EqualFold(a.Parameters["runtime_code_hash"], upgrade.RuntimeCodeHash) {
+		return errors.New("coordinator upgrade action does not bind the approved implementation")
+	}
+	head, err := finalizedEVMHead(ctx, e.owner.client)
+	if err != nil {
+		return err
+	}
+	code, err := e.owner.client.CodeAt(ctx, upgrade.Implementation, new(big.Int).SetUint64(head.Number))
+	if err != nil || !strings.EqualFold(crypto.Keccak256Hash(code).Hex(), upgrade.RuntimeCodeHash) {
+		return stateMismatchError(err, "coordinator upgrade runtime mismatch at %s", upgrade.Implementation)
+	}
+	proxy := e.payloads.Manifest.CoordinatorProxy
+	active, err := implementationAt(ctx, e.owner, proxy, head.Number)
+	if err != nil {
+		return err
+	}
+	baselineAddress, baselineHash, err := coordinatorUpgradeActivationBaseline(e.plan, e.payloads)
+	if err != nil {
+		return err
+	}
+	activeCode, err := e.owner.client.CodeAt(ctx, active, new(big.Int).SetUint64(head.Number))
+	if err != nil {
+		return err
+	}
+	alreadyActive, err := validateCoordinatorUpgradeActivationPrestate(active, activeCode, upgrade, baselineAddress, baselineHash)
+	if err != nil {
+		return err
+	}
+	if alreadyActive {
+		return nil
+	}
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		return err
+	}
+	data, err := parsed.Pack("upgradeToAndCall", upgrade.Implementation, []byte{})
+	if err != nil {
+		return err
+	}
+	if _, err := e.owner.Send(ctx, e.plan.PlanHash, a, &proxy, big.NewInt(0), data); err != nil {
+		return err
+	}
+	postHead, err := finalizedEVMHead(ctx, e.owner.client)
+	if err != nil {
+		return err
+	}
+	active, err = implementationAt(ctx, e.owner, proxy, postHead.Number)
+	if err != nil || active != upgrade.Implementation {
+		return stateMismatchError(err, "coordinator proxy implementation=%s want=%s", active, upgrade.Implementation)
+	}
+	return nil
+}
+
+func (e *Executor) bootstrapPolicyState(ctx context.Context, block uint64) (uint64, uint64, stabi.STCoordinatorPolicySnapshot, error) {
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, err
+	}
+	proxy := e.payloads.Manifest.CoordinatorProxy
+	currentValues, err := contractCallAt(ctx, e.owner.client, proxy, parsed, "currentEpoch", block)
+	if err != nil || len(currentValues) != 1 {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, stateMismatchError(err, "bootstrap currentEpoch returned %d values", len(currentValues))
+	}
+	current, ok := currentValues[0].(*big.Int)
+	if !ok || !current.IsUint64() {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, fmt.Errorf("bootstrap currentEpoch returned %T", currentValues[0])
+	}
+	countValues, err := contractCallAt(ctx, e.owner.client, proxy, parsed, "policyCount", block)
+	if err != nil || len(countValues) != 1 {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, stateMismatchError(err, "bootstrap policyCount returned %d values", len(countValues))
+	}
+	count, ok := countValues[0].(*big.Int)
+	if !ok || !count.IsUint64() || count.Sign() == 0 {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, fmt.Errorf("bootstrap policyCount returned %T", countValues[0])
+	}
+	policyValues, err := contractCallAt(ctx, e.owner.client, proxy, parsed, "policyAt", block, current)
+	if err != nil {
+		return 0, 0, stabi.STCoordinatorPolicySnapshot{}, err
+	}
+	policy, err := coordinatorPolicy(policyValues)
+	return current.Uint64(), count.Uint64(), policy, err
+}
+
+func (e *Executor) verifyEmptyBootstrapPolicyState(ctx context.Context, block uint64) error {
+	coordinator, vault, reserve := stabi.NewSTCoordinator(), stabi.NewSTSettlementVault(), stabi.NewSTReserveSink()
+	proxy := e.payloads.Manifest.CoordinatorProxy
+	reserved, err := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackCampaignReserved(), coordinator.UnpackCampaignReserved, block)
+	if err != nil || reserved.Sign() != 0 {
+		return stateMismatchError(err, "policy migration campaignReserved=%v", reserved)
+	}
+	for noID := 1; noID <= e.cfg.Config.Topology.Operators; noID++ {
+		nonce, readErr := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackNextDepositNonce(big.NewInt(int64(noID))), coordinator.UnpackNextDepositNonce, block)
+		if readErr != nil || nonce.Sign() != 0 {
+			return stateMismatchError(readErr, "policy migration operator %d nextDepositNonce=%v", noID, nonce)
+		}
+	}
+	captured, err := rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.SettlementVault, vault.PackTotalCaptured(), vault.UnpackTotalCaptured, block)
+	if err != nil || captured.Sign() != 0 {
+		return stateMismatchError(err, "policy migration vault totalCaptured=%v", captured)
+	}
+	principal, err := rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.ReserveSink, reserve.PackPrincipal(), reserve.UnpackPrincipal, block)
+	if err != nil || principal.Sign() != 0 {
+		return stateMismatchError(err, "policy migration reserve principal=%v", principal)
+	}
+	return nil
+}
+
+func (e *Executor) scheduleBootstrapPolicy(ctx context.Context, a Action) error {
+	if err := e.ensurePayloads(ctx); err != nil {
+		return err
+	}
+	head, err := finalizedEVMHead(ctx, e.owner.client)
+	if err != nil {
+		return err
+	}
+	current, count, active, err := e.bootstrapPolicyState(ctx, head.Number)
+	if err != nil {
+		return err
+	}
+	if bootstrapPolicyMatches(e.cfg, active) {
+		return nil
+	}
+	if err := e.verifyEmptyBootstrapPolicyState(ctx, head.Number); err != nil {
+		return err
+	}
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		return err
+	}
+	proxy := e.payloads.Manifest.CoordinatorProxy
+	if count > 1 {
+		lastValues, readErr := contractCallAt(ctx, e.owner.client, proxy, parsed, "policyByIndex", head.Number, new(big.Int).SetUint64(count-1))
+		if readErr != nil {
+			return readErr
+		}
+		last, convertErr := coordinatorPolicy(lastValues)
+		if convertErr != nil || !bootstrapPolicyMatches(e.cfg, last) || last.EffectiveEpoch <= current {
+			return errors.New("coordinator has a foreign policy scheduled before bootstrap migration")
+		}
+		return nil
+	}
+	if current == ^uint64(0) || e.cfg.Policy.Settlement.EpochBlocks > ^uint64(0)/2 {
+		return errors.New("bootstrap policy arithmetic overflows uint64")
+	}
+	hash, err := decodeHash(e.cfg.PolicyHash)
+	if err != nil {
+		return err
+	}
+	next := stabi.STCoordinatorPolicySnapshot{
+		PolicyHash: hash, EffectiveEpoch: current + 1,
+		EpochBlocks:                  e.cfg.Policy.Settlement.EpochBlocks,
+		RootCommitWindowBlocks:       e.cfg.Policy.Settlement.RootCommitWindowBlocks,
+		FinalizeOffsetBlocks:         e.cfg.Policy.Settlement.FinalizeOffsetBlocks,
+		CloseGraceBlocks:             e.cfg.Policy.Settlement.CloseGraceBlocks,
+		ClaimTTLEpochs:               e.cfg.Policy.Settlement.ClaimTTLEpochs,
+		ClaimGraceEpochs:             e.cfg.Policy.Settlement.ClaimGraceEpochs,
+		MaximumBindingValidityEpochs: e.cfg.Policy.Binding.MaximumValidityEpochs,
+		CommitmentMaxAgeBlocks:       e.cfg.Policy.Settlement.EpochBlocks * 2,
+		EpochDepositCapRao:           new(big.Int).SetUint64(e.cfg.Policy.Deposit.EpochCapRaoPerOperator),
+		CampaignDepositCapRao:        new(big.Int).SetUint64(e.cfg.Policy.Deposit.TotalTestCampaignCapRao),
+	}
+	data, err := parsed.Pack("schedulePolicy", next)
+	if err != nil {
+		return err
+	}
+	if _, err := e.owner.Send(ctx, e.plan.PlanHash, a, &proxy, big.NewInt(0), data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Executor) awaitBootstrapPolicy(ctx context.Context) error {
+	if err := e.ensurePayloads(ctx); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(12 * time.Second)
+	defer ticker.Stop()
+	for {
+		head, err := finalizedEVMHead(ctx, e.owner.client)
+		if err != nil {
+			return err
+		}
+		_, _, active, err := e.bootstrapPolicyState(ctx, head.Number)
+		if err != nil {
+			return err
+		}
+		if bootstrapPolicyMatches(e.cfg, active) {
+			return nil
+		}
+		if err := e.verifyEmptyBootstrapPolicyState(ctx, head.Number); err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for bootstrap policy activation: %w", ctx.Err())
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -950,7 +1468,7 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	address := e.payloads.Manifest.CoordinatorProxy
 	epochValues, err := contractCall(ctx, e.owner.client, address, parsed, "currentEpoch")
 	if err != nil || len(epochValues) != 1 {
-		return fmt.Errorf("read current epoch: %w", err)
+		return stateMismatchError(err, "read current epoch returned %d values", len(epochValues))
 	}
 	current, ok := epochValues[0].(*big.Int)
 	if !ok || !current.IsUint64() {
@@ -960,31 +1478,33 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 	p := e.cfg.Policy.ProductionCadence
 	countValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyCount")
 	if err != nil || len(countValues) != 1 {
-		return fmt.Errorf("read policy count: %w", err)
+		return stateMismatchError(err, "read policy count returned %d values", len(countValues))
 	}
 	count, ok := countValues[0].(*big.Int)
 	if !ok || !count.IsUint64() || count.Sign() == 0 {
 		return fmt.Errorf("policyCount returned %T", countValues[0])
 	}
-	alreadyScheduled := count.Uint64() > 1
+	lastIndex := new(big.Int).Sub(new(big.Int).Set(count), big.NewInt(1))
+	lastValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyByIndex", lastIndex)
+	if err != nil {
+		return err
+	}
+	lastPolicy, err := coordinatorPolicy(lastValues)
+	if err != nil {
+		return err
+	}
+	alreadyScheduled := productionPolicyMatches(e.cfg, lastPolicy)
 	if err := validateProductionScheduleEpoch(currentEpoch, p.AfterAcceleratedEpochs, alreadyScheduled); err != nil {
 		return err
 	}
-	// A resumed command must adopt the one exact previously scheduled cadence;
-	// any additional or different policy is an approval-breaking condition.
 	if alreadyScheduled {
-		if count.Uint64() != 2 {
-			return fmt.Errorf("coordinator has %d policy versions, expected exactly initial plus production", count.Uint64())
-		}
-		values, readErr := contractCall(ctx, e.owner.client, address, parsed, "policyByIndex", big.NewInt(1))
-		if readErr != nil {
-			return readErr
-		}
-		scheduled, convertErr := coordinatorPolicy(values)
-		if convertErr != nil || !productionPolicyMatches(e.cfg, scheduled) {
-			return errors.New("existing second policy is not the canonical production cadence")
-		}
-		return e.writeProductionPolicyEvidence(scheduled, scheduled.EffectiveEpoch-1, nil)
+		return e.writeProductionPolicyEvidence(lastPolicy, lastPolicy.EffectiveEpoch-1, nil)
+	}
+	// A migrated deployment has one historical policy plus the canonical
+	// accelerated snapshot. A fresh deployment has only the latter. Anything
+	// else is an unreviewed policy history.
+	if count.Uint64() > 2 || !bootstrapPolicyMatches(e.cfg, lastPolicy) {
+		return fmt.Errorf("coordinator has an unreviewed %d-version policy history before production", count.Uint64())
 	}
 	priorValues, err := contractCall(ctx, e.owner.client, address, parsed, "policyAt", current)
 	if err != nil {
@@ -1249,8 +1769,106 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 	if e.payloads != nil {
 		return nil
 	}
+	if e.plan != nil && planUsesContractDeploymentEnvelope(e.plan.Schema) {
+		planned := contractDeploymentIdentity(e.plan.Deployment)
+		p, err := buildDeploymentPayloadsWithRegistrationGeneration(e.cfg, e.roles, planned.InitialNonce, planned.RegistrationRoleGeneration)
+		if err != nil {
+			return err
+		}
+		if planUsesCoordinatorUpgradeEnvelope(e.plan.Schema) {
+			if err := configureCoordinatorUpgradeNonce(p, e.plan.CoordinatorUpgrade.DeployerNonce); err != nil {
+				return fmt.Errorf("build approved coordinator upgrade payload: %w", err)
+			}
+		}
+		builtHash, err := contractDeploymentIdentityHash(p.Manifest)
+		if err != nil {
+			return err
+		}
+		plannedHash, err := contractDeploymentIdentityHash(planned)
+		if err != nil {
+			return err
+		}
+		if builtHash != plannedHash {
+			if e.plan.CoordinatorUpgradeBaseline.isZero() {
+				if !contractDeploymentUpgradeBaselineCompatible(planned, p.Manifest) {
+					return fmt.Errorf("approved contract deployment does not match this release payload: approved=%s built=%s", plannedHash, builtHash)
+				}
+			} else if err := validateCoordinatorUpgradeBaselineRelease(e.plan.CoordinatorUpgradeBaseline, planned, p.Manifest, p.CoordinatorUpgrade); err != nil {
+				return fmt.Errorf("approved coordinator upgrade baseline: %w", err)
+			}
+			if err := validateCoordinatorUpgradePayloadBaseline(e.plan.CoordinatorUpgradeBaseline, p); err != nil {
+				return fmt.Errorf("approved coordinator executable baseline: %w", err)
+			}
+			builtManifest := p.Manifest
+			p.Manifest = planned
+			plannedHashes, plannedErr := normalizedDeploymentRuntimeHashes(planned)
+			builtHashes, builtErr := normalizedDeploymentRuntimeHashes(builtManifest)
+			if plannedErr != nil || builtErr != nil {
+				return errors.New("approved coordinator upgrade has invalid runtime hashes")
+			}
+			for address, plannedRuntimeHash := range plannedHashes {
+				if !strings.EqualFold(plannedRuntimeHash, builtHashes[address]) {
+					p.ExpectedRuntime[address] = nil
+				}
+			}
+		}
+		if e.plan.CoordinatorUpgrade != p.CoordinatorUpgrade {
+			return errors.New("approved coordinator upgrade does not match this release payload")
+		}
+		if existing, loadErr := loadContractDeployment(e.stateDir); loadErr == nil {
+			activeCompatible := contractDeploymentAddressesEqual(*existing, planned) && contractDeploymentRuntimeHashesCompatible(*existing, planned)
+			if !activeCompatible && existing.RegistrationRoleGeneration != planned.RegistrationRoleGeneration {
+				head, headErr := finalizedEVMHead(ctx, e.deployer.client)
+				if headErr != nil {
+					return headErr
+				}
+				nonce, nonceErr := e.deployer.client.NonceAt(ctx, p.Deployer, new(big.Int).SetUint64(head.Number))
+				if nonceErr != nil {
+					return nonceErr
+				}
+				activeCompatible = validateRegistrationRoleGenerationPromotion(e.cfg, e.plan, *existing, planned, nonce, e.journal.Entries()) == nil
+			}
+			if activeCompatible {
+				p.Manifest.DeployBlock = existing.DeployBlock
+				p.Manifest.DeployBlockHash = existing.DeployBlockHash
+				p.Manifest.RuntimeHashes = planned.RuntimeHashes
+				e.payloads = p
+				return nil
+			}
+			existingHash, hashErr := canonicalHashHex(*existing)
+			if hashErr != nil {
+				return hashErr
+			}
+			approvedSuperseded := false
+			for _, superseded := range e.plan.SupersededDeployments {
+				supersededHash, supersededErr := canonicalHashHex(superseded)
+				if supersededErr != nil {
+					return supersededErr
+				}
+				if supersededHash == existingHash {
+					approvedSuperseded = true
+					break
+				}
+			}
+			if !approvedSuperseded {
+				return fmt.Errorf("existing contract deployment %s is neither active nor approved for supersession", existingHash)
+			}
+			archivePath := filepath.Join(e.stateDir, "public", "deployments", stringsTrim0x(existingHash)+".json")
+			archive, marshalErr := json.MarshalIndent(existing, "", "  ")
+			if marshalErr != nil {
+				return marshalErr
+			}
+			if err := atomicWrite(archivePath, append(archive, '\n'), 0o644); err != nil {
+				return fmt.Errorf("archive superseded contract deployment: %w", err)
+			}
+		} else if !errors.Is(loadErr, os.ErrNotExist) {
+			return loadErr
+		}
+		e.payloads = p
+		return saveContractDeployment(e.stateDir, p.Manifest)
+	}
 	if existing, err := loadContractDeployment(e.stateDir); err == nil {
-		p, err := buildDeploymentPayloads(e.cfg, e.roles, existing.InitialNonce)
+		p, err := buildDeploymentPayloadsWithRegistrationGeneration(e.cfg, e.roles, existing.InitialNonce, existing.RegistrationRoleGeneration)
 		if err != nil {
 			return err
 		}
@@ -1298,6 +1916,9 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		if err != nil {
 			return err
 		}
+		if err := e.verifyContractRegistrationReplacementPrecondition(a, escrowHotkeyLabelForGeneration(p.Manifest.RegistrationRoleGeneration), 1); err != nil {
+			return fmt.Errorf("vault escrow replacement precondition: %w", err)
+		}
 		addr = p.Manifest.SettlementVault
 		to = &addr
 		data = p.RegisterEscrow
@@ -1311,6 +1932,9 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 	case "precompile.probe-deploy":
 		addr = p.Manifest.PrecompileProbe
 		data = p.PrecompileProbe
+	case "evm.coordinator-upgrade-implementation":
+		addr = p.CoordinatorUpgrade.Implementation
+		data = p.UpgradeImplementation
 	case "evm.vault-fix-coordinator":
 		addr = p.Manifest.SettlementVault
 		to = &addr
@@ -1327,8 +1951,15 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		}
 		code, err := e.deployer.client.CodeAt(ctx, addr, new(big.Int).SetUint64(head.Number))
 		if err == nil && len(code) > 0 {
-			if string(code) != string(p.ExpectedRuntime[addr]) {
+			expected := p.ExpectedRuntime[addr]
+			if len(expected) > 0 && string(code) != string(expected) {
 				return fmt.Errorf("unexpected existing code at %s", addr)
+			}
+			if len(expected) == 0 {
+				want := p.Manifest.RuntimeHashes[addr.Hex()]
+				if want == "" || !strings.EqualFold(crypto.Keccak256Hash(code).Hex(), want) {
+					return fmt.Errorf("unexpected existing runtime hash at %s", addr)
+				}
 			}
 			return nil
 		}
@@ -1345,9 +1976,9 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		p.Manifest.DeployBlockHash = receipt.BlockHash.Hex()
 	}
 	if a.ID == "evm.governance-drill-implementation" {
-		deployed := make(map[common.Address][]byte, len(p.ExpectedRuntime)-1)
+		deployed := make(map[common.Address][]byte, len(p.ExpectedRuntime)-2)
 		for address, runtime := range p.ExpectedRuntime {
-			if address != p.Manifest.PrecompileProbe {
+			if address != p.Manifest.PrecompileProbe && address != p.CoordinatorUpgrade.Implementation && len(runtime) > 0 {
 				deployed[address] = runtime
 			}
 		}
@@ -1355,12 +1986,28 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		if err != nil {
 			return err
 		}
+		for address, runtime := range p.ExpectedRuntime {
+			if len(runtime) == 0 && address != p.CoordinatorUpgrade.Implementation {
+				hashes[address.Hex()] = e.plan.Deployment.RuntimeHashes[address.Hex()]
+			}
+		}
 		p.Manifest.RuntimeHashes = hashes
 	}
 	if a.ID == "precompile.probe-deploy" {
-		hashes, err := verifyRuntimeCode(ctx, e.deployer.client, p.ExpectedRuntime)
+		baseRuntime := make(map[common.Address][]byte, len(p.ExpectedRuntime)-1)
+		for address, runtime := range p.ExpectedRuntime {
+			if address != p.CoordinatorUpgrade.Implementation && len(runtime) > 0 {
+				baseRuntime[address] = runtime
+			}
+		}
+		hashes, err := verifyRuntimeCode(ctx, e.deployer.client, baseRuntime)
 		if err != nil {
 			return err
+		}
+		for address, runtime := range p.ExpectedRuntime {
+			if len(runtime) == 0 && address != p.CoordinatorUpgrade.Implementation {
+				hashes[address.Hex()] = e.plan.Deployment.RuntimeHashes[address.Hex()]
+			}
 		}
 		p.Manifest.RuntimeHashes = hashes
 	}
@@ -1380,6 +2027,9 @@ func (e *Executor) registerOperator(ctx context.Context, a Action) error {
 	if err == nil && countOut[0].(*big.Int).Sign() > 0 {
 		return nil
 	}
+	if err := e.verifyContractRegistrationReplacementPrecondition(a, operatorPoolHotkeyLabelForGeneration(n, e.payloads.Manifest.RegistrationRoleGeneration), n+1); err != nil {
+		return fmt.Errorf("operator %d pool replacement precondition: %w", n, err)
+	}
 	epochOut, err := contractCall(ctx, e.owner.client, e.payloads.Manifest.CoordinatorProxy, coordABI, "currentEpoch")
 	if err != nil {
 		return err
@@ -1389,7 +2039,7 @@ func (e *Executor) registerOperator(ctx context.Context, a Action) error {
 	if err != nil {
 		return err
 	}
-	pool, err := roleBytes32(e.roles, fmt.Sprintf("operator-%d-pool-hotkey", n))
+	pool, err := roleBytes32(e.roles, operatorPoolHotkeyLabelForGeneration(n, e.payloads.Manifest.RegistrationRoleGeneration))
 	if err != nil {
 		return err
 	}
@@ -1452,7 +2102,7 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 	}
 	epochValues, err := contractCallAt(ctx, manager.client, address, parsed, "currentEpoch", head.Number)
 	if err != nil || len(epochValues) != 1 {
-		return fmt.Errorf("read current epoch at finalized head: %w", err)
+		return stateMismatchError(err, "read current epoch at finalized head returned %d values", len(epochValues))
 	}
 	epoch, ok := epochValues[0].(*big.Int)
 	if !ok || !epoch.IsUint64() {
@@ -1472,7 +2122,25 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 		}
 		return value, nil
 	}
+	readConviction := func(block uint64) (*big.Int, error) {
+		values, readErr := contractCallAt(ctx, manager.client, address, parsed, "cumulativeConviction", block, big.NewInt(1))
+		if readErr != nil || len(values) != 1 {
+			return nil, stateMismatchError(readErr, "read cumulative conviction at block %d returned %d values", block, len(values))
+		}
+		value, valueOK := values[0].(*big.Int)
+		if !valueOK {
+			return nil, fmt.Errorf("cumulativeConviction returned %T", values[0])
+		}
+		return value, nil
+	}
 	prior, hasPrior := e.journal.LatestTransaction(e.plan.PlanHash, a.ID, a.IntentHash)
+	cumulative, err := readConviction(head.Number)
+	if err != nil {
+		return err
+	}
+	if err := validateVoluntaryConvictionPrestate(cumulative, hasPrior); err != nil {
+		return err
+	}
 	if added, readErr := readAdded(head.Number, epoch); readErr != nil {
 		return readErr
 	} else if added.Sign() != 0 && !hasPrior {
@@ -1480,7 +2148,7 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 	}
 	nonceValues, err := contractCallAt(ctx, manager.client, address, parsed, "nextDepositNonce", head.Number, big.NewInt(1))
 	if err != nil || len(nonceValues) != 1 {
-		return fmt.Errorf("read voluntary conviction nonce: %w", err)
+		return stateMismatchError(err, "read voluntary conviction nonce returned %d values", len(nonceValues))
 	}
 	nonce, ok := nonceValues[0].(*big.Int)
 	if !ok || nonce.Sign() < 0 {
@@ -1515,7 +2183,7 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 		}
 		values, unpackErr := event.Inputs.NonIndexed().Unpack(log.Data)
 		if unpackErr != nil || len(values) != 3 {
-			return fmt.Errorf("decode ConvictionAdded event: %w", unpackErr)
+			return stateMismatchError(unpackErr, "decode ConvictionAdded event returned %d values", len(values))
 		}
 		loggedAmount, amountOK := values[0].(*big.Int)
 		loggedPolicy, policyOK := values[1].([32]byte)
@@ -1543,17 +2211,6 @@ func (e *Executor) addVoluntaryConviction(ctx context.Context, a Action) error {
 	}
 	if receipt.BlockNumber.Sign() == 0 {
 		return errors.New("voluntary conviction cannot be verified before block zero")
-	}
-	readConviction := func(block uint64) (*big.Int, error) {
-		values, readErr := contractCallAt(ctx, manager.client, address, parsed, "cumulativeConviction", block, big.NewInt(1))
-		if readErr != nil || len(values) != 1 {
-			return nil, fmt.Errorf("read cumulative conviction at block %d: %w", block, readErr)
-		}
-		value, valueOK := values[0].(*big.Int)
-		if !valueOK {
-			return nil, fmt.Errorf("cumulativeConviction returned %T", values[0])
-		}
-		return value, nil
 	}
 	before, err := readConviction(receipt.BlockNumber.Uint64() - 1)
 	if err != nil {
@@ -1726,15 +2383,21 @@ func (e *Executor) registerDepositHotkey(ctx context.Context, a Action, operator
 }
 
 func (e *Executor) readStakeFinalized(ctx context.Context, hotkey, coldkey [32]byte) (uint64, error) {
-	parsed, err := abi.JSON(strings.NewReader(stakingPrecompileABI))
-	if err != nil {
-		return 0, err
-	}
 	head, err := finalizedEVMHead(ctx, e.deployer.client)
 	if err != nil {
 		return 0, err
 	}
-	values, err := contractCallAt(ctx, e.deployer.client, stakingPrecompileAddress, parsed, "getStake", head.Number, hotkey, coldkey, new(big.Int).SetUint64(uint64(e.cfg.Netuid)))
+	return e.readStakeAt(ctx, head.Number, hotkey, coldkey)
+}
+
+// Read one position from the staking precompile at an exact chain block so a
+// source-capacity decision cannot mix finalized checkpoints.
+func (e *Executor) readStakeAt(ctx context.Context, block uint64, hotkey, coldkey [32]byte) (uint64, error) {
+	parsed, err := abi.JSON(strings.NewReader(stakingPrecompileABI))
+	if err != nil {
+		return 0, err
+	}
+	values, err := contractCallAt(ctx, e.deployer.client, stakingPrecompileAddress, parsed, "getStake", block, hotkey, coldkey, new(big.Int).SetUint64(uint64(e.cfg.Netuid)))
 	if err != nil {
 		return 0, err
 	}
@@ -1746,6 +2409,189 @@ func (e *Executor) readStakeFinalized(ctx context.Context, hotkey, coldkey [32]b
 		return 0, fmt.Errorf("getStake returned %T or an oversized value", values[0])
 	}
 	return stake.Uint64(), nil
+}
+
+type liveAlphaTransferEconomics struct {
+	Snapshot                    RegisteredAlphaSnapshot
+	DefaultMinTransferRao       uint64
+	AlphaPriceQ9                uint64
+	SourcePositionRao           uint64
+	SourceColdkeyTotalRao       uint64
+	SourceStoredLockRao         uint64
+	SourcePositionCollateralRao uint64
+	SourceColdkeyCollateralRao  uint64
+	SourceTransferableRao       uint64
+}
+
+func (e *Executor) readLiveAlphaTransferEconomics(ctx context.Context) (liveAlphaTransferEconomics, error) {
+	var result liveAlphaTransferEconomics
+	snapshot, err := e.substrate.RegisteredAlphaSnapshot()
+	if err != nil {
+		return result, fmt.Errorf("read registered alpha snapshot: %w", err)
+	}
+	finalizedHash, err := types.NewHashFromHexString(snapshot.FinalizedHash)
+	if err != nil {
+		return result, fmt.Errorf("decode alpha-transfer snapshot hash: %w", err)
+	}
+	result.DefaultMinTransferRao, err = readRuntimeDefaultMinTransferAt(
+		e.substrate.chain, e.cfg, finalizedHash,
+	)
+	if err != nil {
+		return result, fmt.Errorf("read runtime DefaultMinTransfer: %w", err)
+	}
+	parsed, err := abi.JSON(strings.NewReader(alphaPricePrecompileABI))
+	if err != nil {
+		return result, err
+	}
+	data, err := parsed.Pack("getAlphaPrice", e.cfg.Netuid)
+	if err != nil {
+		return result, err
+	}
+	raw, err := e.deployer.client.CallContract(ctx, ethereum.CallMsg{To: &alphaPricePrecompileAddress, Data: data}, new(big.Int).SetUint64(snapshot.FinalizedBlock))
+	if err != nil {
+		return result, fmt.Errorf("read live alpha price at finalized block %d: %w", snapshot.FinalizedBlock, err)
+	}
+	values, err := parsed.Unpack("getAlphaPrice", raw)
+	if err != nil || len(values) != 1 {
+		return result, stateMismatchError(err, "decode live alpha price returned %d values", len(values))
+	}
+	price, ok := values[0].(*big.Int)
+	if !ok {
+		return result, fmt.Errorf("live alpha price returned %T", values[0])
+	}
+	result.AlphaPriceQ9, err = decodeAlphaPriceQ9(price)
+	if err != nil {
+		return result, err
+	}
+	source, err := decodeHex32("approved alpha source hotkey", e.plan.LiveFacts.AlphaSourceHotkey)
+	if err != nil {
+		return result, err
+	}
+	wallet, err := ss58.DecodeWithPrefix(e.cfg.WalletPublic, ss58.BittensorPrefix)
+	if err != nil {
+		return result, fmt.Errorf("decode alpha source coldkey: %w", err)
+	}
+	var coldkey [32]byte
+	copy(coldkey[:], wallet[:])
+	restrictions, err := e.substrate.AlphaTransferSourceRestrictions(snapshot, coldkey, source)
+	if err != nil {
+		return result, fmt.Errorf("read live alpha source restrictions: %w", err)
+	}
+	for _, hotkey := range restrictions.StakingHotkeys {
+		stake, stakeErr := e.readStakeAt(ctx, snapshot.FinalizedBlock, hotkey, coldkey)
+		if stakeErr != nil {
+			return result, fmt.Errorf("read live alpha source position 0x%x: %w", hotkey, stakeErr)
+		}
+		var addOK bool
+		result.SourceColdkeyTotalRao, addOK = checkedAdd(result.SourceColdkeyTotalRao, stake)
+		if !addOK {
+			return result, errors.New("live alpha source coldkey total exceeds uint64")
+		}
+		if hotkey == source {
+			result.SourcePositionRao = stake
+		}
+	}
+	if result.SourcePositionRao == 0 {
+		return result, errors.New("approved alpha source position is empty")
+	}
+	result.SourceStoredLockRao = restrictions.StoredLockRao
+	result.SourcePositionCollateralRao = restrictions.PositionCollateralRao
+	result.SourceColdkeyCollateralRao = restrictions.ColdkeyCollateralRao
+	result.SourceTransferableRao, err = alphaTransferCapacity(
+		result.SourcePositionRao,
+		result.SourceColdkeyTotalRao,
+		result.SourceStoredLockRao,
+		result.SourcePositionCollateralRao,
+		result.SourceColdkeyCollateralRao,
+	)
+	if err != nil {
+		return result, fmt.Errorf("derive live alpha source capacity: %w", err)
+	}
+	result.Snapshot = snapshot
+	return result, nil
+}
+
+func (e *Executor) validateAlphaTransferPrebroadcast(ctx context.Context, a Action, destinationHotkey [32]byte, reserve bool) (liveAlphaTransferEconomics, error) {
+	var empty liveAlphaTransferEconomics
+	live, err := e.readLiveAlphaTransferEconomics(ctx)
+	if err != nil {
+		return empty, err
+	}
+	source, err := decodeHex32("approved alpha source hotkey", e.plan.LiveFacts.AlphaSourceHotkey)
+	if err != nil {
+		return empty, err
+	}
+	if err := validateAlphaTransferAtSnapshot(a, source, destinationHotkey, live, e.plan.AlphaTransferMarginBPS, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS, e.plan.MinimumSourceRemainingRao, reserve); err != nil {
+		return empty, err
+	}
+	return live, nil
+}
+
+func validateAlphaTransferAtSnapshot(a Action, source, destination [32]byte, live liveAlphaTransferEconomics, marginBPS, reserveMinimumShareBPS uint16, minimumSourceRemainingRao uint64, reserve bool) error {
+	exact, err := strconv.ParseUint(a.Parameters["exact_amount_rao"], 10, 64)
+	if err != nil || exact == 0 || exact != a.Spend.AlphaRao {
+		return fmt.Errorf("alpha transfer %s has an invalid exact amount", a.ID)
+	}
+	approvedDefaultMinTransfer, err := strconv.ParseUint(a.Parameters["runtime_default_min_transfer_tao_rao"], 10, 64)
+	if err != nil || approvedDefaultMinTransfer == 0 {
+		return fmt.Errorf("alpha transfer %s has an invalid approved runtime DefaultMinTransfer", a.ID)
+	}
+	if live.DefaultMinTransferRao != approvedDefaultMinTransfer {
+		return fmt.Errorf("alpha transfer %s stopped before signing: runtime DefaultMinTransfer changed from approved %d to %d TAO rao", a.ID, approvedDefaultMinTransfer, live.DefaultMinTransferRao)
+	}
+	minimum, err := minimumAlphaTransferRao(live.DefaultMinTransferRao, live.AlphaPriceQ9, marginBPS)
+	if err != nil {
+		return err
+	}
+	if exact < minimum {
+		equivalent, _ := alphaTransferTAOEquivalentRao(exact, live.AlphaPriceQ9)
+		return fmt.Errorf("alpha transfer %s stopped before signing: exact amount %d has %d TAO rao equivalent at price %d, below DefaultMinTransfer %d plus %d bps margin (minimum alpha %d)", a.ID, exact, equivalent, live.AlphaPriceQ9, live.DefaultMinTransferRao, marginBPS, minimum)
+	}
+	if exact > live.SourceTransferableRao {
+		return fmt.Errorf("alpha transfer %s stopped before signing: exact amount %d exceeds source transferable alpha %d (position=%d coldkey_total=%d stored_lock=%d position_collateral=%d coldkey_collateral=%d)", a.ID, exact, live.SourceTransferableRao, live.SourcePositionRao, live.SourceColdkeyTotalRao, live.SourceStoredLockRao, live.SourcePositionCollateralRao, live.SourceColdkeyCollateralRao)
+	}
+	if minimumSourceRemainingRao == 0 || exact > live.SourcePositionRao || live.SourcePositionRao-exact < minimumSourceRemainingRao {
+		return fmt.Errorf("alpha transfer %s stopped before signing: source position %d minus exact amount %d would violate minimum remainder %d", a.ID, live.SourcePositionRao, exact, minimumSourceRemainingRao)
+	}
+	if _, ok := live.Snapshot.ByHotkey[source]; !ok {
+		return errors.New("approved alpha source is no longer a registered hotkey")
+	}
+	destinationStake, ok := live.Snapshot.ByHotkey[destination]
+	if !ok {
+		return fmt.Errorf("alpha transfer destination 0x%x is not registered", destination)
+	}
+	if reserve {
+		shortfall, shortfallErr := alphaTransferRoundingShortfall(a)
+		if shortfallErr != nil || exact <= shortfall {
+			return stateMismatchError(shortfallErr, "reserve transfer %s has no bounded minimum credit", a.ID)
+		}
+		finalStake, addOK := checkedAdd(destinationStake, exact-shortfall)
+		if !addOK || !alphaShareMeets(live.Snapshot.TotalAlphaRao, finalStake, reserveMinimumShareBPS) {
+			return fmt.Errorf("reserve transfer stopped before signing: planned minimum finalized stake %d+(%d-%d) does not retain %d bps of registered alpha %d", destinationStake, exact, shortfall, reserveMinimumShareBPS, live.Snapshot.TotalAlphaRao)
+		}
+	}
+	return nil
+}
+
+func (e *Executor) reserveValidatorMajoritySnapshot() (RegisteredAlphaSnapshot, uint64, error) {
+	snapshot, err := e.substrate.RegisteredAlphaSnapshot()
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, 0, err
+	}
+	reserve, err := roleBytes32(e.roles, validatorHotkeyLabel(1))
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, 0, err
+	}
+	reserveAlpha, ok := snapshot.ByHotkey[reserve]
+	if !ok || !alphaShareMeets(snapshot.TotalAlphaRao, reserveAlpha, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) {
+		return RegisteredAlphaSnapshot{}, 0, fmt.Errorf("reserve validator alpha %d does not meet %d bps of registered alpha %d", reserveAlpha, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS, snapshot.TotalAlphaRao)
+	}
+	return snapshot, reserveAlpha, nil
+}
+
+func (e *Executor) verifyReserveValidatorMajority() error {
+	_, _, err := e.reserveValidatorMajoritySnapshot()
+	return err
 }
 
 func (e *Executor) transferAlpha(ctx context.Context, a Action, targetKind string, index int) error {
@@ -1764,29 +2610,158 @@ func (e *Executor) transferAlpha(ctx context.Context, a Action, targetKind strin
 	if err != nil {
 		return err
 	}
-	current, err := e.readStakeFinalized(ctx, destinationHotkey, destinationColdkey)
-	if err != nil {
-		return err
+	// A transaction already recorded for this exact current-plan intent must be
+	// recovered from its immutable bytes and historical checkpoint. Re-running
+	// live prebroadcast checks would incorrectly treat its already-mutated source
+	// and destination as a second transfer pre-state.
+	if _, resumed := e.journal.LatestTransaction(e.plan.PlanHash, a.ID, a.IntentHash); !resumed {
+		if _, err := e.validateAlphaTransferPrebroadcast(ctx, a, destinationHotkey, targetKind == "validator" && index == 1); err != nil {
+			return err
+		}
 	}
-	if current >= a.Spend.AlphaRao {
-		return nil
-	}
-	amount := a.Spend.AlphaRao - current
+	amount := a.Spend.AlphaRao
 	call, err := e.substrate.TransferStakeAndHotkeyCall(destinationColdkey, source, destinationHotkey, amount)
 	if err != nil {
 		return err
 	}
-	if _, _, err := e.substrate.Send(ctx, e.plan.PlanHash, a, call); err != nil {
-		return err
-	}
-	post, err := e.readStakeFinalized(ctx, destinationHotkey, destinationColdkey)
+	_, transactionBlock, err := e.substrate.Send(ctx, e.plan.PlanHash, a, call)
 	if err != nil {
 		return err
 	}
-	if post < a.Spend.AlphaRao {
-		return fmt.Errorf("alpha transfer post-state %d, want at least %d", post, a.Spend.AlphaRao)
+	_, _, _, err = e.verifyAlphaTransferDeltaAtBlock(ctx, a, destinationHotkey, destinationColdkey, transactionBlock)
+	return err
+}
+
+func (e *Executor) reconcileAlphaTransfer(ctx context.Context, action Action) error {
+	if !hasFinalizedAlphaRecoveryEvidence(e.plan, action, e.journal.Entries()) {
+		return fmt.Errorf("alpha reconciliation %s has no exact finalized ancestor evidence", action.ID)
+	}
+	block, err := strconv.ParseUint(action.Parameters[alphaRecoveryBlockParameter], 10, 64)
+	if err != nil || block == 0 {
+		return fmt.Errorf("alpha reconciliation %s has invalid recovery block", action.ID)
+	}
+	if err := e.verifySubstrateTransactionEvidence(ChainHead{Number: block, Hash: action.Parameters[alphaRecoveryBlockHashParameter]}, action.Parameters[alphaRecoveryTransactionHashParameter]); err != nil {
+		return fmt.Errorf("alpha reconciliation %s canonical transaction: %w", action.ID, err)
+	}
+	kind, index, err := alphaTransferTargetFromActionID(action.ID)
+	if err != nil {
+		return err
+	}
+	var deployment *ContractDeployment
+	if kind == "operator-deposit" {
+		if err := e.ensurePayloads(ctx); err != nil {
+			return err
+		}
+		deployment = &e.payloads.Manifest
+	}
+	coldkey, hotkey, err := alphaTransferDestination(e.roles, deployment, kind, index)
+	if err != nil {
+		return err
+	}
+	_, _, _, err = e.verifyAlphaTransferDeltaAtBlock(ctx, action, hotkey, coldkey, block)
+	return err
+}
+
+func (e *Executor) recoveredAlphaMinimumStake(ctx context.Context, repair Action, hotkey, coldkey [32]byte) (uint64, error) {
+	linked, err := e.planAction(repair.Parameters[alphaRepairForActionParameter])
+	if err != nil || linked.Target != repair.Target {
+		return 0, stateMismatchError(err, "alpha repair %s has no matching linked action", repair.ID)
+	}
+	if absolute := repair.Parameters[alphaRepairMinimumDestinationParameter]; absolute != "" {
+		minimum, parseErr := strconv.ParseUint(absolute, 10, 64)
+		if parseErr != nil || minimum == 0 {
+			return 0, fmt.Errorf("alpha repair %s has invalid absolute minimum stake", repair.ID)
+		}
+		return minimum, nil
+	}
+	if linked.Kind != "substrate-reconciliation" {
+		return 0, fmt.Errorf("alpha repair %s has no reconciliation action", repair.ID)
+	}
+	block, err := strconv.ParseUint(linked.Parameters[alphaRecoveryBlockParameter], 10, 64)
+	if err != nil || block <= 1 {
+		return 0, fmt.Errorf("alpha repair %s has invalid recovery block", repair.ID)
+	}
+	before, err := e.readStakeAt(ctx, block-1, hotkey, coldkey)
+	if err != nil {
+		return 0, err
+	}
+	increment, err := strconv.ParseUint(repair.Parameters[alphaRepairMinimumIncrementParameter], 10, 64)
+	if err != nil || increment == 0 {
+		return 0, fmt.Errorf("alpha repair %s has invalid minimum increment", repair.ID)
+	}
+	minimum, ok := checkedAdd(before, increment)
+	if !ok {
+		return 0, fmt.Errorf("alpha repair %s minimum destination stake overflows", repair.ID)
+	}
+	return minimum, nil
+}
+
+func (e *Executor) repairAlphaTransfer(ctx context.Context, action Action, kind string, index int) error {
+	var deployment *ContractDeployment
+	if kind == "operator-deposit" {
+		if err := e.ensurePayloads(ctx); err != nil {
+			return err
+		}
+		deployment = &e.payloads.Manifest
+	}
+	coldkey, hotkey, err := alphaTransferDestination(e.roles, deployment, kind, index)
+	if err != nil {
+		return err
+	}
+	minimum, err := e.recoveredAlphaMinimumStake(ctx, action, hotkey, coldkey)
+	if err != nil {
+		return err
+	}
+	current, err := e.readStakeFinalized(ctx, hotkey, coldkey)
+	if err != nil {
+		return err
+	}
+	minimumCredit, err := alphaTransferMinimumCreditRao(action.Spend.AlphaRao)
+	if err != nil {
+		return err
+	}
+	_, resumed := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash)
+	skip, err := alphaRepairPrebroadcast(current, minimum, minimumCredit, resumed)
+	if err != nil {
+		return fmt.Errorf("alpha repair %s: %w", action.ID, err)
+	}
+	if skip {
+		return nil
+	}
+	if err := e.transferAlpha(ctx, action, kind, index); err != nil {
+		return err
+	}
+	post, err := e.readStakeFinalized(ctx, hotkey, coldkey)
+	if err != nil || post < minimum {
+		return stateMismatchError(err, "alpha repair %s stake=%d want>=%d", action.ID, post, minimum)
 	}
 	return nil
+}
+
+// Prove the destination share entitlement at the parent and inclusion blocks.
+// This is both the live postcondition and the crash-recovery path; it never
+// derives a pre-state from an already-finalized current balance.
+func (e *Executor) verifyAlphaTransferDeltaAtBlock(ctx context.Context, action Action, hotkey, coldkey [32]byte, block uint64) (uint64, uint64, uint64, error) {
+	if block <= 1 {
+		return 0, 0, 0, fmt.Errorf("alpha transfer %s has invalid finalized block %d", action.ID, block)
+	}
+	before, err := e.readStakeAt(ctx, block-1, hotkey, coldkey)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("read alpha transfer %s parent stake at %d: %w", action.ID, block-1, err)
+	}
+	after, err := e.readStakeAt(ctx, block, hotkey, coldkey)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("read alpha transfer %s finalized stake at %d: %w", action.ID, block, err)
+	}
+	shortfall, err := alphaTransferRoundingShortfall(action)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	credited, err := alphaTransferCreditedRao(before, after, action.Spend.AlphaRao, shortfall)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("alpha transfer %s finalized delta: %w", action.ID, err)
+	}
+	return before, after, credited, nil
 }
 
 func alphaTransferDestination(roles *RoleSecrets, deployment *ContractDeployment, targetKind string, index int) ([32]byte, [32]byte, error) {
@@ -1869,6 +2844,46 @@ type challengerChurnState struct {
 	MaximumUIDs     uint16
 }
 
+type registrationReplacementState struct {
+	ExpectedUID      uint16
+	RuntimePruneUID  uint16
+	ReplacementUID   uint16
+	ReplacementFound bool
+	ChurnUID         uint16
+	ChurnFound       bool
+	UIDCount         uint16
+	MaximumUIDs      uint16
+}
+
+func validateRegistrationReplacementPreState(state registrationReplacementState) error {
+	if state.MaximumUIDs == 0 || state.UIDCount != state.MaximumUIDs {
+		return fmt.Errorf("contract registration replacement requires a full subnet: count=%d maximum=%d", state.UIDCount, state.MaximumUIDs)
+	}
+	if state.ReplacementFound {
+		return errors.New("contract registration replacement hotkey is already registered")
+	}
+	if !state.ChurnFound || state.ChurnUID != state.ExpectedUID {
+		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
+	}
+	if state.RuntimePruneUID != state.ExpectedUID {
+		return fmt.Errorf("runtime-452 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+	}
+	return nil
+}
+
+func validateRegistrationReplacementPostState(state registrationReplacementState) error {
+	if state.MaximumUIDs == 0 || state.UIDCount != state.MaximumUIDs {
+		return fmt.Errorf("contract registration replacement changed subnet capacity: count=%d maximum=%d", state.UIDCount, state.MaximumUIDs)
+	}
+	if !state.ReplacementFound || state.ReplacementUID != state.ExpectedUID {
+		return fmt.Errorf("contract registration replacement UID=%d found=%t, want UID %d", state.ReplacementUID, state.ReplacementFound, state.ExpectedUID)
+	}
+	if state.ChurnFound {
+		return fmt.Errorf("replaced churn-floor hotkey remains live at UID %d", state.ChurnUID)
+	}
+	return nil
+}
+
 func validateChallengerChurnPreState(state challengerChurnState) error {
 	if state.MaximumUIDs == 0 || state.UIDCount != state.MaximumUIDs {
 		return fmt.Errorf("challenger registration requires a full subnet: count=%d maximum=%d", state.UIDCount, state.MaximumUIDs)
@@ -1880,7 +2895,7 @@ func validateChallengerChurnPreState(state challengerChurnState) error {
 		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
 	}
 	if state.RuntimePruneUID != state.ExpectedUID {
-		return fmt.Errorf("runtime-451 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+		return fmt.Errorf("runtime-452 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
 	}
 	return nil
 }
@@ -1930,11 +2945,56 @@ func (e *Executor) verifiedActionEntry(action Action) (JournalEntry, bool) {
 	entries := e.journal.Entries()
 	for index := len(entries) - 1; index >= 0; index-- {
 		entry := entries[index]
-		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && entry.IntentHash == action.IntentHash && entry.Stage == StageVerified {
+		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) && entry.Stage == StageVerified {
 			return entry, true
 		}
 	}
 	return JournalEntry{}, false
+}
+
+const (
+	carriedActionVerificationWorkers = 8
+	carriedActionVerificationTimeout = 5 * time.Minute
+	carriedActionProgressInterval    = 50
+)
+
+// Execute independent read-only audits concurrently, but report the first
+// failure in canonical plan order. This keeps diagnostics deterministic while
+// avoiding a linear multi-hour replay as the 1,000-miner release accumulates
+// hundreds of finalized funding and registration proofs.
+func runOrderedConcurrentAudits(count, workers int, audit func(int) error) error {
+	if count < 0 || workers <= 0 || audit == nil {
+		return errors.New("concurrent audit configuration is invalid")
+	}
+	if count == 0 {
+		return nil
+	}
+	if workers > count {
+		workers = count
+	}
+	jobs := make(chan int, count)
+	errs := make([]error, count)
+	var wait sync.WaitGroup
+	wait.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		go func() {
+			defer wait.Done()
+			for index := range jobs {
+				errs[index] = audit(index)
+			}
+		}()
+	}
+	for index := 0; index < count; index++ {
+		jobs <- index
+	}
+	close(jobs)
+	wait.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Verify every exact ancestor intent before the revised plan performs its
@@ -1945,16 +3005,75 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 	if e == nil || e.plan == nil || e.journal == nil {
 		return errors.New("plan/journal is unavailable")
 	}
+	type carriedAudit struct {
+		action Action
+		entry  JournalEntry
+		record *ActionPostcondition
+	}
+	audits := make([]carriedAudit, 0)
 	for _, action := range e.plan.Actions {
 		entry, ok := e.verifiedActionEntry(action)
 		if !ok || entry.PlanHash == e.plan.PlanHash {
 			continue
 		}
-		if err := e.verifyVerifiedActionState(ctx, action, entry); err != nil {
-			return fmt.Errorf("action %s: %w", action.ID, err)
+		record, err := e.readPersistedPostcondition(entry)
+		if err != nil {
+			return fmt.Errorf("action %s: persisted postcondition: %w", action.ID, err)
+		}
+		audits = append(audits, carriedAudit{action: action, entry: entry, record: record})
+	}
+	// Contract postcondition readers share the immutable payload cache. Resolve
+	// it once before workers start so the cache and deployment manifest are
+	// never initialized concurrently.
+	if len(audits) > 0 && planUsesContractDeploymentEnvelope(e.plan.Schema) {
+		if err := e.ensurePayloads(ctx); err != nil {
+			return fmt.Errorf("prepare carried contract payloads: %w", err)
 		}
 	}
+	var sharedEVMHead *ChainHead
+	for _, audit := range audits {
+		if !actionPostStateRequiresEVMCheckpoint(audit.action) {
+			continue
+		}
+		if e.deployer == nil || e.deployer.client == nil {
+			return errors.New("prepare carried EVM checkpoint: EVM postcondition client is unavailable")
+		}
+		head, err := finalizedEVMHead(ctx, e.deployer.client)
+		if err != nil {
+			return fmt.Errorf("prepare carried EVM checkpoint: %w", err)
+		}
+		sharedEVMHead = &head
+		break
+	}
+	var completed atomic.Uint64
+	if err := runOrderedConcurrentAudits(len(audits), carriedActionVerificationWorkers, func(index int) error {
+		audit := audits[index]
+		auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
+		defer cancel()
+		err := e.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEVMHead)
+		count := completed.Add(1)
+		if count%carriedActionProgressInterval == 0 || count == uint64(len(audits)) {
+			fmt.Fprintf(os.Stderr, "sim-testnet: carried action audit %d/%d\n", count, len(audits))
+		}
+		if err != nil {
+			return fmt.Errorf("action %s: %w", audit.action.ID, err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	verifiedKeys := make(map[string]bool, len(audits))
+	for _, audit := range audits {
+		verifiedKeys[carriedVerificationKey(audit.entry)] = true
+	}
+	e.carriedVerificationKeys = verifiedKeys
 	return nil
+}
+
+// Bind the in-memory audit cache to the immutable verified journal evidence.
+// It lives only for one executor process and never substitutes for a resume.
+func carriedVerificationKey(entry JournalEntry) string {
+	return entry.PlanHash + "\x00" + entry.ActionID + "\x00" + entry.IntentHash + "\x00" + entry.PostconditionHash
 }
 
 func (e *Executor) registrationSetupProgressed() bool {
@@ -2015,12 +3134,94 @@ func (e *Executor) registrationPostconditionUID(actionID string) (uint16, error)
 	return observedPostconditionUID(record.Observed["uid"])
 }
 
+func (e *Executor) readRegistrationReplacementState(churn int, replacementLabel string) (registrationReplacementState, error) {
+	if churn < 1 || churn > e.cfg.Config.Topology.ChurnFloorUIDs || replacementLabel == "" {
+		return registrationReplacementState{}, errors.New("registration replacement identity is out of range")
+	}
+	expectedUID, err := e.registrationPostconditionUID(fmt.Sprintf("churn.register.%d", churn))
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	replacementHotkey, err := roleBytes32(e.roles, replacementLabel)
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	churnHotkey, err := roleBytes32(e.roles, churnHotkeyLabel(churn))
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	replacementUID, replacementFound, err := e.substrate.UID(replacementHotkey)
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	churnUID, churnFound, err := e.substrate.UID(churnHotkey)
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	count, err := e.substrate.UIDCount()
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	maximum := hyperparameterUint64(e.cfg.Hyperparameters.OwnerControlled["max_allowed_uids"])
+	if maximum == 0 || maximum > uint64(^uint16(0)) {
+		return registrationReplacementState{}, fmt.Errorf("approved max_allowed_uids %d is invalid", maximum)
+	}
+	pruneUID, err := e.substrate.Runtime452PruneCandidate()
+	if err != nil {
+		return registrationReplacementState{}, err
+	}
+	return registrationReplacementState{
+		ExpectedUID: expectedUID, RuntimePruneUID: pruneUID, ReplacementUID: replacementUID, ReplacementFound: replacementFound,
+		ChurnUID: churnUID, ChurnFound: churnFound, UIDCount: count, MaximumUIDs: uint16(maximum),
+	}, nil
+}
+
+func (e *Executor) verifyContractRegistrationReplacementPrecondition(action Action, replacementLabel string, registration int) error {
+	generation := e.plan.Deployment.RegistrationRoleGeneration
+	if generation == 0 {
+		if action.Parameters["registration_role_generation"] != "0" || action.Parameters["expected_replaced_churn"] != "" {
+			return errors.New("generation-zero contract registration has replacement parameters")
+		}
+		return nil
+	}
+	churn, err := churnIndexForContractRegistration(e.cfg.Config.Topology, generation, registration)
+	if err != nil {
+		return err
+	}
+	if action.Parameters["registration_role_generation"] != strconv.FormatUint(generation, 10) || action.Parameters["expected_replaced_churn"] != strconv.Itoa(churn) {
+		return errors.New("contract registration replacement parameters differ from the approved generation and churn UID")
+	}
+	state, err := e.readRegistrationReplacementState(churn, replacementLabel)
+	if err != nil {
+		return err
+	}
+	if err := validateRegistrationReplacementPreState(state); err != nil {
+		return err
+	}
+	hotkey, err := roleBytes32(e.roles, replacementLabel)
+	if err != nil {
+		return err
+	}
+	owner, err := e.substrate.HotkeyOwner(hotkey)
+	if err != nil {
+		return err
+	}
+	if owner != ([32]byte{}) {
+		return fmt.Errorf("replacement role %s already has global coldkey owner 0x%x", replacementLabel, owner)
+	}
+	return nil
+}
+
 func (e *Executor) readChallengerChurnState(fleet int) (challengerChurnState, error) {
 	challenger := fleet - e.cfg.Config.Topology.HeadFleets
 	if challenger < 1 || challenger > e.cfg.Config.Topology.ChallengerFleets || challenger > e.cfg.Config.Topology.ChurnFloorUIDs {
 		return challengerChurnState{}, fmt.Errorf("fleet %d is not a bounded challenger", fleet)
 	}
-	expectedUID, err := e.registrationPostconditionUID(fmt.Sprintf("churn.register.%d", challenger))
+	churn, err := churnIndexForChallenger(e.cfg.Config.Topology, e.plan.Deployment.RegistrationRoleGeneration, challenger)
+	if err != nil {
+		return challengerChurnState{}, err
+	}
+	expectedUID, err := e.registrationPostconditionUID(fmt.Sprintf("churn.register.%d", churn))
 	if err != nil {
 		return challengerChurnState{}, err
 	}
@@ -2028,7 +3229,7 @@ func (e *Executor) readChallengerChurnState(fleet int) (challengerChurnState, er
 	if err != nil {
 		return challengerChurnState{}, err
 	}
-	churnHotkey, err := roleBytes32(e.roles, churnHotkeyLabel(challenger))
+	churnHotkey, err := roleBytes32(e.roles, churnHotkeyLabel(churn))
 	if err != nil {
 		return challengerChurnState{}, err
 	}
@@ -2048,7 +3249,7 @@ func (e *Executor) readChallengerChurnState(fleet int) (challengerChurnState, er
 	if maximum == 0 || maximum > uint64(^uint16(0)) {
 		return challengerChurnState{}, fmt.Errorf("approved max_allowed_uids %d is invalid", maximum)
 	}
-	pruneUID, err := e.substrate.Runtime451PruneCandidate()
+	pruneUID, err := e.substrate.Runtime452PruneCandidate()
 	if err != nil {
 		return challengerChurnState{}, err
 	}
@@ -2110,6 +3311,9 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 	if err != nil {
 		return err
 	}
+	if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
+		return err
+	}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", i))
 		vaultRoot := filepath.Join(root, "vault")
@@ -2138,7 +3342,7 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 			"testnet-deploy-block":                       contracts.DeployBlock,
 			"testnet-netuid":                             cfg.Netuid,
 			"testnet-no-id":                              i,
-			"testnet-treasury-hotkey":                    "0x" + roles.Substrate[fmt.Sprintf("operator-%d-pool-hotkey", i)].PublicKeyHex,
+			"testnet-treasury-hotkey":                    "0x" + roles.Substrate[operatorPoolHotkeyLabelForGeneration(i, contracts.RegistrationRoleGeneration)].PublicKeyHex,
 			"testnet-deposit-hotkey":                     depositHotkey,
 			"testnet-deposit-key":                        deposit,
 			"testnet-root-key":                           rootKey,

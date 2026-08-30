@@ -49,6 +49,15 @@ topology:
   miner_swarm_processes: 20
   operator_assignment: balanced
 
+alpha_transfers:
+  minimum_tao_equivalent_margin_bps: 1000
+
+validator_bootstrap:
+  reserve_target_share_bps: 6500
+  reserve_minimum_share_bps: 6000
+  independent_target_alpha_rao: 1000000000000
+  minimum_source_remaining_alpha_rao: 2000000000000
+
 contracts:
   install: true
   artifact_source: ../evm/out
@@ -78,6 +87,7 @@ scenarios:
   short_epochs: 20
   production_epochs: 3
   voluntary_conviction_rao: 1000000000
+  dishonest_deposit_rao: 5000000000
   quality_fault_operator: 2
   quality_fault_start_blocks: 5
   quality_fault_duration_blocks: 20

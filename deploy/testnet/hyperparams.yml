@@ -2,7 +2,7 @@ schema_version: 1
 profile: release-1.0
 netuid_from: "vault://main/st.yml#testnet-netuid"
 owner_controlled:
-  # Runtime 451 multiplies burn immediately after each registration. A
+  # Runtime 452 multiplies burn immediately after each registration. A
   # one-block half-life returns the next sequential registration to MinBurn;
   # production restores the runtime default after bootstrap/tournament churn.
   burn_half_life: 1
@@ -12,7 +12,11 @@ owner_controlled:
   commit_reveal_weights_enabled: true
   commit_reveal_period: 1
   liquid_alpha_enabled: true
-  immunity_period: 7200
+  # Netuid 521's external bootstrap UID predates the controlled churn floor.
+  # This reviewed window keeps the floor immune during setup while the older
+  # external UID stays non-immune, forcing runtime 452's minimum-free rule to
+  # prune the intended controlled identity. Production restores 2400 below.
+  immunity_period: 50000
   min_allowed_weights: 1
   weights_version_key: 1
   serving_rate_limit: 50
@@ -28,14 +32,14 @@ observed_compatibility_gates:
     kind: u16
     rule: exact
     expected: [65535]
-    decision: runtime-v451 hardcodes the native getter to no cap; release validators enforce the signed policy max_weight_limit_u16 and the production policy must lower it as recipient breadth grows
+    decision: runtime-v452 hardcodes the native getter to no cap; release validators enforce the signed policy max_weight_limit_u16 and the production policy must lower it as recipient breadth grows
   max_allowed_validators:
     storage: MaxAllowedValidators
     scope: netuid
     kind: u16
     rule: exact
     expected: [64]
-    decision: runtime-v451 testnet root-controlled default is accepted for the bounded release topology; production governance must lower it to 56 or less before targeting 200 top-level miner UIDs
+    decision: runtime-v452 testnet root-controlled default is accepted for the bounded release topology; production governance must lower it to 56 or less before targeting 200 top-level miner UIDs
   registration_burn:
     storage: Burn
     scope: netuid
@@ -48,14 +52,14 @@ observed_compatibility_gates:
     kind: u16
     rule: exact
     expected: [65535]
-    decision: release-1.0 is validated against the pinned v451 full bonds-penalty setting
+    decision: release-1.0 is validated against the pinned v452 full bonds-penalty setting
   alpha_values:
     storage: AlphaValues
     scope: netuid
     kind: u16_pair
     rule: exact
     expected: [45875, 58982]
-    decision: release-1.0 uses the pinned v451 liquid-alpha range of 0.7 through 0.9
+    decision: release-1.0 uses the pinned v452 liquid-alpha range of 0.7 through 0.9
   min_delegate_take:
     storage: MinDelegateTake
     scope: global
@@ -69,7 +73,7 @@ observed_compatibility_gates:
     kind: u16
     rule: exact
     expected: [11796]
-    decision: release economics require the pinned v451 eighteen-percent owner cut
+    decision: release economics require the pinned v452 eighteen-percent owner cut
   tao_weight:
     storage: TaoWeight
     scope: global

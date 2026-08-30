@@ -2,9 +2,12 @@
 pragma solidity 0.8.24;
 
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IStaking, ISTAKING_ADDRESS} from "./interfaces/stakingV2.sol";
 import {INeuron, INeuron_ADDRESS} from "./interfaces/neuron.sol";
+import {IAlpha, IALPHA_ADDRESS} from "./interfaces/alpha.sol";
+import {NativeBalance} from "./NativeBalance.sol";
 
 /// @title STSettlementVault
 /// @notice Non-upgradeable custody and claims state machine. The coordinator
@@ -19,6 +22,12 @@ contract STSettlementVault {
         Finalized,
         RootMissed,
         Carried
+    }
+
+    enum PaymentDeferralReason {
+        BelowMinimum,
+        PriceUnavailable,
+        RuntimeFailure
     }
 
     struct Pool {
@@ -41,6 +50,7 @@ contract STSettlementVault {
     bytes32 public immutable escrowHotkey;
     bytes32 public immutable selfColdkey;
     uint64 public immutable minimumClaimTTLBlocks;
+    uint64 public immutable minimumTransferTaoRao;
     address public immutable bootstrap;
 
     address public coordinator;
@@ -52,6 +62,7 @@ contract STSettlementVault {
     mapping(uint256 epoch => mapping(uint256 noId => Entitlement record)) private _entitlements;
     mapping(uint256 noId => uint256 amount) public carry;
     mapping(uint256 epoch => mapping(bytes32 claimKey => bool claimed)) public leafClaimed;
+    mapping(bytes32 coldkey => uint256 amount) public claimCredit;
 
     uint256 public totalCaptured;
     uint256 public totalPaid;
@@ -67,6 +78,14 @@ contract STSettlementVault {
         uint256 indexed epoch, uint256 indexed noId, bytes32 indexed poolHotkey, uint256 amount
     );
     event EmissionDeferred(uint256 indexed epoch, uint256 indexed noId);
+    event EmissionDustDeferred(
+        uint256 indexed epoch,
+        uint256 indexed noId,
+        bytes32 indexed poolHotkey,
+        uint256 observedAlphaRao,
+        uint256 taoEquivalentRao,
+        uint64 minimumTransferTaoRao
+    );
     event EntitlementFinalized(
         uint256 indexed epoch,
         uint256 indexed noId,
@@ -84,6 +103,14 @@ contract STSettlementVault {
         uint256 amount,
         address relayer
     );
+    event ClaimPaymentDeferred(
+        bytes32 indexed coldkey,
+        uint256 creditAlphaRao,
+        uint256 taoEquivalentRao,
+        uint64 minimumTransferTaoRao,
+        PaymentDeferralReason reason
+    );
+    event ClaimPaid(bytes32 indexed coldkey, uint256 amount, address indexed relayer);
     event EntitlementExpired(
         uint256 indexed epoch, uint256 indexed noId, uint256 unclaimed, uint256 operatorCarry
     );
@@ -99,6 +126,11 @@ contract STSettlementVault {
     error AlreadyClaimed();
     error Underfunded();
     error Reentrancy();
+    error RuntimeAccountingMismatch();
+    error RuntimePriceUnavailable();
+    error RuntimeTransferFailed();
+    error TransferBelowMinimum();
+    error NothingToWithdraw();
 
     modifier onlyCoordinator() {
         if (msg.sender != coordinator) revert Unauthorized();
@@ -117,16 +149,18 @@ contract STSettlementVault {
         bytes32 escrowHotkey_,
         bytes32 selfColdkey_,
         uint64 minimumClaimTTLBlocks_,
+        uint64 minimumTransferTaoRao_,
         address bootstrap_
     ) {
         if (
             netuid_ == 0 || escrowHotkey_ == bytes32(0) || selfColdkey_ == bytes32(0)
-                || minimumClaimTTLBlocks_ == 0 || bootstrap_ == address(0)
+                || minimumClaimTTLBlocks_ == 0 || minimumTransferTaoRao_ == 0 || bootstrap_ == address(0)
         ) revert InvalidConfiguration();
         netuid = netuid_;
         escrowHotkey = escrowHotkey_;
         selfColdkey = selfColdkey_;
         minimumClaimTTLBlocks = minimumClaimTTLBlocks_;
+        minimumTransferTaoRao = minimumTransferTaoRao_;
         bootstrap = bootstrap_;
     }
 
@@ -158,12 +192,12 @@ contract STSettlementVault {
         if (msg.sender != bootstrap) revert Unauthorized();
         if (escrowRegistered) revert AlreadyInitialized();
         if (maximumBurnRao == 0) revert InvalidConfiguration();
-        uint256 balanceBefore = address(this).balance - msg.value;
+        uint256 balanceBefore = NativeBalance.beforeSuppliedValue(address(this).balance, msg.value);
         // Checks-effects-interactions: a failed registration/read rolls this
         // flag back with the transaction, while a hostile callback can never
         // observe an unclaimed one-shot registration capability.
         escrowRegistered = true;
-        // Runtime 451 charges this contract's SS58-mirror balance. msg.value
+        // Runtime 452 charges this contract's SS58-mirror balance. msg.value
         // funds that balance before execution; forwarding it to the precompile
         // would move the funds away before the runtime dispatch can burn them.
         INeuron(INeuron_ADDRESS).registerLimit(netuid, escrowHotkey, maximumBurnRao);
@@ -193,7 +227,7 @@ contract STSettlementVault {
             noId == 0 || poolHotkey == bytes32(0) || poolHotkey == escrowHotkey
                 || pools[noId].hotkey != bytes32(0) || poolHotkeyUsed[poolHotkey] || maximumBurnRao == 0
         ) revert InvalidConfiguration();
-        uint256 balanceBefore = address(this).balance - msg.value;
+        uint256 balanceBefore = NativeBalance.beforeSuppliedValue(address(this).balance, msg.value);
         INeuron(INeuron_ADDRESS).registerLimit(netuid, poolHotkey, maximumBurnRao);
         (bool exists, uint16 liveUid) = INeuron(INeuron_ADDRESS).getUid(netuid, poolHotkey);
         if (!exists) revert UnknownPool();
@@ -225,20 +259,49 @@ contract STSettlementVault {
         if (record.status != EpochStatus.Unset) revert InvalidTransition();
         if (pool.hotkey == bytes32(0)) revert UnknownPool();
 
-        amount = IStaking(ISTAKING_ADDRESS).getStake(pool.hotkey, selfColdkey, uint256(netuid));
+        uint256 observed = IStaking(ISTAKING_ADDRESS).getStake(pool.hotkey, selfColdkey, uint256(netuid));
+        if (observed == 0) {
+            record.status = EpochStatus.Funded;
+            emit EmissionCaptured(epoch, noId, pool.hotkey, 0);
+            return 0;
+        }
 
-        // Effects precede the stake move. A failed or partial runtime call
-        // reverts the entire EVM transaction, while the transition marker
-        // prevents a runtime callback from observing an unclaimed epoch.
+        (bool priceAvailable, uint256 taoEquivalentRao) = _tryTaoEquivalentRao(observed);
+        if (!priceAvailable) revert RuntimePriceUnavailable();
+        if (taoEquivalentRao < minimumTransferTaoRao) {
+            // Runtime 452 rejects a same-subnet move below DefaultMinTransfer.
+            // Finalize this epoch with zero captured funding and leave the
+            // observed dust on the operator pool to accumulate for the next
+            // timely boundary.
+            record.status = EpochStatus.Funded;
+            emit EmissionDeferred(epoch, noId);
+            emit EmissionDustDeferred(
+                epoch, noId, pool.hotkey, observed, taoEquivalentRao, minimumTransferTaoRao
+            );
+            return 0;
+        }
+
+        // Admit the exact intended movement before interacting with the
+        // runtime. Any failed call or delta check reverts the complete EVM
+        // transaction and therefore these effects together with the runtime
+        // dispatch. All state-changing entry points share the reentrancy guard.
+        amount = observed;
         record.funded = amount;
         record.status = EpochStatus.Funded;
         totalCaptured += amount;
         pendingFunding += amount;
         escrowAccounted += amount;
-        if (amount != 0) {
-            IStaking(ISTAKING_ADDRESS)
-                .moveStake(pool.hotkey, escrowHotkey, uint256(netuid), uint256(netuid), amount);
-        }
+
+        uint256 escrowBefore = _liveEscrowStake();
+        IStaking(ISTAKING_ADDRESS)
+            .moveStake(pool.hotkey, escrowHotkey, uint256(netuid), uint256(netuid), observed);
+        uint256 poolAfter = IStaking(ISTAKING_ADDRESS).getStake(pool.hotkey, selfColdkey, uint256(netuid));
+        uint256 escrowAfter = _liveEscrowStake();
+        if (
+            poolAfter > observed || observed - poolAfter != observed || escrowAfter < escrowBefore
+                || escrowAfter - escrowBefore != observed
+        ) revert RuntimeAccountingMismatch();
+
         _requireBacking();
         emit EmissionCaptured(epoch, noId, pool.hotkey, amount);
     }
@@ -307,7 +370,7 @@ contract STSettlementVault {
         Entitlement storage record = _entitlements[epoch][noId];
         if (record.status != EpochStatus.Finalized) revert InvalidTransition();
         if (block.number > record.expiryBlock) revert ClaimExpired();
-        if (coldkey == bytes32(0) || shareBps == 0 || shareBps > BPS) {
+        if (coldkey == bytes32(0) || coldkey == selfColdkey || shareBps == 0 || shareBps > BPS) {
             revert InvalidConfiguration();
         }
         if (!MerkleProof.verify(proof, record.payoutRoot, payoutLeaf(coldkey, shareBps))) {
@@ -320,14 +383,18 @@ contract STSettlementVault {
         amount = (record.total * shareBps) / BPS;
         record.claimed += amount;
         if (record.claimed > record.total) revert Underfunded();
-        outstandingLiability -= amount;
-        escrowAccounted -= amount;
-        totalPaid += amount;
-        if (amount != 0) {
-            IStaking(ISTAKING_ADDRESS)
-                .transferStake(coldkey, escrowHotkey, uint256(netuid), uint256(netuid), amount);
-        }
+        claimCredit[coldkey] += amount;
         emit Claimed(epoch, noId, coldkey, shareBps, amount, msg.sender);
+        if (amount != 0) _settleClaimCredit(coldkey, true, msg.sender);
+        _requireBacking();
+    }
+
+    /// @notice Permissionlessly retries an accumulated miner credit. Payment
+    /// always lands on `coldkey`, so a relayer cannot redirect custody.
+    function withdrawClaimCredit(bytes32 coldkey) external nonReentrant returns (uint256 amount) {
+        amount = claimCredit[coldkey];
+        if (amount == 0) revert NothingToWithdraw();
+        _settleClaimCredit(coldkey, false, msg.sender);
     }
 
     function expireEntitlement(uint256 epoch, uint256 noId) external nonReentrant {
@@ -354,6 +421,88 @@ contract STSettlementVault {
 
     function _liveEscrowStake() internal view returns (uint256) {
         return IStaking(ISTAKING_ADDRESS).getStake(escrowHotkey, selfColdkey, uint256(netuid));
+    }
+
+    // Runtime 452 computes the same-subnet transfer minimum from the spot
+    // alpha price. The alpha precompile returns floor(price * 1e9), converted
+    // from 9-decimal Substrate balance units to 18-decimal EVM units. This
+    // conversion is conservative relative to the runtime's U64F64 price.
+    function _tryTaoEquivalentRao(uint256 alphaRao)
+        internal
+        view
+        returns (bool available, uint256 taoEquivalentRao)
+    {
+        (bool ok, bytes memory result) =
+            IALPHA_ADDRESS.staticcall(abi.encodeCall(IAlpha.getAlphaPrice, (netuid)));
+        if (!ok || result.length != 32) return (false, 0);
+        uint256 price = abi.decode(result, (uint256));
+        if (price == 0) return (false, 0);
+        return (true, Math.mulDiv(alphaRao, price, 1 ether));
+    }
+
+    // A claim must remain accepted when the fixed runtime precompile reverts,
+    // so the guarded function restores its exact pre-call ledger in the catch
+    // branch. This deliberate compensation is safe because every mutating
+    // public entry point is nonReentrant; an explicit hostile-precompile test
+    // pins that invariant.
+    // slither-disable-next-line reentrancy-no-eth
+    function _settleClaimCredit(bytes32 coldkey, bool deferOnFailure, address relayer)
+        internal
+        returns (bool paid)
+    {
+        uint256 credit = claimCredit[coldkey];
+        if (credit == 0) return false;
+        (bool priceAvailable, uint256 taoEquivalentRao) = _tryTaoEquivalentRao(credit);
+        if (!priceAvailable) {
+            if (!deferOnFailure) revert RuntimePriceUnavailable();
+            emit ClaimPaymentDeferred(
+                coldkey, credit, 0, minimumTransferTaoRao, PaymentDeferralReason.PriceUnavailable
+            );
+            return false;
+        }
+        if (taoEquivalentRao < minimumTransferTaoRao) {
+            if (!deferOnFailure) revert TransferBelowMinimum();
+            emit ClaimPaymentDeferred(
+                coldkey, credit, taoEquivalentRao, minimumTransferTaoRao, PaymentDeferralReason.BelowMinimum
+            );
+            return false;
+        }
+
+        uint256 escrowBefore = _liveEscrowStake();
+        uint256 destinationBefore =
+            IStaking(ISTAKING_ADDRESS).getStake(escrowHotkey, coldkey, uint256(netuid));
+
+        uint256 liabilityBefore = outstandingLiability;
+        uint256 accountedBefore = escrowAccounted;
+        uint256 paidBefore = totalPaid;
+        claimCredit[coldkey] = 0;
+        outstandingLiability -= credit;
+        escrowAccounted -= credit;
+        totalPaid += credit;
+
+        try IStaking(ISTAKING_ADDRESS)
+            .transferStake(coldkey, escrowHotkey, uint256(netuid), uint256(netuid), credit) {
+            uint256 escrowAfter = _liveEscrowStake();
+            uint256 destinationAfter =
+                IStaking(ISTAKING_ADDRESS).getStake(escrowHotkey, coldkey, uint256(netuid));
+            if (
+                escrowAfter > escrowBefore || escrowBefore - escrowAfter != credit
+                    || destinationAfter < destinationBefore || destinationAfter - destinationBefore != credit
+            ) revert RuntimeAccountingMismatch();
+
+            emit ClaimPaid(coldkey, credit, relayer);
+            return true;
+        } catch {
+            if (!deferOnFailure) revert RuntimeTransferFailed();
+            claimCredit[coldkey] = credit;
+            outstandingLiability = liabilityBefore;
+            escrowAccounted = accountedBefore;
+            totalPaid = paidBefore;
+            emit ClaimPaymentDeferred(
+                coldkey, credit, taoEquivalentRao, minimumTransferTaoRao, PaymentDeferralReason.RuntimeFailure
+            );
+            return false;
+        }
     }
 
     function _requireBacking() internal view {

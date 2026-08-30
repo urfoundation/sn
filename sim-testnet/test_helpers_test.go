@@ -32,13 +32,19 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			ChallengerFleets: 2, ClientsPerHeadFleet: 4, ChurnFloorUIDs: 47, MinerSwarmProcesses: 20,
 			OperatorAssignment: "balanced",
 		},
+		AlphaTransfers: AlphaTransferConfig{MinimumTAOEquivalentMarginBPS: 1_000},
+		ValidatorBootstrap: ValidatorBootstrapConfig{
+			ReserveTargetShareBPS: 6_500, ReserveMinimumShareBPS: 6_000,
+			IndependentTargetAlphaRao: 1_000_000_000_000, MinimumSourceRemainingAlphaRao: 2_000_000_000_000,
+		},
 		Contracts:    ContractConfig{Install: true, GovernanceProfile: "testnet-single-owner", VerifyRuntimeCodeHash: true},
 		Dependencies: DependencyConfig{Mode: "managed_containers", ObjectStore: "server-blob"},
 		Artifacts:    ArtifactConfig{Writer: "server-blob", HistoryAPI: "server-api", ContentAddressed: true},
 		Processes:    ProcessConfig{RestartPolicy: "on_failure_bounded"},
 		Scenarios: ScenarioConfig{
 			Launch: "smoke", Release: "release-1.0", ShortEpochs: 20, ProductionEpochs: 3,
-			VoluntaryConvictionRao: 1_000_000_000, QualityFaultOperator: 2,
+			VoluntaryConvictionRao: 1_000_000_000, DishonestDepositRao: dishonestDepositRao,
+			QualityFaultOperator:    2,
 			QualityFaultStartBlocks: 5, QualityFaultDurationBlocks: 20,
 			Adversaries: AdversaryConfig{
 				Enabled: true, Matrix: "docs/spec/adversarial-matrix-v1.json", Seed: 52120260820,
@@ -69,16 +75,17 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 	public := &PublicManifest{SchemaVersion: 1, Profile: releaseProfile}
 	public.Chain.ChainID = testnetChainID
 	public.Chain.GenesisHash = testnetGenesis
-	public.Chain.ExpectedRuntimeSpec = 451
+	public.Chain.ExpectedRuntimeSpec = 452
 	public.Chain.ExpectedTransactionVersion = 1
 	public.Chain.ExpectedBlockSeconds = 12
+	public.Chain.ExpectedDefaultMinTransferRao = 100_000
 	release := &ReleaseLock{SchemaVersion: 1, Release: "1.0", Dependencies: map[string]string{
 		"postgres": "postgres:18@sha256:" + strings.Repeat("1", 64),
 		"redis":    "redis:8-alpine@sha256:" + strings.Repeat("2", 64),
 	}}
-	release.Runtime.CodeHash = "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08"
+	release.Runtime.CodeHash = "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc"
 	hyperparameters := &Hyperparameters{SchemaVersion: 1, Profile: releaseProfile, OwnerControlled: map[string]any{
-		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "burn_half_life": 1, "immunity_period": 7200,
+		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "burn_half_life": 1, "immunity_period": testnetBootstrapImmunityPeriodBlocks,
 	}, ProductionOwnerControlled: map[string]any{"burn_half_life": 360, "immunity_period": 2400}}
 	configHash, err := releaseConfigHash(cfg, public, hyperparameters)
 	if err != nil {
@@ -110,7 +117,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		Netuid: 7, ChainID: testnetChainID, Authority: "127.0.0.1:9944", OperationalRPCMode: rpcModePrivateAuthority,
 		OperationalSubstrate: "ws://127.0.0.1:9944", OperationalEVM: "http://127.0.0.1:9944", ObjectStoreHost: "127.0.0.1",
 		OperatorAPIOrigins: []string{"https://no1.example", "https://no2.example"}, WalletSecret: "unit test wallet reference", WalletMaterial: "unit test wallet secret", WalletPasswordSecret: "unit test password reference", WalletPassword: "unit test password secret", WalletPublic: testColdkeyPublic, WalletHotkeyPublic: testHotkeyPublic,
-		MaximumTAORao: 120_000_000_000, MaximumAlphaRao: 6_000_000_000, MaximumEVMGasWei: DecimalUint("100000000000000000000"),
+		MaximumTAORao: 120_000_000_000, MaximumAlphaRao: 20_000_000_000_000, MaximumEVMGasWei: DecimalUint("100000000000000000000"),
 		PolicyHash: policyHash, ConfigHash: configHash,
 	}
 }
@@ -118,12 +125,15 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 func testSetupFacts() *SetupFacts {
 	return &SetupFacts{
 		BurnRao: 500_000, MinBurnRao: 500_000, MaxBurnRao: 100_000_000_000,
-		BurnHalfLifeBlocks: 360, BurnIncreaseMultQ64: "23058430092136939520", AlphaSourceHotkey: "0x" + strings.Repeat("11", 32),
-		AlphaAvailableRao: 6_000_000_000, ExistentialDepositRao: 500, NominatorMinimumRao: 1_000, ProbeTAORao: 1_000,
+		BurnHalfLifeBlocks: 360, BurnIncreaseMultQ64: "23058430092136939520", AlphaSourceHotkey: "0x" + strings.Repeat("42", 32),
+		AlphaAvailableRao: 25_000_000_000_000, AlphaTransferableRao: 25_000_000_000_000,
+		WalletNetuidAlphaRao: 25_000_000_000_000, ExistentialDepositRao: 500,
+		InitialMinStakeRao: 2_000_000, DefaultMinTransferRao: 100_000, AlphaPriceQ9: 568_309, RegisteredAlphaRao: 26_000_000_000_000, AlphaSourceRegistered: true,
+		NominatorMinimumRao: 1_000, ProbeTAORao: 1_000,
 		ExistingUIDCount: 2, SubnetOwnerHotkey: "0x" + strings.Repeat("42", 32), UIDZeroHotkey: "0x" + strings.Repeat("42", 32),
 		ExistingUIDs: []ExistingUIDFact{
-			{UID: 0, Hotkey: "0x" + strings.Repeat("42", 32), Coldkey: "0x" + strings.Repeat("45", 32), RegistrationBlock: 50, SubnetOwner: true},
-			{UID: 1, Hotkey: "0x" + strings.Repeat("43", 32), Coldkey: "0x" + strings.Repeat("44", 32), RegistrationBlock: 60},
+			{UID: 0, Hotkey: "0x" + strings.Repeat("42", 32), Coldkey: "0x" + strings.Repeat("45", 32), RegistrationBlock: 50, SubnetOwner: true, TotalHotkeyAlphaRao: 25_000_000_000_000},
+			{UID: 1, Hotkey: "0x" + strings.Repeat("43", 32), Coldkey: "0x" + strings.Repeat("44", 32), RegistrationBlock: 60, TotalHotkeyAlphaRao: 1_000_000_000_000},
 		},
 		WalletFreeTAORao: 200_000_000_000,
 		FinalizedBlock:   100, FinalizedBlockHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

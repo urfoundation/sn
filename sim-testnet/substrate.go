@@ -101,7 +101,7 @@ func (self *SubstrateManager) approveNativeTransactionFee(ctx context.Context, r
 	return estimated, limit, nil
 }
 
-// subtensorAccountInfo matches runtime 451's System.Account value. Subtensor's
+// subtensorAccountInfo matches runtime 452's System.Account value. Subtensor's
 // Balance is u64 (rao), while the generic GSRPC AccountInfo assumes u128 and
 // therefore cannot decode this runtime's AccountData.
 type subtensorAccountInfo struct {
@@ -122,31 +122,47 @@ type subtensorAccountInfo struct {
 // the harness never guesses an AMM conversion or silently buys an unbounded
 // amount of subnet alpha while applying an approved plan.
 type SetupFacts struct {
-	BurnRao               uint64            `json:"burn_rao"`
-	MinBurnRao            uint64            `json:"min_burn_rao,omitempty"`
-	MaxBurnRao            uint64            `json:"max_burn_rao,omitempty"`
-	BurnHalfLifeBlocks    uint16            `json:"burn_half_life_blocks,omitempty"`
-	BurnIncreaseMultQ64   string            `json:"burn_increase_mult_q64,omitempty"`
-	AlphaSourceHotkey     string            `json:"alpha_source_hotkey"`
-	AlphaAvailableRao     uint64            `json:"alpha_available_rao"`
-	ExistingUIDCount      uint16            `json:"existing_uid_count"`
-	SubnetOwnerHotkey     string            `json:"subnet_owner_hotkey"`
-	UIDZeroHotkey         string            `json:"uid_zero_hotkey"`
-	ExistingUIDs          []ExistingUIDFact `json:"existing_uids"`
-	ExistentialDepositRao uint64            `json:"existential_deposit_rao"`
-	NominatorMinimumRao   uint64            `json:"nominator_minimum_rao"`
-	ProbeTAORao           uint64            `json:"probe_tao_rao"`
-	WalletFreeTAORao      uint64            `json:"wallet_free_tao_rao"`
-	FinalizedBlock        uint64            `json:"finalized_block"`
-	FinalizedBlockHash    string            `json:"finalized_block_hash"`
+	BurnRao                      uint64            `json:"burn_rao"`
+	MinBurnRao                   uint64            `json:"min_burn_rao,omitempty"`
+	MaxBurnRao                   uint64            `json:"max_burn_rao,omitempty"`
+	BurnHalfLifeBlocks           uint16            `json:"burn_half_life_blocks,omitempty"`
+	BurnIncreaseMultQ64          string            `json:"burn_increase_mult_q64,omitempty"`
+	AlphaSourceHotkey            string            `json:"alpha_source_hotkey"`
+	AlphaAvailableRao            uint64            `json:"alpha_available_rao"`
+	AlphaTransferableRao         uint64            `json:"alpha_transferable_rao"`
+	AlphaSourceStoredLockRao     uint64            `json:"alpha_source_stored_lock_rao"`
+	AlphaSourceCollateralRao     uint64            `json:"alpha_source_collateral_rao"`
+	WalletNetuidAlphaRao         uint64            `json:"wallet_netuid_alpha_rao"`
+	WalletNetuidCollateralRao    uint64            `json:"wallet_netuid_collateral_rao"`
+	ExistingUIDCount             uint16            `json:"existing_uid_count"`
+	SubnetOwnerHotkey            string            `json:"subnet_owner_hotkey"`
+	UIDZeroHotkey                string            `json:"uid_zero_hotkey"`
+	ExistingUIDs                 []ExistingUIDFact `json:"existing_uids"`
+	ExistentialDepositRao        uint64            `json:"existential_deposit_rao"`
+	InitialMinStakeRao           uint64            `json:"initial_min_stake_rao"`
+	DefaultMinTransferRao        uint64            `json:"default_min_transfer_rao"`
+	AlphaPriceQ9                 uint64            `json:"alpha_price_tao_per_alpha_q9"`
+	RegisteredAlphaRao           uint64            `json:"registered_alpha_rao"`
+	ReserveValidatorAlphaRao     uint64            `json:"reserve_validator_alpha_rao"`
+	IndependentValidatorAlphaRao uint64            `json:"independent_validator_alpha_rao"`
+	AlphaSourceRegistered        bool              `json:"alpha_source_registered"`
+	NominatorMinimumRao          uint64            `json:"nominator_minimum_rao"`
+	ProbeTAORao                  uint64            `json:"probe_tao_rao"`
+	WalletFreeTAORao             uint64            `json:"wallet_free_tao_rao"`
+	DeployerNonce                uint64            `json:"deployer_nonce"`
+	FinalizedBlock               uint64            `json:"finalized_block"`
+	FinalizedBlockHash           string            `json:"finalized_block_hash"`
+	EVMFinalizedBlock            uint64            `json:"evm_finalized_block"`
+	EVMFinalizedBlockHash        string            `json:"evm_finalized_block_hash"`
 }
 
 type ExistingUIDFact struct {
-	UID               uint16 `json:"uid"`
-	Hotkey            string `json:"hotkey"`
-	Coldkey           string `json:"coldkey"`
-	RegistrationBlock uint64 `json:"registration_block"`
-	SubnetOwner       bool   `json:"subnet_owner"`
+	UID                 uint16 `json:"uid"`
+	Hotkey              string `json:"hotkey"`
+	Coldkey             string `json:"coldkey"`
+	RegistrationBlock   uint64 `json:"registration_block"`
+	SubnetOwner         bool   `json:"subnet_owner"`
+	TotalHotkeyAlphaRao uint64 `json:"total_hotkey_alpha_rao,omitempty"`
 }
 
 // Captures the runtime auction state needed to prove a bounded bootstrap.
@@ -164,7 +180,28 @@ type SubnetTopologyFacts struct {
 	UIDZero     [32]byte
 }
 
-type runtime451PruneNeuron struct {
+type RegisteredAlphaSnapshot struct {
+	FinalizedBlock uint64
+	FinalizedHash  string
+	TotalAlphaRao  uint64
+	ByHotkey       map[[32]byte]uint64
+}
+
+// Captures every runtime restriction which can prevent a same-subnet,
+// ownership-changing transfer from the approved source position. Stored lock
+// mass is intentionally not rolled forward: treating any decay since the
+// checkpoint as still locked is conservative and prevents the harness from
+// moving conviction or requiring the destination to accept locked alpha.
+type AlphaTransferSourceRestrictions struct {
+	FinalizedBlock        uint64
+	FinalizedHash         string
+	StakingHotkeys        [][32]byte
+	StoredLockRao         uint64
+	PositionCollateralRao uint64
+	ColdkeyCollateralRao  uint64
+}
+
+type runtime452PruneNeuron struct {
 	UID               uint16
 	Hotkey            [32]byte
 	EmissionRao       uint64
@@ -231,11 +268,11 @@ func readRegistrationEconomicsAt(chain *crv4.Chain, netuid uint16, finalized typ
 	return result, nil
 }
 
-func runtime451PruneCandidate(neurons []runtime451PruneNeuron, minimumNonImmune uint16) (uint16, error) {
-	var bestImmune *runtime451PruneNeuron
-	var bestNonImmune *runtime451PruneNeuron
+func runtime452PruneCandidate(neurons []runtime452PruneNeuron, minimumNonImmune uint16) (uint16, error) {
+	var bestImmune *runtime452PruneNeuron
+	var bestNonImmune *runtime452PruneNeuron
 	var nonImmune uint16
-	better := func(candidate runtime451PruneNeuron, current *runtime451PruneNeuron) bool {
+	better := func(candidate runtime452PruneNeuron, current *runtime452PruneNeuron) bool {
 		return current == nil || candidate.EmissionRao < current.EmissionRao ||
 			(candidate.EmissionRao == current.EmissionRao && candidate.RegistrationBlock < current.RegistrationBlock) ||
 			(candidate.EmissionRao == current.EmissionRao && candidate.RegistrationBlock == current.RegistrationBlock && candidate.UID < current.UID)
@@ -264,19 +301,119 @@ func runtime451PruneCandidate(neurons []runtime451PruneNeuron, minimumNonImmune 
 	if bestImmune != nil {
 		return bestImmune.UID, nil
 	}
-	return 0, errors.New("runtime-451 prune set has no eligible neuron")
+	return 0, errors.New("runtime-452 prune set has no eligible neuron")
 }
 
-// Runtime 451 defines Balance as a fixed-width u64 in rao. Decode the
+// Runtime 452 defines Balance as a fixed-width u64 in rao. Decode the
 // metadata constant exactly so a runtime type or unit change cannot silently
 // alter EVM mirror-account funding.
 func decodeRuntimeExistentialDepositRao(raw []byte) (uint64, error) {
+	return decodeRuntimeRaoConstant("Balances.ExistentialDeposit", raw)
+}
+
+func decodeRuntimeInitialMinStakeRao(raw []byte) (uint64, error) {
+	return decodeRuntimeRaoConstant("SubtensorModule.InitialMinStake", raw)
+}
+
+func decodeRuntimeInitialMinTransferRao(raw []byte) (uint64, error) {
+	return decodeRuntimeRaoConstant("SubtensorModule.InitialMinTransfer", raw)
+}
+
+type metadataConstantReader interface {
+	FindConstantValue(module, constant string) ([]byte, error)
+}
+
+// DefaultMinTransfer is a pallet type-value function, not an on-chain storage
+// item. Runtime 452 defines it from the InitialMinTransfer Config constant, so
+// the authoritative public value is the exact finalized block's metadata
+// constant. Do not fall back to similarly named storage or a local default.
+func runtimeDefaultMinTransferMetadataValue(metadata metadataConstantReader) ([]byte, error) {
+	value, err := metadata.FindConstantValue(crv4.PalletName, "InitialMinTransfer")
+	if err != nil {
+		return nil, fmt.Errorf("read %s.InitialMinTransfer metadata constant: %w", crv4.PalletName, err)
+	}
+	return value, nil
+}
+
+func validateRuntimeDefaultMinTransferBinding(raw []byte, observedCodeHash, expectedCodeHash string, expectedRao uint64) (uint64, error) {
+	if err := validateRuntimeCodeHash(observedCodeHash, expectedCodeHash); err != nil {
+		return 0, fmt.Errorf("bind DefaultMinTransfer to finalized runtime: %w", err)
+	}
+	value, err := decodeRuntimeInitialMinTransferRao(raw)
+	if err != nil {
+		return 0, err
+	}
+	if expectedRao == 0 {
+		return 0, errors.New("reviewed DefaultMinTransfer is zero")
+	}
+	if value != expectedRao {
+		return 0, fmt.Errorf(
+			"finalized runtime DefaultMinTransfer is %d TAO rao, reviewed manifest requires %d",
+			value,
+			expectedRao,
+		)
+	}
+	return value, nil
+}
+
+func runtimeCodeHashAt(chain *crv4.Chain, finalized types.Hash) (string, error) {
+	var codeHash string
+	if err := chain.API.Client.Call(&codeHash, "state_getStorageHash", "0x3a636f6465", finalized.Hex()); err != nil {
+		return "", err
+	}
+	if err := validateRuntimeCodeHash(codeHash, codeHash); err != nil {
+		return "", err
+	}
+	return strings.ToLower(codeHash), nil
+}
+
+type authenticatedRuntimeMetadata struct {
+	Metadata *types.Metadata
+	CodeHash string
+}
+
+func readAuthenticatedRuntimeMetadataAt(chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) (authenticatedRuntimeMetadata, error) {
+	if cfg == nil || cfg.Release == nil {
+		return authenticatedRuntimeMetadata{}, errors.New("release lock is unavailable")
+	}
+	codeHash, err := runtimeCodeHashAt(chain, finalized)
+	if err != nil {
+		return authenticatedRuntimeMetadata{}, fmt.Errorf("read finalized runtime code hash: %w", err)
+	}
+	if err := validateRuntimeCodeHash(codeHash, cfg.Release.Runtime.CodeHash); err != nil {
+		return authenticatedRuntimeMetadata{}, err
+	}
+	metadata, err := chain.API.RPC.State.GetMetadata(finalized)
+	if err != nil {
+		return authenticatedRuntimeMetadata{}, fmt.Errorf("read finalized runtime metadata: %w", err)
+	}
+	return authenticatedRuntimeMetadata{Metadata: metadata, CodeHash: codeHash}, nil
+}
+
+func readRuntimeDefaultMinTransferAt(chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) (uint64, error) {
+	authenticated, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalized)
+	if err != nil {
+		return 0, err
+	}
+	raw, err := runtimeDefaultMinTransferMetadataValue(authenticated.Metadata)
+	if err != nil {
+		return 0, err
+	}
+	return validateRuntimeDefaultMinTransferBinding(
+		raw,
+		authenticated.CodeHash,
+		cfg.Release.Runtime.CodeHash,
+		cfg.Public.Chain.ExpectedDefaultMinTransferRao,
+	)
+}
+
+func decodeRuntimeRaoConstant(name string, raw []byte) (uint64, error) {
 	if len(raw) != 8 {
-		return 0, fmt.Errorf("Balances.ExistentialDeposit SCALE length is %d, want 8", len(raw))
+		return 0, fmt.Errorf("%s SCALE length is %d, want 8", name, len(raw))
 	}
 	value := binary.LittleEndian.Uint64(raw)
 	if value == 0 {
-		return 0, errors.New("Balances.ExistentialDeposit is zero")
+		return 0, fmt.Errorf("%s is zero", name)
 	}
 	return value, nil
 }
@@ -292,8 +429,28 @@ type SubnetActivationState struct {
 }
 
 const stakingPrecompileABI = `[{"type":"function","name":"getStake","inputs":[{"name":"hotkey","type":"bytes32"},{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint256"}],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"},{"type":"function","name":"getNominatorMinRequiredStake","inputs":[],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"}]`
+const alphaPricePrecompileABI = `[{"type":"function","name":"getAlphaPrice","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"}]`
 
 var stakingPrecompileAddress = common.HexToAddress("0x0000000000000000000000000000000000000805")
+var alphaPricePrecompileAddress = common.HexToAddress("0x0000000000000000000000000000000000000808")
+
+// Runtime 452's alpha precompile returns the Q9 price after the chain's
+// rao-to-EVM-wei converter applies a second 1e9 factor. Reject any unexpected
+// precision or shape instead of silently guessing units.
+func decodeAlphaPriceQ9(value *big.Int) (uint64, error) {
+	if value == nil || value.Sign() <= 0 {
+		return 0, errors.New("alpha precompile price is zero or unavailable")
+	}
+	q9, remainder := new(big.Int), new(big.Int)
+	q9.QuoRem(value, new(big.Int).SetUint64(alphaPriceQ9Scale), remainder)
+	if remainder.Sign() != 0 {
+		return 0, fmt.Errorf("alpha precompile price %s is not an exact Q9 rao value", value)
+	}
+	if !q9.IsUint64() || q9.Sign() <= 0 {
+		return 0, errors.New("alpha precompile Q9 price exceeds uint64")
+	}
+	return q9.Uint64(), nil
+}
 
 // ReadSetupFacts selects the largest finalized alpha position controlled by
 // the supplied testnet wallet. A single source position is intentional: each
@@ -316,13 +473,38 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		return nil, err
 	}
 	facts := &SetupFacts{FinalizedBlock: uint64(header.Number), FinalizedBlockHash: finalizedHash.Hex()}
-	existentialDeposit, err := chain.Meta.FindConstantValue("Balances", "ExistentialDeposit")
+	authenticated, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalizedHash)
+	if err != nil {
+		return nil, fmt.Errorf("authenticate finalized runtime metadata: %w", err)
+	}
+	existentialDeposit, err := authenticated.Metadata.FindConstantValue("Balances", "ExistentialDeposit")
 	if err != nil {
 		return nil, fmt.Errorf("read Balances.ExistentialDeposit metadata constant: %w", err)
 	}
 	facts.ExistentialDepositRao, err = decodeRuntimeExistentialDepositRao(existentialDeposit)
 	if err != nil {
 		return nil, err
+	}
+	initialMinStake, err := authenticated.Metadata.FindConstantValue(crv4.PalletName, "InitialMinStake")
+	if err != nil {
+		return nil, fmt.Errorf("read %s.InitialMinStake metadata constant: %w", crv4.PalletName, err)
+	}
+	facts.InitialMinStakeRao, err = decodeRuntimeInitialMinStakeRao(initialMinStake)
+	if err != nil {
+		return nil, err
+	}
+	initialMinTransfer, err := runtimeDefaultMinTransferMetadataValue(authenticated.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	facts.DefaultMinTransferRao, err = validateRuntimeDefaultMinTransferBinding(
+		initialMinTransfer,
+		authenticated.CodeHash,
+		cfg.Release.Runtime.CodeHash,
+		cfg.Public.Chain.ExpectedDefaultMinTransferRao,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolve finalized %s.DefaultMinTransfer: %w", crv4.PalletName, err)
 	}
 	registrationEconomics, err := readRegistrationEconomicsAt(chain, cfg.Netuid, finalizedHash)
 	if err != nil {
@@ -343,6 +525,13 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	facts.ExistingUIDs, err = readExistingUIDFactsAt(chain, cfg.Netuid, finalizedHash, topology)
 	if err != nil {
 		return nil, err
+	}
+	for _, existing := range facts.ExistingUIDs {
+		registeredAlpha, addOK := checkedAdd(facts.RegisteredAlphaRao, existing.TotalHotkeyAlphaRao)
+		if !addOK {
+			return nil, errors.New("registered subnet alpha exceeds uint64")
+		}
+		facts.RegisteredAlphaRao = registeredAlpha
 	}
 	wallet, err := ss58.DecodeWithPrefix(cfg.WalletPublic, ss58.BittensorPrefix)
 	if err != nil {
@@ -379,6 +568,31 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	if err != nil || chainID.Uint64() != testnetChainID {
 		return nil, fmt.Errorf("setup facts EVM identity mismatch: chain_id=%v err=%v", chainID, err)
 	}
+	evmHead, err := finalizedEVMHead(ctx, evm)
+	if err != nil {
+		return nil, fmt.Errorf("read finalized EVM setup head: %w", err)
+	}
+	facts.EVMFinalizedBlock = evmHead.Number
+	facts.EVMFinalizedBlockHash = evmHead.Hash
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("derive setup deployer: %w", err)
+	}
+	deployer, err := roles.EVMAddress("deployer")
+	if err != nil {
+		return nil, err
+	}
+	facts.DeployerNonce, err = evm.NonceAt(ctx, deployer, new(big.Int).SetUint64(evmHead.Number))
+	if err != nil {
+		return nil, fmt.Errorf("read finalized deployer nonce: %w", err)
+	}
+	pendingNonce, err := evm.PendingNonceAt(ctx, deployer)
+	if err != nil {
+		return nil, fmt.Errorf("read pending deployer nonce: %w", err)
+	}
+	if pendingNonce != facts.DeployerNonce {
+		return nil, fmt.Errorf("deployer has pending transactions: finalized nonce=%d pending nonce=%d", facts.DeployerNonce, pendingNonce)
+	}
 	parsed, err := abi.JSON(strings.NewReader(stakingPrecompileABI))
 	if err != nil {
 		return nil, err
@@ -393,7 +607,7 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	}
 	minimumValues, err := parsed.Unpack("getNominatorMinRequiredStake", minimumRaw)
 	if err != nil || len(minimumValues) != 1 {
-		return nil, fmt.Errorf("decode nominator minimum: %w", err)
+		return nil, stateMismatchError(err, "decode nominator minimum returned %d values", len(minimumValues))
 	}
 	minimum, ok := minimumValues[0].(*big.Int)
 	if !ok || !minimum.IsUint64() {
@@ -401,6 +615,30 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	}
 	facts.NominatorMinimumRao = minimum.Uint64()
 	facts.ProbeTAORao = max64(facts.NominatorMinimumRao, 1_000)
+	alphaPriceABI, err := abi.JSON(strings.NewReader(alphaPricePrecompileABI))
+	if err != nil {
+		return nil, err
+	}
+	priceData, err := alphaPriceABI.Pack("getAlphaPrice", cfg.Netuid)
+	if err != nil {
+		return nil, err
+	}
+	priceRaw, err := evm.CallContract(ctx, ethereum.CallMsg{To: &alphaPricePrecompileAddress, Data: priceData}, new(big.Int).SetUint64(facts.FinalizedBlock))
+	if err != nil {
+		return nil, fmt.Errorf("read finalized netuid %d alpha price: %w", cfg.Netuid, err)
+	}
+	priceValues, err := alphaPriceABI.Unpack("getAlphaPrice", priceRaw)
+	if err != nil || len(priceValues) != 1 {
+		return nil, stateMismatchError(err, "decode finalized alpha price returned %d values", len(priceValues))
+	}
+	priceWei, ok := priceValues[0].(*big.Int)
+	if !ok {
+		return nil, fmt.Errorf("alpha price returned %T", priceValues[0])
+	}
+	facts.AlphaPriceQ9, err = decodeAlphaPriceQ9(priceWei)
+	if err != nil {
+		return nil, err
+	}
 	for _, account := range hotkeys {
 		var hotkey [32]byte
 		copy(hotkey[:], account[:])
@@ -414,12 +652,17 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 		}
 		values, unpackErr := parsed.Unpack("getStake", out)
 		if unpackErr != nil || len(values) != 1 {
-			return nil, fmt.Errorf("decode alpha position 0x%x: %w", hotkey, unpackErr)
+			return nil, stateMismatchError(unpackErr, "decode alpha position 0x%x returned %d values", hotkey, len(values))
 		}
 		stake, ok := values[0].(*big.Int)
 		if !ok || !stake.IsUint64() {
 			return nil, fmt.Errorf("alpha position 0x%x exceeds uint64", hotkey)
 		}
+		walletAlpha, addOK := checkedAdd(facts.WalletNetuidAlphaRao, stake.Uint64())
+		if !addOK {
+			return nil, fmt.Errorf("wallet alpha on netuid %d exceeds uint64", cfg.Netuid)
+		}
+		facts.WalletNetuidAlphaRao = walletAlpha
 		if stake.Uint64() > facts.AlphaAvailableRao {
 			facts.AlphaAvailableRao = stake.Uint64()
 			facts.AlphaSourceHotkey = "0x" + fmt.Sprintf("%x", hotkey)
@@ -427,6 +670,54 @@ func ReadSetupFacts(ctx context.Context, cfg *ResolvedConfig) (*SetupFacts, erro
 	}
 	if facts.AlphaSourceHotkey == "" || facts.AlphaAvailableRao == 0 {
 		return facts, fmt.Errorf("testnet wallet has no alpha on netuid %d", cfg.Netuid)
+	}
+	alphaSource, err := decodeHex32("alpha source hotkey", facts.AlphaSourceHotkey)
+	if err != nil {
+		return nil, err
+	}
+	var walletColdkey [32]byte
+	copy(walletColdkey[:], wallet[:])
+	restrictions, err := readAlphaTransferSourceRestrictionsAt(chain, cfg.Netuid, walletColdkey, alphaSource, finalizedHash, facts.FinalizedBlock)
+	if err != nil {
+		return nil, fmt.Errorf("read alpha source transfer restrictions: %w", err)
+	}
+	facts.AlphaSourceStoredLockRao = restrictions.StoredLockRao
+	facts.AlphaSourceCollateralRao = restrictions.PositionCollateralRao
+	facts.WalletNetuidCollateralRao = restrictions.ColdkeyCollateralRao
+	facts.AlphaTransferableRao, err = alphaTransferCapacity(
+		facts.AlphaAvailableRao,
+		facts.WalletNetuidAlphaRao,
+		facts.AlphaSourceStoredLockRao,
+		facts.AlphaSourceCollateralRao,
+		facts.WalletNetuidCollateralRao,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("derive alpha source transfer capacity: %w", err)
+	}
+	if facts.AlphaTransferableRao == 0 {
+		return nil, errors.New("testnet wallet alpha source has no transferable alpha")
+	}
+	reserveHotkey, err := roleBytes32(roles, validatorHotkeyLabel(1))
+	if err != nil {
+		return nil, err
+	}
+	independentHotkey, err := roleBytes32(roles, validatorHotkeyLabel(2))
+	if err != nil {
+		return nil, err
+	}
+	for _, existing := range facts.ExistingUIDs {
+		if strings.EqualFold(existing.Hotkey, facts.AlphaSourceHotkey) {
+			facts.AlphaSourceRegistered = true
+		}
+		if strings.EqualFold(existing.Hotkey, "0x"+fmt.Sprintf("%x", reserveHotkey)) {
+			facts.ReserveValidatorAlphaRao = existing.TotalHotkeyAlphaRao
+		}
+		if strings.EqualFold(existing.Hotkey, "0x"+fmt.Sprintf("%x", independentHotkey)) {
+			facts.IndependentValidatorAlphaRao = existing.TotalHotkeyAlphaRao
+		}
+	}
+	if !facts.AlphaSourceRegistered {
+		return nil, errors.New("largest wallet alpha source is not a registered netuid hotkey")
 	}
 	return facts, nil
 }
@@ -529,6 +820,195 @@ func readRequiredStorageAt(chain *crv4.Chain, key types.StorageKey, pallet, stor
 	return nil
 }
 
+const storageQueryChunkSize = 128
+
+// Read a large finalized storage surface in bounded state_queryStorageAt
+// batches. Sequential state_getStorage calls took long enough for the paired
+// EVM checkpoint to expire on the public testnet RPC; the batch response is
+// therefore validated for exact keys, uniqueness, and block identity.
+func queryStorageAtExact(chain *crv4.Chain, keys []types.StorageKey, finalized types.Hash) (map[string]*types.StorageDataRaw, error) {
+	if chain == nil || chain.API == nil || len(keys) == 0 {
+		return nil, errors.New("finalized storage query requires a chain and keys")
+	}
+	result := make(map[string]*types.StorageDataRaw, len(keys))
+	requested := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		hexKey := key.Hex()
+		if requested[hexKey] {
+			return nil, fmt.Errorf("finalized storage query contains duplicate key %s", hexKey)
+		}
+		requested[hexKey] = true
+	}
+	for start := 0; start < len(keys); start += storageQueryChunkSize {
+		end := min(start+storageQueryChunkSize, len(keys))
+		sets, err := chain.API.RPC.State.QueryStorageAt(keys[start:end], finalized)
+		if err != nil {
+			return nil, err
+		}
+		chunk, err := validateStorageQueryChanges(keys[start:end], finalized, sets)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range chunk {
+			result[key] = value
+		}
+	}
+	if len(result) != len(keys) {
+		return nil, fmt.Errorf("finalized storage query returned %d keys, want %d", len(result), len(keys))
+	}
+	return result, nil
+}
+
+func validateStorageQueryChanges(keys []types.StorageKey, finalized types.Hash, sets []types.StorageChangeSet) (map[string]*types.StorageDataRaw, error) {
+	if len(sets) != 1 || sets[0].Block != finalized {
+		return nil, fmt.Errorf("finalized storage query returned %d change sets at an unexpected block", len(sets))
+	}
+	requested := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		requested[key.Hex()] = true
+	}
+	result := make(map[string]*types.StorageDataRaw, len(keys))
+	for _, change := range sets[0].Changes {
+		hexKey := change.StorageKey.Hex()
+		if !requested[hexKey] {
+			return nil, fmt.Errorf("finalized storage query returned unrequested key %s", hexKey)
+		}
+		if _, duplicate := result[hexKey]; duplicate {
+			return nil, fmt.Errorf("finalized storage query returned duplicate key %s", hexKey)
+		}
+		if change.HasStorageData {
+			data := types.StorageDataRaw(append([]byte(nil), change.StorageData...))
+			result[hexKey] = &data
+		} else {
+			result[hexKey] = nil
+		}
+	}
+	if len(result) != len(keys) {
+		return nil, fmt.Errorf("finalized storage query returned %d changes, want %d", len(result), len(keys))
+	}
+	return result, nil
+}
+
+func decodeRequiredStorageQueryValue(values map[string]*types.StorageDataRaw, key types.StorageKey, label string, out any) error {
+	raw, ok := values[key.Hex()]
+	if !ok || raw == nil || len(*raw) == 0 {
+		return fmt.Errorf("%s storage is absent from finalized query", label)
+	}
+	if err := codec.Decode(*raw, out); err != nil {
+		return fmt.Errorf("decode %s: %w", label, err)
+	}
+	return nil
+}
+
+func decodeValueQueryU64(values map[string]*types.StorageDataRaw, key types.StorageKey, label string) (uint64, error) {
+	raw, ok := values[key.Hex()]
+	if !ok {
+		return 0, fmt.Errorf("%s key is absent from finalized query", label)
+	}
+	// Some Substrate RPC implementations serialize an absent ValueQuery item
+	// as [key,"0x"] instead of [key]. Both represent the runtime fallback.
+	if raw == nil || len(*raw) == 0 {
+		return 0, nil
+	}
+	if len(*raw) != 8 {
+		return 0, fmt.Errorf("%s SCALE length is %d, want 8", label, len(*raw))
+	}
+	return binary.LittleEndian.Uint64(*raw), nil
+}
+
+// Decode the leading AlphaBalance from a pinned runtime struct while also
+// checking its complete SCALE width. Absent OptionQuery rows represent zero;
+// a changed width is a runtime compatibility failure, not a value to guess.
+func decodeOptionalLeadingU64(values map[string]*types.StorageDataRaw, key types.StorageKey, label string, encodedLength int) (uint64, error) {
+	raw, ok := values[key.Hex()]
+	if !ok {
+		return 0, fmt.Errorf("%s key is absent from finalized query", label)
+	}
+	if raw == nil || len(*raw) == 0 {
+		return 0, nil
+	}
+	if len(*raw) != encodedLength {
+		return 0, fmt.Errorf("%s SCALE length is %d, want %d", label, len(*raw), encodedLength)
+	}
+	return binary.LittleEndian.Uint64((*raw)[:8]), nil
+}
+
+// Read lock and miner-collateral rows at one finalized checkpoint. The
+// runtime permits only one individual conviction lock per coldkey/netuid; a
+// second non-zero row is rejected because iterating an arbitrary first row
+// would make transfer behavior ambiguous to the harness.
+func readAlphaTransferSourceRestrictionsAt(chain *crv4.Chain, netuid uint16, coldkey, sourceHotkey [32]byte, finalized types.Hash, block uint64) (AlphaTransferSourceRestrictions, error) {
+	result := AlphaTransferSourceRestrictions{FinalizedBlock: block, FinalizedHash: finalized.Hex()}
+	hotkeysKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "StakingHotkeys", coldkey[:])
+	if err != nil {
+		return result, err
+	}
+	var stakingHotkeys []types.AccountID
+	if err := readRequiredStorageAt(chain, hotkeysKey, crv4.PalletName, "StakingHotkeys", &stakingHotkeys, finalized); err != nil {
+		return result, err
+	}
+	if len(stakingHotkeys) == 0 {
+		return result, errors.New("alpha source coldkey has no staking hotkeys")
+	}
+	keys := make([]types.StorageKey, 0, len(stakingHotkeys)+2)
+	lockKeys := make([]types.StorageKey, len(stakingHotkeys))
+	for i, account := range stakingHotkeys {
+		var hotkey [32]byte
+		copy(hotkey[:], account[:])
+		result.StakingHotkeys = append(result.StakingHotkeys, hotkey)
+		lockKey, keyErr := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Lock", coldkey[:], netuidArg(netuid), hotkey[:])
+		if keyErr != nil {
+			return result, keyErr
+		}
+		lockKeys[i] = lockKey
+		keys = append(keys, lockKey)
+	}
+	positionCollateralKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "MinerCollateral", netuidArg(netuid), sourceHotkey[:], coldkey[:])
+	if err != nil {
+		return result, err
+	}
+	coldkeyCollateralKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "ColdkeyMinerCollateral", netuidArg(netuid), coldkey[:])
+	if err != nil {
+		return result, err
+	}
+	keys = append(keys, positionCollateralKey, coldkeyCollateralKey)
+	values, err := queryStorageAtExact(chain, keys, finalized)
+	if err != nil {
+		return result, err
+	}
+	lockRows := 0
+	for _, lockKey := range lockKeys {
+		locked, decodeErr := decodeOptionalLeadingU64(values, lockKey, crv4.PalletName+".Lock", 32)
+		if decodeErr != nil {
+			return result, decodeErr
+		}
+		if locked == 0 {
+			continue
+		}
+		lockRows++
+		var addOK bool
+		result.StoredLockRao, addOK = checkedAdd(result.StoredLockRao, locked)
+		if !addOK {
+			return result, errors.New("alpha source stored lock exceeds uint64")
+		}
+	}
+	if lockRows > 1 {
+		return result, fmt.Errorf("alpha source has %d non-zero conviction lock rows", lockRows)
+	}
+	result.PositionCollateralRao, err = decodeOptionalLeadingU64(values, positionCollateralKey, crv4.PalletName+".MinerCollateral", 40)
+	if err != nil {
+		return result, err
+	}
+	result.ColdkeyCollateralRao, err = decodeValueQueryU64(values, coldkeyCollateralKey, crv4.PalletName+".ColdkeyMinerCollateral")
+	if err != nil {
+		return result, err
+	}
+	if result.PositionCollateralRao > result.ColdkeyCollateralRao {
+		return result, fmt.Errorf("source position collateral %d exceeds coldkey collateral %d", result.PositionCollateralRao, result.ColdkeyCollateralRao)
+	}
+	return result, nil
+}
+
 func readSubnetTopologyAt(chain *crv4.Chain, netuid uint16, finalized types.Hash) (SubnetTopologyFacts, error) {
 	var result SubnetTopologyFacts
 	countKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "SubnetworkN", netuidArg(netuid))
@@ -564,39 +1044,147 @@ func readSubnetTopologyAt(chain *crv4.Chain, netuid uint16, finalized types.Hash
 	return result, nil
 }
 
-func readExistingUIDFactsAt(chain *crv4.Chain, netuid uint16, finalized types.Hash, topology SubnetTopologyFacts) ([]ExistingUIDFact, error) {
-	result := make([]ExistingUIDFact, 0, topology.UIDCount)
+func readRegisteredAlphaSnapshotAt(chain *crv4.Chain, netuid uint16, finalized types.Hash, block uint64, topology SubnetTopologyFacts) (RegisteredAlphaSnapshot, error) {
+	result := RegisteredAlphaSnapshot{FinalizedBlock: block, FinalizedHash: finalized.Hex(), ByHotkey: make(map[[32]byte]uint64, topology.UIDCount)}
+	hotkeyKeys := make([]types.StorageKey, topology.UIDCount)
 	for uid := uint16(0); uid < topology.UIDCount; uid++ {
-		uidBytes := netuidArg(uid)
-		hotkeyKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Keys", netuidArg(netuid), uidBytes)
+		hotkeyKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Keys", netuidArg(netuid), netuidArg(uid))
+		if err != nil {
+			return RegisteredAlphaSnapshot{}, err
+		}
+		hotkeyKeys[uid] = hotkeyKey
+	}
+	hotkeyValues, err := queryStorageAtExact(chain, hotkeyKeys, finalized)
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	hotkeys := make([][32]byte, topology.UIDCount)
+	totalKeys := make([]types.StorageKey, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		var account types.AccountID
+		if err := decodeRequiredStorageQueryValue(hotkeyValues, hotkeyKeys[uid], crv4.PalletName+".Keys", &account); err != nil {
+			return RegisteredAlphaSnapshot{}, err
+		}
+		var hotkey [32]byte
+		copy(hotkey[:], account[:])
+		hotkeys[uid] = hotkey
+		totalKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "TotalHotkeyAlpha", hotkey[:], netuidArg(netuid))
+		if err != nil {
+			return RegisteredAlphaSnapshot{}, err
+		}
+		totalKeys[uid] = totalKey
+	}
+	totalValues, err := queryStorageAtExact(chain, totalKeys, finalized)
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		hotkey := hotkeys[uid]
+		total, err := decodeValueQueryU64(totalValues, totalKeys[uid], crv4.PalletName+".TotalHotkeyAlpha")
+		if err != nil {
+			return RegisteredAlphaSnapshot{}, err
+		}
+		if _, duplicate := result.ByHotkey[hotkey]; duplicate {
+			return RegisteredAlphaSnapshot{}, fmt.Errorf("netuid %d has duplicate registered hotkey 0x%x", netuid, hotkey)
+		}
+		result.ByHotkey[hotkey] = total
+		next, ok := checkedAdd(result.TotalAlphaRao, total)
+		if !ok {
+			return RegisteredAlphaSnapshot{}, errors.New("registered subnet alpha exceeds uint64")
+		}
+		result.TotalAlphaRao = next
+	}
+	return result, nil
+}
+
+func (m *SubstrateManager) RegisteredAlphaSnapshot() (RegisteredAlphaSnapshot, error) {
+	finalized, block, err := m.finalizedHead()
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	topology, err := readSubnetTopologyAt(m.chain, m.cfg.Netuid, finalized)
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	return readRegisteredAlphaSnapshotAt(m.chain, m.cfg.Netuid, finalized, block, topology)
+}
+
+// Bind source transfer restrictions to the same finalized block as the
+// registered-alpha snapshot used by the prebroadcast economic checks.
+func (self *SubstrateManager) AlphaTransferSourceRestrictions(snapshot RegisteredAlphaSnapshot, coldkey, sourceHotkey [32]byte) (AlphaTransferSourceRestrictions, error) {
+	if snapshot.FinalizedBlock == 0 || snapshot.FinalizedHash == "" {
+		return AlphaTransferSourceRestrictions{}, errors.New("alpha source restrictions require a finalized snapshot")
+	}
+	finalized, err := types.NewHashFromHexString(snapshot.FinalizedHash)
+	if err != nil {
+		return AlphaTransferSourceRestrictions{}, fmt.Errorf("decode finalized alpha snapshot hash: %w", err)
+	}
+	return readAlphaTransferSourceRestrictionsAt(self.chain, self.cfg.Netuid, coldkey, sourceHotkey, finalized, snapshot.FinalizedBlock)
+}
+
+func readExistingUIDFactsAt(chain *crv4.Chain, netuid uint16, finalized types.Hash, topology SubnetTopologyFacts) ([]ExistingUIDFact, error) {
+	hotkeyKeys := make([]types.StorageKey, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		hotkeyKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Keys", netuidArg(netuid), netuidArg(uid))
 		if err != nil {
 			return nil, err
 		}
+		hotkeyKeys[uid] = hotkeyKey
+	}
+	hotkeyValues, err := queryStorageAtExact(chain, hotkeyKeys, finalized)
+	if err != nil {
+		return nil, fmt.Errorf("query registered hotkeys: %w", err)
+	}
+	hotkeys := make([]types.AccountID, topology.UIDCount)
+	secondaryKeys := make([]types.StorageKey, 0, 3*int(topology.UIDCount))
+	ownerKeys := make([]types.StorageKey, topology.UIDCount)
+	registrationKeys := make([]types.StorageKey, topology.UIDCount)
+	totalAlphaKeys := make([]types.StorageKey, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
 		var hotkey types.AccountID
-		if err := readRequiredStorageAt(chain, hotkeyKey, crv4.PalletName, "Keys", &hotkey, finalized); err != nil {
+		if err := decodeRequiredStorageQueryValue(hotkeyValues, hotkeyKeys[uid], crv4.PalletName+".Keys", &hotkey); err != nil {
 			return nil, err
 		}
+		hotkeys[uid] = hotkey
 		ownerKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "Owner", hotkey[:])
 		if err != nil {
 			return nil, err
 		}
-		var coldkey types.AccountID
-		if err := readRequiredStorageAt(chain, ownerKey, crv4.PalletName, "Owner", &coldkey, finalized); err != nil {
-			return nil, err
-		}
-		registrationKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BlockAtRegistration", netuidArg(netuid), uidBytes)
+		registrationKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "BlockAtRegistration", netuidArg(netuid), netuidArg(uid))
 		if err != nil {
 			return nil, err
 		}
+		totalAlphaKey, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "TotalHotkeyAlpha", hotkey[:], netuidArg(netuid))
+		if err != nil {
+			return nil, err
+		}
+		ownerKeys[uid], registrationKeys[uid], totalAlphaKeys[uid] = ownerKey, registrationKey, totalAlphaKey
+		secondaryKeys = append(secondaryKeys, ownerKey, registrationKey, totalAlphaKey)
+	}
+	secondaryValues, err := queryStorageAtExact(chain, secondaryKeys, finalized)
+	if err != nil {
+		return nil, fmt.Errorf("query registered UID facts: %w", err)
+	}
+	result := make([]ExistingUIDFact, 0, topology.UIDCount)
+	for uid := uint16(0); uid < topology.UIDCount; uid++ {
+		hotkey := hotkeys[uid]
+		var coldkey types.AccountID
+		if err := decodeRequiredStorageQueryValue(secondaryValues, ownerKeys[uid], crv4.PalletName+".Owner", &coldkey); err != nil {
+			return nil, err
+		}
 		var registrationBlock types.U64
-		if err := readRequiredStorageAt(chain, registrationKey, crv4.PalletName, "BlockAtRegistration", &registrationBlock, finalized); err != nil {
+		if err := decodeRequiredStorageQueryValue(secondaryValues, registrationKeys[uid], crv4.PalletName+".BlockAtRegistration", &registrationBlock); err != nil {
+			return nil, err
+		}
+		totalAlpha, err := decodeValueQueryU64(secondaryValues, totalAlphaKeys[uid], crv4.PalletName+".TotalHotkeyAlpha")
+		if err != nil {
 			return nil, err
 		}
 		var key [32]byte
 		copy(key[:], hotkey[:])
 		result = append(result, ExistingUIDFact{
 			UID: uid, Hotkey: "0x" + fmt.Sprintf("%x", hotkey), Coldkey: "0x" + fmt.Sprintf("%x", coldkey),
-			RegistrationBlock: uint64(registrationBlock), SubnetOwner: key == topology.OwnerHotkey,
+			RegistrationBlock: uint64(registrationBlock), SubnetOwner: key == topology.OwnerHotkey, TotalHotkeyAlphaRao: totalAlpha,
 		})
 	}
 	return result, nil
@@ -622,11 +1210,11 @@ func (m *SubstrateManager) ExistingUIDFacts() ([]ExistingUIDFact, error) {
 	return readExistingUIDFactsAt(m.chain, m.cfg.Netuid, finalized, topology)
 }
 
-// Runtime451PruneCandidate mirrors the pinned runtime's emission,
+// Runtime452PruneCandidate mirrors the pinned runtime's emission,
 // registration-age, immunity, and UID tie breakers at one finalized state.
 // The fresh-plan invariant proves the only subnet-owner-owned live identity is
 // SubnetOwnerHotkey, so it is the sole immortal entry in this release topology.
-func (m *SubstrateManager) Runtime451PruneCandidate() (uint16, error) {
+func (m *SubstrateManager) Runtime452PruneCandidate() (uint16, error) {
 	finalized, block, err := m.finalizedHead()
 	if err != nil {
 		return 0, err
@@ -662,7 +1250,7 @@ func (m *SubstrateManager) Runtime451PruneCandidate() (uint16, error) {
 	if _, err := readStorageAt(m.chain, emissionKey, crv4.PalletName, "Emission", &emissions, finalized); err != nil {
 		return 0, err
 	}
-	neurons := make([]runtime451PruneNeuron, 0, topology.UIDCount)
+	neurons := make([]runtime452PruneNeuron, 0, topology.UIDCount)
 	for uid := uint16(0); uid < topology.UIDCount; uid++ {
 		uidBytes := netuidArg(uid)
 		hotkeyKey, keyErr := types.CreateStorageKey(m.chain.Meta, crv4.PalletName, "Keys", netuidArg(m.cfg.Netuid), uidBytes)
@@ -692,12 +1280,12 @@ func (m *SubstrateManager) Runtime451PruneCandidate() (uint16, error) {
 		if block >= registrationBlock {
 			age = block - registrationBlock
 		}
-		neurons = append(neurons, runtime451PruneNeuron{
+		neurons = append(neurons, runtime452PruneNeuron{
 			UID: uid, Hotkey: key, EmissionRao: emission, RegistrationBlock: registrationBlock,
 			Immune: age < uint64(immunityPeriod), Immortal: key == topology.OwnerHotkey,
 		})
 	}
-	return runtime451PruneCandidate(neurons, minimumNonImmune)
+	return runtime452PruneCandidate(neurons, minimumNonImmune)
 }
 
 func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
@@ -911,12 +1499,20 @@ func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (u
 }
 
 func (m *SubstrateManager) freeBalanceAtHash(account [32]byte, finalized types.Hash) (uint64, error) {
-	key, err := types.CreateStorageKey(m.chain.Meta, "System", "Account", account[:])
+	return readFreeBalanceAtHash(m.chain, account, finalized)
+}
+
+// Read runtime-452's u64 System.Account balance at one explicit native hash.
+func readFreeBalanceAtHash(chain *crv4.Chain, account [32]byte, blockHash types.Hash) (uint64, error) {
+	if chain == nil || chain.API == nil {
+		return 0, errors.New("native balance chain is unavailable")
+	}
+	key, err := types.CreateStorageKey(chain.Meta, "System", "Account", account[:])
 	if err != nil {
 		return 0, err
 	}
 	var info subtensorAccountInfo
-	ok, err := m.chain.API.RPC.State.GetStorage(key, &info, finalized)
+	ok, err := chain.API.RPC.State.GetStorage(key, &info, blockHash)
 	if err != nil {
 		return 0, err
 	}
@@ -1084,7 +1680,7 @@ func (m *SubstrateManager) DecreaseTakeCall(hotkey [32]byte, take uint16) (types
 	if err != nil {
 		return types.Call{}, err
 	}
-	// Runtime v451 encodes sp_runtime::PerU16 exactly as its u16 parts.
+	// Runtime v452 encodes sp_runtime::PerU16 exactly as its u16 parts.
 	return types.NewCall(m.chain.Meta, crv4.PalletName+".decrease_take", *account, types.NewU16(take))
 }
 

@@ -47,6 +47,20 @@ topology:
   miner_swarm_processes: 20
   operator_assignment: balanced
 
+# Runtime 452 prices alpha transfers in TAO at execution time. Every planned
+# transfer must retain this margin above InitialMinStake at the live spot.
+alpha_transfers:
+  minimum_tao_equivalent_margin_bps: 1000
+
+# The reserve begins with a clear voting majority while validator 2 remains a
+# genuinely independent, economically staked participant. The target/minimum
+# gap absorbs bounded emission and price movement between plan and execution.
+validator_bootstrap:
+  reserve_target_share_bps: 6500
+  reserve_minimum_share_bps: 6000
+  independent_target_alpha_rao: 1000000000000
+  minimum_source_remaining_alpha_rao: 2000000000000
+
 contracts:
   install: true
   artifact_source: ../evm/out
@@ -76,6 +90,7 @@ scenarios:
   short_epochs: 20
   production_epochs: 3
   voluntary_conviction_rao: 1000000000
+  dishonest_deposit_rao: 5000000000
   quality_fault_operator: 2
   quality_fault_start_blocks: 5
   quality_fault_duration_blocks: 20

@@ -12,7 +12,33 @@ import (
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/stabi"
 )
+
+func TestFleetMirrorComparisonRequiresExactNativeFinalityAttestation(t *testing.T) {
+	commitmentHash := sha256.Sum256([]byte("fleet commitment"))
+	finalizedBlockHash := sha256.Sum256([]byte("finalized substrate block"))
+	canonical := stabi.MirroredCommitmentsOutput{
+		CommitmentHash:     commitmentHash,
+		FinalizedBlock:     7_896_221,
+		FinalizedBlockHash: finalizedBlockHash,
+	}
+	if !fleetMirrorMatches(canonical, commitmentHash, 7_896_221, finalizedBlockHash) {
+		t.Fatal("exact mirror rejected")
+	}
+
+	wrongCommitment := canonical
+	wrongCommitment.CommitmentHash[0] ^= 1
+	wrongBlock := canonical
+	wrongBlock.FinalizedBlock = 7_975
+	wrongBlockHash := canonical
+	wrongBlockHash.FinalizedBlockHash[0] ^= 1
+	for _, candidate := range []stabi.MirroredCommitmentsOutput{wrongCommitment, wrongBlock, wrongBlockHash} {
+		if fleetMirrorMatches(candidate, commitmentHash, 7_896_221, finalizedBlockHash) {
+			t.Errorf("inexact mirror accepted: %+v", candidate)
+		}
+	}
+}
 
 func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
 	cfg := testResolvedConfig(t)
@@ -57,9 +83,9 @@ func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
 	}
 	hexValue := func(value []byte) string { return "0x" + hex.EncodeToString(value) }
 	commitment := FleetCommitmentEvidence{
-		Schema: "urnetwork-fleet-commitment-evidence-v1", ManifestURI: "fleet-1.json",
+		Schema: fleetCommitmentEvidenceSchemaV2, ManifestURI: "fleet-1.json",
 		CommitmentHash: hexValue(commitmentHash[:]), Hotkey: hexValue(manifest.Hotkey[:]),
-		CommitmentBlock: 10, FinalizedBlock: 12, FinalizedBlockHash: "0x" + strings.Repeat("12", 32),
+		ExtrinsicHash: "0x" + strings.Repeat("11", 32), CommitmentBlock: 10, FinalizedBlock: 10, FinalizedBlockHash: "0x" + strings.Repeat("12", 32),
 	}
 	evidence := FleetBindingEvidence{
 		Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: hexValue(member.ClientID[:]), ClientKey: hexValue(member.ClientKey[:]),
@@ -81,6 +107,20 @@ func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
 	if !commitmentOK || !bindingsOK || count != 1 || uid != 7 {
 		t.Fatalf("valid evidence rejected: commitment=%t bindings=%t count=%d uid=%d", commitmentOK, bindingsOK, count, uid)
 	}
+	wrongHeight := commitment
+	wrongHeight.FinalizedBlock++
+	legacySchema := commitment
+	legacySchema.Schema = "urnetwork-fleet-commitment-evidence-v1"
+	missingExtrinsic := commitment
+	missingExtrinsic.ExtrinsicHash = ""
+	for _, malformed := range []FleetCommitmentEvidence{wrongHeight, legacySchema, missingExtrinsic} {
+		setup["fleet_1_commitment"] = encode(malformed)
+		commitmentOK, _, _, _, _ = inspectOneFleetEvidenceBytes(cfg, setup, coordinator, 1)
+		if commitmentOK {
+			t.Errorf("malformed exact-block commitment evidence accepted: %+v", malformed)
+		}
+	}
+	setup["fleet_1_commitment"] = encode(commitment)
 
 	tampered := evidence
 	tampered.ClientSignature = "0x" + strings.Repeat("00", 64)

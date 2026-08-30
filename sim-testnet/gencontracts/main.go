@@ -123,7 +123,7 @@ func main() {
 	}
 	defs := []artifactDefinition{
 		{"ReserveSink", "STReserveSink.sol/STReserveSink.json", true, "", []string{"netuid", "reserveHotkey", "selfColdkey", "bootstrap"}, []string{"src/STReserveSink.sol"}},
-		{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "bootstrap"}, []string{"src/STSettlementVault.sol"}},
+		{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "minimumTransferTaoRao", "bootstrap"}, []string{"src/STSettlementVault.sol"}},
 		{"Coordinator", "STCoordinator.sol/STCoordinator.json", true, "", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
 		{"ERC1967Proxy", "ERC1967Proxy.sol/ERC1967Proxy.json", true, "", nil, nil},
 		{"CoordinatorAdversary", "STCoordinatorAdversary.sol/STCoordinatorAdversary.json", false, "TestnetGovernanceDrillArtifact", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},

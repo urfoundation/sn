@@ -230,7 +230,7 @@ func runMain(args []string) error {
 	}
 	switch cmd {
 	case "doctor":
-		report := RunDoctor(ctx, resolved)
+		report := RunDoctorForState(ctx, resolved, stateDir)
 		return printResult(o.Format, report, report.Error())
 	case "plan":
 		p, err := BuildPlanForState(ctx, resolved, stateDir)

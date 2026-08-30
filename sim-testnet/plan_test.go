@@ -1,14 +1,117 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// historicalPlanFacts is the exact pre-v4 SetupFacts wire order. The v2 burn
+// fields were optional so the same fixture can exercise the late-v1 shape.
+type historicalPlanFacts struct {
+	BurnRao               uint64            `json:"burn_rao"`
+	MinBurnRao            uint64            `json:"min_burn_rao,omitempty"`
+	MaxBurnRao            uint64            `json:"max_burn_rao,omitempty"`
+	BurnHalfLifeBlocks    uint16            `json:"burn_half_life_blocks,omitempty"`
+	BurnIncreaseMultQ64   string            `json:"burn_increase_mult_q64,omitempty"`
+	AlphaSourceHotkey     string            `json:"alpha_source_hotkey"`
+	AlphaAvailableRao     uint64            `json:"alpha_available_rao"`
+	ExistingUIDCount      uint16            `json:"existing_uid_count"`
+	SubnetOwnerHotkey     string            `json:"subnet_owner_hotkey"`
+	UIDZeroHotkey         string            `json:"uid_zero_hotkey"`
+	ExistingUIDs          []ExistingUIDFact `json:"existing_uids"`
+	ExistentialDepositRao uint64            `json:"existential_deposit_rao"`
+	NominatorMinimumRao   uint64            `json:"nominator_minimum_rao"`
+	ProbeTAORao           uint64            `json:"probe_tao_rao"`
+	WalletFreeTAORao      uint64            `json:"wallet_free_tao_rao"`
+	FinalizedBlock        uint64            `json:"finalized_block"`
+	FinalizedBlockHash    string            `json:"finalized_block_hash"`
+}
+
+// historicalPlanWire is the exact v3 plan field order before deployment
+// identity and superseded-spend fields were introduced.
+type historicalPlanWire struct {
+	Schema                       string              `json:"schema"`
+	Release                      string              `json:"release"`
+	ReleaseLockHash              string              `json:"release_lock_hash"`
+	DeploymentID                 string              `json:"deployment_id"`
+	ChainID                      uint64              `json:"chain_id"`
+	GenesisHash                  string              `json:"genesis_hash"`
+	Netuid                       uint16              `json:"netuid"`
+	Owner                        string              `json:"owner"`
+	LiveFacts                    historicalPlanFacts `json:"live_facts"`
+	RegistrationBurnLimitRao     uint64              `json:"registration_burn_limit_rao"`
+	NativeTransactionFeeLimitRao uint64              `json:"native_transaction_fee_limit_rao,omitempty"`
+	MaximumEVMFeePerGasWei       uint64              `json:"maximum_evm_fee_per_gas_wei,omitempty"`
+	BootstrapBurnHalfLifeBlocks  uint16              `json:"bootstrap_burn_half_life_blocks,omitempty"`
+	ProductionBurnHalfLifeBlocks uint16              `json:"production_burn_half_life_blocks,omitempty"`
+	PriorPlanHashes              []string            `json:"prior_plan_hashes,omitempty"`
+	ConfigHash                   string              `json:"config_hash"`
+	ResolvedInputsHash           string              `json:"resolved_inputs_hash"`
+	PolicyHash                   string              `json:"policy_hash"`
+	Roles                        PublicRoles         `json:"roles"`
+	Actions                      []Action            `json:"actions"`
+	MaximumSpend                 Spend               `json:"maximum_spend"`
+	Limits                       Spend               `json:"limits"`
+	PlanHash                     string              `json:"plan_hash"`
+	GeneratedAt                  string              `json:"generated_at,omitempty"`
+}
+
+// Project a current plan into the exact v3 wire shape used by an interrupted
+// setup before the v4 recovery fields existed.
+func historicalPlanFromCurrent(plan *SetupPlan, schema string) historicalPlanWire {
+	facts := plan.LiveFacts
+	return historicalPlanWire{
+		Schema: schema, Release: plan.Release, ReleaseLockHash: plan.ReleaseLockHash,
+		DeploymentID: plan.DeploymentID, ChainID: plan.ChainID, GenesisHash: plan.GenesisHash,
+		Netuid: plan.Netuid, Owner: plan.Owner,
+		LiveFacts: historicalPlanFacts{
+			BurnRao: facts.BurnRao, MinBurnRao: facts.MinBurnRao, MaxBurnRao: facts.MaxBurnRao,
+			BurnHalfLifeBlocks: facts.BurnHalfLifeBlocks, BurnIncreaseMultQ64: facts.BurnIncreaseMultQ64,
+			AlphaSourceHotkey: facts.AlphaSourceHotkey, AlphaAvailableRao: facts.AlphaAvailableRao,
+			ExistingUIDCount: facts.ExistingUIDCount, SubnetOwnerHotkey: facts.SubnetOwnerHotkey,
+			UIDZeroHotkey: facts.UIDZeroHotkey, ExistingUIDs: append([]ExistingUIDFact(nil), facts.ExistingUIDs...),
+			ExistentialDepositRao: facts.ExistentialDepositRao, NominatorMinimumRao: facts.NominatorMinimumRao,
+			ProbeTAORao: facts.ProbeTAORao, WalletFreeTAORao: facts.WalletFreeTAORao,
+			FinalizedBlock: facts.FinalizedBlock, FinalizedBlockHash: facts.FinalizedBlockHash,
+		},
+		RegistrationBurnLimitRao:     plan.RegistrationBurnLimitRao,
+		NativeTransactionFeeLimitRao: plan.NativeTransactionFeeLimitRao,
+		MaximumEVMFeePerGasWei:       plan.MaximumEVMFeePerGasWei,
+		BootstrapBurnHalfLifeBlocks:  plan.BootstrapBurnHalfLifeBlocks,
+		ProductionBurnHalfLifeBlocks: plan.ProductionBurnHalfLifeBlocks,
+		PriorPlanHashes:              append([]string(nil), plan.PriorPlanHashes...), ConfigHash: plan.ConfigHash,
+		ResolvedInputsHash: plan.ResolvedInputsHash, PolicyHash: plan.PolicyHash,
+		Roles: plan.Roles, Actions: append([]Action(nil), plan.Actions...), MaximumSpend: plan.MaximumSpend,
+		Limits: plan.Limits, GeneratedAt: plan.GeneratedAt,
+	}
+}
+
+// Apply the historical hash normalization without using production recovery
+// code, providing an independent expected digest for the regression fixture.
+func historicalPlanHash(plan historicalPlanWire) (string, error) {
+	plan.PlanHash = ""
+	plan.GeneratedAt = ""
+	plan.LiveFacts.FinalizedBlock = 0
+	plan.LiveFacts.FinalizedBlockHash = ""
+	plan.LiveFacts.AlphaAvailableRao = 0
+	plan.LiveFacts.WalletFreeTAORao = 0
+	if planUsesRegistrationEnvelope(plan.Schema) {
+		plan.LiveFacts.BurnRao = 0
+	}
+	return canonicalHashHex(plan)
+}
 
 func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	cfg := testResolvedConfig(t)
@@ -67,7 +170,15 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.MaximumSpend.EVMGasWei != cfg.MaximumEVMGasWei {
 		t.Fatalf("gas plan = %s, want exact campaign ceiling %s", plan.MaximumSpend.EVMGasWei, cfg.MaximumEVMGasWei)
 	}
-	wantAlpha := cfg.Policy.Deposit.TotalTestCampaignCapRao + uint64(cfg.Config.Topology.Validators)*cfg.Policy.Deposit.EpochCapRaoPerOperator
+	minimumTransfer, err := minimumAlphaTransferRao(plan.LiveFacts.DefaultMinTransferRao, plan.LiveFacts.AlphaPriceQ9, cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveTransfer, _, err := reserveValidatorTransferRao(plan.LiveFacts.RegisteredAlphaRao, plan.LiveFacts.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAlpha := actions["alpha.transfer.operator-deposit.1"].Spend.AlphaRao + actions["alpha.transfer.operator-deposit.2"].Spend.AlphaRao + reserveTransfer + actions["alpha.transfer.validator.2"].Spend.AlphaRao
 	if plan.MaximumSpend.AlphaRao != wantAlpha {
 		t.Fatalf("alpha plan = %d, want %d", plan.MaximumSpend.AlphaRao, wantAlpha)
 	}
@@ -78,7 +189,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao {
 		t.Fatalf("registration burn limit = %d, want %d", plan.RegistrationBurnLimitRao, cfg.Config.Budgets.MaximumRegistrationBurnRao)
 	}
-	if plan.Schema != "urnetwork-sim-plan-v3" || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || plan.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei {
+	if plan.Schema != currentSetupPlanSchema || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || plan.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || plan.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || plan.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao {
 		t.Fatalf("plan schema/native fee limit = %q/%d", plan.Schema, plan.NativeTransactionFeeLimitRao)
 	}
 	if plan.BootstrapBurnHalfLifeBlocks != 1 || plan.ProductionBurnHalfLifeBlocks != 360 || plan.LiveFacts.MinBurnRao != 500_000 || plan.LiveFacts.BurnIncreaseMultQ64 != "23058430092136939520" {
@@ -99,7 +210,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if actions["fleet.fund-hotkey.1"].Spend.TAORao != 3*plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.2"].Spend.TAORao != plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) || actions["wallet.native-fee-reserve"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) {
 		t.Fatalf("native commitment/global fee reserves are not approval-bound: fleet1=%d fleet2=%d wallet=%+v", actions["fleet.fund-hotkey.1"].Spend.TAORao, actions["fleet.fund-hotkey.2"].Spend.TAORao, actions["wallet.native-fee-reserve"])
 	}
-	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen[dishonestDepositActionID] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.burn_half_life"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
+	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen[dishonestDepositActionID] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["validator.reserve-majority"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.burn_half_life"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
 		t.Fatalf("release setup actions missing: %v", seen)
 	}
 	lastChurn := fmt.Sprintf("churn.register.%d", cfg.Config.Topology.ChurnFloorUIDs)
@@ -139,15 +250,20 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		t.Fatalf("production/retirement reservations are incomplete: production=%+v retirement=%+v", production, actions["retirement.evm-gas-reserve"])
 	}
 	dishonest := actions[dishonestDepositActionID]
-	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "1" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei.IsZero() || !slices.Contains(dishonest.DependsOn, "production.hyperparameter.immunity_period") {
+	if dishonest.Parameters["no_id"] != "2" || dishonest.Parameters["amount_rao"] != "5000000000" || dishonest.Parameters["target_epoch"] != "next_fresh_production_epoch" || dishonest.Spend.EVMGasWei.IsZero() || !slices.Contains(dishonest.DependsOn, "production.hyperparameter.immunity_period") {
 		t.Fatalf("dishonest deposit action is not exact and production-fenced: %+v", dishonest)
 	}
 	if !slices.Contains(actions["production.hyperparameter.burn_half_life"].DependsOn, "production.schedule-policy") || !slices.Contains(actions["production.hyperparameter.immunity_period"].DependsOn, "production.hyperparameter.burn_half_life") {
 		t.Fatalf("production hyperparameter transition is not an exact topological chain: burn=%+v immunity=%+v", actions["production.hyperparameter.burn_half_life"], actions["production.hyperparameter.immunity_period"])
 	}
 	voluntary := actions["campaign.voluntary-conviction.1"]
-	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Spend.EVMGasWei.IsZero() || actions["alpha.transfer.operator-deposit.1"].Spend.AlphaRao != 3_250_000_000 || actions["alpha.transfer.operator-deposit.2"].Spend.AlphaRao != 2_250_000_000 {
+	op1Alpha, op2Alpha := actions["alpha.transfer.operator-deposit.1"], actions["alpha.transfer.operator-deposit.2"]
+	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Parameters["reserve_runtime_share_transitions"] != "2" || voluntary.Parameters["reserve_rounding_allowance_rao"] != "2" || voluntary.Spend.EVMGasWei.IsZero() || op1Alpha.Parameters["campaign_requirement_rao"] != "251000000000" || op2Alpha.Parameters["campaign_requirement_rao"] != "245000000000" || op1Alpha.Spend.AlphaRao != 251000000053 || op2Alpha.Spend.AlphaRao != 245000000051 || op1Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op1Alpha.Spend.AlphaRao, 10) || op2Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op2Alpha.Spend.AlphaRao, 10) || op1Alpha.Parameters["minimum_destination_credit_rao"] != "251000000052" || op2Alpha.Parameters["minimum_destination_credit_rao"] != "245000000050" || op1Alpha.Parameters["reserve_calls"] != "26" || op2Alpha.Parameters["reserve_calls"] != "25" || op1Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" || op2Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" {
 		t.Fatalf("campaign allocations are not exact: voluntary=%+v op1=%+v op2=%+v", voluntary, actions["alpha.transfer.operator-deposit.1"], actions["alpha.transfer.operator-deposit.2"])
+	}
+	reserveAlpha := actions["alpha.transfer.validator.1"]
+	if reserveAlpha.Spend.AlphaRao != reserveTransfer || reserveAlpha.Parameters["reserve_target_share_bps"] != "6500" || reserveAlpha.Parameters["reserve_minimum_share_bps"] != "6000" || !slices.Contains(actions["validator.reserve-majority"].DependsOn, "alpha.transfer.validator.2") {
+		t.Fatalf("reserve validator bootstrap is not majority-bound: transfer=%+v barrier=%+v", reserveAlpha, actions["validator.reserve-majority"])
 	}
 	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
 		if !seen[fmt.Sprintf("evm.fund-operator-%d-claim-relayer", i)] {
@@ -168,11 +284,11 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	}
 }
 
-func TestRegistrationEconomicsAcceptsRuntime451BoundedBootstrap(t *testing.T) {
+func TestRegistrationEconomicsAcceptsRuntime452BoundedBootstrap(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	facts := testSetupFacts()
 	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {
-		t.Fatalf("bounded runtime-451 registration economics were rejected: %v", err)
+		t.Fatalf("bounded runtime-452 registration economics were rejected: %v", err)
 	}
 	facts.BurnHalfLifeBlocks = 1
 	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {
@@ -292,7 +408,11 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	observationOnly := *facts
 	observationOnly.FinalizedBlock++
 	observationOnly.FinalizedBlockHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	observationOnly.AlphaAvailableRao++
+	// Model a transfer from this wallet-owned source to a different
+	// wallet-owned position. The source position and its transferable capacity
+	// move together while the wallet-wide stake remains internally consistent.
+	observationOnly.AlphaAvailableRao--
+	observationOnly.AlphaTransferableRao--
 	observationOnly.WalletFreeTAORao++
 	observed, err := buildPlan(cfg, &observationOnly, roles, time.Unix(3, 0))
 	if err != nil {
@@ -339,6 +459,36 @@ func TestValidatePlanBudgetRejectsMismatchedActionIntent(t *testing.T) {
 		mutation(plan)
 		if err := validatePlanBudget(plan); err == nil || !strings.Contains(err.Error(), "intent hash") {
 			t.Errorf("mismatched action intent was accepted: %v", err)
+		}
+	}
+}
+
+func TestValidateV8PlanRejectsEveryAlphaTransferEnvelopeDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	mutations := []func(*Action){
+		func(a *Action) { a.Parameters["exact_amount_rao"] = "1" },
+		func(a *Action) { a.Parameters["campaign_requirement_rao"] = strconv.FormatUint(a.Spend.AlphaRao+1, 10) },
+		func(a *Action) { a.Parameters["minimum_alpha_at_approved_price_rao"] = "1" },
+		func(a *Action) { a.Parameters["approved_alpha_price_q9"] = "1" },
+		func(a *Action) { a.Parameters["runtime_default_min_transfer_tao_rao"] = "1" },
+		func(a *Action) { a.Parameters["minimum_tao_equivalent_margin_bps"] = "1" },
+	}
+	for index, mutate := range mutations {
+		plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for actionIndex := range plan.Actions {
+			if plan.Actions[actionIndex].ID != "alpha.transfer.operator-deposit.1" {
+				continue
+			}
+			mutate(&plan.Actions[actionIndex])
+			plan.Actions[actionIndex].IntentHash, _ = actionIntentHash(plan.Actions[actionIndex])
+			break
+		}
+		if err := validatePlanBudget(plan); err == nil || !strings.Contains(err.Error(), "runtime floor and exact spend") {
+			t.Fatalf("alpha envelope mutation %d was accepted: %v", index, err)
 		}
 	}
 }
@@ -428,6 +578,8 @@ func TestPlanFundsEveryEVMSignerForItsExplicitWorstCaseBeforeCampaignShare(t *te
 			}
 		}
 		switch {
+		case action.ID == "evm.coordinator-upgrade-activate" || action.ID == "policy.schedule-bootstrap":
+			addRequired("owner", action.Spend.EVMGasWei)
 		case action.Kind == "evm-transaction" && strings.HasPrefix(action.ID, "evm."):
 			addRequired("deployer", action.Spend.EVMGasWei)
 		case action.Kind == "evm-transaction" && strings.HasPrefix(action.ID, "precompile."):
@@ -482,22 +634,55 @@ func TestSetupEVMGasUnitLimitsCoverLockedAndLiveEstimatesAfterManagerPadding(t *
 		rawGas uint64
 	}{
 		{id: "evm.reserve-sink", rawGas: 418_811},
-		{id: "evm.settlement-vault", rawGas: 1_575_034},
-		{id: "evm.coordinator-implementation", rawGas: 4_420_224},
-		{id: "evm.vault-register-escrow", rawGas: 147_626 + 126_776},
-		{id: "evm.coordinator-proxy", rawGas: 481_355 + 356_604},
-		{id: "evm.governance-drill-implementation", rawGas: 4_599_958},
-		{id: "evm.vault-fix-coordinator", rawGas: 31_153},
-		{id: "evm.sink-fix-recorder", rawGas: 47_731},
+		{id: "evm.settlement-vault", rawGas: 2_253_684},
+		{id: "evm.coordinator-implementation", rawGas: 4_577_466},
+		{id: "evm.vault-register-escrow", rawGas: 186_405},
+		{id: "evm.coordinator-proxy", rawGas: 510_239},
+		{id: "evm.governance-drill-implementation", rawGas: 4_762_841},
+		{id: "evm.vault-fix-coordinator", rawGas: 32_321},
+		{id: "evm.sink-fix-recorder", rawGas: 49_638},
 		{id: "operator.deposit.register.1", rawGas: 126_776},
-		{id: "operator.register.1", rawGas: 392_574},
-		{id: "fleet.mirror.1", rawGas: 76_057},
+		{id: "operator.register.1", rawGas: 515_196},
+		// The first cold-storage mirror through the live runtime-v452 proxy
+		// estimated 107,080 units at testnet block 7,896,221. The older
+		// 76,057-unit fixture did not model that storage state.
+		{id: "fleet.mirror.1", rawGas: 107_080},
 		{id: "fleet.bind.1.1", rawGas: 256_592},
 	}
 	for _, observation := range observations {
 		padded, err := paddedEVMGas(observation.rawGas)
 		if err != nil || limits[observation.id] < padded {
 			t.Errorf("%s unit limit %d is below padded observation %d from raw %d: %v", observation.id, limits[observation.id], padded, observation.rawGas, err)
+		}
+	}
+}
+
+func TestFleetCommitmentActionBindsFixedWidthStorageDecoder(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"fleet.commitment.1", "fleet.mirror.1"} {
+		action := actionByID(t, plan, id)
+		if action.Parameters[fleetCommitmentStorageParameter] != fleetCommitmentStorageV2 {
+			t.Errorf("%s storage schema=%q, want %q", id, action.Parameters[fleetCommitmentStorageParameter], fleetCommitmentStorageV2)
+			continue
+		}
+
+		legacy := action
+		legacy.Parameters = cloneStrings(action.Parameters)
+		legacy.Parameters[fleetCommitmentStorageParameter] = "runtime-452-registration-fixed-u32-v1"
+		legacy.IntentHash, err = actionIntentHash(legacy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if legacy.IntentHash == action.IntentHash || actionAcceptsIntent(action, legacy.IntentHash) {
+			t.Errorf("%s carried a legacy type-confused observation", id)
 		}
 	}
 }
@@ -515,6 +700,397 @@ func TestLegacyPlanHashStillBindsSpotBurnForStoredV1Compatibility(t *testing.T) 
 	}
 	if first == second {
 		t.Fatal("legacy v1 spot burn ceased to be hash-bound")
+	}
+}
+
+func TestCoordinatorUpgradeBaselineCheckpointIsReviewTimeObservation(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	deploymentHash, err := contractDeploymentIdentityHash(plan.Deployment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.PriorPlanHashes = []string{"0x" + strings.Repeat("aa", 32)}
+	plan.CoordinatorUpgradeBaseline = CoordinatorUpgradeBaseline{
+		Schema: "urnetwork-coordinator-upgrade-baseline-v1", PriorDeploymentHash: deploymentHash,
+		ReleaseDeploymentHash: deploymentHash, ReboundDeploymentHash: deploymentHash,
+		ReserveSinkExecutableHash: "0x" + strings.Repeat("11", 32), SettlementVaultExecutableHash: "0x" + strings.Repeat("22", 32),
+		GovernanceDrillVersion: crypto.Keccak256Hash([]byte("urnetwork/coordinator-adversary/v1")).Hex(), GovernanceProxiableUUID: erc1967ImplementationSlot,
+		DeployerNonce: plan.Deployment.InitialNonce + 8, ProbeAddressEmpty: true,
+		FinalizedBlock: 100, FinalizedBlockHash: "0x" + strings.Repeat("33", 32),
+	}
+	first, err := plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.CoordinatorUpgradeBaseline.FinalizedBlock = 200
+	plan.CoordinatorUpgradeBaseline.FinalizedBlockHash = "0x" + strings.Repeat("44", 32)
+	second, err := plan.hash()
+	if err != nil || first != second {
+		t.Fatalf("advancing baseline checkpoint changed approval: %s %s %v", first, second, err)
+	}
+	plan.CoordinatorUpgradeBaseline.ReserveSinkExecutableHash = "0x" + strings.Repeat("55", 32)
+	third, err := plan.hash()
+	if err != nil || third == second {
+		t.Fatalf("semantic baseline evidence was not approval-bound: %s %s %v", second, third, err)
+	}
+	plan.CoordinatorUpgradeBaseline.ReserveSinkExecutableHash = "0x" + strings.Repeat("11", 32)
+	plan.PlanHash = first
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := persistedSetupPlanHash(encoded, plan.Schema)
+	if err != nil || persisted != first {
+		t.Fatalf("persisted baseline hash=%s want=%s: %v", persisted, first, err)
+	}
+}
+
+func TestPersistedV3PlanHashSurvivesV4WireFields(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical := historicalPlanFromCurrent(current, "urnetwork-sim-plan-v3")
+	historical.PlanHash, err = historicalPlanHash(historical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(historical, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := persistedSetupPlanHash(encoded, historical.Schema)
+	if err != nil || got != historical.PlanHash {
+		t.Fatalf("persisted historical hash = %s, want %s: %v", got, historical.PlanHash, err)
+	}
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "plan.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := readPersistedPlan(stateDir)
+	if err != nil {
+		t.Fatalf("valid interrupted v3 plan was not loadable after v4: %v", err)
+	}
+	if loaded.Schema != historical.Schema || loaded.PlanHash != historical.PlanHash || loaded.Deployment.Schema != "" || loaded.LiveFacts.DeployerNonce != 0 {
+		t.Fatalf("loaded historical plan gained v4 identity: %+v", loaded)
+	}
+}
+
+func TestPersistedHistoricalPlanHashNormalizesOnlySchemaObservations(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, schema := range []string{"urnetwork-sim-plan-v1", "urnetwork-sim-plan-v2", "urnetwork-sim-plan-v3"} {
+		historical := historicalPlanFromCurrent(current, schema)
+		if schema == "urnetwork-sim-plan-v1" {
+			historical.NativeTransactionFeeLimitRao = 0
+			historical.MaximumEVMFeePerGasWei = 0
+			historical.BootstrapBurnHalfLifeBlocks = 0
+			historical.ProductionBurnHalfLifeBlocks = 0
+			historical.LiveFacts.MinBurnRao = 0
+			historical.LiveFacts.MaxBurnRao = 0
+			historical.LiveFacts.BurnHalfLifeBlocks = 0
+			historical.LiveFacts.BurnIncreaseMultQ64 = ""
+		}
+		if schema == "urnetwork-sim-plan-v2" {
+			historical.MaximumEVMFeePerGasWei = 0
+		}
+		historical.PlanHash, err = historicalPlanHash(historical)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, marshalErr := json.MarshalIndent(historical, "", "  ")
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		got, hashErr := persistedSetupPlanHash(encoded, schema)
+		if hashErr != nil || got != historical.PlanHash {
+			t.Errorf("%s historical hash = %s, want %s: %v", schema, got, historical.PlanHash, hashErr)
+		}
+		historical.Actions[0].Description += " tampered"
+		tampered, marshalErr := json.Marshal(historical)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		got, hashErr = persistedSetupPlanHash(tampered, schema)
+		if hashErr != nil {
+			t.Errorf("%s tampered plan could not be hashed: %v", schema, hashErr)
+		} else if got == historical.PlanHash {
+			t.Errorf("%s executable mutation retained its historical hash", schema)
+		}
+	}
+}
+
+func TestPersistedV4HashPreservesPreV5WireShape(t *testing.T) {
+	legacy := []byte(`{"schema":"urnetwork-sim-plan-v4","live_facts":{"burn_rao":5,"alpha_available_rao":9,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	normalized := []byte(`{"schema":"urnetwork-sim-plan-v4","live_facts":{"burn_rao":0,"alpha_available_rao":0,"wallet_free_tao_rao":0,"finalized_block":0,"finalized_block_hash":"","evm_finalized_block":0,"evm_finalized_block_hash":""},"plan_hash":"","bound":"yes"}`)
+	digest := sha256.Sum256(normalized)
+	want := fmt.Sprintf("0x%x", digest)
+	got, err := persistedSetupPlanHash(legacy, "urnetwork-sim-plan-v4")
+	if err != nil || got != want {
+		t.Fatalf("pre-v5 persisted hash = %s, want %s: %v", got, want, err)
+	}
+
+	withCapacity := []byte(`{"schema":"urnetwork-sim-plan-v4","live_facts":{"burn_rao":5,"alpha_available_rao":9,"alpha_transferable_rao":123,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	withZeroCapacity := []byte(`{"schema":"urnetwork-sim-plan-v4","live_facts":{"burn_rao":5,"alpha_available_rao":9,"alpha_transferable_rao":0,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	added, err := persistedSetupPlanHash(withCapacity, "urnetwork-sim-plan-v4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addedZero, err := persistedSetupPlanHash(withZeroCapacity, "urnetwork-sim-plan-v4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != addedZero {
+		t.Fatal("present capacity observation was not normalized")
+	}
+	if added == got {
+		t.Fatal("adding a zero-valued post-v4 field did not change the authenticated historical wire shape")
+	}
+}
+
+func TestLegacyArchivedPlanHashRepairsOnlyInjectedZeroDefaultMinimum(t *testing.T) {
+	original := []byte(`{"schema":"urnetwork-sim-plan-v6","live_facts":{"burn_rao":5,"alpha_available_rao":9,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	want, err := persistedSetupPlanHash(original, "urnetwork-sim-plan-v6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := []byte(strings.Replace(string(original), `"wallet_free_tao_rao":10`, `"wallet_free_tao_rao":10,"default_min_transfer_rao":0`, 1))
+	direct, err := persistedSetupPlanHash(archived, "urnetwork-sim-plan-v6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direct == want {
+		t.Fatal("injected historical field unexpectedly retained the original wire digest")
+	}
+	repaired, applicable, err := legacyArchivedSetupPlanHash(archived, "urnetwork-sim-plan-v6")
+	if err != nil || !applicable || repaired != want {
+		t.Fatalf("legacy archive repair = (%s, %t), want (%s, true): %v", repaired, applicable, want, err)
+	}
+
+	nonzero := []byte(strings.Replace(string(archived), `"default_min_transfer_rao":0`, `"default_min_transfer_rao":1`, 1))
+	if got, ok, err := legacyArchivedSetupPlanHash(nonzero, "urnetwork-sim-plan-v6"); err != nil || ok || got != "" {
+		t.Fatalf("nonzero historical field was repairable: (%s, %t, %v)", got, ok, err)
+	}
+	if got, ok, err := legacyArchivedSetupPlanHash(archived, "urnetwork-sim-plan-v7"); err != nil || ok || got != "" {
+		t.Fatalf("current-envelope field was repairable: (%s, %t, %v)", got, ok, err)
+	}
+	tampered := []byte(strings.Replace(string(archived), `"bound":"yes"`, `"bound":"no"`, 1))
+	if got, ok, err := legacyArchivedSetupPlanHash(tampered, "urnetwork-sim-plan-v6"); err != nil || !ok || got == want {
+		t.Fatalf("semantic mutation repaired to the approved hash: (%s, %t, %v)", got, ok, err)
+	}
+
+	v4Original := []byte(`{"schema":"urnetwork-sim-plan-v4","live_facts":{"burn_rao":5,"alpha_available_rao":9,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	v4Want, err := persistedSetupPlanHash(v4Original, "urnetwork-sim-plan-v4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	injectedAlphaFacts := `"alpha_transferable_rao":0,"alpha_source_stored_lock_rao":0,"alpha_source_collateral_rao":0,"wallet_netuid_alpha_rao":0,"wallet_netuid_collateral_rao":0,"initial_min_stake_rao":0,"alpha_price_tao_per_alpha_q9":0,"registered_alpha_rao":0,"reserve_validator_alpha_rao":0,"independent_validator_alpha_rao":0,"alpha_source_registered":false,`
+	v4Archived := []byte(strings.Replace(string(v4Original), `"wallet_free_tao_rao":10,`, `"wallet_free_tao_rao":10,`+injectedAlphaFacts, 1))
+	v4Repaired, applicable, err := legacyArchivedSetupPlanHash(v4Archived, "urnetwork-sim-plan-v4")
+	if err != nil || !applicable || v4Repaired != v4Want {
+		t.Fatalf("pre-v5 archive repair = (%s, %t), want (%s, true): %v", v4Repaired, applicable, v4Want, err)
+	}
+	for _, mutation := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{name: "transferable", from: `"alpha_transferable_rao":0`, to: `"alpha_transferable_rao":1`},
+		{name: "stored lock", from: `"alpha_source_stored_lock_rao":0`, to: `"alpha_source_stored_lock_rao":1`},
+		{name: "collateral", from: `"alpha_source_collateral_rao":0`, to: `"alpha_source_collateral_rao":1`},
+		{name: "wallet alpha", from: `"wallet_netuid_alpha_rao":0`, to: `"wallet_netuid_alpha_rao":1`},
+		{name: "wallet collateral", from: `"wallet_netuid_collateral_rao":0`, to: `"wallet_netuid_collateral_rao":1`},
+		{name: "initial minimum", from: `"initial_min_stake_rao":0`, to: `"initial_min_stake_rao":1`},
+		{name: "price", from: `"alpha_price_tao_per_alpha_q9":0`, to: `"alpha_price_tao_per_alpha_q9":1`},
+		{name: "registered alpha", from: `"registered_alpha_rao":0`, to: `"registered_alpha_rao":1`},
+		{name: "reserve alpha", from: `"reserve_validator_alpha_rao":0`, to: `"reserve_validator_alpha_rao":1`},
+		{name: "independent alpha", from: `"independent_validator_alpha_rao":0`, to: `"independent_validator_alpha_rao":1`},
+		{name: "registered source", from: `"alpha_source_registered":false`, to: `"alpha_source_registered":true`},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			mutated := []byte(strings.Replace(string(v4Archived), mutation.from, mutation.to, 1))
+			if got, ok, err := legacyArchivedSetupPlanHash(mutated, "urnetwork-sim-plan-v4"); err != nil || ok || got != "" {
+				t.Fatalf("nonzero injected field was repairable: (%s, %t, %v)", got, ok, err)
+			}
+		})
+	}
+
+	v5Original := []byte(`{"schema":"urnetwork-sim-plan-v5","live_facts":{"burn_rao":5,"alpha_available_rao":9,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa","evm_finalized_block":12,"evm_finalized_block_hash":"0xbb"},"plan_hash":"0xstored","bound":"yes"}`)
+	v5Want, err := persistedSetupPlanHash(v5Original, "urnetwork-sim-plan-v5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroUpgrade := `{"schema":"","deployment_id":"","implementation":"0x0000000000000000000000000000000000000000","deployer_nonce":0,"runtime_code_hash":""}`
+	zeroUpgradeBaseline := `{"schema":"","prior_deployment_hash":"","release_deployment_hash":"","rebound_deployment_hash":"","reserve_sink_executable_hash":"","settlement_vault_executable_hash":"","governance_drill_version":"","governance_proxiable_uuid":"","deployer_nonce":0,"probe_address_empty":false,"finalized_block":0,"finalized_block_hash":""}`
+	v5Archived := strings.Replace(string(v5Original), `},"plan_hash"`, `},"coordinator_upgrade":`+zeroUpgrade+`,"coordinator_upgrade_baseline":`+zeroUpgradeBaseline+`,"plan_hash"`, 1)
+	v5Repaired, applicable, err := legacyArchivedSetupPlanHash([]byte(v5Archived), "urnetwork-sim-plan-v5")
+	if err != nil || !applicable || v5Repaired != v5Want {
+		t.Fatalf("pre-v6 archive repair = (%s, %t), want (%s, true): %v", v5Repaired, applicable, v5Want, err)
+	}
+	for _, mutation := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{name: "upgrade implementation", from: `"implementation":"0x0000000000000000000000000000000000000000"`, to: `"implementation":"0x0000000000000000000000000000000000000001"`},
+		{name: "upgrade runtime", from: `"runtime_code_hash":""`, to: `"runtime_code_hash":"0x01"`},
+		{name: "baseline deployment", from: `"prior_deployment_hash":""`, to: `"prior_deployment_hash":"0x01"`},
+		{name: "baseline executable", from: `"reserve_sink_executable_hash":""`, to: `"reserve_sink_executable_hash":"0x01"`},
+		{name: "baseline probe", from: `"probe_address_empty":false`, to: `"probe_address_empty":true`},
+		{name: "baseline block", from: `"finalized_block":0`, to: `"finalized_block":1`},
+		{name: "baseline block hash", from: `"finalized_block_hash":""`, to: `"finalized_block_hash":"0x01"`},
+	} {
+		t.Run("pre-v6 "+mutation.name, func(t *testing.T) {
+			mutated := []byte(strings.Replace(v5Archived, mutation.from, mutation.to, 1))
+			if got, ok, err := legacyArchivedSetupPlanHash(mutated, "urnetwork-sim-plan-v5"); err != nil || ok || got != "" {
+				t.Fatalf("nonzero injected field was repairable: (%s, %t, %v)", got, ok, err)
+			}
+		})
+	}
+
+	v3Original := []byte(`{"schema":"urnetwork-sim-plan-v3","live_facts":{"burn_rao":5,"alpha_available_rao":9,"wallet_free_tao_rao":10,"finalized_block":11,"finalized_block_hash":"0xaa"},"plan_hash":"0xstored","bound":"yes"}`)
+	v3Want, err := persistedSetupPlanHash(v3Original, "urnetwork-sim-plan-v3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroDeployment := `{"schema":"","deployment_id":"","initial_nonce":0,"reserve_sink":"0x0000000000000000000000000000000000000000","settlement_vault":"0x0000000000000000000000000000000000000000","coordinator_implementation":"0x0000000000000000000000000000000000000000","coordinator_proxy":"0x0000000000000000000000000000000000000000","governance_drill_implementation":"0x0000000000000000000000000000000000000000","precompile_probe":"0x0000000000000000000000000000000000000000"}`
+	zeroSupersededSpend := `{"tao_rao":0,"alpha_rao":0,"evm_gas_wei":0,"registrations":0,"subnet_creations":0}`
+	v3Archived := strings.Replace(string(v3Original), `"wallet_free_tao_rao":10,`, `"wallet_free_tao_rao":10,"deployer_nonce":0,"evm_finalized_block":0,"evm_finalized_block_hash":"",`, 1)
+	v3Archived = strings.Replace(v3Archived, `},"plan_hash"`, `},"deployment":`+zeroDeployment+`,"superseded_spend":`+zeroSupersededSpend+`,"plan_hash"`, 1)
+	v3Repaired, applicable, err := legacyArchivedSetupPlanHash([]byte(v3Archived), "urnetwork-sim-plan-v3")
+	if err != nil || !applicable || v3Repaired != v3Want {
+		t.Fatalf("pre-v4 archive repair = (%s, %t), want (%s, true): %v", v3Repaired, applicable, v3Want, err)
+	}
+	for _, mutation := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{name: "deployer nonce", from: `"deployer_nonce":0`, to: `"deployer_nonce":1`},
+		{name: "EVM block", from: `"evm_finalized_block":0`, to: `"evm_finalized_block":1`},
+		{name: "EVM block hash", from: `"evm_finalized_block_hash":""`, to: `"evm_finalized_block_hash":"0x01"`},
+		{name: "deployment", from: `"initial_nonce":0`, to: `"initial_nonce":1`},
+		{name: "superseded spend", from: `"tao_rao":0`, to: `"tao_rao":1`},
+	} {
+		t.Run("pre-v4 "+mutation.name, func(t *testing.T) {
+			mutated := []byte(strings.Replace(v3Archived, mutation.from, mutation.to, 1))
+			if got, ok, err := legacyArchivedSetupPlanHash(mutated, "urnetwork-sim-plan-v3"); err != nil || ok || got != "" {
+				t.Fatalf("nonzero injected field was repairable: (%s, %t, %v)", got, ok, err)
+			}
+		})
+	}
+}
+
+func TestWriteRunInputsArchivesAuthenticatedPlanBytesExactly(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(prior, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorBytes := append([]byte("\n"), encoded...)
+	priorBytes = append(priorBytes, '\n', '\n')
+	stateDir := t.TempDir()
+	if err := atomicWrite(filepath.Join(stateDir, "plan.json"), priorBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	next := *prior
+	next.Actions = append([]Action(nil), prior.Actions...)
+	next.Actions[0].Description += " with byte-preserving archival"
+	next.Actions[0].IntentHash, err = actionIntentHash(next.Actions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.PlanHash, err = next.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.PlanHash == prior.PlanHash {
+		t.Fatal("test plan mutation retained its approval hash")
+	}
+	if err := writeRunInputs(cfg, stateDir, &next, roles); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := os.ReadFile(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(archived, priorBytes) {
+		t.Fatal("authenticated ancestor was re-serialized while being archived")
+	}
+	if _, err := decodePersistedPlanBytes(archived); err != nil {
+		t.Fatalf("byte-exact archived ancestor no longer authenticates: %v", err)
+	}
+}
+
+func TestPersistedPlanHashRejectsDuplicateAndMalformedAdjacentObjects(t *testing.T) {
+	validFacts := `{"burn_rao":1,"alpha_available_rao":2,"wallet_free_tao_rao":3,"finalized_block":4,"finalized_block_hash":"0x01"}`
+	tests := []string{
+		`{"plan_hash":"x","plan_hash":"y","live_facts":` + validFacts + `}`,
+		`{"plan_hash":"x","live_facts":{"burn_rao":1,"burn_rao":2,"alpha_available_rao":2,"wallet_free_tao_rao":3,"finalized_block":4,"finalized_block_hash":"0x01"}}`,
+		`{"plan_hash":"x","live_facts":[]}`,
+		`{"plan_hash":"x","live_facts":` + validFacts + `} true`,
+	}
+	for _, encoded := range tests {
+		if _, err := persistedSetupPlanHash([]byte(encoded), "urnetwork-sim-plan-v3"); err == nil {
+			t.Errorf("malformed persisted plan was accepted: %s", encoded)
+		}
+	}
+	_, err := persistedSetupPlanHash([]byte(`{"plan_hash":"x","live_facts":`+validFacts+`} true`), "urnetwork-sim-plan-v3")
+	if err == nil || !strings.Contains(err.Error(), "trailing value true") || strings.Contains(err.Error(), "%!") {
+		t.Fatalf("trailing persisted value error is not actionable: %v", err)
+	}
+}
+
+func TestPersistedV4HashMatchesTypedPlanHash(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := persistedSetupPlanHash(encoded, plan.Schema)
+	if err != nil || got != plan.PlanHash {
+		t.Fatalf("persisted v4 hash = %s, want %s: %v", got, plan.PlanHash, err)
 	}
 }
 
@@ -594,6 +1170,25 @@ func TestPlanHashBindsTheCompleteReleaseLock(t *testing.T) {
 	}
 }
 
+func TestPlanHashBindsFinalizedDeployerNonceAndEveryCREATEAddress(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, _ := derivePublicRoles(cfg)
+	facts := testSetupFacts()
+	facts.DeployerNonce = 17
+	first, err := buildPlan(cfg, facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts.DeployerNonce++
+	second, err := buildPlan(cfg, facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.PlanHash == second.PlanHash || first.Deployment.InitialNonce != 17 || second.Deployment.InitialNonce != 18 || first.Deployment.ReserveSink == second.Deployment.ReserveSink || first.Deployment.CoordinatorProxy == second.Deployment.CoordinatorProxy {
+		t.Fatalf("deployer nonce drift did not replace the approved deployment: first=%+v second=%+v", first.Deployment, second.Deployment)
+	}
+}
+
 func TestPlanHashBindsResolvedVaultLaunchInputs(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, _ := derivePublicRoles(cfg)
@@ -617,10 +1212,19 @@ func TestBuildPlanFailsClosedOnEveryBudget(t *testing.T) {
 	for name, mutate := range map[string]func(*ResolvedConfig, *SetupFacts){
 		"alpha limit":         func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumAlphaRao = 1 },
 		"alpha availability":  func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaAvailableRao = 1 },
+		"transferable alpha":  func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaTransferableRao = 1 },
+		"coldkey alpha total": func(_ *ResolvedConfig, f *SetupFacts) { f.WalletNetuidAlphaRao = f.AlphaAvailableRao - 1 },
 		"tao limit":           func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumTAORao = 1 },
 		"gas limit":           func(c *ResolvedConfig, _ *SetupFacts) { c.MaximumEVMGasWei = decimalUint64(1) },
 		"registration burn":   func(c *ResolvedConfig, f *SetupFacts) { f.BurnRao = c.Config.Budgets.MaximumRegistrationBurnRao + 1 },
 		"existential deposit": func(_ *ResolvedConfig, f *SetupFacts) { f.ExistentialDepositRao = 0 },
+		"transfer minimum":    func(_ *ResolvedConfig, f *SetupFacts) { f.DefaultMinTransferRao = 0 },
+		"transfer minimum manifest drift": func(_ *ResolvedConfig, f *SetupFacts) {
+			f.DefaultMinTransferRao++
+		},
+		"alpha price":       func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaPriceQ9 = 0 },
+		"registered alpha":  func(_ *ResolvedConfig, f *SetupFacts) { f.RegisteredAlphaRao = 0 },
+		"registered source": func(_ *ResolvedConfig, f *SetupFacts) { f.AlphaSourceRegistered = false },
 	} {
 		t.Run(name, func(t *testing.T) {
 			copyCfg := *base
@@ -708,6 +1312,70 @@ func TestPlanValidationRejectsDuplicateAndForwardActionDependencies(t *testing.T
 	forward.Actions[0].IntentHash, _ = actionIntentHash(forward.Actions[0])
 	if err := validatePlanBudget(&forward); err == nil || !strings.Contains(err.Error(), "missing or later") {
 		t.Fatalf("forward dependency was accepted: %v", err)
+	}
+}
+
+func TestPlanValidationRejectsEveryMalformedSupersededDeployment(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	facts := testSetupFacts()
+	facts.DeployerNonce = 3
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := buildPlan(cfg, facts, publicRoles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obsolete, err := buildDeploymentPayloads(cfg, roles, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obsolete.Manifest.DeployBlock = 120
+	obsolete.Manifest.DeployBlockHash = "0x" + strings.Repeat("12", 32)
+	base.SupersededDeployments = []ContractDeployment{obsolete.Manifest}
+	if err := applySupersededSpend(base, Spend{EVMGasWei: DecimalUint("1")}); err != nil {
+		t.Fatal(err)
+	}
+	base.PlanHash, err = base.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(base); err != nil {
+		t.Fatalf("valid superseded deployment history was rejected: %v", err)
+	}
+	clone := func() *SetupPlan {
+		encoded, marshalErr := json.Marshal(base)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		var plan SetupPlan
+		if unmarshalErr := json.Unmarshal(encoded, &plan); unmarshalErr != nil {
+			t.Fatal(unmarshalErr)
+		}
+		return &plan
+	}
+	tests := []struct {
+		name   string
+		mutate func(*SetupPlan)
+	}{
+		{name: "foreign deployment", mutate: func(plan *SetupPlan) { plan.SupersededDeployments[0].DeploymentID = "foreign" }},
+		{name: "incomplete checkpoint", mutate: func(plan *SetupPlan) { plan.SupersededDeployments[0].DeployBlockHash = "" }},
+		{name: "malformed checkpoint", mutate: func(plan *SetupPlan) { plan.SupersededDeployments[0].DeployBlockHash = "0x12" }},
+		{name: "active duplicate", mutate: func(plan *SetupPlan) { plan.SupersededDeployments[0] = plan.Deployment }},
+		{name: "non-EVM superseded spend", mutate: func(plan *SetupPlan) { plan.SupersededSpend.TAORao = 1 }},
+		{name: "spend without deployment", mutate: func(plan *SetupPlan) { plan.SupersededDeployments = nil }},
+	}
+	for _, test := range tests {
+		plan := clone()
+		test.mutate(plan)
+		if err := validatePlanBudget(plan); err == nil {
+			t.Errorf("%s was accepted", test.name)
+		}
 	}
 }
 

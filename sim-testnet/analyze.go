@@ -15,15 +15,21 @@ import (
 )
 
 type AnalysisConservation struct {
-	CapturedRao            string `json:"captured_rao"`
-	PaidRao                string `json:"paid_rao"`
-	OutstandingRao         string `json:"outstanding_liability_rao"`
-	PaidPlusOutstandingRao string `json:"paid_plus_outstanding_rao"`
-	DeltaRao               string `json:"delta_rao"`
-	Holds                  bool   `json:"holds"`
-	ReservePrincipalRao    string `json:"reserve_principal_rao"`
-	ReserveLiveStakeRao    string `json:"reserve_live_stake_rao"`
-	ReserveBackingDeltaRao string `json:"reserve_backing_delta_rao"`
+	CapturedRao               string `json:"captured_rao"`
+	PaidRao                   string `json:"paid_rao"`
+	EscrowAccountedRao        string `json:"escrow_accounted_rao"`
+	PendingFundingRao         string `json:"pending_funding_rao"`
+	OutstandingRao            string `json:"outstanding_liability_rao"`
+	PaidPlusEscrowRao         string `json:"paid_plus_escrow_rao"`
+	PendingPlusOutstandingRao string `json:"pending_plus_outstanding_rao"`
+	DeltaRao                  string `json:"captured_minus_paid_plus_escrow_rao"`
+	EscrowDeltaRao            string `json:"escrow_minus_pending_plus_outstanding_rao"`
+	LiveEscrowStakeRao        string `json:"live_escrow_stake_rao"`
+	EscrowBackingDeltaRao     string `json:"escrow_backing_delta_rao"`
+	Holds                     bool   `json:"holds"`
+	ReservePrincipalRao       string `json:"reserve_principal_rao"`
+	ReserveLiveStakeRao       string `json:"reserve_live_stake_rao"`
+	ReserveBackingDeltaRao    string `json:"reserve_backing_delta_rao"`
 }
 
 type AnalysisOperator struct {
@@ -180,11 +186,15 @@ func analyzeScenarioObservation(cfg *ResolvedConfig, observation *ScenarioObserv
 	report.PolicyHashMatches = strings.EqualFold(contracts.PolicyHash, cfg.PolicyHash)
 	captured := decimal(contracts.TotalCaptured)
 	paid := decimal(contracts.TotalPaid)
+	escrow := decimal(contracts.EscrowAccounted)
+	pending := decimal(contracts.PendingFunding)
 	outstanding := decimal(contracts.Outstanding)
-	rhs := new(big.Int).Add(new(big.Int).Set(paid), outstanding)
+	liveEscrow := decimal(contracts.LiveEscrowStake)
+	paidPlusEscrow := new(big.Int).Add(new(big.Int).Set(paid), escrow)
+	pendingPlusOutstanding := new(big.Int).Add(new(big.Int).Set(pending), outstanding)
 	principal := decimal(contracts.ReservePrincipal)
 	liveStake := decimal(contracts.ReserveLiveStake)
-	report.Conservation = AnalysisConservation{CapturedRao: captured.String(), PaidRao: paid.String(), OutstandingRao: outstanding.String(), PaidPlusOutstandingRao: rhs.String(), DeltaRao: new(big.Int).Sub(new(big.Int).Set(captured), rhs).String(), Holds: contracts.ConservationHolds && captured.Cmp(rhs) == 0, ReservePrincipalRao: principal.String(), ReserveLiveStakeRao: liveStake.String(), ReserveBackingDeltaRao: new(big.Int).Sub(new(big.Int).Set(liveStake), principal).String()}
+	report.Conservation = AnalysisConservation{CapturedRao: captured.String(), PaidRao: paid.String(), EscrowAccountedRao: escrow.String(), PendingFundingRao: pending.String(), OutstandingRao: outstanding.String(), PaidPlusEscrowRao: paidPlusEscrow.String(), PendingPlusOutstandingRao: pendingPlusOutstanding.String(), DeltaRao: new(big.Int).Sub(new(big.Int).Set(captured), paidPlusEscrow).String(), EscrowDeltaRao: new(big.Int).Sub(new(big.Int).Set(escrow), pendingPlusOutstanding).String(), LiveEscrowStakeRao: liveEscrow.String(), EscrowBackingDeltaRao: new(big.Int).Sub(new(big.Int).Set(liveEscrow), escrow).String(), Holds: contracts.ConservationHolds && captured.Cmp(paidPlusEscrow) == 0 && escrow.Cmp(pendingPlusOutstanding) == 0 && liveEscrow.Cmp(escrow) >= 0, ReservePrincipalRao: principal.String(), ReserveLiveStakeRao: liveStake.String(), ReserveBackingDeltaRao: new(big.Int).Sub(new(big.Int).Set(liveStake), principal).String()}
 
 	operatorEvidence := map[uint64]OperatorObservation{}
 	for _, operator := range observation.Operators {

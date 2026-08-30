@@ -12,7 +12,10 @@ echo "[release-1.0] sn Go tests"
 (
   cd "$sn_repo"
   go test ./...
-  go test -race ./crv4 ./miner/... ./protocol ./sim-testnet ./validator
+  go test -race ./crv4 ./miner/... ./protocol ./validator
+  # Keep the launch-scale simulator isolated so its package deadline and any
+  # race report remain attributable without weakening the 1,000-miner tests.
+  go test -race -timeout 10m ./sim-testnet
 )
 
 echo "[release-1.0] deployable Solidity static analysis"
@@ -44,8 +47,9 @@ echo "[release-1.0] generated ABI and Go binding freshness"
 echo "[release-1.0] operator pure/unit suites"
 (
   cd "$workspace/server"
+  go test . -run '^TestPgResourcesRedirectMaintenancePoolAndRestore$'
   go test ./st ./startifact
-  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
+  go test ./controller -run '^Test(StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
   go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^TestVerifyEgressExactIndexAndPrefixScoreAreIndependent$'

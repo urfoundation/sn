@@ -36,20 +36,24 @@ policy:
       numerator: 1
       denominator: 4
     maximum_head_fleets: 200
-    # Runtime 451 hardcodes the native getter to 65535. Release validators pin
+    # Runtime 452 hardcodes the native getter to 65535. Release validators pin
     # this feasible two-NO bootstrap cap in the signed policy instead.
     max_weight_limit_u16: 32768
     empty_channel: cede_to_nonempty
     arithmetic: integer_rational_v1
   deposit:
     unit: rao_per_gib
-    epoch_cap_rao_per_operator: 90000000
+    # Runtime 452 rejects reserve movements near 0.1 alpha on the live subnet.
+    # Ten alpha leaves a wide margin above that dynamic minimum.
+    epoch_cap_rao_per_operator: 10000000000
     # Funds both NOs through 20 accelerated epochs, one deliberately dishonest
     # production deposit, its recovery, one conservatively discarded partial
     # production epoch, three fully observed production epochs, the terminal
-    # boundary, and 1 alpha of voluntary conviction. Together with two 0.09
-    # alpha validator stakes, this remains below the 6-alpha wallet ceiling.
-    total_test_campaign_cap_rao: 5500000000
+    # boundary, a runtime-valid 5-alpha dishonest underpayment, and 1 alpha of
+    # voluntary conviction. This is the demand-side
+    # campaign cap only: validator bootstrap stake is independently sized to
+    # establish the reserve majority and an outside-validator position.
+    total_test_campaign_cap_rao: 496000000000
     tier_snapshot: conviction_before_epoch
     usage_lag_epochs: 1
     usage_artifact: signed_payout_artifact_total_usage_bytes

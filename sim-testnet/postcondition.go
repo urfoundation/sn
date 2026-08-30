@@ -1,23 +1,28 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -34,10 +39,24 @@ type ActionPostcondition struct {
 	IndependentRPC                bool           `json:"independent_rpc"`
 	SubstrateFinalized            ChainHead      `json:"substrate_finalized"`
 	EVMFinalized                  ChainHead      `json:"evm_finalized"`
+	EVMHashDomain                 string         `json:"evm_hash_domain,omitempty"`
 	Observed                      map[string]any `json:"observed"`
 	IndependentSubstrateFinalized ChainHead      `json:"independent_substrate_finalized"`
 	IndependentEVMFinalized       ChainHead      `json:"independent_evm_finalized"`
+	IndependentEVMHashDomain      string         `json:"independent_evm_hash_domain,omitempty"`
 	IndependentObserved           map[string]any `json:"independent_observed"`
+}
+
+// stateMismatchError preserves an underlying read/decoding error when one is
+// present and emits a plain semantic mismatch otherwise. Formatting a nil
+// cause with %w produces a misleading "%!w(<nil>)" artifact in durable
+// diagnostics, exactly where operators need an unambiguous failure reason.
+func stateMismatchError(cause error, format string, args ...any) error {
+	message := fmt.Sprintf(format, args...)
+	if cause != nil {
+		return fmt.Errorf("%s: %w", message, cause)
+	}
+	return errors.New(message)
 }
 
 func legacyPostconditionRelativePath(actionID string) (string, error) {
@@ -83,12 +102,12 @@ func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*Ac
 			return nil, cloneErr
 		}
 		return &ActionPostcondition{
-			Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
+			Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
 			PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash,
 			OperationalRPCMode: e.cfg.OperationalRPCMode, IndependentRPC: false,
-			SubstrateFinalized: operationalSubstrate, EVMFinalized: evmHead, Observed: observed,
+			SubstrateFinalized: operationalSubstrate, EVMFinalized: evmHead, EVMHashDomain: "evm-rpc", Observed: observed,
 			IndependentSubstrateFinalized: operationalSubstrate, IndependentEVMFinalized: evmHead,
-			IndependentObserved: independentObserved,
+			IndependentEVMHashDomain: "evm-rpc", IndependentObserved: independentObserved,
 		}, nil
 	}
 	independentSubstrate, independentEVM, err := e.waitIndependentCheckpoints(
@@ -105,12 +124,12 @@ func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*Ac
 		return nil, fmt.Errorf("independent RPC postcondition: %w", err)
 	}
 	return &ActionPostcondition{
-		Schema: "urnetwork-sim-action-postcondition-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
 		PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash,
 		OperationalRPCMode: e.cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(e.cfg),
-		SubstrateFinalized: ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()}, EVMFinalized: evmHead,
+		SubstrateFinalized: ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()}, EVMFinalized: evmHead, EVMHashDomain: "evm-rpc",
 		Observed: observed, IndependentSubstrateFinalized: independentSubstrate,
-		IndependentEVMFinalized: independentEVM, IndependentObserved: independentObserved,
+		IndependentEVMFinalized: independentEVM, IndependentEVMHashDomain: "evm-rpc", IndependentObserved: independentObserved,
 	}, nil
 }
 
@@ -166,8 +185,7 @@ func (e *Executor) waitIndependentCheckpoints(ctx context.Context, operationalSu
 		independentEVM, evmErr := finalizedEVMHead(waitCtx, e.independentEVM)
 		evmReady := false
 		if evmErr == nil && independentEVM.Number >= operationalEVM.Number {
-			var canonical string
-			if readErr := e.independentEVM.Client().CallContext(waitCtx, &canonical, "chain_getBlockHash", operationalEVM.Number); readErr != nil {
+			if canonical, readErr := canonicalEVMBlockHash(waitCtx, ethEVMBlockReader{client: e.independentEVM}, operationalEVM.Number); readErr != nil {
 				evmErr = readErr
 			} else {
 				evmReady, evmErr = checkpointVisibility(operationalEVM, independentEVM, canonical)
@@ -190,15 +208,15 @@ func (e *Executor) waitIndependentCheckpoints(ctx context.Context, operationalSu
 	}
 }
 
-func verifyEVMCheckpoint(ctx context.Context, client *ethclient.Client, finalized, recorded ChainHead) error {
-	if client == nil {
-		return errors.New("EVM checkpoint client is unavailable")
+func verifyEVMCheckpointFromReader(ctx context.Context, reader evmBlockReader, finalized, recorded ChainHead) error {
+	if reader == nil {
+		return errors.New("EVM checkpoint reader is unavailable")
 	}
 	if recorded.Number == 0 || recorded.Hash == "" {
 		return errors.New("recorded EVM checkpoint identity is incomplete")
 	}
-	var canonical string
-	if err := client.Client().CallContext(ctx, &canonical, "chain_getBlockHash", recorded.Number); err != nil {
+	canonical, err := canonicalEVMBlockHash(ctx, reader, recorded.Number)
+	if err != nil {
 		return err
 	}
 	ready, err := checkpointVisibility(recorded, finalized, canonical)
@@ -209,6 +227,13 @@ func verifyEVMCheckpoint(ctx context.Context, client *ethclient.Client, finalize
 		return fmt.Errorf("recorded EVM block %d is not finalized (head %d)", recorded.Number, finalized.Number)
 	}
 	return nil
+}
+
+func verifyEVMCheckpoint(ctx context.Context, client *ethclient.Client, finalized, recorded ChainHead) error {
+	if client == nil {
+		return errors.New("EVM checkpoint client is unavailable")
+	}
+	return verifyEVMCheckpointFromReader(ctx, ethEVMBlockReader{client: client}, finalized, recorded)
 }
 
 func receiptMatchesEvidence(finalized ChainHead, receipt *ethTypes.Receipt, transactionHash string, blockNumber uint64, blockHash string) bool {
@@ -260,16 +285,98 @@ func (e *Executor) independentReadExecutor() *Executor {
 	return &cloned
 }
 
+// Decode the durable representation while retaining exact JSON numbers inside
+// dynamic observation maps. A second value or an unknown field is never part
+// of one authenticated receipt.
+func decodeActionPostcondition(raw []byte) (*ActionPostcondition, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	decoder.DisallowUnknownFields()
+	var record ActionPostcondition
+	if err := decoder.Decode(&record); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New("action postcondition has a trailing JSON value")
+		}
+		return nil, err
+	}
+	return &record, nil
+}
+
+// Round-trip dynamic values before hashing so struct field order and decoded
+// map order cannot give the on-disk receipt a different digest from memory.
+func durableActionPostcondition(record *ActionPostcondition) (*ActionPostcondition, error) {
+	if record == nil {
+		return nil, errors.New("action postcondition is unavailable")
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return nil, err
+	}
+	return decodeActionPostcondition(encoded)
+}
+
+// V1-v3 receipts were hashed before serialization. Registration-balance
+// slices therefore used struct field order on the operational observation,
+// while the shared-provider clone used decoded map order. Retype only that
+// historical shape so existing append-only journal evidence remains usable.
+func legacyRegistrationBalancePostconditionHash(record *ActionPostcondition) (string, bool, error) {
+	legacy, err := durableActionPostcondition(record)
+	if err != nil {
+		return "", false, err
+	}
+	retype := func(observed map[string]any) (bool, error) {
+		value, ok := observed["registration_balances"]
+		if !ok {
+			return false, nil
+		}
+		encoded, encodeErr := json.Marshal(value)
+		if encodeErr != nil {
+			return false, encodeErr
+		}
+		var balances []registrationBalanceObservation
+		if decodeErr := json.Unmarshal(encoded, &balances); decodeErr != nil || len(balances) == 0 {
+			if decodeErr == nil {
+				decodeErr = errors.New("registration balance evidence is empty")
+			}
+			return false, decodeErr
+		}
+		observed["registration_balances"] = balances
+		return true, nil
+	}
+	applied, err := retype(legacy.Observed)
+	if err != nil || !applied {
+		return "", applied, err
+	}
+	if legacy.IndependentRPC {
+		if applied, err = retype(legacy.IndependentObserved); err != nil || !applied {
+			return "", applied, err
+		}
+	}
+	hash, err := canonicalHashHex(legacy)
+	return hash, true, err
+}
+
 func (e *Executor) persistActionPostcondition(record *ActionPostcondition) (string, string, error) {
+	if record == nil {
+		return "", "", errors.New("action postcondition is unavailable")
+	}
 	relative, err := postconditionRelativePath(record.PlanHash, record.ActionID)
 	if err != nil {
 		return "", "", err
 	}
-	hash, err := canonicalHashHex(record)
+	durable, err := durableActionPostcondition(record)
 	if err != nil {
 		return "", "", err
 	}
-	b, err := json.MarshalIndent(record, "", "  ")
+	hash, err := canonicalHashHex(durable)
+	if err != nil {
+		return "", "", err
+	}
+	b, err := json.MarshalIndent(durable, "", "  ")
 	if err != nil {
 		return "", "", err
 	}
@@ -279,37 +386,56 @@ func (e *Executor) persistActionPostcondition(record *ActionPostcondition) (stri
 	return relative, hash, nil
 }
 
-func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
+// readPersistedPostcondition authenticates the durable receipt named by one
+// verified journal entry and returns the exact decoded evidence. Callers that
+// need to replay a point-in-time assertion must use this value rather than
+// resolving a receipt by action ID, because revised plans may contain the same
+// action and intent while retaining distinct historical checkpoints.
+func (e *Executor) readPersistedPostcondition(entry JournalEntry) (*ActionPostcondition, error) {
 	if entry.PostconditionPath == "" {
-		return errors.New("verified journal entry has no postcondition path")
+		return nil, errors.New("verified journal entry has no postcondition path")
 	}
 	wantPath, err := postconditionRelativePath(entry.PlanHash, entry.ActionID)
 	legacyPath, legacyErr := legacyPostconditionRelativePath(entry.ActionID)
 	if (err != nil || entry.PostconditionPath != wantPath) && (legacyErr != nil || entry.PostconditionPath != legacyPath) {
-		return fmt.Errorf("postcondition path %q is not canonical", entry.PostconditionPath)
+		return nil, fmt.Errorf("postcondition path %q is not canonical", entry.PostconditionPath)
 	}
 	b, err := os.ReadFile(filepath.Join(e.stateDir, filepath.FromSlash(entry.PostconditionPath)))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var record ActionPostcondition
-	if err := json.Unmarshal(b, &record); err != nil {
-		return err
+	record, err := decodeActionPostcondition(b)
+	if err != nil {
+		return nil, err
 	}
-	if record.Schema != "urnetwork-sim-action-postcondition-v1" || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
-		return errors.New("persisted action postcondition identity mismatch")
+	if (record.Schema != "urnetwork-sim-action-postcondition-v1" && record.Schema != "urnetwork-sim-action-postcondition-v2" && record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
+		return nil, errors.New("persisted action postcondition identity mismatch")
+	}
+	if record.Schema == "urnetwork-sim-action-postcondition-v2" && (record.EVMHashDomain != "ethereum" || record.IndependentEVMHashDomain != "ethereum") {
+		return nil, errors.New("persisted legacy action postcondition has an invalid EVM hash domain")
+	}
+	if (record.Schema == "urnetwork-sim-action-postcondition-v3" || record.Schema == "urnetwork-sim-action-postcondition-v4") && (record.EVMHashDomain != "evm-rpc" || record.IndependentEVMHashDomain != "evm-rpc") {
+		return nil, errors.New("persisted action postcondition has an invalid EVM hash domain")
 	}
 	if record.IndependentSubstrateFinalized.Number == 0 || record.IndependentSubstrateFinalized.Hash == "" || record.IndependentEVMFinalized.Number == 0 || record.IndependentEVMFinalized.Hash == "" || record.IndependentObserved == nil {
-		return errors.New("persisted action postcondition lacks independent RPC evidence")
+		return nil, errors.New("persisted action postcondition lacks independent RPC evidence")
 	}
 	got, err := canonicalHashHex(record)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if got != entry.PostconditionHash {
-		return fmt.Errorf("persisted postcondition hash %s, journal requires %s", got, entry.PostconditionHash)
+		legacyHash, applicable, legacyErr := legacyRegistrationBalancePostconditionHash(record)
+		if record.Schema == "urnetwork-sim-action-postcondition-v4" || legacyErr != nil || !applicable || legacyHash != entry.PostconditionHash {
+			return nil, fmt.Errorf("persisted postcondition hash %s, journal requires %s", got, entry.PostconditionHash)
+		}
 	}
-	return nil
+	return record, nil
+}
+
+func (e *Executor) verifyPersistedPostcondition(entry JournalEntry) error {
+	_, err := e.readPersistedPostcondition(entry)
+	return err
 }
 
 func lifecycleHyperparameterExpectation(cfg *ResolvedConfig, name string, productionVerified bool) (any, string, error) {
@@ -358,6 +484,13 @@ func validateUnmutatedExistingUIDs(current, planned []ExistingUIDFact) error {
 }
 
 func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainHead) (map[string]any, error) {
+	if evmHead.Number != 0 || evmHead.Hash != "" {
+		var err error
+		ctx, err = withFinalizedEVMHead(ctx, evmHead)
+		if err != nil {
+			return nil, err
+		}
+	}
 	state := map[string]any{"kind": a.Kind, "target": a.Target}
 	set := func(key string, value any) (map[string]any, error) { state[key] = value; return state, nil }
 	switch {
@@ -396,7 +529,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		got, err := e.substrate.ReadHyper(name)
 		if err != nil || !hyperEqual(got, want, hyperShapes[name].Kind) {
-			return nil, fmt.Errorf("hyperparameter %s postcondition is %v: %w", name, got, err)
+			return nil, stateMismatchError(err, "hyperparameter %s postcondition is %v", name, got)
 		}
 		state["name"], state["value"] = name, got
 		if supersededBy != "" {
@@ -412,7 +545,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		got, err := e.substrate.ReadHyper(name)
 		if err != nil || !hyperEqual(got, want, shape.Kind) {
-			return nil, fmt.Errorf("production %s postcondition is %v: %w", name, got, err)
+			return nil, stateMismatchError(err, "production %s postcondition is %v", name, got)
 		}
 		state["name"], state["value"] = name, got
 		return state, nil
@@ -424,8 +557,11 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		addr := common.HexToAddress(a.Target)
 		balance, err := e.deployer.client.BalanceAt(ctx, addr, new(big.Int).SetUint64(evmHead.Number))
 		want := new(big.Int).Mul(new(big.Int).SetUint64(usableRao), new(big.Int).SetUint64(evmWeiPerRao))
-		if err != nil || balance.Cmp(want) < 0 {
-			return nil, fmt.Errorf("EVM funding postcondition balance=%v want>=%v: %w", balance, want, err)
+		if err != nil {
+			return nil, fmt.Errorf("EVM funding postcondition balance at block %d: %w", evmHead.Number, err)
+		}
+		if balance.Cmp(want) < 0 {
+			return nil, fmt.Errorf("EVM funding postcondition balance=%v want>=%v at block %d", balance, want, evmHead.Number)
 		}
 		state["address"], state["balance_wei"], state["minimum_wei"], state["existential_deposit_rao"] = addr.Hex(), balance.String(), want.String(), e.plan.LiveFacts.ExistentialDepositRao
 		return state, nil
@@ -445,9 +581,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		return e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "churn.register."):
 		churn := suffixInt(a.ID)
-		challengerFleet := e.cfg.Config.Topology.HeadFleets + churn
-		if churn <= e.cfg.Config.Topology.ChallengerFleets && e.actionVerified(fmt.Sprintf("fleet.register.%d", challengerFleet)) {
-			return e.verifyPrunedChurnPostcondition(churn, state)
+		if replacement, replaced := e.expectedReplacementForChurn(churn); replaced {
+			return e.verifyPrunedChurnPostcondition(churn, replacement, state)
 		}
 		return e.verifyRegistration(churnHotkeyLabel(churn), churnColdkeyLabel(churn), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "validator.register."):
@@ -467,15 +602,94 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		take, err := e.substrate.DelegateTake(hotkey)
 		if err != nil || take != 0 {
-			return nil, fmt.Errorf("reserve take=%d: %w", take, err)
+			return nil, stateMismatchError(err, "reserve take=%d", take)
 		}
 		return set("delegate_take", take)
 	case strings.HasPrefix(a.ID, "alpha.transfer.operator-deposit."):
 		return e.verifyAlphaTransfer(ctx, a, "operator-deposit", suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "alpha.transfer.validator."):
 		return e.verifyAlphaTransfer(ctx, a, "validator", suffixInt(a.ID), state)
-	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy":
+	case strings.HasPrefix(a.ID, "alpha.repair."):
+		kind, index, err := alphaTransferTargetFromActionID(a.ID)
+		if err != nil {
+			return nil, err
+		}
+		state, err = e.verifyAlphaTransfer(ctx, a, kind, index, state)
+		if err != nil {
+			return nil, err
+		}
+		var deployment *ContractDeployment
+		if kind == "operator-deposit" {
+			if err := e.ensurePayloads(ctx); err != nil {
+				return nil, err
+			}
+			deployment = &e.payloads.Manifest
+		}
+		coldkey, hotkey, err := alphaTransferDestination(e.roles, deployment, kind, index)
+		if err != nil {
+			return nil, err
+		}
+		minimum, err := e.recoveredAlphaMinimumStake(ctx, a, hotkey, coldkey)
+		if err != nil {
+			return nil, err
+		}
+		stake, err := e.readStakeFinalized(ctx, hotkey, coldkey)
+		if err != nil || stake < minimum {
+			return nil, stateMismatchError(err, "alpha repair %s stake=%d want>=%d", a.ID, stake, minimum)
+		}
+		state["minimum_repaired_stake_rao"] = minimum
+		return state, nil
+	case a.ID == "validator.reserve-majority":
+		snapshot, reserveAlpha, err := e.reserveValidatorMajoritySnapshot()
+		if err != nil {
+			return nil, err
+		}
+		state["reserve_alpha_rao"] = reserveAlpha
+		state["registered_alpha_rao"] = snapshot.TotalAlphaRao
+		state["minimum_share_bps"] = e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS
+		state["finalized_block"] = snapshot.FinalizedBlock
+		state["finalized_block_hash"] = snapshot.FinalizedHash
+		return state, nil
+	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation":
 		return e.verifyDeploymentPostState(ctx, a, evmHead, state)
+	case a.ID == "evm.coordinator-upgrade-activate":
+		if err := e.ensurePayloads(ctx); err != nil {
+			return nil, err
+		}
+		implementation, err := implementationAt(ctx, e.owner, e.payloads.Manifest.CoordinatorProxy, evmHead.Number)
+		if err != nil || implementation != e.payloads.CoordinatorUpgrade.Implementation {
+			return nil, stateMismatchError(err, "coordinator implementation=%s", implementation)
+		}
+		state["proxy"] = e.payloads.Manifest.CoordinatorProxy.Hex()
+		state["implementation"] = implementation.Hex()
+		state["runtime_hash"] = e.payloads.CoordinatorUpgrade.RuntimeCodeHash
+		return state, nil
+	case a.ID == "policy.schedule-bootstrap" || a.ID == "policy.await-bootstrap":
+		current, count, active, err := e.bootstrapPolicyState(ctx, evmHead.Number)
+		if err != nil {
+			return nil, err
+		}
+		matched := bootstrapPolicyMatches(e.cfg, active)
+		if !matched && a.ID == "policy.schedule-bootstrap" && count > 1 {
+			parsed, parseErr := abi.JSON(strings.NewReader(CoordinatorABI))
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			values, readErr := contractCallAt(ctx, e.owner.client, e.payloads.Manifest.CoordinatorProxy, parsed, "policyByIndex", evmHead.Number, new(big.Int).SetUint64(count-1))
+			if readErr != nil {
+				return nil, readErr
+			}
+			scheduled, convertErr := coordinatorPolicy(values)
+			matched = convertErr == nil && scheduled.EffectiveEpoch > current && bootstrapPolicyMatches(e.cfg, scheduled)
+		}
+		if !matched {
+			return nil, errors.New("locked bootstrap policy is neither active nor canonically scheduled")
+		}
+		state["current_epoch"] = current
+		state["policy_count"] = count
+		state["policy_hash"] = e.cfg.PolicyHash
+		state["active"] = bootstrapPolicyMatches(e.cfg, active)
+		return state, nil
 	case strings.HasPrefix(a.ID, "precompile."):
 		return e.verifyPrecompileConformancePostState(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "governance."):
@@ -494,6 +708,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		return e.verifyFleetBindingPostState(ctx, fleet, member, state)
 	case a.ID == "campaign.voluntary-conviction.1":
 		return e.verifyVoluntaryConvictionPostState(ctx, evmHead, state)
+	case a.ID == voluntaryConvictionReconciliationActionID:
+		return e.verifyVoluntaryConvictionReconciliationPostState(ctx, a, evmHead, state)
 	case a.ID == dishonestDepositActionID:
 		return e.verifyDishonestDepositPostState(ctx, a, evmHead, state)
 	case a.ID == "production.schedule-policy":
@@ -507,11 +723,12 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
-		count, err := e.verifyExactTopologyRoleSet(initialTopologyRoleLabels(e.cfg.Config.Topology))
+		labels := initialTopologyRoleLabels(e.cfg.Config.Topology, e.plan.Deployment.RegistrationRoleGeneration)
+		count, err := e.verifyExactTopologyRoleSet(labels)
 		if err != nil {
 			return nil, fmt.Errorf("pre-launch initial registration topology: %w", err)
 		}
-		state["initial_registered_roles"] = len(initialTopologyRoleLabels(e.cfg.Config.Topology))
+		state["initial_registered_roles"] = len(labels)
 		state["preserved_bootstrap_uids"] = len(e.plan.LiveFacts.ExistingUIDs)
 		state["uid_count"] = count
 		return state, nil
@@ -531,7 +748,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		ready, err := supervisorReadyNow(e.stateDir, supervisor)
 		if err != nil || !ready {
-			return nil, fmt.Errorf("supervisor postcondition ready=%t: %w", ready, err)
+			return nil, stateMismatchError(err, "supervisor postcondition ready=%t", ready)
 		}
 		state["supervisor_manifest_hash"], _ = canonicalHashHex(supervisor)
 		state["processes"] = len(supervisor.Specs)
@@ -616,12 +833,12 @@ func (e *Executor) verifyVoluntaryConvictionPostState(ctx context.Context, head 
 	epoch := new(big.Int).SetUint64(evidence.Epoch)
 	added, err := rawCoordinatorCall(ctx, e.deployer, coordinatorAddress, coordinator.PackEpochConvictionAdded(epoch, big.NewInt(1)), coordinator.UnpackEpochConvictionAdded)
 	if err != nil || added.String() != evidence.AmountRao {
-		return nil, fmt.Errorf("finalized epoch conviction addition=%v, want %s: %w", added, evidence.AmountRao, err)
+		return nil, stateMismatchError(err, "finalized epoch conviction addition=%v, want %s", added, evidence.AmountRao)
 	}
 	cumulative, err := rawCoordinatorCall(ctx, e.deployer, coordinatorAddress, coordinator.PackCumulativeConviction(big.NewInt(1)), coordinator.UnpackCumulativeConviction)
 	want, _ := new(big.Int).SetString(evidence.AfterConvictionRao, 10)
 	if err != nil || cumulative.Cmp(want) < 0 {
-		return nil, fmt.Errorf("finalized cumulative conviction=%v, want at least %s: %w", cumulative, evidence.AfterConvictionRao, err)
+		return nil, stateMismatchError(err, "finalized cumulative conviction=%v, want at least %s", cumulative, evidence.AfterConvictionRao)
 	}
 	state["epoch"], state["amount_rao"], state["transaction_hash"] = evidence.Epoch, evidence.AmountRao, evidence.TransactionHash
 	state["cumulative_conviction_rao"] = cumulative.String()
@@ -663,12 +880,13 @@ func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head Cha
 	coordinator := stabi.NewSTCoordinator()
 	address := e.payloads.Manifest.CoordinatorProxy
 	count, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyCount(), coordinator.UnpackPolicyCount)
-	if err != nil || count.Cmp(big.NewInt(2)) != 0 {
-		return nil, fmt.Errorf("policy count=%v, want exactly 2: %w", count, err)
+	if err != nil || !count.IsUint64() || count.Uint64() < 2 || count.Uint64() > 3 {
+		return nil, stateMismatchError(err, "policy count=%v, want fresh or migrated release history", count)
 	}
-	policy, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyByIndex(big.NewInt(1)), coordinator.UnpackPolicyByIndex)
+	lastIndex := new(big.Int).Sub(new(big.Int).Set(count), big.NewInt(1))
+	policy, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackPolicyByIndex(lastIndex), coordinator.UnpackPolicyByIndex)
 	if err != nil || !productionPolicyMatches(e.cfg, policy) || policy.EffectiveEpoch != evidence.EffectiveEpoch || policy.EffectiveBlock != evidence.EffectiveBlock {
-		return nil, fmt.Errorf("finalized production policy does not match evidence: %w", err)
+		return nil, stateMismatchError(err, "finalized production policy does not match evidence")
 	}
 	state["effective_epoch"], state["effective_block"], state["epoch_blocks"] = policy.EffectiveEpoch, policy.EffectiveBlock, policy.EpochBlocks
 	state["policy_count"] = count.String()
@@ -691,7 +909,7 @@ func (e *Executor) verifyOperatorRetirementPostState(ctx context.Context, action
 	version, err := rawCoordinatorCall(ctx, e.owner, e.payloads.Manifest.CoordinatorProxy,
 		coordinator.PackOperatorAt(new(big.Int).SetUint64(noID), new(big.Int).SetUint64(effective)), coordinator.UnpackOperatorAt)
 	if err != nil || !retirementVersionMatches(version, effective, hotkey, depositSigner, rootSigner) {
-		return nil, fmt.Errorf("operator %d retirement at epoch %d does not match the approved finalized version: %w", noID, effective, err)
+		return nil, stateMismatchError(err, "operator %d retirement at epoch %d does not match the approved finalized version", noID, effective)
 	}
 	state["scheduled_operator"], state["effective_epoch"], state["active"] = noID, effective, false
 	state["deposit_hotkey"], state["deposit_signer"], state["root_signer"] = "0x"+hex.EncodeToString(hotkey[:]), depositSigner.Hex(), rootSigner.Hex()
@@ -705,7 +923,7 @@ func (e *Executor) verifySubstrateFunding(a Action, label string, state map[stri
 	}
 	balance, err := e.substrate.FreeBalance(account)
 	if err != nil || balance < a.Spend.TAORao {
-		return nil, fmt.Errorf("%s balance=%d want>=%d: %w", label, balance, a.Spend.TAORao, err)
+		return nil, stateMismatchError(err, "%s balance=%d want>=%d", label, balance, a.Spend.TAORao)
 	}
 	state["role"], state["account"], state["free_balance_rao"] = label, "0x"+hex.EncodeToString(account[:]), balance
 	return state, nil
@@ -718,7 +936,7 @@ func (e *Executor) verifyRegistration(label, coldkeyLabel string, mirror common.
 	}
 	uid, found, err := e.substrate.UID(hotkey)
 	if err != nil || !found {
-		return nil, fmt.Errorf("%s native registration found=%t: %w", label, found, err)
+		return nil, stateMismatchError(err, "%s native registration found=%t", label, found)
 	}
 	var expected [32]byte
 	if coldkeyLabel != "" {
@@ -751,62 +969,91 @@ func (e *Executor) verifyChallengerChurnPostcondition(fleet int, state map[strin
 	if _, err := e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state); err != nil {
 		return nil, err
 	}
-	state["replaced_churn"] = fleet - e.cfg.Config.Topology.HeadFleets
+	challenger := fleet - e.cfg.Config.Topology.HeadFleets
+	churn, err := churnIndexForChallenger(e.cfg.Config.Topology, e.plan.Deployment.RegistrationRoleGeneration, challenger)
+	if err != nil {
+		return nil, err
+	}
+	state["replaced_churn"] = churn
 	state["replaced_uid"] = result.ExpectedUID
 	state["uid_count"] = result.UIDCount
 	return state, nil
 }
 
-func (e *Executor) verifyPrunedChurnPostcondition(churn int, state map[string]any) (map[string]any, error) {
-	fleet := e.cfg.Config.Topology.HeadFleets + churn
-	result, err := e.readChallengerChurnState(fleet)
+func (e *Executor) verifyPrunedChurnPostcondition(churn int, replacementLabel string, state map[string]any) (map[string]any, error) {
+	result, err := e.readRegistrationReplacementState(churn, replacementLabel)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateChallengerChurnPostState(result); err != nil {
+	if err := validateRegistrationReplacementPostState(result); err != nil {
 		return nil, err
 	}
 	state["role"] = churnHotkeyLabel(churn)
 	state["status"] = "intentionally_pruned"
-	state["replaced_by"] = fleetHotkeyLabel(fleet)
+	state["replaced_by"] = replacementLabel
 	state["uid"] = result.ExpectedUID
 	return state, nil
 }
 
-func initialTopologyRoleLabels(topology TopologyConfig) []string {
-	labels := make([]string, 0, 254)
-	for churn := 1; churn <= topology.ChurnFloorUIDs; churn++ {
-		labels = append(labels, churnHotkeyLabel(churn))
+func (e *Executor) verifyContractRegistrationReplacementPostcondition(action Action, replacementLabel string, registration int, state map[string]any) error {
+	generation := e.plan.Deployment.RegistrationRoleGeneration
+	if generation == 0 {
+		if action.Parameters["registration_role_generation"] != "0" || action.Parameters["expected_replaced_churn"] != "" {
+			return errors.New("generation-zero contract registration has replacement parameters")
+		}
+		return nil
 	}
-	labels = append(labels, "escrow-hotkey")
-	for operator := 1; operator <= topology.Operators; operator++ {
-		labels = append(labels, fmt.Sprintf("operator-%d-deposit-hotkey", operator), fmt.Sprintf("operator-%d-pool-hotkey", operator))
+	churn, err := churnIndexForContractRegistration(e.cfg.Config.Topology, generation, registration)
+	if err != nil {
+		return err
 	}
-	for fleet := 1; fleet <= topology.HeadFleets; fleet++ {
-		labels = append(labels, fleetHotkeyLabel(fleet))
+	if action.Parameters["registration_role_generation"] != strconv.FormatUint(generation, 10) || action.Parameters["expected_replaced_churn"] != strconv.Itoa(churn) {
+		return errors.New("contract registration postcondition differs from the approved generation and churn UID")
 	}
-	for validator := 1; validator <= topology.Validators; validator++ {
-		labels = append(labels, validatorHotkeyLabel(validator))
+	result, err := e.readRegistrationReplacementState(churn, replacementLabel)
+	if err != nil {
+		return err
 	}
-	return labels
+	if err := validateRegistrationReplacementPostState(result); err != nil {
+		return err
+	}
+	state["registration_role_generation"] = generation
+	state["replaced_churn"] = churn
+	state["replaced_uid"] = result.ExpectedUID
+	return nil
 }
 
-func tournamentTopologyRoleLabels(topology TopologyConfig) []string {
-	labels := make([]string, 0, 254)
-	for fleet := 1; fleet <= topology.fleetCandidates(); fleet++ {
-		labels = append(labels, fleetHotkeyLabel(fleet))
+func (e *Executor) expectedReplacementForChurn(churn int) (string, bool) {
+	generation := e.plan.Deployment.RegistrationRoleGeneration
+	count := contractRegistrationRoleCount(e.cfg.Config.Topology)
+	for completed := uint64(1); completed < generation; completed++ {
+		offset := int(completed-1) * count
+		if churn > offset && churn <= offset+count {
+			return contractRegistrationRoleLabels(e.cfg.Config.Topology, completed)[churn-offset-1], true
+		}
 	}
-	for churn := topology.ChallengerFleets + 1; churn <= topology.ChurnFloorUIDs; churn++ {
-		labels = append(labels, churnHotkeyLabel(churn))
+	if generation > 0 {
+		offset := int(generation-1) * count
+		if churn > offset && churn <= offset+count {
+			ordinal := churn - offset
+			actionID := "evm.vault-register-escrow"
+			if ordinal > 1 {
+				actionID = fmt.Sprintf("operator.register.%d", ordinal-1)
+			}
+			if e.actionVerified(actionID) {
+				return contractRegistrationRoleLabels(e.cfg.Config.Topology, generation)[ordinal-1], true
+			}
+		}
 	}
-	labels = append(labels, "escrow-hotkey")
-	for operator := 1; operator <= topology.Operators; operator++ {
-		labels = append(labels, fmt.Sprintf("operator-%d-deposit-hotkey", operator), fmt.Sprintf("operator-%d-pool-hotkey", operator))
+	challengerOffset := int(generation) * count
+	if churn > challengerOffset && churn <= challengerOffset+e.cfg.Config.Topology.ChallengerFleets {
+		challenger := churn - challengerOffset
+		fleet := e.cfg.Config.Topology.HeadFleets + challenger
+		if e.actionVerified(fmt.Sprintf("fleet.register.%d", fleet)) {
+			return fleetHotkeyLabel(fleet), true
+		}
 	}
-	for validator := 1; validator <= topology.Validators; validator++ {
-		labels = append(labels, validatorHotkeyLabel(validator))
-	}
-	return labels
+	return "", false
 }
 
 func (e *Executor) verifyExactTopologyRoleSet(labels []string) (uint16, error) {
@@ -822,11 +1069,11 @@ func (e *Executor) verifyExactTopologyRoleSet(labels []string) (uint16, error) {
 		}
 		uid, found, err := e.substrate.UID(hotkey)
 		if err != nil || !found || uid != identity.UID {
-			return 0, fmt.Errorf("bootstrap identity UID %d moved or disappeared: current=%d found=%t: %w", identity.UID, uid, found, err)
+			return 0, stateMismatchError(err, "bootstrap identity UID %d moved or disappeared: current=%d found=%t", identity.UID, uid, found)
 		}
 		owner, err := e.substrate.HotkeyOwner(hotkey)
 		if err != nil || owner != coldkey {
-			return 0, fmt.Errorf("bootstrap identity UID %d coldkey changed: current=0x%x planned=0x%x: %w", identity.UID, owner, coldkey, err)
+			return 0, stateMismatchError(err, "bootstrap identity UID %d coldkey changed: current=0x%x planned=0x%x", identity.UID, owner, coldkey)
 		}
 		uids[uid] = fmt.Sprintf("bootstrap-uid-%d", identity.UID)
 	}
@@ -837,7 +1084,7 @@ func (e *Executor) verifyExactTopologyRoleSet(labels []string) (uint16, error) {
 		}
 		uid, found, err := e.substrate.UID(hotkey)
 		if err != nil || !found {
-			return 0, fmt.Errorf("planned identity %s is not live: %w", label, err)
+			return 0, stateMismatchError(err, "planned identity %s is not live", label)
 		}
 		if prior := uids[uid]; prior != "" {
 			return 0, fmt.Errorf("planned identities %s and %s share UID %d", prior, label, uid)
@@ -873,7 +1120,7 @@ func (e *Executor) verifyChurnTournamentPostcondition(state map[string]any) (map
 			return nil, fmt.Errorf("challenger %d: %w", challenger, err)
 		}
 	}
-	labels := tournamentTopologyRoleLabels(e.cfg.Config.Topology)
+	labels := tournamentTopologyRoleLabels(e.cfg.Config.Topology, e.plan.Deployment.RegistrationRoleGeneration)
 	count, err := e.verifyExactTopologyRoleSet(labels)
 	if err != nil {
 		return nil, err
@@ -881,7 +1128,9 @@ func (e *Executor) verifyChurnTournamentPostcondition(state map[string]any) (map
 	state["candidate_fleets"] = e.cfg.Config.Topology.fleetCandidates()
 	state["selected_slots"] = e.cfg.Config.Topology.HeadSlots
 	state["pruned_churn_floor"] = e.cfg.Config.Topology.ChallengerFleets
-	state["remaining_churn_floor"] = e.cfg.Config.Topology.ChurnFloorUIDs - e.cfg.Config.Topology.ChallengerFleets
+	contractReplacements := int(e.plan.Deployment.RegistrationRoleGeneration) * contractRegistrationRoleCount(e.cfg.Config.Topology)
+	state["contract_generation_replacements"] = contractReplacements
+	state["remaining_churn_floor"] = e.cfg.Config.Topology.ChurnFloorUIDs - contractReplacements - e.cfg.Config.Topology.ChallengerFleets
 	state["planned_live_identities"] = len(labels)
 	state["preserved_bootstrap_uids"] = len(e.plan.LiveFacts.ExistingUIDs)
 	state["uid_count"] = count
@@ -900,11 +1149,30 @@ func (e *Executor) verifyAlphaTransfer(ctx context.Context, a Action, kind strin
 	if err != nil {
 		return nil, err
 	}
-	stake, err := e.readStakeFinalized(ctx, hotkey, coldkey)
-	if err != nil || stake < a.Spend.AlphaRao {
-		return nil, fmt.Errorf("%s %d stake=%d want>=%d: %w", kind, index, stake, a.Spend.AlphaRao, err)
+	block, err := e.finalizedRegistrationActionBlock(a)
+	if err != nil {
+		return nil, err
 	}
-	state["stake_rao"], state["minimum_rao"] = stake, a.Spend.AlphaRao
+	before, after, credited, err := e.verifyAlphaTransferDeltaAtBlock(ctx, a, hotkey, coldkey, block)
+	if err != nil {
+		return nil, err
+	}
+	stake, err := e.readStakeFinalized(ctx, hotkey, coldkey)
+	if err != nil || stake < after {
+		return nil, stateMismatchError(err, "%s %d current stake=%d want>=%d finalized transfer stake", kind, index, stake, after)
+	}
+	shortfall, _ := alphaTransferRoundingShortfall(a)
+	state["stake_rao"], state["exact_transfer_rao"] = stake, a.Spend.AlphaRao
+	state["transfer_parent_stake_rao"], state["transfer_finalized_stake_rao"] = before, after
+	state["credited_transfer_rao"], state["maximum_destination_rounding_shortfall_rao"] = credited, shortfall
+	state["transfer_block"] = block
+	if a.Parameters["runtime_default_min_transfer_tao_rao"] != "" {
+		state["runtime_default_min_transfer_tao_rao"] = a.Parameters["runtime_default_min_transfer_tao_rao"]
+	} else {
+		state["runtime_initial_min_stake_tao_rao"] = a.Parameters["runtime_initial_min_stake_tao_rao"]
+	}
+	state["approved_alpha_price_q9"] = a.Parameters["approved_alpha_price_q9"]
+	state["minimum_tao_equivalent_margin_bps"] = a.Parameters["minimum_tao_equivalent_margin_bps"]
 	return state, nil
 }
 
@@ -913,20 +1181,36 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		return nil, err
 	}
 	p := e.payloads
-	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.Manifest.PrecompileProbe}
+	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.Manifest.PrecompileProbe, "evm.coordinator-upgrade-implementation": p.CoordinatorUpgrade.Implementation}
 	if address, ok := addresses[a.ID]; ok {
 		code, err := e.deployer.client.CodeAt(ctx, address, new(big.Int).SetUint64(head.Number))
-		if err != nil || string(code) != string(p.ExpectedRuntime[address]) {
-			return nil, fmt.Errorf("runtime code mismatch at %s: %w", address, err)
+		expected := p.ExpectedRuntime[address]
+		if err != nil || len(expected) > 0 && string(code) != string(expected) {
+			return nil, stateMismatchError(err, "runtime code mismatch at %s", address)
+		}
+		wantHash := p.Manifest.RuntimeHashes[address.Hex()]
+		if address == p.CoordinatorUpgrade.Implementation {
+			wantHash = p.CoordinatorUpgrade.RuntimeCodeHash
+		}
+		if len(expected) == 0 && (wantHash == "" || !strings.EqualFold(cryptoKeccak(code), wantHash)) {
+			return nil, fmt.Errorf("runtime hash mismatch at %s", address)
 		}
 		state["address"], state["runtime_hash"] = address.Hex(), cryptoKeccak(code)
+		if a.ID == "evm.settlement-vault" {
+			contract := stabi.NewSTSettlementVault()
+			minimum, callErr := rawCoordinatorCall(ctx, e.deployer, address, contract.PackMinimumTransferTaoRao(), contract.UnpackMinimumTransferTaoRao)
+			if callErr != nil || minimum != e.cfg.Public.Chain.ExpectedDefaultMinTransferRao {
+				return nil, stateMismatchError(callErr, "vault minimumTransferTaoRao=%d want=%d", minimum, e.cfg.Public.Chain.ExpectedDefaultMinTransferRao)
+			}
+			state["minimum_transfer_tao_rao"] = minimum
+		}
 		return state, nil
 	}
 	if a.ID == "evm.vault-fix-coordinator" {
 		contract := stabi.NewSTSettlementVault()
 		got, err := rawCoordinatorCall(ctx, e.deployer, p.Manifest.SettlementVault, contract.PackCoordinator(), contract.UnpackCoordinator)
 		if err != nil || got != p.Manifest.CoordinatorProxy {
-			return nil, fmt.Errorf("vault coordinator=%s: %w", got, err)
+			return nil, stateMismatchError(err, "vault coordinator=%s", got)
 		}
 		state["vault"], state["coordinator"] = p.Manifest.SettlementVault.Hex(), got.Hex()
 		return state, nil
@@ -935,15 +1219,15 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		contract := stabi.NewSTSettlementVault()
 		registered, err := rawCoordinatorCall(ctx, e.deployer, p.Manifest.SettlementVault, contract.PackEscrowRegistered(), contract.UnpackEscrowRegistered)
 		if err != nil || !registered {
-			return nil, fmt.Errorf("vault escrow registration=%t: %w", registered, err)
+			return nil, stateMismatchError(err, "vault escrow registration=%t", registered)
 		}
-		hotkey, err := roleBytes32(e.roles, "escrow-hotkey")
+		hotkey, err := roleBytes32(e.roles, escrowHotkeyLabelForGeneration(p.Manifest.RegistrationRoleGeneration))
 		if err != nil {
 			return nil, err
 		}
 		liveUID, found, err := e.substrate.UID(hotkey)
 		if err != nil || !found {
-			return nil, fmt.Errorf("vault escrow live UID=%d found=%t: %w", liveUID, found, err)
+			return nil, stateMismatchError(err, "vault escrow live UID=%d found=%t", liveUID, found)
 		}
 		owner, err := e.substrate.HotkeyOwner(hotkey)
 		if err != nil {
@@ -952,18 +1236,23 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		if err := validateHotkeyOwner("vault escrow hotkey", owner, ss58Mirror(p.Manifest.SettlementVault)); err != nil {
 			return nil, err
 		}
-		if err := e.verifyRegistrationBalances(ctx, a, p.Manifest.SettlementVault); err != nil {
+		if err := e.verifyContractRegistrationReplacementPostcondition(a, escrowHotkeyLabelForGeneration(p.Manifest.RegistrationRoleGeneration), 1, state); err != nil {
+			return nil, fmt.Errorf("vault escrow replacement: %w", err)
+		}
+		balances, err := e.verifyRegistrationBalances(ctx, a, p.Manifest.SettlementVault)
+		if err != nil {
 			return nil, err
 		}
 		state["vault"], state["escrow_hotkey"], state["uid"] = p.Manifest.SettlementVault.Hex(), "0x"+hex.EncodeToString(hotkey[:]), liveUID
 		state["coldkey"] = "0x" + hex.EncodeToString(owner[:])
 		state["liquid_registration_balance_preserved"] = true
+		state["registration_balances"] = balances
 		return state, nil
 	}
 	contract := stabi.NewSTReserveSink()
 	got, err := rawCoordinatorCall(ctx, e.deployer, p.Manifest.ReserveSink, contract.PackRecorder(), contract.UnpackRecorder)
 	if err != nil || got != p.Manifest.CoordinatorProxy {
-		return nil, fmt.Errorf("reserve recorder=%s: %w", got, err)
+		return nil, stateMismatchError(err, "reserve recorder=%s", got)
 	}
 	state["reserve_sink"], state["recorder"] = p.Manifest.ReserveSink.Hex(), got.Hex()
 	return state, nil
@@ -992,28 +1281,93 @@ func finalizedActionBlock(entries []JournalEntry, planHash string, action Action
 	return 0, fmt.Errorf("action %s has no finalized transaction block", action.ID)
 }
 
-// Contract registration must consume only the runtime burn. The full ceiling
-// is supplied to eliminate an in-flight price race, so every involved
-// contract's liquid balance must be unchanged across the finalized block.
-func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action, addresses ...common.Address) error {
-	block, err := finalizedActionBlock(e.journal.Entries(), e.plan.PlanHash, action)
-	if err != nil || block == 0 {
-		return err
+// Use the verified ancestor that owns a carried action; before the first
+// verification, only the active plan may supply its transaction checkpoint.
+func (e *Executor) finalizedRegistrationActionBlock(action Action) (uint64, error) {
+	if e == nil || e.plan == nil || e.journal == nil {
+		return 0, errors.New("registration transaction evidence is unavailable")
 	}
+	if action.Kind == "substrate-reconciliation" {
+		block, err := strconv.ParseUint(action.Parameters[alphaRecoveryBlockParameter], 10, 64)
+		if err != nil || block == 0 || !hasFinalizedAlphaRecoveryEvidence(e.plan, action, e.journal.Entries()) {
+			return 0, fmt.Errorf("action %s has no exact finalized recovery block", action.ID)
+		}
+		return block, nil
+	}
+	planHash := e.plan.PlanHash
+	if verified, ok := e.verifiedActionEntry(action); ok {
+		planHash = verified.PlanHash
+	}
+	return finalizedActionBlock(e.journal.Entries(), planHash, action)
+}
+
+// Records both EVM-reducible and native-free views across one registration.
+// Runtime 452 may retain at most one hidden existential deposit, but may not
+// consume an existing balance or retain any new liquid surplus.
+type registrationBalanceObservation struct {
+	Address         string `json:"address"`
+	EVMBeforeWei    string `json:"evm_before_wei"`
+	EVMAfterWei     string `json:"evm_after_wei"`
+	NativeBeforeRao uint64 `json:"native_before_rao"`
+	NativeAfterRao  uint64 `json:"native_after_rao"`
+}
+
+func expectedRuntime452EVMBalance(freeRao, existentialDepositRao uint64) *big.Int {
+	if freeRao <= existentialDepositRao {
+		return new(big.Int)
+	}
+	return new(big.Int).Mul(new(big.Int).SetUint64(freeRao-existentialDepositRao), new(big.Int).SetUint64(evmWeiPerRao))
+}
+
+func validateRegistrationBalanceObservation(observation registrationBalanceObservation, existentialDepositRao uint64) error {
+	before, beforeOK := new(big.Int).SetString(observation.EVMBeforeWei, 10)
+	after, afterOK := new(big.Int).SetString(observation.EVMAfterWei, 10)
+	if existentialDepositRao == 0 || !beforeOK || !afterOK || before.Sign() < 0 || after.Sign() < 0 {
+		return errors.New("registration balance observation is malformed")
+	}
+	if before.Cmp(expectedRuntime452EVMBalance(observation.NativeBeforeRao, existentialDepositRao)) != 0 || after.Cmp(expectedRuntime452EVMBalance(observation.NativeAfterRao, existentialDepositRao)) != 0 {
+		return fmt.Errorf("registration balance views disagree for %s", observation.Address)
+	}
+	if before.Cmp(after) != 0 {
+		return fmt.Errorf("registration changed %s liquid balance from %s to %s", observation.Address, before, after)
+	}
+	if observation.NativeAfterRao < observation.NativeBeforeRao || observation.NativeAfterRao-observation.NativeBeforeRao > existentialDepositRao {
+		return fmt.Errorf("registration changed %s native free balance from %d to %d beyond one existential deposit", observation.Address, observation.NativeBeforeRao, observation.NativeAfterRao)
+	}
+	return nil
+}
+
+func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action, addresses ...common.Address) ([]registrationBalanceObservation, error) {
+	block, err := e.finalizedRegistrationActionBlock(action)
+	if err != nil || block == 0 {
+		return nil, err
+	}
+	observations := make([]registrationBalanceObservation, 0, len(addresses))
 	for _, address := range addresses {
 		before, readErr := e.deployer.client.BalanceAt(ctx, address, new(big.Int).SetUint64(block-1))
 		if readErr != nil {
-			return fmt.Errorf("read %s registration pre-balance at %d: %w", address, block-1, readErr)
+			return nil, fmt.Errorf("read %s registration pre-balance at %d: %w", address, block-1, readErr)
 		}
 		after, readErr := e.deployer.client.BalanceAt(ctx, address, new(big.Int).SetUint64(block))
 		if readErr != nil {
-			return fmt.Errorf("read %s registration post-balance at %d: %w", address, block, readErr)
+			return nil, fmt.Errorf("read %s registration post-balance at %d: %w", address, block, readErr)
 		}
-		if before.Cmp(after) != 0 {
-			return fmt.Errorf("registration changed %s liquid balance from %s to %s", address, before, after)
+		mirror := ss58Mirror(address)
+		nativeBefore, readErr := e.substrate.FreeBalanceAtBlock(mirror, block-1)
+		if readErr != nil {
+			return nil, fmt.Errorf("read %s registration pre-free-balance at %d: %w", address, block-1, readErr)
 		}
+		nativeAfter, readErr := e.substrate.FreeBalanceAtBlock(mirror, block)
+		if readErr != nil {
+			return nil, fmt.Errorf("read %s registration post-free-balance at %d: %w", address, block, readErr)
+		}
+		observation := registrationBalanceObservation{Address: address.Hex(), EVMBeforeWei: before.String(), EVMAfterWei: after.String(), NativeBeforeRao: nativeBefore, NativeAfterRao: nativeAfter}
+		if err := validateRegistrationBalanceObservation(observation, e.plan.LiveFacts.ExistentialDepositRao); err != nil {
+			return nil, err
+		}
+		observations = append(observations, observation)
 	}
-	return nil
+	return observations, nil
 }
 
 func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, state map[string]any) (map[string]any, error) {
@@ -1032,7 +1386,7 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, s
 		return nil, err
 	}
 	coldkey, _ := roleBytes32(e.roles, fmt.Sprintf("operator-%d-coldkey", noID))
-	pool, _ := roleBytes32(e.roles, fmt.Sprintf("operator-%d-pool-hotkey", noID))
+	pool, _ := roleBytes32(e.roles, operatorPoolHotkeyLabelForGeneration(noID, e.payloads.Manifest.RegistrationRoleGeneration))
 	deposit, _ := roleBytes32(e.roles, fmt.Sprintf("operator-%d-deposit-hotkey", noID))
 	depositSigner, _ := e.roles.EVMAddress(fmt.Sprintf("operator-%d-deposit", noID))
 	rootSigner, _ := e.roles.EVMAddress(fmt.Sprintf("operator-%d-root", noID))
@@ -1041,7 +1395,7 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, s
 	}
 	uid, found, err := e.substrate.UID(pool)
 	if err != nil || !found {
-		return nil, fmt.Errorf("operator %d pool UID missing: %w", noID, err)
+		return nil, stateMismatchError(err, "operator %d pool UID missing", noID)
 	}
 	owner, err := e.substrate.HotkeyOwner(pool)
 	if err != nil {
@@ -1050,12 +1404,17 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, s
 	if err := validateHotkeyOwner(fmt.Sprintf("operator %d pool", noID), owner, ss58Mirror(e.payloads.Manifest.SettlementVault)); err != nil {
 		return nil, err
 	}
-	if err := e.verifyRegistrationBalances(ctx, action, e.payloads.Manifest.CoordinatorProxy, e.payloads.Manifest.SettlementVault); err != nil {
+	if err := e.verifyContractRegistrationReplacementPostcondition(action, operatorPoolHotkeyLabelForGeneration(noID, e.payloads.Manifest.RegistrationRoleGeneration), noID+1, state); err != nil {
+		return nil, fmt.Errorf("operator %d pool replacement: %w", noID, err)
+	}
+	balances, err := e.verifyRegistrationBalances(ctx, action, e.payloads.Manifest.CoordinatorProxy, e.payloads.Manifest.SettlementVault)
+	if err != nil {
 		return nil, err
 	}
 	state["no_id"], state["effective_epoch"], state["pool_uid"], state["active"] = noID, version.EffectiveEpoch, uid, true
 	state["pool_coldkey"] = "0x" + hex.EncodeToString(owner[:])
 	state["liquid_registration_balances_preserved"] = true
+	state["registration_balances"] = balances
 	state["deposit_signer"], state["root_signer"] = depositSigner.Hex(), rootSigner.Hex()
 	return state, nil
 }
@@ -1069,15 +1428,30 @@ func (e *Executor) verifyFleetCommitmentPostState(fleet int, state map[string]an
 	if err != nil {
 		return nil, err
 	}
-	commitment, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+	want, err := decodeHex32("fleet commitment", evidence.CommitmentHash)
 	if err != nil {
 		return nil, err
 	}
-	want, err := decodeHex32("fleet commitment", evidence.CommitmentHash)
-	if err != nil || commitment.Hash != want || commitment.CommitmentBlock != evidence.CommitmentBlock {
+	evidenceBlockHash, err := types.NewHashFromHexString(evidence.FinalizedBlockHash)
+	if err != nil {
+		return nil, err
+	}
+	canonicalBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(evidence.FinalizedBlock)
+	if err != nil || canonicalBlockHash != evidenceBlockHash {
+		return nil, stateMismatchError(err, "fleet %d commitment evidence block is not canonical", fleet)
+	}
+	historical, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, evidenceBlockHash)
+	if err != nil {
+		return nil, err
+	}
+	if err := crv4.ValidateFleetCommitmentWrite(want, evidence.FinalizedBlock, historical); err != nil {
+		return nil, err
+	}
+	commitment, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+	if err != nil || commitment.Hash != want || commitment.CommitmentBlock < evidence.CommitmentBlock {
 		return nil, errors.New("native fleet commitment differs from its finalized evidence")
 	}
-	state["fleet"], state["commitment_hash"], state["commitment_block"] = fleet, evidence.CommitmentHash, commitment.CommitmentBlock
+	state["fleet"], state["commitment_hash"], state["commitment_block"] = fleet, evidence.CommitmentHash, evidence.CommitmentBlock
 	return state, nil
 }
 
@@ -1089,10 +1463,18 @@ func (e *Executor) verifyFleetMirrorPostState(ctx context.Context, fleet int, st
 	if err != nil {
 		return nil, err
 	}
+	evidence, err := loadFleetCommitmentEvidence(e.stateDir, fleet)
+	if err != nil {
+		return nil, err
+	}
+	finalizedBlockHash, err := decodeHex32("fleet commitment finalized block", evidence.FinalizedBlockHash)
+	if err != nil {
+		return nil, err
+	}
 	contract := stabi.NewSTCoordinator()
 	got, err := rawCoordinatorCall(ctx, e.oracle, e.payloads.Manifest.CoordinatorProxy, contract.PackMirroredCommitments(manifest.Hotkey), contract.UnpackMirroredCommitments)
-	if err != nil || got.CommitmentHash != hash || got.FinalizedBlock == 0 {
-		return nil, fmt.Errorf("fleet %d mirror mismatch: %w", fleet, err)
+	if err != nil || !fleetMirrorMatches(got, hash, evidence.CommitmentBlock, finalizedBlockHash) {
+		return nil, stateMismatchError(err, "fleet %d mirror mismatch", fleet)
 	}
 	state["fleet"], state["commitment_hash"], state["finalized_block"] = fleet, "0x"+hex.EncodeToString(hash[:]), got.FinalizedBlock
 	return state, nil
@@ -1115,13 +1497,16 @@ func (e *Executor) verifyFleetBindingPostState(ctx context.Context, fleet, membe
 	contract := stabi.NewSTCoordinator()
 	got, err := rawCoordinatorCall(ctx, e.keeper, e.payloads.Manifest.CoordinatorProxy, contract.PackBindingAt(clientID, new(big.Int).SetUint64(evidence.ValidFromEpoch)), contract.UnpackBindingAt)
 	if err != nil || !got.Active || got.Record.Uid != evidence.UID || got.Record.Generation != evidence.Generation {
-		return nil, fmt.Errorf("fleet %d member %d binding postcondition mismatch: %w", fleet, member, err)
+		return nil, stateMismatchError(err, "fleet %d member %d binding postcondition mismatch", fleet, member)
 	}
 	state["fleet"], state["member"], state["client_id"], state["uid"] = fleet, member, evidence.ClientID, evidence.UID
 	return state, nil
 }
 
 func (e *Executor) verifyRenderedConfigs(state map[string]any) (map[string]any, error) {
+	if err := validateOperatorConfigOverlays(e.cfg, e.stateDir); err != nil {
+		return nil, err
+	}
 	paths := []string{}
 	for operator := 1; operator <= e.cfg.Config.Topology.Operators; operator++ {
 		paths = append(paths, filepath.Join(e.stateDir, "runtime", fmt.Sprintf("operator-%d", operator), "vault", "st.yml"))
@@ -1135,10 +1520,11 @@ func (e *Executor) verifyRenderedConfigs(state map[string]any) (map[string]any, 
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("rendered config %s is absent or not private: %w", path, err)
+			return nil, stateMismatchError(err, "rendered config %s is absent or not private", path)
 		}
 	}
 	state["private_config_files"] = len(paths)
+	state["operator_config_overlay"] = operatorConfigOverlayVersion
 	return state, nil
 }
 

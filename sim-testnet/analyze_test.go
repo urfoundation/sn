@@ -15,7 +15,7 @@ func TestAnalysisReconstructsExactRationalDepositAndConservation(t *testing.T) {
 	observation.Status.Contracts.Operators = []OperatorView{{NoID: 1, Active: true, PoolLive: true, ConvictionRao: "7"}}
 	observation.Status.Contracts.Epochs = []EpochView{{Epoch: 0, Operators: []EpochOperatorView{{NoID: 1, DepositRao: "3", ConvictionAddedRao: "4", Status: 2}}}}
 	report := analyzeScenarioObservation(cfg, observation)
-	if !report.Conservation.Holds || report.Conservation.DeltaRao != "0" {
+	if !report.Conservation.Holds || report.Conservation.DeltaRao != "0" || report.Conservation.EscrowDeltaRao != "0" || report.Conservation.EscrowBackingDeltaRao != "0" {
 		t.Fatalf("conservation = %+v", report.Conservation)
 	}
 	if len(report.EpochOperators) != 1 {
@@ -24,6 +24,26 @@ func TestAnalysisReconstructsExactRationalDepositAndConservation(t *testing.T) {
 	row := report.EpochOperators[0]
 	if row.RateNumeratorRaoPerGiB != "3" || row.RateDenominator != "2" || row.ImpliedUsageBytesFloor != "2147483648" || row.PreEpochConvictionRao != "0" || !report.VoluntaryConvictionObserved || !report.TierReconstructionComplete {
 		t.Fatalf("rational reconstruction = %+v", row)
+	}
+}
+
+func TestAnalysisConservationRejectsMissingPendingFunding(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	observation := testScenarioObservation(cfg, 1)
+	observation.Status.Contracts.PendingFunding = "0"
+	report := analyzeScenarioObservation(cfg, observation)
+	if report.Conservation.Holds || report.Conservation.EscrowDeltaRao != "2" {
+		t.Fatalf("omitted pending funding was accepted: %+v", report.Conservation)
+	}
+}
+
+func TestAnalysisConservationRejectsUnderbackedEscrow(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	observation := testScenarioObservation(cfg, 1)
+	observation.Status.Contracts.LiveEscrowStake = "6"
+	report := analyzeScenarioObservation(cfg, observation)
+	if report.Conservation.Holds || report.Conservation.EscrowBackingDeltaRao != "-1" {
+		t.Fatalf("underbacked escrow was accepted: %+v", report.Conservation)
 	}
 }
 

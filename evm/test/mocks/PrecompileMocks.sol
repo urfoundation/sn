@@ -15,7 +15,18 @@ contract MockStakingV2 {
     mapping(bytes32 => mapping(bytes32 => uint256)) public stakes; // hotkey -> coldkey -> rao
     mapping(address => bytes32) public callerColdkey;
     bool public failMoveStake;
+    bool public failTransferStake;
     uint256 public nominatorMinimum = 1_000;
+    uint256 public moveStakeShortfall;
+    uint256 public moveStakeSourceResidue;
+    uint256 public transferStakeShortfall;
+    uint256 public transferStakeSourceResidue;
+    uint256 public minimumMoveAmount;
+    uint256 public minimumTransferAmount;
+    address public reentryTarget;
+    bytes public reentryData;
+    bool public reentrySucceeded;
+    bytes4 public reentryFailureSelector;
 
     // --- test configuration ---
     function setColdkey(address caller, bytes32 coldkey) external {
@@ -30,8 +41,63 @@ contract MockStakingV2 {
         failMoveStake = fail;
     }
 
+    function setFailTransferStake(bool fail) external {
+        failTransferStake = fail;
+    }
+
     function setNominatorMinimum(uint256 amount) external {
         nominatorMinimum = amount;
+    }
+
+    function setMoveStakeShortfall(uint256 amount) external {
+        moveStakeShortfall = amount;
+    }
+
+    function setMoveStakeSourceResidue(uint256 amount) external {
+        moveStakeSourceResidue = amount;
+    }
+
+    function setTransferStakeShortfall(uint256 amount) external {
+        transferStakeShortfall = amount;
+    }
+
+    function setTransferStakeSourceResidue(uint256 amount) external {
+        transferStakeSourceResidue = amount;
+    }
+
+    function setMinimumMoveAmount(uint256 amount) external {
+        minimumMoveAmount = amount;
+    }
+
+    function setMinimumTransferAmount(uint256 amount) external {
+        minimumTransferAmount = amount;
+    }
+
+    function setReentry(address target, bytes calldata data) external {
+        reentryTarget = target;
+        reentryData = data;
+        reentrySucceeded = false;
+        reentryFailureSelector = bytes4(0);
+    }
+
+    function clearReentry() external {
+        delete reentryTarget;
+        delete reentryData;
+        reentrySucceeded = false;
+        reentryFailureSelector = bytes4(0);
+    }
+
+    function _attemptReentry() private {
+        if (reentryTarget == address(0)) return;
+        (bool ok, bytes memory result) = reentryTarget.call(reentryData);
+        reentrySucceeded = ok;
+        if (!ok && result.length >= 4) {
+            bytes4 selector;
+            assembly {
+                selector := mload(add(result, 32))
+            }
+            reentryFailureSelector = selector;
+        }
     }
 
     // --- IStaking surface used by STSubnet ---
@@ -47,6 +113,7 @@ contract MockStakingV2 {
     ///      it exists to test the probe's harness logic, not economics). Credits
     ///      `amount` at (hotkey, caller's coldkey).
     function addStake(bytes32 hotkey, uint256 amount, uint256) external payable {
+        require(address(this) == address(0x805), "runtime452: foreign staking frame");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
         stakes[hotkey][ck] += amount;
@@ -55,22 +122,53 @@ contract MockStakingV2 {
     function moveStake(bytes32 originHotkey, bytes32 destinationHotkey, uint256, uint256, uint256 amount)
         external
     {
+        require(address(this) == address(0x805), "runtime452: foreign staking frame");
         require(!failMoveStake, "mock: moveStake down");
+        require(amount >= minimumMoveAmount, "mock: move amount too low");
+        require(amount > moveStakeShortfall, "mock: move shortfall");
+        require(amount > moveStakeSourceResidue, "mock: move source residue");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
         require(stakes[originHotkey][ck] >= amount, "mock: insufficient");
-        stakes[originHotkey][ck] -= amount;
-        stakes[destinationHotkey][ck] += amount;
+        _attemptReentry();
+        stakes[originHotkey][ck] -= amount - moveStakeSourceResidue;
+        stakes[destinationHotkey][ck] += amount - moveStakeShortfall;
     }
 
     function transferStake(bytes32 destinationColdkey, bytes32 hotkey, uint256, uint256, uint256 amount)
         external
     {
+        require(address(this) == address(0x805), "runtime452: foreign staking frame");
+        require(!failTransferStake, "mock: transferStake down");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
+        require(amount >= minimumTransferAmount, "mock: transfer amount too low");
+        require(amount > transferStakeShortfall, "mock: transfer shortfall");
+        require(amount > transferStakeSourceResidue, "mock: transfer source residue");
         require(stakes[hotkey][ck] >= amount, "mock: insufficient");
-        stakes[hotkey][ck] -= amount;
-        stakes[hotkey][destinationColdkey] += amount;
+        _attemptReentry();
+        stakes[hotkey][ck] -= amount - transferStakeSourceResidue;
+        stakes[hotkey][destinationColdkey] += amount - transferStakeShortfall;
+    }
+}
+
+/// @dev Mock of IAlpha (0x808). Runtime 452 returns a 9-decimal spot price
+///      converted to the EVM's 18-decimal balance scale.
+contract MockAlpha {
+    mapping(uint16 => uint256) public prices;
+    bool public failPrice;
+
+    function setAlphaPrice(uint16 netuid, uint256 price) external {
+        prices[netuid] = price;
+    }
+
+    function setFailPrice(bool fail) external {
+        failPrice = fail;
+    }
+
+    function getAlphaPrice(uint16 netuid) external view returns (uint256) {
+        require(!failPrice, "mock: alpha price down");
+        return prices[netuid];
     }
 }
 
@@ -92,6 +190,7 @@ contract MockNeuron {
     }
 
     function burnedRegister(uint16 netuid, bytes32 hotkey) external payable {
+        require(address(this) == address(0x804), "runtime452: foreign neuron frame");
         registerCount++;
         lastNetuid = netuid;
         lastHotkey = hotkey;
@@ -100,6 +199,7 @@ contract MockNeuron {
     }
 
     function registerLimit(uint16 netuid, bytes32 hotkey, uint64 limitPrice) external payable {
+        require(address(this) == address(0x804), "runtime452: foreign neuron frame");
         registerCount++;
         lastNetuid = netuid;
         lastHotkey = hotkey;
@@ -158,7 +258,7 @@ contract MockEd25519 {
     }
 }
 
-/// @dev Mock of runtime-451 sr25519 verifier (0x403), with the same failure
+/// @dev Mock of runtime-452 sr25519 verifier (0x403), with the same failure
 /// controls as the Ed25519 mock. Real randomized sr25519 vectors are exercised
 /// by the Go fixture and live preflight.
 contract MockSr25519 {

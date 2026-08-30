@@ -112,7 +112,7 @@ func (e *Executor) findFinalizedEntitlement(ctx context.Context) (uint64, uint64
 	address := e.payloads.Manifest.CoordinatorProxy
 	current, err := rawCoordinatorCall(ctx, e.owner, address, coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch)
 	if err != nil || !current.IsUint64() {
-		return 0, 0, stabi.STSettlementVaultEntitlement{}, fmt.Errorf("read current epoch: %w", err)
+		return 0, 0, stabi.STSettlementVaultEntitlement{}, stateMismatchError(err, "read current epoch is not uint64")
 	}
 	for epoch := current.Uint64(); ; epoch-- {
 		for noID := 1; noID <= e.cfg.Config.Topology.Operators; noID++ {
@@ -207,7 +207,7 @@ func (e *Executor) executeGovernanceDrillAction(ctx context.Context, a Action) e
 	case "governance.probe-custody":
 		return e.governanceProbe(ctx, a)
 	case "governance.restore-coordinator":
-		return e.governanceUpgrade(ctx, a, e.payloads.Manifest.CoordinatorImplementation, "restored")
+		return e.governanceUpgrade(ctx, a, e.payloads.CoordinatorUpgrade.Implementation, "restored")
 	case "governance.guardian-unpause":
 		return e.governanceUnpause(ctx, a)
 	default:
@@ -227,7 +227,7 @@ func (e *Executor) governancePause(ctx context.Context, a Action) error {
 	if err != nil {
 		return err
 	}
-	if before.Paused || !strings.EqualFold(before.Implementation, e.payloads.Manifest.CoordinatorImplementation.Hex()) {
+	if before.Paused || !strings.EqualFold(before.Implementation, e.payloads.CoordinatorUpgrade.Implementation.Hex()) {
 		return errors.New("governance drill must start unpaused on the reviewed implementation")
 	}
 	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
@@ -245,7 +245,7 @@ func (e *Executor) governancePause(ctx context.Context, a Action) error {
 	}
 	after, err := e.governanceSnapshot(ctx, epoch, noID)
 	if err != nil || !after.Paused {
-		return fmt.Errorf("guardian pause postcondition: %w", err)
+		return stateMismatchError(err, "guardian pause postcondition is false")
 	}
 	evidence := &GovernanceDrillEvidence{Schema: "urnetwork-governance-drill-evidence-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, Stage: "paused", Before: before, Transactions: map[string]string{a.ID: receipt.TxHash.Hex()}}
 	_ = entitlement // selected value is represented in before at one finalized checkpoint
@@ -289,7 +289,7 @@ func (e *Executor) governanceUpgrade(ctx context.Context, a Action, implementati
 	}
 	got, err := implementationAt(ctx, e.owner, proxy, head.Number)
 	if err != nil || got != implementation {
-		return fmt.Errorf("ERC1967 implementation=%s want=%s: %w", got, implementation, err)
+		return stateMismatchError(err, "ERC1967 implementation=%s want=%s", got, implementation)
 	}
 	evidence.Stage = stage
 	evidence.Transactions[a.ID] = receipt.TxHash.Hex()
@@ -370,7 +370,7 @@ func (e *Executor) governanceProbe(ctx context.Context, a Action) error {
 		}
 		decoded, unpackErr := probeEvent.Inputs.NonIndexed().Unpack(log.Data)
 		if unpackErr != nil || len(decoded) != 2 {
-			return fmt.Errorf("decode custody probe: %w", unpackErr)
+			return stateMismatchError(unpackErr, "decode custody probe returned %d values", len(decoded))
 		}
 		succeeded, ok := decoded[0].(bool)
 		if !ok || succeeded {
@@ -434,7 +434,7 @@ func (e *Executor) validateCompletedGovernanceDrill(evidence *GovernanceDrillEvi
 			return fmt.Errorf("custody probe %s succeeded", name)
 		}
 	}
-	if after.Paused || !strings.EqualFold(after.Implementation, e.payloads.Manifest.CoordinatorImplementation.Hex()) || !strings.EqualFold(before.Owner, after.Owner) || !strings.EqualFold(before.Guardian, after.Guardian) || !strings.EqualFold(before.PolicyHash, after.PolicyHash) || !strings.EqualFold(before.VaultCoordinator, after.VaultCoordinator) || !strings.EqualFold(before.ReserveRecorder, after.ReserveRecorder) || before.ReservePrincipalRao != after.ReservePrincipalRao || !sameImmutableEntitlement(before.Entitlement, after.Entitlement) {
+	if after.Paused || !strings.EqualFold(after.Implementation, e.payloads.CoordinatorUpgrade.Implementation.Hex()) || !strings.EqualFold(before.Owner, after.Owner) || !strings.EqualFold(before.Guardian, after.Guardian) || !strings.EqualFold(before.PolicyHash, after.PolicyHash) || !strings.EqualFold(before.VaultCoordinator, after.VaultCoordinator) || !strings.EqualFold(before.ReserveRecorder, after.ReserveRecorder) || before.ReservePrincipalRao != after.ReservePrincipalRao || !sameImmutableEntitlement(before.Entitlement, after.Entitlement) {
 		return errors.New("governance drill changed an immutable custody, role, policy, or entitlement field")
 	}
 	liveBefore, ok1 := new(big.Int).SetString(before.ReserveLiveStakeRao, 10)

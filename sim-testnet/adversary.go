@@ -74,6 +74,7 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 		"replay_rejects", "cross_no_rejects", "tier_snapshot_rate", "cap_remaining_rao", "custody_probe_rejects", "claim_availability", "keeper_delay_blocks", "same_no_carry_rao",
 		"double_claim_rejects", "uncertain_claims", "terminal_holding_writeoffs", "healthy_holding_claims", "retryable_holding_preserved",
 		"pending_basket_deposit_rao", "root_stake_change_rao", "pending_basket_stake_change_blocked",
+		"settlement_transfer_floor_cases", "captured_subfloor_emission_rao", "premature_claim_payments", "lost_claim_credit_rao",
 	),
 	"consensus-cabal-emulation": adversaryMetricSet(
 		"consensus_delta_ppm", "honest_consensus_delta_ppm", "honest_incentive_delta_ppm", "follower_consensus_delta_ppm", "active_stake_ppm", "validator_permit_count",

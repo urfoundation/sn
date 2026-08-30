@@ -12,6 +12,7 @@ import {IEd25519Verify, IED25519VERIFY_ADDRESS} from "./interfaces/ed25519Verify
 import {ISR25519Verify, ISR25519VERIFY_ADDRESS} from "./interfaces/sr25519Verify.sol";
 import {STReserveSink} from "./STReserveSink.sol";
 import {STSettlementVault} from "./STSettlementVault.sol";
+import {NativeBalance} from "./NativeBalance.sol";
 
 /// @title STCoordinator
 /// @notice Upgradeable release-1.0 policy/roles/binding coordinator. Economic
@@ -21,6 +22,12 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     string public constant FLEET_REVOKE_DOMAIN = "urnetwork/fleet-revoke/v1";
     uint256 public constant MAX_POLICY_VERSIONS = 64;
     uint256 public constant MAX_OPERATOR_VERSIONS = 64;
+    /// @dev Runtime 452 can round each destination share-pool credit down by
+    ///      one rao. A reservation crosses two pools (move, then transfer), so
+    ///      it stages two rao and reconciles both bounded deltas before
+    ///      recording the requested principal.
+    uint256 public constant RUNTIME_SHARE_ROUNDING_ALLOWANCE_RAO = 1;
+    uint256 public constant RESERVE_ROUNDING_ALLOWANCE_RAO = 2;
 
     struct PolicySnapshot {
         bytes32 policyHash;
@@ -195,6 +202,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error DeadlineExpired();
     error CapExceeded();
     error FundsNotReceived();
+    error RuntimeAccountingMismatch();
     error AlreadyCommitted();
     error InvalidSignature();
     error InvalidBinding();
@@ -363,7 +371,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert InvalidConfiguration();
         }
         if (effectiveEpoch < currentEpoch()) revert InvalidEpoch();
-        uint256 balanceBefore = address(this).balance - msg.value;
+        uint256 balanceBefore = NativeBalance.beforeSuppliedValue(address(this).balance, msg.value);
         _validateOperator(coldkey, poolHotkey, depositHotkey, depositSigner, rootSigner);
         if (depositHotkeyUsed[depositHotkey]) revert InvalidConfiguration();
         depositHotkeyUsed[depositHotkey] = true;
@@ -484,9 +492,14 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
         if (campaignReserved + amount > p.campaignDepositCapRao) revert CapExceeded();
 
-        uint256 available =
-            IStaking(ISTAKING_ADDRESS).getStake(op.depositHotkey, selfColdkey, uint256(netuid));
-        if (available < amount) revert FundsNotReceived();
+        uint256 stagedAmount = amount + RESERVE_ROUNDING_ALLOWANCE_RAO;
+        IStaking staking = IStaking(ISTAKING_ADDRESS);
+        uint256 available = staking.getStake(op.depositHotkey, selfColdkey, uint256(netuid));
+        if (available < stagedAmount) revert FundsNotReceived();
+        uint256 coordinatorReserveBefore =
+            staking.getStake(reserveSink.reserveHotkey(), selfColdkey, uint256(netuid));
+        uint256 sinkReserveBefore =
+            staking.getStake(reserveSink.reserveHotkey(), reserveSink.selfColdkey(), uint256(netuid));
         // Commit all coordinator accounting before external runtime calls.
         // Any failed precompile or sink check reverts the complete transaction.
         nextDepositNonce[noId] = nonce + 1;
@@ -498,18 +511,38 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             epochConvictionAdded[epoch_][noId] += amount;
         }
 
-        IStaking(ISTAKING_ADDRESS)
-            .moveStake(
-                op.depositHotkey, reserveSink.reserveHotkey(), uint256(netuid), uint256(netuid), amount
-            );
-        IStaking(ISTAKING_ADDRESS)
-            .transferStake(
-                reserveSink.selfColdkey(),
-                reserveSink.reserveHotkey(),
-                uint256(netuid),
-                uint256(netuid),
-                amount
-            );
+        staking.moveStake(
+            op.depositHotkey, reserveSink.reserveHotkey(), uint256(netuid), uint256(netuid), stagedAmount
+        );
+        uint256 availableAfter = staking.getStake(op.depositHotkey, selfColdkey, uint256(netuid));
+        uint256 coordinatorReserveAfterMove =
+            staking.getStake(reserveSink.reserveHotkey(), selfColdkey, uint256(netuid));
+        if (
+            availableAfter > available || available - availableAfter != stagedAmount
+                || coordinatorReserveAfterMove < coordinatorReserveBefore
+        ) revert RuntimeAccountingMismatch();
+        uint256 movedAmount = coordinatorReserveAfterMove - coordinatorReserveBefore;
+        uint256 minimumIntermediateAmount = amount + RUNTIME_SHARE_ROUNDING_ALLOWANCE_RAO;
+        if (movedAmount < minimumIntermediateAmount || movedAmount > stagedAmount) {
+            revert RuntimeAccountingMismatch();
+        }
+
+        staking.transferStake(
+            reserveSink.selfColdkey(),
+            reserveSink.reserveHotkey(),
+            uint256(netuid),
+            uint256(netuid),
+            movedAmount
+        );
+        uint256 coordinatorReserveAfter =
+            staking.getStake(reserveSink.reserveHotkey(), selfColdkey, uint256(netuid));
+        uint256 sinkReserveAfter =
+            staking.getStake(reserveSink.reserveHotkey(), reserveSink.selfColdkey(), uint256(netuid));
+        if (coordinatorReserveAfter != coordinatorReserveBefore || sinkReserveAfter < sinkReserveBefore) {
+            revert RuntimeAccountingMismatch();
+        }
+        uint256 sinkMovedAmount = sinkReserveAfter - sinkReserveBefore;
+        if (sinkMovedAmount < amount || sinkMovedAmount > movedAmount) revert RuntimeAccountingMismatch();
         reserveSink.recordPrincipal(epoch_, noId, amount);
 
         if (demand) {
@@ -604,7 +637,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice Mirrors a commitment only after the indexer has independently
-    /// observed it in finalized pallet state. Runtime 451 has no EVM metadata
+    /// observed it in finalized pallet state. Runtime 452 has no EVM metadata
     /// commitment getter, so this narrowly scoped oracle is an explicit seam.
     function mirrorCommitment(
         bytes32 hotkey,
@@ -617,6 +650,15 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             hotkey == bytes32(0) || commitmentHash == bytes32(0) || finalizedBlockHash == bytes32(0)
                 || finalizedBlock > block.number
         ) revert InvalidConfiguration();
+
+        CommitmentRecord memory prior = mirroredCommitments[hotkey];
+        if (prior.finalizedBlock != 0) {
+            if (finalizedBlock < prior.finalizedBlock) revert StaleCommitment();
+            if (finalizedBlock == prior.finalizedBlock) {
+                if (prior.commitmentHash != commitmentHash || prior.finalizedBlockHash != finalizedBlockHash) revert StaleCommitment();
+                return;
+            }
+        }
         mirroredCommitments[hotkey] = CommitmentRecord({
             commitmentHash: commitmentHash,
             finalizedBlockHash: finalizedBlockHash,

@@ -2,7 +2,8 @@ package main
 
 // dishonest_deposit.go drives one real, bounded operator-deposit fault on the
 // public testnet. The operator taskworker is paused immediately before a fresh
-// production-cadence epoch, its scoped signer posts one rao, and the real
+// production-cadence epoch, its scoped signer posts a runtime-valid 50-percent
+// underpayment, and the real
 // validators must independently exclude that pool once the prior signed usage
 // artifact is available. The taskworker is always resumed; a later exact
 // deposit must restore eligibility.
@@ -32,6 +33,7 @@ import (
 )
 
 const (
+	dishonestDepositRao             = uint64(5_000_000_000)
 	dishonestDepositActionID        = "campaign.dishonest-deposit.2"
 	dishonestDepositTransactionV1   = "urnetwork-dishonest-deposit-transaction-v1"
 	dishonestDepositEvidenceV1      = "urnetwork-dishonest-deposit-evidence-v1"
@@ -118,19 +120,28 @@ func dishonestDepositParameters(action Action) (uint64, *big.Int, error) {
 	if action.ID != dishonestDepositActionID || action.Kind != "evm-transaction" || action.Target != "no:2" || action.Parameters["target_epoch"] != "next_fresh_production_epoch" {
 		return 0, nil, errors.New("dishonest-deposit action identity is invalid")
 	}
-	allowed := map[string]bool{"no_id": true, "amount_rao": true, "target_epoch": true, evmMaximumGasUnitsParameter: true, evmMaximumFeePerGasParameter: true}
+	allowed := map[string]bool{"no_id": true, "amount_rao": true, "target_epoch": true, "reserve_runtime_share_transitions": true, "reserve_rounding_allowance_rao": true, evmMaximumGasUnitsParameter: true, evmMaximumFeePerGasParameter: true, deploymentManifestHashParameter: true}
 	for key := range action.Parameters {
 		if !allowed[key] {
 			return 0, nil, fmt.Errorf("dishonest-deposit action has unknown parameter %q", key)
 		}
 	}
+	transitions, transitionsErr := strconv.ParseUint(action.Parameters["reserve_runtime_share_transitions"], 10, 64)
+	allowance, allowanceErr := strconv.ParseUint(action.Parameters["reserve_rounding_allowance_rao"], 10, 64)
+	if transitionsErr != nil || allowanceErr != nil || transitions != reserveRuntimeShareTransitionCount || allowance != reserveRoundingAllowancePerCallRao {
+		return 0, nil, errors.New("dishonest-deposit action has an invalid runtime reserve envelope")
+	}
 	_, hasGasUnits := action.Parameters[evmMaximumGasUnitsParameter]
 	_, hasFeePerGas := action.Parameters[evmMaximumFeePerGasParameter]
-	if hasGasUnits != hasFeePerGas || len(action.Parameters) != 3 && len(action.Parameters) != 5 {
-		return 0, nil, errors.New("dishonest-deposit action has an incomplete EVM fee envelope")
+	manifestHash, hasManifest := action.Parameters[deploymentManifestHashParameter]
+	if hasGasUnits != hasFeePerGas || hasGasUnits != hasManifest || len(action.Parameters) != 5 && len(action.Parameters) != 8 {
+		return 0, nil, errors.New("dishonest-deposit action has an incomplete EVM fee or deployment envelope")
 	}
 	if hasGasUnits {
 		if _, _, err := evmActionFeeEnvelope(action); err != nil {
+			return 0, nil, err
+		}
+		if _, err := decodeHex32("dishonest-deposit deployment manifest hash", manifestHash); err != nil {
 			return 0, nil, err
 		}
 	}
@@ -139,8 +150,8 @@ func dishonestDepositParameters(action Action) (uint64, *big.Int, error) {
 		return 0, nil, errors.New("dishonest-deposit action no_id must be 2")
 	}
 	amount, ok := new(big.Int).SetString(action.Parameters["amount_rao"], 10)
-	if !ok || amount.Cmp(big.NewInt(1)) != 0 {
-		return 0, nil, errors.New("dishonest-deposit action amount must be exactly one rao")
+	if !ok || amount.Cmp(new(big.Int).SetUint64(dishonestDepositRao)) != 0 {
+		return 0, nil, fmt.Errorf("dishonest-deposit action amount must be exactly %d rao", dishonestDepositRao)
 	}
 	return noID, amount, nil
 }
@@ -235,7 +246,7 @@ func (e *Executor) executeDishonestDeposit(ctx context.Context, action Action) e
 	}
 	epoch, err := coordinatorBigInt(epochValues, "currentEpoch")
 	if err != nil || !epoch.IsUint64() {
-		return fmt.Errorf("dishonest deposit current epoch: %w", err)
+		return stateMismatchError(err, "dishonest deposit current epoch is not uint64")
 	}
 	depositedValues, err := contractCallAt(ctx, manager.client, address, parsed, "epochDeposits", head.Number, epoch, new(big.Int).SetUint64(noID))
 	if err != nil {
@@ -243,7 +254,7 @@ func (e *Executor) executeDishonestDeposit(ctx context.Context, action Action) e
 	}
 	deposited, err := coordinatorBigInt(depositedValues, "epochDeposits")
 	if err != nil || deposited.Sign() != 0 {
-		return fmt.Errorf("target epoch %d already has operator %d deposit %v: %w", epoch.Uint64(), noID, deposited, err)
+		return stateMismatchError(err, "target epoch %d already has operator %d deposit %v", epoch.Uint64(), noID, deposited)
 	}
 	nonceValues, err := contractCallAt(ctx, manager.client, address, parsed, "nextDepositNonce", head.Number, new(big.Int).SetUint64(noID))
 	if err != nil {
@@ -301,7 +312,7 @@ func (e *Executor) verifyDishonestDepositPostState(ctx context.Context, action A
 	}
 	reconstructed, err := parseDishonestDepositReceipt(e.cfg, action, receipt, parsed, e.payloads.Manifest.CoordinatorProxy, funder)
 	if err != nil || *reconstructed != evidence {
-		return nil, fmt.Errorf("dishonest deposit receipt reconstruction mismatch: %w", err)
+		return nil, stateMismatchError(err, "dishonest deposit receipt reconstruction mismatch")
 	}
 	address := e.payloads.Manifest.CoordinatorProxy
 	values, err := contractCallAt(ctx, e.deployer.client, address, parsed, "epochDeposits", evmHead.Number, new(big.Int).SetUint64(evidence.Epoch), new(big.Int).SetUint64(noID))
@@ -310,7 +321,7 @@ func (e *Executor) verifyDishonestDepositPostState(ctx context.Context, action A
 	}
 	deposited, err := coordinatorBigInt(values, "epochDeposits")
 	if err != nil || deposited.Cmp(amount) != 0 {
-		return nil, fmt.Errorf("dishonest epoch deposit=%v, want %s: %w", deposited, amount, err)
+		return nil, stateMismatchError(err, "dishonest epoch deposit=%v, want %s", deposited, amount)
 	}
 	state["no_id"], state["epoch"], state["amount_rao"] = noID, evidence.Epoch, evidence.AmountRao
 	state["transaction_hash"], state["finalized_block"], state["finalized_block_hash"] = evidence.TransactionHash, evidence.FinalizedBlock, evidence.FinalizedBlockHash
@@ -446,7 +457,7 @@ func readProductionEpochState(ctx context.Context, executor *Executor) (ChainHea
 	}
 	current, err := coordinatorBigInt(currentValues, "currentEpoch")
 	if err != nil || !current.IsUint64() {
-		return ChainHead{}, 0, 0, fmt.Errorf("production current epoch: %w", err)
+		return ChainHead{}, 0, 0, stateMismatchError(err, "production current epoch is not uint64")
 	}
 	endValues, err := contractCallAt(ctx, executor.deployer.client, address, parsed, "epochEndBlock", head.Number, current)
 	if err != nil {
@@ -454,7 +465,7 @@ func readProductionEpochState(ctx context.Context, executor *Executor) (ChainHea
 	}
 	end, err := coordinatorBigInt(endValues, "epochEndBlock")
 	if err != nil || !end.IsUint64() {
-		return ChainHead{}, 0, 0, fmt.Errorf("production epoch end: %w", err)
+		return ChainHead{}, 0, 0, stateMismatchError(err, "production epoch end is not uint64")
 	}
 	return head, current.Uint64(), end.Uint64(), nil
 }
@@ -549,7 +560,7 @@ func waitProcessHealthy(ctx context.Context, driver *liveScenarioFaultDriver, id
 func operatorPoolUID(ctx context.Context, cfg *ResolvedConfig, stateDir string, noID uint64) (uint16, error) {
 	status, err := Status(ctx, cfg, stateDir)
 	if err != nil || status.Contracts == nil {
-		return 0, fmt.Errorf("read operator pool: %w", err)
+		return 0, stateMismatchError(err, "read operator pool: contract state is unavailable")
 	}
 	for _, operator := range status.Contracts.Operators {
 		if operator.NoID == noID && operator.PoolLive {
@@ -652,7 +663,7 @@ func inspectDishonestDepositEvidence(ctx context.Context, cfg *ResolvedConfig, s
 		return &evidence, false, "contract deployment is unavailable"
 	}
 	transaction := evidence.Transaction
-	if evidence.Schema != dishonestDepositEvidenceV1 || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.Netuid != cfg.Netuid || transaction.Schema != dishonestDepositTransactionV1 || transaction.DeploymentID != evidence.DeploymentID || transaction.NoID != 2 || transaction.AmountRao != "1" || !strings.EqualFold(transaction.PolicyHash, cfg.PolicyHash) || len(evidence.Validators) != cfg.Config.Topology.Validators {
+	if evidence.Schema != dishonestDepositEvidenceV1 || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.Netuid != cfg.Netuid || transaction.Schema != dishonestDepositTransactionV1 || transaction.DeploymentID != evidence.DeploymentID || transaction.NoID != 2 || transaction.AmountRao != strconv.FormatUint(cfg.Config.Scenarios.DishonestDepositRao, 10) || !strings.EqualFold(transaction.PolicyHash, cfg.PolicyHash) || len(evidence.Validators) != cfg.Config.Topology.Validators {
 		return &evidence, false, "dishonest-deposit evidence identity mismatch"
 	}
 	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
@@ -676,7 +687,7 @@ func inspectDishonestDepositEvidence(ctx context.Context, cfg *ResolvedConfig, s
 	if err != nil || len(roles.OperatorDepositSigners) < 2 {
 		return &evidence, false, "operator-2 deposit signer is unavailable"
 	}
-	action := Action{ID: dishonestDepositActionID, Kind: "evm-transaction", Target: "no:2", Parameters: map[string]string{"no_id": "2", "amount_rao": "1", "target_epoch": "next_fresh_production_epoch"}}
+	action := Action{ID: dishonestDepositActionID, Kind: "evm-transaction", Target: "no:2", Parameters: map[string]string{"no_id": "2", "amount_rao": strconv.FormatUint(cfg.Config.Scenarios.DishonestDepositRao, 10), "target_epoch": "next_fresh_production_epoch"}}
 	reconstructed, err := parseDishonestDepositReceipt(cfg, action, receipt, parsed, contracts.Deployment.CoordinatorProxy, common.HexToAddress(roles.OperatorDepositSigners[1]))
 	if err != nil || *reconstructed != transaction {
 		return &evidence, false, fmt.Sprintf("dishonest deposit transaction reconstruction mismatch: %v", err)

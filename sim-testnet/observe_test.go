@@ -1,9 +1,32 @@
 package main
 
 import (
+	"errors"
+	"math/big"
 	"strings"
 	"testing"
 )
+
+func TestCallUint64AcceptsABIUint64AndBoundedUint256(t *testing.T) {
+	for _, value := range []any{uint64(100_000), big.NewInt(100_000)} {
+		got, err := callUint64(value, nil)
+		if err != nil || got != 100_000 {
+			t.Fatalf("callUint64(%T) = %d, %v", value, got, err)
+		}
+	}
+}
+
+func TestCallUint64RejectsMalformedAndPropagatesCallFailure(t *testing.T) {
+	for _, value := range []any{nil, int64(1), big.NewInt(-1), new(big.Int).Lsh(big.NewInt(1), 65)} {
+		if _, err := callUint64(value, nil); err == nil {
+			t.Fatalf("callUint64 accepted %T(%v)", value, value)
+		}
+	}
+	want := errors.New("rpc failed")
+	if _, err := callUint64(uint64(1), want); !errors.Is(err, want) {
+		t.Fatalf("call failure = %v, want %v", err, want)
+	}
+}
 
 func TestExtractPolicyHashFromABITuple(t *testing.T) {
 	tuple := struct {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -76,6 +78,35 @@ func digestNamedFiles(root string, names []string) (string, error) {
 		_, _ = h.Write(data)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// cleanGitSubtreeHash binds large, shared runtime assets without reading
+// gigabytes into every doctor process. Git's clean-tree check proves that the
+// index and worktree match HEAD (including absence of untracked resources),
+// while ls-tree supplies the reviewed file modes, object IDs, and paths for a
+// stable SHA-256 release-lock fingerprint.
+func cleanGitSubtreeHash(root, subtree string) (string, error) {
+	clean := filepath.Clean(subtree)
+	if filepath.IsAbs(clean) || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe git subtree %q", subtree)
+	}
+	status := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--untracked-files=all", "--", clean)
+	statusOutput, err := status.Output()
+	if err != nil {
+		return "", fmt.Errorf("inspect platform config subtree %s: %w", clean, err)
+	}
+	if len(bytes.TrimSpace(statusOutput)) != 0 {
+		return "", fmt.Errorf("platform config subtree %s differs from reviewed HEAD: %s", clean, strings.TrimSpace(string(statusOutput)))
+	}
+	tree := exec.Command("git", "-C", root, "ls-tree", "-r", "--full-tree", "HEAD", "--", clean)
+	treeOutput, err := tree.Output()
+	if err != nil {
+		return "", fmt.Errorf("read platform config subtree %s: %w", clean, err)
+	}
+	if len(bytes.TrimSpace(treeOutput)) == 0 {
+		return "", fmt.Errorf("platform config subtree %s has no reviewed files", clean)
+	}
+	return digestBytes(treeOutput), nil
 }
 
 func filesUnder(root string, roots []string, include func(string) bool) ([]string, error) {
@@ -287,6 +318,10 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hash platform config: %w", err)
 	}
+	observation.Repositories["platform_config_shared_tree_hash"], err = cleanGitSubtreeHash(cfg.Repos.PlatformConfig, "all")
+	if err != nil {
+		return nil, fmt.Errorf("hash shared platform config: %w", err)
+	}
 
 	interfaces, err := filesUnder(cfg.Repos.SN, []string{"evm/src/interfaces"}, func(name string) bool { return strings.HasSuffix(name, ".sol") })
 	if err != nil {
@@ -343,8 +378,8 @@ func compareLockSection(name string, locked map[string]any, observed map[string]
 }
 
 func validateReleaseLock(cfg *ResolvedConfig) error {
-	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "release-v451" || cfg.Release.Runtime.SourceCommit != "d78d9cc6a6ee4d805f74a35414baaef8be025a5f" || cfg.Release.Runtime.SpecVersion != 451 || cfg.Release.Runtime.TransactionVersion != 1 || !strings.EqualFold(cfg.Release.Runtime.CodeHash, "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08") {
-		return errors.New("release lock runtime identity is not the reviewed testnet runtime 451 release")
+	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "testnet" || cfg.Release.Runtime.SourceCommit != "da06f033663896ef2fdbbfc3ecc68ca908fba0f5" || cfg.Release.Runtime.SpecVersion != 452 || cfg.Release.Runtime.TransactionVersion != 1 || !strings.EqualFold(cfg.Release.Runtime.CodeHash, "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc") {
+		return errors.New("release lock runtime identity is not the reviewed testnet runtime 452 release")
 	}
 	if !strings.Contains(cfg.Release.Runtime.Image, "@sha256:") || strings.Contains(cfg.Release.Runtime.Image, "placeholder") {
 		return fmt.Errorf("runtime image is not digest-pinned")

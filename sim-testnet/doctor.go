@@ -71,10 +71,69 @@ func (r *DoctorReport) add(name string, hard bool, err error, detail string) {
 type doctorPlanBudget struct {
 	Plan      *SetupPlan
 	Remaining Spend
+	StateDir  string
 }
 
 func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
 	return runDoctor(ctx, cfg, nil)
+}
+
+// Resolve a persisted approval and authenticated journal without mutating the
+// run directory. A release-drifted ancestor remains the correct budget basis
+// until BuildPlanRevision proves and emits its replacement.
+func doctorPlanBudgetForState(cfg *ResolvedConfig, stateDir string) (*doctorPlanBudget, error) {
+	plan, err := loadPersistedPlan(cfg, stateDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if errors.Is(err, errPersistedPlanIdentityMismatch) {
+		plan, err = readPersistedPlan(stateDir)
+	}
+	if err != nil {
+		return nil, err
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("read approved-plan journal: %w", err)
+	}
+	remaining, err := remainingPlanSpend(plan, entries)
+	if err != nil {
+		return nil, fmt.Errorf("derive remaining approved spend: %w", err)
+	}
+	return &doctorPlanBudget{Plan: plan, Remaining: remaining, StateDir: stateDir}, nil
+}
+
+// Use partial deployment state when present so a standalone doctor remains a
+// valid resumability check after finalized setup actions.
+func RunDoctorForState(ctx context.Context, cfg *ResolvedConfig, stateDir string) DoctorReport {
+	approved, stateErr := doctorPlanBudgetForState(cfg, stateDir)
+	report := runDoctor(ctx, cfg, approved)
+	detail := "fresh deployment; no persisted approval"
+	if approved != nil {
+		detail = fmt.Sprintf("plan_hash=%s remaining_registrations=%d", approved.Plan.PlanHash, approved.Remaining.Registrations)
+	}
+	report.add("state/approved-plan-journal", true, stateErr, detail)
+	if stateErr != nil {
+		report.Ready = false
+	}
+	sort.SliceStable(report.Checks, func(i, j int) bool { return report.Checks[i].Name < report.Checks[j].Name })
+	return report
+}
+
+// Bind mutable balances/economics and the exact deterministic UID prefix to
+// one approved partial deployment.
+func validateApprovedDoctorFacts(cfg *ResolvedConfig, approved *doctorPlanBudget, current *SetupFacts) error {
+	if approved == nil {
+		return errors.New("approved doctor budget is unavailable")
+	}
+	if err := validateApprovedSetupFacts(approved.Plan, current, approved.Remaining); err != nil {
+		return err
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		return fmt.Errorf("derive approved topology roles: %w", err)
+	}
+	return validatePlanRevisionTopology(cfg, approved.StateDir, approved.Plan, current, roles)
 }
 
 // The approved mode rechecks changing facts against only unverified spend;
@@ -117,6 +176,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		err := validateRepoIdentity(name, path)
 		r.add("repository/"+name, true, err, path)
 	}
+	r.add("config/operator-resource-sources", true, validateOperatorConfigSources(cfg), cfg.Repos.PlatformConfig)
 	r.add("release-lock", true, validateReleaseLock(cfg), cfg.Release.Release)
 	r.add("vault/wallet", true, nonempty(cfg.WalletMaterial, "testnet-wallet is empty"), cfg.WalletPublic)
 	r.add("vault/netuid", true, nonzero(uint64(cfg.Netuid), "testnet-netuid is zero"), fmt.Sprint(cfg.Netuid))
@@ -160,7 +220,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		facts, factsErr := ReadSetupFacts(ctx, cfg)
 		detail := ""
 		if facts != nil {
-			detail = fmt.Sprintf("source=%s alpha_rao=%d burn_rao=%d existential_deposit_rao=%d finalized=%d", facts.AlphaSourceHotkey, facts.AlphaAvailableRao, facts.BurnRao, facts.ExistentialDepositRao, facts.FinalizedBlock)
+			detail = fmt.Sprintf("source=%s alpha_rao=%d transferable_alpha_rao=%d stored_lock_rao=%d position_collateral_rao=%d coldkey_collateral_rao=%d burn_rao=%d existential_deposit_rao=%d finalized=%d", facts.AlphaSourceHotkey, facts.AlphaAvailableRao, facts.AlphaTransferableRao, facts.AlphaSourceStoredLockRao, facts.AlphaSourceCollateralRao, facts.WalletNetuidCollateralRao, facts.BurnRao, facts.ExistentialDepositRao, facts.FinalizedBlock)
 		}
 		r.add("wallet/finalized-alpha-source", true, factsErr, detail)
 		if factsErr == nil {
@@ -168,7 +228,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 			var plan *SetupPlan
 			if approved != nil {
 				plan = approved.Plan
-				planErr = validateApprovedSetupFacts(plan, facts, approved.Remaining)
+				planErr = validateApprovedDoctorFacts(cfg, approved, facts)
 			} else {
 				roles, roleErr := derivePublicRoles(cfg)
 				if roleErr == nil {
@@ -284,11 +344,45 @@ func validateApprovedSetupFacts(plan *SetupPlan, current *SetupFacts, remaining 
 	if current.NominatorMinimumRao != approved.NominatorMinimumRao || current.ProbeTAORao != approved.ProbeTAORao {
 		return fmt.Errorf("staking precompile minimum changed from approved %d/%d to %d/%d", approved.NominatorMinimumRao, approved.ProbeTAORao, current.NominatorMinimumRao, current.ProbeTAORao)
 	}
+	if current.InitialMinStakeRao == 0 {
+		return errors.New("runtime InitialMinStake is unavailable")
+	}
+	if current.DefaultMinTransferRao == 0 {
+		return errors.New("runtime DefaultMinTransfer is unavailable")
+	}
+	// V5/v6 bound InitialMinStake under the historical transfer-floor
+	// interpretation, so authenticate those plans exactly. V7+ bind the
+	// runtime's actual DefaultMinTransfer constant.
+	legacyAlphaFloor := false
+	if planUsesDefaultMinTransferEnvelope(plan.Schema) {
+		for _, action := range plan.Actions {
+			if strings.HasPrefix(action.ID, "alpha.transfer.") && action.Parameters["runtime_default_min_transfer_tao_rao"] == "" && action.Parameters["runtime_initial_min_stake_tao_rao"] != "" {
+				legacyAlphaFloor = true
+				break
+			}
+		}
+	}
+	if (plan.Schema == "urnetwork-sim-plan-v5" || plan.Schema == "urnetwork-sim-plan-v6" || approved.InitialMinStakeRao != 0 && !planUsesDefaultMinTransferEnvelope(plan.Schema) || legacyAlphaFloor) && current.InitialMinStakeRao != approved.InitialMinStakeRao {
+		return fmt.Errorf("runtime InitialMinStake changed from approved %d to %d TAO rao", approved.InitialMinStakeRao, current.InitialMinStakeRao)
+	}
+	if planUsesDefaultMinTransferEnvelope(plan.Schema) && current.DefaultMinTransferRao != approved.DefaultMinTransferRao {
+		return fmt.Errorf("runtime DefaultMinTransfer changed from approved %d to %d TAO rao", approved.DefaultMinTransferRao, current.DefaultMinTransferRao)
+	}
+	if current.AlphaPriceQ9 == 0 || current.RegisteredAlphaRao == 0 {
+		return errors.New("current alpha-transfer price or registered-alpha total is unavailable")
+	}
 	if remaining.AlphaRao > 0 && current.AlphaSourceHotkey != approved.AlphaSourceHotkey {
 		return fmt.Errorf("alpha source changed from approved %s to %s", approved.AlphaSourceHotkey, current.AlphaSourceHotkey)
 	}
-	if current.AlphaAvailableRao < remaining.AlphaRao {
-		return fmt.Errorf("approved alpha source has %d rao, remaining actions require %d", current.AlphaAvailableRao, remaining.AlphaRao)
+	if remaining.AlphaRao > 0 && !current.AlphaSourceRegistered {
+		return errors.New("approved alpha source is no longer registered")
+	}
+	requiredPosition, ok := checkedAdd(remaining.AlphaRao, plan.MinimumSourceRemainingRao)
+	if !ok || current.AlphaAvailableRao < requiredPosition {
+		return fmt.Errorf("approved alpha source has %d rao, remaining actions require %d plus minimum remainder %d", current.AlphaAvailableRao, remaining.AlphaRao, plan.MinimumSourceRemainingRao)
+	}
+	if current.AlphaTransferableRao < remaining.AlphaRao {
+		return fmt.Errorf("approved alpha source has %d transferable rao after lock/collateral restrictions, remaining actions require %d", current.AlphaTransferableRao, remaining.AlphaRao)
 	}
 	if current.WalletFreeTAORao < remaining.TAORao {
 		return fmt.Errorf("wallet free TAO is %d rao, remaining actions require %d", current.WalletFreeTAORao, remaining.TAORao)
@@ -553,14 +647,7 @@ func finalizedRuntimeCodeHash(chain *crv4.Chain) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var codeHash string
-	if err := chain.API.Client.Call(&codeHash, "state_getStorageHash", "0x3a636f6465", finalized.Hex()); err != nil {
-		return "", err
-	}
-	if err := validateRuntimeCodeHash(codeHash, codeHash); err != nil {
-		return "", err
-	}
-	return strings.ToLower(codeHash), nil
+	return runtimeCodeHashAt(chain, finalized)
 }
 
 func validateRuntimeCodeHash(observed, expected string) error {

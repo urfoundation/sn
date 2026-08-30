@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -15,20 +17,6 @@ import (
 	"testing"
 	"time"
 )
-
-func TestSupervisorChild(t *testing.T) {
-	if os.Getenv("SIM_TEST_CHILD") != "1" {
-		return
-	}
-	counter := os.Getenv("SIM_TEST_COUNTER")
-	if _, err := os.Stat(counter); os.IsNotExist(err) {
-		_ = os.WriteFile(counter, []byte("crashed once\n"), 0o600)
-		os.Exit(17)
-	}
-	for {
-		time.Sleep(time.Second)
-	}
-}
 
 func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	dir := t.TempDir()
@@ -41,11 +29,21 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 	counter := filepath.Join(dir, "child.counter")
+	readyPath := filepath.Join(dir, "child.ready")
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if _, err := os.Stat(readyPath); err != nil {
+			http.Error(writer, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer health.Close()
 	spec := ProcessSpec{
-		ID: "restart-child", Role: "test", Identity: "test-child", Command: executable,
-		Args: []string{"-test.run=TestSupervisorChild"}, WorkDir: dir,
-		Env:        map[string]string{"SIM_TEST_CHILD": "1", "SIM_TEST_COUNTER": counter},
+		ID: "restart-child", Role: "test", Identity: "test-child", Command: "/bin/sh",
+		Args: []string{"-c", `if [ ! -e "$SIM_TEST_COUNTER" ]; then printf 'crashed once\n' >"$SIM_TEST_COUNTER"; exit 17; fi; printf 'ready\n' >"$SIM_TEST_READY"; exec /bin/sleep 300`}, WorkDir: dir,
+		Env:        map[string]string{"SIM_TEST_COUNTER": counter, "SIM_TEST_READY": readyPath},
 		StdoutPath: filepath.Join(dir, "child.stdout"), StderrPath: filepath.Join(dir, "child.stderr"), RestartLimit: 2,
+		HealthURL: health.URL,
 	}
 	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: binaryHash, Specs: []ProcessSpec{spec}}
 	b, _ := json.Marshal(manifest)
@@ -56,7 +54,7 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- supervise(ctx, dir, manifestPath) }()
-	if err := waitSupervisorReady(ctx, dir, manifest, 12*time.Second); err != nil {
+	if err := waitSupervisorReady(ctx, dir, manifest, 30*time.Second); err != nil {
 		cancel()
 		<-done
 		t.Fatal(err)
@@ -87,6 +85,72 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	}
 	if syscall.Kill(childPID, syscall.Signal(0)) == nil {
 		t.Fatalf("child process %d survived supervisor cancellation", childPID)
+	}
+}
+
+func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *testing.T) {
+	dir := t.TempDir()
+	want := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash", Specs: []ProcessSpec{
+		{ID: "one", Role: "miner", Identity: "miner-1"},
+		{ID: "two", Role: "validator", Identity: "validator-1"},
+	}}
+	manifestHash, err := canonicalHashHex(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), ManifestHash: manifestHash,
+		Processes: []ProcessState{
+			{ID: "one", Role: "miner", Identity: "miner-1", PID: os.Getpid(), Healthy: true},
+			{ID: "one", Role: "miner", Identity: "miner-1", PID: os.Getpid(), Healthy: true},
+		},
+	}
+	encoded, err := json.Marshal(duplicate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(dir, "supervisor.state.json")
+	if err := os.WriteFile(statePath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ready, err := supervisorReadyNow(dir, want); err != nil || ready {
+		t.Fatalf("duplicate process identity readiness = %v, %v", ready, err)
+	}
+	if err := os.WriteFile(statePath, []byte(`{"schema":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err = waitSupervisorReady(ctx, dir, want, 20*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "decode supervisor state") {
+		t.Fatalf("malformed supervisor readiness error = %v", err)
+	}
+}
+
+func TestSupervisorFailsWhenItCannotPublishState(t *testing.T) {
+	dir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaryHash, err := fileSHA256(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: binaryHash}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "supervisor.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "supervisor.state.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := supervise(context.Background(), dir, manifestPath); err == nil || !strings.Contains(err.Error(), "publish supervisor state") {
+		t.Fatalf("unpublishable supervisor state error = %v", err)
 	}
 }
 
