@@ -1050,19 +1050,28 @@ func validateFailedEVMRevisionTransaction(ctx context.Context, client *ethclient
 // Keep outcome classification independently testable from a concrete RPC
 // transport so pending, orphaned, reverted, and successful receipts remain
 // distinct fail-closed states.
-func validateFailedEVMRevisionTransactionFromReader(ctx context.Context, reader evmReceiptFinalityReader, transaction planRevisionTransaction) error {
+func canonicalFinalizedEVMRevisionReceiptFromReader(ctx context.Context, reader evmReceiptFinalityReader, transaction planRevisionTransaction) (*ethTypes.Receipt, error) {
 	receipt, ready, err := observeEVMReceiptFinality(ctx, reader, common.HexToHash(transaction.TransactionHash))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if receipt == nil {
-		return errors.New("prior EVM transaction has no canonical receipt and may still be pending")
+		return nil, errors.New("prior EVM transaction has no canonical receipt and may still be pending")
 	}
 	if !ready {
-		return errors.New("prior EVM transaction receipt is not canonical and finalized")
+		return nil, errors.New("prior EVM transaction receipt is not canonical and finalized")
 	}
 	if transaction.BlockNumber != 0 && (receipt.BlockNumber.Uint64() != transaction.BlockNumber || !strings.EqualFold(receipt.BlockHash.Hex(), transaction.BlockHash)) {
-		return errors.New("prior EVM receipt does not match its journaled inclusion")
+		return nil, errors.New("prior EVM receipt does not match its journaled inclusion")
+	}
+	return receipt, nil
+}
+
+// Classify only a canonical finalized receipt as a generic retryable revert.
+func validateFailedEVMRevisionTransactionFromReader(ctx context.Context, reader evmReceiptFinalityReader, transaction planRevisionTransaction) error {
+	receipt, err := canonicalFinalizedEVMRevisionReceiptFromReader(ctx, reader, transaction)
+	if err != nil {
+		return err
 	}
 	if receipt.Status == ethTypes.ReceiptStatusSuccessful {
 		return errPriorEVMTransactionSucceeded
@@ -1076,12 +1085,12 @@ func validateFailedEVMRevisionTransactionFromReader(ctx context.Context, reader 
 // Require a chain-proven revert for every unverified transaction in the plan
 // lineage. A missing artifact, pending transaction, successful mutation, or
 // observer error blocks revision rather than risking a duplicate side effect.
-func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry) ([]voluntaryConvictionDuplicateRecovery, error) {
+func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry) (planRevisionRecoveries, error) {
 	pending, err := pendingPlanRevisionTransactions(prior, entries)
 	if err != nil || len(pending) == 0 {
-		return nil, err
+		return planRevisionRecoveries{}, err
 	}
-	recoveries := []voluntaryConvictionDuplicateRecovery{}
+	recoveries := planRevisionRecoveries{}
 	var substrateChain *crv4.Chain
 	var evmClient *ethclient.Client
 	defer func() {
@@ -1101,24 +1110,24 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 		hasScale := scaleErr == nil
 		hasRLP := rlpErr == nil
 		if (scaleErr != nil && !errors.Is(scaleErr, os.ErrNotExist)) || (rlpErr != nil && !errors.Is(rlpErr, os.ErrNotExist)) {
-			return nil, errors.Join(scaleErr, rlpErr)
+			return planRevisionRecoveries{}, errors.Join(scaleErr, rlpErr)
 		}
 		if hasScale == hasRLP {
-			return nil, fmt.Errorf("prior transaction %s must have exactly one native SCALE or EVM RLP artifact", transaction.TransactionHash)
+			return planRevisionRecoveries{}, fmt.Errorf("prior transaction %s must have exactly one native SCALE or EVM RLP artifact", transaction.TransactionHash)
 		}
 		if hasScale {
 			raw, readErr := os.ReadFile(scalePath)
 			if readErr != nil {
-				return nil, readErr
+				return planRevisionRecoveries{}, readErr
 			}
 			digest := blake2b.Sum256(raw)
 			if !strings.EqualFold(substrateTypes.Hash(digest).Hex(), transaction.TransactionHash) {
-				return nil, fmt.Errorf("prior native transaction artifact hash does not match %s", transaction.TransactionHash)
+				return planRevisionRecoveries{}, fmt.Errorf("prior native transaction artifact hash does not match %s", transaction.TransactionHash)
 			}
 			if substrateChain == nil {
 				substrateChain, err = crv4.DialChain(cfg.OperationalSubstrate)
 				if err != nil {
-					return nil, err
+					return planRevisionRecoveries{}, err
 				}
 			}
 			if err := validateFailedSubstrateRevisionTransaction(ctx, substrateChain, transaction); err != nil {
@@ -1130,41 +1139,62 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				if errors.Is(err, errPriorNativeTransactionSucceeded) && (recoverableFinalizedAlphaTransaction(prior, entries, transaction) || verifiedReconciliationForFinalizedAlphaTransaction(prior, entries, transaction)) {
 					continue
 				}
-				return nil, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, err)
+				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, err)
 			}
 			continue
 		}
 		raw, readErr := os.ReadFile(rlpPath)
 		if readErr != nil {
-			return nil, readErr
+			return planRevisionRecoveries{}, readErr
 		}
 		var signed ethTypes.Transaction
 		if decodeErr := signed.UnmarshalBinary(raw); decodeErr != nil {
-			return nil, fmt.Errorf("decode prior EVM transaction artifact %s: %w", transaction.TransactionHash, decodeErr)
+			return planRevisionRecoveries{}, fmt.Errorf("decode prior EVM transaction artifact %s: %w", transaction.TransactionHash, decodeErr)
 		}
 		if !strings.EqualFold(signed.Hash().Hex(), transaction.TransactionHash) {
-			return nil, fmt.Errorf("prior EVM transaction artifact hash does not match %s", transaction.TransactionHash)
+			return planRevisionRecoveries{}, fmt.Errorf("prior EVM transaction artifact hash does not match %s", transaction.TransactionHash)
 		}
 		if evmClient == nil {
 			evmClient, err = ethclient.DialContext(ctx, cfg.OperationalEVM)
 			if err != nil {
-				return nil, err
+				return planRevisionRecoveries{}, err
 			}
 		}
-		if err := validateFailedEVMRevisionTransaction(ctx, evmClient, transaction); err != nil {
-			if errors.Is(err, errPriorEVMTransactionSucceeded) {
-				recovery, recoveryErr := detectVoluntaryConvictionDuplicateRecovery(ctx, cfg, stateDir, prior, entries, evmClient, &signed, transaction)
-				if recoveryErr == nil {
-					recoveries = append(recoveries, recovery)
-					continue
-				}
-				return nil, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, err, recoveryErr)
+		receipt, receiptErr := canonicalFinalizedEVMRevisionReceiptFromReader(ctx, ethEVMReceiptFinalityReader{client: evmClient}, transaction)
+		if receiptErr != nil {
+			return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, receiptErr)
+		}
+		if receipt.Status == ethTypes.ReceiptStatusFailed {
+			continue
+		}
+		if receipt.Status != ethTypes.ReceiptStatusSuccessful {
+			return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: prior EVM transaction has unsupported receipt status %d", transaction.PlanHash, transaction.ActionID, receipt.Status)
+		}
+		switch {
+		case transaction.ActionID == voluntaryConvictionActionID:
+			recovery, recoveryErr := detectVoluntaryConvictionDuplicateRecovery(ctx, cfg, stateDir, prior, entries, evmClient, &signed, transaction)
+			if recoveryErr != nil {
+				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded, recoveryErr)
 			}
-			return nil, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, err)
+			recoveries.VoluntaryConvictions = append(recoveries.VoluntaryConvictions, recovery)
+		case strings.HasPrefix(transaction.ActionID, "fleet.mirror."):
+			if substrateChain == nil {
+				substrateChain, err = crv4.DialChain(cfg.OperationalSubstrate)
+				if err != nil {
+					return planRevisionRecoveries{}, err
+				}
+			}
+			recovery, recoveryErr := detectFinalizedFleetMirrorRecovery(ctx, cfg, stateDir, prior, entries, substrateChain, evmClient, &signed, receipt, transaction)
+			if recoveryErr != nil {
+				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded, recoveryErr)
+			}
+			recoveries.FleetMirrors = append(recoveries.FleetMirrors, recovery)
+		default:
+			return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded)
 		}
 	}
-	if len(recoveries) > 1 {
-		return nil, fmt.Errorf("plan lineage has %d successful duplicate voluntary convictions; exactly one is recoverable", len(recoveries))
+	if len(recoveries.VoluntaryConvictions) > 1 {
+		return planRevisionRecoveries{}, fmt.Errorf("plan lineage has %d successful duplicate voluntary convictions; exactly one is recoverable", len(recoveries.VoluntaryConvictions))
 	}
 	return recoveries, nil
 }
@@ -2659,6 +2689,12 @@ func buildPlanRevisionFromFactsWithMigration(cfg *ResolvedConfig, stateDir strin
 }
 
 func buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, generatedAt time.Time, migration *coordinatorUpgradeMigration, recoveries []voluntaryConvictionDuplicateRecovery) (*SetupPlan, error) {
+	return buildPlanRevisionFromFactsWithAllRecoveries(cfg, stateDir, prior, current, entries, generatedAt, migration, planRevisionRecoveries{VoluntaryConvictions: recoveries})
+}
+
+// Build a deterministic revision with every transaction recovery class already
+// authenticated against live finalized state.
+func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, generatedAt time.Time, migration *coordinatorUpgradeMigration, recoveries planRevisionRecoveries) (*SetupPlan, error) {
 	roles, err := derivePublicRoles(cfg)
 	if err != nil {
 		return nil, err
@@ -2804,11 +2840,11 @@ func buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg *ResolvedConfig, s
 			return nil, err
 		}
 	}
-	if len(recoveries) > 1 {
+	if len(recoveries.VoluntaryConvictions) > 1 {
 		return nil, errors.New("only one duplicate voluntary-conviction recovery is permitted")
 	}
-	if len(recoveries) == 1 {
-		recovery := recoveries[0]
+	if len(recoveries.VoluntaryConvictions) == 1 {
+		recovery := recoveries.VoluntaryConvictions[0]
 		gasAfter, gasErr := voluntaryConvictionRecoveryGasAfter(recovery)
 		if gasErr != nil {
 			return nil, gasErr
@@ -2866,10 +2902,13 @@ func buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg *ResolvedConfig, s
 	if err := preserveConsumedRegistrationFunding(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("preserve consumed registration funding: %w", err)
 	}
-	if len(recoveries) == 1 {
-		if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recoveries[0]); err != nil {
+	if len(recoveries.VoluntaryConvictions) == 1 {
+		if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recoveries.VoluntaryConvictions[0]); err != nil {
 			return nil, fmt.Errorf("reconcile duplicate voluntary conviction: %w", err)
 		}
+	}
+	if err := validateRevisedFleetMirrorRecoveries(revised, recoveries.FleetMirrors); err != nil {
+		return nil, fmt.Errorf("reconcile finalized fleet mirror: %w", err)
 	}
 	if !policyChanged {
 		if err := preserveVerifiedOperatorAlphaTransfers(revised, prior, entries); err != nil {
@@ -2941,7 +2980,7 @@ func BuildPlanRevision(ctx context.Context, cfg *ResolvedConfig, stateDir string
 	if err != nil {
 		return nil, fmt.Errorf("coordinator upgrade finalized baseline: %w", err)
 	}
-	revised, err := buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg, stateDir, prior, current, entries, time.Now().UTC(), migration, recoveries)
+	revised, err := buildPlanRevisionFromFactsWithAllRecoveries(cfg, stateDir, prior, current, entries, time.Now().UTC(), migration, recoveries)
 	if err != nil {
 		return nil, err
 	}
