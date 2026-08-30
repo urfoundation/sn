@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
@@ -148,9 +149,14 @@ func retryFleetBindingAfterEpochTransition(currentEpoch, validFrom uint64, trans
 	return !transactionPersisted && currentEpoch >= validFrom
 }
 
-func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int) (protocol.FleetManifest, []byte, [32]byte, error) {
+// Builds one immutable manifest generation while preserving the stable fleet,
+// hotkey and member identities across renewals.
+func fleetManifestForGeneration(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int, generation uint64) (protocol.FleetManifest, []byte, [32]byte, error) {
 	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.fleetCandidates() {
 		return protocol.FleetManifest{}, nil, [32]byte{}, fmt.Errorf("fleet index %d out of range", fleetIndex)
+	}
+	if generation == 0 {
+		return protocol.FleetManifest{}, nil, [32]byte{}, errors.New("fleet manifest generation is zero")
 	}
 	deployment, err := loadContractDeployment(stateDir)
 	if err != nil {
@@ -163,7 +169,7 @@ func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fle
 	fleetID := derive32(cfg, fmt.Sprintf("fleet-id/%d", fleetIndex))
 	var coordinator [20]byte
 	copy(coordinator[:], deployment.CoordinatorProxy[:])
-	m := protocol.FleetManifest{Schema: protocol.FleetManifestSchema, ChainID: testnetChainID, Netuid: cfg.Netuid, Coordinator: coordinator, FleetID: fleetID, Hotkey: hotkey, Generation: 1}
+	m := protocol.FleetManifest{Schema: protocol.FleetManifestSchema, ChainID: testnetChainID, Netuid: cfg.Netuid, Coordinator: coordinator, FleetID: fleetID, Hotkey: hotkey, Generation: generation}
 	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 		minerIndex := fleetMemberMinerIndex(cfg, fleetIndex, member)
 		role, ok := roles.Clients[fmt.Sprintf("miner-%d", minerIndex)]
@@ -191,6 +197,11 @@ func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fle
 	return m, canonical, hash, err
 }
 
+// Preserves the generation-1 public API used by initial and challenger fleets.
+func fleetManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetIndex int) (protocol.FleetManifest, []byte, [32]byte, error) {
+	return fleetManifestForGeneration(cfg, stateDir, roles, fleetIndex, 1)
+}
+
 func writePublicJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -199,37 +210,77 @@ func writePublicJSON(path string, v any) error {
 	return atomicWrite(path, append(b, '\n'), 0o644)
 }
 
-func (e *Executor) publishFleetCommitment(ctx context.Context, a Action, fleetIndex int) error {
-	_, canonical, hash, err := fleetManifest(e.cfg, e.stateDir, e.roles, fleetIndex)
+// Distinguishes a safe deterministic pre-transaction manifest left by a crash
+// from complete exact evidence and from corruption. Complete evidence may be
+// carried across a formally revised plan without submitting the same native
+// commitment again.
+func (self *Executor) fleetCommitmentGenerationAlreadyPublished(fleetIndex int, generation uint64, canonical []byte, manifestName, evidenceName string) (bool, error) {
+	manifestPath := filepath.Join(self.stateDir, "public", manifestName)
+	evidencePath := filepath.Join(self.stateDir, "public", evidenceName)
+	manifestBytes, manifestErr := os.ReadFile(manifestPath)
+	_, evidenceErr := os.Stat(evidencePath)
+	manifestExists := manifestErr == nil
+	evidenceExists := evidenceErr == nil
+	if manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist) {
+		return false, manifestErr
+	}
+	if evidenceErr != nil && !errors.Is(evidenceErr, os.ErrNotExist) {
+		return false, evidenceErr
+	}
+	if !manifestExists && !evidenceExists {
+		return false, nil
+	}
+	if !manifestExists && evidenceExists {
+		return false, errors.New("fleet commitment evidence exists without its manifest")
+	}
+	if !bytes.Equal(manifestBytes, append(append([]byte(nil), canonical...), '\n')) {
+		return false, errors.New("existing fleet manifest differs from its canonical generation")
+	}
+	if !evidenceExists {
+		return false, nil
+	}
+	if _, _, _, _, err := self.validatedFleetCommitmentGeneration(fleetIndex, generation); err != nil {
+		return false, fmt.Errorf("existing fleet commitment evidence is not exact current state: %w", err)
+	}
+	return true, nil
+}
+
+// Publishes one exact manifest generation and preserves its canonical finalized
+// Subtensor evidence under generation-specific paths.
+func (self *Executor) publishFleetCommitmentGeneration(ctx context.Context, action Action, fleetIndex int, generation uint64, manifestName, evidenceName string) error {
+	_, canonical, hash, err := fleetManifestForGeneration(self.cfg, self.stateDir, self.roles, fleetIndex, generation)
 	if err != nil {
 		return err
 	}
-	manifestName := fmt.Sprintf("fleet-%d.json", fleetIndex)
-	manifestPath := filepath.Join(e.stateDir, "public", manifestName)
+	published, err := self.fleetCommitmentGenerationAlreadyPublished(fleetIndex, generation, canonical, manifestName, evidenceName)
+	if err != nil || published {
+		return err
+	}
+	manifestPath := filepath.Join(self.stateDir, "public", manifestName)
 	if err := atomicWrite(manifestPath, append(canonical, '\n'), 0o644); err != nil {
 		return err
 	}
-	hotkey, err := roleBytes32(e.roles, fleetHotkeyLabel(fleetIndex))
+	hotkey, err := roleBytes32(self.roles, fleetHotkeyLabel(fleetIndex))
 	if err != nil {
 		return err
 	}
-	call, err := e.substrate.chain.NewSetFleetCommitmentCall(e.cfg.Netuid, hash)
+	call, err := self.substrate.chain.NewSetFleetCommitmentCall(self.cfg.Netuid, hash)
 	if err != nil {
 		return err
 	}
-	signer, err := e.substrate.RoleSigner(e.roles, fleetHotkeyLabel(fleetIndex))
+	signer, err := self.substrate.RoleSigner(self.roles, fleetHotkeyLabel(fleetIndex))
 	if err != nil {
 		return err
 	}
-	txHash, transactionBlock, err := e.substrate.SendAs(ctx, e.plan.PlanHash, a, call, signer)
+	txHash, transactionBlock, err := self.substrate.SendAs(ctx, self.plan.PlanHash, action, call, signer)
 	if err != nil {
 		return err
 	}
-	transactionBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(transactionBlock)
+	transactionBlockHash, err := self.substrate.chain.API.RPC.Chain.GetBlockHash(transactionBlock)
 	if err != nil {
 		return err
 	}
-	observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+	observed, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, hotkey, transactionBlockHash)
 	if err != nil {
 		return err
 	}
@@ -237,11 +288,34 @@ func (e *Executor) publishFleetCommitment(ctx context.Context, a Action, fleetIn
 		return err
 	}
 	evidence := FleetCommitmentEvidence{Schema: fleetCommitmentEvidenceSchemaV2, ManifestURI: manifestName, CommitmentHash: "0x" + hex.EncodeToString(hash[:]), Hotkey: "0x" + hex.EncodeToString(hotkey[:]), ExtrinsicHash: txHash.Hex(), CommitmentBlock: observed.CommitmentBlock, FinalizedBlock: transactionBlock, FinalizedBlockHash: transactionBlockHash.Hex()}
-	return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleetIndex)), evidence)
+	return writePublicJSON(filepath.Join(self.stateDir, "public", evidenceName), evidence)
+}
+
+// Publishes the initial immutable fleet generation.
+func (self *Executor) publishFleetCommitment(ctx context.Context, action Action, fleetIndex int) error {
+	return self.publishFleetCommitmentGeneration(ctx, action, fleetIndex, 1, fmt.Sprintf("fleet-%d.json", fleetIndex), fmt.Sprintf("fleet-%d.commitment.json", fleetIndex))
+}
+
+// Publishes generation 2 without overwriting the generation-1 audit trail.
+func (self *Executor) publishFleetRefreshCommitment(ctx context.Context, action Action, fleetIndex int) error {
+	return self.publishFleetCommitmentGeneration(ctx, action, fleetIndex, 2, fmt.Sprintf("fleet-%d.refresh.json", fleetIndex), fmt.Sprintf("fleet-%d.refresh.commitment.json", fleetIndex))
 }
 
 func loadFleetCommitmentEvidence(stateDir string, fleetIndex int) (*FleetCommitmentEvidence, error) {
-	b, err := os.ReadFile(filepath.Join(stateDir, "public", fmt.Sprintf("fleet-%d.commitment.json", fleetIndex)))
+	return loadFleetCommitmentEvidenceGeneration(stateDir, fleetIndex, 1)
+}
+
+// Loads only the path/schema pair assigned to the requested generation.
+func loadFleetCommitmentEvidenceGeneration(stateDir string, fleetIndex int, generation uint64) (*FleetCommitmentEvidence, error) {
+	manifestName := fmt.Sprintf("fleet-%d.json", fleetIndex)
+	evidenceName := fmt.Sprintf("fleet-%d.commitment.json", fleetIndex)
+	if generation == 2 {
+		manifestName = fmt.Sprintf("fleet-%d.refresh.json", fleetIndex)
+		evidenceName = fmt.Sprintf("fleet-%d.refresh.commitment.json", fleetIndex)
+	} else if generation != 1 {
+		return nil, fmt.Errorf("unsupported fleet commitment generation %d", generation)
+	}
+	b, err := os.ReadFile(filepath.Join(stateDir, "public", evidenceName))
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +323,7 @@ func loadFleetCommitmentEvidence(stateDir string, fleetIndex int) (*FleetCommitm
 	if err := json.Unmarshal(b, &evidence); err != nil {
 		return nil, err
 	}
-	if evidence.Schema != fleetCommitmentEvidenceSchemaV2 || evidence.ManifestURI != fmt.Sprintf("fleet-%d.json", fleetIndex) || evidence.CommitmentBlock == 0 || evidence.FinalizedBlock != evidence.CommitmentBlock {
+	if evidence.Schema != fleetCommitmentEvidenceSchemaV2 || evidence.ManifestURI != manifestName || evidence.CommitmentBlock == 0 || evidence.FinalizedBlock != evidence.CommitmentBlock {
 		return nil, fmt.Errorf("invalid fleet commitment evidence schema")
 	}
 	for label, value := range map[string]string{
@@ -315,6 +389,9 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	if current, readErr := rawCoordinatorCall(ctx, e.oracle, common.BytesToAddress(manifest.Coordinator[:]), coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments); readErr == nil && fleetMirrorMatches(current, hash, evidence.FinalizedBlock, [32]byte(finalizedHash)) {
 		return nil
 	}
+	if a.Parameters["batch_installed"] == "true" {
+		return fmt.Errorf("fleet %d atomic installer did not establish its exact commitment mirror", fleetIndex)
+	}
 	data, err := coordinator.TryPackMirrorCommitment(manifest.Hotkey, hash, evidence.FinalizedBlock, [32]byte(finalizedHash))
 	if err != nil {
 		return err
@@ -362,6 +439,9 @@ func (e *Executor) bindFleetMember(ctx context.Context, a Action, fleetIndex, me
 	}
 	if memberIndex < 1 || memberIndex > len(manifest.Members) {
 		return fmt.Errorf("fleet member index %d out of range", memberIndex)
+	}
+	if a.Parameters["batch_installed"] == "true" {
+		return e.verifyBatchInstalledFleetMember(ctx, manifest, fleetIndex, memberIndex)
 	}
 	member := manifest.Members[memberIndex-1]
 	coordinator := stabi.NewSTCoordinator()
@@ -434,4 +514,26 @@ func (e *Executor) bindFleetMember(ctx context.Context, a Action, fleetIndex, me
 		evidence := FleetBindingEvidence{Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: "0x" + hex.EncodeToString(member.ClientID[:]), ClientKey: "0x" + hex.EncodeToString(member.ClientKey[:]), FleetID: "0x" + hex.EncodeToString(binding.FleetID[:]), Hotkey: "0x" + hex.EncodeToString(binding.Hotkey[:]), Generation: binding.Generation, ValidFromEpoch: validFrom, ValidToEpoch: validTo, CommitmentHash: "0x" + hex.EncodeToString(binding.CommitmentHash[:]), BindingDigest: "0x" + hex.EncodeToString(digest[:]), ClientSignature: "0x" + hex.EncodeToString(clientSignature), HotkeySignature: "0x" + hex.EncodeToString(hotkeySignature), TransactionHash: receipt.TxHash.Hex(), BlockNumber: receipt.BlockNumber.Uint64(), BlockHash: receipt.BlockHash.Hex(), UID: post.Record.Uid}
 		return writePublicJSON(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", fleetIndex, memberIndex)), evidence)
 	}
+}
+
+// Requires the install batch to have produced the standard generation-1
+// evidence and every exact coordinator record field. Verification actions can
+// never fall back to an unauthorized per-member write while the helper is the
+// active oracle.
+func (self *Executor) verifyBatchInstalledFleetMember(ctx context.Context, manifest protocol.FleetManifest, fleetIndex, memberIndex int) error {
+	evidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, manifest, fleetIndex, memberIndex)
+	if err != nil {
+		return err
+	}
+	coordinator := stabi.NewSTCoordinator()
+	coordinatorAddress := common.BytesToAddress(manifest.Coordinator[:])
+	head, err := finalizedEVMHead(ctx, self.keeper.client)
+	if err != nil {
+		return err
+	}
+	count, record, err := readFleetBindingVersionAt(ctx, self.keeper, coordinatorAddress, coordinator, binding.ClientID, 0, head.Number)
+	if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, binding, binding.ValidToEpoch, evidence.UID) {
+		return stateMismatchError(err, "fleet %d member %d atomic install record mismatch", fleetIndex, memberIndex)
+	}
+	return nil
 }

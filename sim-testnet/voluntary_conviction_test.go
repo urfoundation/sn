@@ -188,15 +188,16 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 		t.Fatal("the verified original voluntary-conviction intent was not carried")
 	}
 	if repair.Spend.AlphaRao != recovery.AmountRao+reserveRoundingAllowancePerCallRao+alphaTransferDestinationRoundingAllowance ||
-		repair.Parameters[alphaRepairMinimumDestinationParameter] != "250000000050" || !strings.Contains(strings.Join(actionByID(t, revised, "fleet.mirror.1").DependsOn, ","), repair.ID) {
-		t.Fatalf("duplicate recovery repair/barrier is invalid: repair=%+v mirror=%+v", repair, actionByID(t, revised, "fleet.mirror.1"))
+		repair.Parameters[alphaRepairMinimumDestinationParameter] != "250000000050" || !strings.Contains(strings.Join(actionByID(t, revised, "fleet.refresh.deploy-batcher").DependsOn, ","), repair.ID) {
+		t.Fatalf("duplicate recovery repair/barrier is invalid: repair=%+v batcher=%+v", repair, actionByID(t, revised, "fleet.refresh.deploy-batcher"))
 	}
 	wantSuperseded, err := addDecimalUint(recovery.SupersededGasBefore, recovery.DuplicateAction.Spend.EVMGasWei)
 	if err != nil || revised.SupersededSpend.EVMGasWei != wantSuperseded {
 		t.Fatalf("duplicate gas accounting=%s want=%s error=%v", revised.SupersededSpend.EVMGasWei, wantSuperseded, err)
 	}
 	total, err := addSpends(revised.MaximumSpend, revised.SupersededSpend)
-	if err != nil || total.EVMGasWei != revised.Limits.EVMGasWei || validatePlanBudget(revised) != nil {
+	gasComparison, gasComparisonErr := total.EVMGasWei.Cmp(revised.Limits.EVMGasWei)
+	if err != nil || gasComparisonErr != nil || gasComparison > 0 || validatePlanBudget(revised) != nil {
 		t.Fatalf("recovered cumulative budget=%+v limits=%+v add_error=%v validate=%v", total, revised.Limits, err, validatePlanBudget(revised))
 	}
 	wire, err := json.Marshal(revised)
@@ -233,19 +234,19 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	if reconciliationCount != 1 || repairCount != 1 || continued.SupersededSpend.EVMGasWei != revised.SupersededSpend.EVMGasWei {
 		t.Fatalf("continued recovery duplicated accounting/actions: reconciliation=%d repair=%d spend=%s/%s", reconciliationCount, repairCount, continued.SupersededSpend.EVMGasWei, revised.SupersededSpend.EVMGasWei)
 	}
-	reconciliationIndex, repairIndex, mirrorIndex := -1, -1, -1
+	reconciliationIndex, repairIndex, barrierIndex := -1, -1, -1
 	for index, action := range continued.Actions {
 		switch action.ID {
 		case reconciliation.ID:
 			reconciliationIndex = index
 		case repair.ID:
 			repairIndex = index
-		case "fleet.mirror.1":
-			mirrorIndex = index
+		case "fleet.refresh.deploy-batcher":
+			barrierIndex = index
 		}
 	}
-	if reconciliationIndex < 0 || repairIndex <= reconciliationIndex || mirrorIndex <= repairIndex {
-		t.Fatalf("continued recovery is not topologically ordered: reconciliation=%d repair=%d mirror=%d", reconciliationIndex, repairIndex, mirrorIndex)
+	if reconciliationIndex < 0 || repairIndex <= reconciliationIndex || barrierIndex <= repairIndex {
+		t.Fatalf("continued recovery is not topologically ordered: reconciliation=%d repair=%d barrier=%d", reconciliationIndex, repairIndex, barrierIndex)
 	}
 	if err := validatePlanBudget(continued); err != nil {
 		t.Fatalf("continued recovery plan is invalid: %v", err)

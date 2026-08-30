@@ -2029,8 +2029,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    signing. Batched storage reads removed a 156-second public-RPC timeout. The
    live source now reports 25,416.177258599 alpha, zero lock/collateral, and the
    full position transferable. Each failure has deterministic reproduction plus
-   adjacent-drift tests. The vault ceilings remain 120 testTAO, 20,000 alpha,
-   and 100 testTAO of EVM gas.
+   adjacent-drift tests. The vault ceilings are now 200 testTAO, 20,000 alpha,
+   and 160 testTAO of EVM gas; the increase covers bounded setup batching and
+   soak while remaining an absolute campaign cap.
    A subsequent v6 revision installed and scheduled the corrected release policy,
    then was stopped cleanly before any further write when a clean Foundry run
    exposed a different runtime-452 boundary: same-subnet `moveStake` and
@@ -2134,6 +2135,62 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    converge before launch is retried.
    The user has authorized automatic application of the bounded **testnet**
    revision; no mainnet write is authorized.
+
+   A setup-throughput revision is locally complete. Ten independent four-client
+   fleets now share an explicit plan group: three native commitment extrinsics
+   may execute concurrently, followed by one testnet-only `STFleetBatcher`
+   transaction that atomically mirrors and installs all 40 dual-signed bindings.
+   A second atomic batch performs client-authorized generation-2 revocation and
+   replacement, and the original immutable commitment oracle is restored before
+   topology launch. The maximum 10-by-4 install and refresh paths use 9,535,582
+   and 9,080,115 gas against 18,000,000 and 24,000,000 action ceilings. Existing
+   exact per-member writes are retained as charged read-back proofs during the
+   formal revision. Partial, mixed-generation, duplicate-identity, stale-runtime,
+   dependency, nonce and lineage shapes all fail closed. Repeated releases also
+   authenticate the helper's extra CREATE nonce/runtime and charge every retired
+   verified EVM ceiling exactly once. The serialized ancestor executor remains
+   recoverable while this release is frozen; it had completed at least 25 of 200
+   fleet bindings before the replacement-plan cutover.
+   At the pinned 12-second cadence, bounded setup should take roughly 2--4 hours
+   rather than the serialized many-hour path. The 20 accelerated epochs remain
+   approximately 20 hours, and the three 8-hour production UR blocks retain 24
+   hours of live observation plus the final approximately 4-hour
+   settlement/finality window. These are protocol-time acceptance gates, not
+   setup inefficiencies, and must not be bypassed with an off-chain clock.
+
+   The cutover completed fleet 25 member 4 at finalized EVM block 7,898,801.
+   `fleet.commitment.26` has only an intent and a cancellation failure: no
+   signed bytes, broadcast, transaction hash, or native state change exists.
+   The first accelerated read-only revision then exposed two independent
+   migration defects and failed before any write:
+
+   - The live and release coordinator-proxy runtimes were both 130 bytes, but
+     31 bytes differed wholly inside the 51-byte Solidity CBOR trailer (offsets
+     88--118); their executable bodies were identical. Compatibility baseline
+     v3 now binds the normalized proxy executable hash while retaining both
+     full runtime hashes, exact live-code verification, and release-lock
+     provenance. Its regression accepts metadata-only drift and rejects one
+     changed executable byte.
+   - `fleet.mirror.4` had an authenticated interrupted receipt followed by an
+     exact descendant `postcondition_verified` marker. The revised-plan gate
+     previously checked that recovered action before carrying its verified
+     legacy intent. Verified EVM carries now run first; the exact legacy gas
+     ceiling and intent are retained, while a finalized-only receipt still
+     fails the unchanged-action check.
+
+   Two read-only builds at later finalized heads 7,898,930 and 7,898,940 now
+   produce the identical accelerated plan hash
+   `0x9be00c4516aaf0e5067b9ca8a6405ee9ae1d3a330fbbd9efb8d72c70a4b4b453`.
+   The plan has 2,238 actions and approves active maxima of 165,655,232,000 TAO
+   rao, 19,131,501,203,537 alpha rao, 148,909,500,000,000,000,000 EVM gas wei,
+   and 256 registrations. Cumulative superseded spend is 5,500,000,000 alpha
+   rao, 11,090,500,000,000,000,000 EVM gas wei, and three registrations. The
+   active plus superseded EVM ceiling is exactly the configured
+   160,000,000,000,000,000,000 limit; total registrations are 259 of 260. It
+   binds coordinator implementation `0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef`
+   at deployer nonce 27 and compatibility baseline v3. This is the sole testnet
+   hash authorized for the accelerated apply; any drift requires another
+   read-only two-build review.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -2159,8 +2216,8 @@ completed successfully after the release lock was frozen:
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** across 22 analyzed contracts and 64 detectors. |
-| `forge fmt --check` / clean `forge build --sizes` | Pass; the final clean optimized Solidity 0.8.24 compile completed in 379.35 seconds. `STCoordinator` is 23,469 bytes, leaving 1,107 bytes under the EIP-170 limit. The testnet-only coordinator adversary is 24,336 bytes with 240 bytes remaining. |
-| `forge test --summary` | **131 passed, 0 failed, 0 skipped**, including the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
+| `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
+| `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, `api/...`/`model` compilation, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. |
 | Operator PostgreSQL/Redis integration suites | Pass against the isolated local profile for the complete verify-trail flow, poisoning/failure paths, concurrent fenced mutation, cached-response replay isolation, orphan cleanup, exact/prefix egress indexes, token-owned lock mutual exclusion and stale-release safety, expiry sweeping, and loaded-trail lock-TTL coverage. |
 | Subtensor infrastructure regressions | **23 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |

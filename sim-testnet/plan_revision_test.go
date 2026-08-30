@@ -461,7 +461,7 @@ func TestPlanRevisionCarriesVerifiedAncestorEVMGasReallocationAndOriginalSpend(t
 	releaseFutureReserve(ancestor)
 	gasUnits := map[string]uint64{
 		"campaign.voluntary-conviction.1": 30_505_000,
-		"fleet.mirror.1":                  150_000,
+		"operator.register.1":             700_000,
 	}
 	for index := range ancestor.Actions {
 		action := &ancestor.Actions[index]
@@ -533,8 +533,9 @@ func TestPlanRevisionCarriesVerifiedAncestorEVMGasReallocationAndOriginalSpend(t
 			t.Errorf("verified gas reallocation %s was not carried exactly: got=%+v want=%+v", id, got, want)
 		}
 	}
-	if actionByID(t, revised, "fleet.mirror.2").Parameters[evmMaximumGasUnitsParameter] != "200000" {
-		t.Fatal("unverified adjacent mirror inherited the historical gas ceiling")
+	adjacent := actionByID(t, revised, "operator.register.2")
+	if adjacent.Kind != "evm-transaction" || adjacent.Parameters[evmMaximumGasUnitsParameter] != "750000" {
+		t.Fatal("unverified adjacent operator registration inherited the historical gas ceiling")
 	}
 	wantMaximum, err := maximumActionSpend(revised.Actions)
 	if err != nil || revised.MaximumSpend != wantMaximum || revised.MaximumSpend.EVMGasWei == beforeMaximum {
@@ -583,6 +584,83 @@ func TestEVMGasReallocationEquivalenceRejectsEverySemanticChange(t *testing.T) {
 		if sameEVMTransactionExceptGasUnits(baseline, candidate) {
 			t.Errorf("semantic change %d was accepted as a gas-only reallocation: %+v", index, candidate)
 		}
+	}
+}
+
+// TestLegacyFleetWriteConversionRequiresExactReadProof ensures only the
+// reviewed atomic-installer transition may retain an ancestor write receipt.
+func TestLegacyFleetWriteConversionRequiresExactReadProof(t *testing.T) {
+	ancestor := Action{
+		ID: "fleet.mirror.1", Kind: "evm-transaction", Target: "head-fleet:1",
+		Parameters: map[string]string{
+			fleetCommitmentStorageParameter: fleetCommitmentStorageV2,
+			deploymentManifestHashParameter: "0x1111",
+			evmMaximumGasUnitsParameter:     "200000",
+			evmMaximumFeePerGasParameter:    "100000000000",
+		},
+		Spend: Spend{EVMGasWei: "20000000000000000"},
+	}
+	proof := Action{
+		ID: "fleet.mirror.1", Kind: "evm-read", Target: "head-fleet:1",
+		Parameters: map[string]string{
+			fleetCommitmentStorageParameter: fleetCommitmentStorageV2,
+			deploymentManifestHashParameter: "0x1111",
+			"batch_installed":               "true",
+		},
+	}
+	if !sameVerifiedLegacyFleetWriteAsReadProof(ancestor, proof) {
+		t.Fatal("exact legacy fleet write was not recognized")
+	}
+	mutations := []Action{proof, proof, proof, proof, proof, proof}
+	mutations[0].ID = "fleet.mirror.2"
+	mutations[1].Target = "head-fleet:2"
+	mutations[2].Kind = "evm-transaction"
+	mutations[3].Parameters = cloneStrings(proof.Parameters)
+	delete(mutations[3].Parameters, "batch_installed")
+	mutations[4].Parameters = cloneStrings(proof.Parameters)
+	mutations[4].Parameters[deploymentManifestHashParameter] = "0x2222"
+	mutations[5].Spend.TAORao = 1
+	for index, mutation := range mutations {
+		if sameVerifiedLegacyFleetWriteAsReadProof(ancestor, mutation) {
+			t.Errorf("semantic mutation %d retained a legacy write", index)
+		}
+	}
+}
+
+// TestVerifiedLegacyFleetWriteRemainsChargedAcrossRevision proves the exact
+// verified write, not the zero-cost replacement proof, remains in plan spend.
+func TestVerifiedLegacyFleetWriteRemainsChargedAcrossRevision(t *testing.T) {
+	ancestor := Action{
+		ID: "fleet.bind.1.1", Kind: "evm-transaction", Target: "miner:1", Description: "legacy bind",
+		Parameters: map[string]string{
+			deploymentManifestHashParameter: "0x1111",
+			evmMaximumGasUnitsParameter:     "400000",
+			evmMaximumFeePerGasParameter:    "100000000000",
+		},
+		Spend: Spend{EVMGasWei: "40000000000000000"}, DependsOn: []string{"fleet.mirror.1"},
+	}
+	proof := Action{
+		ID: "fleet.bind.1.1", Kind: "evm-read", Target: "miner:1", Description: "batch proof",
+		Parameters: map[string]string{deploymentManifestHashParameter: "0x1111", "batch_installed": "true"},
+		DependsOn:  []string{"fleet.install.batch.1"},
+	}
+	var err error
+	ancestor.IntentHash, err = actionIntentHash(ancestor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof.IntentHash, err = actionIntentHash(proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior := &SetupPlan{PlanHash: "0x" + strings.Repeat("11", 32), Actions: []Action{ancestor}}
+	revised := &SetupPlan{PlanHash: "0x" + strings.Repeat("22", 32), Actions: []Action{proof}}
+	entries := []JournalEntry{{PlanHash: prior.PlanHash, ActionID: ancestor.ID, IntentHash: ancestor.IntentHash, Stage: StageVerified}}
+	if err := preserveVerifiedEVMGasReallocations(t.TempDir(), revised, prior, entries); err != nil {
+		t.Fatal(err)
+	}
+	if revised.Actions[0].IntentHash != ancestor.IntentHash || revised.MaximumSpend.EVMGasWei != ancestor.Spend.EVMGasWei {
+		t.Fatalf("verified legacy write was not retained exactly: action=%+v maximum=%+v", revised.Actions[0], revised.MaximumSpend)
 	}
 }
 
@@ -1399,6 +1477,119 @@ func TestPlanRevisionCarriesVerifiedCoordinatorImplementationIntoActivationRetry
 	withoutProof[0].Stage = StageFinalized
 	if _, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, prior, &current, withoutProof, time.Unix(2, 0), migration); err == nil {
 		t.Fatalf("implementation continuation without exact verification was accepted: %v", err)
+	}
+}
+
+func TestRepeatedCoordinatorUpgradeBoundaryIncludesVerifiedFleetBatcher(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWithoutBatcher := prior.CoordinatorUpgrade.DeployerNonce + 1
+	got, batcher, err := repeatedCoordinatorUpgradeBoundary(prior, nil)
+	if err != nil || got != wantWithoutBatcher || batcher != nil {
+		t.Fatalf("unverified batcher boundary=%d batcher=%v want=%d/nil: %v", got, batcher, wantWithoutBatcher, err)
+	}
+
+	batcherAction := actionByID(t, prior, "fleet.refresh.deploy-batcher")
+	entries := []JournalEntry{{PlanHash: prior.PlanHash, ActionID: batcherAction.ID, IntentHash: batcherAction.IntentHash, Stage: StageVerified}}
+	got, batcher, err = repeatedCoordinatorUpgradeBoundary(prior, entries)
+	if err != nil || got != wantWithoutBatcher+1 || batcher == nil || batcher.IntentHash != batcherAction.IntentHash {
+		t.Fatalf("verified batcher boundary=%d batcher=%v want=%d/exact: %v", got, batcher, wantWithoutBatcher+1, err)
+	}
+
+	malformed := *prior
+	malformed.Actions = append([]Action(nil), prior.Actions...)
+	for index := range malformed.Actions {
+		if malformed.Actions[index].ID != batcherAction.ID {
+			continue
+		}
+		malformed.Actions[index].Parameters = cloneStrings(malformed.Actions[index].Parameters)
+		malformed.Actions[index].Parameters["expected_nonce"] = strconv.FormatUint(wantWithoutBatcher+1, 10)
+		malformed.Actions[index].IntentHash, err = actionIntentHash(malformed.Actions[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+		batcherAction = malformed.Actions[index]
+	}
+	malformed.PlanHash, err = malformed.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	malformedEntry := []JournalEntry{{PlanHash: malformed.PlanHash, ActionID: batcherAction.ID, IntentHash: batcherAction.IntentHash, Stage: StageVerified}}
+	if _, _, err := repeatedCoordinatorUpgradeBoundary(&malformed, malformedEntry); err == nil || !strings.Contains(err.Error(), "does not bind deployer nonce") {
+		t.Fatalf("malformed verified batcher envelope was accepted: %v", err)
+	}
+}
+
+func TestPlanRevisionChargesRetiredVerifiedEVMGasExactlyOnce(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retiredIDs := []string{"evm.coordinator-upgrade-implementation", "fleet.refresh.deploy-batcher"}
+	entries := make([]JournalEntry, 0, len(retiredIDs))
+	want := DecimalUint("17")
+	for _, actionID := range retiredIDs {
+		action := actionByID(t, prior, actionID)
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		want, err = addDecimalUint(want, action.Spend.EVMGasWei)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	revised := *prior
+	revised.Actions = append([]Action(nil), prior.Actions...)
+	for index := range revised.Actions {
+		if !slices.Contains(retiredIDs, revised.Actions[index].ID) {
+			continue
+		}
+		revised.Actions[index].Parameters = cloneStrings(revised.Actions[index].Parameters)
+		revised.Actions[index].Parameters["release_generation"] = "next"
+		revised.Actions[index].IntentHash, err = actionIntentHash(revised.Actions[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := addRetiredVerifiedEVMGas(prior, &revised, entries, Spend{EVMGasWei: "17"})
+	if err != nil || got.EVMGasWei != want {
+		t.Fatalf("retired gas=%s want=%s: %v", got.EVMGasWei, want, err)
+	}
+
+	carried := revised
+	carried.Actions = append([]Action(nil), revised.Actions...)
+	implementation := actionByID(t, prior, retiredIDs[0])
+	for index := range carried.Actions {
+		if carried.Actions[index].ID != implementation.ID {
+			continue
+		}
+		carried.Actions[index].AcceptedPriorIntentHashes = []string{implementation.IntentHash}
+		carried.Actions[index].IntentHash, err = actionIntentHash(carried.Actions[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantCarried, err := addDecimalUint("17", actionByID(t, prior, retiredIDs[1]).Spend.EVMGasWei)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = addRetiredVerifiedEVMGas(prior, &carried, entries, Spend{EVMGasWei: "17"})
+	if err != nil || got.EVMGasWei != wantCarried {
+		t.Fatalf("carried gas=%s want=%s: %v", got.EVMGasWei, wantCarried, err)
+	}
+	got, err = addRetiredVerifiedEVMGas(prior, &revised, nil, Spend{EVMGasWei: "17"})
+	if err != nil || got.EVMGasWei != "17" {
+		t.Fatalf("unverified gas=%s want=17: %v", got.EVMGasWei, err)
 	}
 }
 

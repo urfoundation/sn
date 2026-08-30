@@ -92,6 +92,27 @@ func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	}
 }
 
+// TestGeneratedABIHashBindsFleetBatcher proves the accelerated setup helper is
+// an authenticated release input rather than an unreviewed testnet sidecar.
+func TestGeneratedABIHashBindsFleetBatcher(t *testing.T) {
+	baseline := generatedABIHash()
+	changed := append([]releaseABI(nil), generatedReleaseABIs...)
+	found := false
+	for index := range changed {
+		if changed[index].name != "FleetBatcher" {
+			continue
+		}
+		found = true
+		changed[index].abi += " "
+	}
+	if !found {
+		t.Fatal("FleetBatcher ABI is absent from the release lock")
+	}
+	if digestReleaseABIs(changed) == baseline {
+		t.Fatal("FleetBatcher ABI drift did not alter the release lock")
+	}
+}
+
 func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	serverRoot := t.TempDir()
 	initDir := filepath.Join(serverRoot, "local", "postgres", "initdb")

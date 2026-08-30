@@ -207,8 +207,17 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if actions["churn.fund.1"].Parameters["maximum_burn_rao"] != fmt.Sprint(plan.RegistrationBurnLimitRao) || actions["churn.fund.1"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) || actions["churn.fund.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) {
 		t.Fatalf("native registration funding components are not approval-bound: %+v", actions["churn.fund.1"])
 	}
-	if actions["fleet.fund-hotkey.1"].Spend.TAORao != 3*plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.2"].Spend.TAORao != plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) || actions["wallet.native-fee-reserve"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) {
+	if actions["fleet.fund-hotkey.1"].Spend.TAORao != 4*plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.2"].Spend.TAORao != 2*plan.NativeTransactionFeeLimitRao+plan.LiveFacts.ExistentialDepositRao || actions["fleet.fund-hotkey.1"].Parameters["keep_alive_reserve_rao"] != fmt.Sprint(plan.LiveFacts.ExistentialDepositRao) || actions["wallet.native-fee-reserve"].Parameters["maximum_fee_rao"] != fmt.Sprint(plan.NativeTransactionFeeLimitRao) {
 		t.Fatalf("native commitment/global fee reserves are not approval-bound: fleet1=%d fleet2=%d wallet=%+v", actions["fleet.fund-hotkey.1"].Spend.TAORao, actions["fleet.fund-hotkey.2"].Spend.TAORao, actions["wallet.native-fee-reserve"])
+	}
+	nativeWrites := 0
+	for _, action := range plan.Actions {
+		if action.Kind == "substrate-extrinsic" {
+			nativeWrites++
+		}
+	}
+	if actions["wallet.native-fee-reserve"].Parameters["native_writes"] != strconv.Itoa(nativeWrites) {
+		t.Fatalf("native fee reserve covers %s writes, want exact plan count %d", actions["wallet.native-fee-reserve"].Parameters["native_writes"], nativeWrites)
 	}
 	if !seen["campaign.evm-gas-reserve"] || !seen["campaign.voluntary-conviction.1"] || !seen[dishonestDepositActionID] || !seen["alpha.transfer.operator-deposit.1"] || !seen["alpha.transfer.validator.1"] || !seen["validator.reserve-majority"] || !seen["evm.vault-register-escrow"] || !seen["validator.take-zero.1"] || !seen["production.schedule-policy"] || !seen["production.hyperparameter.burn_half_life"] || !seen["production.hyperparameter.immunity_period"] || !seen["retirement.evm-gas-reserve"] || !seen["evm.fund-guardian"] || !seen["evm.governance-drill-implementation"] || !seen["precompile.transfer-out"] {
 		t.Fatalf("release setup actions missing: %v", seen)
@@ -643,11 +652,12 @@ func TestSetupEVMGasUnitLimitsCoverLockedAndLiveEstimatesAfterManagerPadding(t *
 		{id: "evm.sink-fix-recorder", rawGas: 49_638},
 		{id: "operator.deposit.register.1", rawGas: 126_776},
 		{id: "operator.register.1", rawGas: 515_196},
-		// The first cold-storage mirror through the live runtime-v452 proxy
-		// estimated 107,080 units at testnet block 7,896,221. The older
-		// 76,057-unit fixture did not model that storage state.
-		{id: "fleet.mirror.1", rawGas: 107_080},
-		{id: "fleet.bind.1.1", rawGas: 256_592},
+		// Maximum-size helper transactions replace the 1,000 serialized
+		// head-fleet writes. These raw ceilings include the complete 10x4
+		// install/refresh state transition before manager padding.
+		{id: "fleet.refresh.deploy-batcher", rawGas: 818_937},
+		{id: "fleet.install.batch.1", rawGas: 8_615_031},
+		{id: "fleet.refresh.batch.1", rawGas: 8_160_111},
 	}
 	for _, observation := range observations {
 		padded, err := paddedEVMGas(observation.rawGas)

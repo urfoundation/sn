@@ -46,25 +46,28 @@ trap 'rm -f -- "$report"' EXIT
 
 cd "$evm_repo"
 # STSubnet.sol is the retained pre-1.0 monolith and is not installed by
-# sim-testnet. Starting at STCoordinator traverses the complete deployable
-# release graph: coordinator, immutable vault, reserve sink, proxy libraries,
-# and every runtime-precompile interface they import.
-if ! "$slither_bin" src/STCoordinator.sol \
-  --solc "$solc_bin" \
-  --filter-paths 'lib|test|script' \
-  --exclude-low \
-  --exclude-informational \
-  --disable-color \
-  --json "$report"; then
-  if [[ -s "$report" ]]; then
-    jq -r '.results.detectors[]? | "[\(.impact)] \(.check): \(.description)"' "$report" >&2
+# sim-testnet. The coordinator root traverses immutable custody, proxy libraries,
+# and runtime-precompile interfaces. The additive fleet batcher is a standalone
+# testnet deployment root and must be analyzed separately.
+for contract in src/STCoordinator.sol src/STFleetBatcher.sol; do
+  rm -f -- "$report"
+  if ! "$slither_bin" "$contract" \
+    --solc "$solc_bin" \
+    --filter-paths 'lib|test|script' \
+    --exclude-low \
+    --exclude-informational \
+    --disable-color \
+    --json "$report"; then
+    if [[ -s "$report" ]]; then
+      jq -r '.results.detectors[]? | "[\(.impact)] \(.check): \(.description)"' "$report" >&2
+    fi
+    exit 1
   fi
-  exit 1
-fi
 
-if [[ "$(jq '[.results.detectors[]? | select(.impact == "High" or .impact == "Medium")] | length' "$report")" != "0" ]]; then
-  echo "Slither emitted a high/medium finding despite a successful exit" >&2
-  exit 1
-fi
+  if [[ "$(jq '[.results.detectors[]? | select(.impact == "High" or .impact == "Medium")] | length' "$report")" != "0" ]]; then
+    echo "Slither emitted a high/medium finding despite a successful exit for $contract" >&2
+    exit 1
+  fi
+done
 
-echo "release Solidity static gate passed (Slither 0.11.6; no high/medium findings)"
+echo "release Solidity static gate passed for both deployable roots (Slither 0.11.6; no high/medium findings)"

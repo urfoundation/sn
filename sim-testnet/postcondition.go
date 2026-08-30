@@ -650,8 +650,16 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["finalized_block"] = snapshot.FinalizedBlock
 		state["finalized_block_hash"] = snapshot.FinalizedHash
 		return state, nil
-	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation":
+	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation" || a.ID == "fleet.refresh.deploy-batcher":
 		return e.verifyDeploymentPostState(ctx, a, evmHead, state)
+	case a.ID == "fleet.refresh.oracle-activate" || a.ID == "fleet.refresh.oracle-await-active" || a.ID == "fleet.refresh.oracle-restore" || a.ID == "fleet.refresh.oracle-await-restored":
+		return e.verifyFleetRefreshOraclePostState(ctx, a, evmHead, state)
+	case strings.HasPrefix(a.ID, "fleet.refresh.commitment."):
+		return e.verifyFleetRefreshCommitmentPostState(suffixInt(a.ID), state)
+	case strings.HasPrefix(a.ID, "fleet.refresh.batch."):
+		return e.verifyFleetRefreshBatchPostState(ctx, a, evmHead, state)
+	case strings.HasPrefix(a.ID, "fleet.install.batch."):
+		return e.verifyFleetInstallBatchPostState(ctx, a, evmHead, state)
 	case a.ID == "evm.coordinator-upgrade-activate":
 		if err := e.ensurePayloads(ctx); err != nil {
 			return nil, err
@@ -1189,16 +1197,22 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		return nil, err
 	}
 	p := e.payloads
-	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.Manifest.PrecompileProbe, "evm.coordinator-upgrade-implementation": p.CoordinatorUpgrade.Implementation}
+	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.Manifest.PrecompileProbe, "evm.coordinator-upgrade-implementation": p.CoordinatorUpgrade.Implementation, "fleet.refresh.deploy-batcher": p.FleetBatcherAddress}
 	if address, ok := addresses[a.ID]; ok {
 		code, err := e.deployer.client.CodeAt(ctx, address, new(big.Int).SetUint64(head.Number))
 		expected := p.ExpectedRuntime[address]
+		if a.ID == "fleet.refresh.deploy-batcher" {
+			expected = p.FleetBatcherRuntime
+		}
 		if err != nil || len(expected) > 0 && string(code) != string(expected) {
 			return nil, stateMismatchError(err, "runtime code mismatch at %s", address)
 		}
 		wantHash := p.Manifest.RuntimeHashes[address.Hex()]
 		if address == p.CoordinatorUpgrade.Implementation {
 			wantHash = p.CoordinatorUpgrade.RuntimeCodeHash
+		}
+		if address == p.FleetBatcherAddress {
+			wantHash = cryptoKeccak(p.FleetBatcherRuntime)
 		}
 		if len(expected) == 0 && (wantHash == "" || !strings.EqualFold(cryptoKeccak(code), wantHash)) {
 			return nil, fmt.Errorf("runtime hash mismatch at %s", address)

@@ -117,7 +117,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		Netuid: 7, ChainID: testnetChainID, Authority: "127.0.0.1:9944", OperationalRPCMode: rpcModePrivateAuthority,
 		OperationalSubstrate: "ws://127.0.0.1:9944", OperationalEVM: "http://127.0.0.1:9944", ObjectStoreHost: "127.0.0.1",
 		OperatorAPIOrigins: []string{"https://no1.example", "https://no2.example"}, WalletSecret: "unit test wallet reference", WalletMaterial: "unit test wallet secret", WalletPasswordSecret: "unit test password reference", WalletPassword: "unit test password secret", WalletPublic: testColdkeyPublic, WalletHotkeyPublic: testHotkeyPublic,
-		MaximumTAORao: 120_000_000_000, MaximumAlphaRao: 20_000_000_000_000, MaximumEVMGasWei: DecimalUint("100000000000000000000"),
+		MaximumTAORao: 200_000_000_000, MaximumAlphaRao: 20_000_000_000_000, MaximumEVMGasWei: DecimalUint("160000000000000000000"),
 		PolicyHash: policyHash, ConfigHash: configHash,
 	}
 }

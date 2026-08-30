@@ -467,6 +467,61 @@ func TestFleetMirrorRecoveryRequiresCanonicalActionAndUnchangedRevision(t *testi
 	}
 }
 
+// A recovered ancestor transaction may cross into the atomic installer plan
+// only after an exact descendant postcondition verified the legacy intent. A
+// finalized-only receipt remains blocked by the unchanged-action boundary.
+func TestFleetMirrorRecoveryAllowsOnlyVerifiedLegacyWriteReadProofTransition(t *testing.T) {
+	fixture := newFleetMirrorRecoveryTestFixture(t)
+	recovery := finalizedFleetMirrorRecovery{
+		Transaction: planRevisionTransaction{
+			PlanHash: fixture.plan.PlanHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash,
+			TransactionHash: "0x" + strings.Repeat("61", 32), BlockNumber: 77, BlockHash: "0x" + strings.Repeat("62", 32),
+		},
+		Action: fixture.action, Fleet: 4, Hotkey: fixture.hotkey, CommitmentHash: fixture.commitmentHash,
+		FinalizedBlock: fixture.finalizedBlock, FinalizedBlockHash: fixture.finalizedBlockHash,
+	}
+	proof := fixture.action
+	proof.Kind = "evm-read"
+	proof.Parameters = cloneStrings(fixture.action.Parameters)
+	delete(proof.Parameters, evmMaximumGasUnitsParameter)
+	delete(proof.Parameters, evmMaximumFeePerGasParameter)
+	proof.Parameters["batch_installed"] = "true"
+	proof.Spend = Spend{}
+	proof.DependsOn = []string{"fleet.install.batch.1"}
+	var err error
+	proof.IntentHash, err = actionIntentHash(proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	revised := &SetupPlan{Actions: []Action{proof}}
+	verified := []JournalEntry{{
+		PlanHash: fixture.plan.PlanHash, ActionID: fixture.action.ID,
+		IntentHash: fixture.action.IntentHash, Stage: StageVerified,
+	}}
+	if err := preserveVerifiedEVMGasReallocations(t.TempDir(), revised, fixture.plan, verified); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRevisedFleetMirrorRecoveries(revised, []finalizedFleetMirrorRecovery{recovery}); err != nil {
+		t.Fatalf("verified legacy mirror was not carried before recovery validation: %v", err)
+	}
+	if revised.Actions[0].IntentHash != fixture.action.IntentHash || revised.MaximumSpend.EVMGasWei != fixture.action.Spend.EVMGasWei {
+		t.Fatalf("verified legacy mirror spend was not retained: action=%+v maximum=%+v", revised.Actions[0], revised.MaximumSpend)
+	}
+
+	finalizedOnly := &SetupPlan{Actions: []Action{proof}}
+	entries := []JournalEntry{{
+		PlanHash: fixture.plan.PlanHash, ActionID: fixture.action.ID,
+		IntentHash: fixture.action.IntentHash, Stage: StageFinalized,
+	}}
+	if err := preserveVerifiedEVMGasReallocations(t.TempDir(), finalizedOnly, fixture.plan, entries); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRevisedFleetMirrorRecoveries(finalizedOnly, []finalizedFleetMirrorRecovery{recovery}); err == nil {
+		t.Fatal("finalized-only legacy mirror crossed into a changed read-proof action")
+	}
+}
+
 // Persist one exact descendant postcondition and prove it durably closes the
 // ancestor transaction even if later native commitment state legitimately
 // advances during conformance testing.

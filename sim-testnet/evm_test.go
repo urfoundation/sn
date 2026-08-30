@@ -470,15 +470,21 @@ func TestRepeatedCoordinatorUpgradeBindsNextNonceAndImmutableExecutableBaseline(
 	if err != nil {
 		t.Fatal(err)
 	}
+	proxyArtifact := artifactByName("ERC1967Proxy")
+	proxyExecutable, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.CoordinatorProxy], proxyArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	baseline := CoordinatorUpgradeBaseline{
-		Schema: "urnetwork-coordinator-upgrade-baseline-v2", PriorDeploymentHash: manifestHash,
+		Schema: "urnetwork-coordinator-upgrade-baseline-v3", PriorDeploymentHash: manifestHash,
 		ReleaseDeploymentHash: manifestHash, ReboundDeploymentHash: manifestHash,
 		ReserveSinkExecutableHash: reserveExecutable, SettlementVaultExecutableHash: vaultExecutable,
 		GovernanceDrillVersion: crypto.Keccak256Hash([]byte("urnetwork/coordinator-adversary/v1")).Hex(), GovernanceProxiableUUID: erc1967ImplementationSlot,
 		DeployerNonce: payloads.CoordinatorUpgrade.DeployerNonce, ProbeAddressEmpty: false,
 		ActiveImplementation: activeUpgrade.Implementation.Hex(), ActiveImplementationHash: activeUpgrade.RuntimeCodeHash,
-		PrecompileProbeExecutableHash: probeExecutable,
-		FinalizedBlock:                123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
+		PrecompileProbeExecutableHash:  probeExecutable,
+		CoordinatorProxyExecutableHash: proxyExecutable,
+		FinalizedBlock:                 123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
 	}
 	if err := validateCoordinatorUpgradeBaselineRelease(baseline, payloads.Manifest, payloads.Manifest, payloads.CoordinatorUpgrade); err != nil {
 		t.Fatal(err)
@@ -490,6 +496,21 @@ func TestRepeatedCoordinatorUpgradeBindsNextNonceAndImmutableExecutableBaseline(
 	wrongExecutable.PrecompileProbeExecutableHash = "0x" + strings.Repeat("77", 32)
 	if err := validateCoordinatorUpgradePayloadBaseline(wrongExecutable, payloads); err == nil || !strings.Contains(err.Error(), "precompile probe") {
 		t.Fatalf("probe executable drift was accepted: %v", err)
+	}
+	metadataOnly := *payloads
+	metadataOnly.ExpectedRuntime = maps.Clone(payloads.ExpectedRuntime)
+	metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy] = append([]byte(nil), payloads.ExpectedRuntime[payloads.Manifest.CoordinatorProxy]...)
+	executable, err := normalizedSolidityExecutable(metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy], proxyArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy][len(executable)+1] ^= 0x01
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, &metadataOnly); err != nil {
+		t.Fatalf("proxy metadata-only drift was rejected: %v", err)
+	}
+	metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy][40] ^= 0x01
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, &metadataOnly); err == nil || !strings.Contains(err.Error(), "proxy executable") {
+		t.Fatalf("proxy executable drift was accepted: %v", err)
 	}
 	wrongActive := baseline
 	wrongActive.ActiveImplementation = payloads.CoordinatorUpgrade.Implementation.Hex()
@@ -541,6 +562,12 @@ func TestExactActiveCoordinatorUpgradeIsReusedOnlyForIdenticalRelease(t *testing
 		PrecompileProbeExecutableHash: probeExecutable,
 		FinalizedBlock:                123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
 	}}
+	batcherEnvelope, ok := deploymentActionEnvelope(payloads, "fleet.refresh.deploy-batcher", cfg.Config.Budgets.MaximumRegistrationBurnRao)
+	if !ok {
+		t.Fatal("fleet batcher deployment envelope is unavailable")
+	}
+	batcherEnvelope["runtime_code_hash"] = crypto.Keccak256Hash(payloads.FleetBatcherRuntime).Hex()
+	prior.Actions = []Action{{ID: "fleet.refresh.deploy-batcher", Kind: "evm-transaction", Target: payloads.FleetBatcherAddress.Hex(), Parameters: batcherEnvelope}}
 	if err := configureCoordinatorUpgradeNonce(payloads, active.DeployerNonce+1); err != nil {
 		t.Fatal(err)
 	}
@@ -552,6 +579,13 @@ func TestExactActiveCoordinatorUpgradeIsReusedOnlyForIdenticalRelease(t *testing
 
 	if err := configureCoordinatorUpgradeNonce(payloads, candidate.DeployerNonce); err != nil {
 		t.Fatal(err)
+	}
+	driftedBatcher := *prior
+	driftedBatcher.Actions = append([]Action(nil), prior.Actions...)
+	driftedBatcher.Actions[0].Parameters = cloneStrings(driftedBatcher.Actions[0].Parameters)
+	driftedBatcher.Actions[0].Parameters["runtime_code_hash"] = "0x" + strings.Repeat("56", 32)
+	if reused, err := reuseExactActiveCoordinatorUpgrade(&driftedBatcher, payloads); err != nil || reused || payloads.CoordinatorUpgrade != candidate {
+		t.Fatalf("batcher-drifted release reuse=%t candidate=%+v: %v", reused, payloads.CoordinatorUpgrade, err)
 	}
 	driftedPrior := *prior
 	driftedPrior.CoordinatorUpgrade.RuntimeCodeHash = "0x" + strings.Repeat("12", 32)
@@ -589,7 +623,7 @@ func TestRepeatedCoordinatorActivationRequiresExactPriorSlotAndRuntime(t *testin
 		t.Fatal(err)
 	}
 	plan := &SetupPlan{CoordinatorUpgradeBaseline: CoordinatorUpgradeBaseline{
-		Schema: "urnetwork-coordinator-upgrade-baseline-v2", ActiveImplementation: activeUpgrade.Implementation.Hex(), ActiveImplementationHash: activeUpgrade.RuntimeCodeHash,
+		Schema: "urnetwork-coordinator-upgrade-baseline-v3", ActiveImplementation: activeUpgrade.Implementation.Hex(), ActiveImplementationHash: activeUpgrade.RuntimeCodeHash,
 	}}
 	baselineAddress, baselineHash, err := coordinatorUpgradeActivationBaseline(plan, payloads)
 	if err != nil || baselineAddress != activeUpgrade.Implementation || baselineHash != activeUpgrade.RuntimeCodeHash {

@@ -538,8 +538,8 @@ func nextVoluntaryConvictionRepairActionID(plans ...*SetupPlan) (string, error) 
 }
 
 // Insert the no-broadcast reconciliation, one bounded alpha repair, and a
-// barrier on the first unverified mirror. Already verified native commitment
-// intents are left byte-for-byte unchanged.
+// barrier on the first unverified fleet-setup mutation. Already verified
+// native commitment intents are left byte-for-byte unchanged.
 func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, prior *SetupPlan, entries []JournalEntry, recovery voluntaryConvictionDuplicateRecovery) error {
 	if revised == nil || prior == nil {
 		return errors.New("voluntary-conviction recovery plans are unavailable")
@@ -650,23 +650,29 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 		return errors.New("fresh plan has no voluntary conviction to reconcile")
 	}
 	revised.Actions = append(revised.Actions[:voluntaryIndex+1], append([]Action{reconciliation, repair}, revised.Actions[voluntaryIndex+1:]...)...)
+	barrierID := "fleet.mirror.1"
+	for _, action := range revised.Actions {
+		if action.ID == "fleet.refresh.deploy-batcher" {
+			barrierID = action.ID
+			break
+		}
+	}
 	foundBarrier := false
 	for index := range revised.Actions {
 		action := &revised.Actions[index]
-		if action.ID != "fleet.mirror.1" {
-			continue
+		if action.ID == barrierID {
+			if !slices.Contains(action.DependsOn, repair.ID) {
+				action.DependsOn = append(action.DependsOn, repair.ID)
+			}
+			action.IntentHash, err = actionIntentHash(*action)
+			if err != nil {
+				return err
+			}
+			foundBarrier = true
 		}
-		if !slices.Contains(action.DependsOn, repair.ID) {
-			action.DependsOn = append(action.DependsOn, repair.ID)
-		}
-		action.IntentHash, err = actionIntentHash(*action)
-		if err != nil {
-			return err
-		}
-		foundBarrier = true
 	}
 	if !foundBarrier {
-		return errors.New("fresh plan has no fleet-1 mirror recovery barrier")
+		return errors.New("fresh plan has no fleet-setup recovery barrier")
 	}
 	revised.MaximumSpend, err = maximumActionSpend(revised.Actions)
 	return err

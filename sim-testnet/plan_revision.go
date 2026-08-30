@@ -116,6 +116,45 @@ func exactVerifiedPlanAction(prior *SetupPlan, entries []JournalEntry, actionID 
 	return false
 }
 
+// Resolve the next safe deployer nonce after an active coordinator release.
+// The testnet-only fleet batcher is a CREATE immediately after the coordinator
+// implementation, so a verified batcher advances the repeated-upgrade boundary
+// by one more nonce. Its exact plan envelope is authenticated here before that
+// extra nonce can influence a replacement release.
+func repeatedCoordinatorUpgradeBoundary(prior *SetupPlan, entries []JournalEntry) (uint64, *Action, error) {
+	if prior == nil || prior.CoordinatorUpgrade.DeployerNonce > ^uint64(0)-2 {
+		return 0, nil, errors.New("repeated coordinator upgrade nonce range overflows")
+	}
+	next := prior.CoordinatorUpgrade.DeployerNonce + 1
+	if !exactVerifiedPlanAction(prior, entries, "fleet.refresh.deploy-batcher") {
+		return next, nil, nil
+	}
+	var batcher *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != "fleet.refresh.deploy-batcher" {
+			continue
+		}
+		if batcher != nil {
+			return 0, nil, errors.New("prior plan has duplicate fleet batcher deployment actions")
+		}
+		copy := prior.Actions[index]
+		batcher = &copy
+	}
+	if batcher == nil || batcher.Kind != "evm-transaction" || !common.IsHexAddress(batcher.Target) {
+		return 0, nil, errors.New("verified fleet batcher deployment has no exact EVM target")
+	}
+	deployer := common.HexToAddress(prior.Roles.Deployer)
+	expectedAddress := crypto.CreateAddress(deployer, next)
+	expectedNonce, nonceErr := strconv.ParseUint(batcher.Parameters["expected_nonce"], 10, 64)
+	if deployer == (common.Address{}) || expectedNonce != next || nonceErr != nil || !strings.EqualFold(batcher.Parameters["expected_signer"], deployer.Hex()) || batcher.Parameters["expected_transaction_to"] != "create" || !strings.EqualFold(batcher.Parameters["expected_created_address"], expectedAddress.Hex()) || common.HexToAddress(batcher.Target) != expectedAddress {
+		return 0, nil, stateMismatchError(nonceErr, "verified fleet batcher deployment does not bind deployer nonce %d and CREATE address %s", next, expectedAddress)
+	}
+	if _, err := decodeHex32("verified fleet batcher runtime hash", batcher.Parameters["runtime_code_hash"]); err != nil {
+		return 0, nil, err
+	}
+	return next + 1, batcher, nil
+}
+
 // Prove that every nonce consumed by an obsolete immutable deployment belongs
 // to the exact verified CREATE prefix and that no contract-owned registration
 // has made that deployment economically live.
@@ -1426,14 +1465,32 @@ func callBytes32SelectorAt(ctx context.Context, client *ethclient.Client, addres
 // or baseline drift restores the new candidate nonce and follows the ordinary
 // reviewed repeated-upgrade path.
 func reuseExactActiveCoordinatorUpgrade(prior *SetupPlan, built *DeploymentPayloads) (bool, error) {
-	if prior == nil || built == nil || prior.CoordinatorUpgradeBaseline.Schema != "urnetwork-coordinator-upgrade-baseline-v2" {
+	if prior == nil || built == nil || !prior.CoordinatorUpgradeBaseline.isRepeated() {
 		return false, nil
 	}
 	candidateNonce := built.CoordinatorUpgrade.DeployerNonce
 	if err := configureCoordinatorUpgradeNonce(built, prior.CoordinatorUpgrade.DeployerNonce); err != nil {
 		return false, err
 	}
-	reuse := built.CoordinatorUpgrade == prior.CoordinatorUpgrade &&
+	batcherMatches := true
+	var priorBatcher *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != "fleet.refresh.deploy-batcher" {
+			continue
+		}
+		if priorBatcher != nil {
+			return false, errors.New("prior plan has duplicate fleet batcher deployment actions")
+		}
+		copy := prior.Actions[index]
+		priorBatcher = &copy
+	}
+	if priorBatcher != nil {
+		batcherMatches = priorBatcher.Kind == "evm-transaction" && common.IsHexAddress(priorBatcher.Target) &&
+			common.HexToAddress(priorBatcher.Target) == built.FleetBatcherAddress &&
+			strings.EqualFold(priorBatcher.Parameters["expected_created_address"], built.FleetBatcherAddress.Hex()) &&
+			strings.EqualFold(priorBatcher.Parameters["runtime_code_hash"], crypto.Keccak256Hash(built.FleetBatcherRuntime).Hex())
+	}
+	reuse := batcherMatches && built.CoordinatorUpgrade == prior.CoordinatorUpgrade &&
 		validateCoordinatorUpgradeBaselineRelease(prior.CoordinatorUpgradeBaseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade) == nil &&
 		validateCoordinatorUpgradePayloadBaseline(prior.CoordinatorUpgradeBaseline, built) == nil
 	if reuse {
@@ -1451,10 +1508,17 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 	if !implementationVerified {
 		return nil, errors.New("coordinator upgrade has no exact verified implementation intent")
 	}
-	if current.DeployerNonce != prior.CoordinatorUpgrade.DeployerNonce+1 {
-		return nil, fmt.Errorf("repeated coordinator upgrade nonce=%d, want next nonce %d", current.DeployerNonce, prior.CoordinatorUpgrade.DeployerNonce+1)
+	expectedNonce, verifiedBatcher, boundaryErr := repeatedCoordinatorUpgradeBoundary(prior, entries)
+	if boundaryErr != nil {
+		return nil, boundaryErr
+	}
+	if current.DeployerNonce != expectedNonce {
+		return nil, fmt.Errorf("repeated coordinator upgrade nonce=%d, want next authenticated nonce %d", current.DeployerNonce, expectedNonce)
 	}
 	continuingActivation := !activationVerified
+	if continuingActivation && verifiedBatcher != nil {
+		return nil, errors.New("fleet batcher was verified before its coordinator activation dependency")
+	}
 	upgradeNonce := current.DeployerNonce
 	if continuingActivation {
 		upgradeNonce = prior.CoordinatorUpgrade.DeployerNonce
@@ -1486,6 +1550,16 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 	if err != nil || nonce != current.DeployerNonce {
 		return nil, stateMismatchError(err, "repeated-upgrade deployer nonce=%d want=%d", nonce, current.DeployerNonce)
 	}
+	if verifiedBatcher != nil {
+		batcherAddress := common.HexToAddress(verifiedBatcher.Target)
+		code, codeErr := client.CodeAt(ctx, batcherAddress, block)
+		if codeErr != nil {
+			return nil, fmt.Errorf("read verified fleet batcher runtime: %w", codeErr)
+		}
+		if got, want := crypto.Keccak256Hash(code).Hex(), verifiedBatcher.Parameters["runtime_code_hash"]; len(code) == 0 || !strings.EqualFold(got, want) {
+			return nil, fmt.Errorf("verified fleet batcher runtime mismatch at %s: got=%s want=%s", batcherAddress, got, want)
+		}
+	}
 	priorHashes, priorErr := normalizedDeploymentRuntimeHashes(prior.Deployment)
 	builtHashes, builtErr := normalizedDeploymentRuntimeHashes(built.Manifest)
 	if priorErr != nil || builtErr != nil || len(priorHashes) != 6 || len(builtHashes) != 6 {
@@ -1502,9 +1576,6 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		}
 		codeByAddress[address] = code
 	}
-	if !strings.EqualFold(priorHashes[prior.Deployment.CoordinatorProxy], builtHashes[built.Manifest.CoordinatorProxy]) {
-		return nil, errors.New("immutable coordinator proxy runtime changed across repeated upgrade")
-	}
 	implementationSlot, err := client.StorageAt(ctx, prior.Deployment.CoordinatorProxy, common.HexToHash(erc1967ImplementationSlot), block)
 	if err != nil || len(implementationSlot) != 32 {
 		return nil, stateMismatchError(err, "read active coordinator implementation slot length=%d", len(implementationSlot))
@@ -1518,7 +1589,7 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 	if continuingActivation {
 		baselineAddress := prior.Deployment.CoordinatorImplementation
 		baselineHash := priorHashes[baselineAddress]
-		if prior.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v2" {
+		if prior.CoordinatorUpgradeBaseline.isRepeated() {
 			baselineAddress = common.HexToAddress(prior.CoordinatorUpgradeBaseline.ActiveImplementation)
 			baselineHash = prior.CoordinatorUpgradeBaseline.ActiveImplementationHash
 		}
@@ -1549,26 +1620,19 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		return nil, fmt.Errorf("repeated coordinator upgrade CREATE address already has %d runtime bytes", len(newCode))
 	}
 
-	normalizedPair := func(name string, address common.Address, artifact ContractArtifact) (string, error) {
-		active, activeErr := normalizedSolidityExecutableHash(codeByAddress[address], artifact)
-		if activeErr != nil {
-			return "", fmt.Errorf("normalize active %s: %w", name, activeErr)
-		}
-		release, releaseErr := normalizedSolidityExecutableHash(built.ExpectedRuntime[address], artifact)
-		if releaseErr != nil || active != release {
-			return "", stateMismatchError(releaseErr, "%s executable changed: active=%s release=%s", name, active, release)
-		}
-		return active, nil
-	}
-	reserveExecutable, err := normalizedPair("reserve sink", prior.Deployment.ReserveSink, artifactByName("ReserveSink"))
+	proxyExecutable, err := matchingNormalizedSolidityExecutableHash("coordinator proxy", codeByAddress[prior.Deployment.CoordinatorProxy], built.ExpectedRuntime[built.Manifest.CoordinatorProxy], artifactByName("ERC1967Proxy"))
 	if err != nil {
 		return nil, err
 	}
-	vaultExecutable, err := normalizedPair("settlement vault", prior.Deployment.SettlementVault, artifactByName("SettlementVault"))
+	reserveExecutable, err := matchingNormalizedSolidityExecutableHash("reserve sink", codeByAddress[prior.Deployment.ReserveSink], built.ExpectedRuntime[built.Manifest.ReserveSink], artifactByName("ReserveSink"))
 	if err != nil {
 		return nil, err
 	}
-	probeExecutable, err := normalizedPair("precompile probe", prior.Deployment.PrecompileProbe, TestnetPrecompileProbeArtifact)
+	vaultExecutable, err := matchingNormalizedSolidityExecutableHash("settlement vault", codeByAddress[prior.Deployment.SettlementVault], built.ExpectedRuntime[built.Manifest.SettlementVault], artifactByName("SettlementVault"))
+	if err != nil {
+		return nil, err
+	}
+	probeExecutable, err := matchingNormalizedSolidityExecutableHash("precompile probe", codeByAddress[prior.Deployment.PrecompileProbe], built.ExpectedRuntime[built.Manifest.PrecompileProbe], TestnetPrecompileProbeArtifact)
 	if err != nil {
 		return nil, err
 	}
@@ -1602,14 +1666,15 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		return &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: baseline, Upgrade: built.CoordinatorUpgrade}, nil
 	}
 	baseline := CoordinatorUpgradeBaseline{
-		Schema: "urnetwork-coordinator-upgrade-baseline-v2", PriorDeploymentHash: priorHash,
+		Schema: "urnetwork-coordinator-upgrade-baseline-v3", PriorDeploymentHash: priorHash,
 		ReleaseDeploymentHash: releaseHash, ReboundDeploymentHash: priorHash,
 		ReserveSinkExecutableHash: reserveExecutable, SettlementVaultExecutableHash: vaultExecutable,
 		GovernanceDrillVersion: version, GovernanceProxiableUUID: uuid,
 		DeployerNonce: current.DeployerNonce, ProbeAddressEmpty: false,
 		ActiveImplementation: activeImplementation.Hex(), ActiveImplementationHash: activeHash,
-		PrecompileProbeExecutableHash: probeExecutable,
-		FinalizedBlock:                head.Number, FinalizedBlockHash: head.Hash,
+		PrecompileProbeExecutableHash:  probeExecutable,
+		CoordinatorProxyExecutableHash: proxyExecutable,
+		FinalizedBlock:                 head.Number, FinalizedBlockHash: head.Hash,
 	}
 	if err := validateCoordinatorUpgradeBaselineRelease(baseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade); err != nil {
 		return nil, err
@@ -1649,7 +1714,7 @@ func observeCoordinatorUpgradeMigration(ctx context.Context, cfg *ResolvedConfig
 	if !contractDeploymentAddressesEqual(prior.Deployment, built.Manifest) || !contractDeploymentAddressesEqual(*existing, prior.Deployment) || !contractDeploymentRuntimeHashesCompatible(*existing, prior.Deployment) {
 		return nil, errors.New("legacy deployment addresses or recorded runtime hashes differ from the authenticated prior plan")
 	}
-	if (prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v1" || prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2") && prior.CoordinatorUpgrade.DeployerNonce != ^uint64(0) && current.DeployerNonce == prior.CoordinatorUpgrade.DeployerNonce+1 {
+	if (prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v1" || prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2") && prior.CoordinatorUpgrade.DeployerNonce != ^uint64(0) && current.DeployerNonce > prior.CoordinatorUpgrade.DeployerNonce {
 		return observeRepeatedCoordinatorUpgrade(ctx, cfg, prior, current, entries, roles, built)
 	}
 	if prior.Deployment.InitialNonce > ^uint64(0)-9 {
@@ -1946,7 +2011,7 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 		return err
 	}
 	plan.CoordinatorUpgrade = payloads.CoordinatorUpgrade
-	implementationCount, activationCount := 0, 0
+	implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount := 0, 0, 0, 0, 0
 	for index := range plan.Actions {
 		action := &plan.Actions[index]
 		switch action.ID {
@@ -1968,8 +2033,36 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			action.Parameters = cloneStrings(action.Parameters)
 			action.Parameters["implementation"] = payloads.CoordinatorUpgrade.Implementation.Hex()
 			action.Parameters["runtime_code_hash"] = payloads.CoordinatorUpgrade.RuntimeCodeHash
+		case "fleet.refresh.deploy-batcher":
+			batcherCount++
+			action.Target = payloads.FleetBatcherAddress.Hex()
+			action.Parameters = cloneStrings(action.Parameters)
+			action.Parameters["coordinator"] = payloads.Manifest.CoordinatorProxy.Hex()
+			action.Parameters["commitment_oracle"] = payloads.CommitmentOracle.Hex()
+			action.Parameters["runtime_code_hash"] = crypto.Keccak256Hash(payloads.FleetBatcherRuntime).Hex()
+			envelope, ok := deploymentActionEnvelope(payloads, action.ID, plan.RegistrationBurnLimitRao)
+			if !ok {
+				return errors.New("fleet batcher deployment has no exact transaction envelope")
+			}
+			for key, value := range envelope {
+				action.Parameters[key] = value
+			}
+		case "fleet.refresh.oracle-activate":
+			action.Target = payloads.Manifest.CoordinatorProxy.Hex()
+			action.Parameters = cloneStrings(action.Parameters)
+			action.Parameters["oracle"] = payloads.FleetBatcherAddress.Hex()
+		case "fleet.refresh.oracle-await-active":
+			action.Target = payloads.FleetBatcherAddress.Hex()
 		default:
-			continue
+			if strings.HasPrefix(action.ID, "fleet.install.batch.") {
+				installBatchCount++
+				action.Target = payloads.FleetBatcherAddress.Hex()
+			} else if strings.HasPrefix(action.ID, "fleet.refresh.batch.") {
+				refreshBatchCount++
+				action.Target = payloads.FleetBatcherAddress.Hex()
+			} else {
+				continue
+			}
 		}
 		var err error
 		action.IntentHash, err = actionIntentHash(*action)
@@ -1977,8 +2070,8 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			return err
 		}
 	}
-	if implementationCount != 1 || activationCount != 1 {
-		return fmt.Errorf("revised plan has %d coordinator implementation and %d activation actions", implementationCount, activationCount)
+	if implementationCount != 1 || activationCount != 1 || batcherCount != 1 || installBatchCount == 0 || installBatchCount != refreshBatchCount {
+		return fmt.Errorf("revised plan has %d coordinator implementation, %d activation, %d fleet batcher deployment, %d install batches, and %d refresh batches", implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount)
 	}
 	return nil
 }
@@ -2034,10 +2127,34 @@ func sameEVMTransactionExceptGasUnits(left, right Action) bool {
 	return leftSpend == rightSpend
 }
 
+// Recognize the one release transition which replaces an already-finalized
+// per-fleet EVM write with a read-back proof after the atomic batch installer.
+// A verified ancestor is retained verbatim so its consumed gas remains in the
+// cumulative approval; an unverified write is never inherited.
+func sameVerifiedLegacyFleetWriteAsReadProof(ancestor, proof Action) bool {
+	if ancestor.ID != proof.ID || ancestor.Target != proof.Target || ancestor.Kind != "evm-transaction" || proof.Kind != "evm-read" || proof.Parameters["batch_installed"] != "true" {
+		return false
+	}
+	if !strings.HasPrefix(proof.ID, "fleet.mirror.") && !strings.HasPrefix(proof.ID, "fleet.bind.") {
+		return false
+	}
+	ancestorParameters := cloneStrings(ancestor.Parameters)
+	proofParameters := cloneStrings(proof.Parameters)
+	delete(ancestorParameters, evmMaximumGasUnitsParameter)
+	delete(ancestorParameters, evmMaximumFeePerGasParameter)
+	delete(proofParameters, "batch_installed")
+	if !maps.Equal(ancestorParameters, proofParameters) {
+		return false
+	}
+	ancestorHasOnlyGas := ancestor.Spend.TAORao == 0 && ancestor.Spend.AlphaRao == 0 && ancestor.Spend.Registrations == 0 && ancestor.Spend.SubnetCreations == 0 && !ancestor.Spend.EVMGasWei.IsZero()
+	proofHasNoSpend := proof.Spend.TAORao == 0 && proof.Spend.AlphaRao == 0 && proof.Spend.Registrations == 0 && proof.Spend.SubnetCreations == 0 && proof.Spend.EVMGasWei.IsZero()
+	return ancestorHasOnlyGas && proofHasNoSpend
+}
+
 // Carry an exact finalized transaction when a plan revision only reallocates
-// gas units. Replacing the new action with the authenticated ancestor also
-// retains the original maximum spend, so cumulative approval cannot be
-// understated by a later, smaller gas ceiling.
+// gas units or replaces a verified legacy fleet write with its batch read-back
+// proof. Replacing the new action with the authenticated ancestor also retains
+// the original maximum spend, so cumulative approval cannot be understated.
 func preserveVerifiedEVMGasReallocations(stateDir string, revised, prior *SetupPlan, entries []JournalEntry) error {
 	if revised == nil || prior == nil {
 		return errors.New("revised and prior plans are required to preserve EVM gas reallocations")
@@ -2089,7 +2206,7 @@ func preserveVerifiedEVMGasReallocations(stateDir string, revised, prior *SetupP
 					ancestor = action
 				}
 			}
-			if ancestor == nil || !sameEVMTransactionExceptGasUnits(*ancestor, current) {
+			if ancestor == nil || (!sameEVMTransactionExceptGasUnits(*ancestor, current) && !sameVerifiedLegacyFleetWriteAsReadProof(*ancestor, current)) {
 				continue
 			}
 			revised.Actions[index] = *ancestor
@@ -2102,6 +2219,54 @@ func preserveVerifiedEVMGasReallocations(stateDir string, revised, prior *SetupP
 	}
 	revised.MaximumSpend = maximum
 	return nil
+}
+
+// Move the ceiling of each exact verified EVM transaction out of the active
+// action set when an in-place release revision no longer accepts its intent.
+// The retired ceiling is charged once through SupersededSpend, while the new
+// action retains its own executable ceiling. This keeps cumulative approval
+// conservative across repeated upgrades and fleet-batcher replacements.
+func addRetiredVerifiedEVMGas(prior, revised *SetupPlan, entries []JournalEntry, spend Spend) (Spend, error) {
+	if prior == nil || revised == nil {
+		return Spend{}, errors.New("revised and prior plans are required to retain retired EVM gas")
+	}
+	revisedActions := make(map[string]Action, len(revised.Actions))
+	for _, action := range revised.Actions {
+		if _, duplicate := revisedActions[action.ID]; duplicate {
+			return Spend{}, fmt.Errorf("revised plan has duplicate action %s", action.ID)
+		}
+		revisedActions[action.ID] = action
+	}
+	allowedPlans := prior.allowedPlanHashes()
+	for _, action := range prior.Actions {
+		if action.Kind != "evm-transaction" || action.Spend.EVMGasWei.IsZero() {
+			continue
+		}
+		verifiedIntents := map[string]bool{}
+		for _, entry := range entries {
+			if allowedPlans[entry.PlanHash] && entry.Stage == StageVerified && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) {
+				verifiedIntents[entry.IntentHash] = true
+			}
+		}
+		if len(verifiedIntents) == 0 {
+			continue
+		}
+		if replacement, found := revisedActions[action.ID]; found {
+			carried := false
+			for intent := range verifiedIntents {
+				carried = carried || actionAcceptsIntent(replacement, intent)
+			}
+			if carried {
+				continue
+			}
+		}
+		var err error
+		spend.EVMGasWei, err = addDecimalUint(spend.EVMGasWei, action.Spend.EVMGasWei)
+		if err != nil {
+			return Spend{}, fmt.Errorf("retain retired EVM gas for %s: %w", action.ID, err)
+		}
+	}
+	return spend, nil
 }
 
 func verifiedOperatorAlphaSpend(prior *SetupPlan, entries []JournalEntry) (uint64, error) {
@@ -2907,6 +3072,13 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, fmt.Errorf("reconcile duplicate voluntary conviction: %w", err)
 		}
 	}
+	// Preserve an exact verified legacy write before validating a recovered
+	// receipt for that action. This ordering permits only the reviewed
+	// transaction-to-read-proof transition; a merely finalized recovery still
+	// retains the new intent and fails the unchanged-action check below.
+	if err := preserveVerifiedEVMGasReallocations(stateDir, revised, prior, entries); err != nil {
+		return nil, fmt.Errorf("preserve verified EVM gas reallocations: %w", err)
+	}
 	if err := validateRevisedFleetMirrorRecoveries(revised, recoveries.FleetMirrors); err != nil {
 		return nil, fmt.Errorf("reconcile finalized fleet mirror: %w", err)
 	}
@@ -2921,8 +3093,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := reconcileFinalizedAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("reconcile finalized alpha transfers: %w", err)
 	}
-	if err := preserveVerifiedEVMGasReallocations(stateDir, revised, prior, entries); err != nil {
-		return nil, fmt.Errorf("preserve verified EVM gas reallocations: %w", err)
+	if !deploymentSuperseded {
+		supersededSpend, err = addRetiredVerifiedEVMGas(prior, revised, entries, supersededSpend)
+		if err != nil {
+			return nil, fmt.Errorf("retain retired EVM gas: %w", err)
+		}
 	}
 	if !supersededSpend.EVMGasWei.IsZero() || supersededSpend.TAORao != 0 || supersededSpend.AlphaRao != 0 || supersededSpend.Registrations != 0 || supersededSpend.SubnetCreations != 0 {
 		if err := applySupersededSpend(revised, supersededSpend); err != nil {

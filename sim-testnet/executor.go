@@ -278,6 +278,126 @@ func registrationFundingWei(limitRao uint64) *big.Int {
 	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
 }
 
+// Classify one explicitly approved fleet-commitment concurrency group. The
+// reserved parameter is rejected on every other action kind or identifier.
+func fleetCommitmentParallelIdentity(action Action) (string, string, bool, error) {
+	group := action.Parameters[fleetCommitmentParallelGroupParameter]
+	if group == "" {
+		return "", "", false, nil
+	}
+	if strings.TrimSpace(group) != group || len(group) > 64 || action.Kind != "substrate-extrinsic" {
+		return "", "", false, fmt.Errorf("action %s has an invalid fleet commitment parallel group", action.ID)
+	}
+	kind := ""
+	switch {
+	case strings.HasPrefix(action.ID, "fleet.commitment."):
+		kind = "install"
+	case strings.HasPrefix(action.ID, "fleet.refresh.commitment."):
+		kind = "refresh"
+	default:
+		return "", "", false, fmt.Errorf("action %s cannot use a fleet commitment parallel group", action.ID)
+	}
+	return group, kind, true, nil
+}
+
+// Locate one contiguous, bounded commitment group and reject internal
+// dependencies which would make concurrent execution race its own DAG.
+func fleetCommitmentParallelRange(actions []Action, start int) (int, bool, error) {
+	if start < 0 || start >= len(actions) {
+		return start, false, errors.New("fleet commitment parallel range start is out of bounds")
+	}
+	group, kind, grouped, err := fleetCommitmentParallelIdentity(actions[start])
+	if err != nil || !grouped {
+		return start + 1, false, err
+	}
+	end := start
+	ids := map[string]bool{}
+	for end < len(actions) {
+		candidateGroup, candidateKind, candidateGrouped, candidateErr := fleetCommitmentParallelIdentity(actions[end])
+		if candidateErr != nil {
+			return end, false, candidateErr
+		}
+		if !candidateGrouped || candidateGroup != group {
+			break
+		}
+		if candidateKind != kind {
+			return end, false, fmt.Errorf("fleet commitment parallel group %s mixes install and refresh generations", group)
+		}
+		ids[actions[end].ID] = true
+		end++
+	}
+	if end-start == 0 || end-start > fleetRefreshBatchSize {
+		return end, false, fmt.Errorf("fleet commitment parallel group %s has %d actions", group, end-start)
+	}
+	for index := start; index < end; index++ {
+		for _, dependency := range actions[index].DependsOn {
+			if ids[dependency] {
+				return end, false, fmt.Errorf("fleet commitment parallel action %s depends on group member %s", actions[index].ID, dependency)
+			}
+		}
+	}
+	return end, true, nil
+}
+
+// Validate every concurrency marker once while the complete action graph is
+// still read-only. A group name may occur in only one contiguous range.
+func validateFleetCommitmentParallelGroups(actions []Action) error {
+	seen := map[string]bool{}
+	for index := 0; index < len(actions); {
+		group, _, grouped, err := fleetCommitmentParallelIdentity(actions[index])
+		if err != nil {
+			return err
+		}
+		if !grouped {
+			index++
+			continue
+		}
+		if seen[group] {
+			return fmt.Errorf("fleet commitment parallel group %s is non-contiguous or duplicated", group)
+		}
+		end, _, err := fleetCommitmentParallelRange(actions, index)
+		if err != nil {
+			return err
+		}
+		seen[group] = true
+		index = end
+	}
+	return nil
+}
+
+// Execute the setup prefix while allowing only independently signed fleet
+// commitments to use bounded concurrency. Every action keeps its own journal
+// state, postcondition, fee ceiling, and deterministic resume path.
+func executeSetupActions(ctx context.Context, executor *Executor, actions []Action, limitID string) error {
+	if executor == nil {
+		return errors.New("setup action executor is unavailable")
+	}
+	for index := 0; index < len(actions); {
+		end, grouped, err := fleetCommitmentParallelRange(actions, index)
+		if err != nil {
+			return err
+		}
+		if grouped {
+			if err := runOrderedConcurrentAudits(end-index, fleetCommitmentParallelWorkers, func(offset int) error {
+				return executor.Execute(ctx, actions[index+offset])
+			}); err != nil {
+				return err
+			}
+		} else {
+			if err := executor.Execute(ctx, actions[index]); err != nil {
+				return err
+			}
+		}
+		for completed := index; completed < end; completed++ {
+			if actions[completed].ID == limitID {
+				return nil
+			}
+		}
+		index = end
+	}
+	return nil
+}
+
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
 	if cmd == "retire" {
 		return runRetirement(ctx, cfg, stateDir, o)
@@ -374,13 +494,8 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if cmd == "scenario" {
 		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
 	}
-	for _, a := range p.Actions {
-		if err := ex.Execute(ctx, a); err != nil {
-			return err
-		}
-		if a.ID == limitID {
-			break
-		}
+	if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
+		return err
 	}
 	if cmd == "launch" || cmd == "resume" {
 		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
@@ -717,6 +832,8 @@ func actionPostStateRequiresEVMCheckpoint(action Action) bool {
 		return false
 	case strings.HasPrefix(action.ID, "fleet.commitment."):
 		return false
+	case strings.HasPrefix(action.ID, "fleet.refresh.commitment."):
+		return false
 	case action.Kind == "budget-reserve":
 		return false
 	case action.ID == "config.render":
@@ -1041,8 +1158,18 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return e.fundEVM(ctx, a)
 	case strings.HasPrefix(a.ID, "operator.deposit.register."):
 		return e.registerDepositHotkey(ctx, a, suffixInt(a.ID))
-	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation":
+	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation" || a.ID == "fleet.refresh.deploy-batcher":
 		return e.executeDeployment(ctx, a)
+	case a.ID == "fleet.refresh.oracle-activate" || a.ID == "fleet.refresh.oracle-restore":
+		return e.scheduleFleetRefreshOracle(ctx, a)
+	case a.ID == "fleet.refresh.oracle-await-active" || a.ID == "fleet.refresh.oracle-await-restored":
+		return e.awaitFleetRefreshOracle(ctx, a)
+	case strings.HasPrefix(a.ID, "fleet.refresh.commitment."):
+		return e.publishFleetRefreshCommitment(ctx, a, suffixInt(a.ID))
+	case strings.HasPrefix(a.ID, "fleet.refresh.batch."):
+		return e.refreshFleetBatch(ctx, a, suffixInt(a.ID))
+	case strings.HasPrefix(a.ID, "fleet.install.batch."):
+		return e.installFleetBatch(ctx, a, suffixInt(a.ID))
 	case strings.HasPrefix(a.ID, "precompile."):
 		return e.executePrecompileConformance(ctx, a)
 	case strings.HasPrefix(a.ID, "governance."):
@@ -1151,7 +1278,7 @@ func coordinatorUpgradeActivationBaseline(plan *SetupPlan, payloads *DeploymentP
 		return common.Address{}, "", err
 	}
 	runtimeHash := hashes[address]
-	if plan.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v2" {
+	if plan.CoordinatorUpgradeBaseline.isRepeated() {
 		if !common.IsHexAddress(plan.CoordinatorUpgradeBaseline.ActiveImplementation) {
 			return common.Address{}, "", errors.New("repeated coordinator activation has no valid active implementation")
 		}
@@ -2068,6 +2195,9 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 	case "evm.coordinator-upgrade-implementation":
 		addr = p.CoordinatorUpgrade.Implementation
 		data = p.UpgradeImplementation
+	case "fleet.refresh.deploy-batcher":
+		addr = p.FleetBatcherAddress
+		data = p.FleetBatcher
 	case "evm.vault-fix-coordinator":
 		addr = p.Manifest.SettlementVault
 		to = &addr
@@ -2085,6 +2215,9 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		code, err := e.deployer.client.CodeAt(ctx, addr, new(big.Int).SetUint64(head.Number))
 		if err == nil && len(code) > 0 {
 			expected := p.ExpectedRuntime[addr]
+			if a.ID == "fleet.refresh.deploy-batcher" {
+				expected = p.FleetBatcherRuntime
+			}
 			if len(expected) > 0 && string(code) != string(expected) {
 				return fmt.Errorf("unexpected existing code at %s", addr)
 			}

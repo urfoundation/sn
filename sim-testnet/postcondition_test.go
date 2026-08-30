@@ -943,6 +943,7 @@ func TestActionPostStateEVMCheckpointClassification(t *testing.T) {
 		{ID: "validator.take-zero.1"},
 		{ID: "validator.reserve-majority"},
 		{ID: "fleet.commitment.1"},
+		{ID: "fleet.refresh.commitment.1"},
 		{ID: "wallet.native-fee-reserve", Kind: "budget-reserve"},
 		{ID: "config.render"},
 		{ID: "accounts.provision"},

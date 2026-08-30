@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/urfoundation/sn/ss58"
 )
@@ -42,13 +43,16 @@ type Action struct {
 }
 
 const (
-	setupPlanSchemaV8               = "urnetwork-sim-plan-v8"
-	currentSetupPlanSchema          = "urnetwork-sim-plan-v9"
-	evmMaximumGasUnitsParameter     = "maximum_gas_units"
-	evmMaximumFeePerGasParameter    = "maximum_fee_per_gas_wei"
-	deploymentManifestHashParameter = "deployment_manifest_hash"
-	fleetCommitmentStorageParameter = "commitment_storage_schema"
-	fleetCommitmentStorageV2        = "runtime-452-fixed-u32-exact-block-attestation-v2"
+	setupPlanSchemaV8                     = "urnetwork-sim-plan-v8"
+	currentSetupPlanSchema                = "urnetwork-sim-plan-v9"
+	evmMaximumGasUnitsParameter           = "maximum_gas_units"
+	evmMaximumFeePerGasParameter          = "maximum_fee_per_gas_wei"
+	deploymentManifestHashParameter       = "deployment_manifest_hash"
+	fleetCommitmentStorageParameter       = "commitment_storage_schema"
+	fleetCommitmentStorageV2              = "runtime-452-fixed-u32-exact-block-attestation-v2"
+	fleetCommitmentParallelGroupParameter = "parallel_commitment_group"
+	fleetCommitmentParallelWorkers        = 3
+	fleetRefreshBatchSize                 = 10
 )
 
 type SetupPlan struct {
@@ -481,6 +485,9 @@ func setupEVMGasUnitLimits(cfg *ResolvedConfig) map[string]uint64 {
 		"evm.coordinator-upgrade-implementation": 7_500_000,
 		"evm.coordinator-upgrade-activate":       500_000,
 		"policy.schedule-bootstrap":              500_000,
+		"fleet.refresh.deploy-batcher":           1_500_000,
+		"fleet.refresh.oracle-activate":          300_000,
+		"fleet.refresh.oracle-restore":           300_000,
 	}
 	if cfg == nil || cfg.Config == nil {
 		return limits
@@ -489,11 +496,15 @@ func setupEVMGasUnitLimits(cfg *ResolvedConfig) map[string]uint64 {
 		limits[fmt.Sprintf("operator.deposit.register.%d", operator)] = 1_000_000
 		limits[fmt.Sprintf("operator.register.%d", operator)] = 750_000
 	}
-	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+	for fleet := cfg.Config.Topology.HeadFleets + 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		limits[fmt.Sprintf("fleet.mirror.%d", fleet)] = 200_000
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 			limits[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)] = 400_000
 		}
+	}
+	for batch := 1; batch <= (cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize; batch++ {
+		limits[fmt.Sprintf("fleet.install.batch.%d", batch)] = 18_000_000
+		limits[fmt.Sprintf("fleet.refresh.batch.%d", batch)] = 24_000_000
 	}
 	return limits
 }
@@ -976,7 +987,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	for _, id := range []string{
 		"evm.reserve-sink", "evm.settlement-vault", "evm.coordinator-implementation", "evm.vault-register-escrow",
 		"evm.coordinator-proxy", "evm.governance-drill-implementation", "evm.vault-fix-coordinator", "evm.sink-fix-recorder",
-		"precompile.probe-deploy", "evm.coordinator-upgrade-implementation",
+		"precompile.probe-deploy", "evm.coordinator-upgrade-implementation", "fleet.refresh.deploy-batcher",
 	} {
 		if err := addRoleGas("deployer", gasCaps[id]); err != nil {
 			return nil, err
@@ -988,7 +999,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	if err := addRoleGas("owner", productionGas); err != nil {
 		return nil, err
 	}
-	for _, id := range []string{"evm.coordinator-upgrade-activate", "policy.schedule-bootstrap"} {
+	for _, id := range []string{"evm.coordinator-upgrade-activate", "policy.schedule-bootstrap", "fleet.refresh.oracle-activate", "fleet.refresh.oracle-restore"} {
 		if err := addRoleGas("owner", gasCaps[id]); err != nil {
 			return nil, err
 		}
@@ -1024,7 +1035,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	if err := addRoleGas("operator-2-deposit", dishonestDepositGas); err != nil {
 		return nil, err
 	}
-	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+	for fleet := cfg.Config.Topology.HeadFleets + 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
 		if err := addRoleGas("commitment-oracle", gasCaps[fmt.Sprintf("fleet.mirror.%d", fleet)]); err != nil {
 			return nil, err
 		}
@@ -1032,6 +1043,14 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 			if err := addRoleGas("keeper", gasCaps[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)]); err != nil {
 				return nil, err
 			}
+		}
+	}
+	for batch := 1; batch <= (cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize; batch++ {
+		if err := addRoleGas("commitment-oracle", gasCaps[fmt.Sprintf("fleet.install.batch.%d", batch)]); err != nil {
+			return nil, err
+		}
+		if err := addRoleGas("commitment-oracle", gasCaps[fmt.Sprintf("fleet.refresh.batch.%d", batch)]); err != nil {
+			return nil, err
 		}
 	}
 	var campaignWeight uint64
@@ -1215,10 +1234,13 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		fundHotkeyID := fmt.Sprintf("fleet.fund-hotkey.%d", fleet)
 		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet-coldkey:%d", fleet), Description: "fund the independently keyed provider fleet coldkey for one burn, bounded fees, and runtime keep-alive balance", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{"subnet.verify-owner", lastChurn}})
 		add(Action{ID: registerID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "limit-register an independently keyed provider-owned head fleet hotkey", Parameters: registrationParameters(), Spend: Spend{Registrations: 1}, DependsOn: []string{fundID}})
-		commitmentFees := nativeFeeLimit
+		commitmentFees, ok := checkedMul(nativeFeeLimit, 2)
+		if !ok {
+			return nil, fmt.Errorf("head fleet commitment fee reserve overflow")
+		}
 		if fleet == 1 {
-			// Canonical publish plus the M0B replace/restore pair.
-			commitmentFees, ok = checkedMul(nativeFeeLimit, 3)
+			// Both generation publishes plus the M0B replace/restore pair.
+			commitmentFees, ok = checkedMul(nativeFeeLimit, 4)
 			if !ok {
 				return nil, fmt.Errorf("head fleet commitment fee reserve overflow")
 			}
@@ -1283,11 +1305,10 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 			nativeWrites++
 		}
 	}
-	// The production immunity transition is intentionally deferred until M3,
-	// but its fee is part of the original campaign ceiling. The M0B
-	// commitment replace/restore pair is also executed after this reservation
-	// is constructed and must be included explicitly.
-	nativeWrites += uint64(cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 3)
+	// Two production hyperparameter transitions, both head-fleet commitment
+	// generations, every challenger registration/commitment pair, and the M0B
+	// replace/restore pair are added after this reservation is constructed.
+	nativeWrites += uint64(2*cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 4)
 	feeReserve, ok := checkedMul(nativeWrites, nativeFeeLimit)
 	if !ok {
 		return nil, fmt.Errorf("native fee reserve overflow")
@@ -1332,21 +1353,105 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", Parameters: map[string]string{"operator_config_overlay": operatorConfigOverlayVersion}, DependsOn: setupDeps})
 	add(Action{ID: "accounts.provision", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "provision stable operator-scoped miner and validator identities", DependsOn: []string{"config.render"}})
 	add(Action{ID: "campaign.voluntary-conviction.1", Kind: "evm-transaction", Target: "no:1", Description: "lock the exact first-tier boundary as voluntary conviction without recording current-epoch demand", Parameters: map[string]string{"no_id": "1", "amount_rao": fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao), "reserve_runtime_share_transitions": strconv.FormatUint(reserveRuntimeShareTransitionCount, 10), "reserve_rounding_allowance_rao": strconv.FormatUint(reserveRoundingAllowancePerCallRao, 10)}, Spend: Spend{EVMGasWei: voluntaryGas}, DependsOn: []string{"accounts.provision", "campaign.evm-gas-reserve", "alpha.transfer.operator-deposit.1"}})
-	lastFleet := "campaign.voluntary-conviction.1"
-	for fleet := 1; fleet <= cfg.Config.Topology.HeadFleets; fleet++ {
-		commitID := fmt.Sprintf("fleet.commitment.%d", fleet)
-		mirrorID := fmt.Sprintf("fleet.mirror.%d", fleet)
-		add(Action{ID: commitID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "publish the canonical multi-client fleet manifest hash from its registered hotkey and verify finalized storage", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2}, DependsOn: []string{lastFleet, fmt.Sprintf("fleet.fund-hotkey.%d", fleet)}})
-		add(Action{ID: mirrorID, Kind: "evm-transaction", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "mirror the independently verified finalized native commitment into the coordinator", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2}, Spend: Spend{EVMGasWei: gasCaps[mirrorID]}, DependsOn: []string{commitID, "evm.fund-commitment-oracle"}})
-		lastFleet = mirrorID
-		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
-			id := fmt.Sprintf("fleet.bind.%d.%d", fleet, member)
-			miner := fleetMemberMinerIndex(cfg, fleet, member)
-			add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "relay one dual-signed fleet member binding effective next epoch", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lastFleet, "evm.fund-keeper"}})
-			lastFleet = id
+	batcherRuntimeHash := crypto.Keccak256Hash(payloads.FleetBatcherRuntime).Hex()
+	add(Action{
+		ID: "fleet.refresh.deploy-batcher", Kind: "evm-transaction", Target: payloads.FleetBatcherAddress.Hex(),
+		Description: "deploy the bounded testnet-only fleet install and refresh helper at the approval-bound nonce",
+		Parameters: map[string]string{
+			"coordinator":       payloads.Manifest.CoordinatorProxy.Hex(),
+			"commitment_oracle": payloads.CommitmentOracle.Hex(),
+			"runtime_code_hash": batcherRuntimeHash,
+		},
+		Spend: Spend{EVMGasWei: gasCaps["fleet.refresh.deploy-batcher"]}, DependsOn: []string{"campaign.voluntary-conviction.1", "evm.fund-deployer"},
+	})
+	add(Action{
+		ID: "fleet.refresh.oracle-activate", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(),
+		Description: "schedule the bounded fleet refresh helper as commitment oracle for the next safe epoch",
+		Parameters:  map[string]string{"oracle": payloads.FleetBatcherAddress.Hex()},
+		Spend:       Spend{EVMGasWei: gasCaps["fleet.refresh.oracle-activate"]}, DependsOn: []string{"fleet.refresh.deploy-batcher", "evm.fund-owner"},
+	})
+	add(Action{ID: "fleet.refresh.oracle-await-active", Kind: "evm-read", Target: payloads.FleetBatcherAddress.Hex(), Description: "wait until the approved fleet refresh helper is the active commitment oracle", DependsOn: []string{"fleet.refresh.oracle-activate"}})
+	lastFleet := "fleet.refresh.oracle-await-active"
+	for batch := 1; batch <= (cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize; batch++ {
+		first := (batch-1)*fleetRefreshBatchSize + 1
+		last := first + fleetRefreshBatchSize - 1
+		if last > cfg.Config.Topology.HeadFleets {
+			last = cfg.Config.Topology.HeadFleets
+		}
+		batchBarrier := lastFleet
+		commitmentIDs := make([]string, 0, last-first+1)
+		for fleet := first; fleet <= last; fleet++ {
+			commitID := fmt.Sprintf("fleet.commitment.%d", fleet)
+			add(Action{ID: commitID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet), Description: "publish the canonical multi-client fleet manifest hash from its registered hotkey and verify finalized storage", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, fleetCommitmentParallelGroupParameter: fmt.Sprintf("install-%d", batch)}, DependsOn: []string{batchBarrier, fmt.Sprintf("fleet.fund-hotkey.%d", fleet)}})
+			commitmentIDs = append(commitmentIDs, commitID)
+		}
+		installID := fmt.Sprintf("fleet.install.batch.%d", batch)
+		installDependencies := append(append([]string(nil), commitmentIDs...), "evm.fund-commitment-oracle")
+		add(Action{
+			ID: installID, Kind: "evm-transaction", Target: payloads.FleetBatcherAddress.Hex(),
+			Description: "atomically mirror finalized generation-1 commitments and install every dual-signed fleet member",
+			Parameters:  map[string]string{"first_fleet": strconv.Itoa(first), "last_fleet": strconv.Itoa(last), "generation": "1"},
+			Spend:       Spend{EVMGasWei: gasCaps[installID]}, DependsOn: installDependencies,
+		})
+		lastFleet = installID
+		for fleet := first; fleet <= last; fleet++ {
+			mirrorID := fmt.Sprintf("fleet.mirror.%d", fleet)
+			add(Action{
+				ID: mirrorID, Kind: "evm-read", Target: fmt.Sprintf("head-fleet:%d", fleet),
+				Description: "verify the atomic installer mirrored the exact finalized native commitment",
+				Parameters:  map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "batch_installed": "true"},
+				DependsOn:   []string{lastFleet},
+			})
+			lastFleet = mirrorID
+			for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+				id := fmt.Sprintf("fleet.bind.%d.%d", fleet, member)
+				miner := fleetMemberMinerIndex(cfg, fleet, member)
+				add(Action{
+					ID: id, Kind: "evm-read", Target: fmt.Sprintf("miner:%d", miner),
+					Description: "verify the atomic installer recorded one exact dual-signed generation-1 member",
+					Parameters:  map[string]string{"batch_installed": "true"}, DependsOn: []string{lastFleet},
+				})
+				lastFleet = id
+			}
 		}
 	}
-	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", DependsOn: []string{lastFleet}})
+	lastRefresh := lastFleet
+	for batch := 1; batch <= (cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize; batch++ {
+		first := (batch-1)*fleetRefreshBatchSize + 1
+		last := first + fleetRefreshBatchSize - 1
+		if last > cfg.Config.Topology.HeadFleets {
+			last = cfg.Config.Topology.HeadFleets
+		}
+		batchBarrier := lastRefresh
+		commitmentIDs := make([]string, 0, last-first+1)
+		for fleet := first; fleet <= last; fleet++ {
+			commitID := fmt.Sprintf("fleet.refresh.commitment.%d", fleet)
+			add(Action{
+				ID: commitID, Kind: "substrate-extrinsic", Target: fmt.Sprintf("head-fleet:%d", fleet),
+				Description: "publish the generation-2 fleet manifest immediately before its bounded replacement batch",
+				Parameters:  map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": "2", fleetCommitmentParallelGroupParameter: fmt.Sprintf("refresh-%d", batch)},
+				DependsOn:   []string{batchBarrier, fmt.Sprintf("fleet.fund-hotkey.%d", fleet)},
+			})
+			commitmentIDs = append(commitmentIDs, commitID)
+		}
+		batchID := fmt.Sprintf("fleet.refresh.batch.%d", batch)
+		batchDependencies := append(append([]string(nil), commitmentIDs...), "evm.fund-commitment-oracle")
+		add(Action{
+			ID: batchID, Kind: "evm-transaction", Target: payloads.FleetBatcherAddress.Hex(),
+			Description: "atomically mirror finalized generation-2 commitments, client-revoke generation 1, and install dual-signed replacements",
+			Parameters:  map[string]string{"first_fleet": strconv.Itoa(first), "last_fleet": strconv.Itoa(last), "generation": "2"},
+			Spend:       Spend{EVMGasWei: gasCaps[batchID]}, DependsOn: batchDependencies,
+		})
+		lastRefresh = batchID
+	}
+	add(Action{
+		ID: "fleet.refresh.oracle-restore", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(),
+		Description: "restore the original commitment oracle for the next safe epoch after every fleet replacement verifies",
+		Parameters:  map[string]string{"oracle": payloads.CommitmentOracle.Hex()},
+		Spend:       Spend{EVMGasWei: gasCaps["fleet.refresh.oracle-restore"]}, DependsOn: []string{lastRefresh, "evm.fund-owner"},
+	})
+	add(Action{ID: "fleet.refresh.oracle-await-restored", Kind: "evm-read", Target: payloads.CommitmentOracle.Hex(), Description: "wait until the immutable original commitment oracle is active before topology launch", DependsOn: []string{"fleet.refresh.oracle-restore"}})
+	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", DependsOn: []string{"fleet.refresh.oracle-await-restored"}})
 	lastChallenger := "topology.launch"
 	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
 		fleet := cfg.Config.Topology.HeadFleets + challenger
@@ -1598,6 +1703,9 @@ func validatePlanBudget(p *SetupPlan) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
 	}
+	if err := validateFleetCommitmentParallelGroups(p.Actions); err != nil {
+		return err
+	}
 	total, err := addSpends(p.MaximumSpend, p.SupersededSpend)
 	if err != nil {
 		return fmt.Errorf("combine active and superseded plan spend: %w", err)
@@ -1681,8 +1789,8 @@ func validatePlanBudget(p *SetupPlan) error {
 			if err := validateCoordinatorUpgradeBaseline(p.CoordinatorUpgradeBaseline, p.Deployment, p.CoordinatorUpgrade); err != nil {
 				return err
 			}
-			if p.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2" && p.CoordinatorUpgradeBaseline.Schema != "urnetwork-coordinator-upgrade-baseline-v2" {
-				return errors.New("repeated coordinator upgrade has no finalized v2 compatibility baseline")
+			if p.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2" && !p.CoordinatorUpgradeBaseline.isRepeated() {
+				return errors.New("repeated coordinator upgrade has no finalized compatibility baseline")
 			}
 			if !p.CoordinatorUpgradeBaseline.isZero() && len(p.PriorPlanHashes) == 0 {
 				return errors.New("coordinator upgrade baseline has no authenticated prior plan")

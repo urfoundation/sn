@@ -243,6 +243,34 @@ postcondition. If the command is interrupted, use the same approval:
   --detach
 ```
 
+Head-fleet setup is bounded but not artificially serialized. Up to three
+independently signed Substrate commitment writes run concurrently inside an
+explicit ten-fleet plan group; every write retains its own fee ceiling, raw
+transaction, journal lineage, finalized storage proof, and idempotent recovery.
+The testnet-only `STFleetBatcher` then installs or refreshes that group in one
+atomic EVM transaction. It accepts at most ten fleets with four members each,
+only from the immutable original commitment oracle, rejects duplicate fleet or
+member identities, and exercises the coordinator's normal dual-signature and
+client-revocation checks. The owner activates it through the ordinary
+future-epoch oracle schedule and restores the original oracle before topology
+launch. Maximum-size Foundry calls use 9,535,582 gas for install and 9,080,115
+for refresh, below the approval-bound 18,000,000 and 24,000,000 ceilings.
+Existing verified per-member writes remain charged verbatim across a formal
+plan revision; absent or partial batches fail closed instead of being inferred.
+A later release revision authenticates the helper's extra deployer nonce and
+runtime before advancing the CREATE boundary. Any verified EVM action replaced
+by that revision moves once into cumulative superseded gas, so acceleration
+cannot erase historical spend from the approval envelope.
+
+At the pinned 12-second public-testnet cadence, this changes head-fleet setup
+from a many-hour serialized transaction chain to roughly 2--4 hours: 400 native
+commitments run in bounded three-wide waves, 40 EVM batches replace 1,600
+per-member install/refresh calls, and two future-epoch oracle handoffs remain.
+The 20 acceptance epochs still require about 20 hours. The three 8-hour
+production UR blocks intentionally retain 24 hours of chain observation plus
+the final approximately 4-hour settlement/finality window. Those protocol-time
+gates are not shortened or simulated off-chain.
+
 Host reboot is an intentional stop boundary. The supervisor unit is started but
 never enabled, managed PostgreSQL/Redis containers use Docker restart policy
 `no`, and loginctl linger is not required. After a reboot, run `resume` explicitly;
