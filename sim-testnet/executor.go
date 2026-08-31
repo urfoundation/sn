@@ -49,6 +49,7 @@ type Executor struct {
 	deposits                map[int]*EVMTxManager
 	payloads                *DeploymentPayloads
 	carriedVerificationKeys map[string]bool
+	carriedFleetHistoryKeys map[string]bool
 }
 
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
@@ -1006,6 +1007,16 @@ func (e *Executor) fleetInstallBatchSuperseded(action Action) (bool, error) {
 }
 
 func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead *ChainHead) error {
+	if e.carriedFleetHistoryKeys[carriedVerificationKey(verified)] {
+		if record == nil || action.ID != verified.ActionID || record.PlanHash != verified.PlanHash || record.ActionID != verified.ActionID || record.IntentHash != verified.IntentHash || !actionAcceptsIntent(action, verified.IntentHash) {
+			return errors.New("batched historical fleet receipt identity mismatch")
+		}
+		hash, err := canonicalHashHex(record)
+		if err != nil || hash != verified.PostconditionHash {
+			return stateMismatchError(err, "batched historical fleet receipt hash %s differs from verified %s", hash, verified.PostconditionHash)
+		}
+		return nil
+	}
 	verifier, verifiedAction := e, action
 	if verified.PlanHash != e.plan.PlanHash && (strings.HasPrefix(action.ID, "fleet.install.batch.") || strings.HasPrefix(action.ID, "fleet.refresh.batch.")) {
 		var err error
@@ -3470,12 +3481,7 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 	if e == nil || e.plan == nil || e.journal == nil {
 		return errors.New("plan/journal is unavailable")
 	}
-	type carriedAudit struct {
-		action Action
-		entry  JournalEntry
-		record *ActionPostcondition
-	}
-	audits := make([]carriedAudit, 0)
+	audits := make([]carriedActionAudit, 0)
 	for _, action := range e.plan.Actions {
 		entry, ok := e.verifiedActionEntry(action)
 		if !ok || entry.PlanHash == e.plan.PlanHash {
@@ -3485,7 +3491,7 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("action %s: persisted postcondition: %w", action.ID, err)
 		}
-		audits = append(audits, carriedAudit{action: action, entry: entry, record: record})
+		audits = append(audits, carriedActionAudit{action: action, entry: entry, record: record})
 	}
 	// Contract postcondition readers share the immutable payload cache. Resolve
 	// it once before workers start so the cache and deployment manifest are
@@ -3495,6 +3501,12 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 			return fmt.Errorf("prepare carried contract payloads: %w", err)
 		}
 	}
+	fleetHistoryKeys, err := e.verifyCarriedFleetGenerationOneHistory(ctx, audits)
+	if err != nil {
+		return fmt.Errorf("prepare carried fleet history: %w", err)
+	}
+	e.carriedFleetHistoryKeys = fleetHistoryKeys
+	defer func() { e.carriedFleetHistoryKeys = nil }()
 	var sharedEVMHead *ChainHead
 	for _, audit := range audits {
 		if !actionPostStateRequiresEVMCheckpoint(audit.action) {

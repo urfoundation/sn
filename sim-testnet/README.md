@@ -102,6 +102,15 @@ batch and the same-range generation-2 refresh, with ordered operational and
 comparison checkpoints. The original mirror or binding is replayed at its
 recorded EVM block; an adjacent or partial batch cannot authorize it. Challenger
 fleets are not refreshed and therefore retain ordinary live revalidation.
+Carried-plan preflight groups the resulting historical block headers and
+block-pinned mirror/binding calls into at-most-50-element JSON-RPC batches. This
+changes only transport cardinality: every response is still matched to its
+exact action, receipt hash, recorded height, canonical hash and observed state.
+Private mode repeats the batches through the independent observer; public
+override mode requires identical detached comparison evidence. The temporary
+receipt-keyed audit cache is populated only after the complete batch succeeds
+and is discarded when that preflight returns, so a timeout, partial response or
+adjacent receipt cannot suppress ordinary verification.
 
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime

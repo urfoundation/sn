@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/urfoundation/sn/crv4"
@@ -456,11 +457,17 @@ func rawCoordinatorCallAt[T any](ctx context.Context, manager *EVMTxManager, add
 
 const maximumEVMRPCBatchCalls = 50
 
+type coordinatorCallAt struct {
+	Address common.Address
+	Data    []byte
+	Block   uint64
+}
+
 // The public testnet endpoint accepts at most fifty JSON-RPC batch elements.
-// Every call is pinned to the same block, so chunking changes transport cost
-// without weakening the snapshot identity checked by callers.
-func rawCoordinatorBatchCallAt(ctx context.Context, manager *EVMTxManager, addr common.Address, calls [][]byte, block uint64) ([][]byte, error) {
-	if manager == nil || manager.client == nil || len(calls) == 0 || block == 0 {
+// Selectors may differ so historical proofs from many finalized blocks still
+// share bounded HTTP requests without losing their point-in-time identity.
+func rawCoordinatorBatchCallsAt(ctx context.Context, client *ethclient.Client, calls []coordinatorCallAt) ([][]byte, error) {
+	if client == nil || len(calls) == 0 {
 		return nil, errors.New("coordinator batch call is unavailable")
 	}
 	outputs := make([][]byte, len(calls))
@@ -469,16 +476,20 @@ func rawCoordinatorBatchCallAt(ctx context.Context, manager *EVMTxManager, addr 
 		results := make([]hexutil.Bytes, end-start)
 		batch := make([]rpc.BatchElem, end-start)
 		for index := start; index < end; index++ {
+			call := calls[index]
+			if call.Block == 0 || call.Address == (common.Address{}) || len(call.Data) == 0 {
+				return nil, fmt.Errorf("coordinator batch call %d has an incomplete target, calldata, or block", index)
+			}
 			batch[index-start] = rpc.BatchElem{
 				Method: "eth_call",
 				Args: []any{
-					map[string]any{"to": addr, "data": hexutil.Bytes(calls[index])},
-					hexutil.EncodeUint64(block),
+					map[string]any{"to": call.Address, "data": hexutil.Bytes(call.Data)},
+					hexutil.EncodeUint64(call.Block),
 				},
 				Result: &results[index-start],
 			}
 		}
-		if err := manager.client.Client().BatchCallContext(ctx, batch); err != nil {
+		if err := client.Client().BatchCallContext(ctx, batch); err != nil {
 			return nil, err
 		}
 		for index := range batch {
@@ -489,6 +500,19 @@ func rawCoordinatorBatchCallAt(ctx context.Context, manager *EVMTxManager, addr 
 		}
 	}
 	return outputs, nil
+}
+
+// Preserve the common single-snapshot call shape used by install and refresh
+// verification while sharing the historical multi-snapshot transport.
+func rawCoordinatorBatchCallAt(ctx context.Context, manager *EVMTxManager, addr common.Address, calls [][]byte, block uint64) ([][]byte, error) {
+	if manager == nil || manager.client == nil || len(calls) == 0 || block == 0 {
+		return nil, errors.New("coordinator batch call is unavailable")
+	}
+	requests := make([]coordinatorCallAt, len(calls))
+	for index, data := range calls {
+		requests[index] = coordinatorCallAt{Address: addr, Data: data, Block: block}
+	}
+	return rawCoordinatorBatchCallsAt(ctx, manager.client, requests)
 }
 
 func (e *Executor) bindFleetMember(ctx context.Context, a Action, fleetIndex, memberIndex int) error {

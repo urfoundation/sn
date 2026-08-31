@@ -787,6 +787,30 @@ type ethEVMBlockReader struct {
 	client *ethclient.Client
 }
 
+type evmRPCBlock struct {
+	Number string `json:"number"`
+	Hash   string `json:"hash"`
+}
+
+// Decode the explicit RPC identity without substituting go-ethereum's local
+// header hash, which is a different domain on Subtensor's synthetic EVM.
+func decodeEVMRPCBlock(block *evmRPCBlock, requested *big.Int) (ChainHead, error) {
+	if block == nil {
+		return ChainHead{}, ethereum.NotFound
+	}
+	parsed, ok := new(big.Int).SetString(strings.TrimPrefix(block.Number, "0x"), 16)
+	if !ok || !parsed.IsUint64() {
+		return ChainHead{}, fmt.Errorf("invalid EVM block number %q", block.Number)
+	}
+	if _, err := decodeHex32("EVM block hash", block.Hash); err != nil {
+		return ChainHead{}, err
+	}
+	if requested != nil && requested.Sign() >= 0 && parsed.Cmp(requested) != 0 {
+		return ChainHead{}, fmt.Errorf("EVM block response number %d does not match request %s", parsed.Uint64(), requested)
+	}
+	return ChainHead{Number: parsed.Uint64(), Hash: strings.ToLower(block.Hash)}, nil
+}
+
 // Read the explicit number and hash returned by eth_getBlockByNumber.
 // Subtensor's synthetic EVM block hash is neither its Substrate block hash nor
 // go-ethereum's locally recomputed Header.Hash(), so both shortcuts are wrong.
@@ -803,27 +827,11 @@ func (self ethEVMBlockReader) EVMBlockByNumber(ctx context.Context, number *big.
 	} else {
 		argument = "0x" + number.Text(16)
 	}
-	var block *struct {
-		Number string `json:"number"`
-		Hash   string `json:"hash"`
-	}
+	var block *evmRPCBlock
 	if err := self.client.Client().CallContext(ctx, &block, "eth_getBlockByNumber", argument, false); err != nil {
 		return ChainHead{}, err
 	}
-	if block == nil {
-		return ChainHead{}, ethereum.NotFound
-	}
-	parsed, ok := new(big.Int).SetString(strings.TrimPrefix(block.Number, "0x"), 16)
-	if !ok || !parsed.IsUint64() {
-		return ChainHead{}, fmt.Errorf("invalid EVM block number %q", block.Number)
-	}
-	if _, err := decodeHex32("EVM block hash", block.Hash); err != nil {
-		return ChainHead{}, err
-	}
-	if number.Sign() >= 0 && parsed.Cmp(number) != 0 {
-		return ChainHead{}, fmt.Errorf("EVM block response number %d does not match request %s", parsed.Uint64(), number)
-	}
-	return ChainHead{Number: parsed.Uint64(), Hash: strings.ToLower(block.Hash)}, nil
+	return decodeEVMRPCBlock(block, number)
 }
 
 // Read the EVM block selected by the finalized tag in its explicit RPC hash
