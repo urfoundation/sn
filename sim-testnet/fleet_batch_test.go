@@ -658,6 +658,52 @@ func TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan(t *testing.
 	}
 }
 
+func TestFleetInstallHistoricalReplayRequiresExactVerifiedRefresh(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := actionByID(t, plan, "fleet.install.batch.4")
+	refresh := actionByID(t, plan, "fleet.refresh.batch.4")
+	adjacent := actionByID(t, plan, "fleet.refresh.batch.3")
+	executor := &Executor{cfg: cfg, plan: plan, journal: &Journal{entries: []JournalEntry{
+		{PlanHash: plan.PlanHash, ActionID: adjacent.ID, IntentHash: adjacent.IntentHash, Stage: StageVerified},
+	}}}
+	superseded, err := executor.fleetInstallBatchSuperseded(install)
+	if err != nil || superseded {
+		t.Fatalf("adjacent refresh superseded install batch 4: superseded=%t err=%v", superseded, err)
+	}
+	executor.journal.entries = append(executor.journal.entries, JournalEntry{
+		PlanHash: plan.PlanHash, ActionID: refresh.ID, IntentHash: refresh.IntentHash, Stage: StageVerified,
+	})
+	superseded, err = executor.fleetInstallBatchSuperseded(install)
+	if err != nil || !superseded {
+		t.Fatalf("exact refresh did not supersede install batch 4: superseded=%t err=%v", superseded, err)
+	}
+
+	drifted := *plan
+	drifted.Actions = append([]Action(nil), plan.Actions...)
+	for index := range drifted.Actions {
+		if drifted.Actions[index].ID == refresh.ID {
+			drifted.Actions[index].Parameters = cloneStrings(drifted.Actions[index].Parameters)
+			drifted.Actions[index].Parameters["first_fleet"] = "32"
+			break
+		}
+	}
+	executor.plan = &drifted
+	if _, err := executor.fleetInstallBatchSuperseded(install); err == nil || !strings.Contains(err.Error(), "range") {
+		t.Fatalf("mismatched refresh range was accepted: %v", err)
+	}
+	if _, err := executor.fleetInstallBatchSuperseded(Action{ID: "fleet.install.batch.04"}); err == nil {
+		t.Fatal("noncanonical install batch id was accepted")
+	}
+}
+
 // The built release plan must deploy/activate once, use twenty atomic install
 // and refresh batches, and leave all head per-member actions read-only.
 func TestBuildPlanBatchesEveryHeadFleetBeforeTopologyLaunch(t *testing.T) {

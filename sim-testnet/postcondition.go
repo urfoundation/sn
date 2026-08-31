@@ -15,14 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -658,7 +656,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case a.ID == "fleet.refresh.oracle-activate" || a.ID == "fleet.refresh.oracle-await-active" || a.ID == "fleet.refresh.oracle-restore" || a.ID == "fleet.refresh.oracle-await-restored":
 		return e.verifyFleetRefreshOraclePostState(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "fleet.refresh.commitment."):
-		return e.verifyFleetRefreshCommitmentPostState(suffixInt(a.ID), state)
+		return e.verifyFleetRefreshCommitmentPostState(a, suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.refresh.batch."):
 		return e.verifyFleetRefreshBatchPostState(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "fleet.install.batch."):
@@ -708,7 +706,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case strings.HasPrefix(a.ID, "operator.register."):
 		return e.verifyOperatorPostState(ctx, a, state)
 	case strings.HasPrefix(a.ID, "fleet.commitment."):
-		return e.verifyFleetCommitmentPostState(suffixInt(a.ID), state)
+		return e.verifyFleetCommitmentPostState(a, suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.mirror."):
 		if a.Parameters["batch_installed"] == "true" {
 			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
@@ -1452,39 +1450,15 @@ func (e *Executor) verifyOperatorPostState(ctx context.Context, action Action, s
 	return state, nil
 }
 
-func (e *Executor) verifyFleetCommitmentPostState(fleet int, state map[string]any) (map[string]any, error) {
-	evidence, err := loadFleetCommitmentEvidence(e.stateDir, fleet)
+func (e *Executor) verifyFleetCommitmentPostState(action Action, fleet int, state map[string]any) (map[string]any, error) {
+	_, commitmentHash, evidence, _, err := e.validatedFleetCommitmentGeneration(fleet, 1)
 	if err != nil {
 		return nil, err
 	}
-	hotkey, err := roleBytes32(e.roles, fleetHotkeyLabel(fleet))
-	if err != nil {
+	if err := validateFleetCommitmentRecoveryEvidence(action, evidence); err != nil {
 		return nil, err
 	}
-	want, err := decodeHex32("fleet commitment", evidence.CommitmentHash)
-	if err != nil {
-		return nil, err
-	}
-	evidenceBlockHash, err := types.NewHashFromHexString(evidence.FinalizedBlockHash)
-	if err != nil {
-		return nil, err
-	}
-	canonicalBlockHash, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(evidence.FinalizedBlock)
-	if err != nil || canonicalBlockHash != evidenceBlockHash {
-		return nil, stateMismatchError(err, "fleet %d commitment evidence block is not canonical", fleet)
-	}
-	historical, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, evidenceBlockHash)
-	if err != nil {
-		return nil, err
-	}
-	if err := crv4.ValidateFleetCommitmentWrite(want, evidence.FinalizedBlock, historical); err != nil {
-		return nil, err
-	}
-	commitment, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
-	if err != nil || commitment.Hash != want || commitment.CommitmentBlock < evidence.CommitmentBlock {
-		return nil, errors.New("native fleet commitment differs from its finalized evidence")
-	}
-	state["fleet"], state["commitment_hash"], state["commitment_block"] = fleet, evidence.CommitmentHash, evidence.CommitmentBlock
+	state["fleet"], state["commitment_hash"], state["commitment_block"] = fleet, "0x"+hex.EncodeToString(commitmentHash[:]), evidence.CommitmentBlock
 	return state, nil
 }
 

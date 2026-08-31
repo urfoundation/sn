@@ -244,6 +244,13 @@ func (self *Executor) prepareFleetInstallBatch(ctx context.Context, action Actio
 		if err != nil {
 			return nil, err
 		}
+		commitmentAction, err := self.planAction(fmt.Sprintf("fleet.commitment.%d", fleetIndex))
+		if err != nil {
+			return nil, err
+		}
+		if err := validateFleetCommitmentInclusionLifetime(self.cfg, commitmentAction, commitmentEvidence, window.HeadBlock); err != nil {
+			return nil, err
+		}
 		hotkeyRole := self.roles.Substrate[fleetHotkeyLabel(fleetIndex)]
 		hotkey, err := crv4.KeypairFromSeedHex(hotkeyRole.SeedHex)
 		if err != nil {

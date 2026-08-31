@@ -58,7 +58,7 @@ func completePrecompileEvidence() *PrecompileConformanceEvidence {
 	tx := "0x" + strings.Repeat("11", 32)
 	block := "0x" + strings.Repeat("22", 32)
 	return &PrecompileConformanceEvidence{
-		Commitment: PrecompileCommitmentEvidence{ProbeHash: "0x" + strings.Repeat("33", 32), CanonicalHash: "0x" + strings.Repeat("44", 32), EncodedProbeBytes: 34, WriteTransactionHash: tx, WriteFinalizedHead: ChainHead{Number: 1, Hash: block}, WriteCommitmentBlock: 1, RestoreTransactionHash: tx, RestoreFinalizedHead: ChainHead{Number: 2, Hash: block}, RestoreCommitmentBlock: 2, Restored: true},
+		Commitment: PrecompileCommitmentEvidence{ProbeHash: "0x" + strings.Repeat("33", 32), CanonicalHash: "0x" + strings.Repeat("44", 32), CanonicalGeneration: precompileCanonicalFleetGeneration, EncodedProbeBytes: 34, WriteTransactionHash: tx, WriteFinalizedHead: ChainHead{Number: 1, Hash: block}, WriteCommitmentBlock: 1, RestoreTransactionHash: tx, RestoreFinalizedHead: ChainHead{Number: 2, Hash: block}, RestoreCommitmentBlock: 2, Restored: true},
 		Battery: PrecompileBatteryEvidence{
 			Passed: true, FinalizedHead: ChainHead{Number: 1, Hash: block}, BlakeOK: true, MirrorKATMatch: true,
 			Ed25519OK: true, Ed25519Good: true, Ed25519BadRejected: true, Sr25519OK: true, Sr25519Good: true,
@@ -111,6 +111,11 @@ func TestPrecompileEvidenceRequiresExactConservation(t *testing.T) {
 	if precompileEvidenceComplete(evidence) {
 		t.Fatal("incorrect TAO-to-EVM conversion evidence was accepted")
 	}
+	evidence = completePrecompileEvidence()
+	evidence.Commitment.CanonicalGeneration = 1
+	if precompileEvidenceComplete(evidence) {
+		t.Fatal("generation-1 restore was accepted after the generation-2 fleet refresh")
+	}
 }
 
 func TestPrecompileEvidenceHashAndIdentityFailClosed(t *testing.T) {
@@ -130,6 +135,11 @@ func TestPrecompileEvidenceHashAndIdentityFailClosed(t *testing.T) {
 	evidence.ProbeColdkey = hexBytesValue(coldkey[:])
 	if err := validatePrecompileEvidenceIdentity(cfg, deployment, evidence); err != nil {
 		t.Fatal(err)
+	}
+	wrongGeneration := *evidence
+	wrongGeneration.Commitment.CanonicalGeneration = 1
+	if err := validatePrecompileEvidenceIdentity(cfg, deployment, &wrongGeneration); err == nil {
+		t.Fatal("foreign canonical fleet generation passed evidence identity validation")
 	}
 	dir := t.TempDir()
 	if err := writePrecompileEvidence(dir, evidence); err != nil {

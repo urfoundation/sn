@@ -238,6 +238,11 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if !slices.Contains(actions["churn.tournament-complete"].DependsOn, fmt.Sprintf("fleet.bind.%d.%d", cfg.Config.Topology.fleetCandidates(), cfg.Config.Topology.ClientsPerHeadFleet)) || !slices.Contains(actions["precompile.commitment-write"].DependsOn, "churn.tournament-complete") {
 		t.Fatalf("churn tournament barrier is not exact: barrier=%+v precompile=%+v", actions["churn.tournament-complete"], actions["precompile.commitment-write"])
 	}
+	for _, id := range []string{"precompile.commitment-write", "precompile.commitment-restore"} {
+		if actions[id].Parameters["canonical_generation"] != strconv.FormatUint(precompileCanonicalFleetGeneration, 10) {
+			t.Fatalf("precompile commitment action %s does not bind generation 2: %+v", id, actions[id])
+		}
+	}
 	for _, id := range []string{"precompile.commitment-write", "precompile.commitment-restore", "precompile.probe-deploy", "precompile.read-battery", "precompile.seed", "precompile.move-forward", "precompile.move-back", "precompile.snapshot", "precompile.dividend", "precompile.transfer-out"} {
 		if !seen[id] {
 			t.Fatalf("precompile action %s is missing", id)

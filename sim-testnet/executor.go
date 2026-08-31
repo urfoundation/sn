@@ -429,6 +429,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return priorErr
 		}
 		p, planErr = BuildPlanRevision(ctx, cfg, stateDir, prior, entries)
+	} else if planErr == nil {
+		revisionRequired, revisionErr := fleetCommitmentRecoveryRequired(ctx, cfg, stateDir, p, entries)
+		if revisionErr != nil {
+			return revisionErr
+		}
+		if revisionRequired {
+			p, planErr = BuildPlanRevision(ctx, cfg, stateDir, p, entries)
+		}
 	}
 	if planErr != nil {
 		return planErr
@@ -710,15 +718,16 @@ func observedPostconditionMatches(recorded, replayed map[string]any) error {
 	return nil
 }
 
-// A funding action can converge without broadcasting when an earlier plan
-// already left enough native value at its EVM mirror. Once an approved
-// descendant spends that value, neither the live balance nor a transaction
-// belonging to the converged action can prove the point-in-time assertion.
-// V3+ receipts bind the exact EVM-RPC hash domain, so replay both finalized
-// observations at their recorded blocks and require byte-equivalent state.
-func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, action Action, record *ActionPostcondition) error {
+// Replays an EVM-dependent point-in-time assertion after a later approved
+// action intentionally supersedes its live state. V3+ receipts bind the exact
+// EVM-RPC hash domain, so both finalized observations must remain canonical
+// and byte-equivalent to their persisted values.
+func (e *Executor) verifyHistoricalEVMPostcondition(ctx context.Context, action Action, record *ActionPostcondition) error {
 	if record == nil || (record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") {
-		return errors.New("consumed EVM funding action has no replayable v3+ postcondition")
+		return errors.New("historical EVM action has no replayable v3+ postcondition")
+	}
+	if e == nil || e.plan == nil || record.ActionID != action.ID || !actionAcceptsIntent(action, record.IntentHash) || !e.plan.allowedPlanHashes()[record.PlanHash] {
+		return errors.New("historical EVM postcondition is outside the approved action lineage")
 	}
 	if e.deployer == nil || e.deployer.client == nil {
 		return errors.New("operational EVM history client is unavailable")
@@ -766,6 +775,14 @@ func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, ac
 		return fmt.Errorf("independent historical EVM state: %w", err)
 	}
 	return nil
+}
+
+// A funding action can converge without broadcasting when an earlier plan
+// already left enough native value at its EVM mirror. Once an approved
+// descendant spends that value, neither the live balance nor a transaction
+// belonging to the converged action can prove the point-in-time assertion.
+func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, action Action, record *ActionPostcondition) error {
+	return e.verifyHistoricalEVMPostcondition(ctx, action, record)
 }
 
 func (e *Executor) verifyConsumedActionHistory(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition) error {
@@ -955,6 +972,39 @@ func (e *Executor) carriedFleetBatchSourceExecutor(action Action, verified Journ
 	return &sourceExecutor, sourceAction, nil
 }
 
+// A generation-2 refresh intentionally supersedes the generation-1 mirror and
+// binding versions installed by the batch with the same canonical range. Only
+// that exact verified successor permits historical replay of the install.
+func (e *Executor) fleetInstallBatchSuperseded(action Action) (bool, error) {
+	if !strings.HasPrefix(action.ID, "fleet.install.batch.") {
+		return false, nil
+	}
+	if e == nil || e.cfg == nil || e.plan == nil || e.journal == nil {
+		return false, errors.New("fleet install successor context is unavailable")
+	}
+	batch := suffixInt(action.ID)
+	if batch < 1 || action.ID != fmt.Sprintf("fleet.install.batch.%d", batch) {
+		return false, fmt.Errorf("fleet install action %q is not canonical", action.ID)
+	}
+	installFirst, installLast, err := fleetInstallActionRange(e.cfg, action, batch)
+	if err != nil {
+		return false, err
+	}
+	refresh, err := e.planAction(fmt.Sprintf("fleet.refresh.batch.%d", batch))
+	if err != nil {
+		return false, err
+	}
+	refreshFirst, refreshLast, err := fleetRefreshActionRange(e.cfg, refresh, batch)
+	if err != nil {
+		return false, err
+	}
+	if refreshFirst != installFirst || refreshLast != installLast {
+		return false, fmt.Errorf("fleet install batch %d range %d-%d differs from refresh range %d-%d", batch, installFirst, installLast, refreshFirst, refreshLast)
+	}
+	_, verified := e.verifiedActionEntry(refresh)
+	return verified, nil
+}
+
 func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead *ChainHead) error {
 	verifier, verifiedAction := e, action
 	if verified.PlanHash != e.plan.PlanHash && (strings.HasPrefix(action.ID, "fleet.install.batch.") || strings.HasPrefix(action.ID, "fleet.refresh.batch.")) {
@@ -963,6 +1013,16 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		if err != nil {
 			return fmt.Errorf("carried fleet batch source: %w", err)
 		}
+	}
+	installSuperseded, err := e.fleetInstallBatchSuperseded(action)
+	if err != nil {
+		return fmt.Errorf("fleet install successor: %w", err)
+	}
+	if installSuperseded {
+		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record); err != nil {
+			return fmt.Errorf("historical fleet install postcondition: %w", err)
+		}
+		return nil
 	}
 	if actionRequiresCurrentPostcondition(action) {
 		if err := verifier.verifyCurrentActionPostState(ctx, verifiedAction, sharedEVMHead); err != nil {

@@ -303,7 +303,9 @@ func (self *Executor) awaitFleetRefreshOracle(ctx context.Context, action Action
 }
 
 // Verifies a generation-specific native commitment at its exact canonical
-// finalized block and against the current finalized pallet value.
+// finalized block. Until its exact EVM consumer verifies, the commitment must
+// also be the current finalized pallet value. A consumed generation remains
+// replayable after a successor or the bounded precompile drill replaces it.
 func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generation uint64) (protocol.FleetManifest, [32]byte, *FleetCommitmentEvidence, [32]byte, error) {
 	manifest, _, commitmentHash, err := fleetManifestForGeneration(self.cfg, self.stateDir, self.roles, fleetIndex, generation)
 	if err != nil {
@@ -331,6 +333,13 @@ func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generat
 	}
 	if err := crv4.ValidateFleetCommitmentWrite(commitmentHash, evidence.FinalizedBlock, historical); err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
+	}
+	_, consumed, err := self.consumedFleetCommitmentGeneration(fleetIndex, generation)
+	if err != nil {
+		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
+	}
+	if consumed {
+		return manifest, commitmentHash, evidence, [32]byte(finalizedHash), nil
 	}
 	current, err := self.substrate.chain.FleetCommitmentFinalized(self.cfg.Netuid, manifest.Hotkey)
 	if err != nil || current.Hash != commitmentHash || current.CommitmentBlock != evidence.CommitmentBlock {
@@ -496,6 +505,13 @@ func (self *Executor) prepareFleetRefreshBatch(ctx context.Context, action Actio
 		}
 		manifest, commitmentHash, commitmentEvidence, finalizedBlockHash, err := self.validatedFleetCommitmentGeneration(fleetIndex, 2)
 		if err != nil {
+			return nil, err
+		}
+		commitmentAction, err := self.planAction(fmt.Sprintf("fleet.refresh.commitment.%d", fleetIndex))
+		if err != nil {
+			return nil, err
+		}
+		if err := validateFleetCommitmentInclusionLifetime(self.cfg, commitmentAction, commitmentEvidence, window.HeadBlock); err != nil {
 			return nil, err
 		}
 		hotkeyRole := self.roles.Substrate[fleetHotkeyLabel(fleetIndex)]
@@ -981,10 +997,13 @@ func (self *Executor) verifyFleetRefreshOraclePostState(ctx context.Context, act
 	return state, nil
 }
 
-// Proves the generation-2 manifest and exact current finalized native value.
-func (self *Executor) verifyFleetRefreshCommitmentPostState(fleetIndex int, state map[string]any) (map[string]any, error) {
+// Proves the generation-2 manifest and exact canonical finalized native write.
+func (self *Executor) verifyFleetRefreshCommitmentPostState(action Action, fleetIndex int, state map[string]any) (map[string]any, error) {
 	manifest, commitmentHash, evidence, _, err := self.validatedFleetCommitmentGeneration(fleetIndex, 2)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateFleetCommitmentRecoveryEvidence(action, evidence); err != nil {
 		return nil, err
 	}
 	if manifest.Generation != 2 {

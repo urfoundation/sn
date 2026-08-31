@@ -1476,8 +1476,8 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		}
 	}
 	add(Action{ID: "churn.tournament-complete", Kind: "local", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "prove both live challengers replaced exactly the two oldest eligible remaining churn-floor UIDs while all 202 measured fleets remain registered", DependsOn: []string{lastChallenger}})
-	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "write and finalized-read an exact one-field SHA-256 conformance commitment from the registered test hotkey", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2}, DependsOn: []string{"churn.tournament-complete"}})
-	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the conformance commitment with the canonical fleet hash and prove the restored finalized bytes", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2}, DependsOn: []string{"precompile.commitment-write"}})
+	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the exact generation-2 fleet commitment with a finalized one-field SHA-256 conformance commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"churn.tournament-complete"}})
+	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "restore the exact generation-2 fleet hash and prove the restored finalized bytes", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"precompile.commitment-write"}})
 	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-452-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.commitment-restore", "precompile.probe-deploy"}})
 	add(Action{ID: "precompile.seed", Kind: "evm-transaction", Target: "validator:1", Description: "convert the approved TAO dust ceiling into probe-coldkey alpha and record exact live units", Parameters: map[string]string{"maximum_tao_rao": fmt.Sprint(facts.ProbeTAORao), "nominator_minimum_rao": fmt.Sprint(facts.NominatorMinimumRao)}, Spend: Spend{EVMGasWei: probeGasCaps["precompile.seed"]}, DependsOn: []string{"precompile.read-battery"}})
 	add(Action{ID: "precompile.move-forward", Kind: "evm-transaction", Target: "validator:2", Description: "move half the observed probe alpha from validator 1 to validator 2 and prove exact slippage-free deltas", Spend: Spend{EVMGasWei: probeGasCaps["precompile.move-forward"]}, DependsOn: []string{"precompile.seed"}})
@@ -2034,6 +2034,9 @@ func validatePlanBudget(p *SetupPlan) error {
 		if !linked {
 			return errors.New("voluntary-conviction reconciliation has no exact alpha-repair barrier")
 		}
+	}
+	if err := validateFleetCommitmentRecoveryBudget(p); err != nil {
+		return err
 	}
 	if planUsesAlphaTransferEnvelope(p.Schema) && (alphaTransferActions != 4 || !seenActions["validator.reserve-majority"]) {
 		return fmt.Errorf("v5 plan has %d alpha transfers or no reserve-majority barrier", alphaTransferActions)

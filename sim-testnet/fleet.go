@@ -216,7 +216,7 @@ func writePublicJSON(path string, v any) error {
 // from complete exact evidence and from corruption. Complete evidence may be
 // carried across a formally revised plan without submitting the same native
 // commitment again.
-func (self *Executor) fleetCommitmentGenerationAlreadyPublished(fleetIndex int, generation uint64, canonical []byte, manifestName, evidenceName string) (bool, error) {
+func (self *Executor) fleetCommitmentGenerationAlreadyPublished(action Action, fleetIndex int, generation uint64, canonical []byte, manifestName, evidenceName string) (bool, error) {
 	manifestPath := filepath.Join(self.stateDir, "public", manifestName)
 	evidencePath := filepath.Join(self.stateDir, "public", evidenceName)
 	manifestBytes, manifestErr := os.ReadFile(manifestPath)
@@ -241,8 +241,17 @@ func (self *Executor) fleetCommitmentGenerationAlreadyPublished(fleetIndex int, 
 	if !evidenceExists {
 		return false, nil
 	}
-	if _, _, _, _, err := self.validatedFleetCommitmentGeneration(fleetIndex, generation); err != nil {
+	_, _, evidence, _, err := self.validatedFleetCommitmentGeneration(fleetIndex, generation)
+	if err != nil {
 		return false, fmt.Errorf("existing fleet commitment evidence is not exact current state: %w", err)
+	}
+	if err := validateFleetCommitmentRecoveryEvidence(action, evidence); err != nil {
+		// The old evidence is still exact state, but this approved recovery must
+		// replace it with a strictly later finalized commitment.
+		if _, _, _, recovery, envelopeErr := fleetCommitmentRecoveryEnvelope(action); envelopeErr == nil && recovery {
+			return false, nil
+		}
+		return false, err
 	}
 	return true, nil
 }
@@ -254,7 +263,7 @@ func (self *Executor) publishFleetCommitmentGeneration(ctx context.Context, acti
 	if err != nil {
 		return err
 	}
-	published, err := self.fleetCommitmentGenerationAlreadyPublished(fleetIndex, generation, canonical, manifestName, evidenceName)
+	published, err := self.fleetCommitmentGenerationAlreadyPublished(action, fleetIndex, generation, canonical, manifestName, evidenceName)
 	if err != nil || published {
 		return err
 	}
@@ -393,6 +402,17 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	}
 	if a.Parameters["batch_installed"] == "true" {
 		return fmt.Errorf("fleet %d atomic installer did not establish its exact commitment mirror", fleetIndex)
+	}
+	commitmentAction, err := e.planAction(fmt.Sprintf("fleet.commitment.%d", fleetIndex))
+	if err != nil {
+		return err
+	}
+	headBlock, err := e.oracle.client.BlockNumber(ctx)
+	if err != nil {
+		return err
+	}
+	if err := validateFleetCommitmentInclusionLifetime(e.cfg, commitmentAction, evidence, headBlock); err != nil {
+		return err
 	}
 	data, err := coordinator.TryPackMirrorCommitment(manifest.Hotkey, hash, evidence.FinalizedBlock, [32]byte(finalizedHash))
 	if err != nil {

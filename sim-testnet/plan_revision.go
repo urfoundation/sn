@@ -3164,6 +3164,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, err
 		}
 	}
+	if err := applyFleetCommitmentRecoveries(cfg, stateDir, revised, prior, current, entries); err != nil {
+		return nil, fmt.Errorf("recover expiring fleet commitments: %w", err)
+	}
 	if err := trimLiveCampaignEVMReserveToLimit(revised); err != nil {
 		return nil, err
 	}
@@ -3252,6 +3255,17 @@ func BuildPlanRevision(ctx context.Context, cfg *ResolvedConfig, stateDir string
 func BuildPlanForState(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*SetupPlan, error) {
 	plan, err := loadPersistedPlan(cfg, stateDir)
 	if err == nil {
+		entries, readErr := readJournalEntries(stateDir)
+		if readErr != nil {
+			return nil, readErr
+		}
+		revisionRequired, recoveryErr := fleetCommitmentRecoveryRequired(ctx, cfg, stateDir, plan, entries)
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
+		if revisionRequired {
+			return BuildPlanRevision(ctx, cfg, stateDir, plan, entries)
+		}
 		return plan, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {

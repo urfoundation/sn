@@ -347,9 +347,13 @@ func TestConsumedEVMFundingHistoryRejectsEveryAdjacentEvidenceGap(t *testing.T) 
 		ID: "evm.fund-owner", Kind: "substrate-extrinsic", Target: common.HexToAddress("0x521").Hex(), IntentHash: "same-intent",
 		Parameters: map[string]string{"usable_evm_rao": "1000", "existential_deposit_rao": "500"}, Spend: Spend{TAORao: 1_500},
 	}
-	plan := &SetupPlan{LiveFacts: SetupFacts{ExistentialDepositRao: 500}}
+	plan := &SetupPlan{
+		PlanHash: "0x" + strings.Repeat("aa", 32), LiveFacts: SetupFacts{ExistentialDepositRao: 500},
+		Actions: []Action{action},
+	}
 	record := &ActionPostcondition{
-		Schema: "urnetwork-sim-action-postcondition-v4", EVMFinalized: testEVMHead(10, 0x10),
+		Schema: "urnetwork-sim-action-postcondition-v4", PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		EVMFinalized:            testEVMHead(10, 0x10),
 		IndependentEVMFinalized: testEVMHead(10, 0x10),
 		Observed:                fundingPostconditionObservation(action, 1_000, 500, new(big.Int).Mul(big.NewInt(1_100), new(big.Int).SetUint64(evmWeiPerRao))),
 	}

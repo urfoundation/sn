@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied through fleet commitment 40. The reviewed schema-v10 resume authenticated all 947 carried actions and finalized commitments 34--40, then stopped safely while estimating `fleet.install.batch.4`; no EVM transaction was signed or broadcast. Exact calldata replay returned `StaleCommitment()`: carried commitments 31--33 had aged beyond the coordinator's 600-block limit while the release gate and revision review ran, whereas commitments 34--40 remained current. The contract enforced the intended bound; revision planning incorrectly treated a historically verified, not-yet-consumed commitment as indefinitely reusable. M0A remains stopped while deterministic commitment-refresh recovery and adjacent install/refresh guards are implemented and reviewed. Resume, remaining setup, launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied through fleet commitment 40. The reviewed schema-v10 resume authenticated all 947 carried actions and finalized commitments 34--40, then stopped safely while estimating `fleet.install.batch.4`; no EVM transaction was signed or broadcast. Exact calldata replay returned `StaleCommitment()`: carried commitments 31--33 had aged beyond the coordinator's 600-block limit while the release gate and revision review ran, whereas commitments 34--40 remained current. The contract enforced the intended bound; revision planning incorrectly treated a historically verified, not-yet-consumed commitment as indefinitely reusable. Deterministic revision recovery now reissues only unsafe unconsumed generations, budgets every cumulative retry, enforces a 30-block inclusion margin in initial, refresh and challenger consumers, and replays consumed generations at authenticated historical checkpoints. Adjacent review also corrected M0B's native commitment drill to round-trip the active generation-2 fleet commitment rather than obsolete generation 1. The complete Go and 145-test Foundry gates pass. M0A remains stopped pending a new two-build plan review and checkpointed resume; M0B/phase 2 has not started. Remaining setup, launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -86,7 +86,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A stopped at a diagnosed pre-broadcast freshness gate | Runtime-452 doctor is hard-green. Setup is verified through fleet commitment 40; no simulator process is currently running. The reviewed resume authenticated all 947 carried actions and finalized commitments 34--40. Batch 4 then failed during gas estimation with `StaleCommitment()` because commitments 31--33 exceeded the 600-block contract age while release review was in progress; no EVM transaction was signed or broadcast. The contract bound is correct. M0A resumes only after deterministic recovery reissues expiring, unconsumed commitments and both install and refresh preparation reject an unsafe remaining lifetime before intent. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A stopped after a diagnosed and locally corrected pre-broadcast freshness gate | Runtime-452 doctor is hard-green. Setup is verified through fleet commitment 40; no simulator process is currently running. The reviewed resume authenticated all 947 carried actions and finalized commitments 34--40. Batch 4 then failed during gas estimation with `StaleCommitment()` because commitments 31--33 exceeded the 600-block contract age while release review was in progress; no EVM transaction was signed or broadcast. The contract bound is correct. The harness now creates an exact funded revision for unsafe unconsumed commitments, checks lifetime immediately before every install/refresh/challenger consumer, preserves consumed history, and binds the later precompile round trip to generation 2. Deterministic adjacent tests, `go test ./...`, and all 145 Foundry tests pass. M0A resumes after the required two identical read-only plan builds and checkpoint; phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2372,7 +2372,25 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    commitment intent, reissue only the expired unconsumed commitments, overwrite
    their exact finalized evidence, and recheck remaining lifetime immediately
    before install. The adjacent generation-2 refresh path requires the same
-   protection. M0A is paused at this gate; M0B/phase 2 has not started.
+   protection.
+
+   The corrected lifecycle is now implemented and locally gated. A same-release
+   plan automatically requests a formal revision when verified, unconsumed
+   evidence enters the unsafe window. The revision authenticates its exact
+   finalized transaction and verified plan lineage, emits a strictly later
+   commitment intent, adds exact per-hotkey funding and global fee reserve, and
+   supports repeated expiry without accepting an ancestor intent. Install,
+   refresh and challenger preparation each require 30 blocks of remaining
+   inclusion lifetime. Once the exact consumer verifies, resume proves the
+   commitment from its canonical historical block and replays a superseded
+   generation-1 install at its recorded EVM checkpoint. Review of the adjacent
+   M0B path found and fixed a separate ordering defect: the precompile drill now
+   replaces and restores fleet 1 generation 2, binds that generation in the plan
+   and public evidence, and requires the restored write to remain current.
+   Targeted boundary/lineage/budget tests, the complete simulator suite,
+   repository-wide Go tests and all 145 Foundry tests pass. M0A remains paused
+   for a new two-build plan review and checkpointed resume; M0B/phase 2 has not
+   started.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
