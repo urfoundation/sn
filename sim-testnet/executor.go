@@ -1014,13 +1014,13 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 			return fmt.Errorf("carried fleet batch source: %w", err)
 		}
 	}
-	installSuperseded, err := e.fleetInstallBatchSuperseded(action)
+	generationOneSuperseded, err := e.fleetGenerationOneActionSuperseded(action, verified, record)
 	if err != nil {
-		return fmt.Errorf("fleet install successor: %w", err)
+		return fmt.Errorf("fleet generation-1 successor: %w", err)
 	}
-	if installSuperseded {
+	if generationOneSuperseded {
 		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record); err != nil {
-			return fmt.Errorf("historical fleet install postcondition: %w", err)
+			return fmt.Errorf("historical fleet generation-1 postcondition: %w", err)
 		}
 		return nil
 	}

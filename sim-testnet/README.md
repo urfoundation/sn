@@ -95,6 +95,14 @@ source position, and the full live registered-alpha composition at 65%; the
 postcondition proves the same share at the finalized transaction block. A
 separate 60% barrier then protects the remainder of setup from later dilution.
 
+Generation-2 fleet refresh intentionally consumes generation-1 mirror and
+binding live state. Resume accepts an older receipt historically only when the
+append-only journal contains its exact later generation-1 install/convergence
+batch and the same-range generation-2 refresh, with ordered operational and
+comparison checkpoints. The original mirror or binding is replayed at its
+recorded EVM block; an adjacent or partial batch cannot authorize it. Challenger
+fleets are not refreshed and therefore retain ordinary live revalidation.
+
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
 452 may floor each destination entitlement by one rao, so every reserve call

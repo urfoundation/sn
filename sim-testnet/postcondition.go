@@ -759,7 +759,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
 			return observed, err
 		}
-		return e.verifyFleetMirrorPostState(ctx, suffixInt(a.ID), state)
+		return e.verifyFleetMirrorPostState(ctx, suffixInt(a.ID), evmHead, state)
 	case strings.HasPrefix(a.ID, "fleet.bind."):
 		if a.Parameters["batch_installed"] == "true" {
 			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
@@ -769,7 +769,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
-		return e.verifyFleetBindingPostState(ctx, fleet, member, state)
+		return e.verifyFleetBindingPostState(ctx, fleet, member, evmHead, state)
 	case a.ID == "campaign.voluntary-conviction.1":
 		return e.verifyVoluntaryConvictionPostState(ctx, evmHead, state)
 	case a.ID == voluntaryConvictionReconciliationActionID:
@@ -1509,9 +1509,12 @@ func (e *Executor) verifyFleetCommitmentPostState(action Action, fleet int, stat
 	return state, nil
 }
 
-func (e *Executor) verifyFleetMirrorPostState(ctx context.Context, fleet int, state map[string]any) (map[string]any, error) {
+func (e *Executor) verifyFleetMirrorPostState(ctx context.Context, fleet int, evmHead ChainHead, state map[string]any) (map[string]any, error) {
 	if err := e.ensurePayloads(ctx); err != nil {
 		return nil, err
+	}
+	if evmHead.Number == 0 || evmHead.Hash == "" {
+		return nil, errors.New("fleet mirror EVM checkpoint is incomplete")
 	}
 	manifest, _, hash, err := fleetManifest(e.cfg, e.stateDir, e.roles, fleet)
 	if err != nil {
@@ -1526,7 +1529,7 @@ func (e *Executor) verifyFleetMirrorPostState(ctx context.Context, fleet int, st
 		return nil, err
 	}
 	contract := stabi.NewSTCoordinator()
-	got, err := rawCoordinatorCall(ctx, e.oracle, e.payloads.Manifest.CoordinatorProxy, contract.PackMirroredCommitments(manifest.Hotkey), contract.UnpackMirroredCommitments)
+	got, err := rawCoordinatorCallAt(ctx, e.oracle, e.payloads.Manifest.CoordinatorProxy, contract.PackMirroredCommitments(manifest.Hotkey), contract.UnpackMirroredCommitments, evmHead.Number)
 	if err != nil || !fleetMirrorMatches(got, hash, evidence.CommitmentBlock, finalizedBlockHash) {
 		return nil, stateMismatchError(err, "fleet %d mirror mismatch", fleet)
 	}
@@ -1534,9 +1537,12 @@ func (e *Executor) verifyFleetMirrorPostState(ctx context.Context, fleet int, st
 	return state, nil
 }
 
-func (e *Executor) verifyFleetBindingPostState(ctx context.Context, fleet, member int, state map[string]any) (map[string]any, error) {
+func (e *Executor) verifyFleetBindingPostState(ctx context.Context, fleet, member int, evmHead ChainHead, state map[string]any) (map[string]any, error) {
 	if err := e.ensurePayloads(ctx); err != nil {
 		return nil, err
+	}
+	if evmHead.Number == 0 || evmHead.Hash == "" {
+		return nil, errors.New("fleet binding EVM checkpoint is incomplete")
 	}
 	var evidence FleetBindingEvidence
 	if err := readJSONFile(filepath.Join(e.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", fleet, member)), &evidence); err != nil {
@@ -1549,7 +1555,7 @@ func (e *Executor) verifyFleetBindingPostState(ctx context.Context, fleet, membe
 	var clientID [16]byte
 	copy(clientID[:], clientIDBytes)
 	contract := stabi.NewSTCoordinator()
-	got, err := rawCoordinatorCall(ctx, e.keeper, e.payloads.Manifest.CoordinatorProxy, contract.PackBindingAt(clientID, new(big.Int).SetUint64(evidence.ValidFromEpoch)), contract.UnpackBindingAt)
+	got, err := rawCoordinatorCallAt(ctx, e.keeper, e.payloads.Manifest.CoordinatorProxy, contract.PackBindingAt(clientID, new(big.Int).SetUint64(evidence.ValidFromEpoch)), contract.UnpackBindingAt, evmHead.Number)
 	if err != nil || !got.Active || got.Record.Uid != evidence.UID || got.Record.Generation != evidence.Generation {
 		return nil, stateMismatchError(err, "fleet %d member %d binding postcondition mismatch", fleet, member)
 	}
