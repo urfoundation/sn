@@ -3,11 +3,16 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,6 +43,7 @@ type item struct {
 	References                                                                       map[string][]int
 	Release                                                                          bool
 	Variable                                                                         string
+	Artifact                                                                         artifact
 }
 
 var foundryTypeASTID = regexp.MustCompile(`(t_(?:struct|contract|enum|userDefinedValueType)\([^)]*\))\d+`)
@@ -55,6 +61,16 @@ type artifactDefinition struct {
 	// unnamed/compiler-id ordering convention.
 	immutableNames   []string
 	immutableSources []string
+}
+
+var artifactDefinitions = []artifactDefinition{
+	{"ReserveSink", "STReserveSink.sol/STReserveSink.json", true, "", []string{"netuid", "reserveHotkey", "selfColdkey", "bootstrap"}, []string{"src/STReserveSink.sol"}},
+	{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "minimumTransferTaoRao", "bootstrap"}, []string{"src/STSettlementVault.sol"}},
+	{"Coordinator", "STCoordinator.sol/STCoordinator.json", true, "", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
+	{"ERC1967Proxy", "ERC1967Proxy.sol/ERC1967Proxy.json", true, "", nil, nil},
+	{"CoordinatorAdversary", "STCoordinatorAdversary.sol/STCoordinatorAdversary.json", false, "TestnetGovernanceDrillArtifact", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
+	{"SubnetProbe", "STSubnetProbe.sol/STSubnetProbe.json", false, "TestnetPrecompileProbeArtifact", []string{"owner", "netuid"}, []string{"src/probe/STSubnetProbe.sol"}},
+	{"FleetBatcher", "STFleetBatcher.sol/STFleetBatcher.json", false, "TestnetFleetBatcherArtifact", []string{"coordinator", "oracle"}, []string{"src/STFleetBatcher.sol"}},
 }
 
 // Foundry includes compilation-unit AST ids in storage entries and Solidity
@@ -86,6 +102,16 @@ func normalizeFoundryStorageLayout(value any) any {
 }
 
 func canonicalArtifactHash(a artifact, immutableReferences map[string][]int) string {
+	return canonicalArtifactHashForBytecode(a, immutableReferences, a.Bytecode.Object, a.DeployedBytecode.Object)
+}
+
+func canonicalArtifactHashForBytecode(a artifact, immutableReferences map[string][]int, creation, runtime string) string {
+	if strings.HasPrefix(a.Bytecode.Object, "0x") && !strings.HasPrefix(creation, "0x") {
+		creation = "0x" + creation
+	}
+	if strings.HasPrefix(a.DeployedBytecode.Object, "0x") && !strings.HasPrefix(runtime, "0x") {
+		runtime = "0x" + runtime
+	}
 	decode := func(raw json.RawMessage) any {
 		if len(raw) == 0 {
 			return nil
@@ -102,7 +128,7 @@ func canonicalArtifactHash(a artifact, immutableReferences map[string][]int) str
 		MethodIdentifiers   map[string]string `json:"methodIdentifiers"`
 		StorageLayout       any               `json:"storageLayout"`
 	}{
-		ABI: decode(a.ABI), CreationBytecode: a.Bytecode.Object, RuntimeBytecode: a.DeployedBytecode.Object,
+		ABI: decode(a.ABI), CreationBytecode: creation, RuntimeBytecode: runtime,
 		ImmutableReferences: immutableReferences, MethodIdentifiers: a.MethodIdentifiers,
 		StorageLayout: normalizeFoundryStorageLayout(decode(a.StorageLayout)),
 	}
@@ -113,6 +139,10 @@ func canonicalArtifactHash(a artifact, immutableReferences map[string][]int) str
 }
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "--check" {
+		must(checkGeneratedContracts(os.Args[2], os.Args[3]))
+		return
+	}
 	root := "evm/out"
 	out := "sim-testnet/contracts_gen.go"
 	if len(os.Args) > 1 {
@@ -121,18 +151,15 @@ func main() {
 	if len(os.Args) > 2 {
 		out = os.Args[2]
 	}
-	defs := []artifactDefinition{
-		{"ReserveSink", "STReserveSink.sol/STReserveSink.json", true, "", []string{"netuid", "reserveHotkey", "selfColdkey", "bootstrap"}, []string{"src/STReserveSink.sol"}},
-		{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "minimumTransferTaoRao", "bootstrap"}, []string{"src/STSettlementVault.sol"}},
-		{"Coordinator", "STCoordinator.sol/STCoordinator.json", true, "", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
-		{"ERC1967Proxy", "ERC1967Proxy.sol/ERC1967Proxy.json", true, "", nil, nil},
-		{"CoordinatorAdversary", "STCoordinatorAdversary.sol/STCoordinatorAdversary.json", false, "TestnetGovernanceDrillArtifact", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
-		{"SubnetProbe", "STSubnetProbe.sol/STSubnetProbe.json", false, "TestnetPrecompileProbeArtifact", []string{"owner", "netuid"}, []string{"src/probe/STSubnetProbe.sol"}},
-		{"FleetBatcher", "STFleetBatcher.sol/STFleetBatcher.json", false, "TestnetFleetBatcherArtifact", []string{"coordinator", "oracle"}, []string{"src/STFleetBatcher.sol"}},
-	}
+	formatted, err := renderContractArtifacts(loadContractItems(root))
+	must(err)
+	must(os.WriteFile(out, formatted, 0o644))
+}
+
+func loadContractItems(root string) []item {
 	sourceRoot := filepath.Dir(root)
-	items := make([]item, 0, len(defs))
-	for _, d := range defs {
+	items := make([]item, 0, len(artifactDefinitions))
+	for _, d := range artifactDefinitions {
 		validateImmutableSourceOrder(sourceRoot, d)
 		path := filepath.Join(root, d.path)
 		raw, err := os.ReadFile(path)
@@ -198,9 +225,17 @@ func main() {
 		// source and compiler settings have independent release-lock hashes,
 		// while the bytecode still contains Solidity's metadata suffix.
 		artifactHash := canonicalArtifactHash(a, refs)
-		items = append(items, item{d.name, path, string(abi), creation, runtime, rh.Hex(), artifactHash, "sha256:" + hex.EncodeToString(lh[:]), refs, d.release, d.variable})
+		items = append(items, item{
+			Name: d.name, Path: path, ABI: string(abi), Creation: creation, Runtime: runtime,
+			RuntimeHash: rh.Hex(), ArtifactHash: artifactHash, StorageLayoutHash: "sha256:" + hex.EncodeToString(lh[:]),
+			References: refs, Release: d.release, Variable: d.variable, Artifact: a,
+		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func renderContractArtifacts(items []item) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("// Code generated by go generate; DO NOT EDIT.\npackage main\n\n")
 	b.WriteString("//go:generate go run ./gencontracts ../evm/out contracts_gen.go\n\n")
@@ -225,8 +260,186 @@ func main() {
 		}
 	}
 	formatted, err := format.Source([]byte(b.String()))
-	must(err)
-	must(os.WriteFile(out, formatted, 0o644))
+	return formatted, err
+}
+
+const (
+	solidityMetadataPrefix = "a2646970667358221220"
+	solidityMetadataSuffix = "64736f6c63430008180033"
+)
+
+// normalizeSolidityMetadataDigest removes only the graph-sensitive IPFS digest
+// from Solidity 0.8.24's canonical CBOR trailer. The executable bytes, CBOR
+// shape, hash function marker, compiler version and trailer length all remain
+// comparison inputs. This lets a clean full-project build authenticate the
+// exact deployment payload even when Foundry chooses a different compilation
+// graph for otherwise identical source and settings.
+func normalizeSolidityMetadataDigest(encoded string) (string, error) {
+	raw, err := hex.DecodeString(trim0x(encoded))
+	if err != nil {
+		return "", fmt.Errorf("decode bytecode: %w", err)
+	}
+	prefix, _ := hex.DecodeString(solidityMetadataPrefix)
+	suffix, _ := hex.DecodeString(solidityMetadataSuffix)
+	metadataLength := len(prefix) + sha256.Size + len(suffix)
+	if len(raw) < metadataLength {
+		return "", errors.New("bytecode has no complete Solidity 0.8.24 metadata trailer")
+	}
+	start := len(raw) - metadataLength
+	if !bytes.Equal(raw[start:start+len(prefix)], prefix) || !bytes.Equal(raw[len(raw)-len(suffix):], suffix) {
+		return "", errors.New("bytecode has an unexpected Solidity metadata trailer")
+	}
+	result := append([]byte(nil), raw...)
+	digestStart := start + len(prefix)
+	clear(result[digestStart : digestStart+sha256.Size])
+	return hex.EncodeToString(result), nil
+}
+
+func generatedStringConstants(path string, source []byte) (map[string]string, error) {
+	parsed, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]string{}
+	for _, declaration := range parsed.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.CONST {
+			continue
+		}
+		for _, specification := range general.Specs {
+			values, ok := specification.(*ast.ValueSpec)
+			if !ok || len(values.Names) != len(values.Values) {
+				continue
+			}
+			for index, name := range values.Names {
+				literal, ok := values.Values[index].(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					continue
+				}
+				value, unquoteErr := strconv.Unquote(literal.Value)
+				if unquoteErr != nil {
+					return nil, fmt.Errorf("decode generated constant %s: %w", name.Name, unquoteErr)
+				}
+				if _, duplicate := result[name.Name]; duplicate {
+					return nil, fmt.Errorf("duplicate generated constant %s", name.Name)
+				}
+				result[name.Name] = value
+			}
+		}
+	}
+	return result, nil
+}
+
+func requiredGeneratedConstant(constants map[string]string, name string) (string, error) {
+	value, ok := constants[name]
+	if !ok {
+		return "", fmt.Errorf("generated payload has no %s constant", name)
+	}
+	return value, nil
+}
+
+func replaceGeneratedConstant(source []byte, name, before, after string) ([]byte, error) {
+	oldLine := []byte(fmt.Sprintf("const %s = %q", name, before))
+	newLine := []byte(fmt.Sprintf("const %s = %q", name, after))
+	if bytes.Count(source, oldLine) != 1 {
+		return nil, fmt.Errorf("generated payload has an ambiguous %s declaration", name)
+	}
+	return bytes.Replace(source, oldLine, newLine, 1), nil
+}
+
+func normalizeGeneratedContractSource(path string, source []byte, items []item) ([]byte, error) {
+	constants, err := generatedStringConstants(path, source)
+	if err != nil {
+		return nil, err
+	}
+	result := append([]byte(nil), source...)
+	for _, contract := range items {
+		for _, suffix := range []string{"CreationBytecode", "RuntimeBytecode"} {
+			name := contract.Name + suffix
+			value, err := requiredGeneratedConstant(constants, name)
+			if err != nil {
+				return nil, err
+			}
+			normalized, err := normalizeSolidityMetadataDigest(value)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			result, err = replaceGeneratedConstant(result, name, value, normalized)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, suffix := range []string{"RuntimeBytecodeHash", "FoundryArtifactHash"} {
+			name := contract.Name + suffix
+			value, err := requiredGeneratedConstant(constants, name)
+			if err != nil {
+				return nil, err
+			}
+			result, err = replaceGeneratedConstant(result, name, value, "0x"+strings.Repeat("0", 64))
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return result, nil
+}
+
+func checkGeneratedContracts(root, existingPath string) error {
+	items := loadContractItems(root)
+	expected, err := renderContractArtifacts(items)
+	if err != nil {
+		return err
+	}
+	existing, err := os.ReadFile(existingPath)
+	if err != nil {
+		return err
+	}
+	constants, err := generatedStringConstants(existingPath, existing)
+	if err != nil {
+		return err
+	}
+	for _, contract := range items {
+		creation, err := requiredGeneratedConstant(constants, contract.Name+"CreationBytecode")
+		if err != nil {
+			return err
+		}
+		runtime, err := requiredGeneratedConstant(constants, contract.Name+"RuntimeBytecode")
+		if err != nil {
+			return err
+		}
+		lockedRuntimeHash, err := requiredGeneratedConstant(constants, contract.Name+"RuntimeBytecodeHash")
+		if err != nil {
+			return err
+		}
+		runtimeBytes, err := hex.DecodeString(trim0x(runtime))
+		if err != nil || !strings.EqualFold(crypto.Keccak256Hash(runtimeBytes).Hex(), lockedRuntimeHash) {
+			return fmt.Errorf("%s locked runtime hash does not authenticate its bytecode", contract.Name)
+		}
+		lockedArtifactHash, err := requiredGeneratedConstant(constants, contract.Name+"FoundryArtifactHash")
+		if err != nil {
+			return err
+		}
+		if got := canonicalArtifactHashForBytecode(contract.Artifact, contract.References, creation, runtime); !strings.EqualFold(got, lockedArtifactHash) {
+			return fmt.Errorf("%s locked artifact hash does not match the rebuilt ABI, selectors, layout, references and locked bytecode", contract.Name)
+		}
+	}
+	normalizedExisting, err := normalizeGeneratedContractSource(existingPath, existing, items)
+	if err != nil {
+		return err
+	}
+	normalizedExpected, err := normalizeGeneratedContractSource("generated-contracts.go", expected, items)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(normalizedExisting, normalizedExpected) {
+		return errors.New("generated contract payload differs outside Solidity's graph-sensitive IPFS metadata digest")
+	}
+	if bytes.Equal(existing, expected) {
+		fmt.Println("generated contract payload exactly matches the reviewed Foundry output")
+	} else {
+		fmt.Println("generated contract payload is semantically current; graph-sensitive Solidity metadata differs and the locked deployment bytes are preserved")
+	}
+	return nil
 }
 
 func validateImmutableSourceOrder(root string, d artifactDefinition) {

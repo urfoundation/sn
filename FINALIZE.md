@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign complete locally; public-testnet setup on netuid 521 is fully converged through plan `0x0aa83458ce27675b91ebc17659fe6630f60816e6ffbbb5ebe8f8db354b254dd2`, including activation, 47 churn-floor registrations, the runtime-452 contracts, both operators, both validator positions, the reserve-majority gate, the 200-fleet UID fill, alpha reconciliation/repair, and runtime config for 1,000 miners. The first topology launch stopped before broadcast when live reserve custody exposed a second one-rao share-pool floor; the two-leg invariant, cumulative repair carry, and bounded top-up fix are locally gated and await an approved replacement-plan apply. Launch and the three-epoch campaign remain pending, 2026-08-30 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied: the accelerated v9 plan upgraded the coordinator, authenticated 666 carried actions, finalized fleet-hotkey funding 1--166, and included hotkey 167 exactly once before an intentional pause. Pre-broadcast review then found a recovered one-shot conviction carrying a rebuilt gas-only intent. No third conviction transaction was signed or broadcast. Plan schema v10 preserves the exact authenticated original intent, protects all verified dependencies from later repair rewrites, and passed the complete local release gate plus deterministic/adjacent regressions. A new two-build v10 plan/spend review, exact hotkey-167 reconciliation, remaining setup, launch, M1/M2, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -15,16 +15,17 @@ existential-deposit-adjusted `BALANCE` semantics. Writers stopped before that ca
 broadcast. The saturating native-balance fix, exact runtime-452 identity, safe
 replacement-deployment recovery, runtime gas-envelope correction and cross-revision
 receipt recovery now have deterministic tests. The runtime-452 doctor passed;
-the replacement contracts, two operators, both validators, reserve majority,
-alpha repair, and the 200-fleet fill are finalized. Setup is complete; a
-coordinator upgrade and one bounded custody top-up are awaiting their
-replacement-plan gate after the first live launch exposed two sequential runtime
-share floors.
+replacement contracts, two operators, both validator positions, reserve
+majority, alpha repair and the 200 fleet UID registrations are finalized. The
+accelerated commitment/binding setup is not yet complete: v9 upgraded the
+coordinator and progressed through fleet-hotkey 167, then stopped for the v10
+lineage correction before any further one-shot EVM action.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
-authorize any mainnet write. The integration topology reached account
-provisioning but stopped before its first conviction call; no workload
-supervisor was left running.
+authorize any mainnet write. An earlier integration topology reached account
+provisioning but stopped before its first conviction call when the two-share-floor
+defect was found. The current accelerated setup has not reached topology launch,
+and no workload supervisor is running.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
@@ -39,13 +40,15 @@ node is synced.
 
 ## 1. Executive verdict
 
-The release-1.0 implementation passed its testnet preflight and bounded setup
-against the official public operational RPC pair at runtime 452. M0A setup is
-complete, while live topology/campaign proof is not. It is
+The release-1.0 implementation passed its testnet preflight and the applied
+portion of bounded setup against the official public operational RPC pair at
+runtime 452. M0A is resumable but not complete, and live topology/campaign proof
+has not begun. It is
 not yet a testnet-validated release:
 Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
-authenticated live readiness checks, but the full M0A topology and live M0B-M3/MR campaign have not
-run. Wallet control, netuid 521, balances, runtime call shapes, subnet activation
+authenticated live readiness checks, but the remaining M0A actions and live
+M0B-M3/MR campaign have not run. Wallet control, netuid 521, balances, runtime
+call shapes, subnet activation
 and sufficient campaign alpha have been independently verified. Runtime drift and
 deployment revision are fail-closed in code; no default or unprefixed mainnet value can
 silently authorize a testnet write.
@@ -83,7 +86,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | M0A setup converged; corrected v9 launch revision pending | Runtime-452 doctor is hard-green. Approved plan v8 completed and all 749 actions were reconciled, including policy immunity, contracts, two operators, two validator positions, reserve majority, 200 occupied fleet UIDs, and runtime configuration for 1,000 miners. Operator 2's original transfer finalized at block 7,895,452 and its bounded repair finalized at block 7,895,670. The first topology launch reached real-account provisioning, then failed closed before signing or broadcast when the first reserve call exposed two sequential `SafeFloat` destination-share floors. The coordinator now stages at most one rao per runtime share transition, requires exact source debits and a sink credit in `[principal, principal + 2]`, while plan revisions carry verified repairs and add only a missing runtime-minimum top-up. Schema v9 binds those new semantics without changing the authenticated meaning of persisted v8 approvals. Deterministic and adjacent Solidity/Go regressions cover both floors, excess floor/residue, v8-to-v9 revision, repair carry, repeated repair IDs, and cumulative spend. No simulator process is running. Both locked per-operator PostgreSQL/Redis pairs pass authenticated settings/readiness probes. Public RPC evidence is explicitly non-independent. Final production-load/mainnet-promotion evidence additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A apply paused for v10 lineage correction | Runtime-452 doctor is hard-green. The approved accelerated v9 plan upgraded the coordinator, authenticated all 666 carried actions, and finalized and verified hotkey funding through fleet 166. Fleet 167 was included under its one recorded transaction hash before an intentional interrupt and remains exactly resumable. Pre-broadcast review found that the plan's recovered voluntary-conviction action had been rebuilt with a new gas-ceiling intent even though the original and one duplicate were already finalized and reconciled. No third conviction was signed or broadcast; the executor's nonzero-cumulative precondition would also have failed closed. Schema v10 now carries the authenticated original action directly, rejects any serialized reconciliation that names a different active intent, and prevents later custody-repair rewiring from mutating any verified action dependency. Deterministic tests reproduce the exact v9 shape, preserve v9 ancestry, and cover the adjacent repair path. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M1, M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2191,6 +2194,54 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    at deployer nonce 27 and compatibility baseline v3. This is the sole testnet
    hash authorized for the accelerated apply; any drift requires another
    read-only two-build review.
+
+   The accelerated apply ran against the public RPC from 2026-08-30 23:24 UTC
+   until an intentional pause at 2026-08-31 01:10 UTC. Coordinator upgrade
+   implementation and activation finalized, all 666 carried actions passed
+   concurrent revalidation, and fleet hotkey funding 1--166 finalized with
+   exact postconditions. Fleet 167 was included once before cancellation and
+   has durable broadcast/inclusion evidence for exact resume. Review before the
+   next one-shot EVM action found that the v9 plan serialized
+   `campaign.voluntary-conviction.1` with intent
+   `0x5659ba0d21e2f14c897729b525b8c1af206aecf27712a39fba9f93eac4ed810e`
+   while its reconciliation authenticates original intent
+   `0xc83b742bb91e58b7c91135213af7c59619ee669a4e8a1e730e06d142613c51c3`.
+   The difference was only a refreshed gas-unit ceiling, but intent identity is
+   executable state: the action was not eligible to run again after cumulative
+   conviction reached two billion rao. No third deposit was signed or
+   broadcast, and the executor's independent cumulative-prestate guard would
+   have rejected it before construction.
+
+   Schema v10 fixes the root cause at three layers. Duplicate recovery now
+   places the authenticated original action into the revised plan directly;
+   operator-custody repair rewiring skips every exact verified action because
+   dependencies are part of its immutable intent; and plan validation rejects
+   a reconciliation whose active voluntary action differs from the original
+   intent it names. Historical v9 bytes remain hash-authenticatable only as
+   ancestry, allowing this paused plan to seed a safe v10 revision. The
+   deterministic regression constructs the exact gas-resized v9 shape, proves
+   v10 rejects it, round-trips the v9 ancestor, and covers a simultaneous
+   verified alpha-repair insertion. A new two-build v10 hash and cumulative
+   spend review are required before resume.
+
+   The first complete v10 release gate then exposed an adjacent build-artifact
+   reproducibility defect after every Go, race, Slither and Solidity test had
+   passed. A clean Foundry 1.7.1 full-graph build changed all seven generated
+   runtime hashes even though every executable byte was identical; each
+   difference was confined to the 32-byte IPFS digest inside Solidity 0.8.24's
+   canonical 53-byte CBOR trailer, and every storage-layout hash was unchanged.
+   The old freshness check compared the entire graph-sensitive generated file,
+   while Slither's Foundry frontend also ran `forge clean` in the canonical
+   artifact directory before the full build. The release now preserves the
+   exact deployment bytes and their release-lock hashes, runs both Slither roots
+   in isolated ignored `out/slither` and `cache/slither` graphs, and performs a
+   semantic generator check. That check may normalize only the structurally
+   validated IPFS digest; it independently authenticates each locked full
+   runtime hash and artifact projection and rejects executable, creation-code,
+   ABI, selector, immutable-reference, storage-layout, compiler-version or CBOR
+   framing drift. Deterministic tests reproduce metadata-only graph drift and
+   reject changed executable bytes plus adjacent hash-framing, compiler-version,
+   ABI and layout mutations. The complete release gate subsequently passed.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -2206,7 +2257,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## Appendix A — Reproducible audit commands
 
-### Final local release-gate record (2026-08-30 UTC)
+### Final local release-gate record (2026-08-31 UTC)
 
 The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its final run
 completed successfully after the release lock was frozen:
@@ -2215,24 +2266,26 @@ completed successfully after the release lock was frozen:
 |---|---|
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`. |
-| Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** across 22 analyzed contracts and 64 detectors. |
+| Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, `api/...`/`model` compilation, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. |
 | Operator PostgreSQL/Redis integration suites | Pass against the isolated local profile for the complete verify-trail flow, poisoning/failure paths, concurrent fenced mutation, cached-response replay isolation, orphan cleanup, exact/prefix egress indexes, token-owned lock mutual exclusion and stale-release safety, expiry sweeping, and loaded-trail lock-TTL coverage. |
-| Subtensor infrastructure regressions | **23 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
+| Subtensor infrastructure regressions | **25 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across `sn`, `server`, `connect`, `sdk`, `vault` and `xops`. |
 
-The contract generator now applies canonical Go formatting before writing its
-payload, so a clean Foundry rebuild followed by `go generate` reproduces the
-checked-in file byte-for-byte. The generated artifact fingerprint excludes
-Foundry's expanded compilation-graph metadata, which can differ between a focused
-and full build despite identical
-deployable bytecode. It still pins exact creation/runtime bytecode (including the
-Solidity metadata suffix), ABI, method identifiers, immutable references and the
-normalized storage layout; source and compiler settings are independently pinned
-in `release.lock.yml`. Generator regression tests cover both this normalization and
-deployment-relevant drift.
+The contract generator applies canonical Go formatting, while the release gate's
+`gencontracts --check` mode deliberately preserves the exact checked-in/live
+deployment payload. Foundry's focused and full compilation graphs can change the
+IPFS digest embedded in Solidity metadata even when all executable bytes are
+identical. The checker therefore normalizes only that 32-byte digest after
+validating the complete Solidity 0.8.24 CBOR envelope. It independently verifies
+the locked full-byte runtime hash and canonical artifact hash, then compares
+creation/runtime executable bytes, ABI, method identifiers, immutable references
+and normalized storage layout exactly. Source and compiler settings remain
+independently pinned in `release.lock.yml`. Generator regressions cover the live
+metadata-only mismatch and adjacent executable, envelope, compiler-version, ABI
+and layout drift.
 
 The digest-pinned PostgreSQL 18/Redis 8 pairs have been created and live-checked on
 the two isolated loopback addresses with authenticated semantic probes and matching

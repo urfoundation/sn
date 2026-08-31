@@ -30,16 +30,15 @@ echo "[release-1.0] Solidity format, build, and tests"
 )
 
 echo "[release-1.0] generated contract payload and storage-layout lock"
-generated_contracts="$(mktemp)"
-trap 'rm -f -- "$generated_contracts"' EXIT
 (
   cd "$sn_repo"
-  go run ./sim-testnet/gencontracts evm/out "$generated_contracts"
+  # Solidity's IPFS metadata digest includes Foundry's compilation graph. A
+  # target-only Slither build and a clean full-project build can therefore
+  # produce different digests with byte-for-byte identical executable code.
+  # Preserve the exact release-locked/live payload while rejecting every
+  # difference outside that one structurally validated 32-byte field.
+  go run ./sim-testnet/gencontracts --check evm/out sim-testnet/contracts_gen.go
 )
-if ! cmp -s "$sn_repo/sim-testnet/contracts_gen.go" "$generated_contracts"; then
-  echo "generated contract payload is stale; run: go generate ./sim-testnet" >&2
-  exit 1
-fi
 
 echo "[release-1.0] generated ABI and Go binding freshness"
 "$sn_repo/stabi/generate.sh" --check

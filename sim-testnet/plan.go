@@ -44,7 +44,8 @@ type Action struct {
 
 const (
 	setupPlanSchemaV8                     = "urnetwork-sim-plan-v8"
-	currentSetupPlanSchema                = "urnetwork-sim-plan-v9"
+	setupPlanSchemaV9                     = "urnetwork-sim-plan-v9"
+	currentSetupPlanSchema                = "urnetwork-sim-plan-v10"
 	evmMaximumGasUnitsParameter           = "maximum_gas_units"
 	evmMaximumFeePerGasParameter          = "maximum_fee_per_gas_wei"
 	deploymentManifestHashParameter       = "deployment_manifest_hash"
@@ -418,26 +419,25 @@ func planUsesContractDeploymentEnvelope(schema string) bool {
 }
 
 func planUsesAlphaTransferEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v5" || schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v5" || schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
 }
 
 func planUsesCoordinatorUpgradeEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
 }
 
 func planUsesDefaultMinTransferEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
 }
 
-// V8 introduced bounded destination-share floors. V9 retains that wire
-// contract and additionally binds the two runtime share transitions performed
-// by each coordinator reserve call.
+// V8 introduced bounded destination-share floors. Later schemas retain that
+// wire contract; v9 additionally binds both runtime share transitions.
 func planUsesDestinationRoundingEnvelope(schema string) bool {
-	return schema == setupPlanSchemaV8 || schema == currentSetupPlanSchema
+	return schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
 }
 
 func planUsesTwoTransitionReserveEnvelope(schema string) bool {
-	return schema == currentSetupPlanSchema
+	return schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
 }
 
 func supportedSetupPlanSchema(schema string) bool {

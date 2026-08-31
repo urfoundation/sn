@@ -234,6 +234,9 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	if reconciliationCount != 1 || repairCount != 1 || continued.SupersededSpend.EVMGasWei != revised.SupersededSpend.EVMGasWei {
 		t.Fatalf("continued recovery duplicated accounting/actions: reconciliation=%d repair=%d spend=%s/%s", reconciliationCount, repairCount, continued.SupersededSpend.EVMGasWei, revised.SupersededSpend.EVMGasWei)
 	}
+	if actionByID(t, continued, voluntaryConvictionActionID).IntentHash != recovery.OriginalAction.IntentHash {
+		t.Fatal("continued recovery rebuilt the already-verified original voluntary conviction")
+	}
 	reconciliationIndex, repairIndex, barrierIndex := -1, -1, -1
 	for index, action := range continued.Actions {
 		switch action.ID {
@@ -250,6 +253,85 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	}
 	if err := validatePlanBudget(continued); err != nil {
 		t.Fatalf("continued recovery plan is invalid: %v", err)
+	}
+}
+
+// Reproduces the live v9 plan: a later gas-ceiling refresh serialized a new
+// voluntary-conviction intent ahead of an already-verified reconciliation.
+// V10 rejects that shape before an executor can reach the one-shot action,
+// while the historical v9 bytes remain readable as revision ancestry.
+func TestCurrentPlanRejectsRebuiltVoluntaryConvictionBeforeReconciliation(t *testing.T) {
+	cfg, stateDir, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	wire, err := json.MarshalIndent(prior, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), append(wire, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	operatorTransfer := actionByID(t, prior, "alpha.transfer.operator-deposit.1")
+	entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: operatorTransfer.ID, IntentHash: operatorTransfer.IntentHash, Stage: StageVerified})
+	plan, err := buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg, stateDir, prior, current, entries, time.Unix(3, 0), nil, []voluntaryConvictionDuplicateRecovery{recovery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var voluntary, reserve *Action
+	for index := range plan.Actions {
+		switch plan.Actions[index].ID {
+		case voluntaryConvictionActionID:
+			voluntary = &plan.Actions[index]
+		case "campaign.evm-gas-reserve":
+			reserve = &plan.Actions[index]
+		}
+	}
+	if voluntary == nil || reserve == nil {
+		t.Fatal("recovery plan lacks voluntary conviction or campaign gas reserve")
+	}
+	newGas := multiplyUint64Decimal(35_895_000, cfg.Config.Budgets.MaximumEVMFeePerGasWei)
+	delta, err := subtractDecimalUint(newGas, voluntary.Spend.EVMGasWei)
+	if err != nil {
+		t.Fatal(err)
+	}
+	voluntary.Parameters = cloneStrings(voluntary.Parameters)
+	voluntary.Parameters[evmMaximumGasUnitsParameter] = "35895000"
+	voluntary.Spend.EVMGasWei = newGas
+	voluntary.IntentHash, err = actionIntentHash(*voluntary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserve.Spend.EVMGasWei, err = subtractDecimalUint(reserve.Spend.EVMGasWei, delta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserve.IntentHash, err = actionIntentHash(*reserve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.MaximumSpend, err = maximumActionSpend(plan.Actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(plan); err == nil || !strings.Contains(err.Error(), "does not retain the authenticated original intent") {
+		t.Fatalf("v10 accepted rebuilt recovered voluntary conviction: %v", err)
+	}
+	plan.Schema = setupPlanSchemaV9
+	if err := validatePlanBudget(plan); err != nil {
+		t.Fatalf("historical v9 recovery plan became unreadable: %v", err)
+	}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err = json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := decodePersistedPlanBytes(wire)
+	if err != nil {
+		t.Fatalf("persisted v9 recovery ancestry was not authenticated: %v", err)
+	}
+	if persisted.Schema != setupPlanSchemaV9 || persisted.PlanHash != plan.PlanHash {
+		t.Fatalf("persisted v9 recovery ancestry changed: schema=%q hash=%q", persisted.Schema, persisted.PlanHash)
 	}
 }
 
@@ -347,6 +429,9 @@ func TestPlanRevisionDuplicateRecoveryDoesNotCollideWithVerifiedAlphaRepair(t *t
 		t.Fatal(err)
 	}
 	reconciliation := actionByID(t, revised, voluntaryConvictionReconciliationActionID)
+	if actionByID(t, revised, voluntaryConvictionActionID).IntentHash != recovery.OriginalAction.IntentHash {
+		t.Fatal("verified original voluntary conviction was rewritten by an adjacent alpha repair")
+	}
 	if reconciliation.Parameters[voluntaryRecoveryRepairActionParameter] != "alpha.repair.operator-deposit.1.3" {
 		t.Fatalf("duplicate recovery reused an ancestor repair id: %+v", reconciliation.Parameters)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -100,5 +101,97 @@ func TestCanonicalArtifactHashUsesSemanticImmutableReferences(t *testing.T) {
 	}
 	if canonicalArtifactHash(a, refs) == canonicalArtifactHash(b, map[string][]int{"owner": {8}}) {
 		t.Fatal("semantic immutable-reference offset drift did not change the artifact hash")
+	}
+}
+
+func metadataBytecode(executable, digest string) string {
+	return executable + solidityMetadataPrefix + digest + solidityMetadataSuffix
+}
+
+func TestNormalizeSolidityMetadataDigestReproducesFullGraphDrift(t *testing.T) {
+	// Reproduce the release-gate failure: Foundry emitted identical executable
+	// bytes and Solidity 0.8.24 framing with only a different IPFS digest.
+	first := metadataBytecode("6001600055", strings.Repeat("11", 32))
+	second := metadataBytecode("6001600055", strings.Repeat("22", 32))
+	normalizedFirst, err := normalizeSolidityMetadataDigest(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalizedSecond, err := normalizeSolidityMetadataDigest(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalizedFirst != normalizedSecond {
+		t.Fatal("metadata-only compilation-graph drift changed semantic bytecode")
+	}
+}
+
+func TestNormalizeSolidityMetadataDigestRetainsExecutableBytes(t *testing.T) {
+	digest := strings.Repeat("33", 32)
+	first, err := normalizeSolidityMetadataDigest(metadataBytecode("6001600055", digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := normalizeSolidityMetadataDigest(metadataBytecode("6002600055", digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("executable bytecode drift was erased with compiler metadata")
+	}
+}
+
+func TestNormalizeSolidityMetadataDigestRejectsAdjacentTrailerDrift(t *testing.T) {
+	valid := metadataBytecode("6000", strings.Repeat("44", 32))
+	cases := map[string]string{
+		"truncated":        valid[:len(valid)-2],
+		"hash framing":     strings.Replace(valid, solidityMetadataPrefix, "a2646970667358211220", 1),
+		"compiler version": strings.Replace(valid, "64736f6c63430008180033", "64736f6c63430008190033", 1),
+		"invalid hex":      valid[:len(valid)-1] + "z",
+	}
+	for name, encoded := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := normalizeSolidityMetadataDigest(encoded); err == nil {
+				t.Fatal("non-digest metadata drift was accepted")
+			}
+		})
+	}
+}
+
+func TestNormalizedGeneratedSourceRetainsABIAndLayout(t *testing.T) {
+	contract := item{Name: "Demo"}
+	makeSource := func(digest, abi, layout string) []byte {
+		creation := metadataBytecode("6001", digest)
+		runtime := metadataBytecode("6002", digest)
+		return []byte(fmt.Sprintf(`package main
+const DemoABI = %s
+const DemoCreationBytecode = %q
+const DemoRuntimeBytecode = %q
+const DemoRuntimeBytecodeHash = %q
+const DemoFoundryArtifactHash = %q
+const DemoStorageLayoutHash = %q
+`, abi, creation, runtime, "0x"+strings.Repeat("55", 32), "0x"+strings.Repeat("66", 32), layout))
+	}
+	first, err := normalizeGeneratedContractSource("first.go", makeSource(strings.Repeat("11", 32), "`abi-one`", "layout-one"), []item{contract})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataOnly, err := normalizeGeneratedContractSource("second.go", makeSource(strings.Repeat("22", 32), "`abi-one`", "layout-one"), []item{contract})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(metadataOnly) {
+		t.Fatal("generated source did not normalize metadata-only drift")
+	}
+	changedABI, err := normalizeGeneratedContractSource("abi.go", makeSource(strings.Repeat("22", 32), "`abi-two`", "layout-one"), []item{contract})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedLayout, err := normalizeGeneratedContractSource("layout.go", makeSource(strings.Repeat("22", 32), "`abi-one`", "layout-two"), []item{contract})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) == string(changedABI) || string(first) == string(changedLayout) {
+		t.Fatal("ABI or storage-layout drift was erased with compiler metadata")
 	}
 }

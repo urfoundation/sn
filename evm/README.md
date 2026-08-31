@@ -35,8 +35,8 @@ forge test --summary
 ../scripts/test-solidity-static.sh
 ```
 
-After any contract-source or compiler-setting change, refresh the embedded Go
-artifacts and bindings from the reviewed Foundry output:
+After any intentional contract-source or compiler-setting change, refresh the
+embedded Go artifacts and bindings from the reviewed Foundry output:
 
 ```bash
 cd ..
@@ -45,8 +45,14 @@ go generate ./sim-testnet
 ```
 
 `sim-testnet/contracts_gen.go`, `stabi/`, and `deploy/testnet/release.lock.yml`
-must match the final build exactly. Freeze the release lock only after every
-source, generated artifact, and infrastructure change is complete.
+must then be reviewed and frozen together. For an unchanged release, use
+`go run ./sim-testnet/gencontracts --check evm/out sim-testnet/contracts_gen.go`
+instead of regenerating. Foundry compilation graphs can change only the IPFS
+digest inside Solidity's metadata trailer; the checker preserves the exact
+locked/live bytes while allowing that one structurally validated field and
+rejecting every executable, ABI, selector, immutable-reference, layout or
+compiler-envelope difference. Freeze the release lock only after every source,
+generated artifact, and infrastructure change is complete.
 
 ## Contract state and value flow
 

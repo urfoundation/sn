@@ -94,7 +94,10 @@ per-call allowance in schema v9. Schema v8 remains byte-for-byte authenticatable
 as a revision ancestor; its meaning is not strengthened in place. Revisions
 retain every verified repair in cumulative spend and add only one runtime-minimum
 top-up if conservative verified credit is below the stricter absolute campaign
-requirement.
+requirement. Schema v10 additionally requires a duplicate-conviction
+reconciliation to retain the exact authenticated original action intent. A
+later gas-ceiling refresh or custody-repair dependency may gate new work, but
+cannot turn that already-finalized one-shot action into a new intent.
 
 An already-live immutable custody generation is never redeployed merely because
 the coordinator changes. A repeated UUPS revision binds the exact next deployer
@@ -196,8 +199,8 @@ finalized Wasm hash must match the release lock, and that block's
 runtime's internal `DefaultMinTransfer` function—must equal
 `public.yml:chain.expected_default_min_transfer_rao`. Every planned alpha
 transfer is sized from it at the same finalized snapshot, and the value is an
-immutable settlement-vault constructor/runtime word. Historical v5-v8 plans
-keep their authenticated wire semantics; current approvals use plan schema v9.
+immutable settlement-vault constructor/runtime word. Historical v5-v9 plans
+keep their authenticated wire semantics; current approvals use plan schema v10.
 
 The public-chain integration probes are opt-in:
 

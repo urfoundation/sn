@@ -643,12 +643,23 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 			return fmt.Errorf("fresh plan unexpectedly contains recovery action %s", action.ID)
 		}
 		if action.ID == voluntaryConvictionActionID {
+			if voluntaryIndex >= 0 {
+				return errors.New("fresh plan has duplicate voluntary convictions")
+			}
 			voluntaryIndex = index
 		}
 	}
 	if voluntaryIndex < 0 {
 		return errors.New("fresh plan has no voluntary conviction to reconcile")
 	}
+	// Recovery authenticates the exact original zero-to-one transaction. Keep
+	// that action verbatim instead of relying on a later generic gas-ceiling
+	// carry pass; rebuilding it would create a new logical intent after the
+	// cumulative conviction is already nonzero.
+	if !sameEVMTransactionExceptGasUnits(recovery.OriginalAction, revised.Actions[voluntaryIndex]) {
+		return errors.New("fresh voluntary conviction differs from the recovered original beyond gas units")
+	}
+	revised.Actions[voluntaryIndex] = recovery.OriginalAction
 	revised.Actions = append(revised.Actions[:voluntaryIndex+1], append([]Action{reconciliation, repair}, revised.Actions[voluntaryIndex+1:]...)...)
 	barrierID := "fleet.mirror.1"
 	for _, action := range revised.Actions {
@@ -727,6 +738,9 @@ func validateVoluntaryConvictionReconciliationAction(plan *SetupPlan, action Act
 	if voluntary == nil || voluntary.Parameters["no_id"] != "1" || voluntary.Parameters["amount_rao"] != strconv.FormatUint(amount, 10) ||
 		voluntary.Parameters[deploymentManifestHashParameter] != action.Parameters[deploymentManifestHashParameter] {
 		return "", errors.New("voluntary-conviction reconciliation differs from the active original action")
+	}
+	if plan.Schema == currentSetupPlanSchema && voluntary.IntentHash != action.Parameters[voluntaryRecoveryOriginalIntentHashParameter] {
+		return "", errors.New("voluntary-conviction reconciliation does not retain the authenticated original intent")
 	}
 	gasBefore, beforeGasErr := parseDecimalUint(action.Parameters[voluntaryRecoverySupersededGasBeforeParameter])
 	duplicateGas, duplicateGasErr := parseDecimalUint(action.Parameters[voluntaryRecoveryDuplicateMaximumGasParameter])

@@ -44,6 +44,13 @@ report="$(mktemp)"
 rm -f -- "$report"
 trap 'rm -f -- "$report"' EXIT
 
+# Slither's Foundry frontend runs `forge clean` for every analysis root. Keep
+# those target-only compilation graphs below the already-ignored canonical
+# out/cache directories so static analysis cannot delete or replace the full
+# release artifacts consumed by the generated-payload freshness gate.
+slither_foundry_out="${SLITHER_FOUNDRY_OUT:-out/slither}"
+slither_foundry_cache="${SLITHER_FOUNDRY_CACHE_PATH:-cache/slither}"
+
 cd "$evm_repo"
 # STSubnet.sol is the retained pre-1.0 monolith and is not installed by
 # sim-testnet. The coordinator root traverses immutable custody, proxy libraries,
@@ -51,7 +58,7 @@ cd "$evm_repo"
 # testnet deployment root and must be analyzed separately.
 for contract in src/STCoordinator.sol src/STFleetBatcher.sol; do
   rm -f -- "$report"
-  if ! "$slither_bin" "$contract" \
+  if ! FOUNDRY_OUT="$slither_foundry_out" FOUNDRY_CACHE_PATH="$slither_foundry_cache" "$slither_bin" "$contract" \
     --solc "$solc_bin" \
     --filter-paths 'lib|test|script' \
     --exclude-low \

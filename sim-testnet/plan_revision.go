@@ -2579,6 +2579,12 @@ func preserveVerifiedOperatorAlphaTransfers(revised, prior *SetupPlan, entries [
 		replacementTails[priorAction.ID] = tail
 	}
 	for index := range result {
+		// A verified action is immutable historical evidence. A later custody
+		// repair may gate unverified descendants, but must never rewrite the
+		// dependency list (and therefore intent) of an action already on chain.
+		if isVerified(result[index]) {
+			continue
+		}
 		parent := repairParents[result[index].ID]
 		for dependency := range result[index].DependsOn {
 			original := result[index].DependsOn[dependency]
