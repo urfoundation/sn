@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied: the accelerated v9 plan upgraded the coordinator, authenticated 666 carried actions, finalized fleet-hotkey funding 1--166, and included hotkey 167 exactly once before an intentional pause. Pre-broadcast review then found a recovered one-shot conviction carrying a rebuilt gas-only intent. No third conviction transaction was signed or broadcast. Plan schema v10 preserves the exact authenticated original intent, protects all verified dependencies from later repair rewrites, and safely reconciles the successful interrupted hotkey-167 transfer without rebroadcast. The complete local release gate passed, and two builds at finalized heads 7,900,399 and 7,900,409 produced the identical reviewed v10 plan hash `0xaed68e3df572c4beb483e32ad7cadcbe8af2028494e88e3d3a226608de8893c7`. Resume, remaining setup, launch, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied through fleet commitment 33. A Go-only throughput revision now runs independent native commitments ten-wide, batches pinned EVM reads at the public endpoint's 50-call limit, and derives individual fleet receipts from authenticated batch evidence. The interrupted fleet-167 funding and repeated coordinator/batcher nonce histories remain exact and non-rebroadcastable. The complete local release gate passed after deterministic regressions for both live revision edges. Two clean builds at finalized heads 7,901,274 and 7,901,284 produced identical reviewed schema-v10 plan hash `0x0cdcba41ff1efeb02746eb8e9639c864802c2d17aa70186bd1805cb2a1c8f0a1`. Resume, remaining setup, launch, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -86,7 +86,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Reviewed v10 Public-RPC M0A resume is next | Runtime-452 doctor is hard-green. The accelerated v9 plan upgraded the coordinator, authenticated all 666 carried actions, and finalized and verified hotkey funding through fleet 166. Fleet 167 was included under its sole recorded transaction hash before an intentional interrupt. Its v10 recovery now binds the exact source action, signer, nonce, raw SCALE envelope, canonical recovery/inclusion blocks, successful dispatch and historical balances, then writes only the missing postcondition; it cannot rebroadcast. Pre-broadcast review also found that the plan's recovered voluntary-conviction action had been rebuilt with a new gas-ceiling intent even though the original and one duplicate were already finalized and reconciled. No third conviction was signed or broadcast. Schema v10 carries the authenticated original action directly, rejects a reconciliation naming another active intent, and permits only its exact verified custody-repair dependency. Deterministic tests cover both live shapes and adjacent mutations. Two later-head builds produced reviewed plan hash `0xaed68e3df572c4beb483e32ad7cadcbe8af2028494e88e3d3a226608de8893c7`; the complete release gate passes. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Reviewed throughput revision Public-RPC M0A resume is next | Runtime-452 doctor is hard-green. Setup is verified through fleet commitment 33; no simulator process is currently running. Ten-way native commitment groups, bounded 50-call EVM batches and authenticated local alias receipts remove avoidable setup serialization without changing protocol-time gates. Interrupted provisioning helpers are exactly recoverable by kernel identity. The fleet-167 descendant postcondition and verified coordinator/activation/batcher `+2` nonce boundary now survive further Go-only revisions without duplicate transfer or deployment. The complete release gate passes. Two later-head builds produced reviewed plan hash `0x0cdcba41ff1efeb02746eb8e9639c864802c2d17aa70186bd1805cb2a1c8f0a1` with unchanged cumulative spend. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2290,8 +2290,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    within the reviewed 200,000,000,000 TAO, 20,000,000,000,000 alpha,
    160,000,000,000,000,000,000 gas and 260-registration caps. The only differing
    fields were the expected finalized-head observations and generation time.
-   The complete local release gate then passed again. This is the sole reviewed
-   hash for the next bounded testnet resume; no mainnet write is authorized.
+   The complete local release gate then passed again. This was the sole reviewed
+   hash for that bounded testnet resume and is now superseded by the throughput
+   revision below; no mainnet write is authorized.
 
    The first read-only Go-only throughput revision then exposed two adjacent
    revision-recovery defects before a plan was emitted or any write was enabled.
@@ -2310,6 +2311,21 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    any nonce beyond the authenticated boundary fails closed. Deterministic tests
    reproduce both live journal shapes, and a subsequent full read-only build
    crossed both gates against finalized public-testnet state without mutation.
+
+   After the complete local release gate passed, two clean read-only builds at
+   finalized Substrate/EVM heads 7,901,274/7,901,275 and
+   7,901,284/7,901,284 produced identical schema-v10 plan hash
+   `0x0cdcba41ff1efeb02746eb8e9639c864802c2d17aa70186bd1805cb2a1c8f0a1`
+   under release-lock hash
+   `0x7536d23c1355a75e41cba91d883809b2e7b3e5039c4047178532a643ce7b7ebd`.
+   Both have 2,238 actions, active maxima of 165,655,232,000 TAO rao,
+   19,131,501,203,537 alpha rao, 148,909,500,000,000,000,000 EVM gas wei and
+   256 registrations, plus superseded maxima of 5,500,000,000 alpha rao,
+   11,090,500,000,000,000,000 EVM gas wei and three registrations. Those totals
+   are unchanged from the prior approved envelope and remain within the
+   200,000,000,000 TAO, 20,000,000,000,000 alpha,
+   160,000,000,000,000,000,000 gas and 260-registration caps. This exact hash is
+   the sole reviewed testnet resume; any drift requires another two-build review.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
