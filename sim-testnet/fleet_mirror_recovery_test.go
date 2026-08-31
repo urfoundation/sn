@@ -401,6 +401,39 @@ func TestFleetMirrorRecoveryRequiresExactVerifiedNativeEvidence(t *testing.T) {
 	}
 }
 
+// A later release may preserve the mirror call while rewiring the native
+// install dependency. Recovery must authenticate the native evidence against
+// the transaction's source plan, not the newest plan's different intent.
+func TestFleetMirrorRecoveryUsesTransactionSourcePlanForNativeEvidence(t *testing.T) {
+	sourceHash := "0x" + strings.Repeat("11", 32)
+	sourceIntent := "0x" + strings.Repeat("22", 32)
+	transactionHash := "0x" + strings.Repeat("33", 32)
+	blockHash := "0x" + strings.Repeat("44", 32)
+	source := &SetupPlan{
+		PlanHash: sourceHash,
+		Actions:  []Action{{ID: "fleet.commitment.4", Kind: "substrate-extrinsic", IntentHash: sourceIntent}},
+	}
+	evidence := FleetCommitmentEvidence{ExtrinsicHash: transactionHash, FinalizedBlock: 123, FinalizedBlockHash: blockHash}
+	entries := []JournalEntry{
+		{PlanHash: sourceHash, ActionID: "fleet.commitment.4", IntentHash: sourceIntent, Stage: StageFinalized, TransactionHash: transactionHash, BlockNumber: 123, BlockHash: blockHash},
+		{PlanHash: sourceHash, ActionID: "fleet.commitment.4", IntentHash: sourceIntent, Stage: StageVerified},
+	}
+	current := &SetupPlan{
+		PlanHash:        "0x" + strings.Repeat("55", 32),
+		PriorPlanHashes: []string{sourceHash},
+		Actions: []Action{{
+			ID: "fleet.commitment.4", Kind: "substrate-extrinsic",
+			IntentHash: "0x" + strings.Repeat("66", 32),
+		}},
+	}
+	if !fleetCommitmentEvidenceWasVerified(source, entries, 4, &evidence) {
+		t.Fatal("transaction source plan did not authenticate its exact native evidence")
+	}
+	if fleetCommitmentEvidenceWasVerified(current, entries, 4, &evidence) {
+		t.Fatal("newest dependency-rewired native intent impersonated the transaction source plan")
+	}
+}
+
 // Require exact historical and current EVM state; either side drifting makes
 // no-broadcast convergence unsafe.
 func TestFleetMirrorRecoveryRequiresExactHistoricalAndCurrentState(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -256,6 +257,96 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	}
 }
 
+// Reproduce the live v9-to-v10 boundary: the authenticated original depended
+// on a verified custody repair, while a fresh build starts from the base
+// transfer until the later custody-preservation pass runs.
+func TestVoluntaryConvictionRecoveryAlignsExactVerifiedCustodyDependency(t *testing.T) {
+	cfg, _, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildFresh := func() *SetupPlan {
+		plan, buildErr := buildPlan(cfg, current, roles, time.Unix(3, 0))
+		if buildErr != nil {
+			t.Fatal(buildErr)
+		}
+		// The live v10 build reconstructed this base transfer from newer facts,
+		// so its fresh intent differed from the verified ancestor later restored
+		// by the alpha-carry pass. Recovery must authenticate the repair's own
+		// ancestor, not this transient fresh representation.
+		for index := range plan.Actions {
+			if plan.Actions[index].ID != "alpha.transfer.operator-deposit.1" {
+				continue
+			}
+			plan.Actions[index].Description += " rebuilt from current facts"
+			plan.Actions[index].IntentHash, buildErr = actionIntentHash(plan.Actions[index])
+			if buildErr != nil {
+				t.Fatal(buildErr)
+			}
+		}
+		return plan
+	}
+	baseTransfer := actionByID(t, buildFresh(), "alpha.transfer.operator-deposit.1")
+	repair := Action{
+		ID: "alpha.repair.operator-deposit.1.2", Kind: "substrate-extrinsic", Target: baseTransfer.Target,
+		Description: "verified operator-1 custody repair",
+		Parameters:  map[string]string{alphaRepairForActionParameter: baseTransfer.ID},
+		Spend:       Spend{AlphaRao: 193_556_675}, DependsOn: []string{baseTransfer.ID},
+	}
+	repair.IntentHash, err = actionIntentHash(repair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior.Actions = append(prior.Actions, repair)
+	priorBaseTransfer := actionByID(t, prior, baseTransfer.ID)
+	entries = append(entries,
+		JournalEntry{PlanHash: prior.PlanHash, ActionID: priorBaseTransfer.ID, IntentHash: priorBaseTransfer.IntentHash, Stage: StageVerified},
+		JournalEntry{PlanHash: prior.PlanHash, ActionID: repair.ID, IntentHash: repair.IntentHash, Stage: StageVerified},
+	)
+	recovery.OriginalAction.DependsOn = []string{"accounts.provision", "campaign.evm-gas-reserve", repair.ID}
+	recovery.OriginalAction.IntentHash, err = actionIntentHash(recovery.OriginalAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery.OriginalIntentHash = recovery.OriginalAction.IntentHash
+	recovery.DuplicateAction.DependsOn = append([]string(nil), recovery.OriginalAction.DependsOn...)
+	recovery.DuplicateAction.IntentHash, err = actionIntentHash(recovery.DuplicateAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery.DuplicateTransaction.IntentHash = recovery.DuplicateAction.IntentHash
+
+	revised := buildFresh()
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recovery); err != nil {
+		t.Fatalf("exact verified custody dependency was not aligned: %v", err)
+	}
+	if carried := actionByID(t, revised, voluntaryConvictionActionID); carried.IntentHash != recovery.OriginalAction.IntentHash || !slices.Equal(carried.DependsOn, recovery.OriginalAction.DependsOn) {
+		t.Fatalf("authenticated original was not carried verbatim: %+v", carried)
+	}
+
+	withoutRepairProof := entries[:len(entries)-1]
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, withoutRepairProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
+		t.Fatalf("unverified custody repair aligned a one-shot transaction: %v", err)
+	}
+	withoutBaseProof := append([]JournalEntry(nil), entries[:len(entries)-2]...)
+	withoutBaseProof = append(withoutBaseProof, entries[len(entries)-1])
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, withoutBaseProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
+		t.Fatalf("unverified base transfer aligned a one-shot transaction: %v", err)
+	}
+	changed := recovery
+	changed.OriginalAction = recovery.OriginalAction
+	changed.OriginalAction.Target = "no:2"
+	changed.OriginalAction.IntentHash, err = actionIntentHash(changed.OriginalAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.OriginalIntentHash = changed.OriginalAction.IntentHash
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, entries, changed); err == nil {
+		t.Fatal("nondependency semantic change crossed verified custody alignment")
+	}
+}
+
 // Reproduces the live v9 plan: a later gas-ceiling refresh serialized a new
 // voluntary-conviction intent ahead of an already-verified reconciliation.
 // V10 rejects that shape before an executor can reach the one-shot action,
@@ -464,6 +555,12 @@ func TestDuplicateVoluntaryConvictionRecoveryRejectsSemanticTampering(t *testing
 		},
 		func(value *voluntaryConvictionDuplicateRecovery) {
 			value.OriginalAction.Parameters[evmMaximumFeePerGasParameter] = "1"
+		},
+		func(value *voluntaryConvictionDuplicateRecovery) {
+			value.OriginalIntentHash = "0x" + strings.Repeat("03", 32)
+		},
+		func(value *voluntaryConvictionDuplicateRecovery) {
+			value.OriginalAction.IntentHash = "0x" + strings.Repeat("04", 32)
 		},
 		func(value *voluntaryConvictionDuplicateRecovery) { value.OriginalPlanHash = "0x01" },
 		func(value *voluntaryConvictionDuplicateRecovery) { value.OriginalEvidence.FinalizedBlock = 111 },

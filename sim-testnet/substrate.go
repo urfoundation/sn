@@ -1526,6 +1526,21 @@ func (m *SubstrateManager) Send(ctx context.Context, planHash string, a Action, 
 	return m.SendAs(ctx, planHash, a, call, m.signer)
 }
 
+// Encode the exact metadata-driven signed transaction used by both first
+// broadcast and interrupted-funding recovery. Keeping one encoder prevents a
+// recovery verifier from drifting from the executor's wire representation.
+func encodeSignedSubstrateCall(chain *crv4.Chain, signer signature.KeyringPair, call types.Call, nonce uint32) ([]byte, error) {
+	if chain == nil || chain.Meta == nil || chain.Runtime == nil {
+		return nil, errors.New("substrate signing context is unavailable")
+	}
+	ext := extrinsic.NewExtrinsic(call)
+	err := ext.Sign(signer, chain.Meta, extrinsic.WithEra(types.ExtrinsicEra{IsImmortalEra: true}, chain.GenesisHash), extrinsic.WithNonce(types.NewUCompactFromUInt(uint64(nonce))), extrinsic.WithTip(types.NewUCompactFromUInt(0)), extrinsic.WithSpecVersion(chain.Runtime.SpecVersion), extrinsic.WithTransactionVersion(chain.Runtime.TransactionVersion), extrinsic.WithGenesisHash(chain.GenesisHash), extrinsic.WithMetadataMode(extensions.CheckMetadataModeDisabled, extensions.CheckMetadataHash{Hash: types.NewEmptyOption[types.H256]()}))
+	if err != nil {
+		return nil, err
+	}
+	return codec.Encode(ext)
+}
+
 func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair) (types.Hash, uint64, error) {
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".scale")
@@ -1544,12 +1559,7 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 	if err := m.chain.API.Client.Call(&nonce, "system_accountNextIndex", signer.Address); err != nil {
 		return types.Hash{}, 0, err
 	}
-	ext := extrinsic.NewExtrinsic(call)
-	err := ext.Sign(signer, m.chain.Meta, extrinsic.WithEra(types.ExtrinsicEra{IsImmortalEra: true}, m.chain.GenesisHash), extrinsic.WithNonce(types.NewUCompactFromUInt(uint64(nonce))), extrinsic.WithTip(types.NewUCompactFromUInt(0)), extrinsic.WithSpecVersion(m.chain.Runtime.SpecVersion), extrinsic.WithTransactionVersion(m.chain.Runtime.TransactionVersion), extrinsic.WithGenesisHash(m.chain.GenesisHash), extrinsic.WithMetadataMode(extensions.CheckMetadataModeDisabled, extensions.CheckMetadataHash{Hash: types.NewEmptyOption[types.H256]()}))
-	if err != nil {
-		return types.Hash{}, 0, err
-	}
-	raw, err := codec.Encode(ext)
+	raw, err := encodeSignedSubstrateCall(m.chain, signer, call, nonce)
 	if err != nil {
 		return types.Hash{}, 0, err
 	}

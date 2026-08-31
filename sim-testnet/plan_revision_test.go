@@ -124,7 +124,7 @@ func TestPlanRevisionFindsEveryUnverifiedTransactionAcrossLineage(t *testing.T) 
 	prior := &SetupPlan{PlanHash: "0x" + strings.Repeat("11", 32), PriorPlanHashes: []string{"0x" + strings.Repeat("22", 32)}}
 	ancestor := prior.PriorPlanHashes[0]
 	entries := []JournalEntry{
-		{PlanHash: prior.PlanHash, ActionID: "pending", IntentHash: "intent-pending", Stage: StageBroadcast, TransactionHash: "0x01", RecoveryBlock: 10, RecoveryBlockHash: "0xaa"},
+		{PlanHash: prior.PlanHash, ActionID: "pending", IntentHash: "intent-pending", Stage: StageBroadcast, Signer: "signer", Nonce: "7", TransactionHash: "0x01", RecoveryBlock: 10, RecoveryBlockHash: "0xaa"},
 		{PlanHash: prior.PlanHash, ActionID: "pending", IntentHash: "intent-pending", Stage: StageFailed, Error: "timeout"},
 		{PlanHash: prior.PlanHash, ActionID: "verified", IntentHash: "intent-verified", Stage: StageBroadcast, TransactionHash: "0x02", RecoveryBlock: 10, RecoveryBlockHash: "0xaa"},
 		{PlanHash: prior.PlanHash, ActionID: "verified", IntentHash: "intent-verified", Stage: StageVerified},
@@ -142,8 +142,26 @@ func TestPlanRevisionFindsEveryUnverifiedTransactionAcrossLineage(t *testing.T) 
 	for _, transaction := range pending {
 		got[transaction.ActionID] = transaction
 	}
-	if len(got) != 2 || got["pending"].TransactionHash != "0x01" || got["reverted"].TransactionHash != "0x03" || got["reverted"].BlockNumber != 12 {
+	if len(got) != 2 || got["pending"].TransactionHash != "0x01" || got["pending"].Signer != "signer" || got["pending"].Nonce != "7" || got["reverted"].TransactionHash != "0x03" || got["reverted"].BlockNumber != 12 {
 		t.Fatalf("unverified revision transactions=%+v", pending)
+	}
+}
+
+func TestPlanRevisionRejectsConflictingTransactionSignerAndNonce(t *testing.T) {
+	prior := &SetupPlan{PlanHash: "0x" + strings.Repeat("11", 32)}
+	baseline := []JournalEntry{
+		{PlanHash: prior.PlanHash, ActionID: "action", IntentHash: "intent", Stage: StageBroadcast, Signer: "signer-a", Nonce: "7", TransactionHash: "0x01"},
+		{PlanHash: prior.PlanHash, ActionID: "action", IntentHash: "intent", Stage: StageIncluded, TransactionHash: "0x01", BlockNumber: 10, BlockHash: "0xaa"},
+	}
+	wrongSigner := append([]JournalEntry(nil), baseline...)
+	wrongSigner[1].Signer = "signer-b"
+	if _, err := pendingPlanRevisionTransactions(prior, wrongSigner); err == nil || !strings.Contains(err.Error(), "multiple transaction signers") {
+		t.Fatalf("conflicting transaction signer was accepted: %v", err)
+	}
+	wrongNonce := append([]JournalEntry(nil), baseline...)
+	wrongNonce[1].Nonce = "8"
+	if _, err := pendingPlanRevisionTransactions(prior, wrongNonce); err == nil || !strings.Contains(err.Error(), "multiple transaction nonces") {
+		t.Fatalf("conflicting transaction nonce was accepted: %v", err)
 	}
 }
 

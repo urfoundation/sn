@@ -274,6 +274,14 @@ production UR blocks intentionally retain 24 hours of chain observation plus
 the final approximately 4-hour settlement/finality window. Those protocol-time
 gates are not shortened or simulated off-chain.
 
+There is no separate one-hour M1 wait before that 20-epoch interval. Launch
+hands directly to `release-1.0`; its first complete reconciled epoch is both the
+M1 end-to-end proof and epoch 1 of M2. On a clean release marker,
+`production-soak` starts immediately and schedules its future-effective policy
+without an operator pause. The current approved deployment keeps its 300-block
+accelerated cadence, because rewriting live policy solely to shorten the run
+would create a new approval lineage rather than accelerate orchestration.
+
 Host reboot is an intentional stop boundary. The supervisor unit is started but
 never enabled, managed PostgreSQL/Redis containers use Docker restart policy
 `no`, and loginctl linger is not required. After a reboot, run `resume` explicitly;

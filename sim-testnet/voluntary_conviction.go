@@ -140,8 +140,11 @@ func validateVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, recovery 
 		return errors.New("voluntary conviction duplicate recovery context is incomplete")
 	}
 	transaction := recovery.DuplicateTransaction
+	duplicateIntent, duplicateIntentErr := actionIntentHash(recovery.DuplicateAction)
+	originalIntent, originalIntentErr := actionIntentHash(recovery.OriginalAction)
 	if transaction.ActionID != voluntaryConvictionActionID || recovery.DuplicateAction.ID != voluntaryConvictionActionID || recovery.OriginalAction.ID != voluntaryConvictionActionID ||
-		recovery.DuplicateAction.IntentHash != transaction.IntentHash || !sameEVMTransactionExceptGasUnits(recovery.OriginalAction, recovery.DuplicateAction) {
+		duplicateIntentErr != nil || originalIntentErr != nil || duplicateIntent != recovery.DuplicateAction.IntentHash || originalIntent != recovery.OriginalAction.IntentHash ||
+		recovery.DuplicateAction.IntentHash != transaction.IntentHash || recovery.OriginalAction.IntentHash != recovery.OriginalIntentHash || !sameEVMTransactionExceptGasUnits(recovery.OriginalAction, recovery.DuplicateAction) {
 		return errors.New("duplicate recovery actions are not the same voluntary conviction apart from gas units")
 	}
 	if recovery.DuplicateAction.Parameters["no_id"] != "1" || recovery.OriginalAction.Parameters["no_id"] != "1" ||
@@ -187,6 +190,90 @@ func validateVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, recovery 
 	}
 	if _, err := recovery.SupersededGasBefore.Big(); err != nil {
 		return fmt.Errorf("decode duplicate recovery prior gas accounting: %w", err)
+	}
+	return nil
+}
+
+// Permit the fresh planner's base custody dependency to converge onto the
+// exact verified repair that already preceded the authenticated original
+// conviction. No other executable or dependency difference is recoverable.
+func validateVoluntaryConvictionFreshDependency(revised, prior *SetupPlan, entries []JournalEntry, original, fresh Action) error {
+	if sameEVMTransactionExceptGasUnits(original, fresh) {
+		return nil
+	}
+	const baseTransferID = "alpha.transfer.operator-deposit.1"
+	if revised == nil || prior == nil || len(original.DependsOn) != len(fresh.DependsOn) {
+		return errors.New("fresh voluntary conviction differs from the recovered original beyond gas units")
+	}
+	difference := -1
+	for index := range original.DependsOn {
+		if original.DependsOn[index] == fresh.DependsOn[index] {
+			continue
+		}
+		if difference >= 0 {
+			return errors.New("fresh voluntary conviction has multiple changed dependencies")
+		}
+		difference = index
+	}
+	if difference < 0 || fresh.DependsOn[difference] != baseTransferID {
+		return errors.New("fresh voluntary conviction does not differ by its base custody dependency")
+	}
+	repairID := original.DependsOn[difference]
+	kind, operator, err := alphaTransferTargetFromActionID(repairID)
+	if err != nil || kind != "operator-deposit" || operator != 1 || !strings.HasPrefix(repairID, "alpha.repair.operator-deposit.1") {
+		return stateMismatchError(err, "recovered voluntary-conviction dependency %q is not an operator-1 repair", repairID)
+	}
+	// Authenticate the base action from the same approved ancestry as the
+	// repair. A fresh plan may legitimately rebuild that action from newer live
+	// facts and therefore assign it a different intent before the verified
+	// alpha-carry pass restores the ancestor. Using the fresh intent here would
+	// reject the very verified repair this exception is meant to preserve.
+	var baseTransfer *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != baseTransferID {
+			continue
+		}
+		if baseTransfer != nil {
+			return errors.New("prior plan has duplicate operator-1 base transfers")
+		}
+		copy := prior.Actions[index]
+		baseTransfer = &copy
+	}
+	var repair *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != repairID {
+			continue
+		}
+		if repair != nil {
+			return errors.New("prior plan has duplicate voluntary-conviction custody repairs")
+		}
+		copy := prior.Actions[index]
+		repair = &copy
+	}
+	if baseTransfer == nil || repair == nil || baseTransfer.Kind != "substrate-extrinsic" || repair.Kind != "substrate-extrinsic" || repair.Target != baseTransfer.Target || repair.Spend.AlphaRao == 0 || repair.Spend.TAORao != 0 || !repair.Spend.EVMGasWei.IsZero() || repair.Spend.Registrations != 0 || repair.Spend.SubnetCreations != 0 ||
+		repair.Parameters[alphaRepairForActionParameter] != baseTransferID || !slices.Equal(repair.DependsOn, []string{baseTransferID}) {
+		return errors.New("recovered voluntary-conviction custody repair is not rooted in the exact base transfer")
+	}
+	repairIntent, err := actionIntentHash(*repair)
+	if err != nil || repairIntent != repair.IntentHash {
+		return stateMismatchError(err, "recovered voluntary-conviction custody repair intent is invalid")
+	}
+	baseVerified, repairVerified := false, false
+	for _, entry := range entries {
+		if !prior.allowedPlanHashes()[entry.PlanHash] || entry.Stage != StageVerified {
+			continue
+		}
+		baseVerified = baseVerified || entry.ActionID == baseTransfer.ID && entry.IntentHash == baseTransfer.IntentHash
+		repairVerified = repairVerified || entry.ActionID == repair.ID && entry.IntentHash == repair.IntentHash
+	}
+	if !baseVerified || !repairVerified {
+		return errors.New("recovered voluntary-conviction base transfer or custody repair lacks exact verification")
+	}
+	aligned := fresh
+	aligned.DependsOn = append([]string(nil), fresh.DependsOn...)
+	aligned.DependsOn[difference] = repairID
+	if !sameEVMTransactionExceptGasUnits(original, aligned) {
+		return errors.New("fresh voluntary conviction differs from the recovered original beyond its verified custody repair")
 	}
 	return nil
 }
@@ -656,8 +743,8 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 	// that action verbatim instead of relying on a later generic gas-ceiling
 	// carry pass; rebuilding it would create a new logical intent after the
 	// cumulative conviction is already nonzero.
-	if !sameEVMTransactionExceptGasUnits(recovery.OriginalAction, revised.Actions[voluntaryIndex]) {
-		return errors.New("fresh voluntary conviction differs from the recovered original beyond gas units")
+	if err := validateVoluntaryConvictionFreshDependency(revised, prior, entries, recovery.OriginalAction, revised.Actions[voluntaryIndex]); err != nil {
+		return err
 	}
 	revised.Actions[voluntaryIndex] = recovery.OriginalAction
 	revised.Actions = append(revised.Actions[:voluntaryIndex+1], append([]Action{reconciliation, repair}, revised.Actions[voluntaryIndex+1:]...)...)

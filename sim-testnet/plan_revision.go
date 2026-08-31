@@ -38,10 +38,12 @@ type plannedRegistrationIdentity struct {
 // Merges the recovery and inclusion evidence for one prior action intent.
 type planRevisionTransaction struct {
 	PlanHash, ActionID, IntentHash, TransactionHash string
+	Signer, Nonce                                   string
 	RecoveryBlock                                   uint64
 	RecoveryBlockHash                               string
 	BlockNumber                                     uint64
 	BlockHash                                       string
+	JournalSequence                                 uint64
 }
 
 var (
@@ -946,6 +948,21 @@ func pendingPlanRevisionTransactions(prior *SetupPlan, entries []JournalEntry) (
 			return nil, fmt.Errorf("plan %s action %s intent %s has multiple transactions", entry.PlanHash, entry.ActionID, entry.IntentHash)
 		}
 		state.transaction.TransactionHash = entry.TransactionHash
+		if entry.Sequence > state.transaction.JournalSequence {
+			state.transaction.JournalSequence = entry.Sequence
+		}
+		if entry.Signer != "" {
+			if state.transaction.Signer != "" && state.transaction.Signer != entry.Signer {
+				return nil, fmt.Errorf("plan %s action %s intent %s has multiple transaction signers", entry.PlanHash, entry.ActionID, entry.IntentHash)
+			}
+			state.transaction.Signer = entry.Signer
+		}
+		if entry.Nonce != "" {
+			if state.transaction.Nonce != "" && state.transaction.Nonce != entry.Nonce {
+				return nil, fmt.Errorf("plan %s action %s intent %s has multiple transaction nonces", entry.PlanHash, entry.ActionID, entry.IntentHash)
+			}
+			state.transaction.Nonce = entry.Nonce
+		}
 		if entry.RecoveryBlock != 0 {
 			state.transaction.RecoveryBlock = entry.RecoveryBlock
 			state.transaction.RecoveryBlockHash = entry.RecoveryBlockHash
@@ -1175,8 +1192,16 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				// finalized transfer locally and, if necessary, execute only a
 				// separately bounded minimum-size repair. No duplicate allocation is
 				// permitted for any other successful unverified transaction.
-				if errors.Is(err, errPriorNativeTransactionSucceeded) && (recoverableFinalizedAlphaTransaction(prior, entries, transaction) || verifiedReconciliationForFinalizedAlphaTransaction(prior, entries, transaction)) {
-					continue
+				if errors.Is(err, errPriorNativeTransactionSucceeded) {
+					if recoverableFinalizedAlphaTransaction(prior, entries, transaction) || verifiedReconciliationForFinalizedAlphaTransaction(prior, entries, transaction) {
+						continue
+					}
+					recovery, recoveryErr := detectFinalizedSubstrateFundingRecovery(cfg, stateDir, prior, entries, substrateChain, raw, transaction)
+					if recoveryErr == nil {
+						recoveries.SubstrateFundings = append(recoveries.SubstrateFundings, recovery)
+						continue
+					}
+					return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorNativeTransactionSucceeded, recoveryErr)
 				}
 				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, err)
 			}
@@ -3072,6 +3097,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	}
 	if err := preserveConsumedRegistrationFunding(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("preserve consumed registration funding: %w", err)
+	}
+	if err := validateRevisedSubstrateFundingRecoveries(revised, recoveries.SubstrateFundings); err != nil {
+		return nil, fmt.Errorf("reconcile finalized substrate funding: %w", err)
 	}
 	if len(recoveries.VoluntaryConvictions) == 1 {
 		if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recoveries.VoluntaryConvictions[0]); err != nil {

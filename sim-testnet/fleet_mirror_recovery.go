@@ -45,6 +45,7 @@ type finalizedFleetMirrorRecovery struct {
 type planRevisionRecoveries struct {
 	VoluntaryConvictions []voluntaryConvictionDuplicateRecovery
 	FleetMirrors         []finalizedFleetMirrorRecovery
+	SubstrateFundings    []finalizedSubstrateFundingRecovery
 }
 
 // Parse only the canonical fleet mirror action namespace and reject aliases
@@ -118,15 +119,18 @@ func exactFleetMirrorPlanAction(plan *SetupPlan, actionID, intentHash string, he
 }
 
 // Require the exact native commitment transaction to have reached both a
-// finalized journal checkpoint and durable postcondition verification.
-func fleetCommitmentEvidenceWasVerified(prior *SetupPlan, entries []JournalEntry, fleet int, evidence *FleetCommitmentEvidence) bool {
-	if prior == nil || evidence == nil || fleet < 1 {
+// finalized journal checkpoint and durable postcondition verification. The
+// source is the plan which authorized the mirror transaction: a later plan may
+// legitimately rewire the already verified native action's dependencies and
+// therefore has a different intent.
+func fleetCommitmentEvidenceWasVerified(source *SetupPlan, entries []JournalEntry, fleet int, evidence *FleetCommitmentEvidence) bool {
+	if source == nil || evidence == nil || fleet < 1 {
 		return false
 	}
 	actionID := fmt.Sprintf("fleet.commitment.%d", fleet)
 	var planned *Action
-	for index := range prior.Actions {
-		action := &prior.Actions[index]
+	for index := range source.Actions {
+		action := &source.Actions[index]
 		if action.ID != actionID {
 			continue
 		}
@@ -138,7 +142,7 @@ func fleetCommitmentEvidenceWasVerified(prior *SetupPlan, entries []JournalEntry
 	if planned == nil || planned.Kind != "substrate-extrinsic" {
 		return false
 	}
-	allowedPlans := prior.allowedPlanHashes()
+	allowedPlans := source.allowedPlanHashes()
 	for _, finalized := range entries {
 		if !allowedPlans[finalized.PlanHash] || finalized.ActionID != actionID || finalized.Stage != StageFinalized ||
 			!actionAcceptsIntent(*planned, finalized.IntentHash) ||
@@ -408,7 +412,7 @@ func detectFinalizedFleetMirrorRecovery(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
-	if !fleetCommitmentEvidenceWasVerified(prior, entries, fleet, evidence) {
+	if !fleetCommitmentEvidenceWasVerified(sourcePlan, entries, fleet, evidence) {
 		return finalizedFleetMirrorRecovery{}, errors.New("fleet-mirror native commitment lacks exact finalized and verified journal evidence")
 	}
 	descendantVerified, err := verifiedFleetMirrorDescendant(cfg, stateDir, prior, entries, transaction, action, fleet, commitmentHash, evidence.FinalizedBlock)
