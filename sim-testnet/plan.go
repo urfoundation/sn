@@ -52,7 +52,7 @@ const (
 	fleetCommitmentStorageParameter       = "commitment_storage_schema"
 	fleetCommitmentStorageV2              = "runtime-452-fixed-u32-exact-block-attestation-v2"
 	fleetCommitmentParallelGroupParameter = "parallel_commitment_group"
-	fleetCommitmentParallelWorkers        = 3
+	fleetCommitmentParallelWorkers        = 10
 	fleetRefreshBatchSize                 = 10
 )
 

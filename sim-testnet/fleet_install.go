@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -125,45 +126,75 @@ func (self *Executor) classifyFleetInstallRange(ctx context.Context, firstFleet,
 	classification := fleetInstallClassification{}
 	coordinator := stabi.NewSTCoordinator()
 	coordinatorAddress := self.payloads.Manifest.CoordinatorProxy
+	type candidate struct {
+		fleetIndex         int
+		manifest           protocol.FleetManifest
+		commitmentHash     [32]byte
+		commitmentEvidence *FleetCommitmentEvidence
+		finalizedBlockHash [32]byte
+	}
+	candidates := make([]candidate, 0, lastFleet-firstFleet+1)
+	clientIDs := make([][16]byte, 0, (lastFleet-firstFleet+1)*self.cfg.Config.Topology.ClientsPerHeadFleet)
+	mirrorCalls := make([][]byte, 0, lastFleet-firstFleet+1)
 	for fleetIndex := firstFleet; fleetIndex <= lastFleet; fleetIndex++ {
 		manifest, commitmentHash, commitmentEvidence, finalizedBlockHash, err := self.validatedFleetCommitmentGeneration(fleetIndex, 1)
 		if err != nil {
 			return classification, err
 		}
+		candidates = append(candidates, candidate{
+			fleetIndex: fleetIndex, manifest: manifest, commitmentHash: commitmentHash,
+			commitmentEvidence: commitmentEvidence, finalizedBlockHash: finalizedBlockHash,
+		})
+		for _, member := range manifest.Members {
+			clientIDs = append(clientIDs, member.ClientID)
+		}
+		mirrorCalls = append(mirrorCalls, coordinator.PackMirroredCommitments(manifest.Hotkey))
+	}
+	memberReads, err := readFleetBindingVersionsAt(ctx, self.oracle, coordinatorAddress, coordinator, clientIDs, 0, block)
+	if err != nil {
+		return classification, err
+	}
+	mirrorOutputs, err := rawCoordinatorBatchCallAt(ctx, self.oracle, coordinatorAddress, mirrorCalls, block)
+	if err != nil {
+		return classification, err
+	}
+	memberCursor := 0
+	for candidateIndex, current := range candidates {
 		missingMembers, exactMembers := 0, 0
-		for memberIndex, member := range manifest.Members {
-			count, record, err := readFleetBindingVersionAt(ctx, self.oracle, coordinatorAddress, coordinator, member.ClientID, 0, block)
-			if err != nil || !count.IsUint64() {
-				return classification, stateMismatchError(err, "fleet %d member %d binding count is invalid", fleetIndex, memberIndex+1)
+		for memberIndex := range current.manifest.Members {
+			read := memberReads[memberCursor]
+			memberCursor++
+			if read.Count == nil || !read.Count.IsUint64() {
+				return classification, fmt.Errorf("fleet %d member %d binding count is invalid", current.fleetIndex, memberIndex+1)
 			}
-			switch count.Uint64() {
+			switch read.Count.Uint64() {
 			case 0:
-				if _, statErr := os.Stat(filepath.Join(self.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", fleetIndex, memberIndex+1))); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
-					return classification, stateMismatchError(statErr, "fleet %d member %d has evidence without an on-chain binding", fleetIndex, memberIndex+1)
+				if _, statErr := os.Stat(filepath.Join(self.stateDir, "public", fmt.Sprintf("fleet-%d-member-%d.binding.json", current.fleetIndex, memberIndex+1))); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
+					return classification, stateMismatchError(statErr, "fleet %d member %d has evidence without an on-chain binding", current.fleetIndex, memberIndex+1)
 				}
 				missingMembers++
 			case 1:
-				evidence, binding, verifyErr := loadVerifiedPriorFleetBinding(self.stateDir, manifest, fleetIndex, memberIndex+1)
-				if verifyErr != nil || !fleetBindingRecordMatches(record, binding, binding.ValidToEpoch, evidence.UID) {
-					return classification, stateMismatchError(verifyErr, "fleet %d member %d carried binding is not exact", fleetIndex, memberIndex+1)
+				evidence, binding, verifyErr := loadVerifiedPriorFleetBinding(self.stateDir, current.manifest, current.fleetIndex, memberIndex+1)
+				if verifyErr != nil || !fleetBindingRecordMatches(read.Record, binding, binding.ValidToEpoch, evidence.UID) {
+					return classification, stateMismatchError(verifyErr, "fleet %d member %d carried binding is not exact", current.fleetIndex, memberIndex+1)
 				}
 				exactMembers++
 			default:
-				return classification, fmt.Errorf("fleet %d member %d already has %d binding versions", fleetIndex, memberIndex+1, count.Uint64())
+				return classification, fmt.Errorf("fleet %d member %d already has %d binding versions", current.fleetIndex, memberIndex+1, read.Count.Uint64())
 			}
 		}
-		if missingMembers == len(manifest.Members) {
-			classification.MissingFleets = append(classification.MissingFleets, fleetIndex)
+		if missingMembers == len(current.manifest.Members) {
+			classification.MissingFleets = append(classification.MissingFleets, current.fleetIndex)
 			continue
 		}
-		if exactMembers != len(manifest.Members) {
-			return classification, fmt.Errorf("fleet %d has partial generation-1 state (%d missing, %d exact)", fleetIndex, missingMembers, exactMembers)
+		if exactMembers != len(current.manifest.Members) {
+			return classification, fmt.Errorf("fleet %d has partial generation-1 state (%d missing, %d exact)", current.fleetIndex, missingMembers, exactMembers)
 		}
-		mirror, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments, block)
-		if err != nil || !fleetMirrorMatches(mirror, commitmentHash, commitmentEvidence.FinalizedBlock, finalizedBlockHash) {
-			return classification, stateMismatchError(err, "fleet %d carried commitment mirror is not exact", fleetIndex)
+		mirror, err := coordinator.UnpackMirroredCommitments(mirrorOutputs[candidateIndex])
+		if err != nil || !fleetMirrorMatches(mirror, current.commitmentHash, current.commitmentEvidence.FinalizedBlock, current.finalizedBlockHash) {
+			return classification, stateMismatchError(err, "fleet %d carried commitment mirror is not exact", current.fleetIndex)
 		}
-		classification.CarriedFleets = append(classification.CarriedFleets, fleetIndex)
+		classification.CarriedFleets = append(classification.CarriedFleets, current.fleetIndex)
 	}
 	return classification, nil
 }
@@ -412,24 +443,59 @@ func verifyFleetInstallEvents(receipt *ethTypes.Receipt, parsed abi.ABI, batcher
 func (self *Executor) verifyAndPublishFleetInstall(ctx context.Context, prepared *fleetInstallPreparedEvidence, receipt *ethTypes.Receipt) (*FleetInstallBatchEvidence, error) {
 	coordinator := stabi.NewSTCoordinator()
 	coordinatorAddress := self.payloads.Manifest.CoordinatorProxy
-	installedFleets := make([]int, 0, len(prepared.Fleets))
-	for fleetOffset := range prepared.Fleets {
-		fleet := &prepared.Fleets[fleetOffset]
+	type installedSnapshot struct {
+		manifest           protocol.FleetManifest
+		commitmentHash     [32]byte
+		commitmentEvidence *FleetCommitmentEvidence
+		finalizedBlockHash [32]byte
+	}
+	snapshots := make([]installedSnapshot, len(prepared.Fleets))
+	calls := make([][]byte, 0, len(prepared.Fleets)*(2+2*self.cfg.Config.Topology.ClientsPerHeadFleet))
+	for fleetOffset, fleet := range prepared.Fleets {
 		manifest, commitmentHash, commitmentEvidence, finalizedBlockHash, err := self.validatedFleetCommitmentGeneration(fleet.Fleet, 1)
 		if err != nil {
 			return nil, err
 		}
-		mirror, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments, receipt.BlockNumber.Uint64())
-		if err != nil || !fleetMirrorMatches(mirror, commitmentHash, commitmentEvidence.FinalizedBlock, finalizedBlockHash) {
+		snapshots[fleetOffset] = installedSnapshot{
+			manifest: manifest, commitmentHash: commitmentHash,
+			commitmentEvidence: commitmentEvidence, finalizedBlockHash: finalizedBlockHash,
+		}
+		calls = append(calls, coordinator.PackMirroredCommitments(manifest.Hotkey))
+		for _, member := range manifest.Members {
+			calls = append(calls,
+				coordinator.PackBindingVersionCount(member.ClientID),
+				coordinator.PackBindingVersionAt(member.ClientID, new(big.Int)),
+			)
+		}
+		calls = append(calls, coordinator.PackFleetMemberCount(manifest.FleetID))
+	}
+	outputs, err := rawCoordinatorBatchCallAt(ctx, self.oracle, coordinatorAddress, calls, receipt.BlockNumber.Uint64())
+	if err != nil {
+		return nil, err
+	}
+	installedFleets := make([]int, 0, len(prepared.Fleets))
+	outputIndex := 0
+	for fleetOffset := range prepared.Fleets {
+		fleet := &prepared.Fleets[fleetOffset]
+		snapshot := snapshots[fleetOffset]
+		mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
+		outputIndex++
+		if err != nil || !fleetMirrorMatches(mirror, snapshot.commitmentHash, snapshot.commitmentEvidence.FinalizedBlock, snapshot.finalizedBlockHash) {
 			return nil, stateMismatchError(err, "fleet %d installed mirror mismatch", fleet.Fleet)
 		}
 		for memberOffset := range fleet.Members {
 			evidence := &fleet.Members[memberOffset]
-			binding, err := manifest.Binding(manifest.Members[memberOffset], evidence.ValidFromEpoch, evidence.ValidToEpoch)
+			binding, err := snapshot.manifest.Binding(snapshot.manifest.Members[memberOffset], evidence.ValidFromEpoch, evidence.ValidToEpoch)
 			if err != nil {
 				return nil, err
 			}
-			count, record, err := readFleetBindingVersionAt(ctx, self.oracle, coordinatorAddress, coordinator, binding.ClientID, 0, receipt.BlockNumber.Uint64())
+			count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
+			outputIndex++
+			if err != nil {
+				return nil, err
+			}
+			record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+			outputIndex++
 			if err != nil || !count.IsUint64() || count.Uint64() != 1 || record.Generation != 1 || record.Cleaned {
 				return nil, stateMismatchError(err, "fleet %d member %d install record is absent", fleet.Fleet, memberOffset+1)
 			}
@@ -444,7 +510,8 @@ func (self *Executor) verifyAndPublishFleetInstall(ctx context.Context, prepared
 				return nil, err
 			}
 		}
-		memberCount, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackFleetMemberCount(manifest.FleetID), coordinator.UnpackFleetMemberCount, receipt.BlockNumber.Uint64())
+		memberCount, err := coordinator.UnpackFleetMemberCount(outputs[outputIndex])
+		outputIndex++
 		if err != nil || !memberCount.IsUint64() || memberCount.Uint64() != uint64(len(fleet.Members)) {
 			return nil, stateMismatchError(err, "fleet %d installed member count=%v", fleet.Fleet, memberCount)
 		}
@@ -526,6 +593,165 @@ func validateFleetInstallPartitions(evidence FleetInstallBatchEvidence) error {
 	return nil
 }
 
+func fleetInstallAliasIndices(cfg *ResolvedConfig, action Action) (int, int, int, error) {
+	if cfg == nil || cfg.Config == nil || action.Kind != "evm-read" || action.Parameters["batch_installed"] != "true" {
+		return 0, 0, 0, errors.New("fleet install alias is not an atomic-install read proof")
+	}
+	fleet, member := 0, 0
+	switch {
+	case strings.HasPrefix(action.ID, "fleet.mirror."):
+		fleet = suffixInt(action.ID)
+	case strings.HasPrefix(action.ID, "fleet.bind."):
+		var err error
+		fleet, member, err = fleetBindingActionIndices(action.ID)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+	default:
+		return 0, 0, 0, fmt.Errorf("action %s is not a fleet install alias", action.ID)
+	}
+	if fleet < 1 || fleet > cfg.Config.Topology.HeadFleets || member < 0 || member > cfg.Config.Topology.ClientsPerHeadFleet {
+		return 0, 0, 0, fmt.Errorf("fleet install alias %s is out of range", action.ID)
+	}
+	wantTarget := fmt.Sprintf("head-fleet:%d", fleet)
+	if member > 0 {
+		wantTarget = fmt.Sprintf("miner:%d", fleetMemberMinerIndex(cfg, fleet, member))
+	}
+	if action.Target != wantTarget {
+		return 0, 0, 0, fmt.Errorf("fleet install alias %s target=%q want %q", action.ID, action.Target, wantTarget)
+	}
+	batch := 1 + (fleet-1)/fleetRefreshBatchSize
+	return batch, fleet, member, nil
+}
+
+func fleetInstallObservedUint64(value any) (uint64, error) {
+	switch typed := value.(type) {
+	case json.Number:
+		return strconv.ParseUint(string(typed), 10, 64)
+	case uint64:
+		return typed, nil
+	case int:
+		if typed >= 0 {
+			return uint64(typed), nil
+		}
+	}
+	return 0, fmt.Errorf("fleet install observation has type %T", value)
+}
+
+// Derives an individual mirror/member receipt from the already-authenticated
+// batch receipt and its dual-signed local artifact. It performs no RPC call;
+// the source batch remains the one live-chain assertion revalidated on resume.
+func (self *Executor) verifyFleetInstallAliasState(action Action, state map[string]any) (JournalEntry, *ActionPostcondition, map[string]any, error) {
+	batch, fleet, member, err := fleetInstallAliasIndices(self.cfg, action)
+	if err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	sourceAction, err := self.planAction(fmt.Sprintf("fleet.install.batch.%d", batch))
+	if err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	firstFleet, lastFleet, err := fleetInstallActionRange(self.cfg, sourceAction, batch)
+	if err != nil || fleet < firstFleet || fleet > lastFleet {
+		return JournalEntry{}, nil, nil, stateMismatchError(err, "fleet install alias is outside source batch %d", batch)
+	}
+	sourceEntry, ok := self.verifiedActionEntry(sourceAction)
+	if !ok {
+		return JournalEntry{}, nil, nil, fmt.Errorf("fleet install source batch %d is not verified", batch)
+	}
+	sourceRecord, err := self.readPersistedPostcondition(sourceEntry)
+	if err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	if err := observedPostconditionMatches(sourceRecord.Observed, sourceRecord.IndependentObserved); err != nil {
+		return JournalEntry{}, nil, nil, fmt.Errorf("fleet install source observations differ: %w", err)
+	}
+	wantMembers := uint64((lastFleet - firstFleet + 1) * self.cfg.Config.Topology.ClientsPerHeadFleet)
+	for key, want := range map[string]uint64{
+		"batch": uint64(batch), "first_fleet": uint64(firstFleet), "last_fleet": uint64(lastFleet), "generation": 1, "members": wantMembers,
+	} {
+		observed, readErr := fleetInstallObservedUint64(sourceRecord.Observed[key])
+		if readErr != nil || observed != want {
+			return JournalEntry{}, nil, nil, stateMismatchError(readErr, "fleet install source %s=%d want %d", key, observed, want)
+		}
+	}
+	var batchEvidence FleetInstallBatchEvidence
+	if err := readJSONFile(filepath.Join(self.stateDir, "public", fmt.Sprintf("fleet-install-batch-%d.json", batch)), &batchEvidence); err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	if batchEvidence.Schema != fleetInstallBatchEvidenceSchema || batchEvidence.Batch != batch || batchEvidence.FirstFleet != firstFleet || batchEvidence.LastFleet != lastFleet || batchEvidence.Generation != 1 {
+		return JournalEntry{}, nil, nil, errors.New("fleet install alias source evidence identity mismatch")
+	}
+	if err := validateFleetInstallPartitions(batchEvidence); err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	if observed, _ := sourceRecord.Observed["transaction_hash"].(string); observed != batchEvidence.TransactionHash {
+		return JournalEntry{}, nil, nil, errors.New("fleet install alias transaction differs from its source receipt")
+	}
+	installed, err := fleetInstallObservedUint64(sourceRecord.Observed["installed_fleets"])
+	if err != nil || installed != uint64(len(batchEvidence.InstalledFleets)) {
+		return JournalEntry{}, nil, nil, stateMismatchError(err, "fleet install source installed partition mismatch")
+	}
+	carried, err := fleetInstallObservedUint64(sourceRecord.Observed["carried_fleets"])
+	if err != nil || carried != uint64(len(batchEvidence.CarriedFleets)) {
+		return JournalEntry{}, nil, nil, stateMismatchError(err, "fleet install source carried partition mismatch")
+	}
+	wantEvidenceCount := int(wantMembers)
+	if len(batchEvidence.MemberEvidence) != wantEvidenceCount {
+		return JournalEntry{}, nil, nil, errors.New("fleet install alias source member evidence count mismatch")
+	}
+	evidenceIndex := 0
+	for fleetIndex := firstFleet; fleetIndex <= lastFleet; fleetIndex++ {
+		for memberIndex := 1; memberIndex <= self.cfg.Config.Topology.ClientsPerHeadFleet; memberIndex++ {
+			want := fmt.Sprintf("fleet-%d-member-%d.binding.json", fleetIndex, memberIndex)
+			if batchEvidence.MemberEvidence[evidenceIndex] != want {
+				return JournalEntry{}, nil, nil, errors.New("fleet install alias source member evidence ordering mismatch")
+			}
+			evidenceIndex++
+		}
+	}
+	state["kind"], state["target"] = action.Kind, action.Target
+	state["source_action"], state["source_postcondition_hash"] = sourceAction.ID, sourceEntry.PostconditionHash
+	state["batch"], state["fleet"] = batch, fleet
+	manifest, _, commitmentHash, err := fleetManifest(self.cfg, self.stateDir, self.roles, fleet)
+	if err != nil {
+		return JournalEntry{}, nil, nil, err
+	}
+	if member == 0 {
+		commitmentEvidence, err := loadFleetCommitmentEvidence(self.stateDir, fleet)
+		if err != nil || !strings.EqualFold(commitmentEvidence.CommitmentHash, "0x"+hex.EncodeToString(commitmentHash[:])) || !strings.EqualFold(commitmentEvidence.Hotkey, "0x"+hex.EncodeToString(manifest.Hotkey[:])) {
+			return JournalEntry{}, nil, nil, stateMismatchError(err, "fleet %d commitment artifact differs from source batch", fleet)
+		}
+		state["commitment_hash"], state["finalized_block"] = commitmentEvidence.CommitmentHash, commitmentEvidence.FinalizedBlock
+		return sourceEntry, sourceRecord, state, nil
+	}
+	bindingEvidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, manifest, fleet, member)
+	if err != nil || binding.CommitmentHash != commitmentHash {
+		return JournalEntry{}, nil, nil, stateMismatchError(err, "fleet %d member %d artifact differs from source batch", fleet, member)
+	}
+	state["member"], state["client_id"], state["uid"] = member, bindingEvidence.ClientID, bindingEvidence.UID
+	return sourceEntry, sourceRecord, state, nil
+}
+
+func (self *Executor) verifyFleetInstallAliasPostcondition(action Action) (*ActionPostcondition, error) {
+	_, sourceRecord, observed, err := self.verifyFleetInstallAliasState(action, map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	independentObserved, err := cloneObservedPostState(observed)
+	if err != nil {
+		return nil, err
+	}
+	return &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: self.cfg.Config.Deployment.DeploymentID,
+		PlanHash: self.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		OperationalRPCMode: sourceRecord.OperationalRPCMode, IndependentRPC: sourceRecord.IndependentRPC,
+		SubstrateFinalized: sourceRecord.SubstrateFinalized, EVMFinalized: sourceRecord.EVMFinalized, EVMHashDomain: sourceRecord.EVMHashDomain,
+		Observed: observed, IndependentSubstrateFinalized: sourceRecord.IndependentSubstrateFinalized,
+		IndependentEVMFinalized: sourceRecord.IndependentEVMFinalized, IndependentEVMHashDomain: sourceRecord.IndependentEVMHashDomain,
+		IndependentObserved: independentObserved,
+	}, nil
+}
+
 // Rechecks every standard member artifact, native commitment, EVM mirror and
 // binding record at the postcondition's canonical finalized head.
 func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, action Action, evmHead ChainHead, state map[string]any) (map[string]any, error) {
@@ -548,23 +774,57 @@ func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, acti
 		return nil, err
 	}
 	coordinator := stabi.NewSTCoordinator()
+	type postconditionSnapshot struct {
+		fleetIndex         int
+		manifest           protocol.FleetManifest
+		commitmentHash     [32]byte
+		commitmentEvidence *FleetCommitmentEvidence
+		finalizedBlockHash [32]byte
+	}
+	snapshots := make([]postconditionSnapshot, 0, lastFleet-firstFleet+1)
+	calls := make([][]byte, 0, (lastFleet-firstFleet+1)*(1+2*self.cfg.Config.Topology.ClientsPerHeadFleet))
 	for fleetIndex := firstFleet; fleetIndex <= lastFleet; fleetIndex++ {
 		manifest, commitmentHash, commitmentEvidence, finalizedBlockHash, err := self.validatedFleetCommitmentGeneration(fleetIndex, 1)
 		if err != nil {
 			return nil, err
 		}
-		mirror, err := rawCoordinatorCallAt(ctx, self.oracle, self.payloads.Manifest.CoordinatorProxy, coordinator.PackMirroredCommitments(manifest.Hotkey), coordinator.UnpackMirroredCommitments, evmHead.Number)
-		if err != nil || !fleetMirrorMatches(mirror, commitmentHash, commitmentEvidence.FinalizedBlock, finalizedBlockHash) {
-			return nil, stateMismatchError(err, "fleet %d install postcondition mirror mismatch", fleetIndex)
+		snapshots = append(snapshots, postconditionSnapshot{
+			fleetIndex: fleetIndex, manifest: manifest, commitmentHash: commitmentHash,
+			commitmentEvidence: commitmentEvidence, finalizedBlockHash: finalizedBlockHash,
+		})
+		calls = append(calls, coordinator.PackMirroredCommitments(manifest.Hotkey))
+		for _, member := range manifest.Members {
+			calls = append(calls,
+				coordinator.PackBindingVersionCount(member.ClientID),
+				coordinator.PackBindingVersionAt(member.ClientID, new(big.Int)),
+			)
 		}
-		for memberIndex := 1; memberIndex <= len(manifest.Members); memberIndex++ {
-			memberEvidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, manifest, fleetIndex, memberIndex)
+	}
+	outputs, err := rawCoordinatorBatchCallAt(ctx, self.oracle, self.payloads.Manifest.CoordinatorProxy, calls, evmHead.Number)
+	if err != nil {
+		return nil, err
+	}
+	outputIndex := 0
+	for _, snapshot := range snapshots {
+		mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
+		outputIndex++
+		if err != nil || !fleetMirrorMatches(mirror, snapshot.commitmentHash, snapshot.commitmentEvidence.FinalizedBlock, snapshot.finalizedBlockHash) {
+			return nil, stateMismatchError(err, "fleet %d install postcondition mirror mismatch", snapshot.fleetIndex)
+		}
+		for memberIndex := 1; memberIndex <= len(snapshot.manifest.Members); memberIndex++ {
+			memberEvidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, snapshot.manifest, snapshot.fleetIndex, memberIndex)
 			if err != nil {
 				return nil, err
 			}
-			count, record, err := readFleetBindingVersionAt(ctx, self.oracle, self.payloads.Manifest.CoordinatorProxy, coordinator, binding.ClientID, 0, evmHead.Number)
+			count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
+			outputIndex++
+			if err != nil {
+				return nil, err
+			}
+			record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+			outputIndex++
 			if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, binding, binding.ValidToEpoch, memberEvidence.UID) {
-				return nil, stateMismatchError(err, "fleet %d member %d install postcondition mismatch", fleetIndex, memberIndex)
+				return nil, stateMismatchError(err, "fleet %d member %d install postcondition mismatch", snapshot.fleetIndex, memberIndex)
 			}
 		}
 	}

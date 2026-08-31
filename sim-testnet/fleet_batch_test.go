@@ -4,19 +4,252 @@ package main
 // preconditions without depending on wall-clock timing or a live RPC.
 
 import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
+
+func TestCoordinatorBatchCallsRespectThePublicEndpointLimit(t *testing.T) {
+	type request struct {
+		JSONRPC string            `json:"jsonrpc"`
+		ID      json.RawMessage   `json:"id"`
+		Method  string            `json:"method"`
+		Params  []json.RawMessage `json:"params"`
+	}
+	type response struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  string          `json:"result"`
+	}
+	var requestCount atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, httpRequest *http.Request) {
+		requestCount.Add(1)
+		var batch []request
+		if err := json.NewDecoder(httpRequest.Body).Decode(&batch); err != nil {
+			t.Errorf("decode RPC batch: %v", err)
+			return
+		}
+		if len(batch) == 0 || len(batch) > maximumEVMRPCBatchCalls {
+			t.Errorf("RPC batch size=%d", len(batch))
+		}
+		responses := make([]response, len(batch))
+		for index, call := range batch {
+			if call.Method != "eth_call" || len(call.Params) != 2 || string(call.Params[1]) != `"0x7b"` {
+				t.Errorf("RPC call %d method=%q params=%s", index, call.Method, call.Params)
+			}
+			responses[index] = response{JSONRPC: "2.0", ID: call.ID, Result: "0x0102"}
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(writer).Encode(responses); err != nil {
+			t.Errorf("encode RPC batch: %v", err)
+		}
+	}))
+	defer server.Close()
+	rpcClient, err := rpc.DialHTTP(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpcClient.Close()
+	manager := &EVMTxManager{client: ethclient.NewClient(rpcClient)}
+	calls := make([][]byte, maximumEVMRPCBatchCalls+1)
+	for index := range calls {
+		calls[index] = []byte{byte(index)}
+	}
+	outputs, err := rawCoordinatorBatchCallAt(context.Background(), manager, common.HexToAddress("0x1234"), calls, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestCount.Load() != 2 || len(outputs) != len(calls) {
+		t.Fatalf("RPC requests/outputs=%d/%d, want 2/%d", requestCount.Load(), len(outputs), len(calls))
+	}
+	for index, output := range outputs {
+		if string(output) != string([]byte{1, 2}) {
+			t.Fatalf("RPC output %d=%x", index, output)
+		}
+	}
+}
+
+func TestFleetInstallAliasesDeriveReceiptsWithoutRPC(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.HeadFleets = 10
+	cfg.Config.Topology.ClientsPerHeadFleet = 1
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientRole := roles.Clients["miner-1"]
+	clientID := [16]byte{1, 2, 3, 4}
+	clientRole.ClientIDHex = hex.EncodeToString(clientID[:])
+	roles.Clients["miner-1"] = clientRole
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	coordinatorAddress := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	if err := saveContractDeployment(dir, ContractDeployment{CoordinatorProxy: coordinatorAddress}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, canonical, commitmentHash, err := fleetManifest(cfg, dir, roles, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(dir, "public", "fleet-1.json"), append(canonical, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hexValue := func(value []byte) string { return "0x" + hex.EncodeToString(value) }
+	commitmentEvidence := FleetCommitmentEvidence{
+		Schema: fleetCommitmentEvidenceSchemaV2, ManifestURI: "fleet-1.json",
+		CommitmentHash: hexValue(commitmentHash[:]), Hotkey: hexValue(manifest.Hotkey[:]),
+		ExtrinsicHash: "0x" + strings.Repeat("11", 32), CommitmentBlock: 100, FinalizedBlock: 100,
+		FinalizedBlockHash: "0x" + strings.Repeat("22", 32),
+	}
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-1.commitment.json"), commitmentEvidence); err != nil {
+		t.Fatal(err)
+	}
+	clientSeed, err := hex.DecodeString(clientRole.SeedHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := manifest.Binding(manifest.Members[0], 2, 33)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSignature, err := binding.SignClient(ed25519.NewKeyFromSeed(clientSeed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := binding.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotkey, err := crv4.KeypairFromSeedHex(roles.Substrate[fleetHotkeyLabel(1)].SeedHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hotkeySignature, err := hotkey.Sign(digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingEvidence := FleetBindingEvidence{
+		Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: hexValue(binding.ClientID[:]), ClientKey: hexValue(binding.ClientKey[:]),
+		FleetID: hexValue(binding.FleetID[:]), Hotkey: hexValue(binding.Hotkey[:]), Generation: 1,
+		ValidFromEpoch: 2, ValidToEpoch: 33, CommitmentHash: hexValue(binding.CommitmentHash[:]), BindingDigest: hexValue(digest[:]),
+		ClientSignature: hexValue(clientSignature), HotkeySignature: hexValue(hotkeySignature),
+		TransactionHash: "0x" + strings.Repeat("33", 32), BlockNumber: 101, BlockHash: "0x" + strings.Repeat("44", 32), UID: 7,
+	}
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-1-member-1.binding.json"), bindingEvidence); err != nil {
+		t.Fatal(err)
+	}
+	memberEvidence := make([]string, 0, 10)
+	installedFleets := make([]int, 0, 10)
+	for fleet := 1; fleet <= 10; fleet++ {
+		installedFleets = append(installedFleets, fleet)
+		memberEvidence = append(memberEvidence, "fleet-"+strconv.Itoa(fleet)+"-member-1.binding.json")
+	}
+	transactionHash := "0x" + strings.Repeat("55", 32)
+	batchEvidence := FleetInstallBatchEvidence{
+		Schema: fleetInstallBatchEvidenceSchema, Batch: 1, FirstFleet: 1, LastFleet: 10, Generation: 1,
+		EffectiveEpoch: 2, ValidToEpoch: 33, InstalledFleets: installedFleets, MemberEvidence: memberEvidence,
+		TransactionHash: transactionHash, BlockNumber: 102, BlockHash: "0x" + strings.Repeat("66", 32),
+	}
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-install-batch-1.json"), batchEvidence); err != nil {
+		t.Fatal(err)
+	}
+	batchAction := Action{
+		ID: "fleet.install.batch.1", Kind: "evm-transaction", Target: "batcher",
+		Parameters: map[string]string{"first_fleet": "1", "last_fleet": "10", "generation": "1"},
+	}
+	mirrorAction := Action{ID: "fleet.mirror.1", Kind: "evm-read", Target: "head-fleet:1", Parameters: map[string]string{"batch_installed": "true"}, DependsOn: []string{batchAction.ID}}
+	bindingAction := Action{ID: "fleet.bind.1.1", Kind: "evm-read", Target: "miner:1", Parameters: map[string]string{"batch_installed": "true"}, DependsOn: []string{mirrorAction.ID}}
+	for _, action := range []*Action{&batchAction, &mirrorAction, &bindingAction} {
+		intentHash, hashErr := actionIntentHash(*action)
+		if hashErr != nil {
+			t.Fatal(hashErr)
+		}
+		action.IntentHash = intentHash
+	}
+	plan := &SetupPlan{PlanHash: "0x" + strings.Repeat("77", 32), Actions: []Action{batchAction, mirrorAction, bindingAction}}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	executor := &Executor{cfg: cfg, stateDir: dir, plan: plan, journal: journal, roles: roles}
+	observed := map[string]any{
+		"kind": batchAction.Kind, "target": batchAction.Target, "batch": 1, "first_fleet": 1, "last_fleet": 10,
+		"generation": 1, "installed_fleets": 10, "carried_fleets": 0, "members": 10, "transaction_hash": transactionHash,
+	}
+	independentObserved, err := cloneObservedPostState(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: plan.PlanHash, ActionID: batchAction.ID, IntentHash: batchAction.IntentHash,
+		OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		SubstrateFinalized: ChainHead{Number: 100, Hash: "0x" + strings.Repeat("88", 32)},
+		EVMFinalized:       ChainHead{Number: 102, Hash: batchEvidence.BlockHash}, EVMHashDomain: "evm-rpc",
+		Observed:                      observed,
+		IndependentSubstrateFinalized: ChainHead{Number: 100, Hash: "0x" + strings.Repeat("88", 32)},
+		IndependentEVMFinalized:       ChainHead{Number: 102, Hash: batchEvidence.BlockHash}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: independentObserved,
+	}
+	path, hash, err := executor.persistActionPostcondition(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Append(JournalEntry{DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: plan.PlanHash, ActionID: batchAction.ID, IntentHash: batchAction.IntentHash, Stage: StageVerified, PostconditionPath: path, PostconditionHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []Action{mirrorAction, bindingAction} {
+		receipt, err := executor.verifyActionPostcondition(context.Background(), action)
+		if err != nil {
+			t.Fatalf("local alias %s required an unavailable RPC: %v", action.ID, err)
+		}
+		if receipt.Observed["source_action"] != batchAction.ID || receipt.Observed["source_postcondition_hash"] != hash {
+			t.Fatalf("local alias %s lost source identity: %+v", action.ID, receipt.Observed)
+		}
+	}
+	batchEvidence.TransactionHash = "0x" + strings.Repeat("99", 32)
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-install-batch-1.json"), batchEvidence); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executor.verifyActionPostcondition(context.Background(), mirrorAction); err == nil {
+		t.Fatal("local mirror alias accepted a transaction hash that differed from its authenticated batch receipt")
+	}
+	batchEvidence.TransactionHash = transactionHash
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-install-batch-1.json"), batchEvidence); err != nil {
+		t.Fatal(err)
+	}
+	bindingEvidence.ClientSignature = "0x" + strings.Repeat("00", ed25519.SignatureSize)
+	if err := writePublicJSON(filepath.Join(dir, "public", "fleet-1-member-1.binding.json"), bindingEvidence); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executor.verifyActionPostcondition(context.Background(), bindingAction); err == nil {
+		t.Fatal("local member alias accepted a binding with a forged client signature")
+	}
+}
 
 // Cover the full and final partial batch boundaries and every adjacent range
 // mutation that could overlap or omit a fleet.

@@ -401,14 +401,50 @@ func fleetBindingRecordMatches(record stabi.STCoordinatorBindingRecord, binding 
 		record.ValidFromEpoch == binding.ValidFromEpoch && record.ValidToEpoch == validTo && record.Uid == uid && !record.Cleaned && record.CleanedAtEpoch == 0
 }
 
-// Loads a record and version count at one exact EVM block.
+type fleetBindingVersionRead struct {
+	Count  *big.Int
+	Record stabi.STCoordinatorBindingRecord
+}
+
+// Loads version counts and records from one pinned snapshot in bounded
+// JSON-RPC batches instead of two HTTP requests per member.
+func readFleetBindingVersionsAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, clientIDs [][16]byte, index uint64, block uint64) ([]fleetBindingVersionRead, error) {
+	if coordinator == nil || len(clientIDs) == 0 {
+		return nil, errors.New("fleet binding version batch is unavailable")
+	}
+	calls := make([][]byte, 0, 2*len(clientIDs))
+	for _, clientID := range clientIDs {
+		calls = append(calls,
+			coordinator.PackBindingVersionCount(clientID),
+			coordinator.PackBindingVersionAt(clientID, new(big.Int).SetUint64(index)),
+		)
+	}
+	outputs, err := rawCoordinatorBatchCallAt(ctx, manager, coordinatorAddress, calls, block)
+	if err != nil {
+		return nil, err
+	}
+	reads := make([]fleetBindingVersionRead, len(clientIDs))
+	for clientIndex := range clientIDs {
+		count, err := coordinator.UnpackBindingVersionCount(outputs[2*clientIndex])
+		if err != nil {
+			return nil, fmt.Errorf("decode fleet binding %d version count: %w", clientIndex, err)
+		}
+		record, err := coordinator.UnpackBindingVersionAt(outputs[2*clientIndex+1])
+		if err != nil {
+			return nil, fmt.Errorf("decode fleet binding %d version: %w", clientIndex, err)
+		}
+		reads[clientIndex] = fleetBindingVersionRead{Count: count, Record: record}
+	}
+	return reads, nil
+}
+
+// Preserves the single-member API for refresh and targeted postconditions.
 func readFleetBindingVersionAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, clientID [16]byte, index uint64, block uint64) (*big.Int, stabi.STCoordinatorBindingRecord, error) {
-	count, err := rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackBindingVersionCount(clientID), coordinator.UnpackBindingVersionCount, block)
+	reads, err := readFleetBindingVersionsAt(ctx, manager, coordinatorAddress, coordinator, [][16]byte{clientID}, index, block)
 	if err != nil {
 		return nil, stabi.STCoordinatorBindingRecord{}, err
 	}
-	record, err := rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackBindingVersionAt(clientID, new(big.Int).SetUint64(index)), coordinator.UnpackBindingVersionAt, block)
-	return count, record, err
+	return reads[0].Count, reads[0].Record, nil
 }
 
 // Rejects expired, cleaned or overlapping generation-1 state before any new

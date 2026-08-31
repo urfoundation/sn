@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -127,6 +128,22 @@ func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *
 	}
 }
 
+func TestCurrentSupervisorTreatsAnUnstartedManifestAsNotReady(t *testing.T) {
+	dir := t.TempDir()
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash"}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "supervisor.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := currentSupervisorReady(dir)
+	if err != nil || ready {
+		t.Fatalf("unstarted supervisor ready=%t error=%v", ready, err)
+	}
+}
+
 func TestSupervisorFailsWhenItCannotPublishState(t *testing.T) {
 	dir := t.TempDir()
 	executable, err := os.Executable()
@@ -247,6 +264,67 @@ func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 	got := selectProvisioningServerSpecs(specs)
 	if len(got) != 4 || got[0].ID != workloadRPCProxyProcessID || got[1].ID != workloadSubstrateProcessID || got[2].ID != "operator-1-api" || got[3].ID != "operator-2-api" {
 		t.Fatalf("provisioning specs = %+v", got)
+	}
+}
+
+func TestInterruptedProvisioningRecoveryStopsOnlyTheRecordedKernelIdentity(t *testing.T) {
+	dir := t.TempDir()
+	spec := ProcessSpec{
+		ID: "temporary-test", Role: "operator-api", Identity: "no:1", Command: "/bin/sleep", Args: []string{"300"}, WorkDir: dir,
+		StdoutPath: filepath.Join(dir, "temporary.stdout"), StderrPath: filepath.Join(dir, "temporary.stderr"),
+	}
+	command, err := startSpec(context.Background(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) })
+	identity, err := temporaryProcessIdentity(spec, command.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := TemporaryProcessFile{Schema: temporaryProcessFileSchema, DeploymentID: "test", Processes: []TemporaryProcessIdentity{identity}}
+	if err := writeTemporaryProcessFile(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := recoverStaleTemporaryProcesses(context.Background(), dir, "test", []ProcessSpec{spec}); err != nil {
+		t.Fatal(err)
+	}
+	if syscall.Kill(command.Process.Pid, syscall.Signal(0)) == nil {
+		t.Fatalf("recorded temporary process %d survived recovery", command.Process.Pid)
+	}
+	if _, err := os.Stat(temporaryProcessFilePath(dir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary ownership file survived recovery: %v", err)
+	}
+}
+
+func TestInterruptedProvisioningRecoveryNeverSignalsAReusedPID(t *testing.T) {
+	dir := t.TempDir()
+	spec := ProcessSpec{
+		ID: "temporary-test", Role: "operator-api", Identity: "no:1", Command: "/bin/sleep", Args: []string{"300"}, WorkDir: dir,
+		StdoutPath: filepath.Join(dir, "temporary.stdout"), StderrPath: filepath.Join(dir, "temporary.stderr"),
+	}
+	command, err := startSpec(context.Background(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL) })
+	identity, err := temporaryProcessIdentity(spec, command.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.StartTimeTicks++
+	state := TemporaryProcessFile{Schema: temporaryProcessFileSchema, DeploymentID: "test", Processes: []TemporaryProcessIdentity{identity}}
+	if err := writeTemporaryProcessFile(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := recoverStaleTemporaryProcesses(context.Background(), dir, "test", []ProcessSpec{spec}); err != nil {
+		t.Fatal(err)
+	}
+	if syscall.Kill(command.Process.Pid, syscall.Signal(0)) != nil {
+		t.Fatalf("PID-reuse mismatch process %d was signalled", command.Process.Pid)
+	}
+	if _, err := os.Stat(temporaryProcessFilePath(dir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("obsolete ownership file survived PID reuse: %v", err)
 	}
 }
 

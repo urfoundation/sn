@@ -1735,6 +1735,16 @@ current approved lineage retains the 300-block accelerated cadence: changing it
 mid-deployment merely to save wall time would create a new policy/hash boundary
 and is not an acceptable substitute for evidence-preserving phase overlap.
 
+The release implementation parallelizes each ten-hotkey commitment partition,
+chunks pinned historical EVM reads at the public endpoint's enforced 50-call
+JSON-RPC limit, and derives per-fleet/per-member read receipts from the exact
+authenticated install batch plus canonical signed artifacts. The source batch
+remains the live chain assertion and is revalidated before any resumed mutation.
+Interrupted provisioning records kernel start time, process group, executable
+hash and argv hash, so resume can remove exact orphan helpers without treating a
+reused PID as simulator-owned. These changes reduce setup transport overhead;
+they do not shorten any M1/M2/M3 protocol-time gate.
+
 ### M2 — Multi-epoch adversarial campaign
 
 Run at least **20 consecutive accelerated epochs** as named `sim-testnet scenario` runs against the same persistent deployment. Include, on a declared schedule:
@@ -2149,7 +2159,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    revision; no mainnet write is authorized.
 
    A setup-throughput revision is locally complete. Ten independent four-client
-   fleets now share an explicit plan group: three native commitment extrinsics
+   fleets now share an explicit plan group: ten native commitment extrinsics
    may execute concurrently, followed by one testnet-only `STFleetBatcher`
    transaction that atomically mirrors and installs all 40 dual-signed bindings.
    A second atomic batch performs client-authorized generation-2 revocation and
@@ -2163,7 +2173,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    verified EVM ceiling exactly once. The serialized ancestor executor remains
    recoverable while this release is frozen; it had completed at least 25 of 200
    fleet bindings before the replacement-plan cutover.
-   At the pinned 12-second cadence, bounded setup should take roughly 2--4 hours
+   At the pinned 12-second cadence, bounded setup should take roughly 1--3 hours
    rather than the serialized many-hour path. The 20 accelerated epochs remain
    approximately 20 hours, and the three 8-hour production UR blocks retain 24
    hours of live observation plus the final approximately 4-hour

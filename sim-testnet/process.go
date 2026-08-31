@@ -58,6 +58,29 @@ type SupervisorState struct {
 	Processes     []ProcessState `json:"processes"`
 }
 
+// Records the kernel identity of each provisioning helper so a resume can
+// reap an orphan without ever signalling a PID that the kernel has reused.
+type TemporaryProcessIdentity struct {
+	ID              string `json:"id"`
+	Role            string `json:"role"`
+	Identity        string `json:"identity"`
+	PID             int    `json:"pid"`
+	ProcessGroupID  int    `json:"process_group_id"`
+	StartTimeTicks  uint64 `json:"start_time_ticks"`
+	ExecutableHash  string `json:"executable_hash"`
+	CommandLineHash string `json:"command_line_hash"`
+}
+
+// Survives only an abnormal parent exit; normal teardown removes it after all
+// exact process identities have disappeared.
+type TemporaryProcessFile struct {
+	Schema       string                     `json:"schema"`
+	DeploymentID string                     `json:"deployment_id"`
+	Processes    []TemporaryProcessIdentity `json:"processes"`
+}
+
+const temporaryProcessFileSchema = "urnetwork-sim-temporary-processes-v1"
+
 type dockerCLI struct {
 	Executable    string
 	Prefix        []string
@@ -196,12 +219,16 @@ func currentSupervisorReady(stateDir string) (bool, error) {
 	if err := json.Unmarshal(b, &manifest); err != nil {
 		return false, fmt.Errorf("decode current supervisor manifest: %w", err)
 	}
-	return supervisorReadyNow(stateDir, manifest)
+	ready, err := supervisorReadyNow(stateDir, manifest)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return ready, err
 }
 
 // Recheck the actual requested state filesystem and listeners after local
 // dependencies/builds but before constructing a transaction-capable executor.
-func preflightReleaseHost(stateDir string, cfg *ResolvedConfig) error {
+func preflightReleaseHost(ctx context.Context, stateDir string, cfg *ResolvedConfig, bins map[string]string) error {
 	available, err := filesystemFreeBytes(stateDir)
 	if err != nil {
 		return fmt.Errorf("inspect release state filesystem: %w", err)
@@ -218,6 +245,13 @@ func preflightReleaseHost(stateDir string, cfg *ResolvedConfig) error {
 	}
 	if ready {
 		return nil
+	}
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins)
+	if err != nil {
+		return err
+	}
+	if err := recoverStaleTemporaryProcesses(ctx, stateDir, cfg.Config.Deployment.DeploymentID, selectProvisioningServerSpecs(serverSpecs)); err != nil {
+		return fmt.Errorf("recover interrupted provisioning helpers: %w", err)
 	}
 	return validateAvailableListenAddresses(releaseProcessListenAddresses(cfg))
 }
@@ -288,11 +322,11 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		return err
 	}
 	provisioningSpecs := selectProvisioningServerSpecs(serverSpecs)
-	temporary, err := startTemporary(ctx, provisioningSpecs)
+	temporary, err := startTemporary(ctx, stateDir, cfg.Config.Deployment.DeploymentID, provisioningSpecs)
 	if err != nil {
 		return err
 	}
-	defer stopCommands(temporary)
+	defer stopTemporaryCommands(stateDir, temporary)
 	if err := waitSpecsReady(ctx, provisioningSpecs, 2*time.Minute); err != nil {
 		return err
 	}
@@ -328,7 +362,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
 		return err
 	}
-	stopCommands(temporary)
+	stopTemporaryCommands(stateDir, temporary)
 	specs := append(serverSpecs, buildClientSpecs(cfg, stateDir, bins, roles)...)
 	binaryHash, err := fileSHA256(bins["sim-testnet"])
 	if err != nil {
@@ -905,7 +939,153 @@ func envList(extra map[string]string) []string {
 	return out
 }
 
-func startTemporary(ctx context.Context, specs []ProcessSpec) ([]*exec.Cmd, error) {
+func temporaryProcessFilePath(stateDir string) string {
+	return filepath.Join(stateDir, "temporary-processes.json")
+}
+
+func processStartTimeTicks(pid int) (uint64, error) {
+	statBytes, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, err
+	}
+	closing := strings.LastIndexByte(string(statBytes), ')')
+	if closing < 0 {
+		return 0, fmt.Errorf("process %d stat has no command boundary", pid)
+	}
+	fields := strings.Fields(string(statBytes[closing+1:]))
+	if len(fields) <= 19 {
+		return 0, fmt.Errorf("process %d stat is truncated", pid)
+	}
+	startTimeTicks, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil || startTimeTicks == 0 {
+		return 0, fmt.Errorf("process %d start time is invalid", pid)
+	}
+	return startTimeTicks, nil
+}
+
+// Linux field 22 is stable across exec and, together with the process group,
+// executable and argv, distinguishes an orphan from a reused PID.
+func temporaryProcessIdentity(spec ProcessSpec, pid int) (TemporaryProcessIdentity, error) {
+	startTimeTicks, err := processStartTimeTicks(pid)
+	if err != nil {
+		return TemporaryProcessIdentity{}, err
+	}
+	processGroupID, err := syscall.Getpgid(pid)
+	if err != nil {
+		return TemporaryProcessIdentity{}, err
+	}
+	executableHash, err := fileSHA256(fmt.Sprintf("/proc/%d/exe", pid))
+	if err != nil {
+		return TemporaryProcessIdentity{}, err
+	}
+	commandLine, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil || len(commandLine) == 0 {
+		return TemporaryProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
+	}
+	commandLineHashBytes := sha256.Sum256(commandLine)
+	return TemporaryProcessIdentity{
+		ID: spec.ID, Role: spec.Role, Identity: spec.Identity, PID: pid,
+		ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
+		ExecutableHash: executableHash, CommandLineHash: hex.EncodeToString(commandLineHashBytes[:]),
+	}, nil
+}
+
+func sameTemporaryProcessIdentity(left, right TemporaryProcessIdentity) bool {
+	return left.PID == right.PID && left.ProcessGroupID == right.ProcessGroupID && left.StartTimeTicks == right.StartTimeTicks &&
+		left.ExecutableHash == right.ExecutableHash && left.CommandLineHash == right.CommandLineHash
+}
+
+func writeTemporaryProcessFile(stateDir string, state TemporaryProcessFile) error {
+	encoded, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(temporaryProcessFilePath(stateDir), append(encoded, '\n'), 0o600)
+}
+
+// Signals only exact process identities recorded by this deployment. A PID
+// mismatch is treated as normal PID reuse and is never signalled.
+func recoverStaleTemporaryProcesses(ctx context.Context, stateDir, deploymentID string, specs []ProcessSpec) error {
+	path := temporaryProcessFilePath(stateDir)
+	encoded, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var state TemporaryProcessFile
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		return err
+	}
+	if state.Schema != temporaryProcessFileSchema || state.DeploymentID != deploymentID || len(state.Processes) == 0 {
+		return errors.New("temporary process ownership file has an invalid identity")
+	}
+	expected := make(map[string]ProcessSpec, len(specs))
+	for _, spec := range specs {
+		expected[spec.ID] = spec
+	}
+	owned := make([]TemporaryProcessIdentity, 0, len(state.Processes))
+	seen := map[string]bool{}
+	for _, recorded := range state.Processes {
+		spec, ok := expected[recorded.ID]
+		if !ok || seen[recorded.ID] || recorded.Role != spec.Role || recorded.Identity != spec.Identity || recorded.PID <= 1 || recorded.ProcessGroupID != recorded.PID {
+			return fmt.Errorf("temporary process %q has an invalid ownership record", recorded.ID)
+		}
+		seen[recorded.ID] = true
+		observed, observeErr := temporaryProcessIdentity(spec, recorded.PID)
+		if errors.Is(observeErr, os.ErrNotExist) || errors.Is(observeErr, syscall.ESRCH) {
+			continue
+		}
+		if observeErr != nil {
+			return observeErr
+		}
+		if sameTemporaryProcessIdentity(recorded, observed) {
+			owned = append(owned, recorded)
+		}
+	}
+	for _, process := range owned {
+		if err := syscall.Kill(-process.ProcessGroupID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return err
+		}
+	}
+	waitUntil := time.Now().Add(10 * time.Second)
+	for len(owned) > 0 {
+		remaining := owned[:0]
+		for _, recorded := range owned {
+			observedStartTime, observeErr := processStartTimeTicks(recorded.PID)
+			if observeErr == nil && observedStartTime == recorded.StartTimeTicks {
+				remaining = append(remaining, recorded)
+			} else if observeErr != nil && !errors.Is(observeErr, os.ErrNotExist) && !errors.Is(observeErr, syscall.ESRCH) {
+				return observeErr
+			}
+		}
+		owned = remaining
+		if len(owned) == 0 {
+			break
+		}
+		if time.Now().After(waitUntil) {
+			for _, process := range owned {
+				_ = syscall.Kill(-process.ProcessGroupID, syscall.SIGKILL)
+			}
+			return fmt.Errorf("temporary processes did not stop: %v", owned)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return os.Remove(path)
+}
+
+func startTemporary(ctx context.Context, stateDir, deploymentID string, specs []ProcessSpec) ([]*exec.Cmd, error) {
+	if _, err := os.Stat(temporaryProcessFilePath(stateDir)); err == nil {
+		return nil, errors.New("temporary process ownership file already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	state := TemporaryProcessFile{Schema: temporaryProcessFileSchema, DeploymentID: deploymentID}
 	var out []*exec.Cmd
 	for _, s := range specs {
 		cmd, err := startSpec(ctx, s)
@@ -914,8 +1094,38 @@ func startTemporary(ctx context.Context, specs []ProcessSpec) ([]*exec.Cmd, erro
 			return nil, err
 		}
 		out = append(out, cmd)
+		identity, err := temporaryProcessIdentity(s, cmd.Process.Pid)
+		if err != nil {
+			stopCommands(out)
+			return nil, err
+		}
+		if identity.ProcessGroupID != identity.PID {
+			stopCommands(out)
+			return nil, fmt.Errorf("temporary process %s is not its process-group leader", s.ID)
+		}
+		state.Processes = append(state.Processes, identity)
+		if err := writeTemporaryProcessFile(stateDir, state); err != nil {
+			stopCommands(out)
+			return nil, err
+		}
 	}
 	return out, nil
+}
+
+func stopTemporaryCommands(stateDir string, commands []*exec.Cmd) {
+	stopCommands(commands)
+	statePath := temporaryProcessFilePath(stateDir)
+	if encoded, err := os.ReadFile(statePath); err == nil {
+		var state TemporaryProcessFile
+		if json.Unmarshal(encoded, &state) == nil {
+			for _, process := range state.Processes {
+				if process.PID > 1 && syscall.Kill(process.PID, syscall.Signal(0)) == nil {
+					return
+				}
+			}
+		}
+	}
+	_ = os.Remove(statePath)
 }
 func startSpec(ctx context.Context, s ProcessSpec) (*exec.Cmd, error) {
 	cmd, _, err := startSpecWithExit(ctx, s)

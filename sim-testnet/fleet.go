@@ -16,6 +16,8 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -430,6 +432,43 @@ func rawCoordinatorCallAt[T any](ctx context.Context, manager *EVMTxManager, add
 		return zero, err
 	}
 	return unpack(out)
+}
+
+const maximumEVMRPCBatchCalls = 50
+
+// The public testnet endpoint accepts at most fifty JSON-RPC batch elements.
+// Every call is pinned to the same block, so chunking changes transport cost
+// without weakening the snapshot identity checked by callers.
+func rawCoordinatorBatchCallAt(ctx context.Context, manager *EVMTxManager, addr common.Address, calls [][]byte, block uint64) ([][]byte, error) {
+	if manager == nil || manager.client == nil || len(calls) == 0 || block == 0 {
+		return nil, errors.New("coordinator batch call is unavailable")
+	}
+	outputs := make([][]byte, len(calls))
+	for start := 0; start < len(calls); start += maximumEVMRPCBatchCalls {
+		end := min(start+maximumEVMRPCBatchCalls, len(calls))
+		results := make([]hexutil.Bytes, end-start)
+		batch := make([]rpc.BatchElem, end-start)
+		for index := start; index < end; index++ {
+			batch[index-start] = rpc.BatchElem{
+				Method: "eth_call",
+				Args: []any{
+					map[string]any{"to": addr, "data": hexutil.Bytes(calls[index])},
+					hexutil.EncodeUint64(block),
+				},
+				Result: &results[index-start],
+			}
+		}
+		if err := manager.client.Client().BatchCallContext(ctx, batch); err != nil {
+			return nil, err
+		}
+		for index := range batch {
+			if batch[index].Error != nil {
+				return nil, fmt.Errorf("coordinator batch call %d: %w", start+index, batch[index].Error)
+			}
+			outputs[start+index] = append([]byte(nil), results[index]...)
+		}
+	}
+	return outputs, nil
 }
 
 func (e *Executor) bindFleetMember(ctx context.Context, a Action, fleetIndex, memberIndex int) error {

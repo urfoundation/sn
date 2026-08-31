@@ -246,7 +246,7 @@ postcondition. If the command is interrupted, use the same approval:
   --detach
 ```
 
-Head-fleet setup is bounded but not artificially serialized. Up to three
+Head-fleet setup is bounded but not artificially serialized. All ten
 independently signed Substrate commitment writes run concurrently inside an
 explicit ten-fleet plan group; every write retains its own fee ceiling, raw
 transaction, journal lineage, finalized storage proof, and idempotent recovery.
@@ -265,10 +265,18 @@ runtime before advancing the CREATE boundary. Any verified EVM action replaced
 by that revision moves once into cumulative superseded gas, so acceleration
 cannot erase historical spend from the approval envelope.
 
+Every historical coordinator read in a batch remains pinned to one exact EVM
+block, but the HTTP transport groups at most 50 `eth_call` elements, matching
+the public endpoint's enforced limit. The individual mirror/member plan actions
+then derive their receipts from the authenticated batch receipt and their
+canonical signed artifacts; they do not repeat the batch's live RPC surface.
+Resume still revalidates the source batch on chain before any new mutation.
+
 At the pinned 12-second public-testnet cadence, this changes head-fleet setup
-from a many-hour serialized transaction chain to roughly 2--4 hours: 400 native
-commitments run in bounded three-wide waves, 40 EVM batches replace 1,600
-per-member install/refresh calls, and two future-epoch oracle handoffs remain.
+from a many-hour serialized transaction chain to roughly 1--3 hours, including
+boundary alignment: 400 native commitments run in ten-wide waves, 40 EVM
+batches replace 1,600 per-member install/refresh calls, historical reads use
+bounded RPC batches, and two future-epoch oracle handoffs remain.
 The 20 acceptance epochs still require about 20 hours. The three 8-hour
 production UR blocks intentionally retain 24 hours of chain observation plus
 the final approximately 4-hour settlement/finality window. Those protocol-time
@@ -286,7 +294,9 @@ Host reboot is an intentional stop boundary. The supervisor unit is started but
 never enabled, managed PostgreSQL/Redis containers use Docker restart policy
 `no`, and loginctl linger is not required. After a reboot, run `resume` explicitly;
 it re-runs doctor and reconciles the journal and finalized chain before starting
-any dependency or process.
+any dependency or process. Provisioning helpers also persist PID, process-group,
+kernel start-time, executable-hash and argv-hash ownership. If the parent exits
+abnormally, resume reaps only an exact orphan identity and never a reused PID.
 
 Before smoke, `launch` automatically runs the named `precompile-conformance`
 scenario. It finalized-reads and replaces/restores a native commitment, deploys

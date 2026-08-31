@@ -474,7 +474,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	if cmd == "launch" || cmd == "resume" {
-		if err := preflightReleaseHost(stateDir, cfg); err != nil {
+		if err := preflightReleaseHost(ctx, stateDir, cfg, bins); err != nil {
 			return fmt.Errorf("release host preflight: %w", err)
 		}
 	}
@@ -833,6 +833,8 @@ func actionPostStateRequiresEVMCheckpoint(action Action) bool {
 	case strings.HasPrefix(action.ID, "fleet.commitment."):
 		return false
 	case strings.HasPrefix(action.ID, "fleet.refresh.commitment."):
+		return false
+	case action.Parameters["batch_installed"] == "true" && (strings.HasPrefix(action.ID, "fleet.mirror.") || strings.HasPrefix(action.ID, "fleet.bind.")):
 		return false
 	case action.Kind == "budget-reserve":
 		return false
@@ -1197,8 +1199,16 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 	case strings.HasPrefix(a.ID, "fleet.commitment."):
 		return e.publishFleetCommitment(ctx, a, suffixInt(a.ID))
 	case strings.HasPrefix(a.ID, "fleet.mirror."):
+		if a.Parameters["batch_installed"] == "true" {
+			_, _, _, err := e.verifyFleetInstallAliasState(a, map[string]any{})
+			return err
+		}
 		return e.mirrorFleetCommitment(ctx, a, suffixInt(a.ID))
 	case strings.HasPrefix(a.ID, "fleet.bind."):
+		if a.Parameters["batch_installed"] == "true" {
+			_, _, _, err := e.verifyFleetInstallAliasState(a, map[string]any{})
+			return err
+		}
 		fleet, member, err := fleetBindingActionIndices(a.ID)
 		if err != nil {
 			return err

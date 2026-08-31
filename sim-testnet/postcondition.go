@@ -79,6 +79,9 @@ func postconditionRelativePath(planHash, actionID string) (string, error) {
 }
 
 func (e *Executor) verifyActionPostcondition(ctx context.Context, a Action) (*ActionPostcondition, error) {
+	if a.Parameters["batch_installed"] == "true" && (strings.HasPrefix(a.ID, "fleet.mirror.") || strings.HasPrefix(a.ID, "fleet.bind.")) {
+		return e.verifyFleetInstallAliasPostcondition(a)
+	}
 	finalizedHash, finalizedNumber, err := e.substrate.finalizedHead()
 	if err != nil {
 		return nil, fmt.Errorf("substrate finalized checkpoint: %w", err)
@@ -707,8 +710,16 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	case strings.HasPrefix(a.ID, "fleet.commitment."):
 		return e.verifyFleetCommitmentPostState(suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.mirror."):
+		if a.Parameters["batch_installed"] == "true" {
+			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
+			return observed, err
+		}
 		return e.verifyFleetMirrorPostState(ctx, suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "fleet.bind."):
+		if a.Parameters["batch_installed"] == "true" {
+			_, _, observed, err := e.verifyFleetInstallAliasState(a, state)
+			return observed, err
+		}
 		fleet, member, err := fleetBindingActionIndices(a.ID)
 		if err != nil {
 			return nil, err
