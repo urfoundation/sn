@@ -994,6 +994,166 @@ func TestPlanRevisionV5AlphaApprovalIsStableAcrossEmissions(t *testing.T) {
 	}
 }
 
+func TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.MaximumAlphaRao = 30_000_000_000_000
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	persistFleetCommitmentRecoveryTestPlan(t, stateDir, prior)
+	base := actionByID(t, prior, "alpha.transfer.validator.1")
+	baseFinal, err := strconv.ParseUint(base.Parameters["planned_final_stake_rao"], 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]JournalEntry, 0, 5)
+	for _, id := range []string{"alpha.transfer.validator.1", "alpha.transfer.validator.2", "validator.reserve-majority"} {
+		action := actionByID(t, prior, id)
+		entries = append(entries, JournalEntry{
+			DeploymentID: prior.DeploymentID,
+			PlanHash:     prior.PlanHash,
+			ActionID:     action.ID,
+			IntentHash:   action.IntentHash,
+			Stage:        StageVerified,
+		})
+	}
+
+	current := *testSetupFacts()
+	current.RegisteredAlphaRao = 30_000_000_000_000
+	current.ReserveValidatorAlphaRao = baseFinal
+	if alphaShareMeets(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) {
+		t.Fatal("test reserve unexpectedly meets the configured majority floor")
+	}
+	revised, err := buildPlanRevisionFromFacts(cfg, stateDir, prior, &current, entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := actionByID(t, revised, base.ID); got.IntentHash != base.IntentHash || got.Spend.AlphaRao != base.Spend.AlphaRao {
+		t.Fatalf("verified bootstrap transfer was rewritten: got=%+v want=%+v", got, base)
+	}
+	minimumTransfer, err := minimumAlphaTransferRao(prior.LiveFacts.DefaultMinTransferRao, prior.LiveFacts.AlphaPriceQ9, prior.AlphaTransferMarginBPS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTransfer, wantFinal, err := reserveValidatorTransferRao(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repair := actionByID(t, revised, "alpha.repair.validator.1.2")
+	if repair.Spend.AlphaRao != wantTransfer || repair.Parameters[alphaRepairMinimumDestinationParameter] != strconv.FormatUint(wantFinal, 10) || !slices.Equal(repair.DependsOn, []string{base.ID}) {
+		t.Fatalf("reserve repair does not bind the exact target: got=%+v want_transfer=%d want_final=%d", repair, wantTransfer, wantFinal)
+	}
+	barrier := actionByID(t, revised, "validator.reserve-majority")
+	if !slices.Contains(barrier.DependsOn, repair.ID) || slices.Contains(barrier.DependsOn, base.ID) || barrier.IntentHash == actionByID(t, prior, barrier.ID).IntentHash {
+		t.Fatalf("majority barrier was not rebound to the live repair: %+v", barrier)
+	}
+
+	// Replanning the same unverified top-up carries that exact intent instead
+	// of creating another transfer for an unchanged live snapshot.
+	repeated, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &current, entries, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := actionByID(t, repeated, repair.ID); got.IntentHash != repair.IntentHash || got.Spend.AlphaRao != repair.Spend.AlphaRao {
+		t.Fatalf("unverified majority repair was not stable: got=%+v want=%+v", got, repair)
+	}
+	for _, action := range repeated.Actions {
+		if action.ID == "alpha.repair.validator.1.3" {
+			t.Fatal("unchanged live state created a duplicate reserve repair")
+		}
+	}
+
+	// Once the first repair is verified, later dilution gets a new cumulative
+	// action chained after the exact prior repair, while preserving both spends.
+	entries = append(entries, JournalEntry{
+		DeploymentID: revised.DeploymentID,
+		PlanHash:     revised.PlanHash,
+		ActionID:     repair.ID,
+		IntentHash:   repair.IntentHash,
+		Stage:        StageVerified,
+	})
+	nextFacts := current
+	nextFacts.RegisteredAlphaRao = 36_000_000_000_000
+	nextFacts.ReserveValidatorAlphaRao = wantFinal
+	nextFacts.AlphaAvailableRao -= repair.Spend.AlphaRao
+	nextFacts.AlphaTransferableRao -= repair.Spend.AlphaRao
+	nextFacts.WalletNetuidAlphaRao -= repair.Spend.AlphaRao
+	next, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &nextFacts, entries, time.Unix(4, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextRepair := actionByID(t, next, "alpha.repair.validator.1.3")
+	wantNextTransfer, wantNextFinal, err := reserveValidatorTransferRao(nextFacts.RegisteredAlphaRao, nextFacts.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nextRepair.Spend.AlphaRao != wantNextTransfer || nextRepair.Parameters[alphaRepairMinimumDestinationParameter] != strconv.FormatUint(wantNextFinal, 10) || !slices.Equal(nextRepair.DependsOn, []string{repair.ID}) {
+		t.Fatalf("recurrent reserve repair is not cumulative: got=%+v want_transfer=%d want_final=%d", nextRepair, wantNextTransfer, wantNextFinal)
+	}
+	if got := actionByID(t, next, repair.ID); got.IntentHash != repair.IntentHash || !slices.Contains(actionByID(t, next, "validator.reserve-majority").DependsOn, nextRepair.ID) {
+		t.Fatal("recurrent repair did not preserve its predecessor and rebind the majority barrier")
+	}
+
+	// An authenticated plan may not splice a prior repair onto a different
+	// predecessor; revision construction fails closed before trusting it.
+	malformed := *revised
+	malformed.Actions = append([]Action(nil), revised.Actions...)
+	for index := range malformed.Actions {
+		if malformed.Actions[index].ID != repair.ID {
+			continue
+		}
+		malformed.Actions[index].DependsOn = []string{"validator.take-zero.1"}
+		malformed.Actions[index].IntentHash, err = actionIntentHash(malformed.Actions[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	malformed.PlanHash, err = malformed.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildPlanRevisionFromFacts(cfg, stateDir, &malformed, &current, entries[:3], time.Unix(5, 0)); err == nil || !strings.Contains(err.Error(), "outside the exact repair chain") {
+		t.Fatalf("malformed reserve repair was not rejected exactly: %v", err)
+	}
+}
+
+func TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaximumAlphaRao = prior.MaximumSpend.AlphaRao
+	base := actionByID(t, prior, "alpha.transfer.validator.1")
+	baseFinal, err := strconv.ParseUint(base.Parameters["planned_final_stake_rao"], 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []JournalEntry{{
+		DeploymentID: prior.DeploymentID,
+		PlanHash:     prior.PlanHash,
+		ActionID:     base.ID,
+		IntentHash:   base.IntentHash,
+		Stage:        StageVerified,
+	}}
+	current := *testSetupFacts()
+	current.RegisteredAlphaRao = 30_000_000_000_000
+	current.ReserveValidatorAlphaRao = baseFinal
+	if _, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, &current, entries, time.Unix(2, 0)); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+		t.Fatalf("cumulative reserve repair ignored the alpha limit: %v", err)
+	}
+}
+
 func TestPlanRevisionCarriesOnlyExactVerifiedUnchangedV6ValidatorAlphaIntoV7(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)

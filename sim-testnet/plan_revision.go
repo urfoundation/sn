@@ -2734,6 +2734,158 @@ func preserveVerifiedValidatorAlphaTransfers(revised, prior *SetupPlan, entries 
 	return nil
 }
 
+// Carry every prior validator-1 repair in its original order and, when live
+// emissions have diluted the reserve below the configured floor, append one
+// new absolute-target repair. The verified bootstrap transfer is never resized
+// or replayed. A changed majority barrier depends on the repair tail, so its
+// older point-in-time verification cannot block the top-up or impersonate the
+// new live-majority proof.
+func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *SetupPlan, current *SetupFacts, entries []JournalEntry) error {
+	if cfg == nil || cfg.Config == nil || revised == nil || prior == nil || current == nil {
+		return errors.New("reserve-validator majority repair context is unavailable")
+	}
+	base, err := exactPlanActionByID(revised, "alpha.transfer.validator.1")
+	if err != nil {
+		return err
+	}
+	priorBase, err := exactPlanActionByID(prior, base.ID)
+	if err != nil {
+		return err
+	}
+	if !exactVerifiedPlanAction(prior, entries, priorBase.ID) || priorBase.IntentHash != base.IntentHash {
+		return nil
+	}
+	if current.RegisteredAlphaRao == 0 || current.ReserveValidatorAlphaRao > current.RegisteredAlphaRao {
+		return errors.New("current reserve-validator alpha snapshot is invalid")
+	}
+	allowedPlans := prior.allowedPlanHashes()
+	isVerified := func(action Action) bool {
+		for _, entry := range entries {
+			if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && entry.Stage == StageVerified && actionAcceptsIntent(action, entry.IntentHash) {
+				return true
+			}
+		}
+		return false
+	}
+	usedIDs := make(map[string]bool, len(revised.Actions)+len(prior.Actions))
+	for _, action := range revised.Actions {
+		usedIDs[action.ID] = true
+	}
+	for _, action := range prior.Actions {
+		usedIDs[action.ID] = true
+	}
+
+	repairs := make([]Action, 0, 2)
+	tail := base.ID
+	prospectiveReserve := current.ReserveValidatorAlphaRao
+	for _, action := range prior.Actions {
+		kind, index, parseErr := alphaTransferTargetFromActionID(action.ID)
+		if parseErr != nil || !strings.HasPrefix(action.ID, "alpha.repair.validator.1") {
+			continue
+		}
+		if kind != "validator" || index != 1 || action.Kind != "substrate-extrinsic" || action.Target != base.Target || action.Parameters[alphaRepairForActionParameter] != base.ID {
+			return fmt.Errorf("prior reserve-validator repair %s differs from its bootstrap transfer", action.ID)
+		}
+		if len(action.DependsOn) != 1 || action.DependsOn[0] != tail {
+			return fmt.Errorf("prior reserve-validator repair %s is outside the exact repair chain after %s", action.ID, tail)
+		}
+		repairs = append(repairs, action)
+		tail = action.ID
+		if isVerified(action) {
+			continue
+		}
+		if encoded := action.Parameters[alphaRepairMinimumDestinationParameter]; encoded != "" {
+			minimum, parseMinimumErr := strconv.ParseUint(encoded, 10, 64)
+			if parseMinimumErr != nil || minimum == 0 || minimum > current.RegisteredAlphaRao {
+				return fmt.Errorf("prior reserve-validator repair %s has an invalid absolute target", action.ID)
+			}
+			prospectiveReserve = max64(prospectiveReserve, minimum)
+			continue
+		}
+		credit, creditErr := alphaTransferMinimumCreditRao(action.Spend.AlphaRao)
+		var addOK bool
+		prospectiveReserve, addOK = checkedAdd(prospectiveReserve, credit)
+		if creditErr != nil || !addOK || prospectiveReserve > current.RegisteredAlphaRao {
+			return stateMismatchError(creditErr, "prior reserve-validator repair %s prospective stake is invalid", action.ID)
+		}
+	}
+
+	if !alphaShareMeets(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) &&
+		!alphaShareMeets(current.RegisteredAlphaRao, prospectiveReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
+		minimumTransfer, minimumErr := minimumAlphaTransferRao(revised.LiveFacts.DefaultMinTransferRao, revised.LiveFacts.AlphaPriceQ9, revised.AlphaTransferMarginBPS)
+		if minimumErr != nil {
+			return minimumErr
+		}
+		exact, finalReserve, transferErr := reserveValidatorTransferRao(current.RegisteredAlphaRao, prospectiveReserve, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+		if transferErr != nil {
+			return fmt.Errorf("size reserve-validator majority repair: %w", transferErr)
+		}
+		baseID := "alpha.repair.validator.1"
+		repairID := baseID + ".2"
+		for sequence := 3; usedIDs[repairID]; sequence++ {
+			repairID = fmt.Sprintf("%s.%d", baseID, sequence)
+		}
+		parameters := alphaTransferActionParameters(exact, 0, minimumTransfer, &revised.LiveFacts, revised.AlphaTransferMarginBPS)
+		parameters[alphaRepairForActionParameter] = base.ID
+		parameters[alphaRepairMinimumDestinationParameter] = strconv.FormatUint(finalReserve, 10)
+		parameters["planned_existing_stake_rao"] = strconv.FormatUint(prospectiveReserve, 10)
+		parameters["planned_final_stake_rao"] = strconv.FormatUint(finalReserve, 10)
+		parameters["registered_alpha_snapshot_rao"] = strconv.FormatUint(current.RegisteredAlphaRao, 10)
+		parameters["reserve_target_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS), 10)
+		parameters["reserve_minimum_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS), 10)
+		repair := Action{
+			ID: repairID, Kind: "substrate-extrinsic", Target: base.Target,
+			Description: "restore the reserve validator target majority after bounded live-emission dilution without replaying bootstrap stake",
+			Parameters:  parameters, Spend: Spend{AlphaRao: exact}, DependsOn: []string{tail},
+		}
+		repair.IntentHash, err = actionIntentHash(repair)
+		if err != nil {
+			return err
+		}
+		repairs = append(repairs, repair)
+		tail = repair.ID
+	}
+	if len(repairs) == 0 {
+		return nil
+	}
+
+	result := make([]Action, 0, len(revised.Actions)+len(repairs))
+	for _, action := range revised.Actions {
+		result = append(result, action)
+		if action.ID == base.ID {
+			result = append(result, repairs...)
+		}
+	}
+	barrierFound := false
+	for index := range result {
+		if result[index].ID != "validator.reserve-majority" {
+			continue
+		}
+		barrierFound = true
+		result[index].DependsOn = append([]string(nil), result[index].DependsOn...)
+		replaced := false
+		for dependency := range result[index].DependsOn {
+			if result[index].DependsOn[dependency] == base.ID {
+				result[index].DependsOn[dependency] = tail
+				replaced = true
+			}
+		}
+		if !replaced {
+			return errors.New("reserve-validator majority barrier does not depend on validator-1 bootstrap")
+		}
+		result[index].IntentHash, err = actionIntentHash(result[index])
+		if err != nil {
+			return err
+		}
+	}
+	if !barrierFound {
+		return errors.New("reserve-validator majority barrier is unavailable")
+	}
+	revised.Actions = result
+	revised.MaximumSpend, err = maximumActionSpend(revised.Actions)
+	return err
+}
+
 // Convert an exact finalized-but-unverified alpha transfer into a local
 // reconciliation action. The original cumulative spend remains in the plan,
 // while a separate runtime-minimum transfer repairs a possible one-rao funding
@@ -3149,6 +3301,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	}
 	if err := preserveVerifiedValidatorAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("preserve verified validator alpha transfers: %w", err)
+	}
+	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries); err != nil {
+		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
 	}
 	if err := reconcileFinalizedAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("reconcile finalized alpha transfers: %w", err)
