@@ -434,13 +434,14 @@ func TestFleetMirrorRecoveryUsesTransactionSourcePlanForNativeEvidence(t *testin
 	}
 }
 
-// Require exact historical and current EVM state; either side drifting makes
-// no-broadcast convergence unsafe.
+// Historical state is immutable recovery evidence. Current state must also be
+// exact unless a separately authenticated descendant has already closed the
+// old write before a later generation replaced it.
 func TestFleetMirrorRecoveryRequiresExactHistoricalAndCurrentState(t *testing.T) {
 	var commitmentHash, blockHash [32]byte
 	commitmentHash[0], blockHash[0] = 1, 2
 	exact := stabi.MirroredCommitmentsOutput{CommitmentHash: commitmentHash, FinalizedBlock: 123, FinalizedBlockHash: blockHash}
-	if err := validateFleetMirrorRecoveryState(exact, exact, commitmentHash, 123, blockHash); err != nil {
+	if err := validateFleetMirrorRecoveryState(exact, exact, commitmentHash, 123, blockHash, true); err != nil {
 		t.Fatalf("exact mirror state was rejected: %v", err)
 	}
 	for _, mutation := range []struct {
@@ -455,9 +456,16 @@ func TestFleetMirrorRecoveryRequiresExactHistoricalAndCurrentState(t *testing.T)
 		{name: "current block", historical: exact, current: stabi.MirroredCommitmentsOutput{CommitmentHash: commitmentHash, FinalizedBlock: 124, FinalizedBlockHash: blockHash}},
 		{name: "current block hash", historical: exact, current: stabi.MirroredCommitmentsOutput{CommitmentHash: commitmentHash, FinalizedBlock: 123}},
 	} {
-		if err := validateFleetMirrorRecoveryState(mutation.historical, mutation.current, commitmentHash, 123, blockHash); err == nil {
+		if err := validateFleetMirrorRecoveryState(mutation.historical, mutation.current, commitmentHash, 123, blockHash, true); err == nil {
 			t.Errorf("%s mutation was accepted", mutation.name)
 		}
+	}
+	advanced := stabi.MirroredCommitmentsOutput{CommitmentHash: blockHash, FinalizedBlock: 456, FinalizedBlockHash: commitmentHash}
+	if err := validateFleetMirrorRecoveryState(exact, advanced, commitmentHash, 123, blockHash, false); err != nil {
+		t.Fatalf("authenticated descendant did not permit advanced current state: %v", err)
+	}
+	if err := validateFleetMirrorRecoveryState(advanced, exact, commitmentHash, 123, blockHash, false); err == nil {
+		t.Fatal("authenticated descendant permitted inexact historical state")
 	}
 }
 
@@ -592,10 +600,11 @@ func TestFleetMirrorRecoveryRecognizesExactVerifiedDescendant(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := JournalEntry{
+		Sequence: 11,
 		PlanHash: currentHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash, Stage: StageVerified,
 		PostconditionHash: hash, PostconditionPath: path,
 	}
-	transaction := planRevisionTransaction{PlanHash: sourceHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash}
+	transaction := planRevisionTransaction{PlanHash: sourceHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash, JournalSequence: 10, BlockNumber: 100}
 	verified, err := verifiedFleetMirrorDescendant(fixture.cfg, stateDir, fixture.plan, []JournalEntry{entry}, transaction, fixture.action, 4, fixture.commitmentHash, fixture.finalizedBlock)
 	if err != nil || !verified {
 		t.Fatalf("exact verified descendant was not recognized: verified=%t error=%v", verified, err)
@@ -637,8 +646,9 @@ func TestFleetMirrorRecoveryRejectsInexactVerifiedDescendant(t *testing.T) {
 	if err := writePublicJSON(filepath.Join(stateDir, filepath.FromSlash(path)), record); err != nil {
 		t.Fatal(err)
 	}
-	transaction := planRevisionTransaction{PlanHash: sourceHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash}
+	transaction := planRevisionTransaction{PlanHash: sourceHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash, JournalSequence: 10, BlockNumber: 100}
 	entry := JournalEntry{
+		Sequence: 11,
 		PlanHash: currentHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash, Stage: StageVerified,
 		PostconditionHash: hash, PostconditionPath: path,
 	}
@@ -652,5 +662,59 @@ func TestFleetMirrorRecoveryRejectsInexactVerifiedDescendant(t *testing.T) {
 	entry.PlanHash = "0x" + strings.Repeat("92", 32)
 	if verified, err := verifiedFleetMirrorDescendant(fixture.cfg, stateDir, fixture.plan, []JournalEntry{entry}, transaction, fixture.action, 4, fixture.commitmentHash, fixture.finalizedBlock); err != nil || verified {
 		t.Fatalf("foreign descendant marker was not ignored: verified=%t error=%v", verified, err)
+	}
+}
+
+// A same-intent receipt is a descendant only when both its append-only journal
+// order and its independently observed finalized checkpoint follow the old
+// transaction. Earlier observations cannot authorize current-state drift.
+func TestFleetMirrorRecoveryDescendantMustFollowRecoveredTransaction(t *testing.T) {
+	fixture := newFleetMirrorRecoveryTestFixture(t)
+	sourceHash := fixture.plan.PlanHash
+	currentHash := "0x" + strings.Repeat("71", 32)
+	fixture.plan.PlanHash = currentHash
+	fixture.plan.PriorPlanHashes = []string{sourceHash}
+	stateDir := t.TempDir()
+	wantObserved := map[string]any{
+		"fleet": 4, "commitment_hash": common.BytesToHash(fixture.commitmentHash[:]).Hex(), "finalized_block": fixture.finalizedBlock,
+		"kind": fixture.action.Kind, "target": fixture.action.Target,
+	}
+	record := ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: fixture.cfg.Config.Deployment.DeploymentID,
+		PlanHash: currentHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash,
+		OperationalRPCMode: fixture.cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(fixture.cfg),
+		SubstrateFinalized: ChainHead{Number: 100, Hash: "0x" + strings.Repeat("81", 32)},
+		EVMFinalized:       ChainHead{Number: 100, Hash: "0x" + strings.Repeat("82", 32)}, EVMHashDomain: "evm-rpc",
+		Observed:                      wantObserved,
+		IndependentSubstrateFinalized: ChainHead{Number: 100, Hash: "0x" + strings.Repeat("81", 32)},
+		IndependentEVMFinalized:       ChainHead{Number: 100, Hash: "0x" + strings.Repeat("82", 32)}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: wantObserved,
+	}
+	path, err := postconditionRelativePath(currentHash, fixture.action.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := canonicalHashHex(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(stateDir, filepath.FromSlash(path)), record); err != nil {
+		t.Fatal(err)
+	}
+	transaction := planRevisionTransaction{
+		PlanHash: sourceHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash,
+		JournalSequence: 10, BlockNumber: 100,
+	}
+	entry := JournalEntry{
+		Sequence: 10, PlanHash: currentHash, ActionID: fixture.action.ID, IntentHash: fixture.action.IntentHash,
+		Stage: StageVerified, PostconditionHash: hash, PostconditionPath: path,
+	}
+	if verified, err := verifiedFleetMirrorDescendant(fixture.cfg, stateDir, fixture.plan, []JournalEntry{entry}, transaction, fixture.action, 4, fixture.commitmentHash, fixture.finalizedBlock); err != nil || verified {
+		t.Fatalf("earlier journal observation was not ignored: verified=%t error=%v", verified, err)
+	}
+	entry.Sequence = 11
+	transaction.BlockNumber = 101
+	if verified, err := verifiedFleetMirrorDescendant(fixture.cfg, stateDir, fixture.plan, []JournalEntry{entry}, transaction, fixture.action, 4, fixture.commitmentHash, fixture.finalizedBlock); err == nil || verified {
+		t.Fatalf("pre-transaction finalized checkpoint was accepted: verified=%t error=%v", verified, err)
 	}
 }

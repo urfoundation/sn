@@ -2473,6 +2473,44 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    `sha256:aeefe23b8671198b43aa4b791cd4e5a6080d7245126c8e529db88708244074e5`.
    M0A remains stopped for two identical refreshed plans and exact resume;
    phase 2 has not started.
+
+   The first post-fix read-only revision then found one older interrupted
+   transaction that the earlier M0A recovery had not needed to revisit.
+   `fleet.mirror.4` in plan
+   `0x4c8a563dafb14b2d436b63c0b4ec5f41e3900ea5df9937e66a8d0776f648434e`
+   broadcast transaction
+   `0x168694211cd1da240ddd85e51c8bd96b60b15c5ecadd1ac7f1e15351952a762d`
+   and lost its receipt observation to request cancellation. The transaction
+   succeeded at finalized block 7,897,368. A later approved plan durably
+   verified that exact generation-1 mirror intent through both observers, and
+   the subsequently completed generation-2 refresh correctly replaced its live
+   coordinator state. Recovery already used that descendant proof to permit the
+   corresponding native commitment to advance, but accidentally still required
+   current EVM storage to equal generation 1. Historical transaction-block state
+   remains mandatory; current state is now required only until an exact,
+   hash-authenticated descendant postcondition closes the old write. The
+   descendant must occur later in append-only journal sequence and both of its
+   finalized EVM checkpoints must be at or after the recovered receipt block, so
+   an earlier same-intent observation cannot authorize drift. Deterministic tests
+   cover exact/current state, superseded current state, historical drift, journal
+   ordering and checkpoint ordering. The real read-only lineage replay now
+   authenticates the signed transaction, event, historical coordinator value,
+   native evidence and descendant receipt and completes without relaxing generic
+   successful-transaction handling. The corrected Go tree is locked by
+   `sha256:5232baaac287887e581afa37c23eb8f7ccdef275eb2919460fc6df1634e63d0d`.
+   Two refreshed read-only builds returned the identical canonical plan
+   `0xe2437addbba0b600b1fb09ba4222c0a168119310b523b5d4bee3bbe896f66082`
+   with 2,238 actions and therefore identical hash-bound action intents and
+   spend envelopes. Maximum spend is 165,673,232,000 TAO rao,
+   19,131,501,203,537 alpha rao, 148,909,500,000,000,000,000 EVM gas
+   wei and 256 registrations; carried superseded spend remains 5,500,000,000
+   alpha rao, 11,090,500,000,000,000,000 EVM gas wei and three registrations.
+   Every dimension remains within its reviewed cap. The complete candidate-tree
+   release gate passes: ordinary Go, the focused recovery race test, the full
+   506-second simulator race suite, zero-finding Slither analysis of both
+   deployable roots, all 145 Foundry tests, generated payload/ABI/layout checks,
+   operator and shared-client suites, 25 Subtensor infrastructure tests and patch
+   hygiene. Phase 2 remains unstarted.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

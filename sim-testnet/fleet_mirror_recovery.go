@@ -280,13 +280,14 @@ func fleetMirrorAt(ctx context.Context, client *ethclient.Client, coordinator co
 	return contract.UnpackMirroredCommitments(out)
 }
 
-// Require both the transaction checkpoint and current finalized coordinator
-// state to retain the exact native identity needed for executor convergence.
-func validateFleetMirrorRecoveryState(historical, current stabi.MirroredCommitmentsOutput, commitmentHash [32]byte, finalizedBlock uint64, finalizedBlockHash [32]byte) error {
+// Require the transaction checkpoint to retain the exact native identity. The
+// current finalized coordinator must retain it too unless a later, durable
+// postcondition already proved that exact mirror before an authorized rewrite.
+func validateFleetMirrorRecoveryState(historical, current stabi.MirroredCommitmentsOutput, commitmentHash [32]byte, finalizedBlock uint64, finalizedBlockHash [32]byte, requireExactCurrent bool) error {
 	if !fleetMirrorMatches(historical, commitmentHash, finalizedBlock, finalizedBlockHash) {
 		return errors.New("fleet-mirror historical state differs from its transaction")
 	}
-	if !fleetMirrorMatches(current, commitmentHash, finalizedBlock, finalizedBlockHash) {
+	if requireExactCurrent && !fleetMirrorMatches(current, commitmentHash, finalizedBlock, finalizedBlockHash) {
 		return errors.New("fleet-mirror current state no longer converges without a transaction")
 	}
 	return nil
@@ -297,7 +298,7 @@ func validateFleetMirrorRecoveryState(historical, current stabi.MirroredCommitme
 // Once this exists, a later native rewrite of the same fleet commitment is not
 // allowed to reopen the already closed ancestor transaction.
 func verifiedFleetMirrorDescendant(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, transaction planRevisionTransaction, action Action, fleet int, commitmentHash [32]byte, finalizedBlock uint64) (bool, error) {
-	if cfg == nil || prior == nil || fleet < 1 || finalizedBlock == 0 {
+	if cfg == nil || prior == nil || fleet < 1 || finalizedBlock == 0 || transaction.JournalSequence == 0 || transaction.BlockNumber == 0 {
 		return false, errors.New("fleet-mirror descendant context is incomplete")
 	}
 	wantObserved := map[string]any{
@@ -306,7 +307,7 @@ func verifiedFleetMirrorDescendant(cfg *ResolvedConfig, stateDir string, prior *
 	}
 	executor := &Executor{cfg: cfg, plan: prior, stateDir: stateDir}
 	for _, entry := range entries {
-		if entry.PlanHash == transaction.PlanHash || !prior.allowedPlanHashes()[entry.PlanHash] || entry.ActionID != transaction.ActionID || entry.IntentHash != transaction.IntentHash || entry.Stage != StageVerified {
+		if entry.PlanHash == transaction.PlanHash || !prior.allowedPlanHashes()[entry.PlanHash] || entry.ActionID != transaction.ActionID || entry.IntentHash != transaction.IntentHash || entry.Stage != StageVerified || entry.Sequence <= transaction.JournalSequence {
 			continue
 		}
 		descendantPlan, err := loadFleetMirrorLineagePlan(stateDir, prior, entry.PlanHash)
@@ -320,6 +321,9 @@ func verifiedFleetMirrorDescendant(cfg *ResolvedConfig, stateDir string, prior *
 		record, err := executor.readPersistedPostcondition(entry)
 		if err != nil {
 			return false, fmt.Errorf("verified descendant fleet-mirror postcondition: %w", err)
+		}
+		if record.EVMFinalized.Number < transaction.BlockNumber || record.IndependentEVMFinalized.Number < transaction.BlockNumber {
+			return false, errors.New("verified descendant fleet-mirror checkpoint predates the recovered transaction")
 		}
 		if err := observedPostconditionMatches(record.Observed, wantObserved); err != nil {
 			return false, fmt.Errorf("verified descendant operational fleet mirror: %w", err)
@@ -415,36 +419,39 @@ func detectFinalizedFleetMirrorRecovery(ctx context.Context, cfg *ResolvedConfig
 	if !fleetCommitmentEvidenceWasVerified(sourcePlan, entries, fleet, evidence) {
 		return finalizedFleetMirrorRecovery{}, errors.New("fleet-mirror native commitment lacks exact finalized and verified journal evidence")
 	}
-	descendantVerified, err := verifiedFleetMirrorDescendant(cfg, stateDir, prior, entries, transaction, action, fleet, commitmentHash, evidence.FinalizedBlock)
-	if err != nil {
-		return finalizedFleetMirrorRecovery{}, err
-	}
 	if err := validateFinalizedFleetMirrorTransaction(cfg, sourcePlan, action, signed, receipt, coordinator, manifest.Hotkey, commitmentHash, evidence.FinalizedBlock, finalizedBlockHash); err != nil {
-		return finalizedFleetMirrorRecovery{}, err
-	}
-	if err := validateFleetMirrorNativeEvidence(chain, cfg, manifest.Hotkey, commitmentHash, evidence, !descendantVerified); err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
 	if receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() {
 		return finalizedFleetMirrorRecovery{}, errors.New("fleet-mirror receipt block is unavailable")
 	}
-	head, err := finalizedEVMHead(ctx, client)
+	transaction.BlockNumber = receipt.BlockNumber.Uint64()
+	transaction.BlockHash = receipt.BlockHash.Hex()
+	descendantVerified, err := verifiedFleetMirrorDescendant(cfg, stateDir, prior, entries, transaction, action, fleet, commitmentHash, evidence.FinalizedBlock)
 	if err != nil {
+		return finalizedFleetMirrorRecovery{}, err
+	}
+	if err := validateFleetMirrorNativeEvidence(chain, cfg, manifest.Hotkey, commitmentHash, evidence, !descendantVerified); err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
 	historical, err := fleetMirrorAt(ctx, client, coordinator, manifest.Hotkey, receipt.BlockNumber.Uint64())
 	if err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
-	current, err := fleetMirrorAt(ctx, client, coordinator, manifest.Hotkey, head.Number)
-	if err != nil {
+	current := historical
+	if !descendantVerified {
+		head, err := finalizedEVMHead(ctx, client)
+		if err != nil {
+			return finalizedFleetMirrorRecovery{}, err
+		}
+		current, err = fleetMirrorAt(ctx, client, coordinator, manifest.Hotkey, head.Number)
+		if err != nil {
+			return finalizedFleetMirrorRecovery{}, err
+		}
+	}
+	if err := validateFleetMirrorRecoveryState(historical, current, commitmentHash, evidence.FinalizedBlock, finalizedBlockHash, !descendantVerified); err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
-	if err := validateFleetMirrorRecoveryState(historical, current, commitmentHash, evidence.FinalizedBlock, finalizedBlockHash); err != nil {
-		return finalizedFleetMirrorRecovery{}, err
-	}
-	transaction.BlockNumber = receipt.BlockNumber.Uint64()
-	transaction.BlockHash = receipt.BlockHash.Hex()
 	return finalizedFleetMirrorRecovery{
 		Transaction: transaction, Action: action, Fleet: fleet, Hotkey: manifest.Hotkey,
 		CommitmentHash: commitmentHash, FinalizedBlock: evidence.FinalizedBlock, FinalizedBlockHash: finalizedBlockHash,
