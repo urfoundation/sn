@@ -157,6 +157,32 @@ func repeatedCoordinatorUpgradeBoundary(prior *SetupPlan, entries []JournalEntry
 	return next + 1, batcher, nil
 }
 
+// Accept only nonce positions authenticated by the migration itself. A fully
+// activated repeated upgrade consumes one CREATE nonce, and the optional exact
+// verified fleet batcher consumes the immediately following CREATE nonce. The
+// latter boundary was previously recognized by live observation but omitted by
+// the pure revision builder, making the next Go-only revision fail after a
+// successful batcher deployment.
+func coordinatorUpgradeMigrationNonceMatches(prior *SetupPlan, migration *coordinatorUpgradeMigration, payloads *DeploymentPayloads, currentNonce uint64, entries []JournalEntry) (bool, error) {
+	if prior == nil || migration == nil || payloads == nil {
+		return false, errors.New("coordinator upgrade migration nonce context is unavailable")
+	}
+	if currentNonce == migration.Baseline.DeployerNonce || currentNonce == payloads.CoordinatorUpgrade.DeployerNonce {
+		return true, nil
+	}
+	if payloads.CoordinatorUpgrade.DeployerNonce != ^uint64(0) && currentNonce == payloads.CoordinatorUpgrade.DeployerNonce+1 && exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-implementation") {
+		return true, nil
+	}
+	if migration.Upgrade != prior.CoordinatorUpgrade || !exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-implementation") || !exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-activate") {
+		return false, nil
+	}
+	boundary, batcher, err := repeatedCoordinatorUpgradeBoundary(prior, entries)
+	if err != nil {
+		return false, err
+	}
+	return batcher != nil && currentNonce == boundary, nil
+}
+
 // Prove that every nonce consumed by an obsolete immutable deployment belongs
 // to the exact verified CREATE prefix and that no contract-owned registration
 // has made that deployment economically live.
@@ -2965,9 +2991,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			if hashErr != nil || priorHash != wantPriorHash {
 				return nil, errors.New("coordinator upgrade migration does not authenticate the prior deployment")
 			}
-			nonceMatches := current.DeployerNonce == migration.Baseline.DeployerNonce || current.DeployerNonce == currentPayloads.CoordinatorUpgrade.DeployerNonce
-			if currentPayloads.CoordinatorUpgrade.DeployerNonce != ^uint64(0) && current.DeployerNonce == currentPayloads.CoordinatorUpgrade.DeployerNonce+1 && exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-implementation") {
-				nonceMatches = true
+			nonceMatches, nonceErr := coordinatorUpgradeMigrationNonceMatches(prior, migration, currentPayloads, current.DeployerNonce, entries)
+			if nonceErr != nil {
+				return nil, nonceErr
 			}
 			if !nonceMatches || !contractDeploymentAddressesEqual(*existingDeployment, migration.Deployment) || !contractDeploymentRuntimeHashesCompatible(*existingDeployment, migration.Deployment) {
 				return nil, errors.New("coordinator upgrade migration no longer matches finalized deployment facts")

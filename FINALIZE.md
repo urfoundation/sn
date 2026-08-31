@@ -2292,6 +2292,24 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    fields were the expected finalized-head observations and generation time.
    The complete local release gate then passed again. This is the sole reviewed
    hash for the next bounded testnet resume; no mainnet write is authorized.
+
+   The first read-only Go-only throughput revision then exposed two adjacent
+   revision-recovery defects before a plan was emitted or any write was enabled.
+   First, the finalized fleet-167 funding transfer had already been closed by an
+   exact descendant v4 postcondition, but the recovery verifier's synthetic test
+   shape expected only its three funding-specific fields. Every durable v4
+   receipt also includes the generic action `kind` and `target`; recovery now
+   requires that exact five-field operational and independent shape and rejects
+   wrong kind, target, role, account, balance, extra fields or receipt hash.
+   Second, the live coordinator observer correctly counted the verified
+   implementation and immediately following verified fleet-batcher CREATE as
+   two deployer nonces, while the pure revision builder allowed only the first.
+   The builder now accepts the `+2` boundary only when the exact implementation,
+   activation and canonical batcher envelope are all postcondition-verified.
+   Missing proof, a changed upgrade/batcher identity, malformed nonce/address or
+   any nonce beyond the authenticated boundary fails closed. Deterministic tests
+   reproduce both live journal shapes, and a subsequent full read-only build
+   crossed both gates against finalized public-testnet state without mutation.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

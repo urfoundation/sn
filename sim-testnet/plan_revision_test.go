@@ -1491,6 +1491,17 @@ func TestPlanRevisionCarriesVerifiedCoordinatorImplementationIntoActivationRetry
 	if carriedRelease.CoordinatorUpgrade != prior.CoordinatorUpgrade || actionByID(t, carriedRelease, implementation.ID).IntentHash != implementation.IntentHash || actionByID(t, carriedRelease, priorActivation.ID).IntentHash != priorActivation.IntentHash {
 		t.Fatalf("fully activated byte-identical upgrade was not carried: upgrade=%+v implementation=%+v activation=%+v", carriedRelease.CoordinatorUpgrade, actionByID(t, carriedRelease, implementation.ID), actionByID(t, carriedRelease, priorActivation.ID))
 	}
+	priorBatcher := actionByID(t, prior, "fleet.refresh.deploy-batcher")
+	fullyVerifiedWithBatcher := append(append([]JournalEntry(nil), fullyVerified...), JournalEntry{DeploymentID: prior.DeploymentID, PlanHash: prior.PlanHash, ActionID: priorBatcher.ID, IntentHash: priorBatcher.IntentHash, Stage: StageVerified})
+	postBatcher := current
+	postBatcher.DeployerNonce = prior.CoordinatorUpgrade.DeployerNonce + 2
+	carriedAfterBatcher, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, prior, &postBatcher, fullyVerifiedWithBatcher, time.Unix(4, 0), migration)
+	if err != nil {
+		t.Fatalf("fully activated upgrade plus verified batcher revision was rejected: %v", err)
+	}
+	if carriedAfterBatcher.CoordinatorUpgrade != prior.CoordinatorUpgrade || actionByID(t, carriedAfterBatcher, priorBatcher.ID).IntentHash != priorBatcher.IntentHash {
+		t.Fatalf("verified batcher boundary was not carried exactly: upgrade=%+v batcher=%+v", carriedAfterBatcher.CoordinatorUpgrade, actionByID(t, carriedAfterBatcher, priorBatcher.ID))
+	}
 	withoutProof := append([]JournalEntry(nil), entries...)
 	withoutProof[0].Stage = StageFinalized
 	if _, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, prior, &current, withoutProof, time.Unix(2, 0), migration); err == nil {
@@ -1519,6 +1530,40 @@ func TestRepeatedCoordinatorUpgradeBoundaryIncludesVerifiedFleetBatcher(t *testi
 	got, batcher, err = repeatedCoordinatorUpgradeBoundary(prior, entries)
 	if err != nil || got != wantWithoutBatcher+1 || batcher == nil || batcher.IntentHash != batcherAction.IntentHash {
 		t.Fatalf("verified batcher boundary=%d batcher=%v want=%d/exact: %v", got, batcher, wantWithoutBatcher+1, err)
+	}
+	roleSecrets, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads, err := buildDeploymentPayloadsWithRegistrationGeneration(cfg, roleSecrets, prior.Deployment.InitialNonce, prior.Deployment.RegistrationRoleGeneration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configureCoordinatorUpgradeNonce(payloads, prior.CoordinatorUpgrade.DeployerNonce); err != nil {
+		t.Fatal(err)
+	}
+	implementation := actionByID(t, prior, "evm.coordinator-upgrade-implementation")
+	activation := actionByID(t, prior, "evm.coordinator-upgrade-activate")
+	complete := []JournalEntry{
+		{PlanHash: prior.PlanHash, ActionID: implementation.ID, IntentHash: implementation.IntentHash, Stage: StageVerified},
+		{PlanHash: prior.PlanHash, ActionID: activation.ID, IntentHash: activation.IntentHash, Stage: StageVerified},
+		entries[0],
+	}
+	migration := &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: prior.CoordinatorUpgradeBaseline, Upgrade: prior.CoordinatorUpgrade}
+	matched, err := coordinatorUpgradeMigrationNonceMatches(prior, migration, payloads, wantWithoutBatcher+1, complete)
+	if err != nil || !matched {
+		t.Fatalf("fully verified upgrade+batcher nonce was rejected: matched=%t error=%v", matched, err)
+	}
+	if matched, err := coordinatorUpgradeMigrationNonceMatches(prior, migration, payloads, wantWithoutBatcher+1, complete[0:1]); err != nil || matched {
+		t.Fatalf("batcher boundary without activation/batcher proof matched=%t error=%v", matched, err)
+	}
+	changedMigration := *migration
+	changedMigration.Upgrade.Implementation = common.HexToAddress("0x1234")
+	if matched, err := coordinatorUpgradeMigrationNonceMatches(prior, &changedMigration, payloads, wantWithoutBatcher+1, complete); err != nil || matched {
+		t.Fatalf("different upgrade identity matched the batcher boundary: matched=%t error=%v", matched, err)
+	}
+	if matched, err := coordinatorUpgradeMigrationNonceMatches(prior, migration, payloads, wantWithoutBatcher+2, complete); err != nil || matched {
+		t.Fatalf("nonce beyond the verified batcher matched=%t error=%v", matched, err)
 	}
 
 	malformed := *prior

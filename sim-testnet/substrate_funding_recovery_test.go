@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"math"
 	"path/filepath"
 	"strings"
@@ -210,7 +211,8 @@ func TestSubstrateFundingRecoveryRecognizesOnlyOrderedVerifiedDescendant(t *test
 	}
 	roleLabel := fleetHotkeyLabel(167)
 	observed := map[string]any{
-		"role": roleLabel, "account": "0x" + hex.EncodeToString(account[:]), "free_balance_rao": uint64(6_000_500),
+		"kind": action.Kind, "target": action.Target, "role": roleLabel,
+		"account": "0x" + hex.EncodeToString(account[:]), "free_balance_rao": uint64(6_000_500),
 	}
 	record := ActionPostcondition{
 		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
@@ -260,7 +262,7 @@ func TestSubstrateFundingRecoveryRecognizesOnlyOrderedVerifiedDescendant(t *test
 	if verified, err := verifiedSubstrateFundingDescendant(cfg, stateDir, prior, []JournalEntry{wrongHash}, transaction, action, roleLabel, account); err == nil || verified {
 		t.Fatalf("unauthenticated descendant receipt was accepted: verified=%t error=%v", verified, err)
 	}
-	wrongObserved := observed
+	wrongObserved := maps.Clone(observed)
 	wrongObserved["free_balance_rao"] = uint64(6_000_499)
 	record.Observed = wrongObserved
 	record.IndependentObserved = wrongObserved
@@ -274,6 +276,31 @@ func TestSubstrateFundingRecoveryRecognizesOnlyOrderedVerifiedDescendant(t *test
 	entry.PostconditionHash = hash
 	if verified, err := verifiedSubstrateFundingDescendant(cfg, stateDir, prior, []JournalEntry{entry}, transaction, action, roleLabel, account); err == nil || verified {
 		t.Fatalf("underfunded descendant receipt was accepted: verified=%t error=%v", verified, err)
+	}
+	mutations := []struct {
+		field string
+		value any
+	}{
+		{field: "kind", value: "evm-read"},
+		{field: "target", value: "head-fleet-hotkey:166"},
+		{field: "unexpected", value: true},
+	}
+	for _, mutation := range mutations {
+		mutated := maps.Clone(observed)
+		mutated[mutation.field] = mutation.value
+		record.Observed = mutated
+		record.IndependentObserved = mutated
+		hash, err = canonicalHashHex(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writePublicJSON(filepath.Join(stateDir, filepath.FromSlash(path)), record); err != nil {
+			t.Fatal(err)
+		}
+		entry.PostconditionHash = hash
+		if verified, err := verifiedSubstrateFundingDescendant(cfg, stateDir, prior, []JournalEntry{entry}, transaction, action, roleLabel, account); err == nil || verified {
+			t.Fatalf("mutated descendant field %s was accepted: verified=%t error=%v", mutation.field, verified, err)
+		}
 	}
 }
 

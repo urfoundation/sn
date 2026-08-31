@@ -228,9 +228,12 @@ func substrateFundingObservedRao(value any) (uint64, error) {
 	}
 }
 
-// Require the complete funding observation and its conservative target.
-func validateSubstrateFundingObservedPostcondition(observed map[string]any, roleLabel, account string, target uint64) error {
-	if len(observed) != 3 || observed["role"] != roleLabel {
+// Require the complete generic action envelope plus the funding observation
+// and its conservative balance target. Action postconditions always add kind
+// and target before the funding-specific fields; accepting a reduced synthetic
+// shape would make revision recovery diverge from every durable v4 receipt.
+func validateSubstrateFundingObservedPostcondition(observed map[string]any, action Action, roleLabel, account string) error {
+	if len(observed) != 5 || observed["kind"] != action.Kind || observed["target"] != action.Target || observed["role"] != roleLabel {
 		return errors.New("substrate-funding descendant observation has the wrong role or fields")
 	}
 	observedAccount, ok := observed["account"].(string)
@@ -238,8 +241,8 @@ func validateSubstrateFundingObservedPostcondition(observed map[string]any, role
 		return errors.New("substrate-funding descendant observation has the wrong account")
 	}
 	balance, err := substrateFundingObservedRao(observed["free_balance_rao"])
-	if err != nil || balance < target {
-		return stateMismatchError(err, "substrate-funding descendant balance %d is below target %d", balance, target)
+	if err != nil || balance < action.Spend.TAORao {
+		return stateMismatchError(err, "substrate-funding descendant balance %d is below target %d", balance, action.Spend.TAORao)
 	}
 	return nil
 }
@@ -268,10 +271,10 @@ func verifiedSubstrateFundingDescendant(cfg *ResolvedConfig, stateDir string, pr
 		if err != nil {
 			return false, fmt.Errorf("verified descendant substrate-funding postcondition: %w", err)
 		}
-		if err := validateSubstrateFundingObservedPostcondition(record.Observed, roleLabel, accountHex, action.Spend.TAORao); err != nil {
+		if err := validateSubstrateFundingObservedPostcondition(record.Observed, action, roleLabel, accountHex); err != nil {
 			return false, fmt.Errorf("verified descendant operational substrate funding: %w", err)
 		}
-		if err := validateSubstrateFundingObservedPostcondition(record.IndependentObserved, roleLabel, accountHex, action.Spend.TAORao); err != nil {
+		if err := validateSubstrateFundingObservedPostcondition(record.IndependentObserved, action, roleLabel, accountHex); err != nil {
 			return false, fmt.Errorf("verified descendant comparison substrate funding: %w", err)
 		}
 		return true, nil
