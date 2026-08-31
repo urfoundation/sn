@@ -2391,6 +2391,51 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    repository-wide Go tests and all 145 Foundry tests pass. M0A remains paused
    for a new two-build plan review and checkpointed resume; M0B/phase 2 has not
    started.
+
+   Two clean read-only builds then observed finalized Substrate/EVM heads
+   7,901,894/7,901,895 and 7,901,907/7,901,908 and produced identical schema-v10
+   plan hash `0x8092a5b32c06fbdadff9e795c497fe77bb9e800aa5bcb14bc6b7c6ea615188d0`
+   under release-lock hash
+   `0xe7decea7b74b013fe91e1e6b8908ba77bfb6d09e8c8f349aa57ab7b525690668`.
+   Its formal revision reissued only unconsumed commitments 31--33 and increased
+   the active TAO maximum by exactly 18,000,000 rao. Active maxima were
+   165,673,232,000 TAO rao, 19,131,501,203,537 alpha rao,
+   148,909,500,000,000,000,000 EVM gas wei and 256 registrations; superseded
+   maxima remained 5,500,000,000 alpha rao, 11,090,500,000,000,000,000 EVM gas
+   wei and three registrations. All remained within the reviewed caps.
+
+   The approved resume authenticated all 947 carried actions, finalized the
+   three exact recovery fundings and replacement commitments at blocks
+   7,901,994, 7,901,997 and 7,902,000, then installed fleets 31--40 atomically in
+   transaction `0x62ba890995d82cdb6800ba9af62e4c60e688f2785ac94fc2ff3d05030ae99e7c`
+   at finalized block 7,902,009. Every mirror and member binding passed its
+   postcondition, proving the stale-commitment repair against the real chain.
+   Install batches 5--9 subsequently finalized and verified fleets 41--90.
+   Fleets 91--100 reached finalized native commitment storage, but
+   `fleet.install.batch.10` stopped before signing or broadcast when the public
+   EVM endpoint returned the HTTP-success JSON-RPC error `Upstream overloaded`
+   while reading the epoch start. Journal sequence 7,154 contains only the
+   intent and failed preflight; no ambiguous EVM transaction exists.
+
+   That signal exposed an adjacent public-provider resilience defect. The
+   shared executor/workload HTTP transport paced every request and retried HTTP
+   429, but it did not classify provider-capacity errors encoded inside an HTTP
+   200 JSON-RPC envelope. The transport now recognizes only the exact observed
+   overload sentinel plus standard transient HTTP and transport read failures,
+   applies a shared bounded cooldown and exact retry ceiling, replays single and
+   batched idempotent reads with identical bodies, preserves the final provider
+   error after exhaustion, and honors cancellation. It never replays a transaction
+   submission, a mixed write batch, an arbitrary server error or a contract
+   revert. Deterministic tests reproduce the live failure at the transport
+   boundary and cover the reverse-proxy request shape, read batches, exhaustion,
+   cancellation, response limits and non-replay boundaries. The exact final tree
+   is locked by Go source hash
+   `sha256:426ce291df9faebb57b8c1d2029e850286ce2958fb79eee5dbdffa179efe4508`;
+   the complete ordinary and race Go suites, both zero-finding Slither roots,
+   all 145 Foundry tests, generated artifacts, operator/shared-client suites,
+   25 Subtensor infrastructure tests and patch hygiene pass. M0A is paused for
+   a pushed checkpoint and another two-build plan review; phase 2 remains
+   unstarted.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

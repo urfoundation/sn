@@ -19,8 +19,10 @@ import (
 )
 
 const (
-	publicEVMMaximum429Retries = 3
-	publicEVMMaximumRetryAfter = 90 * time.Second
+	publicEVMMaximumRetries       = 3
+	publicEVMMaximumRetryAfter    = 90 * time.Second
+	publicEVMRPCBodyReplayLimit   = 4 * 1024 * 1024
+	publicEVMRPCResponseReadLimit = 4 * 1024 * 1024
 )
 
 // rpcRequestGate spaces requests from every ethclient in one process. The
@@ -78,10 +80,24 @@ func (gate *rpcRequestGate) cooldown(until time.Time) {
 type rateLimitedRetryTransport struct {
 	base              http.RoundTripper
 	gate              *rpcRequestGate
-	maximum429Retries int
+	maximumRetries    int
 	defaultRetryAfter time.Duration
 	maximumRetryAfter time.Duration
 	now               func() time.Time
+}
+
+// Minimal request envelope used to classify replay safety without trusting or
+// interpreting method parameters.
+type publicEVMRPCRequest struct {
+	Method string `json:"method"`
+}
+
+// Minimal response envelope used to recognize the provider's exact capacity
+// sentinel while leaving all other JSON-RPC errors untouched.
+type publicEVMRPCResponse struct {
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -93,6 +109,7 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 	if err != nil {
 		return nil, err
 	}
+	readOnly := publicEVMRPCRequestIsReadOnly(request)
 	base := transport.base
 	if base == nil {
 		base = http.DefaultTransport
@@ -119,18 +136,27 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 		}
 		response, err := base.RoundTrip(current)
 		if err != nil {
+			if response != nil && response.Body != nil {
+				response.Body.Close()
+			}
+			if !readOnly || attempt >= transport.maximumRetries {
+				return nil, err
+			}
+			delay, delayErr := rpcRetryAfter(nil, nil, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
+			if delayErr != nil {
+				return nil, errors.Join(err, delayErr)
+			}
+			transport.gate.cooldown(now().Add(delay))
+			continue
+		}
+		retry, body, err := publicEVMResponseNeedsRetry(response, readOnly)
+		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode != http.StatusTooManyRequests {
+		if !retry {
 			return response, nil
 		}
-		body, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-		response.Body.Close()
-		response.Body = io.NopCloser(bytes.NewReader(body))
-		if readErr != nil {
-			return nil, fmt.Errorf("read public EVM rate-limit response: %w", readErr)
-		}
-		if attempt >= transport.maximum429Retries {
+		if attempt >= transport.maximumRetries {
 			return response, nil
 		}
 		delay, err := rpcRetryAfter(response.Header, body, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
@@ -138,20 +164,117 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			response.Body.Close()
 			return nil, err
 		}
+		response.Body.Close()
 		transport.gate.cooldown(now().Add(delay))
 	}
+}
+
+// Only idempotent observation methods may replay an ambiguous HTTP-success
+// overload response. A transaction submission is never sent twice here.
+func publicEVMRPCRequestIsReadOnly(request *http.Request) bool {
+	if request == nil || request.GetBody == nil {
+		return false
+	}
+	bodyReader, err := request.GetBody()
+	if err != nil {
+		return false
+	}
+	body, err := io.ReadAll(io.LimitReader(bodyReader, publicEVMRPCBodyReplayLimit+1))
+	bodyReader.Close()
+	if err != nil || len(body) > publicEVMRPCBodyReplayLimit {
+		return false
+	}
+	var requests []publicEVMRPCRequest
+	if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+		if json.Unmarshal(body, &requests) != nil || len(requests) == 0 {
+			return false
+		}
+	} else {
+		var single publicEVMRPCRequest
+		if json.Unmarshal(body, &single) != nil {
+			return false
+		}
+		requests = []publicEVMRPCRequest{single}
+	}
+	for _, rpcRequest := range requests {
+		method := strings.TrimSpace(rpcRequest.Method)
+		if strings.HasPrefix(method, "eth_get") {
+			continue
+		}
+		switch method {
+		case "eth_blockNumber", "eth_call", "eth_chainId", "eth_estimateGas", "eth_feeHistory", "eth_gasPrice", "eth_maxPriorityFeePerGas", "eth_syncing", "net_version", "web3_clientVersion":
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// Public providers sometimes encode capacity failures as JSON-RPC errors with
+// HTTP 200. Retry only the observed sentinel and standard transient statuses.
+func publicEVMResponseNeedsRetry(response *http.Response, readOnly bool) (bool, []byte, error) {
+	if response == nil || response.Body == nil {
+		return false, nil, errors.New("public EVM RPC returned an empty HTTP response")
+	}
+	retryStatus := readOnly && (response.StatusCode == http.StatusRequestTimeout ||
+		response.StatusCode == http.StatusTooEarly ||
+		response.StatusCode == http.StatusTooManyRequests ||
+		response.StatusCode == http.StatusBadGateway ||
+		response.StatusCode == http.StatusServiceUnavailable ||
+		response.StatusCode == http.StatusGatewayTimeout)
+	if !retryStatus && (!readOnly || response.StatusCode != http.StatusOK) {
+		return false, nil, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, publicEVMRPCResponseReadLimit+1))
+	response.Body.Close()
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	if err != nil {
+		response.Body.Close()
+		return false, nil, fmt.Errorf("read public EVM RPC response: %w", err)
+	}
+	if len(body) > publicEVMRPCResponseReadLimit {
+		response.Body.Close()
+		return false, nil, errors.New("public EVM RPC response exceeds replay limit")
+	}
+	if retryStatus {
+		return true, body, nil
+	}
+	return publicEVMRPCResponseIsOverloaded(body), body, nil
+}
+
+// Match the exact capacity signal observed from the official public testnet
+// endpoint without turning contract reverts or arbitrary server errors transient.
+func publicEVMRPCResponseIsOverloaded(body []byte) bool {
+	var responses []publicEVMRPCResponse
+	if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
+		if json.Unmarshal(body, &responses) != nil || len(responses) == 0 {
+			return false
+		}
+	} else {
+		var single publicEVMRPCResponse
+		if json.Unmarshal(body, &single) != nil {
+			return false
+		}
+		responses = []publicEVMRPCResponse{single}
+	}
+	for _, response := range responses {
+		if response.Error != nil && strings.EqualFold(strings.TrimSpace(response.Error.Message), "upstream overloaded") {
+			return true
+		}
+	}
+	return false
 }
 
 func replayableRPCRequest(request *http.Request) (*http.Request, error) {
 	if request == nil || request.Body == nil || request.GetBody != nil {
 		return request, nil
 	}
-	body, err := io.ReadAll(io.LimitReader(request.Body, (4<<20)+1))
+	body, err := io.ReadAll(io.LimitReader(request.Body, publicEVMRPCBodyReplayLimit+1))
 	request.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("buffer public EVM RPC request: %w", err)
 	}
-	if len(body) > 4<<20 {
+	if len(body) > publicEVMRPCBodyReplayLimit {
 		return nil, errors.New("public EVM RPC request exceeds 4 MiB replay limit")
 	}
 	cloned := request.Clone(request.Context())
@@ -228,7 +351,7 @@ func dialEVMClient(ctx context.Context, endpoint string, requestsPerMinute int) 
 		return nil, err
 	}
 	transport := &rateLimitedRetryTransport{
-		base: http.DefaultTransport, gate: gate, maximum429Retries: publicEVMMaximum429Retries,
+		base: http.DefaultTransport, gate: gate, maximumRetries: publicEVMMaximumRetries,
 		defaultRetryAfter: 5 * time.Second, maximumRetryAfter: publicEVMMaximumRetryAfter,
 	}
 	httpClient := &http.Client{Transport: transport}

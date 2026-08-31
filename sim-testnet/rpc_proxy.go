@@ -282,7 +282,7 @@ func runHTTPRPCProxy(ctx context.Context, config rpcProxyConfig) error {
 			return gateErr
 		}
 		proxy.Transport = &rateLimitedRetryTransport{
-			base: http.DefaultTransport, gate: gate, maximum429Retries: publicEVMMaximum429Retries,
+			base: http.DefaultTransport, gate: gate, maximumRetries: publicEVMMaximumRetries,
 			defaultRetryAfter: 5 * time.Second, maximumRetryAfter: publicEVMMaximumRetryAfter,
 		}
 	}
