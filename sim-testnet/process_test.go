@@ -175,20 +175,32 @@ func TestSupervisorServiceNamesAndArgumentsAreSafe(t *testing.T) {
 	if got := serviceToken("Testnet / Release_1.0"); got != "testnet---release-1-0" {
 		t.Fatalf("service token = %q", got)
 	}
-	if _, err := systemdQuote("bad\npath"); err == nil {
-		t.Fatal("systemd argument accepted a newline")
+	for _, value := range []string{"bad\npath", "bad\tpath", "bad\x7fpath"} {
+		if _, err := systemdExecArgument(value); err == nil {
+			t.Fatalf("systemd argument accepted a control character in %q", value)
+		}
 	}
-	if got, err := systemdQuote("/tmp/path with spaces"); err != nil || got != `"/tmp/path with spaces"` {
+	if got, err := systemdExecArgument("/tmp/path with spaces"); err != nil || got != `"/tmp/path with spaces"` {
 		t.Fatalf("quoted argument = %q, %v", got, err)
+	}
+	if got, err := systemdExecArgument(`/tmp/%n/$HOME/"quoted"`); err != nil || got != `"/tmp/%%n/$$HOME/\"quoted\""` {
+		t.Fatalf("expansion-safe argument = %q, %v", got, err)
 	}
 }
 
 func TestPersistentSupervisorRequiresExplicitResumeAfterReboot(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	cfg.ConfigPath = "/release/testnet.yml"
-	unit, err := persistentSupervisorUnit(cfg, "/release/sim-testnet", "/release/state", "/release/supervisor.json")
+	cfg.ConfigPath = "/release path/%n/$HOME/testnet.yml"
+	cfg.Config.Deployment.DeploymentID = "Testnet / Release_1.0"
+	unit, err := persistentSupervisorUnit(cfg, "/release path/sim-testnet", "/release path/state", "/release path/supervisor.json")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(unit, "WorkingDirectory=") {
+		t.Fatalf("supervisor unit contains a redundant directive with incompatible path quoting:\n%s", unit)
+	}
+	if !strings.Contains(unit, "Description=UR Network real-testnet simulation testnet---release-1-0") || !strings.Contains(unit, `--config "/release path/%%n/$$HOME/testnet.yml"`) {
+		t.Fatalf("supervisor unit did not sanitize metadata and preserve literal path characters:\n%s", unit)
 	}
 	if strings.Contains(unit, "[Install]") || strings.Contains(unit, "WantedBy=") {
 		t.Fatalf("supervisor unit is boot-installable:\n%s", unit)

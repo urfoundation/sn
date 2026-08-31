@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 is partially applied through fleet commitment 40. The reviewed schema-v10 resume authenticated all 947 carried actions and finalized commitments 34--40, then stopped safely while estimating `fleet.install.batch.4`; no EVM transaction was signed or broadcast. Exact calldata replay returned `StaleCommitment()`: carried commitments 31--33 had aged beyond the coordinator's 600-block limit while the release gate and revision review ran, whereas commitments 34--40 remained current. The contract enforced the intended bound; revision planning incorrectly treated a historically verified, not-yet-consumed commitment as indefinitely reusable. Deterministic revision recovery now reissues only unsafe unconsumed generations, budgets every cumulative retry, enforces a 30-block inclusion margin in initial, refresh and challenger consumers, and replays consumed generations at authenticated historical checkpoints. Adjacent review also corrected M0B's native commitment drill to round-trip the active generation-2 fleet commitment rather than obsolete generation 1. The complete Go and 145-test Foundry gates pass. M0A remains stopped pending a new two-build plan review and checkpointed resume; M0B/phase 2 has not started. Remaining setup, launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The exact schema-v10 plan `0xf44a2075a951ffa296b954d64d7adf1c7df029fbebeba09122b3559dc21dcc7f` has no failed journal action. Topology launch then stopped before any service started because the generated user-systemd unit quoted `WorkingDirectory`, which that directive does not accept; systemd rejected the unit as a non-absolute path. The redundant directive is removed, `ExecStart` escaping now preserves literal `%`/`$` and rejects control characters, unit metadata is sanitized, and deterministic/race regressions plus systemd's native verifier pass. The corrected unit is static, disabled and has no install target, so it cannot return after a host restart. The complete Go and 145-test Foundry gates pass. M0A remains stopped pending a release-lock refresh, two identical read-only plan builds, checkpointed resume and topology health proof; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -17,15 +17,16 @@ replacement-deployment recovery, runtime gas-envelope correction and cross-revis
 receipt recovery now have deterministic tests. The runtime-452 doctor passed;
 replacement contracts, two operators, both validator positions, reserve
 majority, alpha repair and the 200 fleet UID registrations are finalized. The
-accelerated commitment/binding setup is not yet complete: the latest reviewed
-resume verified fleet commitment 40, then stopped before fleet-install batch 4
-because three earlier commitments expired during release review.
+accelerated commitment/binding setup is complete through all 200 initial fleet
+installs and all 200 generation-2 refresh/revocation checks. Topology launch is
+the next M0A boundary after correction of the rejected user-systemd unit.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
 authorize any mainnet write. An earlier integration topology reached account
 provisioning but stopped before its first conviction call when the two-share-floor
-defect was found. The current accelerated setup has not reached topology launch,
-and no workload supervisor is running.
+defect was found. The current accelerated setup reached topology-launch
+preparation, but systemd rejected the generated unit before starting it; no
+workload supervisor or child service is running.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
@@ -86,7 +87,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A stopped after a diagnosed and locally corrected pre-broadcast freshness gate | Runtime-452 doctor is hard-green. Setup is verified through fleet commitment 40; no simulator process is currently running. The reviewed resume authenticated all 947 carried actions and finalized commitments 34--40. Batch 4 then failed during gas estimation with `StaleCommitment()` because commitments 31--33 exceeded the 600-block contract age while release review was in progress; no EVM transaction was signed or broadcast. The contract bound is correct. The harness now creates an exact funded revision for unsafe unconsumed commitments, checks lifetime immediately before every install/refresh/challenger consumer, preserves consumed history, and binds the later precompile round trip to generation 2. Deterministic adjacent tests, `go test ./...`, and all 145 Foundry tests pass. M0A resumes after the required two identical read-only plan builds and checkpoint; phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch stopped on a diagnosed and corrected user-systemd unit defect | Runtime-452 doctor is hard-green. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. The exact active plan has zero failed journal actions. Topology launch stopped before any service started because the generated unit quoted `WorkingDirectory`; systemd treated the quotes literally and rejected the path. The redundant directive is removed, every `ExecStart` argument is expansion-safe, metadata is sanitized, and deterministic/race tests plus `systemd-analyze --user verify` pass. The unit is static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. M0A resumes only after the refreshed lock and two identical read-only plans are checkpointed; phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2436,6 +2437,42 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    25 Subtensor infrastructure tests and patch hygiene pass. M0A is paused for
    a pushed checkpoint and another two-build plan review; phase 2 remains
    unstarted.
+
+   Two subsequent read-only builds produced the identical plan hash
+   `0xf44a2075a951ffa296b954d64d7adf1c7df029fbebeba09122b3559dc21dcc7f`
+   and identical immutable action/intent content. Its approved resume audited
+   all 1,320 carried actions and recovered `fleet.install.batch.10` without
+   replaying a write. Install batches 10--20 then finalized and verified all 200
+   generation-1 fleets. Refresh batches 1--20 finalized and verified all 200
+   generation-2 replacements, all predecessor revocations and every coordinator
+   mirror/member binding. The last batch transaction was
+   `0xe29777262f7d86f2f77d99317c8e481fc89393812ab71765e12b39d678ff2e87`
+   at finalized block 7,904,309. Oracle restoration transaction
+   `0x0e589390bf53e759a0d7f5aa3696b33e1266ca5797048df410ddb4128612a51c`
+   finalized at block 7,904,340, and both restoration checks passed. The plan
+   has zero failed journal entries and 883 newly verified actions.
+
+   Topology launch then exposed a host-lifecycle defect before starting any
+   workload process. The generated user unit encoded
+   `WorkingDirectory="/absolute/path"`; unlike `ExecStart`, that directive does
+   not accept quoted path syntax on the deployed systemd and treated the quote
+   as the first path character. `systemctl --user start` therefore rejected the
+   unit as `bad-setting`. The unit-level working directory was redundant because
+   the supervisor receives absolute config/state/manifest paths and every child
+   has an explicit working directory. It is removed. `ExecStart` arguments now
+   reject all control characters and double literal `%` and `$` before C-style
+   quoting, preventing specifier or environment expansion when a checkout path
+   contains those characters; the description uses the sanitized service token.
+   Deterministic tests reproduce the invalid directive and cover spaces,
+   expansion characters, control characters and the non-installable lifecycle.
+   The focused race run and `go test ./...` pass. On the execution host,
+   `systemd-analyze --user verify` accepts the corrected unit and systemd reports
+   `LoadState=loaded`, `ActiveState=inactive`, `UnitFileState=static`; no enablement
+   symlink exists. Thus the simulator still cannot linger across a host restart.
+   The corrected Go tree is locked by
+   `sha256:aeefe23b8671198b43aa4b791cd4e5a6080d7245126c8e529db88708244074e5`.
+   M0A remains stopped for two identical refreshed plans and exact resume;
+   phase 2 has not started.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

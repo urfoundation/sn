@@ -1386,33 +1386,39 @@ func serviceToken(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func systemdQuote(value string) (string, error) {
-	if strings.ContainsAny(value, "\n\r\x00") {
-		return "", fmt.Errorf("systemd argument contains a control character")
+func systemdExecArgument(value string) (string, error) {
+	for _, character := range value {
+		if character < 0x20 || character == 0x7f {
+			return "", fmt.Errorf("systemd argument contains a control character")
+		}
 	}
+	// ExecStart performs systemd specifier and environment expansion even for
+	// quoted arguments. Doubling these characters preserves checkout paths
+	// containing a literal '%' or '$' instead of silently changing them.
+	value = strings.NewReplacer("%", "%%", "$", "$$").Replace(value)
 	return strconv.Quote(value), nil
 }
 
 // Build a deliberately non-installable user unit. An explicit launch/resume
 // starts it only after journal and chain reconciliation; reboot leaves it down.
 func persistentSupervisorUnit(cfg *ResolvedConfig, binary, stateDir, specPath string) (string, error) {
-	configArg, err := systemdQuote(cfg.ConfigPath)
+	deploymentToken := serviceToken(cfg.Config.Deployment.DeploymentID)
+	if deploymentToken == "" {
+		return "", fmt.Errorf("deployment id cannot form a systemd service name")
+	}
+	configArg, err := systemdExecArgument(cfg.ConfigPath)
 	if err != nil {
 		return "", err
 	}
-	stateArg, err := systemdQuote(stateDir)
+	stateArg, err := systemdExecArgument(stateDir)
 	if err != nil {
 		return "", err
 	}
-	manifestArg, err := systemdQuote(specPath)
+	manifestArg, err := systemdExecArgument(specPath)
 	if err != nil {
 		return "", err
 	}
-	binaryArg, err := systemdQuote(binary)
-	if err != nil {
-		return "", err
-	}
-	workArg, err := systemdQuote(filepath.Dir(binary))
+	binaryArg, err := systemdExecArgument(binary)
 	if err != nil {
 		return "", err
 	}
@@ -1423,13 +1429,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%s
 ExecStart=%s __supervise --config %s --state-dir %s --manifest %s
 Restart=on-failure
 RestartSec=5
 KillMode=control-group
 TimeoutStopSec=30
-`, cfg.Config.Deployment.DeploymentID, workArg, binaryArg, configArg, stateArg, manifestArg), nil
+`, deploymentToken, binaryArg, configArg, stateArg, manifestArg), nil
 }
 
 // Remove any legacy boot activation before starting the unit for this boot.
