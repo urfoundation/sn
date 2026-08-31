@@ -21,6 +21,46 @@ type fleetGenerationOneActionCoordinates struct {
 	Alias      bool
 }
 
+type fleetInstallAliasReceiptKind uint8
+
+const (
+	fleetInstallAliasReceiptDerived fleetInstallAliasReceiptKind = iota + 1
+	fleetInstallAliasReceiptHistoricalRead
+)
+
+// Distinguish current aliases, which derive their checkpoint and observation
+// from the exact batch receipt, from the original migration aliases, which
+// performed a separate finalized live read after that batch. Partial metadata
+// is neither format and must never select the more permissive historical path.
+func classifyFleetInstallAliasReceipt(record *ActionPostcondition) (fleetInstallAliasReceiptKind, error) {
+	if record == nil || record.Observed == nil || record.IndependentObserved == nil {
+		return 0, errors.New("fleet install alias receipt is unavailable")
+	}
+	metadataKeys := []string{"source_action", "source_postcondition_hash", "batch"}
+	kind := fleetInstallAliasReceiptKind(0)
+	for _, observed := range []map[string]any{record.Observed, record.IndependentObserved} {
+		present := 0
+		for _, key := range metadataKeys {
+			if _, ok := observed[key]; ok {
+				present++
+			}
+		}
+		current := fleetInstallAliasReceiptHistoricalRead
+		switch present {
+		case 0:
+		case len(metadataKeys):
+			current = fleetInstallAliasReceiptDerived
+		default:
+			return 0, errors.New("fleet install alias receipt has partial source metadata")
+		}
+		if kind != 0 && kind != current {
+			return 0, errors.New("fleet install alias observers use different receipt formats")
+		}
+		kind = current
+	}
+	return kind, nil
+}
+
 // Accept only a canonical install, legacy per-fleet write, or atomic-install
 // read proof. Challenger fleets and future action shapes remain live-checked.
 func fleetGenerationOneCoordinates(cfg *ResolvedConfig, action Action) (fleetGenerationOneActionCoordinates, bool, error) {
@@ -281,20 +321,35 @@ func validateFleetGenerationOneSupersession(
 			return errors.New("fleet install source differs from its successor-chain install evidence")
 		}
 	} else if coordinates.Alias {
-		if sourceEntry.Sequence <= installEntry.Sequence || sourceEntry.Sequence >= refreshEntry.Sequence ||
-			sourceRecord.EVMFinalized != installRecord.EVMFinalized || sourceRecord.IndependentEVMFinalized != installRecord.IndependentEVMFinalized {
-			return errors.New("fleet install alias does not follow its exact batch checkpoint")
+		if sourceEntry.Sequence <= installEntry.Sequence || sourceEntry.Sequence >= refreshEntry.Sequence {
+			return errors.New("fleet install alias does not follow its exact batch in journal order")
 		}
-		for _, observed := range []map[string]any{sourceRecord.Observed, sourceRecord.IndependentObserved} {
-			if err := fleetObservedString(observed, "source_action", installAction.ID); err != nil {
-				return err
+		aliasReceiptKind, err := classifyFleetInstallAliasReceipt(sourceRecord)
+		if err != nil {
+			return err
+		}
+		switch aliasReceiptKind {
+		case fleetInstallAliasReceiptDerived:
+			if sourceRecord.EVMFinalized != installRecord.EVMFinalized || sourceRecord.IndependentEVMFinalized != installRecord.IndependentEVMFinalized {
+				return errors.New("derived fleet install alias does not use its exact batch checkpoint")
 			}
-			if err := fleetObservedString(observed, "source_postcondition_hash", installEntry.PostconditionHash); err != nil {
-				return err
+			for _, observed := range []map[string]any{sourceRecord.Observed, sourceRecord.IndependentObserved} {
+				if err := fleetObservedString(observed, "source_action", installAction.ID); err != nil {
+					return err
+				}
+				if err := fleetObservedString(observed, "source_postcondition_hash", installEntry.PostconditionHash); err != nil {
+					return err
+				}
+				if err := fleetObservedUint64(observed, "batch", uint64(coordinates.Batch)); err != nil {
+					return err
+				}
 			}
-			if err := fleetObservedUint64(observed, "batch", uint64(coordinates.Batch)); err != nil {
-				return err
+		case fleetInstallAliasReceiptHistoricalRead:
+			if !fleetCheckpointNotBefore(sourceRecord, installRecord) {
+				return errors.New("historical fleet install alias checkpoint precedes its batch")
 			}
+		default:
+			return errors.New("fleet install alias receipt format is unsupported")
 		}
 	} else if installEntry.Sequence <= sourceEntry.Sequence || !fleetCheckpointNotBefore(installRecord, sourceRecord) {
 		return errors.New("fleet generation-1 convergence batch does not follow the legacy write")

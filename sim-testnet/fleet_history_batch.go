@@ -94,12 +94,21 @@ func (self *Executor) prepareHistoricalFleetGenerationOneCall(ctx context.Contex
 		return call, errors.New("fleet install batches are not individual historical calls")
 	}
 	if coordinates.Alias {
-		observed, err := self.actionPostState(ctx, audit.action, audit.record.EVMFinalized)
+		aliasReceiptKind, err := classifyFleetInstallAliasReceipt(audit.record)
 		if err != nil {
 			return call, err
 		}
-		call.observe = func([]byte) (map[string]any, error) { return observed, nil }
-		return call, nil
+		if aliasReceiptKind == fleetInstallAliasReceiptDerived {
+			observed, err := self.actionPostState(ctx, audit.action, audit.record.EVMFinalized)
+			if err != nil {
+				return call, err
+			}
+			call.observe = func([]byte) (map[string]any, error) { return observed, nil }
+			return call, nil
+		}
+		if aliasReceiptKind != fleetInstallAliasReceiptHistoricalRead {
+			return call, errors.New("fleet install alias receipt format is unsupported")
+		}
 	}
 	if err := self.ensurePayloads(ctx); err != nil {
 		return call, err

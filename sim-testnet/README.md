@@ -112,6 +112,14 @@ receipt-keyed audit cache is populated only after the complete batch succeeds
 and is discarded when that preflight returns, so a timeout, partial response or
 adjacent receipt cannot suppress ordinary verification.
 
+Two authenticated atomic-alias receipt formats exist. Current aliases name the
+exact source batch receipt and clone its finalized checkpoints. The first five
+migration fleets instead recorded separate live mirror/binding reads after their
+batch. Resume recognizes that old format only when all source metadata is absent,
+the receipt is strictly ordered after the exact install and before the exact
+refresh in both journal and checkpoint domains, and its original state replays at
+the recorded block. Partial metadata or differing observer formats fail closed.
+
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
 452 may floor each destination entitlement by one rao, so every reserve call

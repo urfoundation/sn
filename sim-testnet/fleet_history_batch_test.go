@@ -19,6 +19,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/urfoundation/sn/stabi"
 )
 
 type fleetHistoryBatchRPC struct {
@@ -219,11 +221,60 @@ func TestHistoricalFleetGenerationOneAuditRejectsTamperedCanonicalBlockBeforeSta
 	}
 }
 
+// The migration-era binding alias must prepare a real block-pinned bindingAt
+// call. Treating it as a modern derived alias would silently replace its old
+// observed-state schema with the batch receipt schema.
+func TestHistoricalFleetAliasPreparationUsesRecordedBindingCall(t *testing.T) {
+	supersession := newFleetGenerationOneSupersessionFixture(t, "historical-alias-binding")
+	stateDir := t.TempDir()
+	clientID := [16]byte{0x42}
+	evidence := FleetBindingEvidence{
+		Schema: "urnetwork-fleet-binding-evidence-v1", ClientID: "0x" + common.Bytes2Hex(clientID[:]),
+		Generation: 1, ValidFromEpoch: 2, ValidToEpoch: 33, UID: 7,
+	}
+	if err := os.MkdirAll(stateDir+"/public", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(stateDir+"/public/fleet-1-member-1.binding.json", evidence); err != nil {
+		t.Fatal(err)
+	}
+	supersession.sourceRecord.Observed["client_id"] = evidence.ClientID
+	supersession.sourceRecord.IndependentObserved["client_id"] = evidence.ClientID
+	coordinatorAddress := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	executor := &Executor{
+		cfg: supersession.cfg, stateDir: stateDir,
+		payloads: &DeploymentPayloads{Manifest: ContractDeployment{CoordinatorProxy: coordinatorAddress}},
+	}
+	audit := carriedActionAudit{action: supersession.sourceAction, entry: supersession.sourceEntry, record: supersession.sourceRecord}
+	call, err := executor.prepareHistoricalFleetGenerationOneCall(context.Background(), audit, supersession.coordinates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if call.address != coordinatorAddress || len(call.data) == 0 || call.observe == nil {
+		t.Fatalf("historical binding call is incomplete: address=%s calldata=%x", call.address, call.data)
+	}
+	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := parsed.Methods["bindingAt"].Outputs.Pack(true, stabi.STCoordinatorBindingRecord{Generation: 1, Uid: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := call.observe(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := observedPostconditionMatches(supersession.sourceRecord.Observed, observed); err != nil {
+		t.Fatalf("historical binding observation: %v", err)
+	}
+}
+
 // The carried-plan integration installs the cache only after the exact
 // successor chain and historical RPC proof both pass. Its key includes the
 // receipt hash, so adjacent evidence cannot inherit the optimization.
 func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
-	supersession := newFleetGenerationOneSupersessionFixture(t, "legacy-mirror")
+	supersession := newFleetGenerationOneSupersessionFixture(t, "historical-alias-mirror")
 	cfg := supersession.cfg
 	cfg.OperationalRPCMode = rpcModePublicOverride
 	for _, record := range []*ActionPostcondition{supersession.sourceRecord, supersession.installRecord, supersession.refreshRecord} {
@@ -263,7 +314,7 @@ func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
 	if err := writePublicJSON(stateDir+"/public/fleet-1.commitment.json", evidence); err != nil {
 		t.Fatal(err)
 	}
-	supersession.sourceRecord.EVMFinalized = ChainHead{Number: 10, Hash: fleetHistoryBatchBlockHash(10)}
+	supersession.sourceRecord.EVMFinalized = ChainHead{Number: 25, Hash: fleetHistoryBatchBlockHash(25)}
 	supersession.sourceRecord.IndependentEVMFinalized = supersession.sourceRecord.EVMFinalized
 	supersession.sourceRecord.Observed = map[string]any{
 		"kind": supersession.sourceAction.Kind, "target": supersession.sourceAction.Target, "fleet": 1,

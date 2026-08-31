@@ -165,6 +165,28 @@ func newFleetGenerationOneSupersessionFixture(t *testing.T, sourceKind string) f
 			"source_action": installAction.ID, "source_postcondition_hash": installEntry.PostconditionHash,
 			"client_id": "0x" + strings.Repeat("77", 16), "uid": 7,
 		})
+	case "historical-alias-mirror":
+		sourceAction = testFleetSupersessionAction(t, Action{
+			ID: "fleet.mirror.1", Kind: "evm-read", Target: "head-fleet:1",
+			Parameters: map[string]string{
+				deploymentManifestHashParameter: manifestHash, fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "batch_installed": "true",
+			},
+		})
+		sourceEntry = JournalEntry{Sequence: 25, PlanHash: planHash, ActionID: sourceAction.ID, IntentHash: sourceAction.IntentHash, Stage: StageVerified}
+		sourceRecord = testFleetSupersessionPostcondition(cfg, sourceAction, sourceEntry, 25, map[string]any{
+			"kind": sourceAction.Kind, "target": sourceAction.Target, "fleet": 1,
+			"commitment_hash": "0x" + strings.Repeat("66", 32), "finalized_block": 9,
+		})
+	case "historical-alias-binding":
+		sourceAction = testFleetSupersessionAction(t, Action{
+			ID: "fleet.bind.1.1", Kind: "evm-read", Target: "miner:1",
+			Parameters: map[string]string{deploymentManifestHashParameter: manifestHash, "batch_installed": "true"},
+		})
+		sourceEntry = JournalEntry{Sequence: 25, PlanHash: planHash, ActionID: sourceAction.ID, IntentHash: sourceAction.IntentHash, Stage: StageVerified}
+		sourceRecord = testFleetSupersessionPostcondition(cfg, sourceAction, sourceEntry, 25, map[string]any{
+			"kind": sourceAction.Kind, "target": sourceAction.Target, "fleet": 1, "member": 1,
+			"client_id": "0x" + strings.Repeat("77", 16), "uid": 7,
+		})
 	default:
 		t.Fatalf("unknown fleet supersession source kind %q", sourceKind)
 	}
@@ -182,7 +204,7 @@ func newFleetGenerationOneSupersessionFixture(t *testing.T, sourceKind string) f
 // Every supported generation-1 source must converge through the same exact
 // install and refresh range before its live state may be considered consumed.
 func TestFleetGenerationOneHistoricalReplayAcceptsEveryExactSourceShape(t *testing.T) {
-	for _, sourceKind := range []string{"install", "legacy-mirror", "legacy-binding", "alias-mirror", "alias-binding"} {
+	for _, sourceKind := range []string{"install", "legacy-mirror", "legacy-binding", "alias-mirror", "alias-binding", "historical-alias-mirror", "historical-alias-binding"} {
 		fixture := newFleetGenerationOneSupersessionFixture(t, sourceKind)
 		if err := validateFleetGenerationOneSupersession(
 			fixture.cfg, fixture.coordinates,
@@ -275,6 +297,40 @@ func TestFleetGenerationOneAliasRequiresExactInstallReceipt(t *testing.T) {
 			fixture.refreshAction, fixture.refreshEntry, fixture.refreshRecord,
 		); err == nil {
 			t.Error("malformed alias successor was accepted")
+		}
+	}
+}
+
+// Migration-era aliases performed their own finalized read after the atomic
+// batch. Accept only the complete old shape between the exact install and
+// refresh; partial source metadata must not downgrade a derived receipt.
+func TestFleetGenerationOneHistoricalAliasRequiresBoundedCheckpointAndCompleteFormat(t *testing.T) {
+	mutations := []func(*fleetGenerationOneSupersessionFixture){
+		func(value *fleetGenerationOneSupersessionFixture) {
+			value.sourceRecord.EVMFinalized.Number = value.installRecord.EVMFinalized.Number - 1
+		},
+		func(value *fleetGenerationOneSupersessionFixture) {
+			value.sourceRecord.IndependentEVMFinalized.Number = value.installRecord.IndependentEVMFinalized.Number - 1
+		},
+		func(value *fleetGenerationOneSupersessionFixture) {
+			value.sourceRecord.EVMFinalized.Number = value.refreshRecord.EVMFinalized.Number + 1
+			value.sourceRecord.IndependentEVMFinalized.Number = value.refreshRecord.IndependentEVMFinalized.Number + 1
+		},
+		func(value *fleetGenerationOneSupersessionFixture) {
+			value.sourceRecord.Observed["source_action"] = value.installAction.ID
+			value.sourceRecord.IndependentObserved["source_action"] = value.installAction.ID
+		},
+	}
+	for _, mutation := range mutations {
+		fixture := newFleetGenerationOneSupersessionFixture(t, "historical-alias-mirror")
+		mutation(&fixture)
+		if err := validateFleetGenerationOneSupersession(
+			fixture.cfg, fixture.coordinates,
+			fixture.sourceAction, fixture.sourceEntry, fixture.sourceRecord,
+			fixture.installAction, fixture.installEntry, fixture.installRecord,
+			fixture.refreshAction, fixture.refreshEntry, fixture.refreshRecord,
+		); err == nil {
+			t.Error("malformed historical alias successor was accepted")
 		}
 	}
 }
