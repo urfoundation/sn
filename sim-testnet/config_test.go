@@ -61,6 +61,7 @@ func TestHarnessConfigRejectsUnsafeValidatorBootstrapAndAlphaMargin(t *testing.T
 		},
 		func(c *HarnessConfig) { c.ValidatorBootstrap.ReserveTargetShareBPS = 9_001 },
 		func(c *HarnessConfig) { c.ValidatorBootstrap.IndependentTargetAlphaRao = 0 },
+		func(c *HarnessConfig) { c.ValidatorBootstrap.MaximumReserveRepairAlphaRao = 999_999_999_999 },
 		func(c *HarnessConfig) { c.ValidatorBootstrap.MinimumSourceRemainingAlphaRao = 0 },
 	}
 	for index, mutate := range tests {

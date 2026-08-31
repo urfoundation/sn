@@ -615,10 +615,6 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
-		state, err = e.verifyAlphaTransfer(ctx, a, kind, index, state)
-		if err != nil {
-			return nil, err
-		}
 		var deployment *ContractDeployment
 		if kind == "operator-deposit" {
 			if err := e.ensurePayloads(ctx); err != nil {
@@ -630,13 +626,64 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
+		targetShareBPS, minimumShareBPS, reserveShareRepair, err := reserveShareRepairTerms(a)
+		if err != nil {
+			return nil, err
+		}
+		if reserveShareRepair {
+			state, err = e.verifyAlphaTransfer(ctx, a, kind, index, state)
+			if err != nil {
+				return nil, err
+			}
+			block, err := e.finalizedRegistrationActionBlock(a)
+			if err != nil {
+				return nil, err
+			}
+			snapshot, err := e.substrate.RegisteredAlphaSnapshotAtBlock(block)
+			if err != nil {
+				return nil, err
+			}
+			reserveAlpha, registered := snapshot.ByHotkey[hotkey]
+			if !registered || !alphaShareMeets(snapshot.TotalAlphaRao, reserveAlpha, targetShareBPS) {
+				return nil, fmt.Errorf("alpha repair %s finalized reserve %d does not meet %d bps of registered alpha %d", a.ID, reserveAlpha, targetShareBPS, snapshot.TotalAlphaRao)
+			}
+			state["reserve_alpha_rao_at_transfer"] = reserveAlpha
+			state["registered_alpha_rao_at_transfer"] = snapshot.TotalAlphaRao
+			state["reserve_target_share_bps"] = targetShareBPS
+			state["reserve_minimum_share_bps"] = minimumShareBPS
+			state["reserve_snapshot_block"] = snapshot.FinalizedBlock
+			state["reserve_snapshot_block_hash"] = snapshot.FinalizedHash
+			state["cumulative_alpha_limit_rao"] = a.Parameters[alphaRepairCumulativeLimitParameter]
+			return state, nil
+		}
 		minimum, err := e.recoveredAlphaMinimumStake(ctx, a, hotkey, coldkey)
 		if err != nil {
 			return nil, err
 		}
 		stake, err := e.readStakeFinalized(ctx, hotkey, coldkey)
-		if err != nil || stake < minimum {
-			return nil, stateMismatchError(err, "alpha repair %s stake=%d want>=%d", a.ID, stake, minimum)
+		if err != nil {
+			return nil, err
+		}
+		planHash, intentHash := e.plan.PlanHash, a.IntentHash
+		if verified, ok := e.verifiedActionEntry(a); ok {
+			planHash, intentHash = verified.PlanHash, verified.IntentHash
+		}
+		_, hasTransaction := e.journal.LatestTransaction(planHash, a.ID, intentHash)
+		verifyTransfer, dispositionErr := alphaRepairPostconditionRequiresTransaction(stake, minimum, hasTransaction)
+		if dispositionErr != nil {
+			return nil, fmt.Errorf("alpha repair %s: %w", a.ID, dispositionErr)
+		}
+		if verifyTransfer {
+			state, err = e.verifyAlphaTransfer(ctx, a, kind, index, state)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			state["converged_without_transfer"] = true
+			state["stake_rao"] = stake
+		}
+		if stake < minimum {
+			return nil, fmt.Errorf("alpha repair %s stake=%d want>=%d", a.ID, stake, minimum)
 		}
 		state["minimum_repaired_stake_rao"] = minimum
 		return state, nil

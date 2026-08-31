@@ -35,7 +35,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		AlphaTransfers: AlphaTransferConfig{MinimumTAOEquivalentMarginBPS: 1_000},
 		ValidatorBootstrap: ValidatorBootstrapConfig{
 			ReserveTargetShareBPS: 6_500, ReserveMinimumShareBPS: 6_000,
-			IndependentTargetAlphaRao: 1_000_000_000_000, MinimumSourceRemainingAlphaRao: 2_000_000_000_000,
+			IndependentTargetAlphaRao: 1_000_000_000_000, MaximumReserveRepairAlphaRao: 3_000_000_000_000, MinimumSourceRemainingAlphaRao: 2_000_000_000_000,
 		},
 		Contracts:    ContractConfig{Install: true, GovernanceProfile: "testnet-single-owner", VerifyRuntimeCodeHash: true},
 		Dependencies: DependencyConfig{Mode: "managed_containers", ObjectStore: "server-blob"},

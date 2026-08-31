@@ -85,6 +85,16 @@ finalized v5-v7 transfer that stopped at the old exact-balance observer is local
 reconciled and may execute only one separately budgeted runtime-minimum repair,
 never the campaign allocation a second time.
 
+If later emissions dilute an already verified reserve below its 65% target, a
+revision preserves the bootstrap transfer and appends a fixed repair tranche.
+The tranche is capped at 3,000 alpha and by the cumulative vault alpha ceiling;
+it is not resized from the moving emission snapshot between review and apply.
+Planning fails unless that fixed amount can restore 65%. Immediately before
+signing, the harness rechecks price, transferable source capacity, the retained
+source position, and the full live registered-alpha composition at 65%; the
+postcondition proves the same share at the finalized transaction block. A
+separate 60% barrier then protects the remainder of setup from later dilution.
+
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
 452 may floor each destination entitlement by one rao, so every reserve call

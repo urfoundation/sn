@@ -2952,7 +2952,20 @@ func (e *Executor) validateAlphaTransferPrebroadcast(ctx context.Context, a Acti
 	if err != nil {
 		return empty, err
 	}
-	if err := validateAlphaTransferAtSnapshot(a, source, destinationHotkey, live, e.plan.AlphaTransferMarginBPS, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS, e.plan.MinimumSourceRemainingRao, reserve); err != nil {
+	requiredShareBPS := e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS
+	targetShareBPS, minimumShareBPS, reserveShareRepair, termsErr := reserveShareRepairTerms(a)
+	if termsErr != nil {
+		return empty, termsErr
+	}
+	if reserveShareRepair {
+		maximumTranche, trancheErr := strconv.ParseUint(a.Parameters[alphaRepairMaximumTrancheParameter], 10, 64)
+		cumulativeLimit, limitErr := strconv.ParseUint(a.Parameters[alphaRepairCumulativeLimitParameter], 10, 64)
+		if !reserve || trancheErr != nil || limitErr != nil || maximumTranche != e.cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao || a.Spend.AlphaRao > maximumTranche || cumulativeLimit > e.cfg.MaximumAlphaRao || targetShareBPS != e.cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS || minimumShareBPS != requiredShareBPS {
+			return empty, fmt.Errorf("alpha repair %s reserve-share bounds differ from the active configuration", a.ID)
+		}
+		requiredShareBPS = targetShareBPS
+	}
+	if err := validateAlphaTransferAtSnapshot(a, source, destinationHotkey, live, e.plan.AlphaTransferMarginBPS, requiredShareBPS, e.plan.MinimumSourceRemainingRao, reserve); err != nil {
 		return empty, err
 	}
 	return live, nil
@@ -3004,7 +3017,10 @@ func validateAlphaTransferAtSnapshot(a Action, source, destination [32]byte, liv
 	return nil
 }
 
-func (e *Executor) reserveValidatorMajoritySnapshot() (RegisteredAlphaSnapshot, uint64, error) {
+func (e *Executor) reserveValidatorShareSnapshot(requiredShareBPS uint16) (RegisteredAlphaSnapshot, uint64, error) {
+	if requiredShareBPS == 0 {
+		return RegisteredAlphaSnapshot{}, 0, errors.New("reserve-validator share requirement is zero")
+	}
 	snapshot, err := e.substrate.RegisteredAlphaSnapshot()
 	if err != nil {
 		return RegisteredAlphaSnapshot{}, 0, err
@@ -3014,10 +3030,14 @@ func (e *Executor) reserveValidatorMajoritySnapshot() (RegisteredAlphaSnapshot, 
 		return RegisteredAlphaSnapshot{}, 0, err
 	}
 	reserveAlpha, ok := snapshot.ByHotkey[reserve]
-	if !ok || !alphaShareMeets(snapshot.TotalAlphaRao, reserveAlpha, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) {
-		return RegisteredAlphaSnapshot{}, 0, fmt.Errorf("reserve validator alpha %d does not meet %d bps of registered alpha %d", reserveAlpha, e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS, snapshot.TotalAlphaRao)
+	if !ok || !alphaShareMeets(snapshot.TotalAlphaRao, reserveAlpha, requiredShareBPS) {
+		return RegisteredAlphaSnapshot{}, 0, fmt.Errorf("reserve validator alpha %d does not meet %d bps of registered alpha %d", reserveAlpha, requiredShareBPS, snapshot.TotalAlphaRao)
 	}
 	return snapshot, reserveAlpha, nil
+}
+
+func (e *Executor) reserveValidatorMajoritySnapshot() (RegisteredAlphaSnapshot, uint64, error) {
+	return e.reserveValidatorShareSnapshot(e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS)
 }
 
 func (e *Executor) verifyReserveValidatorMajority() error {
@@ -3137,6 +3157,20 @@ func (e *Executor) repairAlphaTransfer(ctx context.Context, action Action, kind 
 	}
 	coldkey, hotkey, err := alphaTransferDestination(e.roles, deployment, kind, index)
 	if err != nil {
+		return err
+	}
+	targetShareBPS, minimumShareBPS, reserveShareRepair, err := reserveShareRepairTerms(action)
+	if err != nil {
+		return err
+	}
+	if reserveShareRepair {
+		if kind != "validator" || index != 1 || targetShareBPS != e.cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS || minimumShareBPS != e.cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS {
+			return fmt.Errorf("alpha repair %s reserve-share bounds differ from the active reserve validator", action.ID)
+		}
+		if err := e.transferAlpha(ctx, action, kind, index); err != nil {
+			return err
+		}
+		_, _, err = e.reserveValidatorShareSnapshot(targetShareBPS)
 		return err
 	}
 	minimum, err := e.recoveredAlphaMinimumStake(ctx, action, hotkey, coldkey)

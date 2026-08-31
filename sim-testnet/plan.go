@@ -1848,6 +1848,7 @@ func validatePlanBudget(p *SetupPlan) error {
 		seenPriorPlans[hash] = true
 	}
 	seenActions := make(map[string]bool, len(p.Actions))
+	seenActionDetails := make(map[string]Action, len(p.Actions))
 	alphaTransferActions := 0
 	recoveryRepairID := ""
 	recoveryCount := 0
@@ -1893,6 +1894,7 @@ func validatePlanBudget(p *SetupPlan) error {
 			}
 		}
 		seenActions[action.ID] = true
+		seenActionDetails[action.ID] = action
 		if action.ID == voluntaryConvictionReconciliationActionID {
 			recoveryCount++
 			var recoveryErr error
@@ -1994,10 +1996,22 @@ func validatePlanBudget(p *SetupPlan) error {
 			absoluteTopUp := action.Parameters[alphaRepairMinimumDestinationParameter] != ""
 			repairs := action.Parameters[alphaRepairForActionParameter]
 			kind, _, targetErr := alphaTransferTargetFromActionID(action.ID)
-			if exactErr != nil || minimumErr != nil || priceErr != nil || runtimeErr != nil || marginErr != nil || shortfallErr != nil || creditErr != nil || targetErr != nil || exact != action.Spend.AlphaRao || exact < minimumAlphaTransfer || minimum != minimumAlphaTransfer || price != p.LiveFacts.AlphaPriceQ9 || runtimeMinimum != p.LiveFacts.DefaultMinTransferRao || uint16(margin) != p.AlphaTransferMarginBPS || shortfall != alphaTransferDestinationRoundingAllowance || minimumCredit != exact-shortfall || !seenActions[repairs] {
+			shareTarget, shareMinimum, reserveShareRepair, shareErr := reserveShareRepairTerms(action)
+			if exactErr != nil || minimumErr != nil || priceErr != nil || runtimeErr != nil || marginErr != nil || shortfallErr != nil || creditErr != nil || targetErr != nil || shareErr != nil || exact != action.Spend.AlphaRao || exact < minimumAlphaTransfer || minimum != minimumAlphaTransfer || price != p.LiveFacts.AlphaPriceQ9 || runtimeMinimum != p.LiveFacts.DefaultMinTransferRao || uint16(margin) != p.AlphaTransferMarginBPS || shortfall != alphaTransferDestinationRoundingAllowance || minimumCredit != exact-shortfall || !seenActions[repairs] {
 				return fmt.Errorf("alpha repair %s does not bind its v8 recovery and rounding envelope", action.ID)
 			}
-			if absoluteTopUp {
+			if reserveShareRepair {
+				before, beforeErr := strconv.ParseUint(action.Parameters[alphaRepairCumulativeBeforeParameter], 10, 64)
+				limit, limitErr := strconv.ParseUint(action.Parameters[alphaRepairCumulativeLimitParameter], 10, 64)
+				maximumTranche, trancheErr := strconv.ParseUint(action.Parameters[alphaRepairMaximumTrancheParameter], 10, 64)
+				cumulative, addOK := checkedAdd(before, exact)
+				linked := seenActionDetails[repairs]
+				linkedTarget, linkedTargetErr := strconv.ParseUint(linked.Parameters["reserve_target_share_bps"], 10, 16)
+				linkedMinimum, linkedMinimumErr := strconv.ParseUint(linked.Parameters["reserve_minimum_share_bps"], 10, 16)
+				if beforeErr != nil || limitErr != nil || trancheErr != nil || maximumTranche == 0 || exact > maximumTranche || linkedTargetErr != nil || linkedMinimumErr != nil || !addOK || cumulative != limit || limit > p.Limits.AlphaRao || uint16(linkedTarget) != shareTarget || uint16(linkedMinimum) != shareMinimum || action.Parameters["planned_existing_stake_rao"] != "" || action.Parameters["planned_final_stake_rao"] != "" || action.Parameters["registered_alpha_snapshot_rao"] != "" {
+					return fmt.Errorf("alpha repair %s does not bind its fixed cumulative reserve-share tranche", action.ID)
+				}
+			} else if absoluteTopUp {
 				if !planUsesTwoTransitionReserveEnvelope(p.Schema) || destinationErr != nil || minimumDestination == 0 || action.Parameters[alphaRepairMinimumIncrementParameter] != "" {
 					return fmt.Errorf("alpha repair %s has an invalid absolute destination target", action.ID)
 				}

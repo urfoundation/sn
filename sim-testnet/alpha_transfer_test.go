@@ -42,6 +42,22 @@ func TestAlphaRepairPrebroadcastRejectsUnreachableAndInvalidBounds(t *testing.T)
 	}
 }
 
+func TestAlphaRepairPostconditionDistinguishesConvergenceFromFinalizedTransfer(t *testing.T) {
+	verify, err := alphaRepairPostconditionRequiresTransaction(100, 100, false)
+	if err != nil || verify {
+		t.Fatalf("satisfied no-transaction repair disposition=%t error=%v", verify, err)
+	}
+	verify, err = alphaRepairPostconditionRequiresTransaction(100, 100, true)
+	if err != nil || !verify {
+		t.Fatalf("finalized repair did not require delta proof: disposition=%t error=%v", verify, err)
+	}
+	for _, test := range [][2]uint64{{99, 100}, {100, 0}} {
+		if _, err := alphaRepairPostconditionRequiresTransaction(test[0], test[1], false); err == nil {
+			t.Errorf("invalid converged repair %v was accepted", test)
+		}
+	}
+}
+
 func TestAlphaTransferMinimumMirrorsRuntimeFloorAtBoundary(t *testing.T) {
 	// This is the finalized netuid-521 price which exposed the original 0.09
 	// alpha validator plan as an AmountTooLow dispatch failure.
@@ -173,6 +189,42 @@ func TestAlphaTransferRepairIDsAcceptOnlyBoundedPositiveSequences(t *testing.T) 
 	}
 }
 
+func TestReserveShareRepairTermsRejectsMixedOrForeignModes(t *testing.T) {
+	valid := Action{ID: "alpha.repair.validator.1.2", Parameters: map[string]string{
+		alphaRepairReserveShareParameter: "true",
+		alphaRepairForActionParameter:    "alpha.transfer.validator.1",
+		"reserve_target_share_bps":       "6500",
+		"reserve_minimum_share_bps":      "6000",
+	}}
+	target, minimum, enabled, err := reserveShareRepairTerms(valid)
+	if err != nil || !enabled || target != 6_500 || minimum != 6_000 {
+		t.Fatalf("valid reserve-share repair terms=%d/%d enabled=%t error=%v", target, minimum, enabled, err)
+	}
+	withoutMode := valid
+	withoutMode.Parameters = cloneStrings(valid.Parameters)
+	delete(withoutMode.Parameters, alphaRepairReserveShareParameter)
+	if _, _, enabled, err := reserveShareRepairTerms(withoutMode); err != nil || enabled {
+		t.Fatalf("ordinary repair was classified as reserve-share: enabled=%t error=%v", enabled, err)
+	}
+	mutations := []func(*Action){
+		func(action *Action) { action.Parameters[alphaRepairReserveShareParameter] = "yes" },
+		func(action *Action) { action.ID = "alpha.repair.validator.2.2" },
+		func(action *Action) { action.Parameters[alphaRepairForActionParameter] = "alpha.transfer.validator.2" },
+		func(action *Action) { action.Parameters["reserve_target_share_bps"] = "6000" },
+		func(action *Action) { action.Parameters["reserve_minimum_share_bps"] = "5000" },
+		func(action *Action) { action.Parameters[alphaRepairMinimumDestinationParameter] = "1" },
+		func(action *Action) { action.Parameters[alphaRepairMinimumIncrementParameter] = "1" },
+	}
+	for index, mutate := range mutations {
+		action := valid
+		action.Parameters = cloneStrings(valid.Parameters)
+		mutate(&action)
+		if _, _, _, err := reserveShareRepairTerms(action); err == nil {
+			t.Errorf("invalid reserve-share mutation %d was accepted: %+v", index, action)
+		}
+	}
+}
+
 func TestAlphaTransferCapacityAppliesEveryRuntimeRestriction(t *testing.T) {
 	tests := []struct {
 		name                                           string
@@ -284,5 +336,15 @@ func TestReserveTransferPrebroadcastRequiresLiveMajority(t *testing.T) {
 	action.Spend.AlphaRao = 5_500_000_000
 	if err := validateAlphaTransferAtSnapshot(action, source, reserve, live, 0, 6_000, 1_000_000_000, true); err == nil || !strings.Contains(err.Error(), "reserve transfer stopped") {
 		t.Fatalf("minority reserve transfer was accepted: %v", err)
+	}
+	action.Parameters["exact_amount_rao"] = "6500000000"
+	action.Spend.AlphaRao = 6_500_000_000
+	if err := validateAlphaTransferAtSnapshot(action, source, reserve, live, 0, 6_500, 1_000_000_000, true); err == nil || !strings.Contains(err.Error(), "reserve transfer stopped") {
+		t.Fatalf("target-boundary transfer ignored destination rounding: %v", err)
+	}
+	action.Parameters["exact_amount_rao"] = "6500000001"
+	action.Spend.AlphaRao = 6_500_000_001
+	if err := validateAlphaTransferAtSnapshot(action, source, reserve, live, 0, 6_500, 1_000_000_000, true); err != nil {
+		t.Fatalf("rounding-safe target transfer was rejected: %v", err)
 	}
 }

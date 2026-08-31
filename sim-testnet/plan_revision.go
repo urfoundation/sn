@@ -2735,11 +2735,13 @@ func preserveVerifiedValidatorAlphaTransfers(revised, prior *SetupPlan, entries 
 }
 
 // Carry every prior validator-1 repair in its original order and, when live
-// emissions have diluted the reserve below the configured floor, append one
-// new absolute-target repair. The verified bootstrap transfer is never resized
-// or replayed. A changed majority barrier depends on the repair tail, so its
-// older point-in-time verification cannot block the top-up or impersonate the
-// new live-majority proof.
+// emissions have diluted the reserve below its configured target, append one
+// fixed repair which consumes only the remaining cumulative alpha ceiling.
+// The fixed tranche keeps review/apply stable across new emission snapshots;
+// live target checks still run before signing and at finality. The verified
+// bootstrap transfer is never resized or replayed. A changed majority barrier
+// depends on the repair tail, so its older point-in-time verification cannot
+// block the top-up or impersonate the new live-majority proof.
 func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *SetupPlan, current *SetupFacts, entries []JournalEntry) error {
 	if cfg == nil || cfg.Config == nil || revised == nil || prior == nil || current == nil {
 		return errors.New("reserve-validator majority repair context is unavailable")
@@ -2780,10 +2782,10 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 	prospectiveReserve := current.ReserveValidatorAlphaRao
 	for _, action := range prior.Actions {
 		kind, index, parseErr := alphaTransferTargetFromActionID(action.ID)
-		if parseErr != nil || !strings.HasPrefix(action.ID, "alpha.repair.validator.1") {
+		if parseErr != nil || !strings.HasPrefix(action.ID, "alpha.repair.") || kind != "validator" || index != 1 {
 			continue
 		}
-		if kind != "validator" || index != 1 || action.Kind != "substrate-extrinsic" || action.Target != base.Target || action.Parameters[alphaRepairForActionParameter] != base.ID {
+		if action.Kind != "substrate-extrinsic" || action.Target != base.Target || action.Parameters[alphaRepairForActionParameter] != base.ID {
 			return fmt.Errorf("prior reserve-validator repair %s differs from its bootstrap transfer", action.ID)
 		}
 		if len(action.DependsOn) != 1 || action.DependsOn[0] != tail {
@@ -2810,15 +2812,37 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		}
 	}
 
-	if !alphaShareMeets(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS) &&
-		!alphaShareMeets(current.RegisteredAlphaRao, prospectiveReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
+	if !alphaShareMeets(current.RegisteredAlphaRao, prospectiveReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
 		minimumTransfer, minimumErr := minimumAlphaTransferRao(revised.LiveFacts.DefaultMinTransferRao, revised.LiveFacts.AlphaPriceQ9, revised.AlphaTransferMarginBPS)
 		if minimumErr != nil {
 			return minimumErr
 		}
-		exact, finalReserve, transferErr := reserveValidatorTransferRao(current.RegisteredAlphaRao, prospectiveReserve, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+		required, _, transferErr := reserveValidatorTransferRao(current.RegisteredAlphaRao, prospectiveReserve, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
 		if transferErr != nil {
 			return fmt.Errorf("size reserve-validator majority repair: %w", transferErr)
+		}
+		committed, addOK := checkedAdd(revised.MaximumSpend.AlphaRao, revised.SupersededSpend.AlphaRao)
+		if !addOK {
+			return errors.New("reserve-validator cumulative alpha spend overflows")
+		}
+		for _, repair := range repairs {
+			committed, addOK = checkedAdd(committed, repair.Spend.AlphaRao)
+			if !addOK {
+				return errors.New("reserve-validator cumulative repair spend overflows")
+			}
+		}
+		if committed >= cfg.MaximumAlphaRao {
+			return fmt.Errorf("reserve-validator target needs %d rao but cumulative alpha limit %d has no repair capacity after %d rao", required, cfg.MaximumAlphaRao, committed)
+		}
+		available := cfg.MaximumAlphaRao - committed
+		exact := min(available, cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao)
+		if exact < required {
+			return fmt.Errorf("reserve-validator target needs %d rao but the %d-rao repair tranche and cumulative alpha limit %d leave only %d rao after %d rao", required, cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, cfg.MaximumAlphaRao, exact, committed)
+		}
+		minimumCredit, creditErr := alphaTransferMinimumCreditRao(exact)
+		finalReserve, addOK := checkedAdd(prospectiveReserve, minimumCredit)
+		if creditErr != nil || !addOK || finalReserve > current.RegisteredAlphaRao || !alphaShareMeets(current.RegisteredAlphaRao, finalReserve, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS) {
+			return stateMismatchError(creditErr, "fixed reserve-validator repair %d cannot reach %d bps from %d/%d", exact, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS, prospectiveReserve, current.RegisteredAlphaRao)
 		}
 		baseID := "alpha.repair.validator.1"
 		repairID := baseID + ".2"
@@ -2827,15 +2851,15 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		}
 		parameters := alphaTransferActionParameters(exact, 0, minimumTransfer, &revised.LiveFacts, revised.AlphaTransferMarginBPS)
 		parameters[alphaRepairForActionParameter] = base.ID
-		parameters[alphaRepairMinimumDestinationParameter] = strconv.FormatUint(finalReserve, 10)
-		parameters["planned_existing_stake_rao"] = strconv.FormatUint(prospectiveReserve, 10)
-		parameters["planned_final_stake_rao"] = strconv.FormatUint(finalReserve, 10)
-		parameters["registered_alpha_snapshot_rao"] = strconv.FormatUint(current.RegisteredAlphaRao, 10)
+		parameters[alphaRepairReserveShareParameter] = "true"
+		parameters[alphaRepairCumulativeBeforeParameter] = strconv.FormatUint(committed, 10)
+		parameters[alphaRepairCumulativeLimitParameter] = strconv.FormatUint(committed+exact, 10)
+		parameters[alphaRepairMaximumTrancheParameter] = strconv.FormatUint(cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, 10)
 		parameters["reserve_target_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS), 10)
 		parameters["reserve_minimum_share_bps"] = strconv.FormatUint(uint64(cfg.Config.ValidatorBootstrap.ReserveMinimumShareBPS), 10)
 		repair := Action{
 			ID: repairID, Kind: "substrate-extrinsic", Target: base.Target,
-			Description: "restore the reserve validator target majority after bounded live-emission dilution without replaying bootstrap stake",
+			Description: "spend the remaining approved cumulative alpha tranche to restore the reserve-validator target after live-emission dilution",
 			Parameters:  parameters, Spend: Spend{AlphaRao: exact}, DependsOn: []string{tail},
 		}
 		repair.IntentHash, err = actionIntentHash(repair)
@@ -3302,9 +3326,6 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := preserveVerifiedValidatorAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("preserve verified validator alpha transfers: %w", err)
 	}
-	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries); err != nil {
-		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
-	}
 	if err := reconcileFinalizedAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("reconcile finalized alpha transfers: %w", err)
 	}
@@ -3318,6 +3339,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		if err := applySupersededSpend(revised, supersededSpend); err != nil {
 			return nil, err
 		}
+	}
+	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries); err != nil {
+		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
 	}
 	if err := applyFleetCommitmentRecoveries(cfg, stateDir, revised, prior, current, entries); err != nil {
 		return nil, fmt.Errorf("recover expiring fleet commitments: %w", err)

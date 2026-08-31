@@ -22,7 +22,56 @@ const (
 	alphaRepairForActionParameter             = "repair_for_action"
 	alphaRepairMinimumIncrementParameter      = "minimum_increment_from_recovered_prestate_rao"
 	alphaRepairMinimumDestinationParameter    = "minimum_destination_stake_rao"
+	alphaRepairReserveShareParameter          = "reserve_share_repair"
+	alphaRepairCumulativeBeforeParameter      = "cumulative_alpha_before_repair_rao"
+	alphaRepairCumulativeLimitParameter       = "cumulative_alpha_limit_rao"
+	alphaRepairMaximumTrancheParameter        = "maximum_reserve_repair_tranche_rao"
 )
+
+// A reserve-share repair is a fixed, approval-bound transfer tranche rather
+// than an amount sized from a moving emission snapshot. The live target is
+// still checked immediately before signing and at the finalized transaction
+// block. This keeps plan review stable without turning the spend cap into a
+// best-effort or runtime-selected amount.
+func reserveShareRepairTerms(action Action) (uint16, uint16, bool, error) {
+	encoded, present := action.Parameters[alphaRepairReserveShareParameter]
+	if !present {
+		return 0, 0, false, nil
+	}
+	if encoded != "true" {
+		return 0, 0, false, fmt.Errorf("alpha repair %s has invalid reserve-share mode %q", action.ID, encoded)
+	}
+	kind, index, err := alphaTransferTargetFromActionID(action.ID)
+	if err != nil || kind != "validator" || index != 1 || action.Parameters[alphaRepairForActionParameter] != "alpha.transfer.validator.1" {
+		return 0, 0, false, stateMismatchError(err, "alpha repair %s is not the reserve-validator repair", action.ID)
+	}
+	target, targetErr := strconv.ParseUint(action.Parameters["reserve_target_share_bps"], 10, 16)
+	minimum, minimumErr := strconv.ParseUint(action.Parameters["reserve_minimum_share_bps"], 10, 16)
+	if targetErr != nil || minimumErr != nil || minimum <= 5_000 || target <= minimum || target > 9_000 {
+		return 0, 0, false, fmt.Errorf("alpha repair %s has invalid reserve-share bounds", action.ID)
+	}
+	if action.Parameters[alphaRepairMinimumIncrementParameter] != "" || action.Parameters[alphaRepairMinimumDestinationParameter] != "" {
+		return 0, 0, false, fmt.Errorf("alpha repair %s mixes reserve-share and destination repair modes", action.ID)
+	}
+	return uint16(target), uint16(minimum), true, nil
+}
+
+// A destination-floor repair may converge without a transaction when its
+// postcondition was already true before execution. If it did broadcast, the
+// exact finalized delta remains mandatory even when later stake also satisfies
+// the floor.
+func alphaRepairPostconditionRequiresTransaction(current, minimum uint64, hasTransaction bool) (bool, error) {
+	if minimum == 0 {
+		return false, errors.New("alpha repair postcondition minimum is zero")
+	}
+	if hasTransaction {
+		return true, nil
+	}
+	if current < minimum {
+		return false, fmt.Errorf("alpha repair converged without a transaction at %d, below required stake %d", current, minimum)
+	}
+	return false, nil
+}
 
 func alphaTransferTargetFromActionID(id string) (string, int, error) {
 	prefixes := []struct {

@@ -136,6 +136,7 @@ type ValidatorBootstrapConfig struct {
 	ReserveTargetShareBPS          uint16 `yaml:"reserve_target_share_bps" json:"reserve_target_share_bps"`
 	ReserveMinimumShareBPS         uint16 `yaml:"reserve_minimum_share_bps" json:"reserve_minimum_share_bps"`
 	IndependentTargetAlphaRao      uint64 `yaml:"independent_target_alpha_rao" json:"independent_target_alpha_rao"`
+	MaximumReserveRepairAlphaRao   uint64 `yaml:"maximum_reserve_repair_alpha_rao" json:"maximum_reserve_repair_alpha_rao"`
 	MinimumSourceRemainingAlphaRao uint64 `yaml:"minimum_source_remaining_alpha_rao" json:"minimum_source_remaining_alpha_rao"`
 }
 
@@ -488,8 +489,8 @@ func (c *HarnessConfig) Validate() error {
 	if validators.ReserveMinimumShareBPS <= 5_000 || validators.ReserveTargetShareBPS <= validators.ReserveMinimumShareBPS || validators.ReserveTargetShareBPS > 9_000 {
 		return errors.New("validator bootstrap must target a bounded reserve supermajority above its greater-than-50-percent minimum")
 	}
-	if validators.IndependentTargetAlphaRao == 0 || validators.MinimumSourceRemainingAlphaRao == 0 {
-		return errors.New("validator bootstrap requires independent stake and a nonzero source remainder")
+	if validators.IndependentTargetAlphaRao == 0 || validators.MaximumReserveRepairAlphaRao < validators.IndependentTargetAlphaRao || validators.MinimumSourceRemainingAlphaRao == 0 {
+		return errors.New("validator bootstrap requires independent stake, a bounded reserve-repair tranche at least that large, and a nonzero source remainder")
 	}
 	if c.Topology.OperatorAssignment != "balanced" || c.Dependencies.Mode != "managed_containers" || c.Processes.RestartPolicy != "on_failure_bounded" {
 		return errors.New("release topology requires balanced assignment, managed containers, and bounded restart supervision")

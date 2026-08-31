@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The exact schema-v10 plan `0xf44a2075a951ffa296b954d64d7adf1c7df029fbebeba09122b3559dc21dcc7f` has no failed journal action. Topology launch then stopped before any service started because the generated user-systemd unit quoted `WorkingDirectory`, which that directive does not accept; systemd rejected the unit as a non-absolute path. The redundant directive is removed, `ExecStart` escaping now preserves literal `%`/`$` and rejects control characters, unit metadata is sanitized, and deterministic/race regressions plus systemd's native verifier pass. The corrected unit is static, disabled and has no install target, so it cannot return after a host restart. The complete Go and 145-test Foundry gates pass. M0A remains stopped pending a release-lock refresh, two identical read-only plan builds, checkpointed resume and topology health proof; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The systemd launch defect and carried temporary-oracle history defect are corrected and regression-tested. The next exact launch audited all 2,203 carried actions and then stopped before a new journal entry because emissions had diluted the verified reserve validator to 20,823,318,857,034 of 34,742,868,055,429 alpha rao, just below the mandatory 60% barrier. A bounded top-up revision was added, but real review/apply exposed that sizing its exact amount from the latest emission snapshot made the approval hash move: two reviewed builds produced `0x3c31cbeb83e311c07b1e587b0683d3180c3c17bc2b452b699eacdbc33a9938c7`, then an emission batch raised total/reserve alpha by approximately 169.0B/62.5B rao and apply rejected current hash `0x1a39246be2b147bd9683e52211cbd1828abbd142f36d16ec79c8e34e1d38ef1a` before any write. The repair is now a fixed approval-bound tranche capped at 3,000 alpha and the 22,000-alpha cumulative vault ceiling; planning must prove it can reach 65%, pre-broadcast repeats the live 65%/price/capacity/remainder checks, and its finalized-block postcondition proves the exact transfer and share. Deterministic/race tests cover emission drift, recurring repairs, cumulative/tranche exhaustion, mixed/tampered envelopes, one-rao share rounding, and no-transaction convergence. M0A remains stopped pending the final release-lock/full-suite gate, two stable read-only plans, exact apply and topology health proof; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -19,14 +19,17 @@ replacement contracts, two operators, both validator positions, reserve
 majority, alpha repair and the 200 fleet UID registrations are finalized. The
 accelerated commitment/binding setup is complete through all 200 initial fleet
 installs and all 200 generation-2 refresh/revocation checks. Topology launch is
-the next M0A boundary after correction of the rejected user-systemd unit.
+the next M0A boundary after correction of the rejected user-systemd unit,
+historically consumed oracle state and emission-diluted reserve repair.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
 authorize any mainnet write. An earlier integration topology reached account
 provisioning but stopped before its first conviction call when the two-share-floor
 defect was found. The current accelerated setup reached topology-launch
 preparation, but systemd rejected the generated unit before starting it; no
-workload supervisor or child service is running.
+workload supervisor or child service is running. The testnet-only cumulative
+alpha ceiling is 22,000 alpha and each emission-dilution repair is additionally
+capped at a fixed 3,000-alpha tranche.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
@@ -87,7 +90,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch stopped on a diagnosed and corrected user-systemd unit defect | Runtime-452 doctor is hard-green. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. The exact active plan has zero failed journal actions. Topology launch stopped before any service started because the generated unit quoted `WorkingDirectory`; systemd treated the quotes literally and rejected the path. The redundant directive is removed, every `ExecStart` argument is expansion-safe, metadata is sanitized, and deterministic/race tests plus `systemd-analyze --user verify` pass. The unit is static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. M0A resumes only after the refreshed lock and two identical read-only plans are checkpointed; phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch is gated on the tested reserve-dilution repair | Runtime-452 doctor is hard-green. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. The user-systemd and carried temporary-oracle defects are corrected. A later 2,203-action audit stopped before mutation when emissions pushed reserve share below 60%; the first exact repair correctly remained bounded but its moving snapshot made review/apply hashes differ across an emission batch. The replacement uses a fixed 3,000-alpha maximum tranche within the 22,000-alpha cumulative ceiling and independently enforces live/finalized 65% checks. Focused ordinary/race regressions pass; the final full lock gate and two-build live proof remain before apply. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2052,7 +2055,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    signing. Batched storage reads removed a 156-second public-RPC timeout. The
    live source now reports 25,416.177258599 alpha, zero lock/collateral, and the
    full position transferable. Each failure has deterministic reproduction plus
-   adjacent-drift tests. The vault ceilings are now 200 testTAO, 20,000 alpha,
+   adjacent-drift tests. The vault ceilings are now 200 testTAO, 22,000 alpha,
    and 160 testTAO of EVM gas; the increase covers bounded setup batching and
    soak while remaining an absolute campaign cap.
    A subsequent v6 revision installed and scheduled the corrected release policy,
@@ -2533,6 +2536,49 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    `0x5421dc5809e6a7a070c7ef49bea5aca0894f5e4b3bbb98ab71afa89b6490d79c`
    with unchanged spend totals and caps. Its exact launch replay is the next
    boundary; no M0B mutation has started.
+
+   That replay authenticated all 2,203 carried actions, including the exact
+   restored-oracle successor proof, and then stopped before the 35-action
+   remainder. The next action was the carried `validator.reserve-majority`
+   barrier: finalized state reported 20,823,318,857,034 reserve alpha out of
+   34,742,868,055,429 registered alpha, approximately 22.4B rao below 60%.
+   Its original postcondition at block 7,892,550 had proved
+   17,634,114,090,133 / 27,420,251,986,279, so no bootstrap transfer was missing
+   or ambiguous; ongoing emissions had diluted the ratio. No new journal entry,
+   signature, transaction or service start occurred.
+
+   The first repair revision preserved the verified bootstrap and added one
+   exact 1,759,545,378,996-rao top-up to return to 65%. With the testnet alpha
+   ceiling raised from 20,000 to 22,000 alpha, two read-only builds at later
+   finalized heads produced identical 2,239-action plan
+   `0x3c31cbeb83e311c07b1e587b0683d3180c3c17bc2b452b699eacdbc33a9938c7`
+   and cumulative maximum 20,891,046,582,533 alpha rao. Apply nevertheless
+   failed before opening the journal because an emission batch arrived after
+   review: registered alpha increased by about 169.0B rao and reserve alpha by
+   about 62.5B rao, changing the exact repair to 1,806,943,793,151 rao and the
+   reconstructed hash to
+   `0x1a39246be2b147bd9683e52211cbd1828abbd142f36d16ec79c8e34e1d38ef1a`.
+   Repeatedly approving the moving target would be flaky and is not an
+   acceptable release procedure.
+
+   The root fix makes emission repair an exact, fixed approval tranche rather
+   than a runtime-selected amount or a snapshot-sized amount. The committed
+   testnet profile caps each tranche at 3,000,000,000,000 rao and also applies
+   the 22,000,000,000,000-rao cumulative vault ceiling. A revision fails unless
+   the fixed tranche reaches the 65% target at planning time. Before signing it
+   re-reads the complete registered-alpha composition, runtime transfer floor,
+   price, source locks/collateral/transferability and retained source position,
+   and requires the same 65% target. Its postcondition verifies the exact
+   parent/inclusion delta and complete reserve share at the canonical finalized
+   transaction block, so later dilution cannot invalidate historical proof;
+   the separate live 60% barrier remains mandatory. Adjacent recovery now also
+   supports a destination repair that legitimately converged without its own
+   transaction while continuing to require exact delta proof whenever one was
+   broadcast. Deterministic and race tests reproduce the real emission drift
+   and cover recurrent repair chains, cumulative/tranche exhaustion, foreign or
+   mixed repair modes, parameter tampering, target-boundary rounding and
+   no-transaction convergence. Final full-suite/lock, two live plan builds and
+   exact apply remain before topology launch; M0B has not started.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

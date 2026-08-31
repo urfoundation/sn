@@ -1109,6 +1109,32 @@ func (m *SubstrateManager) RegisteredAlphaSnapshot() (RegisteredAlphaSnapshot, e
 	return readRegisteredAlphaSnapshotAt(m.chain, m.cfg.Netuid, finalized, block, topology)
 }
 
+// Read the complete registered-alpha composition at one canonical finalized
+// block. Transfer postconditions use the inclusion block rather than a later
+// emission snapshot, so a correct point-in-time reserve repair remains
+// replayable after subsequent dilution.
+func (m *SubstrateManager) RegisteredAlphaSnapshotAtBlock(block uint64) (RegisteredAlphaSnapshot, error) {
+	if block == 0 {
+		return RegisteredAlphaSnapshot{}, errors.New("registered-alpha snapshot block is zero")
+	}
+	_, finalizedBlock, err := m.finalizedHead()
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	if block > finalizedBlock {
+		return RegisteredAlphaSnapshot{}, fmt.Errorf("registered-alpha snapshot block %d is ahead of finalized head %d", block, finalizedBlock)
+	}
+	hash, err := m.chain.API.RPC.Chain.GetBlockHash(block)
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	topology, err := readSubnetTopologyAt(m.chain, m.cfg.Netuid, hash)
+	if err != nil {
+		return RegisteredAlphaSnapshot{}, err
+	}
+	return readRegisteredAlphaSnapshotAt(m.chain, m.cfg.Netuid, hash, block, topology)
+}
+
 // Bind source transfer restrictions to the same finalized block as the
 // registered-alpha snapshot used by the prebroadcast economic checks.
 func (self *SubstrateManager) AlphaTransferSourceRestrictions(snapshot RegisteredAlphaSnapshot, coldkey, sourceHotkey [32]byte) (AlphaTransferSourceRestrictions, error) {

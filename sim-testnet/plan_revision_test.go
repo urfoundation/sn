@@ -1041,22 +1041,43 @@ func TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTransfer, wantFinal, err := reserveValidatorTransferRao(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+	requiredTransfer, _, err := reserveValidatorTransferRao(current.RegisteredAlphaRao, current.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantTransfer := min(cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, cfg.MaximumAlphaRao-prior.MaximumSpend.AlphaRao)
+	if wantTransfer < requiredTransfer {
+		t.Fatalf("test repair tranche %d does not cover required transfer %d", wantTransfer, requiredTransfer)
+	}
 	repair := actionByID(t, revised, "alpha.repair.validator.1.2")
-	if repair.Spend.AlphaRao != wantTransfer || repair.Parameters[alphaRepairMinimumDestinationParameter] != strconv.FormatUint(wantFinal, 10) || !slices.Equal(repair.DependsOn, []string{base.ID}) {
-		t.Fatalf("reserve repair does not bind the exact target: got=%+v want_transfer=%d want_final=%d", repair, wantTransfer, wantFinal)
+	if repair.Spend.AlphaRao != wantTransfer || repair.Parameters[alphaRepairReserveShareParameter] != "true" || repair.Parameters[alphaRepairCumulativeBeforeParameter] != strconv.FormatUint(prior.MaximumSpend.AlphaRao, 10) || repair.Parameters[alphaRepairCumulativeLimitParameter] != strconv.FormatUint(prior.MaximumSpend.AlphaRao+wantTransfer, 10) || repair.Parameters[alphaRepairMaximumTrancheParameter] != strconv.FormatUint(cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, 10) || repair.Parameters[alphaRepairMinimumDestinationParameter] != "" || !slices.Equal(repair.DependsOn, []string{base.ID}) {
+		t.Fatalf("reserve repair does not bind the fixed cumulative tranche: got=%+v want_transfer=%d", repair, wantTransfer)
 	}
 	barrier := actionByID(t, revised, "validator.reserve-majority")
 	if !slices.Contains(barrier.DependsOn, repair.ID) || slices.Contains(barrier.DependsOn, base.ID) || barrier.IntentHash == actionByID(t, prior, barrier.ID).IntentHash {
 		t.Fatalf("majority barrier was not rebound to the live repair: %+v", barrier)
 	}
 
+	// A later emission snapshot changes both registered and reserve alpha, but
+	// not the fixed reviewed action or plan hash while the tranche still reaches
+	// the target. This reproduces the public-testnet review/apply race.
+	emitted := current
+	emitted.RegisteredAlphaRao += 1_000_000_000_000
+	emitted.ReserveValidatorAlphaRao += 400_000_000_000
+	emitted.AlphaAvailableRao += 400_000_000_000
+	emitted.AlphaTransferableRao += 400_000_000_000
+	emitted.WalletNetuidAlphaRao += 400_000_000_000
+	afterEmission, err := buildPlanRevisionFromFacts(cfg, stateDir, prior, &emitted, entries, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterEmission.PlanHash != revised.PlanHash || actionByID(t, afterEmission, repair.ID).IntentHash != repair.IntentHash {
+		t.Fatalf("emission drift changed fixed repair approval: plan=%s/%s repair=%s/%s", revised.PlanHash, afterEmission.PlanHash, repair.IntentHash, actionByID(t, afterEmission, repair.ID).IntentHash)
+	}
+
 	// Replanning the same unverified top-up carries that exact intent instead
 	// of creating another transfer for an unchanged live snapshot.
-	repeated, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &current, entries, time.Unix(3, 0))
+	repeated, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &current, entries, time.Unix(4, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1079,22 +1100,27 @@ func TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap(t *test
 		Stage:        StageVerified,
 	})
 	nextFacts := current
-	nextFacts.RegisteredAlphaRao = 36_000_000_000_000
-	nextFacts.ReserveValidatorAlphaRao = wantFinal
+	nextFacts.RegisteredAlphaRao = 34_000_000_000_000
+	firstCredit, err := alphaTransferMinimumCreditRao(repair.Spend.AlphaRao)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextFacts.ReserveValidatorAlphaRao, _ = checkedAdd(baseFinal, firstCredit)
 	nextFacts.AlphaAvailableRao -= repair.Spend.AlphaRao
 	nextFacts.AlphaTransferableRao -= repair.Spend.AlphaRao
 	nextFacts.WalletNetuidAlphaRao -= repair.Spend.AlphaRao
-	next, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &nextFacts, entries, time.Unix(4, 0))
+	next, err := buildPlanRevisionFromFacts(cfg, stateDir, revised, &nextFacts, entries, time.Unix(5, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	nextRepair := actionByID(t, next, "alpha.repair.validator.1.3")
-	wantNextTransfer, wantNextFinal, err := reserveValidatorTransferRao(nextFacts.RegisteredAlphaRao, nextFacts.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
+	requiredNextTransfer, _, err := reserveValidatorTransferRao(nextFacts.RegisteredAlphaRao, nextFacts.ReserveValidatorAlphaRao, minimumTransfer, cfg.Config.ValidatorBootstrap.ReserveTargetShareBPS)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nextRepair.Spend.AlphaRao != wantNextTransfer || nextRepair.Parameters[alphaRepairMinimumDestinationParameter] != strconv.FormatUint(wantNextFinal, 10) || !slices.Equal(nextRepair.DependsOn, []string{repair.ID}) {
-		t.Fatalf("recurrent reserve repair is not cumulative: got=%+v want_transfer=%d want_final=%d", nextRepair, wantNextTransfer, wantNextFinal)
+	wantNextTransfer := min(cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao, cfg.MaximumAlphaRao-revised.MaximumSpend.AlphaRao)
+	if wantNextTransfer < requiredNextTransfer || nextRepair.Spend.AlphaRao != wantNextTransfer || nextRepair.Parameters[alphaRepairCumulativeBeforeParameter] != strconv.FormatUint(revised.MaximumSpend.AlphaRao, 10) || nextRepair.Parameters[alphaRepairCumulativeLimitParameter] != strconv.FormatUint(revised.MaximumSpend.AlphaRao+wantNextTransfer, 10) || !slices.Equal(nextRepair.DependsOn, []string{repair.ID}) {
+		t.Fatalf("recurrent reserve repair is not cumulative: got=%+v want_transfer=%d required=%d", nextRepair, wantNextTransfer, requiredNextTransfer)
 	}
 	if got := actionByID(t, next, repair.ID); got.IntentHash != repair.IntentHash || !slices.Contains(actionByID(t, next, "validator.reserve-majority").DependsOn, nextRepair.ID) {
 		t.Fatal("recurrent repair did not preserve its predecessor and rebind the majority barrier")
@@ -1118,7 +1144,7 @@ func TestPlanRevisionRepairsLiveReserveMajorityWithoutReplayingBootstrap(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := buildPlanRevisionFromFacts(cfg, stateDir, &malformed, &current, entries[:3], time.Unix(5, 0)); err == nil || !strings.Contains(err.Error(), "outside the exact repair chain") {
+	if _, err := buildPlanRevisionFromFacts(cfg, stateDir, &malformed, &current, entries[:3], time.Unix(6, 0)); err == nil || !strings.Contains(err.Error(), "outside the exact repair chain") {
 		t.Fatalf("malformed reserve repair was not rejected exactly: %v", err)
 	}
 }
@@ -1149,8 +1175,71 @@ func TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit(t *testing.
 	current := *testSetupFacts()
 	current.RegisteredAlphaRao = 30_000_000_000_000
 	current.ReserveValidatorAlphaRao = baseFinal
-	if _, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, &current, entries, time.Unix(2, 0)); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+	if _, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, &current, entries, time.Unix(2, 0)); err == nil || !strings.Contains(err.Error(), "no repair capacity") {
 		t.Fatalf("cumulative reserve repair ignored the alpha limit: %v", err)
+	}
+	cfg.MaximumAlphaRao = prior.MaximumSpend.AlphaRao + 10_000_000_000_000
+	cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao = cfg.Config.ValidatorBootstrap.IndependentTargetAlphaRao
+	if _, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, &current, entries, time.Unix(3, 0)); err == nil || !strings.Contains(err.Error(), "repair tranche") {
+		t.Fatalf("undersized fixed repair tranche was accepted: %v", err)
+	}
+}
+
+func TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.MaximumAlphaRao = 30_000_000_000_000
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := actionByID(t, prior, "alpha.transfer.validator.1")
+	baseFinal, err := strconv.ParseUint(base.Parameters["planned_final_stake_rao"], 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []JournalEntry{{PlanHash: prior.PlanHash, ActionID: base.ID, IntentHash: base.IntentHash, Stage: StageVerified}}
+	current := *testSetupFacts()
+	current.RegisteredAlphaRao = 30_000_000_000_000
+	current.ReserveValidatorAlphaRao = baseFinal
+	revised, err := buildPlanRevisionFromFacts(cfg, t.TempDir(), prior, &current, entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := []func(*Action){
+		func(action *Action) { action.Parameters[alphaRepairCumulativeBeforeParameter] = "1" },
+		func(action *Action) { action.Parameters[alphaRepairCumulativeLimitParameter] = "1" },
+		func(action *Action) { action.Parameters[alphaRepairMaximumTrancheParameter] = "1" },
+		func(action *Action) { action.Parameters[alphaRepairReserveShareParameter] = "false" },
+		func(action *Action) { action.Parameters["reserve_target_share_bps"] = "6600" },
+		func(action *Action) { action.Parameters["planned_existing_stake_rao"] = "1" },
+	}
+	for index, mutate := range mutations {
+		wire, marshalErr := json.Marshal(revised)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		var changed SetupPlan
+		if err := json.Unmarshal(wire, &changed); err != nil {
+			t.Fatal(err)
+		}
+		for actionIndex := range changed.Actions {
+			action := &changed.Actions[actionIndex]
+			if action.ID != "alpha.repair.validator.1.2" {
+				continue
+			}
+			mutate(action)
+			action.IntentHash, err = actionIntentHash(*action)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := validatePlanBudget(&changed); err == nil {
+			t.Errorf("reserve-share repair envelope mutation %d was accepted", index)
+		}
 	}
 }
 
