@@ -704,6 +704,140 @@ func TestFleetInstallHistoricalReplayRequiresExactVerifiedRefresh(t *testing.T) 
 	}
 }
 
+type fleetRefreshOracleSupersessionFixture struct {
+	activate, awaitActive, restore, awaitRestored Action
+	activateEntry, awaitActiveEntry               JournalEntry
+	restoreEntry, awaitRestoredEntry              JournalEntry
+	activateRecord, awaitActiveRecord             *ActionPostcondition
+	restoreRecord, awaitRestoredRecord            *ActionPostcondition
+}
+
+func testFleetRefreshOraclePostcondition(action Action, entry JournalEntry, block uint64, target, active common.Address) *ActionPostcondition {
+	observed := map[string]any{"target_oracle": target.Hex(), "active_oracle": active.Hex()}
+	comparison := map[string]any{"target_oracle": target.Hex(), "active_oracle": active.Hex()}
+	return &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", PlanHash: entry.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		EVMFinalized: ChainHead{Number: block, Hash: "0x" + strings.Repeat("11", 32)}, EVMHashDomain: "evm-rpc", Observed: observed,
+		IndependentEVMFinalized: ChainHead{Number: block, Hash: "0x" + strings.Repeat("11", 32)}, IndependentEVMHashDomain: "evm-rpc", IndependentObserved: comparison,
+	}
+}
+
+func newFleetRefreshOracleSupersessionFixture() fleetRefreshOracleSupersessionFixture {
+	coordinator := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	batcher := common.HexToAddress("0x2000000000000000000000000000000000000002")
+	original := common.HexToAddress("0x3000000000000000000000000000000000000003")
+	fixture := fleetRefreshOracleSupersessionFixture{
+		activate: Action{
+			ID: "fleet.refresh.oracle-activate", Kind: "evm-transaction", Target: coordinator.Hex(), IntentHash: "activate-intent",
+			Parameters: map[string]string{"oracle": batcher.Hex()},
+		},
+		awaitActive: Action{
+			ID: "fleet.refresh.oracle-await-active", Kind: "evm-read", Target: batcher.Hex(), IntentHash: "await-active-intent",
+			DependsOn: []string{"fleet.refresh.oracle-activate"},
+		},
+		restore: Action{
+			ID: "fleet.refresh.oracle-restore", Kind: "evm-transaction", Target: coordinator.Hex(), IntentHash: "restore-intent",
+			Parameters: map[string]string{"oracle": original.Hex()},
+		},
+		awaitRestored: Action{
+			ID: "fleet.refresh.oracle-await-restored", Kind: "evm-read", Target: original.Hex(), IntentHash: "await-restored-intent",
+			DependsOn: []string{"fleet.refresh.oracle-restore"},
+		},
+	}
+	fixture.activateEntry = JournalEntry{Sequence: 10, PlanHash: "activate-plan", ActionID: fixture.activate.ID, IntentHash: fixture.activate.IntentHash, Stage: StageVerified}
+	fixture.awaitActiveEntry = JournalEntry{Sequence: 11, PlanHash: "activate-plan", ActionID: fixture.awaitActive.ID, IntentHash: fixture.awaitActive.IntentHash, Stage: StageVerified}
+	fixture.restoreEntry = JournalEntry{Sequence: 20, PlanHash: "restore-plan", ActionID: fixture.restore.ID, IntentHash: fixture.restore.IntentHash, Stage: StageVerified}
+	fixture.awaitRestoredEntry = JournalEntry{Sequence: 21, PlanHash: "restore-plan", ActionID: fixture.awaitRestored.ID, IntentHash: fixture.awaitRestored.IntentHash, Stage: StageVerified}
+	fixture.activateRecord = testFleetRefreshOraclePostcondition(fixture.activate, fixture.activateEntry, 100, batcher, batcher)
+	fixture.awaitActiveRecord = testFleetRefreshOraclePostcondition(fixture.awaitActive, fixture.awaitActiveEntry, 101, batcher, batcher)
+	fixture.restoreRecord = testFleetRefreshOraclePostcondition(fixture.restore, fixture.restoreEntry, 200, original, original)
+	fixture.awaitRestoredRecord = testFleetRefreshOraclePostcondition(fixture.awaitRestored, fixture.awaitRestoredEntry, 201, original, original)
+	return fixture
+}
+
+// The refresh helper is deliberately temporary. A restart after restoration
+// must replay the exact activation checkpoints historically, but only when the
+// hash-bound restore pair follows them in both journal and observer order.
+func TestFleetRefreshOracleHistoricalReplayRequiresExactOrderedRestore(t *testing.T) {
+	fixture := newFleetRefreshOracleSupersessionFixture()
+	for _, source := range []struct {
+		action Action
+		entry  JournalEntry
+		record *ActionPostcondition
+	}{
+		{fixture.activate, fixture.activateEntry, fixture.activateRecord},
+		{fixture.awaitActive, fixture.awaitActiveEntry, fixture.awaitActiveRecord},
+	} {
+		if err := validateFleetRefreshOracleSupersession(
+			source.action, source.entry, source.record,
+			fixture.restore, fixture.restoreEntry, fixture.restoreRecord,
+			fixture.awaitRestored, fixture.awaitRestoredEntry, fixture.awaitRestoredRecord,
+		); err != nil {
+			t.Fatalf("exact ordered restore rejected for %s: %v", source.action.ID, err)
+		}
+	}
+
+	mutations := []struct {
+		name   string
+		mutate func(*fleetRefreshOracleSupersessionFixture)
+	}{
+		{name: "restore journal not later", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.restoreEntry.Sequence = value.activateEntry.Sequence
+		}},
+		{name: "await journal not later", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.awaitRestoredEntry.Sequence = value.restoreEntry.Sequence
+		}},
+		{name: "restore operational checkpoint older", mutate: func(value *fleetRefreshOracleSupersessionFixture) { value.restoreRecord.EVMFinalized.Number = 99 }},
+		{name: "await comparison checkpoint older", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.awaitRestoredRecord.IndependentEVMFinalized.Number = 199
+		}},
+		{name: "restore does not reverse target", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.restore.Parameters["oracle"] = value.activate.Parameters["oracle"]
+		}},
+		{name: "await does not depend on restore", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.awaitRestored.DependsOn = []string{"fleet.refresh.batch.20"}
+		}},
+		{name: "restore observation has wrong target", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.restoreRecord.Observed["target_oracle"] = value.activate.Parameters["oracle"]
+		}},
+		{name: "await comparison has wrong active oracle", mutate: func(value *fleetRefreshOracleSupersessionFixture) {
+			value.awaitRestoredRecord.IndependentObserved["active_oracle"] = value.activate.Parameters["oracle"]
+		}},
+		{name: "restore intent differs", mutate: func(value *fleetRefreshOracleSupersessionFixture) { value.restoreEntry.IntentHash = "other-intent" }},
+		{name: "activation sequence missing", mutate: func(value *fleetRefreshOracleSupersessionFixture) { value.activateEntry.Sequence = 0 }},
+	}
+	for _, mutation := range mutations {
+		value := newFleetRefreshOracleSupersessionFixture()
+		mutation.mutate(&value)
+		if err := validateFleetRefreshOracleSupersession(
+			value.activate, value.activateEntry, value.activateRecord,
+			value.restore, value.restoreEntry, value.restoreRecord,
+			value.awaitRestored, value.awaitRestoredEntry, value.awaitRestoredRecord,
+		); err == nil {
+			t.Errorf("%s mutation was accepted", mutation.name)
+		}
+	}
+}
+
+// A scheduled restore that has not reached its exact await action does not yet
+// authorize historical-only activation replay. The ordinary current-state
+// verifier must decide whether the activation remains safely active/pending.
+func TestFleetRefreshOracleSupersessionRequiresCompleteRestorePair(t *testing.T) {
+	fixture := newFleetRefreshOracleSupersessionFixture()
+	plan := &SetupPlan{
+		PlanHash: "current-plan", PriorPlanHashes: []string{"activate-plan", "restore-plan"},
+		Actions: []Action{fixture.activate, fixture.awaitActive, fixture.restore, fixture.awaitRestored},
+	}
+	executor := &Executor{plan: plan, journal: &Journal{entries: []JournalEntry{fixture.restoreEntry}}}
+	if superseded, err := executor.fleetRefreshOracleActivationSuperseded(fixture.activate, fixture.activateEntry, fixture.activateRecord); err != nil || superseded {
+		t.Fatalf("partial restore bypassed current verification: superseded=%t err=%v", superseded, err)
+	}
+	executor.journal.entries = []JournalEntry{fixture.awaitRestoredEntry}
+	if superseded, err := executor.fleetRefreshOracleActivationSuperseded(fixture.activate, fixture.activateEntry, fixture.activateRecord); err == nil || superseded {
+		t.Fatalf("await-restored without restore was accepted: superseded=%t err=%v", superseded, err)
+	}
+}
+
 // The built release plan must deploy/activate once, use twenty atomic install
 // and refresh batches, and leave all head per-member actions read-only.
 func TestBuildPlanBatchesEveryHeadFleetBeforeTopologyLaunch(t *testing.T) {

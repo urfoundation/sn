@@ -217,6 +217,179 @@ func fleetRefreshOracleTarget(action Action, payloads *DeploymentPayloads) (comm
 	return target, nil
 }
 
+// Resolve the hash-bound oracle target directly from a planned handoff action.
+// This deliberately does not infer an address from current chain state: it is
+// used to prove that an old activation and its later restore are opposite ends
+// of the same approved transition.
+func plannedFleetRefreshOracleTarget(action Action) (common.Address, error) {
+	var raw string
+	switch action.ID {
+	case "fleet.refresh.oracle-activate", "fleet.refresh.oracle-restore":
+		if action.Kind != "evm-transaction" || !common.IsHexAddress(action.Target) || common.HexToAddress(action.Target) == (common.Address{}) {
+			return common.Address{}, fmt.Errorf("action %s has no canonical coordinator transaction", action.ID)
+		}
+		raw = action.Parameters["oracle"]
+	case "fleet.refresh.oracle-await-active", "fleet.refresh.oracle-await-restored":
+		if action.Kind != "evm-read" {
+			return common.Address{}, fmt.Errorf("action %s is not a canonical oracle read", action.ID)
+		}
+		raw = action.Target
+	default:
+		return common.Address{}, fmt.Errorf("action %s is not a fleet refresh oracle action", action.ID)
+	}
+	if !common.IsHexAddress(raw) || common.HexToAddress(raw) == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("action %s has no nonzero oracle target", action.ID)
+	}
+	return common.HexToAddress(raw), nil
+}
+
+func oraclePostconditionAddress(record *ActionPostcondition, field string, want common.Address, requireActive bool) error {
+	if record == nil || want == (common.Address{}) {
+		return errors.New("fleet refresh oracle postcondition context is incomplete")
+	}
+	for _, observation := range []struct {
+		name     string
+		observed map[string]any
+	}{
+		{"operational", record.Observed},
+		{"comparison", record.IndependentObserved},
+	} {
+		target, targetOK := observation.observed[field].(string)
+		if !targetOK || !strings.EqualFold(target, want.Hex()) {
+			return fmt.Errorf("%s fleet refresh oracle %s differs from %s", observation.name, field, want)
+		}
+		if requireActive {
+			active, activeOK := observation.observed["active_oracle"].(string)
+			if !activeOK || !strings.EqualFold(active, want.Hex()) {
+				return fmt.Errorf("%s fleet refresh active oracle differs from restored %s", observation.name, want)
+			}
+		}
+	}
+	return nil
+}
+
+func validateFleetRefreshOraclePostconditionIdentity(action Action, entry JournalEntry, record *ActionPostcondition) error {
+	if entry.Sequence == 0 || entry.Stage != StageVerified || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) {
+		return fmt.Errorf("fleet refresh oracle action %s has no exact verified journal identity", action.ID)
+	}
+	if record == nil || record.PlanHash != entry.PlanHash || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
+		return fmt.Errorf("fleet refresh oracle action %s has no exact postcondition identity", action.ID)
+	}
+	return nil
+}
+
+// Prove that an activation checkpoint was intentionally consumed by the exact
+// later restore and await-restored actions. Journal order and both observer
+// checkpoints must advance monotonically; an earlier same-state observation or
+// an adjacent oracle action cannot authorize historical-only replay.
+func validateFleetRefreshOracleSupersession(
+	activeAction Action,
+	activeEntry JournalEntry,
+	activeRecord *ActionPostcondition,
+	restoreAction Action,
+	restoreEntry JournalEntry,
+	restoreRecord *ActionPostcondition,
+	awaitAction Action,
+	awaitEntry JournalEntry,
+	awaitRecord *ActionPostcondition,
+) error {
+	if activeAction.ID != "fleet.refresh.oracle-activate" && activeAction.ID != "fleet.refresh.oracle-await-active" {
+		return fmt.Errorf("action %s is not a supersedable fleet refresh activation", activeAction.ID)
+	}
+	if restoreAction.ID != "fleet.refresh.oracle-restore" || awaitAction.ID != "fleet.refresh.oracle-await-restored" {
+		return errors.New("fleet refresh oracle supersession does not use the exact restore pair")
+	}
+	activeTarget, err := plannedFleetRefreshOracleTarget(activeAction)
+	if err != nil {
+		return err
+	}
+	restoreTarget, err := plannedFleetRefreshOracleTarget(restoreAction)
+	if err != nil {
+		return err
+	}
+	awaitTarget, err := plannedFleetRefreshOracleTarget(awaitAction)
+	if err != nil {
+		return err
+	}
+	if activeTarget == restoreTarget || restoreTarget != awaitTarget || (activeAction.ID == "fleet.refresh.oracle-activate" && !strings.EqualFold(restoreAction.Target, activeAction.Target)) {
+		return errors.New("fleet refresh oracle restore does not reverse the exact activation")
+	}
+	if len(awaitAction.DependsOn) != 1 || awaitAction.DependsOn[0] != restoreAction.ID {
+		return errors.New("fleet refresh await-restored action does not depend exactly on restore")
+	}
+	if activeAction.ID == "fleet.refresh.oracle-await-active" && (len(activeAction.DependsOn) != 1 || activeAction.DependsOn[0] != "fleet.refresh.oracle-activate") {
+		return errors.New("fleet refresh await-active action does not depend exactly on activation")
+	}
+	for _, evidence := range []struct {
+		action Action
+		entry  JournalEntry
+		record *ActionPostcondition
+	}{
+		{activeAction, activeEntry, activeRecord},
+		{restoreAction, restoreEntry, restoreRecord},
+		{awaitAction, awaitEntry, awaitRecord},
+	} {
+		if err := validateFleetRefreshOraclePostconditionIdentity(evidence.action, evidence.entry, evidence.record); err != nil {
+			return err
+		}
+	}
+	if restoreEntry.Sequence <= activeEntry.Sequence || awaitEntry.Sequence <= restoreEntry.Sequence {
+		return errors.New("fleet refresh oracle restore evidence is not later in journal order")
+	}
+	if activeRecord.EVMFinalized.Number == 0 || activeRecord.IndependentEVMFinalized.Number == 0 ||
+		restoreRecord.EVMFinalized.Number < activeRecord.EVMFinalized.Number || restoreRecord.IndependentEVMFinalized.Number < activeRecord.IndependentEVMFinalized.Number ||
+		awaitRecord.EVMFinalized.Number < restoreRecord.EVMFinalized.Number || awaitRecord.IndependentEVMFinalized.Number < restoreRecord.IndependentEVMFinalized.Number {
+		return errors.New("fleet refresh oracle restore checkpoints do not follow activation")
+	}
+	if err := oraclePostconditionAddress(activeRecord, "target_oracle", activeTarget, activeAction.ID == "fleet.refresh.oracle-await-active"); err != nil {
+		return err
+	}
+	if err := oraclePostconditionAddress(restoreRecord, "target_oracle", restoreTarget, false); err != nil {
+		return err
+	}
+	return oraclePostconditionAddress(awaitRecord, "target_oracle", awaitTarget, true)
+}
+
+func (self *Executor) fleetRefreshOracleActivationSuperseded(action Action, verified JournalEntry, record *ActionPostcondition) (bool, error) {
+	if action.ID != "fleet.refresh.oracle-activate" && action.ID != "fleet.refresh.oracle-await-active" {
+		return false, nil
+	}
+	if self == nil || self.plan == nil || self.journal == nil {
+		return false, errors.New("fleet refresh oracle supersession context is unavailable")
+	}
+	restore, err := self.planAction("fleet.refresh.oracle-restore")
+	if err != nil {
+		return false, err
+	}
+	awaitRestored, err := self.planAction("fleet.refresh.oracle-await-restored")
+	if err != nil {
+		return false, err
+	}
+	restoreEntry, restoreVerified := self.verifiedActionEntry(restore)
+	awaitEntry, awaitVerified := self.verifiedActionEntry(awaitRestored)
+	if !restoreVerified && !awaitVerified {
+		return false, nil
+	}
+	if !restoreVerified || !awaitVerified {
+		if awaitVerified {
+			return false, errors.New("fleet refresh await-restored is verified without its restore")
+		}
+		return false, nil
+	}
+	restoreRecord, err := self.readPersistedPostcondition(restoreEntry)
+	if err != nil {
+		return false, fmt.Errorf("fleet refresh restore postcondition: %w", err)
+	}
+	awaitRecord, err := self.readPersistedPostcondition(awaitEntry)
+	if err != nil {
+		return false, fmt.Errorf("fleet refresh await-restored postcondition: %w", err)
+	}
+	if err := validateFleetRefreshOracleSupersession(action, verified, record, restore, restoreEntry, restoreRecord, awaitRestored, awaitEntry, awaitRecord); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Schedules one future-effective handoff and retries only if estimation crossed
 // the epoch boundary before any exact transaction was persisted.
 func (self *Executor) scheduleFleetRefreshOracle(ctx context.Context, action Action) error {

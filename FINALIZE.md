@@ -2511,6 +2511,28 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    deployable roots, all 145 Foundry tests, generated payload/ABI/layout checks,
    operator and shared-client suites, 25 Subtensor infrastructure tests and patch
    hygiene. Phase 2 remains unstarted.
+
+   The first exact phase-2 launch under that checkpoint reauthenticated all
+   2,203 carried actions, then stopped before executing the 35-action remainder.
+   Its history preflight correctly found that
+   `fleet.refresh.oracle-activate` no longer matched current state, but did not
+   understand that the exact later `fleet.refresh.oracle-restore` and
+   `fleet.refresh.oracle-await-restored` actions had intentionally consumed that
+   temporary state. No new journal entry or testnet transaction was created and
+   the topology supervisor remained inactive. The carry verifier now permits
+   historical replay of `oracle-activate` and `oracle-await-active` only when the
+   exact restore pair is durably verified in the approved lineage, follows the
+   source in append-only journal order, advances both operational and comparison
+   finalized checkpoints, reverses the exact helper address, and records the
+   original oracle active after restoration. Missing/partial restore evidence,
+   adjacent IDs, reordered entries, stale checkpoints, wrong dependencies,
+   changed intents and altered observer values all fail closed. The complete Go
+   suite and focused race regressions pass. The corrected tree is release-locked
+   by `sha256:a8a7876ba35bd7e6573b605598006aae04eaf48695d98da86a73fa11e5f9ab1f`;
+   two read-only builds produced the identical 2,238-action plan
+   `0x5421dc5809e6a7a070c7ef49bea5aca0894f5e4b3bbb98ab71afa89b6490d79c`
+   with unchanged spend totals and caps. Its exact launch replay is the next
+   boundary; no M0B mutation has started.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then

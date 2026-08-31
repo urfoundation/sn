@@ -1024,6 +1024,16 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		}
 		return nil
 	}
+	oracleSuperseded, err := e.fleetRefreshOracleActivationSuperseded(action, verified, record)
+	if err != nil {
+		return fmt.Errorf("fleet refresh oracle successor: %w", err)
+	}
+	if oracleSuperseded {
+		if err := verifier.verifyHistoricalEVMPostcondition(ctx, verifiedAction, record); err != nil {
+			return fmt.Errorf("historical fleet refresh oracle postcondition: %w", err)
+		}
+		return nil
+	}
 	if actionRequiresCurrentPostcondition(action) {
 		if err := verifier.verifyCurrentActionPostState(ctx, verifiedAction, sharedEVMHead); err != nil {
 			return fmt.Errorf("current postcondition: %w", err)
