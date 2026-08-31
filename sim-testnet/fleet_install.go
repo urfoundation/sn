@@ -120,6 +120,17 @@ func fleetInstallPreparedPath(stateDir string, batch int) string {
 	return filepath.Join(stateDir, "secrets", fmt.Sprintf("fleet-install-batch-%d.prepared.json", batch))
 }
 
+func fleetBatcherAddressForAction(action Action) (common.Address, error) {
+	if action.Kind != "evm-transaction" || !common.IsHexAddress(action.Target) {
+		return common.Address{}, fmt.Errorf("fleet batch action %s has an invalid target", action.ID)
+	}
+	address := common.HexToAddress(action.Target)
+	if address == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("fleet batch action %s has a zero target", action.ID)
+	}
+	return address, nil
+}
+
 // Requires a fleet to be wholly absent or wholly exact. A partial member set
 // cannot be made equivalent to one atomic install and therefore fails closed.
 func (self *Executor) classifyFleetInstallRange(ctx context.Context, firstFleet, lastFleet int, block uint64) (fleetInstallClassification, error) {
@@ -763,6 +774,10 @@ func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, acti
 	if err != nil {
 		return nil, err
 	}
+	batcherAddress, err := fleetBatcherAddressForAction(action)
+	if err != nil {
+		return nil, err
+	}
 	var evidence FleetInstallBatchEvidence
 	if err := readJSONFile(filepath.Join(self.stateDir, "public", fmt.Sprintf("fleet-install-batch-%d.json", batch)), &evidence); err != nil {
 		return nil, err
@@ -883,7 +898,7 @@ func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, acti
 		if err != nil {
 			return nil, err
 		}
-		if err := verifyFleetInstallEvents(receipt, parsed, self.payloads.FleetBatcherAddress, &prepared); err != nil {
+		if err := verifyFleetInstallEvents(receipt, parsed, batcherAddress, &prepared); err != nil {
 			return nil, err
 		}
 		installedFleets := make([]int, 0, len(prepared.Fleets))

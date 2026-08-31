@@ -1009,6 +1009,10 @@ func (self *Executor) verifyFleetRefreshBatchPostState(ctx context.Context, acti
 	if err != nil {
 		return nil, err
 	}
+	batcherAddress, err := fleetBatcherAddressForAction(action)
+	if err != nil {
+		return nil, err
+	}
 	var public FleetRefreshBatchEvidence
 	if err := readJSONFile(filepath.Join(self.stateDir, "public", fmt.Sprintf("fleet-refresh-batch-%d.json", batch)), &public); err != nil {
 		return nil, err
@@ -1045,7 +1049,7 @@ func (self *Executor) verifyFleetRefreshBatchPostState(ctx context.Context, acti
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyFleetRefreshEvents(receipt, parsed, self.payloads.FleetBatcherAddress, &prepared); err != nil {
+	if err := verifyFleetRefreshEvents(receipt, parsed, batcherAddress, &prepared); err != nil {
 		return nil, err
 	}
 	members, err := self.verifyFleetRefreshPreparedAt(ctx, &prepared, evmHead.Number)

@@ -878,14 +878,99 @@ func (e *Executor) verifyCurrentActionPostState(ctx context.Context, action Acti
 	return err
 }
 
+func planBoundFleetBatchRange(cfg *ResolvedConfig, action Action) (int, int, error) {
+	batch := suffixInt(action.ID)
+	switch {
+	case strings.HasPrefix(action.ID, "fleet.install.batch."):
+		return fleetInstallActionRange(cfg, action, batch)
+	case strings.HasPrefix(action.ID, "fleet.refresh.batch."):
+		return fleetRefreshActionRange(cfg, action, batch)
+	default:
+		return 0, 0, fmt.Errorf("action %s has no plan-bound fleet preparation", action.ID)
+	}
+}
+
+// Resolve the exact archived action which created a plan-bound prepared
+// calldata artifact. Current live state is still re-read, but the immutable
+// preparation must be authenticated against its source plan rather than a
+// later revision hash. Install and refresh use the same fail-closed rule.
+func exactCarriedFleetBatchSourceAction(cfg *ResolvedConfig, currentPlan, sourcePlan *SetupPlan, current Action, verified JournalEntry) (Action, error) {
+	if cfg == nil || currentPlan == nil || sourcePlan == nil || verified.Stage != StageVerified || verified.PlanHash == "" || verified.IntentHash == "" {
+		return Action{}, errors.New("carried fleet batch source context is incomplete")
+	}
+	if sourcePlan.PlanHash != verified.PlanHash || !currentPlan.allowedPlanHashes()[verified.PlanHash] || verified.ActionID != current.ID || !actionAcceptsIntent(current, verified.IntentHash) {
+		return Action{}, errors.New("carried fleet batch source is outside the approved action lineage")
+	}
+	var source *Action
+	for index := range sourcePlan.Actions {
+		candidate := &sourcePlan.Actions[index]
+		if candidate.ID != verified.ActionID || candidate.IntentHash != verified.IntentHash {
+			continue
+		}
+		if source != nil {
+			return Action{}, errors.New("carried fleet batch source plan has duplicate exact actions")
+		}
+		copy := *candidate
+		source = &copy
+	}
+	if source == nil {
+		return Action{}, errors.New("carried fleet batch source plan has no exact action")
+	}
+	sourceTarget, sourceTargetErr := fleetBatcherAddressForAction(*source)
+	currentTarget, currentTargetErr := fleetBatcherAddressForAction(current)
+	if source.Kind != current.Kind || sourceTargetErr != nil || currentTargetErr != nil || sourceTarget != currentTarget {
+		return Action{}, errors.New("carried fleet batch source kind or target differs from the active action")
+	}
+	currentFirst, currentLast, err := planBoundFleetBatchRange(cfg, current)
+	if err != nil {
+		return Action{}, err
+	}
+	sourceFirst, sourceLast, err := planBoundFleetBatchRange(cfg, *source)
+	if err != nil || sourceFirst != currentFirst || sourceLast != currentLast {
+		return Action{}, stateMismatchError(err, "carried fleet batch source range differs from the active action")
+	}
+	if sourcePlan.DeploymentID != currentPlan.DeploymentID || sourcePlan.ChainID != currentPlan.ChainID || sourcePlan.Netuid != currentPlan.Netuid || !contractDeploymentAddressesEqual(sourcePlan.Deployment, currentPlan.Deployment) {
+		return Action{}, errors.New("carried fleet batch source deployment differs from the active lineage")
+	}
+	return *source, nil
+}
+
+func (e *Executor) carriedFleetBatchSourceExecutor(action Action, verified JournalEntry) (*Executor, Action, error) {
+	if e == nil || e.plan == nil {
+		return nil, Action{}, errors.New("carried fleet batch executor is unavailable")
+	}
+	if verified.PlanHash == e.plan.PlanHash {
+		return e, action, nil
+	}
+	sourcePlan, err := readPersistedPlanFile(filepath.Join(e.stateDir, "plans", stringsTrim0x(verified.PlanHash)+".json"))
+	if err != nil {
+		return nil, Action{}, fmt.Errorf("read carried fleet batch source plan: %w", err)
+	}
+	sourceAction, err := exactCarriedFleetBatchSourceAction(e.cfg, e.plan, sourcePlan, action, verified)
+	if err != nil {
+		return nil, Action{}, err
+	}
+	sourceExecutor := *e
+	sourceExecutor.plan = sourcePlan
+	return &sourceExecutor, sourceAction, nil
+}
+
 func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead *ChainHead) error {
+	verifier, verifiedAction := e, action
+	if verified.PlanHash != e.plan.PlanHash && (strings.HasPrefix(action.ID, "fleet.install.batch.") || strings.HasPrefix(action.ID, "fleet.refresh.batch.")) {
+		var err error
+		verifier, verifiedAction, err = e.carriedFleetBatchSourceExecutor(action, verified)
+		if err != nil {
+			return fmt.Errorf("carried fleet batch source: %w", err)
+		}
+	}
 	if actionRequiresCurrentPostcondition(action) {
-		if err := e.verifyCurrentActionPostState(ctx, action, sharedEVMHead); err != nil {
+		if err := verifier.verifyCurrentActionPostState(ctx, verifiedAction, sharedEVMHead); err != nil {
 			return fmt.Errorf("current postcondition: %w", err)
 		}
 		return nil
 	}
-	currentErr := e.verifyCurrentActionPostState(ctx, action, sharedEVMHead)
+	currentErr := verifier.verifyCurrentActionPostState(ctx, verifiedAction, sharedEVMHead)
 	if currentErr == nil {
 		return nil
 	}

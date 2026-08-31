@@ -451,6 +451,213 @@ func TestFleetInstallPreparedEvidenceBindsCalldataAndPlanIdentity(t *testing.T) 
 	}
 }
 
+// A plan revision may carry a verified batch, but its durable prepared
+// calldata remains authenticated by the exact archived plan/action which
+// created it. The active plan must never be substituted into that check.
+func TestCarriedFleetBatchPreparationUsesExactArchivedPlan(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.HeadFleets = 10
+	sourceHash := "0x" + strings.Repeat("aa", 32)
+	currentHash := "0x" + strings.Repeat("bb", 32)
+	sourceIntent := "0x" + strings.Repeat("11", 32)
+	currentIntent := "0x" + strings.Repeat("22", 32)
+	target := "0x1234567890123456789012345678901234567890"
+	coordinator := common.HexToAddress("0x2345678901234567890123456789012345678901")
+	deployment := ContractDeployment{
+		Schema: "urnetwork-contract-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		InitialNonce: 13, ReserveSink: common.HexToAddress("0x3456789012345678901234567890123456789012"),
+		SettlementVault:           common.HexToAddress("0x4567890123456789012345678901234567890123"),
+		CoordinatorImplementation: common.HexToAddress("0x5678901234567890123456789012345678901234"), CoordinatorProxy: coordinator,
+		GovernanceDrillImplementation: common.HexToAddress("0x6789012345678901234567890123456789012345"),
+		PrecompileProbe:               common.HexToAddress("0x7890123456789012345678901234567890123456"),
+	}
+	for _, test := range []struct {
+		name       string
+		id         string
+		generation string
+	}{
+		{name: "install", id: "fleet.install.batch.1", generation: "1"},
+		{name: "refresh", id: "fleet.refresh.batch.1", generation: "2"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sourceAction := Action{
+				ID: test.id, Kind: "evm-transaction", Target: target, IntentHash: sourceIntent,
+				Parameters: map[string]string{"first_fleet": "1", "last_fleet": "10", "generation": test.generation},
+			}
+			currentAction := sourceAction
+			currentAction.IntentHash = currentIntent
+			currentAction.AcceptedPriorIntentHashes = []string{sourceIntent}
+			sourcePlan := &SetupPlan{
+				PlanHash: sourceHash, DeploymentID: cfg.Config.Deployment.DeploymentID,
+				ChainID: cfg.ChainID, Netuid: cfg.Netuid, Deployment: deployment, Actions: []Action{sourceAction},
+			}
+			currentPlan := &SetupPlan{
+				PlanHash: currentHash, PriorPlanHashes: []string{sourceHash}, DeploymentID: sourcePlan.DeploymentID,
+				ChainID: sourcePlan.ChainID, Netuid: sourcePlan.Netuid, Deployment: deployment, Actions: []Action{currentAction},
+			}
+			verified := JournalEntry{PlanHash: sourceHash, ActionID: sourceAction.ID, IntentHash: sourceIntent, Stage: StageVerified}
+			archivedAction, err := exactCarriedFleetBatchSourceAction(cfg, currentPlan, sourcePlan, currentAction, verified)
+			if err != nil || archivedAction.IntentHash != sourceIntent {
+				t.Fatalf("exact archived action rejected: %+v %v", archivedAction, err)
+			}
+			data := []byte{1, 2, 3, 4}
+			switch test.name {
+			case "install":
+				prepared := &fleetInstallPreparedEvidence{
+					Schema: fleetInstallPreparedSchema, DeploymentID: cfg.Config.Deployment.DeploymentID,
+					PlanHash: sourceHash, ActionID: sourceAction.ID, IntentHash: sourceIntent,
+					Batch: 1, FirstFleet: 1, LastFleet: 10, Generation: 1, EffectiveEpoch: 2, ValidToEpoch: 33,
+					Calldata: "0x01020304", CalldataHash: crypto.Keccak256Hash(data).Hex(), Fleets: []fleetInstallPreparedFleet{{Fleet: 1}},
+				}
+				if _, err := validateFleetInstallPrepared(prepared, cfg, sourcePlan, archivedAction, 1, 1, 10); err != nil {
+					t.Fatalf("source-bound install preparation rejected: %v", err)
+				}
+				if _, err := validateFleetInstallPrepared(prepared, cfg, currentPlan, currentAction, 1, 1, 10); err == nil {
+					t.Fatal("install preparation accepted the active revision in place of its source plan")
+				}
+			case "refresh":
+				fleets := make([]fleetRefreshPreparedFleet, 10)
+				for index := range fleets {
+					fleets[index].Fleet = index + 1
+				}
+				prepared := &fleetRefreshPreparedEvidence{
+					Schema: fleetRefreshPreparedSchema, DeploymentID: cfg.Config.Deployment.DeploymentID,
+					PlanHash: sourceHash, ActionID: sourceAction.ID, IntentHash: sourceIntent,
+					Batch: 1, FirstFleet: 1, LastFleet: 10, Generation: 2, EffectiveEpoch: 2, ValidToEpoch: 33,
+					Calldata: "0x01020304", CalldataHash: crypto.Keccak256Hash(data).Hex(), Fleets: fleets,
+				}
+				if _, err := validateFleetRefreshPrepared(prepared, cfg, sourcePlan, archivedAction, 1, 1, 10); err != nil {
+					t.Fatalf("source-bound refresh preparation rejected: %v", err)
+				}
+				if _, err := validateFleetRefreshPrepared(prepared, cfg, currentPlan, currentAction, 1, 1, 10); err == nil {
+					t.Fatal("refresh preparation accepted the active revision in place of its source plan")
+				}
+			}
+		})
+	}
+}
+
+func TestCarriedFleetBatchSourceRejectsLineageAndIdentityDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.HeadFleets = 10
+	sourceHash := "0x" + strings.Repeat("aa", 32)
+	sourceIntent := "0x" + strings.Repeat("11", 32)
+	target := "0x1234567890123456789012345678901234567890"
+	newFixture := func() (*SetupPlan, *SetupPlan, Action, JournalEntry) {
+		sourceAction := Action{
+			ID: "fleet.install.batch.1", Kind: "evm-transaction", Target: target, IntentHash: sourceIntent,
+			Parameters: map[string]string{"first_fleet": "1", "last_fleet": "10", "generation": "1"},
+		}
+		currentAction := sourceAction
+		currentAction.IntentHash = "0x" + strings.Repeat("22", 32)
+		currentAction.AcceptedPriorIntentHashes = []string{sourceIntent}
+		deployment := ContractDeployment{
+			Schema: "urnetwork-contract-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, InitialNonce: 13,
+			ReserveSink:                   common.HexToAddress("0x3456789012345678901234567890123456789012"),
+			SettlementVault:               common.HexToAddress("0x4567890123456789012345678901234567890123"),
+			CoordinatorImplementation:     common.HexToAddress("0x5678901234567890123456789012345678901234"),
+			CoordinatorProxy:              common.HexToAddress("0x2345678901234567890123456789012345678901"),
+			GovernanceDrillImplementation: common.HexToAddress("0x6789012345678901234567890123456789012345"),
+			PrecompileProbe:               common.HexToAddress("0x7890123456789012345678901234567890123456"),
+		}
+		source := &SetupPlan{PlanHash: sourceHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, Netuid: cfg.Netuid, Deployment: deployment, Actions: []Action{sourceAction}}
+		current := &SetupPlan{PlanHash: "0x" + strings.Repeat("bb", 32), PriorPlanHashes: []string{sourceHash}, DeploymentID: source.DeploymentID, ChainID: source.ChainID, Netuid: source.Netuid, Deployment: deployment, Actions: []Action{currentAction}}
+		entry := JournalEntry{PlanHash: sourceHash, ActionID: sourceAction.ID, IntentHash: sourceIntent, Stage: StageVerified}
+		return current, source, currentAction, entry
+	}
+	tests := []struct {
+		name   string
+		mutate func(*SetupPlan, *SetupPlan, *Action, *JournalEntry)
+	}{
+		{name: "outside lineage", mutate: func(current, _ *SetupPlan, _ *Action, _ *JournalEntry) { current.PriorPlanHashes = nil }},
+		{name: "unaccepted intent", mutate: func(_ *SetupPlan, _ *SetupPlan, current *Action, _ *JournalEntry) {
+			current.AcceptedPriorIntentHashes = nil
+		}},
+		{name: "wrong journal intent", mutate: func(_ *SetupPlan, _ *SetupPlan, _ *Action, entry *JournalEntry) {
+			entry.IntentHash = "0x" + strings.Repeat("33", 32)
+		}},
+		{name: "different target", mutate: func(_ *SetupPlan, source *SetupPlan, _ *Action, _ *JournalEntry) {
+			source.Actions[0].Target = "0x9999999999999999999999999999999999999999"
+		}},
+		{name: "zero target", mutate: func(_ *SetupPlan, source *SetupPlan, current *Action, _ *JournalEntry) {
+			source.Actions[0].Target = common.Address{}.Hex()
+			current.Target = common.Address{}.Hex()
+		}},
+		{name: "changed range", mutate: func(_ *SetupPlan, source *SetupPlan, _ *Action, _ *JournalEntry) {
+			source.Actions[0].Parameters = map[string]string{"first_fleet": "1", "last_fleet": "9", "generation": "1"}
+		}},
+		{name: "different chain", mutate: func(_ *SetupPlan, source *SetupPlan, _ *Action, _ *JournalEntry) { source.ChainID++ }},
+		{name: "different deployment", mutate: func(_ *SetupPlan, source *SetupPlan, _ *Action, _ *JournalEntry) {
+			source.Deployment.SettlementVault = common.HexToAddress("0x9999999999999999999999999999999999999999")
+		}},
+		{name: "duplicate exact action", mutate: func(_ *SetupPlan, source *SetupPlan, _ *Action, _ *JournalEntry) {
+			source.Actions = append(source.Actions, source.Actions[0])
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			current, source, action, entry := newFixture()
+			test.mutate(current, source, &action, &entry)
+			if _, err := exactCarriedFleetBatchSourceAction(cfg, current, source, action, entry); err == nil {
+				t.Fatal("drifted carried fleet batch source was accepted")
+			}
+		})
+	}
+}
+
+func TestCarriedFleetBatchExecutorLoadsHashAuthenticatedArchivedPlan(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sourceAction Action
+	for _, action := range source.Actions {
+		if action.ID == "fleet.install.batch.1" {
+			sourceAction = action
+			break
+		}
+	}
+	if sourceAction.ID == "" {
+		t.Fatal("built plan has no first fleet install batch")
+	}
+	current := *source
+	current.PlanHash = "0x" + strings.Repeat("ff", 32)
+	current.PriorPlanHashes = append(append([]string(nil), source.PriorPlanHashes...), source.PlanHash)
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "plans", stringsTrim0x(source.PlanHash)+".json")
+	wire, err := json.MarshalIndent(source, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(path, append(wire, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &current}
+	entry := JournalEntry{PlanHash: source.PlanHash, ActionID: sourceAction.ID, IntentHash: sourceAction.IntentHash, Stage: StageVerified}
+	archivedExecutor, archivedAction, err := executor.carriedFleetBatchSourceExecutor(sourceAction, entry)
+	if err != nil || archivedExecutor.plan.PlanHash != source.PlanHash || archivedAction.IntentHash != sourceAction.IntentHash {
+		t.Fatalf("hash-authenticated archived plan rejected: executor=%+v action=%+v err=%v", archivedExecutor, archivedAction, err)
+	}
+	tampered := *source
+	tampered.Actions = append([]Action(nil), source.Actions...)
+	tampered.Actions[0].Description += " tampered"
+	wire, err = json.MarshalIndent(&tampered, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(path, append(wire, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := executor.carriedFleetBatchSourceExecutor(sourceAction, entry); err == nil {
+		t.Fatal("carried executor accepted a modified archived plan under its old hash")
+	}
+}
+
 // The built release plan must deploy/activate once, use twenty atomic install
 // and refresh batches, and leave all head per-member actions read-only.
 func TestBuildPlanBatchesEveryHeadFleetBeforeTopologyLaunch(t *testing.T) {
