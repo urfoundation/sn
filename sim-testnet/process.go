@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -22,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 
@@ -33,6 +36,9 @@ type ProcessSpec struct {
 	Args                                 []string
 	Env                                  map[string]string
 	StdoutPath, StderrPath, HealthURL    string
+	H3ProbeAddress                       string
+	H3ProbeServerName                    string
+	H3ProbeCAFile                        string
 	RestartLimit                         int
 }
 type ProcessState struct {
@@ -1227,9 +1233,15 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 				args = append([]string{svc.module}, args...)
 			}
 			if svc.role == "connect" {
-				args = append(args, "--tls-default-host="+listenIP)
+				args = append(args, "--tls-default-host="+listenIP, "--direct-h3-loopback")
 			}
-			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5})
+			spec := ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5}
+			if svc.role == "connect" {
+				spec.H3ProbeAddress = net.JoinHostPort(listenIP, "443")
+				spec.H3ProbeServerName = listenIP
+				spec.H3ProbeCAFile = operatorConnectCAFile(stateDir)
+			}
+			out = append(out, spec)
 		}
 	}
 	return out, nil
@@ -1646,6 +1658,83 @@ func stopCommands(cmds []*exec.Cmd) {
 		}
 	}
 }
+
+// Completes a real TLS-authenticated QUIC handshake through the exact socket
+// clients will use. HTTP status alone cannot observe a Proxy Protocol wrapper
+// discarding direct UDP before QUIC sees it.
+func probeConnectH3Readiness(ctx context.Context, address, serverName, caFile string) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || port == "" {
+		return fmt.Errorf("invalid H3 readiness address %q", address)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil || !ip.IsLoopback() || serverName != host {
+		return errors.New("H3 readiness identity must be one exact IPv4 loopback address")
+	}
+	caContents, err := os.ReadFile(caFile)
+	if err != nil {
+		return fmt.Errorf("read H3 readiness CA: %w", err)
+	}
+	caCertificate, err := parseSingleCertificatePem(caContents)
+	if err != nil {
+		return fmt.Errorf("parse H3 readiness CA: %w", err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(caCertificate)
+	connection, err := quic.DialAddr(
+		ctx,
+		address,
+		&tls.Config{RootCAs: roots, ServerName: serverName, MinVersion: tls.VersionTLS13},
+		&quic.Config{HandshakeIdleTimeout: time.Second, InitialPacketSize: connect.H3InitialPacketByteCount},
+	)
+	if err != nil {
+		return fmt.Errorf("verified H3 handshake: %w", err)
+	}
+	return connection.CloseWithError(0, "readiness complete")
+}
+
+// Requires both the HTTP control surface and any transport-specific probe.
+// The injected callback gives regressions an exact barrier without timing.
+func processSpecReadinessWithH3Probe(ctx context.Context, client *http.Client, spec ProcessSpec, h3Probe func(context.Context, string, string, string) error) error {
+	if spec.HealthURL == "" {
+		return fmt.Errorf("process %s has no health endpoint", spec.ID)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.HealthURL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(io.Discard, response.Body)
+	closeErr := response.Body.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("health status %d", response.StatusCode)
+	}
+	probeFieldCount := 0
+	for _, value := range []string{spec.H3ProbeAddress, spec.H3ProbeServerName, spec.H3ProbeCAFile} {
+		if value != "" {
+			probeFieldCount++
+		}
+	}
+	if probeFieldCount == 0 {
+		return nil
+	}
+	if probeFieldCount != 3 || h3Probe == nil {
+		return errors.New("H3 readiness probe is incomplete")
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return h3Probe(probeCtx, spec.H3ProbeAddress, spec.H3ProbeServerName, spec.H3ProbeCAFile)
+}
+
 func waitSpecsReady(ctx context.Context, specs []ProcessSpec, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	pending := map[string]ProcessSpec{}
@@ -1656,17 +1745,18 @@ func waitSpecsReady(ctx context.Context, specs []ProcessSpec, timeout time.Durat
 		pending[s.ID] = s
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
+	lastErrors := map[string]error{}
 	for len(pending) > 0 && time.Now().Before(deadline) {
 		for id, s := range pending {
-			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.HealthURL, nil)
-			resp, err := client.Do(req)
-			if err == nil {
-				io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					delete(pending, id)
-				}
+			if err := processSpecReadinessWithH3Probe(ctx, client, s, probeConnectH3Readiness); err == nil {
+				delete(pending, id)
+				delete(lastErrors, id)
+			} else {
+				lastErrors[id] = err
 			}
+		}
+		if len(pending) == 0 {
+			break
 		}
 		select {
 		case <-ctx.Done():
@@ -1675,7 +1765,11 @@ func waitSpecsReady(ctx context.Context, specs []ProcessSpec, timeout time.Durat
 		}
 	}
 	if len(pending) > 0 {
-		return fmt.Errorf("readiness timeout: %v", mapKeys(pending))
+		details := make([]string, 0, len(pending))
+		for _, id := range mapKeys(pending) {
+			details = append(details, fmt.Sprintf("%s: %v", id, lastErrors[id]))
+		}
+		return fmt.Errorf("readiness timeout: %s", strings.Join(details, "; "))
 	}
 	return nil
 }

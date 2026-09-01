@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
 )
 
@@ -118,6 +120,117 @@ func TestWaitSpecsReadyRejectsMissingHealthEndpoint(t *testing.T) {
 	err := waitSpecsReady(context.Background(), []ProcessSpec{{ID: "validator"}}, 0)
 	if err == nil || !strings.Contains(err.Error(), "validator has no health endpoint") {
 		t.Fatalf("missing-health readiness error=%v", err)
+	}
+}
+
+// An HTTP-ready Connect process is not ready when its exact UDP/TLS ingress is
+// unavailable. The callback is the transport barrier, so no timeout or
+// scheduler ordering participates in this regression.
+func TestProcessSpecReadinessRequiresVerifiedH3AfterHTTPHealth(t *testing.T) {
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer health.Close()
+	sentinel := errors.New("direct H3 ingress dropped the QUIC Initial")
+	called := false
+	spec := ProcessSpec{
+		ID:                "operator-1-connect",
+		HealthURL:         health.URL,
+		H3ProbeAddress:    "127.0.1.1:443",
+		H3ProbeServerName: "127.0.1.1",
+		H3ProbeCAFile:     "/release/connect-ca.crt",
+	}
+	err := processSpecReadinessWithH3Probe(
+		context.Background(),
+		&http.Client{},
+		spec,
+		func(_ context.Context, address, serverName, caFile string) error {
+			called = true
+			if address != spec.H3ProbeAddress || serverName != spec.H3ProbeServerName || caFile != spec.H3ProbeCAFile {
+				t.Fatalf("H3 probe arguments = %q %q %q", address, serverName, caFile)
+			}
+			return sentinel
+		},
+	)
+	if !called || !errors.Is(err, sentinel) {
+		t.Fatalf("HTTP-only readiness called=%t error=%v", called, err)
+	}
+}
+
+// A partial transport declaration must fail closed instead of degrading back
+// to the HTTP-only check that missed the live blackhole.
+func TestProcessSpecReadinessRejectsIncompleteH3Identity(t *testing.T) {
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer health.Close()
+	err := processSpecReadinessWithH3Probe(
+		context.Background(),
+		&http.Client{},
+		ProcessSpec{ID: "operator-1-connect", HealthURL: health.URL, H3ProbeAddress: "127.0.1.1:443"},
+		func(context.Context, string, string, string) error {
+			t.Fatal("incomplete H3 identity reached the transport probe")
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "H3 readiness probe is incomplete") {
+		t.Fatalf("incomplete H3 readiness error=%v", err)
+	}
+}
+
+// Exercises the production probe over an actual QUIC socket with the exact
+// deterministic CA and IP-SAN identity rendered for simulator clients.
+func TestConnectH3ReadinessProbeVerifiesRenderedOperatorIdentity(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	caCertificatePem, leafCertificatePem, leafPrivateKeyPem, err := operatorConnectTLSArtifacts(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := tls.X509KeyPair(leafCertificatePem, leafPrivateKeyPem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packetConn, err := net.ListenPacket("udp4", net.JoinHostPort(operatorConnectHostIP(1), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &quic.Transport{Conn: packetConn}
+	listener, err := transport.Listen(
+		&tls.Config{Certificates: []tls.Certificate{certificate}},
+		&quic.Config{HandshakeIdleTimeout: time.Second},
+	)
+	if err != nil {
+		packetConn.Close()
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	defer transport.Close()
+	caFile := filepath.Join(t.TempDir(), "connect-ca.crt")
+	if err := atomicWrite(caFile, caCertificatePem, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+	accepted := make(chan error, 1)
+	go func() {
+		connection, acceptErr := listener.Accept(serverCtx)
+		if acceptErr == nil {
+			acceptErr = connection.CloseWithError(0, "readiness observed")
+		}
+		accepted <- acceptErr
+	}()
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer probeCancel()
+	if err := probeConnectH3Readiness(probeCtx, packetConn.LocalAddr().String(), operatorConnectHostIP(1), caFile); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-accepted:
+		if err != nil {
+			t.Fatalf("accept verified H3 probe: %v", err)
+		}
+	case <-probeCtx.Done():
+		t.Fatal(probeCtx.Err())
 	}
 }
 
@@ -862,7 +975,8 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 
 func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
+	stateDir := t.TempDir()
+	specs, err := buildServerSpecs(cfg, stateDir, map[string]string{
 		"sim-testnet":           "/release/sim-testnet",
 		connectServerBinaryName: "/release/sim-testnet-connect",
 	})
@@ -912,8 +1026,11 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 		if spec.Env["WARP_HOST"] != connectIP || spec.Env["WARP_HOST_IPV4"] != connectIP || spec.HealthURL != fmt.Sprintf("http://%s:%d/status", connectIP, statusPort) {
 			t.Fatalf("%s is not loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
 		}
-		if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 3 || spec.Args[0] != "__server_connect" || spec.Args[2] != "--tls-default-host="+connectIP {
+		if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 4 || spec.Args[0] != "__server_connect" || spec.Args[2] != "--tls-default-host="+connectIP || spec.Args[3] != "--direct-h3-loopback" {
 			t.Fatalf("%s does not use the capability-scoped binary and exact IP TLS fallback: %+v", spec.ID, spec)
+		}
+		if spec.H3ProbeAddress != net.JoinHostPort(connectIP, "443") || spec.H3ProbeServerName != connectIP || spec.H3ProbeCAFile != operatorConnectCAFile(stateDir) {
+			t.Fatalf("%s does not probe its exact verified H3 ingress: %+v", spec.ID, spec)
 		}
 		hostPorts := parseHostPorts(spec.Env["WARP_PORTS"])
 		wantHostPorts := map[int]int{
@@ -981,7 +1098,7 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 				t.Fatalf("%s bypasses the production API module runner: %+v", spec.ID, spec)
 			}
 		case "operator-connect":
-			if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 3 || spec.Args[0] != "__server_connect" || !strings.HasPrefix(spec.Args[2], "--tls-default-host=127.0.1.") {
+			if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 4 || spec.Args[0] != "__server_connect" || !strings.HasPrefix(spec.Args[2], "--tls-default-host=127.0.1.") || spec.Args[3] != "--direct-h3-loopback" || spec.H3ProbeAddress == "" || spec.H3ProbeServerName == "" || spec.H3ProbeCAFile == "" {
 				t.Fatalf("%s bypasses the production connect module runner: %+v", spec.ID, spec)
 			}
 		case "operator-taskworker":

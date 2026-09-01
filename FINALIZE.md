@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A attempt 4 on netuid 521 installed and verified all 200 production fleets plus both generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and then failed closed on a validator restart and absent verified trails before any M0B/phase-2 write. The corresponding provider-discovery, loopback ingress/TLS, public-RPC fairness/snapshot, retry, proof-persistence, and supervisor-generation root fixes have deterministic regressions. The adopted accelerated acceptance profile now requires five consecutive 300-block epochs followed by a future-effective 360-block policy (60-block root window, 180-block finalize offset, 6-block close grace), one conservatively discarded partial epoch, three consecutive fully observed production epochs, and terminal finalization. Every acceptance scenario additionally requires at least one fresh, independently reconstructed and signature-verified proof per required epoch for every validator/operator pair; durable malformed, incomplete or duplicate proof records fail closed. The continuous custody adversary must use a real signed artifact against the deployed testnet vault and observe the exact `InvalidProof` revert with unchanged pinned entitlement and conservation state for both operators. The final adjusted-profile aggregate release gate passes, including the full race, Foundry, Slither, operator DB and infrastructure suites. Adjusted implementation checkpoints SN `69259be` and Connect `d73d7f9` are pushed. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After clean M0A, the practical irreducible public-chain evidence window is approximately 11--13 hours, 2026-09-01 UTC
+**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A attempt 4 on netuid 521 installed and verified all 200 production fleets plus both generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, and reached the complete 32-process topology representing 1,000 miners without entering M0B/phase 2. Successive fail-closed replays exposed and repaired provider discovery, public-RPC fairness/snapshot, retry, proof-persistence, supervisor-generation, startup-order and Connect ingress defects. The latest replay proved clients dialed the exact `127.0.1.1:443` and `127.0.1.2:443` listeners, then isolated a direct-UDP blackhole: production Connect's Proxy Protocol wrapper discarded headerless loopback QUIC Initial packets before quic-go while HTTP status remained green. The explicit loopback-only bypass, TLS-authenticated QUIC readiness barrier and 7-MiB host UDP-buffer gate now have deterministic adjacent regressions; ordinary production ingress retains Proxy Protocol. Server checkpoint `03d89fc9` is pushed, while the current SN checkpoint, aggregate gate, fresh two-plan review and clean replay remain pending. The adopted accelerated acceptance profile requires five consecutive 300-block epochs followed by a future-effective 360-block policy (60-block root window, 180-block finalize offset, 6-block close grace), one conservatively discarded partial epoch, three consecutive fully observed production epochs, and terminal finalization. Every acceptance scenario additionally requires at least one fresh, independently reconstructed and signature-verified proof per required epoch for every validator/operator pair; durable malformed, incomplete or duplicate proof records fail closed. The continuous custody adversary must use a real signed artifact against the deployed testnet vault and observe the exact `InvalidProof` revert with unchanged pinned entitlement and conservation state for both operators. The prior adjusted-profile aggregate release gate passed, including the full race, Foundry, Slither, operator DB and infrastructure suites; it must pass again on the current source lock. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After clean M0A, the practical irreducible public-chain evidence window is approximately 11--13 hours, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -11,14 +11,15 @@ with sufficient alpha. The bounded testnet M0A/M0B acceptance path may use the o
 public RPC override while the private archive catches up. Runtime-452 chain setup,
 replacement contracts, two operators, both validator positions, reserve majority,
 alpha repair, all 200 initial production fleets, all 200 generation-2 refreshes, and
-both challenger fleets are finalized. Attempt 4 crossed every previously repaired
-historical, batching, listener and churn boundary and started every real workload
-module. It exposed four coupled release defects—public-provider starvation, missing
-simulation location metadata, advertised service ports without local ingress, and a
-process-counter reset across supervisor restart—and stopped before phase 2. Those
-defects and adjacent cancellation, coherent snapshot, torn-proof and testnet-market
-cases now have deterministic regressions. A
-source-locked rebuild and clean semantic topology replay is the next M0A boundary.
+both challenger fleets are finalized. Attempt 4 and its fail-closed replays crossed
+the previously repaired historical, batching, listener, churn and startup boundaries
+and started every real workload module. They exposed public-provider starvation,
+missing simulation location metadata, advertised service ports without local ingress,
+a process-counter reset across supervisor restart, dependency startup ordering and a
+direct-UDP/Proxy-Protocol mismatch. Those defects and adjacent cancellation, coherent
+snapshot, torn-proof, testnet-market, transport-identity and host-capacity cases now
+have deterministic regressions. A source-locked rebuild and clean semantic topology
+replay is the next M0A boundary.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
 authorize any mainnet write. An earlier integration topology reached account
@@ -3217,6 +3218,53 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    infrastructure tests passed, and patch hygiene plus the final checkout-lock
    recheck were green. A pushed checkpoint and twice-reproduced plan remain
    required before relaunch.
+
+   The next approved replay used plan
+   `0xd750f7dab38a0d85d3421249f5f8197e9e38ac6e2c675bac8ff801987740ae46`.
+   It passed the carried-history and rendered-config boundaries and started the
+   complete prerequisite and workload topology. Unlike the earlier translated-
+   port generation, current miners opened 35 connections to `127.0.1.1:443` and
+   29 to `127.0.1.2:443`; neither used `127.0.0.1`. Both Connect children owned
+   their expected UDP/443 and UDP/53 sockets and their HTTP status endpoints were
+   green, but every client QUIC attempt ended in handshake-no-response and both
+   validators reported no seed providers. No required trail proof was produced.
+
+   A loopback packet capture then observed client QUIC Initial datagrams reaching
+   both exact UDP/443 destinations with no response. Kernel `UdpInErrors`,
+   `UdpRcvbufErrors` and checksum errors remained zero, socket queues drained and
+   the processes stayed alive, proving an application-layer discard rather than
+   routing, firewall, listener, TLS-identity or receive-starvation failure. Source
+   tracing found the first bad invariant: `DefaultExchangeSettings` enables Proxy
+   Protocol for production ingress, both H3 transports wrap their UDP sockets in
+   `PpPacketConn`, and that wrapper intentionally drops the first datagram from a
+   new source when it lacks a Proxy Protocol header. The simulator dials its
+   loopback Connect listeners directly and therefore supplies no load-balancer
+   header. HTTP health cannot observe that UDP-only wrapper. The harness was
+   explicitly stopped at 16:55 UTC; its static user unit is inactive, all 32
+   children are gone, and chain state, journals and evidence remain intact.
+
+   Connect now exposes an explicit direct-H3 loopback mode that disables the
+   Proxy Protocol wrapper only when both the configured TLS identity and actual
+   listener are IPv4 loopback addresses. External/ordinary production listeners
+   retain Proxy Protocol, and API/taskworker runners reject the transport flag.
+   Simulator readiness now requires a real TLS 1.3 QUIC handshake to each exact
+   operator IP using the deterministic simulator CA in addition to HTTP status;
+   an incomplete probe identity or failed transport handshake prevents every
+   dependent workload from starting. Deterministic regressions reproduce the
+   HTTP-green/UDP-dead boundary, prove the real generated CA/IP handshake, reject
+   partial and external identities, retain production Proxy Protocol and cover
+   the existing missing-header drop behavior under the race detector.
+
+   The same probe exposed an adjacent host-capacity warning: the execution host's
+   212,992-byte kernel UDP maxima limited quic-go to a 416-KiB socket although the
+   locked v0.61 transport requests 7 MiB in both directions. This did not cause
+   the zero-response incident—kernel counters and the Proxy Protocol reproduction
+   exclude it—but it would be unsafe under 1,000-miner load. `doctor` now hard-
+   gates both `net.core.rmem_max` and `net.core.wmem_max` at 7 MiB with malformed,
+   missing and one-direction-low regressions. The execution host is set to a
+   16-MiB margin and the warning is absent. Server checkpoint `03d89fc9` is
+   pushed; the current SN aggregate/release-lock checkpoint and fresh approved
+   replay still remain.
 
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the

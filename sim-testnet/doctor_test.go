@@ -31,6 +31,49 @@ func TestReleaseRequiredToolsIncludeCapabilityInstallerAndNoninteractivePrivileg
 	}
 }
 
+func TestReleaseUDPBufferLimitsRequireBothQuicDirections(t *testing.T) {
+	readLimits := func(values map[string]string) (releaseUDPBufferLimits, error) {
+		return readReleaseUDPBufferLimits(func(path string) ([]byte, error) {
+			value, ok := values[path]
+			if !ok {
+				return nil, os.ErrNotExist
+			}
+			return []byte(value), nil
+		})
+	}
+	valid := map[string]string{
+		"/proc/sys/net/core/rmem_max": "7340032\n",
+		"/proc/sys/net/core/wmem_max": "16777216\n",
+	}
+	limits, err := readLimits(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReleaseUDPBufferLimits(limits); err != nil {
+		t.Fatalf("exact QUIC receive floor was rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{name: "receive below floor", values: map[string]string{"/proc/sys/net/core/rmem_max": "7340031", "/proc/sys/net/core/wmem_max": "16777216"}, want: "rmem_max"},
+		{name: "send below floor", values: map[string]string{"/proc/sys/net/core/rmem_max": "16777216", "/proc/sys/net/core/wmem_max": "7340031"}, want: "wmem_max"},
+		{name: "malformed receive", values: map[string]string{"/proc/sys/net/core/rmem_max": "7 MiB", "/proc/sys/net/core/wmem_max": "16777216"}, want: "parse"},
+		{name: "missing send", values: map[string]string{"/proc/sys/net/core/rmem_max": "16777216"}, want: "send buffer"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			limits, readErr := readLimits(test.values)
+			if readErr == nil {
+				readErr = validateReleaseUDPBufferLimits(limits)
+			}
+			if readErr == nil || !strings.Contains(readErr.Error(), test.want) {
+				t.Fatalf("adjacent invalid UDP limits error=%v", readErr)
+			}
+		})
+	}
+}
+
 func TestDoctorPlanBudgetForStateUsesJournaledProgressAcrossReleaseDrift(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)

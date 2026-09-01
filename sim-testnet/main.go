@@ -207,10 +207,12 @@ func runMain(args []string) error {
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var port, count, batchSize int
 		var tlsDefaultHost string
+		var directH3Loopback bool
 		fs.IntVar(&port, "port", 0, "")
 		fs.IntVar(&count, "count", 8, "")
 		fs.IntVar(&batchSize, "batch_size", 4, "")
 		fs.StringVar(&tlsDefaultHost, "tls-default-host", "", "")
+		fs.BoolVar(&directH3Loopback, "direct-h3-loopback", false, "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -220,8 +222,8 @@ func runMain(args []string) error {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if component == "__server_api" {
-			if tlsDefaultHost != "" {
-				return errors.New("API module cannot set a TLS default host")
+			if tlsDefaultHost != "" || directH3Loopback {
+				return errors.New("API module cannot set Connect transport options")
 			}
 			return serverapi.Run(ctx, serverapi.RunOptions{Port: port})
 		}
@@ -230,10 +232,13 @@ func runMain(args []string) error {
 			if ip == nil || ip.To4() == nil || !ip.IsLoopback() {
 				return errors.New("connect module requires an IPv4 loopback TLS default host")
 			}
-			return serverconnect.Run(ctx, serverconnect.RunOptions{Port: port, TLSDefaultHostName: tlsDefaultHost})
+			if !directH3Loopback {
+				return errors.New("simulator Connect module requires direct H3 loopback mode")
+			}
+			return serverconnect.Run(ctx, serverconnect.RunOptions{Port: port, TLSDefaultHostName: tlsDefaultHost, DirectH3LoopbackMode: true})
 		}
-		if tlsDefaultHost != "" {
-			return errors.New("taskworker module cannot set a TLS default host")
+		if tlsDefaultHost != "" || directH3Loopback {
+			return errors.New("taskworker module cannot set Connect transport options")
 		}
 		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
 	}

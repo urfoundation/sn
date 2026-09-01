@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,6 +73,49 @@ type doctorPlanBudget struct {
 	Plan      *SetupPlan
 	Remaining Spend
 	StateDir  string
+}
+
+const minimumReleaseUDPBufferBytes uint64 = 7 << 20
+
+type releaseUDPBufferLimits struct {
+	ReceiveMax uint64
+	SendMax    uint64
+}
+
+func readReleaseUDPBufferLimits(readFile func(string) ([]byte, error)) (releaseUDPBufferLimits, error) {
+	read := func(path string) (uint64, error) {
+		contents, err := readFile(path)
+		if err != nil {
+			return 0, err
+		}
+		value := strings.TrimSpace(string(contents))
+		parsed, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parse %s value %q: %w", path, value, err)
+		}
+		return parsed, nil
+	}
+	limits := releaseUDPBufferLimits{}
+	var err error
+	limits.ReceiveMax, err = read("/proc/sys/net/core/rmem_max")
+	if err != nil {
+		return limits, fmt.Errorf("read maximum UDP receive buffer: %w", err)
+	}
+	limits.SendMax, err = read("/proc/sys/net/core/wmem_max")
+	if err != nil {
+		return limits, fmt.Errorf("read maximum UDP send buffer: %w", err)
+	}
+	return limits, nil
+}
+
+func validateReleaseUDPBufferLimits(limits releaseUDPBufferLimits) error {
+	if limits.ReceiveMax < minimumReleaseUDPBufferBytes {
+		return fmt.Errorf("net.core.rmem_max=%d is below the QUIC release minimum %d", limits.ReceiveMax, minimumReleaseUDPBufferBytes)
+	}
+	if limits.SendMax < minimumReleaseUDPBufferBytes {
+		return fmt.Errorf("net.core.wmem_max=%d is below the QUIC release minimum %d", limits.SendMax, minimumReleaseUDPBufferBytes)
+	}
+	return nil
 }
 
 func RunDoctor(ctx context.Context, cfg *ResolvedConfig) DoctorReport {
@@ -149,6 +193,11 @@ func releaseRequiredTools(effectiveUserID int) []string {
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
 	r := DoctorReport{Schema: "urnetwork-sim-doctor-v1", GeneratedAt: time.Now().UTC().Format(time.RFC3339), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, Ready: true}
 	r.add("host/linux-amd64", true, validateHostPlatform(runtime.GOOS, runtime.GOARCH), runtime.GOOS+"/"+runtime.GOARCH)
+	udpLimits, udpBufferErr := readReleaseUDPBufferLimits(os.ReadFile)
+	if udpBufferErr == nil {
+		udpBufferErr = validateReleaseUDPBufferLimits(udpLimits)
+	}
+	r.add("host/udp-buffer-limits", true, udpBufferErr, fmt.Sprintf("rmem_max=%d wmem_max=%d minimum=%d", udpLimits.ReceiveMax, udpLimits.SendMax, minimumReleaseUDPBufferBytes))
 	defaultStateRoot := filepath.Dir(cfg.ConfigPath)
 	freeBytes, diskErr := filesystemFreeBytes(defaultStateRoot)
 	if diskErr == nil {
