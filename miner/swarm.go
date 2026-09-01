@@ -205,7 +205,9 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 	if err != nil {
 		return err
 	}
-	api := sdk.NewApi(ctx, connect.NewClientStrategy(ctx, settings), member.APIURL)
+	strategy := connect.NewClientStrategy(ctx, settings)
+	defer strategy.Close()
+	api := sdk.NewApi(ctx, strategy, member.APIURL)
 	defer api.Close()
 	api.SetByJwt(jwt)
 	result, err := api.SnSetWalletSync(&sdk.SnSetWalletArgs{ColdkeySs58: member.Wallet})
@@ -222,6 +224,7 @@ type providerSwarmInstance struct {
 	device     *sdk.DeviceLocal
 	refreshSub sdk.Sub
 	logoutSub  sdk.Sub
+	cancel     context.CancelFunc
 }
 
 func (self *providerSwarmInstance) close() {
@@ -236,6 +239,9 @@ func (self *providerSwarmInstance) close() {
 	}
 	if self.logoutSub != nil {
 		self.logoutSub.Close()
+	}
+	if self.cancel != nil {
+		self.cancel()
 	}
 }
 
@@ -261,7 +267,8 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 	if err != nil {
 		return nil, err
 	}
-	networkSpace := sdk.NewNetworkSpaceWithUrls(ctx, member.APIURL, member.ConnectURL, strategySettings)
+	memberCtx, memberCancel := context.WithCancel(ctx)
+	networkSpace := sdk.NewNetworkSpaceWithUrls(memberCtx, member.APIURL, member.ConnectURL, strategySettings)
 	api := networkSpace.GetApi()
 	clientJWTPath := filepath.Join(member.StateDir, ".provider.jwt")
 	refreshSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
@@ -279,6 +286,7 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 	if err != nil {
 		refreshSub.Close()
 		logoutSub.Close()
+		memberCancel()
 		return nil, err
 	}
 	device.SetProvideControlMode(sdk.ProvideControlModeAlways)
@@ -287,9 +295,10 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 		device.Close()
 		refreshSub.Close()
 		logoutSub.Close()
+		memberCancel()
 		return nil, err
 	}
-	return &providerSwarmInstance{device: device, refreshSub: refreshSub, logoutSub: logoutSub}, nil
+	return &providerSwarmInstance{device: device, refreshSub: refreshSub, logoutSub: logoutSub, cancel: memberCancel}, nil
 }
 
 func NewProviderSwarm(config *ProviderSwarmConfig) (*ProviderSwarm, error) {

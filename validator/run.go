@@ -249,6 +249,7 @@ func auth(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
 	defer api.Close()
 
@@ -338,6 +339,7 @@ func run(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
 	defer api.Close()
 

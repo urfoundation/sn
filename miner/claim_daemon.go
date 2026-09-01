@@ -755,6 +755,7 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, chainStateLo
 		return err
 	}
 	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer strategy.Close()
 	api := sdk.NewApi(ctx, strategy, cfg.APIURL)
 	defer api.Close()
 	jwt, err := readClaimDaemonJWT(cfg)

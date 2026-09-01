@@ -1874,6 +1874,7 @@ func provisionSimulationAccounts(ctx context.Context, cfg *ResolvedConfig, state
 
 func provisionClientJWT(ctx context.Context, apiURL, networkJWTPath, clientJWTPath, description string) (connect.Id, error) {
 	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer strategy.Close()
 	api := sdk.NewApi(ctx, strategy, apiURL)
 	defer api.Close()
 	_, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, networkJWTPath, clientJWTPath, description)

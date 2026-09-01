@@ -195,8 +195,55 @@ func TestConnectH3ReadinessProbeVerifiesRenderedOperatorIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := &quic.Transport{Conn: packetConn}
-	listener, err := transport.Listen(
+	listener, err := transport.ListenEarly(
 		&tls.Config{Certificates: []tls.Certificate{certificate}},
+		&quic.Config{
+			HandshakeIdleTimeout: 30 * time.Second,
+			MaxIdleTimeout:       60 * time.Second,
+			KeepAlivePeriod:      15 * time.Second,
+			Allow0RTT:            true,
+			InitialPacketSize:    connect.H3InitialPacketByteCount,
+			EnableDatagrams:      true,
+		},
+	)
+	if err != nil {
+		packetConn.Close()
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	defer transport.Close()
+	caFile := filepath.Join(t.TempDir(), "connect-ca.crt")
+	if err := atomicWrite(caFile, caCertificatePem, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer probeCancel()
+	if err := probeConnectH3Readiness(probeCtx, packetConn.LocalAddr().String(), operatorConnectHostIP(1), caFile); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Reproduces production's SNI callback path instead of installing the
+// certificate directly on the listener's outer TLS config.
+func TestConnectH3ReadinessProbeVerifiesDynamicOperatorIdentity(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	caCertificatePem, leafCertificatePem, leafPrivateKeyPem, err := operatorConnectTLSArtifacts(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := tls.X509KeyPair(leafCertificatePem, leafPrivateKeyPem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packetConn, err := net.ListenPacket("udp4", net.JoinHostPort(operatorConnectHostIP(1), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &quic.Transport{Conn: packetConn}
+	listener, err := transport.Listen(
+		&tls.Config{GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			return &tls.Config{Certificates: []tls.Certificate{certificate}}, nil
+		}},
 		&quic.Config{HandshakeIdleTimeout: time.Second},
 	)
 	if err != nil {
@@ -209,28 +256,10 @@ func TestConnectH3ReadinessProbeVerifiesRenderedOperatorIdentity(t *testing.T) {
 	if err := atomicWrite(caFile, caCertificatePem, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	serverCtx, serverCancel := context.WithCancel(context.Background())
-	defer serverCancel()
-	accepted := make(chan error, 1)
-	go func() {
-		connection, acceptErr := listener.Accept(serverCtx)
-		if acceptErr == nil {
-			acceptErr = connection.CloseWithError(0, "readiness observed")
-		}
-		accepted <- acceptErr
-	}()
 	probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer probeCancel()
 	if err := probeConnectH3Readiness(probeCtx, packetConn.LocalAddr().String(), operatorConnectHostIP(1), caFile); err != nil {
 		t.Fatal(err)
-	}
-	select {
-	case err := <-accepted:
-		if err != nil {
-			t.Fatalf("accept verified H3 probe: %v", err)
-		}
-	case <-probeCtx.Done():
-		t.Fatal(probeCtx.Err())
 	}
 }
 

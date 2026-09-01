@@ -153,6 +153,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
 	if err != nil {
 		api.Close()
+		strategy.Close()
 		return nil, fmt.Errorf("no_id %d authentication: %w", op.NoID, err)
 	}
 
@@ -191,6 +192,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		platformTransport.Close()
 		identityClient.Close()
 		api.Close()
+		strategy.Close()
 		return nil, fmt.Errorf("no_id %d stats: %w", op.NoID, err)
 	}
 	store, err := NewProofStore(op.StateDir)
@@ -200,6 +202,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		platformTransport.Close()
 		identityClient.Close()
 		api.Close()
+		strategy.Close()
 		return nil, err
 	}
 	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
@@ -242,6 +245,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 			platformTransport.Close()
 			identityClient.Close()
 			api.Close()
+			strategy.Close()
 		},
 	}, nil
 }

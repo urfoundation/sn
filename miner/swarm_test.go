@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urfoundation/sn/ss58"
+	"github.com/urnetwork/connect"
 )
 
 func validProviderSwarmConfig(t *testing.T) ProviderSwarmConfig {
@@ -179,5 +181,109 @@ func TestProviderSwarmDialerUsesExactLoopbackSource(t *testing.T) {
 	defer serverConnection.Close()
 	if host, _, _ := net.SplitHostPort(serverConnection.RemoteAddr().String()); host != "127.64.8.17" {
 		t.Fatalf("observed source = %s, want 127.64.8.17", host)
+	}
+}
+
+// Reproduces the one-shot wallet setup used for every swarm member. Returning
+// from setup must release its keep-alive socket while the swarm context stays
+// live, or a production-sized swarm retains one connection per identity.
+func TestSetSwarmMemberWalletClosesOneShotStrategy(t *testing.T) {
+	type connectionContextKey struct{}
+	type connectionStateEvent struct {
+		connection net.Conn
+		state      http.ConnState
+	}
+	walletConnections := make(chan net.Conn, 1)
+	connectionStateEvents := make(chan connectionStateEvent, 16)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/hello" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/sn/wallet" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		connection, ok := r.Context().Value(connectionContextKey{}).(net.Conn)
+		if !ok {
+			http.Error(w, "missing server connection", http.StatusInternalServerError)
+			return
+		}
+		select {
+		case walletConnections <- connection:
+		default:
+			http.Error(w, "duplicate wallet request", http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	server.Config.ConnContext = func(ctx context.Context, connection net.Conn) context.Context {
+		return context.WithValue(ctx, connectionContextKey{}, connection)
+	}
+	server.Config.ConnState = func(connection net.Conn, state http.ConnState) {
+		select {
+		case connectionStateEvents <- connectionStateEvent{connection: connection, state: state}:
+		default:
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "jwt"), []byte("test-jwt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings := connect.DefaultClientStrategySettings()
+	settings.EnableResilient = false
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := setSwarmMemberWallet(ctx, ProviderSwarmMember{
+		APIURL:   server.URL,
+		StateDir: stateDir,
+		Wallet:   "test-wallet",
+	}, settings); err != nil {
+		t.Fatal(err)
+	}
+	var walletConnection net.Conn
+	select {
+	case walletConnection = <-walletConnections:
+	case <-time.After(5 * time.Second):
+		t.Fatal("wallet setup request was not observed")
+	}
+	idleObserved := false
+	for {
+		select {
+		case event := <-connectionStateEvents:
+			if event.connection != walletConnection {
+				continue
+			}
+			switch event.state {
+			case http.StateIdle:
+				idleObserved = true
+			case http.StateClosed:
+				if !idleObserved {
+					t.Fatal("wallet setup connection closed without entering the reusable idle pool")
+				}
+				return
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("wallet setup retained its one-shot strategy connection")
+		}
+	}
+}
+
+// A disabled member owns a child lifetime, independent of the still-running
+// swarm. Closing it must end that lifetime so its network space releases every
+// strategy callback and pooled connection before the member is enabled again.
+func TestProviderSwarmInstanceCloseCancelsMemberLifetime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	instance := &providerSwarmInstance{cancel: cancel}
+	instance.close()
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("closing swarm member retained its child lifetime")
 	}
 }

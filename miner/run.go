@@ -269,6 +269,7 @@ func auth(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
 	defer api.Close()
 
@@ -404,6 +405,7 @@ func provide(opts docopt.Opts) {
 			fmt.Printf("subnet wallet not set: %s\n", err)
 			fmt.Printf("continuing to provide. Retry with: provider wallet set <coldkey_ss58>\n")
 		}
+		walletClientStrategy.Close()
 	}
 
 	allProxySettings := readProxySettings()

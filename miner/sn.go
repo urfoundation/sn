@@ -109,6 +109,7 @@ func walletSet(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer clientStrategy.Close()
 
 	coldkeySs58, _ := opts.String("<coldkey_ss58>")
 	if err := snSetWallet(ctx, clientStrategy, apiUrl, coldkeySs58); err != nil {
@@ -149,6 +150,7 @@ func claim(opts docopt.Opts) {
 	defer cancel()
 
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
+	defer clientStrategy.Close()
 
 	dryRun, _ := opts.Bool("--dry-run")
 	keyFile, _ := opts.String("--key_file")
