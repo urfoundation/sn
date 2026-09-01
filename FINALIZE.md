@@ -3119,6 +3119,66 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    clean pushed checkpoint and two identical read-only builds are still
    required before the next launch.
 
+   Checkpoint `866f39a` was pushed after that aggregate, and two clean
+   reconstructions at finalized Substrate/EVM heads 7,910,527/7,910,528 and
+   7,910,540/7,910,541 produced the identical 2,238-action, 46-ancestor plan
+   `0xbf60437185fabd20b9a439c68da35f2a0afe7ec710faf532d3d019efb1b670ac`
+   under release-lock hash
+   `0x5acb34a277212ed7c5fe40579837dc5ba4b7a8afffa03c6b81526c6a6a8815e4`.
+   Its authorized launch passed the 1,000/1,000 historical-fleet audit and all
+   2,217/2,217 carried-action checks. `config.render` then failed closed at
+   journal entries 10,021--10,022 because it required `churn-4-hotkey` to be
+   live. It issued no transaction and launched no process.
+
+   The chain was in the exact completed-tournament state already authenticated
+   by the ancestry: challenger fleets 201 and 202 finalized in blocks 7,907,210
+   and 7,907,274 and the tournament barrier verified at journal sequence 9,997,
+   replacing generation-one churn identities 4 and 5. Plan revision already
+   accepted only exact bounded tournament prefixes, but the config-render
+   postcondition still selected the pre-tournament role set unconditionally.
+   It now derives a contiguous challenger prefix from the approved lineage and
+   exact finalized chain state, requires every current contract registration,
+   rejects an out-of-order challenger or premature tournament barrier, and then
+   verifies that complete selected role set against finalized chain state.
+   Adjacent recovery review found a second boundary: if a challenger transaction
+   finalized but the host stopped before its postcondition entry was durable, a
+   source-only replay audited the earlier `churn.register.N` and `config.render`
+   actions before it reached the challenger action that would recover the
+   receipt. The missing churn identity was therefore rejected even though the
+   same approved transaction had installed its exact replacement.
+
+   Recovery now treats only an accepted intent with a transaction identity in
+   the approved plan ancestry as authorization to consider an interrupted
+   replacement; authorization alone never establishes success. Finalized live
+   registration state must independently be either the exact retryable pre-state
+   or exact in-place replacement post-state, and challenger progress must remain
+   a contiguous prefix. The complete topology check then verifies every selected
+   hotkey's coldkey owner. A broadcast/dropped transaction with exact pre-state is
+   retryable, an exact finalized replacement is recoverable, and foreign plans,
+   wrong intents, missing transaction identities, unauthorized live challengers,
+   partial states, out-of-order progress and premature barriers fail closed.
+   Verified actions retain the stronger completed-state path.
+
+   Deterministic regressions cover the original completed-tournament failure, a
+   one-challenger prefix, both sides of the interrupted-transaction boundary,
+   every unsafe adjacent registration-state mutation, missing contract
+   registration, foreign plan/intent/transaction evidence, unauthorized and
+   out-of-order challengers, and a premature barrier; focused normal and race
+   runs pass. An opt-in test authenticated the live 10,022-entry journal and
+   selected the expected 254-role completed-tournament set without making an RPC
+   call. A second read-only live regression reran the complete failed
+   postcondition with the interrupted-transaction hardening and passed in 290.57
+   seconds, proving all 254 controlled roles, 256 unique live UIDs at the
+   approved maximum and runtime manifest
+   `0xf45f8ea5144b738fc3a9cb380a1c0cb3fcca29d5830502d6c7f389a5e1ff7876`.
+   The current-source aggregate then passed: the ordinary simulator suite
+   completed in 174.270 seconds and the complete race suite in 618.426 seconds;
+   both Solidity roots had zero Slither findings, all 145 Foundry tests and
+   4,608 invariant calls passed, the operator PostgreSQL/Redis and all 26
+   Subtensor infrastructure tests passed, and patch hygiene plus the final
+   source-lock recheck were green. The failed candidate is superseded; a clean
+   checkpoint and two-build approval cycle must still complete before relaunch.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
@@ -3149,8 +3209,8 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 173.737 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 626.085 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 174.270 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 618.426 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |

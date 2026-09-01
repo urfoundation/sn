@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -486,6 +488,276 @@ func TestTopologyRoleSetsExactlySwapChurnFloorForChallengers(t *testing.T) {
 			t.Fatalf("unexpected role %q appeared in tournament", label)
 		}
 	}
+}
+
+// Build an exact active-plan journal without involving either chain so phase
+// selection failures are deterministic.
+func renderedConfigTopologyFixture(t *testing.T, generation uint64, verifiedActionIDs []string) *Executor {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	actionIDs := []string{"evm.vault-register-escrow"}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		actionIDs = append(actionIDs, fmt.Sprintf("operator.register.%d", operator))
+	}
+	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
+		actionIDs = append(actionIDs, fmt.Sprintf("fleet.register.%d", cfg.Config.Topology.HeadFleets+challenger))
+	}
+	actionIDs = append(actionIDs, "churn.tournament-complete")
+	plan := &SetupPlan{
+		PlanHash: "active-plan",
+		Deployment: ContractDeployment{
+			RegistrationRoleGeneration: generation,
+		},
+	}
+	for _, actionID := range actionIDs {
+		plan.Actions = append(plan.Actions, Action{ID: actionID, IntentHash: "intent-" + actionID})
+	}
+	journal := &Journal{}
+	for index, actionID := range verifiedActionIDs {
+		action := actionByID(t, plan, actionID)
+		journal.entries = append(journal.entries, JournalEntry{
+			Sequence:   uint64(index + 1),
+			PlanHash:   plan.PlanHash,
+			ActionID:   action.ID,
+			IntentHash: action.IntentHash,
+			Stage:      StageVerified,
+		})
+	}
+	return &Executor{cfg: cfg, plan: plan, journal: journal}
+}
+
+// Model finalized challenger UID pairs at an exact contiguous progress point.
+func renderedConfigChallengerStates(t *testing.T, topology TopologyConfig, registrations int) []challengerChurnState {
+	t.Helper()
+	if registrations < 0 || registrations > topology.ChallengerFleets {
+		t.Fatalf("challenger registrations=%d", registrations)
+	}
+	maximum := uint16(hyperparameterUint64(testResolvedConfig(t).Hyperparameters.OwnerControlled["max_allowed_uids"]))
+	states := make([]challengerChurnState, topology.ChallengerFleets)
+	for index := range states {
+		expectedUID := uint16(100 + index)
+		states[index] = challengerChurnState{
+			ExpectedUID: expectedUID, RuntimePruneUID: expectedUID, UIDCount: maximum, MaximumUIDs: maximum,
+			ChallengerUID: expectedUID, ChallengerFound: index < registrations,
+			ChurnUID: expectedUID, ChurnFound: index >= registrations,
+		}
+	}
+	return states
+}
+
+// Reproduce the live source-rerender boundary after both challengers replaced
+// generation-one churn identities.
+func TestRenderedConfigTopologyUsesCompletedTournamentLineage(t *testing.T) {
+	verifiedActionIDs := []string{
+		"evm.vault-register-escrow", "operator.register.1", "operator.register.2",
+		"fleet.register.201", "fleet.register.202", "churn.tournament-complete",
+	}
+	executor := renderedConfigTopologyFixture(t, 1, verifiedActionIDs)
+	states := renderedConfigChallengerStates(t, executor.cfg.Config.Topology, 2)
+	labels, err := executor.renderedConfigTopologyRoleLabelsFromStates(states)
+	want := tournamentTopologyRoleLabels(executor.cfg.Config.Topology, 1)
+	if err != nil || !slices.Equal(labels, want) {
+		t.Fatalf("completed tournament labels differ: labels=%v want=%v err=%v", labels, want, err)
+	}
+	for _, retired := range []string{churnHotkeyLabel(4), churnHotkeyLabel(5)} {
+		if slices.Contains(labels, retired) {
+			t.Fatalf("completed tournament still requires replaced identity %s", retired)
+		}
+	}
+}
+
+// Preserve the one-challenger recovery boundary without admitting a later
+// registration out of order.
+func TestRenderedConfigTopologyUsesVerifiedChallengerPrefix(t *testing.T) {
+	verifiedActionIDs := []string{
+		"evm.vault-register-escrow", "operator.register.1", "operator.register.2", "fleet.register.201",
+	}
+	executor := renderedConfigTopologyFixture(t, 1, verifiedActionIDs)
+	states := renderedConfigChallengerStates(t, executor.cfg.Config.Topology, 1)
+	labels, err := executor.renderedConfigTopologyRoleLabelsFromStates(states)
+	want, wantErr := topologyRoleLabelsAtProgress(executor.cfg.Config.Topology, 1, 3, 1)
+	if err != nil || wantErr != nil || !slices.Equal(labels, want) {
+		t.Fatalf("challenger-prefix labels differ: labels=%v want=%v errors=%v/%v", labels, want, err, wantErr)
+	}
+}
+
+// Reject journal shapes that cannot arise from the approved sequential
+// registration and tournament dependency chain.
+func TestRenderedConfigTopologyRejectsUnverifiedOrOutOfOrderLineage(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	initialStates := renderedConfigChallengerStates(t, cfg.Config.Topology, 0)
+	outOfOrderStates := renderedConfigChallengerStates(t, cfg.Config.Topology, 0)
+	outOfOrderStates[1] = renderedConfigChallengerStates(t, cfg.Config.Topology, 2)[1]
+	prefixStates := renderedConfigChallengerStates(t, cfg.Config.Topology, 1)
+	cases := []struct {
+		name              string
+		verifiedActionIDs []string
+		states            []challengerChurnState
+		wantError         string
+	}{
+		{
+			name:              "missing contract registration",
+			verifiedActionIDs: []string{"evm.vault-register-escrow", "operator.register.1"},
+			states:            initialStates,
+			wantError:         "operator.register.2",
+		},
+		{
+			name: "out-of-order challenger",
+			verifiedActionIDs: []string{
+				"evm.vault-register-escrow", "operator.register.1", "operator.register.2", "fleet.register.202",
+			},
+			states:    outOfOrderStates,
+			wantError: "live after an unregistered predecessor",
+		},
+		{
+			name: "unauthorized live challenger",
+			verifiedActionIDs: []string{
+				"evm.vault-register-escrow", "operator.register.1", "operator.register.2",
+			},
+			states:    prefixStates,
+			wantError: "without an exact transaction",
+		},
+		{
+			name: "premature tournament barrier",
+			verifiedActionIDs: []string{
+				"evm.vault-register-escrow", "operator.register.1", "operator.register.2",
+				"fleet.register.201", "churn.tournament-complete",
+			},
+			states:    prefixStates,
+			wantError: "only 1/2",
+		},
+	}
+	for _, testCase := range cases {
+		executor := renderedConfigTopologyFixture(t, 1, testCase.verifiedActionIDs)
+		_, err := executor.renderedConfigTopologyRoleLabelsFromStates(testCase.states)
+		if err == nil || !strings.Contains(err.Error(), testCase.wantError) {
+			t.Errorf("%s error=%v, want %q", testCase.name, err, testCase.wantError)
+		}
+	}
+}
+
+// Do not infer a replacement from a foreign plan, wrong intent, or a journal
+// entry that carries no transaction identity.
+func TestInterruptedReplacementRequiresExactPlanIntentTransaction(t *testing.T) {
+	verifiedActionIDs := []string{"evm.vault-register-escrow", "operator.register.1", "operator.register.2"}
+	cases := []JournalEntry{
+		{PlanHash: "foreign-plan", ActionID: "fleet.register.201", IntentHash: "intent-fleet.register.201", Stage: StageFinalized, TransactionHash: "0x" + strings.Repeat("11", 32)},
+		{PlanHash: "active-plan", ActionID: "fleet.register.201", IntentHash: "wrong-intent", Stage: StageFinalized, TransactionHash: "0x" + strings.Repeat("22", 32)},
+		{PlanHash: "active-plan", ActionID: "fleet.register.201", IntentHash: "intent-fleet.register.201", Stage: StageFinalized},
+	}
+	for index, entry := range cases {
+		executor := renderedConfigTopologyFixture(t, 1, verifiedActionIDs)
+		executor.journal.entries = append(executor.journal.entries, entry)
+		if replacement, found := executor.transactionReplacementForChurn(4); found {
+			t.Errorf("case %d accepted replacement %q", index, replacement)
+		}
+	}
+}
+
+// Recover both possible finalized states after a transaction was recorded but
+// before its postcondition entry was durable.
+func TestRenderedConfigTopologyRecoversInterruptedChallengerTransaction(t *testing.T) {
+	verifiedActionIDs := []string{"evm.vault-register-escrow", "operator.register.1", "operator.register.2"}
+	executor := renderedConfigTopologyFixture(t, 1, verifiedActionIDs)
+	action := actionByID(t, executor.plan, "fleet.register.201")
+	executor.journal.entries = append(executor.journal.entries, JournalEntry{
+		Sequence: 4, PlanHash: executor.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		Stage: StageFinalized, TransactionHash: "0x" + strings.Repeat("12", 32),
+	})
+	postStates := renderedConfigChallengerStates(t, executor.cfg.Config.Topology, 1)
+	labels, err := executor.renderedConfigTopologyRoleLabelsFromStates(postStates)
+	wantPost, wantPostErr := topologyRoleLabelsAtProgress(executor.cfg.Config.Topology, 1, 3, 1)
+	if err != nil || wantPostErr != nil || !slices.Equal(labels, wantPost) {
+		t.Fatalf("finalized interrupted challenger labels=%v want=%v errors=%v/%v", labels, wantPost, err, wantPostErr)
+	}
+	preStates := renderedConfigChallengerStates(t, executor.cfg.Config.Topology, 0)
+	labels, err = executor.renderedConfigTopologyRoleLabelsFromStates(preStates)
+	wantPre := initialTopologyRoleLabels(executor.cfg.Config.Topology, 1)
+	if err != nil || !slices.Equal(labels, wantPre) {
+		t.Fatalf("dropped interrupted challenger labels=%v want=%v err=%v", labels, wantPre, err)
+	}
+	replacement, found := executor.transactionReplacementForChurn(4)
+	if !found || replacement != fleetHotkeyLabel(201) {
+		t.Fatalf("interrupted churn replacement=%q found=%t", replacement, found)
+	}
+}
+
+// Exercise the exact persisted deployment lineage without making an RPC call.
+func TestLiveRenderedConfigTopologyLineage(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_TOPOLOGY_LINEAGE") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_TOPOLOGY_LINEAGE=1 to verify the persisted live topology phase")
+	}
+	stateDir := os.Getenv("SIM_TESTNET_STATE_DIR")
+	if stateDir == "" {
+		t.Fatal("SIM_TESTNET_STATE_DIR is required")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := readPersistedPlan(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{cfg: cfg, plan: plan, journal: &Journal{entries: entries}}
+	states := renderedConfigChallengerStates(t, cfg.Config.Topology, cfg.Config.Topology.ChallengerFleets)
+	labels, err := executor.renderedConfigTopologyRoleLabelsFromStates(states)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := tournamentTopologyRoleLabels(cfg.Config.Topology, plan.Deployment.RegistrationRoleGeneration)
+	if !slices.Equal(labels, want) {
+		t.Fatalf("persisted topology phase differs from the completed tournament: labels=%v want=%v", labels, want)
+	}
+	t.Logf("plan=%s journal_entries=%d registration_generation=%d controlled_roles=%d", plan.PlanHash, len(entries), plan.Deployment.RegistrationRoleGeneration, len(labels))
+}
+
+// Re-run the failed config-render postcondition against the finalized network
+// and existing immutable runtime files without executing an action.
+func TestLiveRenderedConfigPostcondition(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_RENDERED_CONFIG_POSTCONDITION") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_RENDERED_CONFIG_POSTCONDITION=1 to verify the full live config postcondition")
+	}
+	stateDir := os.Getenv("SIM_TESTNET_STATE_DIR")
+	if stateDir == "" {
+		t.Fatal("SIM_TESTNET_STATE_DIR is required")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := readPersistedPlan(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roles RoleSecrets
+	if err := readJSONFile(filepath.Join(stateDir, "secrets", "roles.json"), &roles); err != nil {
+		t.Fatal(err)
+	}
+	substrate, err := DialSubstrateManager(cfg, stateDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer substrate.Close()
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, journal: &Journal{entries: entries}, roles: &roles, substrate: substrate}
+	state, err := executor.actionPostState(context.Background(), actionByID(t, plan, "config.render"), ChainHead{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRoles := len(tournamentTopologyRoleLabels(cfg.Config.Topology, plan.Deployment.RegistrationRoleGeneration))
+	wantUIDCount := uint16(wantRoles + len(plan.LiveFacts.ExistingUIDs))
+	if state["initial_registered_roles"] != wantRoles || state["uid_count"] != wantUIDCount {
+		t.Fatalf("live runtime topology state=%v", state)
+	}
+	t.Logf("plan=%s roles=%v uid_count=%v manifest=%v", plan.PlanHash, state["initial_registered_roles"], state["uid_count"], state["runtime_config_manifest_hash"])
 }
 
 func TestIndependentReadExecutorRoutesEveryChainReader(t *testing.T) {

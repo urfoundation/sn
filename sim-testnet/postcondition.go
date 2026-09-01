@@ -581,11 +581,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		return e.verifyRegistration(fleetHotkeyLabel(fleet), fleetColdkeyLabel(fleet), common.Address{}, state)
 	case strings.HasPrefix(a.ID, "churn.register."):
-		churn := suffixInt(a.ID)
-		if replacement, replaced := e.expectedReplacementForChurn(churn); replaced {
-			return e.verifyPrunedChurnPostcondition(churn, replacement, state)
-		}
-		return e.verifyRegistration(churnHotkeyLabel(churn), churnColdkeyLabel(churn), common.Address{}, state)
+		return e.verifyChurnRegistrationPostState(suffixInt(a.ID), state)
 	case strings.HasPrefix(a.ID, "validator.register."):
 		validator := suffixInt(a.ID)
 		return e.verifyRegistration(validatorHotkeyLabel(validator), fmt.Sprintf("validator-%d-coldkey", validator), common.Address{}, state)
@@ -787,10 +783,13 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
-		labels := initialTopologyRoleLabels(e.cfg.Config.Topology, e.plan.Deployment.RegistrationRoleGeneration)
+		labels, err := e.renderedConfigTopologyRoleLabels()
+		if err != nil {
+			return nil, fmt.Errorf("resolve runtime registration topology: %w", err)
+		}
 		count, err := e.verifyExactTopologyRoleSet(labels)
 		if err != nil {
-			return nil, fmt.Errorf("pre-launch initial registration topology: %w", err)
+			return nil, fmt.Errorf("runtime registration topology: %w", err)
 		}
 		state["initial_registered_roles"] = len(labels)
 		state["preserved_bootstrap_uids"] = len(e.plan.LiveFacts.ExistingUIDs)
@@ -1126,6 +1125,168 @@ func (e *Executor) expectedReplacementForChurn(churn int) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// Recognize an exact transaction-bearing intent even when a crash prevented
+// the final postcondition entry. Live state still decides whether that
+// transaction took effect; the journal only bounds which replacement may be
+// considered.
+func (self *Executor) actionTransactionRecorded(id string) bool {
+	action, err := self.planAction(id)
+	if err != nil || self.journal == nil {
+		return false
+	}
+	allowedPlanHashes := self.plan.allowedPlanHashes()
+	for _, entry := range self.journal.Entries() {
+		if allowedPlanHashes[entry.PlanHash] && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) && entry.TransactionHash != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Map a transaction-bearing current-generation action to the one churn role
+// it is allowed to replace. Completed verified replacements are handled by the
+// stronger expectedReplacementForChurn path first.
+func (self *Executor) transactionReplacementForChurn(churn int) (string, bool) {
+	generation := self.plan.Deployment.RegistrationRoleGeneration
+	count := contractRegistrationRoleCount(self.cfg.Config.Topology)
+	if generation > 0 {
+		offset := int(generation-1) * count
+		if churn > offset && churn <= offset+count {
+			ordinal := churn - offset
+			actionID := "evm.vault-register-escrow"
+			if ordinal > 1 {
+				actionID = fmt.Sprintf("operator.register.%d", ordinal-1)
+			}
+			if self.actionTransactionRecorded(actionID) {
+				return contractRegistrationRoleLabels(self.cfg.Config.Topology, generation)[ordinal-1], true
+			}
+		}
+	}
+	challengerOffset := int(generation) * count
+	if churn > challengerOffset && churn <= challengerOffset+self.cfg.Config.Topology.ChallengerFleets {
+		challenger := churn - challengerOffset
+		fleet := self.cfg.Config.Topology.HeadFleets + challenger
+		if self.actionTransactionRecorded(fmt.Sprintf("fleet.register.%d", fleet)) {
+			return fleetHotkeyLabel(fleet), true
+		}
+	}
+	return "", false
+}
+
+// Accept either side of an interrupted exact replacement transaction. The
+// full live pre/post validators prevent a broadcast-only or failed transaction
+// from being mistaken for a completed prune.
+func (self *Executor) verifyChurnRegistrationPostState(churn int, state map[string]any) (map[string]any, error) {
+	if replacement, replaced := self.expectedReplacementForChurn(churn); replaced {
+		return self.verifyPrunedChurnPostcondition(churn, replacement, state)
+	}
+	replacement, attempted := self.transactionReplacementForChurn(churn)
+	if !attempted {
+		return self.verifyRegistration(churnHotkeyLabel(churn), churnColdkeyLabel(churn), common.Address{}, state)
+	}
+	result, err := self.readRegistrationReplacementState(churn, replacement)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateRegistrationReplacementPostState(result); err == nil {
+		state["role"] = churnHotkeyLabel(churn)
+		state["status"] = "intentionally_pruned"
+		state["replaced_by"] = replacement
+		state["uid"] = result.ExpectedUID
+		return state, nil
+	} else if preErr := validateRegistrationReplacementPreState(result); preErr != nil {
+		return nil, fmt.Errorf("recorded replacement is neither exact post-state (%v) nor retryable pre-state (%v)", err, preErr)
+	}
+	return self.verifyRegistration(churnHotkeyLabel(churn), churnColdkeyLabel(churn), common.Address{}, state)
+}
+
+// Validate one bounded finalized challenger prefix. A transaction record
+// authorizes consideration of a replacement but cannot establish it: the live
+// UID pair must independently be an exact pre-state or exact post-state.
+func validateRenderedConfigChallengerProgress(topology TopologyConfig, states []challengerChurnState, transactionOrVerified []bool, tournamentVerified bool) (int, error) {
+	if len(states) != topology.ChallengerFleets || len(transactionOrVerified) != len(states) {
+		return 0, errors.New("runtime challenger topology evidence is incomplete")
+	}
+	registrations := 0
+	seenPreState := false
+	for index, state := range states {
+		postErr := validateChallengerChurnPostState(state)
+		preErr := validateChallengerChurnPreState(state)
+		switch {
+		case postErr == nil:
+			if !transactionOrVerified[index] {
+				return 0, fmt.Errorf("challenger %d is live without an exact transaction or verified action", index+1)
+			}
+			if seenPreState {
+				return 0, fmt.Errorf("challenger %d is live after an unregistered predecessor", index+1)
+			}
+			registrations++
+		case preErr == nil:
+			seenPreState = true
+		default:
+			return 0, fmt.Errorf("challenger %d is neither exact post-state (%v) nor retryable pre-state (%v)", index+1, postErr, preErr)
+		}
+	}
+	if tournamentVerified && registrations != topology.ChallengerFleets {
+		return 0, fmt.Errorf("tournament barrier is verified with only %d/%d challenger registrations", registrations, topology.ChallengerFleets)
+	}
+	return registrations, nil
+}
+
+// Select the only registration phase authenticated by the active plan
+// lineage. A source-only rerender can occur after the tournament has already
+// replaced churn identities, so requiring the pre-launch set would reject the
+// exact durable state that the same harness previously verified.
+func (self *Executor) renderedConfigTopologyRoleLabels() ([]string, error) {
+	if self == nil || self.cfg == nil || self.cfg.Config == nil || self.plan == nil || self.journal == nil {
+		return nil, errors.New("runtime registration topology context is incomplete")
+	}
+	topology := self.cfg.Config.Topology
+	states := make([]challengerChurnState, 0, topology.ChallengerFleets)
+	for challenger := 1; challenger <= topology.ChallengerFleets; challenger++ {
+		state, err := self.readChallengerChurnState(topology.HeadFleets + challenger)
+		if err != nil {
+			return nil, fmt.Errorf("challenger %d live topology: %w", challenger, err)
+		}
+		states = append(states, state)
+	}
+	return self.renderedConfigTopologyRoleLabelsFromStates(states)
+}
+
+// Separate phase authorization from RPC observation so every pre/post and
+// crash boundary can be exercised deterministically.
+func (self *Executor) renderedConfigTopologyRoleLabelsFromStates(states []challengerChurnState) ([]string, error) {
+	if self == nil || self.cfg == nil || self.cfg.Config == nil || self.plan == nil || self.journal == nil {
+		return nil, errors.New("runtime registration topology context is incomplete")
+	}
+	topology := self.cfg.Config.Topology
+	contractRegistrationActionIDs := []string{"evm.vault-register-escrow"}
+	for operator := 1; operator <= topology.Operators; operator++ {
+		contractRegistrationActionIDs = append(contractRegistrationActionIDs, fmt.Sprintf("operator.register.%d", operator))
+	}
+	for _, actionID := range contractRegistrationActionIDs {
+		if !self.actionVerified(actionID) {
+			return nil, fmt.Errorf("required contract registration %s is not exactly verified", actionID)
+		}
+	}
+
+	transactionOrVerified := make([]bool, 0, topology.ChallengerFleets)
+	for challenger := 1; challenger <= topology.ChallengerFleets; challenger++ {
+		fleet := topology.HeadFleets + challenger
+		actionID := fmt.Sprintf("fleet.register.%d", fleet)
+		transactionOrVerified = append(transactionOrVerified, self.actionVerified(actionID) || self.actionTransactionRecorded(actionID))
+	}
+	challengerRegistrations, err := validateRenderedConfigChallengerProgress(topology, states, transactionOrVerified, self.actionVerified("churn.tournament-complete"))
+	if err != nil {
+		return nil, err
+	}
+	contractRegistrations := 0
+	if self.plan.Deployment.RegistrationRoleGeneration > 0 {
+		contractRegistrations = contractRegistrationRoleCount(topology)
+	}
+	return topologyRoleLabelsAtProgress(topology, self.plan.Deployment.RegistrationRoleGeneration, contractRegistrations, challengerRegistrations)
 }
 
 func (e *Executor) verifyExactTopologyRoleSet(labels []string) (uint16, error) {

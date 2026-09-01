@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// Verify the exact rendered live inventory without mutating it.
 func TestLiveRuntimeConfigManifest(t *testing.T) {
 	if os.Getenv("SIM_TESTNET_LIVE_RUNTIME_CONFIG") != "1" {
 		t.Skip("set SIM_TESTNET_LIVE_RUNTIME_CONFIG=1 to verify the rendered live runtime inventory")
@@ -199,13 +200,11 @@ func TestRuntimeConfigManifestAcceptsOnlyExactOperatorConfigOverlays(t *testing.
 		}},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			cfg, stateDir := fixture(t)
-			test.run(t, cfg, stateDir)
-			if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(test.want)) {
-				t.Fatalf("overlay mutation error=%v, want %q", err, test.want)
-			}
-		})
+		cfg, stateDir := fixture(t)
+		test.run(t, cfg, stateDir)
+		if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(test.want)) {
+			t.Errorf("%s overlay mutation error=%v, want %q", test.name, err, test.want)
+		}
 	}
 }
 
