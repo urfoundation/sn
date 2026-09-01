@@ -3,6 +3,7 @@ set -euo pipefail
 
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
+release_repos=(sn server connect sdk glog goidenticons proxy userwireguard vault xops config)
 
 if ! command -v forge >/dev/null 2>&1 && [[ -x "$HOME/.foundry/bin/forge" ]]; then
   export PATH="$HOME/.foundry/bin:$PATH"
@@ -52,7 +53,13 @@ echo "[release-1.0] operator pure/unit suites"
   go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^TestVerifyEgressExactIndexAndPrefixScoreAreIndependent$'
-  go test ./api/... ./model -run '^$'
+  # The immutable sim-latency baseline contains manifest-locked reference test
+  # inputs that compile only after their archived patches are applied. Verify
+  # that dataset with its own checker and compile every executable package.
+  "$workspace/server/connect/sim-latency/baseline/verify.sh" >/dev/null
+  echo "sim-latency immutable baseline: verified"
+  mapfile -t server_packages < <(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')
+  go test "${server_packages[@]}" -run '^$'
 )
 
 echo "[release-1.0] shared verify wire and public SDK suites"
@@ -87,8 +94,17 @@ echo "[release-1.0] Subtensor infrastructure regressions"
 )
 
 echo "[release-1.0] patch hygiene"
-for repo in sn server connect sdk vault xops; do
+for repo in "${release_repos[@]}"; do
   git -C "$workspace/$repo" diff --check
+  git -C "$workspace/$repo" diff --cached --check
 done
+
+echo "[release-1.0] final release-lock checkout"
+(
+  cd "$sn_repo"
+  # The full Go suite checks this near the start. Repeat it after every long
+  # gate so an independently updated sibling checkout cannot escape the run.
+  go test ./sim-testnet -run '^TestReleaseLockMatchesCheckout$' -count=1
+)
 
 echo "[release-1.0] local release gate passed"
