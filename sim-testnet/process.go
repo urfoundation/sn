@@ -149,6 +149,14 @@ const managedContainerSpecHashLabel = "com.urnetwork.sim-testnet.spec-hash"
 
 const minimumReleaseStateFreeBytes uint64 = 20 * 1024 * 1024 * 1024
 
+const (
+	operatorConnectH3HostPortBase               = 23080
+	operatorConnectDNSHostPortBase              = 23180
+	operatorConnectDNSCompatibilityHostPortBase = 23280
+	operatorConnectExchangeHostPortBase         = 23380
+	operatorConnectExchangePortCount            = 2
+)
+
 // Return available bytes to an unprivileged writer, which is the capacity the
 // simulator can actually consume rather than root-reserved filesystem space.
 func filesystemFreeBytes(path string) (uint64, error) {
@@ -181,6 +189,10 @@ func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
 		for _, port := range []int{18080 + operator, 19080 + operator, 20080 + operator} {
 			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
 		}
+		connectHostPorts := operatorConnectHostPorts(operator, 19080+operator)
+		for servicePort := 5080; servicePort < 5080+operatorConnectExchangePortCount; servicePort++ {
+			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", connectHostPorts[servicePort]))
+		}
 		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 22080+operator))
 	}
 	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
@@ -190,16 +202,61 @@ func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
 	return addresses
 }
 
+// Enumerate every simulator-owned UDP listener used by the production connect
+// transports. Compatibility DNS stays live here so the testnet exercises the
+// same listener set expected during the mainnet port migration.
+func releaseProcessPacketListenAddresses(cfg *ResolvedConfig) []string {
+	addresses := make([]string, 0, 3*cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		connectHostPorts := operatorConnectHostPorts(operator, 19080+operator)
+		for _, servicePort := range []int{443, 4053, 8053} {
+			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", connectHostPorts[servicePort]))
+		}
+	}
+	sort.Strings(addresses)
+	return addresses
+}
+
 // Bind every required address while no topology owns it. This is deliberately
 // immediately pre-apply; a stale or unrelated listener fails before chain work.
 func validateAvailableListenAddresses(addresses []string) error {
+	return validateAvailableNetworkListenAddresses("tcp", addresses)
+}
+
+// Bind every required packet address before the persistent topology starts.
+// A conflicting H3 or DNS listener is as fatal as a conflicting HTTP socket.
+func validateAvailablePacketListenAddresses(addresses []string) error {
+	return validateAvailableNetworkListenAddresses("udp", addresses)
+}
+
+// Reject duplicate allocations before probing the kernel. Connect deliberately
+// enables reuse-port, so relying on bind failure alone could hide a collision.
+func validateAvailableNetworkListenAddresses(network string, addresses []string) error {
+	seenAddresses := map[string]bool{}
 	for _, address := range addresses {
-		listener, err := net.Listen("tcp", address)
+		if seenAddresses[address] {
+			return fmt.Errorf("duplicate simulator %s listener %s", network, address)
+		}
+		seenAddresses[address] = true
+		if network == "udp" {
+			listener, err := net.ListenPacket(network, address)
+			if err != nil {
+				return fmt.Errorf("required simulator %s listener %s is unavailable: %w", network, address, err)
+			}
+			if err := listener.Close(); err != nil {
+				return fmt.Errorf("close simulator %s listener probe %s: %w", network, address, err)
+			}
+			continue
+		}
+		if network != "tcp" {
+			return fmt.Errorf("unsupported simulator listener network %q", network)
+		}
+		listener, err := net.Listen(network, address)
 		if err != nil {
-			return fmt.Errorf("required simulator listener %s is unavailable: %w", address, err)
+			return fmt.Errorf("required simulator %s listener %s is unavailable: %w", network, address, err)
 		}
 		if err := listener.Close(); err != nil {
-			return fmt.Errorf("close simulator listener probe %s: %w", address, err)
+			return fmt.Errorf("close simulator %s listener probe %s: %w", network, address, err)
 		}
 	}
 	return nil
@@ -253,7 +310,10 @@ func preflightReleaseHost(ctx context.Context, stateDir string, cfg *ResolvedCon
 	if err := recoverStaleTemporaryProcesses(ctx, stateDir, cfg.Config.Deployment.DeploymentID, selectProvisioningServerSpecs(serverSpecs)); err != nil {
 		return fmt.Errorf("recover interrupted provisioning helpers: %w", err)
 	}
-	return validateAvailableListenAddresses(releaseProcessListenAddresses(cfg))
+	if err := validateAvailableListenAddresses(releaseProcessListenAddresses(cfg)); err != nil {
+		return err
+	}
+	return validateAvailablePacketListenAddresses(releaseProcessPacketListenAddresses(cfg))
 }
 
 // postTopologyTournamentActions returns the only setup actions which are
@@ -725,6 +785,39 @@ func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedConta
 	return fmt.Errorf("container %s readiness output %q, want %q", spec.Name, lastOutput, spec.ReadyExpected)
 }
 
+// Allocate every production connect listener onto a deterministic, disjoint
+// loopback port. The map keys remain Warp service ports and the values are the
+// host ports advertised by the exchange.
+func operatorConnectHostPorts(operator, statusPort int) map[int]int {
+	hostPorts := map[int]int{
+		443:        operatorConnectH3HostPortBase + operator,
+		4053:       operatorConnectDNSHostPortBase + operator,
+		8053:       operatorConnectDNSCompatibilityHostPortBase + operator,
+		statusPort: statusPort,
+	}
+	firstExchangeHostPort := operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 1
+	for offset := 0; offset < operatorConnectExchangePortCount; offset++ {
+		hostPorts[5080+offset] = firstExchangeHostPort + offset
+	}
+	return hostPorts
+}
+
+// Encode Warp's service-to-host mapping in stable service-port order so the
+// supervisor manifest and its hash do not depend on map iteration order.
+func operatorConnectWarpPorts(operator, statusPort int) string {
+	hostPorts := operatorConnectHostPorts(operator, statusPort)
+	servicePorts := make([]int, 0, len(hostPorts))
+	for servicePort := range hostPorts {
+		servicePorts = append(servicePorts, servicePort)
+	}
+	sort.Ints(servicePorts)
+	portPairs := make([]string, 0, len(servicePorts))
+	for _, servicePort := range servicePorts {
+		portPairs = append(portPairs, fmt.Sprintf("%d:%d", servicePort, hostPorts[servicePort]))
+	}
+	return strings.Join(portPairs, ",")
+}
+
 func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) ([]ProcessSpec, error) {
 	if bins["sim-testnet"] == "" {
 		return nil, errors.New("workload RPC proxy requires the sim-testnet release binary")
@@ -774,6 +867,10 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", "sim-testnet", "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
 			env := cloneStrings(baseEnv)
 			env["WARP_SERVICE"] = svc.role
+			if svc.role == "connect" {
+				env["WARP_HOST_IPV4"] = "127.0.0.1"
+				env["WARP_PORTS"] = operatorConnectWarpPorts(i, svc.port)
+			}
 			id := fmt.Sprintf("operator-%d-%s", i, svc.role)
 			args := []string{fmt.Sprintf("--port=%d", svc.port)}
 			if svc.module != "" {

@@ -236,12 +236,35 @@ func TestReleaseHostPreflightRejectsFullDiskAndOccupiedPort(t *testing.T) {
 	if err := validateAvailableListenAddresses([]string{address}); err != nil {
 		t.Fatal(err)
 	}
+	if err := validateAvailableListenAddresses([]string{address, address}); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate simulator listeners were accepted: %v", err)
+	}
+}
+
+func TestReleaseHostPreflightRejectsOccupiedPacketPort(t *testing.T) {
+	listener, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.LocalAddr().String()
+	if err := validateAvailablePacketListenAddresses([]string{address}); err == nil || !strings.Contains(err.Error(), address) {
+		t.Fatalf("occupied simulator packet listener was accepted: %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateAvailablePacketListenAddresses([]string{address}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateAvailablePacketListenAddresses([]string{address, address}); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate simulator packet listeners were accepted: %v", err)
+	}
 }
 
 func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	addresses := releaseProcessListenAddresses(cfg)
-	want := 4 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses
+	want := 4 + (4+operatorConnectExchangePortCount)*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses
 	if len(addresses) != want {
 		t.Fatalf("release listener count=%d, want %d: %v", len(addresses), want, addresses)
 	}
@@ -254,6 +277,26 @@ func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.
 		host, _, err := net.SplitHostPort(address)
 		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 			t.Fatalf("release listener is not loopback-confined: %q (%v)", address, err)
+		}
+	}
+}
+
+func TestReleaseProcessPacketListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	addresses := releaseProcessPacketListenAddresses(cfg)
+	want := 3 * cfg.Config.Topology.Operators
+	if len(addresses) != want {
+		t.Fatalf("release packet listener count=%d, want %d: %v", len(addresses), want, addresses)
+	}
+	seenAddresses := map[string]bool{}
+	for _, address := range addresses {
+		if seenAddresses[address] {
+			t.Fatalf("duplicate release packet listener %s", address)
+		}
+		seenAddresses[address] = true
+		host, _, err := net.SplitHostPort(address)
+		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
+			t.Fatalf("release packet listener is not loopback-confined: %q (%v)", address, err)
 		}
 	}
 }
@@ -386,6 +429,74 @@ func TestPostTopologyTournamentSelectionRejectsMalformedBoundaries(t *testing.T)
 		if err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Fatalf("%s: error=%v, want substring %q", test.name, err, test.want)
 		}
+	}
+}
+
+func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/release/sim-testnet"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parseHostPorts := func(value string) map[int]int {
+		hostPorts := map[int]int{}
+		for _, portPair := range strings.Split(value, ",") {
+			servicePort := 0
+			hostPort := 0
+			if _, err := fmt.Sscanf(portPair, "%d:%d", &servicePort, &hostPort); err != nil {
+				t.Fatalf("invalid WARP_PORTS pair %q: %v", portPair, err)
+			}
+			if hostPorts[servicePort] != 0 {
+				t.Fatalf("duplicate service port %d in %q", servicePort, value)
+			}
+			hostPorts[servicePort] = hostPort
+		}
+		return hostPorts
+	}
+	seenHostPorts := map[int]string{}
+	connectCount := 0
+	for _, spec := range specs {
+		if spec.Role != "operator-connect" {
+			if spec.Role == "operator-api" || spec.Role == "operator-taskworker" {
+				if spec.Env["WARP_PORTS"] != "" || spec.Env["WARP_HOST_IPV4"] != "" {
+					t.Fatalf("%s inherited connect-only listener allocation: %+v", spec.ID, spec.Env)
+				}
+			}
+			continue
+		}
+		connectCount++
+		operator := 0
+		if _, err := fmt.Sscanf(spec.ID, "operator-%d-connect", &operator); err != nil || operator < 1 {
+			t.Fatalf("invalid connect process identity %q: %v", spec.ID, err)
+		}
+		statusPort := 19080 + operator
+		if spec.Env["WARP_HOST_IPV4"] != "127.0.0.1" || spec.HealthURL != fmt.Sprintf("http://127.0.0.1:%d/status", statusPort) {
+			t.Fatalf("%s is not loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
+		}
+		hostPorts := parseHostPorts(spec.Env["WARP_PORTS"])
+		wantHostPorts := map[int]int{
+			443:        operatorConnectH3HostPortBase + operator,
+			4053:       operatorConnectDNSHostPortBase + operator,
+			5080:       operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 1,
+			5081:       operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 2,
+			8053:       operatorConnectDNSCompatibilityHostPortBase + operator,
+			statusPort: statusPort,
+		}
+		if len(hostPorts) != len(wantHostPorts) {
+			t.Fatalf("%s WARP_PORTS=%q parsed=%v, want %v", spec.ID, spec.Env["WARP_PORTS"], hostPorts, wantHostPorts)
+		}
+		for servicePort, wantHostPort := range wantHostPorts {
+			if hostPorts[servicePort] != wantHostPort {
+				t.Fatalf("%s service port %d maps to %d, want %d", spec.ID, servicePort, hostPorts[servicePort], wantHostPort)
+			}
+			if owner := seenHostPorts[wantHostPort]; owner != "" {
+				t.Fatalf("connect host port %d is shared by %s and %s", wantHostPort, owner, spec.ID)
+			}
+			seenHostPorts[wantHostPort] = spec.ID
+		}
+	}
+	if connectCount != cfg.Config.Topology.Operators {
+		t.Fatalf("connect process count=%d, want %d", connectCount, cfg.Config.Topology.Operators)
 	}
 }
 

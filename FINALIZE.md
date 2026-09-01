@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The systemd launch defect, carried temporary-oracle history defect, emission-diluted reserve repair and generation-1 supersession rules are corrected and regression-tested. The latest approved plan `0xd072a8c5e6ebfdbfa820b8dc04e5956ecaa04c720a7263ea7d6683aa5093f6d1` passed the new 1,000/1,000 batched historical fleet proof and completed all 2,202 carried audit jobs. It then failed before mutation while checking `fleet.refresh.batch.1`: each carried generation-2 refresh still used about 100 independently rate-gated HTTP requests, so a member read exhausted its five-minute context behind the official provider's process-wide 60-request/minute gate. The journal remains byte-identical at 7,156,816 bytes; no signature, transaction or service start occurred. Refresh preparation now resolves all 40 predecessor bindings in two bounded requests, carried refresh state resolves all 140 mirror/version/cardinality calls in three, and the five-field oracle snapshot uses one. Every call remains pinned to the selected block and every mirror, version count, predecessor, successor, member count and deterministic manifest-member field is checked exactly; operational RPC failures are no longer mislabeled as dishonest replacement state. Deterministic tests lock the exact `[50,30]`, `[50,50,40]` and `[5]` partitions, transport classification, all adjacent state mutations, incomplete identities and foreign signed manifest members. The corrected non-test Go tree is locked by `sha256:543926a14a20cc00bb79d1a7a80df4f58a2e9f2badf33a75289aa51b1864914d`. The complete local release gate passed under that lock and checkpoint `e56a5ce` is pushed. A subsequent read-only doctor correctly stopped because five sibling repositories had fast-forwarded during that long gate after its early lock test. All live RPC, wallet, budget, netuid, MinIO, Docker and systemd checks were green; no testnet mutation occurred. The new sibling revisions are audited and locked, every changed production package compiles, all new focused/race regressions pass, and the strengthened aggregate gate passed with a final exact lock recheck across all eleven release repositories. The second checkpoint, two stable plans, exact replay and topology health proof remain before M0A can proceed; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-09-01 UTC
+**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and all 200 generation-2 replacements/revocations. After checkpoint `c5cb9e2`, doctor returned `ready=true` with zero hard failures and two expected same-provider public-RPC soft warnings. Two independent 2,239-action plans were identical at `0xfdd4600b2969c9ddc4653f906730f16e74f9507f94c9a45d455fb11ab325106e`, bounded by 165,673,232,000 TAO rao, 21,994,500,000,000 alpha rao, 148,909,500,000,000,000,000 gas wei and 256 registrations. Exact launch proved 1,000/1,000 historical fleet receipts and all 2,202 carried actions; the repaired batched refresh boundary passed. It then finalized alpha repair transaction `0xc9fffaa4b0255ebf13fa6631bdaab45d234480fb9dfe4bf1a97c0f38367ff0d1` at block 7,906,926, verified its postcondition and verified validator reserve majority. Topology startup exposed a new fail-closed defect: both real operator connect modules panicked because their rendered environments omitted mandatory `WARP_PORTS`, exhausted five supervised retries and caused the three-minute readiness gate to fail; all other 30 processes were healthy. The supervisor was stopped cleanly and no process remains. The root fix now gives each connect module deterministic disjoint loopback mappings for HTTP, H3, primary and compatibility DNS, and two exchange sockets; preflight covers both hidden TCP and UDP listeners and rejects duplicate allocations before reuse-port can mask them. A real rendered operator probe served all mapped transports and drained cleanly. Focused, race, adjacent topology and full simulator tests pass; the corrected non-test Go tree is locked by `sha256:abcf2f22bc113b7e09f6f2e2217d6f71c06dc2a16360bd7e259014f2ea95fe55`. A full aggregate gate, checkpoint/push and exact replay remain before M0A can close. M0B/phase 2 has not started; the overlapping M1/M2 campaign, three consecutive 8-hour M3 blocks and MR remain pending, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -18,16 +18,19 @@ receipt recovery now have deterministic tests. The runtime-452 doctor passed;
 replacement contracts, two operators, both validator positions, reserve
 majority, alpha repair and the 200 fleet UID registrations are finalized. The
 accelerated commitment/binding setup is complete through all 200 initial fleet
-installs and all 200 generation-2 refresh/revocation checks. Topology launch is
-the next M0A boundary after correction of the rejected user-systemd unit,
-historically consumed oracle state, emission-diluted reserve repair and the
-legacy generation-1 fleet-history replay exposed by the subsequent exact audit.
+installs and all 200 generation-2 refresh/revocation checks. The exact replay
+passed every historical and carried-action boundary, applied the remaining
+validator alpha repair and reached real topology readiness. Both connect
+modules then exposed the missing Warp listener allocation described in the
+status above; the other 30 supervised processes were healthy and were stopped
+after evidence capture. The deterministic listener fix is implemented and a
+clean topology replay is the next M0A boundary.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
 authorize any mainnet write. An earlier integration topology reached account
 provisioning but stopped before its first conviction call when the two-share-floor
-defect was found. The current accelerated setup reached topology-launch
-preparation, but systemd rejected the generated unit before starting it; no
+defect was found. The latest topology started the real operator, miner and
+validator modules but failed closed at connect readiness; after `stop`, no
 workload supervisor or child service is running. The testnet-only cumulative
 alpha ceiling is 22,000 alpha and each emission-dilution repair is additionally
 capped at a fixed 3,000-alpha tranche.
@@ -47,12 +50,13 @@ node is synced.
 
 The release-1.0 implementation passed its testnet preflight and the applied
 portion of bounded setup against the official public operational RPC pair at
-runtime 452. M0A is resumable but not complete, and live topology/campaign proof
-has not begun. It is
-not yet a testnet-validated release:
+runtime 452. M0A is resumable but not complete. Live topology proof began and
+correctly failed on the missing connect listener allocation; the campaign has
+not begun. It is not yet a testnet-validated release:
 Docker is installed and both isolated operator PostgreSQL/Redis pairs pass
-authenticated live readiness checks, but the remaining M0A actions and live
-M0B-M3/MR campaign have not run. Wallet control, netuid 521, balances, runtime
+authenticated live readiness checks, but the corrected M0A topology must be
+replayed and the live M0B-M3/MR campaign has not run. Wallet control, netuid
+521, balances, runtime
 call shapes, subnet activation
 and sufficient campaign alpha have been independently verified. Runtime drift and
 deployment revision are fail-closed in code; no default or unprefixed mainnet value can
@@ -91,7 +95,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch is gated on the corrected carried refresh replay | Runtime-452 doctor was hard-green apart from intentional fail-closed release-lock drift after sibling repositories advanced; those revisions are now audited, locked, and green under the strengthened complete release gate. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. Plan `0xd072…f6d1` proved the 1,000 historical receipts and ran all 2,202 carried jobs, then exposed the adjacent unbatched generation-2 verifier before mutation. A production refresh now uses three state requests rather than about 100; fresh preparation uses two prior-state requests rather than 40; oracle state uses one rather than five. Exact state and manifest identity remain fail-closed and deterministic regression/race tests pass. Two new live plans and exact replay remain. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; corrected topology replay pending | Runtime-452 doctor is hard-green. Two plans matched at `0xfdd460…5106e`; replay proved 1,000/1,000 historical receipts, all 2,202 carried actions and the corrected batched refresh, then finalized/verified the remaining validator alpha repair at block 7,906,926. The real 32-process topology started with 30 healthy processes and exposed missing `WARP_PORTS` in both connect processes. Readiness failed closed after five retries and the supervisor was stopped cleanly. The fix allocates every HTTP/H3/DNS/exchange listener distinctly and preflights TCP, UDP and duplicate reuse-port allocations; deterministic/race/full tests and a real rendered connect probe pass. Commit, aggregate gate, two renewed plans and exact topology replay remain. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2743,6 +2747,44 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    The previously content-locked but uncommitted runtime-452 Subtensor vars and
    operator documentation were then rebased and pushed in `xops` commit
    `2d8ef58`, making the identical infrastructure input portable.
+
+   Checkpoint `c5cb9e2` was pushed after that gate. A renewed doctor returned
+   `ready=true` with no hard failures; its only soft findings were the explicit
+   public-mode same-provider observations. Two independent plans then matched
+   exactly at `0xfdd4600b2969c9ddc4653f906730f16e74f9507f94c9a45d455fb11ab325106e`
+   with 2,239 actions and maximum spend of 165,673,232,000 TAO rao,
+   21,994,500,000,000 alpha rao, 148,909,500,000,000,000,000 gas wei and
+   256 registrations. Exact launch completed the 1,000/1,000 historical proof,
+   all 2,202 carried checks and the formerly failing batched refresh boundary.
+   It finalized `alpha.repair.validator.1.2` as transaction
+   `0xc9fffaa4b0255ebf13fa6631bdaab45d234480fb9dfe4bf1a97c0f38367ff0d1`
+   in block 7,906,926, verified the postcondition and then verified
+   `validator.reserve-majority`.
+
+   The real topology started at 2026-09-01 01:18 UTC. Both
+   `operator-*-connect` children deterministically panicked at
+   `server.RequireHostPorts` because the harness did not render `WARP_PORTS`;
+   after five retries each, the three-minute readiness gate failed. Every other
+   process was healthy: both RPC proxies, both APIs and task workers, 20 miner
+   swarms representing all 1,000 miners, both claim relayers and both
+   validators. The supervisor was stopped through the harness and no child
+   remains. This is a harness configuration defect, not a tolerated flaky
+   start or infrastructure outage.
+
+   The corrected process manifest allocates disjoint loopback host ports for
+   service ports 443, 4053, 8053, 5080, 5081 and each connect status listener.
+   Only connect inherits `WARP_HOST_IPV4`/`WARP_PORTS`; APIs, task workers and
+   migrations remain unaffected. Host preflight now binds the previously
+   hidden exchange TCP sockets and H3/DNS UDP sockets and rejects duplicate
+   address assignments before production reuse-port behavior could conceal a
+   collision. A deterministic regression reproduces the missing environment,
+   checks all six mappings for both operators and proves cross-operator
+   uniqueness. Separate tests force occupied TCP/UDP sockets and duplicate
+   allocations. Focused normal/race, adjacent process/supervisor and the full
+   simulator suite pass. A real rendered operator probe brought up HTTP, H3,
+   primary DNS, the exchange and clean drain; compatibility DNS is included in
+   the committed mapping. The new non-test Go lock is
+   `sha256:abcf2f22bc113b7e09f6f2e2217d6f71c06dc2a16360bd7e259014f2ea95fe55`.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
