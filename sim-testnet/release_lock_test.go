@@ -149,7 +149,15 @@ func TestSubtensorReleaseLockCoversLightnodeRuntimeSurface(t *testing.T) {
 		}
 	}
 	node := strings.Join(subtensorNodeReleaseFiles, "\n")
-	for _, required := range []string{"vars.yml", "docker-compose.yml.j2", "subtensor.service", "subtensor-lightnode-preflight.yml"} {
+	for _, required := range []string{
+		"vars.yml",
+		"docker-compose.yml.j2",
+		"subtensor.service",
+		"playbook-subtensor-lightnode.yml",
+		"run-playbook.sh",
+		"run-subtensor-lightnode.sh",
+		"subtensor-lightnode-preflight.yml",
+	} {
 		if !strings.Contains(node, required) {
 			t.Fatalf("node release files do not cover %s", required)
 		}

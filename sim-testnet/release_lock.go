@@ -264,12 +264,16 @@ var subtensorGatewayReleaseFiles = []string{
 	"main/ansible/host_files/snow/subtensor/nginx-overlay.conf.j2",
 }
 
-// The node lock binds both side-by-side service definitions and the independent
-// lightnode readiness proof used before sim-testnet-light is allowed to run.
+// The node lock binds both side-by-side service definitions and the complete
+// independent lightnode rollout/readiness path used before sim-testnet-light
+// is allowed to run.
 var subtensorNodeReleaseFiles = []string{
 	"main/ansible/host_files/snow/subtensor/vars.yml",
 	"main/ansible/host_files/snow/subtensor/docker-compose.yml.j2",
 	"main/ansible/host_files/snow/subtensor/subtensor.service",
+	"main/ansible/playbook-subtensor-lightnode.yml",
+	"main/ansible/run-playbook.sh",
+	"main/ansible/run-subtensor-lightnode.sh",
 	"main/ansible/tasks/subtensor-lightnode-preflight.yml",
 }
 
