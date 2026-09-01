@@ -189,7 +189,7 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 		t.Fatal("the verified original voluntary-conviction intent was not carried")
 	}
 	if repair.Spend.AlphaRao != recovery.AmountRao+reserveRoundingAllowancePerCallRao+alphaTransferDestinationRoundingAllowance ||
-		repair.Parameters[alphaRepairMinimumDestinationParameter] != "250000000050" || !strings.Contains(strings.Join(actionByID(t, revised, "fleet.refresh.deploy-batcher").DependsOn, ","), repair.ID) {
+		repair.Parameters[alphaRepairMinimumDestinationParameter] != "100000000020" || !strings.Contains(strings.Join(actionByID(t, revised, "fleet.refresh.deploy-batcher").DependsOn, ","), repair.ID) {
 		t.Fatalf("duplicate recovery repair/barrier is invalid: repair=%+v batcher=%+v", repair, actionByID(t, revised, "fleet.refresh.deploy-batcher"))
 	}
 	wantSuperseded, err := addDecimalUint(recovery.SupersededGasBefore, recovery.DuplicateAction.Spend.EVMGasWei)

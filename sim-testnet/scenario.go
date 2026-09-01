@@ -43,37 +43,43 @@ type AssertionRecord struct {
 	ObservationHash string  `json:"observation_hash"`
 }
 
+type VerifyKeyObservation struct {
+	ServerKeyID byte   `json:"server_key_id"`
+	PublicKey   []byte `json:"public_key"`
+}
+
 type OperatorObservation struct {
-	NoID                       int      `json:"no_id"`
-	APIURL                     string   `json:"api_url"`
-	Healthy                    bool     `json:"healthy"`
-	StatusCode                 int      `json:"status_code"`
-	StatsRows                  int      `json:"stats_rows"`
-	Assignments                uint64   `json:"assignments"`
-	Confirmations              uint64   `json:"confirmations"`
-	ReliabilityPPM             uint32   `json:"reliability_ppm"`
-	ProofRows                  int      `json:"proof_rows"`
-	VerifyKeyIDs               []byte   `json:"verify_key_ids,omitempty"`
-	ProofKeyIDs                []byte   `json:"proof_key_ids,omitempty"`
-	StatsHash                  string   `json:"stats_hash,omitempty"`
-	ProofsHash                 string   `json:"proofs_hash,omitempty"`
-	StatsPolicyHash            string   `json:"stats_policy_hash,omitempty"`
-	ProofsPolicyHash           string   `json:"proofs_policy_hash,omitempty"`
-	ArtifactHistoryObjects     int      `json:"artifact_history_objects"`
-	ValidArtifacts             int      `json:"valid_artifacts"`
-	MatchingArtifacts          int      `json:"matching_onchain_artifacts"`
-	ExpectedFinalizedArtifacts int      `json:"expected_finalized_artifacts"`
-	ArtifactHashes             []string `json:"artifact_hashes,omitempty"`
-	LatestArtifactEpoch        uint64   `json:"latest_artifact_epoch,omitempty"`
-	LatestArtifactProviders    int      `json:"latest_artifact_providers,omitempty"`
-	CandidateProviders         int      `json:"candidate_providers,omitempty"`
-	CandidateHeadExcluded      int      `json:"candidate_head_excluded,omitempty"`
-	CandidateLeaves            int      `json:"candidate_leaves,omitempty"`
-	PoolTailProviders          int      `json:"pool_tail_providers,omitempty"`
-	PoolTailHeadExcluded       int      `json:"pool_tail_head_excluded,omitempty"`
-	PoolTailLeaves             int      `json:"pool_tail_leaves,omitempty"`
-	TierMembershipValid        bool     `json:"tier_membership_valid"`
-	Error                      string   `json:"error,omitempty"`
+	NoID                       int                    `json:"no_id"`
+	APIURL                     string                 `json:"api_url"`
+	Healthy                    bool                   `json:"healthy"`
+	StatusCode                 int                    `json:"status_code"`
+	StatsRows                  int                    `json:"stats_rows"`
+	Assignments                uint64                 `json:"assignments"`
+	Confirmations              uint64                 `json:"confirmations"`
+	ReliabilityPPM             uint32                 `json:"reliability_ppm"`
+	ProofRows                  int                    `json:"proof_rows"`
+	VerifyKeyIDs               []byte                 `json:"verify_key_ids,omitempty"`
+	VerifyKeys                 []VerifyKeyObservation `json:"verify_keys,omitempty"`
+	ProofKeyIDs                []byte                 `json:"proof_key_ids,omitempty"`
+	StatsHash                  string                 `json:"stats_hash,omitempty"`
+	ProofsHash                 string                 `json:"proofs_hash,omitempty"`
+	StatsPolicyHash            string                 `json:"stats_policy_hash,omitempty"`
+	ProofsPolicyHash           string                 `json:"proofs_policy_hash,omitempty"`
+	ArtifactHistoryObjects     int                    `json:"artifact_history_objects"`
+	ValidArtifacts             int                    `json:"valid_artifacts"`
+	MatchingArtifacts          int                    `json:"matching_onchain_artifacts"`
+	ExpectedFinalizedArtifacts int                    `json:"expected_finalized_artifacts"`
+	ArtifactHashes             []string               `json:"artifact_hashes,omitempty"`
+	LatestArtifactEpoch        uint64                 `json:"latest_artifact_epoch,omitempty"`
+	LatestArtifactProviders    int                    `json:"latest_artifact_providers,omitempty"`
+	CandidateProviders         int                    `json:"candidate_providers,omitempty"`
+	CandidateHeadExcluded      int                    `json:"candidate_head_excluded,omitempty"`
+	CandidateLeaves            int                    `json:"candidate_leaves,omitempty"`
+	PoolTailProviders          int                    `json:"pool_tail_providers,omitempty"`
+	PoolTailHeadExcluded       int                    `json:"pool_tail_head_excluded,omitempty"`
+	PoolTailLeaves             int                    `json:"pool_tail_leaves,omitempty"`
+	TierMembershipValid        bool                   `json:"tier_membership_valid"`
+	Error                      string                 `json:"error,omitempty"`
 }
 
 type IntentWeightObservation struct {
@@ -104,6 +110,7 @@ type ValidatorObservation struct {
 	IntentHashes       []string                    `json:"intent_hashes,omitempty"`
 	AppliedWeights     []IntentWeightObservation   `json:"applied_weights,omitempty"`
 	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
+	PathProofCounts    map[int]int                 `json:"path_proof_counts,omitempty"`
 	Error              string                      `json:"error,omitempty"`
 }
 
@@ -316,7 +323,16 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		observation.Operators = append(observation.Operators, p.inspectOperator(ctx, status.Contracts, noID, expectedSigners[noID], minerClients))
 	}
 	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
-		observation.Validators = append(observation.Validators, inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates()))
+		validator := inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
+		validator.PathProofCounts, err = inspectValidatorPathProofs(p.cfg, p.stateDir, validatorID, observation.Operators)
+		if err != nil {
+			if validator.Error == "" {
+				validator.Error = err.Error()
+			} else {
+				validator.Error += "; " + err.Error()
+			}
+		}
+		observation.Validators = append(observation.Validators, validator)
 	}
 	for minerID := 1; minerID <= p.cfg.Config.Topology.Miners; minerID++ {
 		observation.Claims = append(observation.Claims, inspectClaimQueue(p.cfg, p.stateDir, minerID))
@@ -893,8 +909,10 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 				}
 				seen[key.ServerKeyID] = true
 				o.VerifyKeyIDs = append(o.VerifyKeyIDs, key.ServerKeyID)
+				o.VerifyKeys = append(o.VerifyKeys, VerifyKeyObservation{ServerKeyID: key.ServerKeyID, PublicKey: append([]byte(nil), key.PublicKey...)})
 			}
 			sort.Slice(o.VerifyKeyIDs, func(i, j int) bool { return o.VerifyKeyIDs[i] < o.VerifyKeyIDs[j] })
+			sort.Slice(o.VerifyKeys, func(i, j int) bool { return o.VerifyKeys[i].ServerKeyID < o.VerifyKeys[j].ServerKeyID })
 		}
 	}
 	statsBytes, _, err := p.get(ctx, base+"/verify/stats?limit=100000", 32<<20)
@@ -1146,6 +1164,59 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 	return result
 }
 
+// Independently verifies the append-only proof store for every operator domain
+// measured by one validator. The configured client seed binds the VPK and the
+// operator's published key history verifies FINAL signatures across rotations.
+// A missing store is a valid zero baseline before the first completed trail.
+func inspectValidatorPathProofs(cfg *ResolvedConfig, stateDir string, validatorID int, operators []OperatorObservation) (map[int]int, error) {
+	if cfg == nil || cfg.Config == nil || validatorID < 1 || validatorID > cfg.Config.Topology.Validators {
+		return nil, errors.New("validator path-proof identity is invalid")
+	}
+	if len(operators) != cfg.Config.Topology.Operators {
+		return nil, fmt.Errorf("validator path-proof operator keys=%d want=%d", len(operators), cfg.Config.Topology.Operators)
+	}
+	serverKeys := map[int]map[byte]ed25519.PublicKey{}
+	for _, operator := range operators {
+		if operator.NoID < 1 || operator.NoID > cfg.Config.Topology.Operators || serverKeys[operator.NoID] != nil || len(operator.VerifyKeys) == 0 {
+			return nil, fmt.Errorf("operator %d path-proof key history is missing, duplicated, or invalid", operator.NoID)
+		}
+		serverKeys[operator.NoID] = map[byte]ed25519.PublicKey{}
+		for _, key := range operator.VerifyKeys {
+			if len(key.PublicKey) != ed25519.PublicKeySize || serverKeys[operator.NoID][key.ServerKeyID] != nil {
+				return nil, fmt.Errorf("operator %d path-proof server key %d is invalid or duplicated", operator.NoID, key.ServerKeyID)
+			}
+			serverKeys[operator.NoID][key.ServerKeyID] = append(ed25519.PublicKey(nil), key.PublicKey...)
+		}
+	}
+	counts := make(map[int]int, cfg.Config.Topology.Operators)
+	for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
+		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "operators", fmt.Sprintf("no-%d", noID))
+		seed, err := os.ReadFile(filepath.Join(root, "client.key"))
+		if err != nil || len(seed) != ed25519.SeedSize {
+			return nil, fmt.Errorf("validator %d operator %d client seed is unavailable or invalid", validatorID, noID)
+		}
+		expectedVPK := ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)
+		lines, err := completedReleaseProofLines(filepath.Join(root, "proofs.jsonl"))
+		if err != nil {
+			return nil, fmt.Errorf("validator %d operator %d path proofs: %w", validatorID, noID, err)
+		}
+		for lineIndex, line := range lines {
+			var record validatorpkg.ProofRecord
+			if err := json.Unmarshal(line, &record); err != nil {
+				return nil, fmt.Errorf("validator %d operator %d proof %d decode: %w", validatorID, noID, lineIndex+1, err)
+			}
+			if record.Epoch == 0 {
+				return nil, fmt.Errorf("validator %d operator %d proof %d has no contract epoch", validatorID, noID, lineIndex+1)
+			}
+			if err := validatorpkg.VerifyProofRecord(&record, expectedVPK, serverKeys[noID], cfg.Policy.Verify.TrailDepth); err != nil {
+				return nil, fmt.Errorf("validator %d operator %d proof %d: %w", validatorID, noID, lineIndex+1, err)
+			}
+		}
+		counts[noID] = len(lines)
+	}
+	return counts, nil
+}
+
 func inspectClaimQueue(cfg *ResolvedConfig, stateDir string, minerID int) ClaimObservation {
 	result := ClaimObservation{MinerID: minerID, NoID: operatorForMiner(cfg, minerID)}
 	b, err := os.ReadFile(filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", minerID), "claims", "claim-queue.json"))
@@ -1296,6 +1367,47 @@ func epochScenarioChecks() []scenarioCheck {
 				}
 			}
 			return true, "all validator intents finalized and applied"
+		}},
+		{ID: "validator_path_proofs_advance", Check: func(e *scenarioEvaluation) (bool, string) {
+			if len(e.Start.Validators) != e.Cfg.Config.Topology.Validators || len(e.Current.Validators) != e.Cfg.Config.Topology.Validators {
+				return false, fmt.Sprintf("validator observations start/current=%d/%d", len(e.Start.Validators), len(e.Current.Validators))
+			}
+			requiredAdvance := int(e.Definition.GoalEpochs)
+			if requiredAdvance < 1 {
+				requiredAdvance = 1
+			}
+			baseline := map[int]ValidatorObservation{}
+			for _, validator := range e.Start.Validators {
+				if validator.ValidatorID < 1 || validator.ValidatorID > e.Cfg.Config.Topology.Validators {
+					return false, fmt.Sprintf("baseline validator id %d is outside the release topology", validator.ValidatorID)
+				}
+				if _, duplicate := baseline[validator.ValidatorID]; duplicate {
+					return false, fmt.Sprintf("baseline validator id %d is duplicated", validator.ValidatorID)
+				}
+				baseline[validator.ValidatorID] = validator
+			}
+			currentSeen := map[int]bool{}
+			for _, validator := range e.Current.Validators {
+				if validator.ValidatorID < 1 || validator.ValidatorID > e.Cfg.Config.Topology.Validators || currentSeen[validator.ValidatorID] {
+					return false, fmt.Sprintf("current validator id %d is invalid or duplicated", validator.ValidatorID)
+				}
+				currentSeen[validator.ValidatorID] = true
+				prior, ok := baseline[validator.ValidatorID]
+				if !ok {
+					return false, fmt.Sprintf("validator %d has no baseline observation", validator.ValidatorID)
+				}
+				if len(prior.PathProofCounts) != e.Cfg.Config.Topology.Operators || len(validator.PathProofCounts) != e.Cfg.Config.Topology.Operators {
+					return false, fmt.Sprintf("validator %d path domains start/current=%d/%d want=%d", validator.ValidatorID, len(prior.PathProofCounts), len(validator.PathProofCounts), e.Cfg.Config.Topology.Operators)
+				}
+				for noID := 1; noID <= e.Cfg.Config.Topology.Operators; noID++ {
+					before, beforeOK := prior.PathProofCounts[noID]
+					after, afterOK := validator.PathProofCounts[noID]
+					if !beforeOK || !afterOK || after-before < requiredAdvance {
+						return false, fmt.Sprintf("validator %d operator %d path proofs start/current=%d/%d require_advance=%d", validator.ValidatorID, noID, before, after, requiredAdvance)
+					}
+				}
+			}
+			return true, fmt.Sprintf("every validator/operator path-proof store advanced at least %d times", requiredAdvance)
 		}},
 	}
 }
@@ -2118,7 +2230,7 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 		switch definition.Name {
 		case "production-soak":
 			// Discard the possibly partial epoch containing the first snapshot,
-			// then require three complete 2,400-block epochs. The anomaly ledger
+			// then require three complete 360-block epochs. The anomaly ledger
 			// retains every observation, so any transient warning still fails the
 			// run rather than being hidden by later recovery.
 			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs

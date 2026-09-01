@@ -78,6 +78,16 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
   echo "[release-1.0] operator PostgreSQL/Redis integration suites"
   (
     cd "$workspace/server"
+    # Never inherit a main/canary server identity into tests which create and
+    # drop databases. These names resolve to server/local's dedicated 10.213.0.1
+    # containers; 127.0.0.1 is intentionally forbidden by that stack.
+    export WARP_ENV=local
+    export WARP_SERVICE=test
+    export WARP_DOMAIN=bringyour.com
+    export WARP_BLOCK=test
+    export WARP_VERSION=0.0.0
+    export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com
+    export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com
     go test ./controller -run 'TestVerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)'
     go test ./model -run 'Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail)'
   )

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/urnetwork/connect"
 
 	"github.com/urfoundation/sn/payoutartifact"
 	validatorpkg "github.com/urfoundation/sn/validator"
@@ -206,26 +209,25 @@ func TestScenarioPreparationRunsUnderAdversariesAndPersistsFailure(t *testing.T)
 	}
 }
 
-func TestReleaseScenarioCountsTwentyEpochsFromDelayedLiveTopology(t *testing.T) {
+func TestReleaseScenarioCountsFiveEpochsFromDelayedLiveTopology(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	cfg.Config.Scenarios.ShortEpochs = 20
 	definition := scenarioDefinition{
-		Name: "release-1.0", GoalEpochs: 20,
+		Name: "release-1.0", GoalEpochs: 5,
 		Checks: []scenarioCheck{{ID: "live-campaign-boundary", Check: func(e *scenarioEvaluation) (bool, string) {
-			return e.Current.Status.Contracts.CurrentEpoch >= e.GoalEpoch, "wait for twenty live epochs"
+			return e.Current.Status.Contracts.CurrentEpoch >= e.GoalEpoch, "wait for five live epochs"
 		}}},
 	}
 	start := testScenarioObservation(cfg, 26)
-	before := testScenarioObservation(cfg, 45)
-	atBoundary := testScenarioObservation(cfg, 46)
+	before := testScenarioObservation(cfg, 30)
+	atBoundary := testScenarioObservation(cfg, 31)
 	started := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	assertions := evaluateScenario(cfg, definition, start, before, started)
 	if len(assertions) != 1 || assertions[0].Passed {
-		t.Fatalf("epoch 45 passed delayed campaign boundary: %+v", assertions)
+		t.Fatalf("epoch 30 passed delayed campaign boundary: %+v", assertions)
 	}
 	assertions = evaluateScenario(cfg, definition, start, atBoundary, started)
 	if len(assertions) != 1 || !assertions[0].Passed {
-		t.Fatalf("epoch 46 did not complete delayed campaign boundary: %+v", assertions)
+		t.Fatalf("epoch 31 did not complete delayed campaign boundary: %+v", assertions)
 	}
 }
 
@@ -289,7 +291,7 @@ func TestScenarioRunnerExecutesAndRecordsFinalizedBlockFault(t *testing.T) {
 
 func TestScenarioDefinitionsAreStrict(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	cfg.Config.Scenarios.ShortEpochs = 20
+	cfg.Config.Scenarios.ShortEpochs = 5
 	for _, name := range []string{"precompile-conformance", "smoke", "epoch", "release-1.0", "production-soak", "fault-miner-offline", "fault-operator-offline", "fault-validator-offline", "fault-claim-relayer-offline", "fault-taskworker-offline"} {
 		definition, err := scenarioDefinitionFor(cfg, name)
 		if err != nil || definition.Name != name || len(definition.Checks) == 0 {
@@ -573,6 +575,128 @@ func TestInspectValidatorIntentReadsVersionFourHeadAndDepositEvidence(t *testing
 	}
 }
 
+func TestInspectValidatorPathProofsRequiresEveryOperatorDomain(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	serverSeed := []byte(strings.Repeat("s", ed25519.SeedSize))
+	serverKey := ed25519.NewKeyFromSeed(serverSeed)
+	serverPublic := serverKey.Public().(ed25519.PublicKey)
+	operators := make([]OperatorObservation, 0, cfg.Config.Topology.Operators)
+	for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
+		root := filepath.Join(stateDir, "runtime", "validator-1", "state", "operators", fmt.Sprintf("no-%d", noID))
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		seed := []byte(strings.Repeat(string(rune('a'+noID)), ed25519.SeedSize))
+		if err := os.WriteFile(filepath.Join(root, "client.key"), seed, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		validatorKey := ed25519.NewKeyFromSeed(seed)
+		vpk := validatorKey.Public().(ed25519.PublicKey)
+		trailID := connect.Id{byte(noID)}
+		nonce := []byte(strings.Repeat(string(rune('n'+noID)), connect.VerifyNonceSize))
+		hops := make([]connect.VerifyProofHop, cfg.Policy.Verify.TrailDepth)
+		trail := make([]connect.Id, len(hops))
+		for index := range hops {
+			trail[index][0], hops[index].ClientId[0] = byte(index+1), byte(index+1)
+			hops[index].TimeMs = uint64(100 + index)
+		}
+		finalMessage, err := connect.BuildVerifyFinalMessage(1, trailID, nonce, vpk, byte(len(hops)), hops)
+		if err != nil {
+			t.Fatal(err)
+		}
+		extendMessage, err := connect.BuildVerifyExtendMessage(trailID, nonce, vpk, byte(len(hops)), trail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := connect.VerifyFinalDigest(finalMessage)
+		pathID := validatorpkg.TrailPathId(trailID, vpk, 1)
+		record := validatorpkg.ProofRecord{
+			Version: 1, Epoch: 4, TrailId: trailID, ServerNonce: nonce, Vpk: vpk, M: len(hops), Hops: hops,
+			ServerKeyId: 1, FinalSig: ed25519.Sign(serverKey, finalMessage), VerifierSig: ed25519.Sign(validatorKey, extendMessage),
+			FinalDigest: digest[:], VpkSig: ed25519.Sign(validatorKey, finalMessage), Coverage: uint64(len(hops) - 1), PathId: pathID[:], CompleteTimeMs: hops[len(hops)-1].TimeMs,
+		}
+		line, err := json.Marshal(&record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "proofs.jsonl"), append(line, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		operators = append(operators, OperatorObservation{NoID: noID, VerifyKeys: []VerifyKeyObservation{{ServerKeyID: 1, PublicKey: serverPublic}}})
+	}
+	counts, err := inspectValidatorPathProofs(cfg, stateDir, 1, operators)
+	if err != nil || counts[1] != 1 || counts[2] != 1 || len(counts) != 2 {
+		t.Fatalf("validator path counts=%v error=%v", counts, err)
+	}
+	path := filepath.Join(stateDir, "runtime", "validator-1", "state", "operators", "no-2", "proofs.jsonl")
+	line, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tampered validatorpkg.ProofRecord
+	if err := json.Unmarshal(line, &tampered); err != nil {
+		t.Fatal(err)
+	}
+	tampered.FinalSig[0]++
+	line, err = json.Marshal(&tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectValidatorPathProofs(cfg, stateDir, 1, operators); err == nil || !strings.Contains(err.Error(), "server FINAL signature") {
+		t.Fatalf("tampered operator path signature error=%v", err)
+	}
+	if err := os.WriteFile(path, []byte("{\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectValidatorPathProofs(cfg, stateDir, 1, operators); err == nil || !strings.Contains(err.Error(), "validator 1 operator 2 path proofs") {
+		t.Fatalf("durable corrupt operator domain error=%v", err)
+	}
+}
+
+func TestEpochScenarioRequiresFreshProofForEveryValidatorOperatorPair(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	start := testScenarioObservation(cfg, 5)
+	current := testScenarioObservation(cfg, 6)
+	start.Validators = []ValidatorObservation{
+		{ValidatorID: 1, PathProofCounts: map[int]int{1: 3, 2: 4}},
+		{ValidatorID: 2, PathProofCounts: map[int]int{1: 5, 2: 6}},
+	}
+	current.Validators = []ValidatorObservation{
+		{ValidatorID: 1, PathProofCounts: map[int]int{1: 8, 2: 9}},
+		{ValidatorID: 2, PathProofCounts: map[int]int{1: 10, 2: 11}},
+	}
+	var pathCheck scenarioCheck
+	for _, check := range epochScenarioChecks() {
+		if check.ID == "validator_path_proofs_advance" {
+			pathCheck = check
+			break
+		}
+	}
+	if pathCheck.Check == nil {
+		t.Fatal("validator path-proof check is missing")
+	}
+	evaluation := &scenarioEvaluation{Cfg: cfg, Start: start, Current: current, Definition: scenarioDefinition{GoalEpochs: 5}}
+	if ok, detail := pathCheck.Check(evaluation); !ok {
+		t.Fatalf("fresh path proofs rejected: %s", detail)
+	}
+	current.Validators[1].PathProofCounts[2] = start.Validators[1].PathProofCounts[2] + 4
+	if ok, detail := pathCheck.Check(evaluation); ok || !strings.Contains(detail, "validator 2 operator 2") {
+		t.Fatalf("stale path proof accepted: ok=%t detail=%s", ok, detail)
+	}
+	delete(current.Validators[1].PathProofCounts, 2)
+	if ok, detail := pathCheck.Check(evaluation); ok || !strings.Contains(detail, "path domains") {
+		t.Fatalf("missing path domain accepted: ok=%t detail=%s", ok, detail)
+	}
+	current.Validators[1] = current.Validators[0]
+	if ok, detail := pathCheck.Check(evaluation); ok || !strings.Contains(detail, "duplicated") {
+		t.Fatalf("duplicate validator path evidence accepted: ok=%t detail=%s", ok, detail)
+	}
+}
+
 func TestWeightValuesRespectSignedCapExactly(t *testing.T) {
 	within := []IntentWeightObservation{{Value: 32768}, {Value: 32767}}
 	if ok, maximum, sum := weightValuesRespectCap(within, 32768); !ok || maximum != 32768 || sum != 65535 {
@@ -597,11 +721,11 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if definition.GoalEpochs != 4 || len(definition.Faults) != wantFaults {
 		t.Fatalf("production definition = %+v", definition)
 	}
-	start := testScenarioObservation(cfg, 20)
-	current := testScenarioObservation(cfg, 24)
+	start := testScenarioObservation(cfg, 5)
+	current := testScenarioObservation(cfg, 9)
 	productionPolicy := PolicyView{
-		EffectiveEpoch: 21, EpochBlocks: 2_400, RootCommitWindowBlocks: 200,
-		FinalizeOffsetBlocks: 1_200, CloseGraceBlocks: 20,
+		EffectiveEpoch: 6, EpochBlocks: 360, RootCommitWindowBlocks: 60,
+		FinalizeOffsetBlocks: 180, CloseGraceBlocks: 6,
 	}
 	start.Status.Contracts.Policy = productionPolicy
 	current.Status.Contracts.Policy = productionPolicy
@@ -616,7 +740,7 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if _, ok := byID["verify_key_rotation_preserves_history"]; !ok {
 		t.Fatal("production soak omitted verify-key rotation evidence")
 	}
-	minimum := time.Duration((300+3*2_400+1_200)*12+120) * time.Second
+	minimum := time.Duration((300+3*360+180)*12+120) * time.Second
 	if got := scenarioTimeout(cfg, definition); got < minimum {
 		t.Fatalf("production timeout %s is below %s", got, minimum)
 	}

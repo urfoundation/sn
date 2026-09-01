@@ -498,8 +498,8 @@ func (c *HarnessConfig) Validate() error {
 	if c.Contracts.GovernanceProfile != "testnet-single-owner" || !c.Contracts.Install || !c.Contracts.VerifyRuntimeCodeHash {
 		return errors.New("invalid contract release settings")
 	}
-	if c.Scenarios.Launch != "smoke" || c.Scenarios.Release != "release-1.0" || c.Scenarios.ShortEpochs < 20 || c.Scenarios.ProductionEpochs < 3 {
-		return errors.New("release scenarios require smoke launch, release-1.0, at least 20 accelerated epochs, and three testnet UR blocks")
+	if c.Scenarios.Launch != "smoke" || c.Scenarios.Release != "release-1.0" || c.Scenarios.ShortEpochs < 5 || c.Scenarios.ProductionEpochs < 3 {
+		return errors.New("release scenarios require smoke launch, release-1.0, at least five accelerated epochs, and three testnet UR blocks")
 	}
 	if c.Scenarios.VoluntaryConvictionRao == 0 || c.Scenarios.DishonestDepositRao != dishonestDepositRao || c.Scenarios.QualityFaultOperator < 1 || c.Scenarios.QualityFaultOperator > c.Topology.Operators || c.Scenarios.QualityFaultStartBlocks == 0 || c.Scenarios.QualityFaultDurationBlocks == 0 {
 		return errors.New("release scenario requires voluntary conviction and a bounded quality-cohort fault")

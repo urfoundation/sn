@@ -260,7 +260,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 		}
 	}
 	production := actions["production.schedule-policy"]
-	if production.Parameters["epoch_blocks"] != "2400" || production.Parameters["after_accelerated_epochs"] != "20" || production.Spend.EVMGasWei.IsZero() || actions["retirement.evm-gas-reserve"].Spend.EVMGasWei.IsZero() {
+	if production.Parameters["epoch_blocks"] != "360" || production.Parameters["after_accelerated_epochs"] != "5" || production.Spend.EVMGasWei.IsZero() || actions["retirement.evm-gas-reserve"].Spend.EVMGasWei.IsZero() {
 		t.Fatalf("production/retirement reservations are incomplete: production=%+v retirement=%+v", production, actions["retirement.evm-gas-reserve"])
 	}
 	dishonest := actions[dishonestDepositActionID]
@@ -272,7 +272,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	}
 	voluntary := actions["campaign.voluntary-conviction.1"]
 	op1Alpha, op2Alpha := actions["alpha.transfer.operator-deposit.1"], actions["alpha.transfer.operator-deposit.2"]
-	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Parameters["reserve_runtime_share_transitions"] != "2" || voluntary.Parameters["reserve_rounding_allowance_rao"] != "2" || voluntary.Spend.EVMGasWei.IsZero() || op1Alpha.Parameters["campaign_requirement_rao"] != "251000000000" || op2Alpha.Parameters["campaign_requirement_rao"] != "245000000000" || op1Alpha.Spend.AlphaRao != 251000000053 || op2Alpha.Spend.AlphaRao != 245000000051 || op1Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op1Alpha.Spend.AlphaRao, 10) || op2Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op2Alpha.Spend.AlphaRao, 10) || op1Alpha.Parameters["minimum_destination_credit_rao"] != "251000000052" || op2Alpha.Parameters["minimum_destination_credit_rao"] != "245000000050" || op1Alpha.Parameters["reserve_calls"] != "26" || op2Alpha.Parameters["reserve_calls"] != "25" || op1Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" || op2Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" {
+	if voluntary.Parameters["amount_rao"] != "1000000000" || voluntary.Parameters["reserve_runtime_share_transitions"] != "2" || voluntary.Parameters["reserve_rounding_allowance_rao"] != "2" || voluntary.Spend.EVMGasWei.IsZero() || op1Alpha.Parameters["campaign_requirement_rao"] != "101000000000" || op2Alpha.Parameters["campaign_requirement_rao"] != "95000000000" || op1Alpha.Spend.AlphaRao != 101000000023 || op2Alpha.Spend.AlphaRao != 95000000021 || op1Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op1Alpha.Spend.AlphaRao, 10) || op2Alpha.Parameters["exact_amount_rao"] != strconv.FormatUint(op2Alpha.Spend.AlphaRao, 10) || op1Alpha.Parameters["minimum_destination_credit_rao"] != "101000000022" || op2Alpha.Parameters["minimum_destination_credit_rao"] != "95000000020" || op1Alpha.Parameters["reserve_calls"] != "11" || op2Alpha.Parameters["reserve_calls"] != "10" || op1Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" || op2Alpha.Parameters["reserve_rounding_allowance_per_call_rao"] != "2" {
 		t.Fatalf("campaign allocations are not exact: voluntary=%+v op1=%+v op2=%+v", voluntary, actions["alpha.transfer.operator-deposit.1"], actions["alpha.transfer.operator-deposit.2"])
 	}
 	reserveAlpha := actions["alpha.transfer.validator.1"]

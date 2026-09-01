@@ -544,37 +544,52 @@ func releaseTopologyProofPaths(cfg *ResolvedConfig, stateDir string) map[string]
 	return paths
 }
 
-// Counts complete JSON proof records while ignoring a concurrently appended
-// trailing fragment. The next observation sees the record after its append
-// finishes; a torn or malformed line can never satisfy the freshness gate.
-func completedReleaseProofCount(path string) (int, error) {
+// Counts complete, unique proof records while ignoring only a concurrently
+// appended trailing fragment. A complete malformed, incomplete, or duplicate
+// line is durable evidence corruption and fails the release gate instead of
+// being silently omitted from its freshness count.
+func completedReleaseProofLines(path string) ([][]byte, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
+		return nil, nil
 	}
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	count := 0
+	completed := [][]byte{}
 	lines := bytes.Split(b, []byte("\n"))
 	if len(b) > 0 && b[len(b)-1] != '\n' {
 		lines = lines[:len(lines)-1]
 	}
-	for _, line := range lines {
+	seen := map[connect.Id]bool{}
+	for lineIndex, line := range lines {
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue
 		}
 		var record struct {
-			Version        int    `json:"v"`
-			TrailID        string `json:"trail_id"`
-			Coverage       uint64 `json:"coverage"`
-			CompleteTimeMS uint64 `json:"complete_time_ms"`
+			Version        int        `json:"v"`
+			TrailID        connect.Id `json:"trail_id"`
+			Coverage       uint64     `json:"coverage"`
+			CompleteTimeMS uint64     `json:"complete_time_ms"`
 		}
-		if json.Unmarshal(line, &record) == nil && record.Version == 1 && record.TrailID != "" && record.Coverage > 0 && record.CompleteTimeMS > 0 {
-			count++
+		if err := json.Unmarshal(line, &record); err != nil {
+			return nil, fmt.Errorf("proof line %d is malformed: %w", lineIndex+1, err)
 		}
+		if record.Version != 1 || record.TrailID == (connect.Id{}) || record.Coverage == 0 || record.CompleteTimeMS == 0 {
+			return nil, fmt.Errorf("proof line %d has an incomplete release identity", lineIndex+1)
+		}
+		if seen[record.TrailID] {
+			return nil, fmt.Errorf("proof line %d duplicates trail_id %s", lineIndex+1, record.TrailID)
+		}
+		seen[record.TrailID] = true
+		completed = append(completed, append([]byte(nil), line...))
 	}
-	return count, nil
+	return completed, nil
+}
+
+func completedReleaseProofCount(path string) (int, error) {
+	lines, err := completedReleaseProofLines(path)
+	return len(lines), err
 }
 
 // Snapshots proof progress for every validator/operator pair.

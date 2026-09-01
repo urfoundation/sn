@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and both generation-2 challenger fleets. Attempt 4 used exact plan `0x4ea53609168c9774183fe281a66fe0cbfb483008a0bbf6fb2ae3b33f75a15c5a`, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and finalized the challenger tournament at journal sequence 9,997 with postcondition `0x910c3512c771d6e6ed4ad68ea5900daaba3743b49a1687e4854fea68bd62e9fb`. Both operator APIs published the deployment evidence. M0A nevertheless failed closed: validator 2 restarted once after a public-RPC `currentEpoch` deadline, neither validator discovered a seed provider, and the operators classified loopback peers as unknown locations. All processes were stopped cleanly; no M0B/phase-2 transaction was attempted. Root fixes now provide complete loopback-US metadata, production-port per-operator loopback ingress through a capability-scoped Connect binary, deterministic exact-IP TLS identities trusted in addition to the normal public pins, FIFO/cancellation-safe public-RPC admission, one-block/four-call operator epoch snapshots, context-aware validator snapshots with bounded transient startup retry, public-mode 60-second validator/claim cadence, serialized claim reconciliation, testnet-only market-price suppression, crash-safe proof append boundaries, two-generation semantic proof readiness around the challenger tournament, and kernel-generation detection so a supervisor restart cannot reset failure evidence. The new ingress/trust/fallback tests pass normally and under the race detector, including the real server certificate loader and the complete 1,000-miner renderer. Source checkpoints SN `680e9f3`, server `cb6de1ad` and Connect `e78f815` are pushed; the checkout lock is refreshed locally. The aggregate release gate and clean M0A replay remain. M0B/M1/M2, three consecutive 8-hour M3 blocks and MR remain pending. After a clean M0A, the irreducible live chain gate is approximately 48 hours: 20 one-hour accelerated epochs followed without idle staging by approximately 28 hours for the production-policy boundary, three complete 8-hour epochs and final settlement, 2026-09-01 UTC
+**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A attempt 4 on netuid 521 installed and verified all 200 production fleets plus both generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and then failed closed on a validator restart and absent verified trails before any M0B/phase-2 write. The corresponding provider-discovery, loopback ingress/TLS, public-RPC fairness/snapshot, retry, proof-persistence, and supervisor-generation root fixes have deterministic regressions. The adopted accelerated acceptance profile now requires five consecutive 300-block epochs followed by a future-effective 360-block policy (60-block root window, 180-block finalize offset, 6-block close grace), one conservatively discarded partial epoch, three consecutive fully observed production epochs, and terminal finalization. Every acceptance scenario additionally requires at least one fresh, independently reconstructed and signature-verified proof per required epoch for every validator/operator pair; durable malformed, incomplete or duplicate proof records fail closed. The continuous custody adversary must use a real signed artifact against the deployed testnet vault and observe the exact `InvalidProof` revert with unchanged pinned entitlement and conservation state for both operators. The final adjusted-profile aggregate release gate passes, including the full race, Foundry, Slither, operator DB and infrastructure suites. The adjusted source checkpoint, clean M0A replay, M0B/M1/M2/M3, and MR remain. After clean M0A, the practical irreducible public-chain evidence window is approximately 11--13 hours, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -44,7 +44,7 @@ selection, rejection and payout tier. An external native registration can evict 
 controlled churn identity; an external provider identity can change the signed payout
 root and claim population. Either is useful post-certification behavior but invalidates
 the deterministic release boundary while it is running. External miners therefore open
-only after the clean M0A, 20 accelerated epochs, three production epochs and terminal
+only after the clean M0A, five accelerated epochs, three production epochs and terminal
 reconciliation pass. Earlier community testing must use a separate non-certification
 subnet/deployment rather than silently weakening the netuid-521 evidence.
 
@@ -99,7 +99,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | Runtime-452 doctor and all bounded setup are complete. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 32 processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. Focused normal/race and the full 1,000-miner renderer pass; source checkpoints are pushed and the refreshed aggregate gate is pending before exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | Runtime-452 doctor and all bounded setup are complete. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 32 processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic and cryptographically verified fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. The adjusted aggregate gate, focused normal/race tests and full 1,000-miner renderer pass; the adjusted source checkpoint is pending before exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 360-block M3 epochs and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -953,7 +953,7 @@ policy:
     # Runtime 452 rejects reserve movements near 0.1 alpha on the live subnet;
     # ten alpha is the locked runtime-valid per-operator test envelope.
     epoch_cap_rao_per_operator: 10000000000
-    total_test_campaign_cap_rao: 496000000000
+    total_test_campaign_cap_rao: 196000000000
     tier_snapshot: conviction_before_epoch
     tiers:
       - min_conviction_rao: 0
@@ -1010,10 +1010,10 @@ After M2, schedule—not mutate—the shortened testnet acceptance snapshot:
 
 ```yaml
 settlement:
-  epoch_blocks: 2400                 # approximately 8 hours
-  root_commit_window_blocks: 200
-  finalize_offset_blocks: 1200       # approximately +4 hours
-  close_grace_blocks: 20
+  epoch_blocks: 360                  # approximately 72 minutes
+  root_commit_window_blocks: 60
+  finalize_offset_blocks: 180        # approximately +36 minutes
+  close_grace_blocks: 6
 ```
 
 The effective epoch must leave the current short epoch untouched and be verified
@@ -1034,7 +1034,7 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `commit_reveal_weights_enabled` | true | Hard gate. |
 | `commit_reveal_period` | query then explicitly set/record | Immunity must exceed the full reveal interval. |
 | `liquid_alpha_enabled` | true | Verify live. |
-| `immunity_period` | 50,000-block bounded bootstrap/recovery window; schedule 2,400 for the shortened testnet soak | Keeps the simulator churn floor immune while netuid 521's older external bootstrap UID remains non-immune, so runtime 452's minimum-free rule selects only approved controlled churn. Must also cover the measurement ramp. Mainnet chooses its value with the separate 50,400-block cadence review. |
+| `immunity_period` | 50,000-block bounded bootstrap/recovery window; schedule 360 for the shortened testnet soak | Keeps the simulator churn floor immune while netuid 521's older external bootstrap UID remains non-immune, so runtime 452's minimum-free rule selects only approved controlled churn. Must also cover the measurement ramp. Mainnet chooses its value with the separate 50,400-block cadence review. |
 | `min_allowed_weights` | 1 | Hard gate. |
 | `weights_version_key` | 1 for first release | Validator must read it from chain; bump on scoring changes. |
 | `serving_rate_limit` | 50 unless live semantics differ | Verify; axon remains optional. |
@@ -1213,7 +1213,7 @@ processes:
 scenarios:
   launch: smoke
   release: release-1.0
-  short_epochs: 20
+  short_epochs: 5
   production_epochs: 3
 
 budgets:
@@ -1679,7 +1679,7 @@ Minimum topology:
 - the existing server/blob MinIO backend plus public server artifact-history API; and
 - canonical event index/replay verifier.
 
-Complete at least ten accelerated epochs and every scenario in section 8.3. Kill/restart each service around boundaries and transaction phases. Prove:
+Complete all five accelerated acceptance epochs and every scenario in section 8.3. Kill/restart each service around boundaries and transaction phases. Prove:
 
 - real precompile custody, staking, registration, UID, signature, and transfer behavior;
 - deposits are one-way and exactly attributed;
@@ -1759,7 +1759,7 @@ Exit gate: one clean end-to-end epoch with two NOs, two validators, tail claims,
 
 M1 does not consume a separate idle epoch. As soon as launch readiness is green,
 `release-1.0` starts its continuous adversarial campaign; its first complete,
-reconciled accelerated epoch closes M1 and is also epoch 1 of the 20-epoch M2
+reconciled accelerated epoch closes M1 and is also epoch 1 of the five-epoch M2
 interval. Setup already uses bounded concurrency and atomic fleet batches, and M2
 hands directly to `production-soak` after its authenticated completion marker. The
 current approved lineage retains the 300-block accelerated cadence: changing it
@@ -1778,7 +1778,7 @@ they do not shorten any M1/M2/M3 protocol-time gate.
 
 ### M2 — Multi-epoch adversarial campaign
 
-Run at least **20 consecutive accelerated epochs** as named `sim-testnet scenario` runs against the same persistent deployment. Include, on a declared schedule:
+Run exactly the release minimum of **five consecutive 300-block accelerated epochs** as named `sim-testnet scenario` runs against the same persistent deployment. Include every scenario and fault below on a declared schedule; shortening the epoch count does not remove or weaken any vector:
 
 - equal-deposit/different-quality and equal-quality/different-deposit experiments;
 - a conviction tier transition and voluntary pre-conviction;
@@ -1811,34 +1811,35 @@ transaction deadline margin, gas and independent-validator stake share.
 
 Exit gate:
 
-- 20/20 epochs reconcile exactly;
+- 5/5 epochs reconcile exactly;
 - zero missed hard deadline except the intentional missed-root drill;
 - every injected failure follows its documented recovery path;
-- all 54 researched vectors have passing concurrent coverage, at least one
+- all 56 researched vectors have passing concurrent coverage, at least one
   sampled vector-declared metric, and their exact local-runtime tests pass
   against the release-locked runtime where live
   execution would be unsafe;
 - all seven actors meet their sample, zero-error, absolute-latency,
   attack/control-ratio and QPS gates while overlapping every happy-path phase;
 - no manual on-chain/storage mutation;
-- at least two validators independently reconstruct their vectors from their own trails;
+- at least two validators independently reconstruct their vectors from their own trails, and every validator/operator proof store advances at least once per required scenario epoch with no durable malformed, incomplete, or duplicate record;
+- the custody adversary performs a finalized-block-pinned `eth_call` for each NO using a malformed proof derived from that operator's real signed payout artifact, observes exactly `InvalidProof`, submits no transaction, and proves the entitlement and conservation snapshots are byte-identical before and after;
 - every public artifact remains retrievable/reproducible;
 - no open critical/high security or custody issue and no unexplained warning,
   retry burst, latency shift, process exit, metric discontinuity or test flake;
-- `sim-testnet analyze` reconstructs all 20 epochs without trusted local DB state; and
+- `sim-testnet analyze` reconstructs all five epochs without trusted local DB state; and
 - the deployment returns to a healthy `LIVE` state after every intentional fault and remains available for investigation.
 
 ### M3 — Production-cadence testnet soak
 
-Schedule the testnet-only 2,400-block epoch, +200-block root window,
-+1,200-block finalize offset and +20-block close grace for a future boundary.
-Schedule the matching 2,400-block immunity period at that same release boundary.
+Schedule the testnet-only 360-block epoch, +60-block root window,
++180-block finalize offset and +6-block close grace for a future boundary.
+Schedule the matching 360-block immunity period at that same release boundary.
 Verify the preceding accelerated epoch is unchanged. The mainnet plan remains a
 separate 50,400-block/seven-day cadence with its separately reviewed +4h/+48h
 windows; the shortened testnet cadence never becomes a mainnet default.
 
-Run **three consecutive complete 2,400-block UR blocks** (approximately eight
-hours each) using `production-soak`, including their finalization windows and
+Run **three consecutive complete 360-block UR blocks** (approximately 72
+minutes each) using `production-soak`, including their finalization windows and
 representative claims. Conservatively discard the production epoch that contains
 the first observation, so all three accepted epochs are fully observed. During the soak:
 
@@ -2205,11 +2206,13 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    recoverable while this release is frozen; it had completed at least 25 of 200
    fleet bindings before the replacement-plan cutover.
    At the pinned 12-second cadence, bounded setup should take roughly 1--3 hours
-   rather than the serialized many-hour path. The 20 accelerated epochs remain
-   approximately 20 hours, and the three 8-hour production UR blocks retain 24
-   hours of live observation plus the final approximately 4-hour
-   settlement/finality window. These are protocol-time acceptance gates, not
-   setup inefficiencies, and must not be bypassed with an off-chain clock.
+   rather than the serialized many-hour path. The adopted profile retains five
+   complete 300-block accelerated epochs (approximately five hours), then uses
+   a future-effective 360-block policy for one discarded partial epoch, three
+   fully observed epochs, and the final 180-block settlement window. Boundary
+   alignment makes the combined live acceptance path approximately 11--13 hours.
+   These are protocol-time acceptance gates, not setup inefficiencies, and must
+   not be bypassed with an off-chain clock.
 
    The cutover completed fleet 25 member 4 at finalized EVM block 7,898,801.
    `fleet.commitment.26` has only an intent and a cancellation failure: no
@@ -2886,16 +2889,17 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    no-SNI certificate selection, strict private roots, key/serial separation,
    child restarts, supervisor PID reuse/generation changes, testnet market selection
    and release-gate inclusion. Focused normal/race tests and the real 1,000-miner
-   renderer pass. Source checkpoints SN `680e9f3`, server `cb6de1ad` and Connect
-   `e78f815` are pushed; the refreshed source lock is pending its aggregate gate
-   before another live replay.
-   Once that replay is clean, `release-1.0` still observes 20 sequential
-   300-block epochs (approximately 20 hours). `production-soak` then schedules
-   the 2,400-block policy and observes its future-effective boundary, three
-   complete eight-hour epochs and final settlement (approximately 28 hours).
-   Adversarial actors overlap both happy paths, but the two stateful campaigns
-   cannot run concurrently; approximately 48 hours is therefore the minimum
-   remaining live-chain evidence window, excluding any root-cause rerun.
+   renderer pass. Prior source checkpoints SN `680e9f3`, server `cb6de1ad` and
+   Connect `e78f815` are pushed. The adjusted source lock and aggregate gate pass;
+   their new source checkpoint is the remaining local boundary before replay.
+   Once that replay is clean, `release-1.0` observes five sequential 300-block
+   epochs (approximately five hours). `production-soak` then schedules the
+   360-block policy and observes its future-effective boundary, discards the
+   partial epoch containing the first observation, proves three complete
+   approximately-72-minute epochs, and waits through the final 180-block
+   settlement window. Adversarial actors overlap both happy paths; the expected
+   remaining live-chain evidence window is approximately 11--13 hours,
+   excluding any root-cause rerun.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -2919,12 +2923,12 @@ completed successfully after the release lock was frozen:
 | Gate | Final result |
 |---|---|
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the latest full simulator race suite completed in 542.057 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 584.794 seconds. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
-| Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. |
-| Operator PostgreSQL/Redis integration suites | Prior isolated-profile runs pass the verify-trail, poisoning/failure, fenced mutation, replay-isolation, orphan-cleanup, egress-index, token-lock, expiry and loaded-trail coverage. The default aggregate correctly deferred the managed-profile rerun; it remains mandatory against the rendered topology in M1. |
+| Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
+| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. A deterministic script regression prevents those safety exports from being removed. The rendered per-operator profile remains mandatory in M1. |
 | Subtensor infrastructure regressions | **26 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across all eleven release workspace repositories; the exact checkout lock is rechecked after every other gate. |
 
@@ -2948,10 +2952,11 @@ lock-fencing, expiry and orphan-cleanup suites passed against an isolated local
 PostgreSQL/Redis profile on 2026-08-21; its cleanup removed only that profile and
 left the four persistent simulator-owned stores running. The real server/blob
 service account also passed an idempotent content-addressed MinIO write/read/list
-canary against the overlay endpoint. The managed launch profile
-must rerun the same suites with its rendered per-operator runtime vault/config by
-setting `RUN_SERVER_DB_TESTS=1`; invoking the flag without `WARP_ENV` fails closed
-before connecting. The operator/miner/validator topology was
+canary against the overlay endpoint. The managed launch profile must rerun the
+same suites with its rendered per-operator runtime vault/config. For the local
+aggregate, `RUN_SERVER_DB_TESTS=1` now supplies the complete local test identity
+and dedicated server/local hostnames itself; it never inherits a main/canary
+environment. The operator/miner/validator topology was
 not launched in that 2026-08-21 record because the private Subtensor archive was
 still syncing through historical runtimes. The 2026-08-29 public override removes
 that dependency for bounded acceptance, but does not retroactively provide the
@@ -2983,7 +2988,7 @@ Run the same local gate with:
 
 ```bash
 cd /home/by/urnetwork/sn
-./scripts/test-release-1.0-local.sh
+RUN_SERVER_DB_TESTS=1 ./scripts/test-release-1.0-local.sh
 ```
 
 Foundry was installed using the [official Foundry installation flow](https://getfoundry.sh/getting-started/installation). A new shell should see it through the `.bashrc` change; for the current shell:

@@ -31,6 +31,10 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"CoreStClientEpochUsesOneFinalizedBlock",
 		"StatsAlphaPriceURLIsMainnetOnly",
 		"StatsGaugeVecReplaceDeletesStaleSeries",
+		"export WARP_ENV=local",
+		"export WARP_SERVICE=test",
+		"export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com",
+		"export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("local release gate omits operator regression %s", required)

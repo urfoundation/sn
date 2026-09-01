@@ -185,15 +185,15 @@ func TestReleaseCampaignBudgetCoversEveryProductionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if required != 496_000_000_000 {
-		t.Fatalf("release campaign requirement = %d, want 496000000000", required)
+	if required != 196_000_000_000 {
+		t.Fatalf("release campaign requirement = %d, want 196000000000", required)
 	}
 	r.Policy.Deposit.TotalTestCampaignCapRao = required
 	if err := r.Validate(); err != nil {
 		t.Fatalf("exact release campaign requirement was rejected: %v", err)
 	}
 	r.Policy.Deposit.TotalTestCampaignCapRao--
-	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "require at least 496000000000") {
+	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "require at least 196000000000") {
 		t.Fatalf("underfunded release campaign was accepted: %v", err)
 	}
 }

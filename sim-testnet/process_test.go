@@ -183,14 +183,29 @@ func TestReleaseTopologyReadinessRequiresFreshProofsAndRejectsRestart(t *testing
 }
 
 // Concurrent readers may see an append before its final newline or closing
-// brace. Only complete records with the release proof identity count.
-func TestCompletedReleaseProofCountRejectsTornAndIncompleteRecords(t *testing.T) {
+// brace. Only that final fragment is tolerated; corruption at a durable JSONL
+// boundary fails closed.
+func releaseProofTestLine(t *testing.T, version int, trailID connect.Id, coverage, completeTimeMS uint64) string {
+	t.Helper()
+	value := struct {
+		Version        int        `json:"v"`
+		TrailID        connect.Id `json:"trail_id"`
+		Coverage       uint64     `json:"coverage"`
+		CompleteTimeMS uint64     `json:"complete_time_ms"`
+	}{Version: version, TrailID: trailID, Coverage: coverage, CompleteTimeMS: completeTimeMS}
+	line, err := json.Marshal(&value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(line)
+}
+
+func TestCompletedReleaseProofCountIgnoresOnlyTrailingFragment(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "proofs.jsonl")
+	first, trailing := connect.Id{1}, connect.Id{2}
 	contents := strings.Join([]string{
-		`{"v":1,"trail_id":"01J00000000000000000000000","coverage":3,"complete_time_ms":1}`,
-		`{"v":1,"trail_id":"","coverage":3,"complete_time_ms":2}`,
-		`{"v":1,"trail_id":"01J00000000000000000000001","coverage":0,"complete_time_ms":3}`,
-		`{"v":1,"trail_id":"01J00000000000000000000002","coverage":3`,
+		releaseProofTestLine(t, 1, first, 3, 1),
+		strings.TrimSuffix(releaseProofTestLine(t, 1, trailing, 3, 2), "}"),
 	}, "\n")
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
@@ -200,12 +215,41 @@ func TestCompletedReleaseProofCountRejectsTornAndIncompleteRecords(t *testing.T)
 		t.Fatalf("complete release proof count = %d, %v, want 1", count, err)
 	}
 	unterminatedPath := filepath.Join(t.TempDir(), "proofs.jsonl")
-	if err := os.WriteFile(unterminatedPath, []byte(`{"v":1,"trail_id":"01J00000000000000000000003","coverage":3,"complete_time_ms":4}`), 0o600); err != nil {
+	if err := os.WriteFile(unterminatedPath, []byte(releaseProofTestLine(t, 1, connect.Id{3}, 3, 4)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	count, err = completedReleaseProofCount(unterminatedPath)
 	if err != nil || count != 0 {
 		t.Fatalf("unterminated release proof count = %d, %v, want 0", count, err)
+	}
+}
+
+func TestCompletedReleaseProofCountRejectsDurableCorruption(t *testing.T) {
+	trailID := connect.Id{1}
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{name: "malformed", contents: "{\n", want: "line 1 is malformed"},
+		{name: "wrong version", contents: releaseProofTestLine(t, 2, trailID, 3, 1) + "\n", want: "line 1 has an incomplete release identity"},
+		{name: "missing trail", contents: releaseProofTestLine(t, 1, connect.Id{}, 3, 1) + "\n", want: "line 1 has an incomplete release identity"},
+		{name: "missing coverage", contents: releaseProofTestLine(t, 1, trailID, 0, 1) + "\n", want: "line 1 has an incomplete release identity"},
+		{name: "missing completion", contents: releaseProofTestLine(t, 1, trailID, 3, 0) + "\n", want: "line 1 has an incomplete release identity"},
+		{name: "duplicate", contents: strings.Join([]string{
+			releaseProofTestLine(t, 1, trailID, 3, 1),
+			releaseProofTestLine(t, 1, trailID, 3, 2),
+			"",
+		}, "\n"), want: "line 2 duplicates trail_id"},
+	}
+	for _, test := range tests {
+		path := filepath.Join(t.TempDir(), "proofs.jsonl")
+		if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if count, err := completedReleaseProofCount(path); err == nil || count != 0 || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("%s: complete release proof count = %d, %v, want error containing %q", test.name, count, err, test.want)
+		}
 	}
 }
 

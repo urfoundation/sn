@@ -249,8 +249,8 @@ func (p Policy) Validate() error {
 	if production.CloseGraceBlocks > production.RootCommitWindowBlocks || production.RootCommitWindowBlocks > production.FinalizeOffsetBlocks || production.EpochBlocks <= s.EpochBlocks {
 		return errors.New("invalid production cadence")
 	}
-	if p.NetworkProfile == "testnet" && production.EpochBlocks != 2_400 {
-		return errors.New("testnet UR block must be exactly 2400 chain blocks")
+	if p.NetworkProfile == "testnet" && production.EpochBlocks != 360 {
+		return errors.New("testnet UR block must be exactly 360 chain blocks")
 	}
 	if p.NetworkProfile == "mainnet" && production.EpochBlocks != 50_400 {
 		return errors.New("mainnet UR block must be exactly 50400 chain blocks")

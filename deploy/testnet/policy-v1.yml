@@ -16,14 +16,14 @@ policy:
     rounding: largest_remainder_then_client_id_ascending
   production_cadence:
     # sim-testnet schedules this exact snapshot for currentEpoch+1 only after
-    # the 20 accelerated epochs reconcile. The active short epoch is unchanged.
-    after_accelerated_epochs: 20
-    # An eight-hour testnet UR block at the pinned 12 second chain cadence.
+    # the five accelerated epochs reconcile. The active short epoch is unchanged.
+    after_accelerated_epochs: 5
+    # A 72-minute testnet UR block at the pinned 12 second chain cadence.
     # Mainnet uses the separately locked 50,400-block/seven-day policy.
-    epoch_blocks: 2400
-    root_commit_window_blocks: 200
-    finalize_offset_blocks: 1200
-    close_grace_blocks: 20
+    epoch_blocks: 360
+    root_commit_window_blocks: 60
+    finalize_offset_blocks: 180
+    close_grace_blocks: 6
   steering:
     theta:
       numerator: 3
@@ -46,14 +46,14 @@ policy:
     # Runtime 452 rejects reserve movements near 0.1 alpha on the live subnet.
     # Ten alpha leaves a wide margin above that dynamic minimum.
     epoch_cap_rao_per_operator: 10000000000
-    # Funds both NOs through 20 accelerated epochs, one deliberately dishonest
+    # Funds both NOs through five accelerated epochs, one deliberately dishonest
     # production deposit, its recovery, one conservatively discarded partial
     # production epoch, three fully observed production epochs, the terminal
     # boundary, a runtime-valid 5-alpha dishonest underpayment, and 1 alpha of
     # voluntary conviction. This is the demand-side
     # campaign cap only: validator bootstrap stake is independently sized to
     # establish the reserve majority and an outside-validator position.
-    total_test_campaign_cap_rao: 496000000000
+    total_test_campaign_cap_rao: 196000000000
     tier_snapshot: conviction_before_epoch
     usage_lag_epochs: 1
     usage_artifact: signed_payout_artifact_total_usage_bytes

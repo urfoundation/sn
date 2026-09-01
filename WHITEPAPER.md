@@ -401,9 +401,9 @@ as `vpk` also works but couples key rotation to the wallet; binding is preferred
 Two cadences run concurrently.
 
 The values in this section are the **mainnet 1.0 cadence**. Testnet acceptance
-uses a deliberately shortened, future-effective 2,400-block UR epoch
-(approximately eight hours), a 200-block root window, a 1,200-block finalize
-offset, and a 20-block close grace. It must complete three consecutive fully
+uses a deliberately shortened, future-effective 360-block UR epoch
+(approximately 72 minutes), a 60-block root window, a 180-block finalize
+offset, and a 6-block close grace. It must complete three consecutive fully
 observed epochs. This test-only snapshot exercises the identical state machine
 and must never be promoted as the mainnet policy, whose epoch remains 50,400
 blocks (approximately seven days) with separately reviewed +4h/+48h windows.
@@ -1631,14 +1631,14 @@ faulted.
    conviction locks, miner collateral, registration, retained-source balance, or the reserve-majority
    postcondition has drifted. Testnet values may be simulator-funded, but the positions have distinct
    coldkeys/hotkeys and the independent validator executes and signs its own scoring lifecycle.
-3. **M2 — Buyback reserve verified live (testnet).** Several short testnet epochs green: dividends
+3. **M2 — Buyback reserve verified live (testnet).** Five consecutive 300-block testnet epochs green: dividends
    **auto‑compound** onto the reserve stake (`getStake(reserveHotkey,sinkColdkey,netuid) > principal`), the **one‑way
    invariant** + on‑chain audit hold, and the upgrade/pause drills leave finalized claims and the
    immutable reserve untouched. (The effort-bounty rail — `registerValidator`/`submitTrails`/`claimValidator` — is
    **out of scope**, so there is no such milestone in v1; it stays parked, §9.3/D29.)
 4. **M3 — Ramp on testnet, then promote to mainnet (Phase E).** schedule the
-   testnet-only 2,400-block/eight-hour policy (+200-block root window,
-   +1,200-block finalize offset, F2‑snapshotted so in‑flight epochs are untouched)
+   testnet-only 360-block/approximately-72-minute policy (+60-block root window,
+   +180-block finalize offset and +6-block close grace, F2‑snapshotted so in‑flight epochs are untouched)
    and require three consecutive fully observed UR blocks under concurrent
    adversarial load; the deposit cap raised stepwise toward the sized policy;
    settlement‑poke automation; the reference rate + sourcing commitment

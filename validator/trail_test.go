@@ -403,6 +403,9 @@ func TestTrailHappyPath(t *testing.T) {
 	if record.Coverage != 4 {
 		t.Fatalf("coverage: %d, want M-1=4", record.Coverage)
 	}
+	if err := VerifyProofRecord(record, validatorKey.Public().(ed25519.PublicKey), server.serverPublicKeys(), 5); err != nil {
+		t.Fatalf("independent proof verification: %v", err)
+	}
 
 	// The record's FinalDigest is the RAW VerifyFinalDigest of the canonical
 	// FINAL message.
@@ -452,6 +455,52 @@ func TestTrailHappyPath(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].TrailId != record.TrailId {
 		t.Fatalf("store: %d records", len(records))
+	}
+}
+
+func TestVerifyProofRecordRejectsEverySignedPathMutation(t *testing.T) {
+	server, validatorKey, clientID := newMockVerifyServer(t, 12)
+	store, err := NewProofStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, _, _ := newTestEngine(t, server, validatorKey, clientID, 5, store)
+	record, err := engine.RunTrail(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := []struct {
+		name   string
+		mutate func(*ProofRecord)
+	}{
+		{name: "contract epoch", mutate: func(value *ProofRecord) { value.Epoch = 0 }},
+		{name: "validator identity", mutate: func(value *ProofRecord) { value.Vpk[0]++ }},
+		{name: "depth", mutate: func(value *ProofRecord) { value.M-- }},
+		{name: "coverage", mutate: func(value *ProofRecord) { value.Coverage++ }},
+		{name: "server key", mutate: func(value *ProofRecord) { value.ServerKeyId++ }},
+		{name: "hop", mutate: func(value *ProofRecord) { value.Hops[0].ClientId[0]++ }},
+		{name: "duplicate hop", mutate: func(value *ProofRecord) { value.Hops[1].ClientId = value.Hops[0].ClientId }},
+		{name: "hop time", mutate: func(value *ProofRecord) { value.Hops[0].TimeMs = 0 }},
+		{name: "completion", mutate: func(value *ProofRecord) { value.CompleteTimeMs++ }},
+		{name: "digest", mutate: func(value *ProofRecord) { value.FinalDigest[0]++ }},
+		{name: "server signature", mutate: func(value *ProofRecord) { value.FinalSig[0]++ }},
+		{name: "extend signature", mutate: func(value *ProofRecord) { value.VerifierSig[0]++ }},
+		{name: "co-signature", mutate: func(value *ProofRecord) { value.VpkSig[0]++ }},
+		{name: "path id", mutate: func(value *ProofRecord) { value.PathId[0]++ }},
+	}
+	for _, mutation := range mutations {
+		wire, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var candidate ProofRecord
+		if err := json.Unmarshal(wire, &candidate); err != nil {
+			t.Fatal(err)
+		}
+		mutation.mutate(&candidate)
+		if err := VerifyProofRecord(&candidate, validatorKey.Public().(ed25519.PublicKey), server.serverPublicKeys(), 5); err == nil {
+			t.Fatalf("%s mutation was accepted", mutation.name)
+		}
 	}
 }
 

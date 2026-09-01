@@ -150,6 +150,70 @@ func TrailPathId(trailId connect.Id, vpk []byte, serverKeyId byte) [32]byte {
 	return keccak256(trailId[:], vpk, []byte{serverKeyId})
 }
 
+// VerifyProofRecord independently verifies every reconstructable field and
+// signature in a persisted release proof. expectedVPK binds the record to the
+// configured validator/operator client seed; serverKeys must contain the
+// operator's published key history so rotations do not invalidate old proofs.
+func VerifyProofRecord(record *ProofRecord, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, trailDepth int) error {
+	if record == nil || record.Version != 1 {
+		return errors.New("proof record version is invalid")
+	}
+	if record.Epoch == 0 {
+		return errors.New("proof record contract epoch is invalid")
+	}
+	if record.TrailId == (connect.Id{}) || len(expectedVPK) != ed25519.PublicKeySize || !bytes.Equal(record.Vpk, expectedVPK) {
+		return errors.New("proof record validator identity is invalid")
+	}
+	if trailDepth < 1 || trailDepth > 255 || record.M != trailDepth || len(record.Hops) != trailDepth || record.Coverage != uint64(trailDepth-1) {
+		return errors.New("proof record depth or coverage is invalid")
+	}
+	serverKey, ok := serverKeys[record.ServerKeyId]
+	if !ok || len(serverKey) != ed25519.PublicKeySize {
+		return fmt.Errorf("proof record server key %d is unavailable", record.ServerKeyId)
+	}
+	trail := make([]connect.Id, len(record.Hops))
+	seenHops := map[connect.Id]struct{}{}
+	for index, hop := range record.Hops {
+		if hop.ClientId == (connect.Id{}) || hop.TimeMs == 0 || (index > 0 && hop.TimeMs < record.Hops[index-1].TimeMs) {
+			return fmt.Errorf("proof record hop %d is invalid", index)
+		}
+		if _, ok := seenHops[hop.ClientId]; ok {
+			return fmt.Errorf("proof record hop %d is duplicated", index)
+		}
+		seenHops[hop.ClientId] = struct{}{}
+		trail[index] = hop.ClientId
+	}
+	if record.CompleteTimeMs != record.Hops[len(record.Hops)-1].TimeMs {
+		return errors.New("proof record completion time does not match its final hop")
+	}
+	finalMessage, err := connect.BuildVerifyFinalMessage(record.ServerKeyId, record.TrailId, record.ServerNonce, record.Vpk, byte(record.M), record.Hops)
+	if err != nil {
+		return fmt.Errorf("build proof record FINAL: %w", err)
+	}
+	digest := connect.VerifyFinalDigest(finalMessage)
+	if !bytes.Equal(record.FinalDigest, digest[:]) {
+		return errors.New("proof record FINAL digest is invalid")
+	}
+	if !ed25519.Verify(serverKey, finalMessage, record.FinalSig) {
+		return errors.New("proof record server FINAL signature is invalid")
+	}
+	if !ed25519.Verify(expectedVPK, finalMessage, record.VpkSig) {
+		return errors.New("proof record validator FINAL co-signature is invalid")
+	}
+	extendMessage, err := connect.BuildVerifyExtendMessage(record.TrailId, record.ServerNonce, record.Vpk, byte(record.M), trail)
+	if err != nil {
+		return fmt.Errorf("build proof record EXTEND: %w", err)
+	}
+	if !connect.VerifyVerifyMessageSignature(expectedVPK, extendMessage, record.VerifierSig) {
+		return errors.New("proof record validator EXTEND signature is invalid")
+	}
+	pathID := TrailPathId(record.TrailId, record.Vpk, record.ServerKeyId)
+	if !bytes.Equal(record.PathId, pathID[:]) {
+		return errors.New("proof record path id is invalid")
+	}
+	return nil
+}
+
 // ProofStore is an append-only JSONL store of completed proofs.
 type ProofStore struct {
 	mu   sync.Mutex

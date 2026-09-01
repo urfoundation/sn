@@ -75,6 +75,7 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 		"double_claim_rejects", "uncertain_claims", "terminal_holding_writeoffs", "healthy_holding_claims", "retryable_holding_preserved",
 		"pending_basket_deposit_rao", "root_stake_change_rao", "pending_basket_stake_change_blocked",
 		"settlement_transfer_floor_cases", "captured_subfloor_emission_rao", "premature_claim_payments", "lost_claim_credit_rao",
+		"live_invalid_merkle_proof_rejections", "live_merkle_state_mutations",
 	),
 	"consensus-cabal-emulation": adversaryMetricSet(
 		"consensus_delta_ppm", "honest_consensus_delta_ppm", "honest_incentive_delta_ppm", "follower_consensus_delta_ppm", "active_stake_ppm", "validator_permit_count",
@@ -678,6 +679,19 @@ func adversaryAssertions(evidence *AdversaryCampaignEvidence, started time.Time,
 		passed := vector.Status == "pass" && vector.SampleFloor >= uint64(evidence.MinimumSamplesPerActor) && vector.ConcurrentCoverage != "invalid" && len(vector.ActorIDs) != 0 && len(vector.LocalTests) != 0 && len(vector.RequiredMetrics) != 0 && len(vector.MeasuredMetrics) != 0
 		assertions = append(assertions, build("adversary_vector_"+vector.ID, passed, fmt.Sprintf("mode=%s coverage=%s status=%s sample_floor=%d errors=%d max_p99_ms=%d measured_metrics=%v", vector.ExecutionMode, vector.ConcurrentCoverage, vector.Status, vector.SampleFloor, vector.Errors, vector.MaximumP99LatencyMilliseconds, vector.MeasuredMetrics)))
 	}
+	liveMerklePassed := false
+	liveMerkleMessage := "custody actor or live Merkle metrics are absent"
+	for _, actor := range evidence.Actors {
+		if actor.ID != "custody-boundary-emulation" {
+			continue
+		}
+		rejections, rejected := actor.Metrics["live_invalid_merkle_proof_rejections"]
+		mutations, measured := actor.Metrics["live_merkle_state_mutations"]
+		liveMerklePassed = rejected && measured && rejections.Samples > 0 && rejections.Minimum >= 2 && mutations.Samples > 0 && mutations.Maximum == 0
+		liveMerkleMessage = fmt.Sprintf("rejection_samples=%d rejection_min=%d mutation_samples=%d mutation_max=%d", rejections.Samples, rejections.Minimum, mutations.Samples, mutations.Maximum)
+		break
+	}
+	assertions = append(assertions, build("adversary_live_invalid_merkle_proof", liveMerklePassed, liveMerkleMessage))
 	for _, id := range requiredAdversarialVectors {
 		if !seenVectors[id] {
 			assertions = append(assertions, build("adversary_vector_"+id, false, "researched vector is absent from campaign evidence"))

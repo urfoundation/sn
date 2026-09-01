@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"net/http"
@@ -18,6 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/stabi"
 	"github.com/urnetwork/connect"
 )
 
@@ -102,9 +109,14 @@ func healthyAdversaryEvidence() *AdversaryCampaignEvidence {
 		MaximumActorErrorRatePPM: 10_000, MaximumP99Milliseconds: 15_000, MaximumAttackControlRatio: 20_000_000, Status: "stopped",
 	}
 	for _, id := range releaseAdversaryActorIDs {
+		metrics := map[string]AdversaryMetricEvidence{}
+		if id == "custody-boundary-emulation" {
+			metrics["live_invalid_merkle_proof_rejections"] = AdversaryMetricEvidence{Samples: 1, Minimum: 2, Maximum: 2, Last: 2}
+			metrics["live_merkle_state_mutations"] = AdversaryMetricEvidence{Samples: 1, Minimum: 0, Maximum: 0, Last: 0}
+		}
 		evidence.Actors = append(evidence.Actors, AdversaryActorEvidence{
 			ID: id, VectorIDs: []string{"vector"}, Status: "stopped", Samples: 10, ControlSamples: 2, AttackSamples: 8,
-			Successful: 10, P99LatencyMilliseconds: 10,
+			Successful: 10, P99LatencyMilliseconds: 10, Metrics: metrics,
 		})
 	}
 	for _, id := range requiredAdversarialVectors {
@@ -323,6 +335,25 @@ func TestAdversaryCampaignEnforcesErrorAndLatencyBounds(t *testing.T) {
 	}
 }
 
+func TestAdversaryCampaignRequiresLiveInvalidMerkleProofEvidence(t *testing.T) {
+	evidence := healthyAdversaryEvidence()
+	for index := range evidence.Actors {
+		if evidence.Actors[index].ID == "custody-boundary-emulation" {
+			delete(evidence.Actors[index].Metrics, "live_invalid_merkle_proof_rejections")
+			break
+		}
+	}
+	foundFailure := false
+	for _, assertion := range adversaryAssertions(evidence, time.Now().Add(-time.Second), "observation") {
+		if assertion.ID == "adversary_live_invalid_merkle_proof" && !assertion.Passed {
+			foundFailure = true
+		}
+	}
+	if !foundFailure {
+		t.Fatal("campaign without a live InvalidProof observation was accepted")
+	}
+}
+
 func TestAdversaryMetricSnapshotOwnsCampaignHistory(t *testing.T) {
 	state := &adversaryActorState{evidence: AdversaryActorEvidence{
 		ID: "rpc-consistency-pressure",
@@ -473,6 +504,25 @@ func TestCustodyBoundaryEmulationSeparatesDomainsAndConservesRounding(t *testing
 		result := actor.Sample(context.Background(), phase, 7)
 		if result.Outcome != adversaryOutcomeSuccess {
 			t.Fatalf("phase=%s result=%+v", phase, result)
+		}
+	}
+}
+
+func TestLiveMerkleRetryOnlyMasksTheScheduledOperatorOutage(t *testing.T) {
+	if !liveMerkleRetryable(fmt.Errorf("artifact pending: %w", errLiveMerkleEvidenceUnavailable), false) {
+		t.Fatal("an unavailable entitlement was not retryable")
+	}
+	operatorUnavailable := fmt.Errorf("history: %w", errLiveMerkleOperatorUnavailable)
+	if liveMerkleRetryable(operatorUnavailable, false) || !liveMerkleRetryable(operatorUnavailable, true) {
+		t.Fatal("operator unavailability was not scoped to its scheduled fault")
+	}
+	for _, err := range []error{
+		errors.New("invalid proof succeeded"),
+		errors.New("artifact signature is invalid"),
+		errors.New("entitlement mutated"),
+	} {
+		if liveMerkleRetryable(err, true) {
+			t.Fatalf("scheduled operator outage masked a custody failure: %v", err)
 		}
 	}
 }
@@ -949,10 +999,7 @@ func TestAdversarialRPCBlockDecoderRejectsMalformedAndErrors(t *testing.T) {
 	if _, _, err := decodeRPCBlock(invalid); err == nil {
 		t.Fatal("malformed RPC block was accepted")
 	}
-	withError := rpcResponse{Error: &struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	}{Code: -32601, Message: "not found"}}
+	withError := rpcResponse{Error: &rpcResponseError{Code: -32601, Message: "not found"}}
 	if _, _, err := decodeRPCBlock(withError); err == nil {
 		t.Fatal("RPC error envelope was accepted as a block")
 	}
@@ -962,6 +1009,197 @@ func TestAdversarialRPCBlockDecoderRejectsMalformedAndErrors(t *testing.T) {
 	}
 	if _, err := decodeRPCQuantity(rpcResponse{Result: json.RawMessage(`945`)}); err == nil {
 		t.Fatal("non-hex RPC quantity was accepted")
+	}
+}
+
+func TestInvalidMerkleProofResponseRequiresExactCustomError(t *testing.T) {
+	selector := stabi.STSettlementVaultInvalidProofErrorID().Bytes()[:4]
+	encoded := "0x" + hex.EncodeToString(selector)
+	valid := []rpcResponse{
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted", Data: json.RawMessage(fmt.Sprintf("%q", encoded))}},
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted", Data: json.RawMessage(fmt.Sprintf(`{"data":%q}`, encoded))}},
+	}
+	for index, response := range valid {
+		if err := requireInvalidProofResponse(response); err != nil {
+			t.Fatalf("valid InvalidProof response %d rejected: %v", index, err)
+		}
+	}
+	wrong := append([]byte(nil), selector...)
+	wrong[0]++
+	invalid := []rpcResponse{
+		{},
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted"}},
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted", Data: json.RawMessage(`"reverted"`)}},
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted", Data: json.RawMessage(fmt.Sprintf("%q", "0x"+hex.EncodeToString(wrong)))}},
+		{Error: &rpcResponseError{Code: 3, Message: "execution reverted", Data: json.RawMessage(fmt.Sprintf("%q", encoded+"00"))}},
+	}
+	for index, response := range invalid {
+		if err := requireInvalidProofResponse(response); err == nil {
+			t.Fatalf("invalid revert response %d was accepted", index)
+		}
+	}
+}
+
+func TestLiveMerkleOperatorSelectionCoversBothAttackPhaseParities(t *testing.T) {
+	passed := map[int]bool{}
+	first := nextLiveMerkleOperator(passed, 2, 1)
+	if first < 1 || first > 2 {
+		t.Fatalf("first live Merkle operator=%d", first)
+	}
+	passed[first] = true
+	second := nextLiveMerkleOperator(passed, 2, 3)
+	if second < 1 || second > 2 || second == first {
+		t.Fatalf("second live Merkle operator=%d after first=%d", second, first)
+	}
+	passed[second] = true
+	if next := nextLiveMerkleOperator(passed, 2, 5); next != 0 {
+		t.Fatalf("complete live Merkle operator set returned %d", next)
+	}
+}
+
+func encodeLiveMerkleEntitlement(artifact *payoutArtifact, mutated bool) []byte {
+	result := make([]byte, 7*32)
+	copy(result[:32], artifact.PayoutRoot[:])
+	artifactHash, _ := hex.DecodeString(strings.TrimPrefix(artifact.ContentHash, "sha256:"))
+	copy(result[32:64], artifactHash)
+	big.NewInt(1_000).FillBytes(result[64:96])
+	big.NewInt(1_000).FillBytes(result[96:128])
+	if mutated {
+		big.NewInt(1).FillBytes(result[128:160])
+	}
+	binary.BigEndian.PutUint64(result[184:192], 500)
+	result[len(result)-1] = 2
+	return result
+}
+
+func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	coordinator := common.HexToAddress("0x0000000000000000000000000000000000000100")
+	vault := common.HexToAddress("0x0000000000000000000000000000000000000200")
+	if err := saveContractDeployment(stateDir, ContractDeployment{CoordinatorProxy: coordinator, SettlementVault: vault}); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := payoutartifact.Build(payoutartifact.BuildInput{
+		DeploymentID:         cfg.Config.Deployment.DeploymentID,
+		GenesisHash:          cfg.Public.Chain.GenesisHash,
+		PolicyHash:           cfg.PolicyHash,
+		ChainID:              cfg.ChainID,
+		Netuid:               cfg.Netuid,
+		Coordinator:          coordinator,
+		SettlementVault:      vault,
+		Epoch:                4,
+		NoID:                 1,
+		Start:                payoutartifact.Boundary{Number: 10, Hash: "0x" + strings.Repeat("01", 32)},
+		End:                  payoutartifact.Boundary{Number: 20, Hash: "0x" + strings.Repeat("02", 32)},
+		OperatorSnapshotHash: "sha256:" + strings.Repeat("10", 32),
+		FleetSnapshotHash:    "sha256:" + strings.Repeat("20", 32),
+		Providers: []payoutartifact.ProviderInput{{
+			ClientID: [16]byte{1}, NetworkID: [16]byte{2}, Coldkey: [32]byte{3}, UsageBytes: 100,
+			Assignments: 8, Confirmations: 8, Eligible: true,
+		}},
+		ReliabilityAMin: 8,
+		CreatedAt:       time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ethcrypto.HexToECDSA(strings.Repeat("11", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := payoutartifact.Sign(artifact, key); err != nil {
+		t.Fatal(err)
+	}
+	artifactBytes, err := json.Marshal(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactHash := strings.TrimPrefix(artifact.ContentHash, "sha256:")
+	operatorServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/sn/artifacts":
+			_, _ = writer.Write([]byte(fmt.Sprintf(`{"schema":"urnetwork-payout-artifact-history-v1","objects":[{"key":"blob/%s.json"}]}`, artifactHash)))
+		case "/sn/artifact":
+			if request.URL.Query().Get("hash") != artifact.ContentHash {
+				writer.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = writer.Write(artifactBytes)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer operatorServer.Close()
+
+	var invalidMethod, invalidBlock atomic.Uint64
+	var claimCalls atomic.Uint64
+	var mutateAfterClaim atomic.Bool
+	rpcServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var envelope struct {
+			JSONRPC string            `json:"jsonrpc"`
+			ID      uint64            `json:"id"`
+			Method  string            `json:"method"`
+			Params  []json.RawMessage `json:"params"`
+		}
+		if json.NewDecoder(request.Body).Decode(&envelope) != nil {
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		response := map[string]any{"jsonrpc": "2.0", "id": envelope.ID}
+		switch envelope.Method {
+		case "eth_getBlockByNumber":
+			response["result"] = map[string]any{"number": "0x64", "hash": "0x" + strings.Repeat("ab", 32)}
+		case "eth_call":
+			if len(envelope.Params) != 2 {
+				invalidBlock.Add(1)
+				break
+			}
+			var call map[string]string
+			var blockTag string
+			if json.Unmarshal(envelope.Params[0], &call) != nil || json.Unmarshal(envelope.Params[1], &blockTag) != nil || blockTag != "0x64" || !strings.EqualFold(call["to"], vault.Hex()) {
+				invalidBlock.Add(1)
+			}
+			data, decodeErr := hex.DecodeString(strings.TrimPrefix(call["data"], "0x"))
+			if decodeErr != nil || len(data) < 4 {
+				invalidMethod.Add(1)
+				break
+			}
+			switch hex.EncodeToString(data[:4]) {
+			case hex.EncodeToString(stabi.NewSTSettlementVault().PackEntitlement(big.NewInt(4), big.NewInt(1))[:4]):
+				response["result"] = "0x" + hex.EncodeToString(encodeLiveMerkleEntitlement(artifact, mutateAfterClaim.Load() && claimCalls.Load() > 0))
+			case hex.EncodeToString(stabi.NewSTSettlementVault().PackConservationHolds()[:4]):
+				conservation := make([]byte, 32)
+				conservation[31] = 1
+				response["result"] = "0x" + hex.EncodeToString(conservation)
+			case hex.EncodeToString(stabi.NewSTSettlementVault().PackClaim(big.NewInt(4), big.NewInt(1), artifact.Leaves[0].Coldkey, big.NewInt(9_999), artifact.Leaves[0].Proof)[:4]):
+				claimCalls.Add(1)
+				response["error"] = map[string]any{"code": 3, "message": "execution reverted", "data": "0x" + hex.EncodeToString(stabi.STSettlementVaultInvalidProofErrorID().Bytes()[:4])}
+			default:
+				invalidMethod.Add(1)
+			}
+		default:
+			invalidMethod.Add(1)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(response)
+	}))
+	defer rpcServer.Close()
+	gate := func() *adversaryHTTP {
+		return &adversaryHTTP{gate: &adversaryRequestGate{interval: time.Nanosecond, now: time.Now}, timeout: time.Second}
+	}
+	evidence, err := liveInvalidMerkleProofProbe(context.Background(), cfg, stateDir, operatorServer.URL, rpcServer.URL, 1, gate(), gate(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Epoch != 4 || evidence.NoID != 1 || evidence.FinalizedBlock != 100 || evidence.Requests != 8 || claimCalls.Load() != 1 || invalidMethod.Load() != 0 || invalidBlock.Load() != 0 {
+		t.Fatalf("live Merkle evidence=%+v claim_calls=%d invalid_method=%d invalid_block=%d", evidence, claimCalls.Load(), invalidMethod.Load(), invalidBlock.Load())
+	}
+	claimCalls.Store(0)
+	mutateAfterClaim.Store(true)
+	if _, err := liveInvalidMerkleProofProbe(context.Background(), cfg, stateDir, operatorServer.URL, rpcServer.URL, 1, gate(), gate(), 8); err == nil || !strings.Contains(err.Error(), "changed the pinned entitlement") {
+		t.Fatalf("mutated post-rejection state error=%v", err)
 	}
 }
 
@@ -980,10 +1218,7 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 	cases := []rpcResponse{
 		{Result: json.RawMessage(`{}`)},
 		{Result: json.RawMessage(`null`)},
-		{Error: &struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		}{Code: -32000, Message: "unavailable"}},
+		{Error: &rpcResponseError{Code: -32000, Message: "unavailable"}},
 	}
 	for index, response := range cases {
 		if _, decodeErr := decodeRPCRuntimeVersion(response); decodeErr == nil {

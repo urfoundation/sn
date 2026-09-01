@@ -27,9 +27,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/stabi"
 )
 
 type adversaryRequestGate struct {
@@ -282,14 +284,17 @@ func (self *operatorAPIAdversary) Sample(ctx context.Context, phase adversarySam
 	}
 }
 
+type rpcResponseError struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
+}
+
 type rpcResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      uint64          `json:"id"`
-	Result  json.RawMessage `json:"result"`
-	Error   *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	JSONRPC string            `json:"jsonrpc"`
+	ID      uint64            `json:"id"`
+	Result  json.RawMessage   `json:"result"`
+	Error   *rpcResponseError `json:"error"`
 }
 
 type rpcBlock struct {
@@ -758,11 +763,287 @@ func (self *identityAdversary) Sample(_ context.Context, phase adversarySamplePh
 	}
 }
 
+var errLiveMerkleEvidenceUnavailable = errors.New("live Merkle evidence is not available yet")
+var errLiveMerkleOperatorUnavailable = errors.New("operator API is unavailable for the live Merkle probe")
+
+func liveMerkleRetryable(err error, expectedOperatorFault bool) bool {
+	return errors.Is(err, errLiveMerkleEvidenceUnavailable) || expectedOperatorFault && errors.Is(err, errLiveMerkleOperatorUnavailable)
+}
+
+type liveMerkleProbeEvidence struct {
+	Epoch          uint64
+	NoID           uint64
+	FinalizedBlock uint64
+	Requests       uint64
+}
+
+func decodeRPCHexBytes(response rpcResponse) ([]byte, error) {
+	if response.Error != nil {
+		return nil, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
+	}
+	var encoded string
+	if json.Unmarshal(response.Result, &encoded) != nil || !strings.HasPrefix(encoded, "0x") || len(encoded)%2 != 0 {
+		return nil, errors.New("rpc returned invalid hexadecimal bytes")
+	}
+	value, err := hex.DecodeString(encoded[2:])
+	if err != nil {
+		return nil, fmt.Errorf("decode rpc hexadecimal bytes: %w", err)
+	}
+	return value, nil
+}
+
+func decodeRPCErrorData(data json.RawMessage) ([]byte, error) {
+	if len(bytes.TrimSpace(data)) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil, errors.New("rpc error omitted revert data")
+	}
+	var encoded string
+	if json.Unmarshal(data, &encoded) == nil {
+		if !strings.HasPrefix(encoded, "0x") || len(encoded)%2 != 0 {
+			return nil, errors.New("rpc revert data is not canonical hexadecimal")
+		}
+		value, err := hex.DecodeString(encoded[2:])
+		if err != nil {
+			return nil, fmt.Errorf("decode rpc revert data: %w", err)
+		}
+		return value, nil
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(data, &object) != nil {
+		return nil, errors.New("rpc revert data has an unsupported shape")
+	}
+	for _, key := range []string{"data", "result", "return", "originalError"} {
+		if nested, ok := object[key]; ok {
+			if value, err := decodeRPCErrorData(nested); err == nil {
+				return value, nil
+			}
+		}
+	}
+	return nil, errors.New("rpc revert data has no canonical hexadecimal payload")
+}
+
+func requireInvalidProofResponse(response rpcResponse) error {
+	if response.Error == nil {
+		return errors.New("malformed Merkle proof eth_call succeeded")
+	}
+	raw, err := decodeRPCErrorData(response.Error.Data)
+	if err != nil {
+		return err
+	}
+	want := stabi.STSettlementVaultInvalidProofErrorID().Bytes()[:4]
+	if len(raw) != len(want) || !bytes.Equal(raw, want) {
+		return fmt.Errorf("malformed Merkle proof reverted with 0x%x, want InvalidProof 0x%x", raw, want)
+	}
+	decoded, err := stabi.NewSTSettlementVault().UnpackError(raw)
+	if err != nil {
+		return fmt.Errorf("decode InvalidProof revert: %w", err)
+	}
+	if _, ok := decoded.(*stabi.STSettlementVaultInvalidProof); !ok {
+		return fmt.Errorf("malformed Merkle proof decoded as %T", decoded)
+	}
+	return nil
+}
+
+// liveInvalidMerkleProofProbe fetches the operator's canonical artifact, pins
+// every contract read to one finalized block, and executes a deliberately
+// malformed claim with eth_call. It never broadcasts a transaction. The exact
+// InvalidProof selector and identical entitlement/conservation snapshots prove
+// both rejection and absence of state mutation on the deployed testnet vault.
+func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, stateDir, operatorBase, rpcEndpoint string, operatorID int, operatorHTTP, rpcHTTP *adversaryHTTP, sequence uint64) (liveMerkleProbeEvidence, error) {
+	evidence := liveMerkleProbeEvidence{}
+	if cfg == nil || cfg.Config == nil || operatorBase == "" || rpcEndpoint == "" || operatorID < 1 || operatorID > cfg.Config.Topology.Operators || operatorHTTP == nil || rpcHTTP == nil {
+		return evidence, errors.New("live Merkle proof probe is incomplete")
+	}
+	deployment, err := loadContractDeployment(stateDir)
+	if err != nil {
+		return evidence, fmt.Errorf("load deployed contract identity: %w", err)
+	}
+	if deployment.SettlementVault == (common.Address{}) || deployment.CoordinatorProxy == (common.Address{}) {
+		return evidence, errors.New("deployed contract identity has a zero address")
+	}
+	historyURL := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", operatorBase, cfg.Config.Deployment.DeploymentID, cfg.Netuid)
+	evidence.Requests++
+	status, body, err := operatorHTTP.do(ctx, http.MethodGet, historyURL, "", nil, 16*1024*1024)
+	if err != nil {
+		return evidence, fmt.Errorf("%w: fetch payout artifact history: %v", errLiveMerkleOperatorUnavailable, err)
+	}
+	if status/100 != 2 {
+		return evidence, fmt.Errorf("%w: fetch payout artifact history returned HTTP %d", errLiveMerkleOperatorUnavailable, status)
+	}
+	keys := artifactHistoryKeys(body)
+	if len(keys) == 0 {
+		return evidence, fmt.Errorf("%w: operator has no payout artifact", errLiveMerkleEvidenceUnavailable)
+	}
+	sort.Strings(keys)
+	var artifact *payoutArtifact
+	epochHashes := map[uint64]string{}
+	seenKeys := map[string]bool{}
+	for _, key := range keys {
+		hash := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
+		if len(hash) != 64 || seenKeys[hash] {
+			return evidence, errors.New("payout artifact history is not uniquely content-addressed")
+		}
+		if _, err := hex.DecodeString(hash); err != nil {
+			return evidence, errors.New("payout artifact history contains a non-hexadecimal content address")
+		}
+		seenKeys[hash] = true
+		evidence.Requests++
+		status, body, err = operatorHTTP.do(ctx, http.MethodGet, operatorBase+"/sn/artifact?hash=sha256:"+hash, "", nil, 32*1024*1024)
+		if err != nil {
+			return evidence, fmt.Errorf("%w: fetch payout artifact: %v", errLiveMerkleOperatorUnavailable, err)
+		}
+		if status/100 != 2 {
+			return evidence, fmt.Errorf("%w: fetch payout artifact returned HTTP %d", errLiveMerkleOperatorUnavailable, status)
+		}
+		var candidate payoutArtifact
+		if err := json.Unmarshal(body, &candidate); err != nil {
+			return evidence, fmt.Errorf("decode payout artifact: %w", err)
+		}
+		if err := verifyPayoutArtifact(&candidate); err != nil {
+			return evidence, fmt.Errorf("verify payout artifact: %w", err)
+		}
+		if !strings.EqualFold(candidate.ContentHash, "sha256:"+hash) || candidate.DeploymentID != cfg.Config.Deployment.DeploymentID || candidate.ChainID != cfg.ChainID || candidate.Netuid != cfg.Netuid || candidate.NoID != uint64(operatorID) || !strings.EqualFold(candidate.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(candidate.PolicyHash, cfg.PolicyHash) || candidate.Coordinator != deployment.CoordinatorProxy || candidate.SettlementVault != deployment.SettlementVault {
+			return evidence, errors.New("payout artifact identity does not match the active deployment")
+		}
+		if priorHash, ok := epochHashes[candidate.Epoch]; ok && !strings.EqualFold(priorHash, candidate.ContentHash) {
+			return evidence, fmt.Errorf("operator %d equivocated at payout epoch %d", operatorID, candidate.Epoch)
+		}
+		epochHashes[candidate.Epoch] = candidate.ContentHash
+		if artifact == nil || candidate.Epoch > artifact.Epoch {
+			copy := candidate
+			artifact = &copy
+		}
+	}
+	if artifact == nil {
+		return evidence, fmt.Errorf("%w: operator has no verified payout artifact", errLiveMerkleEvidenceUnavailable)
+	}
+	if len(artifact.Leaves) == 0 {
+		return evidence, fmt.Errorf("%w: latest payout artifact has no eligible leaf", errLiveMerkleEvidenceUnavailable)
+	}
+
+	caller := &rpcAdversary{http: rpcHTTP}
+	call := func(method string, parameters any, offset uint64) (rpcResponse, error) {
+		evidence.Requests++
+		return caller.call(ctx, rpcEndpoint, method, parameters, sequence*100+offset)
+	}
+	blockResponse, err := call("eth_getBlockByNumber", []any{"finalized", false}, 1)
+	if err != nil {
+		return evidence, err
+	}
+	_, finalizedBlock, err := decodeRPCBlock(blockResponse)
+	if err != nil {
+		return evidence, err
+	}
+	evidence.Epoch, evidence.NoID, evidence.FinalizedBlock = artifact.Epoch, artifact.NoID, finalizedBlock
+	if artifact.End.Number > finalizedBlock {
+		return evidence, fmt.Errorf("%w: artifact end %d is above finalized block %d", errLiveMerkleEvidenceUnavailable, artifact.End.Number, finalizedBlock)
+	}
+	blockTag := fmt.Sprintf("0x%x", finalizedBlock)
+	vault := stabi.NewSTSettlementVault()
+	ethCall := func(data []byte, offset uint64) (rpcResponse, error) {
+		return call("eth_call", []any{map[string]string{
+			"from": "0x0000000000000000000000000000000000000000",
+			"to":   deployment.SettlementVault.Hex(),
+			"data": "0x" + hex.EncodeToString(data),
+		}, blockTag}, offset)
+	}
+	entitlementData := vault.PackEntitlement(new(big.Int).SetUint64(artifact.Epoch), new(big.Int).SetUint64(artifact.NoID))
+	beforeEntitlementResponse, err := ethCall(entitlementData, 2)
+	if err != nil {
+		return evidence, err
+	}
+	beforeEntitlement, err := decodeRPCHexBytes(beforeEntitlementResponse)
+	if err != nil {
+		return evidence, fmt.Errorf("read entitlement before malformed proof: %w", err)
+	}
+	entitlement, err := vault.UnpackEntitlement(beforeEntitlement)
+	if err != nil {
+		return evidence, fmt.Errorf("decode entitlement before malformed proof: %w", err)
+	}
+	if entitlement.Status != 2 || finalizedBlock > entitlement.ExpiryBlock {
+		return evidence, fmt.Errorf("%w: entitlement status=%d expiry=%d finalized=%d", errLiveMerkleEvidenceUnavailable, entitlement.Status, entitlement.ExpiryBlock, finalizedBlock)
+	}
+	artifactHash, err := hex.DecodeString(strings.TrimPrefix(artifact.ContentHash, "sha256:"))
+	if err != nil || len(artifactHash) != 32 || entitlement.PayoutRoot != artifact.PayoutRoot || !bytes.Equal(entitlement.ArtifactHash[:], artifactHash) {
+		return evidence, errors.New("finalized entitlement does not match the canonical payout artifact")
+	}
+	beforeConservationResponse, err := ethCall(vault.PackConservationHolds(), 3)
+	if err != nil {
+		return evidence, err
+	}
+	beforeConservation, err := decodeRPCHexBytes(beforeConservationResponse)
+	if err != nil {
+		return evidence, fmt.Errorf("read conservation before malformed proof: %w", err)
+	}
+	conservationHolds, err := vault.UnpackConservationHolds(beforeConservation)
+	if err != nil {
+		return evidence, fmt.Errorf("decode conservation before malformed proof: %w", err)
+	}
+	if !conservationHolds {
+		return evidence, errors.New("vault conservation failed before malformed proof")
+	}
+	leaf := artifact.Leaves[0]
+	invalidShare := leaf.ShareBPS + 1
+	if invalidShare > cfg.Policy.Settlement.SharesTotalBPS {
+		invalidShare = leaf.ShareBPS - 1
+	}
+	claimData, err := vault.TryPackClaim(new(big.Int).SetUint64(artifact.Epoch), new(big.Int).SetUint64(artifact.NoID), leaf.Coldkey, new(big.Int).SetUint64(invalidShare), leaf.Proof)
+	if err != nil {
+		return evidence, fmt.Errorf("pack malformed Merkle claim: %w", err)
+	}
+	claimResponse, err := ethCall(claimData, 4)
+	if err != nil {
+		return evidence, err
+	}
+	if err := requireInvalidProofResponse(claimResponse); err != nil {
+		return evidence, err
+	}
+	afterEntitlementResponse, err := ethCall(entitlementData, 5)
+	if err != nil {
+		return evidence, err
+	}
+	afterEntitlement, err := decodeRPCHexBytes(afterEntitlementResponse)
+	if err != nil {
+		return evidence, fmt.Errorf("read entitlement after malformed proof: %w", err)
+	}
+	afterConservationResponse, err := ethCall(vault.PackConservationHolds(), 6)
+	if err != nil {
+		return evidence, err
+	}
+	afterConservation, err := decodeRPCHexBytes(afterConservationResponse)
+	if err != nil {
+		return evidence, fmt.Errorf("read conservation after malformed proof: %w", err)
+	}
+	if !bytes.Equal(beforeEntitlement, afterEntitlement) || !bytes.Equal(beforeConservation, afterConservation) {
+		return evidence, errors.New("malformed Merkle proof changed the pinned entitlement or conservation snapshot")
+	}
+	return evidence, nil
+}
+
 type custodyAdversary struct {
-	cfg *ResolvedConfig
+	cfg                   *ResolvedConfig
+	stateDir              string
+	operatorHTTP          *adversaryHTTP
+	rpcHTTP               *adversaryHTTP
+	faults                *adversaryFaultWindow
+	liveMerklePassed      map[int]bool
+	liveMerkleNextAttempt uint64
 }
 
 func (self *custodyAdversary) ID() string { return "custody-boundary-emulation" }
+
+func nextLiveMerkleOperator(passed map[int]bool, operators int, sequence uint64) int {
+	if operators < 1 || len(passed) >= operators {
+		return 0
+	}
+	start := int((sequence / 2) % uint64(operators))
+	for offset := 0; offset < operators; offset++ {
+		candidate := 1 + (start+offset)%operators
+		if !passed[candidate] {
+			return candidate
+		}
+	}
+	return 0
+}
 
 type denseColdkeyIndex struct {
 	byIndex  []uint64
@@ -1545,7 +1826,7 @@ func settlementLivenessModel(sequence uint64) (keeperDelay, sameNOCarry, doubleC
 	return sequence % 3, carry[1], doubleClaimRejects, 0, nil
 }
 
-func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
+func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
 	domains, err := custodyDomainHashes(self.cfg, sequence)
 	if err != nil || domains != 8 {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("domain separation cases=%d error=%v", domains, err)}
@@ -1779,7 +2060,46 @@ func (self *custodyAdversary) Sample(_ context.Context, phase adversarySamplePha
 		"double_claim_rejects":                doubleClaimRejects,
 		"uncertain_claims":                    uncertainClaims,
 	}
-	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("domain_mutations=%d leaves=%d exact_bps=%d dense_root_index=%d root_basket_claim=%d/%d proxy_mev_loss_ppm=%d protected_reject=%t runtime_models=%d/%d/%d/%d/%d dirty_root_swap_rejected=true", domains, len(shares), total, rootIndexEntries, rootClaim, rootReward, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, rollbackCases, migratedFields, orderCases, accountingCases, liquidityCases), Metrics: metrics}
+	liveDetail := "live_merkle=waiting"
+	liveRequests := uint64(0)
+	liveConfigured := self.stateDir != "" && self.operatorHTTP != nil && self.rpcHTTP != nil && self.faults != nil
+	if !liveConfigured {
+		liveDetail = "live_merkle=not-configured"
+	} else if len(self.liveMerklePassed) == self.cfg.Config.Topology.Operators {
+		metrics["live_invalid_merkle_proof_rejections"] = uint64(len(self.liveMerklePassed))
+		metrics["live_merkle_state_mutations"] = 0
+		liveDetail = fmt.Sprintf("live_merkle=passed operators=%d", len(self.liveMerklePassed))
+	} else if phase == adversaryAttackPhase && sequence >= self.liveMerkleNextAttempt {
+		if self.liveMerklePassed == nil {
+			self.liveMerklePassed = map[int]bool{}
+		}
+		operator := nextLiveMerkleOperator(self.liveMerklePassed, self.cfg.Config.Topology.Operators, sequence)
+		if operator == 0 {
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "live malformed-Merkle proof gate lost its pending operator"}
+		}
+		base := fmt.Sprintf("http://127.0.0.1:%d", 18080+operator)
+		live, liveErr := liveInvalidMerkleProofProbe(ctx, self.cfg, self.stateDir, base, self.cfg.OperationalEVM, operator, self.operatorHTTP, self.rpcHTTP, sequence)
+		liveRequests = live.Requests
+		switch {
+		case liveErr == nil:
+			self.liveMerklePassed[operator] = true
+			liveDetail = fmt.Sprintf("live_merkle=operator-passed epoch=%d no=%d block=%d complete=%d/%d", live.Epoch, live.NoID, live.FinalizedBlock, len(self.liveMerklePassed), self.cfg.Config.Topology.Operators)
+			if len(self.liveMerklePassed) == self.cfg.Config.Topology.Operators {
+				metrics["live_invalid_merkle_proof_rejections"] = uint64(len(self.liveMerklePassed))
+				metrics["live_merkle_state_mutations"] = 0
+			}
+		case liveMerkleRetryable(liveErr, self.faults.Expected(fmt.Sprintf("operator-%d-api", operator))):
+			self.liveMerkleNextAttempt = sequence + 60
+			liveDetail = "live_merkle=waiting: " + liveErr.Error()
+		default:
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "live malformed-Merkle proof gate: " + liveErr.Error(), Requests: liveRequests, MaxInFlight: 1}
+		}
+	}
+	maximumInFlight := uint64(0)
+	if liveRequests > 0 {
+		maximumInFlight = 1
+	}
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("domain_mutations=%d leaves=%d exact_bps=%d dense_root_index=%d root_basket_claim=%d/%d proxy_mev_loss_ppm=%d protected_reject=%t runtime_models=%d/%d/%d/%d/%d dirty_root_swap_rejected=true %s", domains, len(shares), total, rootIndexEntries, rootClaim, rootReward, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, rollbackCases, migratedFields, orderCases, accountingCases, liquidityCases, liveDetail), Requests: liveRequests, MaxInFlight: maximumInFlight, Metrics: metrics}
 }
 
 type yumaValidator struct {
@@ -2087,7 +2407,7 @@ func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSec
 	return []adversaryActor{
 		&artifactAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},
 		&consensusAdversary{stateDir: stateDir, headSlots: cfg.Config.Topology.HeadSlots, candidateFleets: cfg.Config.Topology.fleetCandidates()},
-		&custodyAdversary{cfg: cfg},
+		&custodyAdversary{cfg: cfg, stateDir: stateDir, operatorHTTP: operatorHTTP, rpcHTTP: rpcHTTP, faults: faultWindow},
 		&identityAdversary{cfg: cfg, stateDir: stateDir},
 		&operatorAPIAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},
 		&rpcAdversary{cfg: cfg, http: rpcHTTP},

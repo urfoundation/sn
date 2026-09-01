@@ -111,7 +111,7 @@ func TestPolicyCadenceWindowsFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.NetworkProfile != "testnet" || p.Settlement.CloseGraceBlocks != 5 || p.ProductionCadence.EpochBlocks != 2_400 || p.ProductionCadence.AfterAcceleratedEpochs != 20 {
+	if p.NetworkProfile != "testnet" || p.Settlement.CloseGraceBlocks != 5 || p.ProductionCadence.EpochBlocks != 360 || p.ProductionCadence.AfterAcceleratedEpochs != 5 {
 		t.Fatalf("unexpected release cadence: settlement=%+v production=%+v", p.Settlement, p.ProductionCadence)
 	}
 	tests := []func(*Policy){

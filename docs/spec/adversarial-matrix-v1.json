@@ -510,9 +510,9 @@
       "execution_mode": "live-safe",
       "actor_ids": ["artifact-integrity-pressure", "custody-boundary-emulation"],
       "oracle": "Deterministic largest-remainder allocation, sorted unique leaves, wallet snapshot and on-chain conservation reproduce the exact root independently.",
-      "metrics": ["allocation_sum_delta_rao", "duplicate_leaf_rejects", "root_reproduction_mismatches"],
+      "metrics": ["allocation_sum_delta_rao", "duplicate_leaf_rejects", "root_reproduction_mismatches", "live_invalid_merkle_proof_rejections", "live_merkle_state_mutations"],
       "stop_conditions": ["nonconservation", "root_not_reproducible", "wallet_snapshot_drift"],
-      "local_tests": ["protocol/TestAllocateSharesLargestRemainder", "sim-testnet/TestReleaseEvidenceSignVerifyAndTamper"]
+      "local_tests": ["protocol/TestAllocateSharesLargestRemainder", "sim-testnet/TestReleaseEvidenceSignVerifyAndTamper", "sim-testnet/TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls"]
     },
     {
       "id": "signature-domain-nonce-expiry-replay",

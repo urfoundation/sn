@@ -42,7 +42,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		Artifacts:    ArtifactConfig{Writer: "server-blob", HistoryAPI: "server-api", ContentAddressed: true},
 		Processes:    ProcessConfig{RestartPolicy: "on_failure_bounded"},
 		Scenarios: ScenarioConfig{
-			Launch: "smoke", Release: "release-1.0", ShortEpochs: 20, ProductionEpochs: 3,
+			Launch: "smoke", Release: "release-1.0", ShortEpochs: 5, ProductionEpochs: 3,
 			VoluntaryConvictionRao: 1_000_000_000, DishonestDepositRao: dishonestDepositRao,
 			QualityFaultOperator:    2,
 			QualityFaultStartBlocks: 5, QualityFaultDurationBlocks: 20,
@@ -86,7 +86,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 	release.Runtime.CodeHash = "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc"
 	hyperparameters := &Hyperparameters{SchemaVersion: 1, Profile: releaseProfile, OwnerControlled: map[string]any{
 		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "burn_half_life": 1, "immunity_period": testnetBootstrapImmunityPeriodBlocks,
-	}, ProductionOwnerControlled: map[string]any{"burn_half_life": 360, "immunity_period": 2400}}
+	}, ProductionOwnerControlled: map[string]any{"burn_half_life": 360, "immunity_period": 360}}
 	configHash, err := releaseConfigHash(cfg, public, hyperparameters)
 	if err != nil {
 		t.Fatal(err)

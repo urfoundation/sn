@@ -300,13 +300,13 @@ func TestHyperparameterUint64AcceptsRuntimeUnsignedShapes(t *testing.T) {
 func TestInitialImmunityPostconditionTracksOnlyItsVerifiedSuccessor(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Hyperparameters.OwnerControlled["immunity_period"] = testnetBootstrapImmunityPeriodBlocks
-	cfg.Hyperparameters.ProductionOwnerControlled["immunity_period"] = 2400
+	cfg.Hyperparameters.ProductionOwnerControlled["immunity_period"] = 360
 	initial, successor, err := lifecycleHyperparameterExpectation(cfg, "immunity_period", false)
 	if err != nil || initial != testnetBootstrapImmunityPeriodBlocks || successor != "" {
 		t.Fatalf("initial expectation=%v successor=%q err=%v", initial, successor, err)
 	}
 	production, successor, err := lifecycleHyperparameterExpectation(cfg, "immunity_period", true)
-	if err != nil || production != 2400 || successor != "production.hyperparameter.immunity_period" {
+	if err != nil || production != 360 || successor != "production.hyperparameter.immunity_period" {
 		t.Fatalf("production expectation=%v successor=%q err=%v", production, successor, err)
 	}
 	tempo, successor, err := lifecycleHyperparameterExpectation(cfg, "tempo", false)

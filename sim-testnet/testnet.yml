@@ -88,7 +88,7 @@ processes:
 scenarios:
   launch: smoke
   release: release-1.0
-  short_epochs: 20
+  short_epochs: 5
   production_epochs: 3
   voluntary_conviction_rao: 1000000000
   dishonest_deposit_rao: 5000000000

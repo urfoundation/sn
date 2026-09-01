@@ -121,32 +121,32 @@ func writeReleaseCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir str
 	return result, roles, runDir
 }
 
-func TestReleaseCampaignGateAcceptsTwentyEpochsAfterDelayedLaunch(t *testing.T) {
+func TestReleaseCampaignGateAcceptsFiveEpochsAfterDelayedLaunch(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
-	result, roles, _ := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 46)
+	result, roles, _ := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 31)
 	gate, err := loadReleaseCampaignGate(cfg, stateDir, roles)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gate.RunID != result.RunID || gate.ResultHash != result.EvidenceHash || gate.StartEpoch != 26 || gate.EndEpoch != 46 || gate.CompleteContentHash == "" {
+	if gate.RunID != result.RunID || gate.ResultHash != result.EvidenceHash || gate.StartEpoch != 26 || gate.EndEpoch != 31 || gate.CompleteContentHash == "" {
 		t.Fatalf("release gate=%+v result=%+v", gate, result)
 	}
 }
 
-func TestReleaseCampaignGateRejectsNineteenEpochsAtExactBoundary(t *testing.T) {
+func TestReleaseCampaignGateRejectsFourEpochsAtExactBoundary(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
-	_, roles, _ := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 45)
-	if _, err := loadReleaseCampaignGate(cfg, stateDir, roles); err == nil || !strings.Contains(err.Error(), "require 20 live epochs") {
-		t.Fatalf("nineteen-epoch gate error=%v", err)
+	_, roles, _ := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 30)
+	if _, err := loadReleaseCampaignGate(cfg, stateDir, roles); err == nil || !strings.Contains(err.Error(), "require 5 live epochs") {
+		t.Fatalf("four-epoch gate error=%v", err)
 	}
 }
 
 func TestReleaseCampaignGateRejectsResultTamperingAfterSignature(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
-	result, roles, runDir := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 46)
+	result, roles, runDir := writeReleaseCampaignFixture(t, cfg, stateDir, 26, 31)
 	result.EndEpoch++
 	if err := writePublicJSON(filepath.Join(runDir, "result.json"), result); err != nil {
 		t.Fatal(err)

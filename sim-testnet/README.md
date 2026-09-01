@@ -323,18 +323,21 @@ from a many-hour serialized transaction chain to roughly 1--3 hours, including
 boundary alignment: 400 native commitments run in ten-wide waves, 40 EVM
 batches replace 1,600 per-member install/refresh calls, historical reads use
 bounded RPC batches, and two future-epoch oracle handoffs remain.
-The 20 acceptance epochs still require about 20 hours. The three 8-hour
-production UR blocks intentionally retain 24 hours of chain observation plus
-the final approximately 4-hour settlement/finality window. Those protocol-time
+The five accelerated acceptance epochs require about five hours. The three
+360-block production UR blocks retain about 3.6 hours of complete chain
+observation, plus a conservatively discarded partial boundary and the final
+180-block settlement window. The combined live acceptance path is expected to
+take roughly 11--13 hours including boundary alignment. Those protocol-time
 gates are not shortened or simulated off-chain.
 
-There is no separate one-hour M1 wait before that 20-epoch interval. Launch
+There is no separate one-hour M1 wait before that five-epoch interval. Launch
 hands directly to `release-1.0`; its first complete reconciled epoch is both the
 M1 end-to-end proof and epoch 1 of M2. On a clean release marker,
 `production-soak` starts immediately and schedules its future-effective policy
-without an operator pause. The current approved deployment keeps its 300-block
-accelerated cadence, because rewriting live policy solely to shorten the run
-would create a new approval lineage rather than accelerate orchestration.
+without an operator pause. The five-epoch campaign keeps the deployed
+300-block accelerated cadence. Its future-effective transition to the
+release-locked 360-block acceptance policy is a new, explicitly hashed and
+journaled approval lineage.
 
 Host reboot is an intentional stop boundary. The supervisor unit is started but
 never enabled, managed PostgreSQL/Redis containers use Docker restart policy
@@ -373,16 +376,21 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 ```
 
-`release-1.0` requires 20 accelerated epochs, real two-NO verification,
+`release-1.0` requires five accelerated epochs, real two-NO verification,
 independently applied CRv4 vectors and self masks, isolated deposits and conviction,
 public roots, claims from both pools, cryptographically reconstructed head bindings,
+and a fresh, independently reconstructed and signature-verified validator path
+proof from every validator/operator pair in every required epoch. The live custody
+actor also submits a mutated real payout leaf by read-only `eth_call` against both
+NO entitlements and requires the exact invalid-proof error with no state change.
+It further requires
 a nonzero native head weight, a real promotion/demotion transition across the
 200-slot boundary, exact selected/rejected native reward channels, one-tier payout
 exclusion, actual `ClaimPaid` settlement (distinct from accepted/deferred claim
 credit), exact signed-policy max-weight-cap compliance, reserve principal plus
 auto-compounded yield, process fault recovery and both exact vault conservation
 identities (`captured = paid + escrow`, `escrow = pending + outstanding`).
-`production-soak` schedules the testnet-only 2,400-block (approximately eight-hour)
+`production-soak` schedules the testnet-only 360-block (approximately 72-minute)
 policy and immunity period, deliberately under-deposits one operator and proves
 that both validators zero its pool until an exact later deposit recovers it,
 rotates each operator verification key while retaining old proof verification,

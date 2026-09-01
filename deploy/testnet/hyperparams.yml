@@ -15,7 +15,8 @@ owner_controlled:
   # Netuid 521's external bootstrap UID predates the controlled churn floor.
   # This reviewed window keeps the floor immune during setup while the older
   # external UID stays non-immune, forcing runtime 452's minimum-free rule to
-  # prune the intended controlled identity. Production restores 2400 below.
+  # prune the intended controlled identity. Production restores the locked
+  # 360-block testnet acceptance cadence below.
   immunity_period: 50000
   min_allowed_weights: 1
   weights_version_key: 1
@@ -24,7 +25,7 @@ owner_controlled:
 production_owner_controlled:
   # Applied with the production-cadence policy transition, after M2.
   burn_half_life: 360
-  immunity_period: 2400
+  immunity_period: 360
 observed_compatibility_gates:
   max_weight_limit:
     storage: MaxWeightsLimit
