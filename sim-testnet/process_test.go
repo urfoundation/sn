@@ -511,6 +511,90 @@ func TestPostTopologyTournamentSelectionRejectsMalformedBoundaries(t *testing.T)
 	}
 }
 
+// Proofs completed before the challenger writes cannot certify that the live
+// topology survived them. A second proof generation is a mandatory boundary,
+// and its failure must remain visible to launch.
+func TestPostTopologyTournamentGateRequiresFreshPostTournamentProof(t *testing.T) {
+	current := map[string]int{"validator-1/no-1": 4}
+	staleProof := errors.New("post-tournament proof did not advance")
+	tournamentRan := false
+	waited := false
+	err := runPostTopologyTournamentGate(
+		context.Background(),
+		func() (map[string]int, error) {
+			return map[string]int{"validator-1/no-1": current["validator-1/no-1"]}, nil
+		},
+		func(context.Context) error {
+			tournamentRan = true
+			return nil
+		},
+		func(_ context.Context, baseline map[string]int) error {
+			waited = true
+			if current["validator-1/no-1"] <= baseline["validator-1/no-1"] {
+				return staleProof
+			}
+			return nil
+		},
+	)
+	if !errors.Is(err, staleProof) || !tournamentRan || !waited {
+		t.Fatalf("stale post-tournament gate error=%v tournament=%t waited=%t", err, tournamentRan, waited)
+	}
+
+	tournamentRan = false
+	waited = false
+	err = runPostTopologyTournamentGate(
+		context.Background(),
+		func() (map[string]int, error) {
+			return map[string]int{"validator-1/no-1": current["validator-1/no-1"]}, nil
+		},
+		func(context.Context) error {
+			tournamentRan = true
+			current["validator-1/no-1"]++
+			return nil
+		},
+		func(_ context.Context, baseline map[string]int) error {
+			waited = true
+			if current["validator-1/no-1"] <= baseline["validator-1/no-1"] {
+				return staleProof
+			}
+			return nil
+		},
+	)
+	if err != nil || !tournamentRan || !waited {
+		t.Fatalf("fresh post-tournament gate error=%v tournament=%t waited=%t", err, tournamentRan, waited)
+	}
+}
+
+// A read failure or challenger-action failure stops the boundary at that exact
+// stage; later callbacks cannot hide or replace the root error.
+func TestPostTopologyTournamentGatePropagatesBoundaryFailure(t *testing.T) {
+	baselineError := errors.New("baseline unavailable")
+	tournamentCalled := false
+	waitCalled := false
+	err := runPostTopologyTournamentGate(
+		context.Background(),
+		func() (map[string]int, error) { return nil, baselineError },
+		func(context.Context) error { tournamentCalled = true; return nil },
+		func(context.Context, map[string]int) error { waitCalled = true; return nil },
+	)
+	if !errors.Is(err, baselineError) || tournamentCalled || waitCalled {
+		t.Fatalf("baseline failure error=%v tournament=%t wait=%t", err, tournamentCalled, waitCalled)
+	}
+
+	tournamentError := errors.New("challenger action failed")
+	tournamentCalled = false
+	waitCalled = false
+	err = runPostTopologyTournamentGate(
+		context.Background(),
+		func() (map[string]int, error) { return map[string]int{"validator-1/no-1": 1}, nil },
+		func(context.Context) error { tournamentCalled = true; return tournamentError },
+		func(context.Context, map[string]int) error { waitCalled = true; return nil },
+	)
+	if !errors.Is(err, tournamentError) || !tournamentCalled || waitCalled {
+		t.Fatalf("tournament failure error=%v tournament=%t wait=%t", err, tournamentCalled, waitCalled)
+	}
+}
+
 func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/release/sim-testnet"})
@@ -532,13 +616,20 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 		}
 		return hostPorts
 	}
-	seenHostPorts := map[int]string{}
+	seenListenAddresses := map[string]string{}
 	connectCount := 0
 	for _, spec := range specs {
 		if spec.Role != "operator-connect" {
 			if spec.Role == "operator-api" || spec.Role == "operator-taskworker" {
-				if spec.Env["WARP_PORTS"] != "" || spec.Env["WARP_HOST_IPV4"] != "" {
-					t.Fatalf("%s inherited connect-only listener allocation: %+v", spec.ID, spec.Env)
+				port := 0
+				if len(spec.Args) != 2 {
+					t.Fatalf("%s has invalid server arguments: %v", spec.ID, spec.Args)
+				}
+				if _, err := fmt.Sscanf(spec.Args[1], "--port=%d", &port); err != nil || port == 0 {
+					t.Fatalf("%s has invalid server port: %v", spec.ID, spec.Args)
+				}
+				if spec.Env["WARP_HOST"] != "127.0.0.1" || spec.Env["WARP_HOST_IPV4"] != "127.0.0.1" || spec.Env["WARP_PORTS"] != fmt.Sprintf("%d:%d", port, port) || spec.HealthURL != fmt.Sprintf("http://127.0.0.1:%d/status", port) {
+					t.Fatalf("%s is not directly loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
 				}
 			}
 			continue
@@ -549,16 +640,17 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 			t.Fatalf("invalid connect process identity %q: %v", spec.ID, err)
 		}
 		statusPort := 19080 + operator
-		if spec.Env["WARP_HOST_IPV4"] != "127.0.0.1" || spec.HealthURL != fmt.Sprintf("http://127.0.0.1:%d/status", statusPort) {
+		connectIP := operatorConnectHostIP(operator)
+		if spec.Env["WARP_HOST"] != connectIP || spec.Env["WARP_HOST_IPV4"] != connectIP || spec.HealthURL != fmt.Sprintf("http://%s:%d/status", connectIP, statusPort) {
 			t.Fatalf("%s is not loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
 		}
 		hostPorts := parseHostPorts(spec.Env["WARP_PORTS"])
 		wantHostPorts := map[int]int{
-			443:        operatorConnectH3HostPortBase + operator,
-			4053:       operatorConnectDNSHostPortBase + operator,
-			5080:       operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 1,
-			5081:       operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 2,
-			8053:       operatorConnectDNSCompatibilityHostPortBase + operator,
+			443:        443,
+			4053:       4053,
+			5080:       5080,
+			5081:       5081,
+			8053:       8053,
 			statusPort: statusPort,
 		}
 		if len(hostPorts) != len(wantHostPorts) {
@@ -568,10 +660,18 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 			if hostPorts[servicePort] != wantHostPort {
 				t.Fatalf("%s service port %d maps to %d, want %d", spec.ID, servicePort, hostPorts[servicePort], wantHostPort)
 			}
-			if owner := seenHostPorts[wantHostPort]; owner != "" {
-				t.Fatalf("connect host port %d is shared by %s and %s", wantHostPort, owner, spec.ID)
+			listenAddress := net.JoinHostPort(connectIP, fmt.Sprint(wantHostPort))
+			if owner := seenListenAddresses[listenAddress]; owner != "" {
+				t.Fatalf("connect listener %s is shared by %s and %s", listenAddress, owner, spec.ID)
 			}
-			seenHostPorts[wantHostPort] = spec.ID
+			seenListenAddresses[listenAddress] = spec.ID
+		}
+		for _, advertisedServicePort := range []int{443, 4053, 8053} {
+			advertised := net.JoinHostPort(spec.Env["WARP_HOST"], fmt.Sprint(advertisedServicePort))
+			bound := net.JoinHostPort(spec.Env["WARP_HOST_IPV4"], fmt.Sprint(hostPorts[advertisedServicePort]))
+			if advertised != bound {
+				t.Fatalf("%s advertises unreachable %s but binds %s", spec.ID, advertised, bound)
+			}
 		}
 	}
 	if connectCount != cfg.Config.Topology.Operators {

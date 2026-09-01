@@ -151,13 +151,16 @@ const managedContainerSpecHashLabel = "com.urnetwork.sim-testnet.spec-hash"
 
 const minimumReleaseStateFreeBytes uint64 = 20 * 1024 * 1024 * 1024
 
-const (
-	operatorConnectH3HostPortBase               = 23080
-	operatorConnectDNSHostPortBase              = 23180
-	operatorConnectDNSCompatibilityHostPortBase = 23280
-	operatorConnectExchangeHostPortBase         = 23380
-	operatorConnectExchangePortCount            = 2
-)
+const operatorConnectExchangePortCount = 2
+
+// Gives every operator an independent production-style ingress identity. The
+// entire 127/8 range is routed by Linux to loopback without host configuration.
+func operatorConnectHostIP(operator int) string {
+	if operator < 1 || operator > 254 {
+		return ""
+	}
+	return fmt.Sprintf("127.0.1.%d", operator)
+}
 
 // Return available bytes to an unprivileged writer, which is the capacity the
 // simulator can actually consume rather than root-reserved filesystem space.
@@ -188,12 +191,14 @@ func validateReleaseStateFreeBytes(available uint64) error {
 func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
 	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress, workloadSubstrateProxyAddress, workloadSubstrateHealthAddress}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		for _, port := range []int{18080 + operator, 19080 + operator, 20080 + operator} {
+		for _, port := range []int{18080 + operator, 20080 + operator} {
 			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
 		}
-		connectHostPorts := operatorConnectHostPorts(operator, 19080+operator)
+		connectIP := operatorConnectHostIP(operator)
+		connectHostPorts := operatorConnectHostPorts(19080 + operator)
+		addresses = append(addresses, fmt.Sprintf("%s:%d", connectIP, 19080+operator))
 		for servicePort := 5080; servicePort < 5080+operatorConnectExchangePortCount; servicePort++ {
-			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", connectHostPorts[servicePort]))
+			addresses = append(addresses, fmt.Sprintf("%s:%d", connectIP, connectHostPorts[servicePort]))
 		}
 		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", 22080+operator))
 	}
@@ -210,9 +215,10 @@ func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
 func releaseProcessPacketListenAddresses(cfg *ResolvedConfig) []string {
 	addresses := make([]string, 0, 3*cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		connectHostPorts := operatorConnectHostPorts(operator, 19080+operator)
+		connectIP := operatorConnectHostIP(operator)
+		connectHostPorts := operatorConnectHostPorts(19080 + operator)
 		for _, servicePort := range []int{443, 4053, 8053} {
-			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", connectHostPorts[servicePort]))
+			addresses = append(addresses, fmt.Sprintf("%s:%d", connectIP, connectHostPorts[servicePort]))
 		}
 	}
 	sort.Strings(addresses)
@@ -368,6 +374,41 @@ func executePostTopologyTournament(ctx context.Context, plan *SetupPlan, executo
 		}
 	}
 	return nil
+}
+
+// Places the complete challenger tournament between two distinct semantic
+// proof generations. Injected boundaries make the ordering deterministic in
+// regressions without weakening the production checks.
+func runPostTopologyTournamentGate(ctx context.Context, baseline func() (map[string]int, error), tournament func(context.Context) error, wait func(context.Context, map[string]int) error) error {
+	if ctx == nil || baseline == nil || tournament == nil || wait == nil {
+		return errors.New("post-topology tournament readiness dependencies are incomplete")
+	}
+	proofBaseline, err := baseline()
+	if err != nil {
+		return err
+	}
+	if err := tournament(ctx); err != nil {
+		return err
+	}
+	return wait(ctx, proofBaseline)
+}
+
+// Executes the approved challenger writes and then proves that every
+// validator/operator pair completed another trail without any process or
+// supervisor generation change during the tournament.
+func executePostTopologyTournamentWithReadiness(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, executor *Executor, supervisor SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64) error {
+	return runPostTopologyTournamentGate(
+		ctx,
+		func() (map[string]int, error) {
+			return releaseTopologyProofCounts(cfg, stateDir)
+		},
+		func(ctx context.Context) error {
+			return executePostTopologyTournament(ctx, plan, executor)
+		},
+		func(ctx context.Context, baseline map[string]int) error {
+			return waitReleaseTopologyReady(ctx, cfg, stateDir, supervisor, supervisorPID, supervisorStartTimeTicks, baseline, 5*time.Minute)
+		},
+	)
 }
 
 // Lists the append-only proof stores which must advance before a newly
@@ -600,7 +641,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		if err := executor.Execute(ctx, *topologyAction); err != nil {
 			return err
 		}
-		if err := executePostTopologyTournament(ctx, p, executor); err != nil {
+		if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks); err != nil {
 			return err
 		}
 		return publishDeploymentEvidence(ctx, cfg, stateDir, p, roles)
@@ -625,7 +666,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		<-supervisorErr
 		return err
 	}
-	if err := executePostTopologyTournament(ctx, p, executor); err != nil {
+	if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -935,27 +976,26 @@ func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedConta
 	return fmt.Errorf("container %s readiness output %q, want %q", spec.Name, lastOutput, spec.ReadyExpected)
 }
 
-// Allocate every production connect listener onto a deterministic, disjoint
-// loopback port. The map keys remain Warp service ports and the values are the
-// host ports advertised by the exchange.
-func operatorConnectHostPorts(operator, statusPort int) map[int]int {
+// Binds every advertised production service port directly on an operator's
+// distinct loopback IP. Clients use the service port, so a translated bind
+// without a real ingress proxy would be unreachable.
+func operatorConnectHostPorts(statusPort int) map[int]int {
 	hostPorts := map[int]int{
-		443:        operatorConnectH3HostPortBase + operator,
-		4053:       operatorConnectDNSHostPortBase + operator,
-		8053:       operatorConnectDNSCompatibilityHostPortBase + operator,
+		443:        443,
+		4053:       4053,
+		8053:       8053,
 		statusPort: statusPort,
 	}
-	firstExchangeHostPort := operatorConnectExchangeHostPortBase + (operator-1)*operatorConnectExchangePortCount + 1
 	for offset := 0; offset < operatorConnectExchangePortCount; offset++ {
-		hostPorts[5080+offset] = firstExchangeHostPort + offset
+		hostPorts[5080+offset] = 5080 + offset
 	}
 	return hostPorts
 }
 
 // Encode Warp's service-to-host mapping in stable service-port order so the
 // supervisor manifest and its hash do not depend on map iteration order.
-func operatorConnectWarpPorts(operator, statusPort int) string {
-	hostPorts := operatorConnectHostPorts(operator, statusPort)
+func operatorConnectWarpPorts(statusPort int) string {
+	hostPorts := operatorConnectHostPorts(statusPort)
 	servicePorts := make([]int, 0, len(hostPorts))
 	for servicePort := range hostPorts {
 		servicePorts = append(servicePorts, servicePort)
@@ -1017,16 +1057,24 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", "sim-testnet", "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
 			env := cloneStrings(baseEnv)
 			env["WARP_SERVICE"] = svc.role
+			listenIP := "127.0.0.1"
+			env["WARP_HOST_IPV4"] = listenIP
+			env["WARP_PORTS"] = fmt.Sprintf("%d:%d", svc.port, svc.port)
 			if svc.role == "connect" {
-				env["WARP_HOST_IPV4"] = "127.0.0.1"
-				env["WARP_PORTS"] = operatorConnectWarpPorts(i, svc.port)
+				listenIP = operatorConnectHostIP(i)
+				if listenIP == "" {
+					return nil, fmt.Errorf("operator %d has no loopback connect identity", i)
+				}
+				env["WARP_HOST"] = listenIP
+				env["WARP_HOST_IPV4"] = listenIP
+				env["WARP_PORTS"] = operatorConnectWarpPorts(svc.port)
 			}
 			id := fmt.Sprintf("operator-%d-%s", i, svc.role)
 			args := []string{fmt.Sprintf("--port=%d", svc.port)}
 			if svc.module != "" {
 				args = append([]string{svc.module}, args...)
 			}
-			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", svc.port), RestartLimit: 5})
+			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5})
 		}
 	}
 	return out, nil

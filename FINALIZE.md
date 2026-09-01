@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and both generation-2 challenger fleets. Attempt 4 used exact plan `0x4ea53609168c9774183fe281a66fe0cbfb483008a0bbf6fb2ae3b33f75a15c5a`, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and finalized the challenger tournament at journal sequence 9,997 with postcondition `0x910c3512c771d6e6ed4ad68ea5900daaba3743b49a1687e4854fea68bd62e9fb`. Both operator APIs published the deployment evidence. M0A nevertheless failed closed: validator 2 restarted once after a public-RPC `currentEpoch` deadline, neither validator discovered a seed provider, and the operators classified loopback peers as unknown locations. All processes were stopped cleanly; no M0B/phase-2 transaction was attempted. Root fixes now provide complete loopback-US metadata, FIFO/cancellation-safe public-RPC admission, one-block/four-call operator epoch snapshots, context-aware validator snapshots with bounded transient startup retry, public-mode 60-second validator/claim cadence, serialized claim reconciliation, testnet-only market-price suppression, crash-safe proof append boundaries, semantic fresh-proof readiness for every validator/operator pair, and kernel-generation detection so a supervisor restart cannot reset failure evidence. Focused normal/race tests, the full simulator suite in 149.386 seconds, the full database-backed operator suite in 1,457.076 seconds and the refreshed checkout lock pass. Server checkpoint `1ffd32c7` is pushed; the aggregate release gate, SN checkpoint and clean M0A replay remain. M0B/M1/M2, three consecutive 8-hour M3 blocks and MR remain pending. After a clean M0A, the irreducible live chain gate is approximately 48 hours: 20 one-hour accelerated epochs followed without idle staging by approximately 28 hours for the production-policy boundary, three complete 8-hour epochs and final settlement, 2026-09-01 UTC
+**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and both generation-2 challenger fleets. Attempt 4 used exact plan `0x4ea53609168c9774183fe281a66fe0cbfb483008a0bbf6fb2ae3b33f75a15c5a`, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and finalized the challenger tournament at journal sequence 9,997 with postcondition `0x910c3512c771d6e6ed4ad68ea5900daaba3743b49a1687e4854fea68bd62e9fb`. Both operator APIs published the deployment evidence. M0A nevertheless failed closed: validator 2 restarted once after a public-RPC `currentEpoch` deadline, neither validator discovered a seed provider, and the operators classified loopback peers as unknown locations. All processes were stopped cleanly; no M0B/phase-2 transaction was attempted. Root fixes now provide complete loopback-US metadata, directly reachable per-operator loopback ingress, FIFO/cancellation-safe public-RPC admission, one-block/four-call operator epoch snapshots, context-aware validator snapshots with bounded transient startup retry, public-mode 60-second validator/claim cadence, serialized claim reconciliation, testnet-only market-price suppression, crash-safe proof append boundaries, two-generation semantic proof readiness around the challenger tournament, and kernel-generation detection so a supervisor restart cannot reset failure evidence. Focused normal/race tests, the full simulator suite in 149.386 seconds, the full database-backed operator suite in 1,457.076 seconds and the refreshed checkout lock pass. Server checkpoint `1ffd32c7` is pushed; the aggregate release gate, SN checkpoint and clean M0A replay remain. M0B/M1/M2, three consecutive 8-hour M3 blocks and MR remain pending. After a clean M0A, the irreducible live chain gate is approximately 48 hours: 20 one-hour accelerated epochs followed without idle staging by approximately 28 hours for the production-policy boundary, three complete 8-hour epochs and final settlement, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -13,10 +13,11 @@ replacement contracts, two operators, both validator positions, reserve majority
 alpha repair, all 200 initial production fleets, all 200 generation-2 refreshes, and
 both challenger fleets are finalized. Attempt 4 crossed every previously repaired
 historical, batching, listener and churn boundary and started every real workload
-module. It exposed the next three coupled release defects—public-provider starvation,
-missing simulation location metadata and a process-counter reset across supervisor
-restart—and stopped before phase 2. Those defects and adjacent cancellation, coherent
-snapshot, torn-proof and testnet-market cases now have deterministic regressions. A
+module. It exposed four coupled release defects—public-provider starvation, missing
+simulation location metadata, advertised service ports without local ingress, and a
+process-counter reset across supervisor restart—and stopped before phase 2. Those
+defects and adjacent cancellation, coherent snapshot, torn-proof and testnet-market
+cases now have deterministic regressions. A
 source-locked rebuild and clean semantic topology replay is the next M0A boundary.
 The user has granted standing authorization
 in this testnet session to apply the resulting bounded testnet plan; this does not
@@ -2815,14 +2816,22 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    validator/operator proof stores was created. The validator logs contained
    16,944 `no seed providers available` outcomes, the connect logs contained
    8,927 `Unknown location type` classifications, and the taskworker repeatedly
-   reported 252 client locations with zero location and group scores. The
-   workload was stopped cleanly, its on-chain state and published evidence were
-   retained, and no M0B action was broadcast.
+   reported 252 client locations with zero location and group scores. An adjacent
+   log audit also proved miners and validators repeatedly dialed the advertised
+   `127.0.0.1:443`, while operator 1 actually bound H3 to
+   `127.0.0.1:23081` (and operator 2 to its translated sibling), so provider
+   selection alone could not have produced a live trail. The workload was stopped
+   cleanly, its on-chain state and published evidence were retained, and no M0B
+   action was broadcast.
 
    Root-cause and adjacent fixes are now implemented as one fail-closed boundary:
 
    - rendered site settings give every `127.0.0.0/8` simulation source complete,
      clean US metadata while preserving its original address for /29 diversity;
+   - each operator owns a distinct loopback ingress IP and binds H3, current and
+     compatibility DNS, both exchange sockets, and status directly on the same
+     service ports it advertises. API and taskworker listeners are also explicitly
+     loopback-bound instead of falling back to `0.0.0.0`;
    - the process-wide public EVM gate is FIFO, cancellation-safe and shares
      provider cooldown, so hot polling cannot starve settlement or claim work and
      a canceled waiter cannot consume a scarce slot;
@@ -2835,8 +2844,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    - testnet omits the nonexistent GeckoTerminal alpha market instead of logging
      a false production-price failure;
    - proof persistence separates a crash-torn tail before its next append;
-     topology acceptance snapshots all four stores before launch and requires
-     each to append a fresh, terminated, structurally valid verified trail with
+     topology acceptance snapshots all four stores before launch and again
+     before the challenger tournament, requiring every store to append a fresh,
+     terminated, structurally valid verified trail across both intervals with
      zero child restarts; and
    - supervisor state carries Linux start-time ticks. Status, semantic readiness
      and the anomaly ledger reject a changed kernel generation even if a service
@@ -2845,7 +2855,8 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Deterministic regressions cover each root, cancellation and queue adjacency,
    coherent RPC block tags/call counts, nil/empty finalized reads, transient versus
    permanent retry classes, all 1,000 simulated source addresses, torn JSONL tails,
-   stale proof counts, child restarts, supervisor PID reuse/generation changes,
+   stale pre-launch and pre-tournament proof counts, advertised-versus-bound
+   connect endpoints, child restarts, supervisor PID reuse/generation changes,
    testnet market selection and release-gate inclusion. Focused normal/race tests
    and the full simulator suite pass. The complete database-backed operator suite
    passed in 1,457.076 seconds; server checkpoint `1ffd32c7` is pushed and the
