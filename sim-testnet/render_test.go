@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,9 +14,86 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Every simulated source must resolve into BestAvailable's US candidate pool
+// without changing the raw address used for /29 diversity accounting.
+func TestOperatorSimulationSiteSettingsLocateEveryLoopbackPeerInUS(t *testing.T) {
+	encoded, err := yaml.Marshal(operatorSimulationSiteSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		EnvVars     map[string]string `yaml:"env_vars"`
+		IPOverrides []struct {
+			Subnet      string  `yaml:"subnet"`
+			CountryCode string  `yaml:"country_code"`
+			Country     string  `yaml:"country"`
+			Region      string  `yaml:"region"`
+			City        string  `yaml:"city"`
+			Latitude    float64 `yaml:"latitude"`
+			Longitude   float64 `yaml:"longitude"`
+			Timezone    string  `yaml:"timezone"`
+			Hosting     bool    `yaml:"hosting"`
+			Privacy     bool    `yaml:"privacy"`
+			Virtual     bool    `yaml:"virtual"`
+		} `yaml:"ip_overrides"`
+	}
+	if err := yaml.Unmarshal(encoded, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.EnvVars["URNETWORK_ST_PROFILE"] != "testnet" || len(settings.IPOverrides) != 1 {
+		t.Fatalf("simulation settings = %+v", settings)
+	}
+	override := settings.IPOverrides[0]
+	prefix, err := netip.ParsePrefix(override.Subnet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if override.CountryCode != "us" || override.Country != "United States" || override.Region == "" || override.City == "" || override.Latitude == 0 || override.Longitude == 0 || override.Timezone == "" || override.Hosting || override.Privacy || override.Virtual {
+		t.Fatalf("simulation location is not a complete clean US candidate: %+v", override)
+	}
+	for miner := 1; miner <= 1_000; miner++ {
+		address, parseErr := netip.ParseAddr(minerTestEgressSourceIP(miner))
+		if parseErr != nil || !prefix.Contains(address) {
+			t.Fatalf("miner %d source %q is outside simulation override %s: %v", miner, address, prefix, parseErr)
+		}
+	}
+	if !prefix.Contains(netip.MustParseAddr("127.0.0.1")) {
+		t.Fatal("validator and internal API loopback peer is outside simulation override")
+	}
+}
+
+// Private mode follows block cadence within the supported range; public mode
+// reserves the remaining shared request budget for settlement and claims.
+func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Public.Chain.ExpectedBlockSeconds = 12
+	if got := validatorPollSeconds(cfg); got != 15 {
+		t.Fatalf("12-second chain poll = %d, want 15", got)
+	}
+	cfg.Public.Chain.ExpectedBlockSeconds = 30
+	if got := validatorPollSeconds(cfg); got != 30 {
+		t.Fatalf("30-second chain poll = %d, want 30", got)
+	}
+	cfg.Public.Chain.ExpectedBlockSeconds = 90
+	if got := validatorPollSeconds(cfg); got != 60 {
+		t.Fatalf("long chain poll = %d, want supported maximum 60", got)
+	}
+	if got := claimPollSeconds(cfg); got != 10 {
+		t.Fatalf("private claim poll = %d, want 10", got)
+	}
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	if got := validatorPollSeconds(cfg); got != 60 {
+		t.Fatalf("public validator poll = %d, want 60", got)
+	}
+	if got := claimPollSeconds(cfg); got != 60 {
+		t.Fatalf("public claim poll = %d, want 60", got)
+	}
+}
+
 func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Authority = "http://127.0.0.1:9944"
+	cfg.OperationalRPCMode = rpcModePublicOverride
 	stateDir := t.TempDir()
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
@@ -51,7 +129,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validator %d rendered config: %v", i, err)
 		}
-		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 2_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 {
+		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 2_400 || loaded.Policy.Settlement.CloseGraceBlocks != 5 || loaded.PollSeconds != validatorPollSeconds(cfg) {
 			t.Fatalf("validator %d config incomplete: %+v", i, loaded)
 		}
 		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadSubstrateRPCAuthority() {
@@ -68,7 +146,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("miner %d claim daemon rendered config: %v", i, err)
 		}
-		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || loaded.JWTFile == "" {
+		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || loaded.JWTFile == "" || loaded.PollSeconds != claimPollSeconds(cfg) {
 			t.Fatalf("miner %d claim config incomplete: %+v", i, loaded)
 		}
 		operator := operatorForMiner(cfg, i)

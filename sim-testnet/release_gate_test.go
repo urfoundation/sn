@@ -27,6 +27,15 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		!strings.Contains(script, `go test "${server_packages[@]}" -run '^$'`) {
 		t.Fatal("local release gate does not verify the immutable server baseline and compile every executable package")
 	}
+	for _, required := range []string{
+		"CoreStClientEpochUsesOneFinalizedBlock",
+		"StatsAlphaPriceURLIsMainnetOnly",
+		"StatsGaugeVecReplaceDeletesStaleSeries",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("local release gate omits operator regression %s", required)
+		}
+	}
 	patchIndex := strings.LastIndex(script, `echo "[release-1.0] patch hygiene"`)
 	lockIndex := strings.LastIndex(script, `go test ./sim-testnet -run '^TestReleaseLockMatchesCheckout$' -count=1`)
 	passedIndex := strings.LastIndex(script, `echo "[release-1.0] local release gate passed"`)

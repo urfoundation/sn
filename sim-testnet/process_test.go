@@ -19,6 +19,16 @@ import (
 	"time"
 )
 
+// Returns this test process's exact kernel generation for supervisor fixtures.
+func currentProcessStartTimeTicks(t *testing.T) uint64 {
+	t.Helper()
+	ticks, err := processStartTimeTicks(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ticks
+}
+
 func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	dir := t.TempDir()
 	executable, err := os.Executable()
@@ -55,7 +65,7 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- supervise(ctx, dir, manifestPath) }()
-	if err := waitSupervisorReady(ctx, dir, manifest, 30*time.Second); err != nil {
+	if _, err := waitSupervisorReady(ctx, dir, manifest, 30*time.Second); err != nil {
 		cancel()
 		<-done
 		t.Fatal(err)
@@ -100,7 +110,7 @@ func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *
 		t.Fatal(err)
 	}
 	duplicate := SupervisorState{
-		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), ManifestHash: manifestHash,
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: currentProcessStartTimeTicks(t), ManifestHash: manifestHash,
 		Processes: []ProcessState{
 			{ID: "one", Role: "miner", Identity: "miner-1", PID: os.Getpid(), Healthy: true},
 			{ID: "one", Role: "miner", Identity: "miner-1", PID: os.Getpid(), Healthy: true},
@@ -122,9 +132,78 @@ func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err = waitSupervisorReady(ctx, dir, want, 20*time.Millisecond)
+	_, err = waitSupervisorReady(ctx, dir, want, 20*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "decode supervisor state") {
 		t.Fatalf("malformed supervisor readiness error = %v", err)
+	}
+}
+
+// A process-only health snapshot cannot advance the release boundary. Every
+// validator/operator proof domain must move after the launch baseline, and a
+// single supervised restart permanently rejects that launch attempt.
+func TestReleaseTopologyReadinessRequiresFreshProofsAndRejectsRestart(t *testing.T) {
+	specs := []ProcessSpec{
+		{ID: "validator-1", Role: "validator", Identity: "first"},
+		{ID: "validator-2", Role: "validator", Identity: "second"},
+	}
+	want := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: "hash", Specs: specs}
+	wantHash, err := canonicalHashHex(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: currentProcessStartTimeTicks(t), ManifestHash: wantHash,
+		Processes: []ProcessState{
+			{ID: "validator-1", Role: "validator", Identity: "first", PID: os.Getpid(), Healthy: true},
+			{ID: "validator-2", Role: "validator", Identity: "second", PID: os.Getpid(), Healthy: true},
+		},
+	}
+	supervisorPID := state.SupervisorPID
+	supervisorStartTimeTicks := state.SupervisorStartTimeTicks
+	baseline := map[string]int{"validator-1/no-1": 4, "validator-1/no-2": 8, "validator-2/no-1": 3, "validator-2/no-2": 7}
+	unchanged := map[string]int{"validator-1/no-1": 4, "validator-1/no-2": 8, "validator-2/no-1": 3, "validator-2/no-2": 7}
+	if ready, err := releaseTopologyReady(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, unchanged); err != nil || ready {
+		t.Fatalf("stale proof readiness = %t, %v", ready, err)
+	}
+	fresh := map[string]int{"validator-1/no-1": 5, "validator-1/no-2": 9, "validator-2/no-1": 4, "validator-2/no-2": 8}
+	if ready, err := releaseTopologyReady(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, fresh); err != nil || !ready {
+		t.Fatalf("fresh proof readiness = %t, %v", ready, err)
+	}
+	state.Processes[1].Restarts = 1
+	if ready, err := releaseTopologyReady(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, fresh); err == nil || ready || !strings.Contains(err.Error(), "validator-2 restarted 1") {
+		t.Fatalf("restarted topology readiness = %t, %v", ready, err)
+	}
+	state.Processes[1].Restarts = 0
+	state.SupervisorStartTimeTicks++
+	if ready, err := releaseTopologyReady(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, fresh); err == nil || ready || !strings.Contains(err.Error(), "supervisor generation changed") {
+		t.Fatalf("restarted supervisor readiness = %t, %v", ready, err)
+	}
+}
+
+// Concurrent readers may see an append before its final newline or closing
+// brace. Only complete records with the release proof identity count.
+func TestCompletedReleaseProofCountRejectsTornAndIncompleteRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proofs.jsonl")
+	contents := strings.Join([]string{
+		`{"v":1,"trail_id":"01J00000000000000000000000","coverage":3,"complete_time_ms":1}`,
+		`{"v":1,"trail_id":"","coverage":3,"complete_time_ms":2}`,
+		`{"v":1,"trail_id":"01J00000000000000000000001","coverage":0,"complete_time_ms":3}`,
+		`{"v":1,"trail_id":"01J00000000000000000000002","coverage":3`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	count, err := completedReleaseProofCount(path)
+	if err != nil || count != 1 {
+		t.Fatalf("complete release proof count = %d, %v, want 1", count, err)
+	}
+	unterminatedPath := filepath.Join(t.TempDir(), "proofs.jsonl")
+	if err := os.WriteFile(unterminatedPath, []byte(`{"v":1,"trail_id":"01J00000000000000000000003","coverage":3,"complete_time_ms":4}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	count, err = completedReleaseProofCount(unterminatedPath)
+	if err != nil || count != 0 {
+		t.Fatalf("unterminated release proof count = %d, %v, want 0", count, err)
 	}
 }
 

@@ -6,18 +6,34 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 
 	"github.com/urfoundation/sn/clientauth"
 	"github.com/urfoundation/sn/crv4"
 )
+
+const (
+	releaseSnapshotStartupAttempts   = 5
+	releaseSnapshotStartupRetryDelay = 2 * time.Second
+)
+
+// Injectable coherent snapshot read used by deterministic retry tests.
+type releaseSnapshotLoader func(context.Context) (*ReleaseSnapshot, error)
+
+// Injectable interruptible delay used by deterministic retry tests.
+type releaseSnapshotRetryWait func(context.Context, time.Duration) error
 
 type releaseOperatorRuntime struct {
 	measurement *ReleaseMeasurementContext
@@ -50,6 +66,77 @@ func bytesTrimSpace(b []byte) []byte {
 		end--
 	}
 	return b[start:end]
+}
+
+// Restricts startup retries to transport, provider-capacity, and timeout
+// failures. ABI, policy, and contract errors remain immediate hard failures.
+func transientReleaseSnapshotError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+	var httpErr gethrpc.HTTPError
+	if errors.As(err, &httpErr) {
+		switch httpErr.StatusCode {
+		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
+			http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return true
+		}
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"connection refused", "connection reset", "broken pipe", "unexpected eof",
+		"upstream overloaded", "temporarily unavailable",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// Waits between bounded startup attempts while remaining interruptible.
+func waitReleaseSnapshotRetry(ctx context.Context, delay time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
+}
+
+// Loads the first coherent finalized snapshot without turning a single public
+// RPC capacity event into a supervised process restart.
+func loadInitialReleaseSnapshot(ctx context.Context, load releaseSnapshotLoader, wait releaseSnapshotRetryWait) (*ReleaseSnapshot, error) {
+	if ctx == nil || load == nil || wait == nil {
+		return nil, errors.New("initial release snapshot retry dependencies are incomplete")
+	}
+	var lastErr error
+	for attempt := 1; attempt <= releaseSnapshotStartupAttempts; attempt++ {
+		snapshot, err := load(ctx)
+		if err == nil {
+			return snapshot, nil
+		}
+		lastErr = err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if !transientReleaseSnapshotError(err) {
+			return nil, err
+		}
+		if attempt < releaseSnapshotStartupAttempts {
+			if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return nil, fmt.Errorf("initial release snapshot failed after %d transient attempts: %w", releaseSnapshotStartupAttempts, lastErr)
 }
 
 func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorConfig, epochFn func() uint64) (*releaseOperatorRuntime, error) {
@@ -210,11 +297,11 @@ func RunRelease(ctx context.Context, configPath string) error {
 	defer native.API.Client.Close()
 
 	var settlementEpoch atomic.Uint64
-	if snapshot, err := chain.ReleaseSnapshot(); err == nil {
-		settlementEpoch.Store(snapshot.Epoch.Uint64())
-	} else {
+	snapshot, err := loadInitialReleaseSnapshot(ctx, chain.ReleaseSnapshotContext, waitReleaseSnapshotRetry)
+	if err != nil {
 		return err
 	}
+	settlementEpoch.Store(snapshot.Epoch.Uint64())
 	go func() {
 		ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
 		defer ticker.Stop()
@@ -223,8 +310,10 @@ func RunRelease(ctx context.Context, configPath string) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if snapshot, err := chain.ReleaseSnapshot(); err == nil {
+				if snapshot, err := chain.ReleaseSnapshotContext(ctx); err == nil {
 					settlementEpoch.Store(snapshot.Epoch.Uint64())
+				} else if ctx.Err() == nil {
+					fmt.Printf("validator release snapshot refresh: %v\n", err)
 				}
 			}
 		}

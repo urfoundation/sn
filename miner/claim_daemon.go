@@ -615,6 +615,22 @@ type claimAPI interface {
 	SnPoolClaimSyncWithContext(context.Context, *sdk.SnPoolClaimArgs) (*sdk.SnPoolClaimResult, error)
 }
 
+// The injectable form used to prove that finalized observation shares the
+// operator-local chain/nonce boundary with transaction submission.
+type claimReconcileFunc func(context.Context, *ClaimDaemonConfig, claimAPI, *ClaimQueueEntry) (string, error)
+
+// Serializes multi-call finalized reconciliation for one operator. Without
+// this boundary, hundreds of payable miners can enter a source-wide public RPC
+// queue at once and starve validators even though submissions are serialized.
+func reconcileClaimEntryWithLock(ctx context.Context, cfg *ClaimDaemonConfig, api claimAPI, entry *ClaimQueueEntry, chainStateLock *sync.Mutex, reconcile claimReconcileFunc) (string, error) {
+	if chainStateLock == nil || reconcile == nil {
+		return "", errors.New("claim reconciliation chain boundary is unavailable")
+	}
+	chainStateLock.Lock()
+	defer chainStateLock.Unlock()
+	return reconcile(ctx, cfg, api, entry)
+}
+
 func reconcileClaimEntry(ctx context.Context, cfg *ClaimDaemonConfig, api claimAPI, entry *ClaimQueueEntry) (string, error) {
 	claim, err := api.SnPoolClaimSyncWithContext(ctx, &sdk.SnPoolClaimArgs{Epoch: entry.Epoch})
 	if err != nil {
@@ -719,7 +735,7 @@ func readClaimDaemonJWT(cfg *ClaimDaemonConfig) (string, error) {
 	return jwt, nil
 }
 
-func runClaimDaemonWithLock(ctx context.Context, configPath string, submitLock *sync.Mutex, initialDelay time.Duration, onReady func()) error {
+func runClaimDaemonWithLock(ctx context.Context, configPath string, chainStateLock *sync.Mutex, initialDelay time.Duration, onReady func()) error {
 	if ctx == nil {
 		return errors.New("claim daemon context is nil")
 	}
@@ -771,7 +787,7 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, submitLock *
 			if entry == nil || entry.Status == "finalized" || entry.Status == "no-claim" {
 				continue
 			}
-			reconciled, reconcileErr := reconcileClaimEntry(ctx, cfg, api, entry)
+			reconciled, reconcileErr := reconcileClaimEntryWithLock(ctx, cfg, api, entry, chainStateLock, reconcileClaimEntry)
 			if reconciled != "" {
 				entry.Status = reconciled
 				entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -817,7 +833,7 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, submitLock *
 			if err := store.save(queue); err != nil {
 				return err
 			}
-			claimErr := submitClaimDirect(ctx, cfg, api, entry, submitLock, store, queue)
+			claimErr := submitClaimDirect(ctx, cfg, api, entry, chainStateLock, store, queue)
 			entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 			if claimErr == nil {
 				entry.Status = "finalized"
@@ -845,8 +861,8 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, submitLock *
 // RunClaimDaemon runs the production claim worker using direct package calls;
 // it never shells out to the provider or snclaim CLIs.
 func RunClaimDaemon(ctx context.Context, configPath string) error {
-	var submitLock sync.Mutex
-	return runClaimDaemonWithLock(ctx, configPath, &submitLock, 0, nil)
+	var chainStateLock sync.Mutex
+	return runClaimDaemonWithLock(ctx, configPath, &chainStateLock, 0, nil)
 }
 
 func runClaimDaemon(configPath string) error {

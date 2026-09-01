@@ -115,23 +115,46 @@ func dialChain(rpcUrls []string, contractAddr common.Address, release bool) (*Ch
 	return nil, fmt.Errorf("no rpc endpoint answered: %w", errors.Join(errs...))
 }
 
-// FinalizedBlock identifies the canonical EVM head used by every production
-// view in one steering iteration. Bittensor's EVM RPC supports the standard
-// "finalized" block tag; go-ethereum represents it as rpc.FinalizedBlockNumber.
-func (self *ChainClient) FinalizedBlock() (uint64, [32]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+// FinalizedBlockContext identifies the canonical EVM head used by every
+// production view in one steering iteration and observes caller cancellation.
+func (self *ChainClient) FinalizedBlockContext(ctx context.Context) (uint64, [32]byte, error) {
+	if ctx == nil {
+		return 0, [32]byte{}, errors.New("finalized EVM head context is nil")
+	}
+	if self == nil || self.client == nil {
+		return 0, [32]byte{}, errors.New("finalized EVM head client is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
 	defer cancel()
 	header, err := self.client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	if err != nil {
 		return 0, [32]byte{}, fmt.Errorf("finalized EVM head: %w", err)
 	}
+	if header == nil || header.Number == nil {
+		return 0, [32]byte{}, errors.New("finalized EVM head is empty")
+	}
 	return header.Number.Uint64(), [32]byte(header.Hash()), nil
 }
 
-func chainViewAt[T any](c *ChainClient, block uint64, calldata []byte, unpack func([]byte) (T, error)) (T, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+// FinalizedBlock retains the background-context API for command callers.
+func (self *ChainClient) FinalizedBlock() (uint64, [32]byte, error) {
+	return self.FinalizedBlockContext(context.Background())
+}
+
+// Reads one contract value at an already selected block under caller control.
+func chainViewAtContext[T any](ctx context.Context, c *ChainClient, block uint64, calldata []byte, unpack func([]byte) (T, error)) (T, error) {
+	if ctx == nil {
+		var out T
+		return out, errors.New("chain view context is nil")
+	}
+	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
 	defer cancel()
 	return bind.Call(c.contract, &bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(block)}, calldata, unpack)
+}
+
+// Retains the background-context helper for existing narrow read methods.
+func chainViewAt[T any](c *ChainClient, block uint64, calldata []byte, unpack func([]byte) (T, error)) (T, error) {
+	return chainViewAtContext(context.Background(), c, block, calldata, unpack)
 }
 
 func (self *ChainClient) requireRelease() error {
@@ -151,23 +174,30 @@ type ReleaseSnapshot struct {
 	Policy      stabi.STCoordinatorPolicySnapshot
 }
 
-func (self *ChainClient) ReleaseSnapshot() (*ReleaseSnapshot, error) {
+// ReleaseSnapshotContext reads one complete release snapshot while honoring
+// caller cancellation across the finalized head and both contract views.
+func (self *ChainClient) ReleaseSnapshotContext(ctx context.Context) (*ReleaseSnapshot, error) {
 	if err := self.requireRelease(); err != nil {
 		return nil, err
 	}
-	block, hash, err := self.FinalizedBlock()
+	block, hash, err := self.FinalizedBlockContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	epoch, err := chainViewAt(self, block, self.coordinator.PackCurrentEpoch(), self.coordinator.UnpackCurrentEpoch)
+	epoch, err := chainViewAtContext(ctx, self, block, self.coordinator.PackCurrentEpoch(), self.coordinator.UnpackCurrentEpoch)
 	if err != nil {
 		return nil, fmt.Errorf("currentEpoch at finalized block %d: %w", block, err)
 	}
-	policy, err := chainViewAt(self, block, self.coordinator.PackPolicyAt(epoch), self.coordinator.UnpackPolicyAt)
+	policy, err := chainViewAtContext(ctx, self, block, self.coordinator.PackPolicyAt(epoch), self.coordinator.UnpackPolicyAt)
 	if err != nil {
 		return nil, fmt.Errorf("policyAt(%s) at finalized block %d: %w", epoch, block, err)
 	}
 	return &ReleaseSnapshot{BlockNumber: block, BlockHash: hash, Epoch: epoch, Policy: policy}, nil
+}
+
+// ReleaseSnapshot retains the background-context API for command callers.
+func (self *ChainClient) ReleaseSnapshot() (*ReleaseSnapshot, error) {
+	return self.ReleaseSnapshotContext(context.Background())
 }
 
 func (self *ChainClient) ReleaseNetuidAt(block uint64) (uint16, error) {

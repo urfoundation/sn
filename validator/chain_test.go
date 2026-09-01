@@ -5,6 +5,7 @@ package validator
 // cast-derived selectors.
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"math/big"
@@ -79,6 +80,52 @@ func TestDialChainAllDown(t *testing.T) {
 	}
 	if _, err := DialChain(nil, common.Address{}); err == nil {
 		t.Fatal("expected failure with no endpoints")
+	}
+}
+
+// A provider may return a null block result while it is catching up. That
+// response and invalid local dependencies must be errors, not process-killing
+// nil dereferences.
+func TestFinalizedBlockRejectsEmptyHeaderAndInvalidInputs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var request struct {
+			Id     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var result any
+		if request.Method == "eth_chainId" {
+			result = "0x3b1"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      request.Id,
+			"result":  result,
+		})
+	}))
+	defer server.Close()
+
+	chain, err := DialChain([]string{server.URL}, common.Address{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chain.Close()
+	if _, _, err := chain.FinalizedBlockContext(context.Background()); err == nil || !strings.Contains(err.Error(), "finalized EVM head") {
+		t.Fatalf("empty finalized header error = %v", err)
+	}
+	if _, _, err := chain.FinalizedBlockContext(nil); err == nil || !strings.Contains(err.Error(), "context is nil") {
+		t.Fatalf("nil finalized context error = %v", err)
+	}
+	if _, _, err := (&ChainClient{}).FinalizedBlockContext(context.Background()); err == nil || !strings.Contains(err.Error(), "client is unavailable") {
+		t.Fatalf("nil finalized client error = %v", err)
+	}
+	if _, err := chainViewAtContext[uint64](nil, chain, 1, nil, nil); err == nil || !strings.Contains(err.Error(), "context is nil") {
+		t.Fatalf("nil chain view context error = %v", err)
 	}
 }
 

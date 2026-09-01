@@ -577,7 +577,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	snapshot, err := s.chain.ReleaseSnapshot()
+	snapshot, err := s.chain.ReleaseSnapshotContext(ctx)
 	if err != nil {
 		return err
 	}

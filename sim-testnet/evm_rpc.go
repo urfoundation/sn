@@ -25,16 +25,23 @@ const (
 	publicEVMRPCResponseReadLimit = 4 * 1024 * 1024
 )
 
-// rpcRequestGate spaces requests from every ethclient in one process. The
-// executor has distinct signing clients by design, so client-local throttles
-// would still burst against a provider's source-wide policy.
+// rpcRequestGate spaces requests from every ethclient in one process. Waiters
+// are admitted in arrival order: a taskworker that immediately issues its next
+// call cannot repeatedly steal the slot from a validator already in the queue.
 type rpcRequestGate struct {
-	mu            sync.Mutex
+	stateLock     sync.Mutex
 	next          time.Time
 	cooldownUntil time.Time
 	interval      time.Duration
+	waiters       []*rpcRequestWaiter
+	changed       chan struct{}
 }
 
+// One queued source-wide RPC request. Identity, rather than a numeric ticket,
+// lets cancellation remove its exact queue entry without leaving a dead slot.
+type rpcRequestWaiter struct{ identity byte }
+
+// Builds one source-wide gate at the configured provider ceiling.
 func newRPCRequestGate(requestsPerMinute int) (*rpcRequestGate, error) {
 	if requestsPerMinute < 1 || requestsPerMinute > 60 {
 		return nil, fmt.Errorf("public EVM request ceiling %d must be in [1,60] per minute", requestsPerMinute)
@@ -42,38 +49,130 @@ func newRPCRequestGate(requestsPerMinute int) (*rpcRequestGate, error) {
 	return &rpcRequestGate{interval: time.Minute / time.Duration(requestsPerMinute)}, nil
 }
 
-func (gate *rpcRequestGate) wait(ctx context.Context) error {
-	if gate == nil || gate.interval <= 0 {
+// Wakes queue observers after the front or provider cooldown changes.
+func (self *rpcRequestGate) notifyLocked() {
+	if self.changed != nil {
+		close(self.changed)
+	}
+	self.changed = make(chan struct{})
+}
+
+// Adds one waiter at the tail without waking the current front.
+func (self *rpcRequestGate) enqueue() *rpcRequestWaiter {
+	waiter := &rpcRequestWaiter{}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.changed == nil {
+		self.changed = make(chan struct{})
+	}
+	self.waiters = append(self.waiters, waiter)
+	return waiter
+}
+
+// Reports whether waiter owns the front slot and, if so, how long it must
+// wait. The returned change edge is armed in the same locked snapshot.
+func (self *rpcRequestGate) waiterState(waiter *rpcRequestWaiter, now time.Time) (bool, time.Duration, <-chan struct{}) {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.changed == nil {
+		self.changed = make(chan struct{})
+	}
+	front := len(self.waiters) > 0 && self.waiters[0] == waiter
+	if !front {
+		return false, 0, self.changed
+	}
+	slot := self.next
+	if self.cooldownUntil.After(slot) {
+		slot = self.cooldownUntil
+	}
+	if !slot.After(now) {
+		return true, 0, self.changed
+	}
+	return true, slot.Sub(now), self.changed
+}
+
+// Consumes the front slot only when its interval and cooldown are both due.
+func (self *rpcRequestGate) admit(waiter *rpcRequestWaiter, now time.Time) bool {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if len(self.waiters) == 0 || self.waiters[0] != waiter || self.next.After(now) || self.cooldownUntil.After(now) {
+		return false
+	}
+	self.waiters[0] = nil
+	self.waiters = self.waiters[1:]
+	self.next = now.Add(self.interval)
+	self.notifyLocked()
+	return true
+}
+
+// Removes a canceled waiter so later requests never inherit an abandoned
+// reservation. Removing the front wakes its successor immediately.
+func (self *rpcRequestGate) remove(waiter *rpcRequestWaiter) {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	for index, queued := range self.waiters {
+		if queued != waiter {
+			continue
+		}
+		wasFront := index == 0
+		copy(self.waiters[index:], self.waiters[index+1:])
+		self.waiters[len(self.waiters)-1] = nil
+		self.waiters = self.waiters[:len(self.waiters)-1]
+		if wasFront {
+			self.notifyLocked()
+		}
+		return
+	}
+}
+
+// Waits for one FIFO source-wide request slot or caller cancellation.
+func (self *rpcRequestGate) wait(ctx context.Context) error {
+	if self == nil || self.interval <= 0 {
 		return errors.New("public EVM request gate is unavailable")
 	}
+	if ctx == nil {
+		return errors.New("public EVM request context is nil")
+	}
+	waiter := self.enqueue()
 	for {
-		gate.mu.Lock()
-		now := time.Now()
-		slot := gate.next
-		if gate.cooldownUntil.After(slot) {
-			slot = gate.cooldownUntil
+		if err := ctx.Err(); err != nil {
+			self.remove(waiter)
+			return err
 		}
-		if !slot.After(now) {
-			gate.next = now.Add(gate.interval)
-			gate.mu.Unlock()
+		now := time.Now()
+		front, delay, changed := self.waiterState(waiter, now)
+		if front && delay <= 0 && self.admit(waiter, now) {
 			return nil
 		}
-		gate.mu.Unlock()
-		timer := time.NewTimer(slot.Sub(now))
+		if !front {
+			select {
+			case <-ctx.Done():
+				self.remove(waiter)
+				return ctx.Err()
+			case <-changed:
+				continue
+			}
+		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			self.remove(waiter)
 			return ctx.Err()
+		case <-changed:
+			timer.Stop()
 		case <-timer.C:
 		}
 	}
 }
 
-func (gate *rpcRequestGate) cooldown(until time.Time) {
-	gate.mu.Lock()
-	defer gate.mu.Unlock()
-	if until.After(gate.cooldownUntil) {
-		gate.cooldownUntil = until
+// Extends a provider-wide cooldown and wakes the front waiter to recalculate.
+func (self *rpcRequestGate) cooldown(until time.Time) {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if until.After(self.cooldownUntil) {
+		self.cooldownUntil = until
+		self.notifyLocked()
 	}
 }
 

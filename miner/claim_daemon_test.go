@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -126,6 +127,26 @@ func TestPreparedClaimRecordContainsExactRLP(t *testing.T) {
 type fakeClaimAPI struct {
 	result *sdk.SnPoolClaimResult
 	err    error
+}
+
+// The reconciliation callback must execute inside the same lock later used by
+// direct submission and uncertain-transaction rebroadcast.
+func TestClaimReconciliationUsesOperatorChainStateLock(t *testing.T) {
+	var chainStateLock sync.Mutex
+	reconcile := func(context.Context, *ClaimDaemonConfig, claimAPI, *ClaimQueueEntry) (string, error) {
+		if chainStateLock.TryLock() {
+			chainStateLock.Unlock()
+			t.Fatal("claim reconciliation ran outside the operator chain boundary")
+		}
+		return "no-claim", nil
+	}
+	status, err := reconcileClaimEntryWithLock(context.Background(), &ClaimDaemonConfig{}, fakeClaimAPI{}, &ClaimQueueEntry{}, &chainStateLock, reconcile)
+	if err != nil || status != "no-claim" {
+		t.Fatalf("locked reconciliation = %q, %v", status, err)
+	}
+	if _, err := reconcileClaimEntryWithLock(context.Background(), nil, nil, nil, nil, reconcile); err == nil {
+		t.Fatal("nil operator chain boundary was accepted")
+	}
 }
 
 func (f fakeClaimAPI) SnPoolClaimSyncWithContext(context.Context, *sdk.SnPoolClaimArgs) (*sdk.SnPoolClaimResult, error) {

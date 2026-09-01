@@ -1,11 +1,49 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// A stale state file from a prior supervisor generation cannot represent a
+// healthy topology, even when every recorded child still says healthy.
+func TestStatusRejectsStaleSupervisorGeneration(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	dir := t.TempDir()
+	ticks, err := processStartTimeTicks(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: ticks + 1,
+		Processes: []ProcessState{{ID: "validator-1", PID: os.Getpid(), Healthy: true}},
+	}
+	path := filepath.Join(dir, "supervisor.state.json")
+	if err := writePublicJSON(path, state); err != nil {
+		t.Fatal(err)
+	}
+	status, err := Status(context.Background(), cfg, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Healthy || !strings.Contains(strings.Join(status.Warnings, "\n"), "start time changed") {
+		t.Fatalf("stale supervisor status = %+v", status)
+	}
+
+	state.SupervisorStartTimeTicks = ticks
+	if err := writePublicJSON(path, state); err != nil {
+		t.Fatal(err)
+	}
+	status, err = Status(context.Background(), cfg, dir)
+	if err != nil || !status.Healthy || len(status.Warnings) != 0 {
+		t.Fatalf("live supervisor status = %+v, %v", status, err)
+	}
+}
 
 func TestCallUint64AcceptsABIUint64AndBoundedUint256(t *testing.T) {
 	for _, value := range []any{uint64(100_000), big.NewInt(100_000)} {

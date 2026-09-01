@@ -474,6 +474,64 @@ func TestPublicEVMRequestGatePacesAndSharesCooldown(t *testing.T) {
 	}
 }
 
+func TestPublicEVMRequestGateQueuesFIFOAndReclaimsCanceledFront(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	gate := &rpcRequestGate{interval: 10 * time.Second}
+	first := gate.enqueue()
+	second := gate.enqueue()
+	third := gate.enqueue()
+	if front, delay, _ := gate.waiterState(first, now); !front || delay != 0 {
+		t.Fatalf("first waiter state = front %t delay %s", front, delay)
+	}
+	if front, _, _ := gate.waiterState(second, now); front {
+		t.Fatal("second waiter bypassed the FIFO front")
+	}
+	gate.remove(second)
+	if front, _, _ := gate.waiterState(third, now); front {
+		t.Fatal("canceling a middle waiter displaced the FIFO front")
+	}
+	if !gate.admit(first, now) {
+		t.Fatal("due FIFO front was not admitted")
+	}
+	if front, delay, _ := gate.waiterState(third, now); !front || delay != 10*time.Second {
+		t.Fatalf("third waiter state = front %t delay %s", front, delay)
+	}
+	fourth := gate.enqueue()
+	gate.remove(third)
+	if front, delay, _ := gate.waiterState(fourth, now); !front || delay != 10*time.Second {
+		t.Fatalf("canceled front did not promote its successor: front %t delay %s", front, delay)
+	}
+	gate.cooldown(now.Add(20 * time.Second))
+	if front, delay, _ := gate.waiterState(fourth, now); !front || delay != 20*time.Second {
+		t.Fatalf("shared cooldown state = front %t delay %s", front, delay)
+	}
+	if gate.admit(fourth, now.Add(19*time.Second)) || !gate.admit(fourth, now.Add(20*time.Second)) {
+		t.Fatal("front admission ignored the exact cooldown boundary")
+	}
+	gate.stateLock.Lock()
+	remaining := len(gate.waiters)
+	gate.stateLock.Unlock()
+	if remaining != 0 {
+		t.Fatalf("request gate retained %d waiters", remaining)
+	}
+}
+
+// A request canceled before admission leaves both the queue and the provider's
+// next-capacity timestamp untouched.
+func TestPublicEVMRequestGateDoesNotChargeCanceledDueWaiter(t *testing.T) {
+	gate := &rpcRequestGate{interval: time.Second}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := gate.wait(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled gate wait = %v", err)
+	}
+	gate.stateLock.Lock()
+	defer gate.stateLock.Unlock()
+	if len(gate.waiters) != 0 || !gate.next.IsZero() {
+		t.Fatalf("canceled gate consumed provider capacity: waiters=%d next=%s", len(gate.waiters), gate.next)
+	}
+}
+
 func TestSharedProviderPostStateCloneIsDetached(t *testing.T) {
 	original := map[string]any{"nested": map[string]any{"value": "before"}}
 	cloned, err := cloneObservedPostState(original)

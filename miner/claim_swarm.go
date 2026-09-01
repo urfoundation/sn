@@ -185,7 +185,7 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 	members := append([]ClaimSwarmMember(nil), self.config.Members...)
 	sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
 	terminalErrors := make(chan error, 1)
-	var submitLock sync.Mutex
+	var chainStateLock sync.Mutex
 	for index, member := range members {
 		delay := time.Duration(index) * pollPeriod / time.Duration(len(members))
 		go func(member ClaimSwarmMember, initialDelay time.Duration) {
@@ -194,7 +194,7 @@ func (self *ClaimSwarm) Run(ctx context.Context) error {
 				self.running[member.ID] = true
 				self.stateLock.Unlock()
 			}
-			if runErr := runClaimDaemonWithLock(runCtx, member.ConfigPath, &submitLock, initialDelay, onReady); runErr != nil {
+			if runErr := runClaimDaemonWithLock(runCtx, member.ConfigPath, &chainStateLock, initialDelay, onReady); runErr != nil {
 				self.stateLock.Lock()
 				delete(self.running, member.ID)
 				self.failures[member.ID] = runErr.Error()

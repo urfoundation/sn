@@ -3858,12 +3858,30 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		}
 		site := filepath.Join(root, "site")
 		_ = os.MkdirAll(site, 0o700)
-		settings := []byte("env_vars:\n  URNETWORK_ST_PROFILE: testnet\n")
+		settings, err := yaml.Marshal(operatorSimulationSiteSettings())
+		if err != nil {
+			return err
+		}
 		if err := atomicWrite(filepath.Join(site, "settings.yml"), settings, 0o600); err != nil {
 			return err
 		}
 	}
 	return renderValidatorMinerConfigs(cfg, stateDir, roles, contracts)
+}
+
+// Supply deterministic location metadata for simulator-owned loopback peers.
+// The raw source addresses remain distinct, so subnet-diversity accounting is
+// still exercised; only the packaged public-IP database lookup is replaced.
+func operatorSimulationSiteSettings() map[string]any {
+	return map[string]any{
+		"env_vars": map[string]string{"URNETWORK_ST_PROFILE": "testnet"},
+		"ip_overrides": []map[string]any{{
+			"subnet": "127.0.0.0/8", "continent_code": "na", "continent": "North America",
+			"country_code": "us", "country": "United States", "region": "Sim Testnet",
+			"city": "Sim Testnet", "latitude": 37.7749, "longitude": -122.4194,
+			"timezone": "America/Los_Angeles", "hosting": false, "privacy": false, "virtual": false,
+		}},
+	}
 }
 
 func operatorVerifyConfig(cfg *ResolvedConfig, operator int, rotated bool) ([]byte, map[byte]string, error) {
@@ -3914,6 +3932,29 @@ func renderOperatorBlobConfig(cfg *ResolvedConfig, operator int, destination str
 	return atomicWrite(destination, b, 0o600)
 }
 
+// Reserve public-provider capacity for operator settlement and provider claim
+// transactions. A private operational node keeps the faster block-cadence
+// observation path.
+func validatorPollSeconds(cfg *ResolvedConfig) int {
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 60
+	}
+	seconds := uint64(15)
+	if cfg != nil && cfg.Public != nil && cfg.Public.Chain.ExpectedBlockSeconds > seconds {
+		seconds = cfg.Public.Chain.ExpectedBlockSeconds
+	}
+	return int(min(seconds, uint64(60)))
+}
+
+// Avoids 1,000 claim workers continuously rechecking a constrained shared
+// public endpoint while preserving the faster private-node development path.
+func claimPollSeconds(cfg *ResolvedConfig) int {
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 60
+	}
+	return 10
+}
+
 func evmHTTP(authority string) string { _, h, _ := authorityURLs(authority); return h }
 func copyFile(src, dst string, mode os.FileMode) error {
 	b, err := os.ReadFile(src)
@@ -3945,7 +3986,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 		v["hotkey_seed_file"] = filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", i))
 		v["controlled_no_ids"] = controlledNOIDsForValidator(i)
 		v["trail_depth"] = cfg.Policy.Verify.TrailDepth
-		v["poll_seconds"] = 2
+		v["poll_seconds"] = validatorPollSeconds(cfg)
 		v["version_key"] = hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["weights_version_key"])
 		v["policy"] = cfg.Policy
 		v["operators"] = operatorDirectory(cfg, stateDir, roles, i)
@@ -4002,7 +4043,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 			"key_file":        claimKeyPath,
 			"jwt_file":        filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state", "jwt"),
 			"state_dir":       filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "claims"),
-			"poll_seconds":    10,
+			"poll_seconds":    claimPollSeconds(cfg),
 			"lookback_epochs": cfg.Policy.Settlement.ClaimTTLEpochs + cfg.Policy.Settlement.ClaimGraceEpochs + 1,
 		}
 		b, _ = yaml.Marshal(claim)

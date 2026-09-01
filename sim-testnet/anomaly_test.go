@@ -28,6 +28,20 @@ func TestScenarioAnomalyLedgerAllowsOnlyExactScheduledRestarts(t *testing.T) {
 	}
 }
 
+// A supervisor restart resets its in-memory child counters, so its exact
+// kernel generation is an independent zero-failure acceptance signal.
+func TestScenarioAnomalyLedgerRejectsSupervisorGenerationChange(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	start := testScenarioObservation(cfg, 1)
+	current := testScenarioObservation(cfg, 2)
+	start.Status.Supervisor = &SupervisorState{SupervisorPID: 100, SupervisorStartTimeTicks: 1_000}
+	current.Status.Supervisor = &SupervisorState{SupervisorPID: 101, SupervisorStartTimeTicks: 2_000}
+	ledger := buildScenarioAnomalyLedger("run", time.Now(), start, current, nil, nil, nil)
+	if ledger.Status != "open" || !hasAnomalyClass(ledger, "supervisor-restart") {
+		t.Fatalf("supervisor generation change was not reported: %+v", ledger)
+	}
+}
+
 func TestScenarioAnomalyLedgerCapturesEveryUnexpectedEvidenceChannel(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	start := testScenarioObservation(cfg, 1)

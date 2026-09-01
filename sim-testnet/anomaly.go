@@ -228,6 +228,12 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 		}
 	}
 	startProcesses, currentProcesses := processStates(start), processStates(current)
+	if start != nil && current != nil && start.Status != nil && current.Status != nil && start.Status.Supervisor != nil && current.Status.Supervisor != nil {
+		before, after := start.Status.Supervisor, current.Status.Supervisor
+		if before.SupervisorPID != after.SupervisorPID || before.SupervisorStartTimeTicks != after.SupervisorStartTimeTicks {
+			collector.add("supervisor-restart", "critical", "supervisor", fmt.Sprintf("generation changed from pid=%d start=%d to pid=%d start=%d", before.SupervisorPID, before.SupervisorStartTimeTicks, after.SupervisorPID, after.SupervisorStartTimeTicks), when)
+		}
+	}
 	if len(startProcesses) != 0 || len(currentProcesses) != 0 {
 		for id, before := range startProcesses {
 			after, present := currentProcesses[id]

@@ -170,13 +170,33 @@ func (self *ProofStore) Append(record *ProofRecord) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(self.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	f, err := os.OpenFile(self.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if _, err := f.Write(append(b, '\n')); err != nil {
+	payload := make([]byte, 0, len(b)+2)
+	info, err := f.Stat()
+	if err != nil {
 		return err
+	}
+	if info.Size() > 0 {
+		var tail [1]byte
+		if _, err := f.ReadAt(tail[:], info.Size()-1); err != nil {
+			return err
+		}
+		if tail[0] != '\n' {
+			// Preserve a torn record as one rejected line and give the new
+			// verified proof its own durable JSONL boundary.
+			payload = append(payload, '\n')
+		}
+	}
+	payload = append(payload, b...)
+	payload = append(payload, '\n')
+	if written, err := f.Write(payload); err != nil {
+		return err
+	} else if written != len(payload) {
+		return fmt.Errorf("proof append wrote %d of %d bytes", written, len(payload))
 	}
 	return f.Sync()
 }

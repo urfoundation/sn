@@ -168,6 +168,10 @@ func Status(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*Deploym
 			return nil, fmt.Errorf("supervisor state: %w", err)
 		}
 		s.Supervisor = &supervisor
+		if err := validateSupervisorGeneration(supervisor); err != nil {
+			s.Warnings = append(s.Warnings, err.Error())
+			s.Healthy = false
+		}
 		for _, process := range supervisor.Processes {
 			if !process.Healthy || process.PID <= 1 {
 				s.Healthy = false

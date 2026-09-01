@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -51,11 +52,12 @@ type SupervisorFile struct {
 	Specs        []ProcessSpec `json:"specs"`
 }
 type SupervisorState struct {
-	Schema        string         `json:"schema"`
-	UpdatedAt     string         `json:"updated_at"`
-	SupervisorPID int            `json:"supervisor_pid"`
-	ManifestHash  string         `json:"manifest_hash"`
-	Processes     []ProcessState `json:"processes"`
+	Schema                   string         `json:"schema"`
+	UpdatedAt                string         `json:"updated_at"`
+	SupervisorPID            int            `json:"supervisor_pid"`
+	SupervisorStartTimeTicks uint64         `json:"supervisor_start_time_ticks"`
+	ManifestHash             string         `json:"manifest_hash"`
+	Processes                []ProcessState `json:"processes"`
 }
 
 // Records the kernel identity of each provisioning helper so a resume can
@@ -368,6 +370,140 @@ func executePostTopologyTournament(ctx context.Context, plan *SetupPlan, executo
 	return nil
 }
 
+// Lists the append-only proof stores which must advance before a newly
+// launched topology can claim semantic readiness. Every validator measures
+// every operator independently, so omitting one pair would leave a blind
+// routing or policy domain behind a process-only health check.
+func releaseTopologyProofPaths(cfg *ResolvedConfig, stateDir string) map[string]string {
+	paths := map[string]string{}
+	if cfg == nil {
+		return paths
+	}
+	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
+		for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
+			identity := fmt.Sprintf("validator-%d/no-%d", validatorID, noID)
+			paths[identity] = filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "operators", fmt.Sprintf("no-%d", noID), "proofs.jsonl")
+		}
+	}
+	return paths
+}
+
+// Counts complete JSON proof records while ignoring a concurrently appended
+// trailing fragment. The next observation sees the record after its append
+// finishes; a torn or malformed line can never satisfy the freshness gate.
+func completedReleaseProofCount(path string) (int, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	lines := bytes.Split(b, []byte("\n"))
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		lines = lines[:len(lines)-1]
+	}
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var record struct {
+			Version        int    `json:"v"`
+			TrailID        string `json:"trail_id"`
+			Coverage       uint64 `json:"coverage"`
+			CompleteTimeMS uint64 `json:"complete_time_ms"`
+		}
+		if json.Unmarshal(line, &record) == nil && record.Version == 1 && record.TrailID != "" && record.Coverage > 0 && record.CompleteTimeMS > 0 {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// Snapshots proof progress for every validator/operator pair.
+func releaseTopologyProofCounts(cfg *ResolvedConfig, stateDir string) (map[string]int, error) {
+	counts := map[string]int{}
+	for identity, path := range releaseTopologyProofPaths(cfg, stateDir) {
+		count, err := completedReleaseProofCount(path)
+		if err != nil {
+			return nil, fmt.Errorf("read %s release proofs: %w", identity, err)
+		}
+		counts[identity] = count
+	}
+	return counts, nil
+}
+
+// Separates ordinary process liveness from the release gate: initial launch
+// tolerates no restart, and each real validator must complete a fresh verified
+// trail through each real operator after this launch command began.
+func releaseTopologyReady(state SupervisorState, wantHash string, specs []ProcessSpec, supervisorPID int, supervisorStartTimeTicks uint64, baseline, current map[string]int) (bool, error) {
+	if state.SupervisorPID != supervisorPID || state.SupervisorStartTimeTicks != supervisorStartTimeTicks {
+		return false, fmt.Errorf("release topology supervisor generation changed from pid=%d start=%d to pid=%d start=%d", supervisorPID, supervisorStartTimeTicks, state.SupervisorPID, state.SupervisorStartTimeTicks)
+	}
+	for _, process := range state.Processes {
+		if process.Restarts != 0 {
+			return false, fmt.Errorf("release topology process %s restarted %d time(s)", process.ID, process.Restarts)
+		}
+	}
+	if !supervisorStateReady(state, wantHash, specs) {
+		return false, nil
+	}
+	if len(baseline) == 0 || len(current) != len(baseline) {
+		return false, errors.New("release topology proof domains are incomplete")
+	}
+	for identity, prior := range baseline {
+		count, ok := current[identity]
+		if !ok {
+			return false, fmt.Errorf("release topology proof domain %s is missing", identity)
+		}
+		if count <= prior {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// Waits for semantic topology evidence without accepting stale proofs from an
+// earlier attempt. A restart is terminal immediately; ordinary startup and
+// trail progress may continue until the bounded launch deadline.
+func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, timeout time.Duration) error {
+	wantHash, err := canonicalHashHex(want)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		var state SupervisorState
+		if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
+			lastErr = err
+		} else if current, err := releaseTopologyProofCounts(cfg, stateDir); err != nil {
+			lastErr = err
+		} else if ready, err := releaseTopologyReady(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current); err != nil {
+			return err
+		} else if ready {
+			return nil
+		}
+		remaining := time.Until(deadline)
+		if remaining > 500*time.Millisecond {
+			remaining = 500 * time.Millisecond
+		}
+		if remaining <= 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(remaining):
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("release topology semantic readiness timeout: %w", lastErr)
+	}
+	return errors.New("release topology semantic readiness timeout: every validator must complete a fresh verified trail through every operator")
+}
+
 // Provision API-assigned identities, finish their chain bindings, then hand
 // the checksum-locked process topology to the persistent supervisor.
 func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets, executor *Executor, bins map[string]string, detach bool) error {
@@ -444,13 +580,21 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if topologyAction == nil {
 		return fmt.Errorf("plan has no topology.launch action")
 	}
+	proofBaseline, err := releaseTopologyProofCounts(cfg, stateDir)
+	if err != nil {
+		return err
+	}
 	if detach || cfg.Config.Deployment.DetachAfterLaunch {
 		if ready, _ := supervisorReadyNow(stateDir, sf); !ready {
 			if err := startPersistentSupervisor(ctx, cfg, bins["sim-testnet"], stateDir, specPath); err != nil {
 				return err
 			}
 		}
-		if err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute); err != nil {
+		readyState, err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute)
+		if err != nil {
+			return err
+		}
+		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, 5*time.Minute); err != nil {
 			return err
 		}
 		if err := executor.Execute(ctx, *topologyAction); err != nil {
@@ -465,7 +609,13 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	defer cancelSupervisor()
 	supervisorErr := make(chan error, 1)
 	go func() { supervisorErr <- supervise(supervisorCtx, stateDir, specPath) }()
-	if err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute); err != nil {
+	readyState, err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute)
+	if err != nil {
+		cancelSupervisor()
+		<-supervisorErr
+		return err
+	}
+	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, 5*time.Minute); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -1589,8 +1739,27 @@ func supervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
 	return supervisorStateReady(state, wantHash, want.Specs), nil
 }
 
+// Verifies the live kernel process generation rather than trusting a reusable
+// pid recorded in a stale state file.
+func validateSupervisorGeneration(state SupervisorState) error {
+	if state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks == 0 {
+		return errors.New("supervisor process generation is incomplete")
+	}
+	observedStartTimeTicks, err := processStartTimeTicks(state.SupervisorPID)
+	if err != nil {
+		return fmt.Errorf("observe supervisor process generation: %w", err)
+	}
+	if observedStartTimeTicks != state.SupervisorStartTimeTicks {
+		return fmt.Errorf("supervisor pid %d start time changed from %d to %d", state.SupervisorPID, state.SupervisorStartTimeTicks, observedStartTimeTicks)
+	}
+	if err := syscall.Kill(state.SupervisorPID, syscall.Signal(0)); err != nil {
+		return fmt.Errorf("supervisor process is not live: %w", err)
+	}
+	return nil
+}
+
 func supervisorStateReady(state SupervisorState, wantHash string, specs []ProcessSpec) bool {
-	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != wantHash || state.SupervisorPID <= 1 || len(state.Processes) != len(specs) || syscall.Kill(state.SupervisorPID, syscall.Signal(0)) != nil {
+	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != wantHash || validateSupervisorGeneration(state) != nil || len(state.Processes) != len(specs) {
 		return false
 	}
 	want := make(map[string]ProcessSpec, len(specs))
@@ -1610,10 +1779,10 @@ func supervisorStateReady(state SupervisorState, wantHash string, specs []Proces
 	return len(want) == 0
 }
 
-func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, timeout time.Duration) error {
+func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, timeout time.Duration) (*SupervisorState, error) {
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	deadline := time.Now().Add(timeout)
 	var lastErr error
@@ -1628,7 +1797,7 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 				lastErr = nil
 				lastState = &state
 				if supervisorStateReady(state, wantHash, want.Specs) {
-					return nil
+					return &state, nil
 				}
 			}
 		} else {
@@ -1645,17 +1814,17 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-timer.C:
 		}
 	}
 	if lastErr != nil {
-		return fmt.Errorf("supervisor readiness timeout: %w", lastErr)
+		return nil, fmt.Errorf("supervisor readiness timeout: %w", lastErr)
 	}
 	if lastState != nil {
-		return fmt.Errorf("supervisor readiness timeout: supervisor_pid=%d manifest_hash=%s processes=%+v", lastState.SupervisorPID, lastState.ManifestHash, lastState.Processes)
+		return nil, fmt.Errorf("supervisor readiness timeout: supervisor_pid=%d manifest_hash=%s processes=%+v", lastState.SupervisorPID, lastState.ManifestHash, lastState.Processes)
 	}
-	return fmt.Errorf("supervisor readiness timeout: no state observed")
+	return nil, fmt.Errorf("supervisor readiness timeout: no state observed")
 }
 
 func supervise(ctx context.Context, stateDir, specPath string) error {
@@ -1691,6 +1860,10 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	if err != nil {
 		return err
 	}
+	supervisorStartTimeTicks, err := processStartTimeTicks(os.Getpid())
+	if err != nil {
+		return fmt.Errorf("observe supervisor process generation: %w", err)
+	}
 	type running struct {
 		spec       ProcessSpec
 		cmd        *exec.Cmd
@@ -1713,7 +1886,7 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	publish := func() error {
 		mu.Lock()
 		defer mu.Unlock()
-		s := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano), SupervisorPID: os.Getpid(), ManifestHash: manifestHash}
+		s := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano), SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: supervisorStartTimeTicks, ManifestHash: manifestHash}
 		for _, r := range runs {
 			s.Processes = append(s.Processes, r.state)
 		}

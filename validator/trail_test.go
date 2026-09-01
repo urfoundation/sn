@@ -15,12 +15,36 @@ import (
 	"errors"
 	"fmt"
 	mathrand "math/rand"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/urnetwork/connect"
 )
+
+// A crash-torn final line remains rejected, but it cannot consume the next
+// valid proof appended after validator restart.
+func TestProofStoreAppendSeparatesTornTail(t *testing.T) {
+	store, err := NewProofStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path, []byte(`{"v":1,"trail_id":"torn"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := &ProofRecord{Version: 1, TrailId: connect.NewId(), Coverage: 1, CompleteTimeMs: 1}
+	if err := store.Append(want); err != nil {
+		t.Fatal(err)
+	}
+	records, skipped, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 1 || len(records) != 1 || records[0].TrailId != want.TrailId {
+		t.Fatalf("recovered proof store records=%+v skipped=%d", records, skipped)
+	}
+}
 
 // mockTrailState is one server-side trail.
 type mockTrailState struct {
