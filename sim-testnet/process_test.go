@@ -31,6 +31,96 @@ func currentProcessStartTimeTicks(t *testing.T) uint64 {
 	return ticks
 }
 
+// Reproduce the launch race by presenting clients before their services in the
+// manifest and proving no dependent start crosses the explicit health barrier.
+func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
+	specs := []ProcessSpec{
+		{ID: "miner", Role: "miner-swarm"},
+		{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
+		{ID: "claim", Role: "claim-relayer"},
+		{ID: "connect", Role: "operator-connect", HealthURL: "http://connect/status"},
+		{ID: "worker", Role: "operator-taskworker"},
+		{ID: "rpc", Role: "dependency-rpc-proxy", HealthURL: "http://rpc/healthz"},
+		{ID: "validator", Role: "validator"},
+	}
+	barrierCrossed := false
+	events := []string{}
+	err := startSupervisorSpecsWithReadiness(
+		specs,
+		func(spec ProcessSpec) error {
+			if !supervisorStartupPrerequisite(spec) && !barrierCrossed {
+				return fmt.Errorf("dependent %s started before readiness", spec.ID)
+			}
+			events = append(events, "start:"+spec.ID)
+			return nil
+		},
+		func(prerequisites []ProcessSpec) error {
+			for _, spec := range prerequisites {
+				if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
+					t.Fatalf("invalid prerequisite at barrier: %+v", spec)
+				}
+			}
+			events = append(events, "ready")
+			barrierCrossed = true
+			return nil
+		},
+	)
+	want := []string{"start:api", "start:connect", "start:rpc", "ready", "start:miner", "start:claim", "start:worker", "start:validator"}
+	if err != nil || strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("startup events=%v want=%v error=%v", events, want, err)
+	}
+}
+
+// A failed or unverifiable service barrier must leave every client and
+// background worker unstarted, including adjacent claim and validator roles.
+func TestSupervisorStartupReadinessFailureStartsNoDependents(t *testing.T) {
+	sentinel := errors.New("API not ready")
+	started := []string{}
+	specs := []ProcessSpec{
+		{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
+		{ID: "miner", Role: "miner-swarm"},
+		{ID: "claim", Role: "claim-relayer"},
+		{ID: "validator", Role: "validator"},
+	}
+	err := startSupervisorSpecsWithReadiness(
+		specs,
+		func(spec ProcessSpec) error {
+			started = append(started, spec.ID)
+			return nil
+		},
+		func([]ProcessSpec) error { return sentinel },
+	)
+	if !errors.Is(err, sentinel) || len(started) != 1 || started[0] != "api" {
+		t.Fatalf("failed-barrier starts=%v error=%v", started, err)
+	}
+}
+
+// Reject an incomplete prerequisite declaration before creating even one
+// child, so a future service role cannot silently turn the barrier into sleep.
+func TestSupervisorStartupRejectsPrerequisiteWithoutHealthEndpoint(t *testing.T) {
+	starts := 0
+	err := startSupervisorSpecsWithReadiness(
+		[]ProcessSpec{{ID: "api", Role: "operator-api"}, {ID: "miner", Role: "miner-swarm"}},
+		func(ProcessSpec) error {
+			starts++
+			return nil
+		},
+		func([]ProcessSpec) error { return nil },
+	)
+	if err == nil || !strings.Contains(err.Error(), "api has no health endpoint") || starts != 0 {
+		t.Fatalf("missing-health starts=%d error=%v", starts, err)
+	}
+}
+
+// The shared readiness primitive also rejects missing health metadata instead
+// of silently declaring a partial process set ready.
+func TestWaitSpecsReadyRejectsMissingHealthEndpoint(t *testing.T) {
+	err := waitSpecsReady(context.Background(), []ProcessSpec{{ID: "validator"}}, 0)
+	if err == nil || !strings.Contains(err.Error(), "validator has no health endpoint") {
+		t.Fatalf("missing-health readiness error=%v", err)
+	}
+}
+
 func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	dir := t.TempDir()
 	executable, err := os.Executable()
@@ -725,6 +815,48 @@ func TestPostTopologyTournamentGatePropagatesBoundaryFailure(t *testing.T) {
 	)
 	if !errors.Is(err, tournamentError) || !tournamentCalled || waitCalled {
 		t.Fatalf("tournament failure error=%v tournament=%t wait=%t", err, tournamentCalled, waitCalled)
+	}
+}
+
+// Cover the release builders as one inventory: listener-bearing services are
+// prerequisites, while every worker and client waits behind their readiness.
+func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, map[string]string{
+		"sim-testnet":           "/release/sim-testnet",
+		connectServerBinaryName: "/release/sim-testnet-connect",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSpecs := buildClientSpecs(cfg, stateDir, map[string]string{"sim-testnet": "/release/sim-testnet"}, roles)
+	prerequisiteCount := 0
+	dependentCount := 0
+	for _, spec := range append(serverSpecs, clientSpecs...) {
+		switch spec.Role {
+		case "dependency-rpc-proxy", "operator-api", "operator-connect":
+			if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
+				t.Fatalf("release prerequisite is not health-gated: %+v", spec)
+			}
+			prerequisiteCount++
+		case "operator-taskworker", "miner-swarm", "claim-relayer", "validator":
+			if supervisorStartupPrerequisite(spec) {
+				t.Fatalf("release dependent was classified as prerequisite: %+v", spec)
+			}
+			dependentCount++
+		default:
+			t.Fatalf("release process role has no startup classification: %+v", spec)
+		}
+	}
+	wantPrerequisites := 2 + 2*cfg.Config.Topology.Operators
+	wantDependents := cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
+	if prerequisiteCount != wantPrerequisites || dependentCount != wantDependents {
+		t.Fatalf("release startup prerequisites/dependents=%d/%d, want %d/%d", prerequisiteCount, dependentCount, wantPrerequisites, wantDependents)
 	}
 }
 

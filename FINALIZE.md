@@ -3179,6 +3179,45 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    source-lock recheck were green. The failed candidate is superseded; a clean
    checkpoint and two-build approval cycle must still complete before relaunch.
 
+   Checkpoint `eaffbfc` was pushed, and two clean public-RPC reconstructions at
+   finalized heads 7,910,949 and 7,910,963/7,910,964 produced the identical
+   2,238-action, 47-ancestor plan
+   `0x55fe00a182ae81d75d1a42dbb603a68cb3d1d59f883edae52d8eb68cfb109917`
+   under release-lock hash
+   `0x38550638e9c75de05b64097ec9005287f98340ee98b2453b9dc81d582290693d`.
+   The authorized launch passed both the 1,000/1,000 historical-fleet audit and
+   all 2,217 carried-action checks. `config.render` then verified at journal
+   sequences 10,023--10,024. The persistent topology failed its zero-restart
+   postcondition because `miner-swarm-5` restarted once; the harness failed
+   closed and was explicitly stopped with its chain state and evidence intact.
+
+   The first swarm process had attempted to provision `miner-201` at the same
+   instant the two production APIs were spawned and failed `set wallet` with a
+   transport timeout before the request reached either API. Both API listeners
+   became ready approximately 150 milliseconds later and then each completed
+   exactly 500 wallet-provision requests with no PostgreSQL or Redis failure;
+   every other service remained healthy and no other process restarted. The
+   root cause was manifest-order startup with no listener-readiness boundary,
+   not API capacity, database load or miner identity data. Adding a wallet retry
+   would have hidden the causal transport fault, so the persistent supervisor
+   now starts both workload RPC proxies and every operator API/Connect listener,
+   requires all of their declared health endpoints within one explicit barrier,
+   and only then starts taskworkers, miner swarms, claim relayers and validators.
+   A failed barrier starts no dependent and an incomplete prerequisite is
+   rejected before any child is created. Deterministic regressions force the
+   original interleaved manifest, readiness failure and missing-health cases;
+   an adjacent test classifies every process produced by the real release
+   builders, and the shared readiness primitive independently refuses missing
+   health metadata instead of silently omitting the process. Focused ordinary
+   and race-detector runs pass. The final aggregate gate also passed end to end:
+   the ordinary simulator suite completed in 173.633 seconds, the complete race
+   suite in 633.969 seconds, both deployable
+   Solidity roots had zero Slither findings, all 145 Foundry tests and 4,608
+   invariant calls passed, operator PostgreSQL/Redis and all 26 Subtensor
+   infrastructure tests passed, and patch hygiene plus the final checkout-lock
+   recheck were green. A pushed checkpoint and twice-reproduced plan remain
+   required before relaunch.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
@@ -3209,8 +3248,8 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 174.270 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 618.426 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 173.633 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 633.969 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |

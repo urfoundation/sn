@@ -1650,6 +1650,9 @@ func waitSpecsReady(ctx context.Context, specs []ProcessSpec, timeout time.Durat
 	deadline := time.Now().Add(timeout)
 	pending := map[string]ProcessSpec{}
 	for _, s := range specs {
+		if s.HealthURL == "" {
+			return fmt.Errorf("process %s has no health endpoint", s.ID)
+		}
 		pending[s.ID] = s
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -1948,6 +1951,55 @@ func supervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
 	return supervisorStateReady(state, wantHash, want.Specs), nil
 }
 
+// Identify the listener-bearing services every release workload contacts while
+// starting. Waiting on these exact roles prevents a newly spawned client herd
+// from racing API, Connect or RPC listener initialization.
+func supervisorStartupPrerequisite(spec ProcessSpec) bool {
+	switch spec.Role {
+	case "dependency-rpc-proxy", "operator-api", "operator-connect":
+		return true
+	default:
+		return false
+	}
+}
+
+// Start prerequisites, cross one explicit health barrier, and only then start
+// dependent workers. Callbacks keep the ordering deterministic in tests while
+// production retains the supervisor's real process ownership.
+func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
+	if start == nil || wait == nil {
+		return errors.New("supervisor startup callbacks are incomplete")
+	}
+	prerequisites := make([]ProcessSpec, 0, len(specs))
+	dependents := make([]ProcessSpec, 0, len(specs))
+	for _, spec := range specs {
+		if supervisorStartupPrerequisite(spec) {
+			if spec.HealthURL == "" {
+				return fmt.Errorf("supervisor startup prerequisite %s has no health endpoint", spec.ID)
+			}
+			prerequisites = append(prerequisites, spec)
+		} else {
+			dependents = append(dependents, spec)
+		}
+	}
+	for _, spec := range prerequisites {
+		if err := start(spec); err != nil {
+			return fmt.Errorf("start supervisor prerequisite %s: %w", spec.ID, err)
+		}
+	}
+	if len(prerequisites) != 0 {
+		if err := wait(prerequisites); err != nil {
+			return fmt.Errorf("supervisor startup prerequisite readiness: %w", err)
+		}
+	}
+	for _, spec := range dependents {
+		if err := start(spec); err != nil {
+			return fmt.Errorf("start supervisor dependent %s: %w", spec.ID, err)
+		}
+	}
+	return nil
+}
+
 // Verifies the live kernel process generation rather than trusting a reusable
 // pid recorded in a stale state file.
 func validateSupervisorGeneration(state SupervisorState) error {
@@ -2129,16 +2181,6 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	for _, spec := range sf.Specs {
 		r := &running{spec: spec, state: ProcessState{ID: spec.ID, Role: spec.Role, Identity: spec.Identity}}
 		runs[spec.ID] = r
-		if err := start(r); err != nil {
-			var started []*exec.Cmd
-			for _, prior := range runs {
-				if prior.cmd != nil {
-					started = append(started, prior.cmd)
-				}
-			}
-			stopCommands(started)
-			return err
-		}
 	}
 	defer func() {
 		var commands []*exec.Cmd
@@ -2147,6 +2189,21 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 		}
 		stopCommands(commands)
 	}()
+	if err := startSupervisorSpecsWithReadiness(
+		sf.Specs,
+		func(spec ProcessSpec) error {
+			r := runs[spec.ID]
+			if r == nil {
+				return fmt.Errorf("supervisor process %s is absent from its runtime inventory", spec.ID)
+			}
+			return start(r)
+		},
+		func(prerequisites []ProcessSpec) error {
+			return waitSpecsReady(ctx, prerequisites, 2*time.Minute)
+		},
+	); err != nil {
+		return err
+	}
 	if err := publish(); err != nil {
 		return err
 	}
