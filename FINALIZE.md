@@ -3269,8 +3269,20 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Foundry tests and 4,608 invariant calls passed, all executable server and
    shared-client packages compiled, the operator PostgreSQL/Redis suites and all
    26 Subtensor infrastructure tests passed, and patch hygiene plus the final
-   checkout-lock recheck were green. A fresh twice-identical plan and approved
-   replay still remain.
+   checkout-lock recheck were green. Two independent public-RPC reconstructions
+   then produced the identical schema-v11 plan
+   `0xd5be966c7b2b1183a8e6e4a5a82b423342fe933214d561fd1835c7666be55c6c`
+   under release-lock hash
+   `0x85892b12d4b14ba6b5f7e1469aee24ffddfd3783c23e290104073c1bddd05b2d`.
+   Both contain 2,238 actions and 49 authenticated ancestors, with active maxima
+   of 165,673,232,000 TAO rao, 21,694,306,443,318 alpha rao,
+   148,859,500,000,000,000,000 EVM gas wei and 256 registrations. Their
+   superseded totals are 501,500,000,051 alpha rao,
+   11,140,500,000,000,000,000 EVM gas wei and three registrations; subnet
+   creations remain zero. Both bind coordinator implementation
+   `0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef`, deployer nonce 27 and runtime
+   hash `0x4f97f8c8763faaaa5d1b94cad173d542c6572e83141a9ba7ee3c30917d40856b`.
+   The approved clean replay remains.
 
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
