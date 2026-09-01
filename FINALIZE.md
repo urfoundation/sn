@@ -2953,8 +2953,25 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    22,250-alpha ceiling by exactly 54,193,556,631 rao; active plus superseded EVM
    spend equals, but does not exceed, the unchanged 160-testTAO-wei ceiling.
    That candidate is deliberately superseded by the audited vault/release-lock
-   checkpoint and is not authorized for apply. The final locked tree requires a
-   fresh two-build hash review. The earlier stopped-topology
+   checkpoint and is not authorized for apply.
+
+   Checkpoint `18a3299` is pushed. A fresh live doctor at finalized runtime v452
+   returned `ready=true`; every hard check passed, and only the explicitly
+   non-independent official-public-RPC observations remained soft. Two
+   independent read-only builds from that exact source/release/config lock then
+   produced the same final schema-v11 plan
+   `0x947d5967622d537d8ea3160373ae9c4b8cf897391202fdb587215523d49b17f5`,
+   config hash
+   `0xd8d48a541aa8dccf24e293ff2f4f1c8e6cb4d9902f17fdcb57fe83cacc6aeb85`,
+   policy hash
+   `0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`
+   and release-lock hash
+   `0x7daeb770030966ff52104f8708931ff9024aed33556569677c13f2a465d8b519`.
+   Both contained 2,238 actions, 43 ancestors and coordinator implementation
+   `0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef` at deployer nonce 27. Their
+   active and superseded spend values exactly matched the audited totals above.
+   This is the sole reviewed hash authorized for the adjusted-profile apply.
+   Any rebuilt mismatch requires a new review. The earlier stopped-topology
    `precompile-conformance` result remains durable failed evidence and must be
    rerun cleanly after relaunch; it is not counted as M0B evidence.
 
