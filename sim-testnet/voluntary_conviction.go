@@ -323,6 +323,53 @@ func exactVoluntaryConvictionPlanAction(plan *SetupPlan, intentHash string) (Act
 	return *result, nil
 }
 
+// Resolve the exact source action and policy for a carried conviction. The
+// live conviction remains a current-state invariant, but its immutable event
+// must be interpreted using the ancestor plan which authorized the call.
+func exactCarriedVoluntaryConvictionSourceAction(currentPlan, sourcePlan *SetupPlan, current Action, verified JournalEntry) (Action, error) {
+	if currentPlan == nil || sourcePlan == nil || verified.Stage != StageVerified || verified.PlanHash == "" || verified.IntentHash == "" ||
+		current.ID != voluntaryConvictionActionID || verified.ActionID != current.ID {
+		return Action{}, errors.New("carried voluntary-conviction source context is incomplete")
+	}
+	if sourcePlan.PlanHash != verified.PlanHash || !currentPlan.allowedPlanHashes()[verified.PlanHash] || !actionAcceptsIntent(current, verified.IntentHash) {
+		return Action{}, errors.New("carried voluntary conviction is outside the approved action lineage")
+	}
+	source, err := exactVoluntaryConvictionPlanAction(sourcePlan, verified.IntentHash)
+	if err != nil {
+		return Action{}, err
+	}
+	if source.Kind != current.Kind || source.Target != current.Target || sourcePlan.DeploymentID != currentPlan.DeploymentID ||
+		sourcePlan.ChainID != currentPlan.ChainID || sourcePlan.Netuid != currentPlan.Netuid ||
+		sourcePlan.Deployment.CoordinatorProxy != currentPlan.Deployment.CoordinatorProxy ||
+		len(sourcePlan.Roles.OperatorDepositSigners) == 0 || len(currentPlan.Roles.OperatorDepositSigners) == 0 ||
+		!strings.EqualFold(sourcePlan.Roles.OperatorDepositSigners[0], currentPlan.Roles.OperatorDepositSigners[0]) {
+		return Action{}, errors.New("carried voluntary-conviction source deployment or signer differs from the active lineage")
+	}
+	return source, nil
+}
+
+// Use a hash-authenticated ancestor plan for the policy-bound evidence check
+// while retaining the active executor's finalized clients and payload cache.
+func (e *Executor) carriedVoluntaryConvictionSourceExecutor(action Action, verified JournalEntry) (*Executor, Action, error) {
+	if e == nil || e.plan == nil {
+		return nil, Action{}, errors.New("carried voluntary-conviction executor is unavailable")
+	}
+	if verified.PlanHash == e.plan.PlanHash {
+		return e, action, nil
+	}
+	sourcePlan, err := loadVoluntaryConvictionLineagePlan(e.stateDir, e.plan, verified.PlanHash)
+	if err != nil {
+		return nil, Action{}, err
+	}
+	sourceAction, err := exactCarriedVoluntaryConvictionSourceAction(e.plan, sourcePlan, action, verified)
+	if err != nil {
+		return nil, Action{}, err
+	}
+	sourceExecutor := *e
+	sourceExecutor.plan = sourcePlan
+	return &sourceExecutor, sourceAction, nil
+}
+
 // Identify an earlier recovery envelope and whether its no-broadcast
 // postcondition was durably verified.
 func priorVoluntaryConvictionRecovery(prior *SetupPlan, entries []JournalEntry, transaction planRevisionTransaction) (Action, bool, bool, error) {

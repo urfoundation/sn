@@ -258,6 +258,95 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	}
 }
 
+func TestCarriedVoluntaryConvictionUsesAuthenticatedSourcePolicy(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	encoded, err := json.MarshalIndent(source, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(source.PlanHash)+".json"), append(encoded, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := *source
+	current.PlanHash = "0x" + strings.Repeat("aa", 32)
+	current.PriorPlanHashes = []string{source.PlanHash}
+	current.PolicyHash = "0x" + strings.Repeat("bb", 32)
+	action := actionByID(t, &current, voluntaryConvictionActionID)
+	verified := JournalEntry{Stage: StageVerified, PlanHash: source.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash}
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &current}
+	verifier, verifiedAction, err := executor.carriedVoluntaryConvictionSourceExecutor(action, verified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := VoluntaryConvictionEvidence{
+		Schema: "urnetwork-voluntary-conviction-evidence-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		NoID: 1, Epoch: 3, AmountRao: strconv.FormatUint(cfg.Config.Scenarios.VoluntaryConvictionRao, 10),
+		BeforeConvictionRao: "0", AfterConvictionRao: strconv.FormatUint(cfg.Config.Scenarios.VoluntaryConvictionRao, 10), Nonce: "4",
+		Funder: source.Roles.OperatorDepositSigners[0], PolicyHash: source.PolicyHash,
+		TransactionHash: "0x" + strings.Repeat("11", 32), FinalizedBlock: 9, FinalizedHash: "0x" + strings.Repeat("22", 32),
+	}
+	if err := voluntaryConvictionEvidenceMatches(cfg, &current, evidence); err == nil {
+		t.Fatal("live failure was not reproduced against the revised policy")
+	}
+	if verifier == executor || verifier.plan.PlanHash != source.PlanHash || verifier.plan.PolicyHash != source.PolicyHash || verifiedAction.IntentHash != verified.IntentHash {
+		t.Fatal("carried verifier did not select the exact authenticated source action")
+	}
+	if err := voluntaryConvictionEvidenceMatches(cfg, verifier.plan, evidence); err != nil {
+		t.Fatalf("source-policy evidence was rejected: %v", err)
+	}
+}
+
+func TestCarriedVoluntaryConvictionRejectsAdjacentLineageMutations(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := *source
+	current.PlanHash = "0x" + strings.Repeat("aa", 32)
+	current.PriorPlanHashes = []string{source.PlanHash}
+	action := actionByID(t, &current, voluntaryConvictionActionID)
+	verified := JournalEntry{Stage: StageVerified, PlanHash: source.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash}
+	mutations := []func(*SetupPlan, *SetupPlan, *Action, *JournalEntry){
+		func(_, _ *SetupPlan, _ *Action, entry *JournalEntry) { entry.Stage = StageFinalized },
+		func(active, _ *SetupPlan, _ *Action, _ *JournalEntry) { active.PriorPlanHashes = nil },
+		func(_, _ *SetupPlan, candidate *Action, _ *JournalEntry) {
+			candidate.IntentHash = "0x" + strings.Repeat("cc", 32)
+		},
+		func(_, ancestor *SetupPlan, _ *Action, _ *JournalEntry) { ancestor.DeploymentID = "other" },
+		func(_, ancestor *SetupPlan, _ *Action, _ *JournalEntry) { ancestor.ChainID++ },
+		func(_, ancestor *SetupPlan, _ *Action, _ *JournalEntry) { ancestor.Netuid++ },
+		func(_, ancestor *SetupPlan, _ *Action, _ *JournalEntry) {
+			ancestor.Deployment.CoordinatorProxy = common.HexToAddress("0x1234")
+		},
+		func(_, ancestor *SetupPlan, _ *Action, _ *JournalEntry) {
+			ancestor.Roles.OperatorDepositSigners[0] = common.HexToAddress("0x5678").Hex()
+		},
+	}
+	for index, mutate := range mutations {
+		activeCopy, sourceCopy, actionCopy, entryCopy := current, *source, action, verified
+		activeCopy.PriorPlanHashes = append([]string(nil), current.PriorPlanHashes...)
+		sourceCopy.Roles.OperatorDepositSigners = append([]string(nil), source.Roles.OperatorDepositSigners...)
+		mutate(&activeCopy, &sourceCopy, &actionCopy, &entryCopy)
+		if _, err := exactCarriedVoluntaryConvictionSourceAction(&activeCopy, &sourceCopy, actionCopy, entryCopy); err == nil {
+			t.Errorf("lineage mutation %d was accepted", index)
+		}
+	}
+}
+
 func TestPolicyRevisionCarriesVerifiedConvictionCustodyDependencyBeforeUse(t *testing.T) {
 	cfg, _, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
 	roles, err := derivePublicRoles(cfg)

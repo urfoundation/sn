@@ -2970,8 +2970,33 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Both contained 2,238 actions, 43 ancestors and coordinator implementation
    `0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef` at deployer nonce 27. Their
    active and superseded spend values exactly matched the audited totals above.
-   This is the sole reviewed hash authorized for the adjusted-profile apply.
-   Any rebuilt mismatch requires a new review. The earlier stopped-topology
+   That hash was submitted to `launch`, but its mandatory carried-history
+   preflight rejected `campaign.voluntary-conviction.1` after auditing all
+   1,000 fleet members and 2,212/2,212 carried actions. The journal remained
+   exactly at sequence 9,997, proving that no new intent or transaction had
+   started. Root cause was a missing source-plan switch in the generic carried
+   verifier: the immutable original conviction event was compared with the new
+   policy hash even though the recovery plan deliberately retained the exact
+   authenticated historical action. Fleet batch artifacts already used the
+   corresponding source-plan rule.
+
+   The common carried path now loads the hash-authenticated ancestor, resolves
+   the exact verified action intent, checks active-lineage membership plus
+   deployment, chain, netuid, coordinator proxy and deposit signer identity,
+   interprets the immutable evidence under that source policy, and still reads
+   the current on-chain conviction state. A deterministic regression reproduces
+   the live current-policy mismatch and proves the repaired source-policy path;
+   adjacent mutations cover stage, ancestry, intent, deployment, chain, netuid,
+   proxy and signer substitution. Focused normal/race tests and the complete
+   simulator suite pass. The post-fix aggregate gate then passed end to end:
+   the ordinary simulator suite completed in 173.038 seconds, the complete
+   race suite in 613.663 seconds, both Solidity roots had zero Slither findings,
+   all 145 Foundry tests and 4,608 invariant calls passed, PostgreSQL/Redis and
+   all 26 Subtensor infrastructure tests passed, and the final checkout-lock
+   recheck was green. Updating the Go source lock supersedes
+   `0x947d5967622d537d8ea3160373ae9c4b8cf897391202fdb587215523d49b17f5`;
+   it is no longer authorized. A fresh locked two-build review is required
+   before retry. The earlier stopped-topology
    `precompile-conformance` result remains durable failed evidence and must be
    rerun cleanly after relaunch; it is not counted as M0B evidence.
 
@@ -3005,8 +3030,8 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 602.017 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 173.038 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 613.663 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |

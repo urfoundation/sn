@@ -1025,6 +1025,13 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 			return fmt.Errorf("carried fleet batch source: %w", err)
 		}
 	}
+	if verified.PlanHash != e.plan.PlanHash && action.ID == voluntaryConvictionActionID {
+		var err error
+		verifier, verifiedAction, err = e.carriedVoluntaryConvictionSourceExecutor(action, verified)
+		if err != nil {
+			return fmt.Errorf("carried voluntary-conviction source: %w", err)
+		}
+	}
 	generationOneSuperseded, err := e.fleetGenerationOneActionSuperseded(action, verified, record)
 	if err != nil {
 		return fmt.Errorf("fleet generation-1 successor: %w", err)
