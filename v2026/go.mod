@@ -120,12 +120,12 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/connect/v2026 v2026.8.31-1034210530
-	github.com/urnetwork/glog/v2026 v2026.8.31-1034210530
-	github.com/urnetwork/goidenticons/v2026 v2026.8.31-1034210530
-	github.com/urnetwork/proxy/v2026 v2026.8.31-1034210530
+	github.com/urnetwork/glog/v2026 v2026.8.31-1034210530 // indirect
+	github.com/urnetwork/goidenticons/v2026 v2026.8.31-1034210530 // indirect
+	github.com/urnetwork/proxy/v2026 v2026.8.31-1034210530 // indirect
 	github.com/urnetwork/sdk/v2026 v2026.8.31-1034210530
 	github.com/urnetwork/server/v2026 v2026.8.31-1034210530
-	github.com/urnetwork/userwireguard/v2026 v2026.8.31-1034210530
+	github.com/urnetwork/userwireguard/v2026 v2026.8.31-1034210530 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
