@@ -61,9 +61,11 @@ func addRuntimeConfigPath(paths map[string]os.FileMode, stateDir, path string, m
 	return nil
 }
 
-// Enumerate every immutable file read by the launched operator, miner,
-// validator, and swarm processes. Mutable state, queues, evidence, and logs
-// are deliberately excluded.
+// Enumerate every rendered immutable file read by the launched operator,
+// miner, validator, and swarm processes. Mutable state, queues, evidence, and
+// logs are deliberately excluded. The two operator config overlays are exact
+// directory links into the separately release-locked platform-config checkout
+// and are validated below rather than represented as regular files.
 func expectedRuntimeConfigFiles(cfg *ResolvedConfig, stateDir string) (map[string]os.FileMode, error) {
 	if cfg == nil || cfg.Config == nil || strings.TrimSpace(stateDir) == "" {
 		return nil, errors.New("runtime config manifest context is incomplete")
@@ -254,7 +256,36 @@ func writeRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) error {
 	return atomicWrite(runtimeConfigManifestPath(stateDir), append(wire, '\n'), 0o600)
 }
 
-// Reject additional files in directories which contain only static inputs.
+// Recognize only the two directory links deliberately installed by the
+// operator overlay renderer. Their targets are release-locked repository paths
+// and exactDirectorySymlink rejects a regular-file or foreign-target
+// substitution. No other link is exempt from the static inventory.
+func approvedRuntimeConfigOverlay(cfg *ResolvedConfig, stateDir, path string) (bool, error) {
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		home := operatorConfigHome(stateDir, operator)
+		for _, overlay := range []struct{ name, target string }{
+			{operatorEnvironment(operator), filepath.Join(cfg.Repos.PlatformConfig, "local")},
+			{"all", filepath.Join(cfg.Repos.PlatformConfig, "all")},
+		} {
+			link := filepath.Join(home, overlay.name)
+			if filepath.Clean(path) != filepath.Clean(link) {
+				continue
+			}
+			relative, err := filepath.Rel(stateDir, link)
+			if err != nil {
+				return true, err
+			}
+			if err := validateRuntimeConfigPathAncestry(stateDir, filepath.ToSlash(relative)); err != nil {
+				return true, err
+			}
+			return true, exactDirectorySymlink(link, overlay.target)
+		}
+	}
+	return false, nil
+}
+
+// Reject additional files in directories which contain only static inputs,
+// while accepting the exact independently validated operator overlays.
 func validateRuntimeConfigStaticTrees(cfg *ResolvedConfig, stateDir string, expected map[string]os.FileMode) error {
 	roots := make([]string, 0, cfg.Config.Topology.Operators*3+cfg.Config.Topology.MinerSwarmProcesses+cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
@@ -274,6 +305,9 @@ func validateRuntimeConfigStaticTrees(cfg *ResolvedConfig, stateDir string, expe
 			}
 			if entry.IsDir() {
 				return nil
+			}
+			if approved, overlayErr := approvedRuntimeConfigOverlay(cfg, stateDir, path); approved {
+				return overlayErr
 			}
 			relative, err := filepath.Rel(stateDir, path)
 			if err != nil {

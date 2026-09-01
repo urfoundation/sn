@@ -3084,6 +3084,41 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    active/superseded spend remained unchanged. It is not authorized until the
    corrected source is pushed and two clean builds reproduce it.
 
+   Checkpoint `3299679` was pushed and the candidate was reproduced twice from
+   the clean checkout at finalized heads 7,910,140 and 7,910,154. Its launch
+   again passed the 1,000/1,000 historical-fleet audit and all 2,212/2,212
+   carried-action checks. The policy transaction
+   `0xcaa7306593fde0635a4e17533c13c43189e48f324e5b12bd1c78be7039b001f5`
+   finalized in block 7,910,261. Epoch 50 then activated the exact adjusted
+   bootstrap policy at block 7,910,374: 300-block epochs, 50-block root
+   publication, 150-block finalization, five-block grace, 10-alpha epoch cap
+   and 196-alpha campaign cap. Both required operator deposits also finalized
+   and verified: operator 1 transaction
+   `0x8f70b3a557464cb5c2318652540b1b02bca74681bfefdc2907c4b22505c1e8c`
+   in block 7,910,380 and operator 2 transaction
+   `0x97c59e8a5dd6f6eb16aeddbff3ab30a66e64e4410a8f285d944ccabb6d800916`
+   in block 7,910,384. Campaign EVM reserve verification also passed.
+
+   `config.render` then failed closed at journal entries 10,019--10,020 before
+   it could launch a process or issue a transaction. The static runtime-file
+   audit treated the renderer's two mandatory operator config directory links
+   (`all` and the per-operator local environment) as unapproved extra files.
+   Those exact links are independently constrained to the release-locked
+   platform-config checkout, so the inventory now recognizes only their exact
+   paths and targets while continuing to reject wrong targets, regular-file
+   substitutions and every unapproved link. A deterministic regression covers
+   the live shape and all three adjacent mutations. The opt-in live verifier
+   passes the existing 2,083-file runtime tree with manifest hash
+   `0xf45f8ea5144b738fc3a9cb380a1c0cb3fcca29d5830502d6c7f389a5e1ff7876`.
+   The post-fix aggregate gate passed end to end: the ordinary simulator suite
+   completed in 173.737 seconds and the complete race suite in 626.085 seconds;
+   both Solidity roots had zero Slither findings, all 145 Foundry tests and
+   4,608 invariant calls passed, the operator PostgreSQL/Redis and all 26
+   Subtensor infrastructure tests passed, and patch hygiene plus the final
+   checkout-lock recheck were green. The failed candidate is superseded; a
+   clean pushed checkpoint and two identical read-only builds are still
+   required before the next launch.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
@@ -3114,8 +3149,8 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 173.038 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 613.663 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 173.737 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 626.085 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |

@@ -8,6 +8,28 @@ import (
 	"testing"
 )
 
+func TestLiveRuntimeConfigManifest(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_RUNTIME_CONFIG") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_RUNTIME_CONFIG=1 to verify the rendered live runtime inventory")
+	}
+	stateDir := os.Getenv("SIM_TESTNET_STATE_DIR")
+	if stateDir == "" {
+		t.Fatal("SIM_TESTNET_STATE_DIR is required")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateOperatorConfigOverlays(cfg, stateDir); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := verifyRuntimeConfigManifest(cfg, stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("files=%d manifest_hash=%s", verified.FileCount, verified.ManifestHash)
+}
+
 func runtimeConfigManifestFixture(t *testing.T) (*ResolvedConfig, string) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
@@ -116,6 +138,74 @@ func TestRuntimeConfigManifestRejectsUnexpectedStaticFile(t *testing.T) {
 	}
 	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(err.Error(), "unexpected static runtime config") {
 		t.Fatalf("unexpected static config was accepted: %v", err)
+	}
+}
+
+// Reproduces the live config.render failure: the renderer intentionally adds
+// two exact platform-config directory overlays, which are not extra rendered
+// files. Only those paths and exact targets may cross the static-tree audit.
+func TestRuntimeConfigManifestAcceptsOnlyExactOperatorConfigOverlays(t *testing.T) {
+	fixture := func(t *testing.T) (*ResolvedConfig, string) {
+		t.Helper()
+		cfg, stateDir := runtimeConfigManifestFixture(t)
+		platformConfig := t.TempDir()
+		for _, name := range []string{"local", "all"} {
+			if err := os.MkdirAll(filepath.Join(platformConfig, name), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cfg.Repos.PlatformConfig = platformConfig
+		home := operatorConfigHome(stateDir, 1)
+		if err := os.Symlink(filepath.Join(platformConfig, "local"), filepath.Join(home, operatorEnvironment(1))); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(platformConfig, "all"), filepath.Join(home, "all")); err != nil {
+			t.Fatal(err)
+		}
+		return cfg, stateDir
+	}
+	cfg, stateDir := fixture(t)
+	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err != nil {
+		t.Fatalf("exact required overlays were rejected: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		want string
+		run  func(*testing.T, *ResolvedConfig, string)
+	}{
+		{"wrong target", "targets", func(t *testing.T, cfg *ResolvedConfig, stateDir string) {
+			link := filepath.Join(operatorConfigHome(stateDir, 1), "all")
+			if err := os.Remove(link); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(t.TempDir(), link); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"regular substitution", "readlink", func(t *testing.T, cfg *ResolvedConfig, stateDir string) {
+			link := filepath.Join(operatorConfigHome(stateDir, 1), operatorEnvironment(1))
+			if err := os.Remove(link); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(link, []byte("not a link\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"unapproved link", "unexpected static runtime config", func(t *testing.T, cfg *ResolvedConfig, stateDir string) {
+			if err := os.Symlink(filepath.Join(cfg.Repos.PlatformConfig, "local"), filepath.Join(operatorConfigHome(stateDir, 1), "foreign")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg, stateDir := fixture(t)
+			test.run(t, cfg, stateDir)
+			if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(test.want)) {
+				t.Fatalf("overlay mutation error=%v, want %q", err, test.want)
+			}
+		})
 	}
 }
 
