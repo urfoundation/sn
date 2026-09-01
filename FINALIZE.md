@@ -3042,6 +3042,48 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    source checkpoint is pushed; only the twice rebuilt hash from that clean
    pushed checkout may be authorized for apply.
 
+   Checkpoint `2ea4148` was pushed and two further builds from that exact clean
+   checkout reproduced the candidate at finalized heads 7,909,875 and
+   7,909,887/7,909,888. The authorized launch then passed the 1,000/1,000
+   historical-fleet audit and all 2,212/2,212 carried-action checks, including
+   the repaired reconciliation and conviction paths. Before broadcasting any
+   transaction, `policy.schedule-bootstrap` failed closed: its executor still
+   required the pristine-deployment invariant `campaignReserved == 0`, while
+   the plan-time migration verifier had correctly authenticated the two
+   finalized one-alpha voluntary convictions, two-alpha reserve principal and
+   next operator nonce. The only durable changes were intent/failure journal
+   entries 9,998--9,999; no transaction was signed or broadcast.
+
+   Bootstrap scheduling and activation now select either exact zero accounting
+   for a genuinely pristine lineage or reconstruct the nonzero expectation from
+   the verified conviction/reconciliation lineage. Immediately before scheduling
+   and on every activation wait, the executor checks campaign reserve, total and
+   per-operator reserve principal, reserve live backing, cumulative conviction,
+   every operator ID and next nonce, plus `totalCaptured`, `totalPaid`,
+   `escrowAccounted`, `pendingFunding` and `outstandingLiability`. The presence of
+   a reconciliation or finalized conviction makes missing authentication fatal;
+   it cannot fall back to the pristine case. A deterministic regression
+   reproduces the exact two-alpha live boundary, proves pristine selection, and
+   rejects missing reconciliation verification plus adjacent mutations to every
+   accounting class. An opt-in read-only invocation of that exact executor gate
+   passed against the deployed contract at finalized block 7,910,041, observing
+   2,000,000,000 reserved rao and operator-1 next nonce 2 without sending a
+   transaction. The failed candidate is superseded; a new locked aggregate,
+   clean checkpoint and two-build review are required before retry.
+
+   The post-fix aggregate completed successfully: the ordinary simulator suite
+   passed in 173.650 seconds and the complete race suite in 611.929 seconds;
+   both Slither roots reported zero findings, all 145 Foundry tests and 4,608
+   invariant calls passed, operator PostgreSQL/Redis and all 26 Subtensor
+   infrastructure tests passed, and the final patch/checkout-lock gates were
+   green. The first read-only revision after durable failure entries 9,998--9,999
+   produced a 2,238-action, 45-ancestor candidate
+   `0xa4fcd9626f37b72cd64ad405e3b56121e99c323fe1012ae41f52792cdfc730da`
+   under release-lock hash
+   `0xdb14dc5be81d32c86f8fe89414a45fb55a8374bd66096acbd14f94793575782a`;
+   active/superseded spend remained unchanged. It is not authorized until the
+   corrected source is pushed and two clean builds reproduce it.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the

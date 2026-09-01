@@ -8,12 +8,15 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/urfoundation/sn/stabi"
 )
@@ -24,6 +27,54 @@ type policyRevisionRPCFixture struct {
 	t         *testing.T
 	stateLock sync.Mutex
 	outputs   map[string]string
+}
+
+// Opt-in, read-only reproduction of the exact pre-schedule accounting gate on
+// a persisted testnet deployment. This is intentionally separate from launch
+// so the executor's last pre-broadcast check can be qualified without sending.
+func TestLiveBootstrapPolicyMigrationState(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_POLICY_MIGRATION") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_POLICY_MIGRATION=1 to verify the live bootstrap-policy prestate")
+	}
+	stateDir := os.Getenv("SIM_TESTNET_STATE_DIR")
+	if stateDir == "" {
+		t.Fatal("SIM_TESTNET_STATE_DIR is required")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := readPersistedPlan(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := ethclient.Dial(cfg.OperationalEVM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	head, err := finalizedEVMHead(ctx, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{
+		cfg: cfg, stateDir: stateDir, plan: plan, journal: &Journal{entries: entries},
+		owner: &EVMTxManager{client: client}, payloads: &DeploymentPayloads{Manifest: plan.Deployment},
+	}
+	if err := executor.verifyBootstrapPolicyMigrationState(ctx, head.Number); err != nil {
+		t.Fatal(err)
+	}
+	accounting, err := executor.expectedBootstrapPolicyMigrationAccounting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("finalized_block=%d campaign_reserved_rao=%d operator_1_next_nonce=%d", head.Number, accounting.CampaignReservedRao, accounting.NextDepositNonces[1])
 }
 
 // Accept only the finalized-header and read-only call shapes used by the

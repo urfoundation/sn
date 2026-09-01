@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -231,5 +232,119 @@ func TestPolicyRevisionReserveAccountingIsBoundToConvictionEvidence(t *testing.T
 	tampered.CumulativeAfterRao++
 	if _, err := authenticatedPolicyRevisionReserveAccounting(cfg, stateDir, prior, entries, planRevisionRecoveries{VoluntaryConvictions: []voluntaryConvictionDuplicateRecovery{tampered}}); err == nil {
 		t.Fatal("tampered conviction reserve accounting was accepted")
+	}
+}
+
+// Reproduces the live launch boundary: policy scheduling follows an exact
+// verified duplicate-conviction reconciliation and must therefore expect the
+// authenticated two-conviction reserve rather than an empty contract.
+func TestBootstrapPolicyMigrationAccountingUsesVerifiedReconciliation(t *testing.T) {
+	cfg, stateDir, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	wire, err := json.MarshalIndent(prior, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), append(wire, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseTransfer := actionByID(t, prior, "alpha.transfer.operator-deposit.1")
+	entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: baseTransfer.ID, IntentHash: baseTransfer.IntentHash, Stage: StageVerified})
+	revised, err := buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg, stateDir, prior, current, entries, time.Unix(3, 0), nil, []voluntaryConvictionDuplicateRecovery{recovery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciliation := actionByID(t, revised, voluntaryConvictionReconciliationActionID)
+	entries = append(entries, JournalEntry{PlanHash: revised.PlanHash, ActionID: reconciliation.ID, IntentHash: reconciliation.IntentHash, Stage: StageVerified})
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: revised, journal: &Journal{entries: entries}}
+	accounting, err := executor.expectedBootstrapPolicyMigrationAccounting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accounting.CampaignReservedRao != recovery.CumulativeAfterRao || accounting.NextDepositNonces[1] != 3 || accounting.NextDepositNonces[2] != 0 {
+		t.Fatalf("migration accounting=%+v", accounting)
+	}
+
+	executor.journal = &Journal{entries: entries[:len(entries)-1]}
+	if _, err := executor.expectedBootstrapPolicyMigrationAccounting(); err == nil || !strings.Contains(err.Error(), "durably verified") {
+		t.Fatalf("unverified reconciliation selected nonempty migration accounting: %v", err)
+	}
+	pristine, err := buildPlan(cfg, testSetupFacts(), revised.Roles, time.Unix(4, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.plan, executor.journal = pristine, &Journal{}
+	accounting, err = executor.expectedBootstrapPolicyMigrationAccounting()
+	if err != nil || accounting.CampaignReservedRao != 0 || len(accounting.NextDepositNonces) != 0 {
+		t.Fatalf("pristine migration accounting=%+v error=%v", accounting, err)
+	}
+}
+
+func TestBootstrapPolicyMigrationObservationRejectsAdjacentAccountingMutations(t *testing.T) {
+	reserved := uint64(2_000_000_000)
+	expected := policyRevisionReserveAccounting{CampaignReservedRao: reserved, NextDepositNonces: map[int]uint64{1: 3}}
+	baseline := bootstrapPolicyMigrationObservation{
+		CampaignReserved: new(big.Int).SetUint64(reserved),
+		ReservePrincipal: new(big.Int).SetUint64(reserved),
+		ReserveLiveStake: new(big.Int).SetUint64(reserved + 1),
+		Vault: map[string]*big.Int{
+			"totalCaptured": new(big.Int), "totalPaid": new(big.Int), "escrowAccounted": new(big.Int),
+			"pendingFunding": new(big.Int), "outstandingLiability": new(big.Int),
+		},
+		Operators: []bootstrapPolicyMigrationOperator{
+			{ID: big.NewInt(1), Principal: new(big.Int).SetUint64(reserved), Conviction: new(big.Int).SetUint64(reserved), NextDepositNonce: big.NewInt(3)},
+			{ID: big.NewInt(2), Principal: new(big.Int), Conviction: new(big.Int), NextDepositNonce: new(big.Int)},
+		},
+	}
+	clone := func() bootstrapPolicyMigrationObservation {
+		value := bootstrapPolicyMigrationObservation{
+			CampaignReserved: new(big.Int).Set(baseline.CampaignReserved), ReservePrincipal: new(big.Int).Set(baseline.ReservePrincipal),
+			ReserveLiveStake: new(big.Int).Set(baseline.ReserveLiveStake), Vault: map[string]*big.Int{},
+			Operators: make([]bootstrapPolicyMigrationOperator, len(baseline.Operators)),
+		}
+		for name, amount := range baseline.Vault {
+			value.Vault[name] = new(big.Int).Set(amount)
+		}
+		for index, operator := range baseline.Operators {
+			value.Operators[index] = bootstrapPolicyMigrationOperator{
+				ID: new(big.Int).Set(operator.ID), Principal: new(big.Int).Set(operator.Principal),
+				Conviction: new(big.Int).Set(operator.Conviction), NextDepositNonce: new(big.Int).Set(operator.NextDepositNonce),
+			}
+		}
+		return value
+	}
+	if err := validateBootstrapPolicyMigrationObservation(expected, 2, baseline); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateBootstrapPolicyMigrationObservation(policyRevisionReserveAccounting{NextDepositNonces: map[int]uint64{}}, 2, baseline); err == nil || !strings.Contains(err.Error(), "campaignReserved") {
+		t.Fatalf("live nonempty reserve crossed the obsolete empty-state assumption: %v", err)
+	}
+	mutations := []struct {
+		name string
+		want string
+		run  func(*bootstrapPolicyMigrationObservation)
+	}{
+		{"campaign reserve", "campaignReserved", func(value *bootstrapPolicyMigrationObservation) {
+			value.CampaignReserved.Add(value.CampaignReserved, big.NewInt(1))
+		}},
+		{"reserve principal", "reserve principal", func(value *bootstrapPolicyMigrationObservation) {
+			value.ReservePrincipal.Sub(value.ReservePrincipal, big.NewInt(1))
+		}},
+		{"reserve live stake", "liveStake", func(value *bootstrapPolicyMigrationObservation) { value.ReserveLiveStake.SetUint64(reserved - 1) }},
+		{"vault captured", "totalCaptured", func(value *bootstrapPolicyMigrationObservation) { value.Vault["totalCaptured"].SetUint64(1) }},
+		{"vault missing field", "pendingFunding", func(value *bootstrapPolicyMigrationObservation) { delete(value.Vault, "pendingFunding") }},
+		{"operator count", "operator count", func(value *bootstrapPolicyMigrationObservation) { value.Operators = value.Operators[:1] }},
+		{"operator id", "operatorIdAt", func(value *bootstrapPolicyMigrationObservation) { value.Operators[1].ID.SetUint64(3) }},
+		{"operator principal", "operator 2 principal", func(value *bootstrapPolicyMigrationObservation) { value.Operators[1].Principal.SetUint64(1) }},
+		{"operator conviction", "operator 2 cumulative conviction", func(value *bootstrapPolicyMigrationObservation) { value.Operators[1].Conviction.SetUint64(1) }},
+		{"operator nonce", "operator 1 nonce", func(value *bootstrapPolicyMigrationObservation) { value.Operators[0].NextDepositNonce.SetUint64(2) }},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			value := clone()
+			mutation.run(&value)
+			if err := validateBootstrapPolicyMigrationObservation(expected, 2, value); err == nil || !strings.Contains(err.Error(), mutation.want) {
+				t.Fatalf("mutation error=%v, want %q", err, mutation.want)
+			}
+		})
 	}
 }

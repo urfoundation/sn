@@ -1579,28 +1579,164 @@ func (e *Executor) bootstrapPolicyState(ctx context.Context, block uint64) (uint
 	return current.Uint64(), count.Uint64(), policy, err
 }
 
-func (e *Executor) verifyEmptyBootstrapPolicyState(ctx context.Context, block uint64) error {
-	coordinator, vault, reserve := stabi.NewSTCoordinator(), stabi.NewSTSettlementVault(), stabi.NewSTReserveSink()
-	proxy := e.payloads.Manifest.CoordinatorProxy
-	reserved, err := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackCampaignReserved(), coordinator.UnpackCampaignReserved, block)
-	if err != nil || reserved.Sign() != 0 {
-		return stateMismatchError(err, "policy migration campaignReserved=%v", reserved)
+type bootstrapPolicyMigrationOperator struct {
+	ID, Principal, Conviction, NextDepositNonce *big.Int
+}
+
+type bootstrapPolicyMigrationObservation struct {
+	CampaignReserved, ReservePrincipal, ReserveLiveStake *big.Int
+	Vault                                                map[string]*big.Int
+	Operators                                            []bootstrapPolicyMigrationOperator
+}
+
+// Compare the complete stopped-topology accounting surface with the exact
+// history-derived pre-campaign balance. A policy acceleration may follow a
+// verified voluntary conviction, so requiring an empty reserve is incorrect;
+// every nonzero rao and nonce must instead be explained by authenticated
+// lineage evidence.
+func validateBootstrapPolicyMigrationObservation(expected policyRevisionReserveAccounting, operatorCount int, observed bootstrapPolicyMigrationObservation) error {
+	if operatorCount <= 0 || len(observed.Operators) != operatorCount {
+		return fmt.Errorf("policy migration operator count=%d, want %d", len(observed.Operators), operatorCount)
 	}
-	for noID := 1; noID <= e.cfg.Config.Topology.Operators; noID++ {
-		nonce, readErr := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackNextDepositNonce(big.NewInt(int64(noID))), coordinator.UnpackNextDepositNonce, block)
-		if readErr != nil || nonce.Sign() != 0 {
-			return stateMismatchError(readErr, "policy migration operator %d nextDepositNonce=%v", noID, nonce)
+	wantReserved := new(big.Int).SetUint64(expected.CampaignReservedRao)
+	if observed.CampaignReserved == nil || observed.CampaignReserved.Cmp(wantReserved) != 0 {
+		return fmt.Errorf("policy migration campaignReserved=%v, want authenticated %s", observed.CampaignReserved, wantReserved)
+	}
+	if observed.ReservePrincipal == nil || observed.ReservePrincipal.Cmp(wantReserved) != 0 {
+		return fmt.Errorf("policy migration reserve principal=%v, want authenticated %s", observed.ReservePrincipal, wantReserved)
+	}
+	if observed.ReserveLiveStake == nil || observed.ReserveLiveStake.Cmp(wantReserved) < 0 {
+		return fmt.Errorf("policy migration reserve liveStake=%v does not back principal %s", observed.ReserveLiveStake, wantReserved)
+	}
+	for _, field := range []string{"totalCaptured", "totalPaid", "escrowAccounted", "pendingFunding", "outstandingLiability"} {
+		value, ok := observed.Vault[field]
+		if !ok || value == nil || value.Sign() != 0 {
+			return fmt.Errorf("policy migration vault %s=%v, want zero", field, value)
 		}
 	}
-	captured, err := rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.SettlementVault, vault.PackTotalCaptured(), vault.UnpackTotalCaptured, block)
-	if err != nil || captured.Sign() != 0 {
-		return stateMismatchError(err, "policy migration vault totalCaptured=%v", captured)
-	}
-	principal, err := rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.ReserveSink, reserve.PackPrincipal(), reserve.UnpackPrincipal, block)
-	if err != nil || principal.Sign() != 0 {
-		return stateMismatchError(err, "policy migration reserve principal=%v", principal)
+	for index, operator := range observed.Operators {
+		noID := index + 1
+		wantPrincipal := uint64(0)
+		if noID == 1 {
+			wantPrincipal = expected.CampaignReservedRao
+		}
+		wantNonce := expected.NextDepositNonces[noID]
+		if operator.ID == nil || !operator.ID.IsUint64() || operator.ID.Uint64() != uint64(noID) {
+			return fmt.Errorf("policy migration operatorIdAt(%d)=%v, want %d", index, operator.ID, noID)
+		}
+		wantPrincipalValue := new(big.Int).SetUint64(wantPrincipal)
+		if operator.Principal == nil || operator.Principal.Cmp(wantPrincipalValue) != 0 {
+			return fmt.Errorf("policy migration operator %d principal=%v, want authenticated %d", noID, operator.Principal, wantPrincipal)
+		}
+		if operator.Conviction == nil || operator.Conviction.Cmp(wantPrincipalValue) != 0 {
+			return fmt.Errorf("policy migration operator %d cumulative conviction=%v, want authenticated %d", noID, operator.Conviction, wantPrincipal)
+		}
+		wantNonceValue := new(big.Int).SetUint64(wantNonce)
+		if operator.NextDepositNonce == nil || operator.NextDepositNonce.Cmp(wantNonceValue) != 0 {
+			return fmt.Errorf("policy migration operator %d nonce=%v, want authenticated %d", noID, operator.NextDepositNonce, wantNonce)
+		}
 	}
 	return nil
+}
+
+// Select zero accounting for a pristine deployment, or reconstruct the exact
+// nonzero balance from a verified voluntary-conviction lineage. Merely finding
+// a reconciliation action or finalized mutation is enough to require the full
+// authenticator; missing evidence cannot fall back to an empty-state check.
+func (e *Executor) expectedBootstrapPolicyMigrationAccounting() (policyRevisionReserveAccounting, error) {
+	if e == nil || e.cfg == nil || e.plan == nil || e.journal == nil {
+		return policyRevisionReserveAccounting{}, errors.New("policy migration accounting context is incomplete")
+	}
+	entries := e.journal.Entries()
+	required := false
+	for _, action := range e.plan.Actions {
+		if action.ID == voluntaryConvictionReconciliationActionID {
+			required = true
+			break
+		}
+	}
+	if !required {
+		allowed := e.plan.allowedPlanHashes()
+		for _, entry := range entries {
+			if allowed[entry.PlanHash] && entry.ActionID == voluntaryConvictionActionID && (entry.Stage == StageFinalized || entry.Stage == StageVerified) {
+				required = true
+				break
+			}
+		}
+	}
+	if !required {
+		return policyRevisionReserveAccounting{NextDepositNonces: map[int]uint64{}}, nil
+	}
+	return authenticatedPolicyRevisionReserveAccounting(e.cfg, e.stateDir, e.plan, entries, planRevisionRecoveries{})
+}
+
+func (e *Executor) verifyBootstrapPolicyMigrationState(ctx context.Context, block uint64) error {
+	coordinator, vault, reserve := stabi.NewSTCoordinator(), stabi.NewSTSettlementVault(), stabi.NewSTReserveSink()
+	proxy := e.payloads.Manifest.CoordinatorProxy
+	expected, err := e.expectedBootstrapPolicyMigrationAccounting()
+	if err != nil {
+		return err
+	}
+	reserved, err := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackCampaignReserved(), coordinator.UnpackCampaignReserved, block)
+	if err != nil {
+		return stateMismatchError(err, "policy migration campaignReserved")
+	}
+	operatorCount, err := rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackOperatorCount(), coordinator.UnpackOperatorCount, block)
+	if err != nil || operatorCount == nil || !operatorCount.IsUint64() || operatorCount.Uint64() != uint64(e.cfg.Config.Topology.Operators) {
+		return stateMismatchError(err, "policy migration operatorCount=%v, want %d", operatorCount, e.cfg.Config.Topology.Operators)
+	}
+	observation := bootstrapPolicyMigrationObservation{
+		CampaignReserved: reserved,
+		Vault:            map[string]*big.Int{},
+		Operators:        make([]bootstrapPolicyMigrationOperator, e.cfg.Config.Topology.Operators),
+	}
+	observation.ReservePrincipal, err = rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.ReserveSink, reserve.PackPrincipal(), reserve.UnpackPrincipal, block)
+	if err != nil {
+		return stateMismatchError(err, "policy migration reserve principal")
+	}
+	observation.ReserveLiveStake, err = rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.ReserveSink, reserve.PackLiveStake(), reserve.UnpackLiveStake, block)
+	if err != nil {
+		return stateMismatchError(err, "policy migration reserve liveStake")
+	}
+	vaultReads := []struct {
+		name   string
+		pack   []byte
+		unpack func([]byte) (*big.Int, error)
+	}{
+		{"totalCaptured", vault.PackTotalCaptured(), vault.UnpackTotalCaptured},
+		{"totalPaid", vault.PackTotalPaid(), vault.UnpackTotalPaid},
+		{"escrowAccounted", vault.PackEscrowAccounted(), vault.UnpackEscrowAccounted},
+		{"pendingFunding", vault.PackPendingFunding(), vault.UnpackPendingFunding},
+		{"outstandingLiability", vault.PackOutstandingLiability(), vault.UnpackOutstandingLiability},
+	}
+	for _, read := range vaultReads {
+		value, readErr := rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.SettlementVault, read.pack, read.unpack, block)
+		if readErr != nil {
+			return stateMismatchError(readErr, "policy migration vault %s", read.name)
+		}
+		observation.Vault[read.name] = value
+	}
+	for noID := 1; noID <= e.cfg.Config.Topology.Operators; noID++ {
+		id := big.NewInt(int64(noID))
+		operator := &observation.Operators[noID-1]
+		operator.ID, err = rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackOperatorIdAt(big.NewInt(int64(noID-1))), coordinator.UnpackOperatorIdAt, block)
+		if err != nil {
+			return stateMismatchError(err, "policy migration operatorIdAt(%d)", noID-1)
+		}
+		operator.Principal, err = rawCoordinatorCallAt(ctx, e.owner, e.payloads.Manifest.ReserveSink, reserve.PackOperatorPrincipal(id), reserve.UnpackOperatorPrincipal, block)
+		if err != nil {
+			return stateMismatchError(err, "policy migration operator %d principal", noID)
+		}
+		operator.Conviction, err = rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackCumulativeConviction(id), coordinator.UnpackCumulativeConviction, block)
+		if err != nil {
+			return stateMismatchError(err, "policy migration operator %d cumulative conviction", noID)
+		}
+		operator.NextDepositNonce, err = rawCoordinatorCallAt(ctx, e.owner, proxy, coordinator.PackNextDepositNonce(id), coordinator.UnpackNextDepositNonce, block)
+		if err != nil {
+			return stateMismatchError(err, "policy migration operator %d nonce", noID)
+		}
+	}
+	return validateBootstrapPolicyMigrationObservation(expected, e.cfg.Config.Topology.Operators, observation)
 }
 
 func (e *Executor) scheduleBootstrapPolicy(ctx context.Context, a Action) error {
@@ -1618,7 +1754,7 @@ func (e *Executor) scheduleBootstrapPolicy(ctx context.Context, a Action) error 
 	if bootstrapPolicyMatches(e.cfg, active) {
 		return nil
 	}
-	if err := e.verifyEmptyBootstrapPolicyState(ctx, head.Number); err != nil {
+	if err := e.verifyBootstrapPolicyMigrationState(ctx, head.Number); err != nil {
 		return err
 	}
 	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
@@ -1689,7 +1825,7 @@ func (e *Executor) awaitBootstrapPolicy(ctx context.Context) error {
 		if bootstrapPolicyMatches(e.cfg, active) {
 			return nil
 		}
-		if err := e.verifyEmptyBootstrapPolicyState(ctx, head.Number); err != nil {
+		if err := e.verifyBootstrapPolicyMigrationState(ctx, head.Number); err != nil {
 			return err
 		}
 		select {
