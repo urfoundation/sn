@@ -153,6 +153,12 @@ const minimumReleaseStateFreeBytes uint64 = 20 * 1024 * 1024 * 1024
 
 const operatorConnectExchangePortCount = 2
 
+const (
+	connectServerBinaryName       = "sim-testnet-connect"
+	connectBindServiceCapability  = "cap_net_bind_service=+ep"
+	connectBoundServiceCapability = "cap_net_bind_service=ep"
+)
+
 // Gives every operator an independent production-style ingress identity. The
 // entire 127/8 range is routed by Linux to loopback without host configuration.
 func operatorConnectHostIP(operator int) string {
@@ -160,6 +166,66 @@ func operatorConnectHostIP(operator int) string {
 		return ""
 	}
 	return fmt.Sprintf("127.0.1.%d", operator)
+}
+
+// Returns the exact noninteractive command which grants only low-port bind
+// authority. A private release binary receives the capability; miners,
+// validators, APIs, taskworkers, and the supervisor remain unprivileged.
+func bindServiceCapabilityCommand(effectiveUserID int, sudoPath, setcapPath, binary string) ([]string, error) {
+	if setcapPath == "" || binary == "" || !filepath.IsAbs(binary) {
+		return nil, errors.New("bind-service capability command is incomplete")
+	}
+	if effectiveUserID == 0 {
+		return []string{setcapPath, connectBindServiceCapability, binary}, nil
+	}
+	if sudoPath == "" {
+		return nil, errors.New("passwordless sudo is required to install the connect bind-service capability")
+	}
+	return []string{sudoPath, "-n", setcapPath, connectBindServiceCapability, binary}, nil
+}
+
+// Installs and independently reads back the narrow file capability before any
+// chain-capable executor exists. The target is owner-only inside the private
+// run directory, so no unrelated executable gains low-port authority.
+func installConnectBindServiceCapability(ctx context.Context, binary string) error {
+	if info, err := os.Stat(binary); err != nil || !info.Mode().IsRegular() {
+		return stateMismatchError(err, "connect server binary %s is not a regular file", binary)
+	}
+	if err := os.Chmod(binary, 0o700); err != nil {
+		return err
+	}
+	setcapPath, err := exec.LookPath("setcap")
+	if err != nil {
+		return fmt.Errorf("setcap is required for production connect ingress: %w", err)
+	}
+	sudoPath := ""
+	if os.Geteuid() != 0 {
+		sudoPath, err = exec.LookPath("sudo")
+		if err != nil {
+			return fmt.Errorf("sudo is required for production connect ingress: %w", err)
+		}
+	}
+	command, err := bindServiceCapabilityCommand(os.Geteuid(), sudoPath, setcapPath, binary)
+	if err != nil {
+		return err
+	}
+	install := exec.CommandContext(ctx, command[0], command[1:]...)
+	if output, err := install.CombinedOutput(); err != nil {
+		return fmt.Errorf("install connect bind-service capability: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	getcapPath, err := exec.LookPath("getcap")
+	if err != nil {
+		return fmt.Errorf("getcap is required for production connect ingress: %w", err)
+	}
+	inspect := exec.CommandContext(ctx, getcapPath, binary)
+	output, err := inspect.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("inspect connect bind-service capability: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if !strings.Contains(string(output), connectBoundServiceCapability) {
+		return fmt.Errorf("connect server binary capability is %q, require %s", strings.TrimSpace(string(output)), connectBoundServiceCapability)
+	}
+	return nil
 }
 
 // Return available bytes to an unprivileged writer, which is the capacity the
@@ -235,6 +301,42 @@ func validateAvailableListenAddresses(addresses []string) error {
 // A conflicting H3 or DNS listener is as fatal as a conflicting HTTP socket.
 func validateAvailablePacketListenAddresses(addresses []string) error {
 	return validateAvailableNetworkListenAddresses("udp", addresses)
+}
+
+// Encodes every exact address separately so neither shell parsing nor a
+// delimiter can broaden a privileged bind probe.
+func packetListenerProbeArguments(addresses []string) ([]string, error) {
+	if len(addresses) == 0 {
+		return nil, errors.New("packet listener probe has no addresses")
+	}
+	arguments := []string{"__listener_probe", "--network=udp"}
+	seenAddresses := map[string]bool{}
+	for _, address := range addresses {
+		if strings.TrimSpace(address) == "" || seenAddresses[address] {
+			return nil, fmt.Errorf("packet listener probe has an empty or duplicate address %q", address)
+		}
+		seenAddresses[address] = true
+		arguments = append(arguments, "--address="+address)
+	}
+	return arguments, nil
+}
+
+// Runs the availability check through the capability-scoped binary. The
+// ordinary simulator cannot bind UDP/443 or UDP/53, while this child has no
+// authority beyond low-port binding and exits before chain execution.
+func validateAvailablePacketListenAddressesWithBinary(ctx context.Context, binary string, addresses []string) error {
+	if binary == "" || !filepath.IsAbs(binary) {
+		return errors.New("capability-scoped packet listener probe binary is unavailable")
+	}
+	arguments, err := packetListenerProbeArguments(addresses)
+	if err != nil {
+		return err
+	}
+	probe := exec.CommandContext(ctx, binary, arguments...)
+	if output, err := probe.CombinedOutput(); err != nil {
+		return fmt.Errorf("privileged packet listener probe: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 // Reject duplicate allocations before probing the kernel. Connect deliberately
@@ -321,7 +423,7 @@ func preflightReleaseHost(ctx context.Context, stateDir string, cfg *ResolvedCon
 	if err := validateAvailableListenAddresses(releaseProcessListenAddresses(cfg)); err != nil {
 		return err
 	}
-	return validateAvailablePacketListenAddresses(releaseProcessPacketListenAddresses(cfg))
+	return validateAvailablePacketListenAddressesWithBinary(ctx, bins[connectServerBinaryName], releaseProcessPacketListenAddresses(cfg))
 }
 
 // postTopologyTournamentActions returns the only setup actions which are
@@ -722,6 +824,25 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 		result[t.name] = path
 	}
+	connectServerBinary := filepath.Join(out, connectServerBinaryName)
+	if err := copyFile(result["sim-testnet"], connectServerBinary, 0o700); err != nil {
+		return nil, fmt.Errorf("prepare private connect server binary: %w", err)
+	}
+	if err := installConnectBindServiceCapability(ctx, connectServerBinary); err != nil {
+		return nil, err
+	}
+	connectServerHash, err := fileSHA256(connectServerBinary)
+	if err != nil {
+		return nil, err
+	}
+	simulatorHash, err := fileSHA256(result["sim-testnet"])
+	if err != nil {
+		return nil, err
+	}
+	if connectServerHash != simulatorHash {
+		return nil, errors.New("capability-scoped connect binary bytes differ from the release simulator")
+	}
+	result[connectServerBinaryName] = connectServerBinary
 	return result, nil
 }
 
@@ -976,13 +1097,13 @@ func waitContainerReady(ctx context.Context, docker dockerCLI, spec managedConta
 	return fmt.Errorf("container %s readiness output %q, want %q", spec.Name, lastOutput, spec.ReadyExpected)
 }
 
-// Binds every advertised production service port directly on an operator's
-// distinct loopback IP. Clients use the service port, so a translated bind
-// without a real ingress proxy would be unreachable.
+// Reproduces the production v21 ingress on an operator's distinct loopback
+// IP: H3 is direct on UDP/443, public DNS/53 forwards to the private 4053
+// service, and 8053 remains available only for rolling compatibility.
 func operatorConnectHostPorts(statusPort int) map[int]int {
 	hostPorts := map[int]int{
 		443:        443,
-		4053:       4053,
+		4053:       53,
 		8053:       8053,
 		statusPort: statusPort,
 	}
@@ -1011,6 +1132,9 @@ func operatorConnectWarpPorts(statusPort int) string {
 func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) ([]ProcessSpec, error) {
 	if bins["sim-testnet"] == "" {
 		return nil, errors.New("workload RPC proxy requires the sim-testnet release binary")
+	}
+	if bins[connectServerBinaryName] == "" {
+		return nil, errors.New("operator connect requires the capability-scoped release binary")
 	}
 	proxyInputs := []struct {
 		id, identity, endpoint, listen, health string
@@ -1054,7 +1178,7 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		for _, svc := range []struct {
 			role, bin, module string
 			port              int
-		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", "sim-testnet", "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
+		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", connectServerBinaryName, "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
 			env := cloneStrings(baseEnv)
 			env["WARP_SERVICE"] = svc.role
 			listenIP := "127.0.0.1"
@@ -1120,6 +1244,10 @@ func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, b
 }
 func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string, roles *RoleSecrets) []ProcessSpec {
 	var out []ProcessSpec
+	connectClientEnv := map[string]string{
+		"WARP_VERSION":             "1.0",
+		connect.ExtraRootCAFileEnv: operatorConnectCAFile(stateDir),
+	}
 	minersPerSwarm := cfg.Config.Topology.Miners / cfg.Config.Topology.MinerSwarmProcesses
 	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
 		id := fmt.Sprintf("miner-swarm-%d", swarm)
@@ -1128,7 +1256,7 @@ func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		out = append(out, ProcessSpec{
 			ID: id, Role: "miner-swarm", Identity: fmt.Sprintf("miners:%d-%d", first, last), Command: bins["sim-testnet"],
 			Args:    []string{"__miner_swarm", "--config=" + filepath.Join(stateDir, "runtime", id, "swarm.json")},
-			WorkDir: cfg.Repos.SN, Env: map[string]string{"WARP_VERSION": "1.0"},
+			WorkDir: cfg.Repos.SN, Env: cloneStrings(connectClientEnv),
 			StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"),
 			HealthURL: fmt.Sprintf("http://127.0.0.1:%d/status", 21080+swarm), RestartLimit: 5,
 		})
@@ -1146,7 +1274,9 @@ func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		id := fmt.Sprintf("validator-%d", i)
 		args := []string{"__validator", "--config=" + filepath.Join(stateDir, "runtime", id, "validator.yml")}
-		out = append(out, ProcessSpec{ID: id, Role: "validator", Identity: roles.Substrate[validatorHotkeyLabel(i)].SS58, Command: bins["sim-testnet"], Args: args, WorkDir: cfg.Repos.SN, Env: map[string]string{"URNETWORK_STATE_DIR": filepath.Join(stateDir, "runtime", id, "state"), "WARP_VERSION": "1.0"}, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), RestartLimit: 5})
+		env := cloneStrings(connectClientEnv)
+		env["URNETWORK_STATE_DIR"] = filepath.Join(stateDir, "runtime", id, "state")
+		out = append(out, ProcessSpec{ID: id, Role: "validator", Identity: roles.Substrate[validatorHotkeyLabel(i)].SS58, Command: bins["sim-testnet"], Args: args, WorkDir: cfg.Repos.SN, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), RestartLimit: 5})
 	}
 	return out
 }

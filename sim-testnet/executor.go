@@ -3797,6 +3797,9 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		if err := copyTree(filepath.Join(cfg.Repos.Vault, "local"), vaultRoot, 0o600); err != nil {
 			return err
 		}
+		if err := renderOperatorConnectTLS(cfg, stateDir, i); err != nil {
+			return err
+		}
 		deposit := roles.EVM[fmt.Sprintf("operator-%d-deposit", i)].PrivateKeyHex
 		rootKey := roles.EVM[fmt.Sprintf("operator-%d-root", i)].PrivateKeyHex
 		artifactKey := roles.EVM[fmt.Sprintf("operator-%d-artifact", i)].PrivateKeyHex
@@ -4062,7 +4065,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 			operator := operatorForMiner(cfg, miner)
 			config.Members = append(config.Members, minercomponent.ProviderSwarmMember{
 				ID: fmt.Sprintf("miner-%d", miner), APIURL: fmt.Sprintf("http://127.0.0.1:%d", 18080+operator),
-				ConnectURL: fmt.Sprintf("ws://127.0.0.1:%d", 19080+operator),
+				ConnectURL: fmt.Sprintf("ws://%s:%d", operatorConnectHostIP(operator), 19080+operator),
 				StateDir:   filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state"),
 				Wallet:     roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58, SourceIP: minerTestEgressSourceIP(miner),
 			})
@@ -4116,7 +4119,7 @@ func operatorDirectory(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets,
 		out = append(out, map[string]any{
 			"no_id":                i,
 			"api_url":              fmt.Sprintf("http://127.0.0.1:%d", 18080+i),
-			"connect_url":          fmt.Sprintf("ws://127.0.0.1:%d", 19080+i),
+			"connect_url":          fmt.Sprintf("ws://%s:%d", operatorConnectHostIP(i), 19080+i),
 			"artifact_signer":      roles.EVM[fmt.Sprintf("operator-%d-artifact", i)].Address,
 			"state_dir":            root,
 			"network_jwt_file":     filepath.Join(root, "network.jwt"),

@@ -144,6 +144,23 @@ func runMain(args []string) error {
 		defer cancel()
 		return supervise(ctx, stateDir, manifest)
 	}
+	if len(args) > 0 && args[0] == "__listener_probe" {
+		fs := flag.NewFlagSet("__listener_probe", flag.ContinueOnError)
+		var network string
+		var addresses []string
+		fs.StringVar(&network, "network", "", "")
+		fs.Func("address", "", func(address string) error {
+			addresses = append(addresses, address)
+			return nil
+		})
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if network != "udp" || len(addresses) == 0 || fs.NArg() != 0 {
+			return errors.New("invalid internal listener probe invocation")
+		}
+		return validateAvailableNetworkListenAddresses(network, addresses)
+	}
 	if len(args) > 0 && args[0] == "__rpc_proxy" {
 		fs := flag.NewFlagSet("__rpc_proxy", flag.ContinueOnError)
 		var config rpcProxyConfig
