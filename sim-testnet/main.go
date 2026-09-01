@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -205,9 +206,11 @@ func runMain(args []string) error {
 		component := args[0]
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var port, count, batchSize int
+		var tlsDefaultHost string
 		fs.IntVar(&port, "port", 0, "")
 		fs.IntVar(&count, "count", 8, "")
 		fs.IntVar(&batchSize, "batch_size", 4, "")
+		fs.StringVar(&tlsDefaultHost, "tls-default-host", "", "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -217,10 +220,20 @@ func runMain(args []string) error {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		if component == "__server_api" {
+			if tlsDefaultHost != "" {
+				return errors.New("API module cannot set a TLS default host")
+			}
 			return serverapi.Run(ctx, serverapi.RunOptions{Port: port})
 		}
 		if component == "__server_connect" {
-			return serverconnect.Run(ctx, serverconnect.RunOptions{Port: port})
+			ip := net.ParseIP(tlsDefaultHost)
+			if ip == nil || ip.To4() == nil || !ip.IsLoopback() {
+				return errors.New("connect module requires an IPv4 loopback TLS default host")
+			}
+			return serverconnect.Run(ctx, serverconnect.RunOptions{Port: port, TLSDefaultHostName: tlsDefaultHost})
+		}
+		if tlsDefaultHost != "" {
+			return errors.New("taskworker module cannot set a TLS default host")
 		}
 		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
 	}

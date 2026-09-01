@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/urnetwork/connect"
 )
 
 // Returns this test process's exact kernel generation for supervisor fixtures.
@@ -340,6 +342,84 @@ func TestReleaseHostPreflightRejectsOccupiedPacketPort(t *testing.T) {
 	}
 }
 
+func TestBindServiceCapabilityCommandScopesOnlyThePrivateConnectBinary(t *testing.T) {
+	cases := []struct {
+		effectiveUserID int
+		sudoPath        string
+		setcapPath      string
+		binary          string
+		want            string
+		wantError       bool
+	}{
+		{effectiveUserID: 0, setcapPath: "/usr/sbin/setcap", binary: "/release/sim-testnet-connect", want: "/usr/sbin/setcap\x00cap_net_bind_service=+ep\x00/release/sim-testnet-connect"},
+		{effectiveUserID: 1_000, sudoPath: "/usr/bin/sudo", setcapPath: "/usr/sbin/setcap", binary: "/release/sim-testnet-connect", want: "/usr/bin/sudo\x00-n\x00/usr/sbin/setcap\x00cap_net_bind_service=+ep\x00/release/sim-testnet-connect"},
+		{effectiveUserID: 0, setcapPath: "setcap", binary: "/release/sim-testnet-connect", wantError: true},
+		{effectiveUserID: 1_000, sudoPath: "sudo", setcapPath: "/usr/sbin/setcap", binary: "/release/sim-testnet-connect", wantError: true},
+		{effectiveUserID: 0, setcapPath: "/usr/sbin/setcap", binary: "sim-testnet-connect", wantError: true},
+	}
+	for _, test := range cases {
+		command, err := bindServiceCapabilityCommand(test.effectiveUserID, test.sudoPath, test.setcapPath, test.binary)
+		if test.wantError {
+			if err == nil {
+				t.Errorf("capability command unexpectedly accepted uid=%d sudo=%q setcap=%q binary=%q", test.effectiveUserID, test.sudoPath, test.setcapPath, test.binary)
+			}
+			continue
+		}
+		if err != nil || strings.Join(command, "\x00") != test.want {
+			t.Errorf("capability command = %q, %v; want %q", command, err, test.want)
+		}
+	}
+	binary := "/release path/sim-testnet-connect"
+	if err := validateConnectBindServiceCapability(binary, []byte(binary+" cap_net_bind_service=ep\n")); err != nil {
+		t.Fatalf("exact capability readback: %v", err)
+	}
+	for _, output := range []string{
+		"",
+		binary + " cap_net_bind_service=p",
+		binary + " cap_net_bind_service=ep extra",
+		"/other/sim-testnet-connect cap_net_bind_service=ep",
+	} {
+		if err := validateConnectBindServiceCapability(binary, []byte(output)); err == nil {
+			t.Errorf("inexact capability readback accepted: %q", output)
+		}
+	}
+}
+
+func TestPacketListenerProbePreservesEveryExactPrivilegedAddressAndFailure(t *testing.T) {
+	addresses := []string{"127.0.1.1:443", "127.0.1.1:53", "127.0.1.2:443", "127.0.1.2:53"}
+	wantArguments := "__listener_probe\x00--network=udp\x00--address=127.0.1.1:443\x00--address=127.0.1.1:53\x00--address=127.0.1.2:443\x00--address=127.0.1.2:53"
+	called := false
+	err := runPacketListenerProbe(context.Background(), "/release/sim-testnet-connect", addresses, func(_ context.Context, binary string, arguments ...string) ([]byte, error) {
+		called = true
+		if binary != "/release/sim-testnet-connect" || strings.Join(arguments, "\x00") != wantArguments {
+			t.Fatalf("probe invocation binary=%q arguments=%q", binary, arguments)
+		}
+		return nil, nil
+	})
+	if err != nil || !called {
+		t.Fatalf("exact packet probe error=%v called=%t", err, called)
+	}
+
+	probeError := errors.New("occupied")
+	err = runPacketListenerProbe(context.Background(), "/release/sim-testnet-connect", addresses, func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("udp/53 belongs to another process\n"), probeError
+	})
+	if !errors.Is(err, probeError) || !strings.Contains(err.Error(), "udp/53 belongs") {
+		t.Fatalf("packet probe failure = %v", err)
+	}
+	for _, invalid := range [][]string{nil, {""}, {"127.0.1.1:53", "127.0.1.1:53"}} {
+		if _, err := packetListenerProbeArguments(invalid); err == nil {
+			t.Errorf("invalid packet addresses accepted: %q", invalid)
+		}
+	}
+	if err := runPacketListenerProbe(context.Background(), "relative", addresses, func(context.Context, string, ...string) ([]byte, error) { return nil, nil }); err == nil {
+		t.Fatal("relative capability binary was accepted")
+	}
+	if err := runPacketListenerProbe(context.Background(), "/release/sim-testnet-connect", addresses, nil); err == nil {
+		t.Fatal("nil packet probe runner was accepted")
+	}
+}
+
 func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	addresses := releaseProcessListenAddresses(cfg)
@@ -376,6 +456,15 @@ func TestReleaseProcessPacketListenAddressesCoverTopologyWithoutDuplicates(t *te
 		host, _, err := net.SplitHostPort(address)
 		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 			t.Fatalf("release packet listener is not loopback-confined: %q (%v)", address, err)
+		}
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		host := operatorConnectHostIP(operator)
+		for _, port := range []int{443, 53, 8053} {
+			address := net.JoinHostPort(host, fmt.Sprint(port))
+			if !seenAddresses[address] {
+				t.Errorf("production packet ingress %s is absent from %v", address, addresses)
+			}
 		}
 	}
 }
@@ -597,7 +686,10 @@ func TestPostTopologyTournamentGatePropagatesBoundaryFailure(t *testing.T) {
 
 func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/release/sim-testnet"})
+	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
+		"sim-testnet":           "/release/sim-testnet",
+		connectServerBinaryName: "/release/sim-testnet-connect",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,10 +736,13 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 		if spec.Env["WARP_HOST"] != connectIP || spec.Env["WARP_HOST_IPV4"] != connectIP || spec.HealthURL != fmt.Sprintf("http://%s:%d/status", connectIP, statusPort) {
 			t.Fatalf("%s is not loopback-confined: env=%+v health=%q", spec.ID, spec.Env, spec.HealthURL)
 		}
+		if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 3 || spec.Args[0] != "__server_connect" || spec.Args[2] != "--tls-default-host="+connectIP {
+			t.Fatalf("%s does not use the capability-scoped binary and exact IP TLS fallback: %+v", spec.ID, spec)
+		}
 		hostPorts := parseHostPorts(spec.Env["WARP_PORTS"])
 		wantHostPorts := map[int]int{
 			443:        443,
-			4053:       4053,
+			4053:       53,
 			5080:       5080,
 			5081:       5081,
 			8053:       8053,
@@ -666,9 +761,9 @@ func TestOperatorConnectSpecsAllocateEveryProductionListener(t *testing.T) {
 			}
 			seenListenAddresses[listenAddress] = spec.ID
 		}
-		for _, advertisedServicePort := range []int{443, 4053, 8053} {
-			advertised := net.JoinHostPort(spec.Env["WARP_HOST"], fmt.Sprint(advertisedServicePort))
-			bound := net.JoinHostPort(spec.Env["WARP_HOST_IPV4"], fmt.Sprint(hostPorts[advertisedServicePort]))
+		for _, ingress := range []struct{ servicePort, publicPort int }{{443, 443}, {4053, 53}, {8053, 8053}} {
+			advertised := net.JoinHostPort(spec.Env["WARP_HOST"], fmt.Sprint(ingress.publicPort))
+			bound := net.JoinHostPort(spec.Env["WARP_HOST_IPV4"], fmt.Sprint(hostPorts[ingress.servicePort]))
 			if advertised != bound {
 				t.Fatalf("%s advertises unreachable %s but binds %s", spec.ID, advertised, bound)
 			}
@@ -685,7 +780,10 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
 	cfg.OperationalRPCMode = rpcModePublicOverride
 	cfg.OperationalSubstrate = "wss://substrate-rpc.example:443"
-	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/release/sim-testnet"})
+	specs, err := buildServerSpecs(cfg, t.TempDir(), map[string]string{
+		"sim-testnet":           "/release/sim-testnet",
+		connectServerBinaryName: "/release/sim-testnet-connect",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -707,7 +805,7 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 				t.Fatalf("%s bypasses the production API module runner: %+v", spec.ID, spec)
 			}
 		case "operator-connect":
-			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_connect" {
+			if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 3 || spec.Args[0] != "__server_connect" || !strings.HasPrefix(spec.Args[2], "--tls-default-host=127.0.1.") {
 				t.Fatalf("%s bypasses the production connect module runner: %+v", spec.ID, spec)
 			}
 		case "operator-taskworker":
@@ -724,9 +822,15 @@ func TestClientSpecsUseProductionModuleSwarmsAndDistinctPrefixes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	specs := buildClientSpecs(cfg, t.TempDir(), map[string]string{"sim-testnet": "/bin/sim-testnet"}, roles)
+	stateDir := t.TempDir()
+	specs := buildClientSpecs(cfg, stateDir, map[string]string{"sim-testnet": "/bin/sim-testnet"}, roles)
 	providerSwarms := 0
 	claimSwarms := 0
+	validators := 0
+	wantCAFile := operatorConnectCAFile(stateDir)
+	if !filepath.IsAbs(wantCAFile) {
+		t.Fatalf("operator Connect CA path is not absolute: %q", wantCAFile)
+	}
 	for _, spec := range specs {
 		switch spec.Role {
 		case "miner-swarm":
@@ -734,15 +838,26 @@ func TestClientSpecsUseProductionModuleSwarmsAndDistinctPrefixes(t *testing.T) {
 			if spec.Command != "/bin/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__miner_swarm" {
 				t.Fatalf("provider swarm %s bypasses the production miner module wrapper: %+v", spec.ID, spec)
 			}
+			if spec.Env[connect.ExtraRootCAFileEnv] != wantCAFile {
+				t.Fatalf("provider swarm %s private transport root = %q, want %q", spec.ID, spec.Env[connect.ExtraRootCAFileEnv], wantCAFile)
+			}
 		case "claim-relayer":
 			claimSwarms++
 			if spec.Command != "/bin/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__claim_swarm" {
 				t.Fatalf("claim swarm %s bypasses the production miner module wrapper: %+v", spec.ID, spec)
 			}
+			if spec.Env[connect.ExtraRootCAFileEnv] != "" {
+				t.Fatalf("claim swarm %s unnecessarily inherited the private transport root", spec.ID)
+			}
+		case "validator":
+			validators++
+			if spec.Env[connect.ExtraRootCAFileEnv] != wantCAFile {
+				t.Fatalf("validator %s private transport root = %q, want %q", spec.ID, spec.Env[connect.ExtraRootCAFileEnv], wantCAFile)
+			}
 		}
 	}
-	if providerSwarms != cfg.Config.Topology.MinerSwarmProcesses || claimSwarms != cfg.Config.Topology.Operators {
-		t.Fatalf("provider/claim swarm count = %d/%d, want %d/%d", providerSwarms, claimSwarms, cfg.Config.Topology.MinerSwarmProcesses, cfg.Config.Topology.Operators)
+	if providerSwarms != cfg.Config.Topology.MinerSwarmProcesses || claimSwarms != cfg.Config.Topology.Operators || validators != cfg.Config.Topology.Validators {
+		t.Fatalf("provider/claim/validator count = %d/%d/%d, want %d/%d/%d", providerSwarms, claimSwarms, validators, cfg.Config.Topology.MinerSwarmProcesses, cfg.Config.Topology.Operators, cfg.Config.Topology.Validators)
 	}
 	sources := map[string]bool{}
 	prefixes := map[netip.Prefix][]int{}

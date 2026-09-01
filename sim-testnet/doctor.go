@@ -136,6 +136,14 @@ func validateApprovedDoctorFacts(cfg *ResolvedConfig, approved *doctorPlanBudget
 	return validatePlanRevisionTopology(cfg, approved.StateDir, approved.Plan, current, roles)
 }
 
+func releaseRequiredTools(effectiveUserID int) []string {
+	tools := []string{"go", "git", "docker", "setcap", "getcap"}
+	if effectiveUserID != 0 {
+		tools = append(tools, "sudo")
+	}
+	return tools
+}
+
 // The approved mode rechecks changing facts against only unverified spend;
 // the read-only mode additionally proves a newly generated plan is affordable.
 func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBudget) DoctorReport {
@@ -147,7 +155,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		diskErr = validateReleaseStateFreeBytes(freeBytes)
 	}
 	r.add("host/default-state-disk", true, diskErr, fmt.Sprintf("path=%s free_bytes=%d minimum_bytes=%d", defaultStateRoot, freeBytes, minimumReleaseStateFreeBytes))
-	for _, tool := range []string{"go", "git", "docker"} {
+	for _, tool := range releaseRequiredTools(os.Geteuid()) {
 		p, err := exec.LookPath(tool)
 		r.add("tool/"+tool, true, err, p)
 	}

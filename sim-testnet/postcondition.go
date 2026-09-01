@@ -1569,6 +1569,9 @@ func (e *Executor) verifyRenderedConfigs(state map[string]any) (map[string]any, 
 	}
 	paths := []string{}
 	for operator := 1; operator <= e.cfg.Config.Topology.Operators; operator++ {
+		if err := validateOperatorConnectTLSArtifacts(e.cfg, e.stateDir, operator); err != nil {
+			return nil, err
+		}
 		paths = append(paths, filepath.Join(e.stateDir, "runtime", fmt.Sprintf("operator-%d", operator), "vault", "st.yml"))
 	}
 	for validator := 1; validator <= e.cfg.Config.Topology.Validators; validator++ {
@@ -1585,6 +1588,7 @@ func (e *Executor) verifyRenderedConfigs(state map[string]any) (map[string]any, 
 	}
 	state["private_config_files"] = len(paths)
 	state["operator_config_overlay"] = operatorConfigOverlayVersion
+	state["operator_connect_tls_identities"] = e.cfg.Config.Topology.Operators
 	return state, nil
 }
 

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"net"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +42,48 @@ func TestRunMainHelpAndVersionDoNotLoadConfiguration(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"version"}, {"--version"}} {
 		if err := runMain(args); err != nil {
 			t.Fatalf("runMain(%q): %v", args, err)
+		}
+	}
+}
+
+func TestRunMainListenerProbeChecksTheExactPacketBoundarySynchronously(t *testing.T) {
+	listener, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.LocalAddr().String()
+	arguments := []string{"__listener_probe", "--network=udp", "--address=" + address}
+	if err := runMain(arguments); err == nil || !strings.Contains(err.Error(), address) {
+		t.Fatalf("occupied hidden packet probe error = %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMain(arguments); err != nil {
+		t.Fatalf("available hidden packet probe: %v", err)
+	}
+	for _, invalid := range [][]string{
+		{"__listener_probe", "--network=tcp", "--address=" + address},
+		{"__listener_probe", "--network=udp"},
+		{"__listener_probe", "--network=udp", "--address=" + address, "extra"},
+		{"__listener_probe", "--network=udp", "--address=" + address, "--address=" + address},
+	} {
+		if err := runMain(invalid); err == nil {
+			t.Errorf("invalid hidden listener probe accepted: %q", invalid)
+		}
+	}
+}
+
+func TestRunMainServerModulesConfineTLSFallbackToConnectLoopback(t *testing.T) {
+	for _, invalid := range [][]string{
+		{"__server_connect", "--port=19081"},
+		{"__server_connect", "--port=19081", "--tls-default-host=example.com"},
+		{"__server_connect", "--port=19081", "--tls-default-host=192.0.2.1"},
+		{"__server_api", "--port=18081", "--tls-default-host=127.0.1.1"},
+		{"__server_taskworker", "--port=20081", "--tls-default-host=127.0.1.1"},
+	} {
+		if err := runMain(invalid); err == nil {
+			t.Errorf("invalid internal server invocation accepted: %q", invalid)
 		}
 	}
 }

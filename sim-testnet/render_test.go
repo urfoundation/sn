@@ -104,9 +104,15 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		roles.Clients[label] = client
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
-		jwt := filepath.Join(stateDir, "runtime", "miner-"+strconv.Itoa(i), "state", "jwt")
-		if err := atomicWrite(jwt, []byte("fixture-network-jwt\n"), 0o600); err != nil {
-			t.Fatal(err)
+		state := filepath.Join(stateDir, "runtime", "miner-"+strconv.Itoa(i), "state")
+		for _, fixture := range []struct{ name, contents string }{
+			{name: "jwt", contents: "fixture-network-jwt\n"},
+			{name: ".provider.jwt", contents: "fixture-provider-jwt\n"},
+			{name: ".provider.key", contents: strings.Repeat("01", 32) + "\n"},
+		} {
+			if err := atomicWrite(filepath.Join(state, fixture.name), []byte(fixture.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	deployment := ContractDeployment{
@@ -138,6 +144,30 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		wantControlled := controlledNOIDsForValidator(i)
 		if len(loaded.ControlledNOIDs) != len(wantControlled) || (len(wantControlled) != 0 && loaded.ControlledNOIDs[0] != wantControlled[0]) {
 			t.Fatalf("validator %d controlled NOs = %v, want %v", i, loaded.ControlledNOIDs, wantControlled)
+		}
+		for _, operator := range loaded.Operators {
+			wantConnectURL := "ws://" + operatorConnectHostIP(int(operator.NoID)) + ":" + strconv.Itoa(19080+int(operator.NoID))
+			if operator.ConnectURL != wantConnectURL {
+				t.Fatalf("validator %d operator %d connect URL = %q, want %q", i, operator.NoID, operator.ConnectURL, wantConnectURL)
+			}
+		}
+	}
+	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
+		path := filepath.Join(stateDir, "runtime", "miner-swarm-"+strconv.Itoa(swarm), "swarm.json")
+		loaded, err := minerpkg.LoadProviderSwarmConfig(path)
+		if err != nil {
+			t.Fatalf("provider swarm %d rendered config: %v", swarm, err)
+		}
+		for _, member := range loaded.Members {
+			miner, parseErr := strconv.Atoi(strings.TrimPrefix(member.ID, "miner-"))
+			if parseErr != nil || miner < 1 || miner > cfg.Config.Topology.Miners {
+				t.Fatalf("provider swarm %d member id = %q", swarm, member.ID)
+			}
+			operator := operatorForMiner(cfg, miner)
+			wantConnectURL := "ws://" + operatorConnectHostIP(operator) + ":" + strconv.Itoa(19080+operator)
+			if member.ConnectURL != wantConnectURL {
+				t.Fatalf("provider %s connect URL = %q, want %q", member.ID, member.ConnectURL, wantConnectURL)
+			}
 		}
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {

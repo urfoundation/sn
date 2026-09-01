@@ -20,6 +20,17 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+func TestReleaseRequiredToolsIncludeCapabilityInstallerAndNoninteractivePrivilegeBoundary(t *testing.T) {
+	root := strings.Join(releaseRequiredTools(0), ",")
+	if root != "go,git,docker,setcap,getcap" {
+		t.Fatalf("root release tools = %q", root)
+	}
+	nonroot := strings.Join(releaseRequiredTools(1_000), ",")
+	if nonroot != "go,git,docker,setcap,getcap,sudo" {
+		t.Fatalf("nonroot release tools = %q", nonroot)
+	}
+}
+
 func TestDoctorPlanBudgetForStateUsesJournaledProgressAcrossReleaseDrift(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)

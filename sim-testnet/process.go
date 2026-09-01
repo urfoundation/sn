@@ -172,16 +172,24 @@ func operatorConnectHostIP(operator int) string {
 // authority. A private release binary receives the capability; miners,
 // validators, APIs, taskworkers, and the supervisor remain unprivileged.
 func bindServiceCapabilityCommand(effectiveUserID int, sudoPath, setcapPath, binary string) ([]string, error) {
-	if setcapPath == "" || binary == "" || !filepath.IsAbs(binary) {
+	if !filepath.IsAbs(setcapPath) || binary == "" || !filepath.IsAbs(binary) {
 		return nil, errors.New("bind-service capability command is incomplete")
 	}
 	if effectiveUserID == 0 {
 		return []string{setcapPath, connectBindServiceCapability, binary}, nil
 	}
-	if sudoPath == "" {
+	if !filepath.IsAbs(sudoPath) {
 		return nil, errors.New("passwordless sudo is required to install the connect bind-service capability")
 	}
 	return []string{sudoPath, "-n", setcapPath, connectBindServiceCapability, binary}, nil
+}
+
+func validateConnectBindServiceCapability(binary string, output []byte) error {
+	want := binary + " " + connectBoundServiceCapability
+	if strings.TrimSpace(string(output)) != want {
+		return fmt.Errorf("connect server binary capability is %q, require %s", strings.TrimSpace(string(output)), connectBoundServiceCapability)
+	}
+	return nil
 }
 
 // Installs and independently reads back the narrow file capability before any
@@ -222,10 +230,7 @@ func installConnectBindServiceCapability(ctx context.Context, binary string) err
 	if err != nil {
 		return fmt.Errorf("inspect connect bind-service capability: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	if !strings.Contains(string(output), connectBoundServiceCapability) {
-		return fmt.Errorf("connect server binary capability is %q, require %s", strings.TrimSpace(string(output)), connectBoundServiceCapability)
-	}
-	return nil
+	return validateConnectBindServiceCapability(binary, output)
 }
 
 // Return available bytes to an unprivileged writer, which is the capacity the
@@ -324,19 +329,27 @@ func packetListenerProbeArguments(addresses []string) ([]string, error) {
 // Runs the availability check through the capability-scoped binary. The
 // ordinary simulator cannot bind UDP/443 or UDP/53, while this child has no
 // authority beyond low-port binding and exits before chain execution.
-func validateAvailablePacketListenAddressesWithBinary(ctx context.Context, binary string, addresses []string) error {
+func runPacketListenerProbe(ctx context.Context, binary string, addresses []string, run func(context.Context, string, ...string) ([]byte, error)) error {
 	if binary == "" || !filepath.IsAbs(binary) {
 		return errors.New("capability-scoped packet listener probe binary is unavailable")
+	}
+	if run == nil {
+		return errors.New("capability-scoped packet listener probe runner is unavailable")
 	}
 	arguments, err := packetListenerProbeArguments(addresses)
 	if err != nil {
 		return err
 	}
-	probe := exec.CommandContext(ctx, binary, arguments...)
-	if output, err := probe.CombinedOutput(); err != nil {
+	if output, err := run(ctx, binary, arguments...); err != nil {
 		return fmt.Errorf("privileged packet listener probe: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func validateAvailablePacketListenAddressesWithBinary(ctx context.Context, binary string, addresses []string) error {
+	return runPacketListenerProbe(ctx, binary, addresses, func(ctx context.Context, binary string, arguments ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, binary, arguments...).CombinedOutput()
+	})
 }
 
 // Reject duplicate allocations before probing the kernel. Connect deliberately
@@ -1197,6 +1210,9 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 			args := []string{fmt.Sprintf("--port=%d", svc.port)}
 			if svc.module != "" {
 				args = append([]string{svc.module}, args...)
+			}
+			if svc.role == "connect" {
+				args = append(args, "--tls-default-host="+listenIP)
 			}
 			out = append(out, ProcessSpec{ID: id, Role: "operator-" + svc.role, Identity: fmt.Sprintf("no:%d", i), Command: bins[svc.bin], Args: args, WorkDir: cfg.Repos.Server, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), HealthURL: fmt.Sprintf("http://%s:%d/status", listenIP, svc.port), RestartLimit: 5})
 		}
