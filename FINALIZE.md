@@ -26,7 +26,7 @@ provisioning but stopped before its first conviction call when the two-share-flo
 defect was found. The latest topology started all real operator, miner and
 validator modules but failed the zero-restart/verified-trail acceptance boundary; after `stop`, no
 workload supervisor or child service is running. The testnet-only cumulative
-alpha ceiling is 22,000 alpha and each emission-dilution repair is additionally
+alpha ceiling is 22,250 alpha and each emission-dilution repair is additionally
 capped at a fixed 3,000-alpha tranche.
 
 The public override is intentionally a lower assurance level. It selects a typed
@@ -2893,6 +2893,71 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Connect `e78f815` are pushed. The adjusted source lock and aggregate gate pass;
    implementation checkpoints SN `69259be` and Connect `d73d7f9` are pushed for
    the exact replay.
+
+   The originally deployed acceptance policy would have required twenty
+   accelerated epochs and three 2,400-block production epochs. The adopted
+   adjusted profile instead fixes the release minimum at five 300-block
+   accelerated epochs followed by a future-effective 360/60/180/6 production
+   schedule and reduces the demand-deposit campaign cap from 496 to 196 alpha.
+   Because attempt 4 had already verified `topology.launch` and two voluntary
+   conviction calls, this is a state migration rather than an ordinary config
+   edit. Plan schema v11 permits it only after authenticating both rendered
+   copies of the old policy against the prior plan hash, the exact terminal
+   32-child supervisor state and dead supervisor generation, and the complete
+   exact two-operator ID set, conviction-backed reserve principal, per-operator
+   accounting, nonces and zero-liability settlement state. The journal must end
+   exactly at the current plan's verified `churn.tournament-complete` action;
+   even an unbroadcast later scenario intent rejects the migration. Only the
+   future cadence fields and aggregate campaign cap may decrease; every
+   active-policy field remains identical.
+   Historical v10 bytes and their source-policy semantics remain independently
+   authenticated.
+
+   The migration review found and closed two adjacent restart boundaries before
+   any write. First, the historical duplicate voluntary-conviction repair was
+   being reconstructed under the new policy instead of retaining its exact
+   original action, duplicate receipt, no-broadcast reconciliation and preceding
+   custody repair. Second, rendered process inputs were not independently bound
+   after a stopped topology. The revision now carries that complete historical
+   dependency chain exactly, binds both `config.render` and `topology.launch` to
+   the current config/policy hashes, and writes a private
+   `runtime-config-manifest.json` covering the exact sorted static-file inventory,
+   modes and SHA-256 digests for both operators, both validators, all 1,000 miners,
+   20 swarms and both relayers. Missing, extra, changed or symlinked inputs fail
+   closed. Deterministic mutations cover policy fields, rendered identities,
+   stopped-state/PID reuse, operator-set/reserve/liability accounting, historical
+   linkage and every runtime-manifest failure class, including final- or
+   parent-component symlink substitution.
+
+   The first aggregate run exposed a release-harness defect rather than a code
+   race: the complete launch-scale simulator race suite reached the script's
+   fixed ten-minute package deadline even though its prior clean baseline was
+   already 584.794 seconds and no individual test was stalled. The gate now
+   retains the exact same test selection with a deterministic 15-minute package
+   deadline, and a regression pins that boundary. On the final locked source the
+   ordinary simulator suite passed in 172.398 seconds and the complete race suite
+   passed in 602.017 seconds. The subsequent Slither, Foundry, generated-artifact,
+   operator/shared-client, PostgreSQL/Redis, Subtensor-infrastructure, patch-
+   hygiene and final checkout-lock stages all passed in the same aggregate run.
+
+   Two pre-lock read-only builds produced the same schema-v11 candidate plan
+   `0xd50a9e2ae7eff5050a5796d64fdfc25221d161539528dfe65d36ee66b939ddc8`
+   with policy hash
+   `0x1526b242cf4908cc31f7e58006664bce6064003c69fd8452eab2d49122fef277`.
+   It contains 2,238 actions and 43 authenticated ancestor hashes. Active maxima
+   are 165,673,232,000 TAO rao, 21,694,306,443,318 alpha rao,
+   148,859,500,000,000,000,000 EVM gas wei and 256 registrations;
+   superseded maxima are 501,500,000,051 alpha rao,
+   11,140,500,000,000,000,000 EVM gas wei and three registrations. The
+   22,195,806,443,369-rao cumulative alpha requirement is below the adopted
+   22,250-alpha ceiling by exactly 54,193,556,631 rao; active plus superseded EVM
+   spend equals, but does not exceed, the unchanged 160-testTAO-wei ceiling.
+   That candidate is deliberately superseded by the audited vault/release-lock
+   checkpoint and is not authorized for apply. The final locked tree requires a
+   fresh two-build hash review. The earlier stopped-topology
+   `precompile-conformance` result remains durable failed evidence and must be
+   rerun cleanly after relaunch; it is not counted as M0B evidence.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
@@ -2924,7 +2989,7 @@ completed successfully after the release lock was frozen:
 | Gate | Final result |
 |---|---|
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 584.794 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 602.017 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |

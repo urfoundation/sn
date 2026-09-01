@@ -67,6 +67,8 @@ type voluntaryConvictionDuplicateRecovery struct {
 	OriginalAction            Action
 	OriginalPlanHash          string
 	OriginalIntentHash        string
+	OriginalPlanPolicyHash    string
+	DuplicatePlanPolicyHash   string
 	OriginalEvidence          VoluntaryConvictionEvidence
 	DuplicateEpoch            uint64
 	DuplicateNonce            string
@@ -169,7 +171,8 @@ func validateVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, recovery 
 		return errors.New("duplicate recovery nonces are not consecutive")
 	}
 	if !common.IsHexAddress(recovery.Funder) || !strings.EqualFold(recovery.Funder, recovery.OriginalEvidence.Funder) ||
-		!strings.EqualFold(recovery.PolicyHash, cfg.PolicyHash) || !strings.EqualFold(recovery.PolicyHash, recovery.OriginalEvidence.PolicyHash) {
+		!strings.EqualFold(recovery.PolicyHash, recovery.OriginalEvidence.PolicyHash) ||
+		!strings.EqualFold(recovery.PolicyHash, recovery.OriginalPlanPolicyHash) || !strings.EqualFold(recovery.PolicyHash, recovery.DuplicatePlanPolicyHash) {
 		return errors.New("duplicate recovery signer or policy differs from the approved original")
 	}
 	for name, value := range map[string]string{
@@ -177,6 +180,7 @@ func validateVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, recovery 
 		"duplicate transaction hash": transaction.TransactionHash, "duplicate block hash": transaction.BlockHash,
 		"original plan hash": recovery.OriginalPlanHash, "original intent hash": recovery.OriginalIntentHash,
 		"original transaction hash": recovery.OriginalEvidence.TransactionHash, "original block hash": recovery.OriginalEvidence.FinalizedHash,
+		"original plan policy hash": recovery.OriginalPlanPolicyHash, "duplicate plan policy hash": recovery.DuplicatePlanPolicyHash,
 	} {
 		if _, err := decodeHex32(name, value); err != nil {
 			return err
@@ -426,9 +430,6 @@ func detectVoluntaryConvictionDuplicateRecovery(ctx context.Context, cfg *Resolv
 	if err := readJSONFile(filepath.Join(stateDir, "public", "voluntary-conviction.json"), &originalEvidence); err != nil {
 		return voluntaryConvictionDuplicateRecovery{}, fmt.Errorf("read original voluntary-conviction evidence: %w", err)
 	}
-	if err := voluntaryConvictionEvidenceMatches(cfg, prior, originalEvidence); err != nil {
-		return voluntaryConvictionDuplicateRecovery{}, fmt.Errorf("original voluntary-conviction evidence: %w", err)
-	}
 	var originalFinalized JournalEntry
 	foundFinalized, foundVerified := false, false
 	for _, entry := range entries {
@@ -452,6 +453,12 @@ func detectVoluntaryConvictionDuplicateRecovery(ctx context.Context, cfg *Resolv
 	originalPlan, err := loadVoluntaryConvictionLineagePlan(stateDir, prior, originalFinalized.PlanHash)
 	if err != nil {
 		return voluntaryConvictionDuplicateRecovery{}, err
+	}
+	if err := voluntaryConvictionEvidenceMatches(cfg, originalPlan, originalEvidence); err != nil {
+		return voluntaryConvictionDuplicateRecovery{}, fmt.Errorf("original voluntary-conviction evidence: %w", err)
+	}
+	if !strings.EqualFold(duplicatePlan.PolicyHash, originalPlan.PolicyHash) {
+		return voluntaryConvictionDuplicateRecovery{}, errors.New("duplicate voluntary-conviction plan changed the historical policy")
 	}
 	originalAction, err := exactVoluntaryConvictionPlanAction(originalPlan, originalFinalized.IntentHash)
 	if err != nil {
@@ -485,7 +492,7 @@ func detectVoluntaryConvictionDuplicateRecovery(ctx context.Context, cfg *Resolv
 	}
 	wantAmount := cfg.Config.Scenarios.VoluntaryConvictionRao
 	wantAfter, ok := checkedMul(wantAmount, 2)
-	if !ok || !event.Amount.IsUint64() || event.Amount.Uint64() != wantAmount || !event.Nonce.IsUint64() || !strings.EqualFold(event.Funder.Hex(), prior.Roles.OperatorDepositSigners[0]) || !strings.EqualFold("0x"+hex.EncodeToString(event.PolicyHash[:]), cfg.PolicyHash) {
+	if !ok || !event.Amount.IsUint64() || event.Amount.Uint64() != wantAmount || !event.Nonce.IsUint64() || !strings.EqualFold(event.Funder.Hex(), prior.Roles.OperatorDepositSigners[0]) || !strings.EqualFold("0x"+hex.EncodeToString(event.PolicyHash[:]), duplicatePlan.PolicyHash) {
 		return voluntaryConvictionDuplicateRecovery{}, errors.New("duplicate ConvictionAdded event differs from the approved amount, signer, policy, or nonce")
 	}
 	priorRecovery, alreadyPlanned, recoveryVerified, err := priorVoluntaryConvictionRecovery(prior, entries, transaction)
@@ -529,7 +536,8 @@ func detectVoluntaryConvictionDuplicateRecovery(ctx context.Context, cfg *Resolv
 	}
 	recovery := voluntaryConvictionDuplicateRecovery{
 		DuplicateTransaction: transaction, DuplicateAction: duplicateAction, OriginalAction: originalAction,
-		OriginalPlanHash: originalFinalized.PlanHash, OriginalIntentHash: originalFinalized.IntentHash, OriginalEvidence: originalEvidence,
+		OriginalPlanHash: originalFinalized.PlanHash, OriginalIntentHash: originalFinalized.IntentHash,
+		OriginalPlanPolicyHash: originalPlan.PolicyHash, DuplicatePlanPolicyHash: duplicatePlan.PolicyHash, OriginalEvidence: originalEvidence,
 		DuplicateEpoch: event.Epoch.Uint64(), DuplicateNonce: event.Nonce.String(), Funder: event.Funder.Hex(),
 		PolicyHash: "0x" + hex.EncodeToString(event.PolicyHash[:]), AmountRao: wantAmount,
 		CumulativeBeforeRao: before, CumulativeAfterRao: after, OperatorPrincipalAfterRao: principalAfter,
@@ -624,6 +632,123 @@ func nextVoluntaryConvictionRepairActionID(plans ...*SetupPlan) (string, error) 
 	return fmt.Sprintf("alpha.repair.operator-deposit.1.%d", maximumSequence+1), nil
 }
 
+// Load a previously verified duplicate-conviction repair without rebuilding it
+// under a later policy or transfer snapshot.
+func authenticatedPriorVoluntaryConvictionRepair(prior *SetupPlan, entries []JournalEntry, reconciliation Action) (Action, error) {
+	if prior == nil || reconciliation.ID != voluntaryConvictionReconciliationActionID {
+		return Action{}, errors.New("prior voluntary-conviction repair context is unavailable")
+	}
+	repairID := reconciliation.Parameters[voluntaryRecoveryRepairActionParameter]
+	amount, amountErr := strconv.ParseUint(reconciliation.Parameters[voluntaryRecoveryAmountParameter], 10, 64)
+	wantAmount, addOK := checkedAdd(amount, reserveRoundingAllowancePerCallRao)
+	if addOK {
+		wantAmount, addOK = checkedAdd(wantAmount, alphaTransferDestinationRoundingAllowance)
+	}
+	if repairID == "" || amountErr != nil || amount == 0 || !addOK {
+		return Action{}, errors.New("prior voluntary-conviction repair identity or amount is invalid")
+	}
+	var repair *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != repairID {
+			continue
+		}
+		if repair != nil {
+			return Action{}, errors.New("prior voluntary-conviction recovery has duplicate repair actions")
+		}
+		copy := prior.Actions[index]
+		repair = &copy
+	}
+	if repair == nil || repair.Kind != "substrate-extrinsic" || repair.Target != reconciliation.Target || repair.Spend.AlphaRao != wantAmount || repair.Spend.TAORao != 0 ||
+		!repair.Spend.EVMGasWei.IsZero() || repair.Spend.Registrations != 0 || repair.Spend.SubnetCreations != 0 ||
+		repair.Parameters[alphaRepairForActionParameter] != reconciliation.ID || !strings.EqualFold(repair.Parameters["campaign_policy_hash"], reconciliation.Parameters[voluntaryRecoveryPolicyHashParameter]) ||
+		!strings.EqualFold(repair.Parameters[deploymentManifestHashParameter], reconciliation.Parameters[deploymentManifestHashParameter]) || !slices.Equal(repair.DependsOn, []string{reconciliation.ID}) {
+		return Action{}, errors.New("prior voluntary-conviction repair does not bind its exact historical recovery")
+	}
+	intent, err := actionIntentHash(*repair)
+	if err != nil || intent != repair.IntentHash {
+		return Action{}, stateMismatchError(err, "prior voluntary-conviction repair intent is invalid")
+	}
+	verified := false
+	for _, entry := range entries {
+		if prior.allowedPlanHashes()[entry.PlanHash] && entry.ActionID == repair.ID && entry.IntentHash == repair.IntentHash && entry.Stage == StageVerified {
+			verified = true
+		}
+	}
+	if !verified {
+		return Action{}, errors.New("prior voluntary-conviction repair lacks exact verified journal evidence")
+	}
+	return *repair, nil
+}
+
+// Restore the exact verified custody repair needed by the historical original
+// conviction before that one-shot action replaces the fresh representation.
+func carryVerifiedVoluntaryConvictionCustodyDependency(revised, prior *SetupPlan, entries []JournalEntry, original Action) error {
+	if revised == nil || prior == nil || original.ID != voluntaryConvictionActionID {
+		return errors.New("voluntary-conviction custody dependency context is unavailable")
+	}
+	existing := make(map[string]bool, len(revised.Actions))
+	for _, action := range revised.Actions {
+		existing[action.ID] = true
+	}
+	missing := ""
+	for _, dependency := range original.DependsOn {
+		if existing[dependency] {
+			continue
+		}
+		if missing != "" {
+			return errors.New("voluntary conviction has multiple missing historical custody dependencies")
+		}
+		missing = dependency
+	}
+	if missing == "" {
+		return nil
+	}
+	kind, operator, err := alphaTransferTargetFromActionID(missing)
+	if err != nil || kind != "operator-deposit" || operator != 1 || !strings.HasPrefix(missing, "alpha.repair.operator-deposit.1") {
+		return stateMismatchError(err, "missing voluntary-conviction dependency %q is not a bounded operator-1 repair", missing)
+	}
+	var repair *Action
+	for index := range prior.Actions {
+		if prior.Actions[index].ID != missing {
+			continue
+		}
+		if repair != nil {
+			return errors.New("prior plan has duplicate voluntary-conviction dependency repairs")
+		}
+		copy := prior.Actions[index]
+		repair = &copy
+	}
+	if repair == nil || repair.Kind != "substrate-extrinsic" || repair.Spend.AlphaRao == 0 || repair.Parameters[alphaRepairForActionParameter] != "alpha.transfer.operator-deposit.1" ||
+		!slices.Equal(repair.DependsOn, []string{"alpha.transfer.operator-deposit.1"}) {
+		return errors.New("missing voluntary-conviction dependency is not the exact historical custody repair")
+	}
+	intent, err := actionIntentHash(*repair)
+	if err != nil || intent != repair.IntentHash {
+		return stateMismatchError(err, "historical voluntary-conviction repair %s intent is invalid", repair.ID)
+	}
+	verified := false
+	for _, entry := range entries {
+		if prior.allowedPlanHashes()[entry.PlanHash] && entry.ActionID == repair.ID && entry.IntentHash == repair.IntentHash && entry.Stage == StageVerified {
+			verified = true
+		}
+	}
+	if !verified {
+		return errors.New("missing voluntary-conviction dependency lacks exact verified journal evidence")
+	}
+	baseIndex := -1
+	for index := range revised.Actions {
+		if revised.Actions[index].ID == repair.DependsOn[0] {
+			baseIndex = index
+			break
+		}
+	}
+	if baseIndex < 0 {
+		return errors.New("fresh plan lacks the voluntary-conviction repair base transfer")
+	}
+	revised.Actions = append(revised.Actions[:baseIndex+1], append([]Action{*repair}, revised.Actions[baseIndex+1:]...)...)
+	return nil
+}
+
 // Insert the no-broadcast reconciliation, one bounded alpha repair, and a
 // barrier on the first unverified fleet-setup mutation. Already verified
 // native commitment intents are left byte-for-byte unchanged.
@@ -635,10 +760,6 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 		return err
 	}
 	gasAfter, err := voluntaryConvictionRecoveryGasAfter(recovery)
-	if err != nil {
-		return err
-	}
-	repairAmount, minimumDestination, minimumTransfer, err := voluntaryConvictionRecoveryAlphaTerms(cfg, revised)
 	if err != nil {
 		return err
 	}
@@ -692,37 +813,35 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 	if err != nil {
 		return err
 	}
-	repairParameters := alphaTransferActionParameters(repairAmount, 0, minimumTransfer, &revised.LiveFacts, revised.AlphaTransferMarginBPS)
-	repairParameters[alphaRepairForActionParameter] = reconciliation.ID
-	repairParameters[alphaRepairMinimumDestinationParameter] = strconv.FormatUint(minimumDestination, 10)
-	repairParameters["campaign_policy_hash"] = revised.PolicyHash
-	repairParameters[deploymentManifestHashParameter] = parameters[deploymentManifestHashParameter]
-	repair := Action{
-		ID: repairID, Kind: "substrate-extrinsic", Target: reconciliation.Target,
-		Description: "restore the exact operator-1 campaign floor consumed by the reconciled duplicate conviction",
-		Parameters:  repairParameters, Spend: Spend{AlphaRao: repairAmount}, DependsOn: []string{reconciliation.ID},
-	}
-	repair.IntentHash, err = actionIntentHash(repair)
-	if err != nil {
-		return err
-	}
+	var repair Action
 	if priorPlanned {
 		if priorRecovery.IntentHash != reconciliation.IntentHash {
 			return errors.New("prior voluntary-conviction recovery differs from deterministic reconstruction")
 		}
-		foundRepair := false
-		for _, action := range prior.Actions {
-			if action.ID == repairID {
-				if action.IntentHash != repair.IntentHash {
-					return errors.New("prior voluntary-conviction repair differs from deterministic reconstruction")
-				}
-				repair, foundRepair = action, true
-			}
-		}
-		if !foundRepair {
-			return errors.New("prior voluntary-conviction recovery lacks its repair")
+		repair, err = authenticatedPriorVoluntaryConvictionRepair(prior, entries, priorRecovery)
+		if err != nil {
+			return err
 		}
 		reconciliation = priorRecovery
+	} else {
+		repairAmount, minimumDestination, minimumTransfer, termsErr := voluntaryConvictionRecoveryAlphaTerms(cfg, revised)
+		if termsErr != nil {
+			return termsErr
+		}
+		repairParameters := alphaTransferActionParameters(repairAmount, 0, minimumTransfer, &revised.LiveFacts, revised.AlphaTransferMarginBPS)
+		repairParameters[alphaRepairForActionParameter] = reconciliation.ID
+		repairParameters[alphaRepairMinimumDestinationParameter] = strconv.FormatUint(minimumDestination, 10)
+		repairParameters["campaign_policy_hash"] = recovery.PolicyHash
+		repairParameters[deploymentManifestHashParameter] = parameters[deploymentManifestHashParameter]
+		repair = Action{
+			ID: repairID, Kind: "substrate-extrinsic", Target: reconciliation.Target,
+			Description: "restore the exact operator-1 campaign floor consumed by the reconciled duplicate conviction",
+			Parameters:  repairParameters, Spend: Spend{AlphaRao: repairAmount}, DependsOn: []string{reconciliation.ID},
+		}
+		repair.IntentHash, err = actionIntentHash(repair)
+		if err != nil {
+			return err
+		}
 	}
 	voluntaryIndex := -1
 	for index, action := range revised.Actions {
@@ -745,6 +864,15 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 	// cumulative conviction is already nonzero.
 	if err := validateVoluntaryConvictionFreshDependency(revised, prior, entries, recovery.OriginalAction, revised.Actions[voluntaryIndex]); err != nil {
 		return err
+	}
+	if err := carryVerifiedVoluntaryConvictionCustodyDependency(revised, prior, entries, recovery.OriginalAction); err != nil {
+		return err
+	}
+	for index := range revised.Actions {
+		if revised.Actions[index].ID == voluntaryConvictionActionID {
+			voluntaryIndex = index
+			break
+		}
 	}
 	revised.Actions[voluntaryIndex] = recovery.OriginalAction
 	revised.Actions = append(revised.Actions[:voluntaryIndex+1], append([]Action{reconciliation, repair}, revised.Actions[voluntaryIndex+1:]...)...)
@@ -783,9 +911,11 @@ func validateVoluntaryConvictionReconciliationAction(plan *SetupPlan, action Act
 		return "", errors.New("voluntary-conviction reconciliation identity is invalid")
 	}
 	if !strings.EqualFold(action.Target, plan.Roles.OperatorDepositSigners[0]) || !spendIsZero(action.Spend) || !slices.Equal(action.DependsOn, []string{voluntaryConvictionActionID}) ||
-		action.Parameters[deploymentManifestHashParameter] == "" || !strings.EqualFold(action.Parameters[voluntaryRecoveryFunderParameter], plan.Roles.OperatorDepositSigners[0]) ||
-		!strings.EqualFold(action.Parameters[voluntaryRecoveryPolicyHashParameter], plan.PolicyHash) {
-		return "", errors.New("voluntary-conviction reconciliation target, spend, dependency, signer, or policy is invalid")
+		action.Parameters[deploymentManifestHashParameter] == "" || !strings.EqualFold(action.Parameters[voluntaryRecoveryFunderParameter], plan.Roles.OperatorDepositSigners[0]) {
+		return "", errors.New("voluntary-conviction reconciliation target, spend, dependency, or signer is invalid")
+	}
+	if _, err := decodeHex32(voluntaryRecoveryPolicyHashParameter, action.Parameters[voluntaryRecoveryPolicyHashParameter]); err != nil {
+		return "", err
 	}
 	for _, field := range []string{
 		voluntaryRecoveryDuplicatePlanHashParameter, voluntaryRecoveryDuplicateIntentHashParameter, voluntaryRecoveryDuplicateTransactionParameter,
@@ -888,7 +1018,19 @@ func (e *Executor) verifyVoluntaryConvictionReconciliationPostState(ctx context.
 	if err := readJSONFile(filepath.Join(e.stateDir, "public", "voluntary-conviction.json"), &original); err != nil {
 		return nil, err
 	}
-	if err := voluntaryConvictionEvidenceMatches(e.cfg, e.plan, original); err != nil {
+	originalPlan, err := loadVoluntaryConvictionLineagePlan(e.stateDir, e.plan, action.Parameters[voluntaryRecoveryOriginalPlanHashParameter])
+	if err != nil {
+		return nil, err
+	}
+	duplicatePlan, err := loadVoluntaryConvictionLineagePlan(e.stateDir, e.plan, action.Parameters[voluntaryRecoveryDuplicatePlanHashParameter])
+	if err != nil {
+		return nil, err
+	}
+	historicalPolicyHash := action.Parameters[voluntaryRecoveryPolicyHashParameter]
+	if !strings.EqualFold(originalPlan.PolicyHash, historicalPolicyHash) || !strings.EqualFold(duplicatePlan.PolicyHash, historicalPolicyHash) {
+		return nil, errors.New("voluntary-conviction reconciliation policy differs from its source plans")
+	}
+	if err := voluntaryConvictionEvidenceMatches(e.cfg, originalPlan, original); err != nil {
 		return nil, err
 	}
 	if original.TransactionHash != action.Parameters[voluntaryRecoveryOriginalTransactionParameter] || original.FinalizedHash != action.Parameters[voluntaryRecoveryOriginalBlockHashParameter] ||

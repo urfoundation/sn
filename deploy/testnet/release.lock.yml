@@ -37,8 +37,8 @@ evm_build:
 repositories:
   sn_audited_base_commit: "680e9f3e3473888151c2a30860e31b1f1594bb81"
   server_audited_base_commit: "cb6de1ad9e1795b63e7acc22a90471ebed39ca8c"
-  vault_audited_base_commit: "8e8ae3ae9ebafab89912068062a24e407d2cb0ec"
-  sn_go_source_hash: "sha256:023248327b381dfc53290b4be9446d0536205b76ff8bf8bd7223c21e9a8710cd"
+  vault_audited_base_commit: "a825a3a5a57edab83ae588e0eb72cd3c61bc3e6b"
+  sn_go_source_hash: "sha256:de0aeeb7256f3cf9b1378cda91a75c636261ed88a51044edacd7dd74c26c4979"
   server_go_source_hash: "sha256:e8687f82803641508c416b6dffbff3920c9e18351ee9cad297b7557dd4b983b0"
   connect_go_source_hash: "sha256:9b315d192b6ceb08f656bc7216047c598f4e2a48414a2e44173e0a93255364f2"
   sdk_go_source_hash: "sha256:c9289658f76cd807d0fb09330ae217a46f84e753e477c319f2fdfccf08ce2850"

@@ -16,7 +16,10 @@ echo "[release-1.0] sn Go tests"
   go test -race ./crv4 ./miner/... ./protocol ./validator
   # Keep the launch-scale simulator isolated so its package deadline and any
   # race report remain attributable without weakening the 1,000-miner tests.
-  go test -race -timeout 10m ./sim-testnet
+  # The launch-scale race suite's measured baseline already exceeds 9m40s.
+  # Keep deterministic headroom for required regressions and slower CI hosts;
+  # this changes only the harness deadline, never the test selection.
+  go test -race -timeout 15m ./sim-testnet
 )
 
 echo "[release-1.0] deployable Solidity static analysis"

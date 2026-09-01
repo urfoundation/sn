@@ -47,3 +47,17 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		t.Fatalf("final release-lock ordering patch=%d lock=%d passed=%d", patchIndex, lockIndex, passedIndex)
 	}
 }
+
+// Keep enough deadline headroom for the complete launch-scale race suite. The
+// measured baseline exceeded 9m40s before the policy-migration regressions were
+// added, so restoring Go's 10-minute default would deterministically truncate
+// required coverage on this release host.
+func TestLocalReleaseGateAllowsCompleteSimulatorRaceSuite(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-local.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(scriptBytes), "go test -race -timeout 15m ./sim-testnet") {
+		t.Fatal("local release gate lacks the reviewed 15-minute full simulator race deadline")
+	}
+}

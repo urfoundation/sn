@@ -45,7 +45,8 @@ type Action struct {
 const (
 	setupPlanSchemaV8                     = "urnetwork-sim-plan-v8"
 	setupPlanSchemaV9                     = "urnetwork-sim-plan-v9"
-	currentSetupPlanSchema                = "urnetwork-sim-plan-v10"
+	setupPlanSchemaV10                    = "urnetwork-sim-plan-v10"
+	currentSetupPlanSchema                = "urnetwork-sim-plan-v11"
 	evmMaximumGasUnitsParameter           = "maximum_gas_units"
 	evmMaximumFeePerGasParameter          = "maximum_fee_per_gas_wei"
 	deploymentManifestHashParameter       = "deployment_manifest_hash"
@@ -419,25 +420,75 @@ func planUsesContractDeploymentEnvelope(schema string) bool {
 }
 
 func planUsesAlphaTransferEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v5" || schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v5" || schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
 }
 
 func planUsesCoordinatorUpgradeEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v6" || schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
 }
 
 func planUsesDefaultMinTransferEnvelope(schema string) bool {
-	return schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
+	return schema == "urnetwork-sim-plan-v7" || schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
 }
 
 // V8 introduced bounded destination-share floors. Later schemas retain that
 // wire contract; v9 additionally binds both runtime share transitions.
 func planUsesDestinationRoundingEnvelope(schema string) bool {
-	return schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
+	return schema == setupPlanSchemaV8 || schema == setupPlanSchemaV9 || schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
 }
 
 func planUsesTwoTransitionReserveEnvelope(schema string) bool {
-	return schema == setupPlanSchemaV9 || schema == currentSetupPlanSchema
+	return schema == setupPlanSchemaV9 || schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
+}
+
+// Schema v11 makes rendered runtime identity part of both local action intents.
+func planUsesRuntimeConfigIdentityEnvelope(schema string) bool {
+	return schema == currentSetupPlanSchema
+}
+
+// Accept the current policy or the exact historical policy linked through the
+// one authenticated duplicate-conviction reconciliation.
+func operatorRepairBindsApprovedCampaignPolicy(plan *SetupPlan, action Action, seen map[string]Action, priorPlans map[string]bool) bool {
+	if strings.EqualFold(action.Parameters["campaign_policy_hash"], plan.PolicyHash) {
+		return true
+	}
+	if !planUsesRuntimeConfigIdentityEnvelope(plan.Schema) {
+		return false
+	}
+	reconciliation, ok := seen[voluntaryConvictionReconciliationActionID]
+	if !ok {
+		for _, candidate := range plan.Actions {
+			if candidate.ID == voluntaryConvictionReconciliationActionID {
+				reconciliation, ok = candidate, true
+				break
+			}
+		}
+	}
+	if !ok || reconciliation.Kind != "evm-reconciliation" || !strings.EqualFold(action.Parameters["campaign_policy_hash"], reconciliation.Parameters[voluntaryRecoveryPolicyHashParameter]) ||
+		!strings.EqualFold(action.Parameters[deploymentManifestHashParameter], reconciliation.Parameters[deploymentManifestHashParameter]) ||
+		!priorPlans[reconciliation.Parameters[voluntaryRecoveryOriginalPlanHashParameter]] || !priorPlans[reconciliation.Parameters[voluntaryRecoveryDuplicatePlanHashParameter]] {
+		return false
+	}
+	switch action.Parameters[alphaRepairForActionParameter] {
+	case voluntaryConvictionReconciliationActionID:
+		if reconciliation.Parameters[voluntaryRecoveryRepairActionParameter] != action.ID {
+			return false
+		}
+	case "alpha.transfer.operator-deposit.1":
+		matchedOriginal := false
+		for _, candidate := range plan.Actions {
+			if candidate.ID == voluntaryConvictionActionID && candidate.IntentHash == reconciliation.Parameters[voluntaryRecoveryOriginalIntentHashParameter] && slices.Contains(candidate.DependsOn, action.ID) {
+				matchedOriginal = true
+			}
+		}
+		if !matchedOriginal {
+			return false
+		}
+	default:
+		return false
+	}
+	_, err := decodeHex32("historical repair campaign policy hash", action.Parameters["campaign_policy_hash"])
+	return err == nil
 }
 
 func supportedSetupPlanSchema(schema string) bool {
@@ -1350,7 +1401,9 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	}
 	add(Action{ID: "campaign.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve gas for deposits, payout roots, keepers, and claims during the live campaign", Spend: Spend{EVMGasWei: campaignGas}, DependsOn: setupDeps})
 	setupDeps = append(setupDeps, "campaign.evm-gas-reserve")
-	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", Parameters: map[string]string{"operator_config_overlay": operatorConfigOverlayVersion}, DependsOn: setupDeps})
+	add(Action{ID: "config.render", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "atomically render isolated operator, miner, validator, and supervisor configs", Parameters: map[string]string{
+		"config_hash": cfg.ConfigHash, "policy_hash": cfg.PolicyHash, "operator_config_overlay": operatorConfigOverlayVersion,
+	}, DependsOn: setupDeps})
 	add(Action{ID: "accounts.provision", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "provision stable operator-scoped miner and validator identities", DependsOn: []string{"config.render"}})
 	add(Action{ID: "campaign.voluntary-conviction.1", Kind: "evm-transaction", Target: "no:1", Description: "lock the exact first-tier boundary as voluntary conviction without recording current-epoch demand", Parameters: map[string]string{"no_id": "1", "amount_rao": fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao), "reserve_runtime_share_transitions": strconv.FormatUint(reserveRuntimeShareTransitionCount, 10), "reserve_rounding_allowance_rao": strconv.FormatUint(reserveRoundingAllowancePerCallRao, 10)}, Spend: Spend{EVMGasWei: voluntaryGas}, DependsOn: []string{"accounts.provision", "campaign.evm-gas-reserve", "alpha.transfer.operator-deposit.1"}})
 	batcherRuntimeHash := crypto.Keccak256Hash(payloads.FleetBatcherRuntime).Hex()
@@ -1451,7 +1504,9 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		Spend:       Spend{EVMGasWei: gasCaps["fleet.refresh.oracle-restore"]}, DependsOn: []string{lastRefresh, "evm.fund-owner"},
 	})
 	add(Action{ID: "fleet.refresh.oracle-await-restored", Kind: "evm-read", Target: payloads.CommitmentOracle.Hex(), Description: "wait until the immutable original commitment oracle is active before topology launch", DependsOn: []string{"fleet.refresh.oracle-restore"}})
-	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", DependsOn: []string{"fleet.refresh.oracle-await-restored"}})
+	add(Action{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, Description: "start dependencies, two operators, miners, and two validators with readiness gates", Parameters: map[string]string{
+		"config_hash": cfg.ConfigHash, "policy_hash": cfg.PolicyHash,
+	}, DependsOn: []string{"fleet.refresh.oracle-await-restored"}})
 	lastChallenger := "topology.launch"
 	for challenger := 1; challenger <= cfg.Config.Topology.ChallengerFleets; challenger++ {
 		fleet := cfg.Config.Topology.HeadFleets + challenger
@@ -1879,6 +1934,10 @@ func validatePlanBudget(p *SetupPlan) error {
 		if planUsesContractDeploymentEnvelope(p.Schema) && actionUsesContractDeployment(action) && action.Parameters[deploymentManifestHashParameter] != deploymentHash {
 			return fmt.Errorf("action %s does not bind the approved contract deployment", action.ID)
 		}
+		if planUsesRuntimeConfigIdentityEnvelope(p.Schema) && (action.ID == "config.render" || action.ID == "topology.launch") &&
+			(action.Parameters["config_hash"] != p.ConfigHash || action.Parameters["policy_hash"] != p.PolicyHash) {
+			return fmt.Errorf("action %s does not bind the approved runtime config and policy", action.ID)
+		}
 		if planUsesEVMFeeEnvelope(p.Schema) && action.Kind == "evm-transaction" {
 			_, maximumFeePerGas, envelopeErr := evmActionFeeEnvelope(action)
 			if envelopeErr != nil {
@@ -2018,7 +2077,7 @@ func validatePlanBudget(p *SetupPlan) error {
 			} else if incrementErr != nil || minimumIncrement == 0 || exact != minimumAlphaTransfer {
 				return fmt.Errorf("alpha repair %s has an invalid recovered-prestate target", action.ID)
 			}
-			if kind == "operator-deposit" && !strings.EqualFold(action.Parameters["campaign_policy_hash"], p.PolicyHash) {
+			if kind == "operator-deposit" && !operatorRepairBindsApprovedCampaignPolicy(p, action, seenActionDetails, seenPriorPlans) {
 				return fmt.Errorf("operator alpha repair %s does not bind the campaign policy", action.ID)
 			}
 		}

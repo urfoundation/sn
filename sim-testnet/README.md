@@ -133,6 +133,12 @@ requirement. Schema v10 additionally requires a duplicate-conviction
 reconciliation to retain the exact authenticated original action intent. A
 later gas-ceiling refresh or custody-repair dependency may gate new work, but
 cannot turn that already-finalized one-shot action into a new intent.
+Schema v11 retains v10 as authenticated history and binds `config.render` and
+`topology.launch` to the exact approved config and policy hashes. Rendering also
+writes `runtime-config-manifest.json`, whose sorted inventory, modes and SHA-256
+digests cover every immutable operator, miner, validator, swarm and relayer
+input. Launch fails closed on a missing, changed, additional or symlinked static
+file.
 
 An already-live immutable custody generation is never redeployed merely because
 the coordinator changes. A repeated UUPS revision binds the exact next deployer
@@ -234,8 +240,8 @@ finalized Wasm hash must match the release lock, and that block's
 runtime's internal `DefaultMinTransfer` function—must equal
 `public.yml:chain.expected_default_min_transfer_rao`. Every planned alpha
 transfer is sized from it at the same finalized snapshot, and the value is an
-immutable settlement-vault constructor/runtime word. Historical v5-v9 plans
-keep their authenticated wire semantics; current approvals use plan schema v10.
+immutable settlement-vault constructor/runtime word. Historical v5-v10 plans
+keep their authenticated wire semantics; current approvals use plan schema v11.
 
 The public-chain integration probes are opt-in:
 

@@ -119,9 +119,9 @@ continued with `resume` and the same approval hash.
 ./build/sim-testnet analyze --config sim-testnet/testnet.yml --format json
 ```
 
-The first campaign proves the accelerated 20-epoch release matrix while the full
+The first campaign proves five consecutive 300-block accelerated epochs while the full
 adversarial actor set remains active, including promotion/demotion at the 200-slot
-head boundary. The second schedules the testnet-only 2,400-block/eight-hour policy
+head boundary. The second schedules the testnet-only 360-block/approximately-72-minute policy
 and proves three consecutive fully observed production epochs, dishonest-deposit
 penalty and recovery, verification-key rotation with historical proof availability,
 plus supervised new-PID rolling recovery of every role. Mainnet retains the

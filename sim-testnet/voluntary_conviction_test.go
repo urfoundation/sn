@@ -154,7 +154,8 @@ func testVoluntaryConvictionDuplicateRecovery(t *testing.T) (*ResolvedConfig, st
 	after, _ := checkedMul(amount, 2)
 	recovery := voluntaryConvictionDuplicateRecovery{
 		DuplicateTransaction: planRevisionTransaction{PlanHash: prior.PlanHash, ActionID: duplicate.ID, IntentHash: duplicate.IntentHash, TransactionHash: duplicateTransaction, BlockNumber: 110, BlockHash: duplicateBlockHash},
-		DuplicateAction:      duplicate, OriginalAction: original, OriginalPlanHash: ancestor.PlanHash, OriginalIntentHash: original.IntentHash, OriginalEvidence: evidence,
+		DuplicateAction:      duplicate, OriginalAction: original, OriginalPlanHash: ancestor.PlanHash, OriginalIntentHash: original.IntentHash,
+		OriginalPlanPolicyHash: ancestor.PolicyHash, DuplicatePlanPolicyHash: prior.PolicyHash, OriginalEvidence: evidence,
 		DuplicateEpoch: 3, DuplicateNonce: "2", Funder: evidence.Funder, PolicyHash: evidence.PolicyHash,
 		AmountRao: amount, CumulativeBeforeRao: amount, CumulativeAfterRao: after, OperatorPrincipalAfterRao: after,
 		SupersededGasBefore: prior.SupersededSpend.EVMGasWei,
@@ -254,6 +255,67 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	}
 	if err := validatePlanBudget(continued); err != nil {
 		t.Fatalf("continued recovery plan is invalid: %v", err)
+	}
+}
+
+func TestPolicyRevisionCarriesVerifiedConvictionCustodyDependencyBeforeUse(t *testing.T) {
+	cfg, _, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := actionByID(t, prior, "alpha.transfer.operator-deposit.1")
+	repair := Action{
+		ID: "alpha.repair.operator-deposit.1.2", Kind: "substrate-extrinsic", Target: base.Target,
+		Description: "verified historical custody prerequisite",
+		Parameters: map[string]string{
+			alphaRepairForActionParameter: "alpha.transfer.operator-deposit.1",
+			"campaign_policy_hash":        prior.PolicyHash,
+		},
+		Spend: Spend{AlphaRao: 193_556_675}, DependsOn: []string{base.ID},
+	}
+	repair.IntentHash, err = actionIntentHash(repair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior.Actions = append(prior.Actions, repair)
+	entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: repair.ID, IntentHash: repair.IntentHash, Stage: StageVerified})
+	for index, dependency := range recovery.OriginalAction.DependsOn {
+		if dependency == base.ID {
+			recovery.OriginalAction.DependsOn[index] = repair.ID
+		}
+	}
+	recovery.OriginalAction.IntentHash, err = actionIntentHash(recovery.OriginalAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised, err := buildPlan(cfg, current, roles, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := carryVerifiedVoluntaryConvictionCustodyDependency(revised, prior, entries, recovery.OriginalAction); err != nil {
+		t.Fatal(err)
+	}
+	baseIndex, repairIndex, voluntaryIndex := -1, -1, -1
+	for index, action := range revised.Actions {
+		switch action.ID {
+		case base.ID:
+			baseIndex = index
+		case repair.ID:
+			repairIndex = index
+		case voluntaryConvictionActionID:
+			voluntaryIndex = index
+		}
+	}
+	if baseIndex < 0 || repairIndex != baseIndex+1 || voluntaryIndex <= repairIndex || actionByID(t, revised, repair.ID).IntentHash != repair.IntentHash {
+		t.Fatalf("custody prerequisite ordering base=%d repair=%d voluntary=%d", baseIndex, repairIndex, voluntaryIndex)
+	}
+	unverifiedPlan, err := buildPlan(cfg, current, roles, time.Unix(4, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := carryVerifiedVoluntaryConvictionCustodyDependency(unverifiedPlan, prior, entries[:len(entries)-1], recovery.OriginalAction); err == nil || !strings.Contains(err.Error(), "verified journal evidence") {
+		t.Fatalf("unverified custody prerequisite was accepted: %v", err)
 	}
 }
 
@@ -563,6 +625,12 @@ func TestDuplicateVoluntaryConvictionRecoveryRejectsSemanticTampering(t *testing
 			value.OriginalAction.IntentHash = "0x" + strings.Repeat("04", 32)
 		},
 		func(value *voluntaryConvictionDuplicateRecovery) { value.OriginalPlanHash = "0x01" },
+		func(value *voluntaryConvictionDuplicateRecovery) {
+			value.OriginalPlanPolicyHash = "0x" + strings.Repeat("05", 32)
+		},
+		func(value *voluntaryConvictionDuplicateRecovery) {
+			value.DuplicatePlanPolicyHash = "0x" + strings.Repeat("06", 32)
+		},
 		func(value *voluntaryConvictionDuplicateRecovery) { value.OriginalEvidence.FinalizedBlock = 111 },
 		func(value *voluntaryConvictionDuplicateRecovery) { value.DuplicateNonce = "3" },
 		func(value *voluntaryConvictionDuplicateRecovery) {

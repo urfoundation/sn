@@ -1185,6 +1185,120 @@ func TestPlanHashBindsTheCompleteReleaseLock(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigActionsBindTheApprovedConfigAndPolicy(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"config.render", "topology.launch"} {
+		index := slices.IndexFunc(plan.Actions, func(action Action) bool { return action.ID == id })
+		if index < 0 {
+			t.Fatalf("action %s is missing", id)
+		}
+		action := plan.Actions[index]
+		if action.Parameters["config_hash"] != plan.ConfigHash || action.Parameters["policy_hash"] != plan.PolicyHash {
+			t.Fatalf("action %s lacks runtime identity: %+v", id, action.Parameters)
+		}
+		for _, field := range []string{"config_hash", "policy_hash"} {
+			mutated := *plan
+			mutated.Actions = append([]Action(nil), plan.Actions...)
+			mutated.Actions[index] = action
+			mutated.Actions[index].Parameters = make(map[string]string, len(action.Parameters))
+			for key, value := range action.Parameters {
+				mutated.Actions[index].Parameters[key] = value
+			}
+			delete(mutated.Actions[index].Parameters, field)
+			mutated.Actions[index].IntentHash, err = actionIntentHash(mutated.Actions[index])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validatePlanBudget(&mutated); err == nil || !strings.Contains(err.Error(), "does not bind the approved runtime config and policy") {
+				t.Fatalf("action %s without %s was accepted: %v", id, field, err)
+			}
+		}
+	}
+}
+
+func TestHistoricalConvictionRepairRetainsOnlyItsAuthenticatedPolicy(t *testing.T) {
+	oldPolicy := "0x" + strings.Repeat("11", 32)
+	originalPlan := "0x" + strings.Repeat("22", 32)
+	duplicatePlan := "0x" + strings.Repeat("33", 32)
+	plan := &SetupPlan{Schema: currentSetupPlanSchema, PolicyHash: "0x" + strings.Repeat("44", 32)}
+	priorPlans := map[string]bool{originalPlan: true, duplicatePlan: true}
+	reconciliation := Action{ID: voluntaryConvictionReconciliationActionID, Kind: "evm-reconciliation", Parameters: map[string]string{
+		voluntaryRecoveryRepairActionParameter:       "alpha.repair.operator-deposit.1.3",
+		voluntaryRecoveryPolicyHashParameter:         oldPolicy,
+		voluntaryRecoveryOriginalPlanHashParameter:   originalPlan,
+		voluntaryRecoveryDuplicatePlanHashParameter:  duplicatePlan,
+		voluntaryRecoveryOriginalIntentHashParameter: "0x" + strings.Repeat("66", 32),
+		deploymentManifestHashParameter:              "0x" + strings.Repeat("77", 32),
+	}}
+	repair := Action{ID: "alpha.repair.operator-deposit.1.3", Parameters: map[string]string{
+		alphaRepairForActionParameter:   voluntaryConvictionReconciliationActionID,
+		"campaign_policy_hash":          oldPolicy,
+		deploymentManifestHashParameter: "0x" + strings.Repeat("77", 32),
+	}}
+	seen := map[string]Action{reconciliation.ID: reconciliation}
+	if !operatorRepairBindsApprovedCampaignPolicy(plan, repair, seen, priorPlans) {
+		t.Fatal("authenticated historical conviction repair policy was rejected")
+	}
+	mutations := []func(*Action, map[string]Action, map[string]bool){
+		func(action *Action, _ map[string]Action, _ map[string]bool) {
+			action.Parameters["campaign_policy_hash"] = "0x" + strings.Repeat("55", 32)
+		},
+		func(_ *Action, linked map[string]Action, _ map[string]bool) {
+			value := linked[reconciliation.ID]
+			value.Kind = "local"
+			linked[reconciliation.ID] = value
+		},
+		func(_ *Action, linked map[string]Action, _ map[string]bool) {
+			value := linked[reconciliation.ID]
+			value.Parameters[voluntaryRecoveryRepairActionParameter] = "other"
+			linked[reconciliation.ID] = value
+		},
+		func(_ *Action, _ map[string]Action, ancestors map[string]bool) { delete(ancestors, originalPlan) },
+	}
+	for index, mutate := range mutations {
+		candidate := repair
+		candidate.Parameters = make(map[string]string, len(repair.Parameters))
+		for key, value := range repair.Parameters {
+			candidate.Parameters[key] = value
+		}
+		linkedReconciliation := reconciliation
+		linkedReconciliation.Parameters = make(map[string]string, len(reconciliation.Parameters))
+		for key, value := range reconciliation.Parameters {
+			linkedReconciliation.Parameters[key] = value
+		}
+		linked := map[string]Action{reconciliation.ID: linkedReconciliation}
+		ancestors := map[string]bool{originalPlan: true, duplicatePlan: true}
+		mutate(&candidate, linked, ancestors)
+		if operatorRepairBindsApprovedCampaignPolicy(plan, candidate, linked, ancestors) {
+			t.Errorf("historical repair mutation %d was accepted", index)
+		}
+	}
+	custodyRepair := Action{ID: "alpha.repair.operator-deposit.1.2", Parameters: map[string]string{
+		alphaRepairForActionParameter:   "alpha.transfer.operator-deposit.1",
+		"campaign_policy_hash":          oldPolicy,
+		deploymentManifestHashParameter: "0x" + strings.Repeat("77", 32),
+	}}
+	plan.Actions = []Action{
+		{ID: voluntaryConvictionActionID, IntentHash: reconciliation.Parameters[voluntaryRecoveryOriginalIntentHashParameter], DependsOn: []string{custodyRepair.ID}},
+		reconciliation,
+	}
+	if !operatorRepairBindsApprovedCampaignPolicy(plan, custodyRepair, map[string]Action{}, priorPlans) {
+		t.Fatal("verified historical custody prerequisite was not linked through the authenticated conviction")
+	}
+	plan.Actions[0].DependsOn = nil
+	if operatorRepairBindsApprovedCampaignPolicy(plan, custodyRepair, map[string]Action{}, priorPlans) {
+		t.Fatal("unreferenced historical custody repair was accepted")
+	}
+}
+
 func TestPlanHashBindsFinalizedDeployerNonceAndEveryCREATEAddress(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, _ := derivePublicRoles(cfg)

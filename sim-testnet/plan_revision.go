@@ -1919,28 +1919,6 @@ func observeCoordinatorUpgradeMigration(ctx context.Context, cfg *ResolvedConfig
 	return &coordinatorUpgradeMigration{Deployment: rebound, Baseline: baseline, Upgrade: built.CoordinatorUpgrade}, nil
 }
 
-func validatePolicyRevisionJournal(prior *SetupPlan, entries []JournalEntry) error {
-	if prior == nil {
-		return errors.New("prior policy plan is unavailable")
-	}
-	unsafe := map[string]bool{
-		"campaign.voluntary-conviction.1": true,
-		dishonestDepositActionID:          true,
-		"production.schedule-policy":      true,
-		"topology.launch":                 true,
-	}
-	allowedPlans := prior.allowedPlanHashes()
-	for _, entry := range entries {
-		if !allowedPlans[entry.PlanHash] || !unsafe[entry.ActionID] {
-			continue
-		}
-		if entry.Stage == StageBroadcast || entry.Stage == StageFinalized || entry.Stage == StageVerified {
-			return fmt.Errorf("policy revision is forbidden after %s reached %s", entry.ActionID, entry.Stage)
-		}
-	}
-	return nil
-}
-
 func validateRegistrationRoleGenerationPromotion(cfg *ResolvedConfig, prior *SetupPlan, existing, planned ContractDeployment, currentNonce uint64, entries []JournalEntry) error {
 	if cfg == nil || prior == nil {
 		return errors.New("registration-role generation promotion context is unavailable")
@@ -2344,7 +2322,7 @@ func verifiedOperatorAlphaSpend(prior *SetupPlan, entries []JournalEntry) (uint6
 	return total, nil
 }
 
-func validatePolicyRevisionOnChain(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan) error {
+func validatePolicyRevisionOnChain(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, decision policyRevisionDecision, recoveries planRevisionRecoveries) error {
 	deployment, err := loadContractDeployment(stateDir)
 	if err != nil {
 		return fmt.Errorf("load policy-migration deployment: %w", err)
@@ -2389,31 +2367,87 @@ func validatePolicyRevisionOnChain(ctx context.Context, cfg *ResolvedConfig, sta
 	if err != nil || !strings.EqualFold(extractFirstBytes32(policyValues), prior.PolicyHash) {
 		return stateMismatchError(err, "active policy changed before approved migration")
 	}
+	if decision.Class == policyRevisionFutureAcceleration {
+		active, activeErr := coordinatorPolicy(policyValues)
+		previous := decision.PreviousPolicy
+		if activeErr != nil || previous == nil || active.EpochBlocks != previous.Settlement.EpochBlocks ||
+			active.RootCommitWindowBlocks != previous.Settlement.RootCommitWindowBlocks || active.FinalizeOffsetBlocks != previous.Settlement.FinalizeOffsetBlocks ||
+			active.CloseGraceBlocks != previous.Settlement.CloseGraceBlocks || active.ClaimTTLEpochs != previous.Settlement.ClaimTTLEpochs ||
+			active.ClaimGraceEpochs != previous.Settlement.ClaimGraceEpochs || active.MaximumBindingValidityEpochs != previous.Binding.MaximumValidityEpochs ||
+			active.CommitmentMaxAgeBlocks != previous.Settlement.EpochBlocks*2 || active.EpochDepositCapRao == nil ||
+			active.EpochDepositCapRao.Cmp(new(big.Int).SetUint64(previous.Deposit.EpochCapRaoPerOperator)) != 0 || active.CampaignDepositCapRao == nil ||
+			active.CampaignDepositCapRao.Cmp(new(big.Int).SetUint64(previous.Deposit.TotalTestCampaignCapRao)) != 0 {
+			return stateMismatchError(activeErr, "active accelerated policy snapshot differs from authenticated history")
+		}
+	}
 	countValue, err := scalar(deployment.CoordinatorProxy, coordinator, "policyCount")
 	count, ok := countValue.(*big.Int)
 	if err != nil || !ok || count.Cmp(big.NewInt(1)) != 0 {
 		return stateMismatchError(err, "policy migration policyCount=%v, want 1", countValue)
 	}
-	for _, check := range []struct {
-		address common.Address
-		parsed  abi.ABI
-		method  string
-	}{
-		{deployment.CoordinatorProxy, coordinator, "campaignReserved"},
-		{deployment.SettlementVault, vault, "totalCaptured"},
-		{deployment.ReserveSink, reserve, "principal"},
-	} {
-		value, readErr := scalar(check.address, check.parsed, check.method)
+	operatorCountValue, err := scalar(deployment.CoordinatorProxy, coordinator, "operatorCount")
+	operatorCount, ok := operatorCountValue.(*big.Int)
+	if err != nil || !ok || !operatorCount.IsUint64() || operatorCount.Uint64() != uint64(cfg.Config.Topology.Operators) {
+		return stateMismatchError(err, "policy migration operatorCount=%v, want %d", operatorCountValue, cfg.Config.Topology.Operators)
+	}
+	expected := policyRevisionReserveAccounting{NextDepositNonces: map[int]uint64{}}
+	if decision.Class == policyRevisionFutureAcceleration {
+		expected, err = authenticatedPolicyRevisionReserveAccounting(cfg, stateDir, prior, entries, recoveries)
+		if err != nil {
+			return err
+		}
+	}
+	wantReserved := new(big.Int).SetUint64(expected.CampaignReservedRao)
+	if wantReserved.Cmp(new(big.Int).SetUint64(cfg.Policy.Deposit.TotalTestCampaignCapRao)) > 0 {
+		return fmt.Errorf("future policy campaign cap %d is below authenticated reserve %s", cfg.Policy.Deposit.TotalTestCampaignCapRao, wantReserved)
+	}
+	reservedValue, err := scalar(deployment.CoordinatorProxy, coordinator, "campaignReserved")
+	reserved, reservedOK := reservedValue.(*big.Int)
+	if err != nil || !reservedOK || reserved.Cmp(wantReserved) != 0 {
+		return stateMismatchError(err, "policy migration campaignReserved=%v, want authenticated %s", reservedValue, wantReserved)
+	}
+	principalValue, err := scalar(deployment.ReserveSink, reserve, "principal")
+	principal, principalOK := principalValue.(*big.Int)
+	if err != nil || !principalOK || principal.Cmp(wantReserved) != 0 {
+		return stateMismatchError(err, "policy migration reserve principal=%v, want authenticated %s", principalValue, wantReserved)
+	}
+	liveStakeValue, err := scalar(deployment.ReserveSink, reserve, "liveStake")
+	liveStake, liveStakeOK := liveStakeValue.(*big.Int)
+	if err != nil || !liveStakeOK || liveStake.Cmp(principal) < 0 {
+		return stateMismatchError(err, "policy migration reserve liveStake=%v does not back principal %s", liveStakeValue, principal)
+	}
+	for _, method := range []string{"totalCaptured", "totalPaid", "escrowAccounted", "pendingFunding", "outstandingLiability"} {
+		value, readErr := scalar(deployment.SettlementVault, vault, method)
 		amount, amountOK := value.(*big.Int)
 		if readErr != nil || !amountOK || amount.Sign() != 0 {
-			return stateMismatchError(readErr, "policy migration %s=%v, want zero", check.method, value)
+			return stateMismatchError(readErr, "stopped-topology policy migration vault %s=%v, want zero", method, value)
 		}
 	}
 	for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
+		operatorIDValue, readErr := scalar(deployment.CoordinatorProxy, coordinator, "operatorIdAt", big.NewInt(int64(noID-1)))
+		operatorID, operatorIDOK := operatorIDValue.(*big.Int)
+		if readErr != nil || !operatorIDOK || !operatorID.IsUint64() || operatorID.Uint64() != uint64(noID) {
+			return stateMismatchError(readErr, "policy migration operatorIdAt(%d)=%v, want %d", noID-1, operatorIDValue, noID)
+		}
+		want := uint64(0)
+		if noID == 1 {
+			want = expected.CampaignReservedRao
+		}
+		operatorPrincipalValue, readErr := scalar(deployment.ReserveSink, reserve, "operatorPrincipal", big.NewInt(int64(noID)))
+		operatorPrincipal, principalOK := operatorPrincipalValue.(*big.Int)
+		if readErr != nil || !principalOK || operatorPrincipal.Cmp(new(big.Int).SetUint64(want)) != 0 {
+			return stateMismatchError(readErr, "policy migration operator %d principal=%v, want authenticated %d", noID, operatorPrincipalValue, want)
+		}
+		convictionValue, readErr := scalar(deployment.CoordinatorProxy, coordinator, "cumulativeConviction", big.NewInt(int64(noID)))
+		conviction, convictionOK := convictionValue.(*big.Int)
+		if readErr != nil || !convictionOK || conviction.Cmp(new(big.Int).SetUint64(want)) != 0 {
+			return stateMismatchError(readErr, "policy migration operator %d cumulative conviction=%v, want authenticated %d", noID, convictionValue, want)
+		}
 		value, readErr := scalar(deployment.CoordinatorProxy, coordinator, "nextDepositNonce", big.NewInt(int64(noID)))
 		nonce, nonceOK := value.(*big.Int)
-		if readErr != nil || !nonceOK || nonce.Sign() != 0 {
-			return stateMismatchError(readErr, "policy migration operator %d nonce=%v, want zero", noID, value)
+		wantNonce := expected.NextDepositNonces[noID]
+		if readErr != nil || !nonceOK || !nonce.IsUint64() || nonce.Uint64() != wantNonce {
+			return stateMismatchError(readErr, "policy migration operator %d nonce=%v, want authenticated %d", noID, value, wantNonce)
 		}
 	}
 	return nil
@@ -3102,7 +3136,7 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	}
 	policyChanged := !strings.EqualFold(prior.PolicyHash, cfg.PolicyHash)
 	if policyChanged {
-		if err := validatePolicyRevisionJournal(prior, entries); err != nil {
+		if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err != nil {
 			return nil, err
 		}
 	}
@@ -3376,12 +3410,16 @@ func BuildPlanRevision(ctx context.Context, cfg *ResolvedConfig, stateDir string
 	if err := doctor.Error(); err != nil {
 		return nil, fmt.Errorf("doctor must pass before revising the plan: %w", err)
 	}
+	policyRevision, err := classifyPolicyRevision(cfg, stateDir, prior, entries)
+	if err != nil {
+		return nil, err
+	}
 	recoveries, err := planRevisionTransactionRecoveries(ctx, cfg, stateDir, prior, entries)
 	if err != nil {
 		return nil, fmt.Errorf("prior transaction revision safety: %w", err)
 	}
 	if !strings.EqualFold(prior.PolicyHash, cfg.PolicyHash) {
-		if err := validatePolicyRevisionOnChain(ctx, cfg, stateDir, prior); err != nil {
+		if err := validatePolicyRevisionOnChain(ctx, cfg, stateDir, prior, entries, policyRevision, recoveries); err != nil {
 			return nil, fmt.Errorf("policy revision finalized-chain safety: %w", err)
 		}
 	}

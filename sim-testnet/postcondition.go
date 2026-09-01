@@ -833,7 +833,7 @@ func voluntaryConvictionEvidenceMatches(cfg *ResolvedConfig, plan *SetupPlan, ev
 	amount := fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao)
 	if evidence.Schema != "urnetwork-voluntary-conviction-evidence-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.NoID != 1 ||
 		evidence.AmountRao != amount || evidence.BeforeConvictionRao != "0" || evidence.AfterConvictionRao != amount ||
-		!strings.EqualFold(evidence.Funder, plan.Roles.OperatorDepositSigners[0]) || !strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) {
+		!strings.EqualFold(evidence.Funder, plan.Roles.OperatorDepositSigners[0]) || !strings.EqualFold(evidence.PolicyHash, plan.PolicyHash) {
 		return errors.New("voluntary conviction evidence does not match the approved action")
 	}
 	if nonce, ok := new(big.Int).SetString(evidence.Nonce, 10); !ok || nonce.Sign() < 0 {
@@ -1567,26 +1567,17 @@ func (e *Executor) verifyRenderedConfigs(state map[string]any) (map[string]any, 
 	if err := validateOperatorConfigOverlays(e.cfg, e.stateDir); err != nil {
 		return nil, err
 	}
-	paths := []string{}
 	for operator := 1; operator <= e.cfg.Config.Topology.Operators; operator++ {
 		if err := validateOperatorConnectTLSArtifacts(e.cfg, e.stateDir, operator); err != nil {
 			return nil, err
 		}
-		paths = append(paths, filepath.Join(e.stateDir, "runtime", fmt.Sprintf("operator-%d", operator), "vault", "st.yml"))
 	}
-	for validator := 1; validator <= e.cfg.Config.Topology.Validators; validator++ {
-		paths = append(paths, filepath.Join(e.stateDir, "runtime", fmt.Sprintf("validator-%d", validator), "validator.yml"))
+	verified, err := verifyRuntimeConfigManifest(e.cfg, e.stateDir)
+	if err != nil {
+		return nil, err
 	}
-	for miner := 1; miner <= e.cfg.Config.Topology.Miners; miner++ {
-		paths = append(paths, filepath.Join(e.stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "miner.yml"), filepath.Join(e.stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "claim-daemon.yml"))
-	}
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return nil, stateMismatchError(err, "rendered config %s is absent or not private", path)
-		}
-	}
-	state["private_config_files"] = len(paths)
+	state["private_config_files"] = verified.FileCount
+	state["runtime_config_manifest_hash"] = verified.ManifestHash
 	state["operator_config_overlay"] = operatorConfigOverlayVersion
 	state["operator_connect_tls_identities"] = e.cfg.Config.Topology.Operators
 	return state, nil

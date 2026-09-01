@@ -3869,7 +3869,10 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 			return err
 		}
 	}
-	return renderValidatorMinerConfigs(cfg, stateDir, roles, contracts)
+	if err := renderValidatorMinerConfigs(cfg, stateDir, roles, contracts); err != nil {
+		return err
+	}
+	return writeRuntimeConfigManifest(cfg, stateDir)
 }
 
 // Supply deterministic location metadata for simulator-owned loopback peers.

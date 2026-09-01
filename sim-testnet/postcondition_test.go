@@ -794,7 +794,7 @@ func TestLegacyRegistrationBalancePostconditionRecoversExactJournalHash(t *testi
 func TestVoluntaryConvictionPostconditionIdentityAndEventAreExact(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	funder := common.HexToAddress("0x0000000000000000000000000000000000001234")
-	plan := &SetupPlan{Roles: PublicRoles{OperatorDepositSigners: []string{funder.Hex()}}}
+	plan := &SetupPlan{PolicyHash: cfg.PolicyHash, Roles: PublicRoles{OperatorDepositSigners: []string{funder.Hex()}}}
 	policy, err := decodeHash(cfg.PolicyHash)
 	if err != nil {
 		t.Fatal(err)
@@ -807,6 +807,14 @@ func TestVoluntaryConvictionPostconditionIdentityAndEventAreExact(t *testing.T) 
 	}
 	if err := voluntaryConvictionEvidenceMatches(cfg, plan, evidence); err != nil {
 		t.Fatal(err)
+	}
+	historicalPolicyHash := "0x" + strings.Repeat("ab", 32)
+	historicalPlan := *plan
+	historicalPlan.PolicyHash = historicalPolicyHash
+	historicalEvidence := evidence
+	historicalEvidence.PolicyHash = historicalPolicyHash
+	if err := voluntaryConvictionEvidenceMatches(cfg, &historicalPlan, historicalEvidence); err != nil {
+		t.Fatalf("historical evidence was compared to the current config policy: %v", err)
 	}
 	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
 	if err != nil {
