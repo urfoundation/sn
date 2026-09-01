@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The systemd launch defect, carried temporary-oracle history defect, emission-diluted reserve repair and generation-1 supersession rules are corrected and regression-tested. Plan `0x315cd7aeb5219ac2a92de3ff8aa369a37afaef71cfcd984bca07d6ffcdb303af` exposed an hour-scale carried audit and a final worker timeout behind the public EVM provider's process-wide 60-request/minute gate. The batched revision produced two stable plans at `0x378ee0558075712b25f2ba2cb899ea758c173d2ca382ff164b318c91fda6a346`; exact apply accepted that hash but then failed locally at `fleet.mirror.26` because the first compatibility rule treated every atomic-install alias as a modern receipt-derived alias. The authenticated migration record instead proves a separate finalized generation-1 read after its exact install batch and before refresh. Both failures occurred before a new journal entry, signature, transaction or service start; the journal remains byte-identical. The corrected verifier now distinguishes modern derived aliases from complete migration live-read aliases, rejects partial/mixed formats, and block-pins the latter like legacy transactions. The exact carried census is 1,000 receipts at 158 unique checkpoints: 850 derived aliases, 25 historical aliases and 125 legacy transactions. Their proof now uses one finalized-head request, four header batches and three state batches—eight HTTP requests total—while retaining every receipt identity and dual-observer comparison. Deterministic tests cover both alias formats, mirrors and bindings, checkpoint/journal bounds, partial-format rejection, 120 distinct selectors, batch boundaries, canonical-hash tampering, exact cache identity and generation-2 negative controls. Full `go test ./...`, focused race, vet, release-lock and patch-hygiene gates pass. The corrected non-test Go tree is locked by `sha256:b8612648ccdfdfc55ab6f7fd8868d87c0bc7fcc8fd09ffe4a2076dfff42524fe`. M0A remains stopped pending two stable read-only plans under this lock, exact replay and topology health proof; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-08-31 UTC
+**Status:** release-1.0 implementation and continuous adversarial campaign are complete locally. Public-testnet M0A setup on netuid 521 has installed and verified all 200 production fleets, finalized and verified all 200 generation-2 replacements and predecessor revocations, and restored the commitment oracle. The systemd launch defect, carried temporary-oracle history defect, emission-diluted reserve repair and generation-1 supersession rules are corrected and regression-tested. The latest approved plan `0xd072a8c5e6ebfdbfa820b8dc04e5956ecaa04c720a7263ea7d6683aa5093f6d1` passed the new 1,000/1,000 batched historical fleet proof and completed all 2,202 carried audit jobs. It then failed before mutation while checking `fleet.refresh.batch.1`: each carried generation-2 refresh still used about 100 independently rate-gated HTTP requests, so a member read exhausted its five-minute context behind the official provider's process-wide 60-request/minute gate. The journal remains byte-identical at 7,156,816 bytes; no signature, transaction or service start occurred. Refresh preparation now resolves all 40 predecessor bindings in two bounded requests, carried refresh state resolves all 140 mirror/version/cardinality calls in three, and the five-field oracle snapshot uses one. Every call remains pinned to the selected block and every mirror, version count, predecessor, successor, member count and deterministic manifest-member field is checked exactly; operational RPC failures are no longer mislabeled as dishonest replacement state. Deterministic tests lock the exact `[50,30]`, `[50,50,40]` and `[5]` partitions, transport classification, all adjacent state mutations, incomplete identities and foreign signed manifest members. The corrected non-test Go tree is locked by `sha256:543926a14a20cc00bb79d1a7a80df4f58a2e9f2badf33a75289aa51b1864914d`. The complete local release gate now passes under that lock, including the 551-second full simulator race suite, Slither, Foundry tests/invariants, generated artifact locks, operator/shared-client suites, infrastructure regressions and patch hygiene. M0A remains stopped pending two stable read-only plans, exact replay and topology health proof; M0B/phase 2 has not started. Launch, M0B, the overlapping M1/M2 campaign, three 8-hour M3 blocks and MR remain pending, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -91,7 +91,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch is gated on the corrected batched carried-history replay | Runtime-452 doctor is hard-green. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. The user-systemd, carried temporary-oracle, moving reserve-repair and generation-1 lineage defects are corrected. The first exact batched replay then exposed 25 migration-era aliases whose authenticated receipts are separate finalized reads rather than modern batch-derived clones. The verifier now accepts only the complete old shape strictly between the exact install and refresh, replays it at its own block, and rejects partial/mixed formats. The 1,000-receipt fleet proof collapses to eight bounded HTTP requests without weakening receipt, checkpoint or observed-state identity. Local regression, race, vet, full-suite, release-lock and patch-hygiene checks pass. Two new live plan builds and exact replay remain. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; topology launch is gated on the corrected carried refresh replay | Runtime-452 doctor is hard-green. All 200 generation-1 fleet installs and all 200 generation-2 refreshes, predecessor revocations and mirrors are finalized and verified; the oracle is restored. Plan `0xd072…f6d1` proved the 1,000 historical receipts and ran all 2,202 carried jobs, then exposed the adjacent unbatched generation-2 verifier before mutation. A production refresh now uses three state requests rather than about 100; fresh preparation uses two prior-state requests rather than 40; oracle state uses one rather than five. Exact state and manifest identity remain fail-closed, deterministic regression/race tests pass, and the complete local release gate is green. Two new live plans and exact replay remain. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -2670,6 +2670,44 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Full Go, focused race, vet, release-lock and patch gates pass under source
    lock `sha256:b8612648ccdfdfc55ab6f7fd8868d87c0bc7fcc8fd09ffe4a2076dfff42524fe`;
    two fresh plans and exact replay remain the next M0A boundary.
+
+   Two subsequent plan builds were identical at
+   `0xd072a8c5e6ebfdbfa820b8dc04e5956ecaa04c720a7263ea7d6683aa5093f6d1`.
+   Exact launch accepted that hash, completed the 1,000/1,000 batched
+   historical proof and all 2,202 carried jobs, then failed before the first
+   mutation at `fleet.refresh.batch.1`. Its generation-2 postcondition still
+   issued one mirror request per fleet, one two-element version request and one
+   successor request per member, and one member-count request per fleet—about
+   100 HTTP requests for each of 20 carried refresh actions. A late member read
+   exhausted its five-minute context behind the process-wide 60-request/minute
+   gate. The journal remained exactly 7,156,816 bytes with SHA-256
+   `0d38274f78329e750dcfb1756ebce36680924fe25de68ff248d535055aff6276`;
+   no approved spend was signed or broadcast.
+
+   The corrected verifier authenticates all local signed/native evidence
+   first, then submits 140 pinned `eth_call` elements as exact 50/50/40 batches.
+   Fresh refresh preparation similarly reads all 40 predecessor count/record
+   pairs as 50/30 batches before producing signatures, and the five independent
+   oracle routing fields share one pinned batch. Network or context errors are
+   returned as operational batch failures rather than being wrapped as a false
+   replacement-generation mismatch. The adjacent evidence audit also found
+   that a separately valid signed replacement needed an explicit equality
+   check against the deterministic manifest member; chain id, netuid,
+   coordinator, fleet, hotkey, client id/key, generation, epochs and commitment
+   are now all exact. Deterministic tests enforce request counts and boundaries,
+   exact block selectors, RPC-failure classification, every mirror/version/
+   predecessor/successor/cardinality mutation, incomplete pre-RPC identity and
+   foreign manifest fields. The revised source lock is
+   `sha256:543926a14a20cc00bb79d1a7a80df4f58a2e9f2badf33a75289aa51b1864914d`.
+   The complete checked-in local release gate passed under that lock on
+   2026-09-01 UTC. Its full race-instrumented `sim-testnet` suite completed in
+   551.036 seconds, both deployable Solidity roots had zero Slither findings,
+   all 145 Foundry tests passed, generated deployment/storage and ABI bindings
+   were current, operator/connect/SDK and all 25 Subtensor infrastructure
+   regressions passed, and cross-repository patch hygiene was clean. The
+   managed-launch PostgreSQL/Redis rerun remains an M1 execution check; this
+   default local gate correctly reported it as deferred rather than claiming
+   runtime-profile evidence it had not produced.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -2685,9 +2723,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## Appendix A — Reproducible audit commands
 
-### Final local release-gate record (2026-08-31 UTC)
+### Final local release-gate record (2026-09-01 UTC)
 
-The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its final run
+The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its latest run
 completed successfully after the release lock was frozen:
 
 | Gate | Final result |

@@ -172,25 +172,41 @@ func fleetRefreshActionRange(cfg *ResolvedConfig, action Action, batch int) (int
 // pending oracle generations in a single decision.
 func readFleetRefreshOracleStateAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, block uint64) (fleetRefreshOracleState, error) {
 	var state fleetRefreshOracleState
-	epoch, err := rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch, block)
+	if coordinator == nil {
+		return state, errors.New("fleet refresh oracle reader is unavailable")
+	}
+	outputs, err := rawCoordinatorBatchCallAt(ctx, manager, coordinatorAddress, [][]byte{
+		coordinator.PackCurrentEpoch(),
+		coordinator.PackCommitmentOracle(),
+		coordinator.PackActiveCommitmentOracle(),
+		coordinator.PackPendingCommitmentOracle(),
+		coordinator.PackPendingCommitmentOracleEpoch(),
+	}, block)
+	if err != nil {
+		return state, fmt.Errorf("fleet refresh oracle state batch: %w", err)
+	}
+	epoch, err := coordinator.UnpackCurrentEpoch(outputs[0])
 	if err != nil || !epoch.IsUint64() {
 		return state, stateMismatchError(err, "fleet refresh current epoch is not uint64")
 	}
 	state.CurrentEpoch = epoch.Uint64()
-	state.Immutable, err = rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackCommitmentOracle(), coordinator.UnpackCommitmentOracle, block)
+	state.Immutable, err = coordinator.UnpackCommitmentOracle(outputs[1])
 	if err != nil {
 		return state, err
 	}
-	state.Active, err = rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackActiveCommitmentOracle(), coordinator.UnpackActiveCommitmentOracle, block)
+	state.Active, err = coordinator.UnpackActiveCommitmentOracle(outputs[2])
 	if err != nil {
 		return state, err
 	}
-	state.Pending, err = rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackPendingCommitmentOracle(), coordinator.UnpackPendingCommitmentOracle, block)
+	state.Pending, err = coordinator.UnpackPendingCommitmentOracle(outputs[3])
 	if err != nil {
 		return state, err
 	}
-	state.PendingEpoch, err = rawCoordinatorCallAt(ctx, manager, coordinatorAddress, coordinator.PackPendingCommitmentOracleEpoch(), coordinator.UnpackPendingCommitmentOracleEpoch, block)
-	return state, err
+	state.PendingEpoch, err = coordinator.UnpackPendingCommitmentOracleEpoch(outputs[4])
+	if err != nil {
+		return state, err
+	}
+	return state, nil
 }
 
 // Derives the only oracle address allowed by each immutable action id.
@@ -588,6 +604,26 @@ type fleetBindingVersionRead struct {
 	Record stabi.STCoordinatorBindingRecord
 }
 
+// Binds one signed replacement to the exact predecessor record which must be
+// truncated at the atomic refresh epoch.
+type fleetRefreshVerificationMember struct {
+	Evidence     FleetRefreshBindingEvidence
+	Binding      protocol.FleetBinding
+	PriorBinding protocol.FleetBinding
+}
+
+// Carries locally authenticated native and member expectations into one
+// block-pinned coordinator batch. No RPC result can change these expectations.
+type fleetRefreshVerificationFleet struct {
+	Fleet              int
+	Hotkey             [32]byte
+	CommitmentHash     [32]byte
+	FinalizedBlock     uint64
+	FinalizedBlockHash [32]byte
+	FleetID            [32]byte
+	Members            []fleetRefreshVerificationMember
+}
+
 // Loads version counts and records from one pinned snapshot in bounded
 // JSON-RPC batches instead of two HTTP requests per member.
 func readFleetBindingVersionsAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, clientIDs [][16]byte, index uint64, block uint64) ([]fleetBindingVersionRead, error) {
@@ -620,13 +656,81 @@ func readFleetBindingVersionsAt(ctx context.Context, manager *EVMTxManager, coor
 	return reads, nil
 }
 
-// Preserves the single-member API for refresh and targeted postconditions.
+// Preserves one bounded request for the targeted single-member verifier while
+// bulk preparation passes every member to the slice API above.
 func readFleetBindingVersionAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, clientID [16]byte, index uint64, block uint64) (*big.Int, stabi.STCoordinatorBindingRecord, error) {
 	reads, err := readFleetBindingVersionsAt(ctx, manager, coordinatorAddress, coordinator, [][16]byte{clientID}, index, block)
 	if err != nil {
 		return nil, stabi.STCoordinatorBindingRecord{}, err
 	}
 	return reads[0].Count, reads[0].Record, nil
+}
+
+// Reads every mirror, predecessor, successor and fleet cardinality through
+// bounded batches. One production refresh is 140 calls and three HTTP requests
+// instead of one hundred independently rate-gated requests.
+func verifyFleetRefreshStateAt(ctx context.Context, manager *EVMTxManager, coordinatorAddress common.Address, coordinator *stabi.STCoordinator, fleets []fleetRefreshVerificationFleet, block uint64) (int, error) {
+	if coordinator == nil || len(fleets) == 0 || block == 0 {
+		return 0, errors.New("fleet refresh state batch is unavailable")
+	}
+	calls := make([][]byte, 0)
+	for _, fleet := range fleets {
+		if fleet.Fleet < 1 || len(fleet.Members) == 0 {
+			return 0, errors.New("fleet refresh state batch has an incomplete fleet")
+		}
+		calls = append(calls, coordinator.PackMirroredCommitments(fleet.Hotkey))
+		for _, member := range fleet.Members {
+			if member.Binding.ValidFromEpoch == 0 || member.Binding.FleetID != fleet.FleetID || member.PriorBinding.FleetID != fleet.FleetID || member.Binding.ClientID != member.PriorBinding.ClientID {
+				return 0, fmt.Errorf("fleet %d member %d verification identity is incomplete", fleet.Fleet, member.Evidence.Member)
+			}
+			calls = append(calls,
+				coordinator.PackBindingVersionCount(member.Binding.ClientID),
+				coordinator.PackBindingVersionAt(member.Binding.ClientID, new(big.Int)),
+				coordinator.PackBindingVersionAt(member.Binding.ClientID, big.NewInt(1)),
+			)
+		}
+		calls = append(calls, coordinator.PackFleetMemberCount(fleet.FleetID))
+	}
+	outputs, err := rawCoordinatorBatchCallAt(ctx, manager, coordinatorAddress, calls, block)
+	if err != nil {
+		return 0, fmt.Errorf("fleet refresh state batch: %w", err)
+	}
+	outputIndex := 0
+	members := 0
+	for _, fleet := range fleets {
+		mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
+		outputIndex++
+		if err != nil || !fleetMirrorMatches(mirror, fleet.CommitmentHash, fleet.FinalizedBlock, fleet.FinalizedBlockHash) {
+			return 0, stateMismatchError(err, "fleet %d refreshed mirror mismatch", fleet.Fleet)
+		}
+		for _, member := range fleet.Members {
+			count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
+			outputIndex++
+			if err != nil || count == nil || !count.IsUint64() || count.Uint64() != 2 {
+				return 0, stateMismatchError(err, "fleet %d member %d binding version count=%v, want 2", fleet.Fleet, member.Evidence.Member, count)
+			}
+			prior, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+			outputIndex++
+			if err != nil || !fleetBindingRecordMatches(prior, member.PriorBinding, member.Binding.ValidFromEpoch-1, member.Evidence.UID) {
+				return 0, stateMismatchError(err, "fleet %d member %d revoked generation mismatch", fleet.Fleet, member.Evidence.Member)
+			}
+			successor, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+			outputIndex++
+			if err != nil || !fleetBindingRecordMatches(successor, member.Binding, member.Binding.ValidToEpoch, member.Evidence.UID) {
+				return 0, stateMismatchError(err, "fleet %d member %d replacement generation mismatch", fleet.Fleet, member.Evidence.Member)
+			}
+			members++
+		}
+		memberCount, err := coordinator.UnpackFleetMemberCount(outputs[outputIndex])
+		outputIndex++
+		if err != nil || memberCount == nil || !memberCount.IsUint64() || memberCount.Uint64() != uint64(len(fleet.Members)) {
+			return 0, stateMismatchError(err, "fleet %d member count=%v, want %d", fleet.Fleet, memberCount, len(fleet.Members))
+		}
+	}
+	if outputIndex != len(outputs) {
+		return 0, errors.New("fleet refresh state batch output partition is inconsistent")
+	}
+	return members, nil
 }
 
 // Rejects expired, cleaned or overlapping generation-1 state before any new
@@ -664,13 +768,30 @@ func (self *Executor) prepareFleetRefreshBatch(ctx context.Context, action Actio
 	if err != nil {
 		return nil, err
 	}
-	contractFleets := make([]fleetBatcherFleetRefresh, 0, lastFleet-firstFleet+1)
 	prepared := &fleetRefreshPreparedEvidence{
 		Schema: fleetRefreshPreparedSchema, DeploymentID: self.cfg.Config.Deployment.DeploymentID,
 		PlanHash: self.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
 		Batch: batch, FirstFleet: firstFleet, LastFleet: lastFleet, Generation: 2,
 		EffectiveEpoch: window.EffectiveEpoch, ValidToEpoch: validToEpoch,
 	}
+	// Keep authenticated local evidence alongside its exact batched read so a
+	// second file pass cannot race the state used to create signatures.
+	type preparationMember struct {
+		MemberIndex   int
+		PriorEvidence FleetBindingEvidence
+		PriorBinding  protocol.FleetBinding
+	}
+	type preparationFleet struct {
+		FleetIndex         int
+		Manifest           protocol.FleetManifest
+		CommitmentHash     [32]byte
+		CommitmentEvidence *FleetCommitmentEvidence
+		FinalizedBlockHash [32]byte
+		Members            []preparationMember
+	}
+	preparationFleets := make([]preparationFleet, 0, lastFleet-firstFleet+1)
+	priorClientIDs := make([][16]byte, 0, (lastFleet-firstFleet+1)*self.cfg.Config.Topology.ClientsPerHeadFleet)
+	seenPriorClientIDs := map[[16]byte]bool{}
 	for fleetIndex := firstFleet; fleetIndex <= lastFleet; fleetIndex++ {
 		priorManifest, _, _, err := fleetManifestForGeneration(self.cfg, self.stateDir, self.roles, fleetIndex, 1)
 		if err != nil {
@@ -687,6 +808,42 @@ func (self *Executor) prepareFleetRefreshBatch(ctx context.Context, action Actio
 		if err := validateFleetCommitmentInclusionLifetime(self.cfg, commitmentAction, commitmentEvidence, window.HeadBlock); err != nil {
 			return nil, err
 		}
+		preparation := preparationFleet{
+			FleetIndex: fleetIndex, Manifest: manifest, CommitmentHash: commitmentHash,
+			CommitmentEvidence: commitmentEvidence, FinalizedBlockHash: finalizedBlockHash,
+			Members: make([]preparationMember, 0, len(manifest.Members)),
+		}
+		for memberIndex := 1; memberIndex <= len(manifest.Members); memberIndex++ {
+			priorEvidence, priorBinding, err := loadVerifiedPriorFleetBinding(self.stateDir, priorManifest, fleetIndex, memberIndex)
+			if err != nil {
+				return nil, fmt.Errorf("fleet %d member %d prior evidence: %w", fleetIndex, memberIndex, err)
+			}
+			if seenPriorClientIDs[priorBinding.ClientID] {
+				return nil, fmt.Errorf("fleet %d member %d duplicates a refresh client id", fleetIndex, memberIndex)
+			}
+			seenPriorClientIDs[priorBinding.ClientID] = true
+			preparation.Members = append(preparation.Members, preparationMember{
+				MemberIndex: memberIndex, PriorEvidence: priorEvidence, PriorBinding: priorBinding,
+			})
+			priorClientIDs = append(priorClientIDs, priorBinding.ClientID)
+		}
+		preparationFleets = append(preparationFleets, preparation)
+	}
+	priorReads, err := readFleetBindingVersionsAt(ctx, self.oracle, coordinatorAddress, coordinator, priorClientIDs, 0, window.HeadBlock)
+	if err != nil {
+		return nil, fmt.Errorf("fleet refresh prior-state batch: %w", err)
+	}
+	if len(priorReads) != len(priorClientIDs) {
+		return nil, errors.New("fleet refresh prior-state batch result count mismatch")
+	}
+	contractFleets := make([]fleetBatcherFleetRefresh, 0, len(preparationFleets))
+	priorReadIndex := 0
+	for _, preparation := range preparationFleets {
+		fleetIndex := preparation.FleetIndex
+		manifest := preparation.Manifest
+		commitmentHash := preparation.CommitmentHash
+		commitmentEvidence := preparation.CommitmentEvidence
+		finalizedBlockHash := preparation.FinalizedBlockHash
 		hotkeyRole := self.roles.Substrate[fleetHotkeyLabel(fleetIndex)]
 		hotkey, err := crv4.KeypairFromSeedHex(hotkeyRole.SeedHex)
 		if err != nil {
@@ -702,19 +859,16 @@ func (self *Executor) prepareFleetRefreshBatch(ctx context.Context, action Actio
 			Hotkey:                "0x" + hex.EncodeToString(manifest.Hotkey[:]), CommitmentHash: "0x" + hex.EncodeToString(commitmentHash[:]),
 			FinalizedBlock: commitmentEvidence.FinalizedBlock, FinalizedBlockHash: commitmentEvidence.FinalizedBlockHash,
 		}
-		for memberIndex := 1; memberIndex <= len(manifest.Members); memberIndex++ {
-			priorEvidence, priorBinding, err := loadVerifiedPriorFleetBinding(self.stateDir, priorManifest, fleetIndex, memberIndex)
-			if err != nil {
-				return nil, fmt.Errorf("fleet %d member %d prior evidence: %w", fleetIndex, memberIndex, err)
+		for _, preparationMember := range preparation.Members {
+			memberIndex := preparationMember.MemberIndex
+			priorEvidence := preparationMember.PriorEvidence
+			priorBinding := preparationMember.PriorBinding
+			priorRead := priorReads[priorReadIndex]
+			priorReadIndex++
+			if priorRead.Count == nil || !priorRead.Count.IsUint64() || priorRead.Count.Uint64() != 1 {
+				return nil, fmt.Errorf("fleet %d member %d has %v binding versions before atomic refresh", fleetIndex, memberIndex, priorRead.Count)
 			}
-			count, priorRecord, err := readFleetBindingVersionAt(ctx, self.oracle, coordinatorAddress, coordinator, priorBinding.ClientID, 0, window.HeadBlock)
-			if err != nil {
-				return nil, err
-			}
-			if !count.IsUint64() || count.Uint64() != 1 {
-				return nil, fmt.Errorf("fleet %d member %d has %s binding versions before atomic refresh", fleetIndex, memberIndex, count)
-			}
-			if err := validateFleetRefreshPriorState(window.CurrentEpoch, window.EffectiveEpoch, priorEvidence, priorRecord, priorBinding); err != nil {
+			if err := validateFleetRefreshPriorState(window.CurrentEpoch, window.EffectiveEpoch, priorEvidence, priorRead.Record, priorBinding); err != nil {
 				return nil, fmt.Errorf("fleet %d member %d: %w", fleetIndex, memberIndex, err)
 			}
 			minerIndex := fleetMemberMinerIndex(self.cfg, fleetIndex, memberIndex)
@@ -781,6 +935,9 @@ func (self *Executor) prepareFleetRefreshBatch(ctx context.Context, action Actio
 		}
 		contractFleets = append(contractFleets, contractFleet)
 		prepared.Fleets = append(prepared.Fleets, preparedFleet)
+	}
+	if priorReadIndex != len(priorReads) {
+		return nil, errors.New("fleet refresh prior-state batch partition mismatch")
 	}
 	data, err := parsed.Pack("refresh", contractFleets)
 	if err != nil {
@@ -926,12 +1083,27 @@ func fleetRefreshEvidenceBindings(evidence FleetRefreshBindingEvidence, coordina
 	return binding, revoke, nil
 }
 
+// Requires prepared replacement evidence to name the exact deterministic
+// manifest member and generation, not merely a separately valid signature.
+func fleetRefreshReplacementMatchesManifest(binding protocol.FleetBinding, manifest protocol.FleetManifest, memberIndex int, commitmentHash [32]byte, effectiveEpoch, validToEpoch uint64) bool {
+	if memberIndex < 1 || memberIndex > len(manifest.Members) || manifest.Generation != 2 {
+		return false
+	}
+	member := manifest.Members[memberIndex-1]
+	return binding.ChainID == manifest.ChainID && binding.Netuid == manifest.Netuid && binding.Coordinator == manifest.Coordinator &&
+		binding.FleetID == manifest.FleetID && binding.Hotkey == manifest.Hotkey && binding.ClientID == member.ClientID && binding.ClientKey == member.ClientKey &&
+		binding.Generation == manifest.Generation && binding.ValidFromEpoch == effectiveEpoch && binding.ValidToEpoch == validToEpoch && binding.CommitmentHash == commitmentHash
+}
+
 // Verifies the transaction's exact mirror and both binding generations at one
 // canonical EVM block. It is shared by execution recovery and postconditions.
 func (self *Executor) verifyFleetRefreshPreparedAt(ctx context.Context, prepared *fleetRefreshPreparedEvidence, block uint64) (int, error) {
+	if self == nil || self.cfg == nil || self.payloads == nil || prepared == nil || prepared.EffectiveEpoch == 0 || block == 0 {
+		return 0, errors.New("fleet refresh verification context is unavailable")
+	}
 	coordinator := stabi.NewSTCoordinator()
 	coordinatorAddress := self.payloads.Manifest.CoordinatorProxy
-	members := 0
+	verificationFleets := make([]fleetRefreshVerificationFleet, 0, len(prepared.Fleets))
 	for fleetOffset, fleet := range prepared.Fleets {
 		wantFleet := prepared.FirstFleet + fleetOffset
 		if fleet.Fleet != wantFleet || len(fleet.Members) != self.cfg.Config.Topology.ClientsPerHeadFleet {
@@ -956,9 +1128,10 @@ func (self *Executor) verifyFleetRefreshPreparedAt(ctx context.Context, prepared
 		if hotkey != manifest.Hotkey || commitmentHash != nativeCommitmentHash || fleet.FinalizedBlock != nativeEvidence.FinalizedBlock || finalizedBlockHash != nativeFinalizedBlockHash || fleet.ManifestURI != nativeEvidence.ManifestURI || fleet.CommitmentEvidenceURI != fmt.Sprintf("fleet-%d.refresh.commitment.json", fleet.Fleet) {
 			return 0, fmt.Errorf("fleet %d prepared native evidence mismatch", fleet.Fleet)
 		}
-		mirror, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackMirroredCommitments(hotkey), coordinator.UnpackMirroredCommitments, block)
-		if err != nil || !fleetMirrorMatches(mirror, commitmentHash, fleet.FinalizedBlock, finalizedBlockHash) {
-			return 0, stateMismatchError(err, "fleet %d refreshed mirror mismatch", fleet.Fleet)
+		verificationFleet := fleetRefreshVerificationFleet{
+			Fleet: fleet.Fleet, Hotkey: hotkey, CommitmentHash: commitmentHash,
+			FinalizedBlock: fleet.FinalizedBlock, FinalizedBlockHash: finalizedBlockHash,
+			Members: make([]fleetRefreshVerificationMember, 0, len(fleet.Members)),
 		}
 		var fleetID [32]byte
 		for memberOffset, evidence := range fleet.Members {
@@ -968,6 +1141,9 @@ func (self *Executor) verifyFleetRefreshPreparedAt(ctx context.Context, prepared
 			binding, revoke, err := fleetRefreshEvidenceBindings(evidence, coordinatorAddress, testnetChainID, self.cfg.Netuid)
 			if err != nil {
 				return 0, err
+			}
+			if !fleetRefreshReplacementMatchesManifest(binding, manifest, evidence.Member, nativeCommitmentHash, prepared.EffectiveEpoch, prepared.ValidToEpoch) {
+				return 0, fmt.Errorf("fleet %d member %d replacement differs from its manifest", fleet.Fleet, evidence.Member)
 			}
 			if memberOffset == 0 {
 				fleetID = binding.FleetID
@@ -994,10 +1170,6 @@ func (self *Executor) verifyFleetRefreshPreparedAt(ctx context.Context, prepared
 			if err != nil || !revoke.VerifyClient(ed25519.PublicKey(binding.ClientKey[:]), revokeSignature) {
 				return 0, stateMismatchError(err, "fleet %d member %d revoke signature mismatch", fleet.Fleet, evidence.Member)
 			}
-			count, prior, err := readFleetBindingVersionAt(ctx, self.oracle, coordinatorAddress, coordinator, binding.ClientID, 0, block)
-			if err != nil || !count.IsUint64() || count.Uint64() != 2 {
-				return 0, stateMismatchError(err, "fleet %d member %d binding version count=%v, want 2", fleet.Fleet, evidence.Member, count)
-			}
 			priorBinding := protocol.FleetBinding{
 				ChainID: testnetChainID, Netuid: self.cfg.Netuid, Coordinator: binding.Coordinator,
 				FleetID: binding.FleetID, Hotkey: binding.Hotkey, ClientID: binding.ClientID, ClientKey: binding.ClientKey,
@@ -1009,21 +1181,14 @@ func (self *Executor) verifyFleetRefreshPreparedAt(ctx context.Context, prepared
 				return 0, err
 			}
 			priorBinding.CommitmentHash = priorCommitment
-			if !fleetBindingRecordMatches(prior, priorBinding, prepared.EffectiveEpoch-1, evidence.UID) {
-				return 0, fmt.Errorf("fleet %d member %d revoked generation mismatch", fleet.Fleet, evidence.Member)
-			}
-			successor, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackBindingVersionAt(binding.ClientID, big.NewInt(1)), coordinator.UnpackBindingVersionAt, block)
-			if err != nil || !fleetBindingRecordMatches(successor, binding, binding.ValidToEpoch, evidence.UID) {
-				return 0, stateMismatchError(err, "fleet %d member %d replacement generation mismatch", fleet.Fleet, evidence.Member)
-			}
-			members++
+			verificationFleet.Members = append(verificationFleet.Members, fleetRefreshVerificationMember{
+				Evidence: evidence, Binding: binding, PriorBinding: priorBinding,
+			})
 		}
-		memberCount, err := rawCoordinatorCallAt(ctx, self.oracle, coordinatorAddress, coordinator.PackFleetMemberCount(fleetID), coordinator.UnpackFleetMemberCount, block)
-		if err != nil || !memberCount.IsUint64() || memberCount.Uint64() != uint64(len(fleet.Members)) {
-			return 0, stateMismatchError(err, "fleet %d member count=%v, want %d", fleet.Fleet, memberCount, len(fleet.Members))
-		}
+		verificationFleet.FleetID = fleetID
+		verificationFleets = append(verificationFleets, verificationFleet)
 	}
-	return members, nil
+	return verifyFleetRefreshStateAt(ctx, self.oracle, coordinatorAddress, coordinator, verificationFleets, block)
 }
 
 // Requires one exact FleetRefreshed event per prepared fleet.

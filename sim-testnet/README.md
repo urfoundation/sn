@@ -307,6 +307,17 @@ then derive their receipts from the authenticated batch receipt and their
 canonical signed artifacts; they do not repeat the batch's live RPC surface.
 Resume still revalidates the source batch on chain before any new mutation.
 
+Generation-2 refreshes use the same rule on both execution and replay. Before a
+fresh atomic refresh is signed, all 40 predecessor count/record pairs are read
+as two HTTP batches of 50 and 30 elements. A carried 10-fleet refresh checks its
+ten mirrors, 40 version counts, 40 truncated predecessors, 40 successors and ten
+fleet cardinalities as three batches of 50, 50 and 40 elements. Oracle routing's
+five independent fields share one block-pinned request. Batching changes only
+transport: every returned field is decoded at its original position and checked
+against the signed evidence, deterministic manifest member and exact selected
+block. Provider/context failures remain operational failures and are never
+reported as evidence that a miner supplied a dishonest generation.
+
 At the pinned 12-second public-testnet cadence, this changes head-fleet setup
 from a many-hour serialized transaction chain to roughly 1--3 hours, including
 boundary alignment: 400 native commitments run in ten-wide waves, 40 EVM
