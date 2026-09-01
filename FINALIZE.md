@@ -1,6 +1,6 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and both generation-2 challenger fleets. Attempt 4 used exact plan `0x4ea53609168c9774183fe281a66fe0cbfb483008a0bbf6fb2ae3b33f75a15c5a`, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and finalized the challenger tournament at journal sequence 9,997 with postcondition `0x910c3512c771d6e6ed4ad68ea5900daaba3743b49a1687e4854fea68bd62e9fb`. Both operator APIs published the deployment evidence. M0A nevertheless failed closed: validator 2 restarted once after a public-RPC `currentEpoch` deadline, neither validator discovered a seed provider, and the operators classified loopback peers as unknown locations. All processes were stopped cleanly; no M0B/phase-2 transaction was attempted. Root fixes now provide complete loopback-US metadata, directly reachable per-operator loopback ingress, FIFO/cancellation-safe public-RPC admission, one-block/four-call operator epoch snapshots, context-aware validator snapshots with bounded transient startup retry, public-mode 60-second validator/claim cadence, serialized claim reconciliation, testnet-only market-price suppression, crash-safe proof append boundaries, two-generation semantic proof readiness around the challenger tournament, and kernel-generation detection so a supervisor restart cannot reset failure evidence. Focused normal/race tests, the full simulator suite in 149.386 seconds, the full database-backed operator suite in 1,457.076 seconds and the refreshed checkout lock pass. Server checkpoint `1ffd32c7` is pushed; the aggregate release gate, SN checkpoint and clean M0A replay remain. M0B/M1/M2, three consecutive 8-hour M3 blocks and MR remain pending. After a clean M0A, the irreducible live chain gate is approximately 48 hours: 20 one-hour accelerated epochs followed without idle staging by approximately 28 hours for the production-policy boundary, three complete 8-hour epochs and final settlement, 2026-09-01 UTC
+**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A on netuid 521 has installed and verified all 200 production fleets and both generation-2 challenger fleets. Attempt 4 used exact plan `0x4ea53609168c9774183fe281a66fe0cbfb483008a0bbf6fb2ae3b33f75a15c5a`, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, started the complete 32-process topology representing 1,000 miners, and finalized the challenger tournament at journal sequence 9,997 with postcondition `0x910c3512c771d6e6ed4ad68ea5900daaba3743b49a1687e4854fea68bd62e9fb`. Both operator APIs published the deployment evidence. M0A nevertheless failed closed: validator 2 restarted once after a public-RPC `currentEpoch` deadline, neither validator discovered a seed provider, and the operators classified loopback peers as unknown locations. All processes were stopped cleanly; no M0B/phase-2 transaction was attempted. Root fixes now provide complete loopback-US metadata, production-port per-operator loopback ingress through a capability-scoped Connect binary, deterministic exact-IP TLS identities trusted in addition to the normal public pins, FIFO/cancellation-safe public-RPC admission, one-block/four-call operator epoch snapshots, context-aware validator snapshots with bounded transient startup retry, public-mode 60-second validator/claim cadence, serialized claim reconciliation, testnet-only market-price suppression, crash-safe proof append boundaries, two-generation semantic proof readiness around the challenger tournament, and kernel-generation detection so a supervisor restart cannot reset failure evidence. The new ingress/trust/fallback tests pass normally and under the race detector, including the real server certificate loader and the complete 1,000-miner renderer. Source checkpoints SN `680e9f3`, server `cb6de1ad` and Connect `e78f815` are pushed; the checkout lock is refreshed locally. The aggregate release gate and clean M0A replay remain. M0B/M1/M2, three consecutive 8-hour M3 blocks and MR remain pending. After a clean M0A, the irreducible live chain gate is approximately 48 hours: 20 one-hour accelerated epochs followed without idle staging by approximately 28 hours for the production-policy boundary, three complete 8-hour epochs and final settlement, 2026-09-01 UTC
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -99,7 +99,7 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | Runtime-452 doctor and all bounded setup are complete. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 32 processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic fresh proofs and supervisor kernel-generation continuity. Focused and full simulator checks excluding the stale source lock pass; the complete aggregate gate and checkpoint are pending before exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | Runtime-452 doctor and all bounded setup are complete. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 32 processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. Focused normal/race and the full 1,000-miner renderer pass; source checkpoints are pushed and the refreshed aggregate gate is pending before exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 8-hour M3 blocks and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its “initial/current
 state” columns record the pre-implementation baseline; the completion tables above
@@ -1430,12 +1430,30 @@ Required safety controls:
 
 #### 8.1.8 Operator, miner, and validator topology
 
-The release profile launches the real binaries built from the locked repository commits:
+The release profile builds one locked harness binary that imports and runs the real
+`sn/miner`, `sn/validator`, `server/api`, `server/connect` and `server/taskworker`
+modules. Simulation-only wrappers provide bounded swarms and configuration, but may
+not reimplement their protocol, transport, verification, settlement or claim logic:
 
 - **Dependencies:** one program-managed, digest-pinned PostgreSQL/Redis pair per operator, isolated by address, credentials, name and data volume, and configured to mirror `server/local`. Neither database may be replaced by a shared external service in the release profile. The full `server/local` compose contract and every mounted PostgreSQL init hook are content-locked. Artifacts use the existing server `BlobStore`/MinIO configuration; `sim-testnet` must not launch a second object store. MinIO and Subtensor are the only external shared services. Release evidence records dependency image digests and effective non-secret blob configuration hashes.
 - **Each operator:** the required server API/connect/taskworker and related processes under a simulation-specific `WARP_ENV`, site/vault directory, ports, DB namespace, rendered testnet `st.yml`, `verify.yml`, server keys, NO ID, scoped chain signers, and server/blob artifact namespace. Health requires `/verify`, event index, task workers, chain roles, MinIO writes/reads, artifact-history API, and finalized checkpoint—not merely an open TCP port.
-- **Miners/providers:** actual `cli/miner`/provider binaries, each with a distinct home, JWT, client identity/key, payout coldkey, NO selection, and logs. The release profile uses at least six, distributed across both NOs; scenario expansion may use twenty or more.
-- **Validators:** actual `cli/validator` binaries with distinct state directories, UR credentials, vpk, Substrate hotkey/coldkey, stake/permit, and both NO endpoints. At least two run concurrently and independently persist trail/stat/CRv4 state.
+- **Connect ingress fidelity:** each NO receives a distinct loopback IP and the real
+  client defaults must reach H3 on UDP/443 and encoded DNS on UDP/53, with 53 mapped
+  to the server's private service port 4053 and 8053 retained for compatibility.
+  Only an owner-private byte-identical Connect executable may receive
+  `cap_net_bind_service`; readback, executable equality and every exact listener are
+  preflight gates. A deterministic exact-IP leaf and explicit no-SNI fallback must
+  load through the real server, while miners and validators strictly append the
+  simulator CA to the ordinary public pin set. Disabling certificate verification,
+  using translated ports clients cannot discover, or granting the capability to the
+  supervisor/other workloads is forbidden.
+- **Miners/providers:** the real miner/provider module runs 1,000 independently
+  configured identities in bounded production swarms; every identity retains a
+  distinct home, JWT, client identity/key, payout coldkey, NO selection, egress
+  source and observable failure state.
+- **Validators:** the real validator module runs with distinct state directories, UR
+  credentials, vpk, Substrate hotkey/coldkey, stake/permit, and both NO endpoints.
+  At least two run concurrently and independently persist trail/stat/CRv4 state.
 - **Head fleet:** at least three distinct miner client identities controlled by one separately registered fleet hotkey, plus a second fleet/prefix case when testing split adjustment.
 
 The supervisor starts dependencies first, then operator processes, miners, and validators. It applies readiness gates between phases, captures stdout/stderr separately with role/identity/run metadata, restarts only according to a declared policy, and gracefully drains children on `stop`. A crash/restart cannot regenerate identities or lose the transaction journal.
@@ -2828,10 +2846,18 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
    - rendered site settings give every `127.0.0.0/8` simulation source complete,
      clean US metadata while preserving its original address for /29 diversity;
-   - each operator owns a distinct loopback ingress IP and binds H3, current and
-     compatibility DNS, both exchange sockets, and status directly on the same
-     service ports it advertises. API and taskworker listeners are also explicitly
-     loopback-bound instead of falling back to `0.0.0.0`;
+   - each operator owns a distinct loopback ingress IP. An owner-private,
+     byte-identical Connect executable receives only `cap_net_bind_service` and
+     binds production H3 on UDP/443, service 4053 on public UDP/53, compatibility
+     DNS on UDP/8053, both exchange sockets, and status. API, taskworker,
+     validator, miner, claim and supervisor binaries remain unprivileged and all
+     listeners are loopback-bound instead of falling back to `0.0.0.0`;
+   - a deterministic private CA issues exact-IP Ed25519 leaves with independent
+     key and public-serial derivation domains. The real server gets the operator
+     IP as its TLS fallback because Go omits SNI for IP literals; miners and
+     validators strictly append that CA to, rather than replace, Connect's normal
+     public pin set. Leaf-only, mixed, malformed and trailing-data root bundles
+     fail closed;
    - the process-wide public EVM gate is FIFO, cancellation-safe and shares
      provider cooldown, so hot polling cannot starve settlement or claim work and
      a canceled waiter cannot consume a scarce slot;
@@ -2856,12 +2882,13 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    coherent RPC block tags/call counts, nil/empty finalized reads, transient versus
    permanent retry classes, all 1,000 simulated source addresses, torn JSONL tails,
    stale pre-launch and pre-tournament proof counts, advertised-versus-bound
-   connect endpoints, child restarts, supervisor PID reuse/generation changes,
-   testnet market selection and release-gate inclusion. Focused normal/race tests
-   and the full simulator suite pass. The complete database-backed operator suite
-   passed in 1,457.076 seconds; server checkpoint `1ffd32c7` is pushed and the
-   refreshed source lock passes. The aggregate gate and SN checkpoint remain before
-   another live replay.
+   Connect endpoints, exact privileged probe arguments/capability readback,
+   no-SNI certificate selection, strict private roots, key/serial separation,
+   child restarts, supervisor PID reuse/generation changes, testnet market selection
+   and release-gate inclusion. Focused normal/race tests and the real 1,000-miner
+   renderer pass. Source checkpoints SN `680e9f3`, server `cb6de1ad` and Connect
+   `e78f815` are pushed; the refreshed source lock is pending its aggregate gate
+   before another live replay.
    Once that replay is clean, `release-1.0` still observes 20 sequential
    300-block epochs (approximately 20 hours). `production-soak` then schedules
    the 2,400-block policy and observes its future-effective boundary, three
