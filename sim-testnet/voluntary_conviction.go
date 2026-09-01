@@ -198,10 +198,97 @@ func validateVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, recovery 
 	return nil
 }
 
+// Validate the exact base-transfer/repair shape used by the one recoverable
+// voluntary-conviction dependency transition.
+func validateVoluntaryConvictionCustodyPair(baseTransfer, repair Action, repairID string) error {
+	if baseTransfer.ID != "alpha.transfer.operator-deposit.1" || repair.ID != repairID || baseTransfer.Kind != "substrate-extrinsic" || repair.Kind != "substrate-extrinsic" || repair.Target != baseTransfer.Target || repair.Spend.AlphaRao == 0 || repair.Spend.TAORao != 0 || !repair.Spend.EVMGasWei.IsZero() || repair.Spend.Registrations != 0 || repair.Spend.SubnetCreations != 0 ||
+		repair.Parameters[alphaRepairForActionParameter] != baseTransfer.ID || !slices.Equal(repair.DependsOn, []string{baseTransfer.ID}) {
+		return errors.New("recovered voluntary-conviction custody repair is not rooted in the exact base transfer")
+	}
+	intent, err := actionIntentHash(repair)
+	if err != nil || intent != repair.IntentHash {
+		return stateMismatchError(err, "recovered voluntary-conviction custody repair intent is invalid")
+	}
+	return nil
+}
+
+// Resolve a verified custody pair from the exact plan which introduced the
+// repair. A later active plan may retain the repair while rebuilding the base
+// transfer under a new policy, so active-action lookup alone is insufficient.
+func verifiedVoluntaryConvictionCustodyPair(prior *SetupPlan, entries []JournalEntry, repairID string, loadPlan func(string) (*SetupPlan, error), verifyReceipt func(JournalEntry) error) (Action, Action, error) {
+	if prior == nil || repairID == "" || loadPlan == nil || verifyReceipt == nil {
+		return Action{}, Action{}, errors.New("voluntary-conviction custody lineage context is incomplete")
+	}
+	allowed := prior.allowedPlanHashes()
+	var selectedBase, selectedRepair *Action
+	for _, repairEntry := range entries {
+		if repairEntry.Sequence == 0 || repairEntry.Stage != StageVerified || repairEntry.ActionID != repairID || !allowed[repairEntry.PlanHash] {
+			continue
+		}
+		plan, err := loadPlan(repairEntry.PlanHash)
+		if err != nil {
+			return Action{}, Action{}, err
+		}
+		var base, repair *Action
+		for index := range plan.Actions {
+			action := &plan.Actions[index]
+			switch {
+			case action.ID == "alpha.transfer.operator-deposit.1":
+				if base != nil {
+					return Action{}, Action{}, errors.New("custody lineage plan has duplicate operator-1 base transfers")
+				}
+				copy := *action
+				base = &copy
+			case action.ID == repairID && action.IntentHash == repairEntry.IntentHash:
+				if repair != nil {
+					return Action{}, Action{}, errors.New("custody lineage plan has duplicate exact repairs")
+				}
+				copy := *action
+				repair = &copy
+			}
+		}
+		if base == nil || repair == nil {
+			return Action{}, Action{}, errors.New("verified custody repair is absent from its source plan")
+		}
+		if err := validateVoluntaryConvictionCustodyPair(*base, *repair, repairID); err != nil {
+			return Action{}, Action{}, err
+		}
+		var baseEntry *JournalEntry
+		for index := range entries {
+			entry := &entries[index]
+			if entry.Sequence == 0 || entry.Sequence >= repairEntry.Sequence || entry.Stage != StageVerified || !allowed[entry.PlanHash] || entry.ActionID != base.ID || entry.IntentHash != base.IntentHash {
+				continue
+			}
+			if baseEntry != nil {
+				return Action{}, Action{}, errors.New("custody lineage has multiple exact base verifications")
+			}
+			copy := *entry
+			baseEntry = &copy
+		}
+		if baseEntry == nil {
+			return Action{}, Action{}, errors.New("custody lineage repair has no earlier exact base verification")
+		}
+		if err := verifyReceipt(*baseEntry); err != nil {
+			return Action{}, Action{}, fmt.Errorf("custody lineage base postcondition: %w", err)
+		}
+		if err := verifyReceipt(repairEntry); err != nil {
+			return Action{}, Action{}, fmt.Errorf("custody lineage repair postcondition: %w", err)
+		}
+		if selectedRepair != nil {
+			return Action{}, Action{}, errors.New("custody lineage has multiple verified repair sources")
+		}
+		selectedBase, selectedRepair = base, repair
+	}
+	if selectedBase == nil || selectedRepair == nil {
+		return Action{}, Action{}, errors.New("custody lineage has no verified repair source")
+	}
+	return *selectedBase, *selectedRepair, nil
+}
+
 // Permit the fresh planner's base custody dependency to converge onto the
 // exact verified repair that already preceded the authenticated original
 // conviction. No other executable or dependency difference is recoverable.
-func validateVoluntaryConvictionFreshDependency(revised, prior *SetupPlan, entries []JournalEntry, original, fresh Action) error {
+func validateVoluntaryConvictionFreshDependency(cfg *ResolvedConfig, stateDir string, revised, prior *SetupPlan, entries []JournalEntry, original, fresh Action) error {
 	if sameEVMTransactionExceptGasUnits(original, fresh) {
 		return nil
 	}
@@ -254,24 +341,34 @@ func validateVoluntaryConvictionFreshDependency(revised, prior *SetupPlan, entri
 		copy := prior.Actions[index]
 		repair = &copy
 	}
-	if baseTransfer == nil || repair == nil || baseTransfer.Kind != "substrate-extrinsic" || repair.Kind != "substrate-extrinsic" || repair.Target != baseTransfer.Target || repair.Spend.AlphaRao == 0 || repair.Spend.TAORao != 0 || !repair.Spend.EVMGasWei.IsZero() || repair.Spend.Registrations != 0 || repair.Spend.SubnetCreations != 0 ||
-		repair.Parameters[alphaRepairForActionParameter] != baseTransferID || !slices.Equal(repair.DependsOn, []string{baseTransferID}) {
-		return errors.New("recovered voluntary-conviction custody repair is not rooted in the exact base transfer")
-	}
-	repairIntent, err := actionIntentHash(*repair)
-	if err != nil || repairIntent != repair.IntentHash {
-		return stateMismatchError(err, "recovered voluntary-conviction custody repair intent is invalid")
+	if baseTransfer != nil && repair != nil {
+		if err := validateVoluntaryConvictionCustodyPair(*baseTransfer, *repair, repairID); err != nil {
+			return err
+		}
 	}
 	baseVerified, repairVerified := false, false
 	for _, entry := range entries {
 		if !prior.allowedPlanHashes()[entry.PlanHash] || entry.Stage != StageVerified {
 			continue
 		}
-		baseVerified = baseVerified || entry.ActionID == baseTransfer.ID && entry.IntentHash == baseTransfer.IntentHash
-		repairVerified = repairVerified || entry.ActionID == repair.ID && entry.IntentHash == repair.IntentHash
+		baseVerified = baseVerified || baseTransfer != nil && entry.ActionID == baseTransfer.ID && entry.IntentHash == baseTransfer.IntentHash
+		repairVerified = repairVerified || repair != nil && entry.ActionID == repair.ID && entry.IntentHash == repair.IntentHash
 	}
 	if !baseVerified || !repairVerified {
-		return errors.New("recovered voluntary-conviction base transfer or custody repair lacks exact verification")
+		if cfg == nil {
+			return errors.New("recovered voluntary-conviction base transfer or custody repair lacks exact verification")
+		}
+		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: prior}
+		base, sourceRepair, lineageErr := verifiedVoluntaryConvictionCustodyPair(prior, entries, repairID,
+			func(planHash string) (*SetupPlan, error) {
+				return loadVoluntaryConvictionLineagePlan(stateDir, prior, planHash)
+			},
+			executor.verifyPersistedPostcondition,
+		)
+		if lineageErr != nil {
+			return fmt.Errorf("recovered voluntary-conviction base transfer or custody repair lacks exact verification: %w", lineageErr)
+		}
+		baseTransfer, repair = &base, &sourceRepair
 	}
 	aligned := fresh
 	aligned.DependsOn = append([]string(nil), fresh.DependsOn...)
@@ -799,7 +896,7 @@ func carryVerifiedVoluntaryConvictionCustodyDependency(revised, prior *SetupPlan
 // Insert the no-broadcast reconciliation, one bounded alpha repair, and a
 // barrier on the first unverified fleet-setup mutation. Already verified
 // native commitment intents are left byte-for-byte unchanged.
-func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, prior *SetupPlan, entries []JournalEntry, recovery voluntaryConvictionDuplicateRecovery) error {
+func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, stateDir string, revised, prior *SetupPlan, entries []JournalEntry, recovery voluntaryConvictionDuplicateRecovery) error {
 	if revised == nil || prior == nil {
 		return errors.New("voluntary-conviction recovery plans are unavailable")
 	}
@@ -909,7 +1006,7 @@ func applyVoluntaryConvictionDuplicateRecovery(cfg *ResolvedConfig, revised, pri
 	// that action verbatim instead of relying on a later generic gas-ceiling
 	// carry pass; rebuilding it would create a new logical intent after the
 	// cumulative conviction is already nonzero.
-	if err := validateVoluntaryConvictionFreshDependency(revised, prior, entries, recovery.OriginalAction, revised.Actions[voluntaryIndex]); err != nil {
+	if err := validateVoluntaryConvictionFreshDependency(cfg, stateDir, revised, prior, entries, recovery.OriginalAction, revised.Actions[voluntaryIndex]); err != nil {
 		return err
 	}
 	if err := carryVerifiedVoluntaryConvictionCustodyDependency(revised, prior, entries, recovery.OriginalAction); err != nil {

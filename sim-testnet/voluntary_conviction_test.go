@@ -3,6 +3,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -412,7 +414,7 @@ func TestPolicyRevisionCarriesVerifiedConvictionCustodyDependencyBeforeUse(t *te
 // on a verified custody repair, while a fresh build starts from the base
 // transfer until the later custody-preservation pass runs.
 func TestVoluntaryConvictionRecoveryAlignsExactVerifiedCustodyDependency(t *testing.T) {
-	cfg, _, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	cfg, stateDir, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
 	roles, err := derivePublicRoles(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -469,7 +471,7 @@ func TestVoluntaryConvictionRecoveryAlignsExactVerifiedCustodyDependency(t *test
 	recovery.DuplicateTransaction.IntentHash = recovery.DuplicateAction.IntentHash
 
 	revised := buildFresh()
-	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recovery); err != nil {
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, stateDir, revised, prior, entries, recovery); err != nil {
 		t.Fatalf("exact verified custody dependency was not aligned: %v", err)
 	}
 	if carried := actionByID(t, revised, voluntaryConvictionActionID); carried.IntentHash != recovery.OriginalAction.IntentHash || !slices.Equal(carried.DependsOn, recovery.OriginalAction.DependsOn) {
@@ -477,12 +479,12 @@ func TestVoluntaryConvictionRecoveryAlignsExactVerifiedCustodyDependency(t *test
 	}
 
 	withoutRepairProof := entries[:len(entries)-1]
-	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, withoutRepairProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, stateDir, buildFresh(), prior, withoutRepairProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
 		t.Fatalf("unverified custody repair aligned a one-shot transaction: %v", err)
 	}
 	withoutBaseProof := append([]JournalEntry(nil), entries[:len(entries)-2]...)
 	withoutBaseProof = append(withoutBaseProof, entries[len(entries)-1])
-	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, withoutBaseProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, stateDir, buildFresh(), prior, withoutBaseProof, recovery); err == nil || !strings.Contains(err.Error(), "lacks exact verification") {
 		t.Fatalf("unverified base transfer aligned a one-shot transaction: %v", err)
 	}
 	changed := recovery
@@ -493,8 +495,100 @@ func TestVoluntaryConvictionRecoveryAlignsExactVerifiedCustodyDependency(t *test
 		t.Fatal(err)
 	}
 	changed.OriginalIntentHash = changed.OriginalAction.IntentHash
-	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, buildFresh(), prior, entries, changed); err == nil {
+	if err := applyVoluntaryConvictionDuplicateRecovery(cfg, stateDir, buildFresh(), prior, entries, changed); err == nil {
 		t.Fatal("nondependency semantic change crossed verified custody alignment")
+	}
+}
+
+func TestVoluntaryConvictionCustodyPairUsesRepairSourcePlanAfterActiveBaseRebuild(t *testing.T) {
+	base := Action{ID: "alpha.transfer.operator-deposit.1", Kind: "substrate-extrinsic", Target: "0x1234", IntentHash: "0x" + strings.Repeat("11", 32)}
+	repair := Action{
+		ID: "alpha.repair.operator-deposit.1.2", Kind: "substrate-extrinsic", Target: base.Target,
+		Parameters: map[string]string{alphaRepairForActionParameter: base.ID}, Spend: Spend{AlphaRao: 10}, DependsOn: []string{base.ID},
+	}
+	var err error
+	repair.IntentHash, err = actionIntentHash(repair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceHash := "0x" + strings.Repeat("22", 32)
+	activeHash := "0x" + strings.Repeat("33", 32)
+	source := &SetupPlan{PlanHash: sourceHash, Actions: []Action{base, repair}}
+	rebuiltBase := base
+	rebuiltBase.IntentHash = "0x" + strings.Repeat("44", 32)
+	active := &SetupPlan{PlanHash: activeHash, PriorPlanHashes: []string{sourceHash}, Actions: []Action{rebuiltBase, repair}}
+	entries := []JournalEntry{
+		{Sequence: 10, PlanHash: sourceHash, ActionID: base.ID, IntentHash: base.IntentHash, Stage: StageVerified},
+		{Sequence: 20, PlanHash: sourceHash, ActionID: repair.ID, IntentHash: repair.IntentHash, Stage: StageVerified},
+	}
+	verifiedReceipts := map[string]bool{}
+	resolvedBase, resolvedRepair, err := verifiedVoluntaryConvictionCustodyPair(active, entries, repair.ID,
+		func(planHash string) (*SetupPlan, error) {
+			if planHash != sourceHash {
+				return nil, fmt.Errorf("unexpected plan %s", planHash)
+			}
+			return source, nil
+		},
+		func(entry JournalEntry) error {
+			verifiedReceipts[entry.ActionID+"\x00"+entry.IntentHash] = true
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedBase.IntentHash != base.IntentHash || resolvedRepair.IntentHash != repair.IntentHash || len(verifiedReceipts) != 2 {
+		t.Fatalf("source custody pair was not selected exactly: base=%+v repair=%+v receipts=%v", resolvedBase, resolvedRepair, verifiedReceipts)
+	}
+}
+
+func TestVoluntaryConvictionCustodyPairRejectsAdjacentLineageMutations(t *testing.T) {
+	base := Action{ID: "alpha.transfer.operator-deposit.1", Kind: "substrate-extrinsic", Target: "0x1234", IntentHash: "0x" + strings.Repeat("11", 32)}
+	repair := Action{
+		ID: "alpha.repair.operator-deposit.1.2", Kind: "substrate-extrinsic", Target: base.Target,
+		Parameters: map[string]string{alphaRepairForActionParameter: base.ID}, Spend: Spend{AlphaRao: 10}, DependsOn: []string{base.ID},
+	}
+	var err error
+	repair.IntentHash, err = actionIntentHash(repair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceHash := "0x" + strings.Repeat("22", 32)
+	baselinePlan := SetupPlan{PlanHash: sourceHash, Actions: []Action{base, repair}}
+	baselineActive := SetupPlan{PlanHash: "0x" + strings.Repeat("33", 32), PriorPlanHashes: []string{sourceHash}}
+	baselineEntries := []JournalEntry{
+		{Sequence: 10, PlanHash: sourceHash, ActionID: base.ID, IntentHash: base.IntentHash, Stage: StageVerified},
+		{Sequence: 20, PlanHash: sourceHash, ActionID: repair.ID, IntentHash: repair.IntentHash, Stage: StageVerified},
+	}
+	mutations := []func(*SetupPlan, *SetupPlan, *[]JournalEntry, *bool){
+		func(active, _ *SetupPlan, _ *[]JournalEntry, _ *bool) { active.PriorPlanHashes = nil },
+		func(_, source *SetupPlan, _ *[]JournalEntry, _ *bool) { source.Actions = source.Actions[:1] },
+		func(_, _ *SetupPlan, entries *[]JournalEntry, _ *bool) { (*entries)[0].Sequence = 21 },
+		func(_, _ *SetupPlan, entries *[]JournalEntry, _ *bool) {
+			(*entries)[0].IntentHash = "0x" + strings.Repeat("55", 32)
+		},
+		func(_, source *SetupPlan, _ *[]JournalEntry, _ *bool) { source.Actions[1].Target = "0x5678" },
+		func(_, _ *SetupPlan, _ *[]JournalEntry, failReceipt *bool) { *failReceipt = true },
+	}
+	for index, mutate := range mutations {
+		active, source := baselineActive, baselinePlan
+		active.PriorPlanHashes = append([]string(nil), baselineActive.PriorPlanHashes...)
+		source.Actions = append([]Action(nil), baselinePlan.Actions...)
+		entries := append([]JournalEntry(nil), baselineEntries...)
+		failReceipt := false
+		mutate(&active, &source, &entries, &failReceipt)
+		_, _, err := verifiedVoluntaryConvictionCustodyPair(&active, entries, repair.ID,
+			func(string) (*SetupPlan, error) { return &source, nil },
+			func(JournalEntry) error {
+				if failReceipt {
+					return errors.New("missing receipt")
+				}
+				return nil
+			},
+		)
+		if err == nil {
+			t.Errorf("custody lineage mutation %d was accepted", index)
+		}
 	}
 }
 

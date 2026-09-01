@@ -222,7 +222,7 @@ func TestSuccessfulAncestorTransactionRequiresExactVerifiedDescendantReconciliat
 	currentHash := "0x" + strings.Repeat("22", 32)
 	transaction := planRevisionTransaction{
 		PlanHash: ancestorHash, ActionID: "alpha.transfer.operator-deposit.2", IntentHash: "0x" + strings.Repeat("33", 32),
-		TransactionHash: "0x" + strings.Repeat("44", 32), BlockNumber: 123, BlockHash: "0x" + strings.Repeat("55", 32),
+		TransactionHash: "0x" + strings.Repeat("44", 32), BlockNumber: 123, BlockHash: "0x" + strings.Repeat("55", 32), JournalSequence: 1,
 	}
 	baseAction := Action{
 		ID: transaction.ActionID, Kind: "substrate-reconciliation", IntentHash: "0x" + strings.Repeat("66", 32),
@@ -235,11 +235,11 @@ func TestSuccessfulAncestorTransactionRequiresExactVerifiedDescendantReconciliat
 		},
 	}
 	baseEntries := []JournalEntry{
-		{PlanHash: ancestorHash, ActionID: transaction.ActionID, IntentHash: transaction.IntentHash, Stage: StageFinalized, TransactionHash: transaction.TransactionHash, BlockNumber: transaction.BlockNumber, BlockHash: transaction.BlockHash},
-		{PlanHash: currentHash, ActionID: baseAction.ID, IntentHash: baseAction.IntentHash, Stage: StageVerified},
+		{Sequence: 1, PlanHash: ancestorHash, ActionID: transaction.ActionID, IntentHash: transaction.IntentHash, Stage: StageFinalized, TransactionHash: transaction.TransactionHash, BlockNumber: transaction.BlockNumber, BlockHash: transaction.BlockHash},
+		{Sequence: 2, PlanHash: currentHash, ActionID: baseAction.ID, IntentHash: baseAction.IntentHash, Stage: StageVerified},
 	}
 
-	if !verifiedReconciliationForFinalizedAlphaTransaction(&SetupPlan{PlanHash: currentHash, PriorPlanHashes: []string{ancestorHash}, Actions: []Action{baseAction}}, baseEntries, transaction) {
+	if !verifiedAlphaReconciliationAction(&SetupPlan{PlanHash: currentHash, PriorPlanHashes: []string{ancestorHash}}, baseAction, baseEntries, transaction) {
 		t.Fatal("exact verified descendant reconciliation was not recognized")
 	}
 	for _, test := range []struct {
@@ -268,11 +268,155 @@ func TestSuccessfulAncestorTransactionRequiresExactVerifiedDescendantReconciliat
 			action.Parameters = cloneStrings(baseAction.Parameters)
 			entries := append([]JournalEntry(nil), baseEntries...)
 			test.mutate(&action, &entries)
-			plan := &SetupPlan{PlanHash: currentHash, PriorPlanHashes: []string{ancestorHash}, Actions: []Action{action}}
-			if verifiedReconciliationForFinalizedAlphaTransaction(plan, entries, transaction) {
+			plan := &SetupPlan{PlanHash: currentHash, PriorPlanHashes: []string{ancestorHash}}
+			if verifiedAlphaReconciliationAction(plan, action, entries, transaction) {
 				t.Fatal("inexact reconciliation closed a successful ancestor transaction")
 			}
 		})
+	}
+}
+
+func TestSuccessfulAncestorTransactionFindsReconciliationBeyondActiveActions(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transfer := actionByID(t, source, "alpha.transfer.operator-deposit.2")
+	transaction := planRevisionTransaction{
+		PlanHash: source.PlanHash, ActionID: transfer.ID, IntentHash: transfer.IntentHash,
+		TransactionHash: "0x" + strings.Repeat("44", 32), BlockNumber: 123, BlockHash: "0x" + strings.Repeat("55", 32), JournalSequence: 1,
+	}
+	entries := []JournalEntry{{
+		Sequence: 1, PlanHash: source.PlanHash, ActionID: transfer.ID, IntentHash: transfer.IntentHash, Stage: StageFinalized,
+		TransactionHash: transaction.TransactionHash, BlockNumber: transaction.BlockNumber, BlockHash: transaction.BlockHash,
+	}}
+	reconciliationPlan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciliationPlan.PriorPlanHashes = []string{source.PlanHash}
+	if err := reconcileFinalizedAlphaTransfers(reconciliationPlan, source, entries); err != nil {
+		t.Fatal(err)
+	}
+	reconciliationPlan.PlanHash, err = reconciliationPlan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(reconciliationPlan); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	encoded, err := json.MarshalIndent(reconciliationPlan, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(reconciliationPlan.PlanHash)+".json"), append(encoded, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reconciliation := actionByID(t, reconciliationPlan, transfer.ID)
+	shortfall, err := alphaTransferRoundingShortfall(reconciliation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := uint64(7)
+	after := before + reconciliation.Spend.AlphaRao - shortfall
+	observed := map[string]any{
+		"kind": reconciliation.Kind, "target": reconciliation.Target,
+		"stake_rao": after, "exact_transfer_rao": reconciliation.Spend.AlphaRao,
+		"transfer_parent_stake_rao": before, "transfer_finalized_stake_rao": after,
+		"credited_transfer_rao": after - before, "maximum_destination_rounding_shortfall_rao": shortfall,
+		"transfer_block":                       transaction.BlockNumber,
+		"runtime_default_min_transfer_tao_rao": reconciliation.Parameters["runtime_default_min_transfer_tao_rao"],
+		"approved_alpha_price_q9":              reconciliation.Parameters["approved_alpha_price_q9"],
+		"minimum_tao_equivalent_margin_bps":    reconciliation.Parameters["minimum_tao_equivalent_margin_bps"],
+	}
+	record := ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: reconciliationPlan.PlanHash, ActionID: reconciliation.ID, IntentHash: reconciliation.IntentHash,
+		OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		SubstrateFinalized: ChainHead{Number: 130, Hash: "0x" + strings.Repeat("61", 32)},
+		EVMFinalized:       ChainHead{Number: 130, Hash: "0x" + strings.Repeat("62", 32)}, EVMHashDomain: "evm-rpc",
+		Observed: observed, IndependentSubstrateFinalized: ChainHead{Number: 130, Hash: "0x" + strings.Repeat("61", 32)},
+		IndependentEVMFinalized: ChainHead{Number: 130, Hash: "0x" + strings.Repeat("62", 32)}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: maps.Clone(observed),
+	}
+	path, err := postconditionRelativePath(reconciliationPlan.PlanHash, reconciliation.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := canonicalHashHex(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(stateDir, filepath.FromSlash(path)), record); err != nil {
+		t.Fatal(err)
+	}
+	entries = append(entries, JournalEntry{
+		Sequence: 2, PlanHash: reconciliationPlan.PlanHash, ActionID: reconciliation.ID, IntentHash: reconciliation.IntentHash,
+		Stage: StageVerified, PostconditionHash: hash, PostconditionPath: path,
+	})
+	active, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active.PriorPlanHashes = append(append([]string(nil), reconciliationPlan.PriorPlanHashes...), reconciliationPlan.PlanHash)
+	active.PlanHash, err = active.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actionByID(t, active, transfer.ID).Kind == "substrate-reconciliation" {
+		t.Fatal("fixture did not reproduce a fresh active action hiding the historical reconciliation")
+	}
+	verified, err := verifiedReconciliationForFinalizedAlphaTransaction(cfg, stateDir, active, entries, transaction)
+	if err != nil || !verified {
+		t.Fatalf("authenticated descendant reconciliation verified=%t error=%v", verified, err)
+	}
+}
+
+func TestAlphaReconciliationPostconditionRejectsAdjacentMutations(t *testing.T) {
+	action := Action{
+		ID: "alpha.transfer.operator-deposit.2", Kind: "substrate-reconciliation", Target: "0x1234",
+		Parameters: map[string]string{
+			alphaRecoveryBlockParameter: "123", "runtime_default_min_transfer_tao_rao": "100000",
+			"approved_alpha_price_q9": "568309", "minimum_tao_equivalent_margin_bps": "1000",
+			"maximum_destination_rounding_shortfall_rao": "1", "minimum_destination_credit_rao": "24",
+		},
+		Spend: Spend{AlphaRao: 25},
+	}
+	baseline := map[string]any{
+		"kind": action.Kind, "target": action.Target, "stake_rao": uint64(31), "exact_transfer_rao": uint64(25),
+		"transfer_parent_stake_rao": uint64(7), "transfer_finalized_stake_rao": uint64(31), "credited_transfer_rao": uint64(24),
+		"maximum_destination_rounding_shortfall_rao": uint64(1), "transfer_block": uint64(123),
+		"runtime_default_min_transfer_tao_rao": "100000", "approved_alpha_price_q9": "568309", "minimum_tao_equivalent_margin_bps": "1000",
+	}
+	if err := validateAlphaReconciliationObservedPostcondition(baseline, action); err != nil {
+		t.Fatal(err)
+	}
+	mutations := []func(map[string]any){
+		func(value map[string]any) { value["kind"] = "substrate-extrinsic" },
+		func(value map[string]any) { value["target"] = "0x5678" },
+		func(value map[string]any) { value["exact_transfer_rao"] = uint64(24) },
+		func(value map[string]any) { value["maximum_destination_rounding_shortfall_rao"] = uint64(2) },
+		func(value map[string]any) { value["credited_transfer_rao"] = uint64(23) },
+		func(value map[string]any) { value["transfer_finalized_stake_rao"] = uint64(30) },
+		func(value map[string]any) { value["stake_rao"] = uint64(30) },
+		func(value map[string]any) { value["transfer_block"] = uint64(124) },
+		func(value map[string]any) { value["runtime_default_min_transfer_tao_rao"] = "99999" },
+		func(value map[string]any) { value["approved_alpha_price_q9"] = "1" },
+		func(value map[string]any) { value["minimum_tao_equivalent_margin_bps"] = "999" },
+		func(value map[string]any) { value["unexpected"] = true },
+	}
+	for index, mutate := range mutations {
+		candidate := maps.Clone(baseline)
+		mutate(candidate)
+		if err := validateAlphaReconciliationObservedPostcondition(candidate, action); err == nil {
+			t.Errorf("postcondition mutation %d was accepted", index)
+		}
 	}
 }
 

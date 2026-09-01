@@ -3000,6 +3000,48 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    `precompile-conformance` result remains durable failed evidence and must be
    rerun cleanly after relaunch; it is not counted as M0B evidence.
 
+   The first post-lock read-only replay then exposed two deeper instances of
+   the same revision-lineage class before any write. A finalized operator-2
+   alpha transfer had already been closed by an exact descendant
+   `substrate-reconciliation`, but the recovery scanner searched only the new
+   plan's active actions and therefore could no longer see that reconciliation.
+   After crossing that boundary, the voluntary-conviction recovery likewise
+   found the carried repair but compared it with the newly rebuilt operator-1
+   base transfer instead of the exact base/repair pair from the repair's source
+   plan. Both failures were fail-closed and the journal remained at sequence
+   9,997.
+
+   Recovery now searches the complete allowed ancestry, loads each candidate
+   plan by its authenticated hash, resolves the exact action intent and requires
+   ordered journal evidence. The alpha path additionally re-hashes the persisted
+   postcondition and independently validates both observers' exact 12-field
+   transfer result, runtime floor, block, amount, credited delta and bounded
+   one-rao rounding shortfall. The conviction path requires the exact earlier
+   base verification, later repair verification, dependency shape, spend shape
+   and both persisted receipts from the repair's source plan; ambiguous sources
+   fail closed. Deterministic regressions reproduce both live hidden-ancestor
+   shapes and mutate ancestry, plan/action identity, journal order, intent,
+   transfer arithmetic, runtime floor, block, dependency/spend shape and receipt
+   availability. Focused normal and race runs pass. The final aggregate gate
+   also passed end to end: the ordinary simulator suite completed in 172.401
+   seconds, the complete race suite in 620.473 seconds, both Solidity roots had
+   zero Slither findings, all 145 Foundry tests and 4,608 invariant calls passed,
+   the operator PostgreSQL/Redis and all 26 Subtensor infrastructure tests
+   passed, and patch hygiene plus the final checkout-lock recheck were green.
+
+   A fresh doctor on the attempt-4 state is again `ready=true`, with only the two
+   documented official-public-RPC independence findings soft. Two complete
+   read-only builds at finalized Substrate/EVM heads 7,909,755 and 7,909,769
+   produced the identical schema-v11 plan
+   `0x4ebc0e8e3dc4a6a9702b70599c63d19b5af085be4c27ec5e7f003f72f0174fb6`
+   under release-lock hash
+   `0xc7033d2d241db57bebc4853c2e191ff16490fc5b0fa4e540daa579fe344093b0`.
+   It contains 2,238 actions and 44 authenticated ancestors; policy/config hashes,
+   coordinator upgrade, active maxima, superseded maxima and cumulative headroom
+   remain exactly as reviewed above. This hash remains a candidate until the
+   source checkpoint is pushed; only the twice rebuilt hash from that clean
+   pushed checkout may be authorized for apply.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the

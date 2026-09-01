@@ -1094,31 +1094,116 @@ func recoverableFinalizedAlphaTransaction(prior *SetupPlan, entries []JournalEnt
 	return false
 }
 
-// Recognize a successful ancestor transfer only after a descendant plan has
-// bound that exact transaction into a no-broadcast reconciliation and durably
-// verified its bounded destination-share postcondition. This closes the
-// revision lineage without treating an unrelated action with the same ID as
-// verification of the original mutation.
-func verifiedReconciliationForFinalizedAlphaTransaction(prior *SetupPlan, entries []JournalEntry, transaction planRevisionTransaction) bool {
+// Check one exact reconciliation envelope and its verified journal marker.
+// The plan containing the action is authenticated separately by the lineage
+// reader so this pure predicate remains mutation-testable.
+func verifiedAlphaReconciliationAction(prior *SetupPlan, action Action, entries []JournalEntry, transaction planRevisionTransaction) bool {
 	if prior == nil || transaction.BlockNumber == 0 || transaction.BlockHash == "" || transaction.TransactionHash == "" {
 		return false
 	}
 	allowedPlans := prior.allowedPlanHashes()
-	for _, action := range prior.Actions {
-		if action.ID != transaction.ActionID || action.Kind != "substrate-reconciliation" || action.Parameters[alphaRecoveryPlanHashParameter] != transaction.PlanHash || action.Parameters[alphaRecoveryIntentHashParameter] != transaction.IntentHash || !strings.EqualFold(action.Parameters[alphaRecoveryTransactionHashParameter], transaction.TransactionHash) || action.Parameters[alphaRecoveryBlockParameter] != strconv.FormatUint(transaction.BlockNumber, 10) || !strings.EqualFold(action.Parameters[alphaRecoveryBlockHashParameter], transaction.BlockHash) {
-			continue
-		}
-		if !hasFinalizedAlphaRecoveryEvidence(prior, action, entries) {
-			return false
-		}
-		for _, entry := range entries {
-			if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && entry.IntentHash == action.IntentHash && entry.Stage == StageVerified {
-				return true
-			}
-		}
+	if action.ID != transaction.ActionID || action.Kind != "substrate-reconciliation" || action.Parameters[alphaRecoveryPlanHashParameter] != transaction.PlanHash || action.Parameters[alphaRecoveryIntentHashParameter] != transaction.IntentHash || !strings.EqualFold(action.Parameters[alphaRecoveryTransactionHashParameter], transaction.TransactionHash) || action.Parameters[alphaRecoveryBlockParameter] != strconv.FormatUint(transaction.BlockNumber, 10) || !strings.EqualFold(action.Parameters[alphaRecoveryBlockHashParameter], transaction.BlockHash) || !hasFinalizedAlphaRecoveryEvidence(prior, action, entries) {
 		return false
 	}
+	for _, entry := range entries {
+		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && entry.IntentHash == action.IntentHash && entry.Stage == StageVerified && entry.Sequence > transaction.JournalSequence {
+			return true
+		}
+	}
 	return false
+}
+
+// Validate every field emitted by verifyAlphaTransfer for a no-broadcast
+// reconciliation. Both stored observers must independently satisfy this
+// shape before the historical transaction is considered closed.
+func validateAlphaReconciliationObservedPostcondition(observed map[string]any, action Action) error {
+	if len(observed) != 12 || action.Kind != "substrate-reconciliation" || observed["kind"] != action.Kind || observed["target"] != action.Target ||
+		observed["approved_alpha_price_q9"] != action.Parameters["approved_alpha_price_q9"] || observed["minimum_tao_equivalent_margin_bps"] != action.Parameters["minimum_tao_equivalent_margin_bps"] {
+		return errors.New("alpha reconciliation postcondition has the wrong identity or fields")
+	}
+	runtimeField := "runtime_default_min_transfer_tao_rao"
+	if action.Parameters[runtimeField] == "" {
+		runtimeField = "runtime_initial_min_stake_tao_rao"
+	}
+	if action.Parameters[runtimeField] == "" || observed[runtimeField] != action.Parameters[runtimeField] {
+		return errors.New("alpha reconciliation postcondition has the wrong runtime floor")
+	}
+	read := func(name string) (uint64, error) {
+		value, err := substrateFundingObservedRao(observed[name])
+		if err != nil {
+			return 0, fmt.Errorf("alpha reconciliation %s: %w", name, err)
+		}
+		return value, nil
+	}
+	exact, exactErr := read("exact_transfer_rao")
+	shortfall, shortfallErr := read("maximum_destination_rounding_shortfall_rao")
+	before, beforeErr := read("transfer_parent_stake_rao")
+	after, afterErr := read("transfer_finalized_stake_rao")
+	credited, creditedErr := read("credited_transfer_rao")
+	stake, stakeErr := read("stake_rao")
+	block, blockErr := read("transfer_block")
+	wantBlock, wantBlockErr := strconv.ParseUint(action.Parameters[alphaRecoveryBlockParameter], 10, 64)
+	wantShortfall, wantShortfallErr := alphaTransferRoundingShortfall(action)
+	wantCredited, creditErr := alphaTransferCreditedRao(before, after, action.Spend.AlphaRao, wantShortfall)
+	if exactErr != nil || shortfallErr != nil || beforeErr != nil || afterErr != nil || creditedErr != nil || stakeErr != nil || blockErr != nil || wantBlockErr != nil || wantShortfallErr != nil || creditErr != nil {
+		return errors.Join(exactErr, shortfallErr, beforeErr, afterErr, creditedErr, stakeErr, blockErr, wantBlockErr, wantShortfallErr, creditErr)
+	}
+	if exact != action.Spend.AlphaRao || shortfall != wantShortfall || credited != wantCredited || stake < after || block != wantBlock {
+		return errors.New("alpha reconciliation postcondition differs from the exact recovered transfer")
+	}
+	return nil
+}
+
+// Recognize a successful ancestor transfer only after an ordered descendant
+// plan binds the exact transaction into a no-broadcast reconciliation and its
+// hash-authenticated dual-observer postcondition proves the bounded transfer.
+// Searching the complete lineage is necessary after a later fresh plan no
+// longer carries the old reconciliation as its active action representation.
+func verifiedReconciliationForFinalizedAlphaTransaction(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, transaction planRevisionTransaction) (bool, error) {
+	if cfg == nil || prior == nil || transaction.JournalSequence == 0 {
+		return false, errors.New("verified alpha-reconciliation lineage context is incomplete")
+	}
+	allowedPlans := prior.allowedPlanHashes()
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: prior}
+	for _, entry := range entries {
+		if entry.Sequence <= transaction.JournalSequence || !allowedPlans[entry.PlanHash] || entry.ActionID != transaction.ActionID || entry.Stage != StageVerified {
+			continue
+		}
+		plan, err := loadSubstrateFundingLineagePlan(stateDir, prior, entry.PlanHash)
+		if err != nil {
+			return false, err
+		}
+		var candidate *Action
+		for index := range plan.Actions {
+			action := &plan.Actions[index]
+			if action.ID != entry.ActionID || action.IntentHash != entry.IntentHash {
+				continue
+			}
+			if candidate != nil {
+				return false, errors.New("verified alpha-reconciliation descendant has duplicate exact actions")
+			}
+			copy := *action
+			candidate = &copy
+		}
+		if candidate == nil || !verifiedAlphaReconciliationAction(prior, *candidate, entries, transaction) {
+			continue
+		}
+		record, err := executor.readPersistedPostcondition(entry)
+		if err != nil {
+			return false, fmt.Errorf("verified alpha-reconciliation descendant postcondition: %w", err)
+		}
+		if record.SubstrateFinalized.Number < transaction.BlockNumber || record.IndependentSubstrateFinalized.Number < transaction.BlockNumber {
+			return false, errors.New("verified alpha-reconciliation descendant predates the recovered transfer")
+		}
+		if err := validateAlphaReconciliationObservedPostcondition(record.Observed, *candidate); err != nil {
+			return false, fmt.Errorf("operational alpha-reconciliation descendant: %w", err)
+		}
+		if err := validateAlphaReconciliationObservedPostcondition(record.IndependentObserved, *candidate); err != nil {
+			return false, fmt.Errorf("comparison alpha-reconciliation descendant: %w", err)
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // Prove that one prior EVM transaction has a canonical finalized revert.
@@ -1219,7 +1304,11 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				// separately bounded minimum-size repair. No duplicate allocation is
 				// permitted for any other successful unverified transaction.
 				if errors.Is(err, errPriorNativeTransactionSucceeded) {
-					if recoverableFinalizedAlphaTransaction(prior, entries, transaction) || verifiedReconciliationForFinalizedAlphaTransaction(prior, entries, transaction) {
+					reconciled, reconciliationErr := verifiedReconciliationForFinalizedAlphaTransaction(cfg, stateDir, prior, entries, transaction)
+					if reconciliationErr != nil {
+						return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w", transaction.PlanHash, transaction.ActionID, reconciliationErr)
+					}
+					if recoverableFinalizedAlphaTransaction(prior, entries, transaction) || reconciled {
 						continue
 					}
 					recovery, recoveryErr := detectFinalizedSubstrateFundingRecovery(cfg, stateDir, prior, entries, substrateChain, raw, transaction)
@@ -3338,7 +3427,7 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		return nil, fmt.Errorf("reconcile finalized substrate funding: %w", err)
 	}
 	if len(recoveries.VoluntaryConvictions) == 1 {
-		if err := applyVoluntaryConvictionDuplicateRecovery(cfg, revised, prior, entries, recoveries.VoluntaryConvictions[0]); err != nil {
+		if err := applyVoluntaryConvictionDuplicateRecovery(cfg, stateDir, revised, prior, entries, recoveries.VoluntaryConvictions[0]); err != nil {
 			return nil, fmt.Errorf("reconcile duplicate voluntary conviction: %w", err)
 		}
 	}
