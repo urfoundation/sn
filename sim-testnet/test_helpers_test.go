@@ -39,7 +39,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		},
 		Contracts:    ContractConfig{Install: true, GovernanceProfile: "testnet-single-owner", VerifyRuntimeCodeHash: true},
 		Dependencies: DependencyConfig{Mode: "managed_containers", ObjectStore: "server-blob"},
-		Artifacts:    ArtifactConfig{Writer: "server-blob", HistoryAPI: "server-api", ContentAddressed: true},
+		Artifacts:    ArtifactConfig{Writer: "server-blob", HistoryAPI: "server-api", ContentAddressed: true, MinioPrefix: "blob/sim-testnet/${deployment_id}"},
 		Processes:    ProcessConfig{RestartPolicy: "on_failure_bounded"},
 		Scenarios: ScenarioConfig{
 			Launch: "smoke", Release: "release-1.0", ShortEpochs: 5, ProductionEpochs: 3,

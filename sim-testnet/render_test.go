@@ -62,6 +62,35 @@ func TestOperatorSimulationSiteSettingsLocateEveryLoopbackPeerInUS(t *testing.T)
 	}
 }
 
+func TestRenderOperatorBlobConfigUsesConfiguredArtifactPrefix(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Artifacts.MinioPrefix = "blob/sim-testnet-light/${deployment_id}"
+	vault := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vault, "main"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := []byte("authority: minio.example:23900\ntls: true\nbucket: blob\naccess_key: test-access\nsecret_key: test-secret\n")
+	if err := atomicWrite(filepath.Join(vault, "main", "minio.yml"), source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Repos.Vault = vault
+	destination := filepath.Join(t.TempDir(), "minio.yml")
+	if err := renderOperatorBlobConfig(cfg, 2, destination); err != nil {
+		t.Fatal(err)
+	}
+	var rendered renderedOperatorBlobConfig
+	if err := strictYAML(destination, &rendered); err != nil {
+		t.Fatal(err)
+	}
+	want, err := operatorArtifactPrefix(cfg.Config, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered.Prefix != want || rendered.Authority != "minio.example:23900" || !rendered.TLS || rendered.Bucket != "blob" {
+		t.Fatalf("rendered light artifact store = %+v, want prefix %q", rendered, want)
+	}
+}
+
 // Private mode follows block cadence within the supported range; public mode
 // reserves the remaining shared request budget for settlement and claims.
 func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {

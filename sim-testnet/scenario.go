@@ -3393,7 +3393,7 @@ scenarioLoop:
 				return result, err
 			}
 		}
-		hashes, err := evidenceFileHashes(runDir)
+		hashes, err := evidenceFileHashes(runDir, cfg.Config.Topology.Operators)
 		if err != nil {
 			return finalEvidenceFailure("evidence_file_hashes", err)
 		}

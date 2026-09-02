@@ -325,61 +325,107 @@ func validateRuntimeConfigStaticTrees(cfg *ResolvedConfig, stateDir string, expe
 	return nil
 }
 
-// Reconstruct identity, inventory, modes and bytes before accepting config
-// rendering as a durable setup postcondition.
-func verifyRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (runtimeConfigVerification, error) {
+// Authenticate the manifest identity and complete expected inventory before a
+// caller selects either every static input or a security-critical subset.
+func authenticatedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeConfigManifest, map[string]os.FileMode, error) {
 	var manifest RuntimeConfigManifest
 	path := runtimeConfigManifestPath(stateDir)
 	if err := decodeStrictJSONFile(path, &manifest); err != nil {
-		return runtimeConfigVerification{}, fmt.Errorf("read runtime config manifest: %w", err)
+		return nil, nil, fmt.Errorf("read runtime config manifest: %w", err)
 	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
-		return runtimeConfigVerification{}, stateMismatchError(err, "runtime config manifest is absent or not private")
+		return nil, nil, stateMismatchError(err, "runtime config manifest is absent or not private")
 	}
 	if manifest.Schema != runtimeConfigManifestSchema || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID ||
 		!strings.EqualFold(manifest.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(manifest.PolicyHash, cfg.PolicyHash) {
-		return runtimeConfigVerification{}, errors.New("runtime config manifest identity does not match the active deployment")
+		return nil, nil, errors.New("runtime config manifest identity does not match the active deployment")
 	}
 	if _, err := decodeHex32("runtime config manifest config hash", manifest.ConfigHash); err != nil {
-		return runtimeConfigVerification{}, err
+		return nil, nil, err
 	}
 	if _, err := decodeHex32("runtime config manifest policy hash", manifest.PolicyHash); err != nil {
-		return runtimeConfigVerification{}, err
+		return nil, nil, err
 	}
 	wantManifestHash, err := runtimeConfigManifestHash(manifest)
 	if err != nil {
-		return runtimeConfigVerification{}, err
+		return nil, nil, err
 	}
 	if !strings.EqualFold(manifest.ManifestHash, wantManifestHash) {
-		return runtimeConfigVerification{}, errors.New("runtime config manifest hash is invalid")
+		return nil, nil, errors.New("runtime config manifest hash is invalid")
 	}
 	expected, err := expectedRuntimeConfigFiles(cfg, stateDir)
 	if err != nil {
-		return runtimeConfigVerification{}, err
+		return nil, nil, err
 	}
 	if len(manifest.Files) != len(expected) {
-		return runtimeConfigVerification{}, fmt.Errorf("runtime config manifest has %d files, want %d", len(manifest.Files), len(expected))
+		return nil, nil, fmt.Errorf("runtime config manifest has %d files, want %d", len(manifest.Files), len(expected))
 	}
 	previous := ""
 	for _, file := range manifest.Files {
 		if file.Path == "" || file.Path <= previous {
-			return runtimeConfigVerification{}, errors.New("runtime config manifest paths are not unique and sorted")
+			return nil, nil, errors.New("runtime config manifest paths are not unique and sorted")
 		}
 		previous = file.Path
 		mode, ok := expected[file.Path]
 		if !ok || file.Mode != fmt.Sprintf("%04o", mode) {
-			return runtimeConfigVerification{}, fmt.Errorf("runtime config manifest entry %s is unexpected", file.Path)
+			return nil, nil, fmt.Errorf("runtime config manifest entry %s is unexpected", file.Path)
 		}
 		if err := validateRuntimeConfigPathAncestry(stateDir, file.Path); err != nil {
-			return runtimeConfigVerification{}, err
+			return nil, nil, err
 		}
-		digest, observedMode, err := runtimeConfigFileDigest(filepath.Join(stateDir, filepath.FromSlash(file.Path)))
-		if err != nil {
-			return runtimeConfigVerification{}, err
+	}
+	return &manifest, expected, nil
+}
+
+func verifyRuntimeConfigManifestFile(stateDir string, file RuntimeConfigFile, expectedMode os.FileMode) error {
+	digest, observedMode, err := runtimeConfigFileDigest(filepath.Join(stateDir, filepath.FromSlash(file.Path)))
+	if err != nil {
+		return err
+	}
+	if observedMode != expectedMode || !strings.EqualFold(file.SHA256, digest) {
+		return fmt.Errorf("runtime config %s differs from its manifest", file.Path)
+	}
+	return nil
+}
+
+// Reauthenticate only the rendered object-store inputs at the scenario's
+// completion boundary. Other runtime inputs may have undergone an approved
+// live transition, such as production verify-key rotation.
+func verifyRuntimeBlobConfigManifest(cfg *ResolvedConfig, stateDir string) error {
+	manifest, expected, err := authenticatedRuntimeConfigManifest(cfg, stateDir)
+	if err != nil {
+		return err
+	}
+	files := make(map[string]RuntimeConfigFile, len(manifest.Files))
+	for _, file := range manifest.Files {
+		files[file.Path] = file
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		relative := filepath.ToSlash(filepath.Join("runtime", fmt.Sprintf("operator-%d", operator), "vault", "minio.yml"))
+		file, ok := files[relative]
+		mode, expectedOK := expected[relative]
+		if !ok || !expectedOK {
+			return fmt.Errorf("runtime config manifest is missing %s", relative)
 		}
-		if observedMode != mode || !strings.EqualFold(file.SHA256, digest) {
-			return runtimeConfigVerification{}, fmt.Errorf("runtime config %s differs from its manifest", file.Path)
+		if err := verifyRuntimeConfigManifestFile(stateDir, file, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Reconstruct identity, inventory, modes and bytes before accepting config
+// rendering as a durable setup postcondition.
+func verifyRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (runtimeConfigVerification, error) {
+	manifest, expected, err := authenticatedRuntimeConfigManifest(cfg, stateDir)
+	if err != nil {
+		return runtimeConfigVerification{}, err
+	}
+	for _, file := range manifest.Files {
+		mode := expected[file.Path]
+		if err := verifyRuntimeConfigManifestFile(stateDir, file, mode); err != nil {
+			return runtimeConfigVerification{}, err
 		}
 	}
 	if err := validateRuntimeConfigStaticTrees(cfg, stateDir, expected); err != nil {

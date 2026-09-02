@@ -315,7 +315,7 @@ func validateScenarioCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, r
 			}
 		}
 	}
-	hashes, err := evidenceFileHashes(runDir)
+	hashes, err := evidenceFileHashes(runDir, cfg.Config.Topology.Operators)
 	if err != nil {
 		return nil, err
 	}

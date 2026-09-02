@@ -19,13 +19,13 @@ import (
 	"github.com/urnetwork/server/startifact"
 )
 
-type forbiddenScenarioCommitHTTPTransport struct {
+type forbiddenScenarioCommitSupervisedAPITransport struct {
 	calls int
 }
 
-func (transport *forbiddenScenarioCommitHTTPTransport) RoundTrip(*http.Request) (*http.Response, error) {
+func (transport *forbiddenScenarioCommitSupervisedAPITransport) RoundTrip(*http.Request) (*http.Response, error) {
 	transport.calls++
-	return nil, errors.New("scenario completion commit attempted supervised HTTP")
+	return nil, errors.New("scenario completion commit attempted the supervised API")
 }
 
 type failingPutBlobStore struct {
@@ -81,12 +81,16 @@ func TestReleaseEvidenceSignVerifyAndTamper(t *testing.T) {
 
 func TestRenderedOperatorEvidenceStoreUsesExactIsolatedPrefix(t *testing.T) {
 	cfg := testResolvedConfig(t)
+	cfg.Config.Artifacts.MinioPrefix = "blob/sim-testnet-light/${deployment_id}"
 	stateDir := t.TempDir()
 	vaultDir := filepath.Join(stateDir, "runtime", "operator-1", "vault")
 	if err := os.MkdirAll(vaultDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	prefix := "blob/sim-testnet/" + cfg.Config.Deployment.DeploymentID + "/operator-1"
+	prefix, err := operatorArtifactPrefix(cfg.Config, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := []byte("authority: \"{{ env:BRINGYOUR_MINIO_HOSTNAME }}:23900\"\ntls: false\nbucket: blob\naccess_key: test-access\nsecret_key: test-secret\nprefix: " + prefix + "\n")
 	path := filepath.Join(vaultDir, "minio.yml")
 	if err := atomicWrite(path, config, 0o600); err != nil {
@@ -108,13 +112,19 @@ func TestRenderedOperatorEvidenceStoreUsesExactIsolatedPrefix(t *testing.T) {
 	}
 }
 
-func TestScenarioCompletionCommitsUseDirectStoresWithoutHTTP(t *testing.T) {
-	cfg := testResolvedConfig(t)
+func TestScenarioCompletionCommitsUseDirectStoresWithoutSupervisedAPIHTTP(t *testing.T) {
+	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
+	// Production soak rotates this authenticated runtime input after setup. The
+	// completion boundary must reauthenticate MinIO without rejecting that
+	// approved live transition.
+	verifyPath := filepath.Join(stateDir, "runtime", "operator-1", "vault", "verify.yml")
+	if err := atomicWrite(verifyPath, []byte("approved live verify-key rotation\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
 	runID := "direct-completion-success"
 	runDir := filepath.Join(stateDir, "runs", runID)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
@@ -123,10 +133,13 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutHTTP(t *testing.T) {
 	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
 	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
+		if err != nil {
+			t.Fatal(err)
+		}
 		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
 	}
-	transport := &forbiddenScenarioCommitHTTPTransport{}
+	transport := &forbiddenScenarioCommitSupervisedAPITransport{}
 	previousTransport := http.DefaultTransport
 	http.DefaultTransport = transport
 	t.Cleanup(func() { http.DefaultTransport = previousTransport })
@@ -137,7 +150,7 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutHTTP(t *testing.T) {
 		t.Fatalf("direct scenario completion commit = stage %q error %v", failureID, err)
 	}
 	if transport.calls != 0 {
-		t.Fatalf("scenario completion commit made %d supervised HTTP requests", transport.calls)
+		t.Fatalf("scenario completion commit made %d supervised API requests", transport.calls)
 	}
 	written, err := os.ReadFile(filepath.Join(runDir, "complete.json"))
 	if err != nil || !bytes.Equal(written, encoded) {
@@ -160,12 +173,11 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutHTTP(t *testing.T) {
 }
 
 func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
-	cfg := testResolvedConfig(t)
+	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stateDir := t.TempDir()
 	runID := "direct-completion-failure"
 	runDir := filepath.Join(stateDir, "runs", runID)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
@@ -174,7 +186,10 @@ func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
 	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
 	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
+		if err != nil {
+			t.Fatal(err)
+		}
 		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
 	}
 	stores[2] = &failingPutBlobStore{BlobStore: stores[2], err: errors.New("injected direct-store failure")}
@@ -187,7 +202,10 @@ func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed direct publication exposed a local complete marker: %v", err)
 	}
-	prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, "operator-2"))
+	prefix, err := operatorArtifactPrefix(cfg.Config, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	stores[2] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
 	failureID, err = commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
 		return stores[operator], nil
@@ -197,6 +215,42 @@ func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); err != nil {
 		t.Fatalf("successful direct publication retry did not expose local completion: %v", err)
+	}
+}
+
+func TestScenarioCompletionRejectsTamperedRenderedConfigBeforeOpeningStores(t *testing.T) {
+	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := "tampered-completion-config"
+	runDir := filepath.Join(stateDir, "runs", runID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
+	path := filepath.Join(stateDir, "runtime", "operator-1", "vault", "minio.yml")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(path, append(contents, []byte("tampered: true\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	storeCalls := 0
+	failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(int) (server.BlobStore, error) {
+		storeCalls++
+		return nil, errors.New("store factory must not be called")
+	})
+	if err == nil || failureID != "complete_evidence_publication" || !strings.Contains(err.Error(), "differs from its manifest") {
+		t.Fatalf("tampered runtime config = stage %q error %v", failureID, err)
+	}
+	if storeCalls != 0 {
+		t.Fatalf("tampered runtime config opened %d stores", storeCalls)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("tampered runtime config exposed local completion: %v", err)
 	}
 }
 
@@ -826,19 +880,35 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestEvidenceFileHashesExcludeCompletionMarker(t *testing.T) {
+func TestEvidenceFileHashesExcludeOnlyExactRootCompletionFiles(t *testing.T) {
 	dir := t.TempDir()
-	if err := atomicWrite(filepath.Join(dir, "result.json"), []byte("{}\n"), 0o644); err != nil {
-		t.Fatal(err)
+	files := map[string]string{
+		"result.json":   "result\n",
+		"complete.json": "root marker\n",
+		"scenario-complete-commit.operator-1.evidence.json":        "operator one\n",
+		"scenario-complete-commit.operator-2.evidence.json":        "operator two\n",
+		"scenario-complete-commit.operator-3.evidence.json":        "extra operator\n",
+		"scenario-complete-commit.operator-extra.evidence.json":    "malformed operator\n",
+		"nested/complete.json":                                     "nested marker\n",
+		"nested/scenario-complete-commit.operator-1.evidence.json": "nested operator\n",
 	}
-	if err := atomicWrite(filepath.Join(dir, "complete.json"), []byte("secret\n"), 0o644); err != nil {
-		t.Fatal(err)
+	for name, contents := range files {
+		if err := atomicWrite(filepath.Join(dir, filepath.FromSlash(name)), []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	hashes, err := evidenceFileHashes(dir)
+	hashes, err := evidenceFileHashes(dir, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hashes["result.json"] == "" || hashes["complete.json"] != "" {
-		t.Fatalf("hash index = %v", hashes)
+	for _, excluded := range []string{"complete.json", "scenario-complete-commit.operator-1.evidence.json", "scenario-complete-commit.operator-2.evidence.json"} {
+		if hashes[excluded] != "" {
+			t.Errorf("exact completion file %s was hashed", excluded)
+		}
+	}
+	for _, included := range []string{"result.json", "scenario-complete-commit.operator-3.evidence.json", "scenario-complete-commit.operator-extra.evidence.json", "nested/complete.json", "nested/scenario-complete-commit.operator-1.evidence.json"} {
+		if hashes[included] == "" {
+			t.Errorf("non-exact completion-like file %s was omitted: %v", included, hashes)
+		}
 	}
 }

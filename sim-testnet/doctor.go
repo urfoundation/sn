@@ -79,6 +79,10 @@ type doctorPlanBudget struct {
 
 const minimumReleaseUDPBufferBytes uint64 = 7 << 20
 
+// Fresh planning is valid only before the reviewed 254 release identities
+// have been registered alongside the subnet's two bootstrap identities.
+const freshPlanningBootstrapUIDCount uint16 = 2
+
 type releaseUDPBufferLimits struct {
 	ReceiveMax uint64
 	SendMax    uint64
@@ -147,6 +151,15 @@ func doctorPlanBudgetForState(cfg *ResolvedConfig, stateDir string) (*doctorPlan
 		return nil, fmt.Errorf("derive remaining approved spend: %w", err)
 	}
 	return &doctorPlanBudget{Plan: plan, Remaining: remaining, StateDir: stateDir}, nil
+}
+
+// Distinguish an empty fresh-planning directory from lost deployment state.
+// An approved plan authenticates the existing topology through its journal.
+func validateDoctorDeploymentLineage(persistedApproval bool, finalizedUIDCount uint16) error {
+	if !persistedApproval && finalizedUIDCount > freshPlanningBootstrapUIDCount {
+		return fmt.Errorf("finalized netuid topology has %d UIDs, but fresh planning requires exactly %d bootstrap UIDs; existing deployment requires the authoritative state-dir or authenticated import", finalizedUIDCount, freshPlanningBootstrapUIDCount)
+	}
+	return nil
 }
 
 // Use partial deployment state when present so a standalone doctor remains a
@@ -283,6 +296,9 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 		}
 		r.add("wallet/finalized-alpha-source", true, factsErr, detail)
 		if factsErr == nil {
+			lineageErr := validateDoctorDeploymentLineage(approved != nil, facts.ExistingUIDCount)
+			lineageDetail := fmt.Sprintf("finalized_uids=%d fresh_bootstrap_uids=%d persisted_approval=%t", facts.ExistingUIDCount, freshPlanningBootstrapUIDCount, approved != nil)
+			r.add("state/deployment-lineage", true, lineageErr, lineageDetail)
 			var planErr error
 			var plan *SetupPlan
 			if approved != nil {

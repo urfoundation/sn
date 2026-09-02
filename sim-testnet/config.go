@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -166,6 +167,36 @@ type ArtifactConfig struct {
 	ContentAddressed bool   `yaml:"content_addressed" json:"content_addressed"`
 	MinioPrefix      string `yaml:"minio_prefix" json:"minio_prefix"`
 }
+
+// Resolve the configured deployment-isolated object prefix for one operator.
+// Object-store keys are slash-separated on every host, so reject any template
+// whose spelling would be changed by canonical path normalization.
+func operatorArtifactPrefix(config *HarnessConfig, operator int) (string, error) {
+	if config == nil || operator < 1 || operator > config.Topology.Operators {
+		return "", errors.New("invalid operator artifact prefix identity")
+	}
+	const deploymentVariable = "${deployment_id}"
+	template := config.Artifacts.MinioPrefix
+	if template == "" || template != strings.TrimSpace(template) || strings.Count(template, deploymentVariable) != 1 {
+		return "", errors.New("artifact MinIO prefix must contain exactly one deployment_id variable")
+	}
+	if strings.Contains(template, `\`) || strings.ContainsRune(template, 0) {
+		return "", errors.New("artifact MinIO prefix is not a canonical object path")
+	}
+	deploymentID := config.Deployment.DeploymentID
+	if deploymentID == "" || deploymentID != strings.TrimSpace(deploymentID) ||
+		deploymentID != path.Base(deploymentID) || deploymentID == "." || deploymentID == ".." ||
+		strings.Contains(deploymentID, `\`) || strings.ContainsRune(deploymentID, 0) {
+		return "", errors.New("artifact MinIO deployment identity is unsafe")
+	}
+	expanded := strings.Replace(template, deploymentVariable, deploymentID, 1)
+	clean := path.Clean(expanded)
+	if clean != expanded || clean == "." || path.IsAbs(clean) || strings.HasPrefix(clean, "../") || strings.Contains(clean, "${") {
+		return "", errors.New("artifact MinIO prefix is empty, unsafe, or noncanonical")
+	}
+	return path.Join(clean, fmt.Sprintf("operator-%d", operator)), nil
+}
+
 type ProcessConfig struct {
 	BuildFromReleaseLock bool   `yaml:"build_from_release_lock" json:"build_from_release_lock"`
 	Logs                 string `yaml:"logs" json:"logs"`
@@ -522,6 +553,11 @@ func (c *HarnessConfig) Validate() error {
 	}
 	if c.Dependencies.ObjectStore != "server-blob" || c.Artifacts.Writer != "server-blob" || c.Artifacts.HistoryAPI != "server-api" || !c.Artifacts.ContentAddressed {
 		return errors.New("artifacts must use content-addressed server/blob and server API history")
+	}
+	for operator := 1; operator <= c.Topology.Operators; operator++ {
+		if _, err := operatorArtifactPrefix(c, operator); err != nil {
+			return err
+		}
 	}
 	// Each NO consumes a deposit and pool UID; validators include the reserve
 	// validator; initial and challenger fleets consume one registration each;

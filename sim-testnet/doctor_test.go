@@ -174,6 +174,30 @@ func TestDoctorPlanBudgetForStateUsesJournaledProgressAcrossReleaseDrift(t *test
 	}
 }
 
+func TestDoctorDeploymentLineageRejectsExistingTopologyWithWrongStateDir(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	wrongStateDir := filepath.Join(t.TempDir(), "unrelated-run")
+	approved, err := doctorPlanBudgetForState(cfg, wrongStateDir)
+	if err != nil || approved != nil {
+		t.Fatalf("wrong state directory approval=%+v error=%v", approved, err)
+	}
+	err = validateDoctorDeploymentLineage(approved != nil, freshPlanningBootstrapUIDCount+1)
+	if err == nil || !strings.Contains(err.Error(), "existing deployment requires the authoritative state-dir or authenticated import") {
+		t.Fatalf("existing deployment without authoritative state was accepted: %v", err)
+	}
+}
+
+func TestDoctorDeploymentLineageAllowsPristineTopologyWithEmptyStateDir(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	approved, err := doctorPlanBudgetForState(cfg, t.TempDir())
+	if err != nil || approved != nil {
+		t.Fatalf("empty state directory approval=%+v error=%v", approved, err)
+	}
+	if err := validateDoctorDeploymentLineage(approved != nil, freshPlanningBootstrapUIDCount); err != nil {
+		t.Fatalf("pristine topology with empty state directory was rejected: %v", err)
+	}
+}
+
 func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)

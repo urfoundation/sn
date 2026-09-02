@@ -131,7 +131,10 @@ func renderedOperatorEvidenceStore(cfg *ResolvedConfig, stateDir string, operato
 	if err := strictYAML(path, &rendered); err != nil {
 		return nil, fmt.Errorf("operator %d rendered MinIO config: %w", operator, err)
 	}
-	wantPrefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+	wantPrefix, err := operatorArtifactPrefix(cfg.Config, operator)
+	if err != nil {
+		return nil, err
+	}
 	if rendered.Prefix != wantPrefix {
 		return nil, fmt.Errorf("operator %d rendered MinIO prefix %q, want %q", operator, rendered.Prefix, wantPrefix)
 	}
@@ -227,7 +230,9 @@ func verifyDirectEvidencePublication(ctx context.Context, store server.BlobStore
 
 // publishScenarioCompletionCommits creates the operator-authorized outer
 // envelopes locally, publishes them through server/startifact directly into
-// each rendered BlobStore namespace, and reads both immutable objects back.
+// each rendered BlobStore namespace, and reads both content-addressed objects
+// back. Storage-level WORM protection is a separate mainnet infrastructure
+// gate documented in FINALIZE.md.
 // It deliberately has no supervised HTTP dependency.
 func publishScenarioCompletionCommits(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecrets, stateDir, runID string, complete *ReleaseEvidenceEnvelope, stores scenarioCompletionStoreFactory) ([]PublishedEvidence, error) {
 	if cfg == nil || cfg.Config == nil || roles == nil {
@@ -249,6 +254,9 @@ func publishScenarioCompletionCommits(ctx context.Context, cfg *ResolvedConfig, 
 		if strings.TrimSpace(name) == "" || !validSHA256ContentHash(hash) {
 			return nil, errors.New("scenario completion owner envelope has invalid file hashes")
 		}
+	}
+	if err := verifyRuntimeBlobConfigManifest(cfg, stateDir); err != nil {
+		return nil, fmt.Errorf("reauthenticate scenario completion runtime config: %w", err)
 	}
 	if stores == nil {
 		stores = func(operator int) (server.BlobStore, error) {
@@ -274,7 +282,10 @@ func publishScenarioCompletionCommits(ctx context.Context, cfg *ResolvedConfig, 
 		if err != nil {
 			return nil, fmt.Errorf("operator %d scenario completion store: %w", operator, err)
 		}
-		wantPrefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+		wantPrefix, err := operatorArtifactPrefix(cfg.Config, operator)
+		if err != nil {
+			return nil, err
+		}
 		if store == nil || store.Prefix() != wantPrefix {
 			return nil, fmt.Errorf("operator %d scenario completion store prefix is invalid", operator)
 		}
@@ -1006,14 +1017,28 @@ func writeJUnit(path, name string, assertions []AssertionRecord) error {
 	return atomicWrite(path, b, 0o644)
 }
 
-func evidenceFileHashes(root string) (map[string]string, error) {
+func evidenceFileHashes(root string, operators int) (map[string]string, error) {
+	if operators < 1 {
+		return nil, errors.New("evidence file hash operator count must be positive")
+	}
+	excluded := map[string]bool{"complete.json": true}
+	for operator := 1; operator <= operators; operator++ {
+		excluded[fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator)] = true
+	}
 	result := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		base := filepath.Base(path)
-		if entry.IsDir() || base == "complete.json" || strings.HasPrefix(base, "scenario-complete-commit.operator-") && strings.HasSuffix(base, ".evidence.json") {
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if excluded[rel] {
 			return nil
 		}
 		b, err := os.ReadFile(path)
@@ -1021,8 +1046,7 @@ func evidenceFileHashes(root string) (map[string]string, error) {
 			return err
 		}
 		h := sha256.Sum256(b)
-		rel, _ := filepath.Rel(root, path)
-		result[filepath.ToSlash(rel)] = "sha256:" + hex.EncodeToString(h[:])
+		result[rel] = "sha256:" + hex.EncodeToString(h[:])
 		return nil
 	})
 	return result, err

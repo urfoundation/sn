@@ -4105,6 +4105,10 @@ func operatorVerifyConfig(cfg *ResolvedConfig, operator int, rotated bool) ([]by
 }
 
 func renderOperatorBlobConfig(cfg *ResolvedConfig, operator int, destination string) error {
+	prefix, err := operatorArtifactPrefix(cfg.Config, operator)
+	if err != nil {
+		return err
+	}
 	var value map[string]any
 	if err := strictYAML(filepath.Join(cfg.Repos.Vault, "main", "minio.yml"), &value); err != nil {
 		return err
@@ -4112,7 +4116,7 @@ func renderOperatorBlobConfig(cfg *ResolvedConfig, operator int, destination str
 	if fmt.Sprint(value["bucket"]) != "blob" {
 		return fmt.Errorf("minio.yml must select the blob bucket")
 	}
-	value["prefix"] = filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+	value["prefix"] = prefix
 	b, err := yaml.Marshal(value)
 	if err != nil {
 		return err

@@ -3814,13 +3814,32 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    immutable local file hashes only after the final scan. The simulator wraps
    that owner record in each operator's artifact signature, writes it directly
    through `server.BlobStore`/`startifact` to that operator's rendered isolated
-   MinIO prefix, and reads both immutable content and history objects back; no
-   supervised API request occurs after the final scan. Only after all replicas
-   verify does the local completion marker become visible. Independent readers
-   require the byte-identical nested owner commitment at every operator and
-   ignore orphaned or partially published candidates. Advancing-clock, tamper,
-   zero-HTTP direct-publication, direct-store failure, partial-replica and
-   mid-archive recovery regressions pin these commit semantics.
+   MinIO prefix, and reads both content-addressed content and history objects
+   back; no supervised API request occurs after the final scan. Only after all
+   replicas verify does the local completion marker become visible. Independent
+   readers require the byte-identical nested owner commitment at every operator
+   and ignore orphaned or partially published candidates. Advancing-clock,
+   tamper, zero-supervised-API publication, direct-store failure, partial-replica
+   and mid-archive recovery regressions pin these commit semantics. Those
+   signed, content-addressed, fail-closed semantics are the required WHITEPAPER
+   1.0 simulation boundary; they do not by themselves claim storage-level WORM
+   durability against an operator credential or storage administrator.
+
+   **Operator investigation/action — open and required before mainnet durable
+   evidence promotion:** the current shared `blob` bucket was provisioned
+   without object lock, versioning or a validated replication destination, and
+   its service policy permits deletion. The configured testnet credential also
+   cannot perform the protection queries required by
+   `server.ProtectedBlobStore.CheckProtection`. Because MinIO object lock must
+   be selected when a bucket is created, this existing bucket cannot be
+   retrofitted into the required WORM archive. Operators must provision a new
+   lock-enabled, versioned and replicated evidence bucket with a delete-free,
+   least-privilege policy; wire both public readers and direct publishers to it;
+   retain and exact-version-read-back both startifact content and history
+   objects (including the committed scenario bundle); and add a hard doctor
+   protection check before any campaign begins. This infrastructure migration,
+   retained-publication API and live protection proof remain incomplete and are
+   a mainnet-promotion gate, not a completed testnet result.
 
    That scan separated three causal transport problems which the earlier PID/API
    checks had hidden. First, all 27 validator `exit could not create contract`

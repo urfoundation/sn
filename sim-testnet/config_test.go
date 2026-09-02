@@ -90,6 +90,27 @@ func TestLightHarnessConfigPreservesReleaseChecksAndUsesLightnode(t *testing.T) 
 	if cfg.Topology.Operators != 2 || cfg.Topology.Miners != 1_000 || cfg.Topology.Validators != 2 || cfg.Topology.HeadSlots != 200 || cfg.Topology.MinerSwarmProcesses != 20 || cfg.Scenarios.Launch != "smoke" {
 		t.Fatalf("light profile weakened release topology or smoke: %+v / %+v", cfg.Topology, cfg.Scenarios)
 	}
+	prefix, err := operatorArtifactPrefix(&cfg, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prefix != "blob/sim-testnet-light/ur-subnet-testnet-light-v1/operator-2" {
+		t.Fatalf("light operator artifact prefix = %q", prefix)
+	}
+}
+
+func TestOperatorArtifactPrefixRejectsUnsafeAndNoncanonicalTemplates(t *testing.T) {
+	for _, value := range []string{
+		"", "blob/sim-testnet", "/blob/${deployment_id}", "blob//${deployment_id}",
+		"blob/../${deployment_id}", "blob/${deployment_id}/", `blob\${deployment_id}`,
+		"blob/${deployment_id}/${deployment_id}", "blob/${deployment_id}/${unresolved}",
+	} {
+		cfg := testResolvedConfig(t).Config
+		cfg.Artifacts.MinioPrefix = value
+		if _, err := operatorArtifactPrefix(cfg, 1); err == nil {
+			t.Errorf("unsafe artifact prefix %q was accepted", value)
+		}
+	}
 }
 
 func TestReleaseHarnessSelectsOfficialPublicRPCOverrides(t *testing.T) {

@@ -32,9 +32,13 @@ func TestLiveRuntimeConfigManifest(t *testing.T) {
 }
 
 func runtimeConfigManifestFixture(t *testing.T) (*ResolvedConfig, string) {
+	return runtimeConfigManifestFixtureForOperators(t, 1)
+}
+
+func runtimeConfigManifestFixtureForOperators(t *testing.T, operators int) (*ResolvedConfig, string) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
-	cfg.Config.Topology.Operators = 1
+	cfg.Config.Topology.Operators = operators
 	cfg.Config.Topology.Validators = 1
 	cfg.Config.Topology.Miners = 2
 	cfg.Config.Topology.MinerSwarmProcesses = 1

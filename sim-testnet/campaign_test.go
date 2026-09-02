@@ -137,7 +137,7 @@ func writeScenarioCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir, n
 	if err := writePublicJSON(filepath.Join(runDir, "adversaries.json"), result.Adversaries); err != nil {
 		t.Fatal(err)
 	}
-	hashes, err := evidenceFileHashes(runDir)
+	hashes, err := evidenceFileHashes(runDir, cfg.Config.Topology.Operators)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestPublishedCompletionCommitsAreExcludedAndIndependentlyValidated(t *testi
 	if err := writePublicJSON(filepath.Join(runDir, "result.json"), result); err != nil {
 		t.Fatal(err)
 	}
-	hashes, err := evidenceFileHashes(runDir)
+	hashes, err := evidenceFileHashes(runDir, cfg.Config.Topology.Operators)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestPublishedCompletionCommitsAreExcludedAndIndependentlyValidated(t *testi
 			t.Fatal(err)
 		}
 	}
-	after, err := evidenceFileHashes(runDir)
+	after, err := evidenceFileHashes(runDir, cfg.Config.Topology.Operators)
 	if err != nil {
 		t.Fatal(err)
 	}
