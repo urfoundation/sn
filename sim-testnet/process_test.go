@@ -37,7 +37,7 @@ func currentProcessStartTimeTicks(t *testing.T) uint64 {
 // manifest and proving no dependent start crosses the explicit health barrier.
 func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
 	specs := []ProcessSpec{
-		{ID: "miner", Role: "miner-swarm"},
+		{ID: "miner", Role: "miner-swarm", HealthURL: "http://miner/status"},
 		{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
 		{ID: "claim", Role: "claim-relayer"},
 		{ID: "connect", Role: "operator-connect", HealthURL: "http://connect/status"},
@@ -45,29 +45,46 @@ func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
 		{ID: "rpc", Role: "dependency-rpc-proxy", HealthURL: "http://rpc/healthz"},
 		{ID: "validator", Role: "validator"},
 	}
-	barrierCrossed := false
+	serviceBarrierCrossed := false
+	providerBarrierCrossed := false
 	events := []string{}
 	err := startSupervisorSpecsWithReadiness(
 		specs,
 		func(spec ProcessSpec) error {
-			if !supervisorStartupPrerequisite(spec) && !barrierCrossed {
-				return fmt.Errorf("dependent %s started before readiness", spec.ID)
+			if supervisorStartupProvider(spec) && !serviceBarrierCrossed {
+				return fmt.Errorf("provider %s started before service readiness", spec.ID)
+			}
+			if !supervisorStartupPrerequisite(spec) && !supervisorStartupProvider(spec) && !providerBarrierCrossed {
+				return fmt.Errorf("dependent %s started before provider readiness", spec.ID)
 			}
 			events = append(events, "start:"+spec.ID)
 			return nil
 		},
-		func(prerequisites []ProcessSpec) error {
-			for _, spec := range prerequisites {
-				if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
-					t.Fatalf("invalid prerequisite at barrier: %+v", spec)
+		func(phase []ProcessSpec) error {
+			if len(phase) == 0 {
+				t.Fatal("empty startup readiness phase")
+			}
+			if supervisorStartupPrerequisite(phase[0]) {
+				for _, spec := range phase {
+					if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
+						t.Fatalf("invalid prerequisite at barrier: %+v", spec)
+					}
+				}
+				events = append(events, "ready:services")
+				serviceBarrierCrossed = true
+				return nil
+			}
+			for _, spec := range phase {
+				if !supervisorStartupProvider(spec) || spec.HealthURL == "" || !serviceBarrierCrossed {
+					t.Fatalf("invalid provider at barrier: %+v", spec)
 				}
 			}
-			events = append(events, "ready")
-			barrierCrossed = true
+			events = append(events, "ready:providers")
+			providerBarrierCrossed = true
 			return nil
 		},
 	)
-	want := []string{"start:api", "start:connect", "start:rpc", "ready", "start:miner", "start:claim", "start:worker", "start:validator"}
+	want := []string{"start:api", "start:connect", "start:rpc", "ready:services", "start:miner", "ready:providers", "start:claim", "start:worker", "start:validator"}
 	if err != nil || strings.Join(events, ",") != strings.Join(want, ",") {
 		t.Fatalf("startup events=%v want=%v error=%v", events, want, err)
 	}
@@ -80,7 +97,7 @@ func TestSupervisorStartupReadinessFailureStartsNoDependents(t *testing.T) {
 	started := []string{}
 	specs := []ProcessSpec{
 		{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
-		{ID: "miner", Role: "miner-swarm"},
+		{ID: "miner", Role: "miner-swarm", HealthURL: "http://miner/status"},
 		{ID: "claim", Role: "claim-relayer"},
 		{ID: "validator", Role: "validator"},
 	}
@@ -111,6 +128,57 @@ func TestSupervisorStartupRejectsPrerequisiteWithoutHealthEndpoint(t *testing.T)
 	)
 	if err == nil || !strings.Contains(err.Error(), "api has no health endpoint") || starts != 0 {
 		t.Fatalf("missing-health starts=%d error=%v", starts, err)
+	}
+}
+
+// A disconnected miner population may start after services, but validators
+// and relayers cannot cross the second barrier until all provider carriers are
+// live. The injected callback makes the failed transition exact and sleep-free.
+func TestSupervisorStartupProviderReadinessFailureStartsNoValidators(t *testing.T) {
+	sentinel := errors.New("provider carriers are disconnected")
+	started := []string{}
+	waits := 0
+	err := startSupervisorSpecsWithReadiness(
+		[]ProcessSpec{
+			{ID: "validator", Role: "validator"},
+			{ID: "miner", Role: "miner-swarm", HealthURL: "http://miner/status"},
+			{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
+			{ID: "claim", Role: "claim-relayer"},
+		},
+		func(spec ProcessSpec) error {
+			started = append(started, spec.ID)
+			return nil
+		},
+		func(phase []ProcessSpec) error {
+			waits++
+			if supervisorStartupProvider(phase[0]) {
+				return sentinel
+			}
+			return nil
+		},
+	)
+	if !errors.Is(err, sentinel) || waits != 2 || strings.Join(started, ",") != "api,miner" {
+		t.Fatalf("failed provider barrier starts=%v waits=%d error=%v", started, waits, err)
+	}
+}
+
+// Provider health metadata is validated before any child starts, just like
+// service prerequisites, so the second barrier can never degrade into delay.
+func TestSupervisorStartupRejectsProviderWithoutHealthEndpoint(t *testing.T) {
+	starts := 0
+	err := startSupervisorSpecsWithReadiness(
+		[]ProcessSpec{
+			{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
+			{ID: "miner", Role: "miner-swarm"},
+		},
+		func(ProcessSpec) error {
+			starts++
+			return nil
+		},
+		func([]ProcessSpec) error { return nil },
+	)
+	if err == nil || !strings.Contains(err.Error(), "miner has no health endpoint") || starts != 0 {
+		t.Fatalf("missing provider health starts=%d error=%v", starts, err)
 	}
 }
 

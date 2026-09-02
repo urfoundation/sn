@@ -2060,34 +2060,57 @@ func supervisorStartupPrerequisite(spec ProcessSpec) bool {
 	}
 }
 
-// Start prerequisites, cross one explicit health barrier, and only then start
-// dependent workers. Callbacks keep the ordering deterministic in tests while
-// production retains the supervisor's real process ownership.
+// Identifies the provider population whose live carrier readiness must precede
+// validators, relayers and background workers.
+func supervisorStartupProvider(spec ProcessSpec) bool {
+	return spec.Role == "miner-swarm"
+}
+
+// Starts listener prerequisites and provider swarms across two explicit
+// health barriers, then starts validators, relayers and background workers.
+// Callbacks keep the ordering deterministic in tests while production retains
+// the supervisor's real process ownership.
 func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
 	if start == nil || wait == nil {
 		return errors.New("supervisor startup callbacks are incomplete")
 	}
 	prerequisites := make([]ProcessSpec, 0, len(specs))
+	providers := make([]ProcessSpec, 0, len(specs))
 	dependents := make([]ProcessSpec, 0, len(specs))
 	for _, spec := range specs {
 		if supervisorStartupPrerequisite(spec) {
-			if spec.HealthURL == "" {
-				return fmt.Errorf("supervisor startup prerequisite %s has no health endpoint", spec.ID)
-			}
 			prerequisites = append(prerequisites, spec)
+		} else if supervisorStartupProvider(spec) {
+			providers = append(providers, spec)
 		} else {
 			dependents = append(dependents, spec)
 		}
 	}
-	for _, spec := range prerequisites {
-		if err := start(spec); err != nil {
-			return fmt.Errorf("start supervisor prerequisite %s: %w", spec.ID, err)
+	for _, phase := range [][]ProcessSpec{prerequisites, providers} {
+		for _, spec := range phase {
+			if spec.HealthURL == "" {
+				return fmt.Errorf("supervisor startup readiness role %s has no health endpoint", spec.ID)
+			}
 		}
 	}
-	if len(prerequisites) != 0 {
-		if err := wait(prerequisites); err != nil {
-			return fmt.Errorf("supervisor startup prerequisite readiness: %w", err)
+	startAndWait := func(kind string, phase []ProcessSpec) error {
+		for _, spec := range phase {
+			if err := start(spec); err != nil {
+				return fmt.Errorf("start supervisor %s %s: %w", kind, spec.ID, err)
+			}
 		}
+		if len(phase) != 0 {
+			if err := wait(phase); err != nil {
+				return fmt.Errorf("supervisor %s readiness: %w", kind, err)
+			}
+		}
+		return nil
+	}
+	if err := startAndWait("prerequisite", prerequisites); err != nil {
+		return err
+	}
+	if err := startAndWait("provider", providers); err != nil {
+		return err
 	}
 	for _, spec := range dependents {
 		if err := start(spec); err != nil {

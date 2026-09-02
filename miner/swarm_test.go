@@ -97,7 +97,15 @@ func TestProviderSwarmStatusFailsClosedOnMissingMember(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("empty swarm status = %d, want 503", response.Code)
 	}
-	swarm.setRunning("miner-1")
+	connected := false
+	swarm.instances["miner-1"] = &providerSwarmInstance{connectedOverride: func() bool { return connected }}
+	swarm.running["miner-1"] = true
+	response = httptest.NewRecorder()
+	swarm.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("constructed but disconnected swarm status = %d, want 503", response.Code)
+	}
+	connected = true
 	response = httptest.NewRecorder()
 	swarm.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
@@ -121,12 +129,12 @@ func TestProviderSwarmControlDisablesAndRestoresOneRealMemberSlot(t *testing.T) 
 	defer cancel()
 	swarm.runCtx = runCtx
 	swarm.runCancel = cancel
-	swarm.instances["miner-1"] = &providerSwarmInstance{}
+	swarm.instances["miner-1"] = &providerSwarmInstance{connectedOverride: func() bool { return true }}
 	swarm.running["miner-1"] = true
 	starts := 0
 	swarm.startMember = func(context.Context, ProviderSwarmMember, func(error)) (*providerSwarmInstance, error) {
 		starts++
-		return &providerSwarmInstance{}, nil
+		return &providerSwarmInstance{connectedOverride: func() bool { return true }}, nil
 	}
 	disable := httptest.NewRequest(http.MethodPost, "/control/miner-1/disable", nil)
 	disableResponse := httptest.NewRecorder()
@@ -182,6 +190,34 @@ func TestProviderSwarmDialerUsesExactLoopbackSource(t *testing.T) {
 	defer serverConnection.Close()
 	if host, _, _ := net.SplitHostPort(serverConnection.RemoteAddr().String()); host != "127.64.8.17" {
 		t.Fatalf("observed source = %s, want 127.64.8.17", host)
+	}
+
+	packetServer, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer packetServer.Close()
+	if settings.PacketConnFactory == nil {
+		t.Fatal("source-bound settings omitted the H3 packet endpoint")
+	}
+	packetClient, err := settings.PacketConnFactory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer packetClient.Close()
+	if _, err := packetClient.WriteTo([]byte{1}, packetServer.LocalAddr()); err != nil {
+		t.Fatal(err)
+	}
+	if err := packetServer.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 1)
+	_, packetSource, err := packetServer.ReadFrom(buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host, _, _ := net.SplitHostPort(packetSource.String()); host != "127.64.8.17" {
+		t.Fatalf("observed packet source = %s, want 127.64.8.17", host)
 	}
 }
 

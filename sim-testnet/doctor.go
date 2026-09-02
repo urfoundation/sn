@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
+	serverst "github.com/urnetwork/server/st"
 )
 
 type Check struct {
@@ -623,6 +625,26 @@ func authorityURLs(authority string) (wsURL, httpURL string, err error) {
 func finalizedLogProbe(blockNumber uint64) map[string]any {
 	block := fmt.Sprintf("0x%x", blockNumber)
 	return map[string]any{"fromBlock": block, "toBlock": block}
+}
+
+// Builds the exact production-sized inclusive event query at one finalized
+// head. Three inert addresses preserve the coordinator/vault/sink filter shape
+// before deterministic deployment addresses exist.
+func finalizedEVMEventLogProbe(headBlock uint64) ethereum.FilterQuery {
+	maxOffset := serverst.EventLogBlockRange - 1
+	fromBlock := uint64(0)
+	if maxOffset < headBlock {
+		fromBlock = headBlock - maxOffset
+	}
+	return ethereum.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(fromBlock),
+		ToBlock:   new(big.Int).SetUint64(headBlock),
+		Addresses: []common.Address{
+			common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			common.HexToAddress("0x0000000000000000000000000000000000000002"),
+			common.HexToAddress("0x0000000000000000000000000000000000000003"),
+		},
+	}
 }
 
 func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
@@ -1253,6 +1275,7 @@ func checkEVM(parent context.Context, r *DoctorReport, cfg *ResolvedConfig) {
 	if sameRPCEndpoint(cfg.OperationalEVM, cfg.Public.Chain.EVMPublicReadEndpoint) {
 		aliasSameEndpointChecks(r, start, map[string]string{
 			"rpc/evm-operational":                 "rpc/evm-public",
+			"rpc/evm-operational-eth_getLogs":     "rpc/evm-public-eth_getLogs",
 			"runtime/evm-finality":                "runtime/evm-finality-public",
 			"runtime/precompile-abi":              "runtime/precompile-abi-public",
 			"runtime/precompile-signatures":       "runtime/precompile-signatures-public",
@@ -1297,6 +1320,14 @@ func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConf
 	if headErr != nil {
 		return
 	}
+	logProbe := finalizedEVMEventLogProbe(head.Number)
+	logs, logsErr := client.FilterLogs(ctx, logProbe)
+	r.add(
+		"rpc/evm-"+name+"-eth_getLogs",
+		true,
+		logsErr,
+		fmt.Sprintf("from=%d to=%d inclusive_blocks=%d addresses=3 logs=%d", logProbe.FromBlock.Uint64(), head.Number, serverst.EventLogBlockRange, len(logs)),
+	)
 	if name == "operational" {
 		var historicalErr error
 		var historicalBlock uint64

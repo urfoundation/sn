@@ -18,7 +18,39 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	serverst "github.com/urnetwork/server/st"
 )
+
+// The diagnostic request must exercise the same three-address, one-thousand
+// inclusive block shape as Server at ordinary and uint64-boundary heads.
+func TestFinalizedEVMEventLogProbeMatchesProductionWindow(t *testing.T) {
+	maxUint64 := ^uint64(0)
+	cases := []struct {
+		name     string
+		head     uint64
+		wantFrom uint64
+		wantSize uint64
+	}{
+		{name: "genesis", head: 0, wantFrom: 0, wantSize: 1},
+		{name: "first full window", head: 999, wantFrom: 0, wantSize: 1000},
+		{name: "bounded window", head: 1000, wantFrom: 1, wantSize: 1000},
+		{name: "maximum head", head: maxUint64, wantFrom: maxUint64 - 999, wantSize: 1000},
+	}
+	for _, c := range cases {
+		probe := finalizedEVMEventLogProbe(c.head)
+		if probe.FromBlock == nil || probe.ToBlock == nil {
+			t.Errorf("%s probe omitted a block boundary", c.name)
+			continue
+		}
+		fromBlock, toBlock := probe.FromBlock.Uint64(), probe.ToBlock.Uint64()
+		if fromBlock != c.wantFrom || toBlock != c.head || toBlock-fromBlock+1 != c.wantSize {
+			t.Errorf("%s range=%d..%d size=%d, want %d..%d size=%d", c.name, fromBlock, toBlock, toBlock-fromBlock+1, c.wantFrom, c.head, c.wantSize)
+		}
+		if len(probe.Addresses) != 3 || c.wantSize > serverst.EventLogBlockRange {
+			t.Errorf("%s addresses=%d size=%d, want three and at most %d", c.name, len(probe.Addresses), c.wantSize, serverst.EventLogBlockRange)
+		}
+	}
+}
 
 func TestReleaseRequiredToolsIncludeCapabilityInstallerAndNoninteractivePrivilegeBoundary(t *testing.T) {
 	root := strings.Join(releaseRequiredTools(0), ",")

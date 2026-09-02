@@ -153,18 +153,24 @@ func testEgressDialContextForIP(raw string) (*connect.DialContextSettings, error
 		return nil, errors.New("test egress source must be an IPv4 loopback address")
 	}
 	source := net.IP(append([]byte(nil), addr.AsSlice()...))
-	return &connect.DialContextSettings{DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
-		dialer := &net.Dialer{}
-		switch network {
-		case "tcp", "tcp4":
-			dialer.LocalAddr = &net.TCPAddr{IP: append(net.IP(nil), source...)}
-		case "udp", "udp4":
-			dialer.LocalAddr = &net.UDPAddr{IP: append(net.IP(nil), source...)}
-		default:
-			return nil, fmt.Errorf("test egress source %s does not support network %q", addr, network)
-		}
-		return dialer.DialContext(ctx, network, destination)
-	}}, nil
+	return &connect.DialContextSettings{
+		DialContext: func(ctx context.Context, network, destination string) (net.Conn, error) {
+			dialer := &net.Dialer{}
+			switch network {
+			case "tcp", "tcp4":
+				dialer.LocalAddr = &net.TCPAddr{IP: append(net.IP(nil), source...)}
+			case "udp", "udp4":
+				dialer.LocalAddr = &net.UDPAddr{IP: append(net.IP(nil), source...)}
+			default:
+				return nil, fmt.Errorf("test egress source %s does not support network %q", addr, network)
+			}
+			return dialer.DialContext(ctx, network, destination)
+		},
+		PacketConnFactory: func(ctx context.Context) (net.PacketConn, error) {
+			listenConfig := &net.ListenConfig{}
+			return listenConfig.ListenPacket(ctx, "udp4", net.JoinHostPort(addr.String(), "0"))
+		},
+	}, nil
 }
 
 func readProviderTLSState(stateDir string) ([]byte, []byte, error) {
@@ -223,11 +229,24 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 }
 
 type providerSwarmInstance struct {
-	networkSpace *sdk.NetworkSpace
-	device       *sdk.DeviceLocal
-	refreshSub   sdk.Sub
-	logoutSub    sdk.Sub
-	cancel       context.CancelFunc
+	networkSpace      *sdk.NetworkSpace
+	device            *sdk.DeviceLocal
+	refreshSub        sdk.Sub
+	logoutSub         sdk.Sub
+	cancel            context.CancelFunc
+	connectedOverride func() bool
+}
+
+// Reports live provider-carrier readiness. Tests may supply connectedOverride
+// to force the state transition without constructing the full SDK graph.
+func (self *providerSwarmInstance) connected() bool {
+	if self == nil {
+		return false
+	}
+	if self.connectedOverride != nil {
+		return self.connectedOverride()
+	}
+	return self.device != nil && self.device.GetProviderConnected()
 }
 
 func (self *providerSwarmInstance) close() {
@@ -328,7 +347,6 @@ func NewProviderSwarm(config *ProviderSwarmConfig) (*ProviderSwarm, error) {
 
 func (self *ProviderSwarm) status() providerSwarmStatus {
 	self.stateLock.Lock()
-	defer self.stateLock.Unlock()
 	failures := map[string]string{}
 	for id, detail := range self.failures {
 		failures[id] = detail
@@ -337,14 +355,22 @@ func (self *ProviderSwarm) status() providerSwarmStatus {
 	for id := range self.disabled {
 		disabled = append(disabled, id)
 	}
+	instances := make([]*providerSwarmInstance, 0, len(self.running))
+	for id := range self.running {
+		if instance := self.instances[id]; instance != nil {
+			instances = append(instances, instance)
+		}
+	}
+	configured := len(self.config.Members)
+	self.stateLock.Unlock()
+	running := 0
+	for _, instance := range instances {
+		if instance.connected() {
+			running++
+		}
+	}
 	sort.Strings(disabled)
-	return providerSwarmStatus{Schema: ProviderSwarmSchema, Configured: len(self.config.Members), Running: len(self.running), Disabled: disabled, Failures: failures}
-}
-
-func (self *ProviderSwarm) setRunning(id string) {
-	self.stateLock.Lock()
-	defer self.stateLock.Unlock()
-	self.running[id] = true
+	return providerSwarmStatus{Schema: ProviderSwarmSchema, Configured: configured, Running: running, Disabled: disabled, Failures: failures}
 }
 
 func (self *ProviderSwarm) setFailure(id string, err error) {
