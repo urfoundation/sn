@@ -30,6 +30,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	for _, required := range []string{
 		"CoreStClient(BlockHashes|FinalizedHead|Epoch)",
 		"StSyncChainEventsBatchesCanonicalEventBlocks",
+		"StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation",
 		"StatsAlphaPriceURLIsMainnetOnly",
 		"StatsGaugeVecReplaceDeletesStaleSeries",
 		"go test -race ./monitor",
@@ -94,6 +95,15 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("local release gate omits operator regression %s", required)
+		}
+	}
+	databaseIndex := strings.Index(script, `if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]`)
+	for _, databaseTest := range []string{
+		"StSyncChainEventsBatchesCanonicalEventBlocks",
+		"StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation",
+	} {
+		if testIndex := strings.Index(script, databaseTest); databaseIndex < 0 || testIndex <= databaseIndex {
+			t.Errorf("database-backed operator regression %s is outside the isolated database gate", databaseTest)
 		}
 	}
 	patchIndex := strings.LastIndex(script, `echo "[release-1.0] patch hygiene"`)

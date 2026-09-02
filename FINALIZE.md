@@ -15,10 +15,17 @@ every bounded Pion mutation with teardown, keeps blocking application hooks out
 of that gate, normalizes the signaling lock order, makes every test-owned
 WebRTC manager join, and adds deterministic owner regressions. Exact-source
 Connect normal, vet, four exhaustive race shards and repeated focused stress
-are green. Server `eba6afe5`, SDK `5927b74`, xops `2733b0b` and Connect
-`a177b57` are clean and pushed; their reviewed inputs are release-locked. The
-exact aggregate gate passed with PostgreSQL/Redis integration enabled; the
-two-plan review and clean M0A replay remain pending. The
+are green. Server, SDK, xops and Connect are clean and their reviewed inputs
+are release-locked. The source-current aggregate gate passed again with
+PostgreSQL/Redis integration enabled after adding explicit canonical EVM-block
+identity/event-batch coverage and independent validator-local 202-to-200 head
+selection evidence. The read-only restart audit then found that verified and
+superseded alpha reservations had consumed the prior cumulative ceiling while
+live emission diluted the reserve validator below its target. The bounded
+testnet ceiling now retains two 3,000-alpha repair tranches; a deterministic
+regression reproduces the exhausted superseded-spend envelope, consumes one
+tranche and proves that one remains. The two-plan review and clean M0A replay
+remain pending. The
 adopted accelerated acceptance profile requires five consecutive 300-block
 epochs followed by a future-effective 360-block policy (60-block root window,
 180-block finalize offset, 6-block close grace), a conservatively discarded
@@ -59,8 +66,10 @@ provisioning but stopped before its first conviction call when the two-share-flo
 defect was found. The latest topology started all real operator, miner and
 validator modules but failed the zero-restart/verified-trail acceptance boundary; after `stop`, no
 workload supervisor or child service is running. The testnet-only cumulative
-alpha ceiling is 22,250 alpha and each emission-dilution repair is additionally
-capped at a fixed 3,000-alpha tranche.
+alpha ceiling is 28,250 alpha. The current revision may consume one fixed
+3,000-alpha emission-dilution repair tranche while retaining a second; every
+individual repair remains capped at 3,000 alpha and the finalized source must
+retain at least 2,000 alpha.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
@@ -3595,6 +3604,33 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    the package-final process residue assertion. Connect commit `a177b57` is
    pushed and its refreshed production source digest is release-locked.
 
+   The source-current restart preflight on 2026-09-02 authenticated the
+   attempt-4 journal and all 256 live UIDs, with zero remaining registrations.
+   A fresh-state doctor invocation correctly rejected the now-full subnet; the
+   authoritative `--state-dir` doctor passed all 60 checks, with only the two
+   declared public-provider independence caveats. Its first plan revision then
+   failed before signing because active plus superseded alpha reservations
+   exactly consumed the 22,250-alpha ceiling while current emission required a
+   further 148.258523160 alpha to restore the 65% reserve-validator target.
+   Finalized source facts showed 8,825.368688789 alpha transferable and a
+   mandatory 2,000-alpha remainder. The testnet-only cumulative ceiling is now
+   28,250 alpha: the planner allocates one exact fixed 3,000-alpha repair,
+   retains a second 3,000-alpha tranche, and still leaves more than the required
+   source remainder. A deterministic superseded-spend regression reproduces
+   zero capacity, proves the first bounded repair and proves the second tranche
+   remains.
+
+   The same qualification found two adjacent aggregate-gate defects before
+   launch. The gate self-audit required the canonical event-batch regression by
+   exact name, while the script used only a broad prefix; after making both the
+   complete-batch and incomplete-batch names explicit, they were initially
+   classified in the environment-free suite and failed with `WARP_ENV not set`.
+   Both database-backed tests now run only after the isolated local
+   PostgreSQL/Redis exports, and an ordering regression prevents either from
+   moving back into the pure section. The environment-free controller selection
+   passes, both event-sync tests pass normally and under the race detector with
+   the managed database profile, and the complete aggregate gate passes.
+
    Once that replay is clean, `release-1.0` discards its post-preparation
    partial epoch, observes five sequential 300-block epochs (approximately five
    hours), and waits through their terminal finalization. `production-soak` then schedules the
@@ -3626,14 +3662,14 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 172.832 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 631.638 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 176.026 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 658.936 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
-| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 42.466 seconds, model in 73.354 seconds, and all 75 proxy roots in 523.146 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. A deterministic script regression prevents those safety exports from being removed. The rendered per-operator profile remains mandatory in M1. |
-| Subtensor infrastructure regressions | **30 passed** in 8.409 seconds, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
+| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 62.412 seconds, model in 73.341 seconds, and all 75 proxy roots in 533.477 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or either database-backed event-sync test from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
+| Subtensor infrastructure regressions | **35 passed** in 10.902 seconds, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across all eleven release workspace repositories; the exact checkout lock is rechecked after every other gate. |
 
 The contract generator applies canonical Go formatting, while the release gate's

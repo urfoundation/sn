@@ -1329,6 +1329,82 @@ func TestPlanRevisionReserveMajorityRepairHonorsCumulativeAlphaLimit(t *testing.
 	}
 }
 
+// A live campaign can consume its original alpha ceiling through verified
+// actions and superseded reservations before later emissions dilute the
+// reserve validator. Expanding the cumulative ceiling by two bounded tranches
+// must fund exactly one stable repair while retaining one future tranche.
+func TestPlanRevisionReserveMajorityRepairRetainsCapacityAfterSupersededSpend(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.MaximumAlphaRao = 30_000_000_000_000
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applySupersededSpend(prior, Spend{AlphaRao: 501_500_000_051}); err != nil {
+		t.Fatal(err)
+	}
+	committed, ok := checkedAdd(prior.MaximumSpend.AlphaRao, prior.SupersededSpend.AlphaRao)
+	if !ok {
+		t.Fatal("test cumulative alpha spend overflowed")
+	}
+	prior.Limits.AlphaRao = committed
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(prior); err != nil {
+		t.Fatalf("exactly exhausted prior envelope is invalid: %v", err)
+	}
+	stateDir := t.TempDir()
+	persistFleetCommitmentRecoveryTestPlan(t, stateDir, prior)
+	base := actionByID(t, prior, "alpha.transfer.validator.1")
+	baseFinal, err := strconv.ParseUint(base.Parameters["planned_final_stake_rao"], 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []JournalEntry{{
+		DeploymentID: prior.DeploymentID,
+		PlanHash:     prior.PlanHash,
+		ActionID:     base.ID,
+		IntentHash:   base.IntentHash,
+		Stage:        StageVerified,
+	}}
+	current := *testSetupFacts()
+	current.RegisteredAlphaRao = 30_000_000_000_000
+	current.ReserveValidatorAlphaRao = baseFinal
+	cfg.MaximumAlphaRao = committed
+	if _, err := buildPlanRevisionFromFacts(cfg, stateDir, prior, &current, entries, time.Unix(2, 0)); err == nil || !strings.Contains(err.Error(), "no repair capacity") {
+		t.Fatalf("exhausted superseded envelope did not reproduce the live failure: %v", err)
+	}
+	twoTranches, ok := checkedMul(2, cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao)
+	if !ok {
+		t.Fatal("test repair headroom overflowed")
+	}
+	cfg.MaximumAlphaRao, ok = checkedAdd(committed, twoTranches)
+	if !ok {
+		t.Fatal("test expanded alpha ceiling overflowed")
+	}
+	revised, err := buildPlanRevisionFromFacts(cfg, stateDir, prior, &current, entries, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repair := actionByID(t, revised, "alpha.repair.validator.1.2")
+	if repair.Spend.AlphaRao != cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao {
+		t.Fatalf("repair spend=%d want bounded tranche=%d", repair.Spend.AlphaRao, cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao)
+	}
+	revisedCommitted, err := addSpends(revised.MaximumSpend, revised.SupersededSpend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revisedCommitted.AlphaRao > cfg.MaximumAlphaRao || cfg.MaximumAlphaRao-revisedCommitted.AlphaRao != cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao {
+		t.Fatalf("revised cumulative alpha=%d limit=%d does not retain one repair tranche=%d", revisedCommitted.AlphaRao, cfg.MaximumAlphaRao, cfg.Config.ValidatorBootstrap.MaximumReserveRepairAlphaRao)
+	}
+}
+
 func TestPlanBudgetRejectsReserveShareRepairEnvelopeTampering(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.MaximumAlphaRao = 30_000_000_000_000
