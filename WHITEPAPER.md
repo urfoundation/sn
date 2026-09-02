@@ -1597,7 +1597,7 @@ activity is limited to our identities/netuid, loopback services and capped reads
 chain‑wide exploit reproduction runs only on the pinned local runtime. A release
 run requires interleaved controls, bounded load, zero unexpected errors, explicit
 latency/resilience evidence and a root‑caused disposition for every anomaly. The
-v1.0 release catalogue contains 54 mandatory vectors, including all published
+v1.0 release catalogue contains 56 mandatory vectors, including all published
 Subtensor advisories and the known Bittensor SDK missing‑signature,
 finality‑era‑expiry, plaintext unauthenticated transport and constant‑body‑hash
 failures. Every vector must name a checked‑in oracle/test and produce at least one

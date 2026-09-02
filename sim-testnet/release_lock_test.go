@@ -67,6 +67,42 @@ func TestCleanGitSubtreeHashRejectsRuntimeAssetDrift(t *testing.T) {
 	}
 }
 
+func TestSDKMobileBuildTreeHashBindsNestedModule(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	commandDir := filepath.Join(root, "build", "cmd", "mobileexports")
+	if err := os.MkdirAll(commandDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(commandDir, "main.go")
+	if err := os.WriteFile(source, []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "build/cmd/mobileexports/main.go")
+	runTestGit(t, root, "commit", "-qm", "review mobile build module")
+	first, err := sdkMobileBuildTreeHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("package main\n\nfunc main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sdkMobileBuildTreeHash(root); err == nil || !strings.Contains(err.Error(), "differs from reviewed HEAD") {
+		t.Fatalf("dirty mobile build source was accepted: %v", err)
+	}
+	runTestGit(t, root, "add", "build/cmd/mobileexports/main.go")
+	runTestGit(t, root, "commit", "-qm", "update mobile build module")
+	second, err := sdkMobileBuildTreeHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("reviewed mobile build source update did not change release-lock hash")
+	}
+}
+
 func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("one"), 0o600); err != nil {

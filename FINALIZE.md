@@ -1,6 +1,36 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status:** release-1.0 implementation and the continuous adversarial campaign are complete locally. Public-testnet M0A attempt 4 on netuid 521 installed and verified all 200 production fleets plus both generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and all 2,204 carried actions, and reached the complete 32-process topology representing 1,000 miners without entering M0B/phase 2. Successive fail-closed replays exposed and repaired provider discovery, public-RPC fairness/snapshot, retry, proof-persistence, supervisor-generation, startup-order and Connect ingress defects. The latest replay proved clients dialed the exact `127.0.1.1:443` and `127.0.1.2:443` listeners, then isolated a direct-UDP blackhole: production Connect's Proxy Protocol wrapper discarded headerless loopback QUIC Initial packets before quic-go while HTTP status remained green. The explicit loopback-only bypass, TLS-authenticated QUIC readiness barrier and 7-MiB host UDP-buffer gate now have deterministic adjacent regressions; ordinary production ingress retains Proxy Protocol. Server checkpoint `03d89fc9` and SN checkpoint `6987d60` are pushed. The current aggregate gate passed, including the full simulator race suite, Foundry, Slither, operator DB and infrastructure suites; the fresh two-plan review and clean replay remain pending. The adopted accelerated acceptance profile requires five consecutive 300-block epochs followed by a future-effective 360-block policy (60-block root window, 180-block finalize offset, 6-block close grace), one conservatively discarded partial epoch, three consecutive fully observed production epochs, and terminal finalization. Every acceptance scenario additionally requires at least one fresh, independently reconstructed and signature-verified proof per required epoch for every validator/operator pair; durable malformed, incomplete or duplicate proof records fail closed. The continuous custody adversary must use a real signed artifact against the deployed testnet vault and observe the exact `InvalidProof` revert with unchanged pinned entitlement and conservation state for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After clean M0A, the practical irreducible public-chain evidence window is approximately 11--13 hours, 2026-09-01 UTC
+**Status (2026-09-02 UTC):** release-1.0 implementation and the continuous
+56-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
+on netuid 521 installed and verified all 200 production fleets plus both
+generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and
+all 2,204 carried actions, and reached the complete 32-process topology
+representing 1,000 miners without entering M0B/phase 2. Successive fail-closed
+replays exposed and repaired provider discovery, public-RPC fairness/snapshot,
+retry, proof-persistence, supervisor-generation, startup-order and Connect
+ingress defects. The latest source-current qualification additionally exposed a
+load-sensitive Connect/Pion lifetime race: canceled peer startup could mutate a
+closed PeerConnection and strand an ICE task loop. Commit `a177b57` serializes
+every bounded Pion mutation with teardown, keeps blocking application hooks out
+of that gate, normalizes the signaling lock order, makes every test-owned
+WebRTC manager join, and adds deterministic owner regressions. Exact-source
+Connect normal, vet, four exhaustive race shards and repeated focused stress
+are green. Server `eba6afe5`, SDK `5927b74`, xops `2733b0b` and Connect
+`a177b57` are clean and pushed; their reviewed inputs are release-locked. The
+fresh aggregate gate, two-plan review and clean M0A replay remain pending. The
+adopted accelerated acceptance profile requires five consecutive 300-block
+epochs followed by a future-effective 360-block policy (60-block root window,
+180-block finalize offset, 6-block close grace), one conservatively discarded
+partial epoch, three consecutive fully observed production epochs, and terminal
+finalization. Every acceptance scenario additionally requires at least one
+fresh, independently reconstructed and signature-verified proof per required
+epoch for every validator/operator pair; durable malformed, incomplete or
+duplicate proof records fail closed. The continuous custody adversary must use
+a real signed artifact against the deployed testnet vault and observe the exact
+`InvalidProof` revert with unchanged pinned entitlement and conservation state
+for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After
+clean M0A, the practical irreducible public-chain evidence window is
+approximately 11--13 hours.
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -1524,7 +1554,7 @@ does not satisfy the floor.
 
 The campaign result is part of the scenario result, signed bundle, independent
 analysis and go/no-go decision. It must prove actor start before and stop after
-the happy path, all 54 vectors present, every vector mapped to active actors and
+the happy path, all 56 vectors present, every vector mapped to active actors and
 checked-in tests, every vector backed by at least one named sampled metric, no
 leaked goroutine, and no unsafe shared-testnet action. Any
 actor error, unexpected status, common-height disagreement, missing artifact,
@@ -1953,7 +1983,7 @@ All of the following are required:
 - exact multi-epoch value conservation and one-way reserve hold;
 - finalized claims survive all pause/upgrade/operator drills;
 - every CRv4 cycle is tracked through finalized application;
-- all 54 adversarial vectors have matrix-bound passing evidence from seven
+- all 56 adversarial vectors have matrix-bound passing evidence from seven
   continuously overlapping actors, and every anomaly ledger entry is resolved;
 - finality-safe replay from deployment block reproduces all decisions;
 - public artifacts independently reconstruct every payout root and committed weight vector;
@@ -3284,6 +3314,192 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    hash `0x4f97f8c8763faaaa5d1b94cad173d542c6572e83141a9ba7ee3c30917d40856b`.
    The approved clean replay remains.
 
+   The production-binary handshake audit then found a second settings boundary
+   behind the direct-loopback flag. `Run` created an `Exchange` with the
+   simulator's no-Proxy-Protocol and IP-certificate settings, but
+   `NewConnectRouterWithDefaults` constructed a fresh handler-default snapshot.
+   That silently restored Proxy Protocol and discarded the no-SNI TLS fallback
+   before either UDP listener was built. The router now consumes the exchange's
+   exact immutable settings snapshot. A structural regression checks identity
+   and both security-sensitive fields, and a real UDP/QUIC regression sends a
+   headerless Initial through that exchange-to-router handoff and completes the
+   TLS 1.3 handshake. The ordinary external-listener path still requires Proxy
+   Protocol.
+
+   The same launch-scale audit found a distinct resource-ownership defect. Each
+   one-shot provisioning or matchmaking call created a `ClientStrategy`, but
+   cancellation did not synchronously unregister its network-change callback or
+   close its idle HTTP connection. A 1,000-identity provisioning pass could
+   therefore retain one keep-alive socket and callback per completed identity.
+   `ClientStrategy.Close` is now idempotent, cancels its child lifetime,
+   unregisters the callback and closes every idle pool. Every production owner
+   in Connect, the operator latency workload, miner provisioning/claim paths,
+   validator operator runtimes and simulator account provisioning was audited;
+   short-lived owners close directly and live swarm members own independently
+   cancelable child contexts. Real `ConnState` regressions require the exact
+   request connection to become idle and then closed, including the SDK's
+   preliminary `/hello` request.
+
+   Broad race qualification exposed the adjacent completion flaw:
+   `ClientStrategy.parallelEval` launched WebSocket/HTTP attempt goroutines but
+   returned when cancellation was delivered rather than when their dial stacks
+   returned. `PlatformTransport.CloseAndWait` could consequently publish
+   completion while an admitted dial still used strategy state. Parallel
+   workers and the serial strategy-context bridge are now synchronously
+   registered and joined; cancellation remains only the stop request. Exact
+   barriers cover the strategy boundary and the H1 transport boundary. The same
+   qualification closed three test-oracle defects rather than suppressing them:
+   the wallet fixture now models `/hello`, QUIC readiness no longer races a
+   synthetic server close against client authentication, and stream replacement
+   waits for alias activation rather than the earlier index-publication hook.
+   Focused lifecycle regressions pass 500 ordinary and 200 race-detector
+   repetitions; the final broad gate is rerunning before the next plan is
+   eligible.
+
+   The ownership audit then crossed the Connect/SDK boundary. `Api.Close`
+   deliberately remains callback-safe cancellation, but several external
+   owners treated it as completion and released their shared strategy while the
+   JWT refresh worker could still be inside an admitted request. `Api.CloseAndWait`
+   now supplies the external join boundary. Storage-backed `NetworkSpace`
+   generations synchronously join the API and local-state workers before their
+   strategy is released; replacement and removal occur outside the manager
+   lock, stale pointers cannot remove or reselect a newer generation, and a
+   racing update cannot install state after manager close. `SimProvider` joins
+   pending platform dials, client/OOB/NAT workers and its strategy on disconnect
+   or close; `SimClient` similarly joins its bridge, multi-client and generator.
+   The operator latency probe uses the same API join before releasing its
+   one-shot strategy. Exact cancellation/release barriers cover each ownership
+   edge and pass 100 ordinary plus 25 race-detector repetitions on the current
+   source.
+
+   The adjacent SDK audit then found three deeper generations behind that first
+   boundary. A provider policy migration could break a memory-incompatible H3
+   carrier before making its replacement but never join the retired carrier;
+   destination replacement canceled its multi-client without joining either
+   the packet path or generator; and verbose security-policy and device-RPC
+   workers had no owner-visible completion edge. Device and provider shutdown
+   now admit every migration, destination, persistence, monitor, listener,
+   accepted RPC session, reverse callback and HTTP worker before publishing
+   close. Both local and remote devices expose callback-safe cancellation plus
+   an external `CloseAndWait` boundary; late destination, policy and RPC
+   mutation is rejected after close. Exact barriers hold an admitted migration,
+   destination generation, RPC accept, reverse callback and remote dial, and
+   require the corresponding owner to remain live until release. Those
+   regressions pass 50 ordinary and 25 race-detector repetitions on the current
+   source.
+
+   The same ownership walk found one release-critical validator leak and one
+   operator-host leak. Every real validator trail constructed an API
+   multi-client generator, netstack TUN, remote multi-client and packet pump but
+   deferred only non-joining multi-client cancellation. One failed or completed
+   trail could therefore retain discovery clients and buffers for the rest of
+   the epoch. A per-trail owner now cancels, closes the TUN, joins the
+   multi-client and pump, and only then joins the generator; partial
+   construction follows the same path and cleanup errors remain visible. The
+   operator's proxy manager likewise used one lazily shared `NetworkSpace` but
+   neither owned its release nor fenced a device construction racing shutdown.
+   It now rejects late opens, joins every admitted constructor and device
+   worker, closes an internally created shared space after the last borrower,
+   and preserves an injected space as borrowed. Deterministic close-order,
+   partial-construction, admitted-open and borrowed/owned-space regressions run
+   in both ordinary and race gates.
+
+   The first broad proxy qualification then hit Go's ten-minute package
+   deadline. The active prewarm path was not the failure: isolated against the
+   same PostgreSQL/Redis and real SDK tunnel it completed in 19.5 seconds. The
+   timeout dump instead contained thousands of gVisor workers from acceptance
+   tests that had already returned. Their harness canceled a shared context and
+   launched manager joining on an unobserved goroutine, so sequential tests
+   accumulated retiring netstacks and competed with later cases. Harnesses now
+   join the primary, replacement and fallback managers while Connect remains
+   available for final contract cleanup, then close the Connect halves. Three
+   consecutive prewarm/deploy-overlap pairs passed in 132.6 seconds with that
+   exact teardown, and the pair passed under the race detector in 47.9 seconds.
+
+   The repaired full-package qualification then reached Go's implicit
+   600-second deadline after 62 passing roots. This second dump narrowed the
+   remaining residue to one completed WireGuard acceptance client: its close
+   function stopped the userspace WireGuard device and packet bridges but not
+   the gVisor stack, leaving the TCP dispatcher and its per-CPU workers live.
+   The client owner now closes idle HTTP endpoints, cancels and joins both
+   bridges, and calls the stack's `Close` plus `Wait`; the surrounding harness
+   also joins its provider transport, NAT, client, out-of-band control and
+   strategy before Connect shutdown. A live-TCP-endpoint dispatcher regression
+   passes 50 ordinary and 25 race-detector repetitions.
+
+   This run also made the timeout budget independently measurable: completed
+   root durations already summed to 591.4 seconds before 13 unchanged tests
+   remained, so the package cannot fit the implicit ten-minute deadline even
+   with zero residue. The managed gate now runs the complete, unchanged proxy
+   selection with an explicit 20-minute deadline. The exact full-package
+   qualification passed all 75 roots in 682.719 seconds, including both real
+   prewarm paths, restart/recreation coverage and the final window-identity
+   end-to-end case. The complete proxy suite is mandatory in the managed gate.
+
+   A full SDK run exposed why the older token tests could still hang despite
+   correct production cancellation: the fixture counted a logical API action as
+   one wire request, although the SDK first sends `/hello` and a refresh can
+   legitimately have parallel wire attempts. Extra handlers blocked forever on
+   a fixed-capacity observation channel while `httptest.Server.Close` waited.
+   The shared fixture now handles `/hello`, classifies refresh generations by
+   the Authorization token, gives all parallel attempts the same deterministic
+   response and owns complete API/strategy teardown. Twenty-repeat focused
+   runs and the subsequent 445.342-second discovery suite passed. After every
+   adjacent generation, monitor and RPC ownership fix, the exact-source suite
+   passed again in 444.088 seconds. The exact-source full race qualification
+   then passed in 463.189 seconds with no race or test failure.
+
+   The first complete SN rerun exposed the same wire-versus-logical-request
+   assumption in the adjacent client-auth bootstrap fixture: it treated the
+   SDK's legitimate `/hello` discovery as `/network/auth-client`, returned an
+   auth payload on the wrong route and failed its own path oracle. All three
+   bootstrap/refresh/rejection fixtures now model discovery explicitly and
+   fail closed on unknown routes. The complete package passes 100 ordinary and
+   25 race-detector repetitions. The subsequent exact-source full SN run passed
+   every package, including the 231.267-second launch-scale simulator suite,
+   with no additional failure.
+
+   The server model shards independently found an exact persistence-domain
+   mismatch: a just-created Go timestamp retained nanoseconds while PostgreSQL
+   returned the same value at microsecond precision. Equality checks in balance
+   and tier-transfer tests therefore depended on the final three host-clock
+   digits. `NowUtc` now canonicalizes UTC timestamps to PostgreSQL precision,
+   with a deterministic timezone/sub-microsecond boundary regression. The three
+   formerly failing DB tests pass. All four exact-source model shards
+   subsequently passed, covering all 527 root tests. The complete controller
+   suite then passed in 1,813.685 seconds with no failed root.
+
+   The final Server rebase also incorporated three backup/ingester monitor
+   changes from upstream. The complete source-current monitor package passed
+   in 3.441 seconds and its race-detector qualification passed in 49.358
+   seconds; the refreshed Server source digest is release-locked.
+
+   The source-current Connect qualification then found one Pion ICE task loop
+   after otherwise successful WebRTC roots. The first repair made all test and
+   benchmark manager constructors register a bounded `closeAndWait` cleanup at
+   construction; a Go-AST regression rejects any future raw test constructor.
+   Repetition isolated the remaining production race to
+   `TestWebRtcCanceledPeerReleasesAdmissionWhileSignalSendIsBackpressured`:
+   admission teardown intentionally did not wait for a synchronously blocked
+   signal sender, so `Run` could pass its cancellation check, physical teardown
+   could close the PeerConnection, and startup could subsequently call a lazy
+   Pion mutation that created an ownerless ICE task loop. Once this interleaving
+   won, the loop remained live for minutes and later repetitions accumulated
+   more loops.
+
+   Each bounded Pion mutation now takes one defer-safe lifecycle owner shared
+   with teardown. Blocking signal sends and setup hooks remain outside it, every
+   mutation rechecks cancellation under the owner, fast-path publication can
+   still be retired promptly, inbound signaling uses the same Pion-then-signal
+   lock order, and teardown closes the callback gate itself. The deterministic
+   startup/teardown barrier regression and the formerly flaky adjacent set
+   passed 50 race repetitions in 111.533 seconds. On the exact final source,
+   `go vet ./...` passed; all packages passed normally in 618.966 seconds; and
+   the exhaustive A--F, G--N, O--R and S--Z race shards passed in 419.245,
+   317.587, 272.519 and 541.829 seconds respectively. The S--Z shard includes
+   the package-final process residue assertion. Connect commit `a177b57` is
+   pushed and its refreshed production source digest is release-locked.
+
    Once that replay is clean, `release-1.0` observes five sequential 300-block
    epochs (approximately five hours). `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
@@ -3438,7 +3654,9 @@ It may be declared **mainnet-ready** only after MR also passes: the complete
 anomaly ledger is root-caused and closed, finney deltas and the exact mainnet
 plan pass the no-broadcast local/fork rehearsal, upstream runtime blockers are
 fixed or proven unreachable, independent reviews and operational recovery drills
-are closed, and the signed dossier names the 2-of-3 Safe/timelock and approved
+are closed, every credential exposed during qualification (including the MinIO
+root credential) is rotated and its least-privilege service account is
+revalidated, and the signed dossier names the 2-of-3 Safe/timelock and approved
 value at risk. Mainnet readiness is not authorization to broadcast that plan.
 
 Until then, “green unit tests” means a component is safe to continue developing—not that release 1.0 is deployable.

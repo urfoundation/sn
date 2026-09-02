@@ -109,6 +109,15 @@ func cleanGitSubtreeHash(root, subtree string) (string, error) {
 	return digestBytes(treeOutput), nil
 }
 
+// The SDK's mobile release toolchain is a nested Go module under build/. The
+// general Go source digest deliberately ignores build directories so generated
+// artifacts cannot perturb a release lock, therefore bind this reviewed source
+// tree separately. cleanGitSubtreeHash also rejects uncommitted or untracked
+// files anywhere in the module before a release can proceed.
+func sdkMobileBuildTreeHash(sdkRoot string) (string, error) {
+	return cleanGitSubtreeHash(sdkRoot, "build")
+}
+
 func filesUnder(root string, roots []string, include func(string) bool) ([]string, error) {
 	var names []string
 	for _, relativeRoot := range roots {
@@ -326,6 +335,10 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 			return nil, fmt.Errorf("hash %s module: %w", name, hashErr)
 		}
 		observation.Repositories[name+"_go_source_hash"] = hash
+	}
+	observation.Repositories["sdk_mobile_build_tree_hash"], err = sdkMobileBuildTreeHash(modules["sdk"])
+	if err != nil {
+		return nil, fmt.Errorf("hash SDK mobile build module: %w", err)
 	}
 	observation.Repositories["protocol_source_hash"], err = protocolSourceHash(cfg.Repos.SN)
 	if err != nil {
