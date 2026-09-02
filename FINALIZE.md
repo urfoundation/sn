@@ -17,7 +17,8 @@ WebRTC manager join, and adds deterministic owner regressions. Exact-source
 Connect normal, vet, four exhaustive race shards and repeated focused stress
 are green. Server `eba6afe5`, SDK `5927b74`, xops `2733b0b` and Connect
 `a177b57` are clean and pushed; their reviewed inputs are release-locked. The
-fresh aggregate gate, two-plan review and clean M0A replay remain pending. The
+exact aggregate gate passed with PostgreSQL/Redis integration enabled; the
+two-plan review and clean M0A replay remain pending. The
 adopted accelerated acceptance profile requires five consecutive 300-block
 epochs followed by a future-effective 360-block policy (60-block root window,
 180-block finalize offset, 6-block close grace), one conservatively discarded
@@ -3523,21 +3524,21 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## Appendix A — Reproducible audit commands
 
-### Final local release-gate record (2026-09-01 UTC)
+### Final local release-gate record (2026-09-02 UTC)
 
 The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its latest run
 completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 172.692 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 636.397 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 172.832 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 631.638 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
 | `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
-| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. A deterministic script regression prevents those safety exports from being removed. The rendered per-operator profile remains mandatory in M1. |
-| Subtensor infrastructure regressions | **26 passed**, covering the pinned playbook/archive/RPC and resolved vulnerability assertions. |
+| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 42.466 seconds, model in 73.354 seconds, and all 75 proxy roots in 523.146 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. A deterministic script regression prevents those safety exports from being removed. The rendered per-operator profile remains mandatory in M1. |
+| Subtensor infrastructure regressions | **30 passed** in 8.409 seconds, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across all eleven release workspace repositories; the exact checkout lock is rechecked after every other gate. |
 
 The contract generator applies canonical Go formatting, while the release gate's
