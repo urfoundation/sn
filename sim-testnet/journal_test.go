@@ -518,6 +518,213 @@ func TestActionDependenciesRequireExactVerifiedPlanIntent(t *testing.T) {
 	}
 }
 
+func TestTopologyLaunchCannotUseAncestorProcessGeneration(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+
+	topology := Action{ID: "topology.launch", IntentHash: "topology-intent", Kind: "local"}
+	durable := Action{ID: "config.render", IntentHash: "config-intent", Kind: "local"}
+	after := Action{ID: "churn.tournament-complete", IntentHash: "churn-intent", DependsOn: []string{topology.ID}}
+	ancestorPlanHash := "0x" + strings.Repeat("11", 32)
+	activePlanHash := "0x" + strings.Repeat("22", 32)
+	for _, action := range []Action{topology, durable} {
+		if err := journal.Append(JournalEntry{
+			DeploymentID: "deployment", PlanHash: ancestorPlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+			Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/" + action.ID + ".json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	executor := &Executor{
+		plan: &SetupPlan{
+			PlanHash: activePlanHash, PriorPlanHashes: []string{ancestorPlanHash},
+			Actions: []Action{durable, topology, after},
+		},
+		journal: journal,
+	}
+	if entry, ok := executor.verifiedActionEntry(durable); !ok || entry.PlanHash != ancestorPlanHash {
+		t.Fatalf("durable ancestor verification was not retained: %+v, %t", entry, ok)
+	}
+	if entry, ok := executor.verifiedActionEntry(topology); ok {
+		t.Fatalf("ancestor topology process generation was retained: %+v", entry)
+	}
+	if err := executor.verifyActionDependencies(after); err == nil || !strings.Contains(err.Error(), "topology.launch is not postcondition-verified") {
+		t.Fatalf("post-topology action accepted an ancestor process generation: %v", err)
+	}
+	if err := journal.Append(JournalEntry{
+		DeploymentID: "deployment", PlanHash: activePlanHash, ActionID: topology.ID, IntentHash: topology.IntentHash,
+		Stage: StageVerified, PostconditionHash: "0xpost-current", PostconditionPath: "receipts/postconditions/" + strings.Repeat("22", 32) + "/topology.launch.json",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if entry, ok := executor.verifiedActionEntry(topology); !ok || entry.PlanHash != activePlanHash {
+		t.Fatalf("current topology process generation was not accepted: %+v, %t", entry, ok)
+	}
+	if err := executor.verifyActionDependencies(after); err != nil {
+		t.Fatalf("post-topology action rejected the current process generation: %v", err)
+	}
+}
+
+func TestCarriedTopologyAuthenticatesReceiptWithoutRequiringStoppedProcessLiveness(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+
+	cfg := testResolvedConfig(t)
+	topology := Action{ID: "topology.launch", IntentHash: "topology-intent", Kind: "local"}
+	ancestorPlanHash := "0x" + strings.Repeat("11", 32)
+	activePlanHash := "0x" + strings.Repeat("22", 32)
+	ancestorPlan := &SetupPlan{PlanHash: ancestorPlanHash, Actions: []Action{topology}}
+	record := &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: ancestorPlanHash, ActionID: topology.ID, IntentHash: topology.IntentHash,
+		OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		SubstrateFinalized: ChainHead{Number: 10, Hash: "0x" + strings.Repeat("31", 32)},
+		EVMFinalized:       ChainHead{Number: 11, Hash: "0x" + strings.Repeat("32", 32)}, EVMHashDomain: "evm-rpc",
+		Observed:                      map[string]any{"kind": "local", "processes": 33},
+		IndependentSubstrateFinalized: ChainHead{Number: 12, Hash: "0x" + strings.Repeat("33", 32)},
+		IndependentEVMFinalized:       ChainHead{Number: 13, Hash: "0x" + strings.Repeat("34", 32)}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: map[string]any{"kind": "local", "processes": 33},
+	}
+	receiptPath, receiptHash, err := (&Executor{cfg: cfg, stateDir: dir, plan: ancestorPlan}).persistActionPostcondition(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Append(JournalEntry{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: ancestorPlanHash,
+		ActionID: topology.ID, IntentHash: topology.IntentHash, Stage: StageVerified,
+		PostconditionHash: receiptHash, PostconditionPath: receiptPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{
+		cfg: cfg, stateDir: dir, journal: journal,
+		plan: &SetupPlan{PlanHash: activePlanHash, PriorPlanHashes: []string{ancestorPlanHash}, Actions: []Action{topology}},
+	}
+	if err := executor.verifyCarriedActionHistory(context.Background()); err != nil {
+		t.Fatalf("stopped ancestor topology receipt was not authenticated independently of liveness: %v", err)
+	}
+	if len(executor.carriedVerificationKeys) != 0 {
+		t.Fatal("ancestor topology liveness entered the carried verification cache")
+	}
+	if err := os.Remove(filepath.Join(dir, filepath.FromSlash(receiptPath))); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.verifyCarriedActionHistory(context.Background()); err == nil || !strings.Contains(err.Error(), "persisted ancestor process receipt") {
+		t.Fatalf("missing ancestor topology receipt was accepted: %v", err)
+	}
+}
+
+func TestSamePlanTopologyResumeRequiresCurrentSupervisorGeneration(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+
+	cfg := testResolvedConfig(t)
+	topology := Action{ID: "topology.launch", IntentHash: "topology-intent", Kind: "local"}
+	planHash := "0x" + strings.Repeat("44", 32)
+	plan := &SetupPlan{PlanHash: planHash, Actions: []Action{topology}}
+	record := &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: planHash, ActionID: topology.ID, IntentHash: topology.IntentHash,
+		OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		SubstrateFinalized: ChainHead{Number: 10, Hash: "0x" + strings.Repeat("51", 32)},
+		EVMFinalized:       ChainHead{Number: 11, Hash: "0x" + strings.Repeat("52", 32)}, EVMHashDomain: "evm-rpc",
+		Observed:                      map[string]any{"kind": "local", "processes": 0},
+		IndependentSubstrateFinalized: ChainHead{Number: 12, Hash: "0x" + strings.Repeat("53", 32)},
+		IndependentEVMFinalized:       ChainHead{Number: 13, Hash: "0x" + strings.Repeat("54", 32)}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: map[string]any{"kind": "local", "processes": 0},
+	}
+	executor := &Executor{cfg: cfg, stateDir: dir, plan: plan, journal: journal}
+	receiptPath, receiptHash, err := executor.persistActionPostcondition(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Append(JournalEntry{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: planHash,
+		ActionID: topology.ID, IntentHash: topology.IntentHash, Stage: StageVerified,
+		PostconditionHash: receiptHash, PostconditionPath: receiptPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: "sha256:" + strings.Repeat("61", 32)}
+	manifestHash, err := canonicalHashHex(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestWire, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(dir, "supervisor.json"), manifestWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(dir, "supervisor.state.json")
+	stoppedWire, err := json.Marshal(SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", ManifestHash: manifestHash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(statePath, stoppedWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Execute(context.Background(), topology); err == nil || !strings.Contains(err.Error(), "supervisor postcondition ready=false") {
+		t.Fatalf("same-plan stopped topology receipt bypassed current liveness: %v", err)
+	}
+	if got := len(journal.Entries()); got != 1 {
+		t.Fatalf("failed same-plan liveness recheck changed terminal journal: entries=%d", got)
+	}
+	liveWire, err := json.Marshal(SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", ManifestHash: manifestHash,
+		SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: currentProcessStartTimeTicks(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(statePath, liveWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Execute(context.Background(), topology); err != nil {
+		t.Fatalf("same-plan live supervisor generation was rejected: %v", err)
+	}
+	if got := len(journal.Entries()); got != 1 {
+		t.Fatalf("same-plan liveness recheck duplicated terminal journal entry: entries=%d", got)
+	}
+	tamperedWire, err := json.Marshal(SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", ManifestHash: "0x" + strings.Repeat("ff", 32),
+		SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: currentProcessStartTimeTicks(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(statePath, tamperedWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Execute(context.Background(), topology); err == nil || !strings.Contains(err.Error(), "supervisor postcondition ready=false") {
+		t.Fatalf("same-plan wrong supervisor manifest bypassed current liveness: %v", err)
+	}
+}
+
 func TestConsumedActionHistoryUsesItsVerifiedAncestorPlan(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o700); err != nil {

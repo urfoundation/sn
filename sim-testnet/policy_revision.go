@@ -282,56 +282,62 @@ func validateFuturePolicyAcceleration(previous, next *protocol.Policy) error {
 	return nil
 }
 
+// Bind the exact stopped manifest which a historical launch receipt must name.
+type stoppedTopologyBoundary struct {
+	manifestHash string
+	processes    int
+}
+
 // Prove that a previously launched topology reached the harness's bounded stop
 // state. PID start times distinguish a dead supervisor from PID reuse, and all
 // children must have published the supervisor-owned terminal reason.
-func validateStoppedTopologyPolicyRevision(cfg *ResolvedConfig, stateDir string) error {
+func validateStoppedTopologyPolicyRevision(cfg *ResolvedConfig, stateDir string) (stoppedTopologyBoundary, error) {
 	if cfg == nil || cfg.Config == nil {
-		return errors.New("stopped topology config is unavailable")
+		return stoppedTopologyBoundary{}, errors.New("stopped topology config is unavailable")
 	}
 	var manifest SupervisorFile
 	if err := decodeStrictJSONFile(filepath.Join(stateDir, "supervisor.json"), &manifest); err != nil {
-		return fmt.Errorf("read stopped topology manifest: %w", err)
+		return stoppedTopologyBoundary{}, fmt.Errorf("read stopped topology manifest: %w", err)
 	}
 	var state SupervisorState
 	if err := decodeStrictJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
-		return err
+		return stoppedTopologyBoundary{}, err
 	}
 	expectedProcesses := 2 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
 	if manifest.Schema != "urnetwork-sim-supervisor-v1" || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID || len(manifest.Specs) != expectedProcesses {
-		return errors.New("stopped topology manifest identity is incomplete")
+		return stoppedTopologyBoundary{}, errors.New("stopped topology manifest identity is incomplete")
 	}
 	binaryDigest, binaryHashErr := hex.DecodeString(strings.TrimPrefix(manifest.BinaryHash, "sha256:"))
 	if !strings.HasPrefix(manifest.BinaryHash, "sha256:") || binaryHashErr != nil || len(binaryDigest) != sha256.Size {
-		return errors.New("stopped topology binary hash is invalid")
+		return stoppedTopologyBoundary{}, errors.New("stopped topology binary hash is invalid")
 	}
 	manifestHash, err := canonicalHashHex(manifest)
 	if err != nil {
-		return err
+		return stoppedTopologyBoundary{}, err
 	}
 	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.SupervisorPID <= 1 || len(state.Processes) != expectedProcesses || state.ManifestHash != manifestHash {
-		return errors.New("stopped topology supervisor identity is incomplete")
+		return stoppedTopologyBoundary{}, errors.New("stopped topology supervisor identity is incomplete")
 	}
 	if _, err := decodeHex32("stopped topology manifest hash", manifestHash); err != nil {
-		return err
+		return stoppedTopologyBoundary{}, err
 	}
 	if _, err := time.Parse(time.RFC3339Nano, state.UpdatedAt); err != nil {
-		return errors.New("stopped topology timestamp is invalid")
+		return stoppedTopologyBoundary{}, errors.New("stopped topology timestamp is invalid")
 	}
 	if observedStart, err := processStartTimeTicks(state.SupervisorPID); err == nil {
 		if state.SupervisorStartTimeTicks == 0 {
-			return errors.New("legacy topology supervisor PID is live and has no recorded generation")
+			return stoppedTopologyBoundary{}, errors.New("legacy topology supervisor PID is live and has no recorded generation")
 		}
 		if observedStart == state.SupervisorStartTimeTicks {
-			return errors.New("topology supervisor is still running")
+			return stoppedTopologyBoundary{}, errors.New("topology supervisor is still running")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("observe stopped topology supervisor: %w", err)
+		return stoppedTopologyBoundary{}, fmt.Errorf("observe stopped topology supervisor: %w", err)
 	}
 	specs := make(map[string]ProcessSpec, len(manifest.Specs))
 	for _, spec := range manifest.Specs {
 		if spec.ID == "" || specs[spec.ID].ID != "" {
-			return errors.New("stopped topology manifest has invalid process identities")
+			return stoppedTopologyBoundary{}, errors.New("stopped topology manifest has invalid process identities")
 		}
 		specs[spec.ID] = spec
 	}
@@ -339,23 +345,23 @@ func validateStoppedTopologyPolicyRevision(cfg *ResolvedConfig, stateDir string)
 	for _, process := range state.Processes {
 		spec, ok := specs[process.ID]
 		if !ok || seen[process.ID] || process.Role != spec.Role || process.Identity != spec.Identity || process.PID != 0 || process.Healthy || process.ExitError != "supervisor stopped" {
-			return fmt.Errorf("topology process %q lacks the exact stopped state", process.ID)
+			return stoppedTopologyBoundary{}, fmt.Errorf("topology process %q lacks the exact stopped state", process.ID)
 		}
 		seen[process.ID] = true
 	}
 	if _, err := os.Stat(temporaryProcessFilePath(stateDir)); err == nil {
-		return errors.New("topology still has temporary process ownership state")
+		return stoppedTopologyBoundary{}, errors.New("topology still has temporary process ownership state")
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+		return stoppedTopologyBoundary{}, err
 	}
-	return nil
+	return stoppedTopologyBoundary{manifestHash: manifestHash, processes: expectedProcesses}, nil
 }
 
 // Require the stopped topology to be the exact completed M0A setup boundary.
 // Any later journal entry means a live scenario started and makes this narrow
 // pre-campaign migration unavailable, even when that action did not broadcast.
-func validateStoppedTopologyJournalBoundary(prior *SetupPlan, entries []JournalEntry) error {
-	if prior == nil {
+func validateStoppedTopologyJournalBoundary(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, stopped stoppedTopologyBoundary) error {
+	if cfg == nil || cfg.Config == nil || prior == nil {
 		return errors.New("stopped topology plan is unavailable")
 	}
 	actions := map[string]Action{}
@@ -373,23 +379,51 @@ func validateStoppedTopologyJournalBoundary(prior *SetupPlan, entries []JournalE
 	if !topologyOK || !churnOK || topology.IntentHash == "" || churn.IntentHash == "" {
 		return errors.New("stopped topology plan lacks exact M0A boundary actions")
 	}
-	var topologySequence, churnSequence uint64
-	for _, entry := range entries {
+	if topology.Kind != "local" || topology.Target != cfg.Config.Deployment.DeploymentID || stopped.manifestHash == "" || stopped.processes <= 0 {
+		return errors.New("stopped topology plan and manifest identity are inconsistent")
+	}
+	var topologyEntry, churnEntry *JournalEntry
+	for index := range entries {
+		entry := &entries[index]
 		if entry.PlanHash != prior.PlanHash || entry.Stage != StageVerified {
 			continue
 		}
 		switch {
 		case entry.ActionID == topology.ID && entry.IntentHash == topology.IntentHash:
-			topologySequence = entry.Sequence
+			if topologyEntry != nil {
+				return errors.New("stopped topology journal has duplicate topology.launch boundaries")
+			}
+			topologyEntry = entry
 		case entry.ActionID == churn.ID && entry.IntentHash == churn.IntentHash:
-			churnSequence = entry.Sequence
+			if churnEntry != nil {
+				return errors.New("stopped topology journal has duplicate churn.tournament-complete boundaries")
+			}
+			churnEntry = entry
 		}
 	}
-	if topologySequence == 0 || churnSequence <= topologySequence {
+	if topologyEntry == nil || topologyEntry.Sequence == 0 || churnEntry == nil || churnEntry.Sequence <= topologyEntry.Sequence {
 		return errors.New("stopped topology journal lacks the exact completed M0A boundary")
 	}
+	receiptReader := &Executor{cfg: cfg, stateDir: stateDir, plan: prior}
+	topologyReceipt, err := receiptReader.readPersistedPostcondition(*topologyEntry)
+	if err != nil {
+		return fmt.Errorf("authenticate stopped topology.launch postcondition: %w", err)
+	}
+	expectedTopology := map[string]any{
+		"kind": topology.Kind, "target": topology.Target,
+		"supervisor_manifest_hash": stopped.manifestHash, "processes": stopped.processes,
+	}
+	if err := observedPostconditionMatches(topologyReceipt.Observed, expectedTopology); err != nil {
+		return fmt.Errorf("stopped topology.launch operational observation does not match stopped manifest: %w", err)
+	}
+	if err := observedPostconditionMatches(topologyReceipt.IndependentObserved, expectedTopology); err != nil {
+		return fmt.Errorf("stopped topology.launch independent observation does not match stopped manifest: %w", err)
+	}
+	if _, err := receiptReader.readPersistedPostcondition(*churnEntry); err != nil {
+		return fmt.Errorf("authenticate stopped churn.tournament-complete postcondition: %w", err)
+	}
 	for _, entry := range entries {
-		if entry.Sequence > churnSequence {
+		if entry.Sequence > churnEntry.Sequence {
 			return fmt.Errorf("stopped topology journal advanced after M0A at sequence %d", entry.Sequence)
 		}
 	}
@@ -432,10 +466,11 @@ func classifyPolicyRevision(cfg *ResolvedConfig, stateDir string, prior *SetupPl
 		return policyRevisionDecision{}, fmt.Errorf("policy revision is forbidden after %s reached a transaction stage: %w", voluntaryConvictionActionID, err)
 	}
 	if topologyStarted {
-		if err := validateStoppedTopologyPolicyRevision(cfg, stateDir); err != nil {
+		stopped, err := validateStoppedTopologyPolicyRevision(cfg, stateDir)
+		if err != nil {
 			return policyRevisionDecision{}, fmt.Errorf("policy revision is forbidden after topology.launch without a proved stop boundary: %w", err)
 		}
-		if err := validateStoppedTopologyJournalBoundary(prior, entries); err != nil {
+		if err := validateStoppedTopologyJournalBoundary(cfg, stateDir, prior, entries, stopped); err != nil {
 			return policyRevisionDecision{}, fmt.Errorf("policy revision is forbidden after topology.launch without a proved journal boundary: %w", err)
 		}
 	}

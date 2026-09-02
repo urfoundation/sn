@@ -65,6 +65,34 @@ func testFuturePolicyRevision(t *testing.T) (*ResolvedConfig, string, *SetupPlan
 	return cfg, stateDir, prior, entries
 }
 
+func writePolicyRevisionBoundaryPostcondition(t *testing.T, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, action Action, sequence uint64, observed map[string]any) JournalEntry {
+	t.Helper()
+	independentObserved, err := cloneObservedPostState(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
+		OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		SubstrateFinalized: ChainHead{Number: 10, Hash: "0x" + strings.Repeat("31", 32)},
+		EVMFinalized:       ChainHead{Number: 11, Hash: "0x" + strings.Repeat("32", 32)}, EVMHashDomain: "evm-rpc",
+		Observed:                      observed,
+		IndependentSubstrateFinalized: ChainHead{Number: 12, Hash: "0x" + strings.Repeat("33", 32)},
+		IndependentEVMFinalized:       ChainHead{Number: 13, Hash: "0x" + strings.Repeat("34", 32)}, IndependentEVMHashDomain: "evm-rpc",
+		IndependentObserved: independentObserved,
+	}
+	path, hash, err := (&Executor{cfg: cfg, stateDir: stateDir, plan: prior}).persistActionPostcondition(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return JournalEntry{
+		Sequence: sequence, DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: prior.PlanHash,
+		ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified,
+		PostconditionHash: hash, PostconditionPath: path,
+	}
+}
+
 func TestPolicyRevisionAuthenticatesNarrowFutureAcceleration(t *testing.T) {
 	cfg, stateDir, prior, entries := testFuturePolicyRevision(t)
 	decision, err := classifyPolicyRevision(cfg, stateDir, prior, entries)
@@ -161,16 +189,165 @@ func TestPolicyRevisionRequiresExactStoppedTopologyBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	prior.Actions = []Action{
-		{ID: "topology.launch", IntentHash: "topology-intent"},
-		{ID: "churn.tournament-complete", IntentHash: "churn-intent"},
+		{ID: "topology.launch", Kind: "local", Target: cfg.Config.Deployment.DeploymentID, IntentHash: "0x" + strings.Repeat("21", 32)},
+		{ID: "churn.tournament-complete", Kind: "local", Target: "netuid:" + strconv.Itoa(int(cfg.Netuid)), IntentHash: "0x" + strings.Repeat("22", 32)},
+	}
+	topologyObserved := map[string]any{
+		"kind": prior.Actions[0].Kind, "target": prior.Actions[0].Target,
+		"supervisor_manifest_hash": manifestHash, "processes": expectedProcesses,
+	}
+	topology := cfg.Config.Topology
+	labels := tournamentTopologyRoleLabels(topology, prior.Deployment.RegistrationRoleGeneration)
+	contractReplacements := int(prior.Deployment.RegistrationRoleGeneration) * contractRegistrationRoleCount(topology)
+	churnObserved := map[string]any{
+		"kind": prior.Actions[1].Kind, "target": prior.Actions[1].Target,
+		"candidate_fleets": topology.fleetCandidates(), "selected_slots": topology.HeadSlots,
+		"pruned_churn_floor": topology.ChallengerFleets, "contract_generation_replacements": contractReplacements,
+		"remaining_churn_floor":   topology.ChurnFloorUIDs - contractReplacements - topology.ChallengerFleets,
+		"planned_live_identities": len(labels), "preserved_bootstrap_uids": len(prior.LiveFacts.ExistingUIDs),
+		"uid_count": len(labels) + len(prior.LiveFacts.ExistingUIDs),
 	}
 	entries = append(entries,
-		JournalEntry{Sequence: 1, PlanHash: prior.PlanHash, ActionID: "topology.launch", IntentHash: "topology-intent", Stage: StageVerified},
-		JournalEntry{Sequence: 2, PlanHash: prior.PlanHash, ActionID: "churn.tournament-complete", IntentHash: "churn-intent", Stage: StageVerified},
+		writePolicyRevisionBoundaryPostcondition(t, cfg, stateDir, prior, prior.Actions[0], 1, topologyObserved),
+		writePolicyRevisionBoundaryPostcondition(t, cfg, stateDir, prior, prior.Actions[1], 2, churnObserved),
 	)
 	decision, err := classifyPolicyRevision(cfg, stateDir, prior, entries)
 	if err != nil || decision.Class != policyRevisionFutureAcceleration || !decision.RestartRequired {
 		t.Fatalf("stopped topology decision=%+v error=%v", decision, err)
+	}
+	topologyEntryIndex := len(entries) - 2
+	churnEntryIndex := len(entries) - 1
+	wrongManifest := manifest
+	wrongManifest.BinaryHash = "sha256:" + strings.Repeat("aa", 32)
+	wrongManifestHash, err := canonicalHashHex(wrongManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongManifestWire, err := json.Marshal(wrongManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongManifestState := state
+	wrongManifestState.ManifestHash = wrongManifestHash
+	wrongManifestStateWire, err := json.Marshal(wrongManifestState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.json"), wrongManifestWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), wrongManifestStateWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err == nil || !strings.Contains(err.Error(), "does not match stopped manifest") {
+		t.Fatalf("self-consistent wrong stopped manifest was accepted: %v", err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.json"), manifestWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	duplicateEntries := append([]JournalEntry(nil), entries...)
+	duplicate := entries[topologyEntryIndex]
+	duplicate.Sequence = entries[churnEntryIndex].Sequence + 1
+	duplicateEntries = append(duplicateEntries, duplicate)
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, duplicateEntries); err == nil || !strings.Contains(err.Error(), "duplicate topology.launch boundaries") {
+		t.Fatalf("duplicate exact stopped boundary was accepted: %v", err)
+	}
+	topologyReceiptPath := filepath.Join(stateDir, filepath.FromSlash(entries[topologyEntryIndex].PostconditionPath))
+	topologyReceipt, err := os.ReadFile(topologyReceiptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(topologyReceiptPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err == nil || !strings.Contains(err.Error(), "authenticate stopped topology.launch postcondition") {
+		t.Fatalf("missing stopped-boundary receipt was accepted: %v", err)
+	}
+	if err := atomicWrite(topologyReceiptPath, topologyReceipt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	churnReceiptPath := filepath.Join(stateDir, filepath.FromSlash(entries[churnEntryIndex].PostconditionPath))
+	churnReceipt, err := os.ReadFile(churnReceiptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(churnReceiptPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err == nil || !strings.Contains(err.Error(), "authenticate stopped churn.tournament-complete postcondition") {
+		t.Fatalf("missing stopped tournament receipt was accepted: %v", err)
+	}
+	if err := atomicWrite(churnReceiptPath, churnReceipt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tampered, err := decodeActionPostcondition(topologyReceipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered.Observed["processes"] = expectedProcesses + 1
+	tamperedWire, err := json.Marshal(tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(topologyReceiptPath, tamperedWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, entries); err == nil || !strings.Contains(err.Error(), "persisted postcondition hash") {
+		t.Fatalf("tampered stopped-boundary receipt was accepted: %v", err)
+	}
+	if err := atomicWrite(topologyReceiptPath, topologyReceipt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrongIndependent, err := decodeActionPostcondition(topologyReceipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongIndependent.IndependentObserved["processes"] = expectedProcesses + 1
+	wrongIndependentHash, err := canonicalHashHex(wrongIndependent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongIndependentWire, err := json.Marshal(wrongIndependent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(topologyReceiptPath, wrongIndependentWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrongIndependentEntries := append([]JournalEntry(nil), entries...)
+	wrongIndependentEntries[topologyEntryIndex].PostconditionHash = wrongIndependentHash
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, wrongIndependentEntries); err == nil || !strings.Contains(err.Error(), "independent observation does not match stopped manifest") {
+		t.Fatalf("wrong independent stopped-manifest observation was accepted: %v", err)
+	}
+	if err := atomicWrite(topologyReceiptPath, topologyReceipt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrongIdentity, err := decodeActionPostcondition(topologyReceipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongIdentity.ActionID = "accounts.provision"
+	wrongIdentityHash, err := canonicalHashHex(wrongIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongIdentityWire, err := json.Marshal(wrongIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(topologyReceiptPath, wrongIdentityWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrongIdentityEntries := append([]JournalEntry(nil), entries...)
+	wrongIdentityEntries[topologyEntryIndex].PostconditionHash = wrongIdentityHash
+	if _, err := classifyPolicyRevision(cfg, stateDir, prior, wrongIdentityEntries); err == nil || !strings.Contains(err.Error(), "postcondition identity mismatch") {
+		t.Fatalf("wrong-identity stopped-boundary receipt was accepted: %v", err)
+	}
+	if err := atomicWrite(topologyReceiptPath, topologyReceipt, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	state.SupervisorStartTimeTicks = 0
 	wire, _ = json.Marshal(state)

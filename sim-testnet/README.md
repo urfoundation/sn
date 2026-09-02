@@ -358,6 +358,12 @@ it re-runs doctor and reconciles the journal and finalized chain before starting
 any dependency or process. Provisioning helpers also persist PID, process-group,
 kernel start-time, executable-hash and argv-hash ownership. If the parent exits
 abnormally, resume reaps only an exact orphan identity and never a reused PID.
+Topology readiness is deliberately plan-generation-local: a revised plan
+authenticates the ancestor launch receipt as history but cannot use it to satisfy
+the new plan's launch dependency. Only after the current binaries, supervisor
+generation, children, fresh validator proofs and fenced logs pass readiness does
+the current plan record `topology.launch`. Same-plan resume likewise rechecks the
+new live generation without duplicating its terminal journal entry.
 
 Before smoke, `launch` automatically runs the named `precompile-conformance`
 scenario. It finalized-reads and replaces/restores a native commitment, deploys

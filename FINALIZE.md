@@ -3877,6 +3877,30 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    traffic and zero unexplained process-log finding; these fixes are not waivers
    for a carrier failure.
 
+   The next frozen-source launch used two byte-equivalent read-only plans at
+   `0x752e814e12c3bcf833a33d0ced064fd5e51726a54ebc1888d3c731676a8e748d`,
+   passed all 59 hard doctor checks, reauthenticated 1,000/1,000 historical
+   miners and completed 2,221/2,221 carried-action audits. It then stopped before
+   any new transaction or process start because the previous stopped
+   `topology.launch` receipt was incorrectly classified as durable live state:
+   the carried audit required `ready=true` before `LaunchDeployment` was allowed
+   to recreate the intentionally stopped supervisor. Topology readiness is now
+   explicitly plan-generation-local. An ancestor receipt is still hash/path/
+   identity-authenticated as historical evidence, but it cannot satisfy the
+   active plan's dependency or enter the carried-live cache; launch must pass the
+   current binary, PID/start-generation, child, fresh-proof and process-log gates
+   before writing a current-plan topology receipt. Same-plan reboot/resume keeps
+   its existing terminal receipt but revalidates the newly live supervisor.
+   Adjacent policy-revision authorization now also authenticates the exact
+   topology and tournament receipt files rather than trusting stage labels;
+   missing, tampered, wrong-identity and duplicate boundary evidence fails
+   closed. Deterministic ordinary and race regressions reproduce the stopped
+   ancestor failure, protect durable carried actions, block every post-topology
+   dependency until current verification, and cover stopped/live/wrong-manifest
+   same-plan resume. The complete isolated PostgreSQL/Redis release selection
+   also passed during this diagnosis, including controller/model normal and race
+   suites and the 541.521-second full proxy suite.
+
    The rendered simulation operator profile does not currently enable the
    optional general-stats HMAC export or Grafana push path. Both are safe no-ops
    and are separate from release-critical `/verify/stats`, proof, process and

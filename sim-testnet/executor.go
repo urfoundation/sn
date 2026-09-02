@@ -3596,6 +3596,12 @@ func (e *Executor) actionVerified(id string) bool {
 // named ancestor. The caller still revalidates the durable and, where needed,
 // current postcondition before relying on it.
 func (e *Executor) verifiedActionEntry(action Action) (JournalEntry, bool) {
+	return e.verifiedActionEntryForScope(action, false)
+}
+
+// Resolve terminal lineage evidence, optionally exposing an ancestor topology
+// only so its stopped-generation receipt can be authenticated as history.
+func (e *Executor) verifiedActionEntryForScope(action Action, includeAncestorTopology bool) (JournalEntry, bool) {
 	if e == nil || e.plan == nil || e.journal == nil {
 		return JournalEntry{}, false
 	}
@@ -3603,6 +3609,13 @@ func (e *Executor) verifiedActionEntry(action Action) (JournalEntry, bool) {
 	entries := e.journal.Entries()
 	for index := len(entries) - 1; index >= 0; index-- {
 		entry := entries[index]
+		// Topology readiness is an ephemeral live postcondition intentionally
+		// destroyed by stop or host reboot. Never let an ancestor plan authorize
+		// the active plan's launch lifecycle: LaunchDeployment must start the
+		// current binaries, pass readiness, and record a current-plan receipt.
+		if !includeAncestorTopology && action.ID == "topology.launch" && entry.PlanHash != e.plan.PlanHash {
+			continue
+		}
 		if allowedPlans[entry.PlanHash] && entry.ActionID == action.ID && actionAcceptsIntent(action, entry.IntentHash) && entry.Stage == StageVerified {
 			return entry, true
 		}
@@ -3666,6 +3679,20 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 	audits := make([]carriedActionAudit, 0)
 	for _, action := range e.plan.Actions {
 		entry, ok := e.verifiedActionEntry(action)
+		if !ok && action.ID == "topology.launch" {
+			// The stopped ancestor generation cannot satisfy current liveness, but
+			// its durable receipt remains part of the approved history and must not
+			// disappear or change unnoticed. Authenticate it without adding it to
+			// the live-verification cache; LaunchDeployment will create and verify
+			// the current generation before any dependent action can execute.
+			entry, ok = e.verifiedActionEntryForScope(action, true)
+			if ok && entry.PlanHash != e.plan.PlanHash {
+				if _, err := e.readPersistedPostcondition(entry); err != nil {
+					return fmt.Errorf("action %s: persisted ancestor process receipt: %w", action.ID, err)
+				}
+			}
+			continue
+		}
 		if !ok || entry.PlanHash == e.plan.PlanHash {
 			continue
 		}
