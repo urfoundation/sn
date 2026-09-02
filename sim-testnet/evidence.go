@@ -121,34 +121,9 @@ func publishEvidence(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecret
 		if runID != "" {
 			localPath = filepath.Join(stateDir, "runs", runID, localName)
 		}
-		payloadBytes, err := json.Marshal(payload)
+		envelope, encoded, err := prepareLocalEvidence(cfg, stateDir, localPath, kind, runID, payload, role, operator)
 		if err != nil {
 			return nil, err
-		}
-		var envelope *ReleaseEvidenceEnvelope
-		if existing, readErr := os.ReadFile(localPath); readErr == nil {
-			var prior ReleaseEvidenceEnvelope
-			key, keyErr := crypto.HexToECDSA(strings.TrimPrefix(role.PrivateKeyHex, "0x"))
-			if json.Unmarshal(existing, &prior) != nil || keyErr != nil || verifyEvidence(&prior, &key.PublicKey) != nil || prior.Kind != kind || prior.RunID != runID || !bytes.Equal(prior.Payload, payloadBytes) {
-				return nil, fmt.Errorf("immutable local evidence %s does not match this publication", localPath)
-			}
-			envelope = &prior
-		} else if !errors.Is(readErr, os.ErrNotExist) {
-			return nil, readErr
-		} else {
-			envelope, err = signEvidence(cfg, kind, runID, payload, role)
-			if err != nil {
-				return nil, err
-			}
-		}
-		encoded, err := json.Marshal(envelope)
-		if err != nil {
-			return nil, err
-		}
-		if _, statErr := os.Stat(localPath); errors.Is(statErr, os.ErrNotExist) {
-			if err := atomicWrite(localPath, append(encoded, '\n'), 0o644); err != nil {
-				return nil, err
-			}
 		}
 		url := fmt.Sprintf("http://127.0.0.1:%d/sn/evidence", 18080+operator)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(encoded))
@@ -175,6 +150,65 @@ func publishEvidence(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecret
 		published = append(published, result)
 	}
 	return published, nil
+}
+
+// prepareLocalEvidence keeps ordinary run evidence immutable while permitting
+// the deployment manifest's explicitly versioned current pointer to advance.
+// Every superseded signed envelope is retained byte-for-byte, so a retry is
+// idempotent and no previously published release claim can disappear locally.
+func prepareLocalEvidence(cfg *ResolvedConfig, stateDir, localPath, kind, runID string, payload any, role EVMRoleSecret, operator int) (*ReleaseEvidenceEnvelope, []byte, error) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := crypto.HexToECDSA(strings.TrimPrefix(role.PrivateKeyHex, "0x"))
+	if err != nil {
+		return nil, nil, err
+	}
+	if existing, readErr := os.ReadFile(localPath); readErr == nil {
+		var prior ReleaseEvidenceEnvelope
+		if json.Unmarshal(existing, &prior) != nil || verifyEvidence(&prior, &key.PublicKey) != nil || prior.Kind != kind || prior.RunID != runID || prior.DeploymentID != cfg.Config.Deployment.DeploymentID || prior.ChainID != cfg.ChainID || prior.Netuid != cfg.Netuid || !strings.EqualFold(prior.GenesisHash, cfg.Public.Chain.GenesisHash) {
+			return nil, nil, fmt.Errorf("immutable local evidence %s does not match this publication", localPath)
+		}
+		if bytes.Equal(prior.Payload, payloadBytes) {
+			encoded, marshalErr := json.Marshal(&prior)
+			return &prior, encoded, marshalErr
+		}
+		if kind != "deployment-manifest" || runID != "" {
+			return nil, nil, fmt.Errorf("immutable local evidence %s does not match this publication", localPath)
+		}
+		archiveName := strings.TrimPrefix(strings.ToLower(prior.ContentHash), "sha256:") + fmt.Sprintf(".operator-%d.evidence.json", operator)
+		archivePath := filepath.Join(stateDir, "public", "deployment-manifest-history", archiveName)
+		if err := writeImmutableEvidenceArchive(archivePath, existing); err != nil {
+			return nil, nil, err
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return nil, nil, readErr
+	}
+	envelope, err := signEvidence(cfg, kind, runID, payload, role)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := atomicWrite(localPath, append(encoded, '\n'), 0o644); err != nil {
+		return nil, nil, err
+	}
+	return envelope, encoded, nil
+}
+
+func writeImmutableEvidenceArchive(path string, exact []byte) error {
+	if existing, err := os.ReadFile(path); err == nil {
+		if !bytes.Equal(existing, exact) {
+			return fmt.Errorf("immutable evidence archive %s conflicts with retained history", path)
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return atomicWrite(path, exact, 0o644)
 }
 
 func verifyPublishedEvidenceOrigins(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecrets, published []PublishedEvidence) error {
@@ -267,6 +301,8 @@ type PublicDeploymentManifest struct {
 	Schema                  string                     `json:"schema"`
 	Release                 string                     `json:"release"`
 	DeploymentID            string                     `json:"deployment_id"`
+	Revision                uint64                     `json:"revision,omitempty"`
+	PreviousManifestHash    string                     `json:"previous_manifest_hash,omitempty"`
 	GeneratedAt             string                     `json:"generated_at"`
 	ChainID                 uint64                     `json:"chain_id"`
 	GenesisHash             string                     `json:"genesis_hash"`
@@ -345,23 +381,57 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	path := filepath.Join(stateDir, "public.json")
 	if existing, readErr := os.ReadFile(path); readErr == nil {
 		var prior PublicDeploymentManifest
-		if json.Unmarshal(existing, &prior) != nil || prior.Schema != manifest.Schema || prior.Release != manifest.Release || prior.DeploymentID != manifest.DeploymentID || prior.ChainID != manifest.ChainID || !strings.EqualFold(prior.GenesisHash, manifest.GenesisHash) || prior.Netuid != manifest.Netuid || prior.ConfigHash != manifest.ConfigHash || prior.PolicyHash != manifest.PolicyHash || prior.PlanHash != manifest.PlanHash || prior.ReleaseLockHash != manifest.ReleaseLockHash {
-			return nil, errors.New("existing public deployment manifest does not match this deployment")
+		if json.Unmarshal(existing, &prior) != nil || validatePublicManifestRevision(&prior) != nil {
+			return nil, errors.New("existing public deployment manifest is invalid")
 		}
-		priorContracts, _ := canonicalHashHex(prior.Contracts)
-		currentContracts, _ := canonicalHashHex(manifest.Contracts)
-		priorIdentities, _ := canonicalHashHex(prior.Identities)
-		currentIdentities, _ := canonicalHashHex(manifest.Identities)
-		priorSetup, _ := canonicalHashHex(prior.SetupEvidence)
-		currentSetup, _ := canonicalHashHex(manifest.SetupEvidence)
-		priorOperators, _ := canonicalHashHex(prior.Operators)
-		currentOperators, _ := canonicalHashHex(manifest.Operators)
-		if priorContracts != currentContracts || priorIdentities != currentIdentities || priorSetup != currentSetup || priorOperators != currentOperators {
-			return nil, errors.New("existing public deployment manifest contract/identity hash mismatch")
+		if err := validateLocalPublicManifestHistory(stateDir, &prior); err != nil {
+			return nil, err
 		}
-		return &prior, nil
+		if err := requireSamePublicDeployment(&prior, manifest); err != nil {
+			return nil, err
+		}
+		same, err := publicManifestEquivalent(&prior, manifest)
+		if err != nil {
+			return nil, err
+		}
+		if same {
+			return &prior, nil
+		}
+		if strings.EqualFold(prior.PlanHash, manifest.PlanHash) {
+			return nil, errors.New("existing public deployment manifest changed without a new setup plan")
+		}
+		if plan == nil || plan.PlanHash == "" || !strings.EqualFold(plan.PlanHash, manifest.PlanHash) || !containsHashFold(plan.PriorPlanHashes, prior.PlanHash) {
+			return nil, errors.New("existing public deployment manifest plan is outside the approved revision lineage")
+		}
+		priorHash, err := canonicalHashHex(&prior)
+		if err != nil {
+			return nil, err
+		}
+		archivePath := filepath.Join(stateDir, "public", "deployment-manifests", stringsTrim0x(priorHash)+".json")
+		if err := writeImmutableEvidenceArchive(archivePath, existing); err != nil {
+			return nil, fmt.Errorf("archive superseded public deployment manifest: %w", err)
+		}
+		// The locator file is a current pointer, not history. Archive and
+		// clear it before advancing public.json so a partially published
+		// revision can never pair a new manifest with old signed locators.
+		locatorPath := filepath.Join(stateDir, "public", "deployment-manifest.locators.json")
+		if locators, locatorErr := os.ReadFile(locatorPath); locatorErr == nil {
+			locatorArchive := filepath.Join(stateDir, "public", "deployment-manifests", stringsTrim0x(priorHash)+".locators.json")
+			if err := writeImmutableEvidenceArchive(locatorArchive, locators); err != nil {
+				return nil, fmt.Errorf("archive superseded public deployment locators: %w", err)
+			}
+			if err := removeFileAndSync(locatorPath); err != nil {
+				return nil, fmt.Errorf("clear superseded public deployment locators: %w", err)
+			}
+		} else if !errors.Is(locatorErr, os.ErrNotExist) {
+			return nil, locatorErr
+		}
+		manifest.Revision = effectivePublicManifestRevision(&prior) + 1
+		manifest.PreviousManifestHash = priorHash
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		return nil, readErr
+	} else {
+		manifest.Revision = 1
 	}
 	b, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -371,6 +441,111 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 		return nil, err
 	}
 	return manifest, nil
+}
+
+func containsHashFold(hashes []string, want string) bool {
+	if want == "" {
+		return false
+	}
+	for _, hash := range hashes {
+		if strings.EqualFold(hash, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func removeFileAndSync(path string) error {
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
+func effectivePublicManifestRevision(manifest *PublicDeploymentManifest) uint64 {
+	if manifest != nil && manifest.Revision != 0 {
+		return manifest.Revision
+	}
+	// The pre-revision v1 encoding is revision one of its deployment.
+	return 1
+}
+
+func validatePublicManifestRevision(manifest *PublicDeploymentManifest) error {
+	if manifest == nil {
+		return errors.New("public deployment manifest is missing")
+	}
+	if manifest.Revision <= 1 {
+		if manifest.PreviousManifestHash != "" {
+			return errors.New("initial public deployment manifest has a predecessor")
+		}
+		return nil
+	}
+	previous := strings.TrimPrefix(strings.ToLower(manifest.PreviousManifestHash), "0x")
+	if len(previous) != sha256.Size*2 {
+		return errors.New("revised public deployment manifest has an invalid predecessor hash")
+	}
+	if _, err := hex.DecodeString(previous); err != nil {
+		return errors.New("revised public deployment manifest has an invalid predecessor hash")
+	}
+	return nil
+}
+
+func validateLocalPublicManifestHistory(stateDir string, current *PublicDeploymentManifest) error {
+	if current == nil {
+		return errors.New("public deployment manifest history has no current revision")
+	}
+	next := *current
+	for next.Revision > 1 {
+		path := filepath.Join(stateDir, "public", "deployment-manifests", stringsTrim0x(strings.ToLower(next.PreviousManifestHash))+".json")
+		exact, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read public deployment manifest predecessor revision %d: %w", next.Revision-1, err)
+		}
+		var previous PublicDeploymentManifest
+		if json.Unmarshal(exact, &previous) != nil || validatePublicManifestRevision(&previous) != nil {
+			return fmt.Errorf("public deployment manifest predecessor revision %d is invalid", next.Revision-1)
+		}
+		hash, err := canonicalHashHex(&previous)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(hash, next.PreviousManifestHash) {
+			return fmt.Errorf("public deployment manifest predecessor revision %d hash mismatch", next.Revision-1)
+		}
+		if effectivePublicManifestRevision(&previous)+1 != next.Revision {
+			return fmt.Errorf("public deployment manifest revision chain jumps from %d to %d", effectivePublicManifestRevision(&previous), next.Revision)
+		}
+		if err := requireSamePublicDeployment(&previous, current); err != nil {
+			return fmt.Errorf("public deployment manifest predecessor revision %d: %w", next.Revision-1, err)
+		}
+		next = previous
+	}
+	return nil
+}
+
+func requireSamePublicDeployment(prior, current *PublicDeploymentManifest) error {
+	if prior.Schema != current.Schema || prior.Release != current.Release || prior.DeploymentID != current.DeploymentID || prior.ChainID != current.ChainID || !strings.EqualFold(prior.GenesisHash, current.GenesisHash) || prior.Netuid != current.Netuid {
+		return errors.New("existing public deployment manifest does not match this deployment")
+	}
+	return nil
+}
+
+func publicManifestEquivalent(prior, current *PublicDeploymentManifest) (bool, error) {
+	left, right := *prior, *current
+	left.GeneratedAt, right.GeneratedAt = "", ""
+	left.Revision, right.Revision = 0, 0
+	left.PreviousManifestHash, right.PreviousManifestHash = "", ""
+	before, err := canonicalHashHex(&left)
+	if err != nil {
+		return false, err
+	}
+	after, err := canonicalHashHex(&right)
+	return before == after, err
 }
 
 func loadPublicSetupEvidence(cfg *ResolvedConfig, stateDir string) (map[string]json.RawMessage, error) {

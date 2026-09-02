@@ -90,6 +90,8 @@ type TemporaryProcessFile struct {
 
 const temporaryProcessFileSchema = "urnetwork-sim-temporary-processes-v1"
 
+const quicGoDisableReceiveBufferWarningEnv = "QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING"
+
 type dockerCLI struct {
 	Executable    string
 	Prefix        []string
@@ -684,9 +686,12 @@ func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir
 
 // Provision API-assigned identities, finish their chain bindings, then hand
 // the checksum-locked process topology to the persistent supervisor.
-func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets, executor *Executor, bins map[string]string, detach bool) error {
+func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets, executor *Executor, bins map[string]string, detach bool) (returnErr error) {
 	if len(bins) == 0 {
 		return errors.New("launch requires preflighted release binaries")
+	}
+	if err := ensureNoLiveSupervisorForLaunch(stateDir); err != nil {
+		return err
 	}
 	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
 		return err
@@ -763,7 +768,18 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		return err
 	}
 	if detach || cfg.Config.Deployment.DetachAfterLaunch {
+		startedPersistentSupervisor := false
+		defer func() {
+			returnErr = cleanupFailedPersistentLaunch(stateDir, startedPersistentSupervisor, returnErr, StopDeployment)
+		}()
 		if ready, _ := supervisorReadyNow(stateDir, sf); !ready {
+			if err := ensureNoLiveSupervisorForLaunch(stateDir); err != nil {
+				return err
+			}
+			// Own cleanup as soon as this invocation elects to replace/start the
+			// service. startPersistentSupervisor may fail after writing service
+			// ownership or asking systemd to start the unit.
+			startedPersistentSupervisor = true
 			if err := startPersistentSupervisor(ctx, cfg, bins["sim-testnet"], stateDir, specPath); err != nil {
 				return err
 			}
@@ -816,6 +832,23 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	return <-supervisorErr
 }
 
+type stopDeploymentFunc func(context.Context, string) (map[string]any, error)
+
+func cleanupFailedPersistentLaunch(stateDir string, started bool, launchErr error, stop stopDeploymentFunc) error {
+	if !started || launchErr == nil {
+		return launchErr
+	}
+	if stop == nil {
+		return errors.Join(launchErr, errors.New("cleanup failed persistent launch: stop callback is missing"))
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if _, err := stop(cleanupCtx, stateDir); err != nil {
+		return errors.Join(launchErr, fmt.Errorf("cleanup failed persistent launch: %w", err))
+	}
+	return launchErr
+}
+
 func publishDeploymentEvidence(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets) error {
 	manifest, err := writePublicDeploymentManifest(cfg, stateDir, plan)
 	if err != nil {
@@ -831,6 +864,17 @@ func publishDeploymentEvidence(ctx context.Context, cfg *ResolvedConfig, stateDi
 	if err := verifyPublishedEvidenceOrigins(ctx, cfg, roles, published); err != nil {
 		return err
 	}
+	locatorDocument, err := deploymentManifestLocatorDocument(cfg, manifest, published)
+	if err != nil {
+		return err
+	}
+	return writePublicJSON(filepath.Join(stateDir, "public", "deployment-manifest.locators.json"), locatorDocument)
+}
+
+func deploymentManifestLocatorDocument(cfg *ResolvedConfig, manifest *PublicDeploymentManifest, published []PublishedEvidence) (map[string]any, error) {
+	if cfg == nil || manifest == nil || len(published) != cfg.Config.Topology.Operators || len(cfg.OperatorAPIOrigins) != len(published) {
+		return nil, errors.New("deployment manifest locator inputs are incomplete")
+	}
 	locators := make([]map[string]any, 0, len(published))
 	for i, receipt := range published {
 		locators = append(locators, map[string]any{
@@ -839,7 +883,17 @@ func publishDeploymentEvidence(ctx context.Context, cfg *ResolvedConfig, stateDi
 			"url":            strings.TrimSuffix(cfg.OperatorAPIOrigins[i], "/") + "/sn/evidence?hash=" + receipt.ContentHash,
 		})
 	}
-	return writePublicJSON(filepath.Join(stateDir, "public", "deployment-manifest.locators.json"), map[string]any{"schema": "urnetwork-public-manifest-locators-v1", "locators": locators})
+	manifestHash, err := canonicalHashHex(manifest)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"schema":                 "urnetwork-public-manifest-locators-v1",
+		"manifest_hash":          manifestHash,
+		"manifest_revision":      effectivePublicManifestRevision(manifest),
+		"previous_manifest_hash": manifest.PreviousManifestHash,
+		"locators":               locators,
+	}, nil
 }
 
 func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir string) (map[string]string, error) {
@@ -1292,9 +1346,13 @@ func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, b
 }
 func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string, roles *RoleSecrets) []ProcessSpec {
 	var out []ProcessSpec
+	// Connect deliberately caps each client's QUIC socket buffers to its
+	// per-device memory target. quic-go otherwise reports that intentional cap
+	// as though the host kernel had refused its process-wide 7 MiB request.
 	connectClientEnv := map[string]string{
-		"WARP_VERSION":             "1.0",
-		connect.ExtraRootCAFileEnv: operatorConnectCAFile(stateDir),
+		"WARP_VERSION":                       "1.0",
+		connect.ExtraRootCAFileEnv:           operatorConnectCAFile(stateDir),
+		quicGoDisableReceiveBufferWarningEnv: "true",
 	}
 	minersPerSwarm := cfg.Config.Topology.Miners / cfg.Config.Topology.MinerSwarmProcesses
 	for swarm := 1; swarm <= cfg.Config.Topology.MinerSwarmProcesses; swarm++ {
@@ -2053,6 +2111,81 @@ func supervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
 	return supervisorStateReady(state, wantHash, want.Specs), nil
 }
 
+// liveRecordedSupervisor distinguishes an owned live generation from stale
+// state and PID reuse. Launch never replaces or later tears down a generation
+// it did not start itself.
+func liveRecordedSupervisor(stateDir string) (*SupervisorState, error) {
+	b, err := os.ReadFile(filepath.Join(stateDir, "supervisor.state.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var state SupervisorState
+	if err := json.Unmarshal(b, &state); err != nil {
+		return nil, fmt.Errorf("decode existing supervisor state: %w", err)
+	}
+	if state.Schema != "urnetwork-sim-supervisor-state-v1" {
+		return nil, errors.New("existing supervisor state has an invalid schema")
+	}
+	if state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks == 0 {
+		return nil, nil
+	}
+	if err := syscall.Kill(state.SupervisorPID, syscall.Signal(0)); errors.Is(err, syscall.ESRCH) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect existing supervisor pid %d: %w", state.SupervisorPID, err)
+	}
+	observed, err := processStartTimeTicks(state.SupervisorPID)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("inspect existing supervisor generation: %w", err)
+	}
+	if observed != state.SupervisorStartTimeTicks {
+		return nil, nil
+	}
+	return &state, nil
+}
+
+func supervisorLockHeld(stateDir string) (bool, error) {
+	lock, err := os.OpenFile(filepath.Join(stateDir, "supervisor.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return false, err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return true, nil
+		}
+		return false, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func ensureNoLiveSupervisorForLaunch(stateDir string) error {
+	held, err := supervisorLockHeld(stateDir)
+	if err != nil {
+		return fmt.Errorf("inspect existing supervisor lock: %w", err)
+	}
+	if held {
+		return errors.New("deployment already has a live supervisor lock; use status/resume or stop it explicitly before launch")
+	}
+	active, err := liveRecordedSupervisor(stateDir)
+	if err != nil {
+		return err
+	}
+	if active != nil {
+		return fmt.Errorf("deployment already has a live supervisor pid=%d; use status/resume or stop it explicitly before launch", active.SupervisorPID)
+	}
+	return nil
+}
+
 // Identify the listener-bearing services every release workload contacts while
 // starting. Waiting on these exact roles prevents a newly spawned client herd
 // from racing API, Connect or RPC listener initialization.
@@ -2427,12 +2560,14 @@ func healthOK(url string) bool {
 
 func StopDeployment(ctx context.Context, stateDir string) (map[string]any, error) {
 	b, err := os.ReadFile(filepath.Join(stateDir, "supervisor.state.json"))
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	var s SupervisorState
-	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
+	if err == nil {
+		if decodeErr := json.Unmarshal(b, &s); decodeErr != nil {
+			return nil, decodeErr
+		}
 	}
 	stopped := []string{}
 	serviceStopped := ""

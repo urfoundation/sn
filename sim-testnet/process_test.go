@@ -34,6 +34,133 @@ func currentProcessStartTimeTicks(t *testing.T) uint64 {
 	return ticks
 }
 
+func TestFailedDetachedLaunchCleansUpOnlyItsOwnSupervisor(t *testing.T) {
+	launchErr := errors.New("publish manifest")
+	cleanupErr := errors.New("systemd stop")
+	calls := 0
+	stop := func(ctx context.Context, stateDir string) (map[string]any, error) {
+		calls++
+		if stateDir != "/deployment" {
+			t.Fatalf("cleanup state dir = %q", stateDir)
+		}
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("cleanup context is not bounded")
+		}
+		return nil, cleanupErr
+	}
+	if got := cleanupFailedPersistentLaunch("/deployment", false, launchErr, stop); !errors.Is(got, launchErr) || calls != 0 {
+		t.Fatalf("adopted supervisor cleanup = %v calls=%d", got, calls)
+	}
+	if got := cleanupFailedPersistentLaunch("/deployment", true, nil, stop); got != nil || calls != 0 {
+		t.Fatalf("successful launch cleanup = %v calls=%d", got, calls)
+	}
+	got := cleanupFailedPersistentLaunch("/deployment", true, launchErr, stop)
+	if !errors.Is(got, launchErr) || !errors.Is(got, cleanupErr) || calls != 1 {
+		t.Fatalf("owned failed launch cleanup = %v calls=%d", got, calls)
+	}
+	successfulStop := func(context.Context, string) (map[string]any, error) {
+		calls++
+		return map[string]any{"on_chain_state_preserved": true}, nil
+	}
+	got = cleanupFailedPersistentLaunch("/deployment", true, launchErr, successfulStop)
+	if !errors.Is(got, launchErr) || calls != 2 {
+		t.Fatalf("successful owned cleanup = %v calls=%d", got, calls)
+	}
+}
+
+func TestStopDeploymentToleratesFailureBeforeFirstSupervisorState(t *testing.T) {
+	dir := t.TempDir()
+	result, err := StopDeployment(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved, _ := result["on_chain_state_preserved"].(bool); !preserved {
+		t.Fatalf("stop result = %+v", result)
+	}
+}
+
+func TestDeploymentManifestLocatorsBindExactRevision(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	manifest := &PublicDeploymentManifest{
+		Schema: "urnetwork-sim-public-deployment-v1", Revision: 2,
+		PreviousManifestHash: "0x" + strings.Repeat("12", 32),
+	}
+	published := []PublishedEvidence{{ContentHash: "sha256:first"}, {ContentHash: "sha256:second"}}
+	document, err := deploymentManifestLocatorDocument(cfg, manifest, published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHash, err := canonicalHashHex(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document["manifest_hash"] != wantHash || document["manifest_revision"] != uint64(2) || document["previous_manifest_hash"] != manifest.PreviousManifestHash {
+		t.Fatalf("locator revision binding = %+v", document)
+	}
+	locators, ok := document["locators"].([]map[string]any)
+	if !ok || len(locators) != 2 || locators[0]["content_hash"] != published[0].ContentHash || !strings.HasPrefix(locators[0]["url"].(string), cfg.OperatorAPIOrigins[0]) {
+		t.Fatalf("locator endpoints = %+v", document["locators"])
+	}
+	if _, err := deploymentManifestLocatorDocument(cfg, manifest, published[:1]); err == nil {
+		t.Fatal("partial operator locator set was accepted")
+	}
+}
+
+func TestLaunchOwnershipRejectsLiveGenerationAndIgnoresPIDReuse(t *testing.T) {
+	dir := t.TempDir()
+	state := SupervisorState{
+		Schema:                   "urnetwork-sim-supervisor-state-v1",
+		SupervisorPID:            os.Getpid(),
+		SupervisorStartTimeTicks: currentProcessStartTimeTicks(t),
+	}
+	write := func() {
+		encoded, err := json.Marshal(&state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "supervisor.state.json"), encoded, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	live, err := liveRecordedSupervisor(dir)
+	if err != nil || live == nil || live.SupervisorPID != os.Getpid() {
+		t.Fatalf("live supervisor = %+v, %v", live, err)
+	}
+	if err := ensureNoLiveSupervisorForLaunch(dir); err == nil || !strings.Contains(err.Error(), "live supervisor pid=") {
+		t.Fatalf("live supervisor generation was accepted for launch: %v", err)
+	}
+	state.SupervisorStartTimeTicks++
+	write()
+	live, err = liveRecordedSupervisor(dir)
+	if err != nil || live != nil {
+		t.Fatalf("reused pid supervisor = %+v, %v", live, err)
+	}
+	if err := ensureNoLiveSupervisorForLaunch(dir); err != nil {
+		t.Fatalf("stale reused pid blocked launch: %v", err)
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, "supervisor.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureNoLiveSupervisorForLaunch(dir); err == nil || !strings.Contains(err.Error(), "live supervisor lock") {
+		t.Fatalf("live supervisor lock was accepted for launch: %v", err)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "supervisor.state.json"), []byte(`{"schema":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := liveRecordedSupervisor(dir); err == nil || !strings.Contains(err.Error(), "decode existing supervisor state") {
+		t.Fatalf("malformed supervisor ownership was accepted: %v", err)
+	}
+}
+
 // Reproduce the launch race by presenting clients before their services in the
 // manifest and proving no dependent start crosses the explicit health barrier.
 func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
@@ -1069,6 +1196,47 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 	wantDependents := cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
 	if prerequisiteCount != wantPrerequisites || dependentCount != wantDependents {
 		t.Fatalf("release startup prerequisites/dependents=%d/%d, want %d/%d", prerequisiteCount, dependentCount, wantPrerequisites, wantDependents)
+	}
+}
+
+func TestReleaseProcessSpecsSuppressOnlyIntentionalCappedQUICWarning(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, map[string]string{
+		"sim-testnet":           "/release/sim-testnet",
+		connectServerBinaryName: "/release/sim-testnet-connect",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSpecs := buildClientSpecs(
+		cfg,
+		stateDir,
+		map[string]string{"sim-testnet": "/release/sim-testnet"},
+		roles,
+	)
+	suppressedCount := 0
+	for _, spec := range append(serverSpecs, clientSpecs...) {
+		value, present := spec.Env[quicGoDisableReceiveBufferWarningEnv]
+		switch spec.Role {
+		case "miner-swarm", "validator":
+			if !present || value != "true" {
+				t.Fatalf("capped Connect process %s QUIC warning setting = %q, present=%t", spec.ID, value, present)
+			}
+			suppressedCount++
+		default:
+			if present {
+				t.Fatalf("uncapped process %s (%s) inherited QUIC warning setting %q", spec.ID, spec.Role, value)
+			}
+		}
+	}
+	wantSuppressedCount := cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
+	if suppressedCount != wantSuppressedCount {
+		t.Fatalf("QUIC warning suppression process count = %d, want %d", suppressedCount, wantSuppressedCount)
 	}
 }
 

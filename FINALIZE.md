@@ -3732,6 +3732,63 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    signals. Those regressions pass normally and under the race detector in
    their appropriate isolated database profile.
 
+   The resulting authorized launch reached the real topology on 2026-09-02. It
+   reverified all 1,000 historical miners and all 2,220 carried actions, reran
+   the isolated PostgreSQL migrations and account provisioning, started all 33
+   supervised processes, and required a fresh completed path proof from each
+   validator through each operator. `topology.launch` was durably verified at
+   journal sequences 10,039/10,040. The next non-transactional step then failed
+   because the fixed `public.json` pointer treated changed config, policy, plan
+   and release-lock hashes as an unrelated deployment even though its old plan
+   is an explicit ancestor of the approved current plan. No additional chain
+   transaction or spend occurred. The harness was stopped explicitly; an audit
+   found no surviving workload, listener or temporary-process owner, while the
+   expected no-restart PostgreSQL/Redis containers remained available.
+
+   That failure now has a lineage-safe revision protocol. A changed public
+   manifest requires a different current plan whose `PriorPlanHashes` contains
+   the exact old plan; a same-plan mutation, unrelated lineage, chain/genesis/
+   netuid/deployment change, missing predecessor or tampered predecessor fails
+   before the current pointer changes. Revisions link the SHA-256 hash of the
+   prior canonical manifest, preserve its exact bytes, preserve superseded
+   operator-signed envelopes by content hash, and archive/remove old active
+   locators before advancing `public.json`. New locators bind the exact manifest
+   hash and revision and appear only after every operator publication and public
+   history readback succeeds. Legacy manifests without a revision field are
+   revision one and retain their original canonical hash. Deterministic tests
+   cover legacy migration, replay byte-idempotence, ordinary evidence
+   immutability, partial-retry history, same-plan/unrelated-plan rejection,
+   locator completeness, and predecessor tampering.
+
+   The adjacent detached-process ownership defect is also closed. Launch checks
+   both the kernel process generation and held supervisor lock before migrations
+   or temporary provisioning, refuses a pre-existing live generation with an
+   explicit stop-required error, and marks ownership only after proving none is
+   live. If any later detached step fails, a bounded background cleanup stops
+   only the supervisor started by that invocation and preserves chain state;
+   cleanup errors are joined to the causal error. Tests cover live generation,
+   PID reuse, lock-only startup, success, adopted/non-owned state, cleanup
+   failure, and failure before the first supervisor state write.
+
+   Finally, all 20 miner swarms reported quic-go's receive-buffer warning even
+   though host `rmem_max`/`wmem_max` are 16 MiB. The exact 640 KiB observation is
+   intentional: Connect caps each 20-MiB simulated device's H3 socket request to
+   320 KiB and Linux reports twice that value. Raising every one of 1,000 device
+   buffers to quic-go's 7 MiB request would defeat the bounded-memory topology.
+   Only miner and validator processes using that capped Connect transport now
+   set quic-go's supported warning-suppression environment flag; operator,
+   server, proxy and relayer processes retain the warning and the 16-MiB host
+   gate. A Connect regression pins the 7-MiB-to-320-KiB clamp and a complete
+   process-manifest regression proves the suppression cannot spread to an
+   uncapped role. TLS, packet, peer-budget, proof-readiness and restart signals
+   remain independently release-fatal; suppression changes no such outcome.
+
+   The rendered simulation operator profile does not currently enable the
+   optional general-stats HMAC export or Grafana push path. Both are safe no-ops
+   and are separate from release-critical `/verify/stats`, proof, process and
+   anomaly evidence, so this does not weaken M1-M3. It remains an explicit MR
+   observability item to configure and exercise before declaring mainnet-ready.
+
    Once that replay is clean, `release-1.0` discards its post-preparation
    partial epoch, observes five sequential 300-block epochs (approximately five
    hours), and waits through their terminal finalization. `production-soak` then schedules the
