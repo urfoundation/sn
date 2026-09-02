@@ -77,6 +77,12 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test ./... -run '^$'
   go test . -run '^Test(Verify|Sn)'
 
+  # The 1,000-device simulator depends on Connect retaining its per-device
+  # socket budget even when quic-go requests a process-oriented 7 MiB buffer.
+  socket_cap_tests='^TestPlatformPacketConnClampsQuic(SocketRequests|RequestToDeviceMemoryTarget)$'
+  go test . -run "$socket_cap_tests" -count=1
+  go test -race . -run "$socket_cap_tests" -count=1
+
   # Generated blocker/CFAA data is release-critical. Exercise both the
   # checked-in table invariants and their concurrent readers whenever the
   # pinned Connect source changes.

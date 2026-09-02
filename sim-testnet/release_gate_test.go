@@ -90,6 +90,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"TestConnectionVerifyEgressUsesControllerHashNamespace",
 		"TestIncrementRateLimitWindowResetsAtExactBoundary",
 		"TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec",
+		"TestPlatformPacketConnClampsQuic(SocketRequests|RequestToDeviceMemoryTarget)",
 		"ProxyDeviceManagerSharesOneNetworkSpaceLifetime",
 		"ProxyDeviceManagerCloseAndWaitJoinsOwnedNetworkSpace",
 		"ProxyDeviceManagerCloseJoinsAdmittedOpenAndRejectsLateOpen",
