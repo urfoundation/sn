@@ -71,6 +71,50 @@ alpha ceiling is 28,250 alpha. The current revision may consume one fixed
 individual repair remains capped at 3,000 alpha and the finalized source must
 retain at least 2,000 alpha.
 
+**Latest M0A replay checkpoint (2026-09-02 UTC):** the two independent
+read-only plans matched exactly at
+`0xdcc0ae12f7964a60ae2db73ce1ec87afedcc8495a2584931fbe05b907511aefd`.
+The approved replay authenticated all 2,218 carried actions and finalized the
+single bounded 3,000-alpha reserve repair as testnet transaction
+`0x77844b9bfc943fdded79951daa621072ebaad9af471d8ef39c88c8468954a600`.
+All 33 real processes reached healthy state with zero supervisor restarts, but
+the semantic gate correctly stopped after neither validator could complete a
+fresh trail through either operator. Exact validator diagnostics proved that
+the API returned a synthetic seed identity for an otherwise live provider:
+Connect wrote the observed-egress Redis index with unkeyed model defaults while
+the API read it with `verify.yml`'s required HMAC key. The adjacent audit found
+the same split namespace in proxy-allocation/taskworker paths and found that the
+supposed per-minute SEED counter used one unsuffixed `INCR+EXPIRE` key, which
+would eventually lock out every continuously active honest validator.
+
+The correction makes API, Connect, proxy allocation and recurring work share
+the canonical deployment settings, branches before `verify.yml` access when the
+subnet is disabled, clears keyed proxy attribution from the authoritative
+reverse index, and uses epoch-qualified fixed-window rate keys. Validators now
+share one policy-derived SEED-attempt gate across all workers and retries; the
+locked 40/minute hard limit yields 30/minute (one attempt every two seconds),
+and unsafe concurrency/policy combinations fail configuration validation.
+Deterministic PostgreSQL/Redis and race tests cover the keyed writer/reader
+namespace, wrong-key fail-closed behavior, disabled-vault boundary, keyed proxy
+creation/release, exact rate-window rollover, shared scheduling and retry
+metering. The full 1,000-miner simulator run reached only its expected
+source-lock drift assertion; the three newly observed source digests are now
+locked and the lock self-test passes. A clean source-current M0A replay remains
+required before any phase-2 claim. The failed workload was stopped completely;
+on-chain setup and evidence were preserved.
+
+The promotion acceptance is explicit and independent per validator: each
+reconstructs scores for exactly 202 candidate fleet UIDs, admits exactly its
+own top 200, requires every admitted and unmasked UID to receive positive
+intended weight, and requires each rejected boundary UID (and any unrelated
+claimant) to receive zero. Unanimously selected candidates must subsequently
+show positive native emission, unanimously rejected candidates must show zero,
+and a validator-disputed boundary is left to native Yuma consensus rather than
+being falsely asserted. A fresh promotion/restoration transition must occur
+inside the current campaign, and all 808 head-fleet provider identities are
+excluded from pool payout leaves. These deterministic gates are green; their
+source-current live-chain evidence is still pending the corrected M0A/M2 run.
+
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
 runtime 452 by spec, transaction version and finalized Wasm code hash, and records

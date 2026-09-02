@@ -126,3 +126,23 @@ func TestReleaseConfigRequiresDistinctOperatorArtifactSigners(t *testing.T) {
 		t.Fatalf("missing artifact signer error = %v", err)
 	}
 }
+
+func TestReleaseConfigRejectsConcurrencyOutsideVerifyBudgets(t *testing.T) {
+	cfg := validReleaseConfig(t)
+	cfg.Operators[0].Concurrency = cfg.Policy.Verify.HardActiveTrailsPerSource + 1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "active-trail hard limit") {
+		t.Fatalf("active-trail concurrency error = %v", err)
+	}
+
+	cfg = validReleaseConfig(t)
+	cfg.Policy.Verify.HardSeedPerMinutePerSource = 1
+	policyHash, err := cfg.Policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.PolicyHash = policyHash
+	cfg.Operators[0].Concurrency = 2
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "seed gate") {
+		t.Fatalf("seed-gate concurrency error = %v", err)
+	}
+}

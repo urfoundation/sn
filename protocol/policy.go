@@ -318,7 +318,8 @@ func (p Policy) Validate() error {
 	if v.TrailDepth < 2 || v.StepTimeoutSeconds <= 0 || v.EgressTTLSeconds <= 0 || v.EgressRefreshSeconds <= 0 || v.EgressRefreshSeconds >= v.EgressTTLSeconds {
 		return errors.New("invalid verify timing/depth")
 	}
-	if v.ReliabilityAMin == 0 || v.EgressIPv4Prefix < 0 || v.EgressIPv4Prefix > 32 || v.EgressIPv6Prefix < 0 || v.EgressIPv6Prefix > 128 || v.EgressHashKeyID == "" {
+	if v.ReliabilityAMin == 0 || v.EgressIPv4Prefix < 0 || v.EgressIPv4Prefix > 32 || v.EgressIPv6Prefix < 0 || v.EgressIPv6Prefix > 128 || v.EgressHashKeyID == "" ||
+		v.HardSeedPerMinutePerSource <= 0 || v.HardExtendPerMinutePerSource <= 0 || v.HardActiveTrailsPerSource <= 0 {
 		return errors.New("invalid verify reliability/egress policy")
 	}
 	b := p.Binding

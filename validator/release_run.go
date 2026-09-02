@@ -140,7 +140,35 @@ func loadInitialReleaseSnapshot(ctx context.Context, load releaseSnapshotLoader,
 	return nil, fmt.Errorf("initial release snapshot failed after %d transient attempts: %w", releaseSnapshotStartupAttempts, lastErr)
 }
 
+// releaseSeedAttemptInterval leaves 25% headroom below the server's locked
+// per-minute hard cap and spaces every attempt (including idempotent retries)
+// across all workers. Headroom absorbs fixed-window phase and process-restart
+// overlap without weakening the server-side abuse bound.
+func releaseSeedAttemptInterval(hardLimit int) (time.Duration, error) {
+	if hardLimit <= 0 {
+		return 0, errors.New("hard seed rate limit must be positive")
+	}
+	// floor(3*hardLimit/4), arranged without multiplication overflow.
+	safeLimit := (hardLimit/4)*3 + (hardLimit%4)*3/4
+	if safeLimit < 1 {
+		safeLimit = 1
+	}
+	if int64(safeLimit) > int64(time.Minute) {
+		return 0, errors.New("hard seed rate limit exceeds nanosecond pacing capacity")
+	}
+	divisor := time.Duration(safeLimit)
+	interval := time.Minute / divisor
+	if time.Minute%divisor != 0 {
+		interval++
+	}
+	return interval, nil
+}
+
 func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorConfig, epochFn func() uint64) (*releaseOperatorRuntime, error) {
+	seedAttemptInterval, err := releaseSeedAttemptInterval(cfg.Policy.Verify.HardSeedPerMinutePerSource)
+	if err != nil {
+		return nil, fmt.Errorf("no_id %d seed pacing: %w", op.NoID, err)
+	}
 	seed, err := loadClientSeed(op.ClientKeySeedFile)
 	if err != nil {
 		return nil, fmt.Errorf("no_id %d client key: %w", op.NoID, err)
@@ -210,8 +238,9 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 	}
 	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	engine := NewTrailEngine(clientID, ed25519.NewKeyFromSeed(seed), transport, NewApiServerKeyRing(api), NewFindProvidersSeedPicker(api, clientID), stats, store, epochFn, TrailEngineConfig{
-		M:           cfg.Policy.Verify.TrailDepth,
-		StepTimeout: time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
+		M:                   cfg.Policy.Verify.TrailDepth,
+		StepTimeout:         time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
+		SeedAttemptInterval: seedAttemptInterval,
 	})
 	measurement := &ReleaseMeasurementContext{
 		NoID:      op.NoID,

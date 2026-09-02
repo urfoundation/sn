@@ -379,6 +379,68 @@ func newTestEngine(t *testing.T, server *mockVerifyServer, validatorKey ed25519.
 	return engine, stats, seedHop
 }
 
+// Concurrent workers reserve one global SEED-attempt sequence. The schedule
+// covers retries as well as fresh trails and catches the former per-worker
+// pacing that exceeded the server's per-VPK hard limit.
+func TestTrailEngineSeedAttemptScheduleIsSharedAndDeterministic(t *testing.T) {
+	engine := &TrailEngine{cfg: TrailEngineConfig{SeedAttemptInterval: 2 * time.Second}}
+	start := time.Unix(1_800_000_000, 0)
+	if delay := engine.reserveSeedAttempt(start); delay != 0 {
+		t.Fatalf("first reservation delay = %s, want immediate", delay)
+	}
+	if delay := engine.reserveSeedAttempt(start); delay != 2*time.Second {
+		t.Fatalf("second reservation delay = %s, want 2s", delay)
+	}
+	if delay := engine.reserveSeedAttempt(start.Add(500 * time.Millisecond)); delay != 3500*time.Millisecond {
+		t.Fatalf("third reservation delay = %s, want 3.5s", delay)
+	}
+	if delay := engine.reserveSeedAttempt(start.Add(10 * time.Second)); delay != 0 {
+		t.Fatalf("idle schedule delay = %s, want immediate", delay)
+	}
+}
+
+type failingTrailTransport struct {
+	attempts int
+}
+
+func (self *failingTrailTransport) PostVerify(context.Context, connect.Id, []byte) ([]byte, error) {
+	self.attempts++
+	return nil, errors.New("synthetic transport failure")
+}
+
+// The server counts every SEED HTTP request, not just logical trails. The
+// attempt hook must therefore run again before each idempotent retry, while an
+// EXTEND call with no hook remains outside the shared SEED budget.
+func TestTrailEngineSeedPacingMetersEveryRetry(t *testing.T) {
+	transport := &failingTrailTransport{}
+	engine := &TrailEngine{
+		transport: transport,
+		cfg: TrailEngineConfig{
+			StepTimeout:    time.Second,
+			ExtendAttempts: 3,
+		},
+	}
+	paced := 0
+	pace := func(context.Context) error {
+		paced++
+		return nil
+	}
+	if _, err := engine.postStep(context.Background(), connect.NewId(), []byte("seed"), pace); err == nil {
+		t.Fatal("failing SEED retries unexpectedly succeeded")
+	}
+	if paced != 3 || transport.attempts != 3 {
+		t.Fatalf("SEED pace/transport attempts = %d/%d, want 3/3", paced, transport.attempts)
+	}
+
+	transport.attempts = 0
+	if _, err := engine.postStep(context.Background(), connect.NewId(), []byte("extend"), nil); err == nil {
+		t.Fatal("failing EXTEND retries unexpectedly succeeded")
+	}
+	if transport.attempts != 3 || paced != 3 {
+		t.Fatalf("EXTEND transport attempts/preserved pace = %d/%d, want 3/3", transport.attempts, paced)
+	}
+}
+
 func TestTrailHappyPath(t *testing.T) {
 	server, validatorKey, clientId := newMockVerifyServer(t, 12)
 	store, err := NewProofStore(t.TempDir())

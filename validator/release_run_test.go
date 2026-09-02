@@ -106,3 +106,27 @@ func TestInitialReleaseSnapshotStopsOnParentCancellation(t *testing.T) {
 		t.Fatalf("error=%v loads=%d", err, loads)
 	}
 }
+
+// Four production workers share one request budget; retries do not multiply
+// the configured per-minute rate because every SEED attempt is spaced by the
+// same policy-derived gate with explicit headroom.
+func TestReleaseSeedAttemptIntervalReservesHardLimitHeadroom(t *testing.T) {
+	tests := []struct {
+		hardLimit int
+		want      time.Duration
+	}{
+		{hardLimit: 40, want: 2 * time.Second},
+		{hardLimit: 4, want: 20 * time.Second},
+		{hardLimit: 2, want: time.Minute},
+		{hardLimit: 1, want: time.Minute},
+	}
+	for _, test := range tests {
+		got, err := releaseSeedAttemptInterval(test.hardLimit)
+		if err != nil || got != test.want {
+			t.Errorf("hard limit %d interval = %s, error = %v, want %s", test.hardLimit, got, err, test.want)
+		}
+	}
+	if _, err := releaseSeedAttemptInterval(0); err == nil {
+		t.Fatal("zero hard seed rate limit was accepted")
+	}
+}

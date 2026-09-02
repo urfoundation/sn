@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/yaml.v3"
@@ -271,6 +272,17 @@ func (c ReleaseConfig) Validate() error {
 		seenArtifactSigner[artifactSigner] = op.NoID
 		if op.Concurrency < 1 || op.Concurrency > 128 {
 			return fmt.Errorf("operators[%d].concurrency outside [1,128]", i)
+		}
+		if op.Concurrency > c.Policy.Verify.HardActiveTrailsPerSource {
+			return fmt.Errorf("operators[%d].concurrency exceeds the verify active-trail hard limit", i)
+		}
+		seedInterval, err := releaseSeedAttemptInterval(c.Policy.Verify.HardSeedPerMinutePerSource)
+		if err != nil {
+			return fmt.Errorf("operators[%d] seed pacing: %w", i, err)
+		}
+		maximumInitialWait := time.Duration(op.Concurrency-1) * seedInterval
+		if maximumInitialWait >= time.Duration(c.Policy.Verify.StepTimeoutSeconds)*time.Second {
+			return fmt.Errorf("operators[%d].concurrency cannot enter the seed gate within step_timeout", i)
 		}
 		for label, p := range map[string]string{"state_dir": op.StateDir, "network_jwt_file": op.NetworkJWTFile, "client_jwt_file": op.ClientJWTFile, "client_key_seed_file": op.ClientKeySeedFile} {
 			if !filepath.IsAbs(p) {

@@ -346,6 +346,12 @@ type TrailEngineConfig struct {
 	ExtendAttempts int
 	// Pace is the sleep between consecutive trails per worker.
 	Pace time.Duration
+	// SeedAttemptInterval is the minimum interval between SEED HTTP attempts
+	// across every worker sharing this engine. It meters retries as well as
+	// new trails because the server hard limit counts every SEED request.
+	// Zero disables the gate for single-trail callers and unit tests; the
+	// release runner derives a positive value from the locked policy.
+	SeedAttemptInterval time.Duration
 }
 
 func (self TrailEngineConfig) withDefaults() TrailEngineConfig {
@@ -380,8 +386,44 @@ type TrailEngine struct {
 	epochFn func() uint64
 	cfg     TrailEngineConfig
 
+	seedScheduleMu  sync.Mutex
+	nextSeedAttempt time.Time
+
 	completed atomic.Uint64
 	failed    atomic.Uint64
+}
+
+// reserveSeedAttempt serializes the SEED request budget shared by every
+// worker. Passing time in keeps the ordering logic deterministic to test.
+func (self *TrailEngine) reserveSeedAttempt(now time.Time) time.Duration {
+	interval := self.cfg.SeedAttemptInterval
+	if interval <= 0 {
+		return 0
+	}
+	self.seedScheduleMu.Lock()
+	defer self.seedScheduleMu.Unlock()
+	if self.nextSeedAttempt.IsZero() || !self.nextSeedAttempt.After(now) {
+		self.nextSeedAttempt = now.Add(interval)
+		return 0
+	}
+	reserved := self.nextSeedAttempt
+	self.nextSeedAttempt = self.nextSeedAttempt.Add(interval)
+	return reserved.Sub(now)
+}
+
+func (self *TrailEngine) waitForSeedAttempt(ctx context.Context) error {
+	delay := self.reserveSeedAttempt(time.Now())
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func NewTrailEngine(
@@ -427,7 +469,7 @@ func (self *TrailEngine) verifyAssign(assign *connect.VerifyAssignResult, wantTr
 	}
 	for i := range wantTrail {
 		if assign.Trail[i] != wantTrail[i] {
-			return fmt.Errorf("assign rewrites confirmed hop %d", i)
+			return fmt.Errorf("assign rewrites confirmed hop %d: got %s, want %s", i, assign.Trail[i], wantTrail[i])
 		}
 	}
 	// The newly assigned hop must be fresh: not already in the trail and
@@ -458,11 +500,17 @@ func (self *TrailEngine) verifyAssign(assign *connect.VerifyAssignResult, wantTr
 
 // postStep sends one body through hop with the step timeout, retrying the
 // identical body (idempotent, §4.3) up to ExtendAttempts within the budget.
-func (self *TrailEngine) postStep(ctx context.Context, hop connect.Id, body []byte) ([]byte, error) {
+// beforeAttempt, when non-nil, meters every send including retries.
+func (self *TrailEngine) postStep(ctx context.Context, hop connect.Id, body []byte, beforeAttempt func(context.Context) error) ([]byte, error) {
 	stepCtx, cancel := context.WithTimeout(ctx, self.cfg.StepTimeout)
 	defer cancel()
 	var lastErr error
 	for attempt := 0; attempt < self.cfg.ExtendAttempts; attempt++ {
+		if beforeAttempt != nil {
+			if err := beforeAttempt(stepCtx); err != nil {
+				return nil, fmt.Errorf("seed attempt pace: %w", err)
+			}
+		}
 		responseBody, err := self.transport.PostVerify(stepCtx, hop, body)
 		if err == nil {
 			return responseBody, nil
@@ -505,7 +553,7 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 	if err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: err}
 	}
-	responseBody, err := self.postStep(ctx, seedHop, seedBody)
+	responseBody, err := self.postStep(ctx, seedHop, seedBody, self.waitForSeedAttempt)
 	if err != nil {
 		// Seed failures are the validator's own pick — not attributable.
 		return nil, &TrailError{Kind: TrailErrorSeed, Hop: seedHop, Err: err}
@@ -553,7 +601,7 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 		}
 
 		stepStart := time.Now()
-		responseBody, err := self.postStep(ctx, pendingHop, extendBody)
+		responseBody, err := self.postStep(ctx, pendingHop, extendBody, nil)
 		if err != nil {
 			// The assigned hop never confirmed: local failure attribution
 			// to the pending hop (§4.4/§7.2) — the exposure recorded at

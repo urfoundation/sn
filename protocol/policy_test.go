@@ -171,6 +171,24 @@ func TestPolicyRequiresPositiveFinalizedHeadLagBound(t *testing.T) {
 	}
 }
 
+func TestPolicyRequiresPositiveVerifyHardLimits(t *testing.T) {
+	mutations := []func(*Policy){
+		func(policy *Policy) { policy.Verify.HardSeedPerMinutePerSource = 0 },
+		func(policy *Policy) { policy.Verify.HardExtendPerMinutePerSource = 0 },
+		func(policy *Policy) { policy.Verify.HardActiveTrailsPerSource = 0 },
+	}
+	for index, mutate := range mutations {
+		policy, err := LoadPolicy(testPolicyPath(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutate(policy)
+		if err := policy.Validate(); err == nil {
+			t.Errorf("zero verify hard-limit mutation %d was accepted", index)
+		}
+	}
+}
+
 func TestPolicyJSONSchemaRequiresWeightCapAndPositiveHeadLag(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "docs", "spec", "policy-v1.schema.json"))
 	if err != nil {
