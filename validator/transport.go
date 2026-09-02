@@ -130,6 +130,18 @@ func (self *TunnelTransport) currentByClientJwt() (string, error) {
 	return byClientJwt, nil
 }
 
+// Returns fresh settings for every derived tunnel client. Provider clients
+// advertise opportunistic encryption and may initiate the TLS session on their
+// return sequence. An encryption-off validator can carry the plaintext proof,
+// but leaves that provider handshake alive until its full TLS timeout. Matching
+// the provider's opportunistic policy supplies the responder capability while
+// retaining plaintext compatibility with peers that cannot establish a session.
+func newTunnelClientSettings() *connect.ClientSettings {
+	clientSettings := connect.DefaultClientSettings()
+	clientSettings.EncryptionSettings.Mode = connect.EncryptionModeOpportunistic
+	return clientSettings
+}
+
 // PostVerify opens an egress-pinned tunnel through hop, POSTs the body to
 // <ApiUrl>/verify through it, and tears the tunnel down. ctx bounds the
 // whole attempt (the engine's StepTimeout).
@@ -166,7 +178,7 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		"validator",
 		RequireVersion(),
 		&self.cfg.SourceClientId,
-		connect.DefaultClientSettings,
+		newTunnelClientSettings,
 		connect.DefaultApiMultiClientGeneratorSettings(),
 	)
 	attempt.generator = generator
