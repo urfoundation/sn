@@ -103,7 +103,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
-	github.com/quic-go/quic-go v0.61.0 // indirect
+	github.com/quic-go/quic-go v0.61.0
 	github.com/redis/go-redis/v9 v9.22.0 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/rs/xid v1.6.0 // indirect
@@ -120,12 +120,12 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/connect/v2026 v2026.9.1-1035082030
-	github.com/urnetwork/glog/v2026 v2026.9.1-1035082030
-	github.com/urnetwork/goidenticons/v2026 v2026.9.1-1035082030
-	github.com/urnetwork/proxy/v2026 v2026.9.1-1035082030
+	github.com/urnetwork/glog/v2026 v2026.9.1-1035082030 // indirect
+	github.com/urnetwork/goidenticons/v2026 v2026.9.1-1035082030 // indirect
+	github.com/urnetwork/proxy/v2026 v2026.9.1-1035082030 // indirect
 	github.com/urnetwork/sdk/v2026 v2026.9.1-1035082030
 	github.com/urnetwork/server/v2026 v2026.9.1-1035082030
-	github.com/urnetwork/userwireguard/v2026 v2026.9.1-1035082030
+	github.com/urnetwork/userwireguard/v2026 v2026.9.1-1035082030 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
