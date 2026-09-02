@@ -425,7 +425,19 @@ zero weight there. A positive weight for any UID outside that validator's
 selected set and the two live pool UIDs is a hard failure. Finalized native
 reward vectors must pay every unanimously selected fleet and pay no fleet
 rejected by every validator; a disputed boundary is left to Yuma's stake-weighted
-median and clipping and is reported from the chain. All 808 providers bound to
+median and clipping and is reported from the chain. The same checks cover every
+applied intent created after the acceptance baseline, so a later valid decision
+cannot erase an intermediate boundary or weight violation. During M2 a private,
+testnet-only operator API filter withholds fleet 4 from validator 1 but not
+validator 2. A common native epoch must show validator 1 rejecting that UID at
+zero and positively weighting its replacement while validator 2 makes the
+opposite decision; a later common epoch must prove restoration. The filter is
+mode- and deployment-confined, atomically persisted, ledger-recovered, and is
+restored immediately after authenticated applied-decision evidence proves the
+divergence. Native head windows rotate atomically, same-epoch retries reuse the
+same evidence, and the terminal interval budgets a complete fresh trail and a
+strict recovery fold. All 808 providers
+bound to
 the 202 live fleet UIDs—including rejected but still registered fleets—must be
 absent from operator payout leaves, preventing double pay until actual
 deregistration returns a fleet to its pool.

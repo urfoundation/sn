@@ -153,8 +153,8 @@ func TestQualityPreviewBlend(t *testing.T) {
 
 // TestEgressIpHashAccumulation: the engine accumulates a per-provider set of
 // distinct routable egress-IP-hashes (§11.1, D27), dedupes, ignores the zero
-// hash, returns a defensive copy, and resets the set at Fold (windowed like the
-// counters).
+// hash, returns a defensive copy, remains independent of the settlement Fold,
+// and rotates atomically at the native tempo.
 func TestEgressIpHashAccumulation(t *testing.T) {
 	stats := NewStatsEngine(StatsConfig{})
 	p := connect.NewId()
@@ -176,10 +176,59 @@ func TestEgressIpHashAccumulation(t *testing.T) {
 		t.Fatal("EgressIpHashes must return a defensive copy")
 	}
 
-	// Fold resets the egress window.
+	// Settlement-quality folding does not erase the independent head window.
 	stats.Fold()
-	if len(stats.EgressIpHashes()) != 0 {
-		t.Fatal("egress window not reset at Fold")
+	if len(stats.EgressIpHashes()[p]) != 2 {
+		t.Fatal("settlement fold erased the native-tempo egress window")
+	}
+
+	closed := stats.TakeEgressIpHashes()
+	if len(closed[p]) != 2 || len(stats.EgressIpHashes()) != 0 {
+		t.Fatalf("native-tempo rotation closed=%v current=%v", closed, stats.EgressIpHashes())
+	}
+	stats.RecordEgressHash(p, iphash(3))
+	if closed[p][iphash(3)] || !stats.EgressIpHashes()[p][iphash(3)] {
+		t.Fatal("post-rotation proof leaked into the detached tempo window")
+	}
+}
+
+// A failed submission may retry in the same native epoch. It must reuse the
+// exact detached evidence window instead of consuming a sparse retry window;
+// the following epoch then receives evidence recorded after the first cut.
+func TestReleaseHeadEvidenceRotatesOncePerNativeEpoch(t *testing.T) {
+	first, second := NewStatsEngine(StatsConfig{}), NewStatsEngine(StatsConfig{})
+	firstID, secondID := connect.NewId(), connect.NewId()
+	first.RecordEgressHash(firstID, iphash(1))
+	second.RecordEgressHash(secondID, iphash(2))
+	steerer := &ReleaseSteerer{contexts: map[uint64]*ReleaseMeasurementContext{
+		9: {NoID: 9, Stats: second},
+		3: {NoID: 3, Stats: first},
+	}}
+
+	initial, providers, err := steerer.takeHeadEvidence(41)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !initial[3][firstID][iphash(1)] || !initial[9][secondID][iphash(2)] || len(providers[3]) != 1 || len(providers[9]) != 1 {
+		t.Fatalf("initial native window evidence=%v providers=%v", initial, providers)
+	}
+	first.RecordEgressHash(firstID, iphash(3))
+	retry, _, err := steerer.takeHeadEvidence(41)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry[3][firstID][iphash(3)] || !retry[3][firstID][iphash(1)] {
+		t.Fatalf("same-epoch retry changed detached evidence: %v", retry[3][firstID])
+	}
+	next, _, err := steerer.takeHeadEvidence(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !next[3][firstID][iphash(3)] || next[3][firstID][iphash(1)] {
+		t.Fatalf("next native epoch evidence=%v, want only post-cut evidence", next[3][firstID])
+	}
+	if _, _, err := steerer.takeHeadEvidence(41); err == nil {
+		t.Fatal("native epoch regression was accepted")
 	}
 }
 

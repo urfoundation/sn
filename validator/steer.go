@@ -770,7 +770,7 @@ func (self *Steerer) SubmitOnce(ctx context.Context) error {
 	// them from the pool payoutRoot).
 	quality := self.stats.Quality()
 	exposure := self.stats.Exposure()
-	egress := self.stats.EgressIpHashes()
+	egress := self.stats.TakeEgressIpHashes()
 	head, bound := self.gatherHead(quality, egress)
 	for id := range bound {
 		delete(quality, id)

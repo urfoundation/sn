@@ -31,6 +31,10 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"CoreStClient(BlockHashes|FinalizedHead|Epoch)",
 		"StSyncChainEventsBatchesCanonicalEventBlocks",
 		"StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation",
+		"StAccountReconcile",
+		"VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)",
+		"StTransactionIntentReservationUsesChainAccountNonceScope",
+		"StTransactionAttemptCandidatesConvergeOnOneWinner",
 		"StatsAlphaPriceURLIsMainnetOnly",
 		"StatsGaugeVecReplaceDeletesStaleSeries",
 		"go test -race ./monitor",
@@ -39,6 +43,8 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"StreamReplacementReceiveDoesNotJoinAndPublishesAfterOldExit",
 		"AddrGeneratorCloseJoinsBlockedProducer",
 		"ClientCancelClosesContractManagerAdmission",
+		"PeerConnectionResolveNetCancelsStunAndTurnLookups",
+		"WebRtcPeerTeardownCancelsBlockedStunResolution",
 		"PeerConnPionStartupAndTeardownAreSerialized",
 		"WebRtcManagerCloseAndWaitReleasesOwnedResources",
 		"WebRtcTestManagersHaveJoiningOwners",
@@ -91,6 +97,8 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"export WARP_SERVICE=test",
 		"export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com",
 		"export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com",
+		"go test -race ./controller -run \"$controller_db_tests\"",
+		"go test -race ./model -run \"$model_db_tests\"",
 		"go test -timeout 20m ./proxy -count=1",
 	} {
 		if !strings.Contains(script, required) {
@@ -101,6 +109,10 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	for _, databaseTest := range []string{
 		"StSyncChainEventsBatchesCanonicalEventBlocks",
 		"StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation",
+		"StAccountReconcile",
+		"VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)",
+		"StTransactionIntentReservationUsesChainAccountNonceScope",
+		"StTransactionAttemptCandidatesConvergeOnOneWinner",
 	} {
 		if testIndex := strings.Index(script, databaseTest); databaseIndex < 0 || testIndex <= databaseIndex {
 			t.Errorf("database-backed operator regression %s is outside the isolated database gate", databaseTest)

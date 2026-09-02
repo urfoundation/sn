@@ -346,9 +346,12 @@ type TrailEngineConfig struct {
 	ExtendAttempts int
 	// Pace is the sleep between consecutive trails per worker.
 	Pace time.Duration
-	// SeedAttemptInterval is the minimum interval between SEED HTTP attempts
-	// across every worker sharing this engine. It meters retries as well as
-	// new trails because the server hard limit counts every SEED request.
+	// SeedAttemptInterval independently bounds provider-discovery starts and
+	// SEED HTTP attempts across every worker sharing this engine. The SEED lane
+	// meters retries as well as new trails because the server hard limit counts
+	// every SEED request. Separate schedules prevent slow discovery from causing
+	// a later burst while still allowing its successful result to be used at
+	// once when the SEED request lane is free.
 	// Zero disables the gate for single-trail callers and unit tests; the
 	// release runner derives a positive value from the locked policy.
 	SeedAttemptInterval time.Duration
@@ -386,35 +389,42 @@ type TrailEngine struct {
 	epochFn func() uint64
 	cfg     TrailEngineConfig
 
-	seedScheduleMu  sync.Mutex
-	nextSeedAttempt time.Time
+	seedDiscoverySchedule attemptSchedule
+	seedPostSchedule      attemptSchedule
 
 	completed atomic.Uint64
 	failed    atomic.Uint64
 }
 
-// reserveSeedAttempt serializes the SEED request budget shared by every
-// worker. Passing time in keeps the ordering logic deterministic to test.
-func (self *TrailEngine) reserveSeedAttempt(now time.Time) time.Duration {
-	interval := self.cfg.SeedAttemptInterval
+type attemptSchedule struct {
+	stateLock   sync.Mutex
+	nextAttempt time.Time
+}
+
+// reserve serializes one request-start budget. Passing time in keeps the
+// ordering logic deterministic to test.
+func (self *attemptSchedule) reserve(now time.Time, interval time.Duration) time.Duration {
 	if interval <= 0 {
 		return 0
 	}
-	self.seedScheduleMu.Lock()
-	defer self.seedScheduleMu.Unlock()
-	if self.nextSeedAttempt.IsZero() || !self.nextSeedAttempt.After(now) {
-		self.nextSeedAttempt = now.Add(interval)
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.nextAttempt.IsZero() || !self.nextAttempt.After(now) {
+		self.nextAttempt = now.Add(interval)
 		return 0
 	}
-	reserved := self.nextSeedAttempt
-	self.nextSeedAttempt = self.nextSeedAttempt.Add(interval)
+	reserved := self.nextAttempt
+	self.nextAttempt = self.nextAttempt.Add(interval)
 	return reserved.Sub(now)
 }
 
-func (self *TrailEngine) waitForSeedAttempt(ctx context.Context) error {
-	delay := self.reserveSeedAttempt(time.Now())
+func (self *attemptSchedule) wait(ctx context.Context, interval time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	delay := self.reserve(time.Now(), interval)
 	if delay <= 0 {
-		return nil
+		return ctx.Err()
 	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -424,6 +434,24 @@ func (self *TrailEngine) waitForSeedAttempt(ctx context.Context) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func (self *TrailEngine) reserveSeedDiscovery(now time.Time) time.Duration {
+	return self.seedDiscoverySchedule.reserve(now, self.cfg.SeedAttemptInterval)
+}
+
+// reserveSeedAttempt serializes the actual SEED request budget shared by every
+// worker. Discovery has an independent schedule above.
+func (self *TrailEngine) reserveSeedAttempt(now time.Time) time.Duration {
+	return self.seedPostSchedule.reserve(now, self.cfg.SeedAttemptInterval)
+}
+
+func (self *TrailEngine) waitForSeedDiscovery(ctx context.Context) error {
+	return self.seedDiscoverySchedule.wait(ctx, self.cfg.SeedAttemptInterval)
+}
+
+func (self *TrailEngine) waitForSeedAttempt(ctx context.Context) error {
+	return self.seedPostSchedule.wait(ctx, self.cfg.SeedAttemptInterval)
 }
 
 func NewTrailEngine(
@@ -529,6 +557,9 @@ func (self *TrailEngine) postStep(ctx context.Context, hop connect.Id, body []by
 // through each server-assigned hop, then verify + co-sign the FINAL proof
 // and persist it. Returns the persisted record or a *TrailError.
 func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
+	if err := self.waitForSeedDiscovery(ctx); err != nil {
+		return nil, &TrailError{Kind: TrailErrorSeed, Err: fmt.Errorf("seed discovery pace: %w", err)}
+	}
 	seedHop, err := self.pickSeed(ctx)
 	if err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: fmt.Errorf("seed pick: %w", err)}

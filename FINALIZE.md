@@ -110,8 +110,22 @@ intended weight, and requires each rejected boundary UID (and any unrelated
 claimant) to receive zero. Unanimously selected candidates must subsequently
 show positive native emission, unanimously rejected candidates must show zero,
 and a validator-disputed boundary is left to native Yuma consensus rather than
-being falsely asserted. A fresh promotion/restoration transition must occur
-inside the current campaign, and all 808 head-fleet provider identities are
+being falsely asserted. The append-only evidence gate reconstructs every
+applied decision created after the acceptance baseline, so an invalid
+intermediate 200/2 boundary or weight cannot be hidden by a later valid vector.
+The live release fault makes one operator withhold fleet 4 from validator 1
+only while validator 2 continues to measure it. At one common native epoch the
+first validator must reject that UID at zero and positively weight its
+replacement while the second validator records the exact opposite decision;
+both must later restore the original boundary. The first post-fault native
+decision atomically closes the pre-fault evidence window; the next exact EMA
+fold reaches the tested UID tie, where the registered low-UID challengers win.
+Both faults restore immediately after authenticated applied decisions prove
+their intended global or validator-local divergence, while a bounded deadline
+remains as a fail-safe. The terminal interval budgets a complete fresh trail
+and a strict-above-challenger recovery fold. A fresh global
+promotion/restoration transition must also occur inside the current campaign,
+and all 808 head-fleet provider identities are
 excluded from pool payout leaves. These deterministic gates are green; their
 source-current live-chain evidence is still pending the corrected M0A/M2 run.
 
@@ -1792,12 +1806,20 @@ and its hash are regenerated and release-locked before the clean run:
   fault path. The release geometry now places each four-client challenger on
   three distinct `/29` prefixes, immediately below the four-prefix selected
   fleets, while retaining the wide `4:1` EMA case in deterministic tests. The
-  live selected-fleet outage therefore reserves three complete native tempos.
+  live selected-fleet outage now atomically rotates the pre-fault native head
+  window, budgets the exact missing-observation fold needed to reach the tested
+  tie, and restores as soon as authenticated applied decisions prove the
+  boundary transition. Same-native-epoch retries reuse that detached window.
+  The terminal interval separately budgets a complete fresh trail plus the
+  strict-above-challenger recovery fold; deterministic arithmetic and live UID
+  preflight reject any policy/window/tie geometry that cannot prove both
+  directions.
   A second lane runs every dependency and persistent-process restart
-  sequentially during that outage; only the owning miner swarm is deferred
-  until logical-miner restoration. The lanes never mutate the same target, a
+  sequentially alongside that outage; only the owning miner swarm is deferred
+  until both the outage and the background restart lane have ended. The lanes
+  never mutate the same target, a
   multi-active crash ledger preserves and independently restores every fault,
-  and the final fault ends at offset 1,155. A deterministic gate requires the
+  and the final fault ends at offset 955. A deterministic gate requires the
   entire schedule to fit inside the exact 1,500-block/five-epoch M2 interval.
 - Fleet commitments remain ten-wide, fleet installs/refreshes remain atomic
   ten-fleet transactions, and their historical reads retain the provider's
@@ -1958,7 +1980,12 @@ Run exactly the release minimum of **five consecutive 300-block accelerated epoc
   claimant on a validator's own selected list must have positive weight in that
   validator's applied vector, every claimant it rejects must have zero weight
   there, and no UID outside that selected set or the two live pool UIDs may
-  carry a positive submitted weight; require finalized native emission for
+  carry a positive submitted weight; apply this invariant to every new applied
+  intent in the append-only acceptance-window history, not only the terminal
+  vector; force one operator to present one boundary fleet to validator 2 while
+  withholding it from validator 1, require a common native epoch with opposing
+  selected-positive/rejected-zero decisions and then a common restored epoch;
+  require finalized native emission for
   every unanimously selected fleet, zero emission for every unanimously
   rejected fleet, and preserve the actual Yuma outcome for disputed boundaries;
 - an operator missing its root, under-allocating/invalid-root attempts, partial claims, claim TTL/grace, and carry;
@@ -3675,6 +3702,21 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    passes, both event-sync tests pass normally and under the race detector with
    the managed database profile, and the complete aggregate gate passes.
 
+   The final source-freeze qualification on 2026-09-02 then completed the full
+   aggregate again: the ordinary 1,000-miner simulator suite passed in 179.823
+   seconds, its race suite passed in 664.973 seconds, both deployable Solidity
+   roots had zero Slither findings, all 146 Foundry tests passed with 4,608
+   invariant calls, the managed controller/model/proxy suites passed in
+   139.371/140.573/529.355 seconds, and all 35 Subtensor infrastructure tests
+   passed. The last test-only filter/profile assertions also passed normally and
+   under the race detector. A subsequent `go vet` delta caught an unsafe copy of
+   the mutex-bearing standard-library resolver in the new ICE cancellation
+   boundary. The implementation now constructs a fresh resolver policy around
+   the original dial function; ten deterministic normal and race repetitions,
+   the teardown integration regression, and `go vet ./...` pass. Focused
+   controller and model database race reruns passed in 151.097 and 155.491
+   seconds respectively. These deltas are now permanent aggregate-gate inputs.
+
    Once that replay is clean, `release-1.0` discards its post-preparation
    partial epoch, observes five sequential 300-block epochs (approximately five
    hours), and waits through their terminal finalization. `production-soak` then schedules the
@@ -3706,14 +3748,14 @@ completed successfully after the release lock was frozen:
 
 | Gate | Final result |
 |---|---|
-| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 176.026 seconds. |
-| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 658.936 seconds under the regression-pinned 15-minute harness deadline. |
+| `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 179.823 seconds. |
+| Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 664.973 seconds under the regression-pinned 15-minute harness deadline. |
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
-| `forge test --summary` | **145 passed, 0 failed, 0 skipped**, including maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
+| `forge test --summary` | **146 passed, 0 failed, 0 skipped**, including the epoch-end deposit-deadline boundary, maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
-| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 62.412 seconds, model in 73.341 seconds, and all 75 proxy roots in 533.477 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or either database-backed event-sync test from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
-| Subtensor infrastructure regressions | **35 passed** in 10.902 seconds, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
+| Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, account-wide nonce reconciliation, coordinator isolation, validator-local assignment filtering, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 139.371 seconds, model in 140.573 seconds, and all 75 proxy roots in 529.355 seconds. Focused race reruns completed in 151.097 and 155.491 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or database-backed tests from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
+| Subtensor infrastructure regressions | **35 passed**, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across all eleven release workspace repositories; the exact checkout lock is rechecked after every other gate. |
 
 The contract generator applies canonical Go formatting, while the release gate's

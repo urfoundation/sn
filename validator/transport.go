@@ -245,6 +245,9 @@ func truncateForLog(b []byte) string {
 // validator-chosen entry hop from FindProviders2 (§4.1) — best-available
 // ranking, excluding the validator itself, choosing uniformly among the
 // returned candidates so consecutive trails spread their entry points.
+// ForceMinimum deliberately includes connected providers before they have
+// latency/speed history: trails are the measurement traffic that creates that
+// history, so strict discovery here would deadlock a freshly started operator.
 func NewFindProvidersSeedPicker(api *sdk.Api, selfClientId connect.Id) SeedPicker {
 	return func(ctx context.Context) (connect.Id, error) {
 		selfId, err := sdk.ParseId(selfClientId.String())
@@ -260,6 +263,7 @@ func NewFindProvidersSeedPicker(api *sdk.Api, selfClientId connect.Id) SeedPicke
 			Count:            8,
 			ExcludeClientIds: excludeClientIds,
 			RankMode:         "quality",
+			ForceMinimum:     true,
 		})
 		if err != nil {
 			return connect.Id{}, err

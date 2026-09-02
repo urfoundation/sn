@@ -27,6 +27,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
+	servercontroller "github.com/urnetwork/server/controller"
 
 	"github.com/urfoundation/sn/clientauth"
 )
@@ -1215,6 +1216,9 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 			port              int
 		}{{"api", "sim-testnet", "__server_api", 18080 + i}, {"connect", connectServerBinaryName, "__server_connect", 19080 + i}, {"taskworker", "sim-testnet", "__server_taskworker", 20080 + i}} {
 			env := cloneStrings(baseEnv)
+			if svc.role == "api" {
+				env[servercontroller.VerifySimulationAssignmentFilterFileEnv] = verifyAssignmentFilterPath(stateDir, i)
+			}
 			env["WARP_SERVICE"] = svc.role
 			listenIP := "127.0.0.1"
 			env["WARP_HOST_IPV4"] = listenIP
@@ -1264,7 +1268,7 @@ func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 
 func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip string) map[string]string {
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator))
-	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet"}
+	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet", "URNETWORK_SIM_TESTNET": "1"}
 }
 
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {

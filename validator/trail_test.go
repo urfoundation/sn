@@ -399,6 +399,52 @@ func TestTrailEngineSeedAttemptScheduleIsSharedAndDeterministic(t *testing.T) {
 	}
 }
 
+// Discovery and SEED posts have independent rate lanes. A slow discovery may
+// not consume the next transport slot, while repeated cold-start discovery
+// failures still cannot spin once per worker.
+func TestTrailEngineSeedDiscoveryScheduleIsIndependentAndDeterministic(t *testing.T) {
+	engine := &TrailEngine{cfg: TrailEngineConfig{SeedAttemptInterval: 2 * time.Second}}
+	start := time.Unix(1_800_000_000, 0)
+	if delay := engine.reserveSeedDiscovery(start); delay != 0 {
+		t.Fatalf("first discovery reservation delay = %s, want immediate", delay)
+	}
+	if delay := engine.reserveSeedAttempt(start); delay != 0 {
+		t.Fatalf("first SEED post reservation delay = %s, want immediate", delay)
+	}
+	if delay := engine.reserveSeedDiscovery(start); delay != 2*time.Second {
+		t.Fatalf("second discovery reservation delay = %s, want 2s", delay)
+	}
+	if delay := engine.reserveSeedAttempt(start); delay != 2*time.Second {
+		t.Fatalf("second SEED post reservation delay = %s, want 2s", delay)
+	}
+}
+
+// RunTrail must consume the shared discovery budget before invoking a picker.
+// The canceled-context fixture is deterministic and catches the former path,
+// which called FindProviders2 even after its owner was already canceled.
+func TestTrailEngineCanceledSeedDiscoveryStopsBeforePicker(t *testing.T) {
+	called := 0
+	engine := &TrailEngine{
+		pickSeed: func(context.Context) (connect.Id, error) {
+			called++
+			return connect.NewId(), nil
+		},
+		cfg: TrailEngineConfig{SeedAttemptInterval: 2 * time.Second},
+	}
+	start := time.Now()
+	if delay := engine.reserveSeedDiscovery(start); delay != 0 {
+		t.Fatalf("initial discovery reservation delay = %s, want immediate", delay)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := engine.RunTrail(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled discovery error = %v, want context cancellation", err)
+	}
+	if called != 0 {
+		t.Fatalf("seed picker calls = %d, want zero", called)
+	}
+}
+
 type failingTrailTransport struct {
 	attempts int
 }

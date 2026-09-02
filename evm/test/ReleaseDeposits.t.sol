@@ -49,6 +49,29 @@ contract ReleaseDepositsTest is ReleaseBase {
         coordinator.deposit(NO1, 100, 1, uint64(block.number - 1));
     }
 
+    function test_epochEndDeadlineCannotCreditFollowingEpoch() public {
+        uint256 end = coordinator.epochEndBlock(0);
+        _pushDeposit(NO1, 100);
+        vm.roll(end - 1);
+        vm.prank(depositSigner1);
+        // Safe because epochEndBlock is contract-bounded to uint64.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        coordinator.deposit(NO1, 100, 0, uint64(end - 1));
+        assertEq(coordinator.epochDeposits(0, NO1), 100);
+
+        _pushDeposit(NO1, 100);
+        vm.roll(end);
+        vm.prank(depositSigner1);
+        vm.expectRevert(STCoordinator.DeadlineExpired.selector);
+        // Safe because epochEndBlock is contract-bounded to uint64.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        coordinator.deposit(NO1, 100, 1, uint64(end - 1));
+
+        assertEq(coordinator.currentEpoch(), 1);
+        assertEq(coordinator.epochDeposits(1, NO1), 0);
+        assertEq(coordinator.nextDepositNonce(NO1), 1);
+    }
+
     function test_voluntaryConvictionIsNotCurrentEpochDemand() public {
         _pushDeposit(NO1, 250);
         vm.prank(depositSigner1);

@@ -19,12 +19,16 @@ import (
 )
 
 type scenarioFaultSpec struct {
-	ID                  string   `json:"id"`
-	Kind                string   `json:"kind"`
-	Targets             []string `json:"targets"`
-	Impacts             []string `json:"impacts,omitempty"`
-	TriggerOffsetBlocks uint64   `json:"trigger_offset_blocks"`
-	DurationBlocks      uint64   `json:"duration_blocks"`
+	ID                    string   `json:"id"`
+	Kind                  string   `json:"kind"`
+	Targets               []string `json:"targets"`
+	Impacts               []string `json:"impacts,omitempty"`
+	ValidatorID           int      `json:"validator_id,omitempty"`
+	FleetIndex            int      `json:"fleet_index,omitempty"`
+	RestoreCondition      string   `json:"restore_condition,omitempty"`
+	MinimumDurationBlocks uint64   `json:"minimum_duration_blocks,omitempty"`
+	TriggerOffsetBlocks   uint64   `json:"trigger_offset_blocks"`
+	DurationBlocks        uint64   `json:"duration_blocks"`
 }
 
 type FaultProcessEvidence struct {
@@ -35,20 +39,26 @@ type FaultProcessEvidence struct {
 }
 
 type ScenarioFaultRecord struct {
-	ID                string                 `json:"id"`
-	Kind              string                 `json:"kind"`
-	Targets           []string               `json:"targets"`
-	Impacts           []string               `json:"impacts,omitempty"`
-	TriggerBlock      uint64                 `json:"trigger_block"`
-	RestoreBlock      uint64                 `json:"restore_block"`
-	AppliedBlock      uint64                 `json:"applied_block,omitempty"`
-	AppliedBlockHash  string                 `json:"applied_block_hash,omitempty"`
-	RestoredBlock     uint64                 `json:"restored_block,omitempty"`
-	RestoredBlockHash string                 `json:"restored_block_hash,omitempty"`
-	Processes         []FaultProcessEvidence `json:"processes,omitempty"`
-	RestoredProcesses []FaultProcessEvidence `json:"restored_processes,omitempty"`
-	Status            string                 `json:"status"`
-	Error             string                 `json:"error,omitempty"`
+	ID                    string                 `json:"id"`
+	Kind                  string                 `json:"kind"`
+	Targets               []string               `json:"targets"`
+	Impacts               []string               `json:"impacts,omitempty"`
+	ValidatorID           int                    `json:"validator_id,omitempty"`
+	FleetIndex            int                    `json:"fleet_index,omitempty"`
+	RestoreCondition      string                 `json:"restore_condition,omitempty"`
+	MinimumDurationBlocks uint64                 `json:"minimum_duration_blocks,omitempty"`
+	TriggerBlock          uint64                 `json:"trigger_block"`
+	RestoreBlock          uint64                 `json:"restore_block"`
+	AppliedBlock          uint64                 `json:"applied_block,omitempty"`
+	AppliedBlockHash      string                 `json:"applied_block_hash,omitempty"`
+	RestoredBlock         uint64                 `json:"restored_block,omitempty"`
+	RestoredBlockHash     string                 `json:"restored_block_hash,omitempty"`
+	RestoreConditionMet   bool                   `json:"restore_condition_met,omitempty"`
+	RestoreConditionBlock uint64                 `json:"restore_condition_block,omitempty"`
+	Processes             []FaultProcessEvidence `json:"processes,omitempty"`
+	RestoredProcesses     []FaultProcessEvidence `json:"restored_processes,omitempty"`
+	Status                string                 `json:"status"`
+	Error                 string                 `json:"error,omitempty"`
 }
 
 type scenarioFaultDriver interface {
@@ -581,13 +591,15 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 	if err := validateFaultActivation(active, spec); err != nil {
 		return nil, err
 	}
-	if spec.Kind == "container-restart" || spec.Kind == "miner-control" {
+	if spec.Kind == "container-restart" || spec.Kind == "miner-control" || spec.Kind == "validator-view-filter" {
 		var processes []FaultProcessEvidence
 		var mutationErr error
 		if spec.Kind == "container-restart" {
 			processes, mutationErr = d.applyContainerFault(ctx, spec)
-		} else {
+		} else if spec.Kind == "miner-control" {
 			processes, mutationErr = d.controlMiners(ctx, spec, false)
+		} else {
+			processes, mutationErr = d.applyValidatorViewFilter(ctx, spec)
 		}
 		if mutationErr != nil {
 			return nil, mutationErr
@@ -595,8 +607,10 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 		if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
 			if spec.Kind == "container-restart" {
 				_, _ = d.restoreContainerFault(context.Background(), spec)
-			} else {
+			} else if spec.Kind == "miner-control" {
 				_, _ = d.controlMiners(context.Background(), spec, true)
+			} else {
+				_, _ = d.restoreValidatorViewFilter(context.Background(), spec)
 			}
 			return nil, err
 		}
@@ -634,6 +648,8 @@ func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaul
 		processes, restoreErr = d.restoreContainerFault(ctx, spec)
 	} else if spec.Kind == "miner-control" {
 		processes, restoreErr = d.controlMiners(ctx, spec, true)
+	} else if spec.Kind == "validator-view-filter" {
+		processes, restoreErr = d.restoreValidatorViewFilter(ctx, spec)
 	} else if spec.Kind == "process-restart" {
 		processes, restoreErr = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
 	} else {
@@ -694,14 +710,14 @@ func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
 		return err
 	}
 	if len(active.Faults) == 0 {
-		return nil
+		return d.removeOrphanValidatorViewFilters()
 	}
 	for _, fault := range active.Faults {
 		if _, err := d.Restore(ctx, fault); err != nil {
 			return fmt.Errorf("recover active fault %s: %w", fault.ID, err)
 		}
 	}
-	return nil
+	return d.removeOrphanValidatorViewFilters()
 }
 
 func releaseQualityFault(cfg *ResolvedConfig) (scenarioFaultSpec, error) {
@@ -757,10 +773,10 @@ func testFleetPrefixScores(cfg *ResolvedConfig) (map[int]*big.Rat, error) {
 	return scores, nil
 }
 
-// headBoundaryDecayTempos returns one more complete EMA fold than the minimum
-// required to move the selected score strictly below the challenger. The extra
-// fold makes the live transition observable even when a validator's first
-// post-fault sample lands immediately before a native tempo boundary.
+// headBoundaryDecayTempos returns the exact number of missing-observation EMA
+// folds required to move the selected score to or below the challenger. The
+// live topology preflights that both low-UID challengers win an equal-score tie
+// against the two faulted production fleets.
 func headBoundaryDecayTempos(numerator, denominator uint64, selected, challenger *big.Rat) (uint64, error) {
 	if denominator == 0 || numerator == 0 || numerator > denominator || selected == nil || challenger == nil || selected.Sign() <= 0 || challenger.Sign() <= 0 || selected.Cmp(challenger) <= 0 {
 		return 0, errors.New("head-boundary fault requires an EMA strictly above zero and at most one")
@@ -772,11 +788,73 @@ func headBoundaryDecayTempos(numerator, denominator uint64, selected, challenger
 	score := new(big.Rat).Set(selected)
 	for folds := uint64(1); folds <= 256; folds++ {
 		score.Mul(score, retained)
-		if score.Cmp(challenger) < 0 {
-			return folds + 1, nil
+		if score.Cmp(challenger) <= 0 {
+			return folds, nil
 		}
 	}
 	return 0, errors.New("head-boundary EMA cannot cross the challenger within 256 tempos")
+}
+
+// headBoundaryRecoveryTempos starts at the exact post-decay score and returns
+// the folds required for fresh observations to put the original fleet strictly
+// above the challenger again. Strict comparison avoids relying on UID tie-break
+// ordering for restoration evidence.
+func headBoundaryRecoveryTempos(numerator, denominator uint64, selected, challenger *big.Rat, decayTempos uint64) (uint64, error) {
+	if denominator == 0 || numerator == 0 || numerator > denominator || selected == nil || challenger == nil || selected.Sign() <= 0 || challenger.Sign() <= 0 || selected.Cmp(challenger) <= 0 || decayTempos == 0 {
+		return 0, errors.New("head-boundary recovery requires valid positive scores, EMA, and decay")
+	}
+	alpha := new(big.Rat).SetFrac(new(big.Int).SetUint64(numerator), new(big.Int).SetUint64(denominator))
+	retained := new(big.Rat).Sub(big.NewRat(1, 1), alpha)
+	score := new(big.Rat).Set(selected)
+	for fold := uint64(0); fold < decayTempos; fold++ {
+		score.Mul(score, retained)
+	}
+	if score.Cmp(challenger) > 0 {
+		return 0, errors.New("head-boundary decay does not cross the challenger")
+	}
+	fresh := new(big.Rat).Mul(alpha, selected)
+	for folds := uint64(1); folds <= 256; folds++ {
+		score.Mul(score, retained)
+		score.Add(score, fresh)
+		if score.Cmp(challenger) > 0 {
+			return folds, nil
+		}
+	}
+	return 0, errors.New("head-boundary EMA cannot recover above the challenger within 256 tempos")
+}
+
+func secondsToBlocksCeil(seconds int, blockSeconds uint64) (uint64, error) {
+	if seconds < 0 || blockSeconds == 0 {
+		return 0, errors.New("invalid seconds-to-blocks geometry")
+	}
+	value := uint64(seconds)
+	if value == 0 {
+		return 0, nil
+	}
+	if value > ^uint64(0)-(blockSeconds-1) {
+		return 0, errors.New("seconds-to-blocks geometry overflows")
+	}
+	return (value + blockSeconds - 1) / blockSeconds, nil
+}
+
+// headBoundaryRecoveryGraceBlocks budgets a complete fresh trail after the
+// fault is restored. The ordinary quality-fault duration is retained as
+// block-level scheduler/polling margin.
+func headBoundaryRecoveryGraceBlocks(cfg *ResolvedConfig) (uint64, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || cfg.Public == nil {
+		return 0, errors.New("head-boundary evidence geometry is unavailable")
+	}
+	blockSeconds := cfg.Public.Chain.ExpectedBlockSeconds
+	recoverySeconds := cfg.Policy.Verify.EgressRefreshSeconds + cfg.Policy.Verify.TrailTTLGraceSeconds + cfg.Policy.Verify.TrailDepth*(cfg.Policy.Verify.StepTimeoutSeconds+cfg.Policy.Verify.StepTimeoutGraceSeconds)
+	recovery, err := secondsToBlocksCeil(recoverySeconds, blockSeconds)
+	if err != nil {
+		return 0, err
+	}
+	margin := cfg.Config.Scenarios.QualityFaultDurationBlocks
+	if recovery > ^uint64(0)-margin {
+		return 0, errors.New("head-boundary evidence grace overflows")
+	}
+	return recovery + margin, nil
 }
 
 func releaseHeadBoundaryFault(cfg *ResolvedConfig, firstOffset uint64) (scenarioFaultSpec, error) {
@@ -799,18 +877,50 @@ func releaseHeadBoundaryFault(cfg *ResolvedConfig, firstOffset uint64) (scenario
 	if err != nil {
 		return scenarioFaultSpec{}, err
 	}
-	if tempo == 0 || decayTempos > (^uint64(0)-cfg.Config.Scenarios.QualityFaultDurationBlocks)/tempo {
+	recoveryTempos, err := headBoundaryRecoveryTempos(
+		cfg.Policy.Steering.HeadScoreEMA.Numerator,
+		cfg.Policy.Steering.HeadScoreEMA.Denominator,
+		selected,
+		challenger,
+		decayTempos,
+	)
+	if err != nil {
+		return scenarioFaultSpec{}, err
+	}
+	recoveryGrace, err := headBoundaryRecoveryGraceBlocks(cfg)
+	if err != nil {
+		return scenarioFaultSpec{}, err
+	}
+	if tempo == 0 || decayTempos == ^uint64(0) || decayTempos+1 > (^uint64(0)-cfg.Config.Scenarios.QualityFaultDurationBlocks)/tempo {
 		return scenarioFaultSpec{}, errors.New("head-boundary fault has an invalid approved tempo")
 	}
 	targets := make([]string, 0, cfg.Config.Topology.ClientsPerHeadFleet)
 	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 		targets = append(targets, fmt.Sprintf("miner-%d", fleetMemberMinerIndex(cfg, 3, member)))
 	}
-	// The exact approved EMA determines how many complete native tempos are
-	// needed. The configured duration absorbs block-aligned fault scheduling
-	// and restoration delay after the conservative extra fold.
-	duration := decayTempos*tempo + cfg.Config.Scenarios.QualityFaultDurationBlocks
-	return scenarioFaultSpec{ID: "head-boundary", Kind: "miner-control", Targets: targets, TriggerOffsetBlocks: firstOffset, DurationBlocks: duration}, nil
+	// The first native decision atomically closes the pre-fault head window. The
+	// following exact decay folds see only filtered evidence. An evidence-driven
+	// restore happens as soon as both validators' applied decisions prove the
+	// transition; DurationBlocks remains the hard deadline.
+	duration := (decayTempos+1)*tempo + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	campaignBlocks, ok := checkedMul(uint64(cfg.Config.Scenarios.ShortEpochs), cfg.Policy.Settlement.EpochBlocks)
+	if !ok || firstOffset > campaignBlocks || duration > campaignBlocks-firstOffset {
+		return scenarioFaultSpec{}, errors.New("head-boundary fault does not restore inside the accelerated acceptance window")
+	}
+	terminalBlocks, ok := checkedAdd(campaignBlocks, cfg.Policy.Settlement.FinalizeOffsetBlocks)
+	if !ok || recoveryTempos > (^uint64(0)-recoveryGrace)/tempo {
+		return scenarioFaultSpec{}, errors.New("head-boundary recovery geometry overflows")
+	}
+	recoveryBlocks := recoveryGrace + recoveryTempos*tempo
+	faultEnd := firstOffset + duration
+	if faultEnd > terminalBlocks || recoveryBlocks > terminalBlocks-faultEnd {
+		return scenarioFaultSpec{}, fmt.Errorf("head-boundary recovery needs %d blocks after fault end %d, terminal offset is %d", recoveryBlocks, faultEnd, terminalBlocks)
+	}
+	return scenarioFaultSpec{
+		ID: "head-boundary", Kind: "miner-control", Targets: targets,
+		RestoreCondition: "global-head-boundary-diverged", MinimumDurationBlocks: cfg.Config.Scenarios.QualityFaultDurationBlocks,
+		TriggerOffsetBlocks: firstOffset, DurationBlocks: duration,
+	}, nil
 }
 
 func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, bool) {
@@ -961,11 +1071,15 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	if err != nil {
 		return nil, err
 	}
+	validatorView, err := validatorLocalHeadBoundaryFault(cfg, head)
+	if err != nil {
+		return nil, err
+	}
 	// The long logical-miner decay and the restart lane are independent. Run
 	// them concurrently, while keeping all dependency/process restarts within
 	// that second lane strictly sequential for deterministic attribution.
 	firstRestart := head.TriggerOffsetBlocks + spacing
-	faults := []scenarioFaultSpec{quality, head}
+	faults := []scenarioFaultSpec{quality, validatorView, head}
 	dependencies := dependencyOutageFaults(cfg, "release-dependency", firstRestart)
 	faults = append(faults, dependencies...)
 	last := dependencies[len(dependencies)-1]
@@ -985,7 +1099,12 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 		return nil, fmt.Errorf("head-boundary owner %s is not exactly one persistent target", headSwarmID)
 	}
 	faults = append(faults, rollingProcessFaultsForTargets(cfg, "release", rollingFirst, backgroundTargets)...)
-	deferredOffset := head.TriggerOffsetBlocks + head.DurationBlocks + spacing
+	backgroundEnd := rollingFirst
+	if len(backgroundTargets) > 0 {
+		backgroundEnd = faults[len(faults)-1].TriggerOffsetBlocks + faults[len(faults)-1].DurationBlocks
+	}
+	headEnd := head.TriggerOffsetBlocks + head.DurationBlocks
+	deferredOffset := max64(headEnd, backgroundEnd) + spacing
 	faults = append(faults, rollingProcessFaultsForTargets(cfg, "release-head-owner", deferredOffset, []string{headSwarmID})...)
 	return faults, nil
 }
@@ -996,12 +1115,22 @@ func initializeFaultRecords(start uint64, specs []scenarioFaultSpec) ([]Scenario
 		if spec.ID == "" || spec.Kind == "" || len(spec.Targets) == 0 || spec.TriggerOffsetBlocks == 0 || spec.DurationBlocks == 0 || start > ^uint64(0)-spec.TriggerOffsetBlocks || start+spec.TriggerOffsetBlocks > ^uint64(0)-spec.DurationBlocks {
 			return nil, fmt.Errorf("invalid fault schedule at index %d", i)
 		}
-		records[i] = ScenarioFaultRecord{ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), Impacts: append([]string(nil), spec.Impacts...), TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending"}
+		if (spec.RestoreCondition == "" && spec.MinimumDurationBlocks != 0) || (spec.RestoreCondition != "" && spec.MinimumDurationBlocks == 0) || spec.MinimumDurationBlocks > spec.DurationBlocks {
+			return nil, fmt.Errorf("invalid conditional fault schedule at index %d", i)
+		}
+		records[i] = ScenarioFaultRecord{ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), Impacts: append([]string(nil), spec.Impacts...), ValidatorID: spec.ValidatorID, FleetIndex: spec.FleetIndex, RestoreCondition: spec.RestoreCondition, MinimumDurationBlocks: spec.MinimumDurationBlocks, TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending"}
 	}
 	return records, nil
 }
 
 func advanceFaults(ctx context.Context, head ChainHead, specs []scenarioFaultSpec, records []ScenarioFaultRecord, driver scenarioFaultDriver) error {
+	return advanceFaultsWhen(ctx, head, specs, records, driver, nil)
+}
+
+// advanceFaultsWhen permits evidence-triggered early restoration while keeping
+// DurationBlocks as a fail-safe deadline. Only explicitly conditional faults
+// consult ready, and they must remain active for their minimum duration first.
+func advanceFaultsWhen(ctx context.Context, head ChainHead, specs []scenarioFaultSpec, records []ScenarioFaultRecord, driver scenarioFaultDriver, ready func(scenarioFaultSpec) (bool, error)) error {
 	for i := range records {
 		record := &records[i]
 		switch record.Status {
@@ -1016,7 +1145,24 @@ func advanceFaults(ctx context.Context, head ChainHead, specs []scenarioFaultSpe
 			}
 			record.Status, record.AppliedBlock, record.AppliedBlockHash, record.Processes = "active", head.Number, head.Hash, processes
 		case "active":
-			if head.Number < record.RestoreBlock {
+			minimumRestore, ok := checkedAdd(record.AppliedBlock, specs[i].MinimumDurationBlocks)
+			if !ok {
+				record.Status, record.Error = "failed", "fault minimum restoration block overflows"
+				return errors.New(record.Error)
+			}
+			restore := head.Number >= record.RestoreBlock && (specs[i].RestoreCondition == "" || head.Number >= minimumRestore)
+			if !restore && specs[i].RestoreCondition != "" && head.Number >= minimumRestore && ready != nil {
+				conditionMet, err := ready(specs[i])
+				if err != nil {
+					record.Status, record.Error = "failed", err.Error()
+					return err
+				}
+				if conditionMet {
+					record.RestoreConditionMet, record.RestoreConditionBlock = true, head.Number
+					restore = true
+				}
+			}
+			if !restore {
 				continue
 			}
 			processes, err := driver.Restore(ctx, specs[i])

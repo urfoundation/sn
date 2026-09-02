@@ -114,15 +114,15 @@
     {
       "id": "validator-dropout-disagreement",
       "class": "availability",
-      "vector": "One validator disappears, restarts, disagrees with another validator, or returns with stale intent state while hostile traffic continues.",
+      "vector": "One validator disappears, restarts, receives an operator-withheld boundary fleet and disagrees with another validator, or returns with stale intent state while hostile traffic continues.",
       "sources": ["https://www.bittensor.com/docs/internals/consensus", "repo://FINALIZE.md#M2"],
       "preconditions": "At least two independent validators and block-scheduled restart faults.",
       "execution_mode": "live-safe",
       "actor_ids": ["consensus-cabal-emulation", "operator-api-pressure"],
-      "oracle": "The surviving validator remains live, restarted intent recovery is exact, and reconciliation contains no ambiguous or duplicate submission.",
-      "metrics": ["validator_live_count", "intent_recovery_seconds", "vector_hash_divergence"],
+      "oracle": "The surviving validator remains live, restarted intent recovery is exact, one common native epoch proves opposing selected-positive/rejected-zero top-200 decisions, a later common epoch proves restoration, and reconciliation contains no ambiguous or duplicate submission.",
+      "metrics": ["validator_live_count", "intent_recovery_seconds", "vector_hash_divergence", "validator_local_boundary_disagreement", "validator_local_boundary_restoration"],
       "stop_conditions": ["validator_count_below_policy", "intent_hash_drift"],
-      "local_tests": ["sim-testnet/TestScenarioRunnerExecutesAndRecordsFinalizedBlockFault", "validator/TestIntentStoreDurableLifecycleAndRestartGuard"]
+      "local_tests": ["sim-testnet/TestScenarioRunnerExecutesAndRecordsFinalizedBlockFault", "sim-testnet/TestValidatorLocalTopTwoHundredBoundaryProvesOpposingWeightsAndRestoration", "sim-testnet/TestValidatorViewFaultWritesExactPrivateFilterAndRestores", "server/controller/TestVerifySimulationAssignmentFilterDoesNotAffectAnotherValidator", "validator/TestIntentStoreDurableLifecycleAndRestartGuard"]
     },
     {
       "id": "uid-churn-pruning-reregistration",

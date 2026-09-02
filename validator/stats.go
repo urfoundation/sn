@@ -38,11 +38,12 @@ package validator
 // engine accumulates, per provider, the set of distinct egress-IP-hashes it
 // served on VERIFIED trail hops (RecordEgressHash, fed from the signed FINAL
 // proof — server-assigned hops only, seed excluded, §7.6, symmetric with the
-// confirmation stats). EgressIpHashes() exposes those sets so the steerer can
+// confirmation stats). TakeEgressIpHashes() rotates those sets so the steerer can
 // count each fleet's distinct routable IPs and split shared ones (§8.4). The
-// sets are windowed like the counters (reset at Fold) and left ephemeral — they
-// are not a_min-gated (one verified hop proves an IP routable) and the durable
-// smoothing is the steerer's per-UID score EMA, not this window.
+// head window is the native tempo, independent of the longer settlement epoch:
+// it is atomically detached by the native steerer, not reset by Fold. The sets
+// are ephemeral, are not a_min-gated (one verified hop proves an IP routable),
+// and the durable smoothing is the steerer's per-UID score EMA.
 
 import (
 	"encoding/json"
@@ -186,9 +187,9 @@ type StatsEngine struct {
 	ema    map[connect.Id]float64
 	emaPPM map[connect.Id]uint32
 	// egress is the per-provider set of distinct routable egress-IP-hashes seen
-	// this window (§11.1, D27 — the head routable-IP score). Reset at Fold,
-	// ephemeral (not persisted): it rebuilds from fresh trails, and the steerer
-	// EMA-smooths the derived per-fleet score across tempos.
+	// in the current native-tempo window (§11.1, D27). It is independent of the
+	// settlement-quality Fold clock and remains ephemeral; the steerer persists
+	// the derived per-fleet EMA across tempos.
 	egress map[connect.Id]map[[32]byte]bool
 }
 
@@ -265,6 +266,24 @@ func (self *StatsEngine) EgressIpHashes() map[connect.Id]map[[32]byte]bool {
 		}
 		out[id] = cp
 	}
+	return out
+}
+
+// TakeEgressIpHashes atomically returns and rotates the native-tempo head
+// window. Proofs recorded after the swap belong to the following tempo and
+// cannot be erased by a concurrent copy-then-clear race.
+func (self *StatsEngine) TakeEgressIpHashes() map[connect.Id]map[[32]byte]bool {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	out := make(map[connect.Id]map[[32]byte]bool, len(self.egress))
+	for id, set := range self.egress {
+		cp := make(map[[32]byte]bool, len(set))
+		for hash := range set {
+			cp[hash] = true
+		}
+		out[id] = cp
+	}
+	self.egress = map[connect.Id]map[[32]byte]bool{}
 	return out
 }
 
@@ -406,9 +425,6 @@ func (self *StatsEngine) Fold() {
 		}
 	}
 	self.window = map[connect.Id]*ProviderWindow{}
-	// The egress-IP-hash sets are windowed too (§11.1): the per-fleet score is
-	// recomputed from the fresh window each epoch and EMA-smoothed by the steerer.
-	self.egress = map[connect.Id]map[[32]byte]bool{}
 }
 
 // WindowCounts returns (a, c) for one provider — test/diagnostic hook.

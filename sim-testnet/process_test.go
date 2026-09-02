@@ -21,6 +21,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
+	servercontroller "github.com/urnetwork/server/controller"
 )
 
 // Returns this test process's exact kernel generation for supervisor fixtures.
@@ -1196,11 +1197,21 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_api" {
 				t.Fatalf("%s bypasses the production API module runner: %+v", spec.ID, spec)
 			}
+			var operator int
+			if _, err := fmt.Sscanf(spec.ID, "operator-%d-api", &operator); err != nil || spec.Env[servercontroller.VerifySimulationAssignmentFilterFileEnv] != verifyAssignmentFilterPath(filepath.Dir(filepath.Dir(spec.StdoutPath)), operator) {
+				t.Fatalf("%s has no exact validator-view fault input: %+v", spec.ID, spec.Env)
+			}
 		case "operator-connect":
+			if _, ok := spec.Env[servercontroller.VerifySimulationAssignmentFilterFileEnv]; ok {
+				t.Fatalf("%s received API-only validator-view fault authority", spec.ID)
+			}
 			if spec.Command != "/release/sim-testnet-connect" || len(spec.Args) != 4 || spec.Args[0] != "__server_connect" || !strings.HasPrefix(spec.Args[2], "--tls-default-host=127.0.1.") || spec.Args[3] != "--direct-h3-loopback" || spec.H3ProbeAddress == "" || spec.H3ProbeServerName == "" || spec.H3ProbeCAFile == "" {
 				t.Fatalf("%s bypasses the production connect module runner: %+v", spec.ID, spec)
 			}
 		case "operator-taskworker":
+			if _, ok := spec.Env[servercontroller.VerifySimulationAssignmentFilterFileEnv]; ok {
+				t.Fatalf("%s received API-only validator-view fault authority", spec.ID)
+			}
 			if spec.Command != "/release/sim-testnet" || len(spec.Args) != 2 || spec.Args[0] != "__server_taskworker" {
 				t.Fatalf("%s bypasses the production taskworker module runner: %+v", spec.ID, spec)
 			}

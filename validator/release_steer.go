@@ -35,6 +35,14 @@ type ReleaseSteerer struct {
 	headEMA   *HeadEMAStore
 	lastFold  uint64
 	foldKnown bool
+
+	// A native-tempo egress window is detached exactly once and then reused for
+	// retries in that epoch. Without this cache, a transient EVM read failure
+	// after rotation could make the retry score a new, nearly empty window.
+	headWindowEpoch     uint64
+	headWindowKnown     bool
+	headEgressByNO      map[uint64]map[connect.Id]map[[32]byte]bool
+	headProviderIDsByNO map[uint64][]connect.Id
 }
 
 func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey *crv4.Keypair, contexts []*ReleaseMeasurementContext) (*ReleaseSteerer, error) {
@@ -182,7 +190,45 @@ func excludeLiveHeadMembers(bound map[uint64]map[connect.Id]bool, controlledNO m
 	return controlledHead
 }
 
-func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) (releaseHeadResult, error) {
+func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch uint64) (map[uint64]map[connect.Id]map[[32]byte]bool, map[uint64][]connect.Id, error) {
+	if s.headWindowKnown {
+		if subnetEpoch < s.headWindowEpoch {
+			return nil, nil, fmt.Errorf("native head window epoch regressed from %d to %d", s.headWindowEpoch, subnetEpoch)
+		}
+		if subnetEpoch == s.headWindowEpoch {
+			return s.headEgressByNO, s.headProviderIDsByNO, nil
+		}
+	}
+	noIDs := make([]uint64, 0, len(s.contexts))
+	for noID := range s.contexts {
+		noIDs = append(noIDs, noID)
+	}
+	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
+	egressByNO := make(map[uint64]map[connect.Id]map[[32]byte]bool, len(noIDs))
+	providerIDsByNO := make(map[uint64][]connect.Id, len(noIDs))
+	for _, noID := range noIDs {
+		measurement := s.contexts[noID]
+		egress := measurement.Stats.TakeEgressIpHashes()
+		providerSet := map[connect.Id]bool{}
+		for _, clientID := range measurement.Stats.ProviderIDs() {
+			providerSet[clientID] = true
+		}
+		for clientID := range egress {
+			providerSet[clientID] = true
+		}
+		providerIDs := make([]connect.Id, 0, len(providerSet))
+		for clientID := range providerSet {
+			providerIDs = append(providerIDs, clientID)
+		}
+		sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i].LessThan(providerIDs[j]) })
+		egressByNO[noID], providerIDsByNO[noID] = egress, providerIDs
+	}
+	s.headWindowEpoch, s.headWindowKnown = subnetEpoch, true
+	s.headEgressByNO, s.headProviderIDsByNO = egressByNO, providerIDsByNO
+	return egressByNO, providerIDsByNO, nil
+}
+
+func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint64) (releaseHeadResult, error) {
 	bound := map[uint64]map[connect.Id]bool{}
 	controlledNO := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
@@ -191,10 +237,23 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) (releaseHeadResul
 	fleets := map[FleetScoreKey]map[[32]byte]bool{}
 	membersByUID := map[uint16][]releaseHeadMember{}
 	var staleBindings []StaleHeadBinding
-	for noID, measurement := range s.contexts {
+	// Rotate every operator's head window before doing any remote lookup. This
+	// gives one native decision a coherent cut across NOs; a slow binding read
+	// cannot move only the later operators into the following tempo.
+	egressByNO, providerIDsByNO, err := s.takeHeadEvidence(subnetEpoch)
+	if err != nil {
+		return releaseHeadResult{}, err
+	}
+	noIDs := make([]uint64, 0, len(s.contexts))
+	for noID := range s.contexts {
+		noIDs = append(noIDs, noID)
+	}
+	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
+	for _, noID := range noIDs {
+		measurement := s.contexts[noID]
 		bound[noID] = map[connect.Id]bool{}
-		egress := measurement.Stats.EgressIpHashes()
-		for _, clientID := range measurement.Stats.ProviderIDs() {
+		egress := egressByNO[noID]
+		for _, clientID := range providerIDsByNO[noID] {
 			hashes := egress[clientID]
 			binding, err := s.chain.ReleaseBindingAt(snapshot.BlockNumber, [16]byte(clientID), snapshot.Epoch)
 			if err != nil {
@@ -617,7 +676,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.foldSettlementEpoch(snapshot.Epoch.Uint64()); err != nil {
 		return err
 	}
-	head, err := s.gatherHead(snapshot)
+	head, err := s.gatherHead(snapshot, nativeState.SubnetEpochIndex)
 	if err != nil {
 		return err
 	}

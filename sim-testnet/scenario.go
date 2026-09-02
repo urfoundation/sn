@@ -89,6 +89,23 @@ type IntentWeightObservation struct {
 	Value       uint16 `json:"value"`
 }
 
+// Preserves every applied validator decision so a later valid vector cannot
+// hide an invalid top-slot decision made inside the same acceptance window.
+type HeadDecisionObservation struct {
+	VectorHash           string                      `json:"vector_hash"`
+	SubnetEpoch          uint64                      `json:"subnet_epoch"`
+	ApplicationBlock     uint64                      `json:"application_block"`
+	ApplicationBlockHash string                      `json:"application_block_hash"`
+	MaskedUIDs           []uint16                    `json:"masked_uids,omitempty"`
+	EligibleHeadUIDs     []uint16                    `json:"eligible_head_uids"`
+	EligibleHeadScores   []validatorpkg.RationalJSON `json:"eligible_head_scores"`
+	SelectedHeadUIDs     []uint16                    `json:"selected_head_uids"`
+	RejectedHeadUIDs     []uint16                    `json:"rejected_head_uids"`
+	StaleHeadBindings    int                         `json:"stale_head_bindings"`
+	AppliedWeights       []IntentWeightObservation   `json:"applied_weights"`
+	Error                string                      `json:"error,omitempty"`
+}
+
 type ValidatorObservation struct {
 	ValidatorID        int                         `json:"validator_id"`
 	CurrentStatus      string                      `json:"current_status,omitempty"`
@@ -110,6 +127,7 @@ type ValidatorObservation struct {
 	StaleHeadBindings  int                         `json:"stale_head_bindings"`
 	IntentHashes       []string                    `json:"intent_hashes,omitempty"`
 	AppliedWeights     []IntentWeightObservation   `json:"applied_weights,omitempty"`
+	HeadDecisions      []HeadDecisionObservation   `json:"head_decisions,omitempty"`
 	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
 	PathProofCounts    map[int]int                 `json:"path_proof_counts,omitempty"`
 	Error              string                      `json:"error,omitempty"`
@@ -1272,6 +1290,22 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 		}
 		if item.Status == "applied" {
 			result.AppliedIntents++
+			decision := HeadDecisionObservation{
+				VectorHash: item.VectorHash, SubnetEpoch: item.SubnetEpoch,
+				ApplicationBlock: item.ApplicationBlock, ApplicationBlockHash: item.ApplicationBlockHash,
+				MaskedUIDs: append([]uint16(nil), item.MaskedUIDs...), EligibleHeadUIDs: append([]uint16(nil), item.EligibleHeadUIDs...),
+				EligibleHeadScores: append([]validatorpkg.RationalJSON(nil), item.EligibleHeadScores...),
+				SelectedHeadUIDs:   append([]uint16(nil), item.SelectedHeadUIDs...), RejectedHeadUIDs: append([]uint16(nil), item.RejectedHeadUIDs...),
+				StaleHeadBindings: len(item.StaleHeadBindings),
+			}
+			if len(item.UIDs) != len(item.Scores) || len(item.UIDs) != len(item.Values) {
+				decision.Error = fmt.Sprintf("uids/scores/values=%d/%d/%d", len(item.UIDs), len(item.Scores), len(item.Values))
+			} else {
+				for weightIndex, uid := range item.UIDs {
+					decision.AppliedWeights = append(decision.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: item.Scores[weightIndex].Numerator, Denominator: item.Scores[weightIndex].Denominator, Value: item.Values[weightIndex]})
+				}
+			}
+			result.HeadDecisions = append(result.HeadDecisions, decision)
 			if latestApplied == nil || item.SubnetEpoch > latestApplied.SubnetEpoch {
 				latestApplied = item
 			}
@@ -1601,6 +1635,54 @@ func sortedUIDs(values []uint16) []uint16 {
 	return result
 }
 
+// Checks one validator's complete score boundary against the exact vector
+// observed after its reveal applied on the native chain.
+func validateValidatorHeadWeightDecision(cfg *ResolvedConfig, candidateEvidence, poolEvidence map[uint16]bool, validator ValidatorObservation) (map[uint16]bool, int, int, error) {
+	if ok, detail := validateHeadSlotBoundary(validator, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates()); !ok {
+		return nil, 0, 0, errors.New(detail)
+	}
+	selected, rejected := sortedUIDs(validator.SelectedHeadUIDs), sortedUIDs(validator.RejectedHeadUIDs)
+	weights, masked := map[uint16]uint16{}, uint16Set(validator.MaskedUIDs)
+	for _, weight := range validator.AppliedWeights {
+		if _, duplicate := weights[weight.UID]; duplicate {
+			return nil, 0, 0, fmt.Errorf("applied UID=%d is duplicated", weight.UID)
+		}
+		weights[weight.UID] = weight.Value
+	}
+	selectedSet := uint16Set(selected)
+	for uid, value := range weights {
+		if value > 0 && !selectedSet[uid] && !poolEvidence[uid] {
+			return nil, 0, 0, fmt.Errorf("unapproved head claimant UID=%d applied weight=%d", uid, value)
+		}
+	}
+	uniqueSelected := map[uint16]bool{}
+	weightedSelections := 0
+	for _, uid := range selected {
+		if !candidateEvidence[uid] {
+			return nil, 0, 0, fmt.Errorf("selected unknown candidate UID=%d", uid)
+		}
+		uniqueSelected[uid] = true
+		if masked[uid] {
+			if weights[uid] != 0 {
+				return nil, 0, 0, fmt.Errorf("masked selected UID=%d applied weight=%d", uid, weights[uid])
+			}
+			continue
+		}
+		if weights[uid] == 0 {
+			return nil, 0, 0, fmt.Errorf("selected UID=%d has zero applied weight", uid)
+		}
+		weightedSelections++
+	}
+	for _, uid := range rejected {
+		if !candidateEvidence[uid] || weights[uid] != 0 {
+			return nil, 0, 0, fmt.Errorf("rejected UID=%d applied weight=%d", uid, weights[uid])
+		}
+	}
+	return uniqueSelected, weightedSelections, len(rejected), nil
+}
+
+// Checks both validators' latest applied decisions against the current live
+// fleet and operator-pool identity sets.
 func validateHeadWeightDecision(cfg *ResolvedConfig, observation *ScenarioObservation) (bool, string) {
 	if cfg == nil || observation == nil || len(observation.Validators) != cfg.Config.Topology.Validators {
 		return false, "validator head decision evidence is incomplete"
@@ -1623,48 +1705,374 @@ func validateHeadWeightDecision(cfg *ResolvedConfig, observation *ScenarioObserv
 	}
 	uniqueSelected := map[uint16]bool{}
 	weightedSelections, zeroRejections := 0, 0
+	seenValidators := map[int]bool{}
 	for _, validator := range observation.Validators {
-		if ok, detail := validateHeadSlotBoundary(validator, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates()); !ok {
-			return false, fmt.Sprintf("validator=%d %s", validator.ValidatorID, detail)
+		if validator.ValidatorID < 1 || validator.ValidatorID > cfg.Config.Topology.Validators || seenValidators[validator.ValidatorID] {
+			return false, fmt.Sprintf("validator=%d is invalid or duplicated", validator.ValidatorID)
 		}
-		selected, rejected := sortedUIDs(validator.SelectedHeadUIDs), sortedUIDs(validator.RejectedHeadUIDs)
-		weights, masked := map[uint16]uint16{}, uint16Set(validator.MaskedUIDs)
-		for _, weight := range validator.AppliedWeights {
-			if _, duplicate := weights[weight.UID]; duplicate {
-				return false, fmt.Sprintf("validator=%d applied UID=%d is duplicated", validator.ValidatorID, weight.UID)
-			}
-			weights[weight.UID] = weight.Value
+		seenValidators[validator.ValidatorID] = true
+		selected, weighted, rejected, err := validateValidatorHeadWeightDecision(cfg, candidateEvidence, poolEvidence, validator)
+		if err != nil {
+			return false, fmt.Sprintf("validator=%d %v", validator.ValidatorID, err)
 		}
-		selectedSet := uint16Set(selected)
-		for uid, value := range weights {
-			if value > 0 && !selectedSet[uid] && !poolEvidence[uid] {
-				return false, fmt.Sprintf("validator=%d unapproved head claimant UID=%d applied weight=%d", validator.ValidatorID, uid, value)
-			}
-		}
-		for _, uid := range selected {
-			if !candidateEvidence[uid] {
-				return false, fmt.Sprintf("validator=%d selected unknown candidate UID=%d", validator.ValidatorID, uid)
-			}
+		for uid := range selected {
 			uniqueSelected[uid] = true
-			if masked[uid] {
-				if weights[uid] != 0 {
-					return false, fmt.Sprintf("validator=%d masked selected UID=%d applied weight=%d", validator.ValidatorID, uid, weights[uid])
-				}
-				continue
-			}
-			if weights[uid] == 0 {
-				return false, fmt.Sprintf("validator=%d selected UID=%d has zero applied weight", validator.ValidatorID, uid)
-			}
-			weightedSelections++
 		}
-		for _, uid := range rejected {
-			if !candidateEvidence[uid] || weights[uid] != 0 {
-				return false, fmt.Sprintf("validator=%d rejected UID=%d applied weight=%d", validator.ValidatorID, uid, weights[uid])
-			}
-			zeroRejections++
+		weightedSelections += weighted
+		zeroRejections += rejected
+	}
+	return len(seenValidators) == cfg.Config.Topology.Validators, fmt.Sprintf("candidate_fleets=%d unique_selected=%d weighted_validator_selections=%d zero_validator_rejections=%d validators=%d", len(candidateEvidence), len(uniqueSelected), weightedSelections, zeroRejections, len(seenValidators))
+}
+
+// Checks every applied decision created after the acceptance baseline. The
+// append-only intent history makes a transient invalid vector permanently
+// visible even after a later valid decision becomes current.
+func validateHeadDecisionHistory(cfg *ResolvedConfig, start, current *ScenarioObservation) (bool, string) {
+	if cfg == nil || start == nil || current == nil || len(start.Validators) != cfg.Config.Topology.Validators || len(current.Validators) != cfg.Config.Topology.Validators {
+		return false, "validator head decision history is incomplete"
+	}
+	candidateEvidence := uint16Set(current.CandidateFleetUIDs)
+	if len(candidateEvidence) != cfg.Config.Topology.fleetCandidates() || current.Status == nil || current.Status.Contracts == nil {
+		return false, "candidate or operator pool history evidence is incomplete"
+	}
+	poolEvidence := map[uint16]bool{}
+	for _, operator := range current.Status.Contracts.Operators {
+		if operator.PoolLive {
+			poolEvidence[operator.PoolUID] = true
 		}
 	}
-	return true, fmt.Sprintf("candidate_fleets=%d unique_selected=%d weighted_validator_selections=%d zero_validator_rejections=%d", len(candidateEvidence), len(uniqueSelected), weightedSelections, zeroRejections)
+	if len(poolEvidence) != cfg.Config.Topology.Operators {
+		return false, fmt.Sprintf("live operator pool UIDs=%d want=%d", len(poolEvidence), cfg.Config.Topology.Operators)
+	}
+	baseline := map[int]map[string]bool{}
+	for _, validator := range start.Validators {
+		if validator.ValidatorID < 1 || validator.ValidatorID > cfg.Config.Topology.Validators || baseline[validator.ValidatorID] != nil {
+			return false, fmt.Sprintf("baseline validator=%d is invalid or duplicated", validator.ValidatorID)
+		}
+		baseline[validator.ValidatorID] = map[string]bool{}
+		for _, decision := range validator.HeadDecisions {
+			if decision.VectorHash == "" || baseline[validator.ValidatorID][decision.VectorHash] {
+				return false, fmt.Sprintf("baseline validator=%d has an empty or duplicate decision hash", validator.ValidatorID)
+			}
+			baseline[validator.ValidatorID][decision.VectorHash] = true
+		}
+	}
+	freshDecisions := 0
+	seenValidators := map[int]bool{}
+	for _, validator := range current.Validators {
+		if validator.ValidatorID < 1 || validator.ValidatorID > cfg.Config.Topology.Validators || seenValidators[validator.ValidatorID] || baseline[validator.ValidatorID] == nil {
+			return false, fmt.Sprintf("current validator=%d is invalid, duplicated, or absent from baseline", validator.ValidatorID)
+		}
+		seenValidators[validator.ValidatorID] = true
+		seen := map[string]bool{}
+		validatorFreshDecisions := 0
+		for _, decision := range validator.HeadDecisions {
+			if decision.VectorHash == "" || seen[decision.VectorHash] {
+				return false, fmt.Sprintf("validator=%d has an empty or duplicate decision hash", validator.ValidatorID)
+			}
+			seen[decision.VectorHash] = true
+			if baseline[validator.ValidatorID][decision.VectorHash] {
+				continue
+			}
+			freshDecisions++
+			validatorFreshDecisions++
+			if decision.Error != "" || decision.ApplicationBlock == 0 || decision.ApplicationBlockHash == "" {
+				return false, fmt.Sprintf("validator=%d decision=%s application evidence is invalid: %s", validator.ValidatorID, decision.VectorHash, decision.Error)
+			}
+			observed := ValidatorObservation{
+				ValidatorID: validator.ValidatorID, MaskedUIDs: decision.MaskedUIDs,
+				EligibleHeadUIDs: decision.EligibleHeadUIDs, EligibleHeadScores: decision.EligibleHeadScores,
+				SelectedHeadUIDs: decision.SelectedHeadUIDs, RejectedHeadUIDs: decision.RejectedHeadUIDs,
+				StaleHeadBindings: decision.StaleHeadBindings, AppliedWeights: decision.AppliedWeights,
+			}
+			if _, _, _, err := validateValidatorHeadWeightDecision(cfg, candidateEvidence, poolEvidence, observed); err != nil {
+				return false, fmt.Sprintf("validator=%d decision=%s: %v", validator.ValidatorID, decision.VectorHash, err)
+			}
+		}
+		for hash := range baseline[validator.ValidatorID] {
+			if !seen[hash] {
+				return false, fmt.Sprintf("validator=%d baseline decision=%s disappeared from append-only history", validator.ValidatorID, hash)
+			}
+		}
+		if validatorFreshDecisions == 0 {
+			return false, fmt.Sprintf("validator=%d has no fresh applied decision after the acceptance baseline", validator.ValidatorID)
+		}
+	}
+	if len(seenValidators) != cfg.Config.Topology.Validators || freshDecisions < cfg.Config.Topology.Validators {
+		return false, fmt.Sprintf("fresh_decisions=%d validators=%d/%d", freshDecisions, len(seenValidators), cfg.Config.Topology.Validators)
+	}
+	return true, fmt.Sprintf("fresh_applied_decisions=%d validators=%d", freshDecisions, len(seenValidators))
+}
+
+func headDecisionWeight(decision HeadDecisionObservation, uid uint16) (uint16, error) {
+	var value uint16
+	found := false
+	for _, weight := range decision.AppliedWeights {
+		if weight.UID != uid {
+			continue
+		}
+		if found {
+			return 0, fmt.Errorf("decision %s duplicates applied UID=%d", decision.VectorHash, uid)
+		}
+		found, value = true, weight.Value
+	}
+	return value, nil
+}
+
+func decisionContainsUID(values []uint16, uid uint16) bool {
+	return slices.Contains(values, uid)
+}
+
+type validatorLocalBoundaryDivergence struct {
+	TargetUID    uint16
+	Epoch        uint64
+	Replacements map[uint16]bool
+	Filtered     map[uint64]HeadDecisionObservation
+	Independent  map[uint64]HeadDecisionObservation
+	CommonEpochs []uint64
+}
+
+func freshHeadDecisionsByEpoch(start, current *ScenarioObservation, validatorIDs ...int) (map[int]map[uint64]HeadDecisionObservation, error) {
+	if start == nil || current == nil || len(validatorIDs) == 0 {
+		return nil, errors.New("fresh head decision evidence is incomplete")
+	}
+	required := map[int]bool{}
+	for _, validatorID := range validatorIDs {
+		if validatorID < 1 || required[validatorID] {
+			return nil, errors.New("fresh head decision validator identities are invalid")
+		}
+		required[validatorID] = true
+	}
+	baseline := map[int]map[string]bool{}
+	for _, observation := range start.Validators {
+		if !required[observation.ValidatorID] {
+			continue
+		}
+		if baseline[observation.ValidatorID] != nil {
+			return nil, fmt.Errorf("baseline validator=%d is duplicated", observation.ValidatorID)
+		}
+		baseline[observation.ValidatorID] = map[string]bool{}
+		for _, decision := range observation.HeadDecisions {
+			if decision.VectorHash == "" || baseline[observation.ValidatorID][decision.VectorHash] {
+				return nil, fmt.Errorf("baseline validator=%d decision identity is invalid", observation.ValidatorID)
+			}
+			baseline[observation.ValidatorID][decision.VectorHash] = true
+		}
+	}
+	result := map[int]map[uint64]HeadDecisionObservation{}
+	seenValidators := map[int]bool{}
+	for _, observation := range current.Validators {
+		if !required[observation.ValidatorID] {
+			continue
+		}
+		if seenValidators[observation.ValidatorID] || baseline[observation.ValidatorID] == nil {
+			return nil, fmt.Errorf("current validator=%d is duplicated or absent from baseline", observation.ValidatorID)
+		}
+		seenValidators[observation.ValidatorID] = true
+		result[observation.ValidatorID] = map[uint64]HeadDecisionObservation{}
+		seenHashes := map[string]bool{}
+		for _, decision := range observation.HeadDecisions {
+			if decision.VectorHash == "" || seenHashes[decision.VectorHash] {
+				return nil, fmt.Errorf("validator=%d decision identity is empty or duplicated", observation.ValidatorID)
+			}
+			seenHashes[decision.VectorHash] = true
+			if baseline[observation.ValidatorID][decision.VectorHash] {
+				continue
+			}
+			if _, duplicate := result[observation.ValidatorID][decision.SubnetEpoch]; duplicate {
+				return nil, fmt.Errorf("validator=%d duplicates fresh native epoch=%d", observation.ValidatorID, decision.SubnetEpoch)
+			}
+			result[observation.ValidatorID][decision.SubnetEpoch] = decision
+		}
+	}
+	for validatorID := range required {
+		if baseline[validatorID] == nil || !seenValidators[validatorID] {
+			return nil, fmt.Errorf("validator=%d decision domain is absent", validatorID)
+		}
+	}
+	return result, nil
+}
+
+func commonHeadDecisionEpochs(left, right map[uint64]HeadDecisionObservation) []uint64 {
+	epochs := make([]uint64, 0, len(left))
+	for epoch := range left {
+		if _, ok := right[epoch]; ok {
+			epochs = append(epochs, epoch)
+		}
+	}
+	sort.Slice(epochs, func(i, j int) bool { return epochs[i] < epochs[j] })
+	return epochs
+}
+
+func findValidatorLocalHeadBoundaryDivergence(cfg *ResolvedConfig, start, current *ScenarioObservation) (*validatorLocalBoundaryDivergence, error) {
+	if cfg == nil || cfg.Config == nil || start == nil || current == nil || cfg.Config.Topology.Validators < 2 || len(current.CandidateFleetUIDs) != cfg.Config.Topology.fleetCandidates() || validatorLocalHeadBoundaryFleet > len(current.CandidateFleetUIDs) {
+		return nil, errors.New("validator-local top-200 evidence is incomplete")
+	}
+	targetUID := current.CandidateFleetUIDs[validatorLocalHeadBoundaryFleet-1]
+	byValidator, err := freshHeadDecisionsByEpoch(start, current, validatorLocalHeadBoundaryValidator, 2)
+	if err != nil {
+		return nil, err
+	}
+	filtered := byValidator[validatorLocalHeadBoundaryValidator]
+	independent := byValidator[2]
+	epochs := commonHeadDecisionEpochs(filtered, independent)
+	for _, epoch := range epochs {
+		left, right := filtered[epoch], independent[epoch]
+		leftWeight, leftErr := headDecisionWeight(left, targetUID)
+		rightWeight, rightErr := headDecisionWeight(right, targetUID)
+		if leftErr != nil || rightErr != nil {
+			return nil, fmt.Errorf("native epoch=%d target weight evidence errors=%v/%v", epoch, leftErr, rightErr)
+		}
+		if decisionContainsUID(left.MaskedUIDs, targetUID) || decisionContainsUID(right.MaskedUIDs, targetUID) {
+			return nil, fmt.Errorf("validator-local target UID=%d is unexpectedly masked at native epoch=%d", targetUID, epoch)
+		}
+		if !decisionContainsUID(left.RejectedHeadUIDs, targetUID) || leftWeight != 0 || !decisionContainsUID(right.SelectedHeadUIDs, targetUID) || rightWeight == 0 {
+			continue
+		}
+		replacements := map[uint16]bool{}
+		for _, uid := range left.SelectedHeadUIDs {
+			if !decisionContainsUID(right.RejectedHeadUIDs, uid) {
+				continue
+			}
+			leftReplacementWeight, leftWeightErr := headDecisionWeight(left, uid)
+			rightReplacementWeight, rightWeightErr := headDecisionWeight(right, uid)
+			if leftWeightErr != nil || rightWeightErr != nil {
+				return nil, fmt.Errorf("native epoch=%d replacement UID=%d weight evidence errors=%v/%v", epoch, uid, leftWeightErr, rightWeightErr)
+			}
+			if leftReplacementWeight > 0 && rightReplacementWeight == 0 {
+				replacements[uid] = true
+			}
+		}
+		if len(replacements) != 0 {
+			return &validatorLocalBoundaryDivergence{TargetUID: targetUID, Epoch: epoch, Replacements: replacements, Filtered: filtered, Independent: independent, CommonEpochs: epochs}, nil
+		}
+	}
+	return nil, nil
+}
+
+// Proves validator-local top-200 admission on the live paths. During the
+// bounded operator view fault, validator 1 must reject the designated fleet
+// with zero submitted weight while an independent validator selects the same
+// on-chain claimant with positive weight in the same native epoch. A later
+// common epoch must restore the fleet and zero the temporary replacement.
+func validateValidatorLocalHeadBoundary(cfg *ResolvedConfig, start, current *ScenarioObservation) (bool, string) {
+	divergence, err := findValidatorLocalHeadBoundaryDivergence(cfg, start, current)
+	if err != nil {
+		return false, err.Error()
+	}
+	if divergence == nil {
+		return false, "no common native epoch proves validator-local rejected-zero versus selected-positive"
+	}
+	for _, epoch := range divergence.CommonEpochs {
+		if epoch <= divergence.Epoch {
+			continue
+		}
+		left, right := divergence.Filtered[epoch], divergence.Independent[epoch]
+		leftWeight, leftErr := headDecisionWeight(left, divergence.TargetUID)
+		rightWeight, rightErr := headDecisionWeight(right, divergence.TargetUID)
+		if leftErr != nil || rightErr != nil {
+			return false, fmt.Sprintf("native epoch=%d restoration weight evidence errors=%v/%v", epoch, leftErr, rightErr)
+		}
+		if !decisionContainsUID(left.SelectedHeadUIDs, divergence.TargetUID) || !decisionContainsUID(right.SelectedHeadUIDs, divergence.TargetUID) || leftWeight == 0 || rightWeight == 0 {
+			continue
+		}
+		for uid := range divergence.Replacements {
+			value, weightErr := headDecisionWeight(left, uid)
+			if weightErr != nil {
+				return false, weightErr.Error()
+			}
+			if decisionContainsUID(left.RejectedHeadUIDs, uid) && value == 0 {
+				return true, fmt.Sprintf("target_uid=%d divergence_epoch=%d restoration_epoch=%d replacement_uid=%d", divergence.TargetUID, divergence.Epoch, epoch, uid)
+			}
+		}
+	}
+	return false, fmt.Sprintf("UID=%d diverged at native epoch=%d but no later common decision restored it and zeroed a replacement", divergence.TargetUID, divergence.Epoch)
+}
+
+func globalHeadBoundaryDiverged(cfg *ResolvedConfig, start, current *ScenarioObservation) (bool, error) {
+	if cfg == nil || cfg.Config == nil || start == nil || current == nil || len(current.CandidateFleetUIDs) != cfg.Config.Topology.fleetCandidates() || cfg.Config.Topology.HeadFleets < 3 {
+		return false, errors.New("global head-boundary evidence is incomplete")
+	}
+	byValidator, err := freshHeadDecisionsByEpoch(start, current, 1, 2)
+	if err != nil {
+		return false, err
+	}
+	targetUID := current.CandidateFleetUIDs[2]
+	challengers := uint16Set(current.CandidateFleetUIDs[cfg.Config.Topology.HeadSlots:])
+	for _, epoch := range commonHeadDecisionEpochs(byValidator[1], byValidator[2]) {
+		complete := true
+		for _, validatorID := range []int{1, 2} {
+			decision := byValidator[validatorID][epoch]
+			weight, weightErr := headDecisionWeight(decision, targetUID)
+			if weightErr != nil {
+				return false, weightErr
+			}
+			if decisionContainsUID(decision.MaskedUIDs, targetUID) || !decisionContainsUID(decision.RejectedHeadUIDs, targetUID) || weight != 0 {
+				complete = false
+				break
+			}
+			replacement := false
+			for _, uid := range decision.SelectedHeadUIDs {
+				value, valueErr := headDecisionWeight(decision, uid)
+				if valueErr != nil {
+					return false, valueErr
+				}
+				if challengers[uid] && value > 0 {
+					replacement = true
+					break
+				}
+			}
+			if !replacement {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func faultRestoreConditionMet(cfg *ResolvedConfig, start, current *ScenarioObservation, spec scenarioFaultSpec) (bool, error) {
+	switch spec.RestoreCondition {
+	case "":
+		return false, nil
+	case "global-head-boundary-diverged":
+		return globalHeadBoundaryDiverged(cfg, start, current)
+	case "validator-local-head-boundary-diverged":
+		divergence, err := findValidatorLocalHeadBoundaryDivergence(cfg, start, current)
+		return divergence != nil, err
+	default:
+		return false, fmt.Errorf("unsupported fault restore condition %q", spec.RestoreCondition)
+	}
+}
+
+func headBoundaryUIDTieGeometry(cfg *ResolvedConfig, observation *ScenarioObservation) (bool, string) {
+	if cfg == nil || cfg.Config == nil || observation == nil || cfg.Config.Topology.HeadFleets < 4 || cfg.Config.Topology.ChallengerFleets < 2 || len(observation.CandidateFleetUIDs) != cfg.Config.Topology.fleetCandidates() || cfg.Config.Topology.HeadSlots != cfg.Config.Topology.HeadFleets {
+		return false, "head-boundary UID tie geometry is incomplete"
+	}
+	targets := []uint16{observation.CandidateFleetUIDs[2], observation.CandidateFleetUIDs[validatorLocalHeadBoundaryFleet-1]}
+	challengers := append([]uint16(nil), observation.CandidateFleetUIDs[cfg.Config.Topology.HeadSlots:]...)
+	if len(challengers) != 2 || targets[0] == targets[1] {
+		return false, fmt.Sprintf("targets=%v challengers=%v", targets, challengers)
+	}
+	maximumChallenger := challengers[0]
+	for _, uid := range challengers[1:] {
+		if uid > maximumChallenger {
+			maximumChallenger = uid
+		}
+	}
+	minimumTarget := targets[0]
+	for _, uid := range targets[1:] {
+		if uid < minimumTarget {
+			minimumTarget = uid
+		}
+	}
+	if maximumChallenger >= minimumTarget {
+		return false, fmt.Sprintf("fault targets=%v do not lose an equal-score tie to challengers=%v", targets, challengers)
+	}
+	return true, fmt.Sprintf("fault_targets=%v lower_uid_challengers=%v", targets, challengers)
 }
 
 func nativeRewardAt(rewards *NativeRewardObservation, uid uint16) (*big.Int, uint16, uint16, bool) {
@@ -1886,8 +2294,17 @@ func releaseScenarioChecks() []scenarioCheck {
 			}
 			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, fmt.Sprintf("validators=%d selected=%d candidates=%d", len(e.Current.Validators), e.Cfg.Config.Topology.HeadSlots, e.Cfg.Config.Topology.fleetCandidates())
 		}},
+		{ID: "head_fault_uid_tiebreak_safe", Check: func(e *scenarioEvaluation) (bool, string) {
+			return headBoundaryUIDTieGeometry(e.Cfg, e.Current)
+		}},
 		{ID: "head_selected_paid_rejected_zero_weight", Check: func(e *scenarioEvaluation) (bool, string) {
 			return validateHeadWeightDecision(e.Cfg, e.Current)
+		}},
+		{ID: "head_decision_history_valid", Check: func(e *scenarioEvaluation) (bool, string) {
+			return validateHeadDecisionHistory(e.Cfg, e.Start, e.Current)
+		}},
+		{ID: "validator_local_top200_disagreement", Check: func(e *scenarioEvaluation) (bool, string) {
+			return validateValidatorLocalHeadBoundary(e.Cfg, e.Start, e.Current)
 		}},
 		{ID: "head_promotion_demotion_transition", Check: func(e *scenarioEvaluation) (bool, string) {
 			if e.Start == nil || len(e.Start.Validators) != e.Cfg.Config.Topology.Validators {
@@ -2271,7 +2688,11 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 
 func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Duration {
 	blocks := definition.GoalEpochs * cfg.Policy.Settlement.EpochBlocks
-	if definition.Name == "release-1.0" {
+	requiresHeadFaultGeometry := false
+	for _, fault := range definition.Faults {
+		requiresHeadFaultGeometry = requiresHeadFaultGeometry || fault.RestoreCondition == "global-head-boundary-diverged" || fault.RestoreCondition == "validator-local-head-boundary-diverged"
+	}
+	if requiresHeadFaultGeometry {
 		blocks += cfg.Policy.Settlement.FinalizeOffsetBlocks
 	}
 	if definition.Name == "production-soak" {
@@ -2448,7 +2869,12 @@ func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start,
 func appendFaultAssertions(assertions []AssertionRecord, records []ScenarioFaultRecord, started time.Time, current *ScenarioObservation) []AssertionRecord {
 	now := time.Now().UTC()
 	for _, record := range records {
-		passed := record.Status == "restored" && record.AppliedBlock >= record.TriggerBlock && record.RestoredBlock >= record.RestoreBlock && len(record.Processes) == len(record.Targets)
+		timingValid := record.RestoredBlock >= record.RestoreBlock
+		if record.RestoreCondition != "" {
+			minimumRestore, ok := checkedAdd(record.AppliedBlock, record.MinimumDurationBlocks)
+			timingValid = ok && record.RestoredBlock >= minimumRestore && (record.RestoredBlock >= record.RestoreBlock || record.RestoreConditionMet && record.RestoreConditionBlock >= minimumRestore && record.RestoreConditionBlock <= record.RestoredBlock)
+		}
+		passed := record.Status == "restored" && record.AppliedBlock >= record.TriggerBlock && timingValid && len(record.Processes) == len(record.Targets)
 		if passed && (record.Kind == "process-restart" || record.Kind == "container-restart") {
 			if len(record.RestoredProcesses) != len(record.Processes) {
 				passed = false
@@ -2464,7 +2890,7 @@ func appendFaultAssertions(assertions []AssertionRecord, records []ScenarioFault
 				}
 			}
 		}
-		message := fmt.Sprintf("status=%s targets=%v applied=%d restored=%d", record.Status, record.Targets, record.AppliedBlock, record.RestoredBlock)
+		message := fmt.Sprintf("status=%s targets=%v applied=%d restored=%d restore_deadline=%d condition=%s condition_met=%t", record.Status, record.Targets, record.AppliedBlock, record.RestoredBlock, record.RestoreBlock, record.RestoreCondition, record.RestoreConditionMet)
 		if record.Error != "" {
 			message += " error=" + record.Error
 		}
@@ -2670,6 +3096,11 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err != nil {
 		return initialFailure(current, fmt.Errorf("build complete-epoch acceptance window: %w", err))
 	}
+	if definition.Name == "release-1.0" {
+		if ok, detail := headBoundaryUIDTieGeometry(cfg, current); !ok {
+			return initialFailure(current, fmt.Errorf("head-boundary fault preflight: %s", detail))
+		}
+	}
 	if window != nil {
 		start = current
 	}
@@ -2747,7 +3178,9 @@ scenarioLoop:
 				// the actor may have an in-flight request when SIGTERM/SIGSTOP lands.
 				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, current.Status.Contracts.FinalizedHead.Number, true))
 			}
-			faultErr = advanceFaults(ctx, current.Status.Contracts.FinalizedHead, definition.Faults, faults, options.FaultDriver)
+			faultErr = advanceFaultsWhen(ctx, current.Status.Contracts.FinalizedHead, definition.Faults, faults, options.FaultDriver, func(spec scenarioFaultSpec) (bool, error) {
+				return faultRestoreConditionMet(cfg, start, current, spec)
+			})
 			if options.Adversaries != nil {
 				options.Adversaries.SetExpectedFaultTargets(scenarioFaultTargets(faults, current.Status.Contracts.FinalizedHead.Number, false))
 			}

@@ -238,6 +238,9 @@ func TestOperatorEnvironmentUsesDiscoveredPlatformConfig(t *testing.T) {
 	if env["WARP_ENV"] != operatorEnvironment(1) || env["WARP_ENV"] == "local" {
 		t.Fatalf("operator environment lost its isolated non-local identity: %q", env["WARP_ENV"])
 	}
+	if env["URNETWORK_ST_PROFILE"] != "testnet" || env["URNETWORK_SIM_TESTNET"] != "1" {
+		t.Fatalf("operator environment lost its explicit simulator scope: %+v", env)
+	}
 	if env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 		t.Fatalf("operator bypasses workload RPC proxy: %q", env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
 	}
