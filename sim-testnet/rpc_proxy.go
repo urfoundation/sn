@@ -2,9 +2,10 @@ package main
 
 // rpc_proxy.go provides simulator-owned transport boundaries in front of the
 // selected Substrate and EVM RPCs. Workload processes use these loopback
-// proxies; sim-testnet's independent observations use the selected operational
-// RPCs directly. This lets fault campaigns remove workload RPC paths without
-// mutating host firewall state or interrupting a shared node.
+// proxies; one non-faulted egress proxy owns the public-provider quota for both
+// workloads and live observations. This lets fault campaigns remove workload
+// RPC paths without mutating host firewall state, interrupting a shared node,
+// or accidentally doubling the host-wide public request ceiling.
 
 import (
 	"context"
@@ -28,6 +29,9 @@ const (
 	workloadSubstrateProxyAddress  = "127.0.0.10:19946"
 	workloadSubstrateHealthAddress = "127.0.0.10:19947"
 	workloadSubstrateProcessID     = "subtensor-substrate-rpc-proxy"
+	publicEVMEgressAddress         = "127.0.0.10:19948"
+	publicEVMEgressHealthAddress   = "127.0.0.10:19949"
+	publicEVMEgressProcessID       = "subtensor-evm-egress"
 )
 
 type rpcProxyConfig struct {
@@ -42,6 +46,51 @@ type rpcProxyConfig struct {
 func workloadRPCAuthority() string { return workloadRPCProxyAddress }
 
 func workloadSubstrateRPCAuthority() string { return workloadSubstrateProxyAddress }
+
+// campaignEVMAuthority is the non-faulted, source-wide public-provider gate
+// used by the harness while the supervised topology is live.
+func campaignEVMAuthority() string { return publicEVMEgressAddress }
+
+// campaignRPCConfig returns an I/O-only copy which routes every campaign EVM
+// client through the central egress proxy. Canonical config/policy hashes stay
+// unchanged, and the caller's resolved configuration is never mutated.
+func campaignRPCConfig(cfg *ResolvedConfig) (*ResolvedConfig, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Public == nil {
+		return nil, errors.New("campaign RPC configuration is incomplete")
+	}
+	resolved := *cfg
+	harness := *cfg.Config
+	public := *cfg.Public
+	endpoint := "http://" + campaignEVMAuthority()
+	resolved.Config = &harness
+	resolved.Public = &public
+	resolved.OperationalEVM = endpoint
+	if cfg.OperationalRPCMode == rpcModePublicOverride {
+		harness.LaunchInputs.PublicEVMMaximumRequestsPerMinute = 0
+		resolved.Public.Chain.EVMPublicReadEndpoint = endpoint
+	}
+	return &resolved, nil
+}
+
+// validateCampaignRPCTransport accepts only the canonical route or the exact
+// central-egress derivative produced above; no caller may supply an arbitrary
+// local writer endpoint while retaining an approved plan hash.
+func validateCampaignRPCTransport(authorized, runtime *ResolvedConfig) error {
+	if authorized == nil || runtime == nil || authorized.Config == nil || runtime.Config == nil || authorized.Public == nil || runtime.Public == nil {
+		return errors.New("campaign RPC transport identity is incomplete")
+	}
+	if runtime == authorized {
+		return nil
+	}
+	want, err := campaignRPCConfig(authorized)
+	if err != nil {
+		return err
+	}
+	if runtime.ConfigHash != want.ConfigHash || runtime.PolicyHash != want.PolicyHash || runtime.ChainID != want.ChainID || runtime.Netuid != want.Netuid || runtime.OperationalRPCMode != want.OperationalRPCMode || runtime.OperationalSubstrate != want.OperationalSubstrate || runtime.OperationalEVM != want.OperationalEVM || runtime.Public.Chain.SubstratePublicReadEndpoint != want.Public.Chain.SubstratePublicReadEndpoint || runtime.Public.Chain.EVMPublicReadEndpoint != want.Public.Chain.EVMPublicReadEndpoint || runtime.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute != want.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute {
+		return errors.New("campaign RPC transport is not the exact authorized egress derivative")
+	}
+	return nil
+}
 
 func rpcProxyConfigForAuthority(authority string) (rpcProxyConfig, error) {
 	wsURL, _, err := authorityURLs(authority)

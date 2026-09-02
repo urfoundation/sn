@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -123,7 +124,7 @@ func TestReleaseQualityFaultSelectsOnlyTailCohort(t *testing.T) {
 	}
 }
 
-func TestReleaseHeadBoundaryFaultTargetsOneSelectedFleetForSixTempos(t *testing.T) {
+func TestReleaseHeadBoundaryFaultTargetsOneSelectedFleetForThreeTempos(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	fault, err := releaseHeadBoundaryFault(cfg, 30)
 	if err != nil {
@@ -132,7 +133,7 @@ func TestReleaseHeadBoundaryFaultTargetsOneSelectedFleetForSixTempos(t *testing.
 	if fault.ID != "head-boundary" || fault.Kind != "miner-control" || fault.TriggerOffsetBlocks != 30 || len(fault.Targets) != cfg.Config.Topology.ClientsPerHeadFleet {
 		t.Fatalf("head boundary fault=%+v", fault)
 	}
-	wantDuration := 6*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	wantDuration := 3*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
 	if fault.DurationBlocks != wantDuration {
 		t.Fatalf("duration=%d want=%d", fault.DurationBlocks, wantDuration)
 	}
@@ -149,26 +150,33 @@ func TestHeadBoundaryDecayTemposTracksApprovedEMAExactly(t *testing.T) {
 		name        string
 		numerator   uint64
 		denominator uint64
+		selected    *big.Rat
+		challenger  *big.Rat
 		want        uint64
 	}{
-		{name: "release quarter", numerator: 1, denominator: 4, want: 6},
-		{name: "faster half", numerator: 1, denominator: 2, want: 4},
-		{name: "immediate", numerator: 1, denominator: 1, want: 2},
+		{name: "wide quarter", numerator: 1, denominator: 4, selected: big.NewRat(4, 1), challenger: big.NewRat(1, 1), want: 6},
+		{name: "release boundary", numerator: 1, denominator: 4, selected: big.NewRat(4, 1), challenger: big.NewRat(3, 1), want: 3},
+		{name: "faster half", numerator: 1, denominator: 2, selected: big.NewRat(4, 1), challenger: big.NewRat(3, 1), want: 2},
+		{name: "immediate", numerator: 1, denominator: 1, selected: big.NewRat(4, 1), challenger: big.NewRat(3, 1), want: 2},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := headBoundaryDecayTempos(test.numerator, test.denominator)
-			if err != nil || got != test.want {
-				t.Fatalf("headBoundaryDecayTempos(%d/%d)=(%d,%v), want (%d,nil)", test.numerator, test.denominator, got, err, test.want)
-			}
-		})
+		got, err := headBoundaryDecayTempos(test.numerator, test.denominator, test.selected, test.challenger)
+		if err != nil || got != test.want {
+			t.Fatalf("%s headBoundaryDecayTempos(%d/%d,%s,%s)=(%d,%v), want (%d,nil)", test.name, test.numerator, test.denominator, test.selected, test.challenger, got, err, test.want)
+		}
 	}
 }
 
 func TestHeadBoundaryDecayTemposRejectsNonDecayingOrInvalidEMA(t *testing.T) {
 	for _, value := range [][2]uint64{{0, 1}, {1, 0}, {2, 1}} {
-		if got, err := headBoundaryDecayTempos(value[0], value[1]); err == nil || got != 0 {
+		if got, err := headBoundaryDecayTempos(value[0], value[1], big.NewRat(4, 1), big.NewRat(3, 1)); err == nil || got != 0 {
 			t.Fatalf("headBoundaryDecayTempos(%d/%d)=(%d,%v), want rejection", value[0], value[1], got, err)
+		}
+	}
+	invalidScores := [][2]*big.Rat{{nil, big.NewRat(3, 1)}, {big.NewRat(4, 1), nil}, {big.NewRat(0, 1), big.NewRat(3, 1)}, {big.NewRat(3, 1), big.NewRat(3, 1)}}
+	for _, scores := range invalidScores {
+		if got, err := headBoundaryDecayTempos(1, 4, scores[0], scores[1]); err == nil || got != 0 {
+			t.Fatalf("headBoundaryDecayTempos invalid scores %v=(%d,%v), want rejection", scores, got, err)
 		}
 	}
 }
@@ -181,7 +189,7 @@ func TestReleaseHeadBoundaryFaultAdaptsToPolicyEMA(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := 4*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
+	want := 2*hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]) + cfg.Config.Scenarios.QualityFaultDurationBlocks
 	if fault.DurationBlocks != want {
 		t.Fatalf("duration=%d want=%d", fault.DurationBlocks, want)
 	}
@@ -284,12 +292,62 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 	if len(faults) != want || faults[0].ID != "quality-cohort" || faults[1].ID != "head-boundary" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)
 	}
-	priorEnd := faults[0].TriggerOffsetBlocks + faults[0].DurationBlocks
-	for _, fault := range faults[1:] {
-		if fault.TriggerOffsetBlocks <= priorEnd {
-			t.Fatalf("release faults overlap: %+v prior_end=%d", fault, priorEnd)
+	head := faults[1]
+	headEnd := head.TriggerOffsetBlocks + head.DurationBlocks
+	if qualityEnd := faults[0].TriggerOffsetBlocks + faults[0].DurationBlocks; qualityEnd >= head.TriggerOffsetBlocks {
+		t.Fatalf("quality fault ends at %d, head starts at %d", qualityEnd, head.TriggerOffsetBlocks)
+	}
+	seen := map[string]bool{}
+	var laneEnd uint64
+	for _, fault := range faults[2 : len(faults)-1] {
+		if fault.TriggerOffsetBlocks <= laneEnd || fault.TriggerOffsetBlocks <= head.TriggerOffsetBlocks || fault.TriggerOffsetBlocks+fault.DurationBlocks >= headEnd {
+			t.Fatalf("background fault is not sequential inside head window: %+v lane_end=%d head=%d..%d", fault, laneEnd, head.TriggerOffsetBlocks, headEnd)
 		}
-		priorEnd = fault.TriggerOffsetBlocks + fault.DurationBlocks
+		laneEnd = fault.TriggerOffsetBlocks + fault.DurationBlocks
+		if fault.Kind == "process-restart" {
+			seen[fault.Targets[0]] = true
+		}
+	}
+	deferred := faults[len(faults)-1]
+	headSwarm, mapErr := minerSwarmFor(cfg, fleetMemberMinerIndex(cfg, 3, 1))
+	if mapErr != nil {
+		t.Fatal(mapErr)
+	}
+	wantDeferred := fmt.Sprintf("miner-swarm-%d", headSwarm)
+	if deferred.Kind != "process-restart" || len(deferred.Targets) != 1 || deferred.Targets[0] != wantDeferred || deferred.TriggerOffsetBlocks <= headEnd {
+		t.Fatalf("head owner restart was not deferred: %+v head_end=%d", deferred, headEnd)
+	}
+	seen[deferred.Targets[0]] = true
+	if len(seen) != persistentCount {
+		t.Fatalf("persistent restart coverage=%d want=%d targets=%v", len(seen), persistentCount, seen)
+	}
+	campaignBlocks := uint64(cfg.Config.Scenarios.ShortEpochs) * cfg.Policy.Settlement.EpochBlocks
+	maximumEnd := uint64(0)
+	for _, fault := range faults {
+		if end := fault.TriggerOffsetBlocks + fault.DurationBlocks; end > maximumEnd {
+			maximumEnd = end
+		}
+	}
+	if maximumEnd > campaignBlocks {
+		t.Fatalf("release fault schedule ends at block %d after %d-block campaign", maximumEnd, campaignBlocks)
+	}
+}
+
+// The complete rolling production rehearsal must restore every dependency and
+// process before the third accepted 360-block epoch ends.
+func TestProductionFaultScheduleFitsThreeEpochWindow(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	faults := productionRollingFaults(cfg)
+	wantEnd := uint64(cfg.Config.Scenarios.ProductionEpochs) * cfg.Policy.ProductionCadence.EpochBlocks
+	lastEnd := uint64(0)
+	for _, fault := range faults {
+		end := fault.TriggerOffsetBlocks + fault.DurationBlocks
+		if end > lastEnd {
+			lastEnd = end
+		}
+	}
+	if len(faults) == 0 || lastEnd > wantEnd {
+		t.Fatalf("production fault schedule ends at %d, want <= %d across %d faults", lastEnd, wantEnd, len(faults))
 	}
 }
 
@@ -345,6 +403,45 @@ func TestLiveFaultDriverRestartsOnlySimulatorOwnedDependency(t *testing.T) {
 	bad.Targets = []string{"shared-subtensor"}
 	if _, err := driver.Apply(context.Background(), bad); err == nil {
 		t.Fatal("non-simulator dependency was accepted as a container fault target")
+	}
+}
+
+// Concurrent release lanes must retain every active mutation in one durable
+// recovery ledger and restore either lane without erasing the other.
+func TestLiveFaultDriverPreservesConcurrentDisjointRecovery(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	runtime := &fakeContainerRuntime{}
+	driver := &liveScenarioFaultDriver{stateDir: t.TempDir(), cfg: cfg, containers: runtime}
+	first := scenarioFaultSpec{ID: "postgres-one", Kind: "container-restart", Targets: []string{"operator-1-postgres"}, TriggerOffsetBlocks: 1, DurationBlocks: 2}
+	second := scenarioFaultSpec{ID: "redis-two", Kind: "container-restart", Targets: []string{"operator-2-redis"}, TriggerOffsetBlocks: 1, DurationBlocks: 2}
+	if _, err := driver.Apply(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	overlap := first
+	overlap.ID = "duplicate-target"
+	if _, err := driver.Apply(context.Background(), overlap); err == nil || len(runtime.stopped) != 1 {
+		t.Fatalf("overlapping target mutation was not rejected before stop: err=%v stopped=%v", err, runtime.stopped)
+	}
+	if _, err := driver.Apply(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	active, err := readActiveFaultFile(driver.activePath())
+	if err != nil || len(active.Faults) != 2 || len(active.Processes) != 2 {
+		t.Fatalf("concurrent active ledger=%+v error=%v", active, err)
+	}
+	if _, err := driver.Restore(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	active, err = readActiveFaultFile(driver.activePath())
+	if err != nil || len(active.Faults) != 1 || active.Faults[0].ID != second.ID || len(active.Processes) != 1 || active.Processes[0].ID != second.Targets[0] {
+		t.Fatalf("first restore erased concurrent fault: active=%+v error=%v", active, err)
+	}
+	if _, err := driver.Restore(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	active, err = readActiveFaultFile(driver.activePath())
+	if err != nil || len(active.Faults) != 0 || len(active.Processes) != 0 {
+		t.Fatalf("final restore left active state: active=%+v error=%v", active, err)
 	}
 }
 

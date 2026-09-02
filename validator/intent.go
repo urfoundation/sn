@@ -51,6 +51,7 @@ type SteeringIntent struct {
 	SelfUID              uint16                   `json:"self_uid"`
 	MaskedUIDs           []uint16                 `json:"masked_uids"`
 	EligibleHeadUIDs     []uint16                 `json:"eligible_head_uids"`
+	EligibleHeadScores   []RationalJSON           `json:"eligible_head_scores,omitempty"`
 	SelectedHeadUIDs     []uint16                 `json:"selected_head_uids"`
 	RejectedHeadUIDs     []uint16                 `json:"rejected_head_uids"`
 	StaleHeadBindings    []StaleHeadBinding       `json:"stale_head_bindings"`
@@ -198,6 +199,16 @@ func (s *IntentStore) Begin(intent SteeringIntent) (*SteeringIntent, error) {
 	}
 	if len(intent.DepositAudits) == 0 {
 		return nil, errors.New("steering intent has no operator deposit audits")
+	}
+	if len(intent.EligibleHeadUIDs) != 0 {
+		if len(intent.SelectedHeadUIDs) > int(^uint16(0)) {
+			return nil, errors.New("steering intent selected head count exceeds uint16")
+		}
+		if err := ValidateHeadSelectionEvidence(intent.EligibleHeadUIDs, intent.EligibleHeadScores, intent.SelectedHeadUIDs, intent.RejectedHeadUIDs, uint16(len(intent.SelectedHeadUIDs))); err != nil {
+			return nil, fmt.Errorf("steering intent head selection: %w", err)
+		}
+	} else if len(intent.EligibleHeadScores) != 0 || len(intent.SelectedHeadUIDs) != 0 || len(intent.RejectedHeadUIDs) != 0 {
+		return nil, errors.New("steering intent head selection is partial")
 	}
 	for index, audit := range intent.DepositAudits {
 		if audit.NoID == 0 || audit.Epoch != intent.SettlementEpoch || audit.Status == "" || audit.Disposition == "" || (index > 0 && audit.NoID <= intent.DepositAudits[index-1].NoID) {

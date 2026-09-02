@@ -153,6 +153,7 @@ type releaseHeadMember struct {
 
 type releaseHeadResult struct {
 	Weights       []ExactWeightInput
+	Eligible      []ExactWeightInput
 	Bound         map[uint64]map[connect.Id]bool
 	Controlled    map[uint16]bool
 	EligibleUIDs  []uint16
@@ -272,6 +273,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot) (releaseHeadResul
 	})
 	return releaseHeadResult{
 		Weights:       selection.Selected,
+		Eligible:      append(append([]ExactWeightInput(nil), selection.Selected...), selection.Rejected...),
 		Bound:         bound,
 		Controlled:    controlledHead,
 		EligibleUIDs:  append(headSelectionUIDs(selection.Selected), headSelectionUIDs(selection.Rejected)...),
@@ -647,6 +649,14 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	eligibleScores := make([]*big.Rat, len(head.Eligible))
+	for index := range head.Eligible {
+		eligibleScores[index] = head.Eligible[index].Score
+	}
+	encodedEligibleScores, err := rationalJSON(eligibleScores)
+	if err != nil {
+		return err
+	}
 	prepared, err := crv4.PrepareWeightsCRv4Exact(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, releaseSubmitOptions(s.cfg))
 	if err != nil {
 		return err
@@ -667,6 +677,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 		SelfUID:             selfUID,
 		MaskedUIDs:          maskedUIDs,
 		EligibleHeadUIDs:    head.EligibleUIDs,
+		EligibleHeadScores:  encodedEligibleScores,
 		SelectedHeadUIDs:    head.SelectedUIDs,
 		RejectedHeadUIDs:    head.RejectedUIDs,
 		StaleHeadBindings:   head.StaleBindings,

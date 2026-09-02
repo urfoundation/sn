@@ -100,6 +100,7 @@ type ValidatorObservation struct {
 	SelfUID            uint16                      `json:"self_uid"`
 	MaskedUIDs         []uint16                    `json:"masked_uids,omitempty"`
 	EligibleHeadUIDs   []uint16                    `json:"eligible_head_uids,omitempty"`
+	EligibleHeadScores []validatorpkg.RationalJSON `json:"eligible_head_scores,omitempty"`
 	SelectedHeadUIDs   []uint16                    `json:"selected_head_uids,omitempty"`
 	RejectedHeadUIDs   []uint16                    `json:"rejected_head_uids,omitempty"`
 	HeadDecisionEpochs int                         `json:"head_decision_epochs"`
@@ -187,10 +188,13 @@ type ScenarioResult struct {
 	Netuid               uint16                     `json:"netuid"`
 	StartedAt            string                     `json:"started_at"`
 	CompletedAt          string                     `json:"completed_at"`
+	CampaignStartHead    ChainHead                  `json:"campaign_start_finalized_head"`
+	CampaignStartEpoch   uint64                     `json:"campaign_start_epoch"`
 	StartHead            ChainHead                  `json:"start_finalized_head"`
 	EndHead              ChainHead                  `json:"end_finalized_head"`
 	StartEpoch           uint64                     `json:"start_epoch"`
 	EndEpoch             uint64                     `json:"end_epoch"`
+	AcceptanceWindow     *ScenarioAcceptanceWindow  `json:"acceptance_window,omitempty"`
 	AssertionCount       int                        `json:"assertion_count"`
 	FailedAssertionCount int                        `json:"failed_assertion_count"`
 	Assertions           []AssertionRecord          `json:"assertions"`
@@ -201,6 +205,26 @@ type ScenarioResult struct {
 	PublishedEvidence    []PublishedEvidence        `json:"published_evidence,omitempty"`
 	EvidenceHash         string                     `json:"evidence_hash"`
 	Result               string                     `json:"result"`
+}
+
+// ScenarioAcceptanceWindow binds a release result to complete contract epochs
+// which begin only after preparation and observation are live. EndBlock is the
+// exclusive boundary after the last accepted epoch; TerminalBlock additionally
+// includes that policy's finalization offset.
+type ScenarioAcceptanceWindow struct {
+	Schema                  string    `json:"schema"`
+	BaselineHead            ChainHead `json:"baseline_finalized_head"`
+	BaselineObservationHash string    `json:"baseline_observation_hash"`
+	BaselineEpoch           uint64    `json:"baseline_epoch"`
+	FirstEpoch              uint64    `json:"first_epoch"`
+	EpochCount              uint64    `json:"epoch_count"`
+	EpochBlocks             uint64    `json:"epoch_blocks"`
+	StartBlock              uint64    `json:"start_block"`
+	EndBlock                uint64    `json:"end_block"`
+	FinalizeOffsetBlocks    uint64    `json:"finalize_offset_blocks"`
+	TerminalBlock           uint64    `json:"terminal_block"`
+	PolicyEffectiveEpoch    uint64    `json:"policy_effective_epoch"`
+	PolicyEffectiveBlock    uint64    `json:"policy_effective_block"`
 }
 
 type ScenarioEvidenceBundle struct {
@@ -239,6 +263,7 @@ type scenarioEvaluation struct {
 	Start      *ScenarioObservation
 	Current    *ScenarioObservation
 	GoalEpoch  uint64
+	Window     *ScenarioAcceptanceWindow
 	Definition scenarioDefinition
 }
 
@@ -271,6 +296,122 @@ func scenarioDefinitionHash(definition scenarioDefinition) (string, error) {
 		}
 		return ids
 	}(), Faults: definition.Faults, MatrixHash: definition.MatrixHash, AdversarialMatrixHash: definition.AdversarialMatrixHash})
+}
+
+// buildScenarioAcceptanceWindow derives the first future full epoch from one
+// finalized post-preparation snapshot. It never counts the baseline's partial
+// epoch and uses checked arithmetic for every evidence boundary.
+func buildScenarioAcceptanceWindow(cfg *ResolvedConfig, definition scenarioDefinition, baseline *ScenarioObservation) (*ScenarioAcceptanceWindow, error) {
+	if definition.Name != "release-1.0" && definition.Name != "production-soak" {
+		return nil, nil
+	}
+	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || baseline == nil || baseline.Status == nil || baseline.Status.Contracts == nil {
+		return nil, errors.New("scenario acceptance baseline is incomplete")
+	}
+	contracts := baseline.Status.Contracts
+	policy := contracts.Policy
+	wantEpochs := uint64(cfg.Config.Scenarios.ShortEpochs)
+	wantBlocks := cfg.Policy.Settlement.EpochBlocks
+	wantRootWindow := cfg.Policy.Settlement.RootCommitWindowBlocks
+	wantFinalize := cfg.Policy.Settlement.FinalizeOffsetBlocks
+	wantCloseGrace := cfg.Policy.Settlement.CloseGraceBlocks
+	if definition.Name == "production-soak" {
+		wantEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs)
+		wantBlocks = cfg.Policy.ProductionCadence.EpochBlocks
+		wantRootWindow = cfg.Policy.ProductionCadence.RootCommitWindowBlocks
+		wantFinalize = cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
+		wantCloseGrace = cfg.Policy.ProductionCadence.CloseGraceBlocks
+		if policy.EffectiveEpoch == 0 || policy.EffectiveEpoch > contracts.CurrentEpoch {
+			return nil, fmt.Errorf("production acceptance baseline epoch %d does not use an active production policy effective at %d", contracts.CurrentEpoch, policy.EffectiveEpoch)
+		}
+	}
+	if wantEpochs == 0 || definition.GoalEpochs != wantEpochs {
+		return nil, fmt.Errorf("scenario %s acceptance epochs=%d definition=%d", definition.Name, wantEpochs, definition.GoalEpochs)
+	}
+	if policy.EpochBlocks != wantBlocks || policy.RootCommitWindowBlocks != wantRootWindow || policy.FinalizeOffsetBlocks != wantFinalize || policy.CloseGraceBlocks != wantCloseGrace {
+		return nil, fmt.Errorf("scenario %s baseline policy geometry=%d/%d/%d/%d want=%d/%d/%d/%d", definition.Name, policy.EpochBlocks, policy.RootCommitWindowBlocks, policy.FinalizeOffsetBlocks, policy.CloseGraceBlocks, wantBlocks, wantRootWindow, wantFinalize, wantCloseGrace)
+	}
+	if contracts.CurrentEpochStart > contracts.FinalizedHead.Number || contracts.FinalizedHead.Number >= contracts.CurrentEpochEnd || contracts.CurrentEpochEnd-contracts.CurrentEpochStart != wantBlocks {
+		return nil, fmt.Errorf("scenario %s baseline has inconsistent epoch geometry: epoch=%d head=%d start=%d end=%d blocks=%d", definition.Name, contracts.CurrentEpoch, contracts.FinalizedHead.Number, contracts.CurrentEpochStart, contracts.CurrentEpochEnd, wantBlocks)
+	}
+	firstEpoch, ok := checkedAdd(contracts.CurrentEpoch, 1)
+	if !ok {
+		return nil, errors.New("scenario acceptance first epoch overflows uint64")
+	}
+	span, ok := checkedMul(wantEpochs, wantBlocks)
+	if !ok {
+		return nil, errors.New("scenario acceptance epoch span overflows uint64")
+	}
+	endBlock, ok := checkedAdd(contracts.CurrentEpochEnd, span)
+	if !ok {
+		return nil, errors.New("scenario acceptance end block overflows uint64")
+	}
+	terminalBlock, ok := checkedAdd(endBlock, wantFinalize)
+	if !ok {
+		return nil, errors.New("scenario acceptance terminal block overflows uint64")
+	}
+	return &ScenarioAcceptanceWindow{
+		Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: contracts.FinalizedHead, BaselineObservationHash: baseline.ObservationHash,
+		BaselineEpoch: contracts.CurrentEpoch, FirstEpoch: firstEpoch, EpochCount: wantEpochs, EpochBlocks: wantBlocks,
+		StartBlock: contracts.CurrentEpochEnd, EndBlock: endBlock, FinalizeOffsetBlocks: wantFinalize, TerminalBlock: terminalBlock,
+		PolicyEffectiveEpoch: policy.EffectiveEpoch, PolicyEffectiveBlock: policy.EffectiveBlock,
+	}, nil
+}
+
+// acceptedEpochsTerminal proves that every operator position in every accepted
+// epoch reached the immutable vault's terminal entitlement state. A deliberate
+// missed root may carry zero value, but it must still be explicitly finalized.
+func acceptedEpochsTerminal(contracts *ContractView, window *ScenarioAcceptanceWindow, operators int) (bool, string) {
+	if contracts == nil || window == nil || operators < 1 {
+		return false, "accepted epoch terminal state is unavailable"
+	}
+	epochs := make(map[uint64]EpochView, len(contracts.Epochs))
+	for _, epoch := range contracts.Epochs {
+		if _, duplicate := epochs[epoch.Epoch]; duplicate {
+			return false, fmt.Sprintf("accepted epoch %d is duplicated", epoch.Epoch)
+		}
+		epochs[epoch.Epoch] = epoch
+	}
+	for offset := uint64(0); offset < window.EpochCount; offset++ {
+		epochID, ok := checkedAdd(window.FirstEpoch, offset)
+		if !ok {
+			return false, "accepted epoch id overflows uint64"
+		}
+		epoch, found := epochs[epochID]
+		if !found || len(epoch.Operators) != operators {
+			return false, fmt.Sprintf("accepted epoch %d operator positions=%d want=%d", epochID, len(epoch.Operators), operators)
+		}
+		seen := make(map[uint64]bool, operators)
+		for _, operator := range epoch.Operators {
+			if operator.NoID == 0 || operator.NoID > uint64(operators) || seen[operator.NoID] || operator.Status != 2 {
+				return false, fmt.Sprintf("accepted epoch %d operator %d has duplicate/invalid terminal status %d", epochID, operator.NoID, operator.Status)
+			}
+			seen[operator.NoID] = true
+		}
+	}
+	return true, fmt.Sprintf("epochs=%d-%d operators=%d terminal", window.FirstEpoch, window.FirstEpoch+window.EpochCount-1, operators)
+}
+
+// acceptanceScenarioChecks prevents an epoch-number transition, partial
+// observation, or stale historical settlement from satisfying a release gate.
+func acceptanceScenarioChecks() []scenarioCheck {
+	return []scenarioCheck{
+		{ID: "complete_epoch_acceptance_window", Check: func(e *scenarioEvaluation) (bool, string) {
+			if e.Window == nil || e.Current == nil || e.Current.Status == nil || e.Current.Status.Contracts == nil {
+				return false, "complete-epoch acceptance window is unavailable"
+			}
+			contracts := e.Current.Status.Contracts
+			endEpoch, ok := checkedAdd(e.Window.FirstEpoch, e.Window.EpochCount)
+			passed := ok && contracts.FinalizedHead.Number >= e.Window.TerminalBlock && contracts.CurrentEpoch >= endEpoch
+			return passed, fmt.Sprintf("first=%d count=%d end_epoch=%d current_epoch=%d end_block=%d terminal=%d finalized=%d", e.Window.FirstEpoch, e.Window.EpochCount, endEpoch, contracts.CurrentEpoch, e.Window.EndBlock, e.Window.TerminalBlock, contracts.FinalizedHead.Number)
+		}},
+		{ID: "accepted_operator_epochs_terminal", Check: func(e *scenarioEvaluation) (bool, string) {
+			if e.Current == nil || e.Current.Status == nil {
+				return false, "accepted operator epoch state is unavailable"
+			}
+			return acceptedEpochsTerminal(e.Current.Status.Contracts, e.Window, e.Cfg.Config.Topology.Operators)
+		}},
+	}
 }
 
 func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation, error) {
@@ -1147,6 +1288,7 @@ func inspectValidatorIntent(stateDir string, validatorID, headSlots, candidateFl
 		result.SelfUID = latestApplied.SelfUID
 		result.MaskedUIDs = append([]uint16(nil), latestApplied.MaskedUIDs...)
 		result.EligibleHeadUIDs = append([]uint16(nil), latestApplied.EligibleHeadUIDs...)
+		result.EligibleHeadScores = append([]validatorpkg.RationalJSON(nil), latestApplied.EligibleHeadScores...)
 		result.SelectedHeadUIDs = append([]uint16(nil), latestApplied.SelectedHeadUIDs...)
 		result.RejectedHeadUIDs = append([]uint16(nil), latestApplied.RejectedHeadUIDs...)
 		result.StaleHeadBindings = len(latestApplied.StaleHeadBindings)
@@ -1413,7 +1555,7 @@ func epochScenarioChecks() []scenarioCheck {
 }
 
 func validateHeadSlotBoundary(validator ValidatorObservation, headSlots, candidateFleets int) (bool, string) {
-	if headSlots < 1 || candidateFleets <= headSlots {
+	if headSlots < 1 || headSlots > int(^uint16(0)) || candidateFleets <= headSlots {
 		return false, fmt.Sprintf("invalid boundary slots=%d candidates=%d", headSlots, candidateFleets)
 	}
 	if len(validator.EligibleHeadUIDs) != candidateFleets || len(validator.SelectedHeadUIDs) != headSlots || len(validator.RejectedHeadUIDs) != candidateFleets-headSlots {
@@ -1421,6 +1563,9 @@ func validateHeadSlotBoundary(validator ValidatorObservation, headSlots, candida
 	}
 	if validator.StaleHeadBindings != 0 {
 		return false, fmt.Sprintf("stale_head_bindings=%d", validator.StaleHeadBindings)
+	}
+	if err := validatorpkg.ValidateHeadSelectionEvidence(validator.EligibleHeadUIDs, validator.EligibleHeadScores, validator.SelectedHeadUIDs, validator.RejectedHeadUIDs, uint16(headSlots)); err != nil {
+		return false, fmt.Sprintf("score-ranked boundary: %v", err)
 	}
 	eligible := map[uint16]bool{}
 	for _, uid := range validator.EligibleHeadUIDs {
@@ -1464,40 +1609,62 @@ func validateHeadWeightDecision(cfg *ResolvedConfig, observation *ScenarioObserv
 	if len(candidateEvidence) != cfg.Config.Topology.fleetCandidates() {
 		return false, fmt.Sprintf("candidate evidence UIDs=%d want=%d", len(candidateEvidence), cfg.Config.Topology.fleetCandidates())
 	}
-	var selectedConsensus, rejectedConsensus []uint16
-	positiveSelected := map[uint16]bool{}
-	for index, validator := range observation.Validators {
+	poolEvidence := map[uint16]bool{}
+	if observation.Status == nil || observation.Status.Contracts == nil {
+		return false, "operator pool evidence is unavailable"
+	}
+	for _, operator := range observation.Status.Contracts.Operators {
+		if operator.PoolLive {
+			poolEvidence[operator.PoolUID] = true
+		}
+	}
+	if len(poolEvidence) != cfg.Config.Topology.Operators {
+		return false, fmt.Sprintf("live operator pool UIDs=%d want=%d", len(poolEvidence), cfg.Config.Topology.Operators)
+	}
+	uniqueSelected := map[uint16]bool{}
+	weightedSelections, zeroRejections := 0, 0
+	for _, validator := range observation.Validators {
 		if ok, detail := validateHeadSlotBoundary(validator, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates()); !ok {
 			return false, fmt.Sprintf("validator=%d %s", validator.ValidatorID, detail)
 		}
 		selected, rejected := sortedUIDs(validator.SelectedHeadUIDs), sortedUIDs(validator.RejectedHeadUIDs)
-		if index == 0 {
-			selectedConsensus, rejectedConsensus = selected, rejected
-		} else if !slices.Equal(selectedConsensus, selected) || !slices.Equal(rejectedConsensus, rejected) {
-			return false, fmt.Sprintf("validator=%d head boundary differs from validator consensus", validator.ValidatorID)
-		}
 		weights, masked := map[uint16]uint16{}, uint16Set(validator.MaskedUIDs)
 		for _, weight := range validator.AppliedWeights {
+			if _, duplicate := weights[weight.UID]; duplicate {
+				return false, fmt.Sprintf("validator=%d applied UID=%d is duplicated", validator.ValidatorID, weight.UID)
+			}
 			weights[weight.UID] = weight.Value
+		}
+		selectedSet := uint16Set(selected)
+		for uid, value := range weights {
+			if value > 0 && !selectedSet[uid] && !poolEvidence[uid] {
+				return false, fmt.Sprintf("validator=%d unapproved head claimant UID=%d applied weight=%d", validator.ValidatorID, uid, value)
+			}
 		}
 		for _, uid := range selected {
 			if !candidateEvidence[uid] {
 				return false, fmt.Sprintf("validator=%d selected unknown candidate UID=%d", validator.ValidatorID, uid)
 			}
-			if !masked[uid] && weights[uid] > 0 {
-				positiveSelected[uid] = true
+			uniqueSelected[uid] = true
+			if masked[uid] {
+				if weights[uid] != 0 {
+					return false, fmt.Sprintf("validator=%d masked selected UID=%d applied weight=%d", validator.ValidatorID, uid, weights[uid])
+				}
+				continue
 			}
+			if weights[uid] == 0 {
+				return false, fmt.Sprintf("validator=%d selected UID=%d has zero applied weight", validator.ValidatorID, uid)
+			}
+			weightedSelections++
 		}
 		for _, uid := range rejected {
 			if !candidateEvidence[uid] || weights[uid] != 0 {
 				return false, fmt.Sprintf("validator=%d rejected UID=%d applied weight=%d", validator.ValidatorID, uid, weights[uid])
 			}
+			zeroRejections++
 		}
 	}
-	if len(positiveSelected) != cfg.Config.Topology.HeadSlots {
-		return false, fmt.Sprintf("selected UIDs with a non-masked positive applied weight=%d want=%d", len(positiveSelected), cfg.Config.Topology.HeadSlots)
-	}
-	return true, fmt.Sprintf("candidate_fleets=%d selected_positive=%d rejected_zero=%d", len(candidateEvidence), len(positiveSelected), len(rejectedConsensus))
+	return true, fmt.Sprintf("candidate_fleets=%d unique_selected=%d weighted_validator_selections=%d zero_validator_rejections=%d", len(candidateEvidence), len(uniqueSelected), weightedSelections, zeroRejections)
 }
 
 func nativeRewardAt(rewards *NativeRewardObservation, uid uint16) (*big.Int, uint16, uint16, bool) {
@@ -1523,26 +1690,41 @@ func validateNativeRewardChannels(cfg *ResolvedConfig, observation *ScenarioObse
 	if len(observation.Validators) != cfg.Config.Topology.Validators || len(observation.CandidateFleetUIDs) != cfg.Config.Topology.fleetCandidates() {
 		return false, "native reward role identities are incomplete"
 	}
-	selected, rejected := uint16Set(observation.Validators[0].SelectedHeadUIDs), uint16Set(observation.Validators[0].RejectedHeadUIDs)
-	paidHeads, unpaidHeads := 0, 0
+	selectedBy := map[uint16]int{}
+	for _, validator := range observation.Validators {
+		if ok, detail := validateHeadSlotBoundary(validator, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates()); !ok {
+			return false, fmt.Sprintf("validator=%d %s", validator.ValidatorID, detail)
+		}
+		for _, uid := range validator.SelectedHeadUIDs {
+			selectedBy[uid]++
+		}
+	}
+	paidHeads, unanimousPaid, unanimousRejectedUnpaid, contested := 0, 0, 0, 0
 	for _, uid := range observation.CandidateFleetUIDs {
 		emission, incentive, _, ok := nativeRewardAt(observation.NativeRewards, uid)
 		if !ok {
 			return false, fmt.Sprintf("candidate UID=%d has no exact native reward row", uid)
 		}
-		switch {
-		case selected[uid]:
-			if emission.Sign() <= 0 || incentive == 0 {
-				return false, fmt.Sprintf("selected UID=%d emission=%s incentive=%d", uid, emission, incentive)
-			}
+		paid := emission.Sign() > 0 && incentive > 0
+		if (emission.Sign() > 0) != (incentive > 0) {
+			return false, fmt.Sprintf("candidate UID=%d has inconsistent emission=%s incentive=%d", uid, emission, incentive)
+		}
+		if paid {
 			paidHeads++
-		case rejected[uid]:
-			if emission.Sign() != 0 || incentive != 0 {
-				return false, fmt.Sprintf("rejected UID=%d emission=%s incentive=%d", uid, emission, incentive)
+		}
+		switch selectedBy[uid] {
+		case len(observation.Validators):
+			if emission.Sign() <= 0 || incentive == 0 {
+				return false, fmt.Sprintf("unanimously selected UID=%d emission=%s incentive=%d", uid, emission, incentive)
 			}
-			unpaidHeads++
+			unanimousPaid++
+		case 0:
+			if emission.Sign() != 0 || incentive != 0 {
+				return false, fmt.Sprintf("unanimously rejected UID=%d emission=%s incentive=%d", uid, emission, incentive)
+			}
+			unanimousRejectedUnpaid++
 		default:
-			return false, fmt.Sprintf("candidate UID=%d is absent from the consensus head decision", uid)
+			contested++
 		}
 	}
 	paidPools := 0
@@ -1567,8 +1749,8 @@ func validateNativeRewardChannels(cfg *ResolvedConfig, observation *ScenarioObse
 		}
 		paidValidators++
 	}
-	ok := paidHeads == cfg.Config.Topology.HeadSlots && unpaidHeads == cfg.Config.Topology.fleetCandidates()-cfg.Config.Topology.HeadSlots && paidPools == cfg.Config.Topology.Operators && paidValidators == cfg.Config.Topology.Validators
-	return ok, fmt.Sprintf("native paid_heads=%d rejected_unpaid=%d pools=%d validators=%d block=%d", paidHeads, unpaidHeads, paidPools, paidValidators, observation.NativeRewards.FinalizedHead.Number)
+	ok := paidPools == cfg.Config.Topology.Operators && paidValidators == cfg.Config.Topology.Validators
+	return ok, fmt.Sprintf("native paid_heads=%d unanimous_paid=%d unanimous_rejected_unpaid=%d contested=%d pools=%d validators=%d block=%d", paidHeads, unanimousPaid, unanimousRejectedUnpaid, contested, paidPools, paidValidators, observation.NativeRewards.FinalizedHead.Number)
 }
 
 func releaseScenarioChecks() []scenarioCheck {
@@ -1708,12 +1890,25 @@ func releaseScenarioChecks() []scenarioCheck {
 			return validateHeadWeightDecision(e.Cfg, e.Current)
 		}},
 		{ID: "head_promotion_demotion_transition", Check: func(e *scenarioEvaluation) (bool, string) {
-			for _, validator := range e.Current.Validators {
-				if validator.HeadDecisionEpochs < 2 || validator.HeadTransitions == 0 || len(validator.PromotedHeadUIDs) == 0 || len(validator.DemotedHeadUIDs) == 0 {
-					return false, fmt.Sprintf("validator=%d decisions=%d transitions=%d promoted=%v demoted=%v", validator.ValidatorID, validator.HeadDecisionEpochs, validator.HeadTransitions, validator.PromotedHeadUIDs, validator.DemotedHeadUIDs)
-				}
+			if e.Start == nil || len(e.Start.Validators) != e.Cfg.Config.Topology.Validators {
+				return false, "head transition baseline is unavailable"
 			}
-			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, "every validator observed a top-200 entrant and exit under the bounded head fault"
+			baseline := make(map[int]ValidatorObservation, len(e.Start.Validators))
+			for _, validator := range e.Start.Validators {
+				if validator.ValidatorID < 1 || validator.ValidatorID > e.Cfg.Config.Topology.Validators || baseline[validator.ValidatorID].ValidatorID != 0 {
+					return false, fmt.Sprintf("head transition baseline validator=%d is invalid or duplicated", validator.ValidatorID)
+				}
+				baseline[validator.ValidatorID] = validator
+			}
+			currentSeen := make(map[int]bool, len(e.Current.Validators))
+			for _, validator := range e.Current.Validators {
+				prior, ok := baseline[validator.ValidatorID]
+				if !ok || currentSeen[validator.ValidatorID] || validator.HeadDecisionEpochs-prior.HeadDecisionEpochs < 2 || validator.HeadTransitions-prior.HeadTransitions < 2 || len(validator.PromotedHeadUIDs) == 0 || len(validator.DemotedHeadUIDs) == 0 {
+					return false, fmt.Sprintf("validator=%d decisions=%d->%d transitions=%d->%d promoted=%v demoted=%v", validator.ValidatorID, prior.HeadDecisionEpochs, validator.HeadDecisionEpochs, prior.HeadTransitions, validator.HeadTransitions, validator.PromotedHeadUIDs, validator.DemotedHeadUIDs)
+				}
+				currentSeen[validator.ValidatorID] = true
+			}
+			return len(e.Current.Validators) == e.Cfg.Config.Topology.Validators, "every validator observed a fresh top-200 entrant and restoration exit inside this acceptance run"
 		}},
 		{ID: "native_head_pool_and_validator_rewards", Check: func(e *scenarioEvaluation) (bool, string) {
 			return validateNativeRewardChannels(e.Cfg, e.Current)
@@ -2030,6 +2225,7 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		definition.Faults = faults
 		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
 		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
+		definition.Checks = append(definition.Checks, acceptanceScenarioChecks()...)
 		matrix, err := loadScenarioMatrix(cfg.Repos.SN)
 		if err != nil {
 			return scenarioDefinition{}, fmt.Errorf("release scenario matrix: %w", err)
@@ -2049,13 +2245,15 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		if cfg.Config.Scenarios.ProductionEpochs < 3 {
 			return scenarioDefinition{}, errors.New("production soak requires three complete testnet UR blocks")
 		}
-		// One epoch reaches the scheduled boundary; the configured count then
-		// represents complete production epochs after that boundary.
-		definition.GoalEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs) + 1
+		// The post-preparation partial epoch is represented by the acceptance
+		// baseline, not GoalEpochs. Only the three subsequent complete production
+		// epochs are accepted.
+		definition.GoalEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs)
 		definition.Faults = productionRollingFaults(cfg)
 		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
 		definition.Checks = append(definition.Checks, releaseScenarioChecks()...)
 		definition.Checks = append(definition.Checks, productionScenarioChecks()...)
+		definition.Checks = append(definition.Checks, acceptanceScenarioChecks()...)
 		if err := enableContinuousAdversaries(cfg, &definition); err != nil {
 			return scenarioDefinition{}, err
 		}
@@ -2073,11 +2271,14 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 
 func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Duration {
 	blocks := definition.GoalEpochs * cfg.Policy.Settlement.EpochBlocks
+	if definition.Name == "release-1.0" {
+		blocks += cfg.Policy.Settlement.FinalizeOffsetBlocks
+	}
 	if definition.Name == "production-soak" {
-		// Preparation can consume the short-policy remainder and part of the
-		// first production epoch while proving the live deposit penalty. Exclude
-		// that partial epoch, then observe three complete production epochs.
-		blocks = cfg.Policy.Settlement.EpochBlocks + uint64(cfg.Config.Scenarios.ProductionEpochs+1)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
+		// Preparation owns the discarded partial production epoch. The timed
+		// acceptance window starts at its next boundary and contains exactly the
+		// configured complete epochs plus terminal finalization.
+		blocks = uint64(cfg.Config.Scenarios.ProductionEpochs)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
 	}
 	for _, fault := range definition.Faults {
 		if end := fault.TriggerOffsetBlocks + fault.DurationBlocks; end > blocks {
@@ -2224,25 +2425,16 @@ func appendObservation(path string, observation *ScenarioObservation) error {
 	return closeErr
 }
 
-func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start, current *ScenarioObservation, started time.Time) []AssertionRecord {
+func evaluateScenario(cfg *ResolvedConfig, definition scenarioDefinition, start, current *ScenarioObservation, window *ScenarioAcceptanceWindow, started time.Time) []AssertionRecord {
 	goal := uint64(0)
-	if start != nil && start.Status != nil && start.Status.Contracts != nil {
-		switch definition.Name {
-		case "production-soak":
-			// Discard the possibly partial epoch containing the first snapshot,
-			// then require three complete 360-block epochs. The anomaly ledger
-			// retains every observation, so any transient warning still fails the
-			// run rather than being hidden by later recovery.
-			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
-		default:
-			// Campaign epochs are relative to the first live-topology
-			// observation. Contract deployment and fleet setup can take many
-			// accelerated epochs on a public finalized RPC; counting those as
-			// release coverage would let a delayed launch pass immediately.
-			goal = start.Status.Contracts.CurrentEpoch + definition.GoalEpochs
-		}
+	if window != nil {
+		goal, _ = checkedAdd(window.FirstEpoch, window.EpochCount)
+	} else if start != nil && start.Status != nil && start.Status.Contracts != nil {
+		// Non-release scenarios retain their relative epoch goal. Release
+		// scenarios use the complete-epoch window above.
+		goal, _ = checkedAdd(start.Status.Contracts.CurrentEpoch, definition.GoalEpochs)
 	}
-	evaluation := &scenarioEvaluation{Cfg: cfg, Start: start, Current: current, GoalEpoch: goal, Definition: definition}
+	evaluation := &scenarioEvaluation{Cfg: cfg, Start: start, Current: current, GoalEpoch: goal, Window: window, Definition: definition}
 	now := time.Now().UTC()
 	assertions := make([]AssertionRecord, 0, len(definition.Checks))
 	for _, check := range definition.Checks {
@@ -2278,6 +2470,28 @@ func appendFaultAssertions(assertions []AssertionRecord, records []ScenarioFault
 		}
 		assertions = append(assertions, AssertionRecord{ID: "fault_" + record.ID, Passed: passed, Message: message, StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash})
 	}
+	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
+	return assertions
+}
+
+// appendAcceptanceFaultAssertion proves that every planned disruption was
+// applied and restored inside the complete-epoch evidence window. Preparation
+// and terminal settlement therefore cannot hide a late fault outside M2/M3.
+func appendAcceptanceFaultAssertion(assertions []AssertionRecord, records []ScenarioFaultRecord, window *ScenarioAcceptanceWindow, started time.Time, current *ScenarioObservation) []AssertionRecord {
+	if window == nil {
+		return assertions
+	}
+	passed := len(records) > 0
+	detail := "all scheduled faults are inside the accepted epochs"
+	for _, record := range records {
+		if record.TriggerBlock < window.StartBlock || record.RestoreBlock > window.EndBlock || record.AppliedBlock < window.StartBlock || record.RestoredBlock > window.EndBlock {
+			passed = false
+			detail = fmt.Sprintf("fault %s interval trigger/restore=%d/%d applied/restored=%d/%d window=%d/%d", record.ID, record.TriggerBlock, record.RestoreBlock, record.AppliedBlock, record.RestoredBlock, window.StartBlock, window.EndBlock)
+			break
+		}
+	}
+	now := time.Now().UTC()
+	assertions = append(assertions, AssertionRecord{ID: "faults_within_acceptance_window", Passed: passed, Message: detail, StartedAt: started.UTC().Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash})
 	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
 	return assertions
 }
@@ -2420,6 +2634,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if start.Status == nil || start.Status.Contracts == nil {
 		return initialFailure(start, errors.New("scenario requires an installed contract deployment"))
 	}
+	campaignStart := start
 	observationHistory = append(observationHistory, start)
 	if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), start); err != nil {
 		return initialFailure(start, fmt.Errorf("persist initial scenario observation: %w", err))
@@ -2448,7 +2663,21 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			return initialFailure(current, fmt.Errorf("persist post-preparation scenario observation: %w", err))
 		}
 	}
-	faults, err := initializeFaultRecords(current.Status.Contracts.FinalizedHead.Number, definition.Faults)
+	// A release acceptance interval begins only at the next contract boundary
+	// after all preparation is complete. The current partial epoch remains in
+	// the anomaly history but cannot count toward the five-plus-three gate.
+	window, err := buildScenarioAcceptanceWindow(cfg, definition, current)
+	if err != nil {
+		return initialFailure(current, fmt.Errorf("build complete-epoch acceptance window: %w", err))
+	}
+	if window != nil {
+		start = current
+	}
+	faultBase := current.Status.Contracts.FinalizedHead.Number
+	if window != nil {
+		faultBase = window.StartBlock
+	}
+	faults, err := initializeFaultRecords(faultBase, definition.Faults)
 	if err != nil {
 		return initialFailure(current, fmt.Errorf("initialize scenario faults: %w", err))
 	}
@@ -2462,8 +2691,11 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			}
 		}
 	}()
-	assertions := appendFaultAssertions(evaluateScenario(cfg, definition, start, current, started), faults, started, current)
-	deadline := started.Add(options.Timeout)
+	assertions := appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
+	assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
+	// Preparation actions have their own bounded waits. Give the exact accepted
+	// interval its complete timeout instead of consuming it during preparation.
+	deadline := options.Now().Add(options.Timeout)
 	var faultErr error
 	var terminalErr error
 	var runtimeAssertions []AssertionRecord
@@ -2530,7 +2762,8 @@ scenarioLoop:
 		if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
 			return initialFailure(current, fmt.Errorf("persist scenario observation: %w", err))
 		}
-		assertions = appendFaultAssertions(evaluateScenario(cfg, definition, start, current, started), faults, started, current)
+		assertions = appendFaultAssertions(evaluateScenario(cfg, definition, start, current, window, started), faults, started, current)
+		assertions = appendAcceptanceFaultAssertion(assertions, faults, window, started, current)
 		if faultErr != nil {
 			break
 		}
@@ -2555,13 +2788,14 @@ scenarioLoop:
 		DeploymentID: cfg.Config.Deployment.DeploymentID, Name: definition.Name, ScenarioDefinition: definitionHash, ScenarioMatrix: definition.MatrixHash, AdversarialMatrix: definition.AdversarialMatrixHash,
 		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
 		StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano),
+		CampaignStartHead: campaignStart.Status.Contracts.FinalizedHead, CampaignStartEpoch: campaignStart.Status.Contracts.CurrentEpoch,
 		StartHead: start.Status.Contracts.FinalizedHead, EndHead: current.Status.Contracts.FinalizedHead,
-		StartEpoch: start.Status.Contracts.CurrentEpoch, EndEpoch: current.Status.Contracts.CurrentEpoch,
+		StartEpoch: start.Status.Contracts.CurrentEpoch, EndEpoch: current.Status.Contracts.CurrentEpoch, AcceptanceWindow: window,
 		Assertions: assertions, Faults: faults, Adversaries: adversaryEvidence,
 		ValueReconciliation: map[string]string{"captured_rao": current.Status.Contracts.TotalCaptured, "paid_rao": current.Status.Contracts.TotalPaid, "escrow_accounted_rao": current.Status.Contracts.EscrowAccounted, "pending_funding_rao": current.Status.Contracts.PendingFunding, "outstanding_liability_rao": current.Status.Contracts.Outstanding, "live_escrow_stake_rao": current.Status.Contracts.LiveEscrowStake, "reserve_principal_rao": current.Status.Contracts.ReservePrincipal, "reserve_live_stake_rao": current.Status.Contracts.ReserveLiveStake},
 		Result:              "pass",
 	}
-	attachScenarioAnomalyGate(result, completed, start, current, observationHistory...)
+	attachScenarioAnomalyGate(result, completed, campaignStart, current, observationHistory...)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 	if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 		return nil, err
@@ -2579,7 +2813,7 @@ scenarioLoop:
 		} else {
 			result.PublishedEvidence = published
 		}
-		attachScenarioAnomalyGate(result, options.Now().UTC(), start, current, observationHistory...)
+		attachScenarioAnomalyGate(result, options.Now().UTC(), campaignStart, current, observationHistory...)
 		result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 		if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 			return nil, err
@@ -2592,7 +2826,7 @@ scenarioLoop:
 			CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(),
 			ObservationHash: current.ObservationHash,
 		})
-		attachScenarioAnomalyGate(result, now, start, current, observationHistory...)
+		attachScenarioAnomalyGate(result, now, campaignStart, current, observationHistory...)
 		result.EvidenceHash, _ = canonicalScenarioResultHash(result)
 		return result, errors.Join(failure, writeScenarioOutputs(cfg, runDir, result, current))
 	}
@@ -2809,7 +3043,7 @@ func executePrecompileActions(ctx context.Context, executor *Executor) error {
 	return nil
 }
 
-func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, _ *Journal, executor *Executor) error {
+func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor) error {
 	// Validate the immutable definition before any live action. A malformed
 	// release matrix must not be able to leave the coordinator paused/upgraded.
 	definition, err := scenarioDefinitionFor(cfg, name)
@@ -2820,6 +3054,24 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	if err != nil {
 		return err
 	}
+	runtimeCfg, err := campaignRPCConfig(cfg)
+	if err != nil {
+		return err
+	}
+	scenarioExecutor := executor
+	if executor != nil {
+		if journal == nil || executor.plan == nil {
+			return errors.New("live scenario RPC handoff requires the approved plan and journal")
+		}
+		scenarioExecutor, runtimeCfg, err = NewCampaignExecutor(ctx, cfg, stateDir, executor.plan, journal, roles)
+		if err != nil {
+			return fmt.Errorf("open campaign executor through shared EVM egress: %w", err)
+		}
+		defer scenarioExecutor.Close()
+		if err := scenarioExecutor.ensurePayloads(ctx); err != nil {
+			return fmt.Errorf("load campaign deployment through shared EVM egress: %w", err)
+		}
+	}
 	var campaign adversaryCampaign
 	if definition.AdversarialMatrixHash != "" {
 		matrix, matrixErr := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
@@ -2829,7 +3081,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 		if matrix.Hash != definition.AdversarialMatrixHash {
 			return errors.New("adversarial matrix changed after scenario definition validation")
 		}
-		actors, actorErr := newLiveAdversaryActors(cfg, stateDir, roles)
+		actors, actorErr := newLiveAdversaryActors(runtimeCfg, stateDir, roles)
 		if actorErr != nil {
 			return actorErr
 		}
@@ -2841,10 +3093,10 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	}
 	prepare := func(prepareCtx context.Context) error {
 		if name == "precompile-conformance" {
-			return executePrecompileActions(prepareCtx, executor)
+			return executePrecompileActions(prepareCtx, scenarioExecutor)
 		}
 		if name == "release-1.0" {
-			if executor == nil {
+			if scenarioExecutor == nil {
 				return errors.New("release scenario requires the approved deployment executor")
 			}
 			precompile, readErr := loadPrecompileEvidence(stateDir)
@@ -2853,7 +3105,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 				// adversaries cover the actual precompile happy path. A prior
 				// standalone run is adopted only after the same postconditions are
 				// revalidated by Executor.Execute.
-				if err := executePrecompileActions(prepareCtx, executor); err != nil {
+				if err := executePrecompileActions(prepareCtx, scenarioExecutor); err != nil {
 					return fmt.Errorf("release precompile conformance: %w", err)
 				}
 				precompile, readErr = loadPrecompileEvidence(stateDir)
@@ -2861,48 +3113,48 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 					return fmt.Errorf("release precompile evidence: %w", readErr)
 				}
 			}
-			if executor.payloads == nil {
+			if scenarioExecutor.payloads == nil {
 				return errors.New("release scenario requires installed deployment payloads")
 			}
-			if identityErr := validatePrecompileEvidenceIdentity(cfg, &executor.payloads.Manifest, precompile); identityErr != nil {
+			if identityErr := validatePrecompileEvidenceIdentity(cfg, &scenarioExecutor.payloads.Manifest, precompile); identityErr != nil {
 				return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
 			}
 			if !precompileEvidenceComplete(precompile) {
 				return errors.New("release scenario precompile-conformance gate is incomplete")
 			}
 			waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
-			if err := waitForGovernanceDrillReady(prepareCtx, executor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
+			if err := waitForGovernanceDrillReady(prepareCtx, scenarioExecutor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
 				return err
 			}
-			for _, action := range executor.plan.Actions {
+			for _, action := range scenarioExecutor.plan.Actions {
 				if strings.HasPrefix(action.ID, "governance.") {
-					if err := executor.Execute(prepareCtx, action); err != nil {
+					if err := scenarioExecutor.Execute(prepareCtx, action); err != nil {
 						return err
 					}
 				}
 			}
 		}
 		if name == "production-soak" {
-			if executor == nil {
+			if scenarioExecutor == nil {
 				return errors.New("production soak requires the approved deployment executor")
 			}
-			for _, action := range executor.plan.Actions {
+			for _, action := range scenarioExecutor.plan.Actions {
 				if isProductionTransitionAction(action) {
-					if err := executor.Execute(prepareCtx, action); err != nil {
+					if err := scenarioExecutor.Execute(prepareCtx, action); err != nil {
 						return err
 					}
 				}
 			}
-			if err := rotateOperatorVerifyKeys(prepareCtx, cfg, stateDir); err != nil {
+			if err := rotateOperatorVerifyKeys(prepareCtx, runtimeCfg, stateDir); err != nil {
 				return fmt.Errorf("rotate operator verify keys: %w", err)
 			}
-			if err := runDishonestDepositPhase(prepareCtx, cfg, stateDir, executor); err != nil {
+			if err := runDishonestDepositPhase(prepareCtx, runtimeCfg, stateDir, scenarioExecutor); err != nil {
 				return fmt.Errorf("live dishonest operator deposit: %w", err)
 			}
 		}
 		return nil
 	}
-	probe := &liveScenarioProbe{cfg: cfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
+	probe := &liveScenarioProbe{cfg: runtimeCfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
 	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, Adversaries: campaign, Prepare: prepare})
 	return err
 }

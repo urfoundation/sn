@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -65,6 +66,8 @@ type ContractView struct {
 	CoordinatorUpgrade CoordinatorUpgrade  `json:"coordinator_upgrade"`
 	FinalizedHead      ChainHead           `json:"finalized_head"`
 	CurrentEpoch       uint64              `json:"current_epoch"`
+	CurrentEpochStart  uint64              `json:"current_epoch_start_block"`
+	CurrentEpochEnd    uint64              `json:"current_epoch_end_block"`
 	OperatorCount      uint64              `json:"operator_count"`
 	PolicyHash         string              `json:"policy_hash,omitempty"`
 	ConservationHolds  bool                `json:"conservation_holds"`
@@ -86,6 +89,7 @@ type ContractView struct {
 
 type PolicyView struct {
 	EffectiveEpoch         uint64 `json:"effective_epoch"`
+	EffectiveBlock         uint64 `json:"effective_block"`
 	EpochBlocks            uint64 `json:"epoch_blocks"`
 	RootCommitWindowBlocks uint64 `json:"root_commit_window_blocks"`
 	FinalizeOffsetBlocks   uint64 `json:"finalize_offset_blocks"`
@@ -512,31 +516,63 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
-	callScalar := func(address common.Address, contractABI abi.ABI, method string, args ...any) (any, error) {
-		values, callErr := contractCallAt(ctx, client, address, contractABI, method, head.Number, args...)
-		if callErr != nil {
-			return nil, callErr
-		}
-		if len(values) != 1 {
-			return nil, fmt.Errorf("%s returned %d values", method, len(values))
-		}
-		return values[0], nil
-	}
-	currentEpoch, err := callBigUint(callScalar(deployment.CoordinatorProxy, coord, "currentEpoch"))
+	baseResults, err := readContractBatchAt(ctx, client, head.Number, []contractReadSpec{
+		{ID: "current_epoch", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "currentEpoch", Args: []any{}},
+		{ID: "operator_count", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "operatorCount", Args: []any{}},
+		{ID: "conservation_holds", Address: deployment.SettlementVault, ContractABI: vault, Method: "conservationHolds", Args: []any{}},
+		{ID: "total_captured", Address: deployment.SettlementVault, ContractABI: vault, Method: "totalCaptured", Args: []any{}},
+		{ID: "total_paid", Address: deployment.SettlementVault, ContractABI: vault, Method: "totalPaid", Args: []any{}},
+		{ID: "minimum_transfer", Address: deployment.SettlementVault, ContractABI: vault, Method: "minimumTransferTaoRao", Args: []any{}},
+		{ID: "escrow_accounted", Address: deployment.SettlementVault, ContractABI: vault, Method: "escrowAccounted", Args: []any{}},
+		{ID: "pending_funding", Address: deployment.SettlementVault, ContractABI: vault, Method: "pendingFunding", Args: []any{}},
+		{ID: "outstanding_liability", Address: deployment.SettlementVault, ContractABI: vault, Method: "outstandingLiability", Args: []any{}},
+		{ID: "live_escrow_stake", Address: deployment.SettlementVault, ContractABI: vault, Method: "liveEscrowStake", Args: []any{}},
+		{ID: "reserve_principal", Address: deployment.ReserveSink, ContractABI: reserve, Method: "principal", Args: []any{}},
+		{ID: "reserve_live_stake", Address: deployment.ReserveSink, ContractABI: reserve, Method: "liveStake", Args: []any{}},
+	})
 	if err != nil {
 		return nil, err
 	}
-	operatorCount, err := callBigUint(callScalar(deployment.CoordinatorProxy, coord, "operatorCount"))
+	currentEpoch, err := callBigUint(requiredContractScalar(baseResults, "current_epoch"))
 	if err != nil {
 		return nil, err
 	}
-	policyValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "policyAt", head.Number, new(big.Int).SetUint64(currentEpoch))
+	operatorCount, err := callBigUint(requiredContractScalar(baseResults, "operator_count"))
 	if err != nil {
 		return nil, err
+	}
+	if operatorCount != uint64(cfg.Config.Topology.Operators) {
+		return nil, fmt.Errorf("contract operator count %d does not match release topology %d", operatorCount, cfg.Config.Topology.Operators)
+	}
+	policySpecs := make([]contractReadSpec, 0, operatorCount+3)
+	policySpecs = append(policySpecs, contractReadSpec{
+		ID: "policy", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "policyAt",
+		Args: []any{new(big.Int).SetUint64(currentEpoch)},
+	}, contractReadSpec{
+		ID: "current_epoch_start", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "epochStartBlock",
+		Args: []any{new(big.Int).SetUint64(currentEpoch)},
+	}, contractReadSpec{
+		ID: "current_epoch_end", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "epochEndBlock",
+		Args: []any{new(big.Int).SetUint64(currentEpoch)},
+	})
+	for index := uint64(0); index < operatorCount; index++ {
+		policySpecs = append(policySpecs, contractReadSpec{
+			ID: fmt.Sprintf("operator_id_%d", index), Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "operatorIdAt",
+			Args: []any{new(big.Int).SetUint64(index)},
+		})
+	}
+	policyResults, err := readContractBatchAt(ctx, client, head.Number, policySpecs)
+	if err != nil {
+		return nil, err
+	}
+	policyValues := policyResults["policy"]
+	if len(policyValues) != 1 {
+		return nil, fmt.Errorf("policyAt returned %d values", len(policyValues))
 	}
 	policyHash := extractFirstBytes32(policyValues)
 	policy := PolicyView{
 		EffectiveEpoch:         tupleUint64(policyValues[0], "EffectiveEpoch"),
+		EffectiveBlock:         tupleUint64(policyValues[0], "EffectiveBlock"),
 		EpochBlocks:            tupleUint64(policyValues[0], "EpochBlocks"),
 		RootCommitWindowBlocks: tupleUint64(policyValues[0], "RootCommitWindowBlocks"),
 		FinalizeOffsetBlocks:   tupleUint64(policyValues[0], "FinalizeOffsetBlocks"),
@@ -546,48 +582,69 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		EpochDepositCapRao:     tupleDecimal(policyValues[0], "EpochDepositCapRao"),
 		CampaignDepositCapRao:  tupleDecimal(policyValues[0], "CampaignDepositCapRao"),
 	}
-	conservation, err := callBool(callScalar(deployment.SettlementVault, vault, "conservationHolds"))
+	currentEpochStart, err := callBigUint(requiredContractScalar(policyResults, "current_epoch_start"))
+	if err != nil {
+		return nil, fmt.Errorf("current epoch start: %w", err)
+	}
+	currentEpochEnd, err := callBigUint(requiredContractScalar(policyResults, "current_epoch_end"))
+	if err != nil {
+		return nil, fmt.Errorf("current epoch end: %w", err)
+	}
+	if currentEpochStart > head.Number || head.Number >= currentEpochEnd || currentEpochEnd-currentEpochStart != policy.EpochBlocks {
+		return nil, fmt.Errorf("current epoch %d has inconsistent finalized geometry: head=%d start=%d end=%d policy_blocks=%d", currentEpoch, head.Number, currentEpochStart, currentEpochEnd, policy.EpochBlocks)
+	}
+	operatorIDs := make([]uint64, 0, operatorCount)
+	seenOperatorIDs := make(map[uint64]bool, operatorCount)
+	for index := uint64(0); index < operatorCount; index++ {
+		id := fmt.Sprintf("operator_id_%d", index)
+		value, valueErr := requiredContractScalar(policyResults, id)
+		idBig, ok := value.(*big.Int)
+		if valueErr != nil || !ok || !idBig.IsUint64() || idBig.Uint64() == 0 || seenOperatorIDs[idBig.Uint64()] {
+			return nil, stateMismatchError(valueErr, "operatorIdAt(%d) returned invalid or duplicate value %T", index, value)
+		}
+		seenOperatorIDs[idBig.Uint64()] = true
+		operatorIDs = append(operatorIDs, idBig.Uint64())
+	}
+	conservation, err := callBool(requiredContractScalar(baseResults, "conservation_holds"))
 	if err != nil {
 		return nil, err
 	}
-	totalCaptured, err := callDecimal(callScalar(deployment.SettlementVault, vault, "totalCaptured"))
+	totalCaptured, err := callDecimal(requiredContractScalar(baseResults, "total_captured"))
 	if err != nil {
 		return nil, err
 	}
-	totalPaid, err := callDecimal(callScalar(deployment.SettlementVault, vault, "totalPaid"))
+	totalPaid, err := callDecimal(requiredContractScalar(baseResults, "total_paid"))
 	if err != nil {
 		return nil, err
 	}
-	minimumTransfer, err := callUint64(callScalar(deployment.SettlementVault, vault, "minimumTransferTaoRao"))
+	minimumTransfer, err := callUint64(requiredContractScalar(baseResults, "minimum_transfer"))
 	if err != nil {
 		return nil, fmt.Errorf("minimumTransferTaoRao: %w", err)
 	}
-	escrowAccounted, err := callDecimal(callScalar(deployment.SettlementVault, vault, "escrowAccounted"))
+	escrowAccounted, err := callDecimal(requiredContractScalar(baseResults, "escrow_accounted"))
 	if err != nil {
 		return nil, err
 	}
-	pendingFunding, err := callDecimal(callScalar(deployment.SettlementVault, vault, "pendingFunding"))
+	pendingFunding, err := callDecimal(requiredContractScalar(baseResults, "pending_funding"))
 	if err != nil {
 		return nil, err
 	}
-	outstanding, err := callDecimal(callScalar(deployment.SettlementVault, vault, "outstandingLiability"))
+	outstanding, err := callDecimal(requiredContractScalar(baseResults, "outstanding_liability"))
 	if err != nil {
 		return nil, err
 	}
-	liveEscrowStake, err := callDecimal(callScalar(deployment.SettlementVault, vault, "liveEscrowStake"))
+	liveEscrowStake, err := callDecimal(requiredContractScalar(baseResults, "live_escrow_stake"))
 	if err != nil {
 		return nil, err
 	}
-	principal, err := callDecimal(callScalar(deployment.ReserveSink, reserve, "principal"))
+	principal, err := callDecimal(requiredContractScalar(baseResults, "reserve_principal"))
 	if err != nil {
 		return nil, err
 	}
-	liveStake, err := callDecimal(callScalar(deployment.ReserveSink, reserve, "liveStake"))
+	liveStake, err := callDecimal(requiredContractScalar(baseResults, "reserve_live_stake"))
 	if err != nil {
 		return nil, err
 	}
-	hashes := map[string]string{}
-	matches := true
 	addresses := []common.Address{deployment.ReserveSink, deployment.SettlementVault, deployment.CoordinatorImplementation, deployment.CoordinatorProxy, deployment.GovernanceDrillImplementation}
 	if deployment.PrecompileProbe != (common.Address{}) {
 		addresses = append(addresses, deployment.PrecompileProbe)
@@ -595,33 +652,15 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if upgrade.Implementation != (common.Address{}) {
 		addresses = append(addresses, upgrade.Implementation)
 	}
-	for _, address := range addresses {
-		code, codeErr := client.CodeAt(ctx, address, new(big.Int).SetUint64(head.Number))
-		if codeErr != nil {
-			return nil, codeErr
-		}
-		hash := crypto.Keccak256Hash(code).Hex()
-		hashes[address.Hex()] = hash
-		want := deployment.RuntimeHashes[address.Hex()]
-		if address == upgrade.Implementation {
-			want = upgrade.RuntimeCodeHash
-		}
-		if want == "" || !strings.EqualFold(want, hash) {
-			matches = false
-		}
-	}
-	if upgrade.Implementation != (common.Address{}) {
-		raw, storageErr := client.StorageAt(ctx, deployment.CoordinatorProxy, common.HexToHash(erc1967ImplementationSlot), new(big.Int).SetUint64(head.Number))
-		if storageErr != nil {
-			return nil, storageErr
-		}
-		matches = matches && len(raw) == 32 && common.BytesToAddress(raw[12:]) == upgrade.Implementation
-	}
-	operators, epochs, err := inspectOperatorEpochs(ctx, client, deployment, coord, vault, head.Number, currentEpoch, operatorCount, policy)
+	hashes, matches, err := inspectRuntimeCodeAt(ctx, client, deployment, upgrade, addresses, head.Number)
 	if err != nil {
 		return nil, err
 	}
-	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, Policy: policy, Operators: operators, Epochs: epochs}, nil
+	operators, epochs, err := inspectOperatorEpochs(ctx, client, deployment, coord, vault, head.Number, currentEpoch, operatorIDs, policy)
+	if err != nil {
+		return nil, err
+	}
+	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, Policy: policy, Operators: operators, Epochs: epochs}, nil
 }
 
 func readDeploymentReference(ctx context.Context, source string) ([]byte, error) {
@@ -696,37 +735,12 @@ func loadDeploymentReference(ctx context.Context, stateDir, source string) (*Con
 	return &deployment, nil, nil
 }
 
-func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deployment *ContractDeployment, coord, vault abi.ABI, block, currentEpoch, operatorCount uint64, policy PolicyView) ([]OperatorView, []EpochView, error) {
-	operatorIDs := make([]uint64, 0, operatorCount)
-	operators := make([]OperatorView, 0, operatorCount)
-	for i := uint64(0); i < operatorCount; i++ {
-		idValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "operatorIdAt", block, new(big.Int).SetUint64(i))
-		if err != nil || len(idValues) != 1 {
-			return nil, nil, stateMismatchError(err, "operatorIdAt(%d) returned %d values", i, len(idValues))
-		}
-		idBig, ok := idValues[0].(*big.Int)
-		if !ok || !idBig.IsUint64() {
-			return nil, nil, fmt.Errorf("operatorIdAt(%d) returned %T", i, idValues[0])
-		}
-		noID := idBig.Uint64()
-		operatorIDs = append(operatorIDs, noID)
-		opValues, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "operatorAt", block, idBig, new(big.Int).SetUint64(currentEpoch))
-		if err != nil || len(opValues) != 1 {
-			return nil, nil, stateMismatchError(err, "operatorAt(%d) returned %d values", noID, len(opValues))
-		}
-		poolValues, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "pools", block, idBig)
-		if err != nil || len(poolValues) != 3 {
-			return nil, nil, stateMismatchError(err, "pools(%d) returned %d values", noID, len(poolValues))
-		}
-		conviction, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "cumulativeConviction", block, idBig)
-		if err != nil || len(conviction) != 1 {
-			return nil, nil, stateMismatchError(err, "cumulativeConviction(%d) returned %d values", noID, len(conviction))
-		}
-		carry, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "carry", block, idBig)
-		if err != nil || len(carry) != 1 {
-			return nil, nil, stateMismatchError(err, "carry(%d) returned %d values", noID, len(carry))
-		}
-		operators = append(operators, OperatorView{NoID: noID, Coldkey: tupleHex(opValues[0], "Coldkey"), PoolHotkey: tupleHex(opValues[0], "PoolHotkey"), DepositHotkey: tupleHex(opValues[0], "DepositHotkey"), DepositSigner: tupleAddress(opValues[0], "DepositSigner"), RootSigner: tupleAddress(opValues[0], "RootSigner"), EffectiveEpoch: tupleUint64(opValues[0], "EffectiveEpoch"), Active: tupleBool(opValues[0], "Active"), PoolUID: valueUint16(poolValues[1]), PoolLive: valueBool(poolValues[2]), ConvictionRao: valueDecimal(conviction[0]), CarryRao: valueDecimal(carry[0])})
+// inspectOperatorEpochs reconstructs all retained operator and settlement
+// state from one finalized block using bounded read batches. Every logical
+// result retains a unique identifier and its exact ABI cardinality checks.
+func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deployment *ContractDeployment, coord, vault abi.ABI, block, currentEpoch uint64, operatorIDs []uint64, policy PolicyView) ([]OperatorView, []EpochView, error) {
+	if client == nil || deployment == nil || block == 0 || len(operatorIDs) == 0 {
+		return nil, nil, errors.New("operator epoch read context is incomplete")
 	}
 	retention := policy.ClaimTTLEpochs + policy.ClaimGraceEpochs + 2
 	if retention < 3 {
@@ -736,35 +750,80 @@ func inspectOperatorEpochs(ctx context.Context, client *ethclient.Client, deploy
 		retention = 32
 	}
 	first := uint64(0)
-	if currentEpoch+1 > retention {
-		first = currentEpoch + 1 - retention
+	if currentEpoch >= retention {
+		first = currentEpoch - retention + 1
 	}
-	epochs := make([]EpochView, 0, currentEpoch-first+1)
-	for epoch := first; epoch <= currentEpoch; epoch++ {
-		epochView := EpochView{Epoch: epoch}
+	specs := make([]contractReadSpec, 0, len(operatorIDs)*4+int(currentEpoch-first+1)*len(operatorIDs)*4)
+	seenOperatorIDs := make(map[uint64]bool, len(operatorIDs))
+	for _, noID := range operatorIDs {
+		if noID == 0 || seenOperatorIDs[noID] {
+			return nil, nil, fmt.Errorf("operator id %d is zero or duplicated", noID)
+		}
+		seenOperatorIDs[noID] = true
+		n := new(big.Int).SetUint64(noID)
+		specs = append(specs,
+			contractReadSpec{ID: fmt.Sprintf("operator_%d_at", noID), Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "operatorAt", Args: []any{n, new(big.Int).SetUint64(currentEpoch)}},
+			contractReadSpec{ID: fmt.Sprintf("operator_%d_pool", noID), Address: deployment.SettlementVault, ContractABI: vault, Method: "pools", Args: []any{n}},
+			contractReadSpec{ID: fmt.Sprintf("operator_%d_conviction", noID), Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "cumulativeConviction", Args: []any{n}},
+			contractReadSpec{ID: fmt.Sprintf("operator_%d_carry", noID), Address: deployment.SettlementVault, ContractABI: vault, Method: "carry", Args: []any{n}},
+		)
+	}
+	for epoch := first; ; epoch++ {
 		for _, noID := range operatorIDs {
 			e := new(big.Int).SetUint64(epoch)
 			n := new(big.Int).SetUint64(noID)
-			deposit, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "epochDeposits", block, e, n)
-			if err != nil {
-				return nil, nil, err
+			prefix := fmt.Sprintf("epoch_%d_operator_%d", epoch, noID)
+			specs = append(specs,
+				contractReadSpec{ID: prefix + "_deposit", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "epochDeposits", Args: []any{e, n}},
+				contractReadSpec{ID: prefix + "_conviction", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "epochConvictionAdded", Args: []any{e, n}},
+				contractReadSpec{ID: prefix + "_root", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "rootCommitments", Args: []any{e, n}},
+				contractReadSpec{ID: prefix + "_entitlement", Address: deployment.SettlementVault, ContractABI: vault, Method: "entitlement", Args: []any{e, n}},
+			)
+		}
+		if epoch == currentEpoch {
+			break
+		}
+	}
+	results, err := readContractBatchAt(ctx, client, block, specs)
+	if err != nil {
+		return nil, nil, err
+	}
+	operators := make([]OperatorView, 0, len(operatorIDs))
+	for _, noID := range operatorIDs {
+		opValue, opErr := requiredContractScalar(results, fmt.Sprintf("operator_%d_at", noID))
+		poolValues := results[fmt.Sprintf("operator_%d_pool", noID)]
+		convictionValue, convictionErr := requiredContractScalar(results, fmt.Sprintf("operator_%d_conviction", noID))
+		carryValue, carryErr := requiredContractScalar(results, fmt.Sprintf("operator_%d_carry", noID))
+		if opErr != nil || len(poolValues) != 3 || convictionErr != nil || carryErr != nil {
+			return nil, nil, stateMismatchError(errors.Join(opErr, convictionErr, carryErr), "operator %d batch result cardinality is invalid", noID)
+		}
+		operators = append(operators, OperatorView{
+			NoID: noID, Coldkey: tupleHex(opValue, "Coldkey"), PoolHotkey: tupleHex(opValue, "PoolHotkey"), DepositHotkey: tupleHex(opValue, "DepositHotkey"),
+			DepositSigner: tupleAddress(opValue, "DepositSigner"), RootSigner: tupleAddress(opValue, "RootSigner"), EffectiveEpoch: tupleUint64(opValue, "EffectiveEpoch"), Active: tupleBool(opValue, "Active"),
+			PoolUID: valueUint16(poolValues[1]), PoolLive: valueBool(poolValues[2]), ConvictionRao: valueDecimal(convictionValue), CarryRao: valueDecimal(carryValue),
+		})
+	}
+	epochs := make([]EpochView, 0, currentEpoch-first+1)
+	for epoch := first; ; epoch++ {
+		epochView := EpochView{Epoch: epoch}
+		for _, noID := range operatorIDs {
+			prefix := fmt.Sprintf("epoch_%d_operator_%d", epoch, noID)
+			depositValue, depositErr := requiredContractScalar(results, prefix+"_deposit")
+			convictionValue, convictionErr := requiredContractScalar(results, prefix+"_conviction")
+			root := results[prefix+"_root"]
+			entitlementValue, entitlementErr := requiredContractScalar(results, prefix+"_entitlement")
+			if depositErr != nil || convictionErr != nil || len(root) != 4 || entitlementErr != nil {
+				return nil, nil, stateMismatchError(errors.Join(depositErr, convictionErr, entitlementErr), "epoch %d operator %d batch result cardinality is invalid", epoch, noID)
 			}
-			added, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "epochConvictionAdded", block, e, n)
-			if err != nil {
-				return nil, nil, err
-			}
-			root, err := contractCallAt(ctx, client, deployment.CoordinatorProxy, coord, "rootCommitments", block, e, n)
-			if err != nil || len(root) != 4 {
-				return nil, nil, stateMismatchError(err, "rootCommitments(%d,%d) returned %d values", epoch, noID, len(root))
-			}
-			entitlement, err := contractCallAt(ctx, client, deployment.SettlementVault, vault, "entitlement", block, e, n)
-			if err != nil || len(entitlement) != 1 {
-				return nil, nil, stateMismatchError(err, "entitlement(%d,%d) returned %d values", epoch, noID, len(entitlement))
-			}
-			epochView.Operators = append(epochView.Operators, EpochOperatorView{NoID: noID, DepositRao: valueDecimal(deposit[0]), ConvictionAddedRao: valueDecimal(added[0]), PayoutRoot: valueHex(root[0]), ArtifactHash: valueHex(root[1]), Committer: valueAddress(root[2]), CommitBlock: valueUint64(root[3]), FundedRao: tupleDecimal(entitlement[0], "Funded"), TotalRao: tupleDecimal(entitlement[0], "Total"), ClaimedRao: tupleDecimal(entitlement[0], "Claimed"), ExpiryBlock: tupleUint64(entitlement[0], "ExpiryBlock"), Status: uint8(tupleUint64(entitlement[0], "Status"))})
+			epochView.Operators = append(epochView.Operators, EpochOperatorView{
+				NoID: noID, DepositRao: valueDecimal(depositValue), ConvictionAddedRao: valueDecimal(convictionValue),
+				PayoutRoot: valueHex(root[0]), ArtifactHash: valueHex(root[1]), Committer: valueAddress(root[2]), CommitBlock: valueUint64(root[3]),
+				FundedRao: tupleDecimal(entitlementValue, "Funded"), TotalRao: tupleDecimal(entitlementValue, "Total"), ClaimedRao: tupleDecimal(entitlementValue, "Claimed"),
+				ExpiryBlock: tupleUint64(entitlementValue, "ExpiryBlock"), Status: uint8(tupleUint64(entitlementValue, "Status")),
+			})
 		}
 		epochs = append(epochs, epochView)
-		if epoch == math.MaxUint64 {
+		if epoch == currentEpoch {
 			break
 		}
 	}
@@ -781,6 +840,128 @@ func contractCallAt(ctx context.Context, client *ethclient.Client, address commo
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
 	return contractABI.Unpack(method, out)
+}
+
+// contractReadSpec names one ABI call in a pinned, bounded JSON-RPC batch.
+// The identifier is local evidence metadata and never enters calldata.
+type contractReadSpec struct {
+	ID          string
+	Address     common.Address
+	ContractABI abi.ABI
+	Method      string
+	Args        []any
+}
+
+// readContractBatchAt packs, transports, and decodes every requested call at
+// one exact block. rawCoordinatorBatchCallsAt enforces the public endpoint's
+// fifty-element limit; identifiers and result positions are revalidated here
+// so a missing, duplicate, or reordered logical read cannot be accepted.
+func readContractBatchAt(ctx context.Context, client *ethclient.Client, block uint64, specs []contractReadSpec) (map[string][]any, error) {
+	if client == nil || block == 0 || len(specs) == 0 {
+		return nil, errors.New("contract read batch is unavailable")
+	}
+	requests := make([]coordinatorCallAt, len(specs))
+	seen := make(map[string]bool, len(specs))
+	for index, spec := range specs {
+		if strings.TrimSpace(spec.ID) == "" || spec.ID != strings.TrimSpace(spec.ID) || seen[spec.ID] {
+			return nil, fmt.Errorf("contract read batch element %d has an invalid or duplicate id %q", index, spec.ID)
+		}
+		if spec.Address == (common.Address{}) || strings.TrimSpace(spec.Method) == "" {
+			return nil, fmt.Errorf("contract read batch element %s has an incomplete target or method", spec.ID)
+		}
+		data, err := spec.ContractABI.Pack(spec.Method, spec.Args...)
+		if err != nil {
+			return nil, fmt.Errorf("contract read batch element %s pack %s: %w", spec.ID, spec.Method, err)
+		}
+		seen[spec.ID] = true
+		requests[index] = coordinatorCallAt{Address: spec.Address, Data: data, Block: block}
+	}
+	outputs, err := rawCoordinatorBatchCallsAt(ctx, client, requests)
+	if err != nil {
+		return nil, err
+	}
+	if len(outputs) != len(specs) {
+		return nil, fmt.Errorf("contract read batch returned %d outputs, want %d", len(outputs), len(specs))
+	}
+	results := make(map[string][]any, len(specs))
+	for index, spec := range specs {
+		values, err := spec.ContractABI.Unpack(spec.Method, outputs[index])
+		if err != nil {
+			return nil, fmt.Errorf("contract read batch element %s decode %s: %w", spec.ID, spec.Method, err)
+		}
+		results[spec.ID] = values
+	}
+	return results, nil
+}
+
+// requiredContractScalar extracts one named single-output call without
+// allowing an absent map entry or unexpected ABI result cardinality.
+func requiredContractScalar(results map[string][]any, id string) (any, error) {
+	values, ok := results[id]
+	if !ok || len(values) != 1 {
+		return nil, fmt.Errorf("contract read %s returned %d values", id, len(values))
+	}
+	return values[0], nil
+}
+
+// inspectRuntimeCodeAt reads every release runtime and the proxy
+// implementation slot in one bounded mixed-method batch at the same finalized
+// block as contract state. It returns observed code hashes even when a hash
+// mismatch makes the release unhealthy.
+func inspectRuntimeCodeAt(ctx context.Context, client *ethclient.Client, deployment *ContractDeployment, upgrade CoordinatorUpgrade, addresses []common.Address, block uint64) (map[string]string, bool, error) {
+	if client == nil || deployment == nil || block == 0 || len(addresses) == 0 {
+		return nil, false, errors.New("runtime-code batch is unavailable")
+	}
+	seen := make(map[common.Address]bool, len(addresses))
+	codes := make([]hexutil.Bytes, len(addresses))
+	batch := make([]rpc.BatchElem, 0, len(addresses)+1)
+	for index, address := range addresses {
+		if address == (common.Address{}) || seen[address] {
+			return nil, false, fmt.Errorf("runtime-code batch address %d is zero or duplicated", index)
+		}
+		seen[address] = true
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getCode",
+			Args:   []any{address, hexutil.EncodeUint64(block)},
+			Result: &codes[index],
+		})
+	}
+	var implementationSlot hexutil.Bytes
+	if upgrade.Implementation != (common.Address{}) {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getStorageAt",
+			Args:   []any{deployment.CoordinatorProxy, common.HexToHash(erc1967ImplementationSlot), hexutil.EncodeUint64(block)},
+			Result: &implementationSlot,
+		})
+	}
+	for start := 0; start < len(batch); start += maximumEVMRPCBatchCalls {
+		end := min(start+maximumEVMRPCBatchCalls, len(batch))
+		if err := client.Client().BatchCallContext(ctx, batch[start:end]); err != nil {
+			return nil, false, err
+		}
+		for index := start; index < end; index++ {
+			if batch[index].Error != nil {
+				return nil, false, fmt.Errorf("runtime-code batch element %d: %w", index, batch[index].Error)
+			}
+		}
+	}
+	hashes := make(map[string]string, len(addresses))
+	matches := true
+	for index, address := range addresses {
+		hash := crypto.Keccak256Hash(codes[index]).Hex()
+		hashes[address.Hex()] = hash
+		want := deployment.RuntimeHashes[address.Hex()]
+		if address == upgrade.Implementation {
+			want = upgrade.RuntimeCodeHash
+		}
+		if want == "" || !strings.EqualFold(want, hash) {
+			matches = false
+		}
+	}
+	if upgrade.Implementation != (common.Address{}) {
+		matches = matches && len(implementationSlot) == 32 && common.BytesToAddress(implementationSlot[12:]) == upgrade.Implementation
+	}
+	return hashes, matches, nil
 }
 
 type evmBlockReader interface {

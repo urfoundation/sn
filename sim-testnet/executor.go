@@ -52,33 +52,58 @@ type Executor struct {
 	carriedFleetHistoryKeys map[string]bool
 }
 
+// NewExecutor opens transaction managers only against the canonical endpoint
+// selection which was validated and hashed into the approved plan.
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
-	if err := validateExecutionRPCConfiguration(cfg); err != nil {
+	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles)
+}
+
+// NewCampaignExecutor retains the canonical endpoint authorization check but
+// sends live-topology EVM traffic through the simulator-owned aggregate gate.
+func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, *ResolvedConfig, error) {
+	runtimeCfg, err := campaignRPCConfig(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles)
+	if err != nil {
+		return nil, nil, err
+	}
+	return executor, runtimeCfg, nil
+}
+
+// newExecutorWithTransport separates immutable route authorization from the
+// local transport hop used during a supervised campaign.
+func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
+	if err := validateExecutionRPCConfiguration(authorizedCfg); err != nil {
 		return nil, fmt.Errorf("execution RPC configuration: %w", err)
 	}
-	s, err := DialSubstrateManager(cfg, stateDir, j)
+	if err := validateCampaignRPCTransport(authorizedCfg, runtimeCfg); err != nil {
+		return nil, err
+	}
+	s, err := DialSubstrateManager(runtimeCfg, stateDir, j)
 	if err != nil {
 		return nil, err
 	}
-	d, err := DialEVMTxManager(ctx, cfg, stateDir, j, roles, "deployer")
+	d, err := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, "deployer")
 	if err != nil {
 		s.Close()
 		return nil, err
 	}
-	o, err := DialEVMTxManager(ctx, cfg, stateDir, j, roles, "testnet-owner")
+	o, err := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, "testnet-owner")
 	if err != nil {
 		s.Close()
 		d.Close()
 		return nil, err
 	}
-	guardian, err := DialEVMTxManager(ctx, cfg, stateDir, j, roles, "guardian")
+	guardian, err := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, "guardian")
 	if err != nil {
 		s.Close()
 		d.Close()
 		o.Close()
 		return nil, err
 	}
-	oracle, err := DialEVMTxManager(ctx, cfg, stateDir, j, roles, "commitment-oracle")
+	oracle, err := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, "commitment-oracle")
 	if err != nil {
 		s.Close()
 		d.Close()
@@ -86,7 +111,7 @@ func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *S
 		guardian.Close()
 		return nil, err
 	}
-	keeper, err := DialEVMTxManager(ctx, cfg, stateDir, j, roles, "keeper")
+	keeper, err := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, "keeper")
 	if err != nil {
 		s.Close()
 		d.Close()
@@ -96,8 +121,8 @@ func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *S
 		return nil, err
 	}
 	deposits := map[int]*EVMTxManager{}
-	for i := 1; i <= cfg.Config.Topology.Operators; i++ {
-		manager, dialErr := DialEVMTxManager(ctx, cfg, stateDir, j, roles, fmt.Sprintf("operator-%d-deposit", i))
+	for i := 1; i <= runtimeCfg.Config.Topology.Operators; i++ {
+		manager, dialErr := DialEVMTxManager(ctx, runtimeCfg, stateDir, j, roles, fmt.Sprintf("operator-%d-deposit", i))
 		if dialErr != nil {
 			for _, opened := range deposits {
 				opened.Close()
@@ -112,16 +137,16 @@ func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *S
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits}
-	if !independentRPCRequired(cfg) {
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits}
+	if !independentRPCRequired(runtimeCfg) {
 		return e, nil
 	}
-	e.independentSubstrate, err = DialIndependentSubstrateManager(cfg)
+	e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
 	if err != nil {
 		e.Close()
 		return nil, fmt.Errorf("independent Substrate RPC: %w", err)
 	}
-	e.independentEVM, err = dialConfiguredEVMClient(ctx, cfg, cfg.Public.Chain.EVMPublicReadEndpoint)
+	e.independentEVM, err = dialConfiguredEVMClient(ctx, runtimeCfg, runtimeCfg.Public.Chain.EVMPublicReadEndpoint)
 	if err != nil {
 		e.Close()
 		return nil, fmt.Errorf("independent EVM RPC: %w", err)
@@ -403,6 +428,17 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if cmd == "retire" {
 		return runRetirement(ctx, cfg, stateDir, o)
 	}
+	if cmd == "scenario" {
+		names := []string{o.Name}
+		if o.Name == releaseCandidateCampaignName {
+			names = []string{"release-1.0", "production-soak"}
+		}
+		for _, name := range names {
+			if _, err := scenarioDefinitionFor(cfg, name); err != nil {
+				return err
+			}
+		}
+	}
 	p, planErr := loadPersistedPlan(cfg, stateDir)
 	if !o.Apply {
 		if planErr != nil {
@@ -501,6 +537,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// starts the persistent topology.
 	limitID := "config.render"
 	if cmd == "scenario" {
+		if o.Name == releaseCandidateCampaignName {
+			return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, RunScenario)
+		}
 		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
 	}
 	if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {

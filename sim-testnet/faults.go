@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -181,6 +182,158 @@ type activeFaultFile struct {
 
 func (d *liveScenarioFaultDriver) activePath() string {
 	return filepath.Join(d.stateDir, "active-faults.json")
+}
+
+// readActiveFaultFile authenticates the crash-recovery ledger while allowing
+// the no-fault state to be represented by an absent file.
+func readActiveFaultFile(path string) (activeFaultFile, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return activeFaultFile{Schema: "urnetwork-sim-active-faults-v1"}, nil
+	}
+	if err != nil {
+		return activeFaultFile{}, err
+	}
+	var active activeFaultFile
+	if json.Unmarshal(b, &active) != nil || active.Schema != "urnetwork-sim-active-faults-v1" || len(active.Faults) == 0 {
+		return activeFaultFile{}, errors.New("invalid active fault recovery file; refusing ambiguous process state")
+	}
+	ids := map[string]bool{}
+	targets := map[string]bool{}
+	for _, fault := range active.Faults {
+		if fault.ID == "" || ids[fault.ID] || len(fault.Targets) == 0 {
+			return activeFaultFile{}, errors.New("active fault recovery identities are invalid")
+		}
+		ids[fault.ID] = true
+		for _, target := range fault.Targets {
+			if target == "" || targets[target] {
+				return activeFaultFile{}, errors.New("active fault recovery targets overlap")
+			}
+			targets[target] = true
+		}
+	}
+	processes := map[string]bool{}
+	for _, process := range active.Processes {
+		if !targets[process.ID] || processes[process.ID] || process.PID <= 1 {
+			return activeFaultFile{}, errors.New("active fault process evidence is invalid")
+		}
+		processes[process.ID] = true
+	}
+	if len(processes) != len(targets) {
+		return activeFaultFile{}, errors.New("active fault process evidence is incomplete")
+	}
+	return active, nil
+}
+
+// activeFaultIndex finds an exact immutable specification in the recovery
+// ledger. Matching only an ID would let a corrupted duration or target restore
+// the wrong process set.
+func activeFaultIndex(active activeFaultFile, spec scenarioFaultSpec) (int, error) {
+	want, err := canonicalHashHex(spec)
+	if err != nil {
+		return -1, err
+	}
+	for index, candidate := range active.Faults {
+		got, hashErr := canonicalHashHex(candidate)
+		if hashErr != nil {
+			return -1, hashErr
+		}
+		if got == want {
+			return index, nil
+		}
+	}
+	return -1, fmt.Errorf("active fault %s is not recorded exactly", spec.ID)
+}
+
+// validateFaultActivation rejects duplicate IDs or process targets before any
+// signal, logical-miner control, or container mutation occurs.
+func validateFaultActivation(active activeFaultFile, spec scenarioFaultSpec) error {
+	if spec.ID == "" || len(spec.Targets) == 0 {
+		return errors.New("active fault identity is incomplete")
+	}
+	usedTargets := map[string]bool{}
+	for _, fault := range active.Faults {
+		if fault.ID == spec.ID {
+			return fmt.Errorf("fault %s is already active", spec.ID)
+		}
+		for _, target := range fault.Targets {
+			usedTargets[target] = true
+		}
+	}
+	for _, target := range spec.Targets {
+		if target == "" || usedTargets[target] {
+			return fmt.Errorf("fault %s target %q is already active", spec.ID, target)
+		}
+		usedTargets[target] = true
+	}
+	return nil
+}
+
+// appendActiveFault durably adds one disjoint fault after its mutation has
+// succeeded. The caller remains responsible for rolling the mutation back if
+// the atomic write fails.
+func appendActiveFault(path string, active activeFaultFile, spec scenarioFaultSpec, processes []FaultProcessEvidence) error {
+	if len(processes) != len(spec.Targets) {
+		return fmt.Errorf("fault %s process evidence count %d does not match %d targets", spec.ID, len(processes), len(spec.Targets))
+	}
+	targets := map[string]bool{}
+	for _, target := range spec.Targets {
+		targets[target] = true
+	}
+	seen := map[string]bool{}
+	for _, process := range processes {
+		if !targets[process.ID] || seen[process.ID] || process.PID <= 1 {
+			return fmt.Errorf("fault %s returned invalid process evidence for %q", spec.ID, process.ID)
+		}
+		seen[process.ID] = true
+	}
+	active.Faults = append(active.Faults, spec)
+	active.Processes = append(active.Processes, processes...)
+	b, err := json.MarshalIndent(active, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path, append(b, '\n'), 0o600)
+}
+
+// removeActiveFault removes exactly one restored fault while preserving every
+// concurrent independent fault for crash recovery.
+func removeActiveFault(path string, active activeFaultFile, index int) error {
+	if index < 0 || index >= len(active.Faults) {
+		return errors.New("active fault removal index is out of bounds")
+	}
+	targets := map[string]bool{}
+	for _, target := range active.Faults[index].Targets {
+		targets[target] = true
+	}
+	active.Faults = append(active.Faults[:index], active.Faults[index+1:]...)
+	remaining := active.Processes[:0]
+	removed := 0
+	for _, process := range active.Processes {
+		if targets[process.ID] {
+			removed++
+			continue
+		}
+		remaining = append(remaining, process)
+	}
+	active.Processes = remaining
+	if removed != len(targets) {
+		return errors.New("restored fault process evidence is incomplete")
+	}
+	if len(active.Faults) == 0 {
+		if len(active.Processes) != 0 {
+			return errors.New("orphan active fault process evidence remains")
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	b, err := json.MarshalIndent(active, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(path, append(b, '\n'), 0o600)
 }
 
 func (d *liveScenarioFaultDriver) processSnapshot() (map[string]ProcessState, map[string]ProcessSpec, error) {
@@ -421,20 +574,25 @@ func (d *liveScenarioFaultDriver) restoreContainerFault(ctx context.Context, spe
 }
 
 func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
+	active, err := readActiveFaultFile(d.activePath())
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFaultActivation(active, spec); err != nil {
+		return nil, err
+	}
 	if spec.Kind == "container-restart" || spec.Kind == "miner-control" {
 		var processes []FaultProcessEvidence
-		var err error
+		var mutationErr error
 		if spec.Kind == "container-restart" {
-			processes, err = d.applyContainerFault(ctx, spec)
+			processes, mutationErr = d.applyContainerFault(ctx, spec)
 		} else {
-			processes, err = d.controlMiners(ctx, spec, false)
+			processes, mutationErr = d.controlMiners(ctx, spec, false)
 		}
-		if err != nil {
-			return nil, err
+		if mutationErr != nil {
+			return nil, mutationErr
 		}
-		active := activeFaultFile{Schema: "urnetwork-sim-active-faults-v1", Faults: []scenarioFaultSpec{spec}, Processes: processes}
-		b, _ := json.MarshalIndent(active, "", "  ")
-		if err := atomicWrite(d.activePath(), append(b, '\n'), 0o600); err != nil {
+		if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
 			if spec.Kind == "container-restart" {
 				_, _ = d.restoreContainerFault(context.Background(), spec)
 			} else {
@@ -452,9 +610,7 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 	if err != nil {
 		return nil, err
 	}
-	active := activeFaultFile{Schema: "urnetwork-sim-active-faults-v1", Faults: []scenarioFaultSpec{spec}, Processes: processes}
-	b, _ := json.MarshalIndent(active, "", "  ")
-	if err := atomicWrite(d.activePath(), append(b, '\n'), 0o600); err != nil {
+	if err := appendActiveFault(d.activePath(), active, spec, processes); err != nil {
 		if spec.Kind == "process-pause" {
 			_, _ = d.signal(spec, syscall.SIGCONT)
 		}
@@ -464,21 +620,29 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 }
 
 func (d *liveScenarioFaultDriver) Restore(ctx context.Context, spec scenarioFaultSpec) ([]FaultProcessEvidence, error) {
-	var processes []FaultProcessEvidence
-	var err error
-	if spec.Kind == "container-restart" {
-		processes, err = d.restoreContainerFault(ctx, spec)
-	} else if spec.Kind == "miner-control" {
-		processes, err = d.controlMiners(ctx, spec, true)
-	} else if spec.Kind == "process-restart" {
-		processes, err = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
-	} else {
-		processes, err = d.signal(spec, syscall.SIGCONT)
-	}
+	active, err := readActiveFaultFile(d.activePath())
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Remove(d.activePath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	index, err := activeFaultIndex(active, spec)
+	if err != nil {
+		return nil, err
+	}
+	var processes []FaultProcessEvidence
+	var restoreErr error
+	if spec.Kind == "container-restart" {
+		processes, restoreErr = d.restoreContainerFault(ctx, spec)
+	} else if spec.Kind == "miner-control" {
+		processes, restoreErr = d.controlMiners(ctx, spec, true)
+	} else if spec.Kind == "process-restart" {
+		processes, restoreErr = d.waitTargetsHealthy(ctx, spec, 2*time.Minute)
+	} else {
+		processes, restoreErr = d.signal(spec, syscall.SIGCONT)
+	}
+	if restoreErr != nil {
+		return nil, restoreErr
+	}
+	if err := removeActiveFault(d.activePath(), active, index); err != nil {
 		return nil, err
 	}
 	return processes, nil
@@ -525,16 +689,12 @@ func (d *liveScenarioFaultDriver) waitTargetsHealthy(ctx context.Context, spec s
 }
 
 func (d *liveScenarioFaultDriver) Recover(ctx context.Context) error {
-	b, err := os.ReadFile(d.activePath())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	active, err := readActiveFaultFile(d.activePath())
 	if err != nil {
 		return err
 	}
-	var active activeFaultFile
-	if json.Unmarshal(b, &active) != nil || active.Schema != "urnetwork-sim-active-faults-v1" || len(active.Faults) == 0 {
-		return errors.New("invalid active fault recovery file; refusing to leave process state ambiguous")
+	if len(active.Faults) == 0 {
+		return nil
 	}
 	for _, fault := range active.Faults {
 		if _, err := d.Restore(ctx, fault); err != nil {
@@ -557,20 +717,59 @@ func releaseQualityFault(cfg *ResolvedConfig) (scenarioFaultSpec, error) {
 	return scenarioFaultSpec{ID: "quality-cohort", Kind: "miner-control", Targets: targets, TriggerOffsetBlocks: cfg.Config.Scenarios.QualityFaultStartBlocks, DurationBlocks: cfg.Config.Scenarios.QualityFaultDurationBlocks}, nil
 }
 
+// testFleetPrefixScores reconstructs the split-adjusted head scores generated
+// by the release topology. Deriving the fault duration from this geometry
+// prevents a harmless fixture change from silently extending the live run.
+func testFleetPrefixScores(cfg *ResolvedConfig) (map[int]*big.Rat, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || cfg.Policy.Verify.EgressIPv4Prefix < 1 || cfg.Policy.Verify.EgressIPv4Prefix > 32 {
+		return nil, errors.New("test fleet prefix geometry is unavailable")
+	}
+	prefixes := make(map[int]map[netip.Prefix]bool, cfg.Config.Topology.fleetCandidates())
+	claims := map[netip.Prefix]uint64{}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		prefixes[fleet] = map[netip.Prefix]bool{}
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			miner := fleetMemberMinerIndex(cfg, fleet, member)
+			address, err := netip.ParseAddr(minerTestEgressSourceIP(miner))
+			if err != nil {
+				return nil, fmt.Errorf("fleet %d member %d source identity is invalid: %w", fleet, member, err)
+			}
+			if !address.Is4() {
+				return nil, fmt.Errorf("fleet %d member %d source identity %s is not IPv4", fleet, member, address)
+			}
+			prefixes[fleet][netip.PrefixFrom(address, cfg.Policy.Verify.EgressIPv4Prefix).Masked()] = true
+		}
+		for prefix := range prefixes[fleet] {
+			claims[prefix]++
+		}
+	}
+	scores := make(map[int]*big.Rat, len(prefixes))
+	for fleet, fleetPrefixes := range prefixes {
+		score := new(big.Rat)
+		for prefix := range fleetPrefixes {
+			if claims[prefix] == 0 {
+				return nil, fmt.Errorf("fleet %d prefix %s has no claimant", fleet, prefix)
+			}
+			score.Add(score, new(big.Rat).SetFrac64(1, int64(claims[prefix])))
+		}
+		scores[fleet] = score
+	}
+	return scores, nil
+}
+
 // headBoundaryDecayTempos returns one more complete EMA fold than the minimum
-// required to move a score of four strictly below the challenger score of one.
-// The extra fold makes the live transition observable even when a validator's
-// first post-fault sample lands immediately before a native tempo boundary.
-func headBoundaryDecayTempos(numerator, denominator uint64) (uint64, error) {
-	if denominator == 0 || numerator == 0 || numerator > denominator {
+// required to move the selected score strictly below the challenger. The extra
+// fold makes the live transition observable even when a validator's first
+// post-fault sample lands immediately before a native tempo boundary.
+func headBoundaryDecayTempos(numerator, denominator uint64, selected, challenger *big.Rat) (uint64, error) {
+	if denominator == 0 || numerator == 0 || numerator > denominator || selected == nil || challenger == nil || selected.Sign() <= 0 || challenger.Sign() <= 0 || selected.Cmp(challenger) <= 0 {
 		return 0, errors.New("head-boundary fault requires an EMA strictly above zero and at most one")
 	}
 	retained := new(big.Rat).SetFrac(
 		new(big.Int).SetUint64(denominator-numerator),
 		new(big.Int).SetUint64(denominator),
 	)
-	score := big.NewRat(4, 1)
-	challenger := big.NewRat(1, 1)
+	score := new(big.Rat).Set(selected)
 	for folds := uint64(1); folds <= 256; folds++ {
 		score.Mul(score, retained)
 		if score.Cmp(challenger) < 0 {
@@ -585,9 +784,17 @@ func releaseHeadBoundaryFault(cfg *ResolvedConfig, firstOffset uint64) (scenario
 		return scenarioFaultSpec{}, errors.New("head-boundary fault requires at least three initial head fleets")
 	}
 	tempo := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"])
+	scores, err := testFleetPrefixScores(cfg)
+	if err != nil {
+		return scenarioFaultSpec{}, err
+	}
+	selected := scores[3]
+	challenger := scores[cfg.Config.Topology.HeadFleets+1]
 	decayTempos, err := headBoundaryDecayTempos(
 		cfg.Policy.Steering.HeadScoreEMA.Numerator,
 		cfg.Policy.Steering.HeadScoreEMA.Denominator,
+		selected,
+		challenger,
 	)
 	if err != nil {
 		return scenarioFaultSpec{}, err
@@ -696,6 +903,12 @@ func dependencyOutageFaults(cfg *ResolvedConfig, prefix string, firstOffset uint
 // operator, miner/claim-relayer, and validator process without overlapping
 // faults. Each target must recover before the next target is paused.
 func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64) []scenarioFaultSpec {
+	return rollingProcessFaultsForTargets(cfg, prefix, firstOffset, rollingProcessTargets(cfg))
+}
+
+// rollingProcessTargets returns every persistent release workload in stable
+// supervisor order so a caller may safely partition independent fault lanes.
+func rollingProcessTargets(cfg *ResolvedConfig) []string {
 	targets := []string{workloadRPCProxyProcessID, workloadSubstrateProcessID}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		for _, role := range []string{"api", "connect", "taskworker"} {
@@ -711,6 +924,12 @@ func rollingProcessFaults(cfg *ResolvedConfig, prefix string, firstOffset uint64
 	for validator := 1; validator <= cfg.Config.Topology.Validators; validator++ {
 		targets = append(targets, fmt.Sprintf("validator-%d", validator))
 	}
+	return targets
+}
+
+// rollingProcessFaultsForTargets schedules non-overlapping restart evidence
+// for an explicit stable target lane.
+func rollingProcessFaultsForTargets(cfg *ResolvedConfig, prefix string, firstOffset uint64, targets []string) []scenarioFaultSpec {
 	duration := max64(5, cfg.Config.Scenarios.QualityFaultDurationBlocks)
 	spacing := duration + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
 	faults := make([]scenarioFaultSpec, 0, len(targets))
@@ -742,13 +961,32 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	firstRestart := head.TriggerOffsetBlocks + head.DurationBlocks + spacing
+	// The long logical-miner decay and the restart lane are independent. Run
+	// them concurrently, while keeping all dependency/process restarts within
+	// that second lane strictly sequential for deterministic attribution.
+	firstRestart := head.TriggerOffsetBlocks + spacing
 	faults := []scenarioFaultSpec{quality, head}
 	dependencies := dependencyOutageFaults(cfg, "release-dependency", firstRestart)
 	faults = append(faults, dependencies...)
 	last := dependencies[len(dependencies)-1]
 	rollingFirst := last.TriggerOffsetBlocks + last.DurationBlocks + max64(5, cfg.Config.Scenarios.QualityFaultStartBlocks)
-	faults = append(faults, rollingProcessFaults(cfg, "release", rollingFirst)...)
+	headSwarm, err := minerSwarmFor(cfg, fleetMemberMinerIndex(cfg, 3, 1))
+	if err != nil {
+		return nil, err
+	}
+	headSwarmID := fmt.Sprintf("miner-swarm-%d", headSwarm)
+	backgroundTargets := make([]string, 0, len(rollingProcessTargets(cfg))-1)
+	for _, target := range rollingProcessTargets(cfg) {
+		if target != headSwarmID {
+			backgroundTargets = append(backgroundTargets, target)
+		}
+	}
+	if len(backgroundTargets)+1 != len(rollingProcessTargets(cfg)) {
+		return nil, fmt.Errorf("head-boundary owner %s is not exactly one persistent target", headSwarmID)
+	}
+	faults = append(faults, rollingProcessFaultsForTargets(cfg, "release", rollingFirst, backgroundTargets)...)
+	deferredOffset := head.TriggerOffsetBlocks + head.DurationBlocks + spacing
+	faults = append(faults, rollingProcessFaultsForTargets(cfg, "release-head-owner", deferredOffset, []string{headSwarmID})...)
 	return faults, nil
 }
 

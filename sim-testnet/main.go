@@ -43,7 +43,7 @@ Commands:
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
-  scenario run a named scenario (precompile-conformance, smoke, epoch, release-1.0, production-soak, or fault scenario)
+  scenario run a named scenario (precompile-conformance, smoke, epoch, release-1.0, production-soak, release-candidate, or fault scenario)
   tail     multiplex structured process logs
   stop     stop local processes only; preserves keys, evidence, and chain state
   retire   plan future-effective operator retirement; dry-run by default
@@ -263,6 +263,17 @@ func runMain(args []string) error {
 	if err != nil {
 		return err
 	}
+	readResolved := resolved
+	if commandUsesCampaignEgress(cmd) {
+		active, err := supervisedCampaignEgressActive(ctx, stateDir)
+		if err != nil {
+			return err
+		}
+		readResolved, err = selectReadOnlyRPCConfig(resolved, active)
+		if err != nil {
+			return err
+		}
+	}
 	switch cmd {
 	case "doctor":
 		report := RunDoctorForState(ctx, resolved, stateDir)
@@ -276,13 +287,13 @@ func runMain(args []string) error {
 	case "setup", "launch", "resume", "scenario", "retire":
 		return runMutation(ctx, cmd, resolved, stateDir, o)
 	case "status":
-		v, err := Status(ctx, resolved, stateDir)
+		v, err := Status(ctx, readResolved, stateDir)
 		return printResult(o.Format, v, err)
 	case "inspect":
-		v, err := Inspect(ctx, resolved, stateDir, o.Manifest)
+		v, err := Inspect(ctx, readResolved, stateDir, o.Manifest)
 		return printResult(o.Format, v, err)
 	case "analyze":
-		v, err := Analyze(ctx, resolved, stateDir, o.Manifest)
+		v, err := Analyze(ctx, readResolved, stateDir, o.Manifest)
 		return printResult(o.Format, v, err)
 	case "tail":
 		return Tail(ctx, stateDir, os.Stdout)
@@ -292,6 +303,64 @@ func runMain(args []string) error {
 	default:
 		return errors.New("unreachable command")
 	}
+}
+
+// Identifies the read-only commands which may run concurrently with a live
+// campaign and therefore must share its single public-provider egress gate.
+func commandUsesCampaignEgress(command string) bool {
+	return command == "status" || command == "inspect" || command == "analyze"
+}
+
+// Selects the exact internally derived transport copy only while the
+// supervised campaign egress is active. The canonical configuration remains
+// the fallback before launch and after a deliberate stop.
+func selectReadOnlyRPCConfig(cfg *ResolvedConfig, active bool) (*ResolvedConfig, error) {
+	if !active {
+		return cfg, nil
+	}
+	return campaignRPCConfig(cfg)
+}
+
+// Verifies that a live supervisor owns a healthy central egress listener. A
+// live but incomplete topology fails closed instead of silently bypassing its
+// provider quota; a stopped or never-launched topology uses canonical RPCs.
+func supervisedCampaignEgressActive(ctx context.Context, stateDir string) (bool, error) {
+	var state SupervisorState
+	statePath := filepath.Join(stateDir, "supervisor.state.json")
+	if err := readJSONFile(statePath, &state); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read campaign egress supervisor state: %w", err)
+	}
+	if state.Schema != "urnetwork-sim-supervisor-state-v1" {
+		return false, errors.New("campaign egress supervisor state has an invalid schema")
+	}
+	if validateSupervisorGeneration(state) != nil {
+		return false, nil
+	}
+	found := false
+	for _, process := range state.Processes {
+		if process.ID != publicEVMEgressProcessID {
+			continue
+		}
+		if found {
+			return false, errors.New("live supervisor contains duplicate campaign EVM egress processes")
+		}
+		found = true
+		if process.Role != "dependency-rpc-proxy" || process.PID <= 1 || !process.Healthy || syscall.Kill(process.PID, syscall.Signal(0)) != nil {
+			return false, errors.New("live supervisor campaign EVM egress is not healthy")
+		}
+	}
+	if !found {
+		return false, errors.New("live supervisor is missing the campaign EVM egress")
+	}
+	connection, err := (&net.Dialer{}).DialContext(ctx, "tcp", campaignEVMAuthority())
+	if err != nil {
+		return false, fmt.Errorf("connect supervised campaign EVM egress: %w", err)
+	}
+	_ = connection.Close()
+	return true, nil
 }
 
 func printResult(format string, v any, resultErr error) error {

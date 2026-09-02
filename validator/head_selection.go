@@ -6,7 +6,9 @@ package validator
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 )
 
@@ -58,4 +60,39 @@ func headSelectionUIDs(inputs []ExactWeightInput) []uint16 {
 		uids[i] = input.UID
 	}
 	return uids
+}
+
+// ValidateHeadSelectionEvidence independently reconstructs the exact ranked
+// boundary from every positive eligible score. Canonical rational encoding and
+// list order are part of the evidence so a validator cannot substitute an
+// arbitrary selected set while preserving the submitted weight vector.
+func ValidateHeadSelectionEvidence(eligibleUIDs []uint16, eligibleScores []RationalJSON, selectedUIDs, rejectedUIDs []uint16, maximum uint16) error {
+	if maximum == 0 || len(eligibleUIDs) != len(eligibleScores) {
+		return errors.New("head selection evidence is incomplete")
+	}
+	inputs := make([]ExactWeightInput, len(eligibleUIDs))
+	for index, encoded := range eligibleScores {
+		numerator, numeratorOK := new(big.Int).SetString(encoded.Numerator, 10)
+		denominator, denominatorOK := new(big.Int).SetString(encoded.Denominator, 10)
+		if !numeratorOK || !denominatorOK || numerator.Sign() <= 0 || denominator.Sign() <= 0 {
+			return fmt.Errorf("eligible head score %d is not a positive rational", index)
+		}
+		score := new(big.Rat).SetFrac(numerator, denominator)
+		if encoded.Numerator != score.Num().String() || encoded.Denominator != score.Denom().String() {
+			return fmt.Errorf("eligible head score %d is not canonically encoded", index)
+		}
+		inputs[index] = ExactWeightInput{UID: eligibleUIDs[index], Score: score}
+	}
+	selection, err := selectHeadFleets(inputs, maximum)
+	if err != nil {
+		return err
+	}
+	ranked := append(headSelectionUIDs(selection.Selected), headSelectionUIDs(selection.Rejected)...)
+	if !slices.Equal(eligibleUIDs, ranked) {
+		return errors.New("eligible head evidence is not in deterministic score order")
+	}
+	if !slices.Equal(selectedUIDs, headSelectionUIDs(selection.Selected)) || !slices.Equal(rejectedUIDs, headSelectionUIDs(selection.Rejected)) {
+		return errors.New("selected and rejected head UIDs do not match the reconstructed score boundary")
+	}
+	return nil
 }

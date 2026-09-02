@@ -266,7 +266,7 @@ func validateReleaseStateFreeBytes(available uint64) error {
 // Enumerate every simulator-owned TCP listener that must be acquired before
 // temporary provisioning or the persistent topology can start.
 func releaseProcessListenAddresses(cfg *ResolvedConfig) []string {
-	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress, workloadSubstrateProxyAddress, workloadSubstrateHealthAddress}
+	addresses := []string{workloadRPCProxyAddress, workloadRPCProxyHealthAddress, workloadSubstrateProxyAddress, workloadSubstrateHealthAddress, publicEVMEgressAddress, publicEVMEgressHealthAddress}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		for _, port := range []int{18080 + operator, 20080 + operator} {
 			addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
@@ -1173,16 +1173,17 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 	proxyInputs := []struct {
 		id, identity, endpoint, listen, health string
 	}{
-		{id: workloadRPCProxyProcessID, identity: "operational-evm-rpc", endpoint: cfg.OperationalEVM, listen: workloadRPCProxyAddress, health: workloadRPCProxyHealthAddress},
+		{id: publicEVMEgressProcessID, identity: "operational-evm-egress", endpoint: cfg.OperationalEVM, listen: publicEVMEgressAddress, health: publicEVMEgressHealthAddress},
+		{id: workloadRPCProxyProcessID, identity: "operational-evm-rpc", endpoint: "http://" + campaignEVMAuthority(), listen: workloadRPCProxyAddress, health: workloadRPCProxyHealthAddress},
 		{id: workloadSubstrateProcessID, identity: "operational-substrate-rpc", endpoint: cfg.OperationalSubstrate, listen: workloadSubstrateProxyAddress, health: workloadSubstrateHealthAddress},
 	}
-	out := make([]ProcessSpec, 0, 2+3*cfg.Config.Topology.Operators)
+	out := make([]ProcessSpec, 0, 3+3*cfg.Config.Topology.Operators)
 	for _, input := range proxyInputs {
 		proxy, err := rpcProxyConfigForEndpoint(input.endpoint, input.listen, input.health)
 		if err != nil {
 			return nil, fmt.Errorf("workload %s proxy: %w", input.identity, err)
 		}
-		if input.id == workloadRPCProxyProcessID {
+		if input.id == publicEVMEgressProcessID {
 			proxy.MaximumRequestsPerMinute = configuredEVMRequestsPerMinute(cfg, input.endpoint)
 		}
 		if err := validateRPCProxyConfig(proxy); err != nil {
@@ -1327,9 +1328,9 @@ func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 // minerTestEgressSourceIP gives every logical provider a distinct loopback
 // address. One member of each of the first two fleets shares a /29 while their
 // other members remain unique, proving a 1/2 split without pushing those
-// fleets below the top-200 boundary. Each four-member challenger collapses to
-// one distinct /29, so both remain positive but deterministically rank 201st
-// and 202nd until a selected fleet is degraded by the boundary fault.
+// fleets below the top-200 boundary. Each four-member challenger spans three
+// distinct /29s, so both remain positive and close to the real boundary but
+// deterministically rank 201st and 202nd until a selected fleet is degraded.
 func minerTestEgressSourceIP(miner int) string {
 	if miner < 1 {
 		return ""
@@ -1340,9 +1341,9 @@ func minerTestEgressSourceIP(miner int) string {
 	case miner == 5:
 		return "127.64.0.2"
 	case miner >= 801 && miner <= 804:
-		return fmt.Sprintf("127.64.1.%d", miner-800)
+		return fmt.Sprintf("127.64.1.%d", []int{1, 9, 17, 18}[miner-801])
 	case miner >= 805 && miner <= 808:
-		return fmt.Sprintf("127.64.2.%d", miner-804)
+		return fmt.Sprintf("127.64.2.%d", []int{1, 9, 17, 18}[miner-805])
 	}
 	index := miner - 1
 	second := 65 + index/(32*256)

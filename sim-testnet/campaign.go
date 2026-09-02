@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+const releaseCandidateCampaignName = "release-candidate"
 
 // ReleaseCampaignGate is the authenticated live-topology interval which must
 // complete before the simulator may schedule production cadence.
@@ -70,14 +73,76 @@ func stringSlicesEqual(a, b []string) bool {
 	return true
 }
 
-// Validate a result independently of its complete marker. This binds the
-// release identity, exact executable scenario definition, live epoch span,
-// assertions, anomaly ledger, and continuous adversary evidence.
-func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) error {
-	if cfg == nil || cfg.Config == nil || result == nil {
+// validateScenarioAcceptanceResult independently reconstructs the complete
+// epoch and terminal-finalization boundaries authenticated by a campaign
+// result. It rejects partial baseline epochs and faults outside the window.
+func validateScenarioAcceptanceResult(cfg *ResolvedConfig, definition scenarioDefinition, result *ScenarioResult) error {
+	if cfg == nil || cfg.Policy == nil || result == nil || result.AcceptanceWindow == nil {
+		return errors.New("release campaign has no complete-epoch acceptance window")
+	}
+	window := result.AcceptanceWindow
+	wantEpochs := uint64(cfg.Config.Scenarios.ShortEpochs)
+	wantBlocks := cfg.Policy.Settlement.EpochBlocks
+	wantFinalize := cfg.Policy.Settlement.FinalizeOffsetBlocks
+	if definition.Name == "production-soak" {
+		wantEpochs = uint64(cfg.Config.Scenarios.ProductionEpochs)
+		wantBlocks = cfg.Policy.ProductionCadence.EpochBlocks
+		wantFinalize = cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
+		if window.PolicyEffectiveEpoch == 0 || window.PolicyEffectiveEpoch > window.BaselineEpoch {
+			return errors.New("production acceptance window does not bind an active production policy")
+		}
+	}
+	if window.Schema != "urnetwork-sim-acceptance-window-v1" || window.EpochCount != wantEpochs || definition.GoalEpochs != wantEpochs || window.EpochBlocks != wantBlocks || window.FinalizeOffsetBlocks != wantFinalize {
+		return fmt.Errorf("release acceptance geometry=%s/%d/%d/%d want epochs/blocks/finalize=%d/%d/%d", window.Schema, window.EpochCount, window.EpochBlocks, window.FinalizeOffsetBlocks, wantEpochs, wantBlocks, wantFinalize)
+	}
+	firstEpoch, ok := checkedAdd(window.BaselineEpoch, 1)
+	if !ok || window.FirstEpoch != firstEpoch || window.BaselineEpoch != result.StartEpoch || window.BaselineHead != result.StartHead || window.BaselineObservationHash == "" {
+		return errors.New("release acceptance baseline does not match the result start")
+	}
+	if _, err := decodeHex32("release acceptance baseline observation hash", window.BaselineObservationHash); err != nil {
+		return err
+	}
+	if window.StartBlock <= window.BaselineHead.Number || window.StartBlock-window.BaselineHead.Number > window.EpochBlocks {
+		return errors.New("release acceptance start is not the next complete epoch boundary")
+	}
+	span, ok := checkedMul(window.EpochCount, window.EpochBlocks)
+	if !ok {
+		return errors.New("release acceptance span overflows uint64")
+	}
+	endBlock, ok := checkedAdd(window.StartBlock, span)
+	if !ok || window.EndBlock != endBlock {
+		return errors.New("release acceptance end block is not canonical")
+	}
+	terminalBlock, ok := checkedAdd(window.EndBlock, window.FinalizeOffsetBlocks)
+	if !ok || window.TerminalBlock != terminalBlock || result.EndHead.Number < terminalBlock {
+		return errors.New("release acceptance terminal finalization is incomplete")
+	}
+	endEpoch, ok := checkedAdd(window.FirstEpoch, window.EpochCount)
+	if !ok || result.EndEpoch < endEpoch {
+		return fmt.Errorf("release campaign end epoch %d precedes accepted boundary %d", result.EndEpoch, endEpoch)
+	}
+	if result.CampaignStartHead.Number == 0 || result.CampaignStartHead.Number > result.StartHead.Number || result.CampaignStartEpoch > result.StartEpoch {
+		return errors.New("release campaign preparation interval is invalid")
+	}
+	if _, err := decodeHex32("release campaign initial finalized hash", result.CampaignStartHead.Hash); err != nil {
+		return err
+	}
+	for _, fault := range result.Faults {
+		if fault.TriggerBlock < window.StartBlock || fault.RestoreBlock > window.EndBlock || fault.AppliedBlock < window.StartBlock || fault.RestoredBlock > window.EndBlock {
+			return fmt.Errorf("release fault %s is outside the complete-epoch acceptance window", fault.ID)
+		}
+	}
+	return nil
+}
+
+// validateScenarioCampaignResult validates one release-phase result
+// independently of its complete marker. The expected name selects the exact
+// executable definition, epoch span, faults, and adversarial evidence.
+func validateScenarioCampaignResult(cfg *ResolvedConfig, result *ScenarioResult, name string) error {
+	if cfg == nil || cfg.Config == nil || result == nil || strings.TrimSpace(name) == "" {
 		return errors.New("release campaign result context is incomplete")
 	}
-	definition, err := scenarioDefinitionFor(cfg, "release-1.0")
+	definition, err := scenarioDefinitionFor(cfg, name)
 	if err != nil {
 		return err
 	}
@@ -85,7 +150,7 @@ func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) 
 	if err != nil {
 		return err
 	}
-	if result.Schema != "urnetwork-sim-scenario-result-v1" || result.Release != "1.0" || result.Name != "release-1.0" || result.RunID == "" || result.DeploymentID != cfg.Config.Deployment.DeploymentID || result.ChainID != cfg.ChainID || result.Netuid != cfg.Netuid || !strings.EqualFold(result.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(result.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(result.PolicyHash, cfg.PolicyHash) {
+	if result.Schema != "urnetwork-sim-scenario-result-v1" || result.Release != "1.0" || result.Name != name || result.RunID == "" || result.DeploymentID != cfg.Config.Deployment.DeploymentID || result.ChainID != cfg.ChainID || result.Netuid != cfg.Netuid || !strings.EqualFold(result.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(result.ConfigHash, cfg.ConfigHash) || !strings.EqualFold(result.PolicyHash, cfg.PolicyHash) {
 		return errors.New("release campaign result identity does not match the approved deployment")
 	}
 	if !strings.EqualFold(result.ScenarioDefinition, definitionHash) || !strings.EqualFold(result.ScenarioMatrix, definition.MatrixHash) || !strings.EqualFold(result.AdversarialMatrix, definition.AdversarialMatrixHash) || result.Adversaries == nil {
@@ -96,8 +161,8 @@ func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) 
 	if adversaries.Schema != "urnetwork-adversary-campaign-v1" || adversaries.Release != "1.0" || adversaries.Status != "stopped" || !strings.EqualFold(adversaries.MatrixHash, definition.AdversarialMatrixHash) || adversaries.Seed != adversaryConfig.Seed || adversaries.MinimumSamplesPerActor != adversaryConfig.MinimumSamplesPerActor || adversaries.MaximumActorErrorRatePPM != adversaryConfig.MaximumActorErrorRatePPM || adversaries.MaximumP99Milliseconds != adversaryConfig.MaximumP99LatencyMilliseconds || adversaries.MaximumAttackControlRatio != adversaryConfig.MaximumAttackControlP95Ratio || adversaries.OperatorRequestCeilingQPS != adversaryConfig.MaximumOperatorRequestsPerSec || adversaries.RPCRequestCeilingQPS != adversaryConfig.MaximumRPCRequestsPerSec {
 		return errors.New("release campaign adversary evidence does not match the approved limits")
 	}
-	if result.StartEpoch > ^uint64(0)-definition.GoalEpochs || result.EndEpoch < result.StartEpoch+definition.GoalEpochs {
-		return fmt.Errorf("release campaign spans epochs [%d,%d], require %d live epochs", result.StartEpoch, result.EndEpoch, definition.GoalEpochs)
+	if err := validateScenarioAcceptanceResult(cfg, definition, result); err != nil {
+		return err
 	}
 	if result.StartHead.Number == 0 || result.EndHead.Number < result.StartHead.Number {
 		return errors.New("release campaign finalized-head interval is invalid")
@@ -127,6 +192,9 @@ func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) 
 		if !seenAssertions[check.ID] {
 			return fmt.Errorf("release campaign is missing approved assertion %s", check.ID)
 		}
+	}
+	if !seenAssertions["faults_within_acceptance_window"] {
+		return errors.New("release campaign is missing its fault-window assertion")
 	}
 	if len(result.Faults) != len(definition.Faults) {
 		return fmt.Errorf("release campaign has %d fault records, want %d", len(result.Faults), len(definition.Faults))
@@ -169,8 +237,16 @@ func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) 
 	return nil
 }
 
-func validateReleaseCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, runDir string, result *ScenarioResult) (*ReleaseCampaignGate, error) {
-	if err := validateReleaseCampaignResult(cfg, result); err != nil {
+// validateReleaseCampaignResult retains the production-policy gate's narrow
+// release-1.0 entry point while sharing the exact verifier with M3 adoption.
+func validateReleaseCampaignResult(cfg *ResolvedConfig, result *ScenarioResult) error {
+	return validateScenarioCampaignResult(cfg, result, "release-1.0")
+}
+
+// validateScenarioCampaignComplete authenticates the result plus the signed
+// complete marker and every immutable evidence file named by that marker.
+func validateScenarioCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, runDir string, result *ScenarioResult, name string) (*ReleaseEvidenceEnvelope, error) {
+	if err := validateScenarioCampaignResult(cfg, result, name); err != nil {
 		return nil, err
 	}
 	if roles == nil {
@@ -208,20 +284,40 @@ func validateReleaseCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, ru
 	if !stringMapsEqual(payload.Files, hashes) || hashes["result.json"] == "" || hashes["assertions.json"] == "" || hashes["anomalies.json"] == "" || hashes["adversaries.json"] == "" {
 		return nil, errors.New("release complete marker file hashes do not match the immutable run directory")
 	}
+	return &complete, nil
+}
+
+// validateReleaseCampaignComplete converts one fully authenticated release
+// result into the narrow gate consumed by production policy scheduling.
+func validateReleaseCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, runDir string, result *ScenarioResult) (*ReleaseCampaignGate, error) {
+	complete, err := validateScenarioCampaignComplete(cfg, roles, runDir, result, "release-1.0")
+	if err != nil {
+		return nil, err
+	}
 	return &ReleaseCampaignGate{RunID: result.RunID, ResultHash: result.EvidenceHash, CompleteContentHash: complete.ContentHash, StartEpoch: result.StartEpoch, EndEpoch: result.EndEpoch}, nil
 }
 
-// Load the newest fully signed passing release result. Failed runs have no
-// complete marker and remain available for root-cause analysis, but can never
-// authorize production. A malformed signed candidate fails closed.
-func loadReleaseCampaignGate(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) (*ReleaseCampaignGate, error) {
+var errNoCompletedScenarioCampaign = errors.New("no signed anomaly-clean scenario campaign is complete")
+
+// loadCompletedScenarioCampaign loads the newest fully signed passing result
+// for one exact scenario definition. Failed runs have no complete marker and
+// remain available for root-cause analysis; a malformed completed candidate
+// fails closed instead of being skipped.
+func loadCompletedScenarioCampaign(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, name string) (*ScenarioResult, *ReleaseEvidenceEnvelope, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, nil, errors.New("completed scenario name is empty")
+	}
 	runsDir := filepath.Join(stateDir, "runs")
 	entries, err := os.ReadDir(runsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, fmt.Errorf("%w: %s", errNoCompletedScenarioCampaign, name)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("read release campaign runs: %w", err)
+		return nil, nil, fmt.Errorf("read scenario campaign runs: %w", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-	var selected *ReleaseCampaignGate
+	var selected *ScenarioResult
+	var selectedComplete *ReleaseEvidenceEnvelope
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -230,25 +326,80 @@ func loadReleaseCampaignGate(cfg *ResolvedConfig, stateDir string, roles *RoleSe
 		if _, statErr := os.Stat(filepath.Join(runDir, "complete.json")); errors.Is(statErr, os.ErrNotExist) {
 			continue
 		} else if statErr != nil {
-			return nil, statErr
+			return nil, nil, statErr
 		}
 		var result ScenarioResult
 		if err := decodeStrictJSONFile(filepath.Join(runDir, "result.json"), &result); err != nil {
-			return nil, fmt.Errorf("decode completed scenario %s: %w", entry.Name(), err)
+			return nil, nil, fmt.Errorf("decode completed scenario %s: %w", entry.Name(), err)
 		}
-		if result.Name != "release-1.0" {
+		if result.Name != name {
 			continue
 		}
-		gate, err := validateReleaseCampaignComplete(cfg, roles, runDir, &result)
+		complete, err := validateScenarioCampaignComplete(cfg, roles, runDir, &result, name)
 		if err != nil {
-			return nil, fmt.Errorf("validate completed release campaign %s: %w", entry.Name(), err)
+			return nil, nil, fmt.Errorf("validate completed %s campaign %s: %w", name, entry.Name(), err)
 		}
-		if selected == nil || gate.EndEpoch > selected.EndEpoch || gate.EndEpoch == selected.EndEpoch && gate.RunID > selected.RunID {
-			selected = gate
+		if selected == nil || result.EndEpoch > selected.EndEpoch || result.EndEpoch == selected.EndEpoch && result.RunID > selected.RunID {
+			copyResult := result
+			copyComplete := *complete
+			selected = &copyResult
+			selectedComplete = &copyComplete
 		}
 	}
 	if selected == nil {
-		return nil, errors.New("no signed, anomaly-clean release-1.0 campaign is complete")
+		return nil, nil, fmt.Errorf("%w: %s", errNoCompletedScenarioCampaign, name)
 	}
-	return selected, nil
+	return selected, selectedComplete, nil
+}
+
+// Load the newest fully signed passing release result and convert it into the
+// production-policy authorization gate.
+func loadReleaseCampaignGate(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) (*ReleaseCampaignGate, error) {
+	result, complete, err := loadCompletedScenarioCampaign(cfg, stateDir, roles, "release-1.0")
+	if err != nil {
+		return nil, err
+	}
+	return &ReleaseCampaignGate{RunID: result.RunID, ResultHash: result.EvidenceHash, CompleteContentHash: complete.ContentHash, StartEpoch: result.StartEpoch, EndEpoch: result.EndEpoch}, nil
+}
+
+// scenarioCampaignRunner executes one named scenario with the already-open
+// release journal and transaction-capable executor.
+type scenarioCampaignRunner func(context.Context, *ResolvedConfig, string, string, *Journal, *Executor) error
+
+// runReleaseCandidateCampaign adopts only fully authenticated completed
+// phases, executes the first missing phase, and revalidates its signed marker
+// before crossing the M2-to-M3 boundary. A failed M3 run remains immutable and
+// a later invocation starts a fresh three-block soak while retaining M2.
+func runReleaseCandidateCampaign(ctx context.Context, cfg *ResolvedConfig, stateDir string, journal *Journal, executor *Executor, roles *RoleSecrets, runner scenarioCampaignRunner) error {
+	if cfg == nil || cfg.Config == nil || journal == nil || executor == nil || roles == nil || runner == nil {
+		return errors.New("release-candidate campaign context is incomplete")
+	}
+	for _, name := range []string{"release-1.0", "production-soak"} {
+		if _, err := scenarioDefinitionFor(cfg, name); err != nil {
+			return fmt.Errorf("release-candidate %s definition: %w", name, err)
+		}
+	}
+	if _, _, err := loadCompletedScenarioCampaign(cfg, stateDir, roles, "release-1.0"); err != nil {
+		if !errors.Is(err, errNoCompletedScenarioCampaign) {
+			return err
+		}
+		if err := runner(ctx, cfg, stateDir, "release-1.0", journal, executor); err != nil {
+			return err
+		}
+		if _, _, err := loadCompletedScenarioCampaign(cfg, stateDir, roles, "release-1.0"); err != nil {
+			return fmt.Errorf("authenticate completed release-1.0 handoff: %w", err)
+		}
+	}
+	if _, _, err := loadCompletedScenarioCampaign(cfg, stateDir, roles, "production-soak"); err == nil {
+		return nil
+	} else if !errors.Is(err, errNoCompletedScenarioCampaign) {
+		return err
+	}
+	if err := runner(ctx, cfg, stateDir, "production-soak", journal, executor); err != nil {
+		return err
+	}
+	if _, _, err := loadCompletedScenarioCampaign(cfg, stateDir, roles, "production-soak"); err != nil {
+		return fmt.Errorf("authenticate completed production-soak handoff: %w", err)
+	}
+	return nil
 }

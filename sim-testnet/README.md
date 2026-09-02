@@ -333,12 +333,14 @@ from a many-hour serialized transaction chain to roughly 1--3 hours, including
 boundary alignment: 400 native commitments run in ten-wide waves, 40 EVM
 batches replace 1,600 per-member install/refresh calls, historical reads use
 bounded RPC batches, and two future-epoch oracle handoffs remain.
-The five accelerated acceptance epochs require about five hours. The three
-360-block production UR blocks retain about 3.6 hours of complete chain
-observation, plus a conservatively discarded partial boundary and the final
-180-block settlement window. The combined live acceptance path is expected to
-take roughly 11--13 hours including boundary alignment. Those protocol-time
-gates are not shortened or simulated off-chain.
+The five accelerated acceptance epochs require about five hours. `release-1.0`
+first discards the post-preparation partial accelerated epoch and waits through
+the final 150-block settlement offset. The three 360-block production UR blocks
+retain about 3.6 hours of complete chain observation after a second
+post-preparation partial epoch, plus the final 180-block settlement window. The
+combined live acceptance path is expected to take roughly 12--15 hours including
+future-effective transition and boundary alignment. Those protocol-time gates
+are not shortened or simulated off-chain.
 
 There is no separate one-hour M1 wait before that five-epoch interval. Launch
 hands directly to `release-1.0`; its first complete reconciled epoch is both the
@@ -384,7 +386,20 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
 ./build/sim-testnet scenario --name production-soak \
   --config sim-testnet/testnet.yml \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
+
+# Recommended uninterrupted M2 -> M3 release-candidate campaign. It adopts
+# only exact signed clean phase markers and runs the first missing phase.
+./build/sim-testnet scenario --name release-candidate \
+  --config sim-testnet/testnet.yml \
+  --apply --plan-hash 0xREVIEWED_PLAN_HASH
 ```
+
+`release-candidate` is a resumable orchestration name, not a weaker scenario.
+It runs `release-1.0`, independently reloads and authenticates the signed result,
+complete marker and every named evidence file, then starts `production-soak`
+without an operator handoff gap. If M2 is already valid it runs only M3; if both
+are valid it performs no scenario action. A failed or unsigned M3 is never
+adopted: the next invocation retains M2 and starts a fresh three-epoch soak.
 
 `release-1.0` requires five accelerated epochs, real two-NO verification,
 independently applied CRv4 vectors and self masks, isolated deposits and conviction,
@@ -400,6 +415,26 @@ exclusion, actual `ClaimPaid` settlement (distinct from accepted/deferred claim
 credit), exact signed-policy max-weight-cap compliance, reserve principal plus
 auto-compounded yield, process fault recovery and both exact vault conservation
 identities (`captured = paid + escrow`, `escrow = pending + outstanding`).
+Each validator's immutable intent includes all 202 canonical rational fleet
+scores computed from its own trails. The simulator independently ranks those
+scores and reconstructs that validator's exact 200 selected and two rejected
+UIDs; the two validators are allowed to reach different boundaries from their
+own evidence. Every unmasked UID selected by a validator must have positive
+weight in that validator's applied vector, while each UID it rejects must have
+zero weight there. A positive weight for any UID outside that validator's
+selected set and the two live pool UIDs is a hard failure. Finalized native
+reward vectors must pay every unanimously selected fleet and pay no fleet
+rejected by every validator; a disputed boundary is left to Yuma's stake-weighted
+median and clipping and is reported from the chain. All 808 providers bound to
+the 202 live fleet UIDs—including rejected but still registered fleets—must be
+absent from operator payout leaves, preventing double pay until actual
+deregistration returns a fleet to its pool.
+The runner snapshots finalized contract geometry after preparation, discards
+that containing epoch, accepts only the next five complete epochs, then waits
+through terminal finalization. Its signed result binds the baseline observation,
+exact start/end/terminal blocks and terminal status for both operator positions;
+the campaign verifier reconstructs those boundaries independently. Every M2
+fault must also trigger and restore inside the accepted five-epoch interval.
 `production-soak` schedules the testnet-only 360-block (approximately 72-minute)
 policy and immunity period, deliberately under-deposits one operator and proves
 that both validators zero its pool until an exact later deposit recovers it,
@@ -408,6 +443,13 @@ runs three consecutive fully observed production epochs, and genuinely restarts
 (new PID, healthy replacement) every operator service, miner/claim daemon and
 validator without overlapping faults. Mainnet remains locked to the whitepaper's
 separately reviewed 50,400-block/seven-day cadence.
+
+While the topology is live, one supervised non-faulted loopback EVM egress owns
+the configured upstream quota. Workloads reach it through their faultable proxy;
+scenario writers, observers, adversarial actors and concurrent
+`status`/`inspect`/`analyze` commands reach it directly. A live supervisor may
+not fall back around a missing or unhealthy gate. Before launch and after stop,
+read-only commands use the canonical configured endpoint.
 
 ## Continuous adversarial campaign
 

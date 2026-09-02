@@ -186,3 +186,101 @@ func TestRPCProxyConfigAddsDefaultPublicTLSPort(t *testing.T) {
 		t.Fatalf("public RPC proxy config = %+v", config)
 	}
 }
+
+// Campaign routing must centralize provider demand without changing the
+// canonical config identity used by plans and signed evidence.
+func TestPublicCampaignRPCConfigRoutesCopyThroughOneUngatedLoopback(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalEVM = "https://public-evm.example"
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	originalOperational := cfg.OperationalEVM
+	originalPublic := cfg.Public.Chain.EVMPublicReadEndpoint
+	originalLimit := cfg.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute
+	runtime, err := campaignRPCConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "http://" + campaignEVMAuthority()
+	if runtime == cfg || runtime.Config == cfg.Config || runtime.Public == cfg.Public || runtime.OperationalEVM != want || runtime.Public.Chain.EVMPublicReadEndpoint != want || runtime.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute != 0 || configuredEVMRequestsPerMinute(runtime, want) != 0 || runtime.ConfigHash != cfg.ConfigHash || runtime.PolicyHash != cfg.PolicyHash {
+		t.Fatalf("campaign RPC copy=%+v want endpoint=%s", runtime, want)
+	}
+	if cfg.OperationalEVM != originalOperational || cfg.Public.Chain.EVMPublicReadEndpoint != originalPublic || cfg.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute != originalLimit {
+		t.Fatal("campaign RPC routing mutated the canonical resolved configuration")
+	}
+}
+
+// A private operational node still uses the campaign hop so observer and
+// workload failures share one route. Its independently configured public
+// reader remains external and retains its own quota because it is a distinct
+// assurance domain rather than the same provider reached twice.
+func TestPrivateCampaignRPCConfigPreservesIndependentPublicReader(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Public.Chain.EVMPublicReadEndpoint = "https://independent-public.example"
+	runtime, err := campaignRPCConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "http://" + campaignEVMAuthority()
+	if runtime.OperationalEVM != want || runtime.Public.Chain.EVMPublicReadEndpoint != cfg.Public.Chain.EVMPublicReadEndpoint || runtime.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute != 40 || configuredEVMRequestsPerMinute(runtime, want) != 0 || configuredEVMRequestsPerMinute(runtime, runtime.Public.Chain.EVMPublicReadEndpoint) != 40 {
+		t.Fatalf("private campaign RPC copy=%+v want operational=%s", runtime, want)
+	}
+}
+
+// Transport authorization accepts only the canonical config or the exact
+// internally derived campaign hop. Endpoint or quota substitution must not be
+// able to reuse an approved plan identity.
+func TestCampaignRPCTransportRejectsSubstitution(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalEVM = "https://public-evm.example"
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	runtime, err := campaignRPCConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCampaignRPCTransport(cfg, cfg); err != nil {
+		t.Fatalf("canonical transport rejected: %v", err)
+	}
+	if err := validateCampaignRPCTransport(cfg, runtime); err != nil {
+		t.Fatalf("derived transport rejected: %v", err)
+	}
+	tampered := *runtime
+	tampered.OperationalEVM = "http://127.0.0.1:8545"
+	if err := validateCampaignRPCTransport(cfg, &tampered); err == nil {
+		t.Fatal("substituted campaign endpoint was accepted")
+	}
+	tampered = *runtime
+	tamperedConfig := *runtime.Config
+	tampered.Config = &tamperedConfig
+	tampered.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute = 1
+	if err := validateCampaignRPCTransport(cfg, &tampered); err == nil {
+		t.Fatal("substituted campaign quota was accepted")
+	}
+}
+
+// Read commands must preserve the canonical route outside a campaign and use
+// the exact central-egress derivative while the supervisor is live.
+func TestReadOnlyRPCSelectionUsesOnlyTheCampaignDerivative(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalEVM = "https://public-evm.example"
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	inactive, err := selectReadOnlyRPCConfig(cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inactive != cfg {
+		t.Fatal("inactive read selection copied or changed canonical configuration")
+	}
+	active, err := selectReadOnlyRPCConfig(cfg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active == cfg || active.OperationalEVM != "http://"+campaignEVMAuthority() || active.Public.Chain.EVMPublicReadEndpoint != active.OperationalEVM {
+		t.Fatalf("active read selection = %+v", active)
+	}
+	if err := validateCampaignRPCTransport(cfg, active); err != nil {
+		t.Fatalf("active read route is not the authorized derivative: %v", err)
+	}
+}

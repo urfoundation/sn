@@ -767,7 +767,7 @@ func TestPacketListenerProbePreservesEveryExactPrivilegedAddressAndFailure(t *te
 func TestReleaseProcessListenAddressesCoverTopologyWithoutDuplicates(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	addresses := releaseProcessListenAddresses(cfg)
-	want := 4 + (4+operatorConnectExchangePortCount)*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses
+	want := 6 + (4+operatorConnectExchangePortCount)*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses
 	if len(addresses) != want {
 		t.Fatalf("release listener count=%d, want %d: %v", len(addresses), want, addresses)
 	}
@@ -821,6 +821,7 @@ func TestRestartBackoffIsBounded(t *testing.T) {
 
 func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 	specs := []ProcessSpec{
+		{ID: publicEVMEgressProcessID, Role: "dependency-rpc-proxy"},
 		{ID: workloadRPCProxyProcessID, Role: "dependency-rpc-proxy"},
 		{ID: workloadSubstrateProcessID, Role: "dependency-rpc-proxy"},
 		{ID: "operator-1-api", Role: "operator-api"},
@@ -829,7 +830,7 @@ func TestProvisioningStartsOnlyOperatorAPIs(t *testing.T) {
 		{ID: "operator-2-api", Role: "operator-api"},
 	}
 	got := selectProvisioningServerSpecs(specs)
-	if len(got) != 4 || got[0].ID != workloadRPCProxyProcessID || got[1].ID != workloadSubstrateProcessID || got[2].ID != "operator-1-api" || got[3].ID != "operator-2-api" {
+	if len(got) != 5 || got[0].ID != publicEVMEgressProcessID || got[1].ID != workloadRPCProxyProcessID || got[2].ID != workloadSubstrateProcessID || got[3].ID != "operator-1-api" || got[4].ID != "operator-2-api" {
 		t.Fatalf("provisioning specs = %+v", got)
 	}
 }
@@ -1063,7 +1064,7 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 			t.Fatalf("release process role has no startup classification: %+v", spec)
 		}
 	}
-	wantPrerequisites := 2 + 2*cfg.Config.Topology.Operators
+	wantPrerequisites := 3 + 2*cfg.Config.Topology.Operators
 	wantDependents := cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
 	if prerequisiteCount != wantPrerequisites || dependentCount != wantDependents {
 		t.Fatalf("release startup prerequisites/dependents=%d/%d, want %d/%d", prerequisiteCount, dependentCount, wantPrerequisites, wantDependents)
@@ -1177,15 +1178,16 @@ func TestServerSpecsRouteWorkloadsThroughSimulatorOwnedRPCProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) < 2 || specs[0].ID != workloadRPCProxyProcessID || specs[0].HealthURL != "http://"+workloadRPCProxyHealthAddress+"/healthz" || specs[1].ID != workloadSubstrateProcessID || specs[1].HealthURL != "http://"+workloadSubstrateHealthAddress+"/healthz" {
+	if len(specs) < 3 || specs[0].ID != publicEVMEgressProcessID || specs[0].HealthURL != "http://"+publicEVMEgressHealthAddress+"/healthz" || specs[1].ID != workloadRPCProxyProcessID || specs[1].HealthURL != "http://"+workloadRPCProxyHealthAddress+"/healthz" || specs[2].ID != workloadSubstrateProcessID || specs[2].HealthURL != "http://"+workloadSubstrateHealthAddress+"/healthz" {
 		t.Fatalf("missing workload RPC proxy spec: %+v", specs)
 	}
-	evmArgs := strings.Join(specs[0].Args, " ")
-	substrateArgs := strings.Join(specs[1].Args, " ")
-	if !strings.Contains(evmArgs, "--upstream=evm-rpc.example:443") || !strings.Contains(evmArgs, "--tls-server-name=evm-rpc.example") || !strings.Contains(evmArgs, "--http") || !strings.Contains(evmArgs, "--maximum-requests-per-minute=40") || !strings.Contains(substrateArgs, "--upstream=substrate-rpc.example:443") || !strings.Contains(substrateArgs, "--tls-server-name=substrate-rpc.example") || strings.Contains(substrateArgs, "--http") || strings.Contains(substrateArgs, "--maximum-requests-per-minute") {
-		t.Fatalf("RPC proxies lost protocol-specific upstream TLS identities: evm=%q substrate=%q", evmArgs, substrateArgs)
+	egressArgs := strings.Join(specs[0].Args, " ")
+	workloadArgs := strings.Join(specs[1].Args, " ")
+	substrateArgs := strings.Join(specs[2].Args, " ")
+	if !strings.Contains(egressArgs, "--upstream=evm-rpc.example:443") || !strings.Contains(egressArgs, "--tls-server-name=evm-rpc.example") || !strings.Contains(egressArgs, "--http") || !strings.Contains(egressArgs, "--maximum-requests-per-minute=40") || !strings.Contains(workloadArgs, "--upstream="+campaignEVMAuthority()) || !strings.Contains(workloadArgs, "--http") || strings.Contains(workloadArgs, "--tls-server-name") || strings.Contains(workloadArgs, "--maximum-requests-per-minute") || !strings.Contains(substrateArgs, "--upstream=substrate-rpc.example:443") || !strings.Contains(substrateArgs, "--tls-server-name=substrate-rpc.example") || strings.Contains(substrateArgs, "--http") || strings.Contains(substrateArgs, "--maximum-requests-per-minute") {
+		t.Fatalf("RPC proxies lost protocol-specific quota/TLS chaining: egress=%q workload=%q substrate=%q", egressArgs, workloadArgs, substrateArgs)
 	}
-	for _, spec := range specs[2:] {
+	for _, spec := range specs[3:] {
 		if spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 			t.Fatalf("%s bypasses workload RPC proxy: %q", spec.ID, spec.Env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
 		}
@@ -1261,11 +1263,11 @@ func TestClientSpecsUseProductionModuleSwarmsAndDistinctPrefixes(t *testing.T) {
 		prefix := netip.PrefixFrom(addr, cfg.Policy.Verify.EgressIPv4Prefix).Masked()
 		prefixes[prefix] = append(prefixes[prefix], miner)
 	}
-	wantPrefixes := cfg.Config.Topology.Miners - 7
+	wantPrefixes := cfg.Config.Topology.Miners - 3
 	if len(sources) != cfg.Config.Topology.Miners || len(prefixes) != wantPrefixes {
 		t.Fatalf("source/prefix count = %d/%d, want %d/%d", len(sources), len(prefixes), cfg.Config.Topology.Miners, wantPrefixes)
 	}
-	multi := map[string]bool{"1,5": true, "801,802,803,804": true, "805,806,807,808": true}
+	multi := map[string]bool{"1,5": true, "803,804": true, "807,808": true}
 	for prefix, miners := range prefixes {
 		if len(miners) == 1 {
 			continue
@@ -1343,7 +1345,7 @@ func TestTestEgressGeometryKeepsSharedFleetsAboveChallengers(t *testing.T) {
 			t.Fatalf("initial fleet %d fell below the top-200 boundary", fleet)
 		}
 	}
-	if ranked[0].score.Cmp(big.NewRat(4, 1)) != 0 || ranked[198].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[199].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[200].fleet != 201 || ranked[200].score.Cmp(big.NewRat(1, 1)) != 0 || ranked[201].fleet != 202 {
+	if ranked[0].score.Cmp(big.NewRat(4, 1)) != 0 || ranked[198].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[199].score.Cmp(big.NewRat(7, 2)) != 0 || ranked[200].fleet != 201 || ranked[200].score.Cmp(big.NewRat(3, 1)) != 0 || ranked[201].fleet != 202 || ranked[201].score.Cmp(big.NewRat(3, 1)) != 0 {
 		t.Fatalf("unexpected boundary geometry: top=%+v boundary=%+v", ranked[0], ranked[198:])
 	}
 }

@@ -25,6 +25,31 @@ func TestSelectHeadFleetsKeepsExactTopTwoHundred(t *testing.T) {
 	}
 }
 
+// Complete score evidence must reproduce the same 200/2 boundary; changing a
+// claimed selection without changing the validator's scores is detectable.
+func TestValidateHeadSelectionEvidenceReconstructsTopTwoHundred(t *testing.T) {
+	eligible := make([]uint16, 202)
+	scores := make([]RationalJSON, 202)
+	for index := range eligible {
+		eligible[index] = uint16(20 + index)
+		scores[index] = RationalJSON{Numerator: new(big.Int).SetInt64(int64(202 - index)).String(), Denominator: "1"}
+	}
+	selected := append([]uint16(nil), eligible[:200]...)
+	rejected := append([]uint16(nil), eligible[200:]...)
+	if err := ValidateHeadSelectionEvidence(eligible, scores, selected, rejected, 200); err != nil {
+		t.Fatalf("canonical 200/2 evidence: %v", err)
+	}
+	selected[199], rejected[0] = rejected[0], selected[199]
+	if err := ValidateHeadSelectionEvidence(eligible, scores, selected, rejected, 200); err == nil {
+		t.Fatal("a substituted slot claimant was accepted against unchanged scores")
+	}
+	selected[199], rejected[0] = rejected[0], selected[199]
+	scores[0].Numerator = "0202"
+	if err := ValidateHeadSelectionEvidence(eligible, scores, selected, rejected, 200); err == nil {
+		t.Fatal("non-canonical score evidence was accepted")
+	}
+}
+
 func TestSelectHeadFleetsBreaksTiesByUIDAndRejectsZero(t *testing.T) {
 	selection, err := selectHeadFleets([]ExactWeightInput{
 		{UID: 9, Score: big.NewRat(3, 2)},

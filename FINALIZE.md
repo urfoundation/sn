@@ -21,8 +21,9 @@ exact aggregate gate passed with PostgreSQL/Redis integration enabled; the
 two-plan review and clean M0A replay remain pending. The
 adopted accelerated acceptance profile requires five consecutive 300-block
 epochs followed by a future-effective 360-block policy (60-block root window,
-180-block finalize offset, 6-block close grace), one conservatively discarded
-partial epoch, three consecutive fully observed production epochs, and terminal
+180-block finalize offset, 6-block close grace), a conservatively discarded
+post-preparation partial epoch before each scenario's accepted interval, three
+consecutive fully observed production epochs, and terminal
 finalization. Every acceptance scenario additionally requires at least one
 fresh, independently reconstructed and signature-verified proof per required
 epoch for every validator/operator pair; durable malformed, incomplete or
@@ -31,7 +32,7 @@ a real signed artifact against the deployed testnet vault and observe the exact
 `InvalidProof` revert with unchanged pinned entitlement and conservation state
 for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After
 clean M0A, the practical irreducible public-chain evidence window is
-approximately 11--13 hours.
+approximately 12--15 hours.
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -1693,6 +1694,88 @@ The evidence directory has an index and aggregate hash signed by the release own
 
 ## 9. Staged live-testnet validation campaign (implementation complete; execution pending)
 
+### Evidence-preserving acceleration decision (2026-09-02)
+
+The release clock is separated into protocol time and tooling overhead. The
+canonical evidence minimum remains five complete 300-block accelerated epochs,
+then a future-effective 360/60/180/6 policy and three complete production
+epochs. At the pinned 12-second cadence, the five accelerated epochs alone are
+five hours and the three production epochs are 3.6 hours. Root/finalization
+windows, the future-effective transition, and boundary alignment make the
+practical clean M0A-to-M3 chain window approximately 12--15 hours. Shortening an
+epoch, reducing either epoch count, omitting terminal finalization, or counting
+a partially observed epoch produces a diagnostic run, not release-1.0 evidence,
+and would still require the canonical campaign afterwards.
+
+The adopted acceleration work removes overhead without changing the signed
+policy, epoch counts, or required evidence. The executable scenario definition
+and its hash are regenerated and release-locked before the clean run:
+
+- M1 is epoch 1 of M2; there is no separate M1 idle epoch. A passing M2 marker
+  is handed directly to `production-soak`, whose policy remains inactive until
+  the next safe epoch boundary.
+- Both canonical scenarios take a finalized snapshot only after all of their
+  preparation actions finish, record the containing epoch as a non-acceptance
+  baseline, and begin acceptance at its exact next contract boundary. M2 then
+  accepts exactly five full 300-block epochs and waits another 150 blocks; M3
+  accepts exactly three full 360-block epochs and waits another 180 blocks.
+  Every accepted operator/epoch entitlement must be in terminal status, every
+  scheduled and observed fault interval must remain inside those accepted
+  epochs, and the signed result carries the exact baseline hash, start, end and
+  terminal block. The campaign verifier independently reconstructs all of this
+  geometry rather than trusting epoch-number deltas from the runner.
+- Contract observation packs exact ABI calls into at-most-50-element,
+  block-pinned JSON-RPC batches. A deterministic 120-read regression requires
+  exactly three HTTP requests. Against the retained netuid-521 deployment, the
+  source-current read-only `status` contract view completed in 9.91 seconds on
+  2026-09-02, versus the prior approximately 132-second serialized observation.
+- Server event synchronization verifies all distinct log blocks plus the range
+  endpoint through bounded block-identity batches before one database mutation.
+  It uses the explicit Subtensor EVM-RPC hash, never a locally recomputed
+  Ethereum header hash. Database-backed normal and race regressions cover the
+  1,000-block release range.
+- The fault-schedule audit found that the former all-serial schedule ended at
+  M2 offset 3,135, silently turning a five-hour requirement into a 10.45-hour
+  fault path. The release geometry now places each four-client challenger on
+  three distinct `/29` prefixes, immediately below the four-prefix selected
+  fleets, while retaining the wide `4:1` EMA case in deterministic tests. The
+  live selected-fleet outage therefore reserves three complete native tempos.
+  A second lane runs every dependency and persistent-process restart
+  sequentially during that outage; only the owning miner swarm is deferred
+  until logical-miner restoration. The lanes never mutate the same target, a
+  multi-active crash ledger preserves and independently restores every fault,
+  and the final fault ends at offset 1,155. A deterministic gate requires the
+  entire schedule to fit inside the exact 1,500-block/five-epoch M2 interval.
+- Fleet commitments remain ten-wide, fleet installs/refreshes remain atomic
+  ten-fleet transactions, and their historical reads retain the provider's
+  fifty-call ceiling. Resume reuses only authenticated finalized work.
+- During live block waits, the independent local/runtime suites, Solidity and
+  dependency scans, artifact reconstruction, backup/restore rehearsal, anomaly
+  triage, and mainnet read-only plan work run in parallel. They may finish early,
+  but their results cannot satisfy an unfinished on-chain epoch gate.
+
+The resumable `release-candidate` composite command is implemented. It runs
+`release-1.0` and, only after independently validating its signed clean result,
+complete marker and named file hashes, opens `production-soak` in the same
+process. Resume adopts an exact M2 marker, adopts M3 only when its separate
+transition-plus-three-epoch result is valid, and otherwise starts a fresh M3.
+This removes the manual/doctor/build handoff gap and reduces the chance of
+missing the next safe scheduling window; it cannot pre-schedule production
+before M2 passes. A block-aware lightweight monitor plus full snapshots at
+every fault, root, finalization and epoch boundary is also permissible only if
+deterministic tests prove that every warning and checkpoint rewind still reaches
+the anomaly ledger. Raising the public endpoint request ceiling, launching
+parallel writers on netuid 521, or caching unpinned chain facts is not an
+accepted acceleration mechanism.
+
+The supervised topology owns one non-faulted loopback EVM egress in front of
+the selected operational endpoint. Workloads, scenario writers, live probes,
+adversarial actors and concurrent `status`/`inspect`/`analyze` commands all
+share that gate, so the configured public-provider ceiling is aggregate rather
+than per client. The workload fault proxy remains a separate downstream hop.
+A live supervisor with a missing or unhealthy central gate fails closed; only
+a stopped or never-launched deployment reads the canonical endpoint directly.
+
 ### M0A — Runtime-452 local rehearsal
 
 Run a fast-block local network built from the exact locked Subtensor source/image and exercise the complete production topology. Do not use Anvil as the only chain because it cannot establish Subtensor precompile, staking, registration, finality, commitment, or CRv4 semantics.
@@ -1816,6 +1899,15 @@ Run exactly the release minimum of **five consecutive 300-block accelerated epoc
 - a conviction tier transition and voluntary pre-conviction;
 - shared, ambiguous, non-routable, reassigned, and expired egress prefixes;
 - head promotion, client rotation/revoke, UID loss/re-registration, and demotion/fallback;
+- independently reconstruct each validator's score-ranked 200/2 boundary from
+  all 202 canonical rational fleet scores in its immutable intent, without
+  requiring independent validators' boundaries to agree; every unmasked
+  claimant on a validator's own selected list must have positive weight in that
+  validator's applied vector, every claimant it rejects must have zero weight
+  there, and no UID outside that selected set or the two live pool UIDs may
+  carry a positive submitted weight; require finalized native emission for
+  every unanimously selected fleet, zero emission for every unanimously
+  rejected fleet, and preserve the actual Yuma outcome for disputed boundaries;
 - an operator missing its root, under-allocating/invalid-root attempts, partial claims, claim TTL/grace, and carry;
 - late keepers over multiple boundaries, failed/retried precompile funding, and pool hotkey rotation;
 - one NO offline/malicious while the other remains healthy;
@@ -2238,11 +2330,13 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    recoverable while this release is frozen; it had completed at least 25 of 200
    fleet bindings before the replacement-plan cutover.
    At the pinned 12-second cadence, bounded setup should take roughly 1--3 hours
-   rather than the serialized many-hour path. The adopted profile retains five
+   rather than the serialized many-hour path. After discarding one
+   post-preparation partial accelerated epoch, the adopted profile retains five
    complete 300-block accelerated epochs (approximately five hours), then uses
-   a future-effective 360-block policy for one discarded partial epoch, three
-   fully observed epochs, and the final 180-block settlement window. Boundary
-   alignment makes the combined live acceptance path approximately 11--13 hours.
+   a future-effective 360-block policy, discards one post-preparation production
+   epoch, observes three full epochs, and waits through the final 180-block
+   settlement window. Boundary alignment makes the combined
+   live acceptance path approximately 12--15 hours.
    These are protocol-time acceptance gates, not setup inefficiencies, and must
    not be bypassed with an off-chain clock.
 
@@ -3501,13 +3595,14 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    the package-final process residue assertion. Connect commit `a177b57` is
    pushed and its refreshed production source digest is release-locked.
 
-   Once that replay is clean, `release-1.0` observes five sequential 300-block
-   epochs (approximately five hours). `production-soak` then schedules the
+   Once that replay is clean, `release-1.0` discards its post-preparation
+   partial epoch, observes five sequential 300-block epochs (approximately five
+   hours), and waits through their terminal finalization. `production-soak` then schedules the
    360-block policy and observes its future-effective boundary, discards the
    partial epoch containing the first observation, proves three complete
    approximately-72-minute epochs, and waits through the final 180-block
    settlement window. Adversarial actors overlap both happy paths; the expected
-   remaining live-chain evidence window is approximately 11--13 hours,
+   remaining live-chain evidence window is approximately 12--15 hours,
    excluding any root-cause rerun.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the

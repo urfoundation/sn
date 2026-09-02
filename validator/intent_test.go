@@ -116,6 +116,48 @@ func TestIntentStoreDurableLifecycleAndRestartGuard(t *testing.T) {
 	}
 }
 
+// Intent persistence must reject a claimed top set that does not follow the
+// recorded score order, and the immutable vector hash must bind every eligible
+// score used to reconstruct that boundary.
+func TestIntentStoreBindsAndValidatesCompleteHeadSelectionEvidence(t *testing.T) {
+	canonical := testSteeringIntent(t, 3)
+	canonical.EligibleHeadUIDs = []uint16{10, 11, 12}
+	canonical.EligibleHeadScores = []RationalJSON{{Numerator: "3", Denominator: "1"}, {Numerator: "2", Denominator: "1"}, {Numerator: "1", Denominator: "1"}}
+	canonical.SelectedHeadUIDs = []uint16{10, 11}
+	canonical.RejectedHeadUIDs = []uint16{12}
+	store, err := NewIntentStore(filepath.Join(t.TempDir(), "canonical"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.Begin(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.EligibleHeadScores[0].Numerator = "4"
+	if err := created.VerifyVectorHash(); err == nil {
+		t.Fatal("eligible head score mutation preserved the intent hash")
+	}
+	substituted := canonical
+	substituted.SelectedHeadUIDs = []uint16{10, 12}
+	substituted.RejectedHeadUIDs = []uint16{11}
+	store, err = NewIntentStore(filepath.Join(t.TempDir(), "substituted"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Begin(substituted); err == nil {
+		t.Fatal("substituted selected set passed unchanged score evidence")
+	}
+	partial := canonical
+	partial.EligibleHeadScores = nil
+	store, err = NewIntentStore(filepath.Join(t.TempDir(), "partial"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Begin(partial); err == nil {
+		t.Fatal("head selection without eligible scores was accepted")
+	}
+}
+
 func TestIntentStoreRejectsRelativeState(t *testing.T) {
 	if _, err := NewIntentStore("relative"); err == nil {
 		t.Fatal("relative state accepted")

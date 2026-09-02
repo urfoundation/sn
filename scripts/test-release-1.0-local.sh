@@ -55,7 +55,7 @@ echo "[release-1.0] operator pure/unit suites"
   cd "$workspace/server"
   go test . -run '^Test(PgResourcesRedirectMaintenancePoolAndRestore|DatabaseTimeMatchesPostgresPrecision)$'
   go test ./st ./startifact
-  go test ./controller -run '^Test(CoreStClientEpochUsesOneFinalizedBlock|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
+  go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StSyncChainEvents|StBroadcast|StClientStub|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature)'
   go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^TestVerifyEgressExactIndexAndPrefixScoreAreIndependent$'
@@ -132,7 +132,7 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     export WARP_VERSION=0.0.0
     export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com
     export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com
-    go test ./controller -run 'TestVerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)'
+    go test ./controller -run '^Test(VerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)|StSyncChainEvents)'
     go test ./model -run 'Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail)'
     # Run the complete operator proxy surface. Its real network/DB roots have a
     # measured lower bound above Go's implicit ten-minute package deadline, so

@@ -28,7 +28,8 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		t.Fatal("local release gate does not verify the immutable server baseline and compile every executable package")
 	}
 	for _, required := range []string{
-		"CoreStClientEpochUsesOneFinalizedBlock",
+		"CoreStClient(BlockHashes|FinalizedHead|Epoch)",
+		"StSyncChainEventsBatchesCanonicalEventBlocks",
 		"StatsAlphaPriceURLIsMainnetOnly",
 		"StatsGaugeVecReplaceDeletesStaleSeries",
 		"go test -race ./monitor",

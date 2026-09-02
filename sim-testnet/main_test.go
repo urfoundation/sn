@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,6 +37,72 @@ func TestParseCLIReleaseCommandsAndWriteGuardFlags(t *testing.T) {
 	}
 	if command != "launch" || !options.Apply || !options.Detach || options.PlanHash != "sha256:approved" {
 		t.Fatalf("write flags parsed incorrectly: command=%q options=%+v", command, options)
+	}
+}
+
+// Only observation commands can switch to the live campaign's shared EVM
+// egress; planning and every mutation retain their canonical authorization.
+func TestCampaignEgressCommandSelectionIsReadOnly(t *testing.T) {
+	for _, command := range []string{"status", "inspect", "analyze"} {
+		if !commandUsesCampaignEgress(command) {
+			t.Fatalf("read command %s did not select campaign egress", command)
+		}
+	}
+	for _, command := range []string{"doctor", "plan", "setup", "launch", "resume", "scenario", "tail", "stop", "retire"} {
+		if commandUsesCampaignEgress(command) {
+			t.Fatalf("non-read command %s selected campaign egress", command)
+		}
+	}
+}
+
+// A stopped supervisor is a canonical-read case, while a live generation
+// must expose exactly one healthy egress and may never fall back around it.
+func TestSupervisedCampaignEgressFailsClosedForIncompleteLiveState(t *testing.T) {
+	stateDir := t.TempDir()
+	stopped := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: 2147483647, SupervisorStartTimeTicks: 1}
+	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.state.json"), stopped); err != nil {
+		t.Fatal(err)
+	}
+	active, err := supervisedCampaignEgressActive(context.Background(), stateDir)
+	if err != nil || active {
+		t.Fatalf("stopped supervisor selection active=%t err=%v", active, err)
+	}
+	ticks, err := processStartTimeTicks(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: ticks}
+	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.state.json"), live); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := supervisedCampaignEgressActive(context.Background(), stateDir); err == nil || active {
+		t.Fatalf("incomplete live supervisor selection active=%t err=%v", active, err)
+	}
+}
+
+// A healthy state and the exact supervised listener jointly activate the
+// shared route; neither a state-file assertion nor an arbitrary port suffices.
+func TestSupervisedCampaignEgressRequiresExactHealthyListener(t *testing.T) {
+	listener, err := net.Listen("tcp", publicEVMEgressAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	ticks, err := processStartTimeTicks(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	state := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: ticks,
+		Processes: []ProcessState{{ID: publicEVMEgressProcessID, Role: "dependency-rpc-proxy", PID: os.Getpid(), Healthy: true}},
+	}
+	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.state.json"), state); err != nil {
+		t.Fatal(err)
+	}
+	active, err := supervisedCampaignEgressActive(context.Background(), stateDir)
+	if err != nil || !active {
+		t.Fatalf("healthy supervised egress active=%t err=%v", active, err)
 	}
 }
 
