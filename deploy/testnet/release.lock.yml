@@ -38,10 +38,10 @@ repositories:
   sn_audited_base_commit: "680e9f3e3473888151c2a30860e31b1f1594bb81"
   server_audited_base_commit: "cb6de1ad9e1795b63e7acc22a90471ebed39ca8c"
   vault_audited_base_commit: "a825a3a5a57edab83ae588e0eb72cd3c61bc3e6b"
-  sn_go_source_hash: "sha256:3682a65d04248545a9e689d7ec23e31bbb92ee10c00932b9ccd06b0d593e853e"
-  server_go_source_hash: "sha256:67f405305197b85e518163a4dd7ab675d46886d698051f87ad5542283f193f0f"
-  connect_go_source_hash: "sha256:4044547c4a90728a20b8bb21a896f2678aa5ee78b19323ea600da13305e903b8"
-  sdk_go_source_hash: "sha256:7db71a1cd38af6fbd9cbea045d021379994039b3dacd988c8386fa48dbcfac49"
+  sn_go_source_hash: "sha256:44c38acf982ef5ee8721e4b37d52bbdc895c9a5a4964472e863605cc85d07f7f"
+  server_go_source_hash: "sha256:ac8c451e036ea18bcb031f6538a77c325702bb15110b91a626693da77b3697ca"
+  connect_go_source_hash: "sha256:425dcaa790c5e5413fb1c4a7adaace2a8216fd723729e89540826924893fa1c4"
+  sdk_go_source_hash: "sha256:9c04c8b4eedc5b6cc768451645eae26fd6bb3bbdf5301c8a7b9929e5a31bd6c4"
   sdk_mobile_build_tree_hash: "sha256:d645c380609a2679fcef795e7e834a303b7129196bc15c48286e26166649ff5c"
   glog_go_source_hash: "sha256:87da64dcd42d9dd670cd8bfe4fc3a55b03db47a646af973969e9e951c017e792"
   goidenticons_go_source_hash: "sha256:e335a5bf9b3194faeeab2f1a2e1f11c8c765e3bb6950faa28bf56ad7231ca2f8"
@@ -56,6 +56,6 @@ dependencies:
 interfaces:
   precompile_interfaces_source_hash: "sha256:7873f48b2ac560880193dfe8e4715f124473bed43a97db8b855da7921effaed3"
 infrastructure:
-  gateway_config_hash: "sha256:0882c7385609fe8d7204be5f0e1b685e05679dea48ad66933c069b14f2aa538f"
-  node_config_hash: "sha256:96496559cafd645c1ee1470e27a9375f4d6f80841a6bcdeab789a6578bd72395"
+  gateway_config_hash: "sha256:646c7530620b3ded0e302f865a8c3f9a3f40c55139e48cfbb8bb0ef597593af7"
+  node_config_hash: "sha256:8cfc7ba3c8f83c08e2af9a90d7d9174a52ce07623c5e50afe51b40837aa3437f"
   server_local_config_hash: "sha256:06e97da3bfb4bfc0fbe3a25b4fa76d8404bb4d3e75d93683ebd44c58d2e2dd6b"
