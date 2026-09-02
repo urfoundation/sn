@@ -9,9 +9,11 @@ import (
 
 func TestTunnelTransportReadsCurrentJwtForEveryTunnel(t *testing.T) {
 	currentJwt := "first"
+	strategy := connect.NewClientStrategyWithDefaults(context.Background())
+	defer strategy.Close()
 	transport := NewTunnelTransport(
 		context.Background(),
-		connect.NewClientStrategyWithDefaults(context.Background()),
+		strategy,
 		TunnelTransportConfig{ByClientJwt: func() string { return currentJwt }},
 	)
 

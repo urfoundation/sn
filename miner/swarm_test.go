@@ -14,6 +14,7 @@ import (
 
 	"github.com/urfoundation/sn/ss58"
 	"github.com/urnetwork/connect"
+	"github.com/urnetwork/sdk"
 )
 
 func validProviderSwarmConfig(t *testing.T) ProviderSwarmConfig {
@@ -285,5 +286,87 @@ func TestProviderSwarmInstanceCloseCancelsMemberLifetime(t *testing.T) {
 	case <-ctx.Done():
 	default:
 		t.Fatal("closing swarm member retained its child lifetime")
+	}
+}
+
+// A swarm member owns its explicit NetworkSpace as well as its child context.
+// Churn completion must close the exact idle API connection before a
+// replacement member with the same identity can start.
+func TestProviderSwarmInstanceCloseJoinsNetworkSpace(t *testing.T) {
+	type connectionContextKey struct{}
+	type connectionStateEvent struct {
+		connection net.Conn
+		state      http.ConnState
+	}
+	requestConnections := make(chan net.Conn, 4)
+	connectionStateEvents := make(chan connectionStateEvent, 32)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/hello" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.URL.Path != "/sn/epoch" {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		connection, ok := r.Context().Value(connectionContextKey{}).(net.Conn)
+		if !ok {
+			http.Error(w, "missing server connection", http.StatusInternalServerError)
+			return
+		}
+		requestConnections <- connection
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"epoch":1}`))
+	}))
+	server.Config.ConnContext = func(ctx context.Context, connection net.Conn) context.Context {
+		return context.WithValue(ctx, connectionContextKey{}, connection)
+	}
+	server.Config.ConnState = func(connection net.Conn, state http.ConnState) {
+		select {
+		case connectionStateEvents <- connectionStateEvent{connection: connection, state: state}:
+		default:
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	memberCtx, memberCancel := context.WithCancel(context.Background())
+	settings := connect.DefaultClientStrategySettings()
+	settings.EnableNormal = true
+	settings.EnableResilient = false
+	networkSpace := sdk.NewNetworkSpaceWithUrls(memberCtx, server.URL, "ws://unused.invalid", settings)
+	if _, err := networkSpace.GetApi().SnEpochSyncWithContext(memberCtx); err != nil {
+		networkSpace.Close()
+		memberCancel()
+		t.Fatal(err)
+	}
+	var requestConnection net.Conn
+	select {
+	case requestConnection = <-requestConnections:
+	case <-time.After(5 * time.Second):
+		t.Fatal("member API request was not observed")
+	}
+
+	instance := &providerSwarmInstance{networkSpace: networkSpace, cancel: memberCancel}
+	instance.close()
+	idleObserved := false
+	for {
+		select {
+		case event := <-connectionStateEvents:
+			if event.connection != requestConnection {
+				continue
+			}
+			switch event.state {
+			case http.StateIdle:
+				idleObserved = true
+			case http.StateClosed:
+				if !idleObserved {
+					t.Fatal("member API connection closed without entering the idle pool")
+				}
+				return
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("swarm member close retained its NetworkSpace connection")
+		}
 	}
 }

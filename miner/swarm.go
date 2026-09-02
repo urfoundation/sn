@@ -208,7 +208,9 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 	strategy := connect.NewClientStrategy(ctx, settings)
 	defer strategy.Close()
 	api := sdk.NewApi(ctx, strategy, member.APIURL)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 	api.SetByJwt(jwt)
 	result, err := api.SnSetWalletSync(&sdk.SnSetWalletArgs{ColdkeySs58: member.Wallet})
 	if err != nil {
@@ -221,10 +223,11 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 }
 
 type providerSwarmInstance struct {
-	device     *sdk.DeviceLocal
-	refreshSub sdk.Sub
-	logoutSub  sdk.Sub
-	cancel     context.CancelFunc
+	networkSpace *sdk.NetworkSpace
+	device       *sdk.DeviceLocal
+	refreshSub   sdk.Sub
+	logoutSub    sdk.Sub
+	cancel       context.CancelFunc
 }
 
 func (self *providerSwarmInstance) close() {
@@ -232,13 +235,16 @@ func (self *providerSwarmInstance) close() {
 		return
 	}
 	if self.device != nil {
-		self.device.Close()
+		_ = self.device.CloseAndWait(context.Background())
 	}
 	if self.refreshSub != nil {
 		self.refreshSub.Close()
 	}
 	if self.logoutSub != nil {
 		self.logoutSub.Close()
+	}
+	if self.networkSpace != nil {
+		self.networkSpace.Close()
 	}
 	if self.cancel != nil {
 		self.cancel()
@@ -286,19 +292,21 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 	if err != nil {
 		refreshSub.Close()
 		logoutSub.Close()
+		networkSpace.Close()
 		memberCancel()
 		return nil, err
 	}
 	device.SetProvideControlMode(sdk.ProvideControlModeAlways)
 	keyMaterial := device.GetKeyMaterial()
 	if err := writeProviderTLSState(member.StateDir, keyMaterial.GetProvideTlsCertificatePem(), keyMaterial.GetProvideTlsPrivateKeyPem()); err != nil {
-		device.Close()
+		_ = device.CloseAndWait(context.Background())
 		refreshSub.Close()
 		logoutSub.Close()
+		networkSpace.Close()
 		memberCancel()
 		return nil, err
 	}
-	return &providerSwarmInstance{device: device, refreshSub: refreshSub, logoutSub: logoutSub, cancel: memberCancel}, nil
+	return &providerSwarmInstance{networkSpace: networkSpace, device: device, refreshSub: refreshSub, logoutSub: logoutSub, cancel: memberCancel}, nil
 }
 
 func NewProviderSwarm(config *ProviderSwarmConfig) (*ProviderSwarm, error) {

@@ -251,7 +251,9 @@ func auth(opts docopt.Opts) {
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
 	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 
 	var byJwt string
 	if userAuth, err := opts.String("--user_auth"); err == nil && userAuth != "" {
@@ -341,7 +343,9 @@ func run(opts docopt.Opts) {
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
 	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 
 	networkTokenPath, err := networkJwtPath()
 	if err != nil {

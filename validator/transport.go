@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"fmt"
 	"io"
 	mathrand "math/rand"
@@ -59,6 +60,57 @@ type TunnelTransport struct {
 	cfg            TunnelTransportConfig
 }
 
+type tunnelAttemptGenerator interface {
+	CloseAndWait(context.Context) error
+}
+
+type tunnelAttemptMultiClient interface {
+	CloseAndWait(context.Context) error
+}
+
+type tunnelAttemptTun interface {
+	Close() error
+}
+
+// Owns every per-hop object in dependency order. Cancellation alone is not
+// completion: the packet pump must exit before the generator can retire its
+// clients and return their message buffers.
+type tunnelAttempt struct {
+	cancel      context.CancelFunc
+	generator   tunnelAttemptGenerator
+	tun         tunnelAttemptTun
+	multiClient tunnelAttemptMultiClient
+	pumpDone    <-chan struct{}
+}
+
+// Stops packet production, joins the multi-client and pump, then retires all
+// generated clients. Partial construction follows the same path.
+func (self *tunnelAttempt) close() error {
+	if self.cancel != nil {
+		self.cancel()
+	}
+	var closeErrors []error
+	if self.tun != nil {
+		if err := self.tun.Close(); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close tunnel netstack: %w", err))
+		}
+	}
+	if self.multiClient != nil {
+		if err := self.multiClient.CloseAndWait(context.Background()); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close tunnel multi-client: %w", err))
+		}
+	}
+	if self.pumpDone != nil {
+		<-self.pumpDone
+	}
+	if self.generator != nil {
+		if err := self.generator.CloseAndWait(context.Background()); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close tunnel generator: %w", err))
+		}
+	}
+	return errors.Join(closeErrors...)
+}
+
 func NewTunnelTransport(ctx context.Context, clientStrategy *connect.ClientStrategy, cfg TunnelTransportConfig) *TunnelTransport {
 	return &TunnelTransport{
 		ctx:            ctx,
@@ -86,9 +138,12 @@ func (self *TunnelTransport) currentByClientJwt() (string, error) {
 // idle-TTL LRU — saves the ~seconds of client auth + provide-ack per hop at
 // the cost of a supervisor. The per-call construction below is the correct,
 // simple v1.
-func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jsonBody []byte) ([]byte, error) {
+func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jsonBody []byte) (responseBody []byte, returnErr error) {
 	tunnelCtx, tunnelCancel := context.WithCancel(self.ctx)
-	defer tunnelCancel()
+	attempt := &tunnelAttempt{cancel: tunnelCancel}
+	defer func() {
+		returnErr = errors.Join(returnErr, attempt.close())
+	}()
 
 	hopId := hop
 	byClientJwt, err := self.currentByClientJwt()
@@ -114,11 +169,13 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		connect.DefaultClientSettings,
 		connect.DefaultApiMultiClientGeneratorSettings(),
 	)
+	attempt.generator = generator
 
 	tun, err := connect.CreateTunWithDefaults(tunnelCtx)
 	if err != nil {
 		return nil, fmt.Errorf("tunnel netstack: %w", err)
 	}
+	attempt.tun = tun
 
 	multiClient := connect.NewRemoteUserNatMultiClientWithDefaults(
 		tunnelCtx,
@@ -131,10 +188,13 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		},
 		protocol.ProvideMode_Network,
 	)
-	defer multiClient.Close()
+	attempt.multiClient = multiClient
 
 	source := connect.SourceId(self.cfg.SourceClientId)
+	pumpDone := make(chan struct{})
+	attempt.pumpDone = pumpDone
 	go connect.HandleError(func() {
+		defer close(pumpDone)
 		for {
 			packet, err := tun.Read()
 			if err != nil {
@@ -163,7 +223,7 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		return nil, fmt.Errorf("verify post via %s: %w", hop, err)
 	}
 	defer response.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	responseBody, err = io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}

@@ -36,9 +36,11 @@ func testClientJwt(t *testing.T, marker string) string {
 func testApi(t *testing.T, serverUrl string) (*sdk.Api, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	api := sdk.NewApi(ctx, connect.NewClientStrategyWithDefaults(ctx), serverUrl)
+	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	api := sdk.NewApi(ctx, strategy, serverUrl)
 	return api, func() {
-		api.Close()
+		_ = api.CloseAndWait(context.Background())
+		strategy.Close()
 		cancel()
 	}
 }
@@ -46,8 +48,15 @@ func testApi(t *testing.T, serverUrl string) (*sdk.Api, context.CancelFunc) {
 func TestLoadOrCreateClientJwtBootstrapsAndPersists(t *testing.T) {
 	clientJwt := testClientJwt(t, "bootstrap")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/network/auth-client" {
+		switch r.URL.Path {
+		case "/hello":
+			w.WriteHeader(http.StatusOK)
+			return
+		case "/network/auth-client":
+		default:
+			http.NotFound(w, r)
 			t.Errorf("path = %s", r.URL.Path)
+			return
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer network-jwt" {
 			t.Errorf("authorization = %q", got)
@@ -93,8 +102,14 @@ func TestLoadOrCreateClientJwtRefreshesOnRestart(t *testing.T) {
 	storedJwt := testClientJwt(t, "stored")
 	refreshedJwt := testClientJwt(t, "refreshed")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/hello" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path != "/auth/refresh" {
+			http.NotFound(w, r)
 			t.Errorf("unexpected bootstrap request: %s", r.URL.Path)
+			return
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer "+storedJwt {
 			t.Errorf("authorization = %q", got)
@@ -130,6 +145,8 @@ func TestLoadOrCreateClientJwtRequiresFreshAuthAfterConfirmedRejection(t *testin
 	replacementJwt := testClientJwt(t, "replacement")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/hello":
+			w.WriteHeader(http.StatusOK)
 		case "/auth/refresh":
 			if got := r.Header.Get("Authorization"); got != "Bearer "+rejectedJwt {
 				t.Errorf("refresh authorization = %q", got)

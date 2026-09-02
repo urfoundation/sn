@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -152,7 +153,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 	api := sdk.NewApi(ctx, strategy, op.APIURL)
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
 	if err != nil {
-		api.Close()
+		_ = api.CloseAndWait(context.Background())
 		strategy.Close()
 		return nil, fmt.Errorf("no_id %d authentication: %w", op.NoID, err)
 	}
@@ -179,6 +180,18 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		cancelled.Store(true)
 	}))
 	api.StartJwtRefresh()
+	var closeOnce sync.Once
+	closeResources := func() {
+		closeOnce.Do(func() {
+			refreshSub.Close()
+			logoutSub.Close()
+			_ = platformTransport.CloseAndWait(context.Background())
+			_ = identityClient.CloseAndWait(context.Background())
+			_ = clientOOB.CloseAndWait(context.Background())
+			_ = api.CloseAndWait(context.Background())
+			strategy.Close()
+		})
+	}
 
 	stats := NewStatsEngine(StatsConfig{
 		AMin:             cfg.Policy.Verify.ReliabilityAMin,
@@ -187,22 +200,12 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		LatRefMillis:     4000,
 	})
 	if err := stats.Load(op.StateDir); err != nil {
-		refreshSub.Close()
-		logoutSub.Close()
-		platformTransport.Close()
-		identityClient.Close()
-		api.Close()
-		strategy.Close()
+		closeResources()
 		return nil, fmt.Errorf("no_id %d stats: %w", op.NoID, err)
 	}
 	store, err := NewProofStore(op.StateDir)
 	if err != nil {
-		refreshSub.Close()
-		logoutSub.Close()
-		platformTransport.Close()
-		identityClient.Close()
-		api.Close()
-		strategy.Close()
+		closeResources()
 		return nil, err
 	}
 	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
@@ -240,12 +243,7 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		engine:      engine,
 		close: func() {
 			_ = stats.Save(op.StateDir)
-			refreshSub.Close()
-			logoutSub.Close()
-			platformTransport.Close()
-			identityClient.Close()
-			api.Close()
-			strategy.Close()
+			closeResources()
 		},
 	}, nil
 }

@@ -79,7 +79,9 @@ func snSetWallet(ctx context.Context, clientStrategy *connect.ClientStrategy, ap
 		return err
 	}
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 	api.SetByJwt(byJwt)
 	result, err := api.SnSetWalletSync(&sdk.SnSetWalletArgs{
 		ColdkeySs58: coldkeySs58,
@@ -163,7 +165,9 @@ func claim(opts docopt.Opts) {
 		panic(err)
 	}
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 	api.SetByJwt(byJwt)
 
 	var rpcUrls []string

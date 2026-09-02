@@ -1876,7 +1876,9 @@ func provisionClientJWT(ctx context.Context, apiURL, networkJWTPath, clientJWTPa
 	strategy := connect.NewClientStrategyWithDefaults(ctx)
 	defer strategy.Close()
 	api := sdk.NewApi(ctx, strategy, apiURL)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 	_, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, networkJWTPath, clientJWTPath, description)
 	if err != nil {
 		return connect.Id{}, fmt.Errorf("provision %s: %w", description, err)

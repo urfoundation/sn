@@ -271,7 +271,9 @@ func auth(opts docopt.Opts) {
 	clientStrategy := connect.NewClientStrategyWithDefaults(ctx)
 	defer clientStrategy.Close()
 	api := sdk.NewApi(ctx, clientStrategy, apiUrl)
-	defer api.Close()
+	defer func() {
+		_ = api.CloseAndWait(context.Background())
+	}()
 
 	var byJwt string
 	if userAuth, err := opts.String("--user_auth"); err == nil {
@@ -426,6 +428,7 @@ func provide(opts docopt.Opts) {
 		clientStrategySettings.ProxySettings = proxySettings
 		clientStrategySettings.DialContextSettings = testEgressDialer
 		networkSpace := sdk.NewNetworkSpaceWithUrls(proxyCtx, apiUrl, connectUrl, clientStrategySettings)
+		defer networkSpace.Close()
 		api := networkSpace.GetApi()
 
 		networkJwtPath, err := providerStatePath("jwt")
@@ -500,7 +503,9 @@ func provide(opts docopt.Opts) {
 		if err != nil {
 			panic(err)
 		}
-		defer device.Close()
+		defer func() {
+			_ = device.CloseAndWait(context.Background())
+		}()
 
 		// Always-on public mode includes network and friends/family service,
 		// matching the SDK's hierarchical provide contract.
