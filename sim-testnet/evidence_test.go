@@ -15,7 +15,44 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/startifact"
 )
+
+type forbiddenScenarioCommitHTTPTransport struct {
+	calls int
+}
+
+func (transport *forbiddenScenarioCommitHTTPTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	transport.calls++
+	return nil, errors.New("scenario completion commit attempted supervised HTTP")
+}
+
+type failingPutBlobStore struct {
+	server.BlobStore
+	err error
+}
+
+func (store *failingPutBlobStore) Put(context.Context, string, string, string) error {
+	return store.err
+}
+
+func scenarioCompletionTestEnvelope(t *testing.T, cfg *ResolvedConfig, roles *RoleSecrets, runID string) (*ReleaseEvidenceEnvelope, []byte) {
+	t.Helper()
+	complete, err := signEvidence(cfg, "scenario-complete", runID, scenarioCompletePayload{
+		ResultHash:        "0x" + strings.Repeat("11", 32),
+		Files:             map[string]string{"result.json": "sha256:" + strings.Repeat("22", 32)},
+		BundlePayloadHash: "sha256:" + strings.Repeat("33", 32),
+	}, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.MarshalIndent(complete, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return complete, append(encoded, '\n')
+}
 
 func TestReleaseEvidenceSignVerifyAndTamper(t *testing.T) {
 	cfg := testResolvedConfig(t)
@@ -39,6 +76,127 @@ func TestReleaseEvidenceSignVerifyAndTamper(t *testing.T) {
 	}
 	if !strings.HasPrefix(envelope.ContentHash, "sha256:") || envelope.Signer != common.HexToAddress(role.Address) {
 		t.Fatalf("envelope identity = %+v", envelope)
+	}
+}
+
+func TestRenderedOperatorEvidenceStoreUsesExactIsolatedPrefix(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	vaultDir := filepath.Join(stateDir, "runtime", "operator-1", "vault")
+	if err := os.MkdirAll(vaultDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prefix := "blob/sim-testnet/" + cfg.Config.Deployment.DeploymentID + "/operator-1"
+	config := []byte("authority: \"{{ env:BRINGYOUR_MINIO_HOSTNAME }}:23900\"\ntls: false\nbucket: blob\naccess_key: test-access\nsecret_key: test-secret\nprefix: " + prefix + "\n")
+	path := filepath.Join(vaultDir, "minio.yml")
+	if err := atomicWrite(path, config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := renderedOperatorEvidenceStore(cfg, stateDir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.Authority() != cfg.ObjectStoreHost+":23900" || store.Bucket() != "blob" || store.Prefix() != prefix {
+		t.Fatalf("direct operator store = authority %q bucket %q prefix %q", store.Authority(), store.Bucket(), store.Prefix())
+	}
+	config = []byte("authority: \"{{ env:BRINGYOUR_MINIO_HOSTNAME }}:23900\"\ntls: false\nbucket: blob\naccess_key: test-access\nsecret_key: test-secret\nprefix: blob/sim-testnet/wrong/operator-1\n")
+	if err := atomicWrite(path, config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := renderedOperatorEvidenceStore(cfg, stateDir, 1); err == nil || !strings.Contains(err.Error(), "prefix") {
+		t.Fatalf("wrong rendered operator prefix was accepted: %v", err)
+	}
+}
+
+func TestScenarioCompletionCommitsUseDirectStoresWithoutHTTP(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	runID := "direct-completion-success"
+	runDir := filepath.Join(stateDir, "runs", runID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
+	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+	}
+	transport := &forbiddenScenarioCommitHTTPTransport{}
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+	failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err != nil || failureID != "" {
+		t.Fatalf("direct scenario completion commit = stage %q error %v", failureID, err)
+	}
+	if transport.calls != 0 {
+		t.Fatalf("scenario completion commit made %d supervised HTTP requests", transport.calls)
+	}
+	written, err := os.ReadFile(filepath.Join(runDir, "complete.json"))
+	if err != nil || !bytes.Equal(written, encoded) {
+		t.Fatalf("local completion marker = %q, %v", written, err)
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		var commit ReleaseEvidenceEnvelope
+		if err := decodeStrictJSONFile(filepath.Join(runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator)), &commit); err != nil {
+			t.Fatal(err)
+		}
+		prefix, err := startifact.EvidenceHistoryPrefix(stores[operator], cfg.Config.Deployment.DeploymentID, cfg.Netuid, "scenario-complete-commit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects, err := stores[operator].List(context.Background(), prefix)
+		if err != nil || len(objects) != 1 || !strings.Contains(objects[0].Key, strings.TrimPrefix(commit.ContentHash, "sha256:")) {
+			t.Fatalf("operator %d direct completion history = %+v, %v", operator, objects, err)
+		}
+	}
+}
+
+func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	runID := "direct-completion-failure"
+	runDir := filepath.Join(stateDir, "runs", runID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
+	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, fmt.Sprintf("operator-%d", operator)))
+		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+	}
+	stores[2] = &failingPutBlobStore{BlobStore: stores[2], err: errors.New("injected direct-store failure")}
+	failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err == nil || failureID != "complete_evidence_publication" || !strings.Contains(err.Error(), "injected direct-store failure") {
+		t.Fatalf("direct-store failure = stage %q error %v", failureID, err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed direct publication exposed a local complete marker: %v", err)
+	}
+	prefix := filepath.ToSlash(filepath.Join("blob", "sim-testnet", cfg.Config.Deployment.DeploymentID, "operator-2"))
+	stores[2] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+	failureID, err = commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err != nil || failureID != "" {
+		t.Fatalf("direct publication retry = stage %q error %v", failureID, err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); err != nil {
+		t.Fatalf("successful direct publication retry did not expose local completion: %v", err)
 	}
 }
 
@@ -111,6 +269,273 @@ func TestLocalEvidenceRetainsVersionedDeploymentManifestHistory(t *testing.T) {
 	}
 }
 
+// Builds the post-provisioning identity and envelope state shared by archival
+// interruption tests.
+func deploymentPublicationArchiveFixture(t *testing.T) (*PublicDeploymentManifest, *ReleaseEvidenceEnvelope, []byte) {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for label, role := range roles.Clients {
+		role.ClientIDHex = strings.Repeat("02", 16)
+		roles.Clients[label] = role
+	}
+	identities, err := json.Marshal(roles.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior := &PublicDeploymentManifest{
+		Schema:       "urnetwork-sim-public-deployment-v1",
+		Release:      "1.0",
+		DeploymentID: cfg.Config.Deployment.DeploymentID,
+		Revision:     1,
+		ChainID:      cfg.ChainID,
+		GenesisHash:  cfg.Public.Chain.GenesisHash,
+		Netuid:       cfg.Netuid,
+		Identities:   identities,
+		Topology:     cfg.Config.Topology,
+		Operators: []PublicOperator{
+			{NoID: 1, APIURL: cfg.OperatorAPIOrigins[0]},
+			{NoID: 2, APIURL: cfg.OperatorAPIOrigins[1]},
+		},
+	}
+	envelope, err := signEvidence(cfg, "deployment-manifest", "", prior, roles.EVM["operator-1-artifact"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = append(encoded, '\n')
+	return prior, envelope, encoded
+}
+
+func deploymentPublicationEnvelope(t *testing.T, cfg *ResolvedConfig, roles *RoleSecrets, prior *PublicDeploymentManifest, operator int) (*ReleaseEvidenceEnvelope, []byte) {
+	t.Helper()
+	envelope, err := signEvidence(cfg, "deployment-manifest", "", prior, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return envelope, append(exact, '\n')
+}
+
+func completeDeploymentLocatorFixture(t *testing.T, prior *PublicDeploymentManifest) (*ResolvedConfig, *RoleSecrets, string, map[int]*ReleaseEvidenceEnvelope, map[int][]byte, []byte) {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	priorHash, err := canonicalHashHex(prior)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelopes := make(map[int]*ReleaseEvidenceEnvelope, prior.Topology.Operators)
+	exact := make(map[int][]byte, prior.Topology.Operators)
+	directory := deploymentManifestLocatorDirectory{
+		Schema: "urnetwork-public-manifest-locators-v1", ManifestHash: priorHash,
+		ManifestRevision: effectivePublicManifestRevision(prior), PreviousManifestHash: prior.PreviousManifestHash,
+	}
+	for operator := 1; operator <= prior.Topology.Operators; operator++ {
+		envelopes[operator], exact[operator] = deploymentPublicationEnvelope(t, cfg, roles, prior, operator)
+		directory.Locators = append(directory.Locators, deploymentManifestLocator{
+			OperatorNoID: operator, ContentHash: envelopes[operator].ContentHash,
+			URL: strings.TrimSuffix(prior.Operators[operator-1].APIURL, "/") + "/sn/evidence?hash=" + envelopes[operator].ContentHash,
+		})
+	}
+	locatorBytes, err := json.Marshal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg, roles, priorHash, envelopes, exact, append(locatorBytes, '\n')
+}
+
+func TestArchiveCurrentDeploymentPublicationRecoversPartialUnlocatedSet(t *testing.T) {
+	prior, envelope, encoded := deploymentPublicationArchiveFixture(t)
+	dir := t.TempDir()
+	active := filepath.Join(dir, "public", "deployment-manifest.operator-1.evidence.json")
+	if err := atomicWrite(active, encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	priorHash, err := canonicalHashHex(prior)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(active); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("partial active envelope survived archival: %v", err)
+	}
+	archive := filepath.Join(dir, "public", "deployment-manifest-history", strings.TrimPrefix(envelope.ContentHash, "sha256:")+".operator-1.evidence.json")
+	got, err := os.ReadFile(archive)
+	if err != nil || !bytes.Equal(got, encoded) {
+		t.Fatalf("partial publication archive mismatch: %v", err)
+	}
+}
+
+func TestArchiveCurrentDeploymentPublicationRejectsPartialLocatedSet(t *testing.T) {
+	prior, envelope, encoded := deploymentPublicationArchiveFixture(t)
+	dir := t.TempDir()
+	active := filepath.Join(dir, "public", "deployment-manifest.operator-1.evidence.json")
+	if err := atomicWrite(active, encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	priorHash, err := canonicalHashHex(prior)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locators, err := json.Marshal(map[string]any{
+		"schema":            "urnetwork-public-manifest-locators-v1",
+		"manifest_hash":     priorHash,
+		"manifest_revision": uint64(1),
+		"locators": []map[string]any{{
+			"operator_no_id": 1,
+			"content_hash":   envelope.ContentHash,
+			"url":            strings.TrimSuffix(prior.Operators[0].APIURL, "/") + "/sn/evidence?hash=" + envelope.ContentHash,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	locatorPath := filepath.Join(dir, "public", "deployment-manifest.locators.json")
+	if err := atomicWrite(locatorPath, append(locators, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err == nil || !strings.Contains(err.Error(), "incomplete signed envelope set") {
+		t.Fatalf("located partial publication was accepted: %v", err)
+	}
+	if got, err := os.ReadFile(active); err != nil || !bytes.Equal(got, encoded) {
+		t.Fatalf("rejected active envelope changed: %v", err)
+	}
+	if _, err := os.Stat(locatorPath); err != nil {
+		t.Fatalf("rejected locator pointer changed: %v", err)
+	}
+}
+
+func TestArchiveCurrentDeploymentPublicationValidatesCompleteLocatorMetadata(t *testing.T) {
+	prior, _, _ := deploymentPublicationArchiveFixture(t)
+	_, _, priorHash, _, envelopeBytes, locatorBytes := completeDeploymentLocatorFixture(t, prior)
+	var baseline deploymentManifestLocatorDirectory
+	if err := json.Unmarshal(locatorBytes, &baseline); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*deploymentManifestLocatorDirectory)
+	}{
+		{name: "manifest-hash", mutate: func(value *deploymentManifestLocatorDirectory) { value.ManifestHash = "0x" + strings.Repeat("ab", 32) }},
+		{name: "manifest-revision", mutate: func(value *deploymentManifestLocatorDirectory) { value.ManifestRevision++ }},
+		{name: "previous-manifest", mutate: func(value *deploymentManifestLocatorDirectory) {
+			value.PreviousManifestHash = "0x" + strings.Repeat("cd", 32)
+		}},
+		{name: "operator-url", mutate: func(value *deploymentManifestLocatorDirectory) {
+			value.Locators[0].URL = "https://attacker.invalid/evidence"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for operator, exact := range envelopeBytes {
+				if err := atomicWrite(filepath.Join(dir, "public", fmt.Sprintf("deployment-manifest.operator-%d.evidence.json", operator)), exact, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			value := baseline
+			value.Locators = append([]deploymentManifestLocator(nil), baseline.Locators...)
+			test.mutate(&value)
+			mutated, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			locatorPath := filepath.Join(dir, "public", "deployment-manifest.locators.json")
+			if err := atomicWrite(locatorPath, append(mutated, '\n'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err == nil {
+				t.Fatal("invalid locator metadata was archived")
+			}
+			if got, err := os.ReadFile(locatorPath); err != nil || !bytes.Equal(got, append(mutated, '\n')) {
+				t.Fatalf("rejected locator pointer changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestArchiveCurrentDeploymentPublicationRecoversOnlyCompleteArchivedPublication(t *testing.T) {
+	prior, _, _ := deploymentPublicationArchiveFixture(t)
+	_, _, priorHash, envelopes, envelopeBytes, locatorBytes := completeDeploymentLocatorFixture(t, prior)
+	setup := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		for operator, exact := range envelopeBytes {
+			activePath := filepath.Join(dir, "public", fmt.Sprintf("deployment-manifest.operator-%d.evidence.json", operator))
+			if err := atomicWrite(activePath, exact, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			archiveName := strings.TrimPrefix(envelopes[operator].ContentHash, "sha256:") + fmt.Sprintf(".operator-%d.evidence.json", operator)
+			if err := writeImmutableEvidenceArchive(filepath.Join(dir, "public", "deployment-manifest-history", archiveName), exact); err != nil {
+				t.Fatal(err)
+			}
+		}
+		locatorArchive := filepath.Join(dir, "public", "deployment-manifests", stringsTrim0x(priorHash)+".locators.json")
+		if err := writeImmutableEvidenceArchive(locatorArchive, locatorBytes); err != nil {
+			t.Fatal(err)
+		}
+		// Model a crash after the current locator and the first active envelope
+		// were durably unlinked.
+		if err := os.Remove(filepath.Join(dir, "public", "deployment-manifest.operator-1.evidence.json")); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	t.Run("complete", func(t *testing.T) {
+		dir := setup(t)
+		if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "public", "deployment-manifest.operator-2.evidence.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("remaining active envelope survived recovery: %v", err)
+		}
+	})
+	t.Run("missing-archived-envelope", func(t *testing.T) {
+		dir := setup(t)
+		archiveName := strings.TrimPrefix(envelopes[1].ContentHash, "sha256:") + ".operator-1.evidence.json"
+		if err := os.Remove(filepath.Join(dir, "public", "deployment-manifest-history", archiveName)); err != nil {
+			t.Fatal(err)
+		}
+		if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err == nil {
+			t.Fatal("recovery accepted a missing archived envelope")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "public", "deployment-manifest.operator-2.evidence.json")); err != nil {
+			t.Fatalf("failed recovery changed remaining active envelope: %v", err)
+		}
+	})
+	t.Run("tampered-archived-locator", func(t *testing.T) {
+		dir := setup(t)
+		locatorArchive := filepath.Join(dir, "public", "deployment-manifests", stringsTrim0x(priorHash)+".locators.json")
+		var value deploymentManifestLocatorDirectory
+		if err := json.Unmarshal(locatorBytes, &value); err != nil {
+			t.Fatal(err)
+		}
+		value.Locators[1].URL = "https://attacker.invalid/evidence"
+		if err := writePublicJSON(locatorArchive, value); err != nil {
+			t.Fatal(err)
+		}
+		if err := archiveCurrentDeploymentPublication(dir, prior, priorHash); err == nil {
+			t.Fatal("recovery accepted a tampered archived locator")
+		}
+	})
+}
+
 func TestVerifyPublishedEvidenceOriginChecksContentSignerAndHistory(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := BuildRoleSecrets(cfg)
@@ -170,6 +595,13 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for label, role := range roles.Clients {
+		// The public deployment manifest is written after provisioning has
+		// assigned every client ID. Reproduce that completed lifecycle here so
+		// revision archival can validate the embedded signer directory.
+		role.ClientIDHex = strings.Repeat("01", 16)
+		roles.Clients[label] = role
 	}
 	identities, _ := json.Marshal(roles.Public())
 	if err := atomicWrite(filepath.Join(dir, "public", "identities.json"), identities, 0o644); err != nil {
@@ -236,7 +668,39 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	locatorBytes := []byte("{\"schema\":\"urnetwork-public-manifest-locators-v1\",\"locators\":[]}\n")
+	envelopeBytes := map[int][]byte{}
+	locatorEntries := make([]map[string]any, 0, cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		envelope, err := signEvidence(cfg, "deployment-manifest", "", &legacy, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		envelopeBytes[operator] = append(encoded, '\n')
+		path := filepath.Join(dir, "public", fmt.Sprintf("deployment-manifest.operator-%d.evidence.json", operator))
+		if err := atomicWrite(path, envelopeBytes[operator], 0o644); err != nil {
+			t.Fatal(err)
+		}
+		locatorEntries = append(locatorEntries, map[string]any{"operator_no_id": operator, "content_hash": envelope.ContentHash})
+	}
+	for index := range locatorEntries {
+		contentHash := locatorEntries[index]["content_hash"].(string)
+		locatorEntries[index]["url"] = strings.TrimSuffix(cfg.OperatorAPIOrigins[index], "/") + "/sn/evidence?hash=" + contentHash
+	}
+	locatorBytes, err := json.Marshal(map[string]any{
+		"schema":                 "urnetwork-public-manifest-locators-v1",
+		"manifest_hash":          firstHash,
+		"manifest_revision":      uint64(1),
+		"previous_manifest_hash": "",
+		"locators":               locatorEntries,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	locatorBytes = append(locatorBytes, '\n')
 	if err := atomicWrite(filepath.Join(dir, "public", "deployment-manifest.locators.json"), locatorBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +710,31 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	cfg.Release.Dependencies["redis"] = "redis:8-alpine@sha256:" + strings.Repeat("7", 64)
 	plan.PlanHash = "0x" + strings.Repeat("78", 32)
 	plan.PriorPlanHashes = []string{oldPlanHash}
+	var tampered ReleaseEvidenceEnvelope
+	if err := json.Unmarshal(envelopeBytes[2], &tampered); err != nil {
+		t.Fatal(err)
+	}
+	tampered.Signature = "0x" + strings.Repeat("00", 65)
+	tamperedBytes, err := json.Marshal(&tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamperedBytes = append(tamperedBytes, '\n')
+	operatorTwoPath := filepath.Join(dir, "public", "deployment-manifest.operator-2.evidence.json")
+	if err := atomicWrite(operatorTwoPath, tamperedBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writePublicDeploymentManifest(cfg, dir, plan); err == nil || !strings.Contains(err.Error(), "operator 2 evidence is invalid") {
+		t.Fatalf("tampered prior signed evidence was accepted: %v", err)
+	}
+	currentAfterRejection, _ := os.ReadFile(filepath.Join(dir, "public.json"))
+	locatorsAfterRejection, _ := os.ReadFile(filepath.Join(dir, "public", "deployment-manifest.locators.json"))
+	if !bytes.Equal(currentAfterRejection, legacyBefore) || !bytes.Equal(locatorsAfterRejection, locatorBytes) {
+		t.Fatal("rejected prior signed evidence changed an active publication pointer")
+	}
+	if err := atomicWrite(operatorTwoPath, envelopeBytes[2], 0o644); err != nil {
+		t.Fatal(err)
+	}
 	revised, err := writePublicDeploymentManifest(cfg, dir, plan)
 	if err != nil {
 		t.Fatal(err)
@@ -276,6 +765,21 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "public", "deployment-manifest.locators.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("superseded active locators survived revision: %v", err)
+	}
+	for operator, exact := range envelopeBytes {
+		activePath := filepath.Join(dir, "public", fmt.Sprintf("deployment-manifest.operator-%d.evidence.json", operator))
+		if _, err := os.Stat(activePath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("superseded operator %d active evidence survived revision: %v", operator, err)
+		}
+		var envelope ReleaseEvidenceEnvelope
+		if err := json.Unmarshal(exact, &envelope); err != nil {
+			t.Fatal(err)
+		}
+		archivePath := filepath.Join(dir, "public", "deployment-manifest-history", strings.TrimPrefix(envelope.ContentHash, "sha256:")+fmt.Sprintf(".operator-%d.evidence.json", operator))
+		archivedEnvelope, err := os.ReadFile(archivePath)
+		if err != nil || !bytes.Equal(archivedEnvelope, exact) {
+			t.Fatalf("archived operator %d evidence mismatch: %v", operator, err)
+		}
 	}
 	revisedBytes, _ := os.ReadFile(filepath.Join(dir, "public.json"))
 	again, err := writePublicDeploymentManifest(cfg, dir, plan)

@@ -479,11 +479,15 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 		writer.WriteHeader(http.StatusNoContent)
 	}))
 	defer health.Close()
+	processDir := filepath.Join(dir, "processes")
+	if err := os.MkdirAll(processDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	spec := ProcessSpec{
 		ID: "restart-child", Role: "test", Identity: "test-child", Command: "/bin/sh",
 		Args: []string{"-c", `if [ ! -e "$SIM_TEST_COUNTER" ]; then printf 'crashed once\n' >"$SIM_TEST_COUNTER"; exit 17; fi; printf 'ready\n' >"$SIM_TEST_READY"; exec /bin/sleep 300`}, WorkDir: dir,
 		Env:        map[string]string{"SIM_TEST_COUNTER": counter, "SIM_TEST_READY": readyPath},
-		StdoutPath: filepath.Join(dir, "child.stdout"), StderrPath: filepath.Join(dir, "child.stderr"), RestartLimit: 2,
+		StdoutPath: filepath.Join(processDir, "child.stdout"), StderrPath: filepath.Join(processDir, "child.stderr"), RestartLimit: 2,
 		HealthURL: health.URL,
 	}
 	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: "test", BinaryHash: binaryHash, Specs: []ProcessSpec{spec}}
@@ -495,7 +499,11 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- supervise(ctx, dir, manifestPath) }()
-	if _, err := waitSupervisorReady(ctx, dir, manifest, 30*time.Second); err != nil {
+	processLogs, err := initializeProcessLogGate(dir, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitSupervisorReady(ctx, dir, manifest, processLogs, 30*time.Second); err != nil {
 		cancel()
 		<-done
 		t.Fatal(err)
@@ -562,7 +570,7 @@ func TestSupervisorReadinessRejectsDuplicateIdentityAndReportsMalformedState(t *
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err = waitSupervisorReady(ctx, dir, want, 20*time.Millisecond)
+	_, err = waitSupervisorReady(ctx, dir, want, nil, 20*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "decode supervisor state") {
 		t.Fatalf("malformed supervisor readiness error = %v", err)
 	}

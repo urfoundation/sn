@@ -3783,6 +3783,81 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    uncapped role. TLS, packet, peer-budget, proof-readiness and restart signals
    remain independently release-fatal; suppression changes no such outcome.
 
+   A subsequent forensic pass found that the prior release evidence never read
+   the supervised processes' stdout/stderr files. A healthy PID and API could
+   therefore coexist with an unreported panic, fatal line or repeated transport
+   error. Launch now fences every manifest-owned log by device, inode and byte
+   offset before temporary provisioning, binds that inventory to the exact
+   supervisor PID/start generation, and scans it during readiness, topology,
+   publication and every scenario observation. The persisted gate rejects a
+   missing, replaced, truncated, overlong or overrun log and commits every
+   scanned byte through a domain-separated 64-KiB SHA-256 chain with explicit
+   byte/line counts. Its final scan commits the partial digest chunk and rejects
+   an unterminated tail rather than classifying a split line. Unknown warning,
+   error and fatal severities fail closed. Only narrowly classified lifecycle or
+   resilient-fallback information is nonblocking, while expected injected-fault
+   errors require the exact active target/impact and fault ID; panic/fatal and
+   integrity findings can never be attributed away. The complete state and
+   aggregate findings are retained as `process-logs.json`, blocking findings
+   enter the anomaly ledger, and both release scenarios refuse a nil or stale
+   gate. Deterministic tests cover partition/reload equivalence, all integrity
+   failures, launch-boundary inclusion, generation changes, fault apply/restore
+   ordering with no post-restore grace, final-publication races and normal/race
+   execution.
+
+   Public acceptance is also two-phase. Deployment envelopes remain candidates
+   until a fully validated locator directory is written after the clean log
+   scan; revision, predecessor, operator URL, content hash, signature and
+   crash-recovery archives are all checked before that pointer can advance. A
+   signed scenario bundle is likewise not a public pass by itself. The owner
+   signs a completion record binding the final result, exact bundle payload and
+   immutable local file hashes only after the final scan. The simulator wraps
+   that owner record in each operator's artifact signature, writes it directly
+   through `server.BlobStore`/`startifact` to that operator's rendered isolated
+   MinIO prefix, and reads both immutable content and history objects back; no
+   supervised API request occurs after the final scan. Only after all replicas
+   verify does the local completion marker become visible. Independent readers
+   require the byte-identical nested owner commitment at every operator and
+   ignore orphaned or partially published candidates. Advancing-clock, tamper,
+   zero-HTTP direct-publication, direct-store failure, partial-replica and
+   mid-archive recovery regressions pin these commit semantics.
+
+   That scan separated three causal transport problems which the earlier PID/API
+   checks had hidden. First, all 27 validator `exit could not create contract`
+   errors followed successful contracts and occurred on teardown before a stream
+   ID existed. Connect now carries the exact result out of contract acquisition:
+   a cancellation is V(1) lifecycle telemetry, while a budget exhaustion remains
+   an error even if cancellation races after the decision. Deterministic barriers
+   cover both ordinary and logical-group paths and the decisive race. Second,
+   2,364 of 2,371 fixed 60-second TLS timeouts mapped exactly to ephemeral
+   validator `PostVerify` clients. Providers advertised opportunistic encryption
+   while those clients used encryption-off defaults, so provider return sequences
+   retained an impossible handshake after the plaintext proof completed. Every
+   derived validator tunnel now gets fresh opportunistic responder settings,
+   certificate and identity material, preserving plaintext fallback while making
+   both ends capability-symmetric; validator normal and race regressions pin that
+   boundary.
+
+   Third, the carrier trace reconciled 998 H3-family attempts: all 986 direct-H3
+   and four locally translated H3DNS attempts reached their intended operator,
+   while all eight H3DNSPump attempts incorrectly used the production
+   `whodis.bringyour.com` pump for a simulator-only `127.0.1.x` ingress and none
+   reached the local server. Each provider-swarm member now pins its pump host to
+   the same provisioned operator ingress as its loopback Connect URL; validation
+   rejects an implicit, public or different loopback pump unless that relay is
+   actually provisioned. The paired informational packet-read timeouts were the
+   deadline wakeup quic-go uses to close packet translation, not a second failed
+   request. Packet translation now returns the standard `net.PacketConn` deadline
+   and closed errors in every immediate and timer-driven read/write path and keeps
+   close wakeups below operational INFO severity. Finally, operator Connect
+   construction no longer substitutes an empty TLS loader and reports UDP ready
+   after certificate initialization fails: production startup returns the causal
+   error before any listener goroutine exists. Focused real-DNS-pump, loader
+   failure/success, deadline/close and race regressions make each distinction
+   executable. The clean replay must nevertheless demonstrate successful pump
+   traffic and zero unexplained process-log finding; these fixes are not waivers
+   for a carrier failure.
+
    The rendered simulation operator profile does not currently enable the
    optional general-stats HMAC export or Grafana push path. Both are safe no-ops
    and are separate from release-critical `/verify/stats`, proof, process and

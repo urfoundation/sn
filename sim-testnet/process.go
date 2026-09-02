@@ -520,17 +520,20 @@ func runPostTopologyTournamentGate(ctx context.Context, baseline func() (map[str
 // Executes the approved challenger writes and then proves that every
 // validator/operator pair completed another trail without any process or
 // supervisor generation change during the tournament.
-func executePostTopologyTournamentWithReadiness(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, executor *Executor, supervisor SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64) error {
+func executePostTopologyTournamentWithReadiness(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, executor *Executor, supervisor SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, processLogs *processLogGate) error {
 	return runPostTopologyTournamentGate(
 		ctx,
 		func() (map[string]int, error) {
+			if err := processLogs.RequireClean(false); err != nil {
+				return nil, err
+			}
 			return releaseTopologyProofCounts(cfg, stateDir)
 		},
 		func(ctx context.Context) error {
 			return executePostTopologyTournament(ctx, plan, executor)
 		},
 		func(ctx context.Context, baseline map[string]int) error {
-			return waitReleaseTopologyReady(ctx, cfg, stateDir, supervisor, supervisorPID, supervisorStartTimeTicks, baseline, 5*time.Minute)
+			return waitReleaseTopologyReady(ctx, cfg, stateDir, supervisor, supervisorPID, supervisorStartTimeTicks, baseline, processLogs, 5*time.Minute)
 		},
 	)
 }
@@ -647,7 +650,7 @@ func releaseTopologyReady(state SupervisorState, wantHash string, specs []Proces
 // Waits for semantic topology evidence without accepting stale proofs from an
 // earlier attempt. A restart is terminal immediately; ordinary startup and
 // trail progress may continue until the bounded launch deadline.
-func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, timeout time.Duration) error {
+func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, processLogs *processLogGate, timeout time.Duration) error {
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
 		return err
@@ -658,6 +661,12 @@ func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir
 		var state SupervisorState
 		if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
 			lastErr = err
+		} else if processLogs == nil {
+			return errors.New("release topology readiness requires the process log gate")
+		} else if err := processLogs.Bind(state); err != nil {
+			return err
+		} else if err := processLogs.RequireClean(false); err != nil {
+			return err
 		} else if current, err := releaseTopologyProofCounts(cfg, stateDir); err != nil {
 			lastErr = err
 		} else if ready, err := releaseTopologyReady(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current); err != nil {
@@ -699,6 +708,14 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins)
 	if err != nil {
 		return err
+	}
+	// Fence persistent server logs before temporary account provisioning. The
+	// final gate later adds never-started clients without recapturing these
+	// offsets, so a transient provisioning failure cannot disappear into the
+	// append-only history.
+	serverLogBoundary, err := processLogCursors(stateDir, SupervisorFile{Specs: serverSpecs})
+	if err != nil {
+		return fmt.Errorf("capture process log launch boundary: %w", err)
 	}
 	provisioningSpecs := selectProvisioningServerSpecs(serverSpecs)
 	temporary, err := startTemporary(ctx, stateDir, cfg.Config.Deployment.DeploymentID, provisioningSpecs)
@@ -753,6 +770,10 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
+	processLogs, err := initializeProcessLogGateAtBoundary(stateDir, sf, serverLogBoundary)
+	if err != nil {
+		return fmt.Errorf("initialize process log gate: %w", err)
+	}
 	var topologyAction *Action
 	for i := range p.Actions {
 		if p.Actions[i].ID == "topology.launch" {
@@ -784,32 +805,40 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 				return err
 			}
 		}
-		readyState, err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute)
+		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
 		if err != nil {
 			return err
 		}
-		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, 5*time.Minute); err != nil {
+		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+			return err
+		}
+		if err := processLogs.RequireClean(false); err != nil {
 			return err
 		}
 		if err := executor.Execute(ctx, *topologyAction); err != nil {
 			return err
 		}
-		if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks); err != nil {
+		if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, processLogs); err != nil {
 			return err
 		}
-		return publishDeploymentEvidence(ctx, cfg, stateDir, p, roles)
+		return publishDeploymentEvidence(ctx, cfg, stateDir, p, roles, processLogs)
 	}
 	supervisorCtx, cancelSupervisor := context.WithCancel(ctx)
 	defer cancelSupervisor()
 	supervisorErr := make(chan error, 1)
 	go func() { supervisorErr <- supervise(supervisorCtx, stateDir, specPath) }()
-	readyState, err := waitSupervisorReady(ctx, stateDir, sf, 3*time.Minute)
+	readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
 	if err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
 	}
-	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, 5*time.Minute); err != nil {
+	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+		cancelSupervisor()
+		<-supervisorErr
+		return err
+	}
+	if err := processLogs.RequireClean(false); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -819,12 +848,12 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		<-supervisorErr
 		return err
 	}
-	if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks); err != nil {
+	if err := executePostTopologyTournamentWithReadiness(ctx, cfg, stateDir, p, executor, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, processLogs); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
 	}
-	if err := publishDeploymentEvidence(ctx, cfg, stateDir, p, roles); err != nil {
+	if err := publishDeploymentEvidence(ctx, cfg, stateDir, p, roles, processLogs); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -849,19 +878,31 @@ func cleanupFailedPersistentLaunch(stateDir string, started bool, launchErr erro
 	return launchErr
 }
 
-func publishDeploymentEvidence(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets) error {
+func publishDeploymentEvidence(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, roles *RoleSecrets, processLogs *processLogGate) error {
+	if processLogs == nil {
+		return errors.New("deployment publication requires the process log gate")
+	}
+	if err := processLogs.RequireClean(false); err != nil {
+		return err
+	}
 	manifest, err := writePublicDeploymentManifest(cfg, stateDir, plan)
 	if err != nil {
 		return err
 	}
 	if !cfg.Config.Analysis.PublishPublicManifest {
-		return nil
+		return processLogs.RequireClean(false)
 	}
 	published, err := publishEvidence(ctx, cfg, roles, stateDir, "deployment-manifest", "", manifest)
 	if err != nil {
 		return err
 	}
 	if err := verifyPublishedEvidenceOrigins(ctx, cfg, roles, published); err != nil {
+		return err
+	}
+	// The locator is the externally discoverable commit pointer. Do not make
+	// the candidate envelopes current until publication itself has completed
+	// and the process-log gate has accepted everything it emitted.
+	if err := processLogs.RequireClean(false); err != nil {
 		return err
 	}
 	locatorDocument, err := deploymentManifestLocatorDocument(cfg, manifest, published)
@@ -2298,7 +2339,7 @@ func supervisorStateReady(state SupervisorState, wantHash string, specs []Proces
 	return len(want) == 0
 }
 
-func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, timeout time.Duration) (*SupervisorState, error) {
+func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFile, processLogs *processLogGate, timeout time.Duration) (*SupervisorState, error) {
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
 		return nil, err
@@ -2316,6 +2357,15 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 				lastErr = nil
 				lastState = &state
 				if supervisorStateReady(state, wantHash, want.Specs) {
+					if processLogs == nil {
+						return nil, errors.New("supervisor readiness requires the process log gate")
+					}
+					if err := processLogs.Bind(state); err != nil {
+						return nil, err
+					}
+					if err := processLogs.RequireClean(false); err != nil {
+						return nil, err
+					}
 					return &state, nil
 				}
 			}

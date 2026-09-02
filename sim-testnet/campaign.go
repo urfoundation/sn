@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,8 +31,9 @@ type ReleaseCampaignGate struct {
 }
 
 type scenarioCompletePayload struct {
-	ResultHash string            `json:"result_hash"`
-	Files      map[string]string `json:"files"`
+	ResultHash        string            `json:"result_hash"`
+	Files             map[string]string `json:"files"`
+	BundlePayloadHash string            `json:"bundle_payload_hash,omitempty"`
 }
 
 func decodeStrictJSONBytes(data []byte, value any) error {
@@ -277,6 +280,41 @@ func validateScenarioCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, r
 	if !strings.EqualFold(payload.ResultHash, result.EvidenceHash) || len(payload.Files) == 0 {
 		return nil, errors.New("release complete marker does not bind the result hash and files")
 	}
+	if len(result.PublishedEvidence) != 0 && !validSHA256ContentHash(payload.BundlePayloadHash) {
+		return nil, errors.New("release complete marker does not bind its published scenario bundle")
+	}
+	if len(result.PublishedEvidence) != 0 {
+		if len(result.PublishedEvidence) != cfg.Config.Topology.Operators {
+			return nil, errors.New("release complete marker has an incomplete published scenario bundle")
+		}
+		for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+			role, ok := roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)]
+			if !ok {
+				return nil, fmt.Errorf("release completion commit operator %d signer is missing", operator)
+			}
+			key, err := crypto.HexToECDSA(strings.TrimPrefix(role.PrivateKeyHex, "0x"))
+			if err != nil {
+				return nil, err
+			}
+			bundlePath := filepath.Join(runDir, fmt.Sprintf("scenario-bundle.operator-%d.evidence.json", operator))
+			var bundle ReleaseEvidenceEnvelope
+			if err := decodeStrictJSONFile(bundlePath, &bundle); err != nil {
+				return nil, fmt.Errorf("release scenario bundle operator %d: %w", operator, err)
+			}
+			if verifyEvidence(&bundle, &key.PublicKey) != nil || bundle.Kind != "scenario-bundle" || bundle.RunID != result.RunID || bundle.DeploymentID != cfg.Config.Deployment.DeploymentID || bundle.ChainID != cfg.ChainID || bundle.Netuid != cfg.Netuid || !strings.EqualFold(bundle.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(bundle.ContentHash, result.PublishedEvidence[operator-1].ContentHash) || !strings.EqualFold(bytesSHA256(bundle.Payload), payload.BundlePayloadHash) {
+				return nil, fmt.Errorf("release scenario bundle operator %d is invalid", operator)
+			}
+			path := filepath.Join(runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator))
+			var commit ReleaseEvidenceEnvelope
+			if err := decodeStrictJSONFile(path, &commit); err != nil {
+				return nil, fmt.Errorf("release completion commit operator %d: %w", operator, err)
+			}
+			var nestedComplete ReleaseEvidenceEnvelope
+			if decodeStrictJSONBytes(commit.Payload, &nestedComplete) != nil || verifyEvidence(&nestedComplete, &ownerKey.PublicKey) != nil || !strings.EqualFold(nestedComplete.ContentHash, complete.ContentHash) || nestedComplete.Signature != complete.Signature || verifyEvidence(&commit, &key.PublicKey) != nil || commit.Kind != "scenario-complete-commit" || commit.RunID != result.RunID || commit.DeploymentID != cfg.Config.Deployment.DeploymentID || commit.ChainID != cfg.ChainID || commit.Netuid != cfg.Netuid || !strings.EqualFold(commit.GenesisHash, cfg.Public.Chain.GenesisHash) {
+				return nil, fmt.Errorf("release completion commit operator %d is invalid", operator)
+			}
+		}
+	}
 	hashes, err := evidenceFileHashes(runDir)
 	if err != nil {
 		return nil, err
@@ -285,6 +323,24 @@ func validateScenarioCampaignComplete(cfg *ResolvedConfig, roles *RoleSecrets, r
 		return nil, errors.New("release complete marker file hashes do not match the immutable run directory")
 	}
 	return &complete, nil
+}
+
+func validSHA256ContentHash(value string) bool {
+	hexHash := strings.TrimPrefix(strings.ToLower(value), "sha256:")
+	if !strings.HasPrefix(strings.ToLower(value), "sha256:") || len(hexHash) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(hexHash)
+	return err == nil
+}
+
+func validCanonicalHashHex(value string) bool {
+	hexHash := stringsTrim0x(strings.ToLower(value))
+	if !strings.HasPrefix(strings.ToLower(value), "0x") || len(hexHash) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(hexHash)
+	return err == nil
 }
 
 // validateReleaseCampaignComplete converts one fully authenticated release

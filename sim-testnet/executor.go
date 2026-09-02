@@ -4250,9 +4250,10 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 			operator := operatorForMiner(cfg, miner)
 			config.Members = append(config.Members, minercomponent.ProviderSwarmMember{
 				ID: fmt.Sprintf("miner-%d", miner), APIURL: fmt.Sprintf("http://127.0.0.1:%d", 18080+operator),
-				ConnectURL: fmt.Sprintf("ws://%s:%d", operatorConnectHostIP(operator), 19080+operator),
-				StateDir:   filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state"),
-				Wallet:     roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58, SourceIP: minerTestEgressSourceIP(miner),
+				ConnectURL:  fmt.Sprintf("ws://%s:%d", operatorConnectHostIP(operator), 19080+operator),
+				DNSPumpHost: operatorConnectHostIP(operator),
+				StateDir:    filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state"),
+				Wallet:      roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58, SourceIP: minerTestEgressSourceIP(miner),
 			})
 		}
 		b, err := json.MarshalIndent(config, "", "  ")

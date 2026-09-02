@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,12 +35,13 @@ import (
 const ProviderSwarmSchema = "urnetwork-provider-swarm-v1"
 
 type ProviderSwarmMember struct {
-	ID         string `json:"id"`
-	APIURL     string `json:"api_url"`
-	ConnectURL string `json:"connect_url"`
-	StateDir   string `json:"state_dir"`
-	Wallet     string `json:"wallet"`
-	SourceIP   string `json:"source_ip"`
+	ID          string `json:"id"`
+	APIURL      string `json:"api_url"`
+	ConnectURL  string `json:"connect_url"`
+	DNSPumpHost string `json:"dns_pump_host"`
+	StateDir    string `json:"state_dir"`
+	Wallet      string `json:"wallet"`
+	SourceIP    string `json:"source_ip"`
 }
 
 type ProviderSwarmConfig struct {
@@ -128,6 +130,25 @@ func (self ProviderSwarmConfig) Validate() error {
 		}
 		if err := validateConnectUrl(member.ConnectURL); err != nil {
 			return fmt.Errorf("member %s: %w", member.ID, err)
+		}
+		connectURL, _ := url.Parse(member.ConnectURL)
+		pumpHost := strings.TrimSpace(member.DNSPumpHost)
+		if pumpHost == "" {
+			if isLoopbackURLHost(connectURL) {
+				return fmt.Errorf("member %s loopback connect_url requires dns_pump_host on the same provisioned ingress", member.ID)
+			}
+		} else {
+			pumpURL, pumpErr := url.Parse("dns://" + pumpHost)
+			if pumpErr != nil || pumpURL.Hostname() == "" || pumpURL.Port() != "" ||
+				pumpURL.User != nil || pumpURL.Path != "" || pumpURL.RawQuery != "" || pumpURL.Fragment != "" {
+				return fmt.Errorf("member %s dns_pump_host must be a host without a port or path", member.ID)
+			}
+			if isLoopbackURLHost(connectURL) && !strings.EqualFold(
+				strings.TrimSuffix(connectURL.Hostname(), "."),
+				strings.TrimSuffix(pumpURL.Hostname(), "."),
+			) {
+				return fmt.Errorf("member %s loopback connect_url requires dns_pump_host on the same provisioned ingress", member.ID)
+			}
 		}
 		if _, err := ss58.DecodeWithPrefix(member.Wallet, ss58.BittensorPrefix); err != nil {
 			return fmt.Errorf("member %s wallet: %w", member.ID, err)
@@ -307,6 +328,7 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 	deviceSettings := sdk.DefaultDeviceLocalSettings()
 	deviceSettings.KeyMaterial = sdk.NewDeviceLocalKeyMaterial(seed, certificatePEM, keyPEM)
 	deviceSettings.ProviderDialContextSettings = dialSettings
+	deviceSettings.DnsPumpHost = member.DNSPumpHost
 	device, err := sdk.NewDeviceLocal(networkSpace, byClientJWT, "provider swarm "+runtime.GOOS+" "+RequireVersion(), "", RequireVersion(), sdk.NewId(), deviceSettings)
 	if err != nil {
 		refreshSub.Close()

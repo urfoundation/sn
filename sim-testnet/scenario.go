@@ -185,6 +185,7 @@ type ScenarioObservation struct {
 	DishonestDeposit           *DishonestDepositEvidence      `json:"dishonest_deposit,omitempty"`
 	DishonestDepositValid      bool                           `json:"dishonest_deposit_valid"`
 	DishonestDepositError      string                         `json:"dishonest_deposit_error,omitempty"`
+	ProcessLogFindings         []ProcessLogFinding            `json:"process_log_findings,omitempty"`
 	ExpectedFaultIDs           []string                       `json:"expected_fault_ids,omitempty"`
 	ExpectedFaultTargets       []string                       `json:"expected_fault_targets,omitempty"`
 	ObservationHash            string                         `json:"observation_hash"`
@@ -294,6 +295,7 @@ type scenarioRunOptions struct {
 	FaultDriver  scenarioFaultDriver
 	Adversaries  adversaryCampaign
 	Prepare      func(context.Context) error
+	ProcessLogs  scenarioProcessLogGate
 }
 
 // Hash every executable part of a scenario definition. Live release evidence
@@ -3011,6 +3013,14 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err != nil {
 		return nil, fmt.Errorf("hash scenario definition: %w", err)
 	}
+	if (definition.Name == "release-1.0" || definition.Name == "production-soak") && options.ProcessLogs == nil {
+		return nil, errors.New("release and production scenarios require the persisted process log gate")
+	}
+	if options.ProcessLogs != nil {
+		if err := options.ProcessLogs.WriteEvidence(runDir); err != nil {
+			return nil, fmt.Errorf("initialize scenario process log evidence: %w", err)
+		}
+	}
 	if definition.AdversarialMatrixHash != "" {
 		if options.Adversaries == nil {
 			return nil, errors.New("release scenario requires a continuous adversarial campaign")
@@ -3022,6 +3032,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	}
 	adversariesFinalized := false
 	observationHistory := []*ScenarioObservation{}
+	var faults []ScenarioFaultRecord
 	defer func() {
 		if options.Adversaries == nil || adversariesFinalized {
 			return
@@ -3032,6 +3043,9 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		_, _ = options.Adversaries.Stop(cleanupCtx)
 	}()
 	initialFailure := func(observation *ScenarioObservation, failure error) (*ScenarioResult, error) {
+		if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, observation, true, activeProcessLogFaultScopes(faults)...); logErr != nil {
+			failure = errors.Join(failure, fmt.Errorf("final process log gate: %w", logErr))
+		}
 		failureHistory := append([]*ScenarioObservation(nil), observationHistory...)
 		if observation != nil && (len(failureHistory) == 0 || failureHistory[len(failureHistory)-1] != observation) {
 			failureHistory = append(failureHistory, observation)
@@ -3065,6 +3079,9 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err != nil {
 		return initialFailure(nil, fmt.Errorf("initial scenario observation: %w", err))
 	}
+	if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, start, false); err != nil {
+		return initialFailure(start, fmt.Errorf("initial process log gate: %w", err))
+	}
 	if start.Status == nil || start.Status.Contracts == nil {
 		return initialFailure(start, errors.New("scenario requires an installed contract deployment"))
 	}
@@ -3087,6 +3104,9 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		prepared, prepareErr := probe.Snapshot(ctx)
 		if prepareErr != nil {
 			return initialFailure(start, fmt.Errorf("post-preparation scenario observation: %w", prepareErr))
+		}
+		if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, prepared, false); err != nil {
+			return initialFailure(prepared, fmt.Errorf("post-preparation process log gate: %w", err))
 		}
 		if prepared.Status == nil || prepared.Status.Contracts == nil {
 			return initialFailure(prepared, errors.New("post-preparation observation lost deployment or contract state"))
@@ -3116,7 +3136,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if window != nil {
 		faultBase = window.StartBlock
 	}
-	faults, err := initializeFaultRecords(faultBase, definition.Faults)
+	faults, err = initializeFaultRecords(faultBase, definition.Faults)
 	if err != nil {
 		return initialFailure(current, fmt.Errorf("initialize scenario faults: %w", err))
 	}
@@ -3166,6 +3186,7 @@ scenarioLoop:
 		if err := annotateScenarioExpectedFaults(current, faults); err != nil {
 			return initialFailure(current, fmt.Errorf("annotate expected scenario faults: %w", err))
 		}
+		processLogErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, activeProcessLogFaultScopes(faults)...)
 		observationHistory = append(observationHistory, current)
 		if current.Status == nil || current.Status.Contracts == nil {
 			snapshotFailureCount++
@@ -3180,7 +3201,15 @@ scenarioLoop:
 			current = previous
 			break scenarioLoop
 		}
+		if processLogErr != nil {
+			if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
+				return initialFailure(current, fmt.Errorf("persist process-log failure observation: %w", err))
+			}
+			terminalErr = fmt.Errorf("runtime process log gate: %w", processLogErr)
+			break scenarioLoop
+		}
 		if len(faults) != 0 {
+			faultScopesBefore := activeProcessLogFaultScopes(faults)
 			if options.Adversaries != nil {
 				// Attribute endpoint failures before applying a due process fault;
 				// the actor may have an in-flight request when SIGTERM/SIGSTOP lands.
@@ -3199,6 +3228,17 @@ scenarioLoop:
 			if err := atomicWrite(filepath.Join(runDir, "faults.json"), append(faultBytes, '\n'), 0o644); err != nil {
 				return initialFailure(current, fmt.Errorf("persist scenario faults: %w", err))
 			}
+			transitionScopes := mergeProcessLogFaultScopes(faultScopesBefore, activeProcessLogFaultScopes(faults))
+			if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, transitionScopes...); logErr != nil {
+				processLogErr = errors.Join(processLogErr, fmt.Errorf("fault-transition process log gate: %w", logErr))
+			}
+		}
+		if processLogErr != nil {
+			if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
+				return initialFailure(current, fmt.Errorf("persist fault-transition process-log observation: %w", err))
+			}
+			terminalErr = fmt.Errorf("runtime process log gate: %w", processLogErr)
+			break scenarioLoop
 		}
 		if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
 			return initialFailure(current, fmt.Errorf("persist scenario observation: %w", err))
@@ -3222,6 +3262,20 @@ scenarioLoop:
 	if adversaryErr != nil && terminalErr == nil {
 		terminalErr = adversaryErr
 	}
+	if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false, activeProcessLogFaultScopes(faults)...); logErr != nil {
+		now := options.Now().UTC()
+		if persistErr := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); persistErr != nil {
+			logErr = errors.Join(logErr, fmt.Errorf("persist process-log completion observation: %w", persistErr))
+		}
+		assertions = append(assertions, AssertionRecord{
+			ID: "process_log_completion", Passed: false, Message: logErr.Error(),
+			StartedAt: started.Format(time.RFC3339Nano), CompletedAt: now.Format(time.RFC3339Nano),
+			DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+		})
+		if terminalErr == nil {
+			terminalErr = logErr
+		}
+	}
 	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })
 	completed = options.Now().UTC()
 	result := &ScenarioResult{
@@ -3241,11 +3295,37 @@ scenarioLoop:
 	if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 		return nil, err
 	}
+	publishedBundlePayloadHash := ""
+	publishedBundleResultHash := ""
 	if options.Publish {
+		if result.Result == "pass" {
+			if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false); logErr != nil {
+				now := options.Now().UTC()
+				if persistErr := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); persistErr != nil {
+					logErr = errors.Join(logErr, fmt.Errorf("persist process-log prepublication observation: %w", persistErr))
+				}
+				result.Assertions = append(result.Assertions, AssertionRecord{
+					ID: "process_log_prepublication", Passed: false, Message: logErr.Error(),
+					StartedAt: result.StartedAt, CompletedAt: now.Format(time.RFC3339Nano),
+					DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+				})
+				attachScenarioAnomalyGate(result, now, campaignStart, current, observationHistory...)
+				result.EvidenceHash, _ = canonicalScenarioResultHash(result)
+			}
+		}
 		publishResult := *result
 		publishResult.PublishedEvidence = nil
+		publishedBundleResultHash = publishResult.EvidenceHash
 		bundle := ScenarioEvidenceBundle{Schema: "urnetwork-sim-scenario-evidence-v1", Result: &publishResult, Observation: current, Analysis: analyzeScenarioObservation(cfg, current)}
-		published, publishErr := publishEvidence(ctx, cfg, options.Roles, stateDir, "scenario-bundle", runID, bundle)
+		bundlePayload, marshalErr := json.Marshal(bundle)
+		if marshalErr == nil {
+			publishedBundlePayloadHash = bytesSHA256(bundlePayload)
+		}
+		var published []PublishedEvidence
+		publishErr := marshalErr
+		if publishErr == nil {
+			published, publishErr = publishEvidence(ctx, cfg, options.Roles, stateDir, "scenario-bundle", runID, bundle)
+		}
 		if publishErr == nil {
 			publishErr = verifyPublishedEvidenceOrigins(ctx, cfg, options.Roles, published)
 		}
@@ -3254,8 +3334,30 @@ scenarioLoop:
 		} else {
 			result.PublishedEvidence = published
 		}
-		attachScenarioAnomalyGate(result, options.Now().UTC(), campaignStart, current, observationHistory...)
-		result.EvidenceHash, _ = canonicalScenarioResultHash(result)
+		if logErr := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false); logErr != nil {
+			now := options.Now().UTC()
+			if persistErr := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); persistErr != nil {
+				logErr = errors.Join(logErr, fmt.Errorf("persist process-log publication observation: %w", persistErr))
+			}
+			result.Assertions = append(result.Assertions, AssertionRecord{
+				ID: "process_log_publication", Passed: false, Message: logErr.Error(),
+				StartedAt: result.StartedAt, CompletedAt: now.Format(time.RFC3339Nano),
+				DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+			})
+		}
+		// Keep the candidate's canonical completion instant stable. A clean
+		// publication scan must not change its signed result merely because the
+		// wall clock advanced while operator origins were checked.
+		candidateErr := refreshPublishedScenarioCandidate(result, completed, campaignStart, current, publishedBundleResultHash, observationHistory...)
+		if result.Result == "pass" && candidateErr != nil {
+			now := options.Now().UTC()
+			result.Assertions = append(result.Assertions, AssertionRecord{
+				ID: "evidence_publication_snapshot", Passed: false, Message: "process-log publication scan changed the signed scenario candidate",
+				StartedAt: result.StartedAt, CompletedAt: now.Format(time.RFC3339Nano), DurationSeconds: now.Sub(started).Seconds(), ObservationHash: current.ObservationHash,
+			})
+			attachScenarioAnomalyGate(result, now, campaignStart, current, observationHistory...)
+			result.EvidenceHash, _ = canonicalScenarioResultHash(result)
+		}
 		if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
 			return nil, err
 		}
@@ -3275,12 +3377,31 @@ scenarioLoop:
 		if err := scanEvidenceSecrets(stateDir, runDir, options.Roles, cfg.WalletSecret, cfg.WalletMaterial, cfg.WalletPasswordSecret, cfg.WalletPassword); err != nil {
 			return finalEvidenceFailure("evidence_secret_scan", err)
 		}
+		// This is deliberately the last live-state read before the immutable
+		// evidence hashes and completion marker, minimizing the append race.
+		if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, true); err != nil {
+			if persistErr := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); persistErr != nil {
+				err = errors.Join(err, fmt.Errorf("persist final process-log observation: %w", persistErr))
+			}
+			return finalEvidenceFailure("process_log_final", err)
+		}
+		if options.Publish {
+			if err := refreshPublishedScenarioCandidate(result, completed, campaignStart, current, publishedBundleResultHash, observationHistory...); err != nil {
+				return finalEvidenceFailure("process_log_final_snapshot", err)
+			}
+			if err := writeScenarioOutputs(cfg, runDir, result, current); err != nil {
+				return result, err
+			}
+		}
 		hashes, err := evidenceFileHashes(runDir)
 		if err != nil {
 			return finalEvidenceFailure("evidence_file_hashes", err)
 		}
 		if options.Roles == nil {
 			complete := map[string]any{"schema": "urnetwork-sim-complete-v1", "run_id": runID, "result_hash": result.EvidenceHash, "files": hashes}
+			if publishedBundlePayloadHash != "" {
+				complete["bundle_payload_hash"] = publishedBundlePayloadHash
+			}
 			b, marshalErr := json.MarshalIndent(complete, "", "  ")
 			if marshalErr != nil {
 				return finalEvidenceFailure("complete_evidence_encoding", marshalErr)
@@ -3293,7 +3414,8 @@ scenarioLoop:
 			if !ok {
 				return finalEvidenceFailure("complete_evidence_signer", errors.New("testnet owner role is missing"))
 			}
-			complete, err := signEvidence(cfg, "scenario-complete", runID, map[string]any{"result_hash": result.EvidenceHash, "files": hashes}, owner)
+			completePayload := scenarioCompletePayload{ResultHash: result.EvidenceHash, Files: hashes, BundlePayloadHash: publishedBundlePayloadHash}
+			complete, err := signEvidence(cfg, "scenario-complete", runID, completePayload, owner)
 			if err != nil {
 				return finalEvidenceFailure("complete_evidence_signature", err)
 			}
@@ -3301,7 +3423,16 @@ scenarioLoop:
 			if marshalErr != nil {
 				return finalEvidenceFailure("complete_evidence_encoding", marshalErr)
 			}
-			if err := atomicWrite(filepath.Join(runDir, "complete.json"), append(b, '\n'), 0o644); err != nil {
+			b = append(b, '\n')
+			if options.Publish {
+				if !validSHA256ContentHash(publishedBundlePayloadHash) {
+					return finalEvidenceFailure("complete_evidence_publication", errors.New("published scenario bundle has no commit payload hash"))
+				}
+				failureID, commitErr := commitPublishedScenarioCompletion(ctx, cfg, options.Roles, stateDir, runID, complete, b, nil)
+				if commitErr != nil {
+					return finalEvidenceFailure(failureID, commitErr)
+				}
+			} else if err := atomicWrite(filepath.Join(runDir, "complete.json"), b, 0o644); err != nil {
 				return finalEvidenceFailure("complete_evidence_write", err)
 			}
 		}
@@ -3317,6 +3448,19 @@ func canonicalScenarioResultHash(result *ScenarioResult) (string, error) {
 	copy.EvidenceHash = ""
 	copy.PublishedEvidence = nil
 	return canonicalHashHex(copy)
+}
+
+func refreshPublishedScenarioCandidate(result *ScenarioResult, completed time.Time, start, current *ScenarioObservation, expectedHash string, history ...*ScenarioObservation) error {
+	attachScenarioAnomalyGate(result, completed, start, current, history...)
+	hash, err := canonicalScenarioResultHash(result)
+	if err != nil {
+		return err
+	}
+	result.EvidenceHash = hash
+	if !strings.EqualFold(hash, expectedHash) {
+		return errors.New("process-log scan changed the signed scenario candidate")
+	}
+	return nil
 }
 
 func writeScenarioOutputs(cfg *ResolvedConfig, runDir string, result *ScenarioResult, observation *ScenarioObservation) error {
@@ -3413,7 +3557,10 @@ func fetchVerifyPublicKeys(ctx context.Context, endpoint string) (map[byte]strin
 	return result, nil
 }
 
-func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir string) error {
+func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir string, processLogs *processLogGate) error {
+	if processLogs == nil {
+		return errors.New("verify-key rotation requires the persisted process log gate")
+	}
 	driver := &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}
 	record := verifyKeyRotationEvidence{Schema: "urnetwork-verify-key-rotation-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, PolicyHash: cfg.PolicyHash}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
@@ -3435,12 +3582,18 @@ func rotateOperatorVerifyKeys(ctx context.Context, cfg *ResolvedConfig, stateDir
 		beforePID := states[processID].PID
 		if readErr != nil || !strings.EqualFold(observed[0], expected[0]) || !strings.EqualFold(observed[1], expected[1]) {
 			fault := scenarioFaultSpec{ID: fmt.Sprintf("verify-key-rotation-%d", operator), Kind: "process-restart", Targets: []string{processID}, TriggerOffsetBlocks: 1, DurationBlocks: 1}
-			before, err := driver.Apply(ctx, fault)
-			if err != nil {
+			if err := processLogs.RequireClean(false); err != nil {
 				return err
 			}
-			after, err := driver.Restore(ctx, fault)
-			if err != nil {
+			scope := processLogFaultScope{ID: fault.ID, Kind: fault.Kind, Targets: append([]string(nil), fault.Targets...)}
+			before, applyErr := driver.Apply(ctx, fault)
+			var after []FaultProcessEvidence
+			var restoreErr error
+			if applyErr == nil {
+				after, restoreErr = driver.Restore(ctx, fault)
+			}
+			scanResult, scanErr := processLogs.Scan(false, scope)
+			if err := errors.Join(applyErr, restoreErr, scanErr, processLogFindingsError(scanResult.Findings)); err != nil {
 				return err
 			}
 			if len(before) != 1 || len(after) != 1 || before[0].PID == after[0].PID {
@@ -3490,6 +3643,10 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 	definition, err := scenarioDefinitionFor(cfg, name)
 	if err != nil {
 		return err
+	}
+	processLogs, err := loadLiveProcessLogGate(stateDir)
+	if err != nil {
+		return fmt.Errorf("open live process log gate: %w", err)
 	}
 	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
 	if err != nil {
@@ -3586,7 +3743,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 					}
 				}
 			}
-			if err := rotateOperatorVerifyKeys(prepareCtx, runtimeCfg, stateDir); err != nil {
+			if err := rotateOperatorVerifyKeys(prepareCtx, runtimeCfg, stateDir, processLogs); err != nil {
 				return fmt.Errorf("rotate operator verify keys: %w", err)
 			}
 			if err := runDishonestDepositPhase(prepareCtx, runtimeCfg, stateDir, scenarioExecutor); err != nil {
@@ -3596,7 +3753,7 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 		return nil
 	}
 	probe := &liveScenarioProbe{cfg: runtimeCfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
-	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, Adversaries: campaign, Prepare: prepare})
+	_, err = runScenarioWithProbe(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{Roles: roles, Publish: true, FaultDriver: &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, Adversaries: campaign, Prepare: prepare, ProcessLogs: processLogs})
 	return err
 }
 

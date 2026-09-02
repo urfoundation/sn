@@ -360,33 +360,58 @@ func evidenceHistoryKeys(b []byte) []string {
 }
 
 func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, public *PublicDeploymentManifest) (*ScenarioEvidenceBundle, error) {
+	if public == nil {
+		return nil, errors.New("public deployment manifest is missing")
+	}
 	_, expected := inspectPublicIdentityBytes(p.cfg, public.Identities)
+	var identities struct {
+		EVM map[string]string `json:"evm"`
+	}
+	if json.Unmarshal(public.Identities, &identities) != nil || identities.EVM["testnet-owner"] == "" || len(expected) != len(public.Operators) {
+		return nil, errors.New("public scenario evidence signer directory is invalid")
+	}
+	ownerSigner := identities.EVM["testnet-owner"]
 	type candidate struct {
 		bundle  *ScenarioEvidenceBundle
 		payload string
 		signers map[int]bool
 		time    time.Time
 	}
+	type completionCandidate struct {
+		envelope  *ReleaseEvidenceEnvelope
+		payload   scenarioCompletePayload
+		operators map[int]bool
+	}
 	candidates := map[string]*candidate{}
+	completions := map[string]*completionCandidate{}
 	for _, operator := range public.Operators {
-		history, err := url.Parse(operator.HistoryURL)
-		if err != nil {
-			return nil, err
+		if operator.NoID < 1 || operator.NoID > len(public.Operators) || expected[operator.NoID] == "" || operator.APIURL == "" || operator.HistoryURL == "" {
+			return nil, errors.New("public scenario evidence operator directory is invalid")
 		}
-		query := history.Query()
-		query.Set("deployment_id", public.DeploymentID)
-		query.Set("netuid", fmt.Sprint(public.Netuid))
-		query.Set("kind", "scenario-bundle")
-		history.RawQuery = query.Encode()
-		body, _, err := p.get(ctx, history.String(), 16<<20)
-		if err != nil {
-			return nil, fmt.Errorf("operator %d history: %w", operator.NoID, err)
+		loadHistory := func(kind string) ([]string, error) {
+			history, err := url.Parse(operator.HistoryURL)
+			if err != nil {
+				return nil, err
+			}
+			query := history.Query()
+			query.Set("deployment_id", public.DeploymentID)
+			query.Set("netuid", fmt.Sprint(public.Netuid))
+			query.Set("kind", kind)
+			history.RawQuery = query.Encode()
+			body, _, err := p.get(ctx, history.String(), 16<<20)
+			if err != nil {
+				return nil, err
+			}
+			return evidenceHistoryKeys(body), nil
 		}
-		keys := evidenceHistoryKeys(body)
-		if len(keys) == 0 {
+		bundleKeys, err := loadHistory("scenario-bundle")
+		if err != nil {
+			return nil, fmt.Errorf("operator %d scenario-bundle history: %w", operator.NoID, err)
+		}
+		if len(bundleKeys) == 0 {
 			return nil, fmt.Errorf("operator %d has no scenario-bundle history", operator.NoID)
 		}
-		for _, key := range keys {
+		for _, key := range bundleKeys {
 			hash := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
 			if len(hash) != 64 {
 				continue
@@ -401,20 +426,58 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 				continue
 			}
 			var bundle ScenarioEvidenceBundle
-			if json.Unmarshal(envelope.Payload, &bundle) != nil || bundle.Schema != "urnetwork-sim-scenario-evidence-v1" || bundle.Result == nil || bundle.Observation == nil || bundle.Result.DeploymentID != public.DeploymentID || bundle.Result.Netuid != public.Netuid || bundle.Result.ConfigHash != public.ConfigHash || !strings.EqualFold(bundle.Result.PolicyHash, public.PolicyHash) {
+			if json.Unmarshal(envelope.Payload, &bundle) != nil || bundle.Schema != "urnetwork-sim-scenario-evidence-v1" || bundle.Result == nil || bundle.Observation == nil || bundle.Result.Result != "pass" || bundle.Result.DeploymentID != public.DeploymentID || bundle.Result.Netuid != public.Netuid || bundle.Result.ConfigHash != public.ConfigHash || !strings.EqualFold(bundle.Result.PolicyHash, public.PolicyHash) {
+				continue
+			}
+			resultHash, hashErr := canonicalScenarioResultHash(bundle.Result)
+			if hashErr != nil || !strings.EqualFold(resultHash, bundle.Result.EvidenceHash) {
 				continue
 			}
 			payloadHash := bytesSHA256(envelope.Payload)
 			completed, _ := time.Parse(time.RFC3339Nano, bundle.Result.CompletedAt)
-			item := candidates[bundle.Result.RunID]
+			candidateKey := bundle.Result.RunID + "\x00" + payloadHash
+			item := candidates[candidateKey]
 			if item == nil {
 				copy := bundle
 				item = &candidate{bundle: &copy, payload: payloadHash, signers: map[int]bool{}, time: completed}
-				candidates[bundle.Result.RunID] = item
+				candidates[candidateKey] = item
 			}
-			if item.payload == payloadHash {
-				item.signers[operator.NoID] = true
+			item.signers[operator.NoID] = true
+		}
+
+		completionKeys, err := loadHistory("scenario-complete-commit")
+		if err != nil {
+			return nil, fmt.Errorf("operator %d scenario-complete-commit history: %w", operator.NoID, err)
+		}
+		for _, key := range completionKeys {
+			hash := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key))
+			if len(hash) != 64 {
+				continue
 			}
+			evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=sha256:" + hash
+			encoded, _, fetchErr := p.get(ctx, evidenceURL, 64<<20)
+			if fetchErr != nil {
+				continue
+			}
+			var operatorEnvelope ReleaseEvidenceEnvelope
+			if decodeStrictJSONBytes(encoded, &operatorEnvelope) != nil || verifyEvidence(&operatorEnvelope, nil) != nil || operatorEnvelope.Kind != "scenario-complete-commit" || operatorEnvelope.RunID == "" || operatorEnvelope.DeploymentID != public.DeploymentID || operatorEnvelope.ChainID != public.ChainID || operatorEnvelope.Netuid != public.Netuid || !strings.EqualFold(operatorEnvelope.GenesisHash, public.GenesisHash) || !strings.EqualFold(operatorEnvelope.Signer.Hex(), expected[operator.NoID]) {
+				continue
+			}
+			var envelope ReleaseEvidenceEnvelope
+			if decodeStrictJSONBytes(operatorEnvelope.Payload, &envelope) != nil || verifyEvidence(&envelope, nil) != nil || envelope.Kind != "scenario-complete" || envelope.RunID != operatorEnvelope.RunID || envelope.DeploymentID != public.DeploymentID || envelope.ChainID != public.ChainID || envelope.Netuid != public.Netuid || !strings.EqualFold(envelope.GenesisHash, public.GenesisHash) || !strings.EqualFold(envelope.Signer.Hex(), ownerSigner) {
+				continue
+			}
+			var payload scenarioCompletePayload
+			if decodeStrictJSONBytes(envelope.Payload, &payload) != nil || !validCanonicalHashHex(payload.ResultHash) || !validSHA256ContentHash(payload.BundlePayloadHash) || len(payload.Files) == 0 {
+				continue
+			}
+			item := completions[envelope.ContentHash]
+			if item == nil {
+				copyEnvelope := envelope
+				item = &completionCandidate{envelope: &copyEnvelope, payload: payload, operators: map[int]bool{}}
+				completions[envelope.ContentHash] = item
+			}
+			item.operators[operator.NoID] = true
 		}
 	}
 	var latest *candidate
@@ -422,12 +485,22 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 		if len(item.signers) != len(public.Operators) {
 			continue
 		}
+		committed := false
+		for _, completion := range completions {
+			if len(completion.operators) == len(public.Operators) && completion.envelope.RunID == item.bundle.Result.RunID && strings.EqualFold(completion.payload.ResultHash, item.bundle.Result.EvidenceHash) && strings.EqualFold(completion.payload.BundlePayloadHash, item.payload) {
+				committed = true
+				break
+			}
+		}
+		if !committed {
+			continue
+		}
 		if latest == nil || item.time.After(latest.time) {
 			latest = item
 		}
 	}
 	if latest == nil {
-		return nil, errors.New("no scenario bundle has byte-identical payloads signed by every operator")
+		return nil, errors.New("no scenario bundle has byte-identical operator signatures and a replicated owner completion commit")
 	}
 	return latest.bundle, nil
 }

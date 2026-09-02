@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -154,6 +155,67 @@ func writeScenarioCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir, n
 func writeReleaseCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir string, startEpoch, endEpoch uint64) (*ScenarioResult, *RoleSecrets, string) {
 	t.Helper()
 	return writeScenarioCampaignFixture(t, cfg, stateDir, "release-1.0", startEpoch, endEpoch)
+}
+
+func TestPublishedCompletionCommitsAreExcludedAndIndependentlyValidated(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	result, roles, runDir := writeReleaseCampaignFixture(t, cfg, t.TempDir(), 26, 32)
+	publishResult := *result
+	publishResult.PublishedEvidence = nil
+	bundlePayload := ScenarioEvidenceBundle{Schema: "urnetwork-sim-scenario-evidence-v1", Result: &publishResult, Observation: &ScenarioObservation{ObservationHash: "fixture"}}
+	bundleBytes, err := json.Marshal(bundlePayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		bundle, err := signEvidence(cfg, "scenario-bundle", result.RunID, bundlePayload, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := atomicWrite(filepath.Join(runDir, fmt.Sprintf("scenario-bundle.operator-%d.evidence.json", operator)), append(encoded, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		result.PublishedEvidence = append(result.PublishedEvidence, PublishedEvidence{ContentHash: bundle.ContentHash})
+	}
+	if err := writePublicJSON(filepath.Join(runDir, "result.json"), result); err != nil {
+		t.Fatal(err)
+	}
+	hashes, err := evidenceFileHashes(runDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete, err := signEvidence(cfg, "scenario-complete", result.RunID, scenarioCompletePayload{
+		ResultHash: result.EvidenceHash, Files: hashes, BundlePayloadHash: bytesSHA256(bundleBytes),
+	}, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(runDir, "complete.json"), complete); err != nil {
+		t.Fatal(err)
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		commit, err := signEvidence(cfg, "scenario-complete-commit", result.RunID, complete, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writePublicJSON(filepath.Join(runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator)), commit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := evidenceFileHashes(runDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stringMapsEqual(hashes, after) {
+		t.Fatalf("outer completion commits changed signed evidence hashes: before=%v after=%v", hashes, after)
+	}
+	if _, err := validateScenarioCampaignComplete(cfg, roles, runDir, result, "release-1.0"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Open a private append-only journal owned by one composite campaign test.

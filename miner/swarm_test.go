@@ -40,8 +40,31 @@ func validProviderSwarmConfig(t *testing.T) ProviderSwarmConfig {
 		Schema: ProviderSwarmSchema, ListenAddress: "127.0.0.1:21081",
 		Members: []ProviderSwarmMember{{
 			ID: "miner-1", APIURL: "http://127.0.0.1:18081", ConnectURL: "ws://127.0.0.1:19081",
-			StateDir: stateDir, Wallet: wallet, SourceIP: "127.64.0.1",
+			DNSPumpHost: "127.0.0.1", StateDir: stateDir, Wallet: wallet, SourceIP: "127.64.0.1",
 		}},
+	}
+}
+
+func TestProviderSwarmConfigPinsLoopbackDNSPumpToConnectIngress(t *testing.T) {
+	config := validProviderSwarmConfig(t)
+	if err := config.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	config.Members[0].DNSPumpHost = "whodis.bringyour.com"
+	if err := config.Validate(); err == nil || !strings.Contains(err.Error(), "same provisioned ingress") {
+		t.Fatalf("production DNS pump accepted for loopback Connect ingress: %v", err)
+	}
+	config.Members[0].DNSPumpHost = "127.0.0.2"
+	if err := config.Validate(); err == nil || !strings.Contains(err.Error(), "same provisioned ingress") {
+		t.Fatalf("different loopback DNS pump accepted without a provisioned relay: %v", err)
+	}
+	config.Members[0].DNSPumpHost = ""
+	if err := config.Validate(); err == nil || !strings.Contains(err.Error(), "dns_pump_host") {
+		t.Fatalf("implicit production DNS pump accepted for loopback Connect ingress: %v", err)
+	}
+	config.Members[0].ConnectURL = "wss://connect.bringyour.com"
+	if err := config.Validate(); err != nil {
+		t.Fatalf("production Connect ingress did not retain the default DNS pump: %v", err)
 	}
 }
 

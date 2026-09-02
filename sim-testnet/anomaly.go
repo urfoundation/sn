@@ -118,6 +118,11 @@ func buildScenarioAnomalyLedger(runID string, generatedAt time.Time, start, curr
 	var previousContracts *ContractView
 	for _, observation := range observations {
 		collector.observationHash = observation.ObservationHash
+		for _, finding := range observation.ProcessLogFindings {
+			if finding.Blocking {
+				collector.add("process-log-"+finding.Class, "critical", "process:"+finding.ProcessID+":"+finding.Stream, finding.Summary, finding.FirstObservedAt)
+			}
+		}
 		expectedTargets := map[string]bool{}
 		for _, target := range observation.ExpectedFaultTargets {
 			expectedTargets[target] = true

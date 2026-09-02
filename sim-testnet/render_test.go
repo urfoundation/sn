@@ -168,6 +168,9 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 			if member.ConnectURL != wantConnectURL {
 				t.Fatalf("provider %s connect URL = %q, want %q", member.ID, member.ConnectURL, wantConnectURL)
 			}
+			if member.DNSPumpHost != operatorConnectHostIP(operator) {
+				t.Fatalf("provider %s DNS pump host = %q, want provisioned ingress %q", member.ID, member.DNSPumpHost, operatorConnectHostIP(operator))
+			}
 		}
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {

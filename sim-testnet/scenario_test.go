@@ -245,6 +245,41 @@ func TestScenarioRunnerWritesCompleteEvidenceOnlyOnPass(t *testing.T) {
 	}
 }
 
+func TestPublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances(t *testing.T) {
+	times := []time.Time{
+		time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 2, 12, 0, 17, 0, time.UTC),
+	}
+	clockIndex := 0
+	now := func() time.Time {
+		value := times[clockIndex]
+		if clockIndex < len(times)-1 {
+			clockIndex++
+		}
+		return value
+	}
+	completed := now()
+	result := &ScenarioResult{
+		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: "advancing-clock",
+		StartedAt: completed.Add(-time.Minute).Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano), Result: "pass",
+	}
+	attachScenarioAnomalyGate(result, completed, nil, nil)
+	expectedHash, err := canonicalScenarioResultHash(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.EvidenceHash = expectedHash
+	if later := now(); !later.After(completed) {
+		t.Fatal("test clock did not advance")
+	}
+	if err := refreshPublishedScenarioCandidate(result, completed, nil, nil, expectedHash); err != nil {
+		t.Fatal(err)
+	}
+	if result.EvidenceHash != expectedHash || result.Anomalies.GeneratedAt != completed.Format(time.RFC3339Nano) {
+		t.Fatalf("published candidate changed after clock advance: hash=%s anomalies_at=%s", result.EvidenceHash, result.Anomalies.GeneratedAt)
+	}
+}
+
 func TestScenarioRunnerFailureHasNoCompleteMarker(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	dir := t.TempDir()
