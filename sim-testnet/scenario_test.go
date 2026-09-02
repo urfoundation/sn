@@ -1235,9 +1235,46 @@ func TestProductionSoakDefinitionAndChecks(t *testing.T) {
 	if _, ok := byID["verify_key_rotation_preserves_history"]; !ok {
 		t.Fatal("production soak omitted verify-key rotation evidence")
 	}
-	minimum := time.Duration((3*360+180)*12+120) * time.Second
+	minimum := time.Duration((4*360+180)*12+120) * time.Second
 	if got := scenarioTimeout(cfg, definition); got < minimum {
 		t.Fatalf("production timeout %s is below %s", got, minimum)
+	}
+}
+
+// Both release campaigns discard the post-preparation partial epoch. Their
+// watchdogs must therefore cover the longest possible wait to the next
+// boundary, not merely the accepted epochs and terminal finalization.
+func TestReleaseScenarioTimeoutCoversCompleteBoundaryWait(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	tests := []struct {
+		name           string
+		epochBlocks    uint64
+		acceptedEpochs uint64
+		finalizeBlocks uint64
+	}{
+		{
+			name: "release-1.0", epochBlocks: cfg.Policy.Settlement.EpochBlocks,
+			acceptedEpochs: uint64(cfg.Config.Scenarios.ShortEpochs), finalizeBlocks: cfg.Policy.Settlement.FinalizeOffsetBlocks,
+		},
+		{
+			name: "production-soak", epochBlocks: cfg.Policy.ProductionCadence.EpochBlocks,
+			acceptedEpochs: uint64(cfg.Config.Scenarios.ProductionEpochs), finalizeBlocks: cfg.Policy.ProductionCadence.FinalizeOffsetBlocks,
+		},
+	}
+	for _, testCase := range tests {
+		definition, err := scenarioDefinitionFor(cfg, testCase.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		timeout := scenarioTimeout(cfg, definition)
+		for _, baselineOffset := range []uint64{0, testCase.epochBlocks / 2, testCase.epochBlocks - 1} {
+			boundaryWait := testCase.epochBlocks - baselineOffset
+			requiredBlocks := boundaryWait + testCase.acceptedEpochs*testCase.epochBlocks + testCase.finalizeBlocks
+			required := time.Duration(requiredBlocks*cfg.Public.Chain.ExpectedBlockSeconds) * time.Second
+			if timeout < required {
+				t.Fatalf("%s timeout %s does not cover offset %d requirement %s", testCase.name, timeout, baselineOffset, required)
+			}
+		}
 	}
 }
 

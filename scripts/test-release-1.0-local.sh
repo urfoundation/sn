@@ -55,7 +55,7 @@ echo "[release-1.0] operator pure/unit suites"
   cd "$workspace/server"
   go test . -run '^Test(PgResourcesRedirectMaintenancePoolAndRestore|DatabaseTimeMatchesPostgresPrecision)$'
   go test ./st ./startifact
-  go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|CoreStClientBindingsAt|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|StTransactionCancellation|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature|VerifySimulationAssignmentFilter(IsValidatorLocalAndFailClosed|RejectsAmbiguousFiles))'
+  go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|CoreStClientBindingsAt|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|StTransactionCancellation|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature|VerifySimulationAssignmentFilter(IsValidatorLocalAndFailClosed|RejectsAmbiguousFiles)|StripeReconcileCredentialsRequireNonblankAPIToken|AppleReconcileCredentialsRequireCompleteServerAPIIdentity|PlayReconcileCredentialsRequireOAuthPackageAndSKUs|SolanaReconcileCredentialsRequireNonblankHeliusAPIKey)'
   go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^Test(VerifyEgressExactIndexAndPrefixScoreAreIndependent|StTransactionAdvisoryLockKeyUsesEthereumNonceScope|StHeadBoundCkeysFromEvents|ParseHeadEventCkey)$'
@@ -112,6 +112,8 @@ echo "[release-1.0] operator Connect ingress and owned-session lifecycle regress
   direct_h3_tests='^TestRun(SettingsDirectH3LoopbackBypassesProxyProtocol|RouterRetainsDirectH3LoopbackSettings|RouterDirectH3LoopbackCompletesHandshake|DirectH3LoopbackModeRejectsNonLoopbackListener)$'
   go test ./connect -run "$direct_h3_tests" -count=1
   go test -race ./connect -run "$direct_h3_tests" -count=1
+  go test ./connect -run '^TestConnectionVerifyEgressDisabledAvoidsVerifySettings$' -count=1
+  go test -race ./connect -run '^TestConnectionVerifyEgressDisabledAvoidsVerifySettings$' -count=1
   go test ./connect/sim-latency -run '^TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec$' -count=1
   go test -race ./connect/sim-latency -run '^TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec$' -count=1
   proxy_lifecycle_tests='^Test(ProxyDeviceManagerSharesOneNetworkSpaceLifetime|ProxyDeviceManagerCloseAndWaitJoinsOwnedNetworkSpace|ProxyDeviceManagerCloseJoinsAdmittedOpenAndRejectsLateOpen|ProxyDeviceManagerPreservesInjectedNetworkSpace|WgClientStackCloseAndWaitJoinsTCPDispatcher)$'
@@ -133,7 +135,7 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     export WARP_VERSION=0.0.0
     export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com
     export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com
-    controller_db_tests='^Test(VerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)|VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)|StAccountReconcile|StSyncChainEventsBatchesCanonicalEventBlocks|StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation)'
+    controller_db_tests='^Test(VerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)|VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)|AuthNetworkClientFeedsConfiguredProxyEgressNamespace|PaymentReconcile(SkipsStripeWithSKUOnlyVault|MalformedCredentialResourcesSkipAllStores)|StAccountReconcile|StSyncChainEventsBatchesCanonicalEventBlocks|StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation)'
     model_db_tests='Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail|StDeploymentStateIsIsolatedAcrossCoordinatorReplacements|StTransactionIntentReservationUsesChainAccountNonceScope|StTransactionRevertRetryCreatesOneImmutableSuccessor|StTransactionAttemptCandidatesConvergeOnOneWinner|StTransactionCancellationCannotRegress|StTransactionFinalizedAttemptCannotRegress)'
     go test ./controller -run "$controller_db_tests"
     go test ./model -run "$model_db_tests"
@@ -143,6 +145,10 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     # deterministic ordinary suite.
     go test -race ./controller -run "$controller_db_tests"
     go test -race ./model -run "$model_db_tests"
+    go test ./connect -run '^TestConnectionVerifyEgressUsesControllerHashNamespace$' -count=1
+    go test -race ./connect -run '^TestConnectionVerifyEgressUsesControllerHashNamespace$' -count=1
+    go test . -run '^TestIncrementRateLimitWindowResetsAtExactBoundary$' -count=1
+    go test -race . -run '^TestIncrementRateLimitWindowResetsAtExactBoundary$' -count=1
     # Run the complete operator proxy surface. Its real network/DB roots have a
     # measured lower bound above Go's implicit ten-minute package deadline, so
     # the explicit deadline supplies deterministic headroom without changing

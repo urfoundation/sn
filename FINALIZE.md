@@ -3717,6 +3717,21 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    controller and model database race reruns passed in 151.097 and 155.491
    seconds respectively. These deltas are now permanent aggregate-gate inputs.
 
+   A prelaunch parallel timing audit then found that both release watchdogs
+   budgeted the accepted epochs and terminal finalization but not the wait from
+   the post-preparation observation to the next complete epoch boundary. A run
+   beginning more than ten blocks from that boundary could therefore time out
+   despite correct chain progress. The release watchdog now includes one full
+   300-block boundary allowance and the production watchdog one full 360-block
+   allowance; deterministic start, midpoint and final-block offset regressions
+   prove both worst cases. This changes no accepted block, fault, settlement or
+   adversarial requirement. Focused ordinary and race tests and `go vet` pass.
+   The repeatable gate also now selects the exact keyed-egress namespace,
+   fixed-window rate-limit and fail-closed optional payment-credential
+   regressions which explain the historical seed/429 and background Stripe log
+   signals. Those regressions pass normally and under the race detector in
+   their appropriate isolated database profile.
+
    Once that replay is clean, `release-1.0` discards its post-preparation
    partial epoch, observes five sequential 300-block epochs (approximately five
    hours), and waits through their terminal finalization. `production-soak` then schedules the

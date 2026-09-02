@@ -2692,14 +2692,22 @@ func scenarioTimeout(cfg *ResolvedConfig, definition scenarioDefinition) time.Du
 	for _, fault := range definition.Faults {
 		requiresHeadFaultGeometry = requiresHeadFaultGeometry || fault.RestoreCondition == "global-head-boundary-diverged" || fault.RestoreCondition == "validator-local-head-boundary-diverged"
 	}
-	if requiresHeadFaultGeometry {
+	if definition.Name == "release-1.0" {
+		// The acceptance window begins at the next complete epoch after
+		// preparation. Budget the maximum remaining baseline epoch as well as
+		// the accepted epochs and terminal finalization; otherwise a valid run
+		// begun near an epoch start has only the generic ten-block slack in
+		// which to reach that boundary.
+		blocks += cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks
+	} else if requiresHeadFaultGeometry {
 		blocks += cfg.Policy.Settlement.FinalizeOffsetBlocks
 	}
 	if definition.Name == "production-soak" {
-		// Preparation owns the discarded partial production epoch. The timed
-		// acceptance window starts at its next boundary and contains exactly the
-		// configured complete epochs plus terminal finalization.
-		blocks = uint64(cfg.Config.Scenarios.ProductionEpochs)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
+		// Preparation owns the discarded partial production epoch, but the
+		// watchdog starts before its next boundary. Include one complete epoch
+		// of boundary-wait headroom in addition to the accepted epochs and
+		// terminal finalization.
+		blocks = (uint64(cfg.Config.Scenarios.ProductionEpochs)+1)*cfg.Policy.ProductionCadence.EpochBlocks + cfg.Policy.ProductionCadence.FinalizeOffsetBlocks
 	}
 	for _, fault := range definition.Faults {
 		if end := fault.TriggerOffsetBlocks + fault.DurationBlocks; end > blocks {
