@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/protocol"
 	"github.com/urnetwork/server"
 	"github.com/urnetwork/server/startifact"
 )
@@ -611,8 +610,8 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	t.Helper()
 	source, artifacts := finalSemanticFixture(t)
 	cfg := testResolvedConfig(t)
-	var policy protocol.Policy
-	if err := json.Unmarshal(artifacts[source.PolicyArtifact.URI], &policy); err != nil {
+	policy, err := finalSemanticFixturePolicy(&source, artifacts)
+	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.Config.Deployment.DeploymentID = source.DeploymentID
@@ -621,7 +620,7 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	cfg.Config.Topology.Validators = source.ExpectedValidators
 	cfg.Config.Topology.Miners = source.ExpectedMiners
 	cfg.ConfigHash = source.ConfigHash
-	cfg.Policy = &policy
+	cfg.Policy = policy
 	cfg.PolicyHash = source.PolicyHash
 	cfg.ChainID = source.ChainID
 	cfg.Netuid = source.Netuid

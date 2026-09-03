@@ -140,6 +140,77 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	}
 }
 
+// Decode the exact canonical policy artifact used by semantic verification.
+// Configuration-file envelopes remain the responsibility of ParsePolicy.
+func finalSemanticFixturePolicy(source *FinalSemanticEvidence, artifacts map[string][]byte) (*protocol.Policy, error) {
+	if source == nil || source.PolicyArtifact.Kind != "policy" || source.PolicyArtifact.URI == "" {
+		return nil, fmt.Errorf("semantic fixture policy locator is incomplete")
+	}
+	data, exists := artifacts[source.PolicyArtifact.URI]
+	if !exists || uint64(len(data)) != source.PolicyArtifact.SizeBytes || bytesSHA256(data) != source.PolicyArtifact.ContentHash {
+		return nil, fmt.Errorf("semantic fixture policy artifact is absent or content-address mismatched")
+	}
+	return verifyFinalPolicyArtifact(source, data)
+}
+
+// Proves canonical policy artifacts and wrapped policy configuration files
+// retain distinct strict decoding boundaries.
+func TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	canonical, err := cfg.Policy.CanonicalBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyHash, err := cfg.Policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator := func(data []byte) FinalArtifactLocator {
+		return FinalArtifactLocator{Kind: "policy", URI: "artifacts/policy.json", ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
+	}
+	source := &FinalSemanticEvidence{PolicyHash: policyHash, PolicyArtifact: locator(canonical)}
+	artifacts := map[string][]byte{source.PolicyArtifact.URI: canonical}
+	decoded, err := finalSemanticFixturePolicy(source, artifacts)
+	if err != nil || !reflect.DeepEqual(decoded, cfg.Policy) {
+		t.Fatalf("canonical policy artifact was rejected: %v", err)
+	}
+	if _, err := protocol.ParsePolicy(canonical); err == nil {
+		t.Fatal("raw canonical policy artifact was accepted as a wrapped configuration file")
+	}
+
+	wrapped, err := json.Marshal(struct {
+		Policy protocol.Policy `json:"policy"`
+	}{Policy: *cfg.Policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := protocol.ParsePolicy(wrapped); err != nil {
+		t.Fatalf("wrapped policy configuration was rejected: %v", err)
+	}
+	noncanonical, err := json.MarshalIndent(cfg.Policy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "configuration envelope", data: wrapped},
+		{name: "noncanonical artifact JSON", data: noncanonical},
+	} {
+		source.PolicyArtifact = locator(test.data)
+		artifacts[source.PolicyArtifact.URI] = test.data
+		if _, err := finalSemanticFixturePolicy(source, artifacts); err == nil {
+			t.Fatalf("%s was accepted as a canonical policy artifact", test.name)
+		}
+	}
+	source.PolicyArtifact = locator(canonical)
+	artifacts[source.PolicyArtifact.URI] = append(append([]byte(nil), canonical...), '\n')
+	if _, err := finalSemanticFixturePolicy(source, artifacts); err == nil {
+		t.Fatal("content-address mismatched policy artifact was accepted")
+	}
+}
+
 // Build the lifecycle fixture on the same complete budget and deployment
 // envelope as a production release plan. The semantic archive supplies only
 // its synthetic genesis, authenticated ancestor, and coordinator targets.
@@ -465,13 +536,9 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	cfg.ChainID = source.ChainID
 	cfg.ConfigHash = source.ConfigHash
 	cfg.PolicyHash = source.PolicyHash
-	fixturePolicy, err := protocol.ParsePolicy(artifacts[source.PolicyArtifact.URI])
+	fixturePolicy, err := finalSemanticFixturePolicy(source, artifacts)
 	if err != nil {
 		t.Fatal(err)
-	}
-	fixturePolicyHash, err := fixturePolicy.HashHex()
-	if err != nil || fixturePolicyHash != source.PolicyHash {
-		t.Fatalf("lifecycle fixture policy hash=%q, want %q: %v", fixturePolicyHash, source.PolicyHash, err)
 	}
 	cfg.Policy = fixturePolicy
 	roles, err := BuildRoleSecrets(cfg)
