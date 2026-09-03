@@ -153,8 +153,8 @@ func commonHashBytes(value string) []byte {
 	return h[:]
 }
 
-// Pin the policy cap explicitly because runtime 452's native getter is
-// hardcoded to u16::MAX even though legacy storage metadata still exists.
+// Pin the policy cap explicitly because runtime 453 retains the u16::MAX
+// native getter even though legacy storage metadata still exists.
 func releaseSubmitOptions(cfg *ReleaseConfig) crv4.SubmitOptions {
 	maxWeightLimit := cfg.Policy.Steering.MaxWeightLimitU16
 	return crv4.SubmitOptions{VersionKey: cfg.VersionKey, MaxWeightLimit: &maxWeightLimit}

@@ -113,7 +113,8 @@ inputs:
 - **`VALIDATOR.md`** — the off‑chain routing‑verification protocol (`/verify`) that produces the
   signed **validated paths** this subnet pays for.
 - **Current Bittensor mechanics** (Yuma Consensus, dTAO, the Subtensor EVM, the commitments pallet,
-  the precompiles) as they exist on the `opentensor/subtensor` `main` branch in mid‑2026.
+  the precompiles) as release-pinned at RaoFoundation/subtensor **v453**
+  (`823bdcbc58a29f60b243be4737a7c72b34ac7d93`).
 
 It is written so that an engineer can build the smart contract, the off‑chain operator/validator
 software, and the chain configuration from it. Where a parameter or chain default is load‑bearing
@@ -267,9 +268,9 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   incentive) / **41% validators + their stakers** (by dividends). Emission accrues to hotkeys as **α
   stake** and is drained each tempo.
 - **Stake weight** = `alpha_stake + tao_weight × tao_stake`. `tao_weight` is global, root-governed,
-  and encoded as `u64 / u64::MAX`; testnet currently resolves to **0.018** (1.8%), while the pinned
-  v452 genesis fallback is about 5.27%. Deployments compatibility-gate the finalized live value and
-  observe mainnet independently rather than assuming either value.
+  and encoded as `u64 / u64::MAX`; testnet currently resolves to **0.018** (1.8%), while the
+  v452-origin genesis fallback retained by v453 is about 5.27%. Deployments compatibility-gate the
+  finalized live value and observe mainnet independently rather than assuming either value.
 
 ### 2.3 dTAO economics
 
@@ -320,9 +321,10 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
   | `0x…0802` | **Metagraph** | read-only conformance/observation of UID 0 and metagraph identity; production settlement does not trust a point-in-time emission getter |
 
   Independent validators submit CRv4 through native Substrate extrinsics, not through an EVM
-  precompile. Runtime 452 exposes no stable EVM getter for the commitments pallet, so a narrowly scoped
-  finalized indexer mirrors `(hotkey, commitment hash, finalized block/hash)` into the coordinator; the
-  coordinator then checks the mirror, both signatures, freshness and the live UID atomically.
+  precompile. The v452 commitments API surface retained by runtime 453 exposes no stable EVM getter for
+  the commitments pallet, so a narrowly scoped finalized indexer mirrors `(hotkey, commitment hash,
+  finalized block/hash)` into the coordinator; the coordinator then checks the mirror, both signatures,
+  freshness and the live UID atomically.
 
   Neuron registration burns from the EVM caller's funded SS58 mirror. A contract receives/funds that
   native balance and calls `registerLimit` with **zero precompile call value**; forwarding the burn to
@@ -332,6 +334,46 @@ A condensed, current (dTAO‑era) reference. Identifiers are from `opentensor/su
 
   > Precompile ABIs are **not formally versioned** (issue #2455). Pin a Subtensor release tag, target
   > **Staking V2** (`0x805`, not the legacy `0x801`), and re‑verify addresses/ABIs before launch.
+
+### 2.6 Release runtime compatibility pin
+
+Release 1.0 is pinned to the deployed testnet **runtime spec 453**, transaction version 1, source tag
+`v453`, source commit `823bdcbc58a29f60b243be4737a7c72b34ac7d93`, and finalized on-chain Wasm
+storage hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4`. The
+identity was independently observed at finalized testnet block 7,925,883
+(`0x87c707403ffe5b36afb7796e1bd84126cdbcf181a61f97c3f1491c8354ae96f0`); the release asset's
+published SHA-256 is `0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e`.
+The official compressed Wasm is 2,515,038 bytes; independently hashing those exact bytes yielded both
+the published SHA-256 and the finalized chain's BLAKE2-256 `System.Code` hash, establishing artifact-to-live
+byte identity.
+The upstream release proposal separately binds call hash
+`0x972c1c03fae47d58ad3dbfd701e58e56170936045b0a488170c05c8d0729fcd4` at finney
+multisig timepoint `8987926:11`; those two proposal fields authenticate the official source release and
+are **not** evidence of its testnet inclusion. Testnet inclusion is proved independently by its finalized
+spec and `System.Code` hash at the testnet block above.
+Doctor and every value-bearing path fail closed if any of these active identity fields drift.
+
+The v452→v453 audit is one upstream release commit and adds five security/economic boundaries. Pinned
+upstream Rust tests and source review establish the runtime changes; deterministic local decision models
+exercise the harness oracles while shared-testnet actors remain read-only for chain-wide attacks:
+
+1. A drand pulse's public randomness must equal SHA-256 of its authenticated signature; a valid pairing
+   cannot authenticate a separately substituted randomness field.
+2. Direct and announced nested proxies intersect the inherited outer call filter with the inner proxy
+   filter before the final effect.
+3. Balance-transfer precompile `0x800` adds an explicit true-caller coldkey-swap check to payable
+   `transfer(bytes32)` before its internal-account dispatch. The adjacent unchanged `transferKeepAlive`
+   path already dispatches as the true caller through the centralized runtime filter.
+4. User stake transitions reject the protocol beta-basket escrow as a destination, preventing holdings
+   without matching basket shares.
+5. A deferred subnet registration reserves its hotkey and consumes last-lock/rate-limit state when it is
+   queued; later materialization does not price it a second time.
+
+The diff does not change the commitments registration encoding, the CRv4 call shape, or the release's
+Neuron/Staking/signature-precompile selectors. Historical names and observations below which say
+"runtime 452" identify the wire format or behavior originally audited there; they remain intentionally
+preserved where v453 is byte- or semantics-compatible. The exact live evidence and upstream comparison
+are recorded in `docs/spec/runtime-v453-audit.md`.
 
 ---
 
@@ -528,7 +570,7 @@ validators submit native CRv4 themselves; no EVM function sets subnet weights.
   At the exact epoch boundary (within a bounded close grace), `captureEmission` reads the complete stake
   on that pool hotkey and moves it to the vault's escrow hotkey. A missed close records zero for that
   epoch and defers the still-on-pool stake to the next timely boundary; a late keeper can never assign a
-  multi-epoch delta to the first missed epoch. Runtime 452 rejects a same-subnet move whose live
+  multi-epoch delta to the first missed epoch. Runtime 453 retains v452's rejection of a same-subnet move whose live
   TAO-equivalent value is below `DefaultMinTransfer`. The vault binds that value as an immutable after
   the deployment path authenticates the exact finalized runtime Wasm and its `InitialMinTransfer`
   metadata constant. If a pool observation is below it, the epoch records zero captured funding and emits an
@@ -544,11 +586,11 @@ validators submit native CRv4 themselves; no EVM function sets subnet weights.
   with the next nonce and deadline. In one EVM transaction the coordinator verifies signer, nonce,
   policy/caps and available stake; stages `amount` plus a bounded two-rao runtime rounding allowance;
   moves it to the reserve hotkey; transfers it to the reserve sink's coldkey; records exactly `amount`
-  principal; and emits the policy-bound event. Runtime 452 may floor one rao at each of those two
+  principal; and emits the policy-bound event. Runtime 453 retains v452's possible one-rao floor at each of those two
   destination share-pool transitions, so the sink must receive between `amount` and `amount+2`; any
   wider delta or failed step reverts all EVM accounting. No NO can attribute another NO's staged funds.
 - **Payouts out — emission only.** A valid Merkle claim first fixes the provider's entitlement as durable
-  credit for that exact coldkey. The vault aggregates credits across NOs/epochs because runtime 452 also
+  credit for that exact coldkey. The vault aggregates credits across NOs/epochs because runtime 453 also
   rejects a sub-`DefaultMinTransfer` `transferStake`. Once the credit's live TAO-equivalent value reaches
   the immutable floor, the vault transfers the full credit from escrow to that coldkey and admits the
   payment only after measuring exact source and destination deltas. A sub-floor credit, price outage, or
@@ -883,7 +925,7 @@ That *is* the tournament, driven by the weights validators set:
 **Weight shaping (best practice for ~200 concurrent fleets).** Steer **proportionally** to `score`, *not*
 winner-take-all; apply the signed policy's `max_weight_limit_u16` before every CRv4 commit; and drive
 `VALIDATOR.md` trails at a rate (validator-configurable, §D26) that gives every top UID regular coverage
-so honest-but-idle fleets don't stale-decay. Runtime v452's native getter is hard-coded to `65535`
+so honest-but-idle fleets don't stale-decay. Runtime v453 retains v452's native getter at `65535`
 (no cap), despite retaining a `MaxWeightsLimit` storage item, so release 1.0 validators enforce the
 policy cap locally and finalized-vector analysis rejects violations. The two-NO testnet bootstrap uses
 `32768` (the smallest feasible two-recipient cap); a production policy lowers the cap toward a low
@@ -1108,7 +1150,7 @@ Yuma combines the validators' vectors with their stake:
 
 Hyperparameters: `commit_reveal_weights_enabled = true`, `liquid_alpha_enabled = true` (reward early
 pool discovery), `mechanism_count = 1` (a 2nd mechanism would halve the 256-UID space, §14), and
-`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v452 cannot impose a
+`weights_version_key` bumped to force validator-software upgrades (§15.1). Runtime v453 cannot impose a
 lower native `max_weight_limit`; the signed policy cap and finalized-vector audit described above are
 therefore mandatory release gates.
 
@@ -1487,7 +1529,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (§14); tail providers are NOT UIDs (§3) |
 | `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
-| native `max_weight_limit` / signed policy cap | v452 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v452's getter ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
+| native `max_weight_limit` / signed policy cap | v453 native **65535** (no cap); release policy **32768** for two-NO testnet, then lower as breadth grows | v453 retains v452's getter behavior which ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
 | `commit_reveal_weights_enabled` | **true** | weights carry the subjective quality signal — anti‑copying (§10) |
 | `liquid_alpha_enabled` | **true** | reward validators who back good pools early (§10) |
 | `immunity_period` | **high (≫ 4096 default)**, and **> reveal interval** | protect new pools **and new top-level miners** (the §8.4 breadth-sampling dip risk); must exceed `commit_reveal_period × tempo` |
@@ -1498,7 +1540,7 @@ budget; they are not a latent release-1.0 mechanism switch.
 | `bonds_penalty` / `alpha_low`/`alpha_high` | tune (Liquid Alpha) | shape early‑discovery reward vs. stability (§2.2) |
 
 > Several genesis defaults are governance‑mutable and have drifted from docs (e.g. testnet's global
-> `tao_weight` is 1.8% while the pinned v452 fallback is about 5.27%; `max_validators` is 64 vs 128;
+> `tao_weight` is 1.8% while the v453 fallback retained from v452 is about 5.27%; `max_validators` is 64 vs 128;
 > the `commit_reveal` default flipped). Query and compatibility-gate the live finalized values; set
 > only owner-controlled fields explicitly and do not rely on documented defaults (§16 checklist).
 
@@ -1537,7 +1579,7 @@ validator weights to top-level-miner UIDs (native) and NO pools (Merkle), never 
 ### 16.1 Components
 
 1. **ST contract set (Solidity, Cancun / 0.8.24).** Non-upgradeable `STReserveSink` and
-   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-452 bindings (`0x09`, `0x402`, `0x403`,
+   `STSettlementVault`, UUPS `STCoordinator`, exact runtime-453 bindings retained from v452 (`0x09`, `0x402`, `0x403`,
    `0x804`, `0x805`), OZ Merkle verification, scoped roles and scheduled policy (§6). The reviewed
    artifacts and deployed runtime hashes are release-locked. (No effort verifier — §9.3/D29.)
 2. **Subnet convergence.** Validate the supplied, wallet-owned existing testnet netuid; explicitly set
@@ -1597,7 +1639,7 @@ activity is limited to our identities/netuid, loopback services and capped reads
 chain‑wide exploit reproduction runs only on the pinned local runtime. A release
 run requires interleaved controls, bounded load, zero unexpected errors, explicit
 latency/resilience evidence and a root‑caused disposition for every anomaly. The
-v1.0 release catalogue contains 56 mandatory vectors, including all published
+v1.0 release catalogue contains 61 mandatory vectors, including all published
 Subtensor advisories and the known Bittensor SDK missing‑signature,
 finality‑era‑expiry, plaintext unauthenticated transport and constant‑body‑hash
 failures. Every vector must name a checked‑in oracle/test and produce at least one

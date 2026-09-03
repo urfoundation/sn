@@ -1,6 +1,6 @@
 # Release 1.0 threat model
 
-The design assumes Subtensor finalized state and runtime-452 precompiles are
+The design assumes Subtensor finalized state and runtime-453 precompiles are
 correct, at least two independently operated validators measure each NO, server
 Ed25519 and hotkey sr25519 secrets remain uncompromised, and the shared egress
 hash key is distributed only to authorized NOs/validators. Public artifacts are

@@ -35,6 +35,62 @@ func TestStrictYAMLRejectsUnknownAndMultipleDocuments(t *testing.T) {
 	}
 }
 
+// Exercise every adjacent runtime key through the same strict decoder used by
+// the release harness so a newly added field cannot silently decode as zero.
+func TestReleaseLockDecodesCanonicalRuntimeFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "release.lock.yml")
+	content := `schema_version: 1
+release: "1.0"
+runtime:
+  source_repository: https://example.invalid/subtensor
+  source_tag: v453
+  source_commit: 0123456789abcdef0123456789abcdef01234567
+  code_hash: "0x01"
+  compressed_wasm_sha256: "0x02"
+  upstream_release_call_hash: "0x03"
+  upstream_release_timepoint: "123:4"
+  spec_version: 453
+  transaction_version: 1
+  state_version: 1
+  image: example.invalid/subtensor@sha256:04
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var lock ReleaseLock
+	if err := strictYAML(path, &lock); err != nil {
+		t.Fatal(err)
+	}
+	expected := ReleaseRuntimeLock{
+		SourceRepository:         "https://example.invalid/subtensor",
+		SourceTag:                "v453",
+		SourceCommit:             "0123456789abcdef0123456789abcdef01234567",
+		CodeHash:                 "0x01",
+		CompressedWasmSHA256:     "0x02",
+		UpstreamReleaseCallHash:  "0x03",
+		UpstreamReleaseTimepoint: "123:4",
+		SpecVersion:              453,
+		TransactionVersion:       1,
+		StateVersion:             1,
+		Image:                    "example.invalid/subtensor@sha256:04",
+	}
+	if lock.Runtime != expected {
+		t.Fatalf("runtime = %+v, want %+v", lock.Runtime, expected)
+	}
+}
+
+// Reject camel-case lookalikes instead of accepting an unbound runtime field.
+func TestReleaseLockRejectsUnknownRuntimeField(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "release.lock.yml")
+	content := "schema_version: 1\nrelease: \"1.0\"\nruntime:\n  stateVersion: 1\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := strictYAML(path, new(ReleaseLock)); err == nil {
+		t.Fatal("noncanonical runtime field was accepted")
+	}
+}
+
 func TestHarnessConfigRequiresTestnetOnlyReferences(t *testing.T) {
 	r := testResolvedConfig(t)
 	if err := r.Config.Validate(); err != nil {
@@ -602,6 +658,28 @@ func TestResolvedConfigRequiresRuntimeDefaultMinTransfer(t *testing.T) {
 	cfg.Public.Chain.ExpectedDefaultMinTransferRao = 0
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "runtime transfer minimum") {
 		t.Fatalf("zero public runtime transfer minimum was accepted: %v", err)
+	}
+}
+
+// The public profile and release lock must agree on every numeric runtime
+// identity field, not only the spec version.
+func TestResolvedConfigBindsTransactionAndStateVersions(t *testing.T) {
+	valid := testResolvedConfig(t)
+	valid.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("reviewed runtime manifests were rejected: %v", err)
+	}
+	transactionDrift := testResolvedConfig(t)
+	transactionDrift.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	transactionDrift.Release.Runtime.TransactionVersion++
+	if err := transactionDrift.Validate(); err == nil || !strings.Contains(err.Error(), "release/runtime manifest mismatch") {
+		t.Fatalf("transaction-version manifest drift was accepted: %v", err)
+	}
+	stateDrift := testResolvedConfig(t)
+	stateDrift.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	stateDrift.Release.Runtime.StateVersion++
+	if err := stateDrift.Validate(); err == nil || !strings.Contains(err.Error(), "release/runtime manifest mismatch") {
+		t.Fatalf("state-version manifest drift was accepted: %v", err)
 	}
 }
 

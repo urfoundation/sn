@@ -400,14 +400,66 @@ func TestReleaseLockMatchesCheckout(t *testing.T) {
 	}
 }
 
+// The source tag alone cannot prove which runtime is deployed. Keep every
+// independent source, artifact, upstream-proposal, and live-code binding exact.
+func TestReviewedRuntimeIdentityRejectsEachAdjacentFieldDrift(t *testing.T) {
+	valid := func() *ReleaseLock {
+		lock := new(ReleaseLock)
+		lock.Runtime.SourceRepository = reviewedRuntimeSourceRepository
+		lock.Runtime.SourceTag = reviewedRuntimeSourceTag
+		lock.Runtime.SourceCommit = reviewedRuntimeSourceCommit
+		lock.Runtime.CodeHash = reviewedRuntimeCodeHash
+		lock.Runtime.CompressedWasmSHA256 = reviewedRuntimeCompressedWasmSHA256
+		lock.Runtime.UpstreamReleaseCallHash = reviewedRuntimeUpstreamReleaseCallHash
+		lock.Runtime.UpstreamReleaseTimepoint = reviewedRuntimeUpstreamReleaseTimepoint
+		lock.Runtime.SpecVersion = reviewedRuntimeSpecVersion
+		lock.Runtime.TransactionVersion = reviewedRuntimeTransactionVersion
+		lock.Runtime.StateVersion = reviewedRuntimeStateVersion
+		return lock
+	}
+	if err := validateReviewedRuntimeIdentity(valid()); err != nil {
+		t.Fatalf("reviewed runtime identity was rejected: %v", err)
+	}
+	if err := validateReviewedRuntimeIdentity(nil); err == nil {
+		t.Fatal("missing runtime identity was accepted")
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ReleaseLock)
+	}{
+		{name: "source repository", mutate: func(lock *ReleaseLock) { lock.Runtime.SourceRepository += "/fork" }},
+		{name: "source tag", mutate: func(lock *ReleaseLock) { lock.Runtime.SourceTag = "v452" }},
+		{name: "source commit", mutate: func(lock *ReleaseLock) { lock.Runtime.SourceCommit = strings.Repeat("0", 40) }},
+		{name: "wasm hash", mutate: func(lock *ReleaseLock) { lock.Runtime.CodeHash = "0x" + strings.Repeat("0", 64) }},
+		{name: "compressed wasm SHA-256", mutate: func(lock *ReleaseLock) { lock.Runtime.CompressedWasmSHA256 = "0x" + strings.Repeat("0", 64) }},
+		{name: "upstream release call hash", mutate: func(lock *ReleaseLock) { lock.Runtime.UpstreamReleaseCallHash = "0x" + strings.Repeat("0", 64) }},
+		{name: "upstream release timepoint", mutate: func(lock *ReleaseLock) { lock.Runtime.UpstreamReleaseTimepoint = "8987926:12" }},
+		{name: "spec version", mutate: func(lock *ReleaseLock) { lock.Runtime.SpecVersion-- }},
+		{name: "transaction version", mutate: func(lock *ReleaseLock) { lock.Runtime.TransactionVersion++ }},
+		{name: "state version", mutate: func(lock *ReleaseLock) { lock.Runtime.StateVersion++ }},
+	}
+	for _, testCase := range cases {
+		lock := valid()
+		testCase.mutate(lock)
+		if err := validateReviewedRuntimeIdentity(lock); err == nil {
+			t.Errorf("%s drift was accepted", testCase.name)
+		}
+	}
+}
+
 func TestReleaseLockRejectsGeneratedRuntimeDrift(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Release = &ReleaseLock{SchemaVersion: 1, Release: "1.0"}
-	cfg.Release.Runtime.SourceTag = "testnet"
-	cfg.Release.Runtime.SourceCommit = "da06f033663896ef2fdbbfc3ecc68ca908fba0f5"
-	cfg.Release.Runtime.CodeHash = "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc"
-	cfg.Release.Runtime.SpecVersion = 452
-	cfg.Release.Runtime.TransactionVersion = 1
+	cfg.Release.Runtime.SourceRepository = reviewedRuntimeSourceRepository
+	cfg.Release.Runtime.SourceTag = reviewedRuntimeSourceTag
+	cfg.Release.Runtime.SourceCommit = reviewedRuntimeSourceCommit
+	cfg.Release.Runtime.CodeHash = reviewedRuntimeCodeHash
+	cfg.Release.Runtime.CompressedWasmSHA256 = reviewedRuntimeCompressedWasmSHA256
+	cfg.Release.Runtime.UpstreamReleaseCallHash = reviewedRuntimeUpstreamReleaseCallHash
+	cfg.Release.Runtime.UpstreamReleaseTimepoint = reviewedRuntimeUpstreamReleaseTimepoint
+	cfg.Release.Runtime.SpecVersion = reviewedRuntimeSpecVersion
+	cfg.Release.Runtime.TransactionVersion = reviewedRuntimeTransactionVersion
+	cfg.Release.Runtime.StateVersion = reviewedRuntimeStateVersion
 	cfg.Release.Runtime.Image = "image@sha256:" + strings.Repeat("0", 64)
 	cfg.Release.Dependencies = map[string]string{"postgres": "postgres@sha256:" + strings.Repeat("0", 64)}
 	cfg.Release.EVMBuild = map[string]any{"solidity": "0.8.24"}

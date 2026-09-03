@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 **Status (2026-09-02 UTC):** release-1.0 implementation and the continuous
-56-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
+61-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
 on netuid 521 installed and verified all 200 production fleets plus both
 generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and
 all 2,204 carried actions, and reached the complete 32-process topology
@@ -131,7 +131,7 @@ source-current live-chain evidence is still pending the corrected M0A/M2 run.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
-runtime 452 by spec, transaction version and finalized Wasm code hash, and records
+runtime 453 by spec, transaction/state version and finalized Wasm code hash, and records
 `independent_rpc=false` in postconditions and public manifests. It is suitable for
 current-state acceptance, bounded event reads and testnet writes. It does not close
 the archive, sustained-load or physically independent observation gates; the complete
@@ -152,8 +152,9 @@ subnet/deployment rather than silently weakening the netuid-521 evidence.
 
 ## 1. Executive verdict
 
-The release-1.0 implementation passed its testnet preflight and bounded chain setup
-against the official public operational RPC pair at runtime 452. M0A is resumable but
+The release-1.0 implementation passed its original testnet preflight and bounded chain setup
+against the official public operational RPC pair at runtime 452. Its resume is now pinned
+to the subsequently deployed runtime 453. M0A is resumable but
 not complete. Attempt 4 launched the complete live topology and challenger tournament,
 then correctly rejected its validator restart and zero verified trails. The campaign
 has not begun. It is not yet a testnet-validated release:
@@ -181,7 +182,7 @@ All 17 blockers found by the initial audit are addressed:
 | Single-operator validator | Multi-NO authenticated endpoints, per-NO trail stores, finality-bound inputs, independent intent journal and per-NO quality output. |
 | Unsafe event ingestion | Block-hash checkpoints, confirmation/finality gates, rewind/replay, explicit deployment origin and durable transaction intent/recovery. |
 | Unexercised CRv4 lifecycle | Exact rational normalization, policy/hash gates, commit/reveal/finality intent states, restart recovery and live-campaign assertions. Funded live proof remains M0B. |
-| Obsolete Subtensor image | `xops` independently pins the v447 node binary image and expected on-chain runtime 452, with archive retention, required safe RPC gateway methods and Ansible regression tests. |
+| Obsolete Subtensor image | `xops` independently pins the reviewed node image and expected on-chain runtime 453, with archive retention, required safe RPC gateway methods and Ansible regression tests. |
 | Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Wallet/password references, netuid, local origins and three spend ceilings are populated; generated deployment values are written to an isolated runtime profile. |
 | Missing verify key | Harness-derived, versioned per-operator verify keys with rotation/overlap and signed evidence; no secret enters the public manifest. |
 | Distinguishable poisoning | Full-depth routable shadow/padding paths with uniform response surface and constant-envelope failure handling, covered by operator tests. |
@@ -193,7 +194,7 @@ All 17 blockers found by the initial audit are addressed:
 | Gate | State | Principal evidence |
 |---|---|---|
 | F0 specification | Implemented | Whitepaper v1.0, `docs/spec/`, canonical Go/Solidity encodings and golden-vector tests. |
-| F1 infrastructure | Implemented locally | Digest-pinned v447 node binary, runtime-452 identity/archive/RPC Ansible configuration, public operational override, capability doctor and regression tests. Private finalized catch-up/canonical-head proof remains a mainnet-promotion gate. |
+| F1 infrastructure | Implemented locally | Digest-pinned node binary, runtime-453 identity/archive/RPC Ansible configuration, public operational override, capability doctor and regression tests. Private finalized catch-up/canonical-head proof remains a mainnet-promotion gate. |
 | F2 contracts | Implemented and locally verified | Split reserve/vault/coordinator deployment, generated ABIs/bytecode, and a passing Foundry suite including fuzz and stateful invariants. |
 | F3 operator | Implemented and locally verified | Finality-safe index, exact artifacts, public history, multi-NO verification, key rotation, poisoning and proxy attribution/release cleanup. DB-backed launch proof is M1. |
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
@@ -1623,7 +1624,7 @@ does not satisfy the floor.
 
 The campaign result is part of the scenario result, signed bundle, independent
 analysis and go/no-go decision. It must prove actor start before and stop after
-the happy path, all 56 vectors present, every vector mapped to active actors and
+the happy path, all 61 vectors present, every vector mapped to active actors and
 checked-in tests, every vector backed by at least one named sampled metric, no
 leaked goroutine, and no unsafe shared-testnet action. Any
 actor error, unexpected status, common-height disagreement, missing artifact,
@@ -1999,7 +2000,7 @@ Run exactly the release minimum of **five consecutive 300-block accelerated epoc
 - wallet/payout-key rotation at a future boundary; and
 - a simulated runtime-version change causing writes to stop and conformance-gated recovery.
 
-Every run starts the seven-actor, 56-vector campaign before its first happy-path
+Every run starts the seven-actor, 61-vector campaign before its first happy-path
 observation and keeps it active through fault recovery and final reconciliation.
 Each actor must contribute at least 100 non-skipped samples with interleaved
 control/attack phases. Measure absolute p50/p95/p99, attack/control p95 ratio,
@@ -2018,7 +2019,7 @@ Exit gate:
 - 5/5 epochs reconcile exactly;
 - zero missed hard deadline except the intentional missed-root drill;
 - every injected failure follows its documented recovery path;
-- all 56 researched vectors have passing concurrent coverage, at least one
+- all 61 researched vectors have passing concurrent coverage, at least one
   sampled vector-declared metric, and their exact local-runtime tests pass
   against the release-locked runtime where live
   execution would be unsafe;
@@ -2083,7 +2084,7 @@ Then perform the mainnet-delta rehearsal without broadcasting:
    endpoints, netuid, balances, roles, 2-of-3 Safe, ≥1-epoch timelock, contract
    addresses/nonces, value-at-risk and rollback boundaries are mainnet-specific;
 3. run that exact plan against the pinned local-runtime clone and a fork/replay
-   environment with the 56-vector campaign, including kappa/liquid-alpha,
+   environment with the 61-vector campaign, including kappa/liquid-alpha,
    registration/burn, reserve/pruning, failed-swap accounting and precompile
    drift cases;
 4. prove no release signer uses an unshielded staking proxy, no release coldkey
@@ -2156,7 +2157,7 @@ All of the following are required:
 - exact multi-epoch value conservation and one-way reserve hold;
 - finalized claims survive all pause/upgrade/operator drills;
 - every CRv4 cycle is tracked through finalized application;
-- all 56 adversarial vectors have matrix-bound passing evidence from seven
+- all 61 adversarial vectors have matrix-bound passing evidence from seven
   continuously overlapping actors, and every anomaly ledger entry is resolved;
 - finality-safe replay from deployment block reproduces all decisions;
 - public artifacts independently reconstruct every payout root and committed weight vector;
@@ -4236,7 +4237,7 @@ Release 1.0 may be declared testnet-validated only when:
 - all public/secret configuration is defined, generated, validated, and reproducibly locked;
 - `sim-testnet launch` can validate/configure the supplied real-testnet netuid, install/verify the release contracts, start the real operator/miner/validator topology on any compatible checkout host, and leave it healthy and persistent;
 - M0A, M0B, M1, M2, and M3 evidence gates pass, including the continuously
-  overlapping 56-vector campaign;
+  overlapping 61-vector campaign;
 - the immutable custody/settlement invariants survive adversarial upgrades and fault drills;
 - two independent validator deployments measure per-NO quality and complete live CRv4 cycles;
 - provider pool claims and multi-client native head rewards both reconcile end to end;

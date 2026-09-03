@@ -7,7 +7,7 @@ chain:
   ss58_format: 42
   token_symbol: testTAO
   token_decimals: 9
-  expected_runtime_spec: 452
+  expected_runtime_spec: 453
   expected_transaction_version: 1
   expected_state_version: 1
   expected_block_seconds: 12

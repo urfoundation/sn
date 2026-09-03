@@ -48,8 +48,8 @@ topology:
   miner_swarm_processes: 20
   operator_assignment: balanced
 
-# Runtime 452 prices alpha transfers in TAO at execution time. Every planned
-# transfer must retain this margin above InitialMinStake at the live spot.
+# Runtime 453 retains TAO pricing for alpha transfers at execution time. Every
+# planned transfer must retain this margin above InitialMinStake at the live spot.
 alpha_transfers:
   minimum_tao_equivalent_margin_bps: 1000
 

@@ -309,6 +309,7 @@ type rpcRuntimeVersion struct {
 	SpecName           string `json:"specName"`
 	SpecVersion        uint32 `json:"specVersion"`
 	TransactionVersion uint32 `json:"transactionVersion"`
+	StateVersion       uint8  `json:"stateVersion"`
 }
 
 type rpcAdversary struct {
@@ -371,7 +372,9 @@ func decodeRPCRuntimeVersion(response rpcResponse) (rpcRuntimeVersion, error) {
 	return version, nil
 }
 
-func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec, expectedTransaction uint32) error {
+// Compare both observed endpoints with the complete release-bound runtime
+// identity, including state-version changes which leave call versions intact.
+func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec, expectedTransaction uint32, expectedState uint8) error {
 	if private.SpecName != "node-subtensor" || public.SpecName != private.SpecName {
 		return fmt.Errorf("runtime spec names operational=%q public=%q", private.SpecName, public.SpecName)
 	}
@@ -380,6 +383,9 @@ func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec,
 	}
 	if private.TransactionVersion != public.TransactionVersion || private.TransactionVersion != expectedTransaction {
 		return fmt.Errorf("transaction versions operational=%d public=%d expected=%d", private.TransactionVersion, public.TransactionVersion, expectedTransaction)
+	}
+	if private.StateVersion != public.StateVersion || private.StateVersion != expectedState {
+		return fmt.Errorf("state versions operational=%d public=%d expected=%d", private.StateVersion, public.StateVersion, expectedState)
 	}
 	return nil
 }
@@ -519,7 +525,7 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	if privateRuntimeErr != nil || publicRuntimeErr != nil || privateRuntimeDecodeErr != nil || publicRuntimeDecodeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity operational=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 8, MaxInFlight: 1}
 	}
-	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, self.cfg.Release.Runtime.SpecVersion, self.cfg.Release.Runtime.TransactionVersion); runtimeErr != nil {
+	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, self.cfg.Release.Runtime.SpecVersion, self.cfg.Release.Runtime.TransactionVersion, self.cfg.Release.Runtime.StateVersion); runtimeErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: runtimeErr.Error(), Requests: 8, MaxInFlight: 1}
 	}
 	const alphaPrecompile = "0x0000000000000000000000000000000000000808"
@@ -547,6 +553,7 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		"rpc_latency_ms":                      uint64(time.Since(started).Milliseconds()),
 		"runtime_spec":                        uint64(privateRuntime.SpecVersion),
 		"transaction_version":                 uint64(privateRuntime.TransactionVersion),
+		"state_version":                       uint64(privateRuntime.StateVersion),
 		"best_finalized_lag_blocks":           bestFinalizedLag,
 		"sdk_mev_shield_expired_observations": boolUint64(sdkMEVShieldExpired),
 		"subnet_spot_alpha_price":             privateSpot.Uint64(),
@@ -559,7 +566,7 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		"tao_reserve_rao":                     taoReserve.Uint64(),
 		"alpha_reserve_rao":                   alphaReserve.Uint64(),
 	}
-	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve), Requests: 16, MaxInFlight: 1, Metrics: metrics}
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d/%d best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, privateRuntime.StateVersion, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve), Requests: 16, MaxInFlight: 1, Metrics: metrics}
 }
 
 type artifactAdversary struct {

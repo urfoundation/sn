@@ -914,13 +914,42 @@ func TestConcentratedLiquidityFailureIsAtomicAndRetryable(t *testing.T) {
 	}
 }
 
+// The v453 supplements model reviewed decisions and run under live sentinels;
+// they must not be mislabeled as executing the pinned FRAME runtime locally.
+func TestRuntime453DecisionModelsUseBoundedEmulationMode(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"drand-randomness-signature-binding":         true,
+		"nested-proxy-filter-intersection":           true,
+		"balance-transfer-coldkey-swap-caller":       true,
+		"beta-escrow-stake-transfer-injection":       true,
+		"queued-registration-reservation-rate-price": true,
+	}
+	for _, row := range matrix.Rows {
+		if !want[row.ID] {
+			continue
+		}
+		delete(want, row.ID)
+		if row.ExecutionMode != "bounded-emulation" {
+			t.Errorf("runtime 453 decision model %s uses execution mode %s", row.ID, row.ExecutionMode)
+		}
+	}
+	for id := range want {
+		t.Errorf("runtime 453 decision model %s is absent", id)
+	}
+}
+
 func TestReleaseLockCoversEveryPublishedSubtensorAdvisory(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	lock := new(ReleaseLock)
 	if err := strictYAML(filepath.Join(cfg.Repos.SN, "deploy", "testnet", "release.lock.yml"), lock); err != nil {
 		t.Fatal(err)
 	}
-	if lock.Runtime.SourceTag != "testnet" || lock.Runtime.SourceCommit != "da06f033663896ef2fdbbfc3ecc68ca908fba0f5" || lock.Runtime.SpecVersion != 452 || lock.Runtime.CodeHash == "" {
+	if err := validateReviewedRuntimeIdentity(lock); err != nil {
 		t.Fatalf("release runtime does not postdate the published advisory fixes: %+v", lock.Runtime)
 	}
 	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
@@ -1245,15 +1274,15 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 }
 
 func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *testing.T) {
-	encode := func(name string, spec, transaction uint32) rpcResponse {
-		result, err := json.Marshal(rpcRuntimeVersion{SpecName: name, SpecVersion: spec, TransactionVersion: transaction})
+	encode := func(name string, spec, transaction uint32, state uint8) rpcResponse {
+		result, err := json.Marshal(rpcRuntimeVersion{SpecName: name, SpecVersion: spec, TransactionVersion: transaction, StateVersion: state})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return rpcResponse{Result: result}
 	}
-	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 452, 1))
-	if err != nil || validateRPCRuntimeIdentity(valid, valid, 452, 1) != nil {
+	valid, err := decodeRPCRuntimeVersion(encode("node-subtensor", 453, 1, 1))
+	if err != nil || validateRPCRuntimeIdentity(valid, valid, 453, 1, 1) != nil {
 		t.Fatalf("valid runtime identity rejected: %+v %v", valid, err)
 	}
 	cases := []rpcResponse{
@@ -1270,12 +1299,13 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		private rpcRuntimeVersion
 		public  rpcRuntimeVersion
 	}{
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 452, TransactionVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 2}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 2, StateVersion: 1}},
+		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 2}},
 	}
 	for index, identity := range identities {
-		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 452, 1); identityErr == nil {
+		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 453, 1, 1); identityErr == nil {
 			t.Errorf("drifting runtime identity %d was accepted", index)
 		}
 	}
@@ -1298,7 +1328,7 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 			case "eth_getBlockByNumber":
 				result = rpcBlock{Number: "0x64", Hash: "0x" + strings.Repeat("ab", 32)}
 			case "state_getRuntimeVersion":
-				result = rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1}
+				result = rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}
 			default:
 				_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "error": map[string]any{"code": -32601, "message": "unknown method"}})
 				return
@@ -1306,15 +1336,16 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
 		}))
 	}
-	private := newServer(452)
+	private := newServer(453)
 	defer private.Close()
-	public := newServer(453)
+	public := newServer(454)
 	defer public.Close()
 	cfg := testResolvedConfig(t)
 	cfg.OperationalEVM = private.URL
 	cfg.Public.Chain.EVMPublicReadEndpoint = public.URL
-	cfg.Release.Runtime.SpecVersion = 452
+	cfg.Release.Runtime.SpecVersion = 453
 	cfg.Release.Runtime.TransactionVersion = 1
+	cfg.Release.Runtime.StateVersion = 1
 	actor := &rpcAdversary{
 		cfg: cfg,
 		http: &adversaryHTTP{
@@ -1323,7 +1354,7 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 		},
 	}
 	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
-	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=452 public=453 expected=452") {
+	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=453 public=454 expected=453") {
 		t.Fatalf("observed runtime drift result=%+v", result)
 	}
 }

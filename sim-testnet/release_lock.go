@@ -23,6 +23,19 @@ var (
 	releaseSHA256          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
+const (
+	reviewedRuntimeSourceRepository         = "https://github.com/RaoFoundation/subtensor"
+	reviewedRuntimeSourceTag                = "v453"
+	reviewedRuntimeSourceCommit             = "823bdcbc58a29f60b243be4737a7c72b34ac7d93"
+	reviewedRuntimeCodeHash                 = "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4"
+	reviewedRuntimeCompressedWasmSHA256     = "0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e"
+	reviewedRuntimeUpstreamReleaseCallHash  = "0x972c1c03fae47d58ad3dbfd701e58e56170936045b0a488170c05c8d0729fcd4"
+	reviewedRuntimeUpstreamReleaseTimepoint = "8987926:11"
+	reviewedRuntimeSpecVersion              = uint32(453)
+	reviewedRuntimeTransactionVersion       = uint32(1)
+	reviewedRuntimeStateVersion             = uint8(1)
+)
+
 func normalizeReleaseStorageLayout(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -554,9 +567,22 @@ func validateReleaseRepositorySchema(repositories map[string]any) error {
 	return nil
 }
 
+// Bind the operational testnet profile to the source and finalized Wasm
+// independently reviewed for runtime 453. The node image is pinned separately:
+// an older compatible binary may execute this on-chain Wasm while it syncs.
+func validateReviewedRuntimeIdentity(lock *ReleaseLock) error {
+	if lock == nil || lock.Runtime.SourceRepository != reviewedRuntimeSourceRepository || lock.Runtime.SourceTag != reviewedRuntimeSourceTag || lock.Runtime.SourceCommit != reviewedRuntimeSourceCommit || lock.Runtime.SpecVersion != reviewedRuntimeSpecVersion || lock.Runtime.TransactionVersion != reviewedRuntimeTransactionVersion || lock.Runtime.StateVersion != reviewedRuntimeStateVersion || !strings.EqualFold(lock.Runtime.CodeHash, reviewedRuntimeCodeHash) || !strings.EqualFold(lock.Runtime.CompressedWasmSHA256, reviewedRuntimeCompressedWasmSHA256) || !strings.EqualFold(lock.Runtime.UpstreamReleaseCallHash, reviewedRuntimeUpstreamReleaseCallHash) || lock.Runtime.UpstreamReleaseTimepoint != reviewedRuntimeUpstreamReleaseTimepoint {
+		return errors.New("release lock runtime identity is not the reviewed testnet runtime 453 release")
+	}
+	return nil
+}
+
 func validateReleaseLock(cfg *ResolvedConfig) error {
-	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "testnet" || cfg.Release.Runtime.SourceCommit != "da06f033663896ef2fdbbfc3ecc68ca908fba0f5" || cfg.Release.Runtime.SpecVersion != 452 || cfg.Release.Runtime.TransactionVersion != 1 || !strings.EqualFold(cfg.Release.Runtime.CodeHash, "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc") {
-		return errors.New("release lock runtime identity is not the reviewed testnet runtime 452 release")
+	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" {
+		return errors.New("release lock schema or release is not the reviewed 1.0 release")
+	}
+	if err := validateReviewedRuntimeIdentity(cfg.Release); err != nil {
+		return err
 	}
 	if !strings.Contains(cfg.Release.Runtime.Image, "@sha256:") || strings.Contains(cfg.Release.Runtime.Image, "placeholder") {
 		return fmt.Errorf("runtime image is not digest-pinned")

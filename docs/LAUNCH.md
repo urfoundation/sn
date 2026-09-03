@@ -22,7 +22,7 @@ workloads, historical/archive proof and the final independent-backend campaign
 after it finishes syncing. Public mode records the shared observation backend as
 non-independent in doctor, postconditions and manifests; that assurance gap is
 non-blocking for bounded testnet acceptance but blocking for mainnet promotion.
-Runtime spec 452 and its exact finalized Wasm code hash remain hard gates in both
+Runtime spec 453 and its exact finalized Wasm code hash remain hard gates in both
 modes.
 
 Filling configuration is not approval to spend. Every mutating command is a dry
@@ -97,7 +97,8 @@ metagraph/neuron/staking, proves exact stake moves, waits for a dividend cycle a
 recovers all probe-attributable alpha to a controlled provider coldkey.
 Every registration uses runtime `register_limit`/`registerLimit` with the reviewed
 `100000000` rao ceiling. EVM registrations fund the caller mirror and send zero
-value to the neuron precompile, matching runtime-452 deduction semantics.
+value to the neuron precompile, matching the deduction semantics retained by
+runtime 453.
 Contract registrations supply that full ceiling and atomically refund the
 unburned difference.
 Transactions are journaled through intent, signed bytes and nonce,

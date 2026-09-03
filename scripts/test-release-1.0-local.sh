@@ -5,6 +5,10 @@ sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
 release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)
 
+echo "[release-1.0] source-freeze preflight"
+release_source_snapshot="$("$sn_repo/scripts/check-release-source-freeze.sh" "$workspace")"
+printf '%s\n' "$release_source_snapshot"
+
 if ! command -v forge >/dev/null 2>&1 && [[ -x "$HOME/.foundry/bin/forge" ]]; then
   export PATH="$HOME/.foundry/bin:$PATH"
 fi
@@ -122,8 +126,7 @@ echo "[release-1.0] shared verify wire and public SDK suites"
 echo "[release-1.0] operator-proxy module"
 (
   cd "$workspace/operator-proxy"
-  go mod tidy
-  git diff --exit-code -- go.mod go.sum
+  go mod tidy -diff
   go build ./...
   go vet ./...
   unformatted="$(gofmt -l .)"
@@ -217,5 +220,14 @@ echo "[release-1.0] final release-lock checkout"
   # gate so an independently updated sibling checkout cannot escape the run.
   go test ./sim-testnet -run '^TestReleaseLockMatchesCheckout$' -count=1
 )
+
+echo "[release-1.0] final source-freeze checkout"
+final_release_source_snapshot="$("$sn_repo/scripts/check-release-source-freeze.sh" "$workspace")"
+if [[ "$final_release_source_snapshot" != "$release_source_snapshot" ]]; then
+  echo "release source revisions changed while the gate was running" >&2
+  diff -u <(printf '%s\n' "$release_source_snapshot") <(printf '%s\n' "$final_release_source_snapshot") >&2 || true
+  exit 1
+fi
+printf '%s\n' "$final_release_source_snapshot"
 
 echo "[release-1.0] local release gate passed"

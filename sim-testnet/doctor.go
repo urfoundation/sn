@@ -678,14 +678,15 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 		return
 	}
 	defer chain.API.Client.Close()
+	runtimeVersion, runtimeVersionErr := finalizedRuntimeVersion(chain)
 	if strings.ToLower(chain.GenesisHash.Hex()) != testnetGenesis {
 		err = fmt.Errorf("genesis %s, want %s", chain.GenesisHash.Hex(), testnetGenesis)
-	} else if uint32(chain.Runtime.SpecVersion) != cfg.Public.Chain.ExpectedRuntimeSpec {
-		err = fmt.Errorf("runtime spec %d, want %d", chain.Runtime.SpecVersion, cfg.Public.Chain.ExpectedRuntimeSpec)
-	} else if uint32(chain.Runtime.TransactionVersion) != cfg.Public.Chain.ExpectedTransactionVersion {
-		err = fmt.Errorf("transaction version %d, want %d", chain.Runtime.TransactionVersion, cfg.Public.Chain.ExpectedTransactionVersion)
+	} else if runtimeVersionErr != nil {
+		err = runtimeVersionErr
+	} else if runtimeErr := validateFinalizedRuntimeVersion(runtimeVersion, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); runtimeErr != nil {
+		err = runtimeErr
 	}
-	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s spec=%d tx=%d", redactURL(endpoint), chain.GenesisHash.Hex(), chain.Runtime.SpecVersion, chain.Runtime.TransactionVersion))
+	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s spec=%d tx=%d state=%d", redactURL(endpoint), chain.GenesisHash.Hex(), runtimeVersion.SpecVersion, runtimeVersion.TransactionVersion, runtimeVersion.StateVersion))
 	if err == nil {
 		codeHash, codeHashErr := finalizedRuntimeCodeHash(chain)
 		if codeHashErr == nil {
@@ -735,6 +736,46 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 		}
 		r.add("rpc/operational-eth_getLogs", true, finalizedErr, fmt.Sprintf("exact finalized block=%d", finalizedNumber))
 	}
+}
+
+type doctorFinalizedRuntimeVersion struct {
+	SpecName           string `json:"specName"`
+	SpecVersion        uint32 `json:"specVersion"`
+	TransactionVersion uint32 `json:"transactionVersion"`
+	StateVersion       uint8  `json:"stateVersion"`
+}
+
+// Read all release-bound version fields at one finalized hash. The GSRPC
+// RuntimeVersion type predates stateVersion, so the doctor decodes the raw RPC
+// response instead of silently dropping that field.
+func finalizedRuntimeVersion(chain *crv4.Chain) (doctorFinalizedRuntimeVersion, error) {
+	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	if err != nil {
+		return doctorFinalizedRuntimeVersion{}, err
+	}
+	var version doctorFinalizedRuntimeVersion
+	if err := chain.API.Client.Call(&version, "state_getRuntimeVersion", finalized.Hex()); err != nil {
+		return doctorFinalizedRuntimeVersion{}, err
+	}
+	return version, nil
+}
+
+// Require the finalized runtime name and all three numeric identity fields to
+// match the release profile.
+func validateFinalizedRuntimeVersion(version doctorFinalizedRuntimeVersion, expectedSpec, expectedTransaction uint32, expectedState uint8) error {
+	if version.SpecName != "node-subtensor" {
+		return fmt.Errorf("runtime spec name %q, want node-subtensor", version.SpecName)
+	}
+	if version.SpecVersion != expectedSpec {
+		return fmt.Errorf("runtime spec %d, want %d", version.SpecVersion, expectedSpec)
+	}
+	if version.TransactionVersion != expectedTransaction {
+		return fmt.Errorf("transaction version %d, want %d", version.TransactionVersion, expectedTransaction)
+	}
+	if version.StateVersion != expectedState {
+		return fmt.Errorf("state version %d, want %d", version.StateVersion, expectedState)
+	}
+	return nil
 }
 
 // Pin the exact on-chain Wasm at a finalized block. A spec version alone is

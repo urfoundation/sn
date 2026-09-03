@@ -221,6 +221,22 @@ func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *te
 	}
 }
 
+// A state-version upgrade changes storage encoding without necessarily moving
+// spec or transaction versions, so it is an independent launch boundary.
+func TestDoctorRejectsFinalizedRuntimeStateVersionDrift(t *testing.T) {
+	valid := doctorFinalizedRuntimeVersion{
+		SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1,
+	}
+	if err := validateFinalizedRuntimeVersion(valid, 453, 1, 1); err != nil {
+		t.Fatalf("reviewed finalized runtime was rejected: %v", err)
+	}
+	drifted := valid
+	drifted.StateVersion = 2
+	if err := validateFinalizedRuntimeVersion(drifted, 453, 1, 1); err == nil || !strings.Contains(err.Error(), "state version") {
+		t.Fatalf("finalized state-version drift was accepted: %v", err)
+	}
+}
+
 type doctorRPCFixture struct {
 	parsed       abi.ABI
 	acceptBadSig bool

@@ -1,8 +1,8 @@
 package crv4
 
-// Runtime-452 commitments pallet support used by fleet promotion. The exact
-// encoding is pinned to RaoFoundation/subtensor testnet commit
-// da06f033663896ef2fdbbfc3ecc68ca908fba0f5:
+// Runtime-452 commitments pallet support used by fleet promotion. Runtime 453
+// commit 823bdcbc58a29f60b243be4737a7c72b34ac7d93 leaves this storage encoding
+// unchanged, so historical decoder names and evidence remain byte-compatible:
 //
 //   Commitments.set_commitment(netuid: u16, info: CommitmentInfo)
 //   CommitmentInfo { fields: BoundedVec<Data> }

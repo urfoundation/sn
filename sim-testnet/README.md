@@ -16,6 +16,16 @@ plan. `doctor`, `plan`, `status`, `inspect` and `analyze` are read-only. `setup`
 `launch`, `resume`, `scenario` and `retire` are dry-runs unless both `--apply`
 and the exact `--plan-hash` are supplied.
 
+## Agent execution policy
+
+Release qualification assigns test and gate execution to `gpt-5.6-terra` with
+reasoning effort `max`. If a test or gate fails, retain its exact output and
+assign root-cause diagnosis, adjacent-path review, implementation, and the
+deterministic regression to `gpt-5.6-sol` with reasoning effort `max`. Terra
+then reruns the affected test matrix. This division does not relax any gate or
+authorize a simulator write; the normal plan-hash and `--apply` boundaries
+still control all testnet mutations.
+
 ## Pre-launch approval
 
 The testnet inputs are stored under testnet-prefixed keys in
@@ -59,7 +69,13 @@ node plus a physically independent observer. Evidence uses the existing shared
 `server/blob` MinIO configuration and bucket; no second object store is started.
 MinIO and Subtensor are the only external shared services.
 
-Runtime 452 distinguishes atomic alpha transfers (`TransferToggle`, managed by
+The active release pin is Subtensor runtime 453, transaction version 1, source
+tag `v453`, commit `823bdcbc58a29f60b243be4737a7c72b34ac7d93`, and finalized
+Wasm storage hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4`.
+The source-to-chain identity and five-delta compatibility review are recorded in
+[`docs/spec/runtime-v453-audit.md`](../docs/spec/runtime-v453-audit.md).
+
+Runtime 453 retains the distinction between atomic alpha transfers (`TransferToggle`, managed by
 `sudo_set_toggle_transfer`) from the one-time trading/emission activation
 (`SubtokenEnabled`, managed by the subnet owner's `start_call`). The harness
 checks these as distinct storage postconditions.
@@ -74,7 +90,7 @@ validator, requires the reserve to remain above 60%, and retains at least 2,000
 alpha at the source. The exact amounts are approval-bound and rechecked against
 live price, registration, lock, collateral, majority, and remainder immediately
 before signing. A changed or unavailable constraint stops without broadcasting.
-Runtime 452 stores each coldkey's entitlement as a `SafeFloat` share even though
+Runtime 453 retains each coldkey's entitlement as a `SafeFloat` share even though
 `transfer_stake_and_hotkey` conserves the exact integer amount in the hotkey
 aggregate. `getStake` may consequently floor the destination entitlement by one
 rao. Plan schema v8 binds that maximum shortfall explicitly, adds one rao to
@@ -149,7 +165,7 @@ immutables and Solidity metadata; any executable custody drift fails closed.
 The new implementation is additive, while the reserve/vault/proxy addresses and
 their historical evidence remain unchanged.
 
-Runtime 452 also raises a subnet's burn after successful registration. The
+Runtime 453 also raises a subnet's burn after successful registration. The
 release plan therefore reserves at most `100000000` rao per registration and
 binds that same ceiling into every native `register_limit` and EVM
 `registerLimit` action. EVM callers are funded at their SS58 mirrors and pass
@@ -244,7 +260,7 @@ all non-secret values resolved from the vault, not only their YAML references. T
 signed policy has its own canonical hash. Neither command submits a transaction or
 extrinsic.
 
-Runtime-452 transfer economics are approval-bound explicitly: the exact
+Runtime-453 transfer economics are approval-bound explicitly: the exact
 finalized Wasm hash must match the release lock, and that block's
 `SubtensorModule.InitialMinTransfer` metadata constant—the value used by the
 runtime's internal `DefaultMinTransfer` function—must equal
@@ -493,7 +509,7 @@ read-only commands use the canonical configured endpoint.
 ## Continuous adversarial campaign
 
 The `release-1.0` and `production-soak` scenarios always load the release-locked
-[`adversarial-matrix-v1.json`](../docs/spec/adversarial-matrix-v1.json). Its 56
+[`adversarial-matrix-v1.json`](../docs/spec/adversarial-matrix-v1.json). Its 61
 rows cover Yuma/YC3 cabals, stale and reveal-following weight copies, liquid-alpha
 bond timing and validator-permit churn, all eight published Subtensor security
 advisories, historical runtime atomicity/accounting/identity/resource failures,

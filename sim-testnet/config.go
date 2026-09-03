@@ -292,59 +292,30 @@ type PublicManifest struct {
 }
 
 type ReleaseLock struct {
-	SchemaVersion int    `yaml:"schema_version" json:"schema_version"`
-	Release       string `yaml:"release" json:"release"`
-	Runtime       struct {
-		SourceRepository, SourceTag, SourceCommit string
-		CodeHash                                  string
-		SpecVersion, TransactionVersion           uint32
-		Image                                     string
-	} `yaml:"runtime" json:"runtime"`
-	EVMBuild       map[string]any    `yaml:"evm_build" json:"evm_build"`
-	Repositories   map[string]any    `yaml:"repositories" json:"repositories"`
-	Dependencies   map[string]string `yaml:"dependencies" json:"dependencies"`
-	Interfaces     map[string]any    `yaml:"interfaces" json:"interfaces"`
-	Infrastructure map[string]any    `yaml:"infrastructure" json:"infrastructure"`
+	SchemaVersion  int                `yaml:"schema_version" json:"schema_version"`
+	Release        string             `yaml:"release" json:"release"`
+	Runtime        ReleaseRuntimeLock `yaml:"runtime" json:"runtime"`
+	EVMBuild       map[string]any     `yaml:"evm_build" json:"evm_build"`
+	Repositories   map[string]any     `yaml:"repositories" json:"repositories"`
+	Dependencies   map[string]string  `yaml:"dependencies" json:"dependencies"`
+	Interfaces     map[string]any     `yaml:"interfaces" json:"interfaces"`
+	Infrastructure map[string]any     `yaml:"infrastructure" json:"infrastructure"`
 }
 
-func (r *ReleaseLock) UnmarshalYAML(n *yaml.Node) error {
-	type lockAlias ReleaseLock
-	var aux struct {
-		SchemaVersion int    `yaml:"schema_version"`
-		Release       string `yaml:"release"`
-		Runtime       struct {
-			SourceRepository   string `yaml:"source_repository"`
-			SourceTag          string `yaml:"source_tag"`
-			SourceCommit       string `yaml:"source_commit"`
-			CodeHash           string `yaml:"code_hash"`
-			SpecVersion        uint32 `yaml:"spec_version"`
-			TransactionVersion uint32 `yaml:"transaction_version"`
-			Image              string `yaml:"image"`
-		} `yaml:"runtime"`
-		EVMBuild       map[string]any    `yaml:"evm_build"`
-		Repositories   map[string]any    `yaml:"repositories"`
-		Dependencies   map[string]string `yaml:"dependencies"`
-		Interfaces     map[string]any    `yaml:"interfaces"`
-		Infrastructure map[string]any    `yaml:"infrastructure"`
-	}
-	if err := n.Decode(&aux); err != nil {
-		return err
-	}
-	r.SchemaVersion = aux.SchemaVersion
-	r.Release = aux.Release
-	r.Runtime.SourceRepository = aux.Runtime.SourceRepository
-	r.Runtime.SourceTag = aux.Runtime.SourceTag
-	r.Runtime.SourceCommit = aux.Runtime.SourceCommit
-	r.Runtime.CodeHash = aux.Runtime.CodeHash
-	r.Runtime.SpecVersion = aux.Runtime.SpecVersion
-	r.Runtime.TransactionVersion = aux.Runtime.TransactionVersion
-	r.Runtime.Image = aux.Runtime.Image
-	r.EVMBuild = aux.EVMBuild
-	r.Repositories = aux.Repositories
-	r.Dependencies = aux.Dependencies
-	r.Interfaces = aux.Interfaces
-	r.Infrastructure = aux.Infrastructure
-	return nil
+// ReleaseRuntimeLock binds every reviewed runtime identity field to its
+// canonical snake-case manifest key.
+type ReleaseRuntimeLock struct {
+	SourceRepository         string `yaml:"source_repository" json:"source_repository"`
+	SourceTag                string `yaml:"source_tag" json:"source_tag"`
+	SourceCommit             string `yaml:"source_commit" json:"source_commit"`
+	CodeHash                 string `yaml:"code_hash" json:"code_hash"`
+	CompressedWasmSHA256     string `yaml:"compressed_wasm_sha256" json:"compressed_wasm_sha256"`
+	UpstreamReleaseCallHash  string `yaml:"upstream_release_call_hash" json:"upstream_release_call_hash"`
+	UpstreamReleaseTimepoint string `yaml:"upstream_release_timepoint" json:"upstream_release_timepoint"`
+	SpecVersion              uint32 `yaml:"spec_version" json:"spec_version"`
+	TransactionVersion       uint32 `yaml:"transaction_version" json:"transaction_version"`
+	StateVersion             uint8  `yaml:"state_version" json:"state_version"`
+	Image                    string `yaml:"image" json:"image"`
 }
 
 type Hyperparameters struct {
@@ -1173,7 +1144,10 @@ func (r *ResolvedConfig) Validate() error {
 	if r.ChainID != 0 && r.ChainID != testnetChainID {
 		return fmt.Errorf("vault testnet chain id %d, want %d", r.ChainID, testnetChainID)
 	}
-	if r.Release.Release != "1.0" || r.Release.Runtime.SpecVersion != r.Public.Chain.ExpectedRuntimeSpec {
+	if r.Release.Release != "1.0" ||
+		r.Release.Runtime.SpecVersion != r.Public.Chain.ExpectedRuntimeSpec ||
+		r.Release.Runtime.TransactionVersion != r.Public.Chain.ExpectedTransactionVersion ||
+		r.Release.Runtime.StateVersion != r.Public.Chain.ExpectedStateVersion {
 		return errors.New("release/runtime manifest mismatch")
 	}
 	if r.Hyperparameters.SchemaVersion != 1 || r.Hyperparameters.Profile != releaseProfile {

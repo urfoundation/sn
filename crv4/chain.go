@@ -597,7 +597,7 @@ func (c *Chain) FinalizedAccountNonce(publicKey [32]byte) (uint32, types.Hash, u
 	return uint32(account.Nonce), finalized, uint64(header.Number), nil
 }
 
-// NewSignedExtrinsic signs an arbitrary runtime call with the same runtime-452
+// NewSignedExtrinsic signs an arbitrary runtime call with the runtime-452/453
 // signed-extension set used by CRv4. It is shared by CRv4 and the commitments
 // pallet so both paths have one exact signing implementation.
 func (c *Chain) NewSignedExtrinsic(kp *Keypair, call types.Call, nonce uint32) (*extrinsic.Extrinsic, error) {

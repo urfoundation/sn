@@ -11,6 +11,13 @@ in-scope mechanism in WHITEPAPER.md works on Bittensor testnet netuid 521 under
 the complete adversarial load, and then to resolve every anomaly before making a
 mainnet-readiness claim.
 
+Execution-agent policy: use `gpt-5.6-terra` at reasoning effort `max` to run
+tests and release gates. On any failure, preserve the exact output and use
+`gpt-5.6-sol` at reasoning effort `max` to diagnose the root cause, audit
+similar/adjacent paths, implement the fix, and add its deterministic regression.
+Return the resulting tree to Terra for the focused and widened reruns. This
+model assignment never weakens a gate or expands testnet write authority.
+
 ## 1. Non-negotiable completion definition
 
 Testnet is complete only when all of the following are true:
@@ -33,7 +40,8 @@ Testnet is complete only when all of the following are true:
    360-block epochs plus its 180-block settlement window. The native lifecycle
    handoff/tail may extend either phase only as already bounded in FINALIZE.md;
    tail blocks do not count as accepted epochs.
-6. All 56 adversarial actors run concurrently with the happy path. The attempt
+6. All 61 mandatory adversarial vectors are sampled through seven attributed
+   actors running concurrently with the happy path. The attempt
    ledger is clean: no unexplained error, panic, failed invariant, missing
    sample, process restart, unresolved latency signal, or state drift.
 7. Both phases reach owner-signed capture_closed and semantic_verified states.
@@ -130,10 +138,11 @@ after the source and dependency checkouts are final.
 
 ## 3. Current implementation/gate continuation point
 
-At first draft, source freeze is not complete. The expensive
-TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper regression is
-being used as a narrow walk through the complete 1,000-miner semantic fixture.
-The following real defects have already been corrected in the working tree:
+Source freeze is not complete. The expensive
+TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper regression now
+passes and provides a narrow walk through the complete 1,000-miner semantic
+fixture. The following real defects have already been corrected in the working
+tree:
 
 - lifecycle cleanup evidence now uses the current v2 schema;
 - lifecycle payout evidence binds the signed inner payout content hash;
@@ -150,24 +159,21 @@ The following real defects have already been corrected in the working tree:
   vector, allowing lifecycle validation to test candidate entries without
   deleting pool entries.
 
-The next observed narrow-test failure at the time of writing is:
-
-    public native reward UID 1000 emission/stake/incentive/dividends mismatch at 400
-
-Continue by comparing the historical reward rows and the full
-FinalCollectedRewardStakeSnapshot artifacts after attachFinalFleetLifecycleFixture
-rewrites epoch heads and historical fleet ownership. The public test reader
-must model the frozen chain snapshot, not a lifecycle-only projection. Fix the
-fixture or production logic according to the real wire semantics; do not weaken
-the verifier. Add a deterministic adjacent test for any newly identified root
-cause. Then rerun:
+The former `public native reward UID 1000` mismatch was a stale fixture view and
+is fixed; the full mocked semantic supplement passed in 226.948 seconds. Rerun
+it from the frozen checkout before launch:
 
     go test ./sim-testnet \
       -run '^TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper$' \
       -count=1 -timeout=30m
 
-After it passes, run all final semantic tests ordinary and race before widening
-to the producer and aggregate gates.
+Then run all final semantic tests ordinary and race before widening to the
+producer and aggregate gates. A requirement-to-evidence audit still requires
+deep peer replay of validator-view divergence and head transitions, complete
+FINAL.md dual-origin inspect/analyze instructions, atomic MinIO create-or-verify
+semantics under concurrent writers, and direct server evidence publish/get/history
+API coverage before the live campaign can count as final validation. Treat those
+as implementation blockers, not report-only cleanup.
 
 The complete server model package previously reached a 30-minute command
 deadline amid full-suite database churn. The test active at timeout,
@@ -378,7 +384,8 @@ Launch must prove:
 - all 32 expected long-lived processes start in one current supervisor
   generation;
 - both operator APIs and direct Connect ingress are reachable;
-- all 1,000 miners and both validators produce fresh proofs;
+- all 1,000 miner identities are live through their 20 production swarms, and
+  both validators produce fresh proofs for every operator/epoch domain;
 - precompile-conformance passes;
 - topology smoke and process-log gates are clean;
 - the user unit is started but not enabled.
@@ -423,7 +430,7 @@ Expected irreducible live duration from a clean acceptance start:
 
 The release phase must not be marked complete merely because five settlement
 epochs elapsed. Its first three causal native milestones and terminal binding
-must also satisfy the runtime-452 schedule. Production must obtain the later
+must also satisfy the runtime-453 schedule. Production must obtain the later
 terminal-active native decision. The bound is evidence-driven from live tempo
 and reveal-period state.
 
@@ -496,7 +503,7 @@ commands for a separate agent to validate each claim on chain.
 
 | Whitepaper mechanism | Minimum independently verifiable evidence |
 |---|---|
-| Chain/deployment identity | chain ID 945, genesis/runtime 452 identity, netuid 521, deployment block, proxy/implementation/vault/reserve/probe addresses, runtime code hashes, ERC-1967 implementation slot, policy version/hash/effective block |
+| Chain/deployment identity | chain ID 945, genesis/runtime 453 identity, netuid 521, deployment block, proxy/implementation/vault/reserve/probe addresses, runtime code hashes, ERC-1967 implementation slot, policy version/hash/effective block |
 | Governance/custody | testnet single-owner and guardian identities, successful governance upgrade drill, unchanged immutable vault/reserve custody, owner/value caps; explicit mainnet 2-of-3 delta |
 | Operator pools | both NO registrations and UIDs, ownership, pool status, API origin, public history, independent assignment and traffic/quality evidence |
 | Demand deposits | tier/rate inputs, required versus observed conviction for both pools in every covered epoch, deposit transaction/event, dishonest underpayment, zero pool weight/penalty, corrected deposit, and positive-weight recovery |
@@ -511,7 +518,7 @@ commands for a separate agent to validate each claim on chain.
 | Miner rewards | native head emission/incentive/stake evidence for selected heads, zero native head channel for rejected candidates, pool claim payout evidence for tails |
 | Reserve/buyback | principal additions, stake transfer receipts, exact share-floor allowance, reserve live stake and compounding yield, 65% target/60% barrier evidence, conservation before/after |
 | Settlement conservation | total captured = total paid + escrow accounted; escrow accounted = pending funding + outstanding liability at pinned contract checkpoints |
-| Adversarial resilience | all 56 actors, seed/matrix hash, samples, latency/error metrics, applied/restored faults, no cross-operator or cross-validator contamination, clean attempt ledger |
+| Adversarial resilience | all 61 mandatory vectors through seven attributed concurrent actors, seed/matrix hash, samples, latency/error metrics, applied/restored faults, no cross-operator or cross-validator contamination, clean attempt ledger |
 | Process/runtime resilience | exact binaries/config manifest, current supervisor generation, expected process inventory, zero unexplained restarts/panics/errors, bounded intentional fault recoveries, stopped-on-reboot policy |
 | Public artifact history | both operator archive roots, MinIO locators, byte sizes/content hashes, replica readback, secret-scan result, owner completion/supplement signatures, capture/input/evidence manifests |
 | Three clean production blocks | three consecutive complete production UR epochs under 360/60/180/6 policy with zero failures, plus the preceding five clean accelerated epochs; clearly separate lifecycle tail blocks |
@@ -567,7 +574,7 @@ FREEZE-UPDATE this table as work completes.
 
 | Item | Result | UTC / immutable reference |
 |---|---|---|
-| Narrow 1,000-miner semantic supplement test | pending | current failure recorded in section 3 |
+| Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3 |
 | All final semantic ordinary tests | pending | |
 | All final semantic race tests | pending | |
 | Full sim-testnet ordinary | pending | |
