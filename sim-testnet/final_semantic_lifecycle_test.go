@@ -18,6 +18,129 @@ import (
 	"github.com/urnetwork/connect"
 )
 
+// Exact journal identity and checkpoints for one fixture action.
+type finalSemanticFixtureJournalBinding struct {
+	planHash        string
+	intentHash      string
+	transactionHash string
+	block           uint64
+	blockHash       string
+	recovery        uint64
+	recoveryHash    string
+}
+
+// Ancestor action evidence accepted by a revised fixture plan.
+type finalSemanticFixtureCarriedAction struct {
+	postcondition *ActionPostcondition
+	receipt       FinalNativeReceipt
+}
+
+// Resolve whether a fixture action was executed under the current plan or is
+// carried from an authenticated ancestor. Current actions need an explicit
+// synthetic block; carried actions instead retain the exact prior-plan receipt
+// identity accepted by the revised action.
+func resolveFinalSemanticFixtureJournalBinding(plan *SetupPlan, action Action, block, recovery uint64, carried *finalSemanticFixtureCarriedAction) (finalSemanticFixtureJournalBinding, error) {
+	if plan == nil || plan.PlanHash == "" || action.ID == "" || action.IntentHash == "" {
+		return finalSemanticFixtureJournalBinding{}, fmt.Errorf("fixture journal action identity is incomplete")
+	}
+	found := false
+	for _, planned := range plan.Actions {
+		if planned.ID != action.ID {
+			continue
+		}
+		if found || planned.IntentHash != action.IntentHash {
+			return finalSemanticFixtureJournalBinding{}, fmt.Errorf("fixture plan action %s is duplicated or differs", action.ID)
+		}
+		found = true
+	}
+	if !found {
+		return finalSemanticFixtureJournalBinding{}, fmt.Errorf("fixture plan lacks action %s", action.ID)
+	}
+	if carried == nil {
+		if block == 0 || recovery == 0 || recovery >= block || len(action.AcceptedPriorIntentHashes) != 0 {
+			return finalSemanticFixtureJournalBinding{}, fmt.Errorf("current fixture action %s has no exact block or is marked carried", action.ID)
+		}
+		return finalSemanticFixtureJournalBinding{
+			planHash: plan.PlanHash, intentHash: action.IntentHash,
+			block: block, blockHash: finalTestHex(byte(block)), recovery: recovery, recoveryHash: finalTestHex(byte(recovery)),
+		}, nil
+	}
+	postcondition := carried.postcondition
+	receipt := carried.receipt
+	if block != 0 || recovery != 0 || postcondition == nil || postcondition.ActionID != action.ID || postcondition.PlanHash == plan.PlanHash || !plan.allowedPlanHashes()[postcondition.PlanHash] || len(action.AcceptedPriorIntentHashes) != 1 || action.AcceptedPriorIntentHashes[0] != postcondition.IntentHash || action.IntentHash == postcondition.IntentHash || receipt.ExtrinsicHash == "" || receipt.Block.Number < 2 || receipt.Block.Hash == "" || postcondition.SubstrateFinalized.Number < receipt.Block.Number {
+		return finalSemanticFixtureJournalBinding{}, fmt.Errorf("carried fixture action %s has invalid prior-plan lineage", action.ID)
+	}
+	return finalSemanticFixtureJournalBinding{
+		planHash: postcondition.PlanHash, intentHash: postcondition.IntentHash, transactionHash: receipt.ExtrinsicHash,
+		block: receipt.Block.Number, blockHash: receipt.Block.Hash, recovery: receipt.Block.Number - 1, recoveryHash: finalTestHex(byte(receipt.Block.Number - 1)),
+	}, nil
+}
+
+// Proves that verifier selection does not decide synthetic journal coverage:
+// both current selected/rejected registrations use the current plan, while a
+// challenger registration already proved by an ancestor retains that identity.
+func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations(t *testing.T) {
+	priorPlanHash := finalTestHex(0x21)
+	currentPlanHash := finalTestHex(0x22)
+	priorIntentHash := finalTestHex(0x23)
+	makeAction := func(id string, accepted ...string) Action {
+		action := Action{ID: id, Kind: "substrate-extrinsic", Target: id, AcceptedPriorIntentHashes: accepted}
+		intentHash, err := actionIntentHash(action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		action.IntentHash = intentHash
+		return action
+	}
+	selected := makeAction("fixture.selected.register")
+	rejected := makeAction("fixture.rejected.register")
+	carriedAction := makeAction("fleet.register.201", priorIntentHash)
+	plan := &SetupPlan{PlanHash: currentPlanHash, PriorPlanHashes: []string{priorPlanHash}, Actions: []Action{selected, rejected, carriedAction}}
+
+	for _, test := range []struct {
+		name     string
+		selected bool
+		action   Action
+		block    uint64
+	}{
+		{name: "selected current registration", selected: true, action: selected, block: 150},
+		{name: "rejected current registration", selected: false, action: rejected, block: 160},
+	} {
+		binding, err := resolveFinalSemanticFixtureJournalBinding(plan, test.action, test.block, test.block-10, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		if binding.planHash != currentPlanHash || binding.intentHash != test.action.IntentHash || binding.block != test.block {
+			t.Fatalf("%s selected=%t current binding=%+v", test.name, test.selected, binding)
+		}
+	}
+
+	postcondition := &ActionPostcondition{
+		PlanHash: priorPlanHash, ActionID: carriedAction.ID, IntentHash: priorIntentHash,
+		SubstrateFinalized: ChainHead{Number: 90, Hash: finalTestHex(90)},
+	}
+	receipt := FinalNativeReceipt{ExtrinsicHash: finalTestHex(0x24), Block: ChainHead{Number: 80, Hash: finalTestHex(80)}}
+	carried := &finalSemanticFixtureCarriedAction{postcondition: postcondition, receipt: receipt}
+	binding, err := resolveFinalSemanticFixtureJournalBinding(plan, carriedAction, 0, 0, carried)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.planHash != priorPlanHash || binding.intentHash != priorIntentHash || binding.transactionHash != receipt.ExtrinsicHash || binding.block != receipt.Block.Number || binding.blockHash != receipt.Block.Hash {
+		t.Fatalf("carried binding=%+v", binding)
+	}
+	if _, err := resolveFinalSemanticFixtureJournalBinding(plan, selected, 0, 0, nil); err == nil {
+		t.Fatal("unmapped current registration was accepted")
+	}
+	if _, err := resolveFinalSemanticFixtureJournalBinding(plan, carriedAction, 80, 70, carried); err == nil {
+		t.Fatal("carried registration with a current-plan block was accepted")
+	}
+	wrongPrior := *postcondition
+	wrongPrior.IntentHash = finalTestHex(0x25)
+	if _, err := resolveFinalSemanticFixtureJournalBinding(plan, carriedAction, 0, 0, &finalSemanticFixtureCarriedAction{postcondition: &wrongPrior, receipt: receipt}); err == nil {
+		t.Fatal("carried registration with unaccepted prior intent was accepted")
+	}
+}
+
 // attachFinalFleetLifecycleFixture adds a complete, independently verifiable
 // ordered lifecycle graph to the launch-scale semantic fixture. Keeping this
 // construction adjacent to the lifecycle verifier makes every plan, journal,
@@ -125,6 +248,7 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	}
 
 	actions := make([]Action, 0, 64)
+	carriedActions := make(map[string]finalSemanticFixtureCarriedAction, len(source.HeadTransitions))
 	addAction := func(action Action) {
 		hash, hashErr := actionIntentHash(action)
 		if hashErr != nil {
@@ -181,8 +305,13 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		if err := json.Unmarshal(artifacts[transition.Artifact.URI], &artifact); err != nil || artifact.Postcondition == nil {
 			t.Fatalf("decode carried tournament postcondition: %v", err)
 		}
+		actionID := fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID)
+		if _, exists := carriedActions[actionID]; exists {
+			t.Fatalf("duplicate carried tournament action %s", actionID)
+		}
+		carriedActions[actionID] = finalSemanticFixtureCarriedAction{postcondition: artifact.Postcondition, receipt: transition.Registration}
 		addAction(Action{
-			ID:                        fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID),
+			ID:                        actionID,
 			Kind:                      "substrate-extrinsic",
 			Target:                    fmt.Sprintf("fleet-%d-hotkey", transition.ChallengerFleetID),
 			Description:               "head tournament challenger registration",
@@ -224,14 +353,48 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	}
 	registrationBlock := map[string]uint64{fleetLifecycleVariantFallback: 150, fleetLifecycleVariantProvider: 750, fleetLifecycleVariantTerminal: 1400}
 	cleanupBlock := map[string]uint64{fleetLifecycleVariantTargetTakeover: 710, fleetLifecycleVariantCompanionTakeover: 1310, fleetLifecycleVariantFallback: 1320}
+	type journalBlock struct {
+		block, recovery uint64
+	}
+	currentActionBlocks := make(map[string]journalBlock, len(actions)-len(carriedActions))
+	bindCurrentAction := func(actionID string, block, recovery uint64) {
+		if _, exists := currentActionBlocks[actionID]; exists {
+			t.Fatalf("duplicate fixture block for action %s", actionID)
+		}
+		currentActionBlocks[actionID] = journalBlock{block: block, recovery: recovery}
+	}
+	for name, blocks := range blockForVariant {
+		commitmentID, _ := fleetLifecycleCommitmentActionID(name)
+		bindCurrentAction(commitmentID, blocks.commitment, 1)
+		mirrorID, _ := fleetLifecycleMirrorActionID(name)
+		bindCurrentAction(mirrorID, blocks.mirror, 1)
+		for member := 1; member <= 4; member++ {
+			bindingID, _ := fleetLifecycleBindingActionID(name, member)
+			bindCurrentAction(bindingID, blocks.binding+uint64(member-1), 1)
+		}
+	}
+	for name, block := range registrationBlock {
+		actionID, _ := fleetLifecycleRegistrationActionIDFor(name)
+		bindCurrentAction(actionID, block, block-10)
+	}
+	for name, block := range cleanupBlock {
+		for member := 1; member <= 4; member++ {
+			actionID, _ := fleetLifecycleCleanupActionID(name, member)
+			bindCurrentAction(actionID, block+uint64(member-1), block-1)
+		}
+	}
 
 	journalEntries := make([]JournalEntry, 0, len(actions))
-	appendJournal := func(action Action, block, recovery uint64) {
+	appendJournal := func(action Action, binding finalSemanticFixtureJournalBinding) {
+		transactionHash := binding.transactionHash
+		if transactionHash == "" {
+			transactionHash = finalTestHex(byte(60 + len(journalEntries)))
+		}
 		entry := JournalEntry{
 			Schema: "urnetwork-sim-journal-v1", Sequence: uint64(len(journalEntries) + 1), Time: time.Unix(1_700_000_000+int64(len(journalEntries)), 0).UTC().Format(time.RFC3339Nano),
-			DeploymentID: source.DeploymentID, PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized,
-			TransactionHash: finalTestHex(byte(60 + len(journalEntries))), BlockNumber: block, BlockHash: finalTestHex(byte(block)),
-			RecoveryBlock: recovery, RecoveryBlockHash: finalTestHex(byte(recovery)),
+			DeploymentID: source.DeploymentID, PlanHash: binding.planHash, ActionID: action.ID, IntentHash: binding.intentHash, Stage: StageFinalized,
+			TransactionHash: transactionHash, BlockNumber: binding.block, BlockHash: binding.blockHash,
+			RecoveryBlock: binding.recovery, RecoveryBlockHash: binding.recoveryHash,
 		}
 		if len(journalEntries) != 0 {
 			entry.PreviousHash = journalEntries[len(journalEntries)-1].EntryHash
@@ -245,41 +408,17 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		journalEntries = append(journalEntries, entry)
 	}
 	for _, action := range actions {
-		block, recovery := uint64(0), uint64(1)
-		for name, ids := range blockForVariant {
-			commitmentID, _ := fleetLifecycleCommitmentActionID(name)
-			mirrorID, _ := fleetLifecycleMirrorActionID(name)
-			if action.ID == commitmentID {
-				block = ids.commitment
-			} else if action.ID == mirrorID {
-				block = ids.mirror
-			} else {
-				for member := 1; member <= 4; member++ {
-					bindingID, _ := fleetLifecycleBindingActionID(name, member)
-					if action.ID == bindingID {
-						block = ids.binding + uint64(member-1)
-					}
-				}
-			}
+		current := currentActionBlocks[action.ID]
+		var carried *finalSemanticFixtureCarriedAction
+		if value, exists := carriedActions[action.ID]; exists {
+			copy := value
+			carried = &copy
 		}
-		for name, candidate := range registrationBlock {
-			id, _ := fleetLifecycleRegistrationActionIDFor(name)
-			if action.ID == id {
-				block, recovery = candidate, candidate-10
-			}
+		binding, bindingErr := resolveFinalSemanticFixtureJournalBinding(&plan, action, current.block, current.recovery, carried)
+		if bindingErr != nil {
+			t.Fatal(bindingErr)
 		}
-		for name, candidate := range cleanupBlock {
-			for member := 1; member <= 4; member++ {
-				id, _ := fleetLifecycleCleanupActionID(name, member)
-				if action.ID == id {
-					block, recovery = candidate+uint64(member-1), candidate-1
-				}
-			}
-		}
-		if block == 0 {
-			t.Fatalf("no fixture block for action %s", action.ID)
-		}
-		appendJournal(action, block, recovery)
+		appendJournal(action, binding)
 	}
 	journalByAction := make(map[string]JournalEntry, len(journalEntries))
 	var journalBytes []byte
