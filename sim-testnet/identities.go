@@ -43,6 +43,27 @@ type RoleSecrets struct {
 	Clients      map[string]ClientRoleSecret    `json:"clients"`
 }
 
+type finalPublicIdentity struct {
+	PublicKey string `json:"public_key"`
+	SS58      string `json:"ss58"`
+}
+
+type finalPublicClientIdentity struct {
+	ClientID  string `json:"client_id"`
+	ClientKey string `json:"client_key"`
+}
+
+// Keep the fields in encoding/json's former map-key order. The production
+// writer and final decoder now share one wire contract without changing the
+// canonical identities.json bytes or any hash that contains them.
+type finalPublicIdentities struct {
+	Clients      map[string]finalPublicClientIdentity `json:"clients"`
+	DeploymentID string                               `json:"deployment_id"`
+	EVM          map[string]string                    `json:"evm"`
+	Schema       string                               `json:"schema"`
+	Substrate    map[string]finalPublicIdentity       `json:"substrate"`
+}
+
 var roleSecretsCache struct {
 	sync.Mutex
 	key   [32]byte
@@ -362,18 +383,18 @@ func (r *RoleSecrets) EVMAddress(label string) (common.Address, error) {
 	return common.HexToAddress(v.Address), nil
 }
 
-func (r RoleSecrets) Public() map[string]any {
+func (r RoleSecrets) Public() finalPublicIdentities {
 	evm := map[string]string{}
 	for k, v := range r.EVM {
 		evm[k] = v.Address
 	}
-	sub := map[string]map[string]string{}
+	sub := map[string]finalPublicIdentity{}
 	for k, v := range r.Substrate {
-		sub[k] = map[string]string{"public_key": "0x" + v.PublicKeyHex, "ss58": v.SS58}
+		sub[k] = finalPublicIdentity{PublicKey: "0x" + v.PublicKeyHex, SS58: v.SS58}
 	}
-	clients := map[string]map[string]string{}
+	clients := map[string]finalPublicClientIdentity{}
 	for k, v := range r.Clients {
-		clients[k] = map[string]string{"client_id": "0x" + v.ClientIDHex, "client_key": "0x" + v.PublicKeyHex}
+		clients[k] = finalPublicClientIdentity{ClientID: "0x" + v.ClientIDHex, ClientKey: "0x" + v.PublicKeyHex}
 	}
-	return map[string]any{"schema": "urnetwork-sim-public-identities-v1", "deployment_id": r.DeploymentID, "evm": evm, "substrate": sub, "clients": clients}
+	return finalPublicIdentities{Clients: clients, DeploymentID: r.DeploymentID, EVM: evm, Schema: "urnetwork-sim-public-identities-v1", Substrate: sub}
 }

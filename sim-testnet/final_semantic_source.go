@@ -139,35 +139,6 @@ type finalSemanticArchive struct {
 	priorSemantic *FinalSemanticEvidence
 }
 
-type finalPublicIdentity struct {
-	PublicKey string `json:"public_key"`
-	SS58      string `json:"ss58"`
-}
-
-type finalPublicClientIdentity struct {
-	ClientID  string `json:"client_id"`
-	ClientKey string `json:"client_key"`
-}
-
-type finalPublicIdentities struct {
-	Schema       string                               `json:"schema"`
-	DeploymentID string                               `json:"deployment_id"`
-	Substrate    map[string]finalPublicIdentity       `json:"substrate"`
-	EVM          map[string]string                    `json:"evm"`
-	Clients      map[string]finalPublicClientIdentity `json:"clients"`
-}
-
-type finalActionPostcondition struct {
-	Schema             string         `json:"schema"`
-	DeploymentID       string         `json:"deployment_id"`
-	PlanHash           string         `json:"plan_hash"`
-	ActionID           string         `json:"action_id"`
-	IntentHash         string         `json:"intent_hash"`
-	SubstrateFinalized ChainHead      `json:"substrate_finalized"`
-	EVMFinalized       ChainHead      `json:"evm_finalized"`
-	Observed           map[string]any `json:"observed"`
-}
-
 type finalSemanticEvent struct {
 	Name string
 	Log  finalCanonicalEVMLog
@@ -226,6 +197,14 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return nil, err
 	}
+	planBytes, _, err := archive.file("launch-foundation/plan.json")
+	if err != nil {
+		return nil, err
+	}
+	planArtifact, err := archive.derivedBytes("setup-plan", "setup-plan.json", planBytes)
+	if err != nil {
+		return nil, fmt.Errorf("persist approved setup plan artifact: %w", err)
+	}
 	nativeStart, err := archive.nativeStartHead(chain)
 	if err != nil {
 		return nil, err
@@ -235,7 +214,7 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 		CampaignStartedAt: result.StartedAt, CampaignCompletedAt: result.CompletedAt,
 		DeploymentID: result.DeploymentID, PlanHash: planHash, ConfigHash: result.ConfigHash,
 		PolicyHash: result.PolicyHash, GenesisHash: result.GenesisHash, ChainID: result.ChainID, Netuid: result.Netuid,
-		PolicyArtifact: archive.collected.Policy, Window: *result.AcceptanceWindow,
+		PlanArtifact: planArtifact, PolicyArtifact: archive.collected.Policy, Window: *result.AcceptanceWindow,
 		EVMCampaignStartHead: result.CampaignStartHead, NativeStartHead: nativeStart, NativeTerminalHead: chain.NativeHead, EVMTerminalHead: chain.EVMHead,
 		ExpectedOperators: cfg.Config.Topology.Operators, ExpectedValidators: cfg.Config.Topology.Validators,
 		ExpectedMiners: cfg.Config.Topology.Miners, ExpectedCandidates: cfg.Config.Topology.HeadFleets + cfg.Config.Topology.ChallengerFleets,
@@ -497,11 +476,20 @@ func (a *finalSemanticArchive) bindCallInputs(result *ScenarioResult, terminal *
 }
 
 func (a *finalSemanticArchive) planHash() (string, error) {
-	var plan struct {
-		PlanHash string `json:"plan_hash"`
-	}
-	if err := a.decode("launch-foundation/plan.json", &plan); err != nil {
+	data, _, err := a.file("launch-foundation/plan.json")
+	if err != nil {
 		return "", err
+	}
+	var plan SetupPlan
+	if err := decodeStrictJSONBytes(data, &plan); err != nil {
+		return "", fmt.Errorf("decode closed setup plan: %w", err)
+	}
+	if plan.Schema != currentSetupPlanSchema {
+		return "", fmt.Errorf("closed setup plan schema %q is not current", plan.Schema)
+	}
+	observedHash, err := persistedSetupPlanHash(data, plan.Schema)
+	if err != nil || !strings.EqualFold(observedHash, plan.PlanHash) {
+		return "", stateMismatchError(err, "closed setup plan hash %s does not authenticate its exact wire object", plan.PlanHash)
 	}
 	if err := requireFinalHex32("closed plan hash", plan.PlanHash); err != nil {
 		return "", err
@@ -810,28 +798,10 @@ func (a *finalSemanticArchive) actionFinalized(actionID string) (JournalEntry, e
 	return found, nil
 }
 
-func (a *finalSemanticArchive) actionPostcondition(actionID string) (*finalActionPostcondition, []byte, error) {
-	var matches []struct {
-		value finalActionPostcondition
-		data  []byte
-	}
-	for name, data := range a.files {
-		if !strings.HasPrefix(name, "receipts/postconditions/") || !strings.HasSuffix(name, "/"+actionID+".json") {
-			continue
-		}
-		var value finalActionPostcondition
-		if decodeStrictJSONBytes(data, &value) == nil && value.ActionID == actionID && value.DeploymentID != "" {
-			matches = append(matches, struct {
-				value finalActionPostcondition
-				data  []byte
-			}{value: value, data: append([]byte(nil), data...)})
-		}
-	}
-	if len(matches) == 0 {
-		return nil, nil, fmt.Errorf("captured postcondition for %s is absent", actionID)
-	}
-	// Revisions may retain earlier receipts. The postcondition whose plan hash
-	// appears latest in the journal is authoritative.
+func (a *finalSemanticArchive) actionPostcondition(actionID string) (*ActionPostcondition, []byte, error) {
+	// Revisions may retain earlier receipts. The latest verified journal entry
+	// is authoritative, and its exact path and canonical hash authenticate one
+	// v4 object. Directory scans would allow an unjournaled duplicate to win.
 	entries, err := a.journalEntries()
 	if err != nil {
 		return nil, nil, err
@@ -841,17 +811,31 @@ func (a *finalSemanticArchive) actionPostcondition(actionID string) (*finalActio
 		if entry.ActionID != actionID || entry.Stage != StageVerified {
 			continue
 		}
-		for _, match := range matches {
-			if match.value.PlanHash == entry.PlanHash && match.value.IntentHash == entry.IntentHash {
-				copy := match.value
-				return &copy, match.data, nil
-			}
+		wantPath, pathErr := postconditionRelativePath(entry.PlanHash, entry.ActionID)
+		if pathErr != nil || entry.PostconditionPath != wantPath {
+			return nil, nil, stateMismatchError(pathErr, "captured v4 postcondition for %s has a noncanonical journal path", actionID)
 		}
+		data, ok := a.files[entry.PostconditionPath]
+		if !ok {
+			return nil, nil, fmt.Errorf("captured v4 postcondition for %s is absent at journal path %s", actionID, entry.PostconditionPath)
+		}
+		record, decodeErr := decodeFinalActionPostconditionV4(data)
+		if decodeErr != nil {
+			return nil, nil, fmt.Errorf("decode captured v4 postcondition for %s: %w", actionID, decodeErr)
+		}
+		if record.DeploymentID != entry.DeploymentID || record.PlanHash != entry.PlanHash || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
+			return nil, nil, fmt.Errorf("captured v4 postcondition for %s differs from its verified journal identity", actionID)
+		}
+		hash, hashErr := canonicalHashHex(record)
+		if hashErr != nil || hash != entry.PostconditionHash {
+			return nil, nil, stateMismatchError(hashErr, "captured v4 postcondition for %s has hash %s, journal requires %s", actionID, hash, entry.PostconditionHash)
+		}
+		return record, append([]byte(nil), data...), nil
 	}
 	return nil, nil, fmt.Errorf("captured postcondition for %s is not journal-authenticated", actionID)
 }
 
-func (a *finalSemanticArchive) nativeActionReceipt(actionID, name string) (FinalNativeReceipt, *finalActionPostcondition, error) {
+func (a *finalSemanticArchive) nativeActionReceipt(actionID, name string) (FinalNativeReceipt, *ActionPostcondition, error) {
 	entry, err := a.actionFinalized(actionID)
 	if err != nil {
 		return FinalNativeReceipt{}, nil, err
@@ -859,6 +843,9 @@ func (a *finalSemanticArchive) nativeActionReceipt(actionID, name string) (Final
 	postcondition, data, err := a.actionPostcondition(actionID)
 	if err != nil {
 		return FinalNativeReceipt{}, nil, err
+	}
+	if entry.DeploymentID != postcondition.DeploymentID || entry.PlanHash != postcondition.PlanHash || entry.ActionID != postcondition.ActionID || entry.IntentHash != postcondition.IntentHash {
+		return FinalNativeReceipt{}, nil, fmt.Errorf("captured finalized receipt for %s differs from its verified v4 postcondition", actionID)
 	}
 	if postcondition.SubstrateFinalized.Number < entry.BlockNumber {
 		return FinalNativeReceipt{}, nil, fmt.Errorf("%s postcondition precedes transaction inclusion", actionID)
@@ -2239,11 +2226,24 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 			if !uidOK || !churnOK || uint16(replacedUID) != uid || pruned.SS58 == "" {
 				return fmt.Errorf("challenger fleet-%d replacement evidence is incomplete", fleetID)
 			}
-			artifact, err := a.derived("head-tournament-transition", fmt.Sprintf("fleet-%d-transition.json", fleetID), postcondition)
+			artifactValue := finalHeadTournamentTransitionArtifact{
+				Postcondition: postcondition,
+				Pruned: finalHeadTournamentIdentity{
+					Role: fmt.Sprintf("churn-%d-hotkey", replacedChurn), PublicKey: strings.ToLower(pruned.PublicKey), SS58: pruned.SS58,
+				},
+			}
+			artifact, err := a.derived("head-tournament-transition", fmt.Sprintf("fleet-%d-transition.json", fleetID), artifactValue)
 			if err != nil {
 				return err
 			}
-			source.HeadTransitions = append(source.HeadTransitions, FinalHeadTournamentTransition{ChallengerFleetID: uint64(fleetID), PromotedUID: uid, PromotedHotkey: hotkey.SS58, PrunedUID: uint16(replacedUID), PrunedHotkey: pruned.SS58, Registration: registration, Snapshot: postcondition.SubstrateFinalized, Artifact: artifact})
+			source.HeadTransitions = append(source.HeadTransitions, FinalHeadTournamentTransition{
+				ChallengerFleetID: uint64(fleetID), PromotedUID: uid, PromotedHotkey: hotkey.SS58,
+				PrunedUID: uint16(replacedUID), PrunedChurn: replacedChurn, PrunedHotkey: pruned.SS58,
+				OperationalRPCMode: postcondition.OperationalRPCMode, IndependentRPC: postcondition.IndependentRPC,
+				Registration: registration, Snapshot: postcondition.SubstrateFinalized,
+				IndependentSnapshot: postcondition.IndependentSubstrateFinalized, EVMSnapshot: postcondition.EVMFinalized,
+				IndependentEVMSnapshot: postcondition.IndependentEVMFinalized, Artifact: artifact,
+			})
 		}
 	}
 	return nil
@@ -2602,43 +2602,19 @@ func finalSemanticSetDifference(left, right map[uint64]bool) []uint64 {
 }
 
 func (a *finalSemanticArchive) buildValidatorView(source *FinalSemanticEvidence) error {
-	if source == nil || len(source.Validators) < 2 {
-		return errors.New("validator-local view requires two validators")
-	}
-	affected, control := &source.Validators[0], &source.Validators[1]
-	controlByEpoch := make(map[uint64]FinalCRv4Cycle, len(control.Cycles))
-	for _, cycle := range control.Cycles {
-		controlByEpoch[cycle.SettlementEpoch] = cycle
-	}
-	var faultEpoch, restoredEpoch, withheld, replacement uint64
-	for _, cycle := range affected.Cycles {
-		other, ok := controlByEpoch[cycle.SettlementEpoch]
-		if !ok {
-			return fmt.Errorf("control validator lacks settlement epoch %d", cycle.SettlementEpoch)
-		}
-		affectedSet, controlSet := finalSemanticSelectedFleets(cycle), finalSemanticSelectedFleets(other)
-		missing := finalSemanticSetDifference(controlSet, affectedSet)
-		extra := finalSemanticSetDifference(affectedSet, controlSet)
-		if faultEpoch == 0 && len(missing) > 0 && len(extra) > 0 {
-			faultEpoch, withheld, replacement = cycle.SettlementEpoch, missing[0], extra[0]
-			continue
-		}
-		if faultEpoch != 0 && cycle.SettlementEpoch > faultEpoch && len(missing) == 0 && len(extra) == 0 {
-			restoredEpoch = cycle.SettlementEpoch
-			break
-		}
-	}
-	if faultEpoch == 0 || restoredEpoch == 0 {
-		return errors.New("closed validator cycles do not prove a divergent then restored local head view")
-	}
-	artifact, err := a.derived("validator-view-transition", "validator-view-transition.json", map[string]any{
-		"fault_epoch": faultEpoch, "restored_epoch": restoredEpoch, "affected_validator_id": affected.ValidatorID,
-		"control_validator_id": control.ValidatorID, "withheld_fleet_id": withheld, "replacement_fleet_id": replacement,
-	})
+	derived, err := deriveFinalValidatorViewTransition(source)
 	if err != nil {
 		return err
 	}
-	source.ValidatorView = FinalValidatorViewTransition{FaultEpoch: faultEpoch, RestoredEpoch: restoredEpoch, AffectedValidatorID: affected.ValidatorID, ControlValidatorID: control.ValidatorID, WithheldFleetID: withheld, ReplacementFleetID: replacement, Artifact: artifact}
+	artifact, err := a.derived("validator-view-transition", "validator-view-transition.json", derived)
+	if err != nil {
+		return err
+	}
+	source.ValidatorView = FinalValidatorViewTransition{
+		FaultEpoch: derived.FaultEpoch, RestoredEpoch: derived.RestoredEpoch,
+		AffectedValidatorID: derived.AffectedValidatorID, ControlValidatorID: derived.ControlValidatorID,
+		WithheldFleetID: derived.WithheldFleetID, ReplacementFleetID: derived.ReplacementFleetID, Artifact: artifact,
+	}
 	return nil
 }
 

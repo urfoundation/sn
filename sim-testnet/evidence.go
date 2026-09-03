@@ -825,6 +825,10 @@ func publishedFinalSemanticReaderFactory(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return nil, err
 	}
+	origins, err := finalOperatorEvidenceOrigins(directory)
+	if err != nil {
+		return nil, err
+	}
 	discoveryURI := ""
 	for _, locator := range directory.Locators {
 		if locator.OperatorNoID == 1 {
@@ -836,7 +840,11 @@ func publishedFinalSemanticReaderFactory(ctx context.Context, cfg *ResolvedConfi
 		return nil, errors.New("final semantic public deployment-manifest discovery URI is missing")
 	}
 	return func(readerCtx context.Context, evidence *FinalSemanticEvidence) (FinalSemanticChainReader, error) {
-		return NewPublicFinalSemanticChainReader(readerCtx, public, evidence, discoveryURI)
+		transport, transportErr := canonicalFinalSemanticRPCTransport(public, finalSemanticDefaultEVMRequestsPerMinute, finalSemanticDefaultSubstrateRequestsPerSecond)
+		if transportErr != nil {
+			return nil, transportErr
+		}
+		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, public, evidence, discoveryURI, origins, transport)
 	}, nil
 }
 
@@ -1448,9 +1456,9 @@ func validateDeploymentManifestLocatorDirectory(exact []byte, prior *PublicDeplo
 		return nil, errors.New("superseded deployment locator directory does not match its manifest revision")
 	}
 	seen := make(map[int]bool, len(directory.Locators))
-	for _, locator := range directory.Locators {
+	for index, locator := range directory.Locators {
 		operator, ok := operators[locator.OperatorNoID]
-		if !ok || seen[locator.OperatorNoID] || !validSHA256ContentHash(locator.ContentHash) {
+		if !ok || locator.OperatorNoID != index+1 || seen[locator.OperatorNoID] || !validSHA256ContentHash(locator.ContentHash) {
 			return nil, errors.New("superseded deployment locator directory is incomplete")
 		}
 		seen[locator.OperatorNoID] = true
@@ -1463,6 +1471,20 @@ func validateDeploymentManifestLocatorDirectory(exact []byte, prior *PublicDeplo
 		}
 	}
 	return &directory, nil
+}
+
+func finalOperatorEvidenceOrigins(directory *deploymentManifestLocatorDirectory) ([]FinalOperatorEvidenceOrigin, error) {
+	if directory == nil || len(directory.Locators) != 2 {
+		return nil, errors.New("deployment locator directory must contain exactly two operator origins")
+	}
+	origins := make([]FinalOperatorEvidenceOrigin, len(directory.Locators))
+	for index, locator := range directory.Locators {
+		if locator.OperatorNoID != index+1 || locator.URL == "" {
+			return nil, errors.New("deployment locator directory is not in canonical operator order")
+		}
+		origins[index] = FinalOperatorEvidenceOrigin{OperatorNoID: locator.OperatorNoID, ManifestURI: locator.URL}
+	}
+	return origins, nil
 }
 
 func containsHashFold(hashes []string, want string) bool {

@@ -744,6 +744,10 @@ func finalSemanticReaderFactoryFromCapturedFiles(cfg *ResolvedConfig, files map[
 	if err != nil {
 		return nil, err
 	}
+	origins, err := finalOperatorEvidenceOrigins(directory)
+	if err != nil {
+		return nil, err
+	}
 	discoveryURI := ""
 	for _, locator := range directory.Locators {
 		if locator.OperatorNoID == 1 {
@@ -759,7 +763,7 @@ func finalSemanticReaderFactoryFromCapturedFiles(cfg *ResolvedConfig, files map[
 		return nil, fmt.Errorf("authenticate captured final semantic RPC transport: %w", err)
 	}
 	return func(readerCtx context.Context, evidence *FinalSemanticEvidence) (FinalSemanticChainReader, error) {
-		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, &public, evidence, discoveryURI, transport)
+		return newPublicFinalSemanticChainReaderWithTransport(readerCtx, &public, evidence, discoveryURI, origins, transport)
 	}, nil
 }
 

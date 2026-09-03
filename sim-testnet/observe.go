@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -384,8 +385,8 @@ func validatePublicCampaignOperatorOrigins(public *PublicDeploymentManifest) err
 	}
 	seen := make(map[string]bool, len(public.Operators))
 	seenOperators := make(map[int]bool, len(public.Operators))
-	for _, operator := range public.Operators {
-		if operator.NoID < 1 || operator.NoID > len(public.Operators) || seenOperators[operator.NoID] {
+	for index, operator := range public.Operators {
+		if operator.NoID != index+1 || seenOperators[operator.NoID] {
 			return fmt.Errorf("public campaign operator %d identity is invalid or duplicated", operator.NoID)
 		}
 		seenOperators[operator.NoID] = true
@@ -678,34 +679,29 @@ func (p *liveScenarioProbe) verifyCampaignFinalSemanticEvidence(ctx context.Cont
 	if semantic.PublicVerification == nil || semantic.PublicVerification.EvidenceURI == "" {
 		return nil, errors.New("final semantic evidence does not bind a public deployment-manifest URI")
 	}
-	allowedOrigins, err := campaignArtifactAllowedOrigins(public, p.publicManifestURI)
-	if err != nil {
-		return nil, fmt.Errorf("final semantic deployment-manifest transport: %w", err)
-	}
-	if err := validateCampaignArtifactOrigin(semantic.PublicVerification.EvidenceURI, allowedOrigins); err != nil {
-		return nil, fmt.Errorf("final semantic deployment-manifest URI: %w", err)
+	if p == nil || p.publicManifestURI == "" || !slices.ContainsFunc(semantic.PublicVerification.OperatorEvidenceOrigins, func(origin FinalOperatorEvidenceOrigin) bool {
+		return origin.ManifestURI == p.publicManifestURI
+	}) {
+		return nil, errors.New("current deployment-manifest URI is not one of the two signed operator origins")
 	}
 	if p.finalSemanticVerify == nil {
+		allowedOrigins, err := campaignArtifactAllowedOrigins(public, "")
+		if err != nil {
+			return nil, fmt.Errorf("final semantic deployment-manifest transport: %w", err)
+		}
+		for _, origin := range semantic.PublicVerification.OperatorEvidenceOrigins {
+			if err := validateCampaignArtifactOrigin(origin.ManifestURI, allowedOrigins); err != nil {
+				return nil, fmt.Errorf("final semantic operator %d deployment-manifest URI: %w", origin.OperatorNoID, err)
+			}
+		}
 		publicManifestHash, err := canonicalHashHex(public)
 		publicProfile, profileErr := effectivePublicEvidenceTransportProfile(public)
 		if err != nil || profileErr != nil || semantic.PublicVerification.PublicManifestHash != publicManifestHash || semantic.PublicVerification.SubstrateRPC != public.SubstrateRPC || semantic.PublicVerification.EVMRPC != public.EVMRPC || semantic.PublicVerification.EvidenceTransportProfile != publicProfile {
 			err = errors.Join(err, profileErr)
 			return nil, stateMismatchError(err, "final semantic evidence does not bind the authenticated public manifest hash and exact public RPC endpoints")
 		}
-	}
-	if semantic.PublicVerification.EvidenceURI != p.publicManifestURI {
-		profile, profileErr := effectivePublicEvidenceTransportProfile(public)
-		if profileErr != nil {
-			return nil, fmt.Errorf("final semantic deployment-manifest transport: %w", profileErr)
-		}
-		_, discovered, err := loadDeploymentReferenceWithTransport(ctx, "", semantic.PublicVerification.EvidenceURI, profile, public.ChainID, public.GenesisHash)
-		if err != nil || discovered == nil {
-			return nil, stateMismatchError(err, "final semantic deployment-manifest URI is unavailable or unauthenticated")
-		}
-		wantHash, wantErr := canonicalHashHex(public)
-		gotHash, gotErr := canonicalHashHex(discovered)
-		if wantErr != nil || gotErr != nil || wantHash != gotHash {
-			return nil, errors.Join(wantErr, gotErr, errors.New("final semantic deployment-manifest URI resolves to a different public manifest"))
+		if err := p.authenticateFinalOperatorManifestOrigins(ctx, public, semantic.PublicVerification); err != nil {
+			return nil, err
 		}
 	}
 	verify := p.finalSemanticVerify
@@ -727,6 +723,54 @@ func (p *liveScenarioProbe) verifyCampaignFinalSemanticEvidence(ctx context.Cont
 		return nil, err
 	}
 	return &authenticatedCampaignSemantic{Evidence: &semantic, PriorCompletion: priorCompletion, PriorPayload: priorPayload, PriorManifest: priorManifest, Artifacts: allFiles}, nil
+}
+
+func (p *liveScenarioProbe) authenticateFinalOperatorManifestOrigins(ctx context.Context, public *PublicDeploymentManifest, verification *FinalPublicChainVerification) error {
+	if p == nil || public == nil || verification == nil {
+		return errors.New("final operator manifest authentication context is incomplete")
+	}
+	profile, err := effectivePublicEvidenceTransportProfile(public)
+	if err != nil {
+		return err
+	}
+	if err := validateFinalOperatorEvidenceOrigins(verification.OperatorEvidenceOrigins, verification.EvidenceURI, profile, public.ChainID, public.GenesisHash); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(public)
+	if err != nil {
+		return err
+	}
+	_, signers := inspectPublicIdentityBytesForManifest(public.Identities, public.DeploymentID, public.Topology)
+	if len(signers) != 2 || len(public.Operators) != 2 {
+		return errors.New("authenticated deployment manifest does not contain exactly two operator signers/origins")
+	}
+	seenSigners := map[string]bool{}
+	for operator := 1; operator <= 2; operator++ {
+		signer := strings.ToLower(signers[operator])
+		if !common.IsHexAddress(signer) || common.HexToAddress(signer) == (common.Address{}) || seenSigners[signer] {
+			return errors.New("authenticated deployment manifest operator signers are invalid or duplicated")
+		}
+		seenSigners[signer] = true
+	}
+	for index, origin := range verification.OperatorEvidenceOrigins {
+		operator := public.Operators[index]
+		manifestOrigin, manifestErr := publicEvidenceOrigin(origin.ManifestURI, profile, public.ChainID, public.GenesisHash)
+		operatorOrigin, operatorErr := publicEvidenceOrigin(operator.APIURL, profile, public.ChainID, public.GenesisHash)
+		if manifestErr != nil || operatorErr != nil || operator.NoID != origin.OperatorNoID || manifestOrigin != operatorOrigin {
+			return stateMismatchError(errors.Join(manifestErr, operatorErr), "operator %d signed manifest URI is outside its authenticated origin", origin.OperatorNoID)
+		}
+		raw, _, readErr := p.get(ctx, origin.ManifestURI, 16*1024*1024)
+		if readErr != nil {
+			return fmt.Errorf("read operator %d signed deployment manifest: %w", origin.OperatorNoID, readErr)
+		}
+		envelope, envelopeErr := validateArchivedDeploymentManifestEnvelope(raw, public, payload, signers[origin.OperatorNoID])
+		parsed, parseErr := url.Parse(origin.ManifestURI)
+		values, queryErr := url.ParseQuery(parsed.RawQuery)
+		if envelopeErr != nil || parseErr != nil || queryErr != nil || values.Get("hash") != envelope.ContentHash {
+			return stateMismatchError(errors.Join(envelopeErr, parseErr, queryErr), "operator %d deployment-manifest URI does not resolve to its exact independently signed payload", origin.OperatorNoID)
+		}
+	}
+	return nil
 }
 
 func (p *liveScenarioProbe) verifyPublicCampaignEvidence(ctx context.Context, public *PublicDeploymentManifest, ownerSigner string, complete *ReleaseEvidenceEnvelope, completion scenarioCompletePayload, bundle *ScenarioEvidenceBundle) (*authenticatedCampaignSemantic, error) {
@@ -862,16 +906,18 @@ func (p *liveScenarioProbe) verifyPublicCampaignEvidence(ctx context.Context, pu
 }
 
 type publicScenarioCandidate struct {
-	bundle  *ScenarioEvidenceBundle
-	payload string
-	signers map[int]bool
-	time    time.Time
+	bundle       *ScenarioEvidenceBundle
+	payload      string
+	payloadBytes []byte
+	signers      map[int]bool
+	time         time.Time
 }
 
 type publicScenarioCompletionCandidate struct {
-	envelope  *ReleaseEvidenceEnvelope
-	payload   scenarioCompletePayload
-	operators map[int]bool
+	envelope     *ReleaseEvidenceEnvelope
+	payload      scenarioCompletePayload
+	payloadBytes []byte
+	operators    map[int]bool
 }
 
 type authenticatedPublicScenarioCandidate struct {
@@ -993,7 +1039,7 @@ func findPublicCampaignPredecessor(semantic *authenticatedCampaignSemantic, cand
 	if completion == nil || candidate == nil {
 		return nil, nil, errors.New("production predecessor is absent from replicated public scenario history")
 	}
-	if len(completion.operators) != operatorCount || len(candidate.signers) != operatorCount || !evidenceEnvelopesEqual(semantic.PriorCompletion, completion.envelope) || !reflect.DeepEqual(*semantic.PriorPayload, completion.payload) {
+	if len(completion.operators) != operatorCount || len(candidate.signers) != operatorCount || !bytes.Equal(completion.payloadBytes, encodedCompletion) || !evidenceEnvelopesEqual(semantic.PriorCompletion, completion.envelope) || !reflect.DeepEqual(*semantic.PriorPayload, completion.payload) {
 		return nil, nil, errors.New("production predecessor does not have byte-identical bundle and completion commits at every operator")
 	}
 	return candidate, completion, nil
@@ -1105,8 +1151,10 @@ func (p *liveScenarioProbe) fetchAuthenticatedScenarioCampaign(ctx context.Conte
 			item := candidates[candidateKey]
 			if item == nil {
 				copy := bundle
-				item = &publicScenarioCandidate{bundle: &copy, payload: payloadHash, signers: map[int]bool{}, time: completed}
+				item = &publicScenarioCandidate{bundle: &copy, payload: payloadHash, payloadBytes: append([]byte(nil), envelope.Payload...), signers: map[int]bool{}, time: completed}
 				candidates[candidateKey] = item
+			} else if !bytes.Equal(item.payloadBytes, envelope.Payload) {
+				return nil, errors.New("operator scenario bundle payloads share a hash but differ in exact bytes")
 			}
 			item.signers[operator.NoID] = true
 		}
@@ -1141,8 +1189,10 @@ func (p *liveScenarioProbe) fetchAuthenticatedScenarioCampaign(ctx context.Conte
 			item := completions[completionKey]
 			if item == nil {
 				copyEnvelope := envelope
-				item = &publicScenarioCompletionCandidate{envelope: &copyEnvelope, payload: payload, operators: map[int]bool{}}
+				item = &publicScenarioCompletionCandidate{envelope: &copyEnvelope, payload: payload, payloadBytes: append([]byte(nil), operatorEnvelope.Payload...), operators: map[int]bool{}}
 				completions[completionKey] = item
+			} else if !bytes.Equal(item.payloadBytes, operatorEnvelope.Payload) {
+				return nil, errors.New("operator completion payloads share a hash but differ in exact bytes")
 			}
 			item.operators[operator.NoID] = true
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -18,6 +19,112 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 )
+
+func TestFinalOperatorManifestOriginsResolveIndependentSignedPayloads(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities, err := json.Marshal(roles.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := &PublicDeploymentManifest{
+		Schema: "urnetwork-sim-public-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		EvidenceTransportProfile: publicEvidenceTransportHTTPS, Identities: identities, Topology: cfg.Config.Topology,
+		Operators: []PublicOperator{
+			{NoID: 1, APIURL: "https://operator-1.example"},
+			{NoID: 2, APIURL: "https://operator-2.example"},
+		},
+	}
+	objects := map[string][]byte{}
+	origins := make([]FinalOperatorEvidenceOrigin, 2)
+	for operator := 1; operator <= 2; operator++ {
+		envelope, err := signEvidence(cfg, "deployment-manifest", "", public, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		host := fmt.Sprintf("operator-%d.example", operator)
+		objects[host] = encoded
+		origins[operator-1] = FinalOperatorEvidenceOrigin{OperatorNoID: operator, ManifestURI: "https://" + host + "/sn/evidence?hash=" + envelope.ContentHash}
+	}
+	calls := map[string]int{}
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls[request.URL.Host]++
+		encoded := objects[request.URL.Host]
+		if len(encoded) == 0 {
+			return &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header), Body: http.NoBody, Request: request}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(encoded)), Request: request}, nil
+	})}}
+	verification := &FinalPublicChainVerification{EvidenceURI: origins[0].ManifestURI, OperatorEvidenceOrigins: origins}
+	if err := probe.authenticateFinalOperatorManifestOrigins(context.Background(), public, verification); err != nil {
+		t.Fatalf("two independently signed deployment manifests: %v", err)
+	}
+	if calls["operator-1.example"] != 1 || calls["operator-2.example"] != 1 {
+		t.Fatalf("independent origin reads = %+v, want one per operator", calls)
+	}
+
+	different := *public
+	different.PlanHash = "0x" + strings.Repeat("ab", 32)
+	tampered, err := signEvidence(cfg, "deployment-manifest", "", &different, roles.EVM["operator-2-artifact"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects["operator-2.example"], err = json.Marshal(tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verification.OperatorEvidenceOrigins[1].ManifestURI = "https://operator-2.example/sn/evidence?hash=" + tampered.ContentHash
+	if err := probe.authenticateFinalOperatorManifestOrigins(context.Background(), public, verification); err == nil {
+		t.Fatal("operator 2 independently signed a different deployment graph and was accepted")
+	}
+}
+
+func TestFinalOperatorSignedArchiveGraphRequiresByteIdenticalReplicas(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := &PublicDeploymentManifest{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID,
+		GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		Operators: []PublicOperator{
+			{NoID: 1, APIURL: "https://operator-1.example"},
+			{NoID: 2, APIURL: "https://operator-2.example"},
+		},
+	}
+	envelope, err := signEvidence(cfg, campaignEvidenceManifestKind, "release-run", map[string]string{"schema": campaignEvidenceManifestSchema}, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencoded, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects := map[string][]byte{"operator-1.example": canonical, "operator-2.example": reencoded}
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(objects[request.URL.Host])), Request: request}, nil
+	})}}
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex()); err == nil || !strings.Contains(err.Error(), "differs between operator replicas") {
+		t.Fatalf("semantically equal but byte-different signed archive replicas were accepted: %v", err)
+	}
+	objects["operator-2.example"] = canonical
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex()); err != nil {
+		t.Fatalf("byte-identical signed archive replicas were rejected: %v", err)
+	}
+}
 
 // A stale state file from a prior supervisor generation cannot represent a
 // healthy topology, even when every recorded child still says healthy.
@@ -307,7 +414,8 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	}
 }
 
-func publicPhaseLineageFixture() (*authenticatedPublicScenarioCandidate, *authenticatedPublicScenarioCandidate) {
+func publicPhaseLineageFixture(t *testing.T) (*authenticatedPublicScenarioCandidate, *authenticatedPublicScenarioCandidate) {
+	t.Helper()
 	releaseWindow := &ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 90, Hash: "0x" + strings.Repeat("10", 32)}, TerminalBlock: 120, EpochCount: 5}
 	productionWindow := &ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 200, Hash: "0x" + strings.Repeat("20", 32)}, TerminalBlock: 260, EpochCount: 3}
 	releaseResult := &ScenarioResult{
@@ -324,6 +432,10 @@ func publicPhaseLineageFixture() (*authenticatedPublicScenarioCandidate, *authen
 		ResultHash: releaseResult.EvidenceHash, BundlePayloadHash: "sha256:" + strings.Repeat("51", 32), EvidenceManifestHash: "sha256:" + strings.Repeat("52", 32), Files: map[string]string{"result.json": "sha256:" + strings.Repeat("53", 32)},
 	}
 	releaseComplete := &ReleaseEvidenceEnvelope{RunID: releaseResult.RunID, ContentHash: "sha256:" + strings.Repeat("54", 32), Signature: "0xrelease", Payload: json.RawMessage(`{"result":"release"}`)}
+	releaseCompleteBytes, err := json.Marshal(releaseComplete)
+	if err != nil {
+		t.Fatal(err)
+	}
 	releaseManifest := &ReleaseEvidenceEnvelope{RunID: releaseResult.RunID, ContentHash: releasePayload.EvidenceManifestHash, Signature: "0xmanifest", Payload: json.RawMessage(`{"manifest":"release"}`)}
 	nativeTerminal := ChainHead{Number: 119, Hash: "0x" + strings.Repeat("55", 32)}
 	releaseSemantic := &FinalSemanticEvidence{Phase: "release-1.0", NativeTerminalHead: nativeTerminal}
@@ -334,7 +446,7 @@ func publicPhaseLineageFixture() (*authenticatedPublicScenarioCandidate, *authen
 	productionSemantic := &FinalSemanticEvidence{Phase: "production-soak", PriorPhase: priorBinding}
 	prior := &authenticatedPublicScenarioCandidate{
 		candidate:  &publicScenarioCandidate{bundle: &ScenarioEvidenceBundle{Result: releaseResult}, payload: releasePayload.BundlePayloadHash, signers: map[int]bool{1: true, 2: true}},
-		completion: &publicScenarioCompletionCandidate{envelope: releaseComplete, payload: releasePayload, operators: map[int]bool{1: true, 2: true}},
+		completion: &publicScenarioCompletionCandidate{envelope: releaseComplete, payload: releasePayload, payloadBytes: releaseCompleteBytes, operators: map[int]bool{1: true, 2: true}},
 		semantic:   &authenticatedCampaignSemantic{Evidence: releaseSemantic, EvidenceManifest: releaseManifest},
 	}
 	current := &authenticatedPublicScenarioCandidate{
@@ -348,42 +460,42 @@ func publicPhaseLineageFixture() (*authenticatedPublicScenarioCandidate, *authen
 }
 
 func TestAuthenticatedPublicProductionRequiresExactReleaseLineage(t *testing.T) {
-	current, prior := publicPhaseLineageFixture()
+	current, prior := publicPhaseLineageFixture(t)
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err != nil {
 		t.Fatalf("exact release lineage rejected: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.Evidence.PriorPhase.ResultHash = "0x" + strings.Repeat("ff", 32)
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("wrong release result hash accepted: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.Evidence.PriorPhase.OwnerCompletionEnvelopeHash = "sha256:" + strings.Repeat("ee", 32)
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("wrong release completion envelope hash accepted: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.Evidence.PriorPhase.EvidenceManifestEnvelopeHash = "sha256:" + strings.Repeat("ed", 32)
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("wrong release manifest envelope hash accepted: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.PriorManifest = &ReleaseEvidenceEnvelope{ContentHash: prior.semantic.EvidenceManifest.ContentHash, Signature: "0xsubstituted"}
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "objects do not match") {
 		t.Fatalf("substituted release manifest accepted: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.Evidence.PriorPhase.TerminalNativeHead.Number++
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "checkpoints") {
 		t.Fatalf("wrong release terminal head accepted: %v", err)
 	}
 
-	current, prior = publicPhaseLineageFixture()
+	current, prior = publicPhaseLineageFixture(t)
 	current.semantic.Evidence.PriorPhase = nil
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "lacks") {
 		t.Fatalf("missing release binding accepted: %v", err)
@@ -533,7 +645,7 @@ func TestScenarioFinalSemanticSourceBindsRunResultAndPhase(t *testing.T) {
 }
 
 func TestPublicProductionPredecessorMustExistAtEveryOperator(t *testing.T) {
-	current, prior := publicPhaseLineageFixture()
+	current, prior := publicPhaseLineageFixture(t)
 	encoded, err := json.Marshal(current.semantic.PriorCompletion)
 	if err != nil {
 		t.Fatal(err)

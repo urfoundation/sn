@@ -339,6 +339,14 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 			t.Fatalf("FINAL.md semantic section does not contain %q", want)
 		}
 	}
+	for _, origin := range first.PublicVerification.OperatorEvidenceOrigins {
+		for _, command := range []string{"inspect", "analyze"} {
+			want := fmt.Sprintf("go run ./sim-testnet %s --config sim-testnet/testnet.yml --manifest %s --format json", command, origin.ManifestURI)
+			if !bytes.Contains(markdown, []byte(want)) {
+				t.Fatalf("FINAL.md does not emit operator %d %s command", origin.OperatorNoID, command)
+			}
+		}
+	}
 	load := func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
 		data, ok := artifacts[locator.URI]
 		if !ok {
@@ -389,6 +397,158 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 		return tamperedBytes[locator.URI], nil
 	}); err == nil || !strings.Contains(err.Error(), "size or content hash mismatch") {
 		t.Fatalf("tampered artifact was not rejected: %v", err)
+	}
+}
+
+func TestFinalSemanticDerivedTransitionsRejectIndependentMutations(t *testing.T) {
+	requireFinalSemanticReleaseScaleFixture(t)
+	source, baselineArtifacts := finalSemanticFixture(t)
+	if err := verifyFinalHeadTournamentTransitionArtifacts(&source, baselineArtifacts); err != nil {
+		t.Fatalf("baseline tournament artifacts: %v", err)
+	}
+	if err := verifyFinalValidatorViewTransitionArtifact(&source, baselineArtifacts[source.ValidatorView.Artifact.URI]); err != nil {
+		t.Fatalf("baseline validator view artifact: %v", err)
+	}
+	type mutation struct {
+		name string
+		edit func(*FinalSemanticEvidence, map[string][]byte)
+	}
+	mutations := []mutation{
+		{name: "declaration", edit: func(evidence *FinalSemanticEvidence, _ map[string][]byte) {
+			evidence.ValidatorView.WithheldFleetID = 199
+		}},
+		{name: "artifact", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
+			value := finalValidatorViewTransitionArtifact{FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 199, ReplacementFleetID: 5}
+			replaceFinalSemanticFixtureArtifact(t, &evidence.ValidatorView.Artifact, artifacts, value)
+		}},
+		{name: "cycle", edit: func(evidence *FinalSemanticEvidence, _ map[string][]byte) {
+			for index := range evidence.Validators[0].Cycles[0].Candidates {
+				candidate := &evidence.Validators[0].Cycles[0].Candidates[index]
+				if candidate.FleetID == 201 {
+					candidate.UID++
+					return
+				}
+			}
+			t.Fatal("fixture cycle has no challenger fleet 201")
+		}},
+		{name: "v4 field", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
+			transition := &evidence.HeadTransitions[0]
+			var value finalHeadTournamentTransitionArtifact
+			if err := json.Unmarshal(artifacts[transition.Artifact.URI], &value); err != nil {
+				t.Fatal(err)
+			}
+			value.Postcondition.IndependentEVMHashDomain = "ethereum"
+			replaceFinalSemanticFixtureArtifact(t, &transition.Artifact, artifacts, value)
+		}},
+		{name: "pruned identity", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
+			transition := &evidence.HeadTransitions[0]
+			var value finalHeadTournamentTransitionArtifact
+			if err := json.Unmarshal(artifacts[transition.Artifact.URI], &value); err != nil {
+				t.Fatal(err)
+			}
+			value.Pruned.SS58 = evidence.HeadFleets[0].Hotkey
+			replaceFinalSemanticFixtureArtifact(t, &transition.Artifact, artifacts, value)
+		}},
+		{name: "signed manifest identity", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
+			fleet := &evidence.HeadFleets[evidence.HeadTransitions[0].ChallengerFleetID-1]
+			var wrapper struct {
+				Manifest json.RawMessage `json:"manifest"`
+				UID      uint16          `json:"uid"`
+				Snapshot ChainHead       `json:"snapshot"`
+			}
+			if err := json.Unmarshal(artifacts[fleet.BindingArtifact.URI], &wrapper); err != nil {
+				t.Fatal(err)
+			}
+			manifest, err := protocol.ParseFleetManifest(wrapper.Manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifest.FleetID[0] ^= 0xff
+			wrapper.Manifest, err = manifest.Canonical()
+			if err != nil {
+				t.Fatal(err)
+			}
+			replaceFinalSemanticFixtureArtifact(t, &fleet.BindingArtifact, artifacts, wrapper)
+		}},
+		{name: "restoration", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
+			evidence.ValidatorView.RestoredEpoch = 12
+			value := finalValidatorViewTransitionArtifact{FaultEpoch: 10, RestoredEpoch: 12, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5}
+			replaceFinalSemanticFixtureArtifact(t, &evidence.ValidatorView.Artifact, artifacts, value)
+		}},
+	}
+	for _, mutation := range mutations {
+		candidate := finalSemanticClone(t, &source)
+		artifacts := make(map[string][]byte, len(baselineArtifacts))
+		for uri, data := range baselineArtifacts {
+			artifacts[uri] = append([]byte(nil), data...)
+		}
+		mutation.edit(candidate, artifacts)
+		verificationErr := verifyFinalHeadTournamentTransitionArtifacts(candidate, artifacts)
+		if verificationErr == nil {
+			verificationErr = verifyFinalValidatorViewTransitionArtifact(candidate, artifacts[candidate.ValidatorView.Artifact.URI])
+		}
+		if verificationErr == nil {
+			t.Fatalf("%s mutation was accepted", mutation.name)
+		}
+	}
+}
+
+func replaceFinalSemanticFixtureArtifact(t *testing.T, locator *FinalArtifactLocator, artifacts map[string][]byte, value any) {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts[locator.URI] = data
+	locator.ContentHash = bytesSHA256(data)
+	locator.SizeBytes = uint64(len(data))
+}
+
+func TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins(t *testing.T) {
+	requireFinalSemanticReleaseScaleFixture(t)
+	source, _ := finalSemanticFixture(t)
+	draft, err := BuildFinalSemanticEvidence(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := SealFinalSemanticEvidenceOnChain(context.Background(), draft, &finalTestChainReader{evidence: draft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline := sealed.PublicVerification
+	if baseline == nil {
+		t.Fatal("sealed fixture has no public verification")
+	}
+	mutations := []struct {
+		name string
+		edit func(*FinalPublicChainVerification)
+	}{
+		{name: "one origin", edit: func(value *FinalPublicChainVerification) {
+			value.OperatorEvidenceOrigins = value.OperatorEvidenceOrigins[:1]
+		}},
+		{name: "duplicate origin", edit: func(value *FinalPublicChainVerification) {
+			value.OperatorEvidenceOrigins[1].ManifestURI = value.OperatorEvidenceOrigins[0].ManifestURI
+		}},
+		{name: "reordered origins", edit: func(value *FinalPublicChainVerification) {
+			value.OperatorEvidenceOrigins[0], value.OperatorEvidenceOrigins[1] = value.OperatorEvidenceOrigins[1], value.OperatorEvidenceOrigins[0]
+		}},
+		{name: "nonmember primary", edit: func(value *FinalPublicChainVerification) {
+			value.EvidenceURI = "https://third.example/deployment.json?hash=sha256:" + strings.Repeat("33", 32)
+		}},
+	}
+	for _, mutation := range mutations {
+		encoded, err := json.Marshal(baseline)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var candidate FinalPublicChainVerification
+		if err := json.Unmarshal(encoded, &candidate); err != nil {
+			t.Fatal(err)
+		}
+		mutation.edit(&candidate)
+		if err := finalizePublicChainVerification(&candidate, sealed.ChainID, sealed.GenesisHash); err == nil {
+			t.Fatalf("%s mutation was accepted", mutation.name)
+		}
 	}
 }
 
@@ -917,6 +1077,18 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		return sha256.Sum256([]byte(fmt.Sprintf("%s-%d", kind, id)))
 	}
 	hex32 := func(value [32]byte) string { return "0x" + hex.EncodeToString(value[:]) }
+	fixtureFleetManifest := func(fleetID uint64) protocol.FleetManifest {
+		manifest := protocol.FleetManifest{
+			Schema: protocol.FleetManifestSchema, ChainID: 945, Netuid: 521,
+			Coordinator: [20]byte(common.HexToAddress("0x1111111111111111111111111111111111111111")),
+			FleetID:     key32("fleet", fleetID), Hotkey: key32("hotkey", fleetID), Generation: 1,
+		}
+		for member := uint64(1); member <= 4; member++ {
+			minerID := (fleetID-1)*4 + member
+			manifest.Members = append(manifest.Members, protocol.FleetMember{ClientID: [16]byte(minerClientID(minerID)), ClientKey: key32("client", minerID)})
+		}
+		return manifest
+	}
 	previousMeasurement := map[uint64][]byte{}
 	previousArtifact := map[uint64]*validatorpkg.ReleaseMeasurementArtifact{}
 	attemptRoots := map[uint64]string{}
@@ -941,8 +1113,13 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			binding := validatorpkg.ReleaseBindingMeasurement{NoID: noID, ClientID: clientID.String(), FleetID: zero, Hotkey: zero, ClientKey: zero, LocalClientKey: zero, CommitmentHash: zero}
 			if minerID <= finalHeadCandidateCount*4 {
 				fleetID := (minerID-1)/4 + 1
-				fleetKey, hotkey := key32("fleet", fleetID), key32("hotkey", fleetID)
-				clientKey, commitment := key32("client", minerID), key32("commitment", fleetID)
+				fleetManifest := fixtureFleetManifest(fleetID)
+				commitment, commitmentErr := fleetManifest.CommitmentHash()
+				if commitmentErr != nil {
+					t.Fatal(commitmentErr)
+				}
+				fleetKey, hotkey := fleetManifest.FleetID, fleetManifest.Hotkey
+				clientKey := key32("client", minerID)
 				uid := candidateUIDs[fleetID]
 				egress := key32("egress", fleetID)
 				if !candidateByFleet[fleetID].Selected {
@@ -1465,6 +1642,28 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 	for _, value := range []*FinalCRv4Cycle{&cycle, &cycle11, &cycle12, &cycle13, &cycle14, &cycle2, &cycle211, &cycle212, &cycle213, &cycle214} {
 		applyLifecycleCandidateUIDs(value)
 	}
+	// Validator 1 has one exact local-view substitution in epoch 10;
+	// validator 2 remains the control and both views agree from epoch 11.
+	for index := range cycle.Candidates {
+		switch cycle.Candidates[index].FleetID {
+		case 5:
+			cycle.Candidates[index].RawScore = FinalRational{Numerator: "2", Denominator: "1"}
+		case 200:
+			cycle.Candidates[index].RawScore = FinalRational{Numerator: "1", Denominator: "2"}
+		}
+	}
+	sort.Slice(cycle.Candidates, func(i, j int) bool {
+		left, _ := finalPositiveRational("fixture divergent candidate score", cycle.Candidates[i].RawScore)
+		right, _ := finalPositiveRational("fixture divergent candidate score", cycle.Candidates[j].RawScore)
+		if comparison := left.Cmp(right); comparison != 0 {
+			return comparison > 0
+		}
+		return cycle.Candidates[i].UID < cycle.Candidates[j].UID
+	})
+	for index := range cycle.Candidates {
+		cycle.Candidates[index].Rank = uint16(index + 1)
+		cycle.Candidates[index].Selected = index < finalHeadSlotCount
+	}
 	applyCyclePayouts(&cycle)
 	applyCyclePayouts(&cycle11)
 	applyCyclePayouts(&cycle12)
@@ -1494,15 +1693,75 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		} else if fleetID == fleetLifecycleCompanionFleet {
 			uid = fleetLifecycleTerminalVictimUID
 		}
+		manifest := fixtureFleetManifest(fleetID)
+		hotkeyBytes := manifest.Hotkey
+		hotkey, encodeErr := ss58.Encode(hotkeyBytes, ss58.BittensorPrefix)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		manifestBytes, manifestErr := manifest.Canonical()
+		if manifestErr != nil {
+			t.Fatal(manifestErr)
+		}
+		bindingArtifactBytes, marshalErr := json.Marshal(map[string]any{"manifest": json.RawMessage(manifestBytes), "uid": uid, "snapshot": ChainHead{Number: 100, Hash: finalTestHex(100)}})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
 		headFleets = append(headFleets, FinalHeadFleetEvidence{
-			FleetID: fleetID, UID: uid, Hotkey: ss58Key(0x31, i+1), Coldkey: ss58Key(0x32, i+1),
+			FleetID: fleetID, UID: uid, Hotkey: hotkey, Coldkey: ss58Key(0x32, i+1),
 			Generation: 1, MemberCount: 4, Registered: true, Registration: nativeReceipt(fmt.Sprintf("head-registration-%d", fleetID), uint64(30+i%50), true),
-			Snapshot: ChainHead{Number: 100, Hash: finalTestHex(100)}, BindingArtifact: artifact("head-fleet-binding", fmt.Sprintf("head-fleet-%d.json", fleetID), []byte(fmt.Sprintf("head fleet %d", fleetID))),
+			Snapshot: ChainHead{Number: 100, Hash: finalTestHex(100)}, BindingArtifact: artifact("head-fleet-binding", fmt.Sprintf("head-fleet-%d.json", fleetID), bindingArtifactBytes),
 		})
 	}
-	headTransitions := []FinalHeadTournamentTransition{
-		{ChallengerFleetID: 201, PromotedUID: headFleets[200].UID, PromotedHotkey: headFleets[200].Hotkey, PrunedUID: headFleets[200].UID, PrunedHotkey: ss58Key(0x33, 201), Registration: nativeReceipt("challenger-registration-201", 80, true), Snapshot: ChainHead{Number: 90, Hash: finalTestHex(90)}, Artifact: artifact("head-tournament-transition", "head-transition-201.json", []byte("head transition 201"))},
-		{ChallengerFleetID: 202, PromotedUID: headFleets[201].UID, PromotedHotkey: headFleets[201].Hotkey, PrunedUID: headFleets[201].UID, PrunedHotkey: ss58Key(0x33, 202), Registration: nativeReceipt("challenger-registration-202", 81, true), Snapshot: ChainHead{Number: 91, Hash: finalTestHex(91)}, Artifact: artifact("head-tournament-transition", "head-transition-202.json", []byte("head transition 202"))},
+	headTransitions := make([]FinalHeadTournamentTransition, 0, 2)
+	for offset := 0; offset < 2; offset++ {
+		fleet := &headFleets[finalHeadSlotCount+offset]
+		fleetID := fleet.FleetID
+		promotedHotkey, promotedColdkey, identityErr := finalSemanticSS58Pair("fixture challenger", fleet.Hotkey, fleet.Coldkey)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		prunedChurn := uint64(offset + 1)
+		prunedSS58 := ss58Key(0x33, int(fleetID))
+		prunedKey, prunedPrefix, prunedErr := ss58.Decode(prunedSS58)
+		if prunedErr != nil || prunedPrefix != ss58.BittensorPrefix {
+			t.Fatal(prunedErr)
+		}
+		nativeSnapshot := ChainHead{Number: uint64(90 + offset), Hash: finalTestHex(byte(90 + offset))}
+		evmSnapshot := ChainHead{Number: uint64(96 + offset), Hash: finalTestHex(byte(96 + offset))}
+		observed := map[string]any{
+			"role": fmt.Sprintf("fleet-%d-hotkey", fleetID), "hotkey": "0x" + hex.EncodeToString(promotedHotkey[:]),
+			"coldkey": "0x" + hex.EncodeToString(promotedColdkey[:]), "uid": uint64(fleet.UID),
+			"replaced_churn": prunedChurn, "replaced_uid": uint64(fleet.UID), "uid_count": uint64(1300),
+		}
+		postcondition := &ActionPostcondition{
+			Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: "ur-subnet-testnet-v1-attempt-4", PlanHash: finalTestHex(2),
+			ActionID: fmt.Sprintf("fleet.register.%d", fleetID), IntentHash: finalTestHex(byte(160 + offset)),
+			OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true,
+			SubstrateFinalized: nativeSnapshot, EVMFinalized: evmSnapshot, EVMHashDomain: "evm-rpc", Observed: observed,
+			IndependentSubstrateFinalized: nativeSnapshot, IndependentEVMFinalized: evmSnapshot,
+			IndependentEVMHashDomain: "evm-rpc", IndependentObserved: observed,
+		}
+		postconditionBytes, marshalErr := json.Marshal(postcondition)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		fleet.Registration.Proof = artifact("native-receipt", fmt.Sprintf("challenger-registration-%d.json", fleetID), postconditionBytes)
+		transitionArtifact := finalHeadTournamentTransitionArtifact{
+			Postcondition: postcondition,
+			Pruned:        finalHeadTournamentIdentity{Role: fmt.Sprintf("churn-%d-hotkey", prunedChurn), PublicKey: "0x" + hex.EncodeToString(prunedKey[:]), SS58: prunedSS58},
+		}
+		transitionBytes, marshalErr := json.Marshal(transitionArtifact)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		headTransitions = append(headTransitions, FinalHeadTournamentTransition{
+			ChallengerFleetID: fleetID, PromotedUID: fleet.UID, PromotedHotkey: fleet.Hotkey,
+			PrunedUID: fleet.UID, PrunedChurn: prunedChurn, PrunedHotkey: prunedSS58,
+			OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true, Registration: fleet.Registration,
+			Snapshot: nativeSnapshot, IndependentSnapshot: nativeSnapshot, EVMSnapshot: evmSnapshot, IndependentEVMSnapshot: evmSnapshot,
+			Artifact: artifact("head-tournament-transition", fmt.Sprintf("head-transition-%d.json", fleetID), transitionBytes),
+		})
 	}
 	implementation := "0x2222222222222222222222222222222222222222"
 	reserveAddress := common.HexToAddress("0x4444444444444444444444444444444444444444")
@@ -1624,10 +1883,43 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			EffectiveEpoch:    10, VersionCount: 1, Active: true, ServerKeyHistory: []FinalServerKey{{KeyID: 1, PublicKey: "0x" + hex.EncodeToString(operatorServerKeys[i].Public().(ed25519.PublicKey))}},
 			OwnershipArtifact: artifact("native-ownership", fmt.Sprintf("pool-ownership-%d.json", i+1), []byte(fmt.Sprintf("pool ownership %d", i+1))),
 		}
+		hotkey, coldkey, identityErr := finalSemanticSS58Pair("fixture pool ownership", pools[i].Hotkey, pools[i].Coldkey)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		state := FinalCollectedNativeUIDState{
+			UID: uid, HotkeyPublicKey: "0x" + hex.EncodeToString(hotkey[:]), ColdkeyPublicKey: "0x" + hex.EncodeToString(coldkey[:]),
+			RegistrationBlock: pools[i].Registration.Block.Number,
+		}
+		ownershipBytes, marshalErr := json.Marshal(map[string]any{
+			"snapshot": pools[i].Snapshot, "state": state, "settlement_vault": deployment.SettlementVault,
+			"vault_mirror_coldkey": pools[i].Coldkey, "operator_registry_coldkey": pools[i].OperatorColdkey,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		pools[i].OwnershipArtifact = artifact("native-ownership", fmt.Sprintf("pool-ownership-%d.json", i+1), ownershipBytes)
 	}
 	validators := []FinalValidatorIdentityEvidence{
 		{ValidatorID: 1, UID: 12, Hotkey: validatorHotkeys[0].Address(), Coldkey: ss58Key(0x51, 1), Registered: true, Registration: nativeReceipt("validator-registration-1", 6, true), StakeRao: "1000000", ValidatorPermit: true, ValidatorTrustU16: 42, PathVPK: "0x" + hex.EncodeToString(validatorPathKeys[0].Public().(ed25519.PublicKey)), Snapshot: ChainHead{Number: 100, Hash: finalTestHex(100)}, SnapshotArtifact: artifact("native-validator-state", "validator-state-1.json", []byte("validator state 1")), Cycles: []FinalCRv4Cycle{cycle, cycle11, cycle12, cycle13, cycle14}},
 		{ValidatorID: 2, UID: 14, Hotkey: validatorHotkeys[1].Address(), Coldkey: ss58Key(0x51, 2), Registered: true, Registration: nativeReceipt("validator-registration-2", 8, true), StakeRao: "1000000", ValidatorPermit: true, ValidatorTrustU16: 43, PathVPK: "0x" + hex.EncodeToString(validatorPathKeys[1].Public().(ed25519.PublicKey)), Snapshot: ChainHead{Number: 100, Hash: finalTestHex(100)}, SnapshotArtifact: artifact("native-validator-state", "validator-state-2.json", []byte("validator state 2")), Cycles: []FinalCRv4Cycle{cycle2, cycle211, cycle212, cycle213, cycle214}},
+	}
+	for index := range validators {
+		validator := &validators[index]
+		hotkey, coldkey, identityErr := finalSemanticSS58Pair("fixture validator state", validator.Hotkey, validator.Coldkey)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		state := FinalCollectedNativeUIDState{
+			UID: validator.UID, HotkeyPublicKey: "0x" + hex.EncodeToString(hotkey[:]), ColdkeyPublicKey: "0x" + hex.EncodeToString(coldkey[:]),
+			RegistrationBlock: validator.Registration.Block.Number, StakeRao: validator.StakeRao,
+			ValidatorPermit: validator.ValidatorPermit, ValidatorTrustU16: validator.ValidatorTrustU16,
+		}
+		stateBytes, marshalErr := json.Marshal(map[string]any{"snapshot": validator.Snapshot, "state": state})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		validator.SnapshotArtifact = artifact("native-validator-state", fmt.Sprintf("validator-state-%d.json", validator.ValidatorID), stateBytes)
 	}
 	epochs := make([]FinalEpochOperatorEvidence, 0, 10)
 	for epoch := uint64(10); epoch <= 14; epoch++ {
@@ -1895,7 +2187,12 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		EVMCampaignStartHead: ChainHead{Number: 4, Hash: finalTestHex(4)}, NativeStartHead: ChainHead{Number: 10, Hash: finalTestHex(10)}, NativeTerminalHead: ChainHead{Number: 100, Hash: finalTestHex(100)}, EVMTerminalHead: ChainHead{Number: 1750, Hash: finalTestHex(214)},
 		ExpectedOperators: 2, ExpectedValidators: 2, ExpectedMiners: 1000, ExpectedCandidates: finalHeadCandidateCount, ExpectedHeadSlots: finalHeadSlotCount,
 		Topology: topology, HeadFleets: headFleets, HeadTransitions: headTransitions,
-		ValidatorView:   FinalValidatorViewTransition{FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 201, Artifact: artifact("validator-view-transition", "validator-view-transition.json", []byte("validator view transition"))},
+		ValidatorView: FinalValidatorViewTransition{
+			FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5,
+			Artifact: artifact("validator-view-transition", "validator-view-transition.json", mustFinalSemanticJSON(t, finalValidatorViewTransitionArtifact{
+				FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5,
+			})),
+		},
 		ContractCleanup: cleanup, ArchiveRetention: archiveEvidence, Deployment: deployment, SettlementAccounting: settlementAccounting, Reserve: reserve, Pools: pools, Validators: validators, Epochs: epochs,
 		Conservation:  FinalPoolConservation{CapturedRao: "10000", CarryInRao: "0", FundedRao: "10000", ClaimedRao: "10000", PaidRao: "10000", DeferredCreditRao: "0", OutstandingRao: "0", CarryOutRao: "0"},
 		NativeRewards: rewards, PathProofs: pathProofs, ExitCriteria: exitCriteria,
@@ -1954,6 +2251,15 @@ func finalTestHex(seed byte) string {
 	return "0x" + hex.EncodeToString(bytes.Repeat([]byte{seed}, 32))
 }
 
+func mustFinalSemanticJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
 type finalTestChainReader struct {
 	evidence              *FinalSemanticEvidence
 	failCanonical         bool
@@ -1970,10 +2276,17 @@ type finalTestChainReader struct {
 }
 
 func (r *finalTestChainReader) Endpoints() (string, string, string) {
-	return "wss://substrate.example/rpc", "https://evm.example/rpc", "https://evidence.example/deployment-manifest.json"
+	return "wss://substrate.example/rpc", "https://evm.example/rpc", "https://evidence.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("11", 32)
 }
 
 func (r *finalTestChainReader) PublicManifestHash() string { return finalTestHex(0x5a) }
+
+func (r *finalTestChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
+	return []FinalOperatorEvidenceOrigin{
+		{OperatorNoID: 1, ManifestURI: "https://evidence.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("11", 32)},
+		{OperatorNoID: 2, ManifestURI: "https://evidence-2.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("22", 32)},
+	}
+}
 
 func (r *finalTestChainReader) exchange(chain, method string, head ChainHead) []FinalRPCExchange {
 	return []FinalRPCExchange{{Chain: chain, Method: method, Params: json.RawMessage("[]"), PinnedHead: head, Result: json.RawMessage("{\"ok\":true}")}}

@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v1"
+	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v2"
 	finalReleaseArchiveMinimumSpanBlocks         = uint64(3_570)
 	finalReleaseArchiveMinimumSafetyMarginBlocks = uint64(7_200)
 	finalHeadCandidateCount                      = 202
@@ -171,14 +171,31 @@ type FinalHeadFleetEvidence struct {
 }
 
 type FinalHeadTournamentTransition struct {
-	ChallengerFleetID uint64               `json:"challenger_fleet_id"`
-	PromotedUID       uint16               `json:"promoted_uid"`
-	PromotedHotkey    string               `json:"promoted_hotkey"`
-	PrunedUID         uint16               `json:"pruned_uid"`
-	PrunedHotkey      string               `json:"pruned_hotkey"`
-	Registration      FinalNativeReceipt   `json:"registration"`
-	Snapshot          ChainHead            `json:"snapshot"`
-	Artifact          FinalArtifactLocator `json:"artifact"`
+	ChallengerFleetID      uint64               `json:"challenger_fleet_id"`
+	PromotedUID            uint16               `json:"promoted_uid"`
+	PromotedHotkey         string               `json:"promoted_hotkey"`
+	PrunedUID              uint16               `json:"pruned_uid"`
+	PrunedChurn            uint64               `json:"pruned_churn"`
+	PrunedHotkey           string               `json:"pruned_hotkey"`
+	OperationalRPCMode     string               `json:"operational_rpc_mode"`
+	IndependentRPC         bool                 `json:"independent_rpc"`
+	Registration           FinalNativeReceipt   `json:"registration"`
+	Snapshot               ChainHead            `json:"snapshot"`
+	IndependentSnapshot    ChainHead            `json:"independent_snapshot"`
+	EVMSnapshot            ChainHead            `json:"evm_snapshot"`
+	IndependentEVMSnapshot ChainHead            `json:"independent_evm_snapshot"`
+	Artifact               FinalArtifactLocator `json:"artifact"`
+}
+
+type finalHeadTournamentIdentity struct {
+	Role      string `json:"role"`
+	PublicKey string `json:"public_key"`
+	SS58      string `json:"ss58"`
+}
+
+type finalHeadTournamentTransitionArtifact struct {
+	Postcondition *ActionPostcondition        `json:"postcondition"`
+	Pruned        finalHeadTournamentIdentity `json:"pruned_identity"`
 }
 
 type FinalValidatorViewTransition struct {
@@ -189,6 +206,15 @@ type FinalValidatorViewTransition struct {
 	WithheldFleetID     uint64               `json:"withheld_fleet_id"`
 	ReplacementFleetID  uint64               `json:"replacement_fleet_id"`
 	Artifact            FinalArtifactLocator `json:"artifact"`
+}
+
+type finalValidatorViewTransitionArtifact struct {
+	FaultEpoch          uint64 `json:"fault_epoch"`
+	RestoredEpoch       uint64 `json:"restored_epoch"`
+	AffectedValidatorID uint64 `json:"affected_validator_id"`
+	ControlValidatorID  uint64 `json:"control_validator_id"`
+	WithheldFleetID     uint64 `json:"withheld_fleet_id"`
+	ReplacementFleetID  uint64 `json:"replacement_fleet_id"`
 }
 
 type FinalPoolWeightEvidence struct {
@@ -580,6 +606,7 @@ type FinalSemanticEvidence struct {
 	GenesisHash          string                            `json:"native_genesis_hash"`
 	ChainID              uint64                            `json:"evm_chain_id"`
 	Netuid               uint16                            `json:"netuid"`
+	PlanArtifact         FinalArtifactLocator              `json:"plan_artifact"`
 	PolicyArtifact       FinalArtifactLocator              `json:"policy_artifact"`
 	PriorPhase           *FinalPriorPhaseBinding           `json:"prior_phase,omitempty"`
 	Window               ScenarioAcceptanceWindow          `json:"acceptance_window"`
@@ -712,6 +739,9 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	}
 	if evidence.ChainID == 0 || evidence.Netuid == 0 {
 		return errors.New("chain identity is incomplete")
+	}
+	if err := verifyFinalArtifact("approved setup plan", evidence.PlanArtifact, "setup-plan"); err != nil {
+		return err
 	}
 	if evidence.ExpectedOperators != 2 || evidence.ExpectedValidators != 2 || evidence.ExpectedMiners != 1000 {
 		return fmt.Errorf("release topology is miners/operators/validators=%d/%d/%d, want 1000/2/2", evidence.ExpectedMiners, evidence.ExpectedOperators, evidence.ExpectedValidators)
@@ -1025,11 +1055,38 @@ func verifyFinalTopology(evidence *FinalSemanticEvidence) error {
 	if len(evidence.HeadTransitions) != 2 {
 		return fmt.Errorf("head tournament transitions=%d, want 2", len(evidence.HeadTransitions))
 	}
+	seenPrunedChurn := map[uint64]bool{}
 	for i, transition := range evidence.HeadTransitions {
 		wantFleet := uint64(finalHeadSlotCount + i + 1)
 		fleet := evidence.HeadFleets[wantFleet-1]
-		if transition.ChallengerFleetID != wantFleet || transition.PromotedUID != fleet.UID || transition.PromotedHotkey != fleet.Hotkey || transition.PrunedUID != transition.PromotedUID || transition.PrunedHotkey == "" || transition.PrunedHotkey == transition.PromotedHotkey || transition.Snapshot.Number < transition.Registration.Block.Number || transition.Snapshot.Number > evidence.NativeTerminalHead.Number {
+		if transition.ChallengerFleetID != wantFleet || transition.PromotedUID != fleet.UID || transition.PromotedHotkey != fleet.Hotkey || transition.Registration != fleet.Registration || transition.PrunedUID != transition.PromotedUID || transition.PrunedChurn == 0 || seenPrunedChurn[transition.PrunedChurn] || transition.PrunedHotkey == "" || transition.PrunedHotkey == transition.PromotedHotkey || transition.Snapshot.Number < transition.Registration.Block.Number || transition.Snapshot.Number > evidence.NativeTerminalHead.Number || transition.IndependentSnapshot.Number < transition.Snapshot.Number || transition.IndependentSnapshot.Number > evidence.NativeTerminalHead.Number || transition.EVMSnapshot.Number > evidence.EVMTerminalHead.Number || transition.IndependentEVMSnapshot.Number < transition.EVMSnapshot.Number || transition.IndependentEVMSnapshot.Number > evidence.EVMTerminalHead.Number {
 			return fmt.Errorf("head tournament transition %d is incomplete", i+1)
+		}
+		seenPrunedChurn[transition.PrunedChurn] = true
+		if i > 0 {
+			previous := evidence.HeadTransitions[i-1]
+			if transition.Registration.Block.Number < previous.Registration.Block.Number || transition.Snapshot.Number < previous.Snapshot.Number || transition.IndependentSnapshot.Number < previous.IndependentSnapshot.Number || transition.EVMSnapshot.Number < previous.EVMSnapshot.Number || transition.IndependentEVMSnapshot.Number < previous.IndependentEVMSnapshot.Number {
+				return fmt.Errorf("head tournament transition %d precedes transition %d", i+1, i)
+			}
+		}
+		if (transition.OperationalRPCMode != rpcModePrivateAuthority && transition.OperationalRPCMode != rpcModePublicOverride) || transition.IndependentRPC != (transition.OperationalRPCMode == rpcModePrivateAuthority) {
+			return fmt.Errorf("head tournament transition %d has an invalid RPC mode", i+1)
+		}
+		if transition.OperationalRPCMode == rpcModePublicOverride && (transition.Snapshot != transition.IndependentSnapshot || transition.EVMSnapshot != transition.IndependentEVMSnapshot) {
+			return fmt.Errorf("head tournament transition %d public-override checkpoints differ", i+1)
+		}
+		for _, checkpoint := range []struct {
+			label string
+			head  ChainHead
+		}{
+			{"transition snapshot", transition.Snapshot},
+			{"transition independent snapshot", transition.IndependentSnapshot},
+			{"transition EVM snapshot", transition.EVMSnapshot},
+			{"transition independent EVM snapshot", transition.IndependentEVMSnapshot},
+		} {
+			if err := verifyFinalHead(checkpoint.label, checkpoint.head); err != nil {
+				return err
+			}
 		}
 		if err := verifyFinalNativeReceipt("challenger registration", transition.Registration, 0, evidence.NativeTerminalHead.Number, true); err != nil {
 			return err
@@ -1046,6 +1103,63 @@ func verifyFinalTopology(evidence *FinalSemanticEvidence) error {
 		return err
 	}
 	return nil
+}
+
+func deriveFinalValidatorViewTransition(evidence *FinalSemanticEvidence) (finalValidatorViewTransitionArtifact, error) {
+	if evidence == nil || len(evidence.Validators) != 2 {
+		return finalValidatorViewTransitionArtifact{}, errors.New("validator-local view requires exactly two validators")
+	}
+	affected, control := &evidence.Validators[0], &evidence.Validators[1]
+	if affected.ValidatorID >= control.ValidatorID || len(affected.Cycles) == 0 || len(affected.Cycles) != len(control.Cycles) {
+		return finalValidatorViewTransitionArtifact{}, errors.New("validator-local view cycle sets are incomplete or non-canonical")
+	}
+	controlByEpoch := make(map[uint64]FinalCRv4Cycle, len(control.Cycles))
+	for _, cycle := range control.Cycles {
+		if _, duplicate := controlByEpoch[cycle.SettlementEpoch]; duplicate {
+			return finalValidatorViewTransitionArtifact{}, errors.New("control validator repeats a settlement epoch")
+		}
+		controlByEpoch[cycle.SettlementEpoch] = cycle
+	}
+	derived := finalValidatorViewTransitionArtifact{AffectedValidatorID: affected.ValidatorID, ControlValidatorID: control.ValidatorID}
+	for index, cycle := range affected.Cycles {
+		if index > 0 && cycle.SettlementEpoch <= affected.Cycles[index-1].SettlementEpoch {
+			return finalValidatorViewTransitionArtifact{}, errors.New("affected validator cycles are not canonical")
+		}
+		other, ok := controlByEpoch[cycle.SettlementEpoch]
+		if !ok {
+			return finalValidatorViewTransitionArtifact{}, fmt.Errorf("control validator lacks settlement epoch %d", cycle.SettlementEpoch)
+		}
+		missing := finalSemanticSetDifference(finalSemanticSelectedFleets(other), finalSemanticSelectedFleets(cycle))
+		extra := finalSemanticSetDifference(finalSemanticSelectedFleets(cycle), finalSemanticSelectedFleets(other))
+		equal := len(missing) == 0 && len(extra) == 0
+		if derived.FaultEpoch == 0 {
+			if equal {
+				continue
+			}
+			if len(missing) != 1 || len(extra) != 1 {
+				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence at epoch %d is not one exact fleet substitution", cycle.SettlementEpoch)
+			}
+			derived.FaultEpoch, derived.WithheldFleetID, derived.ReplacementFleetID = cycle.SettlementEpoch, missing[0], extra[0]
+			continue
+		}
+		if derived.RestoredEpoch == 0 {
+			if equal {
+				derived.RestoredEpoch = cycle.SettlementEpoch
+				continue
+			}
+			if len(missing) != 1 || len(extra) != 1 || missing[0] != derived.WithheldFleetID || extra[0] != derived.ReplacementFleetID {
+				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence changes before restoration at epoch %d", cycle.SettlementEpoch)
+			}
+			continue
+		}
+		if !equal {
+			return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local view diverges again after restoration at epoch %d", cycle.SettlementEpoch)
+		}
+	}
+	if derived.FaultEpoch == 0 || derived.RestoredEpoch == 0 {
+		return finalValidatorViewTransitionArtifact{}, errors.New("accepted signed cycles do not prove divergence followed by restoration")
+	}
+	return derived, nil
 }
 
 func finalExpectedRestartCounts(evidence *FinalSemanticEvidence) (map[string]uint64, error) {
@@ -2524,6 +2638,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	uses := make([]use, 0)
 	var lifecyclePayoutExpectations []finalPayoutArtifactExpectation
 	add := func(locator FinalArtifactLocator) { uses = append(uses, use{locator: locator}) }
+	add(evidence.PlanArtifact)
 	add(evidence.PolicyArtifact)
 	add(evidence.ArchiveRetention.Artifact)
 	if evidence.PriorPhase != nil {
@@ -2707,6 +2822,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err != nil {
 		return err
 	}
+	if _, err := verifyFinalSetupPlanArtifact(evidence, cache[evidence.PlanArtifact.URI]); err != nil {
+		return err
+	}
 	if err := verifyFinalPolicyInputs(evidence, policy); err != nil {
 		return err
 	}
@@ -2714,6 +2832,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		return err
 	}
 	if err := verifyFinalTopologyArtifacts(evidence, cache[evidence.Topology.MinerManifest.URI], cache[evidence.Topology.BindingManifest.URI]); err != nil {
+		return err
+	}
+	if err := verifyFinalHeadFleetBindingArtifacts(evidence, cache, cache[evidence.Topology.BindingManifest.URI]); err != nil {
 		return err
 	}
 	if evidence.FleetLifecycle != nil {
@@ -2747,6 +2868,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		return err
 	}
 	if err := verifyFinalNativeRewardArtifacts(evidence, cache); err != nil {
+		return err
+	}
+	if err := verifyFinalNativeIdentityArtifacts(evidence, cache); err != nil {
 		return err
 	}
 	if evidence.PriorPhase != nil {
@@ -2797,6 +2921,12 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				return fmt.Errorf("validator %d dishonest-deposit to acceptance measurement lineage: %w", validator.ValidatorID, err)
 			}
 		}
+	}
+	if err := verifyFinalHeadTournamentTransitionArtifacts(evidence, cache); err != nil {
+		return err
+	}
+	if err := verifyFinalValidatorViewTransitionArtifact(evidence, cache[evidence.ValidatorView.Artifact.URI]); err != nil {
+		return err
 	}
 	finalSemanticArtifactVerificationCacheStore(cacheKey)
 	return nil
@@ -3000,6 +3130,39 @@ func verifyFinalNativeRewardArtifacts(evidence *FinalSemanticEvidence, cache map
 	return nil
 }
 
+func verifyFinalNativeIdentityArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte) error {
+	for _, pool := range evidence.Pools {
+		var artifact struct {
+			Snapshot                ChainHead                    `json:"snapshot"`
+			State                   FinalCollectedNativeUIDState `json:"state"`
+			SettlementVault         string                       `json:"settlement_vault"`
+			VaultMirrorColdkey      string                       `json:"vault_mirror_coldkey"`
+			OperatorRegistryColdkey string                       `json:"operator_registry_coldkey"`
+		}
+		if err := decodeStrictJSONBytes(cache[pool.OwnershipArtifact.URI], &artifact); err != nil {
+			return fmt.Errorf("decode pool %d native ownership artifact: %w", pool.NoID, err)
+		}
+		hotkey, coldkey, err := finalSemanticSS58Pair(fmt.Sprintf("pool %d", pool.NoID), pool.Hotkey, pool.Coldkey)
+		if err != nil || artifact.Snapshot != pool.Snapshot || artifact.State.UID != pool.UID || artifact.State.HotkeyPublicKey != "0x"+hex.EncodeToString(hotkey[:]) || artifact.State.ColdkeyPublicKey != "0x"+hex.EncodeToString(coldkey[:]) || artifact.State.RegistrationBlock != pool.Registration.Block.Number || !strings.EqualFold(artifact.SettlementVault, evidence.Deployment.SettlementVault) || artifact.VaultMirrorColdkey != pool.Coldkey || artifact.OperatorRegistryColdkey != pool.OperatorColdkey {
+			return stateMismatchError(err, "pool %d native ownership artifact differs from its exact identity/receipt/checkpoint", pool.NoID)
+		}
+	}
+	for _, validator := range evidence.Validators {
+		var artifact struct {
+			Snapshot ChainHead                    `json:"snapshot"`
+			State    FinalCollectedNativeUIDState `json:"state"`
+		}
+		if err := decodeStrictJSONBytes(cache[validator.SnapshotArtifact.URI], &artifact); err != nil {
+			return fmt.Errorf("decode validator %d native state artifact: %w", validator.ValidatorID, err)
+		}
+		hotkey, coldkey, err := finalSemanticSS58Pair(fmt.Sprintf("validator %d", validator.ValidatorID), validator.Hotkey, validator.Coldkey)
+		if err != nil || artifact.Snapshot != validator.Snapshot || artifact.State.UID != validator.UID || artifact.State.HotkeyPublicKey != "0x"+hex.EncodeToString(hotkey[:]) || artifact.State.ColdkeyPublicKey != "0x"+hex.EncodeToString(coldkey[:]) || artifact.State.RegistrationBlock != validator.Registration.Block.Number || artifact.State.StakeRao != validator.StakeRao || artifact.State.ValidatorPermit != validator.ValidatorPermit || artifact.State.ValidatorTrustU16 != validator.ValidatorTrustU16 {
+			return stateMismatchError(err, "validator %d native state artifact differs from its exact identity/receipt/checkpoint", validator.ValidatorID)
+		}
+	}
+	return nil
+}
+
 func verifyFinalArchiveRetentionArtifact(evidence *FinalSemanticEvidence, data []byte) error {
 	var receipt FinalArchiveRetentionPreflight
 	if err := decodeStrictJSONBytes(data, &receipt); err != nil {
@@ -3098,7 +3261,7 @@ func verifyFinalPriorSemanticArtifacts(evidence *FinalSemanticEvidence, cache ma
 func verifyFinalContractCleanupArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte) error {
 	cleanup := &evidence.ContractCleanup
 	var state SupervisorState
-	if err := json.Unmarshal(cache[cleanup.SupervisorStateArtifact.URI], &state); err != nil {
+	if err := decodeStrictJSONBytes(cache[cleanup.SupervisorStateArtifact.URI], &state); err != nil {
 		return fmt.Errorf("decode accepted supervisor cleanup generation: %w", err)
 	}
 	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks != cleanup.SupervisorStartTimeTicks || state.ManifestHash != cleanup.SupervisorManifestHash || state.ContractCleanupCutoff != cleanup.Cutoff {
@@ -3124,7 +3287,7 @@ func verifyFinalContractCleanupArtifacts(evidence *FinalSemanticEvidence, cache 
 	}
 	for _, operator := range cleanup.Operators {
 		var result serverContractCleanupResult
-		if err := json.Unmarshal(cache[operator.ResultArtifact.URI], &result); err != nil {
+		if err := decodeStrictJSONBytes(cache[operator.ResultArtifact.URI], &result); err != nil {
 			return fmt.Errorf("decode operator %d contract cleanup result: %w", operator.NoID, err)
 		}
 		if result.Schema != "urnetwork-sim-server-contract-cleanup-v1" || result.Cutoff != cleanup.Cutoff || result.Passes != operator.Passes || result.Closed != operator.Closed || result.Converged != operator.Converged {
@@ -3140,7 +3303,7 @@ func verifyFinalContractCleanupArtifacts(evidence *FinalSemanticEvidence, cache 
 
 func verifyFinalTopologyArtifacts(evidence *FinalSemanticEvidence, minerData, bindingData []byte) error {
 	var miners []FinalMinerProcessEvidence
-	if err := json.Unmarshal(minerData, &miners); err != nil {
+	if err := decodeStrictJSONBytes(minerData, &miners); err != nil {
 		return fmt.Errorf("decode miner process manifest: %w", err)
 	}
 	if len(miners) != 1000 {
@@ -3172,7 +3335,7 @@ func verifyFinalTopologyArtifacts(evidence *FinalSemanticEvidence, minerData, bi
 		}
 	}
 	var bindings []FinalFleetMemberBindingEvidence
-	if err := json.Unmarshal(bindingData, &bindings); err != nil {
+	if err := decodeStrictJSONBytes(bindingData, &bindings); err != nil {
 		return fmt.Errorf("decode fleet binding manifest: %w", err)
 	}
 	if len(bindings) != 1000 {
@@ -3235,9 +3398,285 @@ func verifyFinalTopologyArtifacts(evidence *FinalSemanticEvidence, minerData, bi
 	return nil
 }
 
+type finalHeadFleetManifestIdentity struct {
+	FleetKey       string
+	Hotkey         string
+	CommitmentHash string
+	UID            uint16
+	Generation     uint64
+	Members        map[string]string
+}
+
+func decodeFinalHeadFleetManifestIdentity(evidence *FinalSemanticEvidence, fleet *FinalHeadFleetEvidence, data []byte) (finalHeadFleetManifestIdentity, error) {
+	if evidence == nil || fleet == nil {
+		return finalHeadFleetManifestIdentity{}, errors.New("head fleet manifest identity is unavailable")
+	}
+	var artifact struct {
+		Manifest json.RawMessage `json:"manifest"`
+		UID      uint16          `json:"uid"`
+		Snapshot ChainHead       `json:"snapshot"`
+	}
+	if err := decodeStrictJSONBytes(data, &artifact); err != nil {
+		return finalHeadFleetManifestIdentity{}, fmt.Errorf("decode head fleet %d binding artifact: %w", fleet.FleetID, err)
+	}
+	manifest, err := protocol.ParseFleetManifest(artifact.Manifest)
+	if err != nil {
+		return finalHeadFleetManifestIdentity{}, fmt.Errorf("head fleet %d canonical manifest: %w", fleet.FleetID, err)
+	}
+	hotkey, prefix, err := ss58.Decode(fleet.Hotkey)
+	if err != nil || prefix != ss58.BittensorPrefix {
+		return finalHeadFleetManifestIdentity{}, stateMismatchError(err, "head fleet %d hotkey is not canonical Bittensor SS58", fleet.FleetID)
+	}
+	coordinator := common.HexToAddress(evidence.Deployment.CoordinatorProxy)
+	if artifact.UID != fleet.UID || artifact.Snapshot != fleet.Snapshot || manifest.ChainID != evidence.ChainID || manifest.Netuid != evidence.Netuid || !bytes.Equal(manifest.Coordinator[:], coordinator.Bytes()) || manifest.Hotkey != hotkey || manifest.Generation != fleet.Generation || len(manifest.Members) != fleet.MemberCount {
+		return finalHeadFleetManifestIdentity{}, fmt.Errorf("head fleet %d binding artifact differs from its signed identity/checkpoint", fleet.FleetID)
+	}
+	commitment, err := manifest.CommitmentHash()
+	if err != nil {
+		return finalHeadFleetManifestIdentity{}, err
+	}
+	identity := finalHeadFleetManifestIdentity{
+		FleetKey: "0x" + hex.EncodeToString(manifest.FleetID[:]), Hotkey: "0x" + hex.EncodeToString(manifest.Hotkey[:]),
+		CommitmentHash: "0x" + hex.EncodeToString(commitment[:]), UID: artifact.UID, Generation: manifest.Generation,
+		Members: make(map[string]string, len(manifest.Members)),
+	}
+	for _, member := range manifest.Members {
+		client := hex.EncodeToString(member.ClientID[:])
+		if _, duplicate := identity.Members[client]; duplicate {
+			return finalHeadFleetManifestIdentity{}, fmt.Errorf("head fleet %d manifest repeats a client", fleet.FleetID)
+		}
+		identity.Members[client] = "0x" + hex.EncodeToString(member.ClientKey[:])
+	}
+	return identity, nil
+}
+
+func verifyFinalHeadFleetBindingArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte, bindingData []byte) error {
+	var bindings []FinalFleetMemberBindingEvidence
+	if err := decodeStrictJSONBytes(bindingData, &bindings); err != nil {
+		return fmt.Errorf("decode fleet binding manifest for head artifacts: %w", err)
+	}
+	clientsByFleet := make(map[uint64]map[string]bool, len(evidence.HeadFleets))
+	for _, binding := range bindings {
+		if binding.Tier != "head-candidate" {
+			continue
+		}
+		key, err := finalSemanticClientKey(binding.ClientID)
+		if err != nil {
+			return err
+		}
+		if clientsByFleet[binding.FleetID] == nil {
+			clientsByFleet[binding.FleetID] = map[string]bool{}
+		}
+		clientsByFleet[binding.FleetID][key] = true
+	}
+	seenFleetKeys := map[string]bool{}
+	seenClientKeys := map[string]bool{}
+	for index := range evidence.HeadFleets {
+		fleet := &evidence.HeadFleets[index]
+		identity, err := decodeFinalHeadFleetManifestIdentity(evidence, fleet, cache[fleet.BindingArtifact.URI])
+		if err != nil {
+			return err
+		}
+		if seenFleetKeys[identity.FleetKey] {
+			return fmt.Errorf("head fleet %d reuses a canonical fleet identity", fleet.FleetID)
+		}
+		seenFleetKeys[identity.FleetKey] = true
+		wantClients := clientsByFleet[fleet.FleetID]
+		if len(wantClients) != len(identity.Members) {
+			return fmt.Errorf("head fleet %d binding artifact member census differs", fleet.FleetID)
+		}
+		clients := make([]string, 0, len(identity.Members))
+		for client := range identity.Members {
+			clients = append(clients, client)
+		}
+		sort.Strings(clients)
+		for _, client := range clients {
+			clientKey := identity.Members[client]
+			if !wantClients[client] {
+				return fmt.Errorf("head fleet %d binding artifact contains an unauthenticated client", fleet.FleetID)
+			}
+			if seenClientKeys[clientKey] {
+				return fmt.Errorf("head fleet %d binding artifact reuses a client verification key", fleet.FleetID)
+			}
+			seenClientKeys[clientKey] = true
+		}
+	}
+	return nil
+}
+
+func finalObservedString(observed map[string]any, name string) (string, bool) {
+	value, ok := observed[name]
+	if !ok {
+		return "", false
+	}
+	result, ok := value.(string)
+	return result, ok && result != ""
+}
+
+func verifyFinalSignedCycleFleetIdentity(identity finalHeadFleetManifestIdentity, owners map[string]uint64, measurement *validatorpkg.ReleaseMeasurementArtifact, validatorID, epoch uint64) error {
+	if measurement == nil || measurement.ValidatorID != validatorID || measurement.SettlementEpoch != epoch {
+		return errors.New("signed measurement identity is unavailable for head fleet replay")
+	}
+	seen := map[string]bool{}
+	for _, binding := range measurement.Bindings {
+		client, err := finalSemanticClientKey(binding.ClientID)
+		if err != nil {
+			return err
+		}
+		clientKey, expectedMember := identity.Members[client]
+		sameFleet := binding.FleetID == identity.FleetKey
+		if !expectedMember && !sameFleet {
+			continue
+		}
+		owner, ownerOK := owners[client]
+		if !expectedMember || !sameFleet || !ownerOK || seen[client] || !binding.Active || binding.NoID != owner || binding.Hotkey != identity.Hotkey || binding.ClientKey != clientKey || binding.LocalClientKey != clientKey || binding.CommitmentHash != identity.CommitmentHash || binding.Generation != identity.Generation || !binding.LiveUIDFound || binding.RecordUID != identity.UID || binding.LiveUID != identity.UID {
+			return fmt.Errorf("validator %d epoch %d signed binding differs from challenger fleet manifest identity", validatorID, epoch)
+		}
+		seen[client] = true
+	}
+	if len(seen) != len(identity.Members) {
+		return fmt.Errorf("validator %d epoch %d signed challenger member census=%d, want %d", validatorID, epoch, len(seen), len(identity.Members))
+	}
+	return nil
+}
+
+func verifyFinalHeadTournamentTransitionArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte) error {
+	plan, err := verifyFinalSetupPlanArtifact(evidence, cache[evidence.PlanArtifact.URI])
+	if err != nil {
+		return err
+	}
+	var topologyBindings []FinalFleetMemberBindingEvidence
+	if err := decodeStrictJSONBytes(cache[evidence.Topology.BindingManifest.URI], &topologyBindings); err != nil {
+		return fmt.Errorf("decode fleet binding manifest for tournament replay: %w", err)
+	}
+	ownersByFleet := make(map[uint64]map[string]uint64, len(evidence.HeadFleets))
+	for _, binding := range topologyBindings {
+		if binding.Tier != "head-candidate" {
+			continue
+		}
+		client, err := finalSemanticClientKey(binding.ClientID)
+		if err != nil {
+			return err
+		}
+		if ownersByFleet[binding.FleetID] == nil {
+			ownersByFleet[binding.FleetID] = map[string]uint64{}
+		}
+		if ownersByFleet[binding.FleetID][client] != 0 {
+			return fmt.Errorf("head fleet %d repeats a tournament client owner", binding.FleetID)
+		}
+		ownersByFleet[binding.FleetID][client] = binding.NoID
+	}
+	measurements := map[string]*validatorpkg.ReleaseMeasurementArtifact{}
+	for index := range evidence.HeadTransitions {
+		transition := &evidence.HeadTransitions[index]
+		if transition.ChallengerFleetID == 0 || transition.ChallengerFleetID > uint64(len(evidence.HeadFleets)) {
+			return fmt.Errorf("head tournament transition %d challenger fleet is outside the authenticated fleet graph", index+1)
+		}
+		fleet := &evidence.HeadFleets[transition.ChallengerFleetID-1]
+		identity, err := decodeFinalHeadFleetManifestIdentity(evidence, fleet, cache[fleet.BindingArtifact.URI])
+		if err != nil {
+			return err
+		}
+		var encodedArtifact struct {
+			Postcondition json.RawMessage             `json:"postcondition"`
+			Pruned        finalHeadTournamentIdentity `json:"pruned_identity"`
+		}
+		if err := decodeStrictJSONBytes(cache[transition.Artifact.URI], &encodedArtifact); err != nil {
+			return fmt.Errorf("decode head tournament transition %d artifact: %w", index+1, err)
+		}
+		postcondition, err := decodeFinalActionPostconditionV4(encodedArtifact.Postcondition)
+		if err != nil {
+			return fmt.Errorf("head tournament transition %d artifact lacks its v4 postcondition: %w", index+1, err)
+		}
+		artifact := finalHeadTournamentTransitionArtifact{Postcondition: postcondition, Pruned: encodedArtifact.Pruned}
+		proof, proofErr := decodeFinalActionPostconditionV4(cache[transition.Registration.Proof.URI])
+		if proofErr != nil || !finalJSONEqual(proof, artifact.Postcondition) {
+			return stateMismatchError(proofErr, "head tournament transition %d registration proof and artifact contain different v4 postconditions", index+1)
+		}
+		if postcondition.DeploymentID != evidence.DeploymentID || postcondition.ActionID != fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID) || postcondition.SubstrateFinalized != transition.Snapshot || postcondition.IndependentSubstrateFinalized != transition.IndependentSnapshot || postcondition.EVMFinalized != transition.EVMSnapshot || postcondition.IndependentEVMFinalized != transition.IndependentEVMSnapshot || postcondition.OperationalRPCMode != transition.OperationalRPCMode || postcondition.IndependentRPC != transition.IndependentRPC {
+			return fmt.Errorf("head tournament transition %d declaration differs from its exact v4 checkpoints", index+1)
+		}
+		if err := verifyFinalSetupPlanActionReceipt(plan, postcondition); err != nil {
+			return fmt.Errorf("head tournament transition %d setup lineage: %w", index+1, err)
+		}
+		if !finalJSONEqual(postcondition.Observed, postcondition.IndependentObserved) {
+			return fmt.Errorf("head tournament transition %d RPC observations disagree", index+1)
+		}
+		uid, uidOK := finalSemanticObservedUint(postcondition.Observed, "uid")
+		replacedUID, replacedUIDOK := finalSemanticObservedUint(postcondition.Observed, "replaced_uid")
+		replacedChurn, replacedChurnOK := finalSemanticObservedUint(postcondition.Observed, "replaced_churn")
+		uidCount, uidCountOK := finalSemanticObservedUint(postcondition.Observed, "uid_count")
+		role, roleOK := finalObservedString(postcondition.Observed, "role")
+		hotkeyHex, hotkeyOK := finalObservedString(postcondition.Observed, "hotkey")
+		coldkeyHex, coldkeyOK := finalObservedString(postcondition.Observed, "coldkey")
+		promotedHotkey, promotedColdkey, identityErr := finalSemanticSS58Pair(fmt.Sprintf("challenger fleet %d", transition.ChallengerFleetID), transition.PromotedHotkey, evidence.HeadFleets[transition.ChallengerFleetID-1].Coldkey)
+		if !uidOK || !replacedUIDOK || !replacedChurnOK || !uidCountOK || !roleOK || !hotkeyOK || !coldkeyOK || identityErr != nil || uid != uint64(transition.PromotedUID) || replacedUID != uint64(transition.PrunedUID) || replacedChurn != transition.PrunedChurn || uidCount <= uid || role != fmt.Sprintf("fleet-%d-hotkey", transition.ChallengerFleetID) || hotkeyHex != "0x"+hex.EncodeToString(promotedHotkey[:]) || coldkeyHex != "0x"+hex.EncodeToString(promotedColdkey[:]) {
+			return stateMismatchError(identityErr, "head tournament transition %d observed registration identity differs", index+1)
+		}
+		prunedKey, keyErr := decodeHex32("pruned tournament hotkey", artifact.Pruned.PublicKey)
+		prunedSS58, prunedPrefix, ss58Err := ss58.Decode(artifact.Pruned.SS58)
+		indexedPruned, indexedErr := finalFleetLifecycleRole(evidence.FleetLifecycle, artifact.Pruned.Role)
+		if keyErr != nil || ss58Err != nil || indexedErr != nil || prunedPrefix != ss58.BittensorPrefix || prunedKey != prunedSS58 || artifact.Pruned.Role != fmt.Sprintf("churn-%d-hotkey", transition.PrunedChurn) || artifact.Pruned.PublicKey != indexedPruned.PublicKey || artifact.Pruned.SS58 != indexedPruned.SS58 || artifact.Pruned.SS58 != transition.PrunedHotkey {
+			return stateMismatchError(errors.Join(keyErr, ss58Err, indexedErr), "head tournament transition %d pruned identity differs from its exact authenticated role", index+1)
+		}
+		for _, validator := range evidence.Validators {
+			for _, cycle := range validator.Cycles {
+				matches := 0
+				for _, candidate := range cycle.Candidates {
+					if candidate.FleetID == transition.ChallengerFleetID {
+						matches++
+						if candidate.UID != transition.PromotedUID {
+							return fmt.Errorf("validator %d epoch %d signed cycle maps challenger fleet %d to UID %d, want %d", validator.ValidatorID, cycle.SettlementEpoch, transition.ChallengerFleetID, candidate.UID, transition.PromotedUID)
+						}
+					}
+				}
+				if matches != 1 {
+					return fmt.Errorf("validator %d epoch %d signed cycle contains %d identities for challenger fleet %d", validator.ValidatorID, cycle.SettlementEpoch, matches, transition.ChallengerFleetID)
+				}
+				measurement := measurements[cycle.MeasurementArtifact.URI]
+				if measurement == nil {
+					var decodeErr error
+					measurement, _, decodeErr = validatorpkg.DecodeReleaseMeasurementArtifact(cache[cycle.MeasurementArtifact.URI])
+					if decodeErr != nil {
+						return fmt.Errorf("decode validator %d epoch %d signed measurement for tournament replay: %w", validator.ValidatorID, cycle.SettlementEpoch, decodeErr)
+					}
+					measurements[cycle.MeasurementArtifact.URI] = measurement
+				}
+				if err := verifyFinalSignedCycleFleetIdentity(identity, ownersByFleet[transition.ChallengerFleetID], measurement, validator.ValidatorID, cycle.SettlementEpoch); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func verifyFinalValidatorViewTransitionArtifact(evidence *FinalSemanticEvidence, data []byte) error {
+	derived, err := deriveFinalValidatorViewTransition(evidence)
+	if err != nil {
+		return err
+	}
+	declared := finalValidatorViewTransitionArtifact{
+		FaultEpoch: evidence.ValidatorView.FaultEpoch, RestoredEpoch: evidence.ValidatorView.RestoredEpoch,
+		AffectedValidatorID: evidence.ValidatorView.AffectedValidatorID, ControlValidatorID: evidence.ValidatorView.ControlValidatorID,
+		WithheldFleetID: evidence.ValidatorView.WithheldFleetID, ReplacementFleetID: evidence.ValidatorView.ReplacementFleetID,
+	}
+	if declared != derived {
+		return errors.New("validator-local view declaration differs from independently rederived signed cycles")
+	}
+	var artifact finalValidatorViewTransitionArtifact
+	if err := decodeStrictJSONBytes(data, &artifact); err != nil {
+		return fmt.Errorf("decode validator-local view transition artifact: %w", err)
+	}
+	if artifact != derived {
+		return errors.New("validator-local view artifact differs from independently rederived signed cycles")
+	}
+	return nil
+}
+
 func verifyFinalIntentArtifact(evidence *FinalSemanticEvidence, validatorID uint64, cycle *FinalCRv4Cycle, data []byte) error {
 	var intent validatorpkg.SteeringIntent
-	if err := json.Unmarshal(data, &intent); err != nil {
+	if err := decodeStrictJSONBytes(data, &intent); err != nil {
 		return err
 	}
 	if intent.Schema != validatorpkg.SteeringIntentSchema || intent.Prepared == nil {
@@ -3304,7 +3743,7 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 		return err
 	}
 	var intent validatorpkg.SteeringIntent
-	if err := json.Unmarshal(intentData, &intent); err != nil {
+	if err := decodeStrictJSONBytes(intentData, &intent); err != nil {
 		return err
 	}
 	if validatorpkg.ReleaseMeasurementContentHash(measurementData) != intent.MeasurementArtifactHash || uint64(len(measurementData)) != intent.MeasurementArtifactSize || cycle.MeasurementArtifact.ContentHash != intent.MeasurementArtifactHash || cycle.MeasurementArtifact.SizeBytes != intent.MeasurementArtifactSize {
@@ -3897,7 +4336,7 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 
 func finalMinerTierByClient(data []byte) (map[connect.Id]finalMinerAssignment, error) {
 	var bindings []FinalFleetMemberBindingEvidence
-	if err := json.Unmarshal(data, &bindings); err != nil {
+	if err := decodeStrictJSONBytes(data, &bindings); err != nil {
 		return nil, fmt.Errorf("decode fleet binding manifest: %w", err)
 	}
 	result := make(map[connect.Id]finalMinerAssignment, len(bindings))
@@ -3930,6 +4369,67 @@ func verifyFinalPolicyArtifact(evidence *FinalSemanticEvidence, data []byte) (*p
 		return nil, errors.New("policy artifact hash does not match on-chain policy hash")
 	}
 	return &policy, nil
+}
+
+// Decode the exact approved plan rather than treating its declared digest as
+// an authority. Besides authenticating the current plan, this is the bounded
+// lineage used to accept a journaled v4 receipt carried across a revision.
+func verifyFinalSetupPlanArtifact(evidence *FinalSemanticEvidence, data []byte) (*SetupPlan, error) {
+	if evidence == nil || len(data) == 0 {
+		return nil, errors.New("approved setup plan artifact is unavailable")
+	}
+	var plan SetupPlan
+	if err := decodeStrictJSONBytes(data, &plan); err != nil {
+		return nil, fmt.Errorf("decode approved setup plan artifact: %w", err)
+	}
+	observedHash, err := persistedSetupPlanHash(data, plan.Schema)
+	if err != nil || plan.Schema != currentSetupPlanSchema || plan.PlanHash != evidence.PlanHash || observedHash != evidence.PlanHash || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.GenesisHash != evidence.GenesisHash || plan.Netuid != evidence.Netuid || plan.ConfigHash != evidence.ConfigHash || plan.PolicyHash != evidence.PolicyHash {
+		return nil, stateMismatchError(err, "approved setup plan artifact differs from the final deployment identity")
+	}
+	seenPlans := map[string]bool{plan.PlanHash: true}
+	for _, hash := range plan.PriorPlanHashes {
+		if requireFinalHex32("approved prior plan hash", hash) != nil || seenPlans[hash] {
+			return nil, errors.New("approved setup plan lineage is noncanonical or duplicated")
+		}
+		seenPlans[hash] = true
+	}
+	seenActions := map[string]bool{}
+	for _, action := range plan.Actions {
+		if action.ID == "" || seenActions[action.ID] {
+			return nil, errors.New("approved setup plan action identity is empty or duplicated")
+		}
+		seenActions[action.ID] = true
+		if err := requireFinalHex32("approved action intent hash", action.IntentHash); err != nil {
+			return nil, err
+		}
+		derivedIntent, err := actionIntentHash(action)
+		if err != nil || derivedIntent != action.IntentHash {
+			return nil, stateMismatchError(err, "approved setup action %s intent hash is not derived from its exact fields", action.ID)
+		}
+		seenIntents := map[string]bool{action.IntentHash: true}
+		for _, hash := range action.AcceptedPriorIntentHashes {
+			if requireFinalHex32("approved prior action intent hash", hash) != nil || seenIntents[hash] {
+				return nil, fmt.Errorf("approved setup action %s has a noncanonical or duplicated intent lineage", action.ID)
+			}
+			seenIntents[hash] = true
+		}
+	}
+	return &plan, nil
+}
+
+func verifyFinalSetupPlanActionReceipt(plan *SetupPlan, postcondition *ActionPostcondition) error {
+	if plan == nil || postcondition == nil || !plan.allowedPlanHashes()[postcondition.PlanHash] {
+		return errors.New("v4 postcondition plan is outside the approved setup lineage")
+	}
+	for _, action := range plan.Actions {
+		if action.ID == postcondition.ActionID {
+			if !actionAcceptsIntent(action, postcondition.IntentHash) {
+				return fmt.Errorf("approved setup action %s does not accept the v4 postcondition intent", action.ID)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("approved setup plan has no action %s", postcondition.ActionID)
 }
 
 func verifyFinalPolicyInputs(evidence *FinalSemanticEvidence, policy *protocol.Policy) error {
@@ -4046,7 +4546,10 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 		fmt.Fprintf(&out, "Production phase `%s` continues authenticated, semantic_verified release-1.0 run `%s` (result `%s`, semantic evidence `%s`, public transcript `%s`, owner completion envelope `%s`, evidence-manifest envelope `%s`, semantic supplement envelope `%s`; carried [semantic evidence](%s)), whose terminal native checkpoint is %d/`%s` and terminal EVM checkpoint is %d/`%s`.\n\n", evidence.Phase, finalMarkdown(evidence.PriorPhase.RunID), evidence.PriorPhase.ResultHash, evidence.PriorPhase.SemanticEvidenceHash, evidence.PriorPhase.PublicTranscriptHash, evidence.PriorPhase.OwnerCompletionEnvelopeHash, evidence.PriorPhase.EvidenceManifestEnvelopeHash, evidence.PriorPhase.SemanticSupplementEnvelopeHash, finalMarkdown(evidence.PriorPhase.SemanticEvidence.URI), evidence.PriorPhase.TerminalNativeHead.Number, evidence.PriorPhase.TerminalNativeHead.Hash, evidence.PriorPhase.TerminalEVMHead.Number, evidence.PriorPhase.TerminalEVMHead.Hash)
 	}
 	fmt.Fprintf(&out, "Archive-retention preflight `%s`, generated `%s`, proves public history depth %d blocks for the %d-block composite campaign plus a %d-block peer-review margin; immutable receipt [%s](%s).\n\n", evidence.ArchiveRetention.EvidenceHash, evidence.ArchiveRetention.GeneratedAt, evidence.ArchiveRetention.RequiredDepthBlocks, evidence.ArchiveRetention.PlannedSpanBlocks, evidence.ArchiveRetention.SafetyMarginBlocks, evidence.ArchiveRetention.Artifact.ContentHash, finalMarkdown(evidence.ArchiveRetention.Artifact.URI))
-	fmt.Fprintf(&out, "Authenticated public deployment manifest `%s` is discoverable at `%s`. Public archive verification transcript `%s` contains %d pinned JSON-RPC exchanges against Substrate `%s` (terminal %d/`%s`) and EVM `%s` (terminal %d/`%s`). From a clean checkout with no existing simulator state, discover the signed completion/archive graph and independently replay every pinned semantic query with:\n\n```sh\ngo run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --format json\n```\n\n", evidence.PublicVerification.PublicManifestHash, finalMarkdown(evidence.PublicVerification.EvidenceURI), evidence.PublicVerification.TranscriptHash, len(evidence.PublicVerification.Exchanges), finalMarkdown(evidence.PublicVerification.SubstrateRPC), evidence.NativeTerminalHead.Number, evidence.NativeTerminalHead.Hash, finalMarkdown(evidence.PublicVerification.EVMRPC), evidence.EVMTerminalHead.Number, evidence.EVMTerminalHead.Hash, finalMarkdown(evidence.PublicVerification.EvidenceURI))
+	fmt.Fprintf(&out, "Authenticated public deployment manifest `%s` is replicated at exactly two distinct operator origins; primary/current URI `%s` is one of them. Public archive verification transcript `%s` contains %d pinned JSON-RPC exchanges against Substrate `%s` (terminal %d/`%s`) and EVM `%s` (terminal %d/`%s`). From a clean checkout with no existing simulator state, independently inspect and analyze the complete signed deployment/completion/archive graph through each origin:\n\n", evidence.PublicVerification.PublicManifestHash, finalMarkdown(evidence.PublicVerification.EvidenceURI), evidence.PublicVerification.TranscriptHash, len(evidence.PublicVerification.Exchanges), finalMarkdown(evidence.PublicVerification.SubstrateRPC), evidence.NativeTerminalHead.Number, evidence.NativeTerminalHead.Hash, finalMarkdown(evidence.PublicVerification.EVMRPC), evidence.EVMTerminalHead.Number, evidence.EVMTerminalHead.Hash)
+	for _, origin := range evidence.PublicVerification.OperatorEvidenceOrigins {
+		fmt.Fprintf(&out, "Operator %d manifest `%s`:\n\n```sh\ngo run ./sim-testnet inspect --config sim-testnet/testnet.yml --manifest %s --format json\ngo run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --format json\n```\n\n", origin.OperatorNoID, finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI))
+	}
 	fmt.Fprintf(&out, "Topology is exactly %d SDK miner instances hosted by %d swarm processes in %d candidate fleets competing for %d slots, with %d validator processes and %d operator pools. Full process and member censuses: [%s](%s), [%s](%s).\n\n", evidence.Topology.MinerSDKInstances, evidence.Topology.MinerSwarmProcesses, evidence.Topology.HeadCandidateFleets, evidence.Topology.HeadSlots, evidence.Topology.ValidatorProcesses, evidence.Topology.OperatorPools, evidence.Topology.MinerManifestHash, finalMarkdown(evidence.Topology.MinerManifest.URI), evidence.Topology.BindingManifestHash, finalMarkdown(evidence.Topology.BindingManifest.URI))
 	if lifecycle := evidence.FleetLifecycle; lifecycle != nil {
 		state := &lifecycle.State

@@ -33,7 +33,7 @@ func finalSemanticIdentityFixture(t *testing.T) FinalSemanticEvidence {
 	minerManifest := artifact("miner-process-manifest", "miners")
 	bindingManifest := artifact("fleet-binding-manifest", "bindings")
 	source := FinalSemanticEvidence{
-		Window: ScenarioAcceptanceWindow{FirstEpoch: 10, EpochCount: 3, TerminalBlock: 122}, NativeTerminalHead: nativeTerminal,
+		Window: ScenarioAcceptanceWindow{FirstEpoch: 10, EpochCount: 3, TerminalBlock: 122}, NativeTerminalHead: nativeTerminal, EVMTerminalHead: ChainHead{Number: 122, Hash: finalTestHex(122)},
 		Deployment:        FinalContractDeploymentEvidence{SettlementVault: settlementVault.Hex()},
 		ExpectedOperators: 2, ExpectedValidators: 2, ExpectedMiners: 1000, ExpectedCandidates: finalHeadCandidateCount, ExpectedHeadSlots: finalHeadSlotCount,
 		Topology: FinalTopologyEvidence{
@@ -68,11 +68,14 @@ func finalSemanticIdentityFixture(t *testing.T) FinalSemanticEvidence {
 	}
 	for i := 0; i < 2; i++ {
 		fleet := source.HeadFleets[finalHeadSlotCount+i]
+		nativeSnapshot := ChainHead{Number: uint64(90 + i), Hash: finalTestHex(byte(90 + i))}
+		evmSnapshot := ChainHead{Number: uint64(91 + i), Hash: finalTestHex(byte(91 + i))}
 		source.HeadTransitions = append(source.HeadTransitions, FinalHeadTournamentTransition{
 			ChallengerFleetID: fleet.FleetID, PromotedUID: fleet.UID, PromotedHotkey: fleet.Hotkey,
-			PrunedUID: fleet.UID, PrunedHotkey: fmt.Sprintf("5PrunedHotkey%d", fleet.FleetID),
-			Registration: nativeReceipt(fmt.Sprintf("challenger-registration-%d", fleet.FleetID), uint64(80+i)),
-			Snapshot:     ChainHead{Number: uint64(90 + i), Hash: finalTestHex(byte(90 + i))}, Artifact: artifact("head-tournament-transition", fmt.Sprintf("head-transition-%d", fleet.FleetID)),
+			PrunedUID: fleet.UID, PrunedChurn: uint64(i + 1), PrunedHotkey: fmt.Sprintf("5PrunedHotkey%d", fleet.FleetID),
+			OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true, Registration: fleet.Registration,
+			Snapshot: nativeSnapshot, IndependentSnapshot: nativeSnapshot, EVMSnapshot: evmSnapshot, IndependentEVMSnapshot: evmSnapshot,
+			Artifact: artifact("head-tournament-transition", fmt.Sprintf("head-transition-%d", fleet.FleetID)),
 		})
 	}
 	return source

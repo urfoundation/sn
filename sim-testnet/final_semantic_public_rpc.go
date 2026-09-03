@@ -37,6 +37,7 @@ import (
 type PublicFinalSemanticChainReader struct {
 	evidence              *FinalSemanticEvidence
 	evidenceURI           string
+	operatorOrigins       []FinalOperatorEvidenceOrigin
 	manifestHash          string
 	canonicalSubstrateRPC string
 	canonicalEVMRPC       string
@@ -56,10 +57,13 @@ func NewPublicFinalSemanticChainReader(ctx context.Context, public *PublicDeploy
 	if err != nil {
 		return nil, err
 	}
-	return newPublicFinalSemanticChainReaderWithTransport(ctx, public, evidence, evidenceURI, transport)
+	if evidence == nil || evidence.PublicVerification == nil {
+		return nil, errors.New("sealed final semantic evidence does not contain authenticated operator origins")
+	}
+	return newPublicFinalSemanticChainReaderWithTransport(ctx, public, evidence, evidenceURI, evidence.PublicVerification.OperatorEvidenceOrigins, transport)
 }
 
-func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string, transport finalSemanticRPCTransport) (*PublicFinalSemanticChainReader, error) {
+func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string, origins []FinalOperatorEvidenceOrigin, transport finalSemanticRPCTransport) (*PublicFinalSemanticChainReader, error) {
 	if ctx == nil || public == nil || evidence == nil {
 		return nil, errors.New("public final semantic reader context is incomplete")
 	}
@@ -84,6 +88,20 @@ func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public 
 	}
 	if err := verifyFinalEvidenceURI("evidence discovery", evidenceURI, transportProfile, public.ChainID, public.GenesisHash); err != nil {
 		return nil, err
+	}
+	if err := validateFinalOperatorEvidenceOrigins(origins, evidenceURI, transportProfile, public.ChainID, public.GenesisHash); err != nil {
+		return nil, err
+	}
+	if len(public.Operators) != len(origins) {
+		return nil, errors.New("authenticated public manifest does not name exactly two evidence operators")
+	}
+	for index, origin := range origins {
+		operator := public.Operators[index]
+		manifestOrigin, manifestErr := publicEvidenceOrigin(origin.ManifestURI, transportProfile, public.ChainID, public.GenesisHash)
+		operatorOrigin, operatorErr := publicEvidenceOrigin(operator.APIURL, transportProfile, public.ChainID, public.GenesisHash)
+		if manifestErr != nil || operatorErr != nil || operator.NoID != origin.OperatorNoID || manifestOrigin != operatorOrigin {
+			return nil, errors.Join(manifestErr, operatorErr, fmt.Errorf("operator %d deployment-manifest origin does not match the authenticated operator directory", origin.OperatorNoID))
+		}
 	}
 	allowedOrigins, err := campaignArtifactAllowedOrigins(public, "")
 	if err != nil {
@@ -121,7 +139,7 @@ func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public 
 	}
 	evm := eth.Client()
 	reader := &PublicFinalSemanticChainReader{
-		evidence: evidence, evidenceURI: evidenceURI, manifestHash: manifestHash,
+		evidence: evidence, evidenceURI: evidenceURI, operatorOrigins: append([]FinalOperatorEvidenceOrigin(nil), origins...), manifestHash: manifestHash,
 		canonicalSubstrateRPC: transport.canonicalSubstrateRPC, canonicalEVMRPC: transport.canonicalEVMRPC,
 		native: native, evm: evm, evmRetry: retryPolicy,
 	}
@@ -194,6 +212,13 @@ func (r *PublicFinalSemanticChainReader) PublicManifestHash() string {
 		return ""
 	}
 	return r.manifestHash
+}
+
+func (r *PublicFinalSemanticChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
+	if r == nil {
+		return nil
+	}
+	return append([]FinalOperatorEvidenceOrigin(nil), r.operatorOrigins...)
 }
 
 func (r *PublicFinalSemanticChainReader) substrateRaw(ctx context.Context, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {

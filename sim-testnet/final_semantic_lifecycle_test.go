@@ -176,10 +176,23 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 			addAction(Action{ID: cleanupID, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: name + " cleanup"})
 		}
 	}
+	for _, transition := range source.HeadTransitions {
+		var artifact finalHeadTournamentTransitionArtifact
+		if err := json.Unmarshal(artifacts[transition.Artifact.URI], &artifact); err != nil || artifact.Postcondition == nil {
+			t.Fatalf("decode carried tournament postcondition: %v", err)
+		}
+		addAction(Action{
+			ID:                        fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID),
+			Kind:                      "substrate-extrinsic",
+			Target:                    fmt.Sprintf("fleet-%d-hotkey", transition.ChallengerFleetID),
+			Description:               "head tournament challenger registration",
+			AcceptedPriorIntentHashes: []string{artifact.Postcondition.IntentHash},
+		})
+	}
 	plan := SetupPlan{
-		Schema: "urnetwork-sim-plan-v1", Release: "1.0", DeploymentID: source.DeploymentID,
+		Schema: currentSetupPlanSchema, Release: "1.0", DeploymentID: source.DeploymentID,
 		ChainID: source.ChainID, GenesisHash: source.GenesisHash, Netuid: source.Netuid,
-		ConfigHash: source.ConfigHash, PolicyHash: source.PolicyHash, Actions: actions,
+		PriorPlanHashes: []string{finalTestHex(2)}, ConfigHash: source.ConfigHash, PolicyHash: source.PolicyHash, Actions: actions,
 		LiveFacts: SetupFacts{FinalizedBlock: 1, FinalizedBlockHash: finalTestHex(1)},
 	}
 	plan.PlanHash, err = plan.hash()
@@ -190,10 +203,13 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodePersistedPlanBytes(planBytes); err != nil {
-		t.Fatalf("lifecycle fixture plan: %v", err)
+	if persisted, hashErr := persistedSetupPlanHash(planBytes, plan.Schema); hashErr != nil || persisted != plan.PlanHash {
+		t.Fatalf("lifecycle fixture plan hash=%q: %v", persisted, hashErr)
 	}
 	source.PlanHash = plan.PlanHash
+	planURI := "artifacts/setup-plan.json"
+	artifacts[planURI] = append([]byte(nil), planBytes...)
+	source.PlanArtifact = FinalArtifactLocator{Kind: "setup-plan", URI: planURI, ContentHash: bytesSHA256(planBytes), SizeBytes: uint64(len(planBytes))}
 
 	actionByID := make(map[string]Action, len(actions))
 	for _, action := range actions {
@@ -767,6 +783,92 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	artifacts[source.Deployment.Artifact.URI] = data
 	source.Deployment.Artifact.ContentHash = bytesSHA256(data)
 	source.Deployment.Artifact.SizeBytes = uint64(len(data))
+
+	setArtifact := func(locator *FinalArtifactLocator, data []byte) {
+		artifacts[locator.URI] = append([]byte(nil), data...)
+		locator.ContentHash = bytesSHA256(data)
+		locator.SizeBytes = uint64(len(data))
+	}
+	for index := range source.HeadFleets {
+		fleet := &source.HeadFleets[index]
+		var wrapper struct {
+			Manifest json.RawMessage `json:"manifest"`
+			UID      uint16          `json:"uid"`
+			Snapshot ChainHead       `json:"snapshot"`
+		}
+		if err := json.Unmarshal(artifacts[fleet.BindingArtifact.URI], &wrapper); err != nil {
+			t.Fatal(err)
+		}
+		switch fleet.FleetID {
+		case fleetLifecycleTargetFleet:
+			wrapper.Manifest = manifestBytesByVariant[fleetLifecycleVariantProvider]
+		case fleetLifecycleCompanionFleet:
+			wrapper.Manifest = manifestBytesByVariant[fleetLifecycleVariantTerminal]
+		}
+		wrapper.UID, wrapper.Snapshot = fleet.UID, fleet.Snapshot
+		encoded, marshalErr := json.Marshal(wrapper)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&fleet.BindingArtifact, encoded)
+	}
+	for index := range source.Pools {
+		pool := &source.Pools[index]
+		hotkey, coldkey, identityErr := finalSemanticSS58Pair("lifecycle fixture pool", pool.Hotkey, pool.Coldkey)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		state := FinalCollectedNativeUIDState{UID: pool.UID, HotkeyPublicKey: "0x" + hex.EncodeToString(hotkey[:]), ColdkeyPublicKey: "0x" + hex.EncodeToString(coldkey[:]), RegistrationBlock: pool.Registration.Block.Number}
+		encoded, marshalErr := json.Marshal(map[string]any{
+			"snapshot": pool.Snapshot, "state": state, "settlement_vault": source.Deployment.SettlementVault,
+			"vault_mirror_coldkey": pool.Coldkey, "operator_registry_coldkey": pool.OperatorColdkey,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&pool.OwnershipArtifact, encoded)
+	}
+	for index := range source.Validators {
+		validator := &source.Validators[index]
+		hotkey, coldkey, identityErr := finalSemanticSS58Pair("lifecycle fixture validator", validator.Hotkey, validator.Coldkey)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		state := FinalCollectedNativeUIDState{
+			UID: validator.UID, HotkeyPublicKey: "0x" + hex.EncodeToString(hotkey[:]), ColdkeyPublicKey: "0x" + hex.EncodeToString(coldkey[:]),
+			RegistrationBlock: validator.Registration.Block.Number, StakeRao: validator.StakeRao,
+			ValidatorPermit: validator.ValidatorPermit, ValidatorTrustU16: validator.ValidatorTrustU16,
+		}
+		encoded, marshalErr := json.Marshal(map[string]any{"snapshot": validator.Snapshot, "state": state})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&validator.SnapshotArtifact, encoded)
+	}
+	for index := range source.HeadTransitions {
+		transition := &source.HeadTransitions[index]
+		var artifact finalHeadTournamentTransitionArtifact
+		if err := json.Unmarshal(artifacts[transition.Artifact.URI], &artifact); err != nil || artifact.Postcondition == nil {
+			t.Fatalf("decode lifecycle fixture tournament artifact: %v", err)
+		}
+		pruned, roleErr := finalFleetLifecycleRole(source.FleetLifecycle, fmt.Sprintf("churn-%d-hotkey", transition.PrunedChurn))
+		if roleErr != nil {
+			t.Fatal(roleErr)
+		}
+		artifact.Pruned = finalHeadTournamentIdentity{Role: pruned.Label, PublicKey: pruned.PublicKey, SS58: pruned.SS58}
+		transition.PrunedHotkey = pruned.SS58
+		postconditionBytes, marshalErr := json.Marshal(artifact.Postcondition)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Registration.Proof, postconditionBytes)
+		source.HeadFleets[transition.ChallengerFleetID-1].Registration.Proof = transition.Registration.Proof
+		artifactBytes, marshalErr := json.Marshal(artifact)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Artifact, artifactBytes)
+	}
 }
 
 func mustFinalFleetLifecycleRoles(t *testing.T, identities *finalPublicIdentities) []FinalFleetLifecycleRole {

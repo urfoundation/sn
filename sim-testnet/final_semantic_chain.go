@@ -17,7 +17,12 @@ import (
 	"strings"
 )
 
-const finalPublicChainVerificationSchema = "urnetwork-final-public-chain-verification-v1"
+const finalPublicChainVerificationSchema = "urnetwork-final-public-chain-verification-v2"
+
+type FinalOperatorEvidenceOrigin struct {
+	OperatorNoID int    `json:"operator_no_id"`
+	ManifestURI  string `json:"manifest_uri"`
+}
 
 type FinalRPCExchange struct {
 	Sequence     uint64          `json:"sequence"`
@@ -39,10 +44,11 @@ type FinalPublicChainVerification struct {
 	// URI. It is not the semantic object's own URI, which is assigned only by
 	// the outer completion/archive and therefore cannot be embedded without a
 	// content-hash cycle.
-	EvidenceURI        string             `json:"evidence_uri"`
-	PublicManifestHash string             `json:"public_manifest_hash"`
-	Exchanges          []FinalRPCExchange `json:"exchanges"`
-	TranscriptHash     string             `json:"transcript_hash"`
+	EvidenceURI             string                        `json:"evidence_uri"`
+	OperatorEvidenceOrigins []FinalOperatorEvidenceOrigin `json:"operator_evidence_origins"`
+	PublicManifestHash      string                        `json:"public_manifest_hash"`
+	Exchanges               []FinalRPCExchange            `json:"exchanges"`
+	TranscriptHash          string                        `json:"transcript_hash"`
 }
 
 type FinalNativeUIDState struct {
@@ -227,6 +233,13 @@ type FinalSemanticChainReader interface {
 	ReserveState(context.Context, ChainHead) (FinalReserveState, []FinalRPCExchange, error)
 }
 
+// FinalSemanticOperatorOriginReader exposes the two authenticated deployment
+// manifest locations. Keeping this separate from the RPC seam makes an older
+// reader fail closed at runtime instead of silently inventing a second origin.
+type FinalSemanticOperatorOriginReader interface {
+	OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin
+}
+
 // FinalSemanticLifecycleChainReader is required whenever the semantic object
 // carries lifecycle evidence. Keeping these expensive historical surfaces
 // separate prevents non-lifecycle production evidence from silently receiving
@@ -327,7 +340,12 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 	if err != nil {
 		return nil, fmt.Errorf("public deployment manifest transport: %w", err)
 	}
-	verification := &FinalPublicChainVerification{Schema: finalPublicChainVerificationSchema, SubstrateRPC: substrateRPC, EVMRPC: evmRPC, EvidenceTransportProfile: transportProfile, EvidenceURI: manifestURI, PublicManifestHash: reader.PublicManifestHash()}
+	originReader, ok := reader.(FinalSemanticOperatorOriginReader)
+	if !ok {
+		return nil, errors.New("public semantic reader does not expose two authenticated operator evidence origins")
+	}
+	origins := originReader.OperatorEvidenceOrigins()
+	verification := &FinalPublicChainVerification{Schema: finalPublicChainVerificationSchema, SubstrateRPC: substrateRPC, EVMRPC: evmRPC, EvidenceTransportProfile: transportProfile, EvidenceURI: manifestURI, OperatorEvidenceOrigins: origins, PublicManifestHash: reader.PublicManifestHash()}
 	appendExchanges := func(chain string, head ChainHead, exchanges []FinalRPCExchange) error {
 		if len(exchanges) == 0 {
 			return fmt.Errorf("%s public RPC verification at %d returned no transcript", chain, head.Number)
@@ -459,6 +477,22 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 	for _, transition := range evidence.HeadTransitions {
 		if err := verifyFinalNativeEventOnChain(ctx, reader, transition.Registration, "registration", appendExchanges); err != nil {
 			return nil, fmt.Errorf("public challenger registration fleet=%d: %w", transition.ChallengerFleetID, err)
+		}
+		fleet := evidence.HeadFleets[transition.ChallengerFleetID-1]
+		for _, checkpoint := range []struct {
+			label string
+			head  ChainHead
+		}{{"operational", transition.Snapshot}, {"independent", transition.IndependentSnapshot}} {
+			state, exchanges, err := reader.NativeUID(ctx, evidence.Netuid, transition.PromotedUID, checkpoint.head)
+			if err != nil {
+				return nil, fmt.Errorf("public challenger %s UID fleet=%d: %w", checkpoint.label, transition.ChallengerFleetID, err)
+			}
+			if err := appendExchanges("substrate", checkpoint.head, exchanges); err != nil {
+				return nil, err
+			}
+			if state.UID != transition.PromotedUID || state.Hotkey != transition.PromotedHotkey || state.Coldkey != fleet.Coldkey || !state.Registered {
+				return nil, fmt.Errorf("public challenger %s UID fleet=%d differs from its v4 checkpoint", checkpoint.label, transition.ChallengerFleetID)
+			}
 		}
 	}
 	validatorUID := map[uint64]uint16{}
@@ -793,7 +827,8 @@ func finalSemanticHeads(evidence *FinalSemanticEvidence) ([]ChainHead, []ChainHe
 		native = append(native, fleet.Registration.Block, fleet.Snapshot)
 	}
 	for _, transition := range evidence.HeadTransitions {
-		native = append(native, transition.Registration.Block, transition.Snapshot)
+		native = append(native, transition.Registration.Block, transition.Snapshot, transition.IndependentSnapshot)
+		evm = append(evm, transition.EVMSnapshot, transition.IndependentEVMSnapshot)
 	}
 	for _, validator := range evidence.Validators {
 		native = append(native, validator.Registration.Block, validator.Snapshot)
@@ -916,6 +951,9 @@ func finalizePublicChainVerification(verification *FinalPublicChainVerification,
 	if err := verifyFinalEvidenceURI("public deployment manifest", verification.EvidenceURI, verification.EvidenceTransportProfile, chainID, genesisHash); err != nil {
 		return err
 	}
+	if err := validateFinalOperatorEvidenceOrigins(verification.OperatorEvidenceOrigins, verification.EvidenceURI, verification.EvidenceTransportProfile, chainID, genesisHash); err != nil {
+		return err
+	}
 	if err := requireFinalHex32("public deployment manifest hash", verification.PublicManifestHash); err != nil {
 		return err
 	}
@@ -942,6 +980,38 @@ func finalizePublicChainVerification(verification *FinalPublicChainVerification,
 		return err
 	}
 	verification.TranscriptHash = hash
+	return nil
+}
+
+func validateFinalOperatorEvidenceOrigins(origins []FinalOperatorEvidenceOrigin, primaryURI, profile string, chainID uint64, genesisHash string) error {
+	if len(origins) != 2 {
+		return fmt.Errorf("operator evidence origins=%d, want exactly 2", len(origins))
+	}
+	seenOrigins := map[string]bool{}
+	primary := false
+	for index, origin := range origins {
+		if origin.OperatorNoID != index+1 {
+			return errors.New("operator evidence origins are not in canonical operator order")
+		}
+		if err := verifyFinalEvidenceURI(fmt.Sprintf("operator %d deployment manifest", origin.OperatorNoID), origin.ManifestURI, profile, chainID, genesisHash); err != nil {
+			return err
+		}
+		parsed, _ := url.Parse(origin.ManifestURI)
+		if parsed.RawQuery == "" {
+			return fmt.Errorf("operator %d deployment manifest URI is not content-addressed", origin.OperatorNoID)
+		}
+		bare, err := publicEvidenceOrigin(origin.ManifestURI, profile, chainID, genesisHash)
+		if err != nil || seenOrigins[bare] {
+			return stateMismatchError(err, "operator evidence origins are not distinct")
+		}
+		seenOrigins[bare] = true
+		if origin.ManifestURI == primaryURI {
+			primary = true
+		}
+	}
+	if !primary {
+		return errors.New("primary deployment-manifest URI is not one of the two operator evidence origins")
+	}
 	return nil
 }
 

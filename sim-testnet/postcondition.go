@@ -287,9 +287,12 @@ func (e *Executor) independentReadExecutor() *Executor {
 }
 
 // Decode the durable representation while retaining exact JSON numbers inside
-// dynamic observation maps. A second value or an unknown field is never part
-// of one authenticated receipt.
+// dynamic observation maps. Duplicate/unknown fields or a second value are
+// never part of one authenticated receipt.
 func decodeActionPostcondition(raw []byte) (*ActionPostcondition, error) {
+	if err := rejectDuplicatePostconditionJSONFields(raw); err != nil {
+		return nil, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	decoder.DisallowUnknownFields()
@@ -305,6 +308,166 @@ func decodeActionPostcondition(raw []byte) (*ActionPostcondition, error) {
 		return nil, err
 	}
 	return &record, nil
+}
+
+func rejectDuplicatePostconditionJSONFields(raw []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var consume func() error
+	consume = func() error {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		delimiter, composite := token.(json.Delim)
+		if !composite {
+			return nil
+		}
+		switch delimiter {
+		case '{':
+			seen := map[string]bool{}
+			for decoder.More() {
+				nameToken, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				name, ok := nameToken.(string)
+				if !ok || seen[name] {
+					return fmt.Errorf("action postcondition has a duplicate or invalid JSON field %q", name)
+				}
+				seen[name] = true
+				if err := consume(); err != nil {
+					return err
+				}
+			}
+			closing, err := decoder.Token()
+			if err != nil || closing != json.Delim('}') {
+				return errors.New("action postcondition JSON object is not closed")
+			}
+		case '[':
+			for decoder.More() {
+				if err := consume(); err != nil {
+					return err
+				}
+			}
+			closing, err := decoder.Token()
+			if err != nil || closing != json.Delim(']') {
+				return errors.New("action postcondition JSON array is not closed")
+			}
+		default:
+			return errors.New("action postcondition JSON has an invalid delimiter")
+		}
+		return nil
+	}
+	if err := consume(); err != nil {
+		return err
+	}
+	if token, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("action postcondition has trailing JSON token %v", token)
+	}
+	return nil
+}
+
+func validateActionPostconditionV4JSONShape(raw []byte) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return err
+	}
+	required := [...]string{
+		"schema", "deployment_id", "plan_hash", "action_id", "intent_hash",
+		"operational_rpc_mode", "independent_rpc", "substrate_finalized",
+		"evm_finalized", "evm_hash_domain", "observed",
+		"independent_substrate_finalized", "independent_evm_finalized",
+		"independent_evm_hash_domain", "independent_observed",
+	}
+	if len(object) != len(required) {
+		return fmt.Errorf("action postcondition v4 has %d wire fields, want %d", len(object), len(required))
+	}
+	for _, name := range required {
+		if _, ok := object[name]; !ok {
+			return fmt.Errorf("action postcondition v4 is missing exact wire field %q", name)
+		}
+	}
+	for _, name := range []string{"substrate_finalized", "evm_finalized", "independent_substrate_finalized", "independent_evm_finalized"} {
+		var head map[string]json.RawMessage
+		if err := json.Unmarshal(object[name], &head); err != nil || len(head) != 2 || head["number"] == nil || head["hash"] == nil {
+			return stateMismatchError(err, "action postcondition v4 field %q is not an exact chain head", name)
+		}
+	}
+	return nil
+}
+
+func decodeFinalActionPostconditionV4(raw []byte) (*ActionPostcondition, error) {
+	if err := validateActionPostconditionV4JSONShape(raw); err != nil {
+		return nil, err
+	}
+	record, err := decodeActionPostcondition(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateActionPostconditionV4(record); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// validateActionPostconditionV4 validates the complete durable wire contract
+// consumed by final evidence. Older receipts remain readable by setup resume,
+// but they cannot prove a new final-evidence graph.
+func validateActionPostconditionV4(record *ActionPostcondition) error {
+	if record == nil {
+		return errors.New("action postcondition is unavailable")
+	}
+	if record.Schema != "urnetwork-sim-action-postcondition-v4" || record.DeploymentID == "" || record.ActionID == "" {
+		return errors.New("action postcondition does not use the complete v4 identity")
+	}
+	if err := requireFinalHex32("action postcondition plan hash", record.PlanHash); err != nil {
+		return err
+	}
+	if err := requireFinalHex32("action postcondition intent hash", record.IntentHash); err != nil {
+		return err
+	}
+	for _, checkpoint := range []struct {
+		label string
+		head  ChainHead
+	}{
+		{"operational Substrate finality", record.SubstrateFinalized},
+		{"operational EVM finality", record.EVMFinalized},
+		{"independent Substrate finality", record.IndependentSubstrateFinalized},
+		{"independent EVM finality", record.IndependentEVMFinalized},
+	} {
+		if err := verifyFinalHead(checkpoint.label, checkpoint.head); err != nil {
+			return err
+		}
+	}
+	if record.EVMHashDomain != "evm-rpc" || record.IndependentEVMHashDomain != "evm-rpc" {
+		return errors.New("action postcondition v4 EVM hash domains are invalid")
+	}
+	if len(record.Observed) == 0 || len(record.IndependentObserved) == 0 {
+		return errors.New("action postcondition v4 observations are incomplete")
+	}
+	if record.IndependentSubstrateFinalized.Number < record.SubstrateFinalized.Number || record.IndependentEVMFinalized.Number < record.EVMFinalized.Number {
+		return errors.New("action postcondition v4 independent finality precedes operational finality")
+	}
+	switch record.OperationalRPCMode {
+	case rpcModePrivateAuthority:
+		if !record.IndependentRPC {
+			return errors.New("private-authority action postcondition does not attest independent RPC reads")
+		}
+	case rpcModePublicOverride:
+		if record.IndependentRPC {
+			return errors.New("public-override action postcondition falsely attests independent RPC reads")
+		}
+		if record.SubstrateFinalized != record.IndependentSubstrateFinalized || record.EVMFinalized != record.IndependentEVMFinalized || !finalJSONEqual(record.Observed, record.IndependentObserved) {
+			return errors.New("public-override action postcondition does not preserve the shared-provider observation")
+		}
+	default:
+		return fmt.Errorf("action postcondition v4 has unsupported operational RPC mode %q", record.OperationalRPCMode)
+	}
+	return nil
 }
 
 // Round-trip dynamic values before hashing so struct field order and decoded

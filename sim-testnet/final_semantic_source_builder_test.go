@@ -22,6 +22,133 @@ import (
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
+func TestFinalSemanticArchiveActionPostconditionUsesExactV4JournalObject(t *testing.T) {
+	actionID := "fleet.register.201"
+	planHash := finalTestHex(0x21)
+	path, err := postconditionRelativePath(planHash, actionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := map[string]any{"role": "fleet-201-hotkey", "uid": uint64(1200), "replaced_uid": uint64(1200), "replaced_churn": uint64(1)}
+	record := &ActionPostcondition{
+		Schema: "urnetwork-sim-action-postcondition-v4", DeploymentID: "deployment-v4", PlanHash: planHash,
+		ActionID: actionID, IntentHash: finalTestHex(0x22), OperationalRPCMode: rpcModePrivateAuthority, IndependentRPC: true,
+		SubstrateFinalized: ChainHead{Number: 90, Hash: finalTestHex(90)}, EVMFinalized: ChainHead{Number: 96, Hash: finalTestHex(96)}, EVMHashDomain: "evm-rpc", Observed: observed,
+		IndependentSubstrateFinalized: ChainHead{Number: 91, Hash: finalTestHex(91)}, IndependentEVMFinalized: ChainHead{Number: 97, Hash: finalTestHex(97)},
+		IndependentEVMHashDomain: "evm-rpc", IndependentObserved: observed,
+	}
+	recordBytes, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durable, err := decodeActionPostcondition(recordBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postconditionHash, err := canonicalHashHex(durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := JournalEntry{
+		Schema: "urnetwork-sim-journal-v1", Sequence: 1, DeploymentID: record.DeploymentID, PlanHash: record.PlanHash,
+		ActionID: record.ActionID, IntentHash: record.IntentHash, Stage: StageVerified, PostconditionHash: postconditionHash, PostconditionPath: path,
+	}
+	journalBytes, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := &finalSemanticArchive{files: map[string][]byte{"launch-foundation/journal.jsonl": append(journalBytes, '\n'), path: recordBytes}}
+	got, exact, err := archive.actionPostcondition(actionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(exact, recordBytes) || !finalJSONEqual(got, durable) {
+		t.Fatal("journal-selected v4 postcondition changed during strict decoding")
+	}
+	duplicated := bytes.Replace(recordBytes, []byte(`{"schema":`), []byte(`{"schema":"urnetwork-sim-action-postcondition-v4","schema":`), 1)
+	archive.files[path] = duplicated
+	if _, _, err := archive.actionPostcondition(actionID); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate v4 JSON field was accepted: %v", err)
+	}
+
+	incomplete := map[string]any{
+		"schema": record.Schema, "deployment_id": record.DeploymentID, "plan_hash": record.PlanHash,
+		"action_id": record.ActionID, "intent_hash": record.IntentHash, "substrate_finalized": record.SubstrateFinalized,
+		"evm_finalized": record.EVMFinalized, "observed": record.Observed,
+	}
+	archive.files[path], err = json.Marshal(incomplete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := archive.actionPostcondition(actionID); err == nil || !strings.Contains(err.Error(), "wire fields") {
+		t.Fatalf("incomplete duplicate postcondition wire shape was accepted: %v", err)
+	}
+
+	var missingBoolean map[string]any
+	if err := json.Unmarshal(recordBytes, &missingBoolean); err != nil {
+		t.Fatal(err)
+	}
+	delete(missingBoolean, "independent_rpc")
+	missingBooleanBytes, err := json.Marshal(missingBoolean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeFinalActionPostconditionV4(missingBooleanBytes); err == nil || !strings.Contains(err.Error(), "wire field") {
+		t.Fatalf("v4 postcondition with an omitted false-capable field was accepted: %v", err)
+	}
+}
+
+func TestFinalSemanticArchiveAdjacentPersistedWiresMatchProductionWriters(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityBytes, err := json.Marshal(roles.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := SetupPlan{
+		Schema: currentSetupPlanSchema, DeploymentID: cfg.Config.Deployment.DeploymentID,
+		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash,
+	}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	planBytes, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := &finalSemanticArchive{files: map[string][]byte{
+		"launch-foundation/plan.json": planBytes,
+		"public/identities.json":      identityBytes,
+	}}
+	if got, err := archive.planHash(); err != nil || got != strings.ToLower(plan.PlanHash) {
+		t.Fatalf("exact persisted setup plan hash = %q, %v", got, err)
+	}
+	identities, err := archive.identities()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identities.DeploymentID != roles.DeploymentID || len(identities.EVM) != len(roles.EVM) || len(identities.Substrate) != len(roles.Substrate) || len(identities.Clients) != len(roles.Clients) {
+		t.Fatal("typed public identity wire differs from RoleSecrets.Public")
+	}
+	var drifted map[string]any
+	if err := json.Unmarshal(planBytes, &drifted); err != nil {
+		t.Fatal(err)
+	}
+	drifted["unrecognized_release_field"] = true
+	archive.files["launch-foundation/plan.json"], err = json.Marshal(drifted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.planHash(); err == nil {
+		t.Fatal("drifted persisted setup-plan wire was accepted")
+	}
+}
+
 func TestFinalSemanticBuilderDerivesNativeStartFromSealedAppliedIntents(t *testing.T) {
 	archive, chain := finalSemanticBuilderNativeArchive(t)
 
