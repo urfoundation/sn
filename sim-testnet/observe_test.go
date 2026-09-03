@@ -347,9 +347,6 @@ func TestCampaignArtifactOriginsAreAllowlistedAndRedirectsRejected(t *testing.T)
 }
 
 func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.T) {
-	if finalSemanticRaceEnabled {
-		t.Skip("the complete 1,000-miner semantic graph runs in the normal gate; bounded artifact-cache and publication races are tested separately")
-	}
 	cfg := testResolvedConfig(t)
 	source, artifacts := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
@@ -713,9 +710,6 @@ func TestDecodeHashRejectsZeroLengthAndMalformedValues(t *testing.T) {
 }
 
 func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.T) {
-	if finalSemanticRaceEnabled {
-		t.Skip("the complete 1,000-miner semantic graph runs in the normal gate; bounded replica, commit, and concurrent-publication races are tested separately")
-	}
 	cfg := testResolvedConfig(t)
 	semanticSource, semanticArtifacts := finalSemanticFixture(t)
 	cfg.Config.Deployment.DeploymentID = semanticSource.DeploymentID

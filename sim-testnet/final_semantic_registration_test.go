@@ -132,7 +132,6 @@ func TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique(t *testing.T) {
 // Proves that pool registration is sealed and replayed as an EVM receipt while
 // terminal native ownership is independently queried at the native snapshot.
 func TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {

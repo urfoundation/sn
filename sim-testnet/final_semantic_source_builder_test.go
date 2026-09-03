@@ -895,7 +895,6 @@ func (r *finalSemanticDishonestChainReader) NativeWeights(ctx context.Context, n
 }
 
 func TestFinalSemanticDishonestDepositDecisionsAndPublicReplay(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	evidence, pools, validators := finalSemanticBuilderDishonestDecisionEvidence(t)
 	if err := verifyFinalDishonestDeposit(evidence, pools, validators); err != nil {
 		t.Fatal(err)

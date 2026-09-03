@@ -9,7 +9,6 @@ import (
 )
 
 func TestFinalSemanticOutputsRemainOutsideClosedCampaignFileSet(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
 	runDir := filepath.Join(stateDir, "runs", "release-run")

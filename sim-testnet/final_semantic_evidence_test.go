@@ -12,10 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,6 +41,11 @@ const (
 	finalAttemptSettlementSchema       = "urnetwork-validator-settlement-transition-v1"
 	finalAttemptSettlementDigestDomain = "urnetwork/validator/settlement-transition/digest/v1\x00"
 	finalAttemptSettlementSignDomain   = "urnetwork/validator/settlement-transition/sign/v1\x00"
+	finalAttemptLedgerRecordSchema     = "urnetwork-validator-attempt-record-v1"
+	finalAttemptLedgerCutSchema        = "urnetwork-validator-attempt-cut-v1"
+	finalAttemptLedgerHashDomain       = "urnetwork-validator-attempt-record-hash-v1\x00"
+	finalAttemptLedgerSignDomain       = "urnetwork-validator-attempt-record-signature-v1\x00"
+	finalAttemptLedgerCutSignDomain    = "urnetwork-validator-attempt-cut-signature-v1\x00"
 )
 
 // Keep the independent-view substitution between lifecycle milestones so
@@ -68,6 +73,162 @@ type finalAttemptSettlementCore struct {
 type finalAttemptSettlementPayload struct {
 	Core  finalAttemptSettlementCore             `json:"core"`
 	Batch []validatorpkg.AttemptSettlementMember `json:"batch"`
+}
+
+// finalAttemptLedgerRecordHashPayload independently reproduces the production
+// record hash wire so the release-scale fixture avoids unrelated fsyncs.
+type finalAttemptLedgerRecordHashPayload struct {
+	Schema       string                             `json:"schema"`
+	Identity     validatorpkg.AttemptLedgerIdentity `json:"identity"`
+	Sequence     uint64                             `json:"sequence"`
+	PreviousHash string                             `json:"previous_hash"`
+	Boundary     validatorpkg.AttemptBoundary       `json:"boundary"`
+	TrailID      connect.Id                         `json:"trail_id"`
+	ServerNonce  []byte                             `json:"server_nonce"`
+	VPK          []byte                             `json:"vpk"`
+	M            int                                `json:"M"`
+	Assignments  []validatorpkg.AttemptAssignment   `json:"assignments"`
+	Disposition  string                             `json:"disposition"`
+	Proof        *validatorpkg.ProofRecord          `json:"proof,omitempty"`
+}
+
+// finalAttemptLedgerCutSignaturePayload independently reproduces the signed
+// cut wire. The exported production verifier remains authoritative.
+type finalAttemptLedgerCutSignaturePayload struct {
+	Schema              string                             `json:"schema"`
+	Identity            validatorpkg.AttemptLedgerIdentity `json:"identity"`
+	Boundary            validatorpkg.AttemptBoundary       `json:"boundary"`
+	FirstSequence       uint64                             `json:"first_sequence"`
+	EgressFirstSequence uint64                             `json:"egress_first_sequence"`
+	LastSequence        uint64                             `json:"last_sequence"`
+	RecordCount         uint64                             `json:"record_count"`
+	PriorRoot           string                             `json:"prior_root"`
+	Root                string                             `json:"root"`
+	RecordHashes        []string                           `json:"record_hashes"`
+}
+
+// finalAttemptFixtureLedger retains one private signed chain across settlement
+// epochs. It is builder-local and therefore needs no synchronization.
+type finalAttemptFixtureLedger struct {
+	identity     validatorpkg.AttemptLedgerIdentity
+	validatorKey ed25519.PrivateKey
+	records      []validatorpkg.AttemptRecord
+}
+
+// newFinalAttemptFixtureLedger constructs an in-memory fixture chain with the
+// same validator identity that NewAttemptLedger assigns before any append.
+func newFinalAttemptFixtureLedger(identity validatorpkg.AttemptLedgerIdentity, validatorKey ed25519.PrivateKey) (*finalAttemptFixtureLedger, error) {
+	if len(validatorKey) != ed25519.PrivateKeySize {
+		return nil, errors.New("fixture attempt ledger validator key is invalid")
+	}
+	vpk := validatorKey.Public().(ed25519.PublicKey)
+	identity.ValidatorVPK = "0x" + hex.EncodeToString(vpk)
+	return &finalAttemptFixtureLedger{identity: identity, validatorKey: append(ed25519.PrivateKey(nil), validatorKey...)}, nil
+}
+
+// finalAttemptFixtureRecordHash hashes the exact production projection and
+// domain. VerifyAttemptLedgerCut catches any drift across the complete chain.
+func finalAttemptFixtureRecordHash(record *validatorpkg.AttemptRecord) ([32]byte, error) {
+	payload := finalAttemptLedgerRecordHashPayload{
+		Schema: record.Schema, Identity: record.Identity, Sequence: record.Sequence,
+		PreviousHash: record.PreviousHash, Boundary: record.Boundary, TrailID: record.TrailID,
+		ServerNonce: record.ServerNonce, VPK: record.VPK, M: record.M,
+		Assignments: record.Assignments, Disposition: record.Disposition, Proof: record.Proof,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(finalAttemptLedgerHashDomain))
+	_, _ = hash.Write(encoded)
+	var value [32]byte
+	copy(value[:], hash.Sum(nil))
+	return value, nil
+}
+
+// append adds one signed record to the builder-local chain without exercising
+// the durable writer. AttemptLedger tests retain real sync and restart paths.
+func (self *finalAttemptFixtureLedger) append(record validatorpkg.AttemptRecord) error {
+	previousHash := "0x" + strings.Repeat("0", 64)
+	if len(self.records) != 0 {
+		previousHash = self.records[len(self.records)-1].RecordHash
+	}
+	vpk := self.validatorKey.Public().(ed25519.PublicKey)
+	record.Schema = finalAttemptLedgerRecordSchema
+	record.Identity = self.identity
+	record.Sequence = uint64(len(self.records)) + 1
+	record.PreviousHash = previousHash
+	record.VPK = append([]byte(nil), vpk...)
+	record.RecordHash = ""
+	record.Signature = nil
+	hash, err := finalAttemptFixtureRecordHash(&record)
+	if err != nil {
+		return err
+	}
+	record.RecordHash = "0x" + hex.EncodeToString(hash[:])
+	message := append([]byte(finalAttemptLedgerSignDomain), hash[:]...)
+	record.Signature = ed25519.Sign(self.validatorKey, message)
+	encoded, err := json.Marshal(&record)
+	if err != nil {
+		return err
+	}
+	var stored validatorpkg.AttemptRecord
+	if err := json.Unmarshal(encoded, &stored); err != nil {
+		return err
+	}
+	self.records = append(self.records, stored)
+	return nil
+}
+
+// buildCut returns a detached signed range over the current chain. It mirrors
+// the production cut fields but performs no filesystem work.
+func (self *finalAttemptFixtureLedger) buildCut(boundary validatorpkg.AttemptBoundary, firstSequence, egressFirstSequence uint64) (*validatorpkg.AttemptLedgerCut, error) {
+	nextSequence := uint64(len(self.records)) + 1
+	if firstSequence == 0 || firstSequence > nextSequence || egressFirstSequence < firstSequence || egressFirstSequence > nextSequence {
+		return nil, errors.New("fixture attempt cut cursor is outside the chain")
+	}
+	selected := self.records[int(firstSequence)-1:]
+	encoded, err := json.Marshal(selected)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]validatorpkg.AttemptRecord, 0, len(selected))
+	if err := json.Unmarshal(encoded, &records); err != nil {
+		return nil, err
+	}
+	zero := "0x" + strings.Repeat("0", 64)
+	priorRoot := zero
+	if firstSequence > 1 {
+		priorRoot = self.records[firstSequence-2].RecordHash
+	}
+	root := zero
+	if len(self.records) != 0 {
+		root = self.records[len(self.records)-1].RecordHash
+	}
+	cut := &validatorpkg.AttemptLedgerCut{
+		Schema: finalAttemptLedgerCutSchema, Identity: self.identity, Boundary: boundary,
+		FirstSequence: firstSequence, EgressFirstSequence: egressFirstSequence,
+		LastSequence: uint64(len(self.records)), RecordCount: uint64(len(records)),
+		PriorRoot: priorRoot, Root: root, Records: records,
+	}
+	recordHashes := make([]string, len(records))
+	for index := range records {
+		recordHashes[index] = records[index].RecordHash
+	}
+	payload := finalAttemptLedgerCutSignaturePayload{
+		Schema: cut.Schema, Identity: cut.Identity, Boundary: cut.Boundary,
+		FirstSequence: cut.FirstSequence, EgressFirstSequence: cut.EgressFirstSequence,
+		LastSequence: cut.LastSequence, RecordCount: cut.RecordCount,
+		PriorRoot: cut.PriorRoot, Root: cut.Root, RecordHashes: recordHashes,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	message := append([]byte(finalAttemptLedgerCutSignDomain), payloadBytes...)
+	cut.Signature = ed25519.Sign(self.validatorKey, message)
+	return cut, nil
 }
 
 func finalAttemptSettlementCoreFrom(transition *validatorpkg.AttemptSettlementTransition) finalAttemptSettlementCore {
@@ -106,10 +267,10 @@ func finalAttemptFixtureID(value uint64) connect.Id {
 	return id
 }
 
-// attachFinalAttemptCuts mirrors the production append order: every server-
-// signed pending assignment is durable before the validator-signed terminal
-// record, and the signed cut is the sole authority for counters and proofs.
-func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurementArtifact, validatorKey ed25519.PrivateKey, serverKeys []ed25519.PrivateKey, root string, previous *validatorpkg.ReleaseMeasurementArtifact) {
+// attachFinalAttemptCuts mirrors the production append order and signed chain
+// without fsyncing thousands of synthetic records. The production verifier
+// remains authoritative for every counter, proof, and chain transition.
+func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurementArtifact, validatorKey ed25519.PrivateKey, serverKeys []ed25519.PrivateKey, ledgers map[uint64]*finalAttemptFixtureLedger, previous *validatorpkg.ReleaseMeasurementArtifact) {
 	t.Helper()
 	vpk := validatorKey.Public().(ed25519.PublicKey)
 	bindingByNO := map[uint64]map[connect.Id]validatorpkg.AttemptBinding{}
@@ -145,12 +306,20 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 			t.Fatalf("invalid fixture operator %d", input.NoID)
 		}
 		serverKey := serverKeys[input.NoID-1]
-		ledger, err := validatorpkg.NewAttemptLedger(filepath.Join(root, fmt.Sprintf("no-%d", input.NoID)), validatorpkg.AttemptLedgerIdentity{
+		identity := validatorpkg.AttemptLedgerIdentity{
 			DeploymentID: artifact.DeploymentID, ChainID: artifact.ChainID, GenesisHash: artifact.GenesisHash,
 			Netuid: artifact.Netuid, ValidatorID: artifact.ValidatorID, ValidatorUID: artifact.SelfUID, NoID: input.NoID,
-		}, validatorKey)
+		}
+		expectedLedger, err := newFinalAttemptFixtureLedger(identity, validatorKey)
 		if err != nil {
 			t.Fatal(err)
+		}
+		ledger := ledgers[input.NoID]
+		if ledger == nil {
+			ledger = expectedLedger
+			ledgers[input.NoID] = ledger
+		} else if ledger.identity != expectedLedger.identity {
+			t.Fatalf("fixture attempt ledger identity changed for operator %d", input.NoID)
 		}
 		boundary := validatorpkg.AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
 		tokens := make([]finalAttemptFixtureToken, 0)
@@ -228,11 +397,11 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 				checkpoint := append([]validatorpkg.AttemptAssignment(nil), assignments[:assignmentIndex+1]...)
 				last := len(checkpoint) - 1
 				checkpoint[last].Confirmed, checkpoint[last].HasLatency, checkpoint[last].LatencyBucket = false, false, 0
-				if _, err := ledger.Append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: checkpoint, Disposition: validatorpkg.AttemptDispositionPending}); err != nil {
+				if err := ledger.append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: checkpoint, Disposition: validatorpkg.AttemptDispositionPending}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if _, err := ledger.Append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: assignments, Disposition: validatorpkg.AttemptDispositionComplete, Proof: proof}); err != nil {
+			if err := ledger.append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: assignments, Disposition: validatorpkg.AttemptDispositionComplete, Proof: proof}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -243,7 +412,7 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 			}
 			firstSequence = prior.Stats.AttemptCut.LastSequence + 1
 		}
-		cut, err := ledger.BuildCut(boundary, firstSequence, firstSequence)
+		cut, err := ledger.buildCut(boundary, firstSequence, firstSequence)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -307,7 +476,6 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 }
 
 func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, artifacts := finalSemanticFixture(t)
 	firstDraft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -410,7 +578,6 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 }
 
 func TestFinalSemanticDerivedTransitionsRejectIndependentMutations(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, baselineArtifacts := finalSemanticFixture(t)
 	if err := verifyFinalHeadTournamentTransitionArtifacts(&source, baselineArtifacts); err != nil {
 		t.Fatalf("baseline tournament artifacts: %v", err)
@@ -514,7 +681,6 @@ func replaceFinalSemanticFixtureArtifact(t *testing.T, locator *FinalArtifactLoc
 }
 
 func TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -606,7 +772,6 @@ func TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent(t 
 }
 
 func TestFinalExitReceiptsUseAdversarialCampaignBoundary(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	for index := range source.ExitCriteria {
 		criterion := &source.ExitCriteria[index]
@@ -633,7 +798,6 @@ func TestFinalExitReceiptsUseAdversarialCampaignBoundary(t *testing.T) {
 }
 
 func TestFinalSemanticArtifactsRejectSupervisorRestartOutsideFaultCensus(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, artifacts := finalSemanticFixture(t)
 	locator := &source.ContractCleanup.SupervisorStateArtifact
 	var state SupervisorState
@@ -664,7 +828,6 @@ func TestFinalSemanticArtifactsRejectSupervisorRestartOutsideFaultCensus(t *test
 }
 
 func TestFinalSemanticArtifactsRejectDifferentArchiveRetentionReceipt(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, artifacts := finalSemanticFixture(t)
 	locator := &source.ArchiveRetention.Artifact
 	var receipt FinalArchiveRetentionPreflight
@@ -705,7 +868,6 @@ func TestFinalSemanticArtifactsRejectDifferentArchiveRetentionReceipt(t *testing
 }
 
 func TestFinalSemanticReplayIgnoresAdvancingFinalizedTipsButRejectsFork(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -729,7 +891,6 @@ func TestFinalSemanticReplayIgnoresAdvancingFinalizedTipsButRejectsFork(t *testi
 }
 
 func TestFinalSemanticEvidenceFailsClosed(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -908,7 +1069,6 @@ func TestFinalSemanticEvidenceRaceTamperCoverage(t *testing.T) {
 }
 
 func TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	reward := &source.NativeRewards[0]
 	if reward.Expected != "positive" || reward.Role != "head" {
@@ -938,7 +1098,6 @@ func TestFinalSemanticPathProofArtifactCount(t *testing.T) {
 }
 
 func TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery(t *testing.T) {
-	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	pool := source.Validators[0].Cycles[0].Pools[0]
 	requiredDepositRao, ok := new(big.Int).SetString(pool.RequiredDepositRao, 10)
@@ -980,10 +1139,138 @@ func TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery(t *testing.
 	}
 }
 
-func requireFinalSemanticReleaseScaleFixture(t *testing.T) {
-	t.Helper()
-	if finalSemanticRaceEnabled {
-		t.Skip("the complete 1,000-miner semantic graph runs in the normal gate; bounded cache, tamper, public-RPC, publication, cancellation, and concurrent-winner races are adjacent")
+// TestFinalSemanticFixtureSnapshotsAreDetached proves cached release-scale
+// snapshots cannot be poisoned by an earlier caller's adversarial mutation.
+func TestFinalSemanticFixtureSnapshotsAreDetached(t *testing.T) {
+	first, firstArtifacts := finalSemanticFixture(t)
+	second, secondArtifacts := finalSemanticFixture(t)
+	baselineEvidence := mustFinalSemanticJSON(t, &second)
+	baselineArtifacts := mustFinalSemanticJSON(t, secondArtifacts)
+	if second.ExpectedMiners != 1_000 || second.ExpectedCandidates != finalHeadCandidateCount || second.ExpectedHeadSlots != finalHeadSlotCount || second.Topology.MinerSDKInstances != 1_000 || second.Topology.HeadCandidateFleets != finalHeadCandidateCount || second.Topology.HeadSlots != finalHeadSlotCount {
+		t.Fatalf("cached fixture lost release scale: expected=%d/%d/%d topology=%d/%d/%d", second.ExpectedMiners, second.ExpectedCandidates, second.ExpectedHeadSlots, second.Topology.MinerSDKInstances, second.Topology.HeadCandidateFleets, second.Topology.HeadSlots)
+	}
+	if len(second.Validators) != 2 {
+		t.Fatalf("cached fixture validators=%d, want 2", len(second.Validators))
+	}
+	for _, validator := range second.Validators {
+		if len(validator.Cycles) != 5 {
+			t.Fatalf("cached fixture validator %d cycles=%d, want 5", validator.ValidatorID, len(validator.Cycles))
+		}
+		for _, cycle := range validator.Cycles {
+			selected := 0
+			for _, candidate := range cycle.Candidates {
+				if candidate.Selected {
+					selected++
+				}
+			}
+			if len(cycle.Candidates) != finalHeadCandidateCount || selected != finalHeadSlotCount {
+				t.Fatalf("cached fixture validator %d epoch %d candidates=%d selected=%d, want %d/%d", validator.ValidatorID, cycle.SettlementEpoch, len(cycle.Candidates), selected, finalHeadCandidateCount, finalHeadSlotCount)
+			}
+		}
+	}
+	if len(first.Validators) == 0 || len(first.Validators[0].Cycles) == 0 || len(first.Validators[0].Cycles[0].Candidates) == 0 {
+		t.Fatal("release-scale fixture has no candidate to mutate")
+	}
+	first.Validators[0].Cycles[0].Candidates[0].FleetID++
+	artifactURI := first.PolicyArtifact.URI
+	if len(firstArtifacts[artifactURI]) == 0 {
+		t.Fatal("release-scale fixture policy artifact is empty")
+	}
+	firstArtifacts[artifactURI][0] ^= 0xff
+	delete(firstArtifacts, artifactURI)
+	if got := mustFinalSemanticJSON(t, &second); !bytes.Equal(got, baselineEvidence) {
+		t.Fatal("one fixture caller mutated another caller's evidence graph")
+	}
+	if got := mustFinalSemanticJSON(t, secondArtifacts); !bytes.Equal(got, baselineArtifacts) {
+		t.Fatal("one fixture caller mutated another caller's artifact map")
+	}
+	third, thirdArtifacts := finalSemanticFixture(t)
+	if got := mustFinalSemanticJSON(t, &third); !bytes.Equal(got, baselineEvidence) {
+		t.Fatal("caller mutation poisoned the immutable evidence cache")
+	}
+	if got := mustFinalSemanticJSON(t, thirdArtifacts); !bytes.Equal(got, baselineArtifacts) {
+		t.Fatal("caller mutation poisoned the immutable artifact cache")
+	}
+}
+
+// TestFinalAttemptFixtureLedgerMatchesDurableProductionWire proves the
+// accelerated builder is byte-identical for the same signed trail.
+func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
+	source, artifacts := finalSemanticFixture(t)
+	measurementLocator := source.Validators[0].Cycles[0].MeasurementArtifact
+	measurement, _, err := validatorpkg.DecodeReleaseMeasurementArtifact(artifacts[measurementLocator.URI])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(measurement.Inputs) == 0 || measurement.Inputs[0].Stats.AttemptCut == nil || len(measurement.Inputs[0].Stats.AttemptCut.Records) == 0 {
+		t.Fatal("release-scale fixture has no signed attempt records")
+	}
+	wantCut := measurement.Inputs[0].Stats.AttemptCut
+	validatorKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x41}, ed25519.SeedSize))
+	serverKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x51}, ed25519.SeedSize))
+	durable, err := validatorpkg.NewAttemptLedger(t.TempDir(), wantCut.Identity, validatorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := newFinalAttemptFixtureLedger(wantCut.Identity, validatorKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstTrailID := wantCut.Records[0].TrailID
+	appended := 0
+	for _, record := range wantCut.Records {
+		if record.TrailID != firstTrailID {
+			break
+		}
+		committed, appendErr := durable.Append(record)
+		if appendErr != nil {
+			t.Fatal(appendErr)
+		}
+		if appendErr := fixture.append(record); appendErr != nil {
+			t.Fatal(appendErr)
+		}
+		appended++
+		fixtureRecord := fixture.records[len(fixture.records)-1]
+		committedBytes, marshalErr := json.Marshal(committed)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		fixtureBytes, marshalErr := json.Marshal(&fixtureRecord)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if !bytes.Equal(committedBytes, fixtureBytes) {
+			t.Fatalf("accelerated record %d differs from durable production wire", appended)
+		}
+		if record.Disposition != validatorpkg.AttemptDispositionPending {
+			break
+		}
+	}
+	if appended < 2 || fixture.records[appended-1].Disposition != validatorpkg.AttemptDispositionComplete {
+		t.Fatalf("fixture comparison did not include a complete trail: records=%d", appended)
+	}
+	durableCut, err := durable.BuildCut(wantCut.Boundary, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureCut, err := fixture.buildCut(wantCut.Boundary, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverKeys := map[byte]ed25519.PublicKey{1: serverKey.Public().(ed25519.PublicKey)}
+	if err := validatorpkg.VerifyAttemptLedgerCut(fixtureCut, validatorKey.Public().(ed25519.PublicKey), serverKeys); err != nil {
+		t.Fatal(err)
+	}
+	durableBytes, err := json.Marshal(durableCut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureBytes, err := json.Marshal(fixtureCut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(durableBytes, fixtureBytes) {
+		t.Fatal("accelerated cut differs from durable production wire")
 	}
 }
 
@@ -1248,7 +1535,49 @@ func TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap(t *testing.T) {
 	}
 }
 
+// finalSemanticFixtureCache retains only the deterministic graph's immutable
+// wire bytes. Callers receive fresh graphs and copied artifact byte slices.
+var finalSemanticFixtureCache struct {
+	stateLock        sync.Mutex
+	evidenceBytes    []byte
+	artifactURIBytes map[string][]byte
+}
+
+// cloneFinalSemanticFixtureArtifacts copies every artifact value so fixture
+// instances never share mutable backing arrays.
+func cloneFinalSemanticFixtureArtifacts(source map[string][]byte) map[string][]byte {
+	clone := make(map[string][]byte, len(source))
+	for uri, data := range source {
+		clone[uri] = append([]byte(nil), data...)
+	}
+	return clone
+}
+
+// finalSemanticFixture returns a detached release-scale snapshot, deriving the
+// immutable canonical graph only once for the current test binary.
 func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
+	t.Helper()
+	finalSemanticFixtureCache.stateLock.Lock()
+	defer finalSemanticFixtureCache.stateLock.Unlock()
+	if len(finalSemanticFixtureCache.evidenceBytes) == 0 {
+		source, artifacts := buildFinalSemanticFixture(t)
+		encoded, err := json.Marshal(&source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		finalSemanticFixtureCache.evidenceBytes = append([]byte(nil), encoded...)
+		finalSemanticFixtureCache.artifactURIBytes = cloneFinalSemanticFixtureArtifacts(artifacts)
+	}
+	var source FinalSemanticEvidence
+	if err := json.Unmarshal(finalSemanticFixtureCache.evidenceBytes, &source); err != nil {
+		t.Fatal(err)
+	}
+	return source, cloneFinalSemanticFixtureArtifacts(finalSemanticFixtureCache.artifactURIBytes)
+}
+
+// buildFinalSemanticFixture derives the complete 1,000-miner, 202-candidate,
+// top-200 evidence graph and all independently verified signed artifacts.
+func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
 	t.Helper()
 	artifacts := map[string][]byte{}
 	artifact := func(kind, name string, data []byte) FinalArtifactLocator {
@@ -1364,7 +1693,7 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 	}
 	previousMeasurement := map[uint64][]byte{}
 	previousArtifact := map[uint64]*validatorpkg.ReleaseMeasurementArtifact{}
-	attemptRoots := map[uint64]string{}
+	attemptLedgers := map[uint64]map[uint64]*finalAttemptFixtureLedger{}
 	buildMeasurement := func(cycle FinalCRv4Cycle, validatorID uint64) ([]byte, string, *validatorpkg.VerifiedReleaseMeasurement) {
 		statsByNO := map[uint64][]validatorpkg.ReleaseProviderMeasurement{1: {}, 2: {}}
 		bindings := make([]validatorpkg.ReleaseBindingMeasurement, 0, 1000)
@@ -1505,10 +1834,10 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			},
 			Bindings: bindings, HeadEMA: headEMA, Pools: pools, DepositAudits: audits, SelfUID: uint16(10 + 2*validatorID),
 		}
-		if attemptRoots[validatorID] == "" {
-			attemptRoots[validatorID] = t.TempDir()
+		if attemptLedgers[validatorID] == nil {
+			attemptLedgers[validatorID] = map[uint64]*finalAttemptFixtureLedger{}
 		}
-		attachFinalAttemptCuts(t, measurement, validatorPathKeys[validatorID-1], operatorServerKeys, attemptRoots[validatorID], previousArtifact[validatorID])
+		attachFinalAttemptCuts(t, measurement, validatorPathKeys[validatorID-1], operatorServerKeys, attemptLedgers[validatorID], previousArtifact[validatorID])
 		encoded, contentHash, verified, err := validatorpkg.SealReleaseMeasurementArtifact(measurement)
 		if err != nil {
 			t.Fatalf("%v; first binding=%+v", err, bindings[0])

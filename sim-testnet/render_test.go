@@ -135,12 +135,17 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
 		state := filepath.Join(stateDir, "runtime", "miner-"+strconv.Itoa(i), "state")
+		if err := os.MkdirAll(state, 0o700); err != nil {
+			t.Fatal(err)
+		}
 		for _, fixture := range []struct{ name, contents string }{
 			{name: "jwt", contents: "fixture-network-jwt\n"},
 			{name: ".provider.jwt", contents: "fixture-provider-jwt\n"},
 			{name: ".provider.key", contents: strings.Repeat("01", 32) + "\n"},
 		} {
-			if err := atomicWrite(filepath.Join(state, fixture.name), []byte(fixture.contents), 0o600); err != nil {
+			// These are immutable prerequisites, not the rendered outputs whose
+			// production atomic-write path this test exercises below.
+			if err := os.WriteFile(filepath.Join(state, fixture.name), []byte(fixture.contents), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}

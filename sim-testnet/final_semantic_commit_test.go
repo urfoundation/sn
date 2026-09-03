@@ -31,9 +31,6 @@ type finalSemanticSupplementTestFixture struct {
 }
 
 func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing.T) {
-	if finalSemanticRaceEnabled {
-		t.Skip("release-scale end-to-end supplement replay runs in the normal gate; bounded protocol races are adjacent")
-	}
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	dependencies := fixture.dependencies()
 	first, err := publishOrResumeFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, dependencies)
@@ -106,9 +103,6 @@ func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing
 }
 
 func TestFinalSemanticSupplementFailedReplicaDoesNotCommitAndRetryReusesStage(t *testing.T) {
-	if finalSemanticRaceEnabled {
-		t.Skip("release-scale replica retry runs in the normal gate; bounded publication races are adjacent")
-	}
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	goodSecond := fixture.stores[2]
 	fixture.stores[2] = &fixtureFailureBlobStore{store: goodSecond, writeErr: errors.New("injected semantic replica write failure")}
@@ -317,9 +311,6 @@ func TestFinalSemanticSupplementPublicationLockHonorsCancellation(t *testing.T) 
 }
 
 func TestValidateFinalSemanticSupplementDefaultCapturedStoresRequiresEveryReplica(t *testing.T) {
-	if finalSemanticRaceEnabled {
-		t.Skip("release-scale default-store replay runs in the normal gate; bounded missing-replica races are adjacent")
-	}
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	if _, err := publishOrResumeFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, fixture.dependencies()); err != nil {
 		t.Fatal(err)
