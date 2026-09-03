@@ -141,6 +141,166 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	}
 }
 
+// Consensus expectation and independently reconstructed applied-channel state
+// for one fixture reward subject.
+type finalSemanticFixtureRewardDecision struct {
+	expectation      string
+	channelsPositive bool
+}
+
+// Derive reward declarations from every verifier-produced cycle. The helper
+// also checks that selected/audit-eligible subjects are exactly the subjects
+// carrying nonzero applied weight in the authenticated vectors.
+func finalSemanticFixtureRewardDecisions(source *FinalSemanticEvidence, epoch uint64) (map[uint64]finalSemanticFixtureRewardDecision, map[uint64]finalSemanticFixtureRewardDecision, error) {
+	if source == nil || epoch == 0 || len(source.Validators) == 0 {
+		return nil, nil, fmt.Errorf("fixture reward decision context is incomplete")
+	}
+	headSelections := make(map[uint64]int, len(source.HeadFleets))
+	headChannels := make(map[uint64]bool, len(source.HeadFleets))
+	poolEligible := make(map[uint64]bool, len(source.Pools))
+	poolChannels := make(map[uint64]bool, len(source.Pools))
+	for _, fleet := range source.HeadFleets {
+		if fleet.FleetID == 0 {
+			return nil, nil, fmt.Errorf("fixture reward head identity is zero")
+		}
+		headSelections[fleet.FleetID] = 0
+	}
+	for _, pool := range source.Pools {
+		if pool.NoID == 0 {
+			return nil, nil, fmt.Errorf("fixture reward pool identity is zero")
+		}
+		poolEligible[pool.NoID] = false
+	}
+	for _, validator := range source.Validators {
+		var matched *FinalCRv4Cycle
+		for cycleIndex := range validator.Cycles {
+			cycle := &validator.Cycles[cycleIndex]
+			if cycle.SettlementEpoch != epoch {
+				continue
+			}
+			if matched != nil {
+				return nil, nil, fmt.Errorf("fixture validator %d duplicates reward epoch %d", validator.ValidatorID, epoch)
+			}
+			matched = cycle
+		}
+		if matched == nil {
+			return nil, nil, fmt.Errorf("fixture validator %d lacks reward epoch %d", validator.ValidatorID, epoch)
+		}
+		seenHeads := make(map[uint64]bool, len(matched.Candidates))
+		for _, candidate := range matched.Candidates {
+			if _, known := headSelections[candidate.FleetID]; !known || seenHeads[candidate.FleetID] || candidate.Selected != (candidate.AppliedWeight > 0) {
+				return nil, nil, fmt.Errorf("fixture validator %d head reward decision %d is incomplete", validator.ValidatorID, candidate.FleetID)
+			}
+			seenHeads[candidate.FleetID] = true
+			if candidate.Selected {
+				headSelections[candidate.FleetID]++
+			}
+			headChannels[candidate.FleetID] = headChannels[candidate.FleetID] || candidate.AppliedWeight > 0
+		}
+		if len(seenHeads) != len(headSelections) {
+			return nil, nil, fmt.Errorf("fixture validator %d head reward census is incomplete", validator.ValidatorID)
+		}
+		seenPools := make(map[uint64]bool, len(matched.Pools))
+		for _, pool := range matched.Pools {
+			if _, known := poolEligible[pool.NoID]; !known || seenPools[pool.NoID] || pool.AuditCompliant != (pool.AppliedWeight > 0) {
+				return nil, nil, fmt.Errorf("fixture validator %d pool reward decision %d is incomplete", validator.ValidatorID, pool.NoID)
+			}
+			seenPools[pool.NoID] = true
+			poolEligible[pool.NoID] = poolEligible[pool.NoID] || pool.AuditCompliant
+			poolChannels[pool.NoID] = poolChannels[pool.NoID] || pool.AppliedWeight > 0
+		}
+		if len(seenPools) != len(poolEligible) {
+			return nil, nil, fmt.Errorf("fixture validator %d pool reward census is incomplete", validator.ValidatorID)
+		}
+	}
+	heads := make(map[uint64]finalSemanticFixtureRewardDecision, len(headSelections))
+	for fleetID, selections := range headSelections {
+		expectation := "observed"
+		if selections == 0 {
+			expectation = "zero"
+		} else if selections == len(source.Validators) {
+			expectation = "positive"
+		}
+		heads[fleetID] = finalSemanticFixtureRewardDecision{expectation: expectation, channelsPositive: headChannels[fleetID]}
+	}
+	pools := make(map[uint64]finalSemanticFixtureRewardDecision, len(poolEligible))
+	for noID, eligible := range poolEligible {
+		expectation := "zero"
+		if eligible {
+			expectation = "positive"
+		}
+		pools[noID] = finalSemanticFixtureRewardDecision{expectation: expectation, channelsPositive: poolChannels[noID]}
+	}
+	return heads, pools, nil
+}
+
+// Proves unanimity, disagreement, rejection, and pool eligibility are derived
+// across validators independently for each epoch.
+func TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles(t *testing.T) {
+	cycle := func(epoch uint64, selectedFleets, eligiblePools map[uint64]bool) FinalCRv4Cycle {
+		result := FinalCRv4Cycle{SettlementEpoch: epoch}
+		for fleetID := uint64(1); fleetID <= 3; fleetID++ {
+			selected := selectedFleets[fleetID]
+			weight := uint16(0)
+			if selected {
+				weight = 1
+			}
+			result.Candidates = append(result.Candidates, FinalHeadCandidateEvidence{FleetID: fleetID, Selected: selected, AppliedWeight: weight})
+		}
+		for noID := uint64(1); noID <= 2; noID++ {
+			eligible := eligiblePools[noID]
+			weight := uint16(0)
+			if eligible {
+				weight = 1
+			}
+			result.Pools = append(result.Pools, FinalPoolWeightEvidence{NoID: noID, AuditCompliant: eligible, AppliedWeight: weight})
+		}
+		return result
+	}
+	source := &FinalSemanticEvidence{
+		HeadFleets: []FinalHeadFleetEvidence{{FleetID: 1}, {FleetID: 2}, {FleetID: 3}},
+		Pools:      []FinalPoolUIDEvidence{{NoID: 1}, {NoID: 2}},
+		Validators: []FinalValidatorIdentityEvidence{
+			{ValidatorID: 1, Cycles: []FinalCRv4Cycle{cycle(10, map[uint64]bool{1: true, 2: true}, map[uint64]bool{1: true}), cycle(11, map[uint64]bool{3: true}, map[uint64]bool{2: true})}},
+			{ValidatorID: 2, Cycles: []FinalCRv4Cycle{cycle(10, map[uint64]bool{1: true}, map[uint64]bool{2: true}), cycle(11, map[uint64]bool{3: true}, map[uint64]bool{2: true})}},
+		},
+	}
+	for _, test := range []struct {
+		epoch uint64
+		head  map[uint64]string
+		pool  map[uint64]string
+	}{
+		{epoch: 10, head: map[uint64]string{1: "positive", 2: "observed", 3: "zero"}, pool: map[uint64]string{1: "positive", 2: "positive"}},
+		{epoch: 11, head: map[uint64]string{1: "zero", 2: "zero", 3: "positive"}, pool: map[uint64]string{1: "zero", 2: "positive"}},
+	} {
+		heads, pools, err := finalSemanticFixtureRewardDecisions(source, test.epoch)
+		if err != nil {
+			t.Fatalf("epoch %d: %v", test.epoch, err)
+		}
+		for fleetID, expectation := range test.head {
+			decision := heads[fleetID]
+			if decision.expectation != expectation || decision.channelsPositive != (expectation != "zero") {
+				t.Fatalf("epoch %d head %d decision=%+v, want %s", test.epoch, fleetID, decision, expectation)
+			}
+		}
+		for noID, expectation := range test.pool {
+			decision := pools[noID]
+			if decision.expectation != expectation || decision.channelsPositive != (expectation != "zero") {
+				t.Fatalf("epoch %d pool %d decision=%+v, want %s", test.epoch, noID, decision, expectation)
+			}
+		}
+	}
+	source.Validators[0].Cycles[0].Candidates[0].AppliedWeight = 0
+	if _, _, err := finalSemanticFixtureRewardDecisions(source, 10); err == nil {
+		t.Fatal("selected head without an applied-weight channel was accepted")
+	}
+	source.Validators[0].Cycles[0].Candidates[0].AppliedWeight = 1
+	source.Validators[0].Cycles[0].Pools[0].AppliedWeight = 0
+	if _, _, err := finalSemanticFixtureRewardDecisions(source, 10); err == nil {
+		t.Fatal("eligible pool without an applied-weight channel was accepted")
+	}
+}
+
 // attachFinalFleetLifecycleFixture adds a complete, independently verifiable
 // ordered lifecycle graph to the launch-scale semantic fixture. Keeping this
 // construction adjacent to the lifecycle verifier makes every plan, journal,
@@ -873,36 +1033,59 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		13: {state.PostRegistrationRewardBaseline, {Number: 1290, Hash: finalTestHex(10)}},
 		14: {{Number: 1300, Hash: finalTestHex(20)}, {Number: 1390, Hash: finalTestHex(110)}},
 	}
+	headRewardDecisions := make(map[uint64]map[uint64]finalSemanticFixtureRewardDecision, len(rewardHeads))
+	poolRewardDecisions := make(map[uint64]map[uint64]finalSemanticFixtureRewardDecision, len(rewardHeads))
+	for epoch := range rewardHeads {
+		heads, pools, decisionErr := finalSemanticFixtureRewardDecisions(source, epoch)
+		if decisionErr != nil {
+			t.Fatal(decisionErr)
+		}
+		headRewardDecisions[epoch], poolRewardDecisions[epoch] = heads, pools
+	}
+	setRewardChannels := func(reward *FinalNativeRewardDelta, positive bool) {
+		if positive {
+			reward.BeforeRao, reward.AfterRao, reward.DeltaRao = "10", "20", "10"
+			reward.BeforeIncentiveU16, reward.AfterIncentiveU16 = 1, 2
+		} else {
+			reward.BeforeRao, reward.AfterRao, reward.DeltaRao = "0", "0", "0"
+			reward.BeforeIncentiveU16, reward.AfterIncentiveU16 = 0, 0
+		}
+		reward.BeforeDividendsU16, reward.AfterDividendsU16 = 0, 0
+		if reward.Role != "head" {
+			return
+		}
+		if positive {
+			reward.StakeBeforeRao, reward.StakeAfterRao, reward.StakeDeltaRao = "1000", "1010", "10"
+			reward.OwnerStakeBeforeRao, reward.OwnerStakeAfterRao, reward.OwnerStakeDeltaRao = "1000", "1010", "10"
+		} else {
+			reward.StakeBeforeRao, reward.StakeAfterRao, reward.StakeDeltaRao = "100", "100", "0"
+			reward.OwnerStakeBeforeRao, reward.OwnerStakeAfterRao, reward.OwnerStakeDeltaRao = "100", "100", "0"
+		}
+	}
 	for index := range source.NativeRewards {
 		reward := &source.NativeRewards[index]
 		heads := rewardHeads[reward.Epoch]
 		reward.Before, reward.After = heads[0], heads[1]
 		reward.OwnerStakeBeforeEVM, reward.OwnerStakeAfterEVM = heads[0], heads[1]
-		if reward.Role != "head" {
-			continue
-		}
-		uid, hotkey, coldkey, headErr := finalFleetLifecycleHeadAt(semantic, reward.SubjectID, reward.Epoch)
-		if headErr == nil {
-			reward.UID, reward.Hotkey, reward.OwnerColdkey = uid, hotkey, coldkey
-		}
-		selected := false
-		if cycle := cycleFor(1, reward.Epoch); cycle != nil {
-			for _, candidate := range cycle.Candidates {
-				if candidate.FleetID == reward.SubjectID {
-					selected = candidate.Selected
-				}
+		switch reward.Role {
+		case "head":
+			decision, exists := headRewardDecisions[reward.Epoch][reward.SubjectID]
+			if !exists {
+				t.Fatalf("missing fixture head reward decision %d/%d", reward.Epoch, reward.SubjectID)
 			}
-		}
-		if selected {
-			reward.Expected, reward.BeforeRao, reward.AfterRao, reward.DeltaRao = "positive", "10", "20", "10"
-			reward.StakeBeforeRao, reward.StakeAfterRao, reward.StakeDeltaRao = "1000", "1010", "10"
-			reward.OwnerStakeBeforeRao, reward.OwnerStakeAfterRao, reward.OwnerStakeDeltaRao = "1000", "1010", "10"
-			reward.BeforeIncentiveU16, reward.AfterIncentiveU16 = 1, 2
-		} else {
-			reward.Expected, reward.BeforeRao, reward.AfterRao, reward.DeltaRao = "zero", "0", "0", "0"
-			reward.StakeBeforeRao, reward.StakeAfterRao, reward.StakeDeltaRao = "100", "100", "0"
-			reward.OwnerStakeBeforeRao, reward.OwnerStakeAfterRao, reward.OwnerStakeDeltaRao = "100", "100", "0"
-			reward.BeforeIncentiveU16, reward.AfterIncentiveU16 = 0, 0
+			reward.Expected = decision.expectation
+			setRewardChannels(reward, decision.channelsPositive)
+			uid, hotkey, coldkey, headErr := finalFleetLifecycleHeadAt(semantic, reward.SubjectID, reward.Epoch)
+			if headErr == nil {
+				reward.UID, reward.Hotkey, reward.OwnerColdkey = uid, hotkey, coldkey
+			}
+		case "pool":
+			decision, exists := poolRewardDecisions[reward.Epoch][reward.SubjectID]
+			if !exists {
+				t.Fatalf("missing fixture pool reward decision %d/%d", reward.Epoch, reward.SubjectID)
+			}
+			reward.Expected = decision.expectation
+			setRewardChannels(reward, decision.channelsPositive)
 		}
 	}
 	rebuildFinalSemanticRewardFixtureArtifacts(t, source, artifacts)
