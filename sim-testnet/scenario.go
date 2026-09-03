@@ -693,15 +693,12 @@ func inspectNativeCustodyRoles(cfg *ResolvedConfig, stateDir string) (bool, uint
 }
 
 func inspectNativeRewards(cfg *ResolvedConfig, endpoint string) (*NativeRewardObservation, string) {
-	chain, err := crv4.DialChain(endpoint)
+	chain, authenticated, err := dialReleaseSubstrateChain(cfg, endpoint)
 	if err != nil {
 		return nil, err.Error()
 	}
 	defer chain.API.Client.Close()
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return nil, err.Error()
-	}
+	finalized := authenticated.FinalizedHash
 	header, err := chain.API.RPC.Chain.GetHeader(finalized)
 	if err != nil {
 		return nil, err.Error()
@@ -801,15 +798,12 @@ func inspectNativeCustodyRolesBytes(cfg *ResolvedConfig, b []byte, endpoint stri
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
-	chain, err := crv4.DialChain(endpoint)
+	chain, authenticated, err := dialReleaseSubstrateChain(cfg, endpoint)
 	if err != nil {
 		return false, 0, nil, false, 0, err.Error()
 	}
 	defer chain.API.Client.Close()
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return false, 0, nil, false, 0, err.Error()
-	}
+	finalized := authenticated.FinalizedHash
 	readUID := func(hotkey [32]byte) (bool, uint16, error) {
 		key, err := gsrpcTypes.CreateStorageKey(chain.Meta, crv4.PalletName, "Uids", netuidArg(cfg.Netuid), hotkey[:])
 		if err != nil {

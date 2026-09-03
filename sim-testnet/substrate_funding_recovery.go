@@ -336,9 +336,26 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if recoveryErr != nil || inclusionErr != nil || uint64(finalizedHeader.Number) < transaction.BlockNumber || transaction.RecoveryBlock >= transaction.BlockNumber || canonicalRecovery != recoveryHash || canonicalInclusion != inclusionHash {
 		return finalizedSubstrateFundingRecovery{}, stateMismatchError(errors.Join(recoveryErr, inclusionErr), "substrate-funding recovery and inclusion checkpoints are not canonical and ordered")
 	}
-	if err := chain.VerifyFinalizedExtrinsic(inclusionHash, transactionHash); err != nil {
+	recoveryRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, recoveryHash)
+	if err != nil {
+		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate substrate-funding recovery runtime: %w", err)
+	}
+	inclusionRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, inclusionHash)
+	if err != nil {
+		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate substrate-funding inclusion runtime: %w", err)
+	}
+	if recoveryRuntime.Version != inclusionRuntime.Version ||
+		!strings.EqualFold(recoveryRuntime.CodeHash, inclusionRuntime.CodeHash) ||
+		!strings.EqualFold(recoveryRuntime.MetadataHash, inclusionRuntime.MetadataHash) {
+		return finalizedSubstrateFundingRecovery{}, errors.New("substrate-funding recovery crossed a runtime identity boundary")
+	}
+	if err := verifyReleaseHistoryFinalizedExtrinsic(chain, cfg, inclusionHash, transactionHash); err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("substrate-funding finalized transaction: %w", err)
 	}
+	recoveryChain := *chain
+	bindAuthenticatedRuntime(&recoveryChain, recoveryRuntime)
+	inclusionChain := *chain
+	bindAuthenticatedRuntime(&inclusionChain, inclusionRuntime)
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
@@ -347,11 +364,11 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	recoveryBalance, err := readFreeBalanceAtHash(chain, account, recoveryHash)
+	recoveryBalance, err := readFreeBalanceAtHash(&recoveryChain, account, recoveryHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding recovery balance: %w", err)
 	}
-	inclusionBalance, err := readFreeBalanceAtHash(chain, account, inclusionHash)
+	inclusionBalance, err := readFreeBalanceAtHash(&inclusionChain, account, inclusionHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding inclusion balance: %w", err)
 	}
@@ -361,7 +378,13 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	}
 	currentBalance := action.Spend.TAORao
 	if !descendantVerified {
-		currentBalance, err = readFreeBalanceAtHash(chain, account, finalizedHash)
+		currentRuntime, runtimeErr := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalizedHash)
+		if runtimeErr != nil {
+			return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate current substrate-funding runtime: %w", runtimeErr)
+		}
+		currentChain := *chain
+		bindAuthenticatedRuntime(&currentChain, currentRuntime)
+		currentBalance, err = readFreeBalanceAtHash(&currentChain, account, finalizedHash)
 		if err != nil {
 			return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding current balance: %w", err)
 		}
@@ -370,12 +393,12 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	manager := &SubstrateManager{chain: chain, cfg: cfg}
+	manager := &SubstrateManager{chain: &recoveryChain, cfg: cfg}
 	call, err := manager.FundCall(account, transfer)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	expectedRaw, err := encodeSignedSubstrateCall(chain, signer, call, uint32(nonce))
+	expectedRaw, err := encodeSignedSubstrateCall(&recoveryChain, signer, call, uint32(nonce))
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}

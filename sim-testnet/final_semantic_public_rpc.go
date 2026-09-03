@@ -44,6 +44,9 @@ type PublicFinalSemanticChainReader struct {
 	native                *gsrpc.SubstrateAPI
 	evm                   *rpc.Client
 	evmRetry              finalSemanticRPCRetryPolicy
+	runtimeVersion        runtimeVersionIdentity
+	runtimeCodeHash       string
+	runtimeMetadataHash   string
 }
 
 var _ FinalSemanticChainReader = (*PublicFinalSemanticChainReader)(nil)
@@ -81,6 +84,9 @@ func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public 
 	}
 	if err := validatePublicCampaignOperatorOrigins(public); err != nil {
 		return nil, fmt.Errorf("authenticated public manifest operator transport: %w", err)
+	}
+	if err := validatePublishedRuntimeIdentityShape(public); err != nil {
+		return nil, fmt.Errorf("authenticated public manifest runtime identity: %w", err)
 	}
 	transportProfile, err := effectivePublicEvidenceTransportProfile(public)
 	if err != nil {
@@ -142,6 +148,11 @@ func newPublicFinalSemanticChainReaderWithTransport(ctx context.Context, public 
 		evidence: evidence, evidenceURI: evidenceURI, operatorOrigins: append([]FinalOperatorEvidenceOrigin(nil), origins...), manifestHash: manifestHash,
 		canonicalSubstrateRPC: transport.canonicalSubstrateRPC, canonicalEVMRPC: transport.canonicalEVMRPC,
 		native: native, evm: evm, evmRetry: retryPolicy,
+		runtimeVersion: runtimeVersionIdentity{
+			SpecName: "node-subtensor", SpecVersion: public.RuntimeSpec,
+			TransactionVersion: public.TransactionVersion, StateVersion: public.StateVersion,
+		},
+		runtimeCodeHash: strings.ToLower(public.RuntimeCodeHash), runtimeMetadataHash: strings.ToLower(public.RuntimeMetadataHash),
 	}
 	var chainID string
 	if err := retryFinalSemanticRPCCall(ctx, nil, retryPolicy, func(attemptCtx context.Context) error {
@@ -423,19 +434,70 @@ func finalEVMBlock(raw json.RawMessage) (ChainHead, error) {
 }
 
 func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, head ChainHead) (*gsrpctypes.Metadata, []FinalRPCExchange, error) {
-	raw, exchange, err := r.substrateRaw(ctx, head, "state_getMetadata", head.Hash)
+	versionRaw, versionExchange, err := r.substrateRaw(ctx, head, "state_getRuntimeVersion", head.Hash)
 	if err != nil {
 		return nil, nil, err
 	}
-	encoded, err := finalDecodeRPCString("state_getMetadata", raw)
+	version, err := decodeRuntimeVersionIdentity(versionRaw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decode public runtime identity at %s: %w", head.Hash, err)
+	}
+	codeRaw, codeExchange, err := r.substrateRaw(ctx, head, "state_getStorageHash", "0x3a636f6465", head.Hash)
 	if err != nil {
 		return nil, nil, err
 	}
-	var metadata gsrpctypes.Metadata
-	if err := gsrpccodec.DecodeFromHex(encoded, &metadata); err != nil {
-		return nil, nil, fmt.Errorf("decode historical Substrate metadata at %s: %w", head.Hash, err)
+	var codeHash string
+	if err := json.Unmarshal(codeRaw, &codeHash); err != nil {
+		return nil, nil, fmt.Errorf("decode public runtime code hash at %s: %w", head.Hash, err)
 	}
-	return &metadata, []FinalRPCExchange{exchange}, nil
+	metadataRaw, metadataExchange, err := r.substrateRaw(ctx, head, "state_getMetadata", head.Hash)
+	if err != nil {
+		return nil, nil, err
+	}
+	encoded, err := finalDecodeRPCString("state_getMetadata", metadataRaw)
+	if err != nil {
+		return nil, nil, err
+	}
+	metadata, metadataHash, err := crv4.DecodeRuntimeMetadata(encoded)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decode public runtime metadata at %s: %w", head.Hash, err)
+	}
+	if currentErr := validateRuntimeVersionIdentity(version, r.runtimeVersion.SpecVersion, r.runtimeVersion.TransactionVersion, r.runtimeVersion.StateVersion); currentErr == nil {
+		if err := validateRuntimeCodeHash(codeHash, r.runtimeCodeHash); err != nil {
+			return nil, nil, fmt.Errorf("authenticate public runtime code at %s: %w", head.Hash, err)
+		}
+		if err := validateRuntimeMetadataHash(metadataHash, r.runtimeMetadataHash); err != nil {
+			return nil, nil, fmt.Errorf("authenticate public runtime metadata at %s: %w", head.Hash, err)
+		}
+		return metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
+	}
+
+	// Carried setup receipts can precede the v453 campaign start. Authenticate
+	// their exact v451/v452 code and metadata identities, but never admit those
+	// compatibility runtimes at or after the signed campaign boundary. A v453
+	// setup receipt takes the current branch above even when it predates start.
+	if r.evidence == nil || head.Number >= r.evidence.NativeStartHead.Number {
+		return nil, nil, fmt.Errorf(
+			"public runtime at %s is unreviewed %s/%d/%d/%d",
+			head.Hash, version.SpecName, version.SpecVersion,
+			version.TransactionVersion, version.StateVersion,
+		)
+	}
+	historical, ok := reviewedHistoricalRuntimeArtifact(version)
+	if !ok {
+		return nil, nil, fmt.Errorf(
+			"historical runtime at %s is unreviewed %s/%d/%d/%d",
+			head.Hash, version.SpecName, version.SpecVersion,
+			version.TransactionVersion, version.StateVersion,
+		)
+	}
+	if err := validateRuntimeCodeHash(codeHash, historical.CodeHash); err != nil {
+		return nil, nil, fmt.Errorf("authenticate historical runtime code at %s: %w", head.Hash, err)
+	}
+	if err := validateRuntimeMetadataHash(metadataHash, historical.MetadataHash); err != nil {
+		return nil, nil, fmt.Errorf("authenticate historical runtime metadata at %s: %w", head.Hash, err)
+	}
+	return metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
 }
 
 func (r *PublicFinalSemanticChainReader) substrateStorage(ctx context.Context, head ChainHead, metadata *gsrpctypes.Metadata, pallet, item string, out any, required bool, args ...[]byte) (bool, FinalRPCExchange, error) {
@@ -654,7 +716,7 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 	}
 	exchanges = append(exchanges, batchExchange)
 	result := FleetLifecyclePruneSnapshot{Head: head, UIDCount: count, MaximumUIDs: maximum, ImmunityPeriodBlocks: immunity, MinimumNonImmuneUIDs: minimumNonImmune, Inputs: make([]FleetLifecyclePruneInput, 0, count)}
-	rows := make([]runtime452PruneNeuron, 0, count)
+	rows := make([]runtime453PruneNeuron, 0, count)
 	for uid := uint16(0); uid < count; uid++ {
 		var coldkey gsrpctypes.AccountID
 		var registered gsrpctypes.U64
@@ -681,9 +743,9 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 		}
 		row := FleetLifecyclePruneInput{UID: uid, Hotkey: "0x" + fmt.Sprintf("%x", hotkey[:]), Coldkey: "0x" + fmt.Sprintf("%x", coldkey[:]), EmissionRao: emission, RegistrationBlock: registrationBlock, Immune: immune, Immortal: immortal}
 		result.Inputs = append(result.Inputs, row)
-		rows = append(rows, runtime452PruneNeuron{UID: uid, Hotkey: hotkey, EmissionRao: emission, RegistrationBlock: registrationBlock, Immune: immune, Immortal: immortal})
+		rows = append(rows, runtime453PruneNeuron{UID: uid, Hotkey: hotkey, EmissionRao: emission, RegistrationBlock: registrationBlock, Immune: immune, Immortal: immortal})
 	}
-	result.RuntimePruneUID, err = runtime452PruneCandidate(rows, minimumNonImmune)
+	result.RuntimePruneUID, err = runtime453PruneCandidate(rows, minimumNonImmune)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
@@ -715,7 +777,7 @@ func (r *PublicFinalSemanticChainReader) NativeFleetCommitment(ctx context.Conte
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
-	commitmentHash, err := crv4.DecodeFleetCommitmentRegistrationV452(values[strings.ToLower(commitmentKey.Hex())])
+	commitmentHash, err := crv4.DecodeFleetCommitmentRegistrationV453(values[strings.ToLower(commitmentKey.Hex())])
 	if err != nil {
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}

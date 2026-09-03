@@ -309,6 +309,7 @@ type ReleaseRuntimeLock struct {
 	SourceTag                string `yaml:"source_tag" json:"source_tag"`
 	SourceCommit             string `yaml:"source_commit" json:"source_commit"`
 	CodeHash                 string `yaml:"code_hash" json:"code_hash"`
+	MetadataHash             string `yaml:"metadata_hash" json:"metadata_hash"`
 	CompressedWasmSHA256     string `yaml:"compressed_wasm_sha256" json:"compressed_wasm_sha256"`
 	UpstreamReleaseCallHash  string `yaml:"upstream_release_call_hash" json:"upstream_release_call_hash"`
 	UpstreamReleaseTimepoint string `yaml:"upstream_release_timepoint" json:"upstream_release_timepoint"`
@@ -1149,6 +1150,13 @@ func (r *ResolvedConfig) Validate() error {
 		r.Release.Runtime.TransactionVersion != r.Public.Chain.ExpectedTransactionVersion ||
 		r.Release.Runtime.StateVersion != r.Public.Chain.ExpectedStateVersion {
 		return errors.New("release/runtime manifest mismatch")
+	}
+	// Every command, including plan and read-only replay, must start from the
+	// reviewed v453 source/artifact identity. The doctor independently observes
+	// the checkout and live chain, but it is not a prerequisite for parsing a
+	// release command.
+	if err := validateReviewedRuntimeIdentity(r.Release); err != nil {
+		return err
 	}
 	if r.Hyperparameters.SchemaVersion != 1 || r.Hyperparameters.Profile != releaseProfile {
 		return errors.New("invalid hyperparameter manifest")

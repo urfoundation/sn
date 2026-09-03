@@ -23,27 +23,31 @@ func validReleaseConfig(t *testing.T) ReleaseConfig {
 	}
 	root := t.TempDir()
 	return ReleaseConfig{
-		SchemaVersion:   1,
-		Production:      true,
-		Release:         "1.0",
-		DeploymentID:    "test-deployment",
-		ValidatorID:     1,
-		ChainID:         945,
-		GenesisHash:     "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
-		RuntimeSpec:     447,
-		Netuid:          7,
-		Coordinator:     "0x1111111111111111111111111111111111111111",
-		SettlementVault: "0x2222222222222222222222222222222222222222",
-		DeployBlock:     10,
-		PolicyHash:      h,
-		RPC:             []string{"https://evm.example"},
-		Substrate:       []string{"wss://substrate.example"},
-		StateDir:        filepath.Join(root, "state"),
-		HotkeySeedFile:  filepath.Join(root, "hotkey.seed"),
-		ControlledNOIDs: []uint64{},
-		TrailDepth:      p.Verify.TrailDepth,
-		PollSeconds:     2,
-		Policy:          *p,
+		SchemaVersion:       1,
+		Production:          true,
+		Release:             "1.0",
+		DeploymentID:        "test-deployment",
+		ValidatorID:         1,
+		ChainID:             945,
+		GenesisHash:         "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+		RuntimeSpec:         453,
+		TransactionVersion:  1,
+		StateVersion:        1,
+		RuntimeCodeHash:     releaseRuntimeCodeHash,
+		RuntimeMetadataHash: releaseRuntimeMetadataHash,
+		Netuid:              7,
+		Coordinator:         "0x1111111111111111111111111111111111111111",
+		SettlementVault:     "0x2222222222222222222222222222222222222222",
+		DeployBlock:         10,
+		PolicyHash:          h,
+		RPC:                 []string{"https://evm.example"},
+		Substrate:           []string{"wss://substrate.example"},
+		StateDir:            filepath.Join(root, "state"),
+		HotkeySeedFile:      filepath.Join(root, "hotkey.seed"),
+		ControlledNOIDs:     []uint64{},
+		TrailDepth:          p.Verify.TrailDepth,
+		PollSeconds:         2,
+		Policy:              *p,
 		Operators: []OperatorConfig{
 			{NoID: 1, APIURL: "https://one.example", ConnectURL: "wss://one.example/connect", ArtifactSigner: "0x1111111111111111111111111111111111111111", StateDir: filepath.Join(root, "no-1"), Concurrency: 2},
 			{NoID: 2, APIURL: "https://two.example", ConnectURL: "wss://two.example/connect", ArtifactSigner: "0x2222222222222222222222222222222222222222", StateDir: filepath.Join(root, "no-2"), Concurrency: 2},
@@ -98,6 +102,32 @@ func TestReleaseConfigFailsClosedOnSharedOperatorStateAndPolicyDrift(t *testing.
 	cfg.Policy.Steering.Theta.Numerator++
 	if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil || !strings.Contains(err.Error(), "policy hash mismatch") {
 		t.Fatalf("policy drift error = %v", err)
+	}
+}
+
+func TestReleaseConfigRequiresExactNativeRuntimeIdentity(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ReleaseConfig)
+	}{
+		{name: "spec version drift", mutate: func(cfg *ReleaseConfig) { cfg.RuntimeSpec-- }},
+		{name: "transaction version missing", mutate: func(cfg *ReleaseConfig) { cfg.TransactionVersion = 0 }},
+		{name: "state version missing", mutate: func(cfg *ReleaseConfig) { cfg.StateVersion = 0 }},
+		{name: "transaction version drift", mutate: func(cfg *ReleaseConfig) { cfg.TransactionVersion++ }},
+		{name: "state version drift", mutate: func(cfg *ReleaseConfig) { cfg.StateVersion++ }},
+		{name: "code hash missing", mutate: func(cfg *ReleaseConfig) { cfg.RuntimeCodeHash = "" }},
+		{name: "metadata hash missing", mutate: func(cfg *ReleaseConfig) { cfg.RuntimeMetadataHash = "" }},
+		{name: "code hash drift", mutate: func(cfg *ReleaseConfig) { cfg.RuntimeCodeHash = "0x" + strings.Repeat("33", 32) }},
+		{name: "metadata hash drift", mutate: func(cfg *ReleaseConfig) { cfg.RuntimeMetadataHash = "0x" + strings.Repeat("44", 32) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := validReleaseConfig(t)
+			test.mutate(&cfg)
+			if _, err := LoadReleaseConfig(writeReleaseConfig(t, cfg)); err == nil {
+				t.Fatal("incomplete or drifting native runtime identity was accepted")
+			}
+		})
 	}
 }
 

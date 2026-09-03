@@ -702,6 +702,9 @@ func finalSemanticReaderFactoryFromCapturedFiles(cfg *ResolvedConfig, files map[
 	if err := validatePublicManifestRevision(&public); err != nil {
 		return nil, err
 	}
+	if err := validatePublishedRuntimeIdentity(&public, cfg); err != nil {
+		return nil, fmt.Errorf("captured public manifest runtime identity: %w", err)
+	}
 	if public.DeploymentID != cfg.Config.Deployment.DeploymentID || public.ConfigHash != cfg.ConfigHash || !strings.EqualFold(public.PolicyHash, cfg.PolicyHash) || public.ChainID != cfg.ChainID || public.Netuid != cfg.Netuid || !strings.EqualFold(public.GenesisHash, cfg.Public.Chain.GenesisHash) || public.Topology.Operators != cfg.Config.Topology.Operators || public.Contracts == nil {
 		return nil, errors.New("captured public manifest does not match the semantic configuration")
 	}

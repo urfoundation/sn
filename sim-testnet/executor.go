@@ -299,7 +299,7 @@ func (e *Executor) boundedRegistrationBurn(action Action) (uint64, uint64, error
 	return burn, limit, nil
 }
 
-// Contract registration receives the full approved ceiling. Runtime 452 burns
+// Contract registration receives the full approved ceiling. Runtime 453 burns
 // the current rao price and the release contracts return any surplus.
 func registrationFundingWei(limitRao uint64) *big.Int {
 	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
@@ -1351,7 +1351,7 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 func (e *Executor) execute(ctx context.Context, a Action) error {
 	switch {
 	case a.ID == "subnet.verify-owner":
-		err, _ := verifySubnetOwner(e.substrate.chain, e.cfg.Netuid, e.cfg.WalletPublic)
+		err, _ := verifySubnetOwner(e.substrate.chain, e.cfg, e.cfg.WalletPublic)
 		return err
 	case strings.HasPrefix(a.ID, "subnet.hyperparameter."):
 		name := strings.TrimPrefix(a.ID, "subnet.hyperparameter.")
@@ -3579,7 +3579,7 @@ func validateRegistrationReplacementPreState(state registrationReplacementState)
 		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
 	}
 	if state.RuntimePruneUID != state.ExpectedUID {
-		return fmt.Errorf("runtime-452 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+		return fmt.Errorf("runtime-453 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
 	}
 	return nil
 }
@@ -3608,7 +3608,7 @@ func validateChallengerChurnPreState(state challengerChurnState) error {
 		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
 	}
 	if state.RuntimePruneUID != state.ExpectedUID {
-		return fmt.Errorf("runtime-452 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+		return fmt.Errorf("runtime-453 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
 	}
 	return nil
 }
@@ -3907,7 +3907,7 @@ func (e *Executor) readRegistrationReplacementState(churn int, replacementLabel 
 	if maximum == 0 || maximum > uint64(^uint16(0)) {
 		return registrationReplacementState{}, fmt.Errorf("approved max_allowed_uids %d is invalid", maximum)
 	}
-	pruneUID, err := e.substrate.Runtime452PruneCandidate()
+	pruneUID, err := e.substrate.Runtime453PruneCandidate()
 	if err != nil {
 		return registrationReplacementState{}, err
 	}
@@ -3990,7 +3990,7 @@ func (e *Executor) readChallengerChurnState(fleet int) (challengerChurnState, er
 	if maximum == 0 || maximum > uint64(^uint16(0)) {
 		return challengerChurnState{}, fmt.Errorf("approved max_allowed_uids %d is invalid", maximum)
 	}
-	pruneUID, err := e.substrate.Runtime452PruneCandidate()
+	pruneUID, err := e.substrate.Runtime453PruneCandidate()
 	if err != nil {
 		return challengerChurnState{}, err
 	}
@@ -4292,7 +4292,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	if err := prepareSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
 		return err
 	}
-	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
+	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "transaction_version": cfg.Public.Chain.ExpectedTransactionVersion, "state_version": cfg.Public.Chain.ExpectedStateVersion, "runtime_code_hash": cfg.Release.Runtime.CodeHash, "runtime_metadata_hash": cfg.Release.Runtime.MetadataHash, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		v := cloneMap(base)
 		v["validator_id"] = i

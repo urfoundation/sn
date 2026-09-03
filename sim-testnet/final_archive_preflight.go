@@ -16,7 +16,6 @@ import (
 	"time"
 
 	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	gsrpccodec "github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -70,7 +69,17 @@ type finalArchiveProbe interface {
 // content-addressed receipt beneath stateDir/receipts. Callers must invoke it
 // immediately before topology launch or scenario start and retain its locator.
 func RunFinalArchiveRetentionPreflight(ctx context.Context, stateDir string, public *PublicDeploymentManifest, plannedSpanBlocks, safetyMarginBlocks uint64) (*FinalArchiveRetentionPreflight, FinalArtifactLocator, error) {
-	return runFinalArchiveRetentionPreflight(ctx, stateDir, public, plannedSpanBlocks, safetyMarginBlocks, time.Now, liveFinalArchiveProbe{})
+	probe := liveFinalArchiveProbe{}
+	if public != nil {
+		probe.genesisHash = public.GenesisHash
+		probe.runtimeVersion = runtimeVersionIdentity{
+			SpecName: "node-subtensor", SpecVersion: public.RuntimeSpec,
+			TransactionVersion: public.TransactionVersion, StateVersion: public.StateVersion,
+		}
+		probe.runtimeCodeHash = public.RuntimeCodeHash
+		probe.runtimeMetadataHash = public.RuntimeMetadataHash
+	}
+	return runFinalArchiveRetentionPreflight(ctx, stateDir, public, plannedSpanBlocks, safetyMarginBlocks, time.Now, probe)
 }
 
 // FinalCompositeArchiveSpan covers the complete two-phase evidence lifetime:
@@ -124,6 +133,9 @@ func runFinalArchiveRetentionPreflight(ctx context.Context, stateDir string, pub
 	}
 	if public.Schema != "urnetwork-sim-public-deployment-v1" || public.DeploymentID == "" || public.Contracts.CoordinatorProxy == ([20]byte{}) {
 		return nil, FinalArtifactLocator{}, errors.New("archive-retention preflight public manifest is invalid")
+	}
+	if err := validatePublishedRuntimeIdentityShape(public); err != nil {
+		return nil, FinalArtifactLocator{}, fmt.Errorf("archive-retention preflight runtime identity: %w", err)
 	}
 	if err := verifyFinalPublicEndpoint("Substrate", public.SubstrateRPC, "wss", "https"); err != nil {
 		return nil, FinalArtifactLocator{}, err
@@ -408,9 +420,14 @@ func finalArchiveSetupEvidenceHeads(name string, raw json.RawMessage, deployment
 	}
 }
 
-type liveFinalArchiveProbe struct{}
+type liveFinalArchiveProbe struct {
+	genesisHash         string
+	runtimeVersion      runtimeVersionIdentity
+	runtimeCodeHash     string
+	runtimeMetadataHash string
+}
 
-func (liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, earliest ChainHead, futureDepth uint64) (FinalArchiveProbeResult, error) {
+func (live liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, earliest ChainHead, futureDepth uint64) (FinalArchiveProbeResult, error) {
 	chain, err := crv4.DialChain(endpoint)
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
@@ -423,6 +440,34 @@ func (liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, ear
 	finalizedHash, err := finalDecodeRPCString("chain_getFinalizedHead", finalizedRaw)
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
+	}
+	finalizedNativeHash, err := gsrpctypes.NewHashFromHexString(finalizedHash)
+	if err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("decode archive finalized hash: %w", err)
+	}
+	if !strings.EqualFold(chain.GenesisHash.Hex(), live.genesisHash) {
+		return FinalArchiveProbeResult{}, fmt.Errorf("archive genesis %s, want %s", chain.GenesisHash.Hex(), live.genesisHash)
+	}
+	version, err := runtimeVersionAt(chain, finalizedNativeHash)
+	if err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("read archive finalized runtime identity: %w", err)
+	}
+	if err := validateRuntimeVersionIdentity(version, live.runtimeVersion.SpecVersion, live.runtimeVersion.TransactionVersion, live.runtimeVersion.StateVersion); err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("authenticate archive finalized runtime identity: %w", err)
+	}
+	codeHash, err := runtimeCodeHashAt(chain, finalizedNativeHash)
+	if err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("read archive finalized runtime code hash: %w", err)
+	}
+	if err := validateRuntimeCodeHash(codeHash, live.runtimeCodeHash); err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("authenticate archive finalized runtime code: %w", err)
+	}
+	_, metadataHash, err := runtimeMetadataAt(chain, finalizedNativeHash)
+	if err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("read archive finalized runtime metadata: %w", err)
+	}
+	if err := validateRuntimeMetadataHash(metadataHash, live.runtimeMetadataHash); err != nil {
+		return FinalArchiveProbeResult{}, fmt.Errorf("authenticate archive finalized runtime metadata: %w", err)
 	}
 	var finalizedHeader json.RawMessage
 	if err := chain.API.Client.CallContext(ctx, &finalizedHeader, "chain_getHeader", finalizedHash); err != nil {
@@ -449,11 +494,11 @@ func (liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, ear
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
 	}
-	var metadata gsrpctypes.Metadata
-	if err := gsrpccodec.DecodeFromHex(metadataHex, &metadata); err != nil {
+	metadata, _, err := crv4.DecodeRuntimeMetadata(metadataHex)
+	if err != nil {
 		return FinalArchiveProbeResult{}, fmt.Errorf("decode historical metadata: %w", err)
 	}
-	eventsKey, err := gsrpctypes.CreateStorageKey(&metadata, "System", "Events")
+	eventsKey, err := gsrpctypes.CreateStorageKey(metadata, "System", "Events")
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
 	}
@@ -481,11 +526,11 @@ func (liveFinalArchiveProbe) Substrate(ctx context.Context, endpoint string, ear
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
 	}
-	var exactMetadata gsrpctypes.Metadata
-	if err := gsrpccodec.DecodeFromHex(exactMetadataHex, &exactMetadata); err != nil {
+	exactMetadata, _, err := crv4.DecodeRuntimeMetadata(exactMetadataHex)
+	if err != nil {
 		return FinalArchiveProbeResult{}, fmt.Errorf("decode exact historical metadata: %w", err)
 	}
-	exactEventsKey, err := gsrpctypes.CreateStorageKey(&exactMetadata, "System", "Events")
+	exactEventsKey, err := gsrpctypes.CreateStorageKey(exactMetadata, "System", "Events")
 	if err != nil {
 		return FinalArchiveProbeResult{}, err
 	}

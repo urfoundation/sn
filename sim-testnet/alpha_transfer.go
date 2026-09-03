@@ -107,7 +107,7 @@ func alphaTransferTargetFromActionID(id string) (string, int, error) {
 }
 
 // alphaTransferCreditedRao validates the point-in-time destination entitlement
-// change produced by runtime 452. transfer_stake_and_hotkey conserves the exact
+// change produced by runtime 453. transfer_stake_and_hotkey conserves the exact
 // integer amount in TotalHotkeyAlpha, while the destination coldkey is represented
 // by a SafeFloat share and getStake floors that entitlement. The pinned runtime's
 // precision contract therefore permits at most one rao of destination under-report.
@@ -155,9 +155,9 @@ func alphaRepairPrebroadcast(current, minimum, minimumCredit uint64, resumed boo
 func alphaTransferRoundingShortfall(action Action) (uint64, error) {
 	value := action.Parameters["maximum_destination_rounding_shortfall_rao"]
 	if value == "" {
-		// V5-v7 plans predate the explicit field but execute against the same
-		// release-locked runtime-452 share pool. Their migration envelope is the
-		// same one-rao bound, never an unbounded tolerance.
+		// V5-v7 plans predate the explicit field and may be persisted v452
+		// evidence. Runtime 453 retains the same share-pool semantics, so their
+		// migration envelope remains the one-rao bound, never an unbounded tolerance.
 		return alphaTransferDestinationRoundingAllowance, nil
 	}
 	shortfall, err := strconv.ParseUint(value, 10, 64)
@@ -171,7 +171,7 @@ func alphaTransferRoundingShortfall(action Action) (uint64, error) {
 	return shortfall, nil
 }
 
-// alphaTransferTAOEquivalentRao mirrors runtime 452's fixed-point floor:
+// alphaTransferTAOEquivalentRao mirrors runtime 453's fixed-point floor:
 // floor(alpha_rao * current_alpha_price_q9 / 1e9).
 func alphaTransferTAOEquivalentRao(alphaRao, priceQ9 uint64) (uint64, error) {
 	if alphaRao == 0 || priceQ9 == 0 {

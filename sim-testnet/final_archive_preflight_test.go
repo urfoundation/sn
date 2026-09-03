@@ -66,6 +66,8 @@ func (f *finalArchiveProbeFixture) EVM(_ context.Context, endpoint, _ string, ea
 func testArchivePublicManifest() *PublicDeploymentManifest {
 	return &PublicDeploymentManifest{
 		Schema: "urnetwork-sim-public-deployment-v1", DeploymentID: "archive-test", SubstrateRPC: "wss://substrate.example.test", EVMRPC: "https://evm.example.test",
+		RuntimeSpec: reviewedRuntimeSpecVersion, TransactionVersion: reviewedRuntimeTransactionVersion, StateVersion: reviewedRuntimeStateVersion,
+		RuntimeCodeHash: reviewedRuntimeCodeHash, RuntimeMetadataHash: reviewedRuntimeMetadataHash,
 		Contracts:     &ContractDeployment{CoordinatorProxy: common.HexToAddress("0x1000000000000000000000000000000000000001"), DeployBlock: 7_000, DeployBlockHash: finalTestHex(9)},
 		SetupEvidence: map[string]json.RawMessage{"fleet_1_commitment": json.RawMessage(`{"schema":"urnetwork-fleet-commitment-evidence-v2","manifest_uri":"fleet-1.json","commitment_hash":"` + finalTestHex(8) + `","hotkey":"` + finalTestHex(7) + `","extrinsic_hash":"` + finalTestHex(6) + `","commitment_block":7000,"finalized_block":7000,"finalized_block_hash":"` + finalTestHex(19) + `"}`)},
 	}
@@ -101,6 +103,18 @@ func TestFinalArchiveRetentionPreflightWritesExactDepthReceipt(t *testing.T) {
 	wire, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(locator.URI)))
 	if err != nil || uint64(len(wire)) != locator.SizeBytes || bytesSHA256(wire) != locator.ContentHash {
 		t.Fatalf("archive preflight receipt mismatch: locator=%+v error=%v", locator, err)
+	}
+}
+
+func TestFinalArchiveRetentionPreflightRequiresCompleteRuntimeIdentity(t *testing.T) {
+	public := testArchivePublicManifest()
+	public.StateVersion = 0
+	probe := testArchiveProbeFixture(minimumFinalArchiveProbeDepthBlocks)
+	if _, _, err := runFinalArchiveRetentionPreflight(context.Background(), t.TempDir(), public, 10, 20, time.Now, probe); err == nil || !strings.Contains(err.Error(), "runtime identity") {
+		t.Fatalf("incomplete archive runtime identity was accepted: %v", err)
+	}
+	if len(probe.depths) != 0 {
+		t.Fatalf("archive endpoints were probed before runtime identity validation: %v", probe.depths)
 	}
 }
 

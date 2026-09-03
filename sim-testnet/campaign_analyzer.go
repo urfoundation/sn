@@ -48,7 +48,7 @@ func runFinalCampaignArchivePreflight(ctx context.Context, cfg *ResolvedConfig, 
 	if ctx == nil || cfg == nil || stateDir == "" {
 		return errors.New("archive-retention campaign preflight context is incomplete")
 	}
-	_, public, err := loadDeploymentReference(ctx, stateDir, filepath.Join(stateDir, "public.json"))
+	_, public, err := loadDeploymentReferenceForConfig(ctx, cfg, stateDir, filepath.Join(stateDir, "public.json"))
 	if err != nil || public == nil {
 		return stateMismatchError(err, "load archive-retention public deployment manifest")
 	}

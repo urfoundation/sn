@@ -530,6 +530,84 @@ func TestReleaseGatesBracketWorkWithExactSourceFreezeSnapshots(t *testing.T) {
 	}
 }
 
+// Go decision models are useful supplements, but they cannot prove what the
+// deployed FRAME runtime contains. Require both release entry points to hash
+// the exact reviewed upstream Rust sources and regression tests at the tag's
+// immutable commit before any local gate work begins.
+func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
+	manifestBytes, err := os.ReadFile("../docs/spec/runtime-v453-source.sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(strings.TrimSpace(string(manifestBytes)), "\n")
+	if len(rows) != 12 {
+		t.Fatalf("runtime 453 source manifest has %d rows, want 12", len(rows))
+	}
+	requiredPaths := map[string]bool{
+		"pallets/drand/src/tests.rs":                   false,
+		"pallets/drand/src/verifier.rs":                false,
+		"pallets/proxy/src/lib.rs":                     false,
+		"pallets/proxy/src/tests.rs":                   false,
+		"pallets/subtensor/src/macros/dispatches.rs":   false,
+		"pallets/subtensor/src/staking/stake_utils.rs": false,
+		"pallets/subtensor/src/subnets/subnet.rs":      false,
+		"pallets/subtensor/src/tests/move_stake.rs":    false,
+		"pallets/subtensor/src/tests/networks.rs":      false,
+		"precompiles/src/balance_transfer.rs":          false,
+		"runtime/src/lib.rs":                           false,
+		"runtime/tests/precompiles.rs":                 false,
+	}
+	for _, row := range rows {
+		fields := strings.Fields(row)
+		if len(fields) != 2 || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(fields[0]) {
+			t.Fatalf("non-canonical runtime 453 source row %q", row)
+		}
+		if _, ok := requiredPaths[fields[1]]; !ok {
+			t.Fatalf("unexpected runtime 453 source path %q", fields[1])
+		}
+		requiredPaths[fields[1]] = true
+	}
+	for path, present := range requiredPaths {
+		if !present {
+			t.Errorf("runtime 453 source manifest omits %s", path)
+		}
+	}
+
+	checkerBytes, err := os.ReadFile("../scripts/check-runtime-v453-source.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checker := string(checkerBytes)
+	for _, required := range []string{
+		"https://github.com/RaoFoundation/subtensor",
+		"https://raw.githubusercontent.com/RaoFoundation/subtensor",
+		"v453",
+		"823bdcbc58a29f60b243be4737a7c72b34ac7d93",
+		"runtime-v453-source.sha256",
+		"git ls-remote --tags",
+		"SUBTENSOR_RUNTIME_SOURCE",
+		"status --porcelain=v1 --untracked-files=all",
+		"sha256sum",
+	} {
+		if !strings.Contains(checker, required) {
+			t.Errorf("runtime source checker omits %q", required)
+		}
+	}
+
+	for _, scriptPath := range []string{"../scripts/test-release-1.0-local.sh", "../scripts/test-release-1.0-producer-gate.sh"} {
+		scriptBytes, err := os.ReadFile(scriptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(scriptBytes)
+		attestation := strings.Index(script, "check-runtime-v453-source.sh")
+		preflight := strings.Index(script, "check-release-source-freeze.sh")
+		if strings.Count(script, "check-runtime-v453-source.sh") != 1 || attestation <= preflight {
+			t.Errorf("%s does not attest runtime 453 immediately after source-freeze preflight", scriptPath)
+		}
+	}
+}
+
 // Operator-proxy CI builds only against the reviewed sibling commits and uses
 // tidy's read-only diff mode instead of mutating its checkout before testing.
 func TestOperatorProxyCIPinsCurrentSiblingRevisions(t *testing.T) {

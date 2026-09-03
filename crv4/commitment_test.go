@@ -10,7 +10,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 )
 
-func TestFleetCommitmentInfoExactRuntime452Scale(t *testing.T) {
+func TestFleetCommitmentInfoRuntime453RetainsExactV452Scale(t *testing.T) {
 	var hash [32]byte
 	for i := range hash {
 		hash[i] = byte(i + 1)
@@ -53,7 +53,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 	for index := range hash {
 		hash[index] = byte(index + 1)
 	}
-	prefix := make([]byte, registrationV452PrefixBytes)
+	prefix := make([]byte, registrationFixedU32PrefixBytes)
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000)
 	binary.LittleEndian.PutUint32(prefix[8:12], 7_827_242)
 	info, err := EncodeFleetCommitmentInfo(hash)
@@ -61,16 +61,20 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonical := append(append([]byte(nil), prefix...), info...)
-	got, block, err := decodeFleetCommitmentRegistrationV452(canonical)
+	got, block, err := decodeFleetCommitmentRegistrationFixedU32(canonical)
 	if err != nil || got != hash {
 		t.Fatalf("canonical registration hash=%x error=%v", got, err)
 	}
 	if block != 7_827_242 {
 		t.Fatalf("canonical registration block=%d, want 7827242", block)
 	}
+	legacy, err := DecodeFleetCommitmentRegistrationV452(canonical)
+	if err != nil || legacy != hash {
+		t.Fatalf("persisted v452 compatibility decoder hash=%x error=%v", legacy, err)
+	}
 
 	// Each input is a valid-looking or near-valid alternative that a generic
-	// metagraph parser can encounter. In particular, 0x87 is the runtime-452
+	// metagraph parser can encounter. In particular, 0x87 is the v452/v453
 	// ResetBondsFlag variant and the first mutation is a two-field vector that
 	// deliberately ends in the otherwise canonical Sha256 bytes.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -84,7 +88,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 		"trailing byte":               trailing,
 		"truncated registration":      canonical[:len(canonical)-1],
 	} {
-		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV452(encoded); decodeErr == nil {
+		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV453(encoded); decodeErr == nil {
 			t.Errorf("%s decoded as %x", name, decoded)
 		}
 	}
@@ -92,7 +96,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 
 func TestFleetCommitmentBlockStorageIsFixedWidthNotHeaderCompact(t *testing.T) {
 	raw := []byte{0x9d, 0x7c, 0x78, 0x00}
-	got, err := decodeFleetCommitmentBlockV452(raw)
+	got, err := decodeFleetCommitmentBlockFixedU32(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +110,7 @@ func TestFleetCommitmentBlockStorageIsFixedWidthNotHeaderCompact(t *testing.T) {
 		{0x9d, 0x7c, 0x78},
 		{0x9d, 0x7c, 0x78, 0, 0},
 	} {
-		if decoded, decodeErr := decodeFleetCommitmentBlockV452(malformed); decodeErr == nil {
+		if decoded, decodeErr := decodeFleetCommitmentBlockFixedU32(malformed); decodeErr == nil {
 			t.Errorf("malformed fixed-width block decoded as %d", decoded)
 		}
 	}

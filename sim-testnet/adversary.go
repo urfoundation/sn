@@ -51,7 +51,7 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 	),
 	"rpc-consistency-pressure": adversaryMetricSet(
 		"finalized_head_lag_blocks", "finalized_lag_blocks", "head_lag_blocks", "hash_disagreement_count", "archive_error_rate_ppm", "rpc_latency_ms", "runtime_spec",
-		"transaction_version", "state_version",
+		"transaction_version", "state_version", "runtime_code_hash_match",
 		"best_finalized_lag_blocks", "sdk_mev_shield_expired_observations", "subnet_spot_alpha_price", "subnet_moving_alpha_price", "subnet_uid_count",
 		"subnet_tao_reserve_rao", "subnet_alpha_reserve_rao", "spot_price", "moving_price", "tao_reserve_rao", "alpha_reserve_rao",
 	),

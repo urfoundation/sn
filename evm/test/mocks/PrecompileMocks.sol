@@ -113,7 +113,7 @@ contract MockStakingV2 {
     ///      it exists to test the probe's harness logic, not economics). Credits
     ///      `amount` at (hotkey, caller's coldkey).
     function addStake(bytes32 hotkey, uint256 amount, uint256) external payable {
-        require(address(this) == address(0x805), "runtime452: foreign staking frame");
+        require(address(this) == address(0x805), "runtime453: foreign staking frame");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
         stakes[hotkey][ck] += amount;
@@ -122,7 +122,7 @@ contract MockStakingV2 {
     function moveStake(bytes32 originHotkey, bytes32 destinationHotkey, uint256, uint256, uint256 amount)
         external
     {
-        require(address(this) == address(0x805), "runtime452: foreign staking frame");
+        require(address(this) == address(0x805), "runtime453: foreign staking frame");
         require(!failMoveStake, "mock: moveStake down");
         require(amount >= minimumMoveAmount, "mock: move amount too low");
         require(amount > moveStakeShortfall, "mock: move shortfall");
@@ -138,7 +138,7 @@ contract MockStakingV2 {
     function transferStake(bytes32 destinationColdkey, bytes32 hotkey, uint256, uint256, uint256 amount)
         external
     {
-        require(address(this) == address(0x805), "runtime452: foreign staking frame");
+        require(address(this) == address(0x805), "runtime453: foreign staking frame");
         require(!failTransferStake, "mock: transferStake down");
         bytes32 ck = callerColdkey[msg.sender];
         require(ck != bytes32(0), "mock: unknown caller");
@@ -152,7 +152,7 @@ contract MockStakingV2 {
     }
 }
 
-/// @dev Mock of IAlpha (0x808). Runtime 452 returns a 9-decimal spot price
+/// @dev Mock of IAlpha (0x808). Runtime 453 returns a 9-decimal spot price
 ///      converted to the EVM's 18-decimal balance scale.
 contract MockAlpha {
     mapping(uint16 => uint256) public prices;
@@ -200,7 +200,7 @@ contract MockNeuron {
     }
 
     function burnedRegister(uint16 netuid, bytes32 hotkey) external payable {
-        require(address(this) == address(0x804), "runtime452: foreign neuron frame");
+        require(address(this) == address(0x804), "runtime453: foreign neuron frame");
         registerCount++;
         lastNetuid = netuid;
         lastHotkey = hotkey;
@@ -209,7 +209,7 @@ contract MockNeuron {
     }
 
     function registerLimit(uint16 netuid, bytes32 hotkey, uint64 limitPrice) external payable {
-        require(address(this) == address(0x804), "runtime452: foreign neuron frame");
+        require(address(this) == address(0x804), "runtime453: foreign neuron frame");
         registerCount++;
         lastNetuid = netuid;
         lastHotkey = hotkey;
@@ -268,7 +268,7 @@ contract MockEd25519 {
     }
 }
 
-/// @dev Mock of runtime-452 sr25519 verifier (0x403), with the same failure
+/// @dev Mock of runtime-453 sr25519 verifier (0x403), with the same failure
 /// controls as the Ed25519 mock. Real randomized sr25519 vectors are exercised
 /// by the Go fixture and live preflight.
 contract MockSr25519 {

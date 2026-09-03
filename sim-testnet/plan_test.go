@@ -298,11 +298,11 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	}
 }
 
-func TestRegistrationEconomicsAcceptsRuntime452BoundedBootstrap(t *testing.T) {
+func TestRegistrationEconomicsAcceptsRuntime453BoundedBootstrap(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	facts := testSetupFacts()
 	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {
-		t.Fatalf("bounded runtime-452 registration economics were rejected: %v", err)
+		t.Fatalf("bounded runtime-453 registration economics were rejected: %v", err)
 	}
 	facts.BurnHalfLifeBlocks = 1
 	if err := validateRegistrationEconomics(cfg, facts, cfg.Config.Budgets.MaximumRegistrationBurnRao); err != nil {

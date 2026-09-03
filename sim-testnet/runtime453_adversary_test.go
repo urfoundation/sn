@@ -1,9 +1,10 @@
 package main
 
 // Deterministic decision-model supplements for five security and economic
-// boundaries added by Subtensor runtime 453. The pinned upstream Rust tests and
-// source review establish runtime behavior; these Go models keep the harness's
-// adversarial oracles stable while live actors continuously pin deployed code.
+// boundaries added by Subtensor runtime 453. The source gate authenticates the
+// upstream Rust implementation and regression-test bytes; only executing those
+// pinned Rust tests supplies FRAME behavior evidence. These Go models keep the
+// harness's adversarial oracles stable while live actors pin deployed code.
 
 import (
 	"bytes"

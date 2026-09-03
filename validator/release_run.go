@@ -352,9 +352,14 @@ func dialPinnedNative(cfg *ReleaseConfig) (*crv4.Chain, error) {
 			errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
 			continue
 		}
-		if chain.GenesisHash != typesHash(wantGenesis) || uint32(chain.Runtime.SpecVersion) != cfg.RuntimeSpec {
+		if chain.GenesisHash != typesHash(wantGenesis) {
 			chain.API.Client.Close()
-			errs = append(errs, fmt.Errorf("%s: genesis/runtime does not match release pin", endpoint))
+			errs = append(errs, fmt.Errorf("%s: genesis does not match release pin", endpoint))
+			continue
+		}
+		if _, err := authenticatePinnedNativeRuntime(chain, cfg); err != nil {
+			chain.API.Client.Close()
+			errs = append(errs, fmt.Errorf("%s: runtime identity does not match release pin: %w", endpoint, err))
 			continue
 		}
 		return chain, nil

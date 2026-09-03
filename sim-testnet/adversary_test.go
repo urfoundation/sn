@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -209,6 +210,7 @@ func TestAdversarialMatrixReferencesOnlyCheckedInTests(t *testing.T) {
 	discoverGoTestReferences(t, cfg.Repos.SN, "", references)
 	discoverGoTestReferences(t, cfg.Repos.Server, "server", references)
 	discoverSolidityTestReferences(t, filepath.Join(cfg.Repos.SN, "evm", "test"), references)
+	discoverShellTestReferences(t, cfg.Repos.SN, references)
 	for _, row := range matrix.Rows {
 		for _, reference := range row.LocalTests {
 			if !references[reference] {
@@ -714,7 +716,7 @@ func TestRootBasketUnstakeSettlesProportionalHiddenReward(t *testing.T) {
 	}
 }
 
-func TestRuntime452RootBasketFailureIsolation(t *testing.T) {
+func TestRuntime453RetainsRootBasketFailureIsolation(t *testing.T) {
 	terminal, healthy, retryable, blocked, err := rootBasketFailureIsolationModel(1_000, 100)
 	if err != nil || terminal != 1 || healthy != 1 || retryable != 1 || blocked {
 		t.Fatalf("root basket isolation terminal=%d healthy=%d retryable=%d blocked=%t error=%v", terminal, healthy, retryable, blocked, err)
@@ -936,6 +938,9 @@ func TestRuntime453DecisionModelsUseBoundedEmulationMode(t *testing.T) {
 		delete(want, row.ID)
 		if row.ExecutionMode != "bounded-emulation" {
 			t.Errorf("runtime 453 decision model %s uses execution mode %s", row.ID, row.ExecutionMode)
+		}
+		if !slices.Contains(row.LocalTests, "scripts/check-runtime-v453-source.sh") {
+			t.Errorf("runtime 453 decision model %s is not backed by the pinned Rust source gate", row.ID)
 		}
 	}
 	for id := range want {
@@ -1275,7 +1280,7 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 
 func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *testing.T) {
 	encode := func(name string, spec, transaction uint32, state uint8) rpcResponse {
-		result, err := json.Marshal(rpcRuntimeVersion{SpecName: name, SpecVersion: spec, TransactionVersion: transaction, StateVersion: state})
+		result, err := json.Marshal(runtimeVersionIdentity{SpecName: name, SpecVersion: spec, TransactionVersion: transaction, StateVersion: state})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1296,13 +1301,13 @@ func TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions(t *tes
 		}
 	}
 	identities := []struct {
-		private rpcRuntimeVersion
-		public  rpcRuntimeVersion
+		private runtimeVersionIdentity
+		public  runtimeVersionIdentity
 	}{
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "other", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 2, StateVersion: 1}},
-		{private: valid, public: rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 2}},
+		{private: valid, public: runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}},
+		{private: valid, public: runtimeVersionIdentity{SpecName: "other", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}},
+		{private: valid, public: runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 2, StateVersion: 1}},
+		{private: valid, public: runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 2}},
 	}
 	for index, identity := range identities {
 		if identityErr := validateRPCRuntimeIdentity(identity.private, identity.public, 453, 1, 1); identityErr == nil {
@@ -1325,10 +1330,14 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 			}
 			var result any
 			switch call.Method {
+			case "chain_getFinalizedHead":
+				result = "0x" + strings.Repeat("cd", 32)
+			case "chain_getHeader":
+				result = rpcHeader{Number: "0x64"}
 			case "eth_getBlockByNumber":
 				result = rpcBlock{Number: "0x64", Hash: "0x" + strings.Repeat("ab", 32)}
 			case "state_getRuntimeVersion":
-				result = rpcRuntimeVersion{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}
+				result = runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}
 			default:
 				_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "error": map[string]any{"code": -32601, "message": "unknown method"}})
 				return
@@ -1354,8 +1363,60 @@ func TestRPCAdversaryRejectsObservedRuntimeDrift(t *testing.T) {
 		},
 	}
 	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
-	if result.Outcome != adversaryOutcomeError || result.Requests != 8 || !strings.Contains(result.Detail, "runtime specs operational=453 public=454 expected=453") {
+	if result.Outcome != adversaryOutcomeError || result.Requests != 10 || !strings.Contains(result.Detail, "runtime specs operational=453 public=454 expected=453") {
 		t.Fatalf("observed runtime drift result=%+v", result)
+	}
+}
+
+func TestRPCAdversaryRejectsObservedRuntimeCodeHashDrift(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	newServer := func(codeHash string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			defer request.Body.Close()
+			var call struct {
+				ID     uint64            `json:"id"`
+				Method string            `json:"method"`
+				Params []json.RawMessage `json:"params"`
+			}
+			if json.NewDecoder(request.Body).Decode(&call) != nil {
+				http.Error(writer, "malformed request", http.StatusBadRequest)
+				return
+			}
+			var result any
+			switch call.Method {
+			case "chain_getFinalizedHead":
+				result = "0x" + strings.Repeat("cd", 32)
+			case "chain_getHeader":
+				result = rpcHeader{Number: "0x64"}
+			case "eth_getBlockByNumber":
+				result = rpcBlock{Number: "0x64", Hash: "0x" + strings.Repeat("ab", 32)}
+			case "state_getRuntimeVersion":
+				if len(call.Params) != 1 || string(call.Params[0]) != `"0x`+strings.Repeat("cd", 32)+`"` {
+					t.Errorf("runtime version was not pinned to native finalized hash: %s", call.Params)
+				}
+				result = runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}
+			case "state_getStorageHash":
+				if len(call.Params) != 2 || string(call.Params[1]) != `"0x`+strings.Repeat("cd", 32)+`"` {
+					t.Errorf("runtime code hash was not pinned to native finalized hash: %s", call.Params)
+				}
+				result = codeHash
+			default:
+				_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "error": map[string]any{"code": -32601, "message": "unknown method"}})
+				return
+			}
+			_ = json.NewEncoder(writer).Encode(map[string]any{"jsonrpc": "2.0", "id": call.ID, "result": result})
+		}))
+	}
+	private := newServer(cfg.Release.Runtime.CodeHash)
+	defer private.Close()
+	public := newServer("0x" + strings.Repeat("00", 32))
+	defer public.Close()
+	cfg.OperationalEVM = private.URL
+	cfg.Public.Chain.EVMPublicReadEndpoint = public.URL
+	actor := &rpcAdversary{cfg: cfg, http: &adversaryHTTP{gate: &adversaryRequestGate{now: time.Now}, timeout: time.Second}}
+	result := actor.Sample(context.Background(), adversaryAttackPhase, 2)
+	if result.Outcome != adversaryOutcomeError || result.Requests != 12 || !strings.Contains(result.Detail, "public finalized runtime code hash") {
+		t.Fatalf("observed runtime code-hash drift result=%+v", result)
 	}
 }
 

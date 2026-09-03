@@ -431,6 +431,8 @@ func finalSemanticBuilderArchiveFixture(t *testing.T) (*finalSemanticArchive, *F
 	public := PublicDeploymentManifest{
 		Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: "deployment-archive", GeneratedAt: campaignStart.Add(-48 * time.Hour).Format(time.RFC3339Nano),
 		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, PlanHash: finalTestHex(0x51),
+		RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash,
 		SubstrateRPC: "wss://substrate.example.test", EVMRPC: "https://evm.example.test", Topology: cfg.Config.Topology,
 		Contracts: &ContractDeployment{Schema: "urnetwork-contract-deployment-v1", DeploymentID: "deployment-archive", CoordinatorProxy: proxy, CoordinatorImplementation: implementation, SettlementVault: vault, ReserveSink: reserve, DeployBlock: 100_000, DeployBlockHash: finalTestHex(0x52)},
 	}

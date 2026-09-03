@@ -46,6 +46,8 @@ func TestFinalOperatorManifestOriginsResolveIndependentSignedPayloads(t *testing
 	public := &PublicDeploymentManifest{
 		Schema: "urnetwork-sim-public-deployment-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash,
 		EvidenceTransportProfile: publicEvidenceTransportHTTPS, Identities: identities, Topology: cfg.Config.Topology,
 		Operators: []PublicOperator{
 			{NoID: 1, APIURL: "https://operator-1.example"},
@@ -941,6 +943,8 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	public := &PublicDeploymentManifest{
 		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash,
 		Schema: "urnetwork-sim-public-deployment-v1", Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, PlanHash: semantic.PlanHash,
+		RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash,
 		EvidenceTransportProfile: publicEvidenceTransportHTTPS,
 		EVMRPC:                   "https://evm.example/rpc", SubstrateRPC: "wss://substrate.example/rpc", Identities: identities, Topology: cfg.Config.Topology,
 		Contracts: &ContractDeployment{

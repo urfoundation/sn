@@ -343,6 +343,8 @@ storage hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4
 identity was independently observed at finalized testnet block 7,925,883
 (`0x87c707403ffe5b36afb7796e1bd84126cdbcf181a61f97c3f1491c8354ae96f0`); the release asset's
 published SHA-256 is `0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e`.
+The exact SCALE metadata bytes at that same finalized hash are pinned by BLAKE2b-256
+`0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce`.
 The official compressed Wasm is 2,515,038 bytes; independently hashing those exact bytes yielded both
 the published SHA-256 and the finalized chain's BLAKE2-256 `System.Code` hash, establishing artifact-to-live
 byte identity.
@@ -350,12 +352,19 @@ The upstream release proposal separately binds call hash
 `0x972c1c03fae47d58ad3dbfd701e58e56170936045b0a488170c05c8d0729fcd4` at finney
 multisig timepoint `8987926:11`; those two proposal fields authenticate the official source release and
 are **not** evidence of its testnet inclusion. Testnet inclusion is proved independently by its finalized
-spec and `System.Code` hash at the testnet block above.
-Doctor and every value-bearing path fail closed if any of these active identity fields drift.
+spec/transaction/state versions, `System.Code` hash and exact metadata digest at the testnet block above.
+Doctor and every release native current-state/signing boundary read the complete runtime version, code hash
+and metadata at an explicit finalized hash and fail closed if any active identity field is missing,
+ambiguously encoded or drifts. Secretless semantic replay repeats all three checks from its signed v453
+campaign start onward; carried pre-campaign receipts retain their exact v451/v452 version, code and metadata
+identities instead of being relabeled. The continuous sentinel repeats complete version and code-hash checks
+on both endpoints.
 
-The v452→v453 audit is one upstream release commit and adds five security/economic boundaries. Pinned
-upstream Rust tests and source review establish the runtime changes; deterministic local decision models
-exercise the harness oracles while shared-testnet actors remain read-only for chain-wide attacks:
+The v452→v453 audit is one upstream release commit and adds five security/economic boundaries. The release
+gate hashes all 12 changed upstream Rust source/test files at the pinned commit; Terra's clean pinned-source
+run passed all ten focused Rust regressions with none failed or ignored. Deterministic local decision models
+supplement those results but do not execute FRAME,
+while shared-testnet actors remain read-only for chain-wide attacks:
 
 1. A drand pulse's public randomness must equal SHA-256 of its authenticated signature; a valid pairing
    cannot authenticate a separately substituted randomness field.

@@ -39,29 +39,33 @@ type OperatorConfig struct {
 }
 
 type ReleaseConfig struct {
-	SchemaVersion   int              `yaml:"schema_version" json:"schema_version"`
-	Production      bool             `yaml:"production" json:"production"`
-	Release         string           `yaml:"release" json:"release"`
-	DeploymentID    string           `yaml:"deployment_id" json:"deployment_id"`
-	ValidatorID     uint64           `yaml:"validator_id" json:"validator_id"`
-	ChainID         uint64           `yaml:"chain_id" json:"chain_id"`
-	GenesisHash     string           `yaml:"genesis_hash" json:"genesis_hash"`
-	RuntimeSpec     uint32           `yaml:"runtime_spec" json:"runtime_spec"`
-	Netuid          uint16           `yaml:"netuid" json:"netuid"`
-	Coordinator     string           `yaml:"coordinator" json:"coordinator"`
-	SettlementVault string           `yaml:"settlement_vault" json:"settlement_vault"`
-	DeployBlock     uint64           `yaml:"deploy_block" json:"deploy_block"`
-	PolicyHash      string           `yaml:"policy_hash" json:"policy_hash"`
-	RPC             []string         `yaml:"rpc" json:"rpc"`
-	Substrate       []string         `yaml:"substrate" json:"substrate"`
-	StateDir        string           `yaml:"state_dir" json:"state_dir"`
-	HotkeySeedFile  string           `yaml:"hotkey_seed_file" json:"hotkey_seed_file"`
-	ControlledNOIDs []uint64         `yaml:"controlled_no_ids" json:"controlled_no_ids"`
-	TrailDepth      int              `yaml:"trail_depth" json:"trail_depth"`
-	PollSeconds     int              `yaml:"poll_seconds" json:"poll_seconds"`
-	VersionKey      uint64           `yaml:"version_key" json:"version_key"`
-	Policy          protocol.Policy  `yaml:"policy" json:"policy"`
-	Operators       []OperatorConfig `yaml:"operators" json:"operators"`
+	SchemaVersion       int              `yaml:"schema_version" json:"schema_version"`
+	Production          bool             `yaml:"production" json:"production"`
+	Release             string           `yaml:"release" json:"release"`
+	DeploymentID        string           `yaml:"deployment_id" json:"deployment_id"`
+	ValidatorID         uint64           `yaml:"validator_id" json:"validator_id"`
+	ChainID             uint64           `yaml:"chain_id" json:"chain_id"`
+	GenesisHash         string           `yaml:"genesis_hash" json:"genesis_hash"`
+	RuntimeSpec         uint32           `yaml:"runtime_spec" json:"runtime_spec"`
+	TransactionVersion  uint32           `yaml:"transaction_version" json:"transaction_version"`
+	StateVersion        uint8            `yaml:"state_version" json:"state_version"`
+	RuntimeCodeHash     string           `yaml:"runtime_code_hash" json:"runtime_code_hash"`
+	RuntimeMetadataHash string           `yaml:"runtime_metadata_hash" json:"runtime_metadata_hash"`
+	Netuid              uint16           `yaml:"netuid" json:"netuid"`
+	Coordinator         string           `yaml:"coordinator" json:"coordinator"`
+	SettlementVault     string           `yaml:"settlement_vault" json:"settlement_vault"`
+	DeployBlock         uint64           `yaml:"deploy_block" json:"deploy_block"`
+	PolicyHash          string           `yaml:"policy_hash" json:"policy_hash"`
+	RPC                 []string         `yaml:"rpc" json:"rpc"`
+	Substrate           []string         `yaml:"substrate" json:"substrate"`
+	StateDir            string           `yaml:"state_dir" json:"state_dir"`
+	HotkeySeedFile      string           `yaml:"hotkey_seed_file" json:"hotkey_seed_file"`
+	ControlledNOIDs     []uint64         `yaml:"controlled_no_ids" json:"controlled_no_ids"`
+	TrailDepth          int              `yaml:"trail_depth" json:"trail_depth"`
+	PollSeconds         int              `yaml:"poll_seconds" json:"poll_seconds"`
+	VersionKey          uint64           `yaml:"version_key" json:"version_key"`
+	Policy              protocol.Policy  `yaml:"policy" json:"policy"`
+	Operators           []OperatorConfig `yaml:"operators" json:"operators"`
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
@@ -189,7 +193,7 @@ func (c ReleaseConfig) Validate() error {
 	if strings.TrimSpace(c.DeploymentID) == "" || strings.ContainsAny(c.DeploymentID, "/\\.") {
 		return errors.New("deployment_id must be one nonempty safe segment")
 	}
-	if c.ValidatorID == 0 || c.ChainID == 0 || c.RuntimeSpec == 0 || c.Netuid == 0 || c.DeployBlock == 0 {
+	if c.ValidatorID == 0 || c.ChainID == 0 || c.RuntimeSpec == 0 || c.TransactionVersion == 0 || c.StateVersion == 0 || c.Netuid == 0 || c.DeployBlock == 0 {
 		return errors.New("validator, chain, runtime, netuid and deploy block must be nonzero")
 	}
 	if !common.IsHexAddress(c.Coordinator) || common.HexToAddress(c.Coordinator) == (common.Address{}) {
@@ -203,6 +207,15 @@ func (c ReleaseConfig) Validate() error {
 		return err
 	}
 	_ = genesis
+	if _, err := parseHash32("runtime_code_hash", c.RuntimeCodeHash); err != nil {
+		return err
+	}
+	if _, err := parseHash32("runtime_metadata_hash", c.RuntimeMetadataHash); err != nil {
+		return err
+	}
+	if err := validateReleaseNativeRuntimeConfig(&c); err != nil {
+		return err
+	}
 	configuredPolicyHash, err := parseHash32("policy_hash", c.PolicyHash)
 	if err != nil {
 		return err

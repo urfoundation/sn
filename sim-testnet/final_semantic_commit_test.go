@@ -580,6 +580,8 @@ func finalSemanticCapturedPublicFixture(t *testing.T, cfg *ResolvedConfig, roles
 	public := &PublicDeploymentManifest{
 		Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, Revision: 1,
 		GeneratedAt: time.Unix(1_700_000_000, 0).UTC().Format(time.RFC3339Nano), ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash,
+		RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash,
 		Netuid: cfg.Netuid, EVMRPC: cfg.Public.Chain.EVMPublicReadEndpoint, SubstrateRPC: cfg.Public.Chain.SubstratePublicReadEndpoint, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash,
 		PlanHash: finalTestHex(0x44), Contracts: &ContractDeployment{DeploymentID: cfg.Config.Deployment.DeploymentID}, Identities: identityBytes,
 		Operators: operators, Topology: cfg.Config.Topology,

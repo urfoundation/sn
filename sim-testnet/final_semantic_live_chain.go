@@ -341,6 +341,14 @@ func captureFinalNativeState(ctx context.Context, cfg *ResolvedConfig, stateRoot
 	if err != nil {
 		return nil, nil, fmt.Errorf("decode final native head: %w", err)
 	}
+	if !strings.EqualFold(chain.GenesisHash.Hex(), cfg.Public.Chain.GenesisHash) {
+		return nil, nil, fmt.Errorf("final native capture genesis %s, want %s", chain.GenesisHash.Hex(), cfg.Public.Chain.GenesisHash)
+	}
+	authenticated, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, hash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("authenticate final native runtime at %s: %w", hash.Hex(), err)
+	}
+	bindAuthenticatedRuntime(chain, authenticated)
 	header, err := chain.API.RPC.Chain.GetHeader(hash)
 	if err != nil || header == nil || uint64(header.Number) != head.Number {
 		return nil, nil, errors.New("final native capture head number and hash differ")

@@ -5,6 +5,7 @@ runtime:
   source_tag: v453
   source_commit: 823bdcbc58a29f60b243be4737a7c72b34ac7d93
   code_hash: "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4"
+  metadata_hash: "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"
   compressed_wasm_sha256: "0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e"
   upstream_release_call_hash: "0x972c1c03fae47d58ad3dbfd701e58e56170936045b0a488170c05c8d0729fcd4"
   upstream_release_timepoint: "8987926:11"
@@ -46,7 +47,7 @@ repositories:
   sn_audited_base_commit: "900b973e1a31dff617d420a374eb29e307dd462e"
   server_audited_base_commit: "7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4"
   vault_audited_base_commit: "992f69a4ba744dabf43c71401a3f355f05f46428"
-  sn_go_source_hash: "sha256:68f52a530068742044d3e3cbb7c09f055704811d53c9be6c4f9ae77a5eaa4075"
+  sn_go_source_hash: "sha256:a534a419997049f5a95d5072329d53dd972829295a7f76fce2511253eaae1e7e"
   server_go_source_hash: "sha256:07ec4cb6764f582d368ac77c9886950ff55c3dedfe50a0b47939a7de588c2ab4"
   connect_go_source_hash: "sha256:d0741e9f7e6f0f7b31d979e6fa8db8f6eaa9c948c8c7f44750cf3d8e2b3595ac"
   sdk_go_source_hash: "sha256:5b64b722c0a3b18361c560ad528b7588bfab6c2e957df4feddbaeee0265f5353"
@@ -57,7 +58,7 @@ repositories:
   userwireguard_go_source_hash: "sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9"
   platform_config_source_hash: "sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a"
   platform_config_shared_tree_hash: "sha256:3a4ec6daf322b601e58bc282505a05cdd8734307d046e9198bd5b211269e269e"
-  protocol_source_hash: "sha256:1c50f3d012d0de937ebba4b853543e870bb84768a688e78695f7f63db32d7193"
+  protocol_source_hash: "sha256:09379c0fd6d87deca83ba1116e6f9057c055dabc7ecfd9939610f37142f225a1"
   operator_proxy_go_source_hash: "sha256:b015b55c0ae0e28978d04333eef32122a9d2e5297178d769575aa826d82001d1"
   operator_proxy_commit: "e1a76e03a60e6f81c49376556aacb3f0f9289d8a"
 dependencies:

@@ -77,18 +77,18 @@ Each contract has a distinct H160-mirrored Substrate coldkey.
    deposit signer. The native funding intent stages an exact alpha amount there.
 2. `deposit` or `addConviction` checks signer, nonce, deadline, policy caps, and
    available stake. In one EVM transaction it stages the principal plus a
-   two-rao runtime-452 allowance, moves it to the reserve hotkey, transfers it
+   two-rao runtime-453 allowance, moves it to the reserve hotkey, transfers it
    to the immutable sink coldkey, records only the requested principal, and
    emits the policy-bound event. Each of the two destination share pools may
    floor one rao; the sink must still receive at least the full principal and
    can receive at most the two staged donation rao. Any failed runtime call or
    wider delta reverts all accounting.
 3. During installation the immutable vault limit-registers its escrow hotkey
-   exactly once under its own mapped coldkey. Runtime 452 burns from the funded
+   exactly once under its own mapped coldkey. Runtime 453 burns from the funded
    caller mirror, so the vault calls the neuron precompile with zero call value.
    It also owns one pool hotkey per NO. A timely boundary call moves the
    complete realized pool stake to that escrow. The immutable
-   `ST_MINIMUM_TRANSFER_TAO_RAO` must equal finalized runtime-452
+   `ST_MINIMUM_TRANSFER_TAO_RAO` must equal finalized runtime-453
    `DefaultMinTransfer`: a smaller observation remains on the pool to
    accumulate, while a missed boundary defers it rather than misattributing a
    multi-epoch delta. Exact pool/escrow deltas are measured before accounting.

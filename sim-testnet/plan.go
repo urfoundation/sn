@@ -43,14 +43,16 @@ type Action struct {
 }
 
 const (
-	setupPlanSchemaV8                     = "urnetwork-sim-plan-v8"
-	setupPlanSchemaV9                     = "urnetwork-sim-plan-v9"
-	setupPlanSchemaV10                    = "urnetwork-sim-plan-v10"
-	currentSetupPlanSchema                = "urnetwork-sim-plan-v11"
-	evmMaximumGasUnitsParameter           = "maximum_gas_units"
-	evmMaximumFeePerGasParameter          = "maximum_fee_per_gas_wei"
-	deploymentManifestHashParameter       = "deployment_manifest_hash"
-	fleetCommitmentStorageParameter       = "commitment_storage_schema"
+	setupPlanSchemaV8               = "urnetwork-sim-plan-v8"
+	setupPlanSchemaV9               = "urnetwork-sim-plan-v9"
+	setupPlanSchemaV10              = "urnetwork-sim-plan-v10"
+	currentSetupPlanSchema          = "urnetwork-sim-plan-v11"
+	evmMaximumGasUnitsParameter     = "maximum_gas_units"
+	evmMaximumFeePerGasParameter    = "maximum_fee_per_gas_wei"
+	deploymentManifestHashParameter = "deployment_manifest_hash"
+	fleetCommitmentStorageParameter = "commitment_storage_schema"
+	// Persisted compatibility identifier: runtime 453 retains this exact v452
+	// SCALE shape, and changing the string would orphan authenticated plans.
 	fleetCommitmentStorageV2              = "runtime-452-fixed-u32-exact-block-attestation-v2"
 	fleetCommitmentParallelGroupParameter = "parallel_commitment_group"
 	fleetCommitmentParallelWorkers        = 10
@@ -1235,7 +1237,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		}
 	}
 	// Churn-floor identities must be the oldest non-owner registrations. Runtime
-	// v452 breaks equal-emission prune ties by registration block and UID, even
+	// 453 breaks equal-emission prune ties by registration block and UID, even
 	// inside immunity. Registering custody or pool identities first would let a
 	// challenger evict a load-bearing role instead of the intended floor.
 	lastChurn := hyperparameterBarrier
@@ -1787,7 +1789,7 @@ func maximumActionSpend(actions []Action) (Spend, error) {
 	return maximum, nil
 }
 
-// Runtime 452 bumps burn immediately after a registration and decays it on
+// Runtime 453 bumps burn immediately after a registration and decays it on
 // every following block. The bootstrap sets a one-block half-life, so an
 // observed multiplier no greater than two guarantees every sequential
 // registration returns to at most the same approved ceiling by the next block.
@@ -1885,7 +1887,7 @@ func (p SetupPlan) hash() (string, error) {
 	p.CoordinatorUpgradeBaseline.FinalizedBlock = 0
 	p.CoordinatorUpgradeBaseline.FinalizedBlockHash = ""
 	if planUsesRegistrationEnvelope(p.Schema) {
-		// Runtime 452 decays Burn on every block. V2 binds MinBurn, MaxBurn,
+		// Runtime 453 decays Burn on every block. V2 binds MinBurn, MaxBurn,
 		// BurnIncreaseMult, the approved half-life lifecycle, and the hard
 		// registration limit instead; apply rechecks the moving spot value.
 		p.LiveFacts.BurnRao = 0

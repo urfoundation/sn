@@ -409,6 +409,7 @@ func TestReviewedRuntimeIdentityRejectsEachAdjacentFieldDrift(t *testing.T) {
 		lock.Runtime.SourceTag = reviewedRuntimeSourceTag
 		lock.Runtime.SourceCommit = reviewedRuntimeSourceCommit
 		lock.Runtime.CodeHash = reviewedRuntimeCodeHash
+		lock.Runtime.MetadataHash = reviewedRuntimeMetadataHash
 		lock.Runtime.CompressedWasmSHA256 = reviewedRuntimeCompressedWasmSHA256
 		lock.Runtime.UpstreamReleaseCallHash = reviewedRuntimeUpstreamReleaseCallHash
 		lock.Runtime.UpstreamReleaseTimepoint = reviewedRuntimeUpstreamReleaseTimepoint
@@ -431,6 +432,7 @@ func TestReviewedRuntimeIdentityRejectsEachAdjacentFieldDrift(t *testing.T) {
 		{name: "source tag", mutate: func(lock *ReleaseLock) { lock.Runtime.SourceTag = "v452" }},
 		{name: "source commit", mutate: func(lock *ReleaseLock) { lock.Runtime.SourceCommit = strings.Repeat("0", 40) }},
 		{name: "wasm hash", mutate: func(lock *ReleaseLock) { lock.Runtime.CodeHash = "0x" + strings.Repeat("0", 64) }},
+		{name: "metadata hash", mutate: func(lock *ReleaseLock) { lock.Runtime.MetadataHash = "0x" + strings.Repeat("0", 64) }},
 		{name: "compressed wasm SHA-256", mutate: func(lock *ReleaseLock) { lock.Runtime.CompressedWasmSHA256 = "0x" + strings.Repeat("0", 64) }},
 		{name: "upstream release call hash", mutate: func(lock *ReleaseLock) { lock.Runtime.UpstreamReleaseCallHash = "0x" + strings.Repeat("0", 64) }},
 		{name: "upstream release timepoint", mutate: func(lock *ReleaseLock) { lock.Runtime.UpstreamReleaseTimepoint = "8987926:12" }},
@@ -454,6 +456,7 @@ func TestReleaseLockRejectsGeneratedRuntimeDrift(t *testing.T) {
 	cfg.Release.Runtime.SourceTag = reviewedRuntimeSourceTag
 	cfg.Release.Runtime.SourceCommit = reviewedRuntimeSourceCommit
 	cfg.Release.Runtime.CodeHash = reviewedRuntimeCodeHash
+	cfg.Release.Runtime.MetadataHash = reviewedRuntimeMetadataHash
 	cfg.Release.Runtime.CompressedWasmSHA256 = reviewedRuntimeCompressedWasmSHA256
 	cfg.Release.Runtime.UpstreamReleaseCallHash = reviewedRuntimeUpstreamReleaseCallHash
 	cfg.Release.Runtime.UpstreamReleaseTimepoint = reviewedRuntimeUpstreamReleaseTimepoint

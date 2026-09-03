@@ -3,11 +3,9 @@ package main
 import (
 	"os"
 	"testing"
-
-	"github.com/urfoundation/sn/crv4"
 )
 
-// This opt-in probe performs no mutation. It recomputes runtime-452's next
+// This opt-in probe performs no mutation. It recomputes runtime 453's next
 // victim from one finalized public testnet state root and binds it to the exact
 // deterministic lifecycle roles before any approved plan can launch.
 func TestLiveFleetLifecyclePruneSnapshot(t *testing.T) {
@@ -22,7 +20,7 @@ func TestLiveFleetLifecyclePruneSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	chain, _, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
 	}

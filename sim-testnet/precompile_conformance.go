@@ -305,7 +305,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 		if action.ID == "precompile.commitment-write" {
 			if _, prior := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash); !prior {
-				current, readErr := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+				current, readErr := e.substrate.fleetCommitmentFinalized(hotkey)
 				if readErr != nil || current.Hash != canonical || current.CommitmentBlock != canonicalEvidence.CommitmentBlock {
 					return conformanceMismatch("canonical fleet commitment is unavailable before replacement", readErr)
 				}
@@ -322,7 +322,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 			if err != nil {
 				return err
 			}
-			observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+			observed, err := e.substrate.fleetCommitmentAt(hotkey, transactionBlockHash)
 			if err != nil {
 				return conformanceMismatch("replacement commitment finalized mismatch", err)
 			}
@@ -335,7 +335,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 			return writePrecompileEvidence(e.stateDir, evidence)
 		}
 		if _, prior := e.journal.LatestTransaction(e.plan.PlanHash, action.ID, action.IntentHash); !prior {
-			current, readErr := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+			current, readErr := e.substrate.fleetCommitmentFinalized(hotkey)
 			if readErr != nil || current.Hash != probeHash || evidence.Commitment.WriteTransactionHash == "" {
 				return conformanceMismatch("replacement commitment is unavailable before restore", readErr)
 			}
@@ -352,7 +352,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		if err != nil {
 			return err
 		}
-		observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, hotkey, transactionBlockHash)
+		observed, err := e.substrate.fleetCommitmentAt(hotkey, transactionBlockHash)
 		if err != nil {
 			return conformanceMismatch("canonical commitment restore finalized mismatch", err)
 		}
@@ -398,7 +398,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		}
 		if !passed {
 			_ = writePrecompileEvidence(e.stateDir, evidence)
-			return errors.New("runtime-452 precompile battery failed closed")
+			return errors.New("runtime-453 precompile battery failed closed")
 		}
 		return writePrecompileEvidence(e.stateDir, evidence)
 
@@ -800,7 +800,7 @@ func (e *Executor) verifySubstrateTransactionEvidence(recorded ChainHead, transa
 	if err != nil {
 		return err
 	}
-	return e.substrate.chain.VerifyFinalizedExtrinsic(blockHash, txHash)
+	return verifyReleaseHistoryFinalizedExtrinsic(e.substrate.chain, e.cfg, blockHash, txHash)
 }
 
 func batteryTupleCompatible(evidence *PrecompileConformanceEvidence, tuple *precompileBatteryTuple, nominatorMinimum uint64) bool {
@@ -833,7 +833,7 @@ func (e *Executor) verifyCurrentPrecompileBattery(ctx context.Context, head Chai
 	}
 	tuple, ok := abi.ConvertType(values[0], new(precompileBatteryTuple)).(*precompileBatteryTuple)
 	if !ok || !batteryTupleCompatible(evidence, tuple, e.plan.LiveFacts.NominatorMinimumRao) {
-		return errors.New("independent runtime-452 precompile battery is incompatible")
+		return errors.New("independent runtime-453 precompile battery is incompatible")
 	}
 	uid, found, err := e.substrate.UID(sample)
 	if err != nil || !found || uid != evidence.SampleUID {
@@ -860,7 +860,7 @@ func (e *Executor) verifyPrecompileChainEvidence(ctx context.Context, action Act
 		if err != nil {
 			return err
 		}
-		current, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, hotkey)
+		current, err := e.substrate.fleetCommitmentFinalized(hotkey)
 		if err != nil || current.Hash != canonical || current.CommitmentBlock != evidence.Commitment.RestoreCommitmentBlock {
 			return conformanceMismatch("restored generation-2 commitment is not current finalized state", err)
 		}

@@ -46,6 +46,7 @@ runtime:
   source_tag: v453
   source_commit: 0123456789abcdef0123456789abcdef01234567
   code_hash: "0x01"
+  metadata_hash: "0x04"
   compressed_wasm_sha256: "0x02"
   upstream_release_call_hash: "0x03"
   upstream_release_timepoint: "123:4"
@@ -66,6 +67,7 @@ runtime:
 		SourceTag:                "v453",
 		SourceCommit:             "0123456789abcdef0123456789abcdef01234567",
 		CodeHash:                 "0x01",
+		MetadataHash:             "0x04",
 		CompressedWasmSHA256:     "0x02",
 		UpstreamReleaseCallHash:  "0x03",
 		UpstreamReleaseTimepoint: "123:4",
@@ -663,11 +665,17 @@ func TestResolvedConfigRequiresRuntimeDefaultMinTransfer(t *testing.T) {
 
 // The public profile and release lock must agree on every numeric runtime
 // identity field, not only the spec version.
-func TestResolvedConfigBindsTransactionAndStateVersions(t *testing.T) {
+func TestResolvedConfigBindsAllRuntimeVersions(t *testing.T) {
 	valid := testResolvedConfig(t)
 	valid.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("reviewed runtime manifests were rejected: %v", err)
+	}
+	specDrift := testResolvedConfig(t)
+	specDrift.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+	specDrift.Release.Runtime.SpecVersion++
+	if err := specDrift.Validate(); err == nil || !strings.Contains(err.Error(), "release/runtime manifest mismatch") {
+		t.Fatalf("spec-version manifest drift was accepted: %v", err)
 	}
 	transactionDrift := testResolvedConfig(t)
 	transactionDrift.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
@@ -680,6 +688,56 @@ func TestResolvedConfigBindsTransactionAndStateVersions(t *testing.T) {
 	stateDrift.Release.Runtime.StateVersion++
 	if err := stateDrift.Validate(); err == nil || !strings.Contains(err.Error(), "release/runtime manifest mismatch") {
 		t.Fatalf("state-version manifest drift was accepted: %v", err)
+	}
+}
+
+func TestResolvedConfigPinsReviewedRuntimeArtifactIdentity(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ReleaseRuntimeLock)
+	}{
+		{name: "source commit", mutate: func(runtime *ReleaseRuntimeLock) { runtime.SourceCommit = strings.Repeat("0", 40) }},
+		{name: "code hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.CodeHash = "0x" + strings.Repeat("00", 32) }},
+		{name: "metadata hash", mutate: func(runtime *ReleaseRuntimeLock) { runtime.MetadataHash = "0x" + strings.Repeat("00", 32) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := testResolvedConfig(t)
+			cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
+			test.mutate(&cfg.Release.Runtime)
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 453") {
+				t.Fatalf("runtime artifact drift was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestPublishedManifestBindsCompleteRuntimeIdentity(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	valid := &PublicDeploymentManifest{
+		RuntimeSpec:         cfg.Public.Chain.ExpectedRuntimeSpec,
+		TransactionVersion:  cfg.Public.Chain.ExpectedTransactionVersion,
+		StateVersion:        cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash:     cfg.Release.Runtime.CodeHash,
+		RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash,
+	}
+	if err := validatePublishedRuntimeIdentity(valid, cfg); err != nil {
+		t.Fatalf("complete published runtime identity was rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*PublicDeploymentManifest){
+		"spec":          func(public *PublicDeploymentManifest) { public.RuntimeSpec++ },
+		"transaction":   func(public *PublicDeploymentManifest) { public.TransactionVersion++ },
+		"state":         func(public *PublicDeploymentManifest) { public.StateVersion++ },
+		"code hash":     func(public *PublicDeploymentManifest) { public.RuntimeCodeHash = "0x" + strings.Repeat("00", 32) },
+		"metadata hash": func(public *PublicDeploymentManifest) { public.RuntimeMetadataHash = "0x" + strings.Repeat("00", 32) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			drifted := *valid
+			mutate(&drifted)
+			if err := validatePublishedRuntimeIdentity(&drifted, cfg); err == nil {
+				t.Fatal("published runtime identity drift was accepted")
+			}
+		})
 	}
 }
 

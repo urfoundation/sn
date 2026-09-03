@@ -1125,7 +1125,7 @@ func (self *liveFleetLifecycle) bindNativeSchedule(phase string) error {
 	if self.executor == nil || self.executor.substrate == nil || self.executor.substrate.chain == nil {
 		return errors.New("fleet lifecycle production CRv4 schedule reader is unavailable")
 	}
-	state, blockHash, err := self.executor.substrate.chain.EpochScheduleStateFinalized(self.cfg.Netuid)
+	state, blockHash, err := self.executor.substrate.epochScheduleStateFinalized()
 	if err != nil {
 		return err
 	}
@@ -1136,7 +1136,7 @@ func (self *liveFleetLifecycle) bindNativeSchedule(phase string) error {
 			return err
 		}
 	}
-	revealPeriods, err := self.executor.substrate.chain.RevealPeriodEpochs(self.cfg.Netuid)
+	revealPeriods, err := self.executor.substrate.chain.RevealPeriodEpochsAt(self.cfg.Netuid, blockHash)
 	if err != nil {
 		return err
 	}

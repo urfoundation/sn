@@ -1457,6 +1457,9 @@ func (a *finalSemanticArchive) buildArchiveRetention(source *FinalSemanticEviden
 	if public.Schema != "urnetwork-sim-public-deployment-v1" || public.Release != "1.0" || public.Contracts == nil || public.DeploymentID != source.DeploymentID || public.Contracts.DeploymentID != source.DeploymentID || public.ChainID != source.ChainID || !strings.EqualFold(public.GenesisHash, source.GenesisHash) || public.Netuid != source.Netuid || public.ConfigHash != source.ConfigHash || !strings.EqualFold(public.PolicyHash, source.PolicyHash) || public.PlanHash != source.PlanHash || validatePublicManifestRevision(&public) != nil {
 		return errors.New("closed public deployment manifest differs from the semantic campaign identity")
 	}
+	if err := validatePublishedRuntimeIdentity(&public, a.cfg); err != nil {
+		return fmt.Errorf("closed public deployment manifest runtime identity: %w", err)
+	}
 	wantTopologyHash, err := canonicalHashHex(a.cfg.Config.Topology)
 	if err != nil {
 		return err

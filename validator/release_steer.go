@@ -96,8 +96,10 @@ func (s *ReleaseSteerer) validatePinnedChains(snapshot *ReleaseSnapshot, nativeS
 	if !bytes.Equal(s.native.GenesisHash[:], commonHashBytes(s.cfg.GenesisHash)) {
 		return fmt.Errorf("native genesis %s does not match configured %s", s.native.GenesisHash.Hex(), s.cfg.GenesisHash)
 	}
-	if uint32(s.native.Runtime.SpecVersion) != s.cfg.RuntimeSpec {
-		return fmt.Errorf("native runtime spec %d, configured %d", s.native.Runtime.SpecVersion, s.cfg.RuntimeSpec)
+	if s.native.Runtime == nil ||
+		uint32(s.native.Runtime.SpecVersion) != s.cfg.RuntimeSpec ||
+		uint32(s.native.Runtime.TransactionVersion) != s.cfg.TransactionVersion {
+		return errors.New("native signing runtime is not bound to the configured spec and transaction versions")
 	}
 	netuid, err := s.chain.ReleaseNetuidAt(snapshot.BlockNumber)
 	if err != nil {
@@ -626,10 +628,22 @@ func (s *ReleaseSteerer) checkApplication(snapshot *ReleaseSnapshot) error {
 	if err != nil || !found {
 		return fmt.Errorf("cannot track applied weights without live validator UID: %w", err)
 	}
-	row, block, hash, err := s.native.WeightsAtFinalized(s.cfg.Netuid, uid)
+	hash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
 	if err != nil {
 		return err
 	}
+	header, err := s.native.API.RPC.Chain.GetHeader(hash)
+	if err != nil {
+		return fmt.Errorf("read applied-weight finalized header at %s: %w", hash.Hex(), err)
+	}
+	if header == nil {
+		return fmt.Errorf("applied-weight finalized header at %s is unavailable", hash.Hex())
+	}
+	row, err := s.native.WeightsAt(s.cfg.Netuid, uid, hash)
+	if err != nil {
+		return err
+	}
+	block := uint64(header.Number)
 	if block < current.RevealBlock {
 		return nil
 	}
@@ -686,6 +700,13 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if _, err := current.Prepared.Validate(); err != nil {
 		return false, fmt.Errorf("validate pending steering submission: %w", err)
 	}
+	preparedRuntimeHash, err := types.NewHashFromHexString(current.Prepared.PreparedAtBlockHash)
+	if err != nil {
+		return false, fmt.Errorf("pending steering preparation hash: %w", err)
+	}
+	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, preparedRuntimeHash); err != nil {
+		return false, fmt.Errorf("authenticate pending steering preparation runtime at %s: %w", preparedRuntimeHash.Hex(), err)
+	}
 	hash, err := types.NewHashFromHexString(current.Prepared.ExtrinsicHash)
 	if err != nil {
 		return false, fmt.Errorf("pending steering extrinsic hash: %w", err)
@@ -695,6 +716,9 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 		return false, fmt.Errorf("reconcile pending steering finality: %w", err)
 	}
 	if found {
+		if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, receipt.BlockHash); err != nil {
+			return false, fmt.Errorf("authenticate recovered steering finality at %s: %w", receipt.BlockHash.Hex(), err)
+		}
 		if err := s.intents.MarkFinalized(current.VectorHash, receipt.ExtrinsicHash.Hex(), receipt.BlockNumber, receipt.BlockHash.Hex(), current.Prepared.RevealBlock, current.Prepared.Values); err != nil {
 			return false, err
 		}
@@ -710,7 +734,11 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if current.SubnetEpoch > nativeState.SubnetEpochIndex {
 		return false, fmt.Errorf("pending steering epoch %d is ahead of finalized epoch %d", current.SubnetEpoch, nativeState.SubnetEpochIndex)
 	}
-	finalizedNonce, _, _, err := s.native.FinalizedAccountNonce(s.hotkey.PublicKey())
+	nonceHash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+	if err != nil {
+		return false, fmt.Errorf("authenticate steering nonce runtime: %w", err)
+	}
+	finalizedNonce, err := s.native.AccountNonceAt(s.hotkey.PublicKey(), nonceHash)
 	if err != nil {
 		return false, err
 	}
@@ -724,10 +752,17 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if finalizedNonce < current.Prepared.AccountNonce {
 		return false, fmt.Errorf("steering nonce gap: finalized %d, prepared %d", finalizedNonce, current.Prepared.AccountNonce)
 	}
+	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+		return false, fmt.Errorf("authenticate native runtime before pending replay: %w", err)
+	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, current.Prepared)
 	if err != nil {
 		_ = s.intents.update(current.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return false, err
+	}
+	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, result.FinalizedBlockHash); err != nil {
+		_ = s.intents.update(current.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
+		return false, fmt.Errorf("authenticate replayed steering finality at %s: %w", result.FinalizedBlockHash.Hex(), err)
 	}
 	if err := s.intents.MarkFinalized(current.VectorHash, result.TxHash.Hex(), result.FinalizedBlock, result.FinalizedBlockHash.Hex(), result.RevealBlock, result.Values); err != nil {
 		return false, err
@@ -736,7 +771,11 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 }
 
 func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
-	nativeState, nativeHash, err := s.native.EpochScheduleStateFinalized(s.cfg.Netuid)
+	nativeHash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+	if err != nil {
+		return fmt.Errorf("authenticate native runtime before steering snapshot: %w", err)
+	}
+	nativeState, err := s.native.EpochScheduleStateAt(s.cfg.Netuid, nativeHash)
 	if err != nil {
 		return err
 	}
@@ -843,9 +882,19 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+		return fmt.Errorf("authenticate native runtime before preparing steering: %w", err)
+	}
 	prepared, err := crv4.PrepareWeightsCRv4Exact(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, releaseSubmitOptions(s.cfg))
 	if err != nil {
 		return err
+	}
+	preparedHash, err := types.NewHashFromHexString(prepared.PreparedAtBlockHash)
+	if err != nil {
+		return fmt.Errorf("decode prepared steering runtime hash: %w", err)
+	}
+	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, preparedHash); err != nil {
+		return fmt.Errorf("authenticate prepared steering runtime at %s: %w", preparedHash.Hex(), err)
 	}
 	if prepared.SubnetEpoch != nativeState.SubnetEpochIndex {
 		return fmt.Errorf("native epoch crossed during steering snapshot: started %d prepared %d", nativeState.SubnetEpochIndex, prepared.SubnetEpoch)
@@ -892,12 +941,19 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.headEMA.CommitForEpoch(measurementArtifact.SubnetEpoch, measurementArtifact.HeadEMA, measurementArtifact.Policy.Steering.HeadScoreEMA); err != nil {
 		return fmt.Errorf("commit head EMA after steering intent: %w", err)
 	}
+	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+		return fmt.Errorf("authenticate native runtime before steering broadcast: %w", err)
+	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, prepared)
 	if err != nil {
 		// The error can occur after broadcast but before finality was observed.
 		// Preserve an uncertain pending state so a restart cannot double-submit.
 		_ = s.intents.update(intent.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return err
+	}
+	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, result.FinalizedBlockHash); err != nil {
+		_ = s.intents.update(intent.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
+		return fmt.Errorf("authenticate steering finality at %s: %w", result.FinalizedBlockHash.Hex(), err)
 	}
 	return s.intents.MarkFinalized(intent.VectorHash, result.TxHash.Hex(), result.FinalizedBlock, result.FinalizedBlockHash.Hex(), result.RevealBlock, result.Values)
 }
@@ -959,7 +1015,11 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
 	return runReleaseSteeringLoop(ctx, poll, func() (uint64, error) {
-		state, _, err := s.native.EpochScheduleStateFinalized(s.cfg.Netuid)
+		finalized, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+		if err != nil {
+			return 0, err
+		}
+		state, err := s.native.EpochScheduleStateAt(s.cfg.Netuid, finalized)
 		if err != nil {
 			return 0, err
 		}

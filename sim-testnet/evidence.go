@@ -776,7 +776,7 @@ func publishedFinalSemanticReaderFactory(ctx context.Context, cfg *ResolvedConfi
 	if ctx == nil || cfg == nil || cfg.Config == nil {
 		return nil, errors.New("final semantic public manifest context is incomplete")
 	}
-	_, public, err := loadDeploymentReference(ctx, stateDir, filepath.Join(stateDir, "public.json"))
+	_, public, err := loadDeploymentReferenceForConfig(ctx, cfg, stateDir, filepath.Join(stateDir, "public.json"))
 	if err != nil || public == nil {
 		return nil, stateMismatchError(err, "load final semantic public deployment manifest")
 	}
@@ -1151,6 +1151,10 @@ type PublicDeploymentManifest struct {
 	ChainID                  uint64                     `json:"chain_id"`
 	GenesisHash              string                     `json:"genesis_hash"`
 	RuntimeSpec              uint32                     `json:"runtime_spec"`
+	TransactionVersion       uint32                     `json:"transaction_version"`
+	StateVersion             uint8                      `json:"state_version"`
+	RuntimeCodeHash          string                     `json:"runtime_code_hash"`
+	RuntimeMetadataHash      string                     `json:"runtime_metadata_hash"`
 	Netuid                   uint16                     `json:"netuid"`
 	EVMRPC                   string                     `json:"evm_rpc"`
 	SubstrateRPC             string                     `json:"substrate_rpc"`
@@ -1217,7 +1221,7 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	if err != nil {
 		return nil, fmt.Errorf("public evidence transport: %w", err)
 	}
-	manifest := &PublicDeploymentManifest{Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, Netuid: cfg.Netuid, EVMRPC: cfg.Public.Chain.EVMPublicReadEndpoint, SubstrateRPC: cfg.Public.Chain.SubstratePublicReadEndpoint, OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg), EvidenceTransportProfile: transportProfile, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ReleaseLockHash: releaseLockHash, Contracts: contracts, Identities: append(json.RawMessage(nil), identities...), SetupEvidence: setupEvidence, Topology: cfg.Config.Topology, Commands: map[string]string{}}
+	manifest := &PublicDeploymentManifest{Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion, RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash, Netuid: cfg.Netuid, EVMRPC: cfg.Public.Chain.EVMPublicReadEndpoint, SubstrateRPC: cfg.Public.Chain.SubstratePublicReadEndpoint, OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg), EvidenceTransportProfile: transportProfile, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ReleaseLockHash: releaseLockHash, Contracts: contracts, Identities: append(json.RawMessage(nil), identities...), SetupEvidence: setupEvidence, Topology: cfg.Config.Topology, Commands: map[string]string{}}
 	if cfg.OperationalRPCMode == rpcModePublicOverride {
 		manifest.OperationalEVMRPC = cfg.OperationalEVM
 		manifest.OperationalSubstrateRPC = cfg.OperationalSubstrate

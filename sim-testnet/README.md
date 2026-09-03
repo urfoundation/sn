@@ -138,14 +138,14 @@ the recorded block. Partial metadata or differing observer formats fail closed.
 
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
-452 may floor each destination entitlement by one rao, so every reserve call
-stages exactly two allowance rao and requires the final sink delta to remain in
-`[principal, principal+2]`. The plan binds the number of reserve calls and this
-per-call allowance in schema v9. Schema v8 remains byte-for-byte authenticatable
-as a revision ancestor; its meaning is not strengthened in place. Revisions
-retain every verified repair in cumulative spend and add only one runtime-minimum
-top-up if conservative verified credit is below the stricter absolute campaign
-requirement. Schema v10 additionally requires a duplicate-conviction
+453 retains v452's one-rao floor for each destination entitlement, so every
+reserve call stages exactly two allowance rao and requires the final sink delta
+to remain in `[principal, principal+2]`. The plan binds the number of reserve
+calls and this per-call allowance in schema v9. Schema v8 remains byte-for-byte
+authenticatable as a revision ancestor; its meaning is not strengthened in
+place. Revisions retain every verified repair in cumulative spend and add only
+one runtime-minimum top-up if conservative verified credit is below the stricter
+absolute campaign requirement. Schema v10 additionally requires a duplicate-conviction
 reconciliation to retain the exact authenticated original action intent. A
 later gas-ceiling refresh or custody-repair dependency may gate new work, but
 cannot turn that already-finalized one-shot action into a new intent.

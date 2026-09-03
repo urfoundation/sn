@@ -729,6 +729,15 @@ func (p *liveScenarioProbe) authenticateFinalOperatorManifestOrigins(ctx context
 	if p == nil || public == nil || verification == nil {
 		return errors.New("final operator manifest authentication context is incomplete")
 	}
+	var runtimeErr error
+	if p.cfg == nil {
+		runtimeErr = validatePublishedRuntimeIdentityShape(public)
+	} else {
+		runtimeErr = validatePublishedRuntimeIdentity(public, p.cfg)
+	}
+	if runtimeErr != nil {
+		return stateMismatchError(runtimeErr, "final semantic deployment-manifest runtime identity differs from the release")
+	}
 	profile, err := effectivePublicEvidenceTransportProfile(public)
 	if err != nil {
 		return err
@@ -1316,7 +1325,7 @@ func FetchAuthenticatedPublicCampaign(ctx context.Context, cfg *ResolvedConfig, 
 	if err := adoptPublicManifest(ctx, cfg, manifestURI); err != nil {
 		return nil, err
 	}
-	_, public, err := loadDeploymentReferenceWithTransport(ctx, "", manifestURI, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+	_, public, err := loadDeploymentReferenceForConfig(ctx, cfg, "", manifestURI)
 	if err != nil || public == nil {
 		return nil, stateMismatchError(err, "authenticate public campaign deployment manifest")
 	}
@@ -1358,8 +1367,11 @@ func adoptPublicManifest(ctx context.Context, cfg *ResolvedConfig, source string
 	}
 	topologyHash, _ := canonicalHashHex(cfg.Config.Topology)
 	publicTopologyHash, _ := canonicalHashHex(public.Topology)
-	if public.ConfigHash != cfg.ConfigHash || !strings.EqualFold(public.PolicyHash, cfg.PolicyHash) || public.ReleaseLockHash != lockHash || topologyHash != publicTopologyHash || public.RuntimeSpec != cfg.Public.Chain.ExpectedRuntimeSpec {
+	if public.ConfigHash != cfg.ConfigHash || !strings.EqualFold(public.PolicyHash, cfg.PolicyHash) || public.ReleaseLockHash != lockHash || topologyHash != publicTopologyHash {
 		return errors.New("public manifest does not match this checkout's config, policy, release lock, topology, and runtime pin")
+	}
+	if err := validatePublishedRuntimeIdentity(public, cfg); err != nil {
+		return err
 	}
 	if len(public.Operators) != cfg.Config.Topology.Operators {
 		return errors.New("public manifest operator topology is incomplete")
@@ -1755,14 +1767,25 @@ func readDeploymentReferenceWithTransport(ctx context.Context, source, profile s
 }
 
 func loadDeploymentReferenceForConfig(ctx context.Context, cfg *ResolvedConfig, stateDir, source string) (*ContractDeployment, *PublicDeploymentManifest, error) {
+	var deployment *ContractDeployment
+	var public *PublicDeploymentManifest
+	var err error
 	if source == "" || !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
-		return loadDeploymentReference(ctx, stateDir, source)
+		deployment, public, err = loadDeploymentReference(ctx, stateDir, source)
+	} else {
+		profile, profileErr := resolvedPublicEvidenceTransportProfile(cfg)
+		if profileErr != nil {
+			return nil, nil, profileErr
+		}
+		deployment, public, err = loadDeploymentReferenceWithTransport(ctx, stateDir, source, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
 	}
-	profile, err := resolvedPublicEvidenceTransportProfile(cfg)
-	if err != nil {
+	if err != nil || public == nil {
+		return deployment, public, err
+	}
+	if err := validatePublishedRuntimeIdentity(public, cfg); err != nil {
 		return nil, nil, err
 	}
-	return loadDeploymentReferenceWithTransport(ctx, stateDir, source, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+	return deployment, public, nil
 }
 
 func loadDeploymentReference(ctx context.Context, stateDir, source string) (*ContractDeployment, *PublicDeploymentManifest, error) {
@@ -1787,8 +1810,11 @@ func loadDeploymentReferenceWithTransport(ctx context.Context, stateDir, source,
 	}
 	var public PublicDeploymentManifest
 	if json.Unmarshal(b, &public) == nil && public.Schema == "urnetwork-sim-public-deployment-v1" {
-		if public.Release != "1.0" || public.DeploymentID == "" || public.ChainID != testnetChainID || !strings.EqualFold(public.GenesisHash, testnetGenesis) || public.RuntimeSpec == 0 || public.Netuid == 0 || public.Contracts == nil || public.CoordinatorUpgrade.Implementation == (common.Address{}) || public.EVMRPC == "" || public.SubstrateRPC == "" || public.ConfigHash == "" || public.PolicyHash == "" || public.ReleaseLockHash == "" || len(public.SetupEvidence) == 0 || len(public.Operators) == 0 || validatePublicManifestRevision(&public) != nil {
+		if public.Release != "1.0" || public.DeploymentID == "" || public.ChainID != testnetChainID || !strings.EqualFold(public.GenesisHash, testnetGenesis) || public.RuntimeSpec == 0 || public.TransactionVersion == 0 || public.StateVersion == 0 || public.RuntimeCodeHash == "" || public.RuntimeMetadataHash == "" || public.Netuid == 0 || public.Contracts == nil || public.CoordinatorUpgrade.Implementation == (common.Address{}) || public.EVMRPC == "" || public.SubstrateRPC == "" || public.ConfigHash == "" || public.PolicyHash == "" || public.ReleaseLockHash == "" || len(public.SetupEvidence) == 0 || len(public.Operators) == 0 || validatePublicManifestRevision(&public) != nil {
 			return nil, nil, errors.New("invalid public deployment manifest identity")
+		}
+		if err := validatePublishedRuntimeIdentityShape(&public); err != nil {
+			return nil, nil, fmt.Errorf("invalid public deployment manifest runtime identity: %w", err)
 		}
 		if err := validatePublicCampaignOperatorOrigins(&public); err != nil {
 			return nil, nil, fmt.Errorf("invalid public deployment manifest evidence transport: %w", err)

@@ -28,6 +28,7 @@ const (
 	reviewedRuntimeSourceTag                = "v453"
 	reviewedRuntimeSourceCommit             = "823bdcbc58a29f60b243be4737a7c72b34ac7d93"
 	reviewedRuntimeCodeHash                 = "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4"
+	reviewedRuntimeMetadataHash             = "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"
 	reviewedRuntimeCompressedWasmSHA256     = "0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e"
 	reviewedRuntimeUpstreamReleaseCallHash  = "0x972c1c03fae47d58ad3dbfd701e58e56170936045b0a488170c05c8d0729fcd4"
 	reviewedRuntimeUpstreamReleaseTimepoint = "8987926:11"
@@ -292,7 +293,16 @@ func protocolSourceHash(snRoot string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	names = append(names, "WHITEPAPER.md", "VALIDATOR.md")
+	// The runtime source manifest and its enforcement entry points are part of
+	// the protocol claim, not incidental CI plumbing. Bind their exact bytes so
+	// a release-lock update cannot preserve docs while weakening the checker.
+	names = append(names,
+		"WHITEPAPER.md",
+		"VALIDATOR.md",
+		"scripts/check-runtime-v453-source.sh",
+		"scripts/test-release-1.0-local.sh",
+		"scripts/test-release-1.0-producer-gate.sh",
+	)
 	return digestNamedFiles(snRoot, names)
 }
 
@@ -571,7 +581,7 @@ func validateReleaseRepositorySchema(repositories map[string]any) error {
 // independently reviewed for runtime 453. The node image is pinned separately:
 // an older compatible binary may execute this on-chain Wasm while it syncs.
 func validateReviewedRuntimeIdentity(lock *ReleaseLock) error {
-	if lock == nil || lock.Runtime.SourceRepository != reviewedRuntimeSourceRepository || lock.Runtime.SourceTag != reviewedRuntimeSourceTag || lock.Runtime.SourceCommit != reviewedRuntimeSourceCommit || lock.Runtime.SpecVersion != reviewedRuntimeSpecVersion || lock.Runtime.TransactionVersion != reviewedRuntimeTransactionVersion || lock.Runtime.StateVersion != reviewedRuntimeStateVersion || !strings.EqualFold(lock.Runtime.CodeHash, reviewedRuntimeCodeHash) || !strings.EqualFold(lock.Runtime.CompressedWasmSHA256, reviewedRuntimeCompressedWasmSHA256) || !strings.EqualFold(lock.Runtime.UpstreamReleaseCallHash, reviewedRuntimeUpstreamReleaseCallHash) || lock.Runtime.UpstreamReleaseTimepoint != reviewedRuntimeUpstreamReleaseTimepoint {
+	if lock == nil || lock.Runtime.SourceRepository != reviewedRuntimeSourceRepository || lock.Runtime.SourceTag != reviewedRuntimeSourceTag || lock.Runtime.SourceCommit != reviewedRuntimeSourceCommit || lock.Runtime.SpecVersion != reviewedRuntimeSpecVersion || lock.Runtime.TransactionVersion != reviewedRuntimeTransactionVersion || lock.Runtime.StateVersion != reviewedRuntimeStateVersion || !strings.EqualFold(lock.Runtime.CodeHash, reviewedRuntimeCodeHash) || !strings.EqualFold(lock.Runtime.MetadataHash, reviewedRuntimeMetadataHash) || !strings.EqualFold(lock.Runtime.CompressedWasmSHA256, reviewedRuntimeCompressedWasmSHA256) || !strings.EqualFold(lock.Runtime.UpstreamReleaseCallHash, reviewedRuntimeUpstreamReleaseCallHash) || lock.Runtime.UpstreamReleaseTimepoint != reviewedRuntimeUpstreamReleaseTimepoint {
 		return errors.New("release lock runtime identity is not the reviewed testnet runtime 453 release")
 	}
 	return nil

@@ -117,7 +117,7 @@ type FleetLifecyclePayoutEvidence struct {
 }
 
 // FleetLifecycleNativeSchedule binds the post-acceptance evidence tail to one
-// finalized runtime-452 CRv4 schedule. The acceptance window is never enlarged;
+// finalized runtime-453 CRv4 schedule. The acceptance window is never enlarged;
 // only the lifecycle proof may wait through this exact application deadline.
 type FleetLifecycleNativeSchedule struct {
 	Phase                      string    `json:"phase"`
@@ -240,7 +240,7 @@ const (
 	fleetLifecycleTerminalCommitmentName  = "fleet-6.lifecycle-generation-4.commitment.json"
 )
 
-// FleetLifecyclePruneInput is one complete runtime-452 auction row at an exact
+// FleetLifecyclePruneInput is one complete runtime-453 auction row at an exact
 // finalized state root. Public verification can independently recompute both
 // immunity partitions and all three tie breakers from these rows.
 type FleetLifecyclePruneInput struct {
@@ -294,7 +294,7 @@ func fleetProviderColdkeyLabel(fleet int) string {
 
 // fleetLifecycleFundingRole is the single role map used by both execution and
 // postcondition verification. Registration funding belongs to the coldkey
-// which signs and pays runtime-452; commitment funding belongs to the hotkey
+// which signs and pays runtime 453; commitment funding belongs to the hotkey
 // which publishes the manifest. Keeping this separate from ordinary fleet
 // funding prevents fleet 5/6 setup actions from being silently redirected to
 // their temporary lifecycle identities.
@@ -732,7 +732,7 @@ func (self *Executor) validateFleetLifecycleCommitmentAction(ctx context.Context
 	if err != nil {
 		return err
 	}
-	observed, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, manifest.Hotkey, blockHash)
+	observed, err := self.substrate.fleetCommitmentAt(manifest.Hotkey, blockHash)
 	if err != nil {
 		return err
 	}
@@ -793,7 +793,7 @@ func (self *Executor) publishFleetLifecycleCommitment(ctx context.Context, actio
 	if err != nil {
 		return err
 	}
-	observed, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, manifest.Hotkey, blockHash)
+	observed, err := self.substrate.fleetCommitmentAt(manifest.Hotkey, blockHash)
 	if err != nil {
 		return err
 	}
@@ -939,7 +939,7 @@ func (self *Executor) mirrorFleetLifecycleCommitment(ctx context.Context, action
 	if err != nil {
 		return err
 	}
-	observed, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, manifest.Hotkey, nativeHash)
+	observed, err := self.substrate.fleetCommitmentAt(manifest.Hotkey, nativeHash)
 	if err != nil {
 		return err
 	}
@@ -2182,21 +2182,35 @@ func (self *SubstrateManager) fleetLifecyclePruneSnapshotAt(finalized types.Hash
 	if self == nil || self.chain == nil || self.chain.Meta == nil || finalized == (types.Hash{}) || block == 0 {
 		return FleetLifecyclePruneSnapshot{}, errors.New("fleet lifecycle exact substrate reader is unavailable")
 	}
-	topology, err := readSubnetTopologyAt(self.chain, self.cfg.Netuid, finalized)
+	historical, err := self.releaseHistoryChainAt(finalized)
+	if err != nil {
+		return FleetLifecyclePruneSnapshot{}, fmt.Errorf("authenticate fleet lifecycle prune history at %d/%s: %w", block, finalized.Hex(), err)
+	}
+	header, err := historical.API.RPC.Chain.GetHeader(finalized)
+	if err != nil {
+		return FleetLifecyclePruneSnapshot{}, fmt.Errorf("read fleet lifecycle prune header at %s: %w", finalized.Hex(), err)
+	}
+	if header == nil {
+		return FleetLifecyclePruneSnapshot{}, fmt.Errorf("fleet lifecycle prune header at %s is unavailable", finalized.Hex())
+	}
+	if uint64(header.Number) != block {
+		return FleetLifecyclePruneSnapshot{}, fmt.Errorf("fleet lifecycle prune hash %s is block %d, want %d", finalized.Hex(), header.Number, block)
+	}
+	topology, err := readSubnetTopologyAt(historical, self.cfg.Netuid, finalized)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, err
 	}
-	facts, err := readExistingUIDFactsAt(self.chain, self.cfg.Netuid, finalized, topology)
+	facts, err := readExistingUIDFactsAt(historical, self.cfg.Netuid, finalized, topology)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, err
 	}
 	readU16 := func(storage string) (uint16, error) {
-		key, keyErr := types.CreateStorageKey(self.chain.Meta, crv4.PalletName, storage, netuidArg(self.cfg.Netuid))
+		key, keyErr := types.CreateStorageKey(historical.Meta, crv4.PalletName, storage, netuidArg(self.cfg.Netuid))
 		if keyErr != nil {
 			return 0, keyErr
 		}
 		var value types.U16
-		if readErr := readRequiredStorageAt(self.chain, key, crv4.PalletName, storage, &value, finalized); readErr != nil {
+		if readErr := readRequiredStorageAt(historical, key, crv4.PalletName, storage, &value, finalized); readErr != nil {
 			return 0, readErr
 		}
 		return uint16(value), nil
@@ -2213,18 +2227,18 @@ func (self *SubstrateManager) fleetLifecyclePruneSnapshotAt(finalized types.Hash
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, err
 	}
-	emissionKey, err := types.CreateStorageKey(self.chain.Meta, crv4.PalletName, "Emission", netuidArg(self.cfg.Netuid))
+	emissionKey, err := types.CreateStorageKey(historical.Meta, crv4.PalletName, "Emission", netuidArg(self.cfg.Netuid))
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, err
 	}
 	var emissions []types.U64
-	if _, err := readStorageAt(self.chain, emissionKey, crv4.PalletName, "Emission", &emissions, finalized); err != nil {
+	if _, err := readStorageAt(historical, emissionKey, crv4.PalletName, "Emission", &emissions, finalized); err != nil {
 		return FleetLifecyclePruneSnapshot{}, err
 	}
 	if len(facts) != int(topology.UIDCount) {
 		return FleetLifecyclePruneSnapshot{}, fmt.Errorf("fleet lifecycle UID census=%d, want %d", len(facts), topology.UIDCount)
 	}
-	rows := make([]runtime452PruneNeuron, 0, len(facts))
+	rows := make([]runtime453PruneNeuron, 0, len(facts))
 	result := FleetLifecyclePruneSnapshot{
 		Head: ChainHead{Number: block, Hash: finalized.Hex()}, UIDCount: topology.UIDCount, MaximumUIDs: maximum,
 		ImmunityPeriodBlocks: immunity, MinimumNonImmuneUIDs: minimumNonImmune,
@@ -2247,7 +2261,7 @@ func (self *SubstrateManager) fleetLifecyclePruneSnapshotAt(finalized types.Hash
 		if !immune && !fact.SubnetOwner {
 			result.NonImmuneUIDs++
 		}
-		rows = append(rows, runtime452PruneNeuron{
+		rows = append(rows, runtime453PruneNeuron{
 			UID: fact.UID, Hotkey: hotkey, EmissionRao: emission, RegistrationBlock: fact.RegistrationBlock,
 			Immune: immune, Immortal: fact.SubnetOwner,
 		})
@@ -2256,7 +2270,7 @@ func (self *SubstrateManager) fleetLifecyclePruneSnapshotAt(finalized types.Hash
 			RegistrationBlock: fact.RegistrationBlock, Immune: immune, Immortal: fact.SubnetOwner,
 		})
 	}
-	result.RuntimePruneUID, err = runtime452PruneCandidate(rows, minimumNonImmune)
+	result.RuntimePruneUID, err = runtime453PruneCandidate(rows, minimumNonImmune)
 	return result, err
 }
 
@@ -2267,7 +2281,7 @@ func validateFleetLifecyclePruneSnapshot(snapshot FleetLifecyclePruneSnapshot, t
 	if _, err := decodeHex32("fleet lifecycle prune head", snapshot.Head.Hash); err != nil {
 		return err
 	}
-	rows := make([]runtime452PruneNeuron, 0, len(snapshot.Inputs))
+	rows := make([]runtime453PruneNeuron, 0, len(snapshot.Inputs))
 	var target *FleetLifecyclePruneInput
 	var nonImmune uint16
 	for index := range snapshot.Inputs {
@@ -2286,7 +2300,7 @@ func validateFleetLifecyclePruneSnapshot(snapshot FleetLifecyclePruneSnapshot, t
 		if !input.Immune && !input.Immortal {
 			nonImmune++
 		}
-		rows = append(rows, runtime452PruneNeuron{UID: input.UID, Hotkey: hotkey, EmissionRao: input.EmissionRao, RegistrationBlock: input.RegistrationBlock, Immune: input.Immune, Immortal: input.Immortal})
+		rows = append(rows, runtime453PruneNeuron{UID: input.UID, Hotkey: hotkey, EmissionRao: input.EmissionRao, RegistrationBlock: input.RegistrationBlock, Immune: input.Immune, Immortal: input.Immortal})
 		if hotkey == targetHotkey {
 			if target != nil || coldkey != targetColdkey {
 				return errors.New("fleet lifecycle prune target has duplicate or foreign ownership")
@@ -2294,7 +2308,7 @@ func validateFleetLifecyclePruneSnapshot(snapshot FleetLifecyclePruneSnapshot, t
 			target = input
 		}
 	}
-	computed, err := runtime452PruneCandidate(rows, snapshot.MinimumNonImmuneUIDs)
+	computed, err := runtime453PruneCandidate(rows, snapshot.MinimumNonImmuneUIDs)
 	if err != nil {
 		return err
 	}

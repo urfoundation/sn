@@ -299,17 +299,17 @@ func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid ui
 		blockTime = 12.0
 	}
 
-	// --- reveal round from the live epoch schedule ---
+	// --- reveal round from one finalized epoch schedule ---
+	state, preparedHash, err := chain.EpochScheduleStateFinalized(netuid)
+	if err != nil {
+		return nil, err
+	}
 	revealPeriodEpochs := uint64(1)
 	if opts.RevealPeriodEpochs != nil {
 		revealPeriodEpochs = *opts.RevealPeriodEpochs
-	} else if rpe, err := chain.RevealPeriodEpochs(netuid); err == nil {
+	} else if rpe, err := chain.RevealPeriodEpochsAt(netuid, preparedHash); err == nil {
 		revealPeriodEpochs = rpe
 	} else {
-		return nil, err
-	}
-	state, preparedHash, err := chain.EpochScheduleStateFinalized(netuid)
-	if err != nil {
 		return nil, err
 	}
 	round, revealBlock, err := RevealRound(now(), state, revealPeriodEpochs, blockTime)

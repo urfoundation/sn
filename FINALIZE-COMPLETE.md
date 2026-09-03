@@ -293,7 +293,8 @@ Use the authoritative state explicitly in every command:
 Doctor must be ready. The public operational/comparison backend distinction may
 be reported as the documented non-hard public-testnet limitation; every other
 check must pass. Specifically verify wallet identity, netuid ownership, runtime
-452 and exact Wasm hash, chain/genesis identity, activation flags,
+453 spec/transaction/state versions plus exact Wasm and metadata hashes at one
+finalized checkpoint, chain/genesis identity, activation flags,
 hyperparameters, budget and balance, MinIO, local Docker, systemd, port
 availability, source lock, and authoritative carried history.
 

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -274,6 +273,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 			aliasSameEndpointChecks(&r, start, map[string]string{
 				"rpc/substrate-operational":               "rpc/substrate-public",
 				"runtime/code-hash-operational":           "runtime/code-hash-public",
+				"runtime/metadata-hash-operational":       "runtime/metadata-hash-public",
 				"runtime/metadata-operational":            "runtime/metadata-public",
 				"runtime/release-call-shapes-operational": "runtime/release-call-shapes-public",
 				"runtime/compatibility-gates-operational": "runtime/compatibility-gates-public",
@@ -678,136 +678,86 @@ func checkSubstrate(r *DoctorReport, cfg *ResolvedConfig, operational bool) {
 		return
 	}
 	defer chain.API.Client.Close()
-	runtimeVersion, runtimeVersionErr := finalizedRuntimeVersion(chain)
+	finalized, finalizedErr := chain.API.RPC.Chain.GetFinalizedHead()
+	finalizedNumber := uint64(0)
+	if finalizedErr == nil {
+		header, headerErr := chain.API.RPC.Chain.GetHeader(finalized)
+		if headerErr != nil || header == nil {
+			finalizedErr = errors.Join(headerErr, errors.New("finalized header is unavailable"))
+		} else {
+			finalizedNumber = uint64(header.Number)
+		}
+	}
+	runtimeVersion := runtimeVersionIdentity{}
+	if finalizedErr == nil {
+		runtimeVersion, finalizedErr = runtimeVersionAt(chain, finalized)
+	}
 	if strings.ToLower(chain.GenesisHash.Hex()) != testnetGenesis {
 		err = fmt.Errorf("genesis %s, want %s", chain.GenesisHash.Hex(), testnetGenesis)
-	} else if runtimeVersionErr != nil {
-		err = runtimeVersionErr
-	} else if runtimeErr := validateFinalizedRuntimeVersion(runtimeVersion, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); runtimeErr != nil {
+	} else if finalizedErr != nil {
+		err = finalizedErr
+	} else if runtimeErr := validateRuntimeVersionIdentity(runtimeVersion, cfg.Public.Chain.ExpectedRuntimeSpec, cfg.Public.Chain.ExpectedTransactionVersion, cfg.Public.Chain.ExpectedStateVersion); runtimeErr != nil {
 		err = runtimeErr
 	}
-	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s spec=%d tx=%d state=%d", redactURL(endpoint), chain.GenesisHash.Hex(), runtimeVersion.SpecVersion, runtimeVersion.TransactionVersion, runtimeVersion.StateVersion))
+	r.add("rpc/substrate-"+name, true, err, fmt.Sprintf("%s genesis=%s finalized=%s spec=%d tx=%d state=%d", redactURL(endpoint), chain.GenesisHash.Hex(), finalized.Hex(), runtimeVersion.SpecVersion, runtimeVersion.TransactionVersion, runtimeVersion.StateVersion))
+	runtimeAuthenticated := false
 	if err == nil {
-		codeHash, codeHashErr := finalizedRuntimeCodeHash(chain)
+		codeHash, codeHashErr := runtimeCodeHashAt(chain, finalized)
 		if codeHashErr == nil {
 			codeHashErr = validateRuntimeCodeHash(codeHash, cfg.Release.Runtime.CodeHash)
 		}
-		r.add("runtime/code-hash-"+name, true, codeHashErr, codeHash)
-		metadata, metadataErr := chain.CheckMetadata()
-		metadataDetail := ""
-		if metadata != nil {
-			metadataDetail = fmt.Sprintf("pallet_index=%d signed_extensions=%d", metadata.PalletIndex, len(metadata.Extensions))
-			if metadataErr == nil && len(metadata.Problems) != 0 {
-				metadataErr = fmt.Errorf("%s", strings.Join(metadata.Problems, "; "))
-			}
+		r.add("runtime/code-hash-"+name, true, codeHashErr, fmt.Sprintf("%s finalized=%s", codeHash, finalized.Hex()))
+
+		exactMetadata, metadataHash, metadataHashErr := runtimeMetadataAt(chain, finalized)
+		if metadataHashErr == nil {
+			metadataHashErr = validateRuntimeMetadataHash(metadataHash, cfg.Release.Runtime.MetadataHash)
 		}
-		r.add("runtime/metadata-"+name, true, metadataErr, metadataDetail)
-		r.add("runtime/release-call-shapes-"+name, true, checkReleaseCallShapes(chain, cfg), "registration, staking/activation, take, transfer, commitments, and owner calls")
-		gates, gateErr := verifyCompatibilityGates(chain, cfg)
-		gateDetail := ""
-		if gates != nil {
-			if encoded, encodeErr := json.Marshal(gates); encodeErr == nil {
-				gateDetail = string(encoded)
+		r.add("runtime/metadata-hash-"+name, true, metadataHashErr, fmt.Sprintf("%s finalized=%s", metadataHash, finalized.Hex()))
+
+		if errors.Join(codeHashErr, metadataHashErr) == nil {
+			bindAuthenticatedRuntime(chain, authenticatedRuntimeMetadata{
+				FinalizedHash: finalized,
+				Version:       runtimeVersion,
+				CodeHash:      codeHash,
+				MetadataHash:  metadataHash,
+				Metadata:      exactMetadata,
+			})
+			runtimeAuthenticated = true
+			metadata, metadataErr := chain.CheckMetadata()
+			metadataDetail := ""
+			if metadata != nil {
+				metadataDetail = fmt.Sprintf("pallet_index=%d signed_extensions=%d", metadata.PalletIndex, len(metadata.Extensions))
+				if metadataErr == nil && len(metadata.Problems) != 0 {
+					metadataErr = fmt.Errorf("%s", strings.Join(metadata.Problems, "; "))
+				}
 			}
+			r.add("runtime/metadata-"+name, true, metadataErr, metadataDetail)
+			r.add("runtime/release-call-shapes-"+name, true, checkReleaseCallShapes(chain, cfg), "registration, staking/activation, take, transfer, commitments, and owner calls")
+			gates, gateErr := verifyCompatibilityGatesAt(chain, cfg, finalized)
+			gateDetail := ""
+			if gates != nil {
+				if encoded, encodeErr := json.Marshal(gates); encodeErr == nil {
+					gateDetail = string(encoded)
+				}
+			}
+			r.add("runtime/compatibility-gates-"+name, true, gateErr, gateDetail)
+			activation, activationErr := readAndValidateSubnetActivationAt(chain, cfg, finalized, finalizedNumber)
+			activationDetail := fmt.Sprintf("enabled=%t registered_at=%d first_emission=%d finalized=%d", activation.SubtokenEnabled, activation.NetworkRegisteredAt, activation.FirstEmissionBlockNumber, activation.FinalizedBlock)
+			r.add("subnet/activation-"+name, true, activationErr, activationDetail)
+			r.add("subnet/uid-capacity-"+name, true, checkUIDCapacity(chain, cfg, finalized), "all missing release identities fit the intended finalized UID cap")
 		}
-		r.add("runtime/compatibility-gates-"+name, true, gateErr, gateDetail)
-		activation, activationErr := readAndValidateSubnetActivation(chain, cfg)
-		activationDetail := fmt.Sprintf("enabled=%t registered_at=%d first_emission=%d finalized=%d", activation.SubtokenEnabled, activation.NetworkRegisteredAt, activation.FirstEmissionBlockNumber, activation.FinalizedBlock)
-		r.add("subnet/activation-"+name, true, activationErr, activationDetail)
-		r.add("subnet/uid-capacity-"+name, true, checkUIDCapacity(chain, cfg), "all missing release identities fit the intended finalized UID cap")
 	}
-	if err == nil && cfg.Netuid != 0 && cfg.WalletPublic != "" {
-		ownerErr, detail := verifySubnetOwner(chain, cfg.Netuid, cfg.WalletPublic)
+	if runtimeAuthenticated && cfg.Netuid != 0 && cfg.WalletPublic != "" {
+		ownerErr, detail := verifySubnetOwnerAt(chain, cfg, cfg.WalletPublic, finalized)
 		r.add("subnet/owner-"+name, true, ownerErr, detail)
 	}
 	if operational {
 		var logs any
-		finalizedHash, finalizedErr := chain.API.RPC.Chain.GetFinalizedHead()
-		var finalizedNumber uint64
-		if finalizedErr == nil {
-			var header *types.Header
-			header, finalizedErr = chain.API.RPC.Chain.GetHeader(finalizedHash)
-			if finalizedErr == nil {
-				finalizedNumber = uint64(header.Number)
-			}
-		}
 		if finalizedErr == nil {
 			finalizedErr = chain.API.Client.Call(&logs, "eth_getLogs", finalizedLogProbe(finalizedNumber))
 		}
 		r.add("rpc/operational-eth_getLogs", true, finalizedErr, fmt.Sprintf("exact finalized block=%d", finalizedNumber))
 	}
-}
-
-type doctorFinalizedRuntimeVersion struct {
-	SpecName           string `json:"specName"`
-	SpecVersion        uint32 `json:"specVersion"`
-	TransactionVersion uint32 `json:"transactionVersion"`
-	StateVersion       uint8  `json:"stateVersion"`
-}
-
-// Read all release-bound version fields at one finalized hash. The GSRPC
-// RuntimeVersion type predates stateVersion, so the doctor decodes the raw RPC
-// response instead of silently dropping that field.
-func finalizedRuntimeVersion(chain *crv4.Chain) (doctorFinalizedRuntimeVersion, error) {
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return doctorFinalizedRuntimeVersion{}, err
-	}
-	var version doctorFinalizedRuntimeVersion
-	if err := chain.API.Client.Call(&version, "state_getRuntimeVersion", finalized.Hex()); err != nil {
-		return doctorFinalizedRuntimeVersion{}, err
-	}
-	return version, nil
-}
-
-// Require the finalized runtime name and all three numeric identity fields to
-// match the release profile.
-func validateFinalizedRuntimeVersion(version doctorFinalizedRuntimeVersion, expectedSpec, expectedTransaction uint32, expectedState uint8) error {
-	if version.SpecName != "node-subtensor" {
-		return fmt.Errorf("runtime spec name %q, want node-subtensor", version.SpecName)
-	}
-	if version.SpecVersion != expectedSpec {
-		return fmt.Errorf("runtime spec %d, want %d", version.SpecVersion, expectedSpec)
-	}
-	if version.TransactionVersion != expectedTransaction {
-		return fmt.Errorf("transaction version %d, want %d", version.TransactionVersion, expectedTransaction)
-	}
-	if version.StateVersion != expectedState {
-		return fmt.Errorf("state version %d, want %d", version.StateVersion, expectedState)
-	}
-	return nil
-}
-
-// Pin the exact on-chain Wasm at a finalized block. A spec version alone is
-// not a content identity and can be reused accidentally by an upstream build.
-func finalizedRuntimeCodeHash(chain *crv4.Chain) (string, error) {
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return "", err
-	}
-	return runtimeCodeHashAt(chain, finalized)
-}
-
-func validateRuntimeCodeHash(observed, expected string) error {
-	validate := func(label, value string) error {
-		if len(value) != 66 || !strings.HasPrefix(value, "0x") {
-			return fmt.Errorf("invalid %s runtime code hash %q", label, value)
-		}
-		if _, err := hex.DecodeString(value[2:]); err != nil {
-			return fmt.Errorf("invalid %s runtime code hash %q: %w", label, value, err)
-		}
-		return nil
-	}
-	if err := validate("finalized", observed); err != nil {
-		return err
-	}
-	if err := validate("release-lock", expected); err != nil {
-		return err
-	}
-	if !strings.EqualFold(observed, expected) {
-		return fmt.Errorf("finalized runtime code hash %s, want %s", observed, expected)
-	}
-	return nil
 }
 
 func validateSubnetActivation(state SubnetActivationState) error {
@@ -821,8 +771,8 @@ func validateSubnetActivation(state SubnetActivationState) error {
 	return nil
 }
 
-func readAndValidateSubnetActivation(chain *crv4.Chain, cfg *ResolvedConfig) (SubnetActivationState, error) {
-	state, err := (&SubstrateManager{chain: chain, cfg: cfg}).ActivationState()
+func readAndValidateSubnetActivationAt(chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash, block uint64) (SubnetActivationState, error) {
+	state, err := (&SubstrateManager{chain: chain, cfg: cfg}).activationStateAt(finalized, block)
 	if err != nil {
 		return state, err
 	}
@@ -1000,7 +950,7 @@ func checkSubstrateReadiness(operationalChain, publicChain *crv4.Chain, maximumL
 // Check live consensus state and backend independence with one connection per
 // endpoint, reducing public RPC pressure and keeping both observations close.
 func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
-	operationalChain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	operationalChain, _, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		err = fmt.Errorf("operational RPC: %w", err)
 		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
@@ -1012,7 +962,7 @@ func checkSubstrateTopology(cfg *ResolvedConfig) substrateTopologyChecks {
 		result.IndependenceDetail, result.IndependenceErr = checkSubstratePeerIndependence(operationalChain, operationalChain)
 		return result
 	}
-	publicChain, err := crv4.DialChain(cfg.Public.Chain.SubstratePublicReadEndpoint)
+	publicChain, _, err := dialReleaseSubstrateChain(cfg, cfg.Public.Chain.SubstratePublicReadEndpoint)
 	if err != nil {
 		err = fmt.Errorf("public RPC: %w", err)
 		return substrateTopologyChecks{ReadinessErr: err, IndependenceErr: err}
@@ -1106,11 +1056,7 @@ func checkReleaseCallShapes(chain *crv4.Chain, cfg *ResolvedConfig) error {
 	return nil
 }
 
-func checkUIDCapacity(chain *crv4.Chain, cfg *ResolvedConfig) error {
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return err
-	}
+func checkUIDCapacity(chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) error {
 	key, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "SubnetworkN", netuidArg(cfg.Netuid))
 	if err != nil {
 		return err
@@ -1218,31 +1164,35 @@ func countMissingStorageKeysAt(keys []types.StorageKey, changeSets []types.Stora
 	return missing, nil
 }
 
-func verifySubnetOwner(chain *crv4.Chain, netuid uint16, walletAddress string) (error, string) {
+func verifySubnetOwner(chain *crv4.Chain, cfg *ResolvedConfig, walletAddress string) (error, string) {
+	finalized, _, err := (&SubstrateManager{chain: chain, cfg: cfg}).finalizedHead()
+	if err != nil {
+		return err, ""
+	}
+	return verifySubnetOwnerAt(chain, cfg, walletAddress, finalized)
+}
+
+func verifySubnetOwnerAt(chain *crv4.Chain, cfg *ResolvedConfig, walletAddress string, finalized types.Hash) (error, string) {
 	var arg [2]byte
-	binary.LittleEndian.PutUint16(arg[:], netuid)
+	binary.LittleEndian.PutUint16(arg[:], cfg.Netuid)
 	key, err := types.CreateStorageKey(chain.Meta, crv4.PalletName, "SubnetOwner", arg[:])
 	if err != nil {
 		return err, ""
 	}
 	var owner types.AccountID
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return err, ""
-	}
 	ok, err := chain.API.RPC.State.GetStorage(key, &owner, finalized)
 	if err != nil {
 		return err, ""
 	}
 	if !ok {
-		return fmt.Errorf("netuid %d has no owner", netuid), ""
+		return fmt.Errorf("netuid %d has no owner", cfg.Netuid), ""
 	}
 	ownerSS58, err := ss58.Encode([32]byte(owner), 42)
 	if err != nil {
 		return err, ""
 	}
 	if ownerSS58 != walletAddress {
-		return fmt.Errorf("wallet %s does not own netuid %d (owner %s)", walletAddress, netuid, ownerSS58), ownerSS58
+		return fmt.Errorf("wallet %s does not own netuid %d (owner %s)", walletAddress, cfg.Netuid, ownerSS58), ownerSS58
 	}
 	return nil, ownerSS58
 }

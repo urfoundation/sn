@@ -553,18 +553,12 @@ func validateSupersededDeploymentOnChain(ctx context.Context, cfg *ResolvedConfi
 			return fmt.Errorf("read superseded deployment checkpoint: %w", err)
 		}
 	}
-	nativeChain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	nativeChain, authenticatedRuntime, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		return fmt.Errorf("dial native chain for superseded balances: %w", err)
 	}
 	defer nativeChain.API.Client.Close()
-	if strings.ToLower(nativeChain.GenesisHash.Hex()) != testnetGenesis || uint32(nativeChain.Runtime.SpecVersion) != cfg.Public.Chain.ExpectedRuntimeSpec {
-		return errors.New("native superseded-balance RPC identity mismatch")
-	}
-	nativeFinalizedHash, err := nativeChain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		return err
-	}
+	nativeFinalizedHash := authenticatedRuntime.FinalizedHash
 	nativeFinalizedHeader, err := nativeChain.API.RPC.Chain.GetHeader(nativeFinalizedHash)
 	if err != nil {
 		return err
@@ -575,6 +569,10 @@ func validateSupersededDeploymentOnChain(ctx context.Context, cfg *ResolvedConfi
 	nativeObservationHash, err := nativeChain.API.RPC.Chain.GetBlockHash(head.Number)
 	if err != nil {
 		return err
+	}
+	nativeObservationChain, err := (&SubstrateManager{chain: nativeChain, cfg: cfg}).releaseHistoryChainAt(nativeObservationHash)
+	if err != nil {
+		return fmt.Errorf("authenticate superseded-balance history at %d/%s: %w", head.Number, nativeObservationHash.Hex(), err)
 	}
 	for _, address := range contractDeploymentAddresses(manifest) {
 		code, codeErr := client.CodeAt(ctx, address, block)
@@ -591,7 +589,7 @@ func validateSupersededDeploymentOnChain(ctx context.Context, cfg *ResolvedConfi
 			return fmt.Errorf("read superseded balance at %s: %w", address, balanceErr)
 		}
 		observation.Balances[address] = new(big.Int).Set(balance)
-		freeRao, freeErr := readFreeBalanceAtHash(nativeChain, ss58Mirror(address), nativeObservationHash)
+		freeRao, freeErr := readFreeBalanceAtHash(nativeObservationChain, ss58Mirror(address), nativeObservationHash)
 		if freeErr != nil {
 			return fmt.Errorf("read superseded native free balance at %s: %w", address, freeErr)
 		}
@@ -609,7 +607,7 @@ func validateSupersededDeploymentOnChain(ctx context.Context, cfg *ResolvedConfi
 		if err != nil {
 			return fmt.Errorf("read superseded coordinator upgrade balance: %w", err)
 		}
-		observation.UpgradeNativeFree, err = readFreeBalanceAtHash(nativeChain, ss58Mirror(upgrade.Implementation), nativeObservationHash)
+		observation.UpgradeNativeFree, err = readFreeBalanceAtHash(nativeObservationChain, ss58Mirror(upgrade.Implementation), nativeObservationHash)
 		if err != nil {
 			return fmt.Errorf("read superseded coordinator upgrade native free balance: %w", err)
 		}
@@ -1017,13 +1015,13 @@ func pendingPlanRevisionTransactions(prior *SetupPlan, entries []JournalEntry) (
 }
 
 // Prove that one prior native transaction is finalized and dispatch-failed.
-func validateFailedSubstrateRevisionTransaction(ctx context.Context, chain *crv4.Chain, transaction planRevisionTransaction) error {
+func validateFailedSubstrateRevisionTransaction(ctx context.Context, chain *crv4.Chain, cfg *ResolvedConfig, transaction planRevisionTransaction) error {
 	txHash, err := substrateTypes.NewHashFromHexString(transaction.TransactionHash)
 	if err != nil {
 		return err
 	}
 	proveFailure := func(blockHash substrateTypes.Hash) error {
-		verificationErr := chain.VerifyFinalizedExtrinsic(blockHash, txHash)
+		verificationErr := verifyReleaseHistoryFinalizedExtrinsic(chain, cfg, blockHash, txHash)
 		var dispatchError *crv4.FinalizedDispatchError
 		if errors.As(verificationErr, &dispatchError) {
 			return nil
@@ -1058,16 +1056,15 @@ func validateFailedSubstrateRevisionTransaction(ctx context.Context, chain *crv4
 	if transaction.RecoveryBlock == 0 {
 		return errors.New("prior native transaction has no recovery checkpoint")
 	}
-	_, found, findErr := chain.FindFinalizedExtrinsic(ctx, txHash, transaction.RecoveryBlock)
-	var dispatchError *crv4.FinalizedDispatchError
-	if errors.As(findErr, &dispatchError) {
-		return nil
-	}
+	receipt, found, findErr := chain.LocateFinalizedExtrinsic(ctx, txHash, transaction.RecoveryBlock)
 	if findErr != nil {
 		return fmt.Errorf("scan prior native transaction: %w", findErr)
 	}
 	if found {
-		return errPriorNativeTransactionSucceeded
+		if receipt == nil || receipt.BlockHash == (substrateTypes.Hash{}) {
+			return errors.New("prior native transaction receipt is incomplete")
+		}
+		return proveFailure(receipt.BlockHash)
 	}
 	return errors.New("prior native transaction is absent from finalized history and may still be pending")
 }
@@ -1292,12 +1289,12 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 				return planRevisionRecoveries{}, fmt.Errorf("prior native transaction artifact hash does not match %s", transaction.TransactionHash)
 			}
 			if substrateChain == nil {
-				substrateChain, err = crv4.DialChain(cfg.OperationalSubstrate)
+				substrateChain, _, err = dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 				if err != nil {
 					return planRevisionRecoveries{}, err
 				}
 			}
-			if err := validateFailedSubstrateRevisionTransaction(ctx, substrateChain, transaction); err != nil {
+			if err := validateFailedSubstrateRevisionTransaction(ctx, substrateChain, cfg, transaction); err != nil {
 				// Runtime dispatch succeeded, but the observer rejected a bounded
 				// share-pool postcondition. A v8 plan may reconcile this exact
 				// finalized transfer locally and, if necessary, execute only a
@@ -1358,7 +1355,7 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 			recoveries.VoluntaryConvictions = append(recoveries.VoluntaryConvictions, recovery)
 		case strings.HasPrefix(transaction.ActionID, "fleet.mirror."):
 			if substrateChain == nil {
-				substrateChain, err = crv4.DialChain(cfg.OperationalSubstrate)
+				substrateChain, _, err = dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 				if err != nil {
 					return planRevisionRecoveries{}, err
 				}
@@ -3106,7 +3103,7 @@ func reconcileFinalizedAlphaTransfers(revised, prior *SetupPlan, entries []Journ
 
 		reconciliation := planned
 		reconciliation.Kind = "substrate-reconciliation"
-		reconciliation.Description = "reconcile the exact finalized runtime-452 alpha transfer without broadcasting it again"
+		reconciliation.Description = "reconcile the exact historical finalized alpha transfer without broadcasting it again"
 		reconciliation.Spend = previous.Spend
 		reconciliation.Parameters = cloneStrings(planned.Parameters)
 		reconciliation.Parameters["exact_amount_rao"] = strconv.FormatUint(previous.Spend.AlphaRao, 10)
@@ -3131,7 +3128,7 @@ func reconcileFinalizedAlphaTransfers(revised, prior *SetupPlan, entries []Journ
 		}
 		repair := Action{
 			ID: repairID, Kind: "substrate-extrinsic", Target: planned.Target,
-			Description: "repair a bounded runtime-452 destination-share rounding deficit without repeating the campaign allocation",
+			Description: "repair a bounded runtime-453 destination-share rounding deficit without repeating the campaign allocation",
 			Parameters:  repairParameters, Spend: Spend{AlphaRao: minimumTransfer}, DependsOn: []string{reconciliation.ID},
 		}
 		revised.Actions[index] = reconciliation

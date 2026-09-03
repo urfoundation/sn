@@ -1,8 +1,9 @@
 package crv4
 
-// Runtime-452 commitments pallet support used by fleet promotion. Runtime 453
-// commit 823bdcbc58a29f60b243be4737a7c72b34ac7d93 leaves this storage encoding
-// unchanged, so historical decoder names and evidence remain byte-compatible:
+// Runtime-453 commitments pallet support used by fleet promotion. Runtime 453
+// commit 823bdcbc58a29f60b243be4737a7c72b34ac7d93 retains the v452 storage
+// encoding, so historical public decoder names and persisted evidence remain
+// byte-compatible:
 //
 //   Commitments.set_commitment(netuid: u16, info: CommitmentInfo)
 //   CommitmentInfo { fields: BoundedVec<Data> }
@@ -27,12 +28,12 @@ const (
 	CommitmentsPalletName = "Commitments"
 	CallSetCommitment     = "set_commitment"
 	dataSHA256Variant     = byte(131)
-	// Runtime v452 stores Registration<TaoBalance, MaxFields, BlockNumber>
+	// Runtime 453 retains Registration<TaoBalance, MaxFields, BlockNumber>
 	// as a transparent u64 deposit, u32 block, then CommitmentInfo. The
 	// release lock pins all three types; accepting only the exact byte length
 	// prevents a multi-field registration that merely ends in Sha256 from
 	// masquerading as the one-field fleet commitment protocol.
-	registrationV452PrefixBytes = 8 + 4
+	registrationFixedU32PrefixBytes = 8 + 4
 )
 
 // SHA256CommitmentData is the only commitment Data variant accepted by the
@@ -76,17 +77,17 @@ func EncodeFleetCommitmentInfo(hash [32]byte) ([]byte, error) {
 // block. Header block numbers use compact SCALE in GSRPC, while this field is
 // a plain u32; conflating them silently changes values whose low bits select a
 // compact mode.
-func decodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, uint64, error) {
+func decodeFleetCommitmentRegistrationFixedU32(raw []byte) ([32]byte, uint64, error) {
 	var commitmentHash [32]byte
 	wantInfoLen := 1 + 1 + len(commitmentHash) // Vec length(1), Sha256 variant, hash
-	if len(raw) != registrationV452PrefixBytes+wantInfoLen {
-		return commitmentHash, 0, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationV452PrefixBytes+wantInfoLen)
+	if len(raw) != registrationFixedU32PrefixBytes+wantInfoLen {
+		return commitmentHash, 0, fmt.Errorf("crv4: fleet commitment registration has %d bytes, want %d", len(raw), registrationFixedU32PrefixBytes+wantInfoLen)
 	}
-	commitmentBlock := uint64(binary.LittleEndian.Uint32(raw[8:registrationV452PrefixBytes]))
+	commitmentBlock := uint64(binary.LittleEndian.Uint32(raw[8:registrationFixedU32PrefixBytes]))
 	if commitmentBlock == 0 {
 		return commitmentHash, 0, fmt.Errorf("crv4: fleet commitment registration block is zero")
 	}
-	info := raw[registrationV452PrefixBytes:]
+	info := raw[registrationFixedU32PrefixBytes:]
 	if info[0] != 0x04 || info[1] != dataSHA256Variant {
 		return commitmentHash, 0, fmt.Errorf("crv4: commitment is not exactly one Sha256 field")
 	}
@@ -101,29 +102,35 @@ func decodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, uint64, error)
 	return commitmentHash, commitmentBlock, nil
 }
 
-// DecodeFleetCommitmentRegistrationV452 accepts only the release protocol's
+// DecodeFleetCommitmentRegistrationV453 accepts only the release protocol's
 // one-field registration and exposes its canonical commitment hash.
-func DecodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, error) {
-	commitmentHash, _, err := decodeFleetCommitmentRegistrationV452(raw)
+func DecodeFleetCommitmentRegistrationV453(raw []byte) ([32]byte, error) {
+	commitmentHash, _, err := decodeFleetCommitmentRegistrationFixedU32(raw)
 	return commitmentHash, err
+}
+
+// DecodeFleetCommitmentRegistrationV452 is a source-compatibility alias for
+// persisted v452 evidence. Runtime 453 retains the exact fixed-u32 wire shape.
+func DecodeFleetCommitmentRegistrationV452(raw []byte) ([32]byte, error) {
+	return DecodeFleetCommitmentRegistrationV453(raw)
 }
 
 // DecodeFleetCommitmentRegistrationV451 preserves the API introduced under
 // the preceding runtime after the v452 audit proved the shape unchanged.
 func DecodeFleetCommitmentRegistrationV451(raw []byte) ([32]byte, error) {
-	return DecodeFleetCommitmentRegistrationV452(raw)
+	return DecodeFleetCommitmentRegistrationV453(raw)
 }
 
 // DecodeFleetCommitmentRegistrationV447 preserves the first release-pinned
 // API after the v452 audit proved the shape unchanged.
 func DecodeFleetCommitmentRegistrationV447(raw []byte) ([32]byte, error) {
-	return DecodeFleetCommitmentRegistrationV452(raw)
+	return DecodeFleetCommitmentRegistrationV453(raw)
 }
 
 // Decode the pallet's fixed-width u32 storage value exactly. In particular,
 // do not use types.BlockNumber: its SCALE decoder is intentionally compact for
 // header fields and turns 0x9d7c7800 (7,896,221) into 7,975.
-func decodeFleetCommitmentBlockV452(raw []byte) (uint64, error) {
+func decodeFleetCommitmentBlockFixedU32(raw []byte) (uint64, error) {
 	if len(raw) != 4 {
 		return 0, fmt.Errorf("crv4: LastCommitment has %d bytes, want 4", len(raw))
 	}
@@ -218,8 +225,8 @@ func (c *Chain) FleetCommitmentFinalized(netuid uint16, hotkey [32]byte) (*Final
 	return c.FleetCommitmentAt(netuid, hotkey, hash)
 }
 
-// FleetCommitmentAt verifies the release's exact runtime-452 one-field Sha256
-// registration directly from CommitmentOf storage.
+// FleetCommitmentAt verifies runtime 453's exact one-field Sha256 registration
+// directly from CommitmentOf storage.
 func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash types.Hash) (*FinalizedCommitment, error) {
 	if netuid == 0 || hotkey == ([32]byte{}) || blockHash == (types.Hash{}) {
 		return nil, fmt.Errorf("crv4: invalid commitment lookup identity/block")
@@ -235,7 +242,7 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if raw == nil {
 		return nil, fmt.Errorf("crv4: no finalized commitment for hotkey 0x%x on netuid %d", hotkey, netuid)
 	}
-	commitmentHash, registrationBlock, err := decodeFleetCommitmentRegistrationV452([]byte(*raw))
+	commitmentHash, registrationBlock, err := decodeFleetCommitmentRegistrationFixedU32([]byte(*raw))
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +258,7 @@ func (c *Chain) FleetCommitmentAt(netuid uint16, hotkey [32]byte, blockHash type
 	if lastRaw == nil {
 		return nil, fmt.Errorf("crv4: commitment exists without LastCommitment")
 	}
-	commitmentBlock, err := decodeFleetCommitmentBlockV452([]byte(*lastRaw))
+	commitmentBlock, err := decodeFleetCommitmentBlockFixedU32([]byte(*lastRaw))
 	if err != nil {
 		return nil, err
 	}

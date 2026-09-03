@@ -302,14 +302,8 @@ type rpcBlock struct {
 	Hash   string `json:"hash"`
 }
 
-// rpcRuntimeVersion contains the release-bound portion of the Substrate
-// runtime identity. API lists are intentionally excluded from the continuous
-// metric because the release doctor validates their exact call shapes.
-type rpcRuntimeVersion struct {
-	SpecName           string `json:"specName"`
-	SpecVersion        uint32 `json:"specVersion"`
-	TransactionVersion uint32 `json:"transactionVersion"`
-	StateVersion       uint8  `json:"stateVersion"`
+type rpcHeader struct {
+	Number string `json:"number"`
 }
 
 type rpcAdversary struct {
@@ -350,6 +344,17 @@ func decodeRPCBlock(response rpcResponse) (rpcBlock, uint64, error) {
 	return block, number, err
 }
 
+func decodeRPCHeader(response rpcResponse) (uint64, error) {
+	if response.Error != nil {
+		return 0, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
+	}
+	var header rpcHeader
+	if json.Unmarshal(response.Result, &header) != nil || !strings.HasPrefix(header.Number, "0x") || len(header.Number) < 3 {
+		return 0, errors.New("rpc returned an invalid header")
+	}
+	return strconv.ParseUint(header.Number[2:], 16, 64)
+}
+
 func decodeRPCQuantity(response rpcResponse) (uint64, error) {
 	if response.Error != nil {
 		return 0, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
@@ -361,20 +366,20 @@ func decodeRPCQuantity(response rpcResponse) (uint64, error) {
 	return strconv.ParseUint(quantity[2:], 16, 64)
 }
 
-func decodeRPCRuntimeVersion(response rpcResponse) (rpcRuntimeVersion, error) {
+func decodeRPCRuntimeVersion(response rpcResponse) (runtimeVersionIdentity, error) {
 	if response.Error != nil {
-		return rpcRuntimeVersion{}, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
+		return runtimeVersionIdentity{}, fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
 	}
-	var version rpcRuntimeVersion
-	if json.Unmarshal(response.Result, &version) != nil || version.SpecName == "" || version.SpecVersion == 0 || version.TransactionVersion == 0 {
-		return rpcRuntimeVersion{}, errors.New("rpc returned an invalid runtime version")
+	version, err := decodeRuntimeVersionIdentity(response.Result)
+	if err != nil {
+		return runtimeVersionIdentity{}, fmt.Errorf("rpc returned an invalid runtime version: %w", err)
 	}
 	return version, nil
 }
 
 // Compare both observed endpoints with the complete release-bound runtime
 // identity, including state-version changes which leave call versions intact.
-func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec, expectedTransaction uint32, expectedState uint8) error {
+func validateRPCRuntimeIdentity(private, public runtimeVersionIdentity, expectedSpec, expectedTransaction uint32, expectedState uint8) error {
 	if private.SpecName != "node-subtensor" || public.SpecName != private.SpecName {
 		return fmt.Errorf("runtime spec names operational=%q public=%q", private.SpecName, public.SpecName)
 	}
@@ -388,6 +393,24 @@ func validateRPCRuntimeIdentity(private, public rpcRuntimeVersion, expectedSpec,
 		return fmt.Errorf("state versions operational=%d public=%d expected=%d", private.StateVersion, public.StateVersion, expectedState)
 	}
 	return nil
+}
+
+func decodeRPCHash(response rpcResponse) (string, error) {
+	return decodeRPCFixedHash(response, "runtime code hash")
+}
+
+func decodeRPCFixedHash(response rpcResponse, label string) (string, error) {
+	if response.Error != nil {
+		return "", fmt.Errorf("rpc error %d: %s", response.Error.Code, response.Error.Message)
+	}
+	var value string
+	if err := json.Unmarshal(response.Result, &value); err != nil {
+		return "", fmt.Errorf("rpc returned an invalid %s", label)
+	}
+	if err := validateRuntimeCodeHash(value, value); err != nil {
+		return "", errors.New(strings.NewReplacer("runtime code hash", label).Replace(err.Error()))
+	}
+	return strings.ToLower(value), nil
 }
 
 func abiUint16CallData(signature string, value uint16) string {
@@ -473,15 +496,22 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		}
 		return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("unknown method rejected code=%d", response.Error.Code), Requests: 1, MaxInFlight: 1}
 	}
-	privateResponse, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{"finalized", false}, sequence*10+1)
-	publicResponse, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{"finalized", false}, sequence*10+2)
+	privateResponse, privateErr := self.call(ctx, privateEndpoint, "chain_getFinalizedHead", []any{}, sequence*32+1)
+	publicResponse, publicErr := self.call(ctx, publicEndpoint, "chain_getFinalizedHead", []any{}, sequence*32+2)
 	if privateErr != nil || publicErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("native finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
 	}
-	privateFinalized, privateNumber, privateErr := decodeRPCBlock(privateResponse)
-	publicFinalized, publicNumber, publicErr := decodeRPCBlock(publicResponse)
+	privateFinalized, privateErr := decodeRPCFixedHash(privateResponse, "native finalized hash")
+	publicFinalized, publicErr := decodeRPCFixedHash(publicResponse, "native finalized hash")
 	if privateErr != nil || publicErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("decode finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("decode native finalized heads: operational=%v public=%v", privateErr, publicErr), Requests: 2, MaxInFlight: 1}
+	}
+	privateHeaderResponse, privateHeaderErr := self.call(ctx, privateEndpoint, "chain_getHeader", []any{privateFinalized}, sequence*32+3)
+	publicHeaderResponse, publicHeaderErr := self.call(ctx, publicEndpoint, "chain_getHeader", []any{publicFinalized}, sequence*32+4)
+	privateNumber, privateHeaderDecodeErr := decodeRPCHeader(privateHeaderResponse)
+	publicNumber, publicHeaderDecodeErr := decodeRPCHeader(publicHeaderResponse)
+	if privateHeaderErr != nil || publicHeaderErr != nil || privateHeaderDecodeErr != nil || publicHeaderDecodeErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("native finalized headers: operational=%v/%v public=%v/%v", privateHeaderErr, privateHeaderDecodeErr, publicHeaderErr, publicHeaderDecodeErr), Requests: 4, MaxInFlight: 1}
 	}
 	lag := privateNumber
 	if publicNumber > lag {
@@ -490,19 +520,19 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		lag -= publicNumber
 	}
 	if lag > uint64(self.cfg.Policy.Safety.MaximumFinalizedHeadLagBlocks) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized lag=%d operational=%d public=%d", lag, privateNumber, publicNumber), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("finalized lag=%d operational=%d public=%d", lag, privateNumber, publicNumber), Requests: 4, MaxInFlight: 1}
 	}
-	privateLatestResponse, privateLatestErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*10+13)
-	publicLatestResponse, publicLatestErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*10+14)
+	privateLatestResponse, privateLatestErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*32+5)
+	publicLatestResponse, publicLatestErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{"latest", false}, sequence*32+6)
 	_, privateLatest, privateLatestDecodeErr := decodeRPCBlock(privateLatestResponse)
 	_, publicLatest, publicLatestDecodeErr := decodeRPCBlock(publicLatestResponse)
 	if privateLatestErr != nil || publicLatestErr != nil || privateLatestDecodeErr != nil || publicLatestDecodeErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("best heads: operational=%v/%v public=%v/%v", privateLatestErr, privateLatestDecodeErr, publicLatestErr, publicLatestDecodeErr), Requests: 4, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("best heads: operational=%v/%v public=%v/%v", privateLatestErr, privateLatestDecodeErr, publicLatestErr, publicLatestDecodeErr), Requests: 6, MaxInFlight: 1}
 	}
 	privateBestLag, privateSDKExpired, privateExpiryErr := mevShieldFinalityEraExpiryModel(privateNumber, privateLatest, 8)
 	publicBestLag, publicSDKExpired, publicExpiryErr := mevShieldFinalityEraExpiryModel(publicNumber, publicLatest, 8)
 	if privateExpiryErr != nil || publicExpiryErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("MEV-shield era model operational=%v public=%v", privateExpiryErr, publicExpiryErr), Requests: 4, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("MEV-shield era model operational=%v public=%v", privateExpiryErr, publicExpiryErr), Requests: 6, MaxInFlight: 1}
 	}
 	bestFinalizedLag := max64(privateBestLag, publicBestLag)
 	sdkMEVShieldExpired := privateSDKExpired || publicSDKExpired
@@ -511,38 +541,51 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		commonNumber = publicNumber
 	}
 	tag := fmt.Sprintf("0x%x", commonNumber)
-	privateCommon, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*10+3)
-	publicCommon, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*10+4)
+	privateCommon, privateErr := self.call(ctx, privateEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+7)
+	publicCommon, publicErr := self.call(ctx, publicEndpoint, "eth_getBlockByNumber", []any{tag, false}, sequence*32+8)
 	privateAt, _, decodePrivateErr := decodeRPCBlock(privateCommon)
 	publicAt, _, decodePublicErr := decodeRPCBlock(publicCommon)
 	if privateErr != nil || publicErr != nil || decodePrivateErr != nil || decodePublicErr != nil || !strings.EqualFold(privateAt.Hash, publicAt.Hash) {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%s public=%s errors=%v/%v/%v/%v", commonNumber, privateAt.Hash, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 6, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("common-height disagreement height=%d operational=%s public=%s errors=%v/%v/%v/%v", commonNumber, privateAt.Hash, publicAt.Hash, privateErr, publicErr, decodePrivateErr, decodePublicErr), Requests: 8, MaxInFlight: 1}
 	}
-	privateRuntimeResponse, privateRuntimeErr := self.call(ctx, privateEndpoint, "state_getRuntimeVersion", []any{privateFinalized.Hash}, sequence*20+15)
-	publicRuntimeResponse, publicRuntimeErr := self.call(ctx, publicEndpoint, "state_getRuntimeVersion", []any{publicFinalized.Hash}, sequence*20+16)
+	privateRuntimeResponse, privateRuntimeErr := self.call(ctx, privateEndpoint, "state_getRuntimeVersion", []any{privateFinalized}, sequence*32+9)
+	publicRuntimeResponse, publicRuntimeErr := self.call(ctx, publicEndpoint, "state_getRuntimeVersion", []any{publicFinalized}, sequence*32+10)
 	privateRuntime, privateRuntimeDecodeErr := decodeRPCRuntimeVersion(privateRuntimeResponse)
 	publicRuntime, publicRuntimeDecodeErr := decodeRPCRuntimeVersion(publicRuntimeResponse)
 	if privateRuntimeErr != nil || publicRuntimeErr != nil || privateRuntimeDecodeErr != nil || publicRuntimeDecodeErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity operational=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 8, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime identity operational=%v/%v public=%v/%v", privateRuntimeErr, privateRuntimeDecodeErr, publicRuntimeErr, publicRuntimeDecodeErr), Requests: 10, MaxInFlight: 1}
 	}
 	if runtimeErr := validateRPCRuntimeIdentity(privateRuntime, publicRuntime, self.cfg.Release.Runtime.SpecVersion, self.cfg.Release.Runtime.TransactionVersion, self.cfg.Release.Runtime.StateVersion); runtimeErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: runtimeErr.Error(), Requests: 8, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: runtimeErr.Error(), Requests: 10, MaxInFlight: 1}
+	}
+	privateCodeResponse, privateCodeErr := self.call(ctx, privateEndpoint, "state_getStorageHash", []any{"0x3a636f6465", privateFinalized}, sequence*32+11)
+	publicCodeResponse, publicCodeErr := self.call(ctx, publicEndpoint, "state_getStorageHash", []any{"0x3a636f6465", publicFinalized}, sequence*32+12)
+	privateCodeHash, privateCodeDecodeErr := decodeRPCHash(privateCodeResponse)
+	publicCodeHash, publicCodeDecodeErr := decodeRPCHash(publicCodeResponse)
+	if privateCodeErr != nil || publicCodeErr != nil || privateCodeDecodeErr != nil || publicCodeDecodeErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime code hash operational=%v/%v public=%v/%v", privateCodeErr, privateCodeDecodeErr, publicCodeErr, publicCodeDecodeErr), Requests: 12, MaxInFlight: 1}
+	}
+	if privateCodeErr = validateRuntimeCodeHash(privateCodeHash, self.cfg.Release.Runtime.CodeHash); privateCodeErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "operational " + privateCodeErr.Error(), Requests: 12, MaxInFlight: 1}
+	}
+	if publicCodeErr = validateRuntimeCodeHash(publicCodeHash, self.cfg.Release.Runtime.CodeHash); publicCodeErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "public " + publicCodeErr.Error(), Requests: 12, MaxInFlight: 1}
 	}
 	const alphaPrecompile = "0x0000000000000000000000000000000000000808"
 	const metagraphPrecompile = "0x0000000000000000000000000000000000000802"
-	privateSpot, privateSpotErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*10+5)
-	publicSpot, publicSpotErr := self.callUint16Precompile(ctx, publicEndpoint, alphaPrecompile, "getAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*10+6)
-	privateMoving, privateMovingErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getMovingAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*10+7)
-	publicMoving, publicMovingErr := self.callUint16Precompile(ctx, publicEndpoint, alphaPrecompile, "getMovingAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*10+8)
-	privateUIDs, privateUIDsErr := self.callUint16Precompile(ctx, privateEndpoint, metagraphPrecompile, "getUidCount(uint16)", self.cfg.Netuid, tag, sequence*10+9)
-	publicUIDs, publicUIDsErr := self.callUint16Precompile(ctx, publicEndpoint, metagraphPrecompile, "getUidCount(uint16)", self.cfg.Netuid, tag, sequence*10+10)
-	taoReserve, taoReserveErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getTaoInPool(uint16)", self.cfg.Netuid, tag, sequence*10+11)
-	alphaReserve, alphaReserveErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getAlphaInPool(uint16)", self.cfg.Netuid, tag, sequence*10+12)
+	privateSpot, privateSpotErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*32+13)
+	publicSpot, publicSpotErr := self.callUint16Precompile(ctx, publicEndpoint, alphaPrecompile, "getAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*32+14)
+	privateMoving, privateMovingErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getMovingAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*32+15)
+	publicMoving, publicMovingErr := self.callUint16Precompile(ctx, publicEndpoint, alphaPrecompile, "getMovingAlphaPrice(uint16)", self.cfg.Netuid, tag, sequence*32+16)
+	privateUIDs, privateUIDsErr := self.callUint16Precompile(ctx, privateEndpoint, metagraphPrecompile, "getUidCount(uint16)", self.cfg.Netuid, tag, sequence*32+17)
+	publicUIDs, publicUIDsErr := self.callUint16Precompile(ctx, publicEndpoint, metagraphPrecompile, "getUidCount(uint16)", self.cfg.Netuid, tag, sequence*32+18)
+	taoReserve, taoReserveErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getTaoInPool(uint16)", self.cfg.Netuid, tag, sequence*32+19)
+	alphaReserve, alphaReserveErr := self.callUint16Precompile(ctx, privateEndpoint, alphaPrecompile, "getAlphaInPool(uint16)", self.cfg.Netuid, tag, sequence*32+20)
 	if privateSpotErr != nil || publicSpotErr != nil || privateMovingErr != nil || publicMovingErr != nil || privateUIDsErr != nil || publicUIDsErr != nil || taoReserveErr != nil || alphaReserveErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("subnet precompile sentinel errors spot=%v/%v moving=%v/%v uids=%v/%v reserves=%v/%v", privateSpotErr, publicSpotErr, privateMovingErr, publicMovingErr, privateUIDsErr, publicUIDsErr, taoReserveErr, alphaReserveErr), Requests: 16, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("subnet precompile sentinel errors spot=%v/%v moving=%v/%v uids=%v/%v reserves=%v/%v", privateSpotErr, publicSpotErr, privateMovingErr, publicMovingErr, privateUIDsErr, publicUIDsErr, taoReserveErr, alphaReserveErr), Requests: 20, MaxInFlight: 1}
 	}
 	if sentinelErr := validateSubnetPrecompileSentinels(privateSpot, publicSpot, privateMoving, publicMoving, privateUIDs, publicUIDs, taoReserve, alphaReserve); sentinelErr != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("subnet precompile disagreement spot=%s/%s moving=%s/%s uids=%s/%s reserves=%s/%s: %v", privateSpot, publicSpot, privateMoving, publicMoving, privateUIDs, publicUIDs, taoReserve, alphaReserve, sentinelErr), Requests: 16, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("subnet precompile disagreement spot=%s/%s moving=%s/%s uids=%s/%s reserves=%s/%s: %v", privateSpot, publicSpot, privateMoving, publicMoving, privateUIDs, publicUIDs, taoReserve, alphaReserve, sentinelErr), Requests: 20, MaxInFlight: 1}
 	}
 	metrics := map[string]uint64{
 		"finalized_head_lag_blocks":           lag,
@@ -554,6 +597,7 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		"runtime_spec":                        uint64(privateRuntime.SpecVersion),
 		"transaction_version":                 uint64(privateRuntime.TransactionVersion),
 		"state_version":                       uint64(privateRuntime.StateVersion),
+		"runtime_code_hash_match":             1,
 		"best_finalized_lag_blocks":           bestFinalizedLag,
 		"sdk_mev_shield_expired_observations": boolUint64(sdkMEVShieldExpired),
 		"subnet_spot_alpha_price":             privateSpot.Uint64(),
@@ -566,7 +610,7 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		"tao_reserve_rao":                     taoReserve.Uint64(),
 		"alpha_reserve_rao":                   alphaReserve.Uint64(),
 	}
-	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d/%d best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, privateRuntime.StateVersion, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve), Requests: 16, MaxInFlight: 1, Metrics: metrics}
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d/%d code_hash=%s best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, privateRuntime.StateVersion, privateCodeHash, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve), Requests: 20, MaxInFlight: 1, Metrics: metrics}
 }
 
 type artifactAdversary struct {
@@ -637,16 +681,16 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	prefix := make([]byte, 12) // runtime-452 TaoBalance:u64 + BlockNumber:u32
+	prefix := make([]byte, 12) // runtime-453 TaoBalance:u64 + BlockNumber:u32
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000+sequence)
 	binary.LittleEndian.PutUint32(prefix[8:], uint32(1+sequence%math.MaxUint32))
 	canonical := append(append([]byte(nil), prefix...), info...)
-	decoded, err := crv4.DecodeFleetCommitmentRegistrationV452(canonical)
+	decoded, err := crv4.DecodeFleetCommitmentRegistrationV453(canonical)
 	if err != nil || decoded != hash {
 		return 0, fmt.Errorf("canonical commitment registration rejected hash=%x error=%v", decoded, err)
 	}
 
-	// 0x87 is Data::ResetBondsFlag in runtime 452. The first case is a
+	// 0x87 is Data::ResetBondsFlag in runtime 453. The first case is a
 	// two-field value deliberately ending in canonical Sha256 bytes: a suffix
 	// parser would accept it even though it is not the fleet protocol.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -658,7 +702,7 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 		canonical[:len(canonical)-1],
 	}
 	for index, encoded := range cases {
-		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV452(encoded); decodeErr == nil {
+		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV453(encoded); decodeErr == nil {
 			return uint64(index), fmt.Errorf("commitment type-confusion case %d decoded as %x", index, got)
 		}
 	}
@@ -1141,7 +1185,7 @@ func proportionalRootBasketClaim(principal, basketReward, unstake uint64) (claim
 	return claimed, basketReward - claimed, nil
 }
 
-// rootBasketFailureIsolationModel covers the runtime-452 hotfix: a terminally
+// rootBasketFailureIsolationModel covers behavior retained by runtime 453: a terminally
 // shallow holding is explicitly written off, an unrelated healthy holding can
 // still settle, and an unknown/retryable failure remains intact. Pending basket
 // deposits likewise remain accounted while an independent root-stake change
@@ -1308,7 +1352,7 @@ type settlementTransferFloorState struct {
 	Paid        uint64
 }
 
-// settlementTransferFloorModel mirrors the runtime-452 DefaultMinTransfer
+// settlementTransferFloorModel mirrors the runtime-453 DefaultMinTransfer
 // boundary while the live campaign is running. Capture dust must stay on the
 // pool; accepted sub-floor claims become durable credit; a later qualifying
 // aggregate pays exactly; and a runtime failure preserves the full credit.
@@ -1890,7 +1934,7 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 	}
 	terminalWriteoffs, healthyClaims, retryablePreserved, stakeChangeBlocked, err := rootBasketFailureIsolationModel(1_000+sequence, 100+sequence)
 	if err != nil || stakeChangeBlocked {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime-452 root basket failure isolation error=%v blocked=%t", err, stakeChangeBlocked)}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("runtime-453 root basket failure isolation error=%v blocked=%t", err, stakeChangeBlocked)}
 	}
 	mev, err := emulateProxyStakeMEV(1_000_000_000_000, 2_000_000_000_000, 1_000_000_000, attackerStake, 10_000)
 	if err != nil || (phase == adversaryControlPhase && (mev.UnshieldedLossPPM != 0 || mev.ProtectedWouldReject)) || (phase == adversaryAttackPhase && (mev.UnshieldedLossPPM == 0 || !mev.ProtectedWouldReject)) {
@@ -2165,7 +2209,7 @@ func clampUnit(value float64) float64 {
 	return value
 }
 
-// liquidAlphaValue mirrors runtime v452's per validator-miner sigmoid: buying
+// liquidAlphaValue mirrors runtime 453's per validator-miner sigmoid: buying
 // compares weight with the selected consensus, selling compares the old bond
 // with weight, and the result is clamped between alpha_low and alpha_high.
 func liquidAlphaValue(consensus, weight, bond, alphaLow, alphaHigh, steepness float64) (float64, error) {
@@ -2203,7 +2247,7 @@ func emulateLiquidAlphaCopyAndDropout(sequence uint64) (liquidAlphaSweep, error)
 	steepness := steepnesses[sequence%uint64(len(steepnesses))]
 	selectedConsensus := 1.0
 	if sequence%2 == 0 {
-		// Runtime v452 retains previous-consensus mode. Sweep the first epoch's
+		// Runtime 453 retains previous-consensus mode. Sweep the first epoch's
 		// absent/zero previous value as well as current consensus.
 		selectedConsensus = 0
 	}

@@ -8,7 +8,7 @@ import {STReserveSink} from "../src/STReserveSink.sol";
 contract ReleaseDepositsTest is ReleaseBase {
     function setUp() public override {
         super.setUp();
-        // Runtime 452 may floor each destination share issue by one rao. The
+        // Runtime 453 may floor each destination share issue by one rao. The
         // reserve path crosses both a move and a transfer share pool.
         staking.setMoveStakeShortfall(1);
         staking.setTransferStakeShortfall(1);
@@ -96,7 +96,7 @@ contract ReleaseDepositsTest is ReleaseBase {
         );
     }
 
-    function test_runtime452TwoSharePoolFloorsStillLockExactPrincipal() public {
+    function test_runtime453TwoSharePoolFloorsStillLockExactPrincipal() public {
         uint256 amount = 50_000_000;
         _pushDeposit(NO1, amount);
 

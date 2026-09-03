@@ -33,7 +33,7 @@ contract NativeBalanceHarness {
     }
 }
 
-contract Runtime452FrameHarness {
+contract Runtime453FrameHarness {
     function delegateRegister(uint16 netuid, bytes32 hotkey, uint64 limitPrice) external returns (bool) {
         (bool ok,) = INeuron_ADDRESS.delegatecall(
             abi.encodeWithSignature("registerLimit(uint16,bytes32,uint64)", netuid, hotkey, limitPrice)
@@ -97,7 +97,7 @@ contract ReleaseSettlementTest is ReleaseBase {
         unregistered.registerEscrow(0);
     }
 
-    function test_runtime452ExistentialDepositCannotUnderflowFirstRegistration() public {
+    function test_runtime453ExistentialDepositCannotUnderflowFirstRegistration() public {
         NativeBalanceHarness harness = new NativeBalanceHarness();
         uint256 supplied = 1_000_000 * 1e9;
         uint256 runtimeExistentialDeposit = 500 * 1e9;
@@ -105,7 +105,7 @@ contract ReleaseSettlementTest is ReleaseBase {
         assertEq(harness.beforeSuppliedValue(supplied - runtimeExistentialDeposit, supplied), 0);
     }
 
-    function test_runtime452RegistrationPreservesExistingReducibleBalance() public {
+    function test_runtime453RegistrationPreservesExistingReducibleBalance() public {
         NativeBalanceHarness harness = new NativeBalanceHarness();
         uint256 supplied = 1_000_000 * 1e9;
         uint256 existingReducibleBalance = 71_000 * 1e9;
@@ -124,8 +124,8 @@ contract ReleaseSettlementTest is ReleaseBase {
         assertEq(harness.beforeSuppliedValue(existingBalance + supplied, supplied), existingBalance);
     }
 
-    function test_runtime452RejectsForeignSignedDispatchButAllowsCryptoFrame() public {
-        Runtime452FrameHarness harness = new Runtime452FrameHarness();
+    function test_runtime453RetainsV452ForeignFramePolicy() public {
+        Runtime453FrameHarness harness = new Runtime453FrameHarness();
 
         assertFalse(harness.delegateRegister(NETUID, keccak256("foreign-frame"), REGISTRATION_BURN_LIMIT));
         (bool ok, bool verified) = harness.delegateVerify(

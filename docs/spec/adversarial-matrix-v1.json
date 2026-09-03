@@ -145,7 +145,7 @@
       "preconditions": "Arbitrary registered hotkeys can publish any runtime-valid CommitmentInfo field sequence and a fleet observer consumes native commitment storage.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["identity-churn-emulation", "rpc-consistency-pressure"],
-      "oracle": "The release decodes the full pinned runtime-452 Registration encoding, accepts exactly one nonzero Sha256 field, and returns an attributed error for ResetBondsFlag, alternate variants, extra fields, truncation, or trailing bytes without panicking.",
+      "oracle": "Runtime 453 retains the persisted runtime-452 Registration wire identifier and exact SCALE shape. The release accepts exactly one nonzero Sha256 field and returns an attributed error for ResetBondsFlag, alternate variants, extra fields, truncation, or trailing bytes without panicking.",
       "metrics": ["commitment_parser_rejections", "canonical_commitment_accepts", "observer_panics"],
       "stop_conditions": ["unexpected_variant_accepted", "multi_field_suffix_accepted", "observer_panic"],
       "local_tests": ["crv4/TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields", "sim-testnet/TestCommitmentParserTypeConfusionModelRejectsAlternateRuntimeFields"]
@@ -184,7 +184,7 @@
       "preconditions": "An attacker can fund many distinct coldkeys or repeatedly coldkey-swap a root-staked position.",
       "execution_mode": "local-runtime-only",
       "actor_ids": ["custody-boundary-emulation", "rpc-consistency-pressure"],
-      "oracle": "The v452 inverse operation removes fully unstaked keys, swap-removes the last entry into each hole, and preserves the forward/reverse dense-index bijection; shared-testnet sentinels observe runtime identity and finalized-block latency without creating global state.",
+      "oracle": "Runtime 453 retains the v452 inverse operation: it removes fully unstaked keys, swap-removes the last entry into each hole, and preserves the forward/reverse dense-index bijection; shared-testnet sentinels observe runtime identity and finalized-block latency without creating global state.",
       "metrics": ["dense_index_entries", "live_root_coldkeys", "dead_index_entries", "finalized_block_latency_ms"],
       "stop_conditions": ["dead_index_entry", "index_bijection_failure", "runtime_change"],
       "local_tests": ["sim-testnet/TestPatchedSubtensorRootIndexAndWatermarkModels", "sim-testnet/TestReleaseLockCoversEveryPublishedSubtensorAdvisory"]
@@ -197,7 +197,7 @@
       "preconditions": "The actor controls both keys and the destination has no root stake/claimable rate but retains a nonzero legacy claimed watermark.",
       "execution_mode": "local-runtime-only",
       "actor_ids": ["custody-boundary-emulation", "identity-churn-emulation"],
-      "oracle": "The v452 root-cleanliness gate rejects every nonempty basket, stake, claimable, or claimed destination before mutation; a clean move preserves the claimed watermark and exact future owed amount.",
+      "oracle": "Runtime 453 retains the v452 root-cleanliness gate: every nonempty basket, stake, claimable, or claimed destination rejects before mutation; a clean move preserves the claimed watermark and exact future owed amount.",
       "metrics": ["dirty_destination_rejects", "claimed_watermark_delta", "future_owed_delta"],
       "stop_conditions": ["dirty_destination_accepted", "future_dividend_underpayment", "partial_swap_state"],
       "local_tests": ["sim-testnet/TestPatchedSubtensorRootIndexAndWatermarkModels", "sim-testnet/TestReleaseLockCoversEveryPublishedSubtensorAdvisory"]
@@ -210,10 +210,10 @@
       "preconditions": "A release-controlled coldkey has root stake with an accrued validator basket and reduces or exits that position.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["custody-boundary-emulation", "rpc-consistency-pressure"],
-      "oracle": "Every partial/full exit inventory records principal plus the proportional accrued basket, exact floor remainder, second-call requirement and post-exit claimability. Runtime 452 must also isolate each holding: terminally shallow holdings are explicit write-offs, healthy holdings still settle, unknown failures remain retryable, and pending basket deposits do not block an independent root-stake change. Mainnet automation must claim or prove no hidden basket remains.",
+      "oracle": "Every partial/full exit inventory records principal plus the proportional accrued basket, exact floor remainder, second-call requirement and post-exit claimability. Runtime 453 retains v452 holding isolation: terminally shallow holdings are explicit write-offs, healthy holdings still settle, unknown failures remain retryable, and pending basket deposits do not block an independent root-stake change. Mainnet automation must claim or prove no hidden basket remains.",
       "metrics": ["root_basket_proportional_claim_rao", "root_basket_remaining_reward_rao", "unclaimed_root_basket_rao", "terminal_holding_writeoffs", "healthy_holding_claims", "retryable_holding_preserved", "pending_basket_deposit_rao", "root_stake_change_rao", "pending_basket_stake_change_blocked"],
       "stop_conditions": ["unreported_reward_entitlement", "claim_lookup_loss", "principal_or_reward_nonconservation", "healthy_holding_blocked", "retryable_holding_lost", "pending_deposit_blocks_stake_change"],
-      "local_tests": ["sim-testnet/TestRootBasketUnstakeSettlesProportionalHiddenReward", "sim-testnet/TestRuntime452RootBasketFailureIsolation", "sim-testnet/TestPatchedSubtensorRootIndexAndWatermarkModels"]
+      "local_tests": ["sim-testnet/TestRootBasketUnstakeSettlesProportionalHiddenReward", "sim-testnet/TestRuntime453RetainsRootBasketFailureIsolation", "sim-testnet/TestPatchedSubtensorRootIndexAndWatermarkModels"]
     },
     {
       "id": "proxy-staking-mev-slippage",
@@ -249,10 +249,10 @@
       "preconditions": "The shared chain upgrades while the campaign is live.",
       "execution_mode": "observation-only",
       "actor_ids": ["rpc-consistency-pressure", "custody-boundary-emulation"],
-      "oracle": "Pinned spec/transaction/state versions, API capability probes, code hashes and finalized checkpoint agreement remain exact; any drift halts.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "precompile_code_hash", "metadata_hash"],
+      "oracle": "Each endpoint reads spec, transaction and state versions plus the runtime code hash at one explicit finalized hash; the doctor additionally hashes the exact SCALE metadata bytes at that same hash. Any mismatch against the release lock halts before metadata drives storage or call encoding.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match"],
       "stop_conditions": ["any_runtime_or_code_hash_drift"],
-      "local_tests": ["sim-testnet/TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions", "sim-testnet/TestDoctorReadOnlyPrecompileBattery", "sim-testnet/TestPrecompileEvidenceHashAndIdentityFailClosed", "sim-testnet/TestRPCAdversaryRejectsObservedRuntimeDrift"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding", "sim-testnet/TestRuntimeVersionIdentityRejectsAdjacentDrift", "sim-testnet/TestRuntimeVersionIdentityRejectsMissingRequiredFields", "sim-testnet/TestRuntimeVersionIdentityRejectsAmbiguousEncoding", "sim-testnet/TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions", "sim-testnet/TestDoctorReadOnlyPrecompileBattery", "sim-testnet/TestPrecompileEvidenceHashAndIdentityFailClosed", "sim-testnet/TestRPCAdversaryRejectsObservedRuntimeDrift", "sim-testnet/TestRPCAdversaryRejectsObservedRuntimeCodeHashDrift"]
     },
     {
       "id": "runtime-signed-precompile-foreign-frame",
@@ -262,10 +262,10 @@
       "preconditions": "An attacker-controlled contract can choose CALL versus DELEGATECALL/CALLCODE for a runtime precompile, or a runtime upgrade changes the frame policy while release contracts remain deployed.",
       "execution_mode": "local-runtime-only",
       "actor_ids": ["rpc-consistency-pressure"],
-      "oracle": "Runtime 453 retains v452's rejection of every foreign frame for signed-dispatch precompiles, permits cryptographic/read-only foreign frames, and all release state-changing precompile paths continue to use an ordinary matching-frame CALL; the continuous runtime sentinel halts on any spec, transaction-version, or state-version drift.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version"],
+      "oracle": "Runtime 453 retains v452's rejection of every foreign frame for signed-dispatch precompiles, permits cryptographic/read-only foreign frames, and all release state-changing precompile paths continue to use an ordinary matching-frame CALL; the continuous runtime sentinel halts on any spec, transaction-version, state-version or code-hash drift.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match"],
       "stop_conditions": ["foreign_signed_dispatch_accepted", "crypto_foreign_frame_rejected", "runtime_change"],
-      "local_tests": ["ReleaseSettlementTest.test_runtime452RejectsForeignSignedDispatchButAllowsCryptoFrame", "sim-testnet/TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "ReleaseSettlementTest.test_runtime453RetainsV452ForeignFramePolicy", "sim-testnet/TestAdversarialRPCRuntimeIdentityRejectsMalformedAndDriftingVersions"]
     },
     {
       "id": "registration-burn-price-race",
@@ -582,7 +582,7 @@
     {
       "id": "settlement-runtime-transfer-floor-credit",
       "class": "settlement-custody-accounting",
-      "vector": "Runtime-452 rejects same-subnet moveStake or transferStake below DefaultMinTransfer; a vault can lose emission dust, mark an unpaid claim paid, or strand individually sub-floor provider entitlements if it confuses InitialMinStake with the actual transfer floor.",
+      "vector": "Runtime 453 retains v452's rejection of same-subnet moveStake or transferStake below DefaultMinTransfer; a vault can lose emission dust, mark an unpaid claim paid, or strand individually sub-floor provider entitlements if it confuses InitialMinStake with the actual transfer floor.",
       "sources": ["https://github.com/RaoFoundation/subtensor/blob/da06f033663896ef2fdbbfc3ecc68ca908fba0f5/pallets/subtensor/src/staking/stake_utils.rs", "https://github.com/RaoFoundation/subtensor/blob/da06f033663896ef2fdbbfc3ecc68ca908fba0f5/pallets/subtensor/src/staking/move_stake.rs", "repo://evm/src/STSettlementVault.sol"],
       "preconditions": "Pool emission or a provider share has less TAO-equivalent value than DefaultMinTransfer derived from the authenticated finalized runtime's InitialMinTransfer metadata constant, the alpha price read fails, or the staking precompile returns failure or inconsistent deltas.",
       "execution_mode": "bounded-emulation",
@@ -678,10 +678,10 @@
       "preconditions": "The runtime verifies the pulse signature and trusts a separately supplied randomness field without deriving SHA-256(signature).",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["rpc-consistency-pressure"],
-      "oracle": "Runtime 453 accepts a pairing-valid pulse only when randomness equals SHA-256 of that exact signature; a one-byte substitution is state-neutral, while the concurrent testnet sentinel pins spec 453 and transaction version 1.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "hash_disagreement_count"],
+      "oracle": "The Go decision model checks the intended digest predicate but does not execute FRAME. The source gate authenticates the exact v453 verifier and upstream regression-test bytes, while the continuous testnet sentinel pins spec, transaction, state and runtime code identity.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match", "hash_disagreement_count"],
       "stop_conditions": ["unbound_randomness_accepted", "valid_bound_pulse_rejected", "runtime_change"],
-      "local_tests": ["sim-testnet/TestRuntime453DrandPulseBindsRandomnessToSignatureDigest"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntime453DrandPulseBindsRandomnessToSignatureDigest"]
     },
     {
       "id": "nested-proxy-filter-intersection",
@@ -691,10 +691,10 @@
       "preconditions": "An attacker is an authorized restricted proxy for an intermediate account which is itself a broader proxy for a funded victim.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["rpc-consistency-pressure", "custody-boundary-emulation"],
-      "oracle": "Both direct and announced nested paths intersect the inherited outer filter with the inner filter for the final effect; an inner-only transfer is rejected and an effect admitted by both filters succeeds. No third-party proxy is touched on shared testnet.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "domain_mutations_rejected"],
+      "oracle": "The Go decision model checks filter intersection but does not execute FRAME. The source gate authenticates the exact v453 direct/announced proxy implementation and upstream tests, while the code-hash sentinel binds the deployed runtime. No third-party proxy is touched on shared testnet.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match", "domain_mutations_rejected"],
       "stop_conditions": ["outer_filter_discarded", "intersection_allowed_effect_rejected", "shared_testnet_proxy_action", "runtime_change"],
-      "local_tests": ["sim-testnet/TestRuntime453NestedDirectProxyIntersectsOuterAndInnerFilters", "sim-testnet/TestRuntime453NestedAnnouncedProxyIntersectsOuterAndInnerFilters"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntime453NestedDirectProxyIntersectsOuterAndInnerFilters", "sim-testnet/TestRuntime453NestedAnnouncedProxyIntersectsOuterAndInnerFilters"]
     },
     {
       "id": "balance-transfer-coldkey-swap-caller",
@@ -704,10 +704,10 @@
       "preconditions": "An EVM caller has an active coldkey-swap announcement and invokes payable transfer(bytes32) or the adjacent transferKeepAlive path through precompile 0x800.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["rpc-consistency-pressure", "custody-boundary-emulation"],
-      "oracle": "Runtime 453 adds the explicit true-caller CheckColdkeySwap precheck to payable transfer(bytes32), whose transferAllowDeath dispatch originates from the precompile account after Frontier moves msg.value. The unchanged adjacent transferKeepAlive(bytes32,uint256) path dispatches from the true caller through the centralized runtime filter. Caller swap state blocks either path, while unrelated internal-account state cannot overblock an unflagged caller. The local oracle is a decision-model supplement to the pinned upstream Rust tests and source review, not execution of FRAME Wasm.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "domain_mismatch_rejects"],
+      "oracle": "Runtime 453 adds the explicit true-caller CheckColdkeySwap precheck to payable transfer(bytes32), whose transferAllowDeath dispatch originates from the precompile account after Frontier moves msg.value. The unchanged adjacent transferKeepAlive(bytes32,uint256) path dispatches from the true caller through the centralized runtime filter. The Go oracle models those decisions but does not execute FRAME; the source gate authenticates the exact v453 implementation and upstream runtime test bytes.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match", "domain_mismatch_rejects"],
       "stop_conditions": ["swap_pending_caller_transfer_succeeds", "dispatch_account_state_substituted", "runtime_change"],
-      "local_tests": ["sim-testnet/TestRuntime453BalanceTransferChecksTrueEVMCallerColdkeySwap"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntime453BalanceTransferChecksTrueEVMCallerColdkeySwap"]
     },
     {
       "id": "beta-escrow-stake-transfer-injection",
@@ -717,10 +717,10 @@
       "preconditions": "The transfer path accepts an arbitrary destination coldkey and same-subnet movement can be as small as one rao.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["rpc-consistency-pressure", "custody-boundary-emulation"],
-      "oracle": "Runtime 453 rejects the exact beta escrow destination with CannotUseSystemAccount before mutation, accepts an ordinary user destination, and the concurrent sentinel halts on runtime drift.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "reserve_drift_rao"],
+      "oracle": "The Go oracle models the exact beta-escrow rejection but does not execute FRAME. The source gate authenticates the v453 stake utility and upstream regression-test bytes, and the concurrent sentinel halts on version or code-hash drift.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match", "reserve_drift_rao"],
       "stop_conditions": ["unmatched_beta_escrow_holding", "ordinary_destination_rejected", "runtime_change"],
-      "local_tests": ["sim-testnet/TestRuntime453StakeTransferRejectsBetaEscrowDestination"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntime453StakeTransferRejectsBetaEscrowDestination"]
     },
     {
       "id": "queued-registration-reservation-rate-price",
@@ -730,10 +730,10 @@
       "preconditions": "Dissolve cleanup defers subnet creation after the payer has locked funds but before set_new_network_state materializes the network.",
       "execution_mode": "bounded-emulation",
       "actor_ids": ["rpc-consistency-pressure", "identity-churn-emulation", "custody-boundary-emulation"],
-      "oracle": "The queue-state model begins after the runtime's identity, system-account, rate, affordability and lock-id prechecks: admission immediately binds payer to hotkey and records last lock/block; a rival or inside-rate-limit precheck failure is state-neutral, exact-boundary admission succeeds, and applying the queued entry does not update pricing a second time. Upstream runtime tests execute the real balance-lock/reservation path; this model does not claim to emulate FRAME storage transactions.",
-      "metrics": ["runtime_spec", "transaction_version", "state_version", "registration_limit_rejects", "queued_lock_liability_rao"],
+      "oracle": "The queue-state model begins after the runtime's identity, system-account, rate, affordability and lock-id prechecks and does not emulate FRAME storage transactions. The source gate authenticates the exact v453 queue implementation and upstream test bytes; executing those tests requires the pinned upstream Rust checkout.",
+      "metrics": ["runtime_spec", "transaction_version", "state_version", "runtime_code_hash_match", "registration_limit_rejects", "queued_lock_liability_rao"],
       "stop_conditions": ["queued_hotkey_stolen", "rate_limit_bypassed", "queue_application_repriced", "partial_queue_mutation", "runtime_change"],
-      "local_tests": ["sim-testnet/TestRuntime453QueuedRegistrationReservesHotkeyAtQueueTime", "sim-testnet/TestRuntime453QueuedRegistrationConsumesLockAndRateStateAtQueueTime"]
+      "local_tests": ["scripts/check-runtime-v453-source.sh", "sim-testnet/TestRuntime453QueuedRegistrationReservesHotkeyAtQueueTime", "sim-testnet/TestRuntime453QueuedRegistrationConsumesLockAndRateStateAtQueueTime"]
     },
     {
       "id": "childkey-graph-cycle-empty-set",

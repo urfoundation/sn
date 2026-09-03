@@ -659,7 +659,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 	set := func(key string, value any) (map[string]any, error) { state[key] = value; return state, nil }
 	switch {
 	case a.ID == "subnet.verify-owner":
-		if err, owner := verifySubnetOwner(e.substrate.chain, e.cfg.Netuid, e.cfg.WalletPublic); err != nil {
+		if err, owner := verifySubnetOwner(e.substrate.chain, e.cfg, e.cfg.WalletPublic); err != nil {
 			return nil, err
 		} else {
 			state["netuid"], state["owner"] = e.cfg.Netuid, owner
@@ -1725,7 +1725,7 @@ func (e *Executor) finalizedRegistrationActionBlock(action Action) (uint64, erro
 }
 
 // Records both EVM-reducible and native-free views across one registration.
-// Runtime 452 may retain at most one hidden existential deposit, but may not
+// Runtime 453 may retain at most one hidden existential deposit, but may not
 // consume an existing balance or retain any new liquid surplus.
 type registrationBalanceObservation struct {
 	Address         string `json:"address"`
@@ -1735,7 +1735,7 @@ type registrationBalanceObservation struct {
 	NativeAfterRao  uint64 `json:"native_after_rao"`
 }
 
-func expectedRuntime452EVMBalance(freeRao, existentialDepositRao uint64) *big.Int {
+func expectedRuntime453EVMBalance(freeRao, existentialDepositRao uint64) *big.Int {
 	if freeRao <= existentialDepositRao {
 		return new(big.Int)
 	}
@@ -1748,7 +1748,7 @@ func validateRegistrationBalanceObservation(observation registrationBalanceObser
 	if existentialDepositRao == 0 || !beforeOK || !afterOK || before.Sign() < 0 || after.Sign() < 0 {
 		return errors.New("registration balance observation is malformed")
 	}
-	if before.Cmp(expectedRuntime452EVMBalance(observation.NativeBeforeRao, existentialDepositRao)) != 0 || after.Cmp(expectedRuntime452EVMBalance(observation.NativeAfterRao, existentialDepositRao)) != 0 {
+	if before.Cmp(expectedRuntime453EVMBalance(observation.NativeBeforeRao, existentialDepositRao)) != 0 || after.Cmp(expectedRuntime453EVMBalance(observation.NativeAfterRao, existentialDepositRao)) != 0 {
 		return fmt.Errorf("registration balance views disagree for %s", observation.Address)
 	}
 	if before.Cmp(after) != 0 {

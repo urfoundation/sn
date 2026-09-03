@@ -169,7 +169,7 @@ func TestSettlementVaultDeploymentEnvelopeReproducesRelease10GasIncident(t *test
 	}
 }
 
-func TestOperatorRegistrationEnvelopeReproducesRuntime452GasIncident(t *testing.T) {
+func TestHistoricalRuntime452OperatorRegistrationGasIncident(t *testing.T) {
 	const estimatedGas = uint64(515_196)
 	fee := new(big.Int).SetUint64(100_000_000_000)
 	balance := new(big.Int).SetUint64(1_000_000_000_000_000_000)
@@ -179,18 +179,18 @@ func TestOperatorRegistrationEnvelopeReproducesRuntime452GasIncident(t *testing.
 		Spend:      Spend{EVMGasWei: DecimalUint("60000000000000000")},
 	}
 	if _, _, err := validateEVMTransactionEnvelope(incident, estimatedGas, fee, balance, new(big.Int)); err == nil || !strings.Contains(err.Error(), "padded gas 643235 exceeds approved gas-unit ceiling 600000") {
-		t.Fatalf("runtime 452 operator-registration incident was not reproduced: %v", err)
+		t.Fatalf("historical runtime 452 operator-registration incident was not reproduced: %v", err)
 	}
 	corrected := incident
 	corrected.Parameters = map[string]string{evmMaximumGasUnitsParameter: "750000", evmMaximumFeePerGasParameter: "100000000000"}
 	corrected.Spend.EVMGasWei = DecimalUint("75000000000000000")
 	gas, maximumCost, err := validateEVMTransactionEnvelope(corrected, estimatedGas, fee, balance, new(big.Int))
 	if err != nil || gas != 643_235 || maximumCost == nil || maximumCost.String() != "64323500000000000" {
-		t.Fatalf("corrected runtime 452 operator envelope = gas %d cost %v, %v", gas, maximumCost, err)
+		t.Fatalf("corrected runtime 453 operator envelope = gas %d cost %v, %v", gas, maximumCost, err)
 	}
 }
 
-func TestOperatorRegistrationEnvelopeEnforcesAdjacentRuntime452GasBoundary(t *testing.T) {
+func TestRuntime453OperatorRegistrationEnvelopeRetainsIncidentBoundary(t *testing.T) {
 	const estimatedGas = uint64(515_196)
 	fee := new(big.Int).SetUint64(100_000_000_000)
 	balance := new(big.Int).SetUint64(1_000_000_000_000_000_000)
@@ -200,18 +200,18 @@ func TestOperatorRegistrationEnvelopeEnforcesAdjacentRuntime452GasBoundary(t *te
 		Spend:      Spend{EVMGasWei: DecimalUint("64323400000000000")},
 	}
 	if _, _, err := validateEVMTransactionEnvelope(below, estimatedGas, fee, balance, new(big.Int)); err == nil || !strings.Contains(err.Error(), "gas-unit ceiling") {
-		t.Fatalf("one-unit-short runtime 452 envelope was accepted: %v", err)
+		t.Fatalf("one-unit-short runtime 453 envelope was accepted: %v", err)
 	}
 	exact := below
 	exact.Parameters = map[string]string{evmMaximumGasUnitsParameter: "643235", evmMaximumFeePerGasParameter: "100000000000"}
 	exact.Spend.EVMGasWei = DecimalUint("64323500000000000")
 	gas, maximumCost, err := validateEVMTransactionEnvelope(exact, estimatedGas, fee, balance, new(big.Int))
 	if err != nil || gas != 643_235 || maximumCost == nil || maximumCost.String() != "64323500000000000" {
-		t.Fatalf("exact runtime 452 envelope boundary = gas %d cost %v, %v", gas, maximumCost, err)
+		t.Fatalf("exact runtime 453 envelope boundary = gas %d cost %v, %v", gas, maximumCost, err)
 	}
 }
 
-func TestCoordinatorDeploymentCapsCoverLiveRuntime452Estimates(t *testing.T) {
+func TestHistoricalRuntime452CoordinatorDeploymentEstimatesRemainCovered(t *testing.T) {
 	limits := setupEVMGasUnitLimits(testResolvedConfig(t))
 	incidents := []struct {
 		id       string

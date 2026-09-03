@@ -309,7 +309,7 @@ func (self *Executor) publishFleetCommitmentGeneration(ctx context.Context, acti
 	if err != nil {
 		return err
 	}
-	observed, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, hotkey, transactionBlockHash)
+	observed, err := self.substrate.fleetCommitmentAt(hotkey, transactionBlockHash)
 	if err != nil {
 		return err
 	}
@@ -399,7 +399,7 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	if err != nil {
 		return err
 	}
-	observed, err := e.substrate.chain.FleetCommitmentAt(e.cfg.Netuid, manifest.Hotkey, finalizedHash)
+	observed, err := e.substrate.fleetCommitmentAt(manifest.Hotkey, finalizedHash)
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func (e *Executor) mirrorFleetCommitment(ctx context.Context, a Action, fleetInd
 	if err != nil || canonicalHash != finalizedHash {
 		return stateMismatchError(err, "native commitment block %d is not canonical", evidence.FinalizedBlock)
 	}
-	currentNative, err := e.substrate.chain.FleetCommitmentFinalized(e.cfg.Netuid, manifest.Hotkey)
+	currentNative, err := e.substrate.fleetCommitmentFinalized(manifest.Hotkey)
 	if err != nil || currentNative.Hash != hash || currentNative.CommitmentBlock != evidence.CommitmentBlock {
 		return fmt.Errorf("native commitment evidence no longer verifies")
 	}

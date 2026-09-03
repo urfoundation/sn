@@ -101,35 +101,35 @@ func TestObservedPostconditionUIDAcceptsOnlyExactUint16Values(t *testing.T) {
 	}
 }
 
-func TestRuntime452PruneCandidateMirrorsImmunityFloorAndTieBreakers(t *testing.T) {
-	allImmune := []runtime452PruneNeuron{
+func TestRuntime453PruneCandidateMirrorsImmunityFloorAndTieBreakers(t *testing.T) {
+	allImmune := []runtime453PruneNeuron{
 		{UID: 0, Immortal: true, Immune: true, RegistrationBlock: 1},
 		{UID: 4, Immune: true, EmissionRao: 0, RegistrationBlock: 20},
 		{UID: 3, Immune: true, EmissionRao: 0, RegistrationBlock: 20},
 		{UID: 2, Immune: true, EmissionRao: 1, RegistrationBlock: 10},
 	}
-	uid, err := runtime452PruneCandidate(allImmune, 10)
+	uid, err := runtime453PruneCandidate(allImmune, 10)
 	if err != nil || uid != 3 {
 		t.Fatalf("all-immune candidate=%d err=%v, want UID 3", uid, err)
 	}
 
-	nonImmune := []runtime452PruneNeuron{
+	nonImmune := []runtime453PruneNeuron{
 		{UID: 0, Immortal: true},
 		{UID: 1, EmissionRao: 2, RegistrationBlock: 1},
 		{UID: 2, EmissionRao: 1, RegistrationBlock: 3},
 		{UID: 3, EmissionRao: 1, RegistrationBlock: 2},
 		{UID: 4, Immune: true, EmissionRao: 0, RegistrationBlock: 1},
 	}
-	uid, err = runtime452PruneCandidate(nonImmune, 2)
+	uid, err = runtime453PruneCandidate(nonImmune, 2)
 	if err != nil || uid != 3 {
 		t.Fatalf("non-immune candidate=%d err=%v, want UID 3", uid, err)
 	}
-	if uid, err = runtime452PruneCandidate(nonImmune[:3], 2); err == nil {
+	if uid, err = runtime453PruneCandidate(nonImmune[:3], 2); err == nil {
 		// There is no immune non-owner fallback in this slice, so the runtime
 		// must reject instead of violating its minimum-free floor.
 		t.Fatalf("minimum-free floor returned UID %d without an immune fallback", uid)
 	}
-	uid, err = runtime452PruneCandidate([]runtime452PruneNeuron{
+	uid, err = runtime453PruneCandidate([]runtime453PruneNeuron{
 		{UID: 0, Immortal: true},
 		{UID: 1, EmissionRao: 1},
 		{UID: 2, EmissionRao: 1},
@@ -143,32 +143,32 @@ func TestRuntime452PruneCandidateMirrorsImmunityFloorAndTieBreakers(t *testing.T
 // Reproduces the live netuid-521 failure: once enough controlled registrations
 // age out of immunity, the older zero-emission external UID becomes the runtime
 // candidate even though it is not part of the approved churn floor.
-func TestRuntime452PruneCandidateSelectsExternalBootstrapAfterRecoveryWindowExpires(t *testing.T) {
-	neurons := []runtime452PruneNeuron{
+func TestRuntime453PruneCandidateSelectsExternalBootstrapAfterRecoveryWindowExpires(t *testing.T) {
+	neurons := []runtime453PruneNeuron{
 		{UID: 0, Immortal: true, RegistrationBlock: 1},
 		{UID: 1, RegistrationBlock: 100},
 	}
 	for uid := uint16(2); uid <= 12; uid++ {
-		neurons = append(neurons, runtime452PruneNeuron{UID: uid, RegistrationBlock: 1_000 + uint64(uid)})
+		neurons = append(neurons, runtime453PruneNeuron{UID: uid, RegistrationBlock: 1_000 + uint64(uid)})
 	}
-	uid, err := runtime452PruneCandidate(neurons, 10)
+	uid, err := runtime453PruneCandidate(neurons, 10)
 	if err != nil || uid != 1 {
 		t.Fatalf("expired recovery window candidate=%d err=%v, want external bootstrap UID 1", uid, err)
 	}
 }
 
 // The reviewed bootstrap period puts only the old external UID outside
-// immunity. Runtime 452 preserves its minimum non-immune floor and therefore
+// immunity. Runtime 453 preserves its minimum non-immune floor and therefore
 // selects the oldest controlled immune identity for bounded replacement.
-func TestRuntime452PruneCandidatePreservesExternalBootstrapInsideRecoveryWindow(t *testing.T) {
-	neurons := []runtime452PruneNeuron{
+func TestRuntime453PruneCandidatePreservesExternalBootstrapInsideRecoveryWindow(t *testing.T) {
+	neurons := []runtime453PruneNeuron{
 		{UID: 0, Immortal: true, RegistrationBlock: 1},
 		{UID: 1, RegistrationBlock: 100},
 	}
 	for uid := uint16(2); uid <= 12; uid++ {
-		neurons = append(neurons, runtime452PruneNeuron{UID: uid, Immune: true, RegistrationBlock: 1_000 + uint64(uid)})
+		neurons = append(neurons, runtime453PruneNeuron{UID: uid, Immune: true, RegistrationBlock: 1_000 + uint64(uid)})
 	}
-	uid, err := runtime452PruneCandidate(neurons, 10)
+	uid, err := runtime453PruneCandidate(neurons, 10)
 	if err != nil || uid != 2 {
 		t.Fatalf("active recovery window candidate=%d err=%v, want controlled churn UID 2", uid, err)
 	}
@@ -177,13 +177,13 @@ func TestRuntime452PruneCandidatePreservesExternalBootstrapInsideRecoveryWindow(
 // A period that also covers the older external registration is unsafe: the
 // immune fallback again chooses it by registration age. This is the adjacent
 // upper boundary to the expired-window failure.
-func TestRuntime452PruneCandidateSelectsExternalBootstrapWhenRecoveryWindowIsOverwide(t *testing.T) {
-	neurons := []runtime452PruneNeuron{
+func TestRuntime453PruneCandidateSelectsExternalBootstrapWhenRecoveryWindowIsOverwide(t *testing.T) {
+	neurons := []runtime453PruneNeuron{
 		{UID: 0, Immortal: true, Immune: true, RegistrationBlock: 1},
 		{UID: 1, Immune: true, RegistrationBlock: 100},
 		{UID: 2, Immune: true, RegistrationBlock: 1_002},
 	}
-	uid, err := runtime452PruneCandidate(neurons, 10)
+	uid, err := runtime453PruneCandidate(neurons, 10)
 	if err != nil || uid != 1 {
 		t.Fatalf("overwide recovery window candidate=%d err=%v, want external bootstrap UID 1", uid, err)
 	}

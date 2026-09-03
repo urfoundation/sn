@@ -2,6 +2,10 @@
 
 The deployment receipt defines a nonzero start block and hash. Index checkpoints
 store `(chain_id, block_number, block_hash, runtime_spec, transaction_version)`.
+Before an indexer is launched or resumed, the release manifest and native-runtime
+gate additionally authenticate `state_version`, `runtime_code_hash` and
+`runtime_metadata_hash` at one exact finalized block. Those deployment-wide
+identity fields are not represented as per-checkpoint columns in this v1 schema.
 Only finalized canonical logs and Substrate events may affect deposits, policy,
 bindings, roots, payouts, or validator weights. On restart the index re-reads the
 checkpoint hash; a mismatch rewinds to the most recent matching ancestor and

@@ -516,7 +516,7 @@ func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generat
 	if err != nil || canonicalHash != finalizedHash {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, stateMismatchError(err, "fleet %d generation %d commitment block is not canonical", fleetIndex, generation)
 	}
-	historical, err := self.substrate.chain.FleetCommitmentAt(self.cfg.Netuid, manifest.Hotkey, finalizedHash)
+	historical, err := self.substrate.fleetCommitmentAt(manifest.Hotkey, finalizedHash)
 	if err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, err
 	}
@@ -530,7 +530,7 @@ func (self *Executor) validatedFleetCommitmentGeneration(fleetIndex int, generat
 	if consumed {
 		return manifest, commitmentHash, evidence, [32]byte(finalizedHash), nil
 	}
-	current, err := self.substrate.chain.FleetCommitmentFinalized(self.cfg.Netuid, manifest.Hotkey)
+	current, err := self.substrate.fleetCommitmentFinalized(manifest.Hotkey)
 	if err != nil || current.Hash != commitmentHash || current.CommitmentBlock != evidence.CommitmentBlock {
 		return protocol.FleetManifest{}, [32]byte{}, nil, [32]byte{}, stateMismatchError(err, "fleet %d generation %d is not the exact current finalized commitment", fleetIndex, generation)
 	}

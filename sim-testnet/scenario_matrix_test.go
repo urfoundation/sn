@@ -83,6 +83,35 @@ func discoverSolidityTestReferences(t *testing.T, root string, references map[st
 	}
 }
 
+func discoverShellTestReferences(t *testing.T, root string, references map[string]bool) {
+	t.Helper()
+	scripts := filepath.Join(root, "scripts")
+	err := filepath.WalkDir(scripts, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sh") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm()&0o111 == 0 {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		references[filepath.ToSlash(relative)] = true
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReleaseScenarioMatrixCoversAllTwentyNormativeRows(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	matrix, err := loadScenarioMatrix(cfg.Repos.SN)
@@ -118,6 +147,7 @@ func TestReleaseScenarioMatrixReferencesOnlyCheckedInTests(t *testing.T) {
 	discoverGoTestReferences(t, cfg.Repos.SN, "", references)
 	discoverGoTestReferences(t, cfg.Repos.Server, "server", references)
 	discoverSolidityTestReferences(t, filepath.Join(cfg.Repos.SN, "evm", "test"), references)
+	discoverShellTestReferences(t, cfg.Repos.SN, references)
 	for _, row := range matrix.Rows {
 		for _, reference := range row.LocalTests {
 			if !references[reference] {

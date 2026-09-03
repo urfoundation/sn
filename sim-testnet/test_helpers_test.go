@@ -84,7 +84,14 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		"postgres": "postgres:18@sha256:" + strings.Repeat("1", 64),
 		"redis":    "redis:8-alpine@sha256:" + strings.Repeat("2", 64),
 	}}
+	release.Runtime.SourceRepository = reviewedRuntimeSourceRepository
+	release.Runtime.SourceTag = reviewedRuntimeSourceTag
+	release.Runtime.SourceCommit = reviewedRuntimeSourceCommit
 	release.Runtime.CodeHash = reviewedRuntimeCodeHash
+	release.Runtime.MetadataHash = reviewedRuntimeMetadataHash
+	release.Runtime.CompressedWasmSHA256 = reviewedRuntimeCompressedWasmSHA256
+	release.Runtime.UpstreamReleaseCallHash = reviewedRuntimeUpstreamReleaseCallHash
+	release.Runtime.UpstreamReleaseTimepoint = reviewedRuntimeUpstreamReleaseTimepoint
 	release.Runtime.SpecVersion = reviewedRuntimeSpecVersion
 	release.Runtime.TransactionVersion = reviewedRuntimeTransactionVersion
 	release.Runtime.StateVersion = reviewedRuntimeStateVersion

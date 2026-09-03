@@ -358,7 +358,13 @@ func validateFleetMirrorNativeEvidence(chain *crv4.Chain, cfg *ResolvedConfig, h
 	if err != nil || uint64(finalizedHeader.Number) < evidence.FinalizedBlock || canonicalHash != blockHash {
 		return stateMismatchError(err, "fleet-mirror native block %d is not canonical and finalized", evidence.FinalizedBlock)
 	}
-	historical, err := chain.FleetCommitmentAt(cfg.Netuid, hotkey, blockHash)
+	historicalRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, blockHash)
+	if err != nil {
+		return fmt.Errorf("authenticate fleet-mirror history at %s: %w", blockHash.Hex(), err)
+	}
+	historicalChain := *chain
+	bindAuthenticatedRuntime(&historicalChain, historicalRuntime)
+	historical, err := historicalChain.FleetCommitmentAt(cfg.Netuid, hotkey, blockHash)
 	if err != nil {
 		return err
 	}
@@ -366,7 +372,13 @@ func validateFleetMirrorNativeEvidence(chain *crv4.Chain, cfg *ResolvedConfig, h
 		return err
 	}
 	if requireExactCurrent {
-		current, err := chain.FleetCommitmentFinalized(cfg.Netuid, hotkey)
+		currentRuntime, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalizedHash)
+		if err != nil {
+			return fmt.Errorf("authenticate fleet-mirror finalized runtime at %s: %w", finalizedHash.Hex(), err)
+		}
+		currentChain := *chain
+		bindAuthenticatedRuntime(&currentChain, currentRuntime)
+		current, err := currentChain.FleetCommitmentAt(cfg.Netuid, hotkey, finalizedHash)
 		if err != nil || current.Hash != commitmentHash || current.CommitmentBlock != evidence.CommitmentBlock {
 			return stateMismatchError(err, "fleet-mirror current native commitment differs from block %d", evidence.CommitmentBlock)
 		}

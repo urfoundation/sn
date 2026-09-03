@@ -221,19 +221,78 @@ func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *te
 	}
 }
 
-// A state-version upgrade changes storage encoding without necessarily moving
-// spec or transaction versions, so it is an independent launch boundary.
-func TestDoctorRejectsFinalizedRuntimeStateVersionDrift(t *testing.T) {
-	valid := doctorFinalizedRuntimeVersion{
-		SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1,
+func TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding(t *testing.T) {
+	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":453,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
+	version, err := decodeRuntimeVersionIdentity(raw)
+	if err != nil {
+		t.Fatalf("authoritative runtime version was not decoded: %v", err)
 	}
-	if err := validateFinalizedRuntimeVersion(valid, 453, 1, 1); err != nil {
-		t.Fatalf("reviewed finalized runtime was rejected: %v", err)
+	if err := validateRuntimeVersionIdentity(version, 453, 1, 1); err != nil {
+		t.Fatalf("reviewed runtime identity was rejected: %v", err)
 	}
-	drifted := valid
-	drifted.StateVersion = 2
-	if err := validateFinalizedRuntimeVersion(drifted, 453, 1, 1); err == nil || !strings.Contains(err.Error(), "state version") {
-		t.Fatalf("finalized state-version drift was accepted: %v", err)
+}
+
+func TestRuntimeVersionIdentityRejectsAdjacentDrift(t *testing.T) {
+	valid := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}
+	tests := []struct {
+		name   string
+		mutate func(*runtimeVersionIdentity)
+	}{
+		{name: "spec name", mutate: func(version *runtimeVersionIdentity) { version.SpecName = "subtensor" }},
+		{name: "spec version", mutate: func(version *runtimeVersionIdentity) { version.SpecVersion++ }},
+		{name: "transaction version", mutate: func(version *runtimeVersionIdentity) { version.TransactionVersion++ }},
+		{name: "state version", mutate: func(version *runtimeVersionIdentity) { version.StateVersion++ }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			drifted := valid
+			test.mutate(&drifted)
+			if err := validateRuntimeVersionIdentity(drifted, 453, 1, 1); err == nil {
+				t.Fatal("runtime identity drift was accepted")
+			}
+		})
+	}
+}
+
+func TestRuntimeVersionIdentityRejectsMissingRequiredFields(t *testing.T) {
+	tests := []struct {
+		missing string
+		raw     json.RawMessage
+	}{
+		{missing: "specName", raw: json.RawMessage(`{"specVersion":453,"transactionVersion":1,"stateVersion":1}`)},
+		{missing: "specVersion", raw: json.RawMessage(`{"specName":"node-subtensor","transactionVersion":1,"stateVersion":1}`)},
+		{missing: "transactionVersion", raw: json.RawMessage(`{"specName":"node-subtensor","specVersion":453,"stateVersion":1}`)},
+		{missing: "stateVersion", raw: json.RawMessage(`{"specName":"node-subtensor","specVersion":453,"transactionVersion":1}`)},
+	}
+	for _, test := range tests {
+		t.Run(test.missing, func(t *testing.T) {
+			if _, err := decodeRuntimeVersionIdentity(test.raw); err == nil || !strings.Contains(err.Error(), "missing") {
+				t.Fatalf("missing %s was accepted: %v", test.missing, err)
+			}
+		})
+	}
+}
+
+func TestRuntimeVersionIdentityRejectsAmbiguousEncoding(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "numeric string", raw: `{"specName":"node-subtensor","specVersion":"453","transactionVersion":1,"stateVersion":1}`},
+		{name: "fraction", raw: `{"specName":"node-subtensor","specVersion":453.0,"transactionVersion":1,"stateVersion":1}`},
+		{name: "exponent", raw: `{"specName":"node-subtensor","specVersion":453e0,"transactionVersion":1,"stateVersion":1}`},
+		{name: "negative", raw: `{"specName":"node-subtensor","specVersion":453,"transactionVersion":-1,"stateVersion":1}`},
+		{name: "null", raw: `{"specName":"node-subtensor","specVersion":453,"transactionVersion":1,"stateVersion":null}`},
+		{name: "overflow", raw: `{"specName":"node-subtensor","specVersion":453,"transactionVersion":1,"stateVersion":256}`},
+		{name: "duplicate", raw: `{"specName":"node-subtensor","specVersion":453,"transactionVersion":1,"stateVersion":1,"stateVersion":1}`},
+		{name: "trailing", raw: `{"specName":"node-subtensor","specVersion":453,"transactionVersion":1,"stateVersion":1}{}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := decodeRuntimeVersionIdentity(json.RawMessage(test.raw)); err == nil {
+				t.Fatal("ambiguous runtime-version encoding was accepted")
+			}
+		})
 	}
 }
 
@@ -450,17 +509,25 @@ func TestSameEndpointCheckAliasesPreserveFailureAndExcludeUnmappedProbes(t *test
 	start := len(report.Checks)
 	report.Checks = append(report.Checks,
 		Check{Name: "rpc/substrate-operational", OK: false, Hard: true, Detail: "reset"},
+		Check{Name: "runtime/metadata-hash-operational", OK: true, Hard: true, Detail: "0x1234"},
 		Check{Name: "rpc/operational-eth_getLogs", OK: true, Hard: true, Detail: "bounded"},
 	)
-	aliasSameEndpointChecks(&report, start, map[string]string{"rpc/substrate-operational": "rpc/substrate-public"})
-	if len(report.Checks) != 4 {
+	aliasSameEndpointChecks(&report, start, map[string]string{
+		"rpc/substrate-operational":         "rpc/substrate-public",
+		"runtime/metadata-hash-operational": "runtime/metadata-hash-public",
+	})
+	if len(report.Checks) != 6 {
 		t.Fatalf("checks=%+v", report.Checks)
 	}
-	alias := report.Checks[3]
+	alias := report.Checks[4]
 	if alias.Name != "rpc/substrate-public" || alias.OK || !alias.Hard || !strings.Contains(alias.Detail, "same_endpoint_observation=true") {
 		t.Fatalf("alias did not retain source result exactly: %+v", alias)
 	}
-	for _, check := range report.Checks[3:] {
+	metadataAlias := report.Checks[5]
+	if metadataAlias.Name != "runtime/metadata-hash-public" || !metadataAlias.OK || !metadataAlias.Hard || !strings.Contains(metadataAlias.Detail, "same_endpoint_observation=true") {
+		t.Fatalf("metadata-hash alias did not retain source result exactly: %+v", metadataAlias)
+	}
+	for _, check := range report.Checks[4:] {
 		if check.Name == "rpc/public-eth_getLogs" {
 			t.Fatalf("operational-only probe was aliased: %+v", check)
 		}
@@ -530,6 +597,46 @@ func TestRuntimeCodeHashValidationIsExact(t *testing.T) {
 	for _, observed := range []string{"", "0x12", "0x" + strings.Repeat("zz", 32), "0x" + strings.Repeat("cd", 32)} {
 		if err := validateRuntimeCodeHash(observed, want); err == nil {
 			t.Fatalf("invalid or drifting runtime hash %q was accepted", observed)
+		}
+	}
+}
+
+func TestRuntimeMetadataHashValidationIsExact(t *testing.T) {
+	want := "0x" + strings.Repeat("ab", 32)
+	if err := validateRuntimeMetadataHash(want[:2]+strings.ToUpper(want[2:]), want); err != nil {
+		t.Fatalf("case-equivalent runtime metadata hash rejected: %v", err)
+	}
+	for _, observed := range []string{"", "0x12", "0x" + strings.Repeat("zz", 32), "0x" + strings.Repeat("cd", 32)} {
+		if err := validateRuntimeMetadataHash(observed, want); err == nil || !strings.Contains(err.Error(), "metadata hash") {
+			t.Fatalf("invalid or drifting runtime metadata hash %q error=%v", observed, err)
+		}
+	}
+}
+
+func TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly(t *testing.T) {
+	for _, test := range []struct {
+		spec         uint32
+		codeHash     string
+		metadataHash string
+	}{
+		{451, "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08", "0xeecd7e7c00377caec23c3dc754fd621963cc456fa5d02a4f66ff267b0494bd9d"},
+		{452, "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc", "0x2e1d4f992a978fdd58652c8cf434c26bb8f89170e6a0fdbc9362b29e8fe8a835"},
+	} {
+		version := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: test.spec, TransactionVersion: 1, StateVersion: 1}
+		artifact, ok := reviewedHistoricalRuntimeArtifact(version)
+		if !ok || artifact.CodeHash != test.codeHash || artifact.MetadataHash != test.metadataHash {
+			t.Errorf("historical runtime %d artifact=%+v accepted=%t", test.spec, artifact, ok)
+		}
+	}
+	for _, version := range []runtimeVersionIdentity{
+		{SpecName: "node-subtensor", SpecVersion: 450, TransactionVersion: 1, StateVersion: 1},
+		{SpecName: "other", SpecVersion: 451, TransactionVersion: 1, StateVersion: 1},
+		{SpecName: "node-subtensor", SpecVersion: 451, TransactionVersion: 2, StateVersion: 1},
+		{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1, StateVersion: 2},
+		{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1},
+	} {
+		if _, ok := reviewedHistoricalRuntimeArtifact(version); ok {
+			t.Errorf("unreviewed historical identity was accepted: %+v", version)
 		}
 	}
 }

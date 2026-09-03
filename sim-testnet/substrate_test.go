@@ -59,7 +59,7 @@ func TestFinalizedCheckpointWaitHonorsContext(t *testing.T) {
 	}
 }
 
-func TestSubtensorAccountInfoDecodesRuntime452U64Balances(t *testing.T) {
+func TestSubtensorAccountInfoDecodesRuntime453U64Balances(t *testing.T) {
 	raw := make([]byte, 56)
 	binary.LittleEndian.PutUint32(raw[0:4], 7)
 	binary.LittleEndian.PutUint32(raw[4:8], 2)

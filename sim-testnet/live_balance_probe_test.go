@@ -32,15 +32,12 @@ func TestLiveNativeMirrorBalances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	chain, authenticated, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer chain.API.Client.Close()
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		t.Fatal(err)
-	}
+	finalized := authenticated.FinalizedHash
 	header, err := chain.API.RPC.Chain.GetHeader(finalized)
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +332,7 @@ func TestLiveBalanceProbe(t *testing.T) {
 		}())
 	}
 	t.Logf("native rewards at block %d: emission=%v incentive=%v dividends=%v total_hotkey_alpha=%v", rewards.FinalizedHead.Number, rewards.EmissionRao, rewards.Incentive, rewards.Dividends, rewards.TotalHotkeyAlphaRao)
-	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	chain, _, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +377,7 @@ func TestLiveEVMMirrorBalanceSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	mirror := ss58Mirror(address)
-	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
+	chain, authenticated, err := dialReleaseSubstrateChain(cfg, cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,10 +386,7 @@ func TestLiveEVMMirrorBalanceSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
-	if err != nil {
-		t.Fatal(err)
-	}
+	finalized := authenticated.FinalizedHash
 	var info subtensorAccountInfo
 	if ok, readErr := chain.API.RPC.State.GetStorage(key, &info, finalized); readErr != nil || !ok {
 		t.Fatalf("read finalized mirror account: present=%t error=%v", ok, readErr)
