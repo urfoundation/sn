@@ -113,6 +113,36 @@ func TestSDKMobileBuildTreeHashBindsNestedModule(t *testing.T) {
 	}
 }
 
+func TestSDKMobileBuildTreeHashRejectsIgnoredNestedWorktree(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	buildRoot := filepath.Join(root, "build")
+	if err := os.Mkdir(buildRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildRoot, "main.go"), []byte("package mobile\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "build/main.go")
+	runTestGit(t, root, "commit", "-qm", "review mobile build module")
+	if err := os.WriteFile(filepath.Join(root, ".git", "info", "exclude"), []byte("/build/nested/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(buildRoot, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, nested, "init", "-q")
+	if err := os.WriteFile(filepath.Join(nested, "source.go"), []byte("package nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sdkMobileBuildTreeHash(root); err == nil || !strings.Contains(err.Error(), "not a reviewed Git file") {
+		t.Fatalf("ignored nested mobile worktree was accepted: %v", err)
+	}
+}
+
 func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("one"), 0o600); err != nil {
@@ -270,6 +300,38 @@ func TestSoliditySourceHashCoversNestedLibrariesAndExcludesDependencyRoots(t *te
 	}
 }
 
+func TestSoliditySourceHashRejectsIgnoredNestedSource(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	for name, content := range map[string]string{
+		".gitignore":              "/evm/src/lib/ignored.sol\n",
+		"evm/script/Deploy.s.sol": "contract Deploy {}\n",
+		"evm/src/Contract.sol":    "contract Contract {}\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review Solidity sources")
+	ignored := filepath.Join(root, "evm", "src", "lib", "ignored.sol")
+	if err := os.MkdirAll(filepath.Dir(ignored), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ignored, []byte("library Ignored {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := soliditySourceHash(root); err == nil || !strings.Contains(err.Error(), "not a reviewed Git file") {
+		t.Fatalf("ignored nested Solidity source was accepted: %v", err)
+	}
+}
+
 func TestSolidityCompilerSettingsHashCoversFoundryAndRemappings(t *testing.T) {
 	root := t.TempDir()
 	runTestGit(t, root, "init", "-q")
@@ -387,6 +449,117 @@ func TestGoReleaseSourceHashCoversNestedSourceDirectoriesAndExcludesCaches(t *te
 	withCacheChanges, err := goReleaseSourceHash(root)
 	if err != nil || withCacheChanges != baseline {
 		t.Fatalf("Go cache roots entered source hash: %s %s %v", baseline, withCacheChanges, err)
+	}
+}
+
+func TestTrackedFilesUnderUsesOneClassifierForFilesystemAndGitSets(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	files := map[string]string{
+		"build/excluded.go":        "package buildtool\n",
+		"cmd/x/lib/source.go":      "package lib\n",
+		"evm/Lib/source.go":        "package lib\n",
+		"evm/lib/dependency.go":    "package dependency\n",
+		"go.mod":                   "module example.invalid/release\n\ngo 1.26.3\n",
+		"pkg/build/source.go":      "package build\n",
+		"src/lib/source.go":        "package lib\n",
+		"src/lib/source_test.go":   "package lib\n",
+		"vendor/dependency.go":     "package dependency\n",
+		"web/node_modules/tool.go": "package dependency\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review mixed release sources")
+	want := strings.Join([]string{
+		"cmd/x/lib/source.go",
+		"evm/Lib/source.go",
+		"go.mod",
+		"pkg/build/source.go",
+		"src/lib/source.go",
+	}, "\n")
+	first, err := trackedFilesUnder(root, []string{"."}, classifyGoReleasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(first, "\n"); got != want {
+		t.Fatalf("selected Go release paths:\n%s\nwant:\n%s", got, want)
+	}
+	second, err := trackedFilesUnder(root, []string{"."}, classifyGoReleasePath)
+	if err != nil || strings.Join(second, "\n") != want {
+		t.Fatalf("repeated selection was not stable: %v %v", second, err)
+	}
+}
+
+func TestTrackedFilesUnderRejectsIgnoredIncludedAndAllowsIgnoredExcludedPaths(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	for name, content := range map[string]string{
+		".gitignore":  "/src/ignored.go\n/evm/lib/ignored.go\n",
+		"go.mod":      "module example.invalid/release\n\ngo 1.26.3\n",
+		"src/main.go": "package source\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review Go sources")
+	included := filepath.Join(root, "src", "ignored.go")
+	excluded := filepath.Join(root, "evm", "lib", "ignored.go")
+	for _, path := range []string{included, excluded} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("package ignored\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := trackedFilesUnder(root, []string{"."}, classifyGoReleasePath); err == nil || !strings.Contains(err.Error(), `"src/ignored.go" is not a reviewed Git file`) {
+		t.Fatalf("ignored first-party source was accepted: %v", err)
+	}
+	if err := os.Remove(included); err != nil {
+		t.Fatal(err)
+	}
+	names, err := trackedFilesUnder(root, []string{"."}, classifyGoReleasePath)
+	if err != nil {
+		t.Fatalf("ignored dependency-root source affected selection: %v", err)
+	}
+	if got, want := strings.Join(names, "\n"), "go.mod\nsrc/main.go"; got != want {
+		t.Fatalf("selected Go release paths:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestTrackedFilesUnderRejectsSymlinkedAndEscapingRoots(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	out := t.TempDir()
+	if err := os.WriteFile(filepath.Join(out, "Contract.sol"), []byte("contract Outside {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trackedFilesUnder(root, []string{"../outside"}, classifySolidityReleasePath); err == nil || !strings.Contains(err.Error(), "unsafe release-lock source root") {
+		t.Fatalf("escaping release source root was accepted: %v", err)
+	}
+	if err := os.Symlink(out, filepath.Join(root, "src")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trackedFilesUnder(root, []string{"src"}, classifySolidityReleasePath); err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("symlinked release source root was accepted: %v", err)
 	}
 }
 

@@ -163,14 +163,16 @@ func digestTrackedNamedFiles(root string, names []string) (string, error) {
 }
 
 // cleanGitSubtreeHash binds large, shared runtime assets without reading
-// gigabytes into every doctor process. Git's clean-tree check proves that the
-// index and worktree match HEAD (including absence of untracked resources),
-// while ls-tree supplies the reviewed file modes, object IDs, and paths for a
-// stable SHA-256 release-lock fingerprint.
+// gigabytes into every doctor process. The exact filesystem/index comparison
+// also rejects ignored or nested-worktree bytes that Git status omits, while
+// ls-tree supplies reviewed modes, object IDs, and paths for a stable digest.
 func cleanGitSubtreeHash(root, subtree string) (string, error) {
 	clean := filepath.Clean(subtree)
 	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("unsafe git subtree %q", subtree)
+	}
+	if _, err := trackedFilesUnder(root, []string{clean}, classifyCompleteReleasePath); err != nil {
+		return "", fmt.Errorf("validate reviewed git subtree %s: %w", clean, err)
 	}
 	status := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--untracked-files=all", "--", clean)
 	statusOutput, err := status.Output()
@@ -191,11 +193,89 @@ func cleanGitSubtreeHash(root, subtree string) (string, error) {
 	return digestBytes(treeOutput), nil
 }
 
+// releasePathSelection is the single traversal and inclusion decision for a
+// portable repository-relative path.
+type releasePathSelection uint8
+
+const (
+	releasePathExcluded releasePathSelection = iota
+	releasePathTraversed
+	releasePathIncluded
+)
+
+// releasePathClassifier applies identical path semantics to the filesystem
+// walk and the reviewed Git index.
+type releasePathClassifier func(name string, directory bool) releasePathSelection
+
+// Include every regular file and descend into every directory. This is used
+// for configuration trees whose complete contents are release inputs.
+func classifyCompleteReleasePath(_ string, directory bool) releasePathSelection {
+	if directory {
+		return releasePathTraversed
+	}
+	return releasePathIncluded
+}
+
+// Include Solidity sources without treating a nested directory named lib as
+// a dependency root. External dependencies live outside the explicit roots.
+func classifySolidityReleasePath(name string, directory bool) releasePathSelection {
+	if directory {
+		return releasePathTraversed
+	}
+	if strings.HasSuffix(name, ".sol") {
+		return releasePathIncluded
+	}
+	return releasePathExcluded
+}
+
+// Include protocol sources and specifications while retaining the existing
+// exclusion of Go regression files from the production digest.
+func classifyProtocolReleasePath(name string, directory bool) releasePathSelection {
+	if directory {
+		return releasePathTraversed
+	}
+	if !strings.HasSuffix(name, "_test.go") {
+		return releasePathIncluded
+	}
+	return releasePathExcluded
+}
+
+// Apply one exact path policy to both directory traversal and indexed files.
+// Ambiguous nested lib/build names remain first-party; only known dependency
+// and cache roots are excluded, with case-sensitive portable path semantics.
+func classifyGoReleasePath(name string, directory bool) releasePathSelection {
+	parts := strings.Split(name, "/")
+	directoryParts := parts
+	if !directory {
+		directoryParts = parts[:len(parts)-1]
+	}
+	for index, part := range directoryParts {
+		switch part {
+		case ".git", "node_modules", "out", "runs", "vendor":
+			return releasePathExcluded
+		case "build":
+			if index == 0 {
+				return releasePathExcluded
+			}
+		case "lib":
+			if index == 1 && parts[0] == "evm" {
+				return releasePathExcluded
+			}
+		}
+	}
+	if directory {
+		return releasePathTraversed
+	}
+	base := parts[len(parts)-1]
+	if (strings.HasSuffix(base, ".go") && !strings.HasSuffix(base, "_test.go")) || base == "go.mod" || base == "go.sum" {
+		return releasePathIncluded
+	}
+	return releasePathExcluded
+}
+
 // The SDK's mobile release toolchain is a nested Go module under build/. The
-// general Go source digest deliberately ignores build directories so generated
-// artifacts cannot perturb a release lock, therefore bind this reviewed source
-// tree separately. cleanGitSubtreeHash also rejects uncommitted or untracked
-// files anywhere in the module before a release can proceed.
+// general Go digest omits that top-level directory, so hash it separately with
+// the complete reviewed-tree policy.
 func sdkMobileBuildTreeHash(sdkRoot string) (string, error) {
 	return cleanGitSubtreeHash(sdkRoot, "build")
 }
@@ -204,14 +284,25 @@ func sdkMobileBuildTreeHash(sdkRoot string) (string, error) {
 // the filesystem selection with the index rejects ignored source/config bytes
 // that ordinary Git cleanliness does not report. Working-tree bytes are hashed
 // later, while the observer brackets the read with clean revision snapshots.
-func trackedFilesUnder(root string, roots []string, include func(string) bool, skipDirectory func(string) bool) ([]string, error) {
-	if len(roots) == 0 || include == nil {
+func trackedFilesUnder(root string, roots []string, classify releasePathClassifier) ([]string, error) {
+	if len(roots) == 0 || classify == nil {
 		return nil, errors.New("release-lock source roots are empty")
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve release-lock repository root %s: %w", root, err)
+	}
+	resolvedRoot, err = filepath.Abs(resolvedRoot)
+	if err != nil {
+		return nil, err
 	}
 	arguments := []string{"-C", root, "ls-files", "-z", "--cached", "--"}
 	cleanRoots := make([]string, 0, len(roots))
 	filesystemNames := map[string]struct{}{}
 	for _, relativeRoot := range roots {
+		if relativeRoot == "" {
+			return nil, errors.New("release-lock source root is empty")
+		}
 		clean := filepath.Clean(relativeRoot)
 		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 			return nil, fmt.Errorf("unsafe release-lock source root %q", relativeRoot)
@@ -223,6 +314,17 @@ func trackedFilesUnder(root string, roots []string, include func(string) bool, s
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return nil, fmt.Errorf("release-lock source root %q is not a directory", relativeRoot)
+		}
+		resolvedPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return nil, err
+		}
+		resolvedPath, err = filepath.Abs(resolvedPath)
+		if err != nil {
+			return nil, err
+		}
+		if resolvedPath != filepath.Join(resolvedRoot, clean) {
+			return nil, fmt.Errorf("release-lock source root %q traverses a symlink", relativeRoot)
 		}
 		cleanRoots = append(cleanRoots, filepath.ToSlash(clean))
 		if err := filepath.WalkDir(path, func(candidate string, entry fs.DirEntry, walkErr error) error {
@@ -238,10 +340,14 @@ func trackedFilesUnder(root string, roots []string, include func(string) bool, s
 			}
 			portable := filepath.ToSlash(relative)
 			if entry.IsDir() {
-				if skipDirectory != nil && skipDirectory(portable) {
+				switch classify(portable, true) {
+				case releasePathExcluded:
 					return filepath.SkipDir
+				case releasePathTraversed:
+					return nil
+				default:
+					return fmt.Errorf("release-lock path classifier included directory %q as a file", portable)
 				}
-				return nil
 			}
 			info, err := entry.Info()
 			if err != nil {
@@ -250,11 +356,16 @@ func trackedFilesUnder(root string, roots []string, include func(string) bool, s
 			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 				return fmt.Errorf("release-lock source path %q is not a regular file", portable)
 			}
-			if include(portable) {
+			switch classify(portable, false) {
+			case releasePathIncluded:
 				if _, exists := filesystemNames[portable]; exists {
 					return fmt.Errorf("duplicate release-lock source path %q", portable)
 				}
 				filesystemNames[portable] = struct{}{}
+			case releasePathExcluded:
+				return nil
+			default:
+				return fmt.Errorf("release-lock path classifier traversed file %q as a directory", portable)
 			}
 			return nil
 		}); err != nil {
@@ -277,16 +388,31 @@ func trackedFilesUnder(root string, roots []string, include func(string) bool, s
 			return nil, fmt.Errorf("Git returned unsafe release-lock path %q", name)
 		}
 		portable := filepath.ToSlash(clean)
-		if include(portable) {
+		switch classify(portable, false) {
+		case releasePathIncluded:
 			trackedNames[portable] = struct{}{}
+		case releasePathExcluded:
+			continue
+		default:
+			return nil, fmt.Errorf("release-lock path classifier traversed indexed file %q as a directory", portable)
 		}
 	}
+	filesystemPaths := make([]string, 0, len(filesystemNames))
 	for name := range filesystemNames {
+		filesystemPaths = append(filesystemPaths, name)
+	}
+	sort.Strings(filesystemPaths)
+	for _, name := range filesystemPaths {
 		if _, ok := trackedNames[name]; !ok {
 			return nil, fmt.Errorf("release-lock source path %q is not a reviewed Git file", name)
 		}
 	}
+	trackedPaths := make([]string, 0, len(trackedNames))
 	for name := range trackedNames {
+		trackedPaths = append(trackedPaths, name)
+	}
+	sort.Strings(trackedPaths)
+	for _, name := range trackedPaths {
 		if _, ok := filesystemNames[name]; !ok {
 			return nil, fmt.Errorf("reviewed release-lock source path %q is missing from the worktree", name)
 		}
@@ -294,51 +420,11 @@ func trackedFilesUnder(root string, roots []string, include func(string) bool, s
 	if len(trackedNames) == 0 {
 		return nil, fmt.Errorf("release-lock source roots %v contain no reviewed files", cleanRoots)
 	}
-	names := make([]string, 0, len(trackedNames))
-	for name := range trackedNames {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// Exclude only conventional generated/dependency trees. A nested first-party
-// source directory named lib or build remains covered; the SDK's top-level
-// build module is deliberately bound by sdkMobileBuildTreeHash instead.
-func includeGoReleaseSource(name string) bool {
-	parts := strings.Split(filepath.ToSlash(name), "/")
-	for index, part := range parts[:len(parts)-1] {
-		switch part {
-		case ".git", "node_modules", "out", "runs", "vendor":
-			return false
-		case "build":
-			if index == 0 {
-				return false
-			}
-		}
-	}
-	base := parts[len(parts)-1]
-	return (strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")) || base == "go.mod" || base == "go.sum"
-}
-
-func skipGoReleaseDirectory(name string) bool {
-	portable := filepath.ToSlash(name)
-	parts := strings.Split(portable, "/")
-	base := parts[len(parts)-1]
-	switch base {
-	case ".git", "node_modules", "out", "runs", "vendor":
-		return true
-	case "build":
-		return len(parts) == 1
-	case "lib":
-		return len(parts) == 2 && parts[0] == "evm"
-	default:
-		return false
-	}
+	return trackedPaths, nil
 }
 
 func goReleaseSourceHash(root string) (string, error) {
-	names, err := trackedFilesUnder(root, []string{"."}, includeGoReleaseSource, skipGoReleaseDirectory)
+	names, err := trackedFilesUnder(root, []string{"."}, classifyGoReleasePath)
 	if err != nil {
 		return "", err
 	}
@@ -381,9 +467,7 @@ func observeOperatorProxyReleaseSource(root string) (map[string]string, error) {
 }
 
 func soliditySourceHash(snRoot string) (string, error) {
-	names, err := trackedFilesUnder(snRoot, []string{"evm/src", "evm/script"}, func(name string) bool {
-		return strings.HasSuffix(name, ".sol")
-	}, nil)
+	names, err := trackedFilesUnder(snRoot, []string{"evm/src", "evm/script"}, classifySolidityReleasePath)
 	if err != nil {
 		return "", err
 	}
@@ -480,9 +564,7 @@ func observeFoundryVersion() (string, string, error) {
 }
 
 func protocolSourceHash(snRoot string) (string, error) {
-	names, err := trackedFilesUnder(snRoot, []string{"protocol", "docs/spec"}, func(name string) bool {
-		return !strings.HasSuffix(name, "_test.go")
-	}, nil)
+	names, err := trackedFilesUnder(snRoot, []string{"protocol", "docs/spec"}, classifyProtocolReleasePath)
 	if err != nil {
 		return "", err
 	}
@@ -504,7 +586,7 @@ func protocolSourceHash(snRoot string) (string, error) {
 // release containers. Enumerating the directory also makes newly added hooks
 // fail the lock instead of executing as unreviewed container input.
 func serverLocalDependencyConfigHash(serverRoot string) (string, error) {
-	names, err := trackedFilesUnder(serverRoot, []string{"local/postgres/initdb"}, func(string) bool { return true }, nil)
+	names, err := trackedFilesUnder(serverRoot, []string{"local/postgres/initdb"}, classifyCompleteReleasePath)
 	if err != nil {
 		return "", err
 	}
@@ -697,7 +779,7 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 	if err != nil {
 		return nil, err
 	}
-	configNames, err := trackedFilesUnder(cfg.Repos.PlatformConfig, []string{"local"}, func(string) bool { return true }, nil)
+	configNames, err := trackedFilesUnder(cfg.Repos.PlatformConfig, []string{"local"}, classifyCompleteReleasePath)
 	if err != nil {
 		return nil, fmt.Errorf("enumerate platform config: %w", err)
 	}
@@ -710,7 +792,7 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 		return nil, fmt.Errorf("hash shared platform config: %w", err)
 	}
 
-	interfaces, err := trackedFilesUnder(cfg.Repos.SN, []string{"evm/src/interfaces"}, func(name string) bool { return strings.HasSuffix(name, ".sol") }, nil)
+	interfaces, err := trackedFilesUnder(cfg.Repos.SN, []string{"evm/src/interfaces"}, classifySolidityReleasePath)
 	if err != nil {
 		return nil, err
 	}
