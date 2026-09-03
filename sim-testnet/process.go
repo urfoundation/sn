@@ -1384,7 +1384,7 @@ func selectProvisioningServerSpecs(specs []ProcessSpec) []ProcessSpec {
 
 func operatorBaseEnv(cfg *ResolvedConfig, stateDir string, operator int, ip string) map[string]string {
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", operator))
-	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet", "URNETWORK_SIM_TESTNET": "1"}
+	return map[string]string{"WARP_ENV": operatorEnvironment(operator), "WARP_VERSION": "1.0", "WARP_BLOCK": fmt.Sprintf("sim%d", operator), "WARP_DOMAIN": "bringyour.com", "WARP_HOST": "127.0.0.1", "WARP_VAULT_HOME": filepath.Join(root, "vault"), "WARP_CONFIG_HOME": operatorConfigHome(stateDir, operator), "WARP_SITE_HOME": filepath.Join(root, "site"), "BRINGYOUR_POSTGRES_HOSTNAME": ip, "BRINGYOUR_REDIS_HOSTNAME": ip, "BRINGYOUR_SUBTENSOR_HOSTNAME": workloadRPCAuthority(), "BRINGYOUR_MINIO_HOSTNAME": cfg.ObjectStoreHost, "URNETWORK_ST_PROFILE": "testnet", "URNETWORK_SIM_TESTNET": "1"}
 }
 
 func runDatabaseMigrations(ctx context.Context, cfg *ResolvedConfig, stateDir, binary string) error {

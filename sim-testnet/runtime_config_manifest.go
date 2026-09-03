@@ -91,6 +91,12 @@ func expectedRuntimeConfigFiles(cfg *ResolvedConfig, stateDir string) (map[strin
 		if err != nil {
 			return err
 		}
+		// The production provider probe is explicitly disabled in sim-testnet.
+		// Its operator ingest credential is neither needed nor copied into the
+		// runtime, even if it is later added to the source local vault.
+		if filepath.ToSlash(relative) == "provider_egress.yml" {
+			return nil
+		}
 		vaultFiles = append(vaultFiles, relative)
 		return nil
 	}); err != nil {
@@ -103,7 +109,7 @@ func expectedRuntimeConfigFiles(cfg *ResolvedConfig, stateDir string) (map[strin
 				return nil, err
 			}
 		}
-		for _, relative := range []string{"vault/pg_maintenance.yml", "vault/verify.yml", "vault/minio.yml", "site/settings.yml", "config/tls.yml"} {
+		for _, relative := range []string{"vault/pg_maintenance.yml", "vault/verify.yml", "vault/minio.yml", "site/settings.yml", "config/tls.yml", "config/provider_egress_probe.yml"} {
 			if err := addRuntimeConfigPath(paths, stateDir, filepath.Join(root, filepath.FromSlash(relative)), 0o600); err != nil {
 				return nil, err
 			}

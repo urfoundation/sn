@@ -146,6 +146,53 @@ func TestRuntimeConfigManifestRejectsUnexpectedStaticFile(t *testing.T) {
 	}
 }
 
+// Enabling the inert probe or weakening its file permissions after rendering
+// invalidates the authenticated runtime inventory.
+func TestRuntimeConfigManifestRejectsProviderEgressProbeIsolationDrift(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(string) error
+	}{
+		{name: "enabled", mutate: func(path string) error {
+			return atomicWrite(path, []byte("enabled: true\n"), 0o600)
+		}},
+		{name: "public mode", mutate: func(path string) error {
+			return os.Chmod(path, 0o644)
+		}},
+	}
+	for _, test := range tests {
+		cfg, stateDir := runtimeConfigManifestFixture(t)
+		path := filepath.Join(stateDir, "runtime", "operator-1", "config", "provider_egress_probe.yml")
+		if err := atomicWrite(path, []byte("enabled: false\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeRuntimeConfigManifest(cfg, stateDir); err != nil {
+			t.Fatal(err)
+		}
+		var manifest RuntimeConfigManifest
+		if err := decodeStrictJSONFile(runtimeConfigManifestPath(stateDir), &manifest); err != nil {
+			t.Fatal(err)
+		}
+		relative := "runtime/operator-1/config/provider_egress_probe.yml"
+		found := false
+		for _, file := range manifest.Files {
+			if file.Path == relative {
+				found = file.Mode == "0600"
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%s baseline manifest omitted private provider egress probe config", test.name)
+		}
+		if err := test.mutate(path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil || !strings.Contains(err.Error(), "differs from its manifest") {
+			t.Errorf("%s provider egress probe drift was accepted: %v", test.name, err)
+		}
+	}
+}
+
 // Reproduces the live config.render failure: the renderer intentionally adds
 // two exact platform-config directory overlays, which are not extra rendered
 // files. Only those paths and exact targets may cross the static-tree audit.

@@ -4048,6 +4048,13 @@ func (e *Executor) setReserveTakeZero(ctx context.Context, a Action) error {
 }
 
 func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) error {
+	if cfg == nil || cfg.Public == nil {
+		return errors.New("runtime config public manifest is unavailable")
+	}
+	publicRPCURL := strings.TrimSpace(cfg.Public.Chain.EVMPublicReadEndpoint)
+	if publicRPCURL == "" || publicRPCURL != cfg.Public.Chain.EVMPublicReadEndpoint {
+		return errors.New("runtime config public testnet EVM RPC URL is missing or non-canonical")
+	}
 	contracts, err := loadContractDeployment(stateDir)
 	if err != nil {
 		return err
@@ -4059,6 +4066,9 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("operator-%d", i))
 		vaultRoot := filepath.Join(root, "vault")
 		if err := copyTree(filepath.Join(cfg.Repos.Vault, "local"), vaultRoot, 0o600); err != nil {
+			return err
+		}
+		if err := renderOperatorProviderEgressProbeIsolation(root); err != nil {
 			return err
 		}
 		if err := renderOperatorConnectTLS(cfg, stateDir, i); err != nil {
@@ -4074,6 +4084,8 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		st := map[string]any{
 			"profile":                                    "testnet",
 			"testnet-enabled":                            true,
+			"testnet-wallet-allow-unsigned":              false,
+			"testnet-public-rpc-url":                     publicRPCURL,
 			"testnet-authority":                          workloadRPCAuthority(),
 			"testnet-rpc-urls":                           []string{evmHTTP(workloadRPCAuthority())},
 			"testnet-chain-id":                           testnetChainID,
@@ -4137,6 +4149,31 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		return err
 	}
 	return writeRuntimeConfigManifest(cfg, stateDir)
+}
+
+// Disable the production provider-probe fleet and remove its ingest
+// credential. Sim-testnet exercises provider traffic through its own bounded
+// miner/validator scenarios; a background prober would be uncontrolled
+// external load and must remain inert even if the source local vault changes.
+func renderOperatorProviderEgressProbeIsolation(operatorRoot string) error {
+	secretPath := filepath.Join(operatorRoot, "vault", "provider_egress.yml")
+	if info, err := os.Lstat(secretPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("operator provider egress secret path is not a regular file")
+		}
+		if err := os.Remove(secretPath); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	config, err := yaml.Marshal(struct {
+		Enabled bool `yaml:"enabled"`
+	}{Enabled: false})
+	if err != nil {
+		return err
+	}
+	return atomicWrite(filepath.Join(operatorRoot, "config", "provider_egress_probe.yml"), config, 0o600)
 }
 
 // Supply deterministic location metadata for simulator-owned loopback peers.

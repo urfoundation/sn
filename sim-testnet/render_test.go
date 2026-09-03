@@ -123,6 +123,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Authority = "http://127.0.0.1:9944"
 	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.opentensor.ai"
 	stateDir := t.TempDir()
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
@@ -157,6 +158,30 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	}
 	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err != nil {
+		t.Fatalf("rendered runtime manifest: %v", err)
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		root := filepath.Join(stateDir, "runtime", "operator-"+strconv.Itoa(operator))
+		path := filepath.Join(root, "config", "provider_egress_probe.yml")
+		var settings struct {
+			Enabled bool `yaml:"enabled"`
+		}
+		if err := strictYAML(path, &settings); err != nil {
+			t.Fatalf("operator %d provider egress probe config: %v", operator, err)
+		}
+		info, err := os.Lstat(path)
+		mode := os.FileMode(0)
+		if info != nil {
+			mode = info.Mode()
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || settings.Enabled {
+			t.Fatalf("operator %d provider egress probe isolation mode=%v settings=%+v err=%v", operator, mode, settings, err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, "vault", "provider_egress.yml")); !os.IsNotExist(err) {
+			t.Fatalf("operator %d retained an unnecessary provider egress credential: %v", operator, err)
+		}
 	}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		path := filepath.Join(stateDir, "runtime", "validator-"+strconv.Itoa(i), "validator.yml")
@@ -249,6 +274,21 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	if !strings.Contains(text, "testnet-coordinator-address") || !strings.Contains(text, "testnet-deposit-tiers") || !strings.Contains(text, "rate_numerator_rao_per_gib") || !strings.Contains(text, workloadRPCAuthority()) || strings.Contains(text, cfg.Authority) || strings.Contains(text, "\ndeposit_key:") || strings.Contains(text, "\nops_key:") {
 		t.Fatalf("operator st config did not stay testnet-scoped:\n%s", text)
 	}
+	var st map[string]any
+	if err := strictYAML(stPath, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st["testnet-public-rpc-url"] != cfg.Public.Chain.EVMPublicReadEndpoint {
+		t.Fatalf("operator public testnet RPC = %v, want %q", st["testnet-public-rpc-url"], cfg.Public.Chain.EVMPublicReadEndpoint)
+	}
+	if unsigned, ok := st["testnet-wallet-allow-unsigned"]; !ok || unsigned != false {
+		t.Fatalf("operator unsigned testnet wallet policy = %v, present=%t", unsigned, ok)
+	}
+	for _, key := range []string{"public_rpc_url", "wallet_allow_unsigned"} {
+		if _, ok := st[key]; ok {
+			t.Fatalf("operator testnet config contains mainnet key %q", key)
+		}
+	}
 	minio, err := os.ReadFile(filepath.Join(stateDir, "runtime", "operator-1", "vault", "minio.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -258,10 +298,30 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	}
 }
 
+// Missing or non-canonical manifest endpoints fail before host values or
+// partially rendered state can influence an operator.
+func TestRenderRuntimeConfigsRejectInvalidPublicRPCWithoutHostFallback(t *testing.T) {
+	t.Setenv("BRINGYOUR_SUBTENSOR_HOSTNAME", "host-private-rpc.example:9944")
+	t.Setenv("URNETWORK_TESTNET_PUBLIC_RPC_URL", "https://host-public-rpc.example")
+	for _, endpoint := range []string{"", " https://test.chain.opentensor.ai"} {
+		cfg := testResolvedConfig(t)
+		cfg.Public.Chain.EVMPublicReadEndpoint = endpoint
+		stateDir := t.TempDir()
+		err := RenderRuntimeConfigs(cfg, stateDir, nil)
+		if err == nil || !strings.Contains(err.Error(), "public testnet EVM RPC URL") {
+			t.Errorf("manifest public RPC %q used a host fallback: %v", endpoint, err)
+		}
+		if _, err := os.Lstat(filepath.Join(stateDir, "runtime")); !os.IsNotExist(err) {
+			t.Errorf("invalid public RPC %q mutated runtime state: %v", endpoint, err)
+		}
+	}
+}
+
 func TestOperatorEnvironmentUsesDiscoveredPlatformConfig(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Repos.PlatformConfig = filepath.Join(t.TempDir(), "portable-config")
 	stateDir := t.TempDir()
+	t.Setenv("WARP_DOMAIN", "host-value-must-not-leak.example")
 	env := operatorBaseEnv(cfg, stateDir, 1, "127.0.0.11")
 	want := operatorConfigHome(stateDir, 1)
 	if env["WARP_CONFIG_HOME"] != want {
@@ -273,8 +333,77 @@ func TestOperatorEnvironmentUsesDiscoveredPlatformConfig(t *testing.T) {
 	if env["URNETWORK_ST_PROFILE"] != "testnet" || env["URNETWORK_SIM_TESTNET"] != "1" {
 		t.Fatalf("operator environment lost its explicit simulator scope: %+v", env)
 	}
+	if env["WARP_DOMAIN"] != "bringyour.com" {
+		t.Fatalf("operator inherited host WARP_DOMAIN: %q", env["WARP_DOMAIN"])
+	}
 	if env["BRINGYOUR_SUBTENSOR_HOSTNAME"] != workloadRPCAuthority() {
 		t.Fatalf("operator bypasses workload RPC proxy: %q", env["BRINGYOUR_SUBTENSOR_HOSTNAME"])
+	}
+}
+
+// A copied production credential is removed because disabled workers and API
+// ingest routes need no shared secret in the simulation runtime.
+func TestRenderOperatorProviderEgressProbeIsolationRemovesCopiedCredential(t *testing.T) {
+	root := t.TempDir()
+	secretPath := filepath.Join(root, "vault", "provider_egress.yml")
+	if err := atomicWrite(secretPath, []byte("ingest_secret: must-not-survive\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderOperatorProviderEgressProbeIsolation(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(secretPath); !os.IsNotExist(err) {
+		t.Fatalf("copied provider egress credential survived isolation: %v", err)
+	}
+	path := filepath.Join(root, "config", "provider_egress_probe.yml")
+	var settings struct {
+		Enabled bool `yaml:"enabled"`
+	}
+	if err := strictYAML(path, &settings); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	mode := os.FileMode(0)
+	if info != nil {
+		mode = info.Mode()
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || settings.Enabled {
+		t.Fatalf("provider egress probe isolation mode=%v settings=%+v err=%v", mode, settings, err)
+	}
+}
+
+// A directory or symlink cannot be mistaken for the optional copied secret
+// and then escape the immutable runtime inventory.
+func TestRenderOperatorProviderEgressProbeIsolationRejectsNonRegularCredential(t *testing.T) {
+	tests := []struct {
+		name string
+		make func(string) error
+	}{
+		{name: "directory", make: func(path string) error { return os.MkdirAll(path, 0o700) }},
+		{name: "symlink", make: func(path string) error {
+			target := filepath.Join(filepath.Dir(filepath.Dir(path)), "foreign-secret")
+			if err := os.WriteFile(target, []byte("secret\n"), 0o600); err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return err
+			}
+			return os.Symlink(target, path)
+		}},
+	}
+	for _, test := range tests {
+		root := t.TempDir()
+		path := filepath.Join(root, "vault", "provider_egress.yml")
+		if err := test.make(path); err != nil {
+			t.Fatal(err)
+		}
+		err := renderOperatorProviderEgressProbeIsolation(root)
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("%s provider egress credential was accepted: %v", test.name, err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, "config", "provider_egress_probe.yml")); !os.IsNotExist(err) {
+			t.Errorf("%s provider egress credential failure still rendered config: %v", test.name, err)
+		}
 	}
 }
 
