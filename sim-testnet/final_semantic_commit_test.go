@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,15 +28,6 @@ type finalSemanticSupplementTestFixture struct {
 	load      FinalArtifactLoader
 	stores    map[int]server.BlobStore
 	storeRoot string
-}
-
-type failingGetBlobStore struct {
-	server.BlobStore
-	err error
-}
-
-func (store *failingGetBlobStore) Get(context.Context, string) (io.ReadCloser, error) {
-	return nil, store.err
 }
 
 func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing.T) {
@@ -98,7 +88,7 @@ func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing
 	for operator, store := range fixture.stores {
 		brokenStores[operator] = store
 	}
-	brokenStores[2] = &failingGetBlobStore{BlobStore: brokenStores[2], err: errors.New("injected semantic replica read failure")}
+	brokenStores[2] = &fixtureFailureBlobStore{store: brokenStores[2], readErr: errors.New("injected semantic replica read failure")}
 	broken := dependencies
 	broken.Stores = func(operator int) (server.BlobStore, error) { return brokenStores[operator], nil }
 	if _, err := validateFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, broken); err == nil || !strings.Contains(err.Error(), "injected semantic replica read failure") {
@@ -121,7 +111,7 @@ func TestFinalSemanticSupplementFailedReplicaDoesNotCommitAndRetryReusesStage(t 
 	}
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	goodSecond := fixture.stores[2]
-	fixture.stores[2] = &failingPutBlobStore{BlobStore: goodSecond, err: errors.New("injected semantic replica write failure")}
+	fixture.stores[2] = &fixtureFailureBlobStore{store: goodSecond, writeErr: errors.New("injected semantic replica write failure")}
 	dependencies := fixture.dependencies()
 	if _, err := publishOrResumeFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, dependencies); err == nil || !strings.Contains(err.Error(), "injected semantic replica write failure") {
 		t.Fatalf("replica write failure was not propagated: %v", err)
@@ -338,7 +328,7 @@ func TestValidateFinalSemanticSupplementDefaultCapturedStoresRequiresEveryReplic
 	for operator, store := range fixture.stores {
 		broken[operator] = store
 	}
-	broken[2] = &failingGetBlobStore{BlobStore: broken[2], err: errors.New("missing default semantic replica")}
+	broken[2] = &fixtureFailureBlobStore{store: broken[2], readErr: errors.New("missing default semantic replica")}
 	resolved := false
 	dependencies := finalSemanticSupplementDependencies{
 		Load: fixture.load,

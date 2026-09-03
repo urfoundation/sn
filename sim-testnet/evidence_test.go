@@ -28,15 +28,6 @@ func (transport *forbiddenScenarioCommitSupervisedAPITransport) RoundTrip(*http.
 	return nil, errors.New("scenario completion commit attempted the supervised API")
 }
 
-type failingPutBlobStore struct {
-	server.BlobStore
-	err error
-}
-
-func (store *failingPutBlobStore) Put(context.Context, string, string, string) error {
-	return store.err
-}
-
 func scenarioCompletionTestEnvelope(t *testing.T, cfg *ResolvedConfig, roles *RoleSecrets, runID string) (*ReleaseEvidenceEnvelope, []byte) {
 	t.Helper()
 	complete, err := signEvidence(cfg, "scenario-complete", runID, scenarioCompletePayload{
@@ -149,6 +140,12 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutSupervisedAPIHTTP(t *tes
 	})
 	if err != nil || failureID != "" {
 		t.Fatalf("direct scenario completion commit = stage %q error %v", failureID, err)
+	}
+	failureID, err = commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err != nil || failureID != "" {
+		t.Fatalf("idempotent direct scenario completion commit = stage %q error %v", failureID, err)
 	}
 	if transport.calls != 0 {
 		t.Fatalf("scenario completion commit made %d supervised API requests", transport.calls)
@@ -266,7 +263,8 @@ func TestCampaignEvidenceArchiveFailureCannotExposeLocalCompletion(t *testing.T)
 		}
 		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
 	}
-	stores[2] = &failingPutBlobStore{BlobStore: stores[2], err: errors.New("injected archive-store failure")}
+	goodSecond := stores[2]
+	stores[2] = &fixtureFailureBlobStore{store: goodSecond, writeErr: errors.New("injected archive-store failure")}
 	_, err = publishCampaignEvidenceArchive(context.Background(), cfg, roles, stateDir, runID, "0x"+strings.Repeat("11", 32), "sha256:"+strings.Repeat("22", 32), map[string]string{"result.json": bytesSHA256(raw)}, func(operator int) (server.BlobStore, error) {
 		return stores[operator], nil
 	})
@@ -275,6 +273,20 @@ func TestCampaignEvidenceArchiveFailureCannotExposeLocalCompletion(t *testing.T)
 	}
 	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed campaign archive exposed local completion: %v", err)
+	}
+	var staged ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(runDir, campaignEvidenceManifestFilename), &staged); err != nil {
+		t.Fatal(err)
+	}
+	stores[2] = goodSecond
+	committed, err := publishCampaignEvidenceArchive(context.Background(), cfg, roles, stateDir, runID, "0x"+strings.Repeat("11", 32), "sha256:"+strings.Repeat("22", 32), map[string]string{"result.json": bytesSHA256(raw)}, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if committed.ContentHash != staged.ContentHash || committed.Signature != staged.Signature {
+		t.Fatalf("campaign archive retry replaced immutable stage: staged=%s committed=%s", staged.ContentHash, committed.ContentHash)
 	}
 }
 
@@ -401,12 +413,87 @@ func TestCampaignEvidenceReadCannotFollowSymlinkOutsideRoot(t *testing.T) {
 }
 
 func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
+	failures := []struct {
+		name   string
+		inject func(*fixtureFailureBlobStore, error)
+	}{
+		{name: "write", inject: func(store *fixtureFailureBlobStore, err error) { store.writeErr = err }},
+		{name: "read", inject: func(store *fixtureFailureBlobStore, err error) { store.readErr = err }},
+		{name: "list", inject: func(store *fixtureFailureBlobStore, err error) { store.listErr = err }},
+	}
+	for _, failure := range failures {
+		cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
+		roles, err := BuildRoleSecrets(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runID := "direct-completion-" + failure.name + "-failure"
+		runDir := filepath.Join(stateDir, "runs", runID)
+		if err := os.MkdirAll(runDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
+		stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+		for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+			prefix, prefixErr := operatorArtifactPrefix(cfg.Config, operator)
+			if prefixErr != nil {
+				t.Fatal(prefixErr)
+			}
+			stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+		}
+		goodSecond := stores[2]
+		injectedErr := errors.New("injected direct-store " + failure.name + " failure")
+		brokenSecond := &fixtureFailureBlobStore{store: goodSecond}
+		failure.inject(brokenSecond, injectedErr)
+		stores[2] = brokenSecond
+		failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+			return stores[operator], nil
+		})
+		if err == nil || failureID != "complete_evidence_publication" || !strings.Contains(err.Error(), injectedErr.Error()) {
+			t.Fatalf("direct-store %s failure = stage %q error %v", failure.name, failureID, err)
+		}
+		if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failed direct %s publication exposed a local complete marker: %v", failure.name, err)
+		}
+		staged := make([]ReleaseEvidenceEnvelope, cfg.Config.Topology.Operators)
+		for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+			path := filepath.Join(runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator))
+			if err := decodeStrictJSONFile(path, &staged[operator-1]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		stores[2] = goodSecond
+		failureID, err = commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+			return stores[operator], nil
+		})
+		if err != nil || failureID != "" {
+			t.Fatalf("direct %s publication retry = stage %q error %v", failure.name, failureID, err)
+		}
+		if _, err := os.Stat(filepath.Join(runDir, "complete.json")); err != nil {
+			t.Fatalf("successful direct %s publication retry did not expose local completion: %v", failure.name, err)
+		}
+		for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+			path := filepath.Join(runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator))
+			var committed ReleaseEvidenceEnvelope
+			if err := decodeStrictJSONFile(path, &committed); err != nil {
+				t.Fatal(err)
+			}
+			if committed.ContentHash != staged[operator-1].ContentHash || committed.Signature != staged[operator-1].Signature {
+				t.Fatalf("operator %d %s retry replaced immutable completion stage", operator, failure.name)
+			}
+		}
+	}
+}
+
+// A pre-existing different object at one required replica must fail closed
+// after the earlier replica succeeds and before complete.json becomes visible.
+func TestDirectScenarioCompletionConflictLeavesNoLocalComplete(t *testing.T) {
 	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID := "direct-completion-failure"
+	runID := "direct-completion-conflict"
 	runDir := filepath.Join(stateDir, "runs", runID)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -414,35 +501,36 @@ func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
 	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
 	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
-		if err != nil {
-			t.Fatal(err)
+		prefix, prefixErr := operatorArtifactPrefix(cfg.Config, operator)
+		if prefixErr != nil {
+			t.Fatal(prefixErr)
 		}
 		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
 	}
-	stores[2] = &failingPutBlobStore{BlobStore: stores[2], err: errors.New("injected direct-store failure")}
-	failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
-		return stores[operator], nil
-	})
-	if err == nil || failureID != "complete_evidence_publication" || !strings.Contains(err.Error(), "injected direct-store failure") {
-		t.Fatalf("direct-store failure = stage %q error %v", failureID, err)
-	}
-	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("failed direct publication exposed a local complete marker: %v", err)
-	}
-	prefix, err := operatorArtifactPrefix(cfg.Config, 2)
+	stagePath := filepath.Join(runDir, "scenario-complete-commit.operator-2.evidence.json")
+	staged, _, err := prepareLocalEvidence(cfg, stateDir, stagePath, "scenario-complete-commit", runID, complete, roles.EVM["operator-2-artifact"], 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stores[2] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
-	failureID, err = commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
+	contentKey, err := startifact.EvidenceContentKey(stores[2], staged.ContentHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conflictPath := filepath.Join(t.TempDir(), "conflict.json")
+	if err := os.WriteFile(conflictPath, []byte("different immutable bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stores[2].Put(context.Background(), contentKey, conflictPath, "application/json"); err != nil {
+		t.Fatal(err)
+	}
+	failureID, err := commitPublishedScenarioCompletion(context.Background(), cfg, roles, stateDir, runID, complete, encoded, func(operator int) (server.BlobStore, error) {
 		return stores[operator], nil
 	})
-	if err != nil || failureID != "" {
-		t.Fatalf("direct publication retry = stage %q error %v", failureID, err)
+	if err == nil || failureID != "complete_evidence_publication" || !strings.Contains(err.Error(), "already contains different bytes") {
+		t.Fatalf("direct-store conflict = stage %q error %v", failureID, err)
 	}
-	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); err != nil {
-		t.Fatalf("successful direct publication retry did not expose local completion: %v", err)
+	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("conflicting direct publication exposed a local complete marker: %v", err)
 	}
 }
 
