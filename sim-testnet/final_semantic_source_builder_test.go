@@ -828,8 +828,12 @@ func finalSemanticBuilderDishonestDecisionEvidence(t *testing.T) (*FinalSemantic
 	underpayment.TransactionHash = finalTestHex(0xe1)
 	underpayment.LogsHash = finalTestHex(0xe2)
 	underpayment.Block = ChainHead{Number: 89, Hash: finalTestHex(89)}
+	requiredDepositRao, ok := new(big.Int).SetString(recoveryPool.RequiredDepositRao, 10)
+	if !ok || requiredDepositRao.Cmp(big.NewInt(1)) <= 0 {
+		t.Fatalf("fixture recovery deposit is invalid: %q", recoveryPool.RequiredDepositRao)
+	}
 	dishonest := &FinalDishonestDepositEvidence{
-		NoID: recoveryPool.NoID, PoolUID: recoveryPool.UID, RequiredDepositRao: recoveryPool.RequiredDepositRao, ObservedDepositRao: "50",
+		NoID: recoveryPool.NoID, PoolUID: recoveryPool.UID, RequiredDepositRao: recoveryPool.RequiredDepositRao, ObservedDepositRao: new(big.Int).Sub(requiredDepositRao, big.NewInt(1)).String(),
 		RecoveryRequiredDepositRao: recoveryPool.RequiredDepositRao, RecoveryObservedDepositRao: recoveryPool.ObservedDepositRao,
 		UnderpaymentReceipt: underpayment, RecoveryDepositReceipt: recoveryPool.DepositReceipt,
 	}

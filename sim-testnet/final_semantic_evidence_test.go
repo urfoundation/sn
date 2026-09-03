@@ -932,11 +932,15 @@ func TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery(t *testing.
 	requireFinalSemanticReleaseScaleFixture(t)
 	source, _ := finalSemanticFixture(t)
 	pool := source.Validators[0].Cycles[0].Pools[0]
+	requiredDepositRao, ok := new(big.Int).SetString(pool.RequiredDepositRao, 10)
+	if !ok || requiredDepositRao.Cmp(big.NewInt(1)) < 0 {
+		t.Fatalf("fixture required deposit is invalid: %q", pool.RequiredDepositRao)
+	}
 	pool.AuditCompliant = false
 	pool.AuditStatus = validatorpkg.DepositAuditMismatch
 	pool.AuditDisposition = "zero_pool_weight"
 	pool.AuditError = "observed deposit does not match signed usage"
-	pool.ObservedDepositRao = "50"
+	pool.ObservedDepositRao = new(big.Int).Sub(requiredDepositRao, big.NewInt(1)).String()
 	pool.QualityPPM = 0
 	pool.QualityFactor = FinalRational{Numerator: "0", Denominator: "1"}
 	pool.ImpliedUsageGiB = FinalRational{Numerator: "0", Denominator: "1"}
@@ -1091,7 +1095,7 @@ func TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection(t *testing.T)
 }
 
 // Construct the synthetic evidence policy from release-scale resolved inputs.
-// Its reduced usage rate retains production epoch and campaign ceilings.
+// The deposit schedule remains the authenticated release schedule.
 func finalSemanticFixtureReleasePolicy(cfg *ResolvedConfig) (protocol.Policy, error) {
 	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || uint64(cfg.Config.Scenarios.ShortEpochs) != finalReleaseEpochCount {
 		return protocol.Policy{}, fmt.Errorf("semantic fixture release policy context is incomplete")
@@ -1107,8 +1111,6 @@ func finalSemanticFixtureReleasePolicy(cfg *ResolvedConfig) (protocol.Policy, er
 	policy.Settlement.CloseGraceBlocks = 1
 	policy.Steering.MaxWeightLimitU16 = crv4.U16Max
 	policy.Deposit.Tiers = append([]protocol.DepositTier(nil), cfg.Policy.Deposit.Tiers...)
-	policy.Deposit.Tiers[0].RateNumeratorRaoPerGiB = 100
-	policy.Deposit.Tiers[0].RateDenominator = 1
 	policy.Verify.TrailDepth = 2
 	resolved := *cfg
 	resolved.Policy = &policy
@@ -1121,6 +1123,59 @@ func finalSemanticFixtureReleasePolicy(cfg *ResolvedConfig) (protocol.Policy, er
 		return protocol.Policy{}, err
 	}
 	return policy, nil
+}
+
+// Proves every authenticated conviction boundary retains its monotone exact
+// rate and selects the production floor-and-cap deposit formula.
+func TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	policy, err := finalSemanticFixtureReleasePolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.Deposit.Tiers) != len(cfg.Policy.Deposit.Tiers) {
+		t.Fatalf("fixture deposit tiers=%d, want %d", len(policy.Deposit.Tiers), len(cfg.Policy.Deposit.Tiers))
+	}
+	const gibBytes uint64 = 1024 * 1024 * 1024
+	const usageBytes = gibBytes + 12_345
+	for index, tier := range policy.Deposit.Tiers {
+		if tier != cfg.Policy.Deposit.Tiers[index] {
+			t.Fatalf("fixture deposit tier %d=%+v, want authenticated tier %+v", index, tier, cfg.Policy.Deposit.Tiers[index])
+		}
+		if index == 0 {
+			if tier.MinConvictionRao != 0 {
+				t.Fatalf("fixture deposit tier zero begins at %d", tier.MinConvictionRao)
+			}
+		} else {
+			previous := policy.Deposit.Tiers[index-1]
+			previousRateScaled := new(big.Int).Mul(new(big.Int).SetUint64(previous.RateNumeratorRaoPerGiB), new(big.Int).SetUint64(tier.RateDenominator))
+			currentRateScaled := new(big.Int).Mul(new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB), new(big.Int).SetUint64(previous.RateDenominator))
+			if tier.MinConvictionRao <= previous.MinConvictionRao || previousRateScaled.Cmp(currentRateScaled) < 0 {
+				t.Fatalf("fixture deposit tier %d is not a strictly ordered, non-increasing rate: %+v after %+v", index, tier, previous)
+			}
+			_, selectedBefore, err := protocol.RequiredDepositRao(usageBytes, new(big.Int).SetUint64(tier.MinConvictionRao-1), policy.Deposit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selectedBefore != previous {
+				t.Fatalf("conviction immediately below tier %d selected %+v, want %+v", index, selectedBefore, previous)
+			}
+		}
+
+		amountRao, selected, err := protocol.RequiredDepositRao(usageBytes, new(big.Int).SetUint64(tier.MinConvictionRao), policy.Deposit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedRao := new(big.Int).Mul(new(big.Int).SetUint64(usageBytes), new(big.Int).SetUint64(tier.RateNumeratorRaoPerGiB))
+		expectedRao.Quo(expectedRao, new(big.Int).Mul(new(big.Int).SetUint64(gibBytes), new(big.Int).SetUint64(tier.RateDenominator)))
+		capRao := new(big.Int).SetUint64(policy.Deposit.EpochCapRaoPerOperator)
+		if expectedRao.Cmp(capRao) > 0 {
+			expectedRao.Set(capRao)
+		}
+		if selected != tier || amountRao.Cmp(expectedRao) != 0 {
+			t.Fatalf("fixture deposit tier %d selected=%+v amount=%s, want %+v amount=%s", index, selected, amountRao, tier, expectedRao)
+		}
+	}
 }
 
 // Proves the fixture admits the exact release campaign requirement, rejects
@@ -1259,11 +1314,17 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			Selected: i < finalHeadSlotCount,
 		})
 	}
+	const fixturePoolUsageBytes = uint64(1024 * 1024 * 1024)
+	fixturePoolConvictionRao := big.NewInt(1_000)
+	fixturePoolDepositRao, fixturePoolTier, err := protocol.RequiredDepositRao(fixturePoolUsageBytes, fixturePoolConvictionRao, policy.Deposit)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for noID, uid := range []uint16{11, 13} {
 		cycle.Pools = append(cycle.Pools, FinalPoolWeightEvidence{
-			NoID: uint64(noID + 1), UID: uid, SourceEpoch: 9, UsageBytes: 1 << 30,
-			ConvictionBeforeRao: "1000", RateNumeratorRaoPerGiB: policy.Deposit.Tiers[0].RateNumeratorRaoPerGiB, RateDenominator: policy.Deposit.Tiers[0].RateDenominator,
-			EpochDepositCapRao: strconv.FormatUint(policy.Deposit.EpochCapRaoPerOperator, 10), RequiredDepositRao: "100", ObservedDepositRao: "100",
+			NoID: uint64(noID + 1), UID: uid, SourceEpoch: 9, UsageBytes: fixturePoolUsageBytes,
+			ConvictionBeforeRao: fixturePoolConvictionRao.String(), RateNumeratorRaoPerGiB: fixturePoolTier.RateNumeratorRaoPerGiB, RateDenominator: fixturePoolTier.RateDenominator,
+			EpochDepositCapRao: strconv.FormatUint(policy.Deposit.EpochCapRaoPerOperator, 10), RequiredDepositRao: fixturePoolDepositRao.String(), ObservedDepositRao: fixturePoolDepositRao.String(),
 			QualityPPM: 500_000, QualityFactor: FinalRational{Numerator: "3", Denominator: "4"},
 			ImpliedUsageGiB: FinalRational{Numerator: "1", Denominator: "1"}, RawScore: FinalRational{Numerator: "3", Denominator: "4"},
 			Formula: finalDepositFormula, AuditStatus: validatorpkg.DepositAuditCompliant, AuditCompliant: true, AuditDisposition: "pool_weight_eligible",
