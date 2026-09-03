@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {STSubnetProbe} from "../src/probe/STSubnetProbe.sol";
 import {Blake2b} from "../src/lib/Blake2b.sol";
@@ -74,7 +75,7 @@ contract SP1Conformance is Script {
     }
 
     function deploy() external returns (address probe) {
-        uint16 netuid = uint16(vm.envUint("SP1_NETUID"));
+        uint16 netuid = SafeCast.toUint16(vm.envUint("SP1_NETUID"));
         vm.startBroadcast();
         STSubnetProbe p = new STSubnetProbe(netuid);
         vm.stopBroadcast();

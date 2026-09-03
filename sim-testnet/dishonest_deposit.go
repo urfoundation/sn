@@ -116,6 +116,24 @@ func dishonestDepositAction(plan *SetupPlan) (Action, error) {
 	return Action{}, fmt.Errorf("approved plan has no %s action", dishonestDepositActionID)
 }
 
+// Constructs the one canonical bounded action before the release planner adds
+// its fee envelope and dependency edges. Publication uses the same action so a
+// later amount or runtime-envelope change cannot leave evidence reconstruction
+// on an obsolete literal.
+func dishonestDepositBaseAction(cfg *ResolvedConfig) Action {
+	return Action{
+		ID: dishonestDepositActionID, Kind: "evm-transaction", Target: "no:2",
+		Description: "post a deliberate 50-percent demand underpayment in the first fresh production-cadence epoch and prove live validators reject the signed-usage mismatch",
+		Parameters: map[string]string{
+			"no_id":                             "2",
+			"amount_rao":                        strconv.FormatUint(cfg.Config.Scenarios.DishonestDepositRao, 10),
+			"target_epoch":                      "next_fresh_production_epoch",
+			"reserve_runtime_share_transitions": strconv.FormatUint(reserveRuntimeShareTransitionCount, 10),
+			"reserve_rounding_allowance_rao":    strconv.FormatUint(reserveRoundingAllowancePerCallRao, 10),
+		},
+	}
+}
+
 func dishonestDepositParameters(action Action) (uint64, *big.Int, error) {
 	if action.ID != dishonestDepositActionID || action.Kind != "evm-transaction" || action.Target != "no:2" || action.Parameters["target_epoch"] != "next_fresh_production_epoch" {
 		return 0, nil, errors.New("dishonest-deposit action identity is invalid")
@@ -165,6 +183,16 @@ func coordinatorBigInt(values []any, method string) (*big.Int, error) {
 		return nil, fmt.Errorf("%s returned %T", method, values[0])
 	}
 	return value, nil
+}
+
+// Requires the finalized demand counter to equal the authenticated transaction
+// amount. Keeping this comparison shared by execution and publication prevents
+// an old dust-test literal from invalidating otherwise correct live evidence.
+func verifyDishonestDepositAmount(deposited, expected *big.Int) error {
+	if deposited == nil || expected == nil || expected.Sign() <= 0 || deposited.Cmp(expected) != 0 {
+		return fmt.Errorf("dishonest epoch deposit=%v, want %v", deposited, expected)
+	}
+	return nil
 }
 
 func parseDishonestDepositReceipt(cfg *ResolvedConfig, action Action, receipt *ethTypes.Receipt, parsed abi.ABI, coordinator, expectedFunder common.Address) (*DishonestDepositTransactionEvidence, error) {
@@ -320,8 +348,11 @@ func (e *Executor) verifyDishonestDepositPostState(ctx context.Context, action A
 		return nil, err
 	}
 	deposited, err := coordinatorBigInt(values, "epochDeposits")
-	if err != nil || deposited.Cmp(amount) != 0 {
-		return nil, stateMismatchError(err, "dishonest epoch deposit=%v, want %s", deposited, amount)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyDishonestDepositAmount(deposited, amount); err != nil {
+		return nil, stateMismatchError(err, "dishonest deposit counter mismatch")
 	}
 	state["no_id"], state["epoch"], state["amount_rao"] = noID, evidence.Epoch, evidence.AmountRao
 	state["transaction_hash"], state["finalized_block"], state["finalized_block_hash"] = evidence.TransactionHash, evidence.FinalizedBlock, evidence.FinalizedBlockHash
@@ -338,7 +369,7 @@ func readValidatorIntentFile(stateDir string, validatorID int) ([]validatorpkg.S
 	if err := decodeStrictJSONFile(path, &store); err != nil {
 		return nil, err
 	}
-	if store.Schema != "urnetwork-validator-steering-intent-v4" {
+	if store.Schema != validatorpkg.SteeringIntentSchema {
 		return nil, fmt.Errorf("validator %d intent schema %q", validatorID, store.Schema)
 	}
 	all := append([]validatorpkg.SteeringIntent(nil), store.History...)
@@ -353,7 +384,10 @@ func readValidatorIntentFile(stateDir string, validatorID int) ([]validatorpkg.S
 	return all, nil
 }
 
-func validatorDishonestDepositEvidence(stateDir string, validatorID int, epoch, noID uint64, poolUID uint16) (*DishonestDepositValidatorEvidence, error) {
+func validatorDishonestDepositEvidence(stateDir string, validatorID int, epoch, noID uint64, poolUID uint16, observedDepositRao string) (*DishonestDepositValidatorEvidence, error) {
+	if amount, ok := new(big.Int).SetString(observedDepositRao, 10); !ok || amount.Sign() <= 0 {
+		return nil, errors.New("dishonest deposit expected amount is invalid")
+	}
 	intents, err := readValidatorIntentFile(stateDir, validatorID)
 	if err != nil {
 		return nil, err
@@ -371,7 +405,7 @@ func validatorDishonestDepositEvidence(stateDir string, validatorID int, epoch, 
 				break
 			}
 		}
-		if audit == nil || audit.Status != validatorpkg.DepositAuditMismatch || audit.Compliant || audit.Disposition != "zero_pool_weight" || audit.ObservedDepositRao != "1" || audit.RequiredDepositRao == "" || audit.RequiredDepositRao == audit.ObservedDepositRao || audit.ArtifactHash == "" {
+		if audit == nil || audit.Status != validatorpkg.DepositAuditMismatch || audit.Compliant || audit.Disposition != "zero_pool_weight" || audit.ObservedDepositRao != observedDepositRao || audit.RequiredDepositRao == "" || audit.RequiredDepositRao == audit.ObservedDepositRao || audit.ArtifactHash == "" {
 			continue
 		}
 		result := &DishonestDepositValidatorEvidence{
@@ -410,7 +444,7 @@ func waitForDishonestDepositAudits(ctx context.Context, cfg *ResolvedConfig, sta
 		validators := make([]DishonestDepositValidatorEvidence, 0, cfg.Config.Topology.Validators)
 		lastErrors = lastErrors[:0]
 		for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
-			evidence, err := validatorDishonestDepositEvidence(stateDir, validatorID, transaction.Epoch, transaction.NoID, poolUID)
+			evidence, err := validatorDishonestDepositEvidence(stateDir, validatorID, transaction.Epoch, transaction.NoID, poolUID, transaction.AmountRao)
 			if err != nil {
 				lastErrors = append(lastErrors, err.Error())
 				continue
@@ -687,7 +721,11 @@ func inspectDishonestDepositEvidence(ctx context.Context, cfg *ResolvedConfig, s
 	if err != nil || len(roles.OperatorDepositSigners) < 2 {
 		return &evidence, false, "operator-2 deposit signer is unavailable"
 	}
-	action := Action{ID: dishonestDepositActionID, Kind: "evm-transaction", Target: "no:2", Parameters: map[string]string{"no_id": "2", "amount_rao": strconv.FormatUint(cfg.Config.Scenarios.DishonestDepositRao, 10), "target_epoch": "next_fresh_production_epoch"}}
+	action := dishonestDepositBaseAction(cfg)
+	_, amount, parametersErr := dishonestDepositParameters(action)
+	if parametersErr != nil {
+		return &evidence, false, parametersErr.Error()
+	}
 	reconstructed, err := parseDishonestDepositReceipt(cfg, action, receipt, parsed, contracts.Deployment.CoordinatorProxy, common.HexToAddress(roles.OperatorDepositSigners[1]))
 	if err != nil || *reconstructed != transaction {
 		return &evidence, false, fmt.Sprintf("dishonest deposit transaction reconstruction mismatch: %v", err)
@@ -697,8 +735,11 @@ func inspectDishonestDepositEvidence(ctx context.Context, cfg *ResolvedConfig, s
 		return &evidence, false, err.Error()
 	}
 	deposited, err := coordinatorBigInt(values, "epochDeposits")
-	if err != nil || deposited.Cmp(big.NewInt(1)) != 0 {
-		return &evidence, false, fmt.Sprintf("dishonest epoch deposit=%v: %v", deposited, err)
+	if err != nil {
+		return &evidence, false, err.Error()
+	}
+	if err := verifyDishonestDepositAmount(deposited, amount); err != nil {
+		return &evidence, false, err.Error()
 	}
 	poolUID := uint16(0)
 	poolFound := false
@@ -718,7 +759,7 @@ func inspectDishonestDepositEvidence(ctx context.Context, cfg *ResolvedConfig, s
 			return &evidence, false, "dishonest-deposit validator evidence identity mismatch"
 		}
 		seen[recorded.ValidatorID] = true
-		actual, readErr := validatorDishonestDepositEvidence(stateDir, recorded.ValidatorID, transaction.Epoch, transaction.NoID, poolUID)
+		actual, readErr := validatorDishonestDepositEvidence(stateDir, recorded.ValidatorID, transaction.Epoch, transaction.NoID, poolUID, transaction.AmountRao)
 		if readErr != nil || *actual != recorded {
 			return &evidence, false, fmt.Sprintf("validator %d dishonest-deposit evidence mismatch: %v", recorded.ValidatorID, readErr)
 		}

@@ -137,6 +137,9 @@ type AdversaryActorEvidence struct {
 	VectorIDs                []string                           `json:"vector_ids"`
 	StartedAt                string                             `json:"started_at"`
 	StoppedAt                string                             `json:"stopped_at,omitempty"`
+	FirstSampleAt            string                             `json:"first_sample_at,omitempty"`
+	LastSampleAt             string                             `json:"last_sample_at,omitempty"`
+	MaximumSampleGapMillis   int64                              `json:"maximum_sample_gap_milliseconds"`
 	Status                   string                             `json:"status"`
 	Samples                  uint64                             `json:"samples"`
 	ControlSamples           uint64                             `json:"control_samples"`
@@ -198,6 +201,7 @@ type AdversaryCampaignEvidence struct {
 	StoppedAt                 string                    `json:"stopped_at,omitempty"`
 	StartedBeforeHappyPath    bool                      `json:"started_before_happy_path"`
 	StoppedAfterHappyPath     bool                      `json:"stopped_after_happy_path"`
+	MaximumSampleGapMillis    int64                     `json:"maximum_allowed_sample_gap_milliseconds"`
 	MinimumSamplesPerActor    int                       `json:"minimum_samples_per_actor"`
 	MaximumActorErrorRatePPM  uint32                    `json:"maximum_actor_error_rate_ppm"`
 	MaximumP99Milliseconds    int                       `json:"maximum_p99_latency_milliseconds"`
@@ -214,6 +218,7 @@ type adversaryActorState struct {
 	latencies        []int64
 	controlLatencies []int64
 	attackLatencies  []int64
+	lastSampleAt     time.Time
 }
 
 type adversaryCampaign interface {
@@ -370,7 +375,8 @@ func (self *liveAdversaryCampaign) runActor(ctx context.Context, workers *sync.W
 		if ctx.Err() != nil {
 			return
 		}
-		self.record(actor.ID(), phase, self.now().Sub(started), result)
+		completed := self.now().UTC()
+		self.record(actor.ID(), phase, completed, completed.Sub(started), result)
 		sequence++
 		select {
 		case <-ctx.Done():
@@ -380,7 +386,7 @@ func (self *liveAdversaryCampaign) runActor(ctx context.Context, workers *sync.W
 	}
 }
 
-func (self *liveAdversaryCampaign) record(actorID string, phase adversarySamplePhase, duration time.Duration, result adversarySampleResult) {
+func (self *liveAdversaryCampaign) record(actorID string, phase adversarySamplePhase, sampledAt time.Time, duration time.Duration, result adversarySampleResult) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	state := self.states[actorID]
@@ -388,6 +394,26 @@ func (self *liveAdversaryCampaign) record(actorID string, phase adversarySampleP
 		return
 	}
 	evidence := &state.evidence
+	sampledAt = sampledAt.UTC()
+	previous := state.lastSampleAt
+	if previous.IsZero() {
+		if started, err := time.Parse(time.RFC3339Nano, evidence.StartedAt); err == nil {
+			previous = started
+		}
+		evidence.FirstSampleAt = sampledAt.Format(time.RFC3339Nano)
+	}
+	if !previous.IsZero() {
+		gap := sampledAt.Sub(previous).Milliseconds()
+		if gap < 0 {
+			evidence.Errors++
+			gap = 0
+		}
+		if gap > evidence.MaximumSampleGapMillis {
+			evidence.MaximumSampleGapMillis = gap
+		}
+	}
+	state.lastSampleAt = sampledAt
+	evidence.LastSampleAt = sampledAt.Format(time.RFC3339Nano)
 	evidence.LastDetail = result.Detail
 	evidence.Requests += result.Requests
 	if result.MaxInFlight > evidence.MaximumInFlight {
@@ -498,6 +524,12 @@ func (self *liveAdversaryCampaign) Stop(ctx context.Context) (*AdversaryCampaign
 		self.stopped = true
 		self.stoppedAt = self.now().UTC()
 		for _, state := range self.states {
+			if !state.lastSampleAt.IsZero() {
+				gap := self.stoppedAt.Sub(state.lastSampleAt).Milliseconds()
+				if gap > state.evidence.MaximumSampleGapMillis {
+					state.evidence.MaximumSampleGapMillis = gap
+				}
+			}
 			state.evidence.StoppedAt = self.stoppedAt.Format(time.RFC3339Nano)
 			state.evidence.Status = "stopped"
 		}
@@ -629,6 +661,7 @@ func (self *liveAdversaryCampaign) snapshotLocked() *AdversaryCampaignEvidence {
 	evidence := &AdversaryCampaignEvidence{
 		Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", Seed: self.cfg.Seed, MatrixHash: self.matrix.Hash,
 		StartedAt: self.startedAt.Format(time.RFC3339Nano), MinimumSamplesPerActor: self.cfg.MinimumSamplesPerActor,
+		MaximumSampleGapMillis:   int64(self.cfg.SampleIntervalMilliseconds + 2*self.cfg.RequestTimeoutMilliseconds),
 		MaximumActorErrorRatePPM: self.cfg.MaximumActorErrorRatePPM, MaximumP99Milliseconds: self.cfg.MaximumP99LatencyMilliseconds,
 		MaximumAttackControlRatio: self.cfg.MaximumAttackControlP95Ratio,
 		OperatorRequestCeilingQPS: self.cfg.MaximumOperatorRequestsPerSec, RPCRequestCeilingQPS: self.cfg.MaximumRPCRequestsPerSec,
@@ -659,6 +692,23 @@ func (self *liveAdversaryCampaign) snapshotLocked() *AdversaryCampaignEvidence {
 	}
 	evidence.Vectors = self.vectorEvidenceLocked(actors)
 	return evidence
+}
+
+func adversaryActorGapCoverage(evidence *AdversaryCampaignEvidence, actor AdversaryActorEvidence) (bool, string) {
+	if evidence == nil || evidence.MaximumSampleGapMillis <= 0 || actor.MaximumSampleGapMillis < 0 || actor.MaximumSampleGapMillis > evidence.MaximumSampleGapMillis || actor.StartedAt != evidence.StartedAt || actor.StoppedAt != evidence.StoppedAt {
+		return false, "campaign or actor sampling-gap bounds are incomplete"
+	}
+	campaignStarted, campaignErr := time.Parse(time.RFC3339Nano, evidence.StartedAt)
+	happyStarted, happyStartErr := time.Parse(time.RFC3339Nano, evidence.HappyPathStartedAt)
+	happyCompleted, happyCompleteErr := time.Parse(time.RFC3339Nano, evidence.HappyPathCompletedAt)
+	campaignStopped, campaignStopErr := time.Parse(time.RFC3339Nano, evidence.StoppedAt)
+	first, firstErr := time.Parse(time.RFC3339Nano, actor.FirstSampleAt)
+	last, lastErr := time.Parse(time.RFC3339Nano, actor.LastSampleAt)
+	allowed := time.Duration(evidence.MaximumSampleGapMillis) * time.Millisecond
+	passed := campaignErr == nil && happyStartErr == nil && happyCompleteErr == nil && campaignStopErr == nil && firstErr == nil && lastErr == nil &&
+		!campaignStarted.After(happyStarted) && !happyStarted.After(happyCompleted) && !happyCompleted.After(campaignStopped) &&
+		!first.Before(campaignStarted) && !first.After(happyStarted.Add(allowed)) && !last.Before(happyCompleted.Add(-allowed)) && !last.After(campaignStopped) && !last.Before(first)
+	return passed, fmt.Sprintf("first=%s last=%s max_gap_ms=%d allowed_ms=%d happy_start=%s happy_complete=%s", actor.FirstSampleAt, actor.LastSampleAt, actor.MaximumSampleGapMillis, evidence.MaximumSampleGapMillis, evidence.HappyPathStartedAt, evidence.HappyPathCompletedAt)
 }
 
 func adversaryAssertions(evidence *AdversaryCampaignEvidence, started time.Time, observationHash string) []AssertionRecord {
@@ -702,9 +752,11 @@ func adversaryAssertions(evidence *AdversaryCampaignEvidence, started time.Time,
 		errorHealthy := actor.ErrorRatePPM <= evidence.MaximumActorErrorRatePPM && (evidence.MaximumActorErrorRatePPM != 0 || actor.Errors == 0)
 		ratioHealthy := actor.AttackControlP95RatioPPM == 0 || actor.AttackControlP95RatioPPM <= evidence.MaximumAttackControlRatio
 		healthy := actor.Status == "stopped" && errorHealthy && ratioHealthy && actor.P99LatencyMilliseconds <= int64(evidence.MaximumP99Milliseconds)
+		gapHealthy, gapMessage := adversaryActorGapCoverage(evidence, actor)
 		assertions = append(assertions,
 			build("adversary_"+actor.ID+"_samples", minimum, fmt.Sprintf("samples=%d control=%d attack=%d skipped=%d minimum=%d", actor.Samples, actor.ControlSamples, actor.AttackSamples, actor.Skipped, evidence.MinimumSamplesPerActor)),
 			build("adversary_"+actor.ID+"_resilience", healthy, fmt.Sprintf("status=%s errors_ppm=%d p99_ms=%d attack_control_p95_ratio_ppm=%d maximum_ratio_ppm=%d requests=%d max_in_flight=%d", actor.Status, actor.ErrorRatePPM, actor.P99LatencyMilliseconds, actor.AttackControlP95RatioPPM, evidence.MaximumAttackControlRatio, actor.Requests, actor.MaximumInFlight)),
+			build("adversary_"+actor.ID+"_continuous_sampling", gapHealthy, gapMessage),
 		)
 	}
 	sort.Slice(assertions, func(i, j int) bool { return assertions[i].ID < assertions[j].ID })

@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -15,7 +17,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := string(scriptBytes)
-	const repositories = "release_repos=(sn server connect sdk glog goidenticons proxy userwireguard vault xops config)"
+	const repositories = "release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)"
 	if !strings.Contains(script, repositories) || !strings.Contains(script, `for repo in "${release_repos[@]}"`) {
 		t.Fatal("local release gate does not check every release repository")
 	}
@@ -26,6 +28,16 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		!strings.Contains(script, `go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/'`) ||
 		!strings.Contains(script, `go test "${server_packages[@]}" -run '^$'`) {
 		t.Fatal("local release gate does not verify the immutable server baseline and compile every executable package")
+	}
+	// A mapfile process substitution masks go-list/grep failure even under
+	// `set -euo pipefail`, potentially turning a broken package census into an
+	// empty successful compile gate. Materialize and validate the pipeline
+	// result before splitting it into the argv array.
+	if strings.Contains(script, `mapfile -t server_packages < <(go list`) ||
+		!strings.Contains(script, `server_package_list="$(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')"`) ||
+		!strings.Contains(script, `[[ -n "$server_package_list" ]]`) ||
+		!strings.Contains(script, `mapfile -t server_packages <<<"$server_package_list"`) {
+		t.Fatal("local release gate can mask a failed or empty executable server package census")
 	}
 	for _, required := range []string{
 		"CoreStClient(BlockHashes|FinalizedHead|Epoch)",
@@ -149,4 +161,195 @@ func TestLocalReleaseGateAllowsCompleteSimulatorRaceSuite(t *testing.T) {
 	if !strings.Contains(string(scriptBytes), "go test -race -timeout 15m ./sim-testnet") {
 		t.Fatal("local release gate lacks the reviewed 15-minute full simulator race deadline")
 	}
+}
+
+// Keep operator-proxy checks inside the module directory and make every source
+// gate explicit. Mere patch-hygiene coverage cannot prove that the independent
+// module compiles, remains tidy, or passes its concurrent behavior suite.
+func assertOperatorProxyReleaseGate(t *testing.T, scriptPath, heading string) {
+	t.Helper()
+	scriptBytes, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	const repositories = "release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)"
+	if strings.Count(script, repositories) != 1 || !strings.Contains(script, `for repo in "${release_repos[@]}"`) {
+		t.Fatalf("%s does not fence the complete release repository set", scriptPath)
+	}
+	start := strings.Index(script, heading)
+	if start < 0 {
+		t.Fatalf("%s has no operator-proxy gate", scriptPath)
+	}
+	section := script[start+len(heading):]
+	if end := strings.Index(section, "\necho \""); end >= 0 {
+		section = section[:end]
+	}
+	required := []string{
+		`cd "$workspace/operator-proxy"`,
+		"go mod tidy",
+		"git diff --exit-code -- go.mod go.sum",
+		"go build ./...",
+		"go vet ./...",
+		`unformatted="$(gofmt -l .)"`,
+		`if [[ -n "$unformatted" ]]`,
+		"gofmt -d .",
+		"go test -count=1 -timeout 20m ./...",
+		"go test -race -count=1 -timeout 20m ./...",
+	}
+	previous := -1
+	for _, command := range required {
+		if strings.Count(section, command) != 1 {
+			t.Errorf("%s operator-proxy gate has %d copies of %q", scriptPath, strings.Count(section, command), command)
+			continue
+		}
+		index := strings.Index(section, command)
+		if index <= previous {
+			t.Errorf("%s operator-proxy gate orders %q before its prerequisite", scriptPath, command)
+		}
+		previous = index
+	}
+}
+
+func TestLocalReleaseGateCoversCompleteOperatorProxyModule(t *testing.T) {
+	assertOperatorProxyReleaseGate(t, "../scripts/test-release-1.0-local.sh", `echo "[release-1.0] operator-proxy module"`)
+}
+
+func TestProducerReleaseGateCoversCompleteOperatorProxyModule(t *testing.T) {
+	assertOperatorProxyReleaseGate(t, "../scripts/test-release-1.0-producer-gate.sh", `echo "[release-1.0 producer] operator-proxy source and behavior"`)
+}
+
+func TestSolidityStaticGateCoversEveryDeployedRoot(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-solidity-static.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	for _, root := range []string{
+		"src/STCoordinator.sol",
+		"src/STFleetBatcher.sol",
+		"src/probe/STSubnetProbe.sol",
+		"src/testnet/STCoordinatorAdversary.sol",
+	} {
+		if strings.Count(script, root) != 1 {
+			t.Errorf("deployable Solidity root %s appears %d times in the static gate", root, strings.Count(script, root))
+		}
+	}
+	if !strings.Contains(script, "all ${#contracts[@]} deployable roots") {
+		t.Fatal("Solidity static gate does not report its complete deployed-root count")
+	}
+}
+
+// Keep the live launch path bounded without weakening acceptance. This gate
+// exercises every mutable evidence producer and the closed-capture boundary;
+// expensive semantic reconstruction and broad suites belong to the concurrent
+// offline gate in test-release-1.0-local.sh.
+func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	for _, required := range []string{
+		"go test ./validator ./sim-testnet -run '^$'",
+		"Attempt|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop",
+		"FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)",
+		"ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion",
+		"CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes",
+		"ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence",
+		"PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState",
+		"go test -race ./validator",
+		"go test -race ./sim-testnet",
+		"forge test --summary",
+		"go run ./sim-testnet/gencontracts --check",
+		"./stabi/generate.sh --check",
+		"go test ./st ./startifact",
+		"VerifyController(FullTrailFlow|PoisonAndFailurePaths",
+		"StSyncChainEventsBatchesCanonicalEventBlocks",
+		"StTransactionIntentReservationUsesChainAccountNonceScope",
+		"go test ./sim-testnet -run '^TestReleaseLockMatchesCheckout$'",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("launch-critical producer gate omits %s", required)
+		}
+	}
+	for _, deferred := range []string{
+		"go test ./...",
+		"ProduceFinalSemanticOutputs",
+		"FinalSemanticEvidenceBuild",
+		"go test -race -timeout 15m ./sim-testnet",
+		"test-solidity-static.sh",
+	} {
+		if strings.Contains(script, deferred) {
+			t.Errorf("offline acceptance work %s leaked into the launch-critical gate", deferred)
+		}
+	}
+	lockIndex := strings.LastIndex(script, "TestReleaseLockMatchesCheckout")
+	passedIndex := strings.LastIndex(script, "launch-critical gate passed")
+	if lockIndex < 0 || passedIndex <= lockIndex {
+		t.Fatalf("producer gate is not release-lock fenced: lock=%d pass=%d", lockIndex, passedIndex)
+	}
+}
+
+func assertReleaseGateAssignmentFilterProfile(t *testing.T, scriptPath, gate string) {
+	t.Helper()
+	scriptBytes, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	profileIndex := strings.Index(script, "export WARP_ENV=local")
+	if profileIndex < 0 {
+		t.Fatalf("%s gate has no isolated database profile", gate)
+	}
+	beforeProfile, databaseProfile := script[:profileIndex], script[profileIndex:]
+	for _, name := range []string{
+		"VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)",
+		"StSyncChainEventsBatchesCanonicalEventBlocks",
+		"StTransactionIntentReservationUsesChainAccountNonceScope",
+	} {
+		if strings.Contains(beforeProfile, name) || !strings.Contains(databaseProfile, name) {
+			t.Errorf("database-backed %s test %s is not confined to the isolated profile", gate, name)
+		}
+	}
+	match := regexp.MustCompile(`(?m)^\s*filter_pure_tests='([^'\n]+)'\s*$`).FindStringSubmatch(script)
+	if len(match) != 2 {
+		t.Fatalf("%s gate has no explicit pure assignment-filter selector", gate)
+	}
+	selector, err := regexp.Compile(match[1])
+	if err != nil {
+		t.Fatalf("compile pure assignment-filter selector: %v", err)
+	}
+	files, err := filepath.Glob(filepath.Join("..", "..", "server", "controller", "*_test.go"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("enumerate operator controller tests: files=%d err=%v", len(files), err)
+	}
+	testName := regexp.MustCompile(`(?m)^func (TestVerifySimulationAssignmentFilter[[:alnum:]_]+)\(`)
+	selected := 0
+	for _, file := range files {
+		raw, readErr := os.ReadFile(file)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		for _, found := range testName.FindAllSubmatch(raw, -1) {
+			if !selector.Match(found[1]) {
+				continue
+			}
+			selected++
+			if strings.HasSuffix(file, "_db_test.go") {
+				t.Errorf("pre-profile selector admits database test %s from %s", found[1], file)
+			}
+		}
+	}
+	if selected < 10 {
+		t.Fatalf("pure assignment-filter coverage unexpectedly shrank to %d tests", selected)
+	}
+}
+
+func TestProducerGateDoesNotSelectDatabaseTestsBeforeItsIsolatedProfile(t *testing.T) {
+	assertReleaseGateAssignmentFilterProfile(t, "../scripts/test-release-1.0-producer-gate.sh", "producer")
+}
+
+func TestLocalGateDoesNotSelectDatabaseTestsBeforeItsIsolatedProfile(t *testing.T) {
+	assertReleaseGateAssignmentFilterProfile(t, "../scripts/test-release-1.0-local.sh", "local")
 }

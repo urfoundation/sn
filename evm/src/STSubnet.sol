@@ -5,6 +5,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {IStaking, ISTAKING_ADDRESS} from "./interfaces/stakingV2.sol";
 import {INeuron, INeuron_ADDRESS} from "./interfaces/neuron.sol";
@@ -278,7 +279,7 @@ contract STSubnet is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         selfColdkey = selfColdkey_ == bytes32(0) ? _mirror(address(this)) : selfColdkey_;
 
         epoch = 0;
-        epochStartBlock = uint64(block.number);
+        epochStartBlock = SafeCast.toUint64(block.number);
 
         emit SelfColdkeySet(selfColdkey);
         emit EpochParamsSet(tEpoch_, commitWindowBlocks_, trailsWindowBlocks_, finalizeOffsetBlocks_);

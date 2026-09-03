@@ -48,6 +48,7 @@ type Executor struct {
 	oracle, keeper          *EVMTxManager
 	deposits                map[int]*EVMTxManager
 	payloads                *DeploymentPayloads
+	releaseGate             *ReleaseCampaignGate
 	carriedVerificationKeys map[string]bool
 	carriedFleetHistoryKeys map[string]bool
 }
@@ -538,7 +539,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	limitID := "config.render"
 	if cmd == "scenario" {
 		if o.Name == releaseCandidateCampaignName {
-			return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, RunScenario)
+			return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
 		}
 		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
 	}
@@ -1303,6 +1304,27 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 	return e.journal.Append(JournalEntry{DeploymentID: e.cfg.Config.Deployment.DeploymentID, PlanHash: e.plan.PlanHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageVerified, PostconditionHash: hash, PostconditionPath: path})
 }
 
+// Ordinary generation-1/2 fleet funding always follows the registered fleet
+// signer. Lifecycle takeover identities have separately named, separately
+// budgeted actions and must never redirect the setup funding action.
+func fleetHotkeyFundingRole(cfg *ResolvedConfig, action Action) (string, error) {
+	if cfg == nil || cfg.Config == nil || !strings.HasPrefix(action.ID, "fleet.fund-hotkey.") || action.Kind != "substrate-extrinsic" {
+		return "", errors.New("ordinary fleet hotkey funding action is invalid")
+	}
+	fleet := suffixInt(action.ID)
+	if fleet < 1 {
+		return "", errors.New("ordinary fleet hotkey funding index is invalid")
+	}
+	wantTarget := fmt.Sprintf("head-fleet-hotkey:%d", fleet)
+	if fleet > cfg.Config.Topology.HeadFleets {
+		wantTarget = fmt.Sprintf("challenger-fleet-hotkey:%d", fleet)
+	}
+	if action.Target != wantTarget {
+		return "", fmt.Errorf("ordinary fleet hotkey funding target=%q, want %q", action.Target, wantTarget)
+	}
+	return fleetHotkeyLabel(fleet), nil
+}
+
 func (e *Executor) verifyActionDependencies(action Action) error {
 	if e.plan == nil || e.journal == nil {
 		return errors.New("plan/journal is unavailable")
@@ -1390,12 +1412,17 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 		return e.executeGovernanceDrillAction(ctx, a)
 	case strings.HasPrefix(a.ID, "operator.register."):
 		return e.registerOperator(ctx, a)
+	case strings.HasPrefix(a.ID, "lifecycle."):
+		return e.executeFleetLifecycleAction(ctx, a)
 	case strings.HasPrefix(a.ID, "fleet.fund."):
 		fleet := suffixInt(a.ID)
 		return e.fundSubstrateRole(ctx, a, fleetColdkeyLabel(fleet))
 	case strings.HasPrefix(a.ID, "fleet.fund-hotkey."):
-		fleet := suffixInt(a.ID)
-		return e.fundSubstrateRole(ctx, a, fleetHotkeyLabel(fleet))
+		role, err := fleetHotkeyFundingRole(e.cfg, a)
+		if err != nil {
+			return err
+		}
+		return e.fundSubstrateRole(ctx, a, role)
 	case strings.HasPrefix(a.ID, "fleet.register."):
 		fleet := suffixInt(a.ID)
 		if fleet > e.cfg.Config.Topology.HeadFleets {
@@ -1542,12 +1569,12 @@ func (e *Executor) activateCoordinatorUpgrade(ctx context.Context, a Action) err
 	if err != nil {
 		return err
 	}
-	code, err := e.owner.client.CodeAt(ctx, upgrade.Implementation, new(big.Int).SetUint64(head.Number))
+	code, err := codeAtCanonicalHead(ctx, e.owner, upgrade.Implementation, head)
 	if err != nil || !strings.EqualFold(crypto.Keccak256Hash(code).Hex(), upgrade.RuntimeCodeHash) {
 		return stateMismatchError(err, "coordinator upgrade runtime mismatch at %s", upgrade.Implementation)
 	}
 	proxy := e.payloads.Manifest.CoordinatorProxy
-	active, err := implementationAt(ctx, e.owner, proxy, head.Number)
+	active, err := implementationAt(ctx, e.owner, proxy, head)
 	if err != nil {
 		return err
 	}
@@ -1555,7 +1582,7 @@ func (e *Executor) activateCoordinatorUpgrade(ctx context.Context, a Action) err
 	if err != nil {
 		return err
 	}
-	activeCode, err := e.owner.client.CodeAt(ctx, active, new(big.Int).SetUint64(head.Number))
+	activeCode, err := codeAtCanonicalHead(ctx, e.owner, active, head)
 	if err != nil {
 		return err
 	}
@@ -1581,7 +1608,7 @@ func (e *Executor) activateCoordinatorUpgrade(ctx context.Context, a Action) err
 	if err != nil {
 		return err
 	}
-	active, err = implementationAt(ctx, e.owner, proxy, postHead.Number)
+	active, err = implementationAt(ctx, e.owner, proxy, postHead)
 	if err != nil || active != upgrade.Implementation {
 		return stateMismatchError(err, "coordinator proxy implementation=%s want=%s", active, upgrade.Implementation)
 	}
@@ -1882,6 +1909,8 @@ type ProductionPolicyEvidence struct {
 	ReleaseRunID           string `json:"release_run_id"`
 	ReleaseResultHash      string `json:"release_result_hash"`
 	ReleaseCompleteHash    string `json:"release_complete_hash"`
+	ReleaseHandoffHash     string `json:"release_handoff_hash"`
+	ReleaseHandoffSize     uint64 `json:"release_handoff_size_bytes"`
 	CampaignStartEpoch     uint64 `json:"campaign_start_epoch"`
 	CampaignEndEpoch       uint64 `json:"campaign_end_epoch"`
 	ScheduledFromEpoch     uint64 `json:"scheduled_from_epoch"`
@@ -1895,6 +1924,31 @@ type ProductionPolicyEvidence struct {
 	TransactionHash        string `json:"transaction_hash,omitempty"`
 	FinalizedBlock         uint64 `json:"finalized_block,omitempty"`
 	FinalizedBlockHash     string `json:"finalized_block_hash,omitempty"`
+}
+
+func (e *Executor) boundProductionReleaseGate() (*ReleaseCampaignGate, error) {
+	if e == nil || e.cfg == nil || e.plan == nil || e.roles == nil {
+		return nil, errors.New("production release gate context is incomplete")
+	}
+	var gate *ReleaseCampaignGate
+	if e.releaseGate != nil {
+		copyGate := *e.releaseGate
+		gate = &copyGate
+	} else {
+		attempt, err := readScenarioCampaignAttempt(e.cfg, e.stateDir, e.roles, e.plan.PlanHash, "production-soak")
+		if err != nil {
+			return nil, fmt.Errorf("read durable production attempt: %w", err)
+		}
+		if attempt.payload.PriorRelease == nil {
+			return nil, errors.New("durable production attempt has no release gate")
+		}
+		copyGate := *attempt.payload.PriorRelease
+		gate = &copyGate
+	}
+	if _, _, err := validateExactReleaseCampaignGate(e.cfg, e.stateDir, e.roles, gate); err != nil {
+		return nil, err
+	}
+	return gate, nil
 }
 
 func coordinatorPolicy(values []any) (stabi.STCoordinatorPolicySnapshot, error) {
@@ -2051,7 +2105,7 @@ func (e *Executor) scheduleProductionPolicy(ctx context.Context, a Action) error
 		return err
 	}
 	address := e.payloads.Manifest.CoordinatorProxy
-	gate, err := loadReleaseCampaignGate(e.cfg, e.stateDir, e.roles)
+	gate, err := e.boundProductionReleaseGate()
 	if err != nil {
 		return fmt.Errorf("production release gate: %w", err)
 	}
@@ -2181,6 +2235,7 @@ func (e *Executor) writeProductionPolicyEvidence(policy stabi.STCoordinatorPolic
 	evidence := ProductionPolicyEvidence{
 		Schema: "urnetwork-production-policy-evidence-v2", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
 		PolicyHash: e.cfg.PolicyHash, ReleaseRunID: gate.RunID, ReleaseResultHash: gate.ResultHash, ReleaseCompleteHash: gate.CompleteContentHash,
+		ReleaseHandoffHash: gate.LifecycleHandoff.ContentHash, ReleaseHandoffSize: gate.LifecycleHandoff.SizeBytes,
 		CampaignStartEpoch: gate.StartEpoch, CampaignEndEpoch: gate.EndEpoch, ScheduledFromEpoch: scheduledFrom, EffectiveEpoch: policy.EffectiveEpoch,
 		EffectiveBlock: policy.EffectiveBlock, PriorEpochBlocks: e.cfg.Policy.Settlement.EpochBlocks,
 		EpochBlocks: policy.EpochBlocks, RootCommitWindowBlocks: policy.RootCommitWindowBlocks,
@@ -4197,6 +4252,9 @@ func copyTree(src, dst string, mode os.FileMode) error {
 }
 
 func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, c *ContractDeployment) error {
+	if err := prepareSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
+		return err
+	}
 	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		v := cloneMap(base)

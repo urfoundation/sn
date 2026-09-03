@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -162,7 +163,7 @@ func TestDepositedTopic0(t *testing.T) {
 // depositedLogJSON builds one eth_getLogs Deposited log object: topic0 =
 // depositedTopic0, indexed e / noId as topics, and (from, amount) abi-encoded in
 // data.
-func depositedLogJSON(contract common.Address, e, noId, amount int64) map[string]any {
+func depositedLogJSON(contract common.Address, e, noId, amount, logIndex int64) map[string]any {
 	from := common.HexToAddress("0x00000000000000000000000000000000000000aa")
 	data := make([]byte, 64)
 	copy(data[12:32], from.Bytes()) // address right-aligned in the first word
@@ -179,7 +180,7 @@ func depositedLogJSON(contract common.Address, e, noId, amount int64) map[string
 		"transactionHash":  "0x" + strings.Repeat("11", 32),
 		"transactionIndex": "0x0",
 		"blockHash":        "0x" + strings.Repeat("22", 32),
-		"logIndex":         "0x0",
+		"logIndex":         fmt.Sprintf("0x%x", logIndex),
 		"removed":          false,
 	}
 }
@@ -219,9 +220,9 @@ func TestDepositedSums(t *testing.T) {
 			}
 			mu.Unlock()
 			result = []map[string]any{
-				depositedLogJSON(contract, 5, 1, 100),
-				depositedLogJSON(contract, 5, 1, 50), // same noId → summed
-				depositedLogJSON(contract, 5, 2, 30), // different noId
+				depositedLogJSON(contract, 5, 1, 100, 0),
+				depositedLogJSON(contract, 5, 1, 50, 1), // same noId → summed
+				depositedLogJSON(contract, 5, 2, 30, 2), // different noId
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -260,5 +261,141 @@ func TestDepositedSums(t *testing.T) {
 	}
 	if len(sawTopics[1]) != 1 || sawTopics[1][0] != common.BigToHash(big.NewInt(5)).Hex() {
 		t.Fatalf("epoch topic filter %v, want hash(5)", sawTopics[1])
+	}
+}
+
+// The finalized event log is the validator's authoritative demand input. A
+// provider response that does not exactly match the requested canonical log
+// domain must stop scoring instead of being skipped or counted twice.
+func TestDepositedSumsRejectsMalformedRemovedForeignAndDuplicateLogs(t *testing.T) {
+	contract := common.HexToAddress("0x00000000000000000000000000000000000000cc")
+	foreign := common.HexToAddress("0x00000000000000000000000000000000000000dd")
+	base := func() map[string]any { return depositedLogJSON(contract, 5, 1, 100, 0) }
+	cases := []struct {
+		name string
+		logs func() []map[string]any
+	}{
+		{name: "foreign address", logs: func() []map[string]any { return []map[string]any{depositedLogJSON(foreign, 5, 1, 100, 0)} }},
+		{name: "removed", logs: func() []map[string]any { log := base(); log["removed"] = true; return []map[string]any{log} }},
+		{name: "missing indexed topic", logs: func() []map[string]any {
+			log := base()
+			log["topics"] = log["topics"].([]string)[:2]
+			return []map[string]any{log}
+		}},
+		{name: "wrong epoch", logs: func() []map[string]any { return []map[string]any{depositedLogJSON(contract, 6, 1, 100, 0)} }},
+		{name: "malformed data", logs: func() []map[string]any { log := base(); log["data"] = "0x00"; return []map[string]any{log} }},
+		{name: "outside block range", logs: func() []map[string]any { log := base(); log["blockNumber"] = "0x6"; return []map[string]any{log} }},
+		{name: "missing block identity", logs: func() []map[string]any {
+			log := base()
+			log["blockHash"] = common.Hash{}.Hex()
+			return []map[string]any{log}
+		}},
+		{name: "missing transaction identity", logs: func() []map[string]any {
+			log := base()
+			log["transactionHash"] = common.Hash{}.Hex()
+			return []map[string]any{log}
+		}},
+		{name: "zero operator", logs: func() []map[string]any { return []map[string]any{depositedLogJSON(contract, 5, 0, 100, 0)} }},
+		{name: "zero amount", logs: func() []map[string]any { return []map[string]any{depositedLogJSON(contract, 5, 1, 0, 0)} }},
+		{name: "duplicate", logs: func() []map[string]any { log := base(); return []map[string]any{log, log} }},
+	}
+	for _, testCase := range cases {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var request struct {
+				Id     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			var result any = "0x0"
+			if request.Method == "eth_chainId" {
+				result = "0x3b1"
+			} else if request.Method == "eth_getLogs" {
+				result = testCase.logs()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": request.Id, "result": result})
+		}))
+		chain, err := DialChain([]string{server.URL}, contract)
+		if err != nil {
+			server.Close()
+			t.Errorf("%s dial: %v", testCase.name, err)
+			continue
+		}
+		_, scanErr := chain.DepositedSums(0, 5, big.NewInt(5))
+		chain.Close()
+		server.Close()
+		if scanErr == nil {
+			t.Errorf("%s log was accepted", testCase.name)
+		}
+	}
+}
+
+// Chunk arithmetic remains monotonic through the largest uint64 block. The
+// old addition-first calculation wrapped the first upper bound below `from`.
+func TestDepositedSumsDoesNotWrapFinalChunkAtUint64Boundary(t *testing.T) {
+	contract := common.HexToAddress("0x00000000000000000000000000000000000000cc")
+	fromBlock, toBlock := ^uint64(0)-5, ^uint64(0)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Id     json.RawMessage   `json:"id"`
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		response := map[string]any{"jsonrpc": "2.0", "id": request.Id, "result": "0x0"}
+		if request.Method == "eth_chainId" {
+			response["result"] = "0x3b1"
+		} else if request.Method == "eth_getLogs" {
+			requests++
+			var filter struct {
+				FromBlock string `json:"fromBlock"`
+				ToBlock   string `json:"toBlock"`
+			}
+			if len(request.Params) != 1 || json.Unmarshal(request.Params[0], &filter) != nil || filter.FromBlock != fmt.Sprintf("0x%x", fromBlock) || filter.ToBlock != fmt.Sprintf("0x%x", toBlock) || requests != 1 {
+				delete(response, "result")
+				response["error"] = map[string]any{"code": -32602, "message": "wrapped or repeated range"}
+			} else {
+				response["result"] = []any{}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+	chain, err := DialChain([]string{server.URL}, contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chain.Close()
+	if _, err := chain.DepositedSums(fromBlock, toBlock, nil); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Fatalf("eth_getLogs requests=%d, want 1", requests)
+	}
+}
+
+func TestDepositedSumsRejectsUnavailableScannerAndInvalidEpoch(t *testing.T) {
+	if _, err := (&ChainClient{}).DepositedSums(0, 0, nil); err == nil {
+		t.Fatal("unavailable deposited-event scanner was accepted")
+	}
+	server := jsonRpcStub(t, "0x3b1")
+	defer server.Close()
+	chain, err := DialChain([]string{server.URL}, common.HexToAddress("0x00000000000000000000000000000000000000cc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chain.Close()
+	for _, epoch := range []*big.Int{big.NewInt(-1), new(big.Int).Lsh(big.NewInt(1), 256)} {
+		if _, err := chain.DepositedSums(0, 0, epoch); err == nil {
+			t.Errorf("invalid epoch %s was accepted", epoch)
+		}
 	}
 }

@@ -64,6 +64,7 @@ type RepositoryConfig struct {
 	Discovery      string `yaml:"discovery" json:"discovery"`
 	SN             string `yaml:"sn" json:"sn"`
 	Server         string `yaml:"server" json:"server"`
+	OperatorProxy  string `yaml:"operator_proxy" json:"operator_proxy"`
 	Vault          string `yaml:"vault" json:"vault"`
 	PlatformConfig string `yaml:"platform_config" json:"platform_config"`
 }
@@ -74,13 +75,14 @@ func (r *RepositoryConfig) UnmarshalYAML(n *yaml.Node) error {
 		Discovery      string `yaml:"discovery"`
 		SN             string `yaml:"sn"`
 		Server         string `yaml:"server"`
+		OperatorProxy  string `yaml:"operator_proxy"`
 		Vault          string `yaml:"vault"`
 		PlatformConfig string `yaml:"platform_config"`
 	}
 	if err := n.Decode(&v); err != nil {
 		return err
 	}
-	*r = RepositoryConfig{Discovery: v.Discovery, SN: v.SN, Server: v.Server, Vault: v.Vault, PlatformConfig: v.PlatformConfig}
+	*r = RepositoryConfig{Discovery: v.Discovery, SN: v.SN, Server: v.Server, OperatorProxy: v.OperatorProxy, Vault: v.Vault, PlatformConfig: v.PlatformConfig}
 	return nil
 }
 
@@ -364,7 +366,7 @@ type CompatibilityGate struct {
 	Decision string   `yaml:"decision" json:"decision"`
 }
 
-type RepoPaths struct{ SN, Server, Vault, PlatformConfig string }
+type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
 	ConfigPath           string
 	Config               *HarnessConfig
@@ -397,8 +399,8 @@ type ResolvedConfig struct {
 }
 
 type LoadOptions struct {
-	ConfigPath, SNRepo, ServerRepo, VaultRepo, PlatformConfigRepo string
-	RequireSecrets                                                bool
+	ConfigPath, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo string
+	RequireSecrets                                                                   bool
 }
 
 func strictYAML(path string, out any) error {
@@ -526,6 +528,9 @@ func (c *HarnessConfig) Validate() error {
 	if c.Topology.OperatorAssignment != "balanced" || c.Dependencies.Mode != "managed_containers" || c.Processes.RestartPolicy != "on_failure_bounded" {
 		return errors.New("release topology requires balanced assignment, managed containers, and bounded restart supervision")
 	}
+	if err := validateFleetLifecycleTopology(c.Topology); err != nil {
+		return err
+	}
 	if c.Contracts.GovernanceProfile != "testnet-single-owner" || !c.Contracts.Install || !c.Contracts.VerifyRuntimeCodeHash {
 		return errors.New("invalid contract release settings")
 	}
@@ -561,8 +566,9 @@ func (c *HarnessConfig) Validate() error {
 	}
 	// Each NO consumes a deposit and pool UID; validators include the reserve
 	// validator; initial and challenger fleets consume one registration each;
-	// churn-floor UIDs fill capacity; and claims escrow needs a live hotkey.
-	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1
+	// churn-floor UIDs fill capacity; claims escrow needs a live hotkey; and the
+	// M2 fallback/provider/terminal waves each consume one real registration.
+	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1 + 3
 	if c.Budgets.MaximumRegistrations < requiredRegistrations || uint64(c.Budgets.MaximumRegistrations) > uint64(math.MaxUint32) {
 		return errors.New("registration budget is outside the topology requirement and uint32 approval range")
 	}
@@ -1161,6 +1167,9 @@ func (r *ResolvedConfig) Validate() error {
 	if r.Public.Chain.ExpectedBlockSeconds == 0 || r.Public.Chain.ExpectedDefaultMinTransferRao == 0 {
 		return errors.New("public manifest must declare a nonzero block cadence and runtime transfer minimum")
 	}
+	if err := validateSettlementVaultClaimWindows(r.Policy); err != nil {
+		return err
+	}
 	if r.ChainID != 0 && r.ChainID != testnetChainID {
 		return fmt.Errorf("vault testnet chain id %d, want %d", r.ChainID, testnetChainID)
 	}
@@ -1199,7 +1208,7 @@ func (r *ResolvedConfig) Validate() error {
 		return fmt.Errorf("bootstrap immunity_period must be the reviewed %d-block testnet recovery window", testnetBootstrapImmunityPeriodBlocks)
 	}
 	if len(r.OperatorAPIOrigins) != 0 {
-		origins, err := validateOperatorAPIOrigins(r.OperatorAPIOrigins, r.Config.Topology.Operators)
+		origins, err := validateOperatorAPIOrigins(r.OperatorAPIOrigins, r.Config.Topology.Operators, r.ChainID, r.Public.Chain.GenesisHash, r.Config.Deployment.Network)
 		if err != nil {
 			return err
 		}
@@ -1222,6 +1231,44 @@ func (r *ResolvedConfig) Validate() error {
 		return fmt.Errorf("campaign cap %d cannot fund accelerated epochs, the dishonest production deposit, recovery, and three fully observed UR blocks; require at least %d", r.Policy.Deposit.TotalTestCampaignCapRao, required)
 	}
 	return nil
+}
+
+// The immutable vault floor is fixed from the deployment policy. Every future
+// cadence must still leave that much claim time after its finalize offset;
+// otherwise the coordinator would accept a policy whose timely finalizations
+// always revert in the vault.
+func validateSettlementVaultClaimWindows(policy *protocol.Policy) error {
+	if policy == nil {
+		return errors.New("settlement policy is unavailable")
+	}
+	settlement := policy.Settlement
+	minimumTTL, ok := checkedMul(settlement.EpochBlocks, settlement.ClaimTTLEpochs)
+	if !ok || minimumTTL == 0 {
+		return errors.New("settlement vault minimum claim TTL overflows uint64")
+	}
+	claimEpochs, ok := checkedAdd(settlement.ClaimTTLEpochs, settlement.ClaimGraceEpochs)
+	if !ok {
+		return errors.New("settlement claim TTL plus grace overflows uint64")
+	}
+	validate := func(name string, epochBlocks, finalizeOffset uint64) error {
+		horizon, multiplyOK := checkedMul(claimEpochs, epochBlocks)
+		required, addOK := checkedAdd(minimumTTL, finalizeOffset)
+		if addOK {
+			required, addOK = checkedAdd(required, 1)
+		}
+		if !multiplyOK || !addOK {
+			return fmt.Errorf("%s settlement claim window overflows uint64", name)
+		}
+		if horizon < required {
+			return fmt.Errorf("%s settlement claim window %d is below immutable vault requirement %d", name, horizon, required)
+		}
+		return nil
+	}
+	if err := validate("accelerated", settlement.EpochBlocks, settlement.FinalizeOffsetBlocks); err != nil {
+		return err
+	}
+	production := policy.ProductionCadence
+	return validate("production", production.EpochBlocks, production.FinalizeOffsetBlocks)
 }
 
 // releaseCampaignDepositRequirement includes every epoch that can begin before
@@ -1255,25 +1302,9 @@ func releaseCampaignDepositRequirement(r *ResolvedConfig) (uint64, error) {
 	return required, nil
 }
 
-func validateOperatorAPIOrigins(origins []string, operators int) ([]string, error) {
-	if len(origins) != operators {
-		return nil, fmt.Errorf("operator API origins has %d entries, want %d", len(origins), operators)
-	}
-	result := make([]string, len(origins))
-	seen := map[string]bool{}
-	for i, origin := range origins {
-		u, err := url.Parse(origin)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-			return nil, fmt.Errorf("operator API origin %d is not a bare http(s) origin", i+1)
-		}
-		canonical := strings.TrimSuffix(origin, "/")
-		if seen[canonical] {
-			return nil, fmt.Errorf("operator API origin %d duplicates %q", i+1, canonical)
-		}
-		seen[canonical] = true
-		result[i] = canonical
-	}
-	return result, nil
+func validateOperatorAPIOrigins(origins []string, operators int, chainID uint64, genesisHash, network string) ([]string, error) {
+	_, canonical, err := publicEvidenceTransportForOrigins(origins, operators, chainID, genesisHash, network)
+	return canonical, err
 }
 
 func validateCompatibilityGates(gates map[string]CompatibilityGate) error {
@@ -1322,6 +1353,10 @@ func discoverRepos(configPath string, opts LoadOptions) (RepoPaths, error) {
 	if server == "" {
 		server = findSiblingModule(parent, "github.com/urnetwork/server")
 	}
+	operatorProxy := opts.OperatorProxyRepo
+	if operatorProxy == "" {
+		operatorProxy = findSiblingModule(parent, "github.com/urnetwork/operator-proxy")
+	}
 	vault := opts.VaultRepo
 	if vault == "" {
 		candidate := filepath.Join(parent, "vault")
@@ -1339,13 +1374,16 @@ func discoverRepos(configPath string, opts LoadOptions) (RepoPaths, error) {
 	if server == "" {
 		return RepoPaths{}, errors.New("cannot discover server repository; use --server-repo")
 	}
+	if operatorProxy == "" {
+		return RepoPaths{}, errors.New("cannot discover operator-proxy repository; use --operator-proxy-repo")
+	}
 	if vault == "" {
 		return RepoPaths{}, errors.New("cannot discover vault repository; use --vault-repo")
 	}
 	if platformConfig == "" {
 		return RepoPaths{}, errors.New("cannot discover platform config repository; use --platform-config-repo")
 	}
-	return RepoPaths{SN: cleanAbs(sn), Server: cleanAbs(server), Vault: cleanAbs(vault), PlatformConfig: cleanAbs(platformConfig)}, nil
+	return RepoPaths{SN: cleanAbs(sn), Server: cleanAbs(server), OperatorProxy: cleanAbs(operatorProxy), Vault: cleanAbs(vault), PlatformConfig: cleanAbs(platformConfig)}, nil
 }
 func findModule(start, module string) string {
 	d := cleanAbs(start)

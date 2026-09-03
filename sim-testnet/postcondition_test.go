@@ -1116,10 +1116,14 @@ func TestVoluntaryConvictionPostconditionIdentityAndEventAreExact(t *testing.T) 
 func TestProductionPolicyEvidenceRequiresCompleteCanonicalCadence(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	p := cfg.Policy.ProductionCadence
-	gate := &ReleaseCampaignGate{RunID: "release-run", ResultHash: "0x" + strings.Repeat("11", 32), CompleteContentHash: "sha256:" + strings.Repeat("22", 32), StartEpoch: 26, EndEpoch: 46}
+	gate := &ReleaseCampaignGate{
+		Schema: releaseCampaignGateSchema, RunID: "release-run", ResultHash: "0x" + strings.Repeat("11", 32), CompleteContentHash: "sha256:" + strings.Repeat("22", 32), StartEpoch: 26, EndEpoch: 46,
+		LifecycleHandoff: ScenarioLifecycleHandoff{Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: "release-run", Stage: fleetLifecycleStageReleaseHandoff, File: scenarioLifecycleHandoffFilename, ContentHash: "sha256:" + strings.Repeat("33", 32), SizeBytes: 123},
+	}
 	evidence := ProductionPolicyEvidence{
 		Schema: "urnetwork-production-policy-evidence-v2", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		PolicyHash: cfg.PolicyHash, ReleaseRunID: gate.RunID, ReleaseResultHash: gate.ResultHash, ReleaseCompleteHash: gate.CompleteContentHash,
+		ReleaseHandoffHash: gate.LifecycleHandoff.ContentHash, ReleaseHandoffSize: gate.LifecycleHandoff.SizeBytes,
 		CampaignStartEpoch: gate.StartEpoch, CampaignEndEpoch: gate.EndEpoch, ScheduledFromEpoch: 52, EffectiveEpoch: 53, EffectiveBlock: 100,
 		PriorEpochBlocks: cfg.Policy.Settlement.EpochBlocks, EpochBlocks: p.EpochBlocks,
 		RootCommitWindowBlocks: p.RootCommitWindowBlocks, FinalizeOffsetBlocks: p.FinalizeOffsetBlocks, CloseGraceBlocks: p.CloseGraceBlocks,
@@ -1149,6 +1153,11 @@ func TestProductionPolicyEvidenceRequiresCompleteCanonicalCadence(t *testing.T) 
 		t.Fatal("wrong release result hash was accepted")
 	}
 	evidence.ReleaseResultHash = gate.ResultHash
+	evidence.ReleaseHandoffHash = "sha256:" + strings.Repeat("66", 32)
+	if productionPolicyEvidenceMatches(cfg, evidence, gate) {
+		t.Fatal("wrong release lifecycle handoff was accepted")
+	}
+	evidence.ReleaseHandoffHash = gate.LifecycleHandoff.ContentHash
 	evidence.ScheduledFromEpoch = ^uint64(0)
 	evidence.EffectiveEpoch++
 	if productionPolicyEvidenceMatches(cfg, evidence, gate) {

@@ -182,7 +182,7 @@ func TestBuildPlanIsBoundedTopologicalAndUsesPersistedRoles(t *testing.T) {
 	if plan.MaximumSpend.AlphaRao != wantAlpha {
 		t.Fatalf("alpha plan = %d, want %d", plan.MaximumSpend.AlphaRao, wantAlpha)
 	}
-	wantRegistrations := uint32(2*cfg.Config.Topology.Operators + cfg.Config.Topology.Validators + cfg.Config.Topology.fleetCandidates() + cfg.Config.Topology.ChurnFloorUIDs + 1)
+	wantRegistrations := uint32(2*cfg.Config.Topology.Operators + cfg.Config.Topology.Validators + cfg.Config.Topology.fleetCandidates() + cfg.Config.Topology.ChurnFloorUIDs + 1 + 3)
 	if plan.MaximumSpend.Registrations != wantRegistrations {
 		t.Fatalf("registrations = %d, want %d", plan.MaximumSpend.Registrations, wantRegistrations)
 	}
@@ -453,7 +453,7 @@ func TestPlanHashExcludesGenerationTimeButIncludesLiveFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roleCount := uint64(5 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.ChurnFloorUIDs + cfg.Config.Topology.Validators + 2*cfg.Config.Topology.fleetCandidates())
+	roleCount := uint64(5 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.ChurnFloorUIDs + cfg.Config.Topology.Validators + 2*cfg.Config.Topology.fleetCandidates() + 8)
 	if a.PlanHash == d.PlanHash || d.MaximumSpend.TAORao-a.MaximumSpend.TAORao != roleCount {
 		t.Fatalf("existential-deposit drift was not bound exactly: hashes=%s/%s tao=%d/%d roles=%d", a.PlanHash, d.PlanHash, a.MaximumSpend.TAORao, d.MaximumSpend.TAORao, roleCount)
 	}

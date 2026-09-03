@@ -12,8 +12,11 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -76,6 +79,75 @@ func TestStopDeploymentToleratesFailureBeforeFirstSupervisorState(t *testing.T) 
 	}
 	if preserved, _ := result["on_chain_state_preserved"].(bool); !preserved {
 		t.Fatalf("stop result = %+v", result)
+	}
+}
+
+func TestStopDeploymentIgnoresReusedSupervisorPID(t *testing.T) {
+	dir := t.TempDir()
+	state := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: os.Getpid(),
+		SupervisorStartTimeTicks: currentProcessStartTimeTicks(t) + 1,
+		Processes:                []ProcessState{{ID: "stale-child", PID: os.Getpid()}},
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "supervisor.state.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := StopDeployment(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owned, _ := result["supervisor_generation_owned"].(bool); owned {
+		t.Fatalf("reused supervisor PID was treated as owned: %+v", result)
+	}
+	if stopped, _ := result["stopped"].([]string); len(stopped) != 0 {
+		t.Fatalf("stale child PIDs were reported or signalled: %+v", result)
+	}
+}
+
+func TestStopDeploymentSignalsExactSupervisorGeneration(t *testing.T) {
+	dir := t.TempDir()
+	command := exec.Command("/bin/sleep", "300")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() {
+		exited <- command.Wait()
+		close(exited)
+	}()
+	defer func() {
+		_ = command.Process.Kill()
+		<-exited
+	}()
+	startTimeTicks, err := processStartTimeTicks(command.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := SupervisorState{
+		Schema: "urnetwork-sim-supervisor-state-v1", SupervisorPID: command.Process.Pid,
+		SupervisorStartTimeTicks: startTimeTicks,
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "supervisor.state.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := StopDeployment(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owned, _ := result["supervisor_generation_owned"].(bool); !owned {
+		t.Fatalf("exact supervisor generation was not stopped: %+v", result)
+	}
+	waitErr := <-exited
+	if waitErr == nil || !strings.Contains(waitErr.Error(), "signal: terminated") {
+		t.Fatalf("supervisor exit=%v", waitErr)
 	}
 }
 
@@ -169,7 +241,7 @@ func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
 		{ID: "api", Role: "operator-api", HealthURL: "http://api/status"},
 		{ID: "claim", Role: "claim-relayer"},
 		{ID: "connect", Role: "operator-connect", HealthURL: "http://connect/status"},
-		{ID: "worker", Role: "operator-taskworker"},
+		{ID: "worker", Role: "operator-taskworker", HealthURL: "http://worker/status"},
 		{ID: "rpc", Role: "dependency-rpc-proxy", HealthURL: "http://rpc/healthz"},
 		{ID: "validator", Role: "validator"},
 	}
@@ -212,7 +284,7 @@ func TestSupervisorStartupWaitsForEveryServiceBeforeClients(t *testing.T) {
 			return nil
 		},
 	)
-	want := []string{"start:api", "start:connect", "start:rpc", "ready:services", "start:miner", "ready:providers", "start:claim", "start:worker", "start:validator"}
+	want := []string{"start:api", "start:connect", "start:worker", "start:rpc", "ready:services", "start:miner", "ready:providers", "start:claim", "start:validator"}
 	if err != nil || strings.Join(events, ",") != strings.Join(want, ",") {
 		t.Fatalf("startup events=%v want=%v error=%v", events, want, err)
 	}
@@ -485,8 +557,11 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	}
 	spec := ProcessSpec{
 		ID: "restart-child", Role: "test", Identity: "test-child", Command: "/bin/sh",
-		Args: []string{"-c", `if [ ! -e "$SIM_TEST_COUNTER" ]; then printf 'crashed once\n' >"$SIM_TEST_COUNTER"; exit 17; fi; printf 'ready\n' >"$SIM_TEST_READY"; exec /bin/sleep 300`}, WorkDir: dir,
-		Env:        map[string]string{"SIM_TEST_COUNTER": counter, "SIM_TEST_READY": readyPath},
+		Args: []string{"-c", `if [ ! -e "$SIM_TEST_COUNTER" ]; then printf 'crashed once\n' >"$SIM_TEST_COUNTER"; while [ ! -e "$SIM_TEST_SUPERVISOR_STATE" ]; do sleep 0.01; done; exit 17; fi; printf 'ready\n' >"$SIM_TEST_READY"; exec /bin/sleep 300`}, WorkDir: dir,
+		Env: map[string]string{
+			"SIM_TEST_COUNTER": counter, "SIM_TEST_READY": readyPath,
+			"SIM_TEST_SUPERVISOR_STATE": filepath.Join(dir, "supervisor.state.json"),
+		},
 		StdoutPath: filepath.Join(processDir, "child.stdout"), StderrPath: filepath.Join(processDir, "child.stderr"), RestartLimit: 2,
 		HealthURL: health.URL,
 	}
@@ -498,15 +573,18 @@ func TestSupervisorRestartsOncePublishesReadyAndStopsChildren(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- supervise(ctx, dir, manifestPath) }()
+	go func() {
+		done <- superviseWithContractCleanup(ctx, dir, manifestPath, func(context.Context, string, []ProcessSpec, time.Time) error {
+			return nil
+		})
+	}()
 	processLogs, err := initializeProcessLogGate(dir, manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := waitSupervisorReady(ctx, dir, manifest, processLogs, 30*time.Second); err != nil {
 		cancel()
-		<-done
-		t.Fatal(err)
+		t.Fatalf("wait supervisor ready: %v; supervisor: %v", err, <-done)
 	}
 	ready, err := supervisorReadyNow(dir, manifest)
 	if err != nil || !ready {
@@ -727,8 +805,20 @@ func TestSupervisorFailsWhenItCannotPublishState(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "supervisor.state.json"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := supervise(context.Background(), dir, manifestPath); err == nil || !strings.Contains(err.Error(), "publish supervisor state") {
+	if err := superviseWithContractCleanup(
+		context.Background(),
+		dir,
+		manifestPath,
+		func(context.Context, string, []ProcessSpec, time.Time) error { return nil },
+	); err == nil || !strings.Contains(err.Error(), "publish supervisor state") {
 		t.Fatalf("unpublishable supervisor state error = %v", err)
+	}
+}
+
+func TestSupervisorRejectsMissingContractCleanupCallback(t *testing.T) {
+	err := superviseWithContractCleanup(context.Background(), t.TempDir(), "missing-manifest", nil)
+	if err == nil || !strings.Contains(err.Error(), "contract cleanup callback is missing") {
+		t.Fatalf("missing cleanup callback error = %v", err)
 	}
 }
 
@@ -765,6 +855,16 @@ func TestPersistentSupervisorRequiresExplicitResumeAfterReboot(t *testing.T) {
 	}
 	if strings.Contains(unit, "[Install]") || strings.Contains(unit, "WantedBy=") {
 		t.Fatalf("supervisor unit is boot-installable:\n%s", unit)
+	}
+	if supervisorSystemdStopTimeout < supervisorGracefulStopTimeout+10*time.Second {
+		t.Fatalf("systemd stop timeout %s does not cover phased shutdown %s plus margin", supervisorSystemdStopTimeout, supervisorGracefulStopTimeout)
+	}
+	wantShutdown := fmt.Sprintf("KillMode=mixed\nTimeoutStopSec=%d\n", int(supervisorSystemdStopTimeout/time.Second))
+	if !strings.Contains(unit, wantShutdown) || strings.Contains(unit, "KillMode=control-group") {
+		t.Fatalf("supervisor unit bypasses or truncates phased shutdown:\n%s", unit)
+	}
+	if !strings.Contains(unit, "Restart=no\n") || strings.Contains(unit, "Restart=on-failure") {
+		t.Fatalf("supervisor unit can erase a failed pre-start cleanup by restarting:\n%s", unit)
 	}
 	actions := persistentSupervisorSystemctlActions("urnetwork-sim-test.service")
 	joined := ""
@@ -952,6 +1052,234 @@ func TestReleaseProcessPacketListenAddressesCoverTopologyWithoutDuplicates(t *te
 func TestRestartBackoffIsBounded(t *testing.T) {
 	if restartBackoff(1) != time.Second || restartBackoff(100) != 30*time.Second {
 		t.Fatalf("unexpected restart backoff: %s, %s", restartBackoff(1), restartBackoff(100))
+	}
+}
+
+// Reproduces the cancellation ordering that previously killed APIs and
+// clients together before SDK clients could close their contracts.
+func TestSupervisorChildCancellationWaitsForExplicitShutdown(t *testing.T) {
+	supervisorCtx, cancelSupervisor := context.WithCancel(context.Background())
+	childCtx, cancelChild := supervisorChildContext(supervisorCtx)
+	cancelSupervisor()
+	if supervisorCtx.Err() == nil || childCtx.Err() != nil {
+		t.Fatalf("cancellation leaked to child: supervisor=%v child=%v", supervisorCtx.Err(), childCtx.Err())
+	}
+	cancelChild()
+	if childCtx.Err() == nil {
+		t.Fatal("explicit child cancellation did not join the lifecycle")
+	}
+}
+
+func TestSupervisorChildUsesKernelParentDeathBackstop(t *testing.T) {
+	dir := t.TempDir()
+	command, exited, err := startSpecWithExit(context.Background(), ProcessSpec{
+		ID: "parent-death-test", Role: "miner-swarm", Command: "/bin/sleep", Args: []string{"300"}, WorkDir: dir,
+		StdoutPath: filepath.Join(dir, "stdout.log"), StderrPath: filepath.Join(dir, "stderr.log"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.SysProcAttr == nil || !command.SysProcAttr.Setpgid || command.SysProcAttr.Pdeathsig != syscall.SIGTERM {
+		t.Fatalf("child process attributes=%+v", command.SysProcAttr)
+	}
+	identity, err := observeSupervisedProcessIdentity(command.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopSupervisorCommands([]supervisedCommand{{spec: ProcessSpec{ID: "parent-death-test", Role: "miner-swarm"}, cmd: command, identity: identity}})
+	if err := <-exited; err != nil && !strings.Contains(err.Error(), "signal: terminated") {
+		t.Fatalf("child exit=%v", err)
+	}
+}
+
+func TestSupervisorShutdownDoesNotReuseExitedProcessGroup(t *testing.T) {
+	dir := t.TempDir()
+	command, exited, err := startSpecWithExit(context.Background(), ProcessSpec{
+		ID: "exited-generation", Role: "validator", Command: "/bin/sleep", Args: []string{"300"}, WorkDir: dir,
+		StdoutPath: filepath.Join(dir, "stdout.log"), StderrPath: filepath.Join(dir, "stderr.log"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := observeSupervisedProcessIdentity(command.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-exited; err == nil || !strings.Contains(err.Error(), "signal: terminated") {
+		t.Fatalf("child exit=%v", err)
+	}
+	stale := supervisedCommand{spec: ProcessSpec{ID: "exited-generation", Role: "validator"}, cmd: command, identity: identity}
+	if supervisedCommandAlive(stale) {
+		t.Fatal("reaped child generation remained signal-eligible")
+	}
+	signalSupervisedCommand(stale, syscall.SIGTERM)
+	if supervisedCommandAlive(stale) {
+		t.Fatal("signalling a reaped command targeted another process generation")
+	}
+}
+
+// Proves that an observation mismatch cannot fall through to a numeric PID
+// signal on a Linux runtime where os.Process has no pidfd handle.
+func TestSupervisorShutdownRejectsMismatchedLiveIdentity(t *testing.T) {
+	identity := supervisedProcessIdentity{
+		PID: 31337, ProcessGroupID: 31337, StartTimeTicks: 100,
+		Executable: "/test/process", CommandLineHash: "original",
+	}
+	command := supervisedCommand{
+		spec:     ProcessSpec{ID: "reused-generation", Role: "validator"},
+		cmd:      &exec.Cmd{Process: &os.Process{Pid: identity.PID}},
+		identity: identity,
+	}
+	observed := identity
+	observed.StartTimeTicks++
+	observe := func(pid int) (supervisedProcessIdentity, error) {
+		if pid != identity.PID {
+			t.Fatalf("observed pid = %d, want %d", pid, identity.PID)
+		}
+		return observed, nil
+	}
+	signalCalls := 0
+	signalProcessGroup := func(pid int, signal syscall.Signal) error {
+		signalCalls++
+		return nil
+	}
+	if signalSupervisedCommandWithObserver(command, syscall.SIGTERM, observe, signalProcessGroup) {
+		t.Fatal("mismatched process identity was signal-eligible")
+	}
+	if signalCalls != 0 {
+		t.Fatalf("mismatched process identity received %d signals", signalCalls)
+	}
+	if supervisedCommandAliveWithObserver(command, observe) {
+		t.Fatal("mismatched process identity was reported live")
+	}
+}
+
+func TestSupervisorShutdownRejectsUnobservableLiveIdentity(t *testing.T) {
+	identity := supervisedProcessIdentity{
+		PID: 31337, ProcessGroupID: 31337, StartTimeTicks: 100,
+		Executable: "/test/process", CommandLineHash: "original",
+	}
+	command := supervisedCommand{
+		cmd: &exec.Cmd{Process: &os.Process{Pid: identity.PID}}, identity: identity,
+	}
+	observe := func(int) (supervisedProcessIdentity, error) {
+		return supervisedProcessIdentity{}, syscall.EACCES
+	}
+	signalCalls := 0
+	if signalSupervisedCommandWithObserver(command, syscall.SIGTERM, observe, func(int, syscall.Signal) error {
+		signalCalls++
+		return nil
+	}) {
+		t.Fatal("unobservable process identity was signal-eligible")
+	}
+	if signalCalls != 0 {
+		t.Fatalf("unobservable process identity received %d signals", signalCalls)
+	}
+	if supervisedCommandAliveWithObserver(command, observe) {
+		t.Fatal("unobservable process identity was reported live")
+	}
+}
+
+// Reproduces a transaction-like subprocess that survives its group leader.
+// The supervisor must detect the old group and refuse an overlapping restart.
+func TestSupervisorDetectsDescendantAfterLeaderExit(t *testing.T) {
+	dir := t.TempDir()
+	readyPath := filepath.Join(dir, "ready.fifo")
+	childPIDPath := filepath.Join(dir, "child.pid")
+	if err := syscall.Mkfifo(readyPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := os.OpenFile(readyPath, os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ready.Close()
+	command, exited, err := startSpecWithExit(context.Background(), ProcessSpec{
+		ID: "descendant-test", Role: "claim-relayer", Command: "/bin/sh",
+		Args: []string{
+			"-c",
+			`IFS= read -r ready < "$1"; trap '' HUP; /bin/sleep 300 </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" > "$2"`,
+			"sh",
+			readyPath,
+			childPIDPath,
+		},
+		WorkDir: dir, StdoutPath: filepath.Join(dir, "stdout.log"), StderrPath: filepath.Join(dir, "stderr.log"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := observeSupervisedProcessIdentity(command.Process.Pid)
+	if err != nil {
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-identity.ProcessGroupID, syscall.SIGKILL) })
+	if _, err := ready.Write([]byte("ready\n")); err != nil {
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		t.Fatal(err)
+	}
+	select {
+	case exitErr := <-exited:
+		if exitErr != nil {
+			t.Fatalf("group leader exit = %v", exitErr)
+		}
+	case <-time.After(10 * time.Second):
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		t.Fatal("group leader did not exit")
+	}
+	childPIDBytes, err := os.ReadFile(childPIDPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(childPIDBytes)))
+	if err != nil || childPID <= 1 {
+		t.Fatalf("child pid = %q: %v", childPIDBytes, err)
+	}
+	childProcessGroupID, err := syscall.Getpgid(childPID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if childProcessGroupID != identity.ProcessGroupID {
+		t.Fatalf("child process group = %d, want %d", childProcessGroupID, identity.ProcessGroupID)
+	}
+	if !supervisedProcessGroupHasMembers(identity) {
+		t.Fatal("surviving descendant group was reported empty")
+	}
+}
+
+func TestSupervisorShutdownOrdersClientsBeforeInfrastructure(t *testing.T) {
+	commands := []supervisedCommand{
+		{spec: ProcessSpec{ID: "api", Role: "operator-api"}},
+		{spec: ProcessSpec{ID: "miner", Role: "miner-swarm"}},
+		{spec: ProcessSpec{ID: "claim", Role: "claim-relayer"}},
+		{spec: ProcessSpec{ID: "future-client", Role: "future-client"}},
+		{spec: ProcessSpec{ID: "worker", Role: "operator-taskworker"}},
+		{spec: ProcessSpec{ID: "validator", Role: "validator"}},
+		{spec: ProcessSpec{ID: "connect", Role: "operator-connect"}},
+		{spec: ProcessSpec{ID: "rpc", Role: "dependency-rpc-proxy"}},
+	}
+	phases := supervisorShutdownPhases(commands)
+	if len(phases) != 3 {
+		t.Fatalf("shutdown phases=%d", len(phases))
+	}
+	ids := func(phase []supervisedCommand) []string {
+		out := make([]string, 0, len(phase))
+		for _, command := range phase {
+			out = append(out, command.spec.ID)
+		}
+		return out
+	}
+	if got, want := ids(phases[0]), []string{"claim", "future-client", "validator"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("consumer shutdown phase=%v want=%v", got, want)
+	}
+	if got, want := ids(phases[1]), []string{"miner"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("provider shutdown phase=%v want=%v", got, want)
+	}
+	if got, want := ids(phases[2]), []string{"api", "worker", "connect", "rpc"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("infrastructure shutdown phase=%v want=%v", got, want)
 	}
 }
 
@@ -1165,8 +1493,9 @@ func TestPostTopologyTournamentGatePropagatesBoundaryFailure(t *testing.T) {
 	}
 }
 
-// Cover the release builders as one inventory: listener-bearing services are
-// prerequisites, while every worker and client waits behind their readiness.
+// Cover the release builders as one inventory: listener-bearing services and
+// the maintenance-owning taskworkers are prerequisites; provider swarms and
+// client workloads wait behind their readiness.
 func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := BuildRoleSecrets(cfg)
@@ -1186,12 +1515,12 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 	dependentCount := 0
 	for _, spec := range append(serverSpecs, clientSpecs...) {
 		switch spec.Role {
-		case "dependency-rpc-proxy", "operator-api", "operator-connect":
+		case "dependency-rpc-proxy", "operator-api", "operator-connect", "operator-taskworker":
 			if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
 				t.Fatalf("release prerequisite is not health-gated: %+v", spec)
 			}
 			prerequisiteCount++
-		case "operator-taskworker", "miner-swarm", "claim-relayer", "validator":
+		case "miner-swarm", "claim-relayer", "validator":
 			if supervisorStartupPrerequisite(spec) {
 				t.Fatalf("release dependent was classified as prerequisite: %+v", spec)
 			}
@@ -1200,8 +1529,8 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 			t.Fatalf("release process role has no startup classification: %+v", spec)
 		}
 	}
-	wantPrerequisites := 3 + 2*cfg.Config.Topology.Operators
-	wantDependents := cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
+	wantPrerequisites := 3 + 3*cfg.Config.Topology.Operators
+	wantDependents := cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
 	if prerequisiteCount != wantPrerequisites || dependentCount != wantDependents {
 		t.Fatalf("release startup prerequisites/dependents=%d/%d, want %d/%d", prerequisiteCount, dependentCount, wantPrerequisites, wantDependents)
 	}

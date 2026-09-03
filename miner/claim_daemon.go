@@ -3,6 +3,7 @@ package miner
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -101,14 +102,18 @@ func LoadClaimDaemonConfig(path string) (*ClaimDaemonConfig, error) {
 }
 
 type ClaimQueueEntry struct {
-	Epoch       int64  `json:"epoch"`
-	Status      string `json:"status"`
-	Attempts    int    `json:"attempts"`
-	UpdatedAt   string `json:"updated_at"`
-	NextRetryAt string `json:"next_retry_at,omitempty"`
-	TxHash      string `json:"tx_hash,omitempty"`
-	RawTxHex    string `json:"raw_tx_hex,omitempty"`
-	LastError   string `json:"last_error,omitempty"`
+	Epoch              int64  `json:"epoch"`
+	Status             string `json:"status"`
+	Attempts           int    `json:"attempts"`
+	UpdatedAt          string `json:"updated_at"`
+	NextRetryAt        string `json:"next_retry_at,omitempty"`
+	TxHash             string `json:"tx_hash,omitempty"`
+	RawTxHex           string `json:"raw_tx_hex,omitempty"`
+	FinalizedBlock     uint64 `json:"finalized_block,omitempty"`
+	FinalizedBlockHash string `json:"finalized_block_hash,omitempty"`
+	ReceiptStatus      uint64 `json:"receipt_status,omitempty"`
+	ReceiptLogsHash    string `json:"receipt_logs_sha256,omitempty"`
+	LastError          string `json:"last_error,omitempty"`
 }
 
 type ClaimQueue struct {
@@ -649,6 +654,15 @@ func reconcileClaimEntry(ctx context.Context, cfg *ClaimDaemonConfig, api claimA
 		return "", err
 	}
 	if claimed {
+		if entry.TxHash != "" && entry.FinalizedBlock == 0 {
+			receipt, err := finalizedClaimReceipt(ctx, cfg, entry.TxHash)
+			if err != nil {
+				return "", err
+			}
+			if err := recordFinalizedClaimReceipt(entry, receipt); err != nil {
+				return "", err
+			}
+		}
 		return "finalized", nil
 	}
 	if entry.Status == "uncertain" && entry.TxHash != "" {
@@ -694,7 +708,7 @@ func submitClaimDirect(ctx context.Context, cfg *ClaimDaemonConfig, api claimAPI
 	}
 	submitLock.Lock()
 	defer submitLock.Unlock()
-	_, err = onchain.SubmitWithHooks(ctx, onchain.SubmitParams{
+	receipt, err := onchain.SubmitWithHooks(ctx, onchain.SubmitParams{
 		Contract: vault, Rpcs: cfg.RPC, Key: key, Calldata: calldata,
 		ChainID: new(big.Int).SetUint64(uint64(claim.ChainId)),
 	}, onchain.SubmitHooks{
@@ -717,7 +731,88 @@ func submitClaimDirect(ctx context.Context, cfg *ClaimDaemonConfig, api claimAPI
 			return store.save(queue)
 		},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return recordFinalizedClaimReceipt(entry, receipt)
+}
+
+// recordFinalizedClaimReceipt binds a successful queue entry to the exact
+// canonical receipt which caused it. Raw signed transaction bytes alone prove
+// intent but not inclusion, so the simulator's immutable evidence capture
+// retains the finalized block and a canonical hash of every receipt log.
+func recordFinalizedClaimReceipt(entry *ClaimQueueEntry, receipt *types.Receipt) error {
+	if entry == nil || receipt == nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Sign() <= 0 || receipt.BlockHash == (common.Hash{}) || receipt.TxHash == (common.Hash{}) {
+		return errors.New("claim returned an incomplete finalized receipt")
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return errors.New("claim finalized with a failed receipt")
+	}
+	if entry.TxHash == "" || !strings.EqualFold(entry.TxHash, receipt.TxHash.Hex()) {
+		return errors.New("claim receipt transaction differs from the durable prepared transaction")
+	}
+	logs, err := json.Marshal(receipt.Logs)
+	if err != nil {
+		return fmt.Errorf("encode claim receipt logs: %w", err)
+	}
+	digest := sha256.Sum256(logs)
+	entry.FinalizedBlock = receipt.BlockNumber.Uint64()
+	entry.FinalizedBlockHash = strings.ToLower(receipt.BlockHash.Hex())
+	entry.ReceiptStatus = receipt.Status
+	entry.ReceiptLogsHash = "sha256:" + hex.EncodeToString(digest[:])
+	return nil
+}
+
+// finalizedClaimReceipt recovers inclusion evidence after a crash between
+// chain finality and the queue fsync. Every endpoint must agree with a
+// canonical finalized block before the recovered receipt is accepted.
+func finalizedClaimReceipt(ctx context.Context, cfg *ClaimDaemonConfig, txHash string) (*types.Receipt, error) {
+	if cfg == nil {
+		return nil, errors.New("claim receipt configuration is unavailable")
+	}
+	raw, err := hex.DecodeString(strings.TrimPrefix(txHash, "0x"))
+	if err != nil || len(raw) != common.HashLength {
+		return nil, fmt.Errorf("invalid claim transaction hash %q", txHash)
+	}
+	hash := common.BytesToHash(raw)
+	var failures []error
+	for _, endpoint := range cfg.RPC {
+		client, dialErr := ethclient.DialContext(ctx, endpoint)
+		if dialErr != nil {
+			failures = append(failures, dialErr)
+			continue
+		}
+		receipt, receiptErr := client.TransactionReceipt(ctx, hash)
+		if receiptErr != nil {
+			client.Close()
+			failures = append(failures, receiptErr)
+			continue
+		}
+		finalized, finalErr := finalizedNumber(ctx, client)
+		if finalErr != nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || finalized < receipt.BlockNumber.Uint64() {
+			client.Close()
+			if finalErr != nil {
+				failures = append(failures, finalErr)
+			} else {
+				failures = append(failures, errors.New("claim receipt is not finalized"))
+			}
+			continue
+		}
+		header, headerErr := client.HeaderByNumber(ctx, receipt.BlockNumber)
+		client.Close()
+		if headerErr != nil {
+			failures = append(failures, headerErr)
+			continue
+		}
+		if header.Hash() != receipt.BlockHash {
+			return nil, fmt.Errorf("claim transaction %s receipt is not canonical", txHash)
+		}
+		return receipt, nil
+	}
+	if len(failures) == 0 {
+		return nil, errors.New("claim receipt has no RPC endpoint")
+	}
+	return nil, errors.Join(failures...)
 }
 
 func readClaimDaemonJWT(cfg *ClaimDaemonConfig) (string, error) {

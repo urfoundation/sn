@@ -5,7 +5,8 @@
 This repository (`sn`) is the reference implementation of the UR Subnet — the EVM
 contract suite, miner and validator software, chain tooling, and the real-testnet
 integration harness. The operator/API implementation lives in the sibling `server`
-repository.
+repository; provider probing, tunnel confinement, geolocation, bandwidth, and
+egress-health tooling live in the sibling `operator-proxy` repository.
 
 **Network Operators** run the servers. Independent **providers** carry ingress/egress
 traffic. Independent **validators** run the [`VALIDATOR.md`](VALIDATOR.md)
@@ -167,3 +168,8 @@ the finite UID budget and undermine the intended ~200-member head.
 | `stctl/` | Explicitly quarantined pre-1.0 monolith diagnostic; not a release write path. |
 | `crv4/`, `merkle/`, `ss58/`, `stabi/` | Supporting libraries (commit‑reveal v4, Merkle trees, address encoding, contract bindings). |
 | `sim-testnet/` | Spend-capped Go harness for testnet setup, launch, scenarios, evidence, and analysis. |
+
+The release workspace also requires sibling `server` and `operator-proxy`
+checkouts. The testnet harness discovers both by Go module identity and binds
+the operator-proxy production source plus its exact clean Git commit into the
+release lock.

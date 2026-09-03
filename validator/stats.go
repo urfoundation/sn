@@ -46,7 +46,12 @@ package validator
 // and the durable smoothing is the steerer's per-UID score EMA.
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -172,10 +177,17 @@ func WilsonLower(c uint64, a uint64, z float64) float64 {
 
 // statsSnapshot is the persisted form (state_dir/stats.json).
 type statsSnapshot struct {
-	Version int                        `json:"v"`
-	Ema     map[string]float64         `json:"ema"`
-	EmaPPM  map[string]uint32          `json:"ema_ppm,omitempty"`
-	Window  map[string]*ProviderWindow `json:"window"`
+	Version                        int                          `json:"v"`
+	SettlementEpoch                *uint64                      `json:"settlement_epoch,omitempty"`
+	EgressGeneration               uint64                       `json:"egress_generation,omitempty"`
+	AttemptLastAppliedSequence     uint64                       `json:"attempt_last_applied_sequence,omitempty"`
+	AttemptSettlementFirstSequence uint64                       `json:"attempt_settlement_first_sequence,omitempty"`
+	AttemptEgressFirstSequence     uint64                       `json:"attempt_egress_first_sequence,omitempty"`
+	SettlementTransition           *AttemptSettlementTransition `json:"settlement_transition,omitempty"`
+	Ema                            map[string]float64           `json:"ema"`
+	EmaPPM                         map[string]uint32            `json:"ema_ppm,omitempty"`
+	Window                         map[string]*ProviderWindow   `json:"window"`
+	Egress                         map[string][]string          `json:"egress,omitempty"`
 }
 
 // StatsEngine aggregates per-provider counters and cross-epoch EMAs.
@@ -191,6 +203,18 @@ type StatsEngine struct {
 	// settlement-quality Fold clock and remains ephemeral; the steerer persists
 	// the derived per-fleet EMA across tempos.
 	egress map[connect.Id]map[[32]byte]bool
+
+	settlementEpoch      uint64
+	settlementEpochKnown bool
+	egressGeneration     uint64
+
+	attemptLedger                  *AttemptLedger
+	attemptLastAppliedSequence     uint64
+	attemptSettlementFirstSequence uint64
+	attemptEgressFirstSequence     uint64
+	activeAttemptCount             uint64
+	attemptCutPending              bool
+	settlementTransition           *AttemptSettlementTransition
 }
 
 func NewStatsEngine(cfg StatsConfig) *StatsEngine {
@@ -323,7 +347,12 @@ func (self *StatsEngine) qualityRawLocked(w *ProviderWindow) float64 {
 // across architectures and independent implementations.
 func (self *StatsEngine) qualityRawPPMLocked(w *ProviderWindow) uint32 {
 	reliability := uint64(protocol.ReliabilityPPM(w.Confirmations, w.Assignments, self.cfg.AMin))
-	p95 := uint64(w.Percentile(0.95))
+	buckets := make([]uint64, statsLatencyBuckets)
+	copy(buckets, w.LatencyBuckets[:])
+	p95, err := releaseP95UpperMillis(buckets)
+	if err != nil {
+		return 0
+	}
 	denom := self.cfg.LatRefMillis + p95
 	if denom == 0 {
 		return 0
@@ -407,6 +436,12 @@ func (self *StatsEngine) Exposure() map[connect.Id]uint64 {
 func (self *StatsEngine) Fold() {
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	self.foldWithLock()
+}
+
+// foldWithLock advances the quality EMA and clears one settlement window. The
+// caller must hold the engine state lock.
+func (self *StatsEngine) foldWithLock() {
 	for id, w := range self.window {
 		if w.Assignments < self.cfg.AMin {
 			continue
@@ -438,36 +473,142 @@ func (self *StatsEngine) WindowCounts(hop connect.Id) (uint64, uint64) {
 	return w.Assignments, w.Confirmations
 }
 
-// Save persists a snapshot to <dir>/stats.json.
-func (self *StatsEngine) Save(dir string) error {
-	self.mu.Lock()
-	snap := statsSnapshot{
-		Version: 2,
-		Ema:     map[string]float64{},
-		EmaPPM:  map[string]uint32{},
-		Window:  map[string]*ProviderWindow{},
+// snapshotWithLock copies the complete durable statistics state. The caller
+// must hold the engine state lock.
+func (self *StatsEngine) snapshotWithLock() statsSnapshot {
+	version := 4
+	if self.attemptLedger != nil || self.attemptLastAppliedSequence != 0 || self.attemptSettlementFirstSequence != 0 || self.attemptEgressFirstSequence != 0 {
+		version = 5
+	}
+	snapshot := statsSnapshot{
+		Version: version, Ema: map[string]float64{}, EmaPPM: map[string]uint32{},
+		Window: map[string]*ProviderWindow{}, Egress: map[string][]string{},
+		EgressGeneration: self.egressGeneration, AttemptLastAppliedSequence: self.attemptLastAppliedSequence,
+		AttemptSettlementFirstSequence: self.attemptSettlementFirstSequence, AttemptEgressFirstSequence: self.attemptEgressFirstSequence,
+		SettlementTransition: self.settlementTransition,
+	}
+	if self.settlementEpochKnown {
+		epoch := self.settlementEpoch
+		snapshot.SettlementEpoch = &epoch
 	}
 	for id, v := range self.ema {
-		snap.Ema[id.String()] = v
+		snapshot.Ema[id.String()] = v
 	}
 	for id, v := range self.emaPPM {
-		snap.EmaPPM[id.String()] = v
+		snapshot.EmaPPM[id.String()] = v
 	}
 	for id, w := range self.window {
 		cp := *w
-		snap.Window[id.String()] = &cp
+		snapshot.Window[id.String()] = &cp
 	}
-	self.mu.Unlock()
+	for id, hashes := range self.egress {
+		encoded := make([]string, 0, len(hashes))
+		for hash := range hashes {
+			encoded = append(encoded, fmt.Sprintf("0x%x", hash))
+		}
+		sort.Strings(encoded)
+		snapshot.Egress[id.String()] = encoded
+	}
+	return snapshot
+}
 
-	b, err := json.MarshalIndent(snap, "", "  ")
+// encodeStatsSnapshot returns the durable human-readable state representation.
+func encodeStatsSnapshot(snapshot statsSnapshot) ([]byte, error) {
+	b, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
+
+// Save persists a snapshot to <dir>/stats.json.
+func (self *StatsEngine) Save(dir string) error {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	return self.saveWithLock(dir)
+}
+
+// saveWithLock serializes the exact current state while the caller holds the
+// state lock. Keeping the lock through rename prevents an older periodic save
+// from overwriting a newer epoch fold or native-window cut.
+func (self *StatsEngine) saveWithLock(dir string) error {
+	b, err := encodeStatsSnapshot(self.snapshotWithLock())
 	if err != nil {
 		return err
 	}
 	return atomicStateWrite(filepath.Join(dir, "stats.json"), b, 0o600)
 }
 
+// AdvanceSettlementEpoch durably applies at most one exact boundary fold. It
+// holds the statistics lock through the atomic write so event recording cannot
+// enter an epoch until that epoch owns its persisted state. A skipped epoch is
+// unrecoverable from local counters and therefore fails closed.
+func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.settlementEpochKnown {
+		if epoch < self.settlementEpoch {
+			return fmt.Errorf("settlement epoch regressed from %d to %d", self.settlementEpoch, epoch)
+		}
+		if epoch == self.settlementEpoch {
+			return nil
+		}
+		if self.settlementEpoch == ^uint64(0) || epoch != self.settlementEpoch+1 {
+			return fmt.Errorf("settlement epoch jumped from %d to %d", self.settlementEpoch, epoch)
+		}
+	} else if len(self.window) != 0 {
+		return errors.New("legacy statistics window has no settlement epoch ownership")
+	}
+	if self.attemptLedger != nil && self.settlementEpochKnown && epoch != self.settlementEpoch {
+		return errors.New("attempt-backed settlement advancement requires the validator-wide coordinator")
+	}
+	if self.attemptLedger != nil {
+		self.attemptCutPending = true
+		if self.activeAttemptCount != 0 {
+			return errAttemptCutPending
+		}
+	}
+	priorWindow := self.window
+	priorEMA := self.ema
+	priorEMAPPM := self.emaPPM
+	priorEgress := self.egress
+	priorEgressGeneration := self.egressGeneration
+	priorEpoch, priorKnown := self.settlementEpoch, self.settlementEpochKnown
+	priorSettlementFirst := self.attemptSettlementFirstSequence
+	priorEgressFirst := self.attemptEgressFirstSequence
+	if self.settlementEpochKnown {
+		self.window = cloneProviderWindows(self.window)
+		self.ema = maps.Clone(self.ema)
+		self.emaPPM = maps.Clone(self.emaPPM)
+		self.foldWithLock()
+	}
+	self.settlementEpoch, self.settlementEpochKnown = epoch, true
+	if self.attemptLedger != nil {
+		if self.egressGeneration == ^uint64(0) {
+			self.window, self.ema, self.emaPPM = priorWindow, priorEMA, priorEMAPPM
+			self.settlementEpoch, self.settlementEpochKnown = priorEpoch, priorKnown
+			return errors.New("release statistics egress generation overflow")
+		}
+		nextSequence := self.attemptLedger.LastSequence() + 1
+		self.attemptSettlementFirstSequence = nextSequence
+		self.attemptEgressFirstSequence = nextSequence
+		self.egress = map[connect.Id]map[[32]byte]bool{}
+		self.egressGeneration++
+	}
+	err := self.saveWithLock(dir)
+	if err != nil {
+		self.window, self.ema, self.emaPPM = priorWindow, priorEMA, priorEMAPPM
+		self.egress, self.egressGeneration = priorEgress, priorEgressGeneration
+		self.settlementEpoch, self.settlementEpochKnown = priorEpoch, priorKnown
+		self.attemptSettlementFirstSequence, self.attemptEgressFirstSequence = priorSettlementFirst, priorEgressFirst
+		return err
+	}
+	self.attemptCutPending = false
+	return nil
+}
+
 // Load restores a snapshot from <dir>/stats.json; a missing file is a clean
-// start. Unparseable ids are skipped.
+// start. Corrupt, ambiguous or partially canonical state fails closed.
 func (self *StatsEngine) Load(dir string) error {
 	b, err := os.ReadFile(filepath.Join(dir, "stats.json"))
 	if os.IsNotExist(err) {
@@ -477,20 +618,57 @@ func (self *StatsEngine) Load(dir string) error {
 		return err
 	}
 	var snap statsSnapshot
-	if err := json.Unmarshal(b, &snap); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&snap); err != nil {
 		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("statistics snapshot contains trailing JSON")
+		}
+		return err
+	}
+	if snap.Version < 1 || snap.Version > 5 {
+		return fmt.Errorf("unsupported statistics snapshot version %d", snap.Version)
+	}
+	if snap.Version < 4 && len(snap.Egress) != 0 {
+		return errors.New("legacy statistics egress window has no durable generation")
 	}
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	if len(self.window) != 0 || len(self.ema) != 0 || len(self.emaPPM) != 0 || len(self.egress) != 0 || self.settlementEpochKnown || self.egressGeneration != 0 || self.settlementTransition != nil {
+		return errors.New("statistics engine must be empty before loading state")
+	}
+	if snap.SettlementEpoch != nil {
+		self.settlementEpoch = *snap.SettlementEpoch
+		self.settlementEpochKnown = true
+	}
+	self.egressGeneration = snap.EgressGeneration
+	self.attemptLastAppliedSequence = snap.AttemptLastAppliedSequence
+	self.attemptSettlementFirstSequence = snap.AttemptSettlementFirstSequence
+	self.attemptEgressFirstSequence = snap.AttemptEgressFirstSequence
+	self.settlementTransition = snap.SettlementTransition
+	if snap.Version < 5 && (self.attemptLastAppliedSequence != 0 || self.attemptSettlementFirstSequence != 0 || self.attemptEgressFirstSequence != 0) {
+		return errors.New("legacy statistics snapshot contains attempt ledger cursors")
+	}
+	if snap.Version == 5 && (self.attemptSettlementFirstSequence == 0 || self.attemptEgressFirstSequence < self.attemptSettlementFirstSequence || self.attemptLastAppliedSequence+1 < self.attemptEgressFirstSequence) {
+		return errors.New("statistics attempt ledger cursors are invalid")
+	}
 	for idStr, v := range snap.Ema {
-		if id, err := connect.ParseId(idStr); err == nil {
-			self.ema[id] = v
+		id, err := connect.ParseId(idStr)
+		if err != nil || id.String() != idStr || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 1 {
+			return fmt.Errorf("invalid persisted reporting EMA for provider %q", idStr)
 		}
+		self.ema[id] = v
 	}
 	for idStr, v := range snap.EmaPPM {
-		if id, err := connect.ParseId(idStr); err == nil {
-			self.emaPPM[id] = v
+		id, err := connect.ParseId(idStr)
+		if err != nil || id.String() != idStr || v > 1_000_000 {
+			return fmt.Errorf("invalid persisted exact EMA for provider %q", idStr)
 		}
+		self.emaPPM[id] = v
 	}
 	// Deterministic migration from the pre-v2 reporting EMA. This occurs once;
 	// all subsequent folds and snapshots use the exact integer representation.
@@ -506,12 +684,63 @@ func (self *StatsEngine) Load(dir string) error {
 		}
 	}
 	for idStr, w := range snap.Window {
-		if id, err := connect.ParseId(idStr); err == nil && w != nil {
-			cp := *w
-			self.window[id] = &cp
+		id, err := connect.ParseId(idStr)
+		if err != nil || id.String() != idStr || w == nil || w.Confirmations > w.Assignments {
+			return fmt.Errorf("invalid persisted window for provider %q", idStr)
+		}
+		var samples uint64
+		for _, count := range w.LatencyBuckets {
+			if ^uint64(0)-samples < count {
+				return fmt.Errorf("persisted latency samples overflow for provider %q", idStr)
+			}
+			samples += count
+		}
+		if samples != w.Confirmations {
+			return fmt.Errorf("persisted latency samples differ from confirmations for provider %q", idStr)
+		}
+		cp := *w
+		self.window[id] = &cp
+	}
+	for idStr, encodedHashes := range snap.Egress {
+		id, err := connect.ParseId(idStr)
+		if err != nil || id.String() != idStr {
+			return fmt.Errorf("invalid persisted egress provider id %q", idStr)
+		}
+		prior := ""
+		for _, encodedHash := range encodedHashes {
+			if encodedHash <= prior {
+				return fmt.Errorf("persisted egress hashes for %s are not strictly ordered", id)
+			}
+			hash, err := parseReleaseHex32("persisted egress hash", encodedHash, false)
+			if err != nil {
+				return err
+			}
+			if self.egress[id] == nil {
+				self.egress[id] = map[[32]byte]bool{}
+			}
+			self.egress[id][hash] = true
+			prior = encodedHash
+		}
+	}
+	if self.settlementTransition != nil {
+		if err := verifyAttemptSettlementTransitionForMeasurement(self.settlementTransition, self.releaseStatsMeasurementWithLock()); err != nil {
+			return fmt.Errorf("persisted settlement transition: %w", err)
 		}
 	}
 	return nil
+}
+
+// cloneProviderWindows makes a deep copy for transactional fold rollback.
+func cloneProviderWindows(windows map[connect.Id]*ProviderWindow) map[connect.Id]*ProviderWindow {
+	cloned := make(map[connect.Id]*ProviderWindow, len(windows))
+	for id, window := range windows {
+		if window == nil {
+			continue
+		}
+		windowCopy := *window
+		cloned[id] = &windowCopy
+	}
+	return cloned
 }
 
 // SortedQuality returns Quality() as a deterministic slice (by id) — used

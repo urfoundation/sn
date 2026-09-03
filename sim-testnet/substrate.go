@@ -1568,6 +1568,16 @@ func encodeSignedSubstrateCall(chain *crv4.Chain, signer signature.KeyringPair, 
 }
 
 func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair) (types.Hash, uint64, error) {
+	return m.SendAsWithRecoveryPrecondition(ctx, planHash, a, call, signer, nil)
+}
+
+// SendAsWithRecoveryPrecondition gives state-sensitive callers one exact,
+// finalized checkpoint immediately before journal append and broadcast. The
+// callback is deliberately not rerun while resuming an already journaled raw
+// transaction: recovery must remain bound to the original checkpoint rather
+// than silently blessing later state. Ordinary callers retain SendAs's exact
+// behavior through a nil callback.
+func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, planHash string, a Action, call types.Call, signer signature.KeyringPair, precondition func(types.Hash, uint64) error) (types.Hash, uint64, error) {
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".scale")
 		raw, err := os.ReadFile(rawPath)
@@ -1595,12 +1605,17 @@ func (m *SubstrateManager) SendAs(ctx context.Context, planHash string, a Action
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
-	path := filepath.Join(m.stateDir, "transactions", stringsTrim0x(hash.Hex())+".scale")
-	if err := atomicWrite(path, raw, 0o600); err != nil {
-		return types.Hash{}, 0, err
-	}
 	recoveryHash, recoveryBlock, err := m.finalizedHead()
 	if err != nil {
+		return types.Hash{}, 0, err
+	}
+	if precondition != nil {
+		if err := precondition(recoveryHash, recoveryBlock); err != nil {
+			return types.Hash{}, 0, fmt.Errorf("substrate recovery-head precondition at %d/%s: %w", recoveryBlock, recoveryHash.Hex(), err)
+		}
+	}
+	path := filepath.Join(m.stateDir, "transactions", stringsTrim0x(hash.Hex())+".scale")
+	if err := atomicWrite(path, raw, 0o600); err != nil {
 		return types.Hash{}, 0, err
 	}
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageBroadcast, Signer: signer.Address, Nonce: strconv.FormatUint(uint64(nonce), 10), TransactionHash: hash.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash.Hex(), FeeEstimateRao: feeEstimate, FeeLimitRao: feeLimit}); err != nil {

@@ -17,7 +17,11 @@ import (
 	"strings"
 )
 
-var releaseLayoutTypeASTID = regexp.MustCompile(`(t_(?:struct|contract|enum|userDefinedValueType)\([^)]*\))\d+`)
+var (
+	releaseLayoutTypeASTID = regexp.MustCompile(`(t_(?:struct|contract|enum|userDefinedValueType)\([^)]*\))\d+`)
+	releaseGitCommit       = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	releaseSHA256          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
 
 func normalizeReleaseStorageLayout(value any) any {
 	switch typed := value.(type) {
@@ -162,12 +166,110 @@ func goReleaseSourceHash(root string) (string, error) {
 	return digestNamedFiles(root, names)
 }
 
+// Bind a Go module's source digest to one clean commit observed on both sides
+// of the read. This closes the gap where a sibling checkout changes while a
+// release-lock observation is walking its files.
+func observeCleanGoReleaseSource(root string) (string, string, error) {
+	revision, err := cleanGitRevision(root)
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := goReleaseSourceHash(root)
+	if err != nil {
+		return "", "", err
+	}
+	confirmedRevision, err := cleanGitRevision(root)
+	if err != nil {
+		return "", "", err
+	}
+	if confirmedRevision != revision {
+		return "", "", errors.New("dependency checkout changed during source observation")
+	}
+	return hash, revision, nil
+}
+
+// Name the two independently checked fields exactly as they appear in the
+// release lock so observation and schema validation cannot drift apart.
+func observeOperatorProxyReleaseSource(root string) (map[string]string, error) {
+	hash, commit, err := observeCleanGoReleaseSource(root)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"operator_proxy_go_source_hash": hash,
+		"operator_proxy_commit":         commit,
+	}, nil
+}
+
 func soliditySourceHash(snRoot string) (string, error) {
-	names, err := filesUnder(snRoot, []string{"evm/src"}, func(name string) bool { return strings.HasSuffix(name, ".sol") })
+	names, err := filesUnder(snRoot, []string{"evm/src", "evm/script"}, func(name string) bool {
+		return strings.HasSuffix(name, ".sol")
+	})
 	if err != nil {
 		return "", err
 	}
 	return digestNamedFiles(snRoot, names)
+}
+
+func cleanGitRevision(root string) (string, error) {
+	status := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all")
+	statusOutput, err := status.Output()
+	if err != nil {
+		return "", fmt.Errorf("inspect dependency checkout %s: %w", root, err)
+	}
+	if len(bytes.TrimSpace(statusOutput)) != 0 {
+		return "", fmt.Errorf("dependency checkout %s has uncommitted or untracked files", root)
+	}
+	revision := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+	revisionOutput, err := revision.Output()
+	if err != nil {
+		return "", fmt.Errorf("read dependency revision %s: %w", root, err)
+	}
+	value := strings.TrimSpace(string(revisionOutput))
+	if !releaseGitCommit.MatchString(value) {
+		return "", fmt.Errorf("dependency checkout %s returned an invalid revision", root)
+	}
+	return value, nil
+}
+
+func parseFoundryVersion(output []byte) (string, string, error) {
+	var version string
+	var commit string
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "forge Version:"):
+			if version != "" {
+				return "", "", errors.New("forge version output contains duplicate version fields")
+			}
+			version = strings.TrimSpace(strings.TrimPrefix(line, "forge Version:"))
+		case strings.HasPrefix(line, "Commit SHA:"):
+			if commit != "" {
+				return "", "", errors.New("forge version output contains duplicate commit fields")
+			}
+			commit = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "Commit SHA:")))
+		}
+	}
+	if version == "" || !releaseGitCommit.MatchString(commit) {
+		return "", "", errors.New("forge version output is incomplete or malformed")
+	}
+	return version, commit, nil
+}
+
+func observeFoundryVersion() (string, string, error) {
+	executable, err := exec.LookPath("forge")
+	if err != nil {
+		home, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			return "", "", fmt.Errorf("locate forge: %w", err)
+		}
+		executable = filepath.Join(home, ".foundry", "bin", "forge")
+	}
+	output, err := exec.Command(executable, "--version").CombinedOutput()
+	if err != nil {
+		return "", "", fmt.Errorf("read forge version: %w: %s", err, bytes.TrimSpace(output))
+	}
+	return parseFoundryVersion(output)
 }
 
 func protocolSourceHash(snRoot string) (string, error) {
@@ -287,7 +389,7 @@ var subtensorNodeReleaseFiles = []string{
 }
 
 func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
-	if cfg == nil || cfg.Repos.SN == "" || cfg.Repos.Server == "" {
+	if cfg == nil || cfg.Repos.SN == "" || cfg.Repos.Server == "" || cfg.Repos.OperatorProxy == "" {
 		return nil, errors.New("release repository paths are incomplete")
 	}
 	observation := &releaseLockObservation{EVMBuild: map[string]string{}, Repositories: map[string]string{}, Interfaces: map[string]string{}, Infrastructure: map[string]string{}}
@@ -295,6 +397,20 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	observation.EVMBuild["source_hash"], err = soliditySourceHash(cfg.Repos.SN)
 	if err != nil {
 		return nil, err
+	}
+	observation.EVMBuild["foundry"], observation.EVMBuild["foundry_commit"], err = observeFoundryVersion()
+	if err != nil {
+		return nil, err
+	}
+	for key, relative := range map[string]string{
+		"forge_std_commit":                          "forge-std",
+		"openzeppelin_contracts_commit":             "openzeppelin-contracts",
+		"openzeppelin_contracts_upgradeable_commit": "openzeppelin-contracts-upgradeable",
+	} {
+		observation.EVMBuild[key], err = cleanGitRevision(filepath.Join(cfg.Repos.SN, "evm", "lib", relative))
+		if err != nil {
+			return nil, err
+		}
 	}
 	foundry, err := os.ReadFile(filepath.Join(cfg.Repos.SN, "evm", "foundry.toml"))
 	if err != nil {
@@ -335,6 +451,13 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 			return nil, fmt.Errorf("hash %s module: %w", name, hashErr)
 		}
 		observation.Repositories[name+"_go_source_hash"] = hash
+	}
+	operatorProxyObservation, err := observeOperatorProxyReleaseSource(cfg.Repos.OperatorProxy)
+	if err != nil {
+		return nil, fmt.Errorf("observe operator-proxy module: %w", err)
+	}
+	for key, value := range operatorProxyObservation {
+		observation.Repositories[key] = value
 	}
 	observation.Repositories["sdk_mobile_build_tree_hash"], err = sdkMobileBuildTreeHash(modules["sdk"])
 	if err != nil {
@@ -411,6 +534,26 @@ func compareLockSection(name string, locked map[string]any, observed map[string]
 	return nil
 }
 
+// Require the independently versioned operator-proxy module to carry both its
+// exact clean commit and its production-source digest in the release schema.
+func validateReleaseRepositorySchema(repositories map[string]any) error {
+	sourceHash, err := lockString(repositories, "operator_proxy_go_source_hash")
+	if err != nil {
+		return err
+	}
+	if !releaseSHA256.MatchString(sourceHash) {
+		return errors.New("release lock repositories.operator_proxy_go_source_hash is not a canonical SHA-256 digest")
+	}
+	commit, err := lockString(repositories, "operator_proxy_commit")
+	if err != nil {
+		return err
+	}
+	if !releaseGitCommit.MatchString(commit) {
+		return errors.New("release lock repositories.operator_proxy_commit is not a canonical Git commit")
+	}
+	return nil
+}
+
 func validateReleaseLock(cfg *ResolvedConfig) error {
 	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" || cfg.Release.Runtime.SourceTag != "testnet" || cfg.Release.Runtime.SourceCommit != "da06f033663896ef2fdbbfc3ecc68ca908fba0f5" || cfg.Release.Runtime.SpecVersion != 452 || cfg.Release.Runtime.TransactionVersion != 1 || !strings.EqualFold(cfg.Release.Runtime.CodeHash, "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc") {
 		return errors.New("release lock runtime identity is not the reviewed testnet runtime 452 release")
@@ -430,7 +573,20 @@ func validateReleaseLock(cfg *ResolvedConfig) error {
 			}
 		}
 	}
-	for key, want := range map[string]string{"solidity": "0.8.24", "evm_version": "cancun", "foundry": "1.7.1", "optimizer": "true", "optimizer_runs": "200"} {
+	if err := validateReleaseRepositorySchema(cfg.Release.Repositories); err != nil {
+		return err
+	}
+	for key, want := range map[string]string{
+		"solidity":                      "0.8.24",
+		"evm_version":                   "cancun",
+		"foundry":                       "1.7.1",
+		"foundry_commit":                "4072e48705af9d93e3c0f6e29e93b5e9a40caed8",
+		"optimizer":                     "true",
+		"optimizer_runs":                "200",
+		"forge_std_commit":              "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b",
+		"openzeppelin_contracts_commit": "5fd1781b1454fd1ef8e722282f86f9293cacf256",
+		"openzeppelin_contracts_upgradeable_commit": "7bf4727aacdbfaa0f36cbd664654d0c9e1dc52bf",
+	} {
 		got, err := lockString(cfg.Release.EVMBuild, key)
 		if err != nil || !strings.EqualFold(got, want) {
 			return fmt.Errorf("release lock evm_build.%s=%q, want %q", key, got, want)
@@ -441,7 +597,7 @@ func validateReleaseLock(cfg *ResolvedConfig) error {
 		return err
 	}
 	evmAnnotations := map[string]struct{}{
-		"solidity": {}, "evm_version": {}, "foundry": {}, "optimizer": {}, "optimizer_runs": {},
+		"solidity": {}, "evm_version": {}, "optimizer": {}, "optimizer_runs": {},
 	}
 	repositoryAnnotations := map[string]struct{}{
 		"sn_audited_base_commit": {}, "server_audited_base_commit": {}, "vault_audited_base_commit": {},

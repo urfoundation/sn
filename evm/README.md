@@ -11,6 +11,15 @@ contracts:
 - `STCoordinator` is the UUPS policy, role, root, commitment, and fleet-binding
   layer. It owns neither reserve nor settlement stake.
 
+Testnet additionally deploys `STFleetBatcher`, `STSubnetProbe`, and the
+testnet-only `STCoordinatorAdversary`. The adversary is a minimal UUPS
+implementation with no linear storage slots: it reads the coordinator's shared
+OpenZeppelin namespaced owner plus the generator-locked coordinator netuid,
+vault, and reserve slots, executes the four custody probes, and permits
+restoration of the reviewed implementation. Its v1 call/event ABI remains
+compatible with an already-installed testnet drill. It is never included in
+the production artifact list.
+
 `src/STSubnet.sol` and its original tests are retained only as pre-1.0 regression
 history. Neither `Deploy.s.sol` nor `sim-testnet` installs it.
 
@@ -19,13 +28,16 @@ history. Neither `Deploy.s.sol` nor `sim-testnet` installs it.
 The load-bearing build pins are Solidity 0.8.24, Cancun, optimizer/via-IR settings
 from `foundry.toml`, and Foundry 1.7.1. Vendored libraries under ignored `lib/` are:
 
-| dependency | tag |
-|---|---|
-| OpenZeppelin contracts | v5.6.1 |
-| OpenZeppelin upgradeable | v5.6.1 |
-| forge-std | v1.16.2 |
+| dependency | tag | reviewed commit |
+|---|---|---|
+| OpenZeppelin contracts | v5.6.1 | `5fd1781b1454fd1ef8e722282f86f9293cacf256` |
+| OpenZeppelin upgradeable | v5.6.1 | `7bf4727aacdbfaa0f36cbd664654d0c9e1dc52bf` |
+| forge-std | v1.16.2 | `bf647bd6046f2f7da30d0c2bf435e5c76a780c1b` |
 
-Install those exact tags without local modifications, then run:
+Install those exact commits without local or untracked modifications. The
+release gate also verifies Foundry 1.7.1 build commit
+`4072e48705af9d93e3c0f6e29e93b5e9a40caed8`; a same-version binary from a
+different build is not accepted. Then run:
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -48,11 +60,14 @@ go generate ./sim-testnet
 must then be reviewed and frozen together. For an unchanged release, use
 `go run ./sim-testnet/gencontracts --check evm/out sim-testnet/contracts_gen.go`
 instead of regenerating. Foundry compilation graphs can change only the IPFS
-digest inside Solidity's metadata trailer; the checker preserves the exact
-locked/live bytes while allowing that one structurally validated field and
-rejecting every executable, ABI, selector, immutable-reference, layout or
-compiler-envelope difference. Freeze the release lock only after every source,
-generated artifact, and infrastructure change is complete.
+digest inside Solidity's metadata trailer. Write mode preserves a previously
+reviewed payload only when its full-byte runtime hash and canonical artifact
+hash authenticate it against the rebuilt ABI, selectors, storage layout,
+immutable references, and metadata-normalized executable bytes. Check mode
+applies the same rules and rejects every executable, ABI, selector,
+immutable-reference, layout, or compiler-envelope difference. Freeze the
+release lock only after every source, generated artifact, and infrastructure
+change is complete.
 
 ## Contract state and value flow
 

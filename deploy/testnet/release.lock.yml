@@ -12,8 +12,12 @@ evm_build:
   solidity: 0.8.24
   evm_version: cancun
   foundry: 1.7.1
+  foundry_commit: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8
   optimizer: true
   optimizer_runs: 200
+  forge_std_commit: bf647bd6046f2f7da30d0c2bf435e5c76a780c1b
+  openzeppelin_contracts_commit: 5fd1781b1454fd1ef8e722282f86f9293cacf256
+  openzeppelin_contracts_upgradeable_commit: 7bf4727aacdbfaa0f36cbd664654d0c9e1dc52bf
   source_hash: "sha256:bbb6fd6fb9edcc75fa3c8b5ca87ed4296a27afb45c9ba9a366eaec879de546c2"
   compiler_settings_hash: "sha256:ed7bbf1127d61140a46ed10fc5f5871a81b83f8273c24f1c8c87005c1ea0b8c8"
   reserve_sink_artifact_hash: "0x6a21efa54c29d96d306d24667a6501e4bcb44f9a67a6195dd69c612f59415c0c"

@@ -9,6 +9,7 @@ repositories:
   discovery: auto
   sn: auto
   server: auto
+  operator_proxy: auto
   vault: auto
   platform_config: auto
 

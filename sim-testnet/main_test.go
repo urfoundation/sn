@@ -31,11 +31,12 @@ func TestParseCLIReleaseCommandsAndWriteGuardFlags(t *testing.T) {
 
 	command, options, err := parseCLI([]string{
 		"launch", "--apply", "--plan-hash", "sha256:approved", "--detach",
+		"--operator-proxy-repo", "/release/operator-proxy",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command != "launch" || !options.Apply || !options.Detach || options.PlanHash != "sha256:approved" {
+	if command != "launch" || !options.Apply || !options.Detach || options.PlanHash != "sha256:approved" || options.OperatorProxyRepo != "/release/operator-proxy" {
 		t.Fatalf("write flags parsed incorrectly: command=%q options=%+v", command, options)
 	}
 }
@@ -155,6 +156,20 @@ func TestRunMainServerModulesConfineTLSFallbackToConnectLoopback(t *testing.T) {
 	} {
 		if err := runMain(invalid); err == nil {
 			t.Errorf("invalid internal server invocation accepted: %q", invalid)
+		}
+	}
+}
+
+func TestRunMainServerContractCleanupRejectsUnboundedInvocation(t *testing.T) {
+	for _, invalid := range [][]string{
+		{"__server_cleanup_contracts"},
+		{"__server_cleanup_contracts", "--cutoff-unix-nano=1"},
+		{"__server_cleanup_contracts", "--cutoff-unix-nano=0", "--result=/tmp/result.json"},
+		{"__server_cleanup_contracts", "--cutoff-unix-nano=1", "--result=relative.json"},
+		{"__server_cleanup_contracts", "--cutoff-unix-nano=1", "--result=/tmp/result.json", "extra"},
+	} {
+		if err := runMain(invalid); err == nil {
+			t.Errorf("invalid internal server cleanup accepted: %q", invalid)
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	serverapi "github.com/urnetwork/server/api"
 	serverconnect "github.com/urnetwork/server/connect"
@@ -25,8 +26,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
-	Config, SNRepo, ServerRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, Format string
-	Apply, Detach                                                                                         bool
+	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, Format string
+	Apply, Detach                                                                                                            bool
 }
 
 func usage() {
@@ -53,6 +54,7 @@ Common options:
   --state-dir PATH    persistent state root (default <config-dir>/runs)
   --sn-repo PATH      repository discovery override
   --server-repo PATH  repository discovery override
+  --operator-proxy-repo PATH  repository discovery override
   --vault-repo PATH   repository discovery override
   --platform-config-repo PATH  platform config repository override
   --format human|json
@@ -79,6 +81,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.StateDir, "state-dir", "", "")
 	fs.StringVar(&o.SNRepo, "sn-repo", "", "")
 	fs.StringVar(&o.ServerRepo, "server-repo", "", "")
+	fs.StringVar(&o.OperatorProxyRepo, "operator-proxy-repo", "", "")
 	fs.StringVar(&o.VaultRepo, "vault-repo", "", "")
 	fs.StringVar(&o.PlatformConfigRepo, "platform-config-repo", "", "")
 	fs.StringVar(&o.PlanHash, "plan-hash", "", "")
@@ -242,6 +245,30 @@ func runMain(args []string) error {
 		}
 		return servertaskworker.Run(ctx, servertaskworker.RunOptions{Port: port, Count: count, BatchSize: batchSize})
 	}
+	if len(args) > 0 && args[0] == "__server_cleanup_contracts" {
+		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
+		var cutoffUnixNano int64
+		var resultPath string
+		fs.Int64Var(&cutoffUnixNano, "cutoff-unix-nano", 0, "")
+		fs.StringVar(&resultPath, "result", "", "")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if cutoffUnixNano <= 0 || !filepath.IsAbs(resultPath) || fs.NArg() != 0 {
+			return errors.New("invalid internal server contract cleanup invocation")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		result, err := closeStaleServerContracts(ctx, time.Unix(0, cutoffUnixNano).UTC())
+		if err != nil {
+			return err
+		}
+		encoded, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		return atomicWrite(resultPath, append(encoded, '\n'), 0o600)
+	}
 	cmd, o, err := parseCLI(args)
 	if err != nil {
 		usage()
@@ -250,7 +277,7 @@ func runMain(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire"
-	resolved, err := LoadResolved(LoadOptions{ConfigPath: o.Config, SNRepo: o.SNRepo, ServerRepo: o.ServerRepo, VaultRepo: o.VaultRepo, PlatformConfigRepo: o.PlatformConfigRepo, RequireSecrets: requireSecrets})
+	resolved, err := LoadResolved(LoadOptions{ConfigPath: o.Config, SNRepo: o.SNRepo, ServerRepo: o.ServerRepo, OperatorProxyRepo: o.OperatorProxyRepo, VaultRepo: o.VaultRepo, PlatformConfigRepo: o.PlatformConfigRepo, RequireSecrets: requireSecrets})
 	if err != nil {
 		return err
 	}

@@ -3877,7 +3877,64 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    traffic and zero unexplained process-log finding; these fixes are not waivers
    for a carrier failure.
 
-   The next frozen-source launch used two byte-equivalent read-only plans at
+   The 2026-09-02 22:06 UTC replay was also rejected rather than credited. Its
+   fenced process-log gate found eight fresh fixed-60-second TLS handshake
+   timeouts across four miner swarms. A cross-generation forensic join found 50
+   such timeouts across 12 of 20 swarms: all 50 remote client IDs belonged to
+   prior one-shot validator generations, and 24 current miners had received an
+   obsolete Redis stream route. The operator databases still held 16,967 open
+   contracts from stopped generations. Provider startup preceded taskworker
+   maintenance, `newContract` accepted durable but inactive clients, and stream
+   listeners republished Redis hops without checking durable client activity.
+   The 704 contemporaneous peer-budget refusals were downstream pressure from
+   that stale fanout, not evidence that the intentional eight-peer cap was too
+   small. No M1/M2/M3 epoch is credited from this run.
+
+   The correction is at every ownership boundary. Contract admission now
+   requires active source and destination identities and returns terminal
+   `NoPermission` for a removed identity; active but temporarily disconnected
+   identities remain eligible. Production stream snapshots batch-check the
+   owner and both adjacent identities, atomically prune inactive Redis members,
+   advance the event version and re-read so a concurrent valid add is retained.
+   Every force-close branch, including dispute, direct settlement and malformed
+   quarantine, now verifies PostgreSQL terminal state, removes the Redis stream,
+   aggregates any returned error or panic and fails the cleanup. Open/dispute
+   scan races are deduplicated and zero worker parallelism is rejected.
+
+   Before starting any listener or client, the supervisor now runs that real
+   server/model cleanup under each operator's rendered environment with a fixed
+   pre-start cutoff and requires a separate empty pass; a partial or canceled
+   attempt cannot certify convergence. Taskworkers join the prerequisite health
+   barrier. Shutdown is consumer, provider and infrastructure ordered, with 10,
+   30 and 10 second bounds. Children are detached from the supervisor context
+   only until that explicit sequence completes and retain a kernel parent-death
+   signal as the crash backstop. The user unit uses `KillMode=mixed` and a
+   60-second bound so systemd initially signals only the supervisor and reserves
+   cgroup SIGKILL for the final backstop. It uses `Restart=no`: an integrity or
+   pre-start cleanup failure remains visible until an explicit resume instead of
+   being overwritten by a second automatic cleanup. In-memory process-group
+   signals bind PID, group, start ticks, executable and argv; an out-of-process
+   supervisor stop uses a pidfd after rechecking start ticks, and never signals
+   persisted child PIDs. Deterministic normal/race regressions cover the original
+   stale stream, both hop orientations, active-disconnected eligibility, every
+   force-close branch, empty-pass/cancellation/nonconvergence, parent death,
+   phased/systemd shutdown and exited or reused generations.
+
+   Final publication is now a closed, public evidence graph rather than a signed
+   summary that trusts the producing host. Exactly one semantic evidence object
+   binds the deployment, plan, config, policy, fixed 1,000-miner/202-fleet/
+   200-slot/two-validator/two-pool topology, complete acceptance window and
+   terminal finalized heads. Its recursive owner-signed manifest contains every
+   referenced receipt and artifact on both operator replicas. A secretless
+   analyzer retrieves and rehashes the entire graph, then repeats exact
+   block-pinned Substrate storage/metadata/extrinsic/weight/balance reads and EVM
+   receipt/log/code/ERC-1967/owner/policy/entitlement/reserve calls. It records
+   canonical JSON parameters and raw results in a sealed transcript and refuses
+   to render `FINAL.md` without that replay. This prevents a current-head read,
+   mutable local database or simulator assertion from becoming the trust root.
+
+   Immediately before that replay, a frozen-source planning pass used two
+   byte-equivalent read-only plans at
    `0x752e814e12c3bcf833a33d0ced064fd5e51726a54ebc1888d3c731676a8e748d`,
    passed all 59 hard doctor checks, reauthenticated 1,000/1,000 historical
    miners and completed 2,221/2,221 carried-action audits. It then stopped before
@@ -3907,15 +3964,145 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    anomaly evidence, so this does not weaken M1-M3. It remains an explicit MR
    observability item to configure and exercise before declaring mainnet-ready.
 
-   Once that replay is clean, `release-1.0` discards its post-preparation
-   partial epoch, observes five sequential 300-block epochs (approximately five
-   hours), and waits through their terminal finalization. `production-soak` then schedules the
-   360-block policy and observes its future-effective boundary, discards the
+   The prelaunch critical path is now explicitly split from post-capture
+   analysis. `scripts/test-release-1.0-producer-gate.sh` is the bounded launch
+   gate: it compiles the complete validator/simulator graph and runs normal and
+   race regressions for signed attempt checkpoints, terminal cuts, atomic
+   settlement transitions, exact binding and deposit evidence, measurement
+   envelopes/intents, lossless capture, terminal process-log fencing, direct
+   artifact publication, operator proof APIs, PostgreSQL/Redis persistence and
+   the deployable contracts. It finishes by rechecking patch hygiene and the
+   exact release lock. `doctor`, two byte-identical read-only plans and the
+   approved plan/spend hash remain immediate launch prerequisites.
+
+   A passing live phase now ends after all live-only inputs have been collected,
+   content-addressed, strictly reread, secret-scanned, fenced by the terminal log
+   scan, replicated to both operator archives and bound by an owner-signed
+   `capture_closed` completion. Building the typed semantic object, replaying
+   pinned public Substrate/EVM reads, sealing the transcript and rendering
+   `FINAL.md` are read-only, resumable `semantic_verified` work. They run from
+   the frozen graph while the next live acceptance window is progressing; they
+   no longer keep the network idle. A failed or missing analyzer result remains
+   release-fatal, is surfaced to the running campaign stop/error path, and both
+   phases must reach `semantic_verified` before final testnet acceptance. The
+   asynchronous handoff is a separate owner-signed supplement: it binds the
+   exact original `scenario-complete` content hash, result and run, capture and input
+   manifests, semantic/transcript hashes, and an owner-carried envelope for
+   every derived JSON/report byte. File envelopes are replicated and read back
+   from every operator store before the supplement is published or the local
+   commit marker can appear. Resume reuses immutable staged envelopes; a
+   crash-left half of the output pair is content-addressed into quarantine and
+   regenerated only from the closed capture. Lock waits honor campaign
+   cancellation. Public discovery and object-store construction use the
+   captured public/deployment/runtime manifests and exact captured credential
+   digests, never mutable `public.json` or runtime-manifest pointers belonging
+   to preparation of the next phase. The full
+   `scripts/test-release-1.0-local.sh` suite also remains mandatory for the
+   final acceptance record. This scheduling change removes no evidence, epoch,
+   adversarial vector, finality wait or mainnet gate; it only moves work which no
+   longer needs a live service behind the immutable capture boundary. The target
+   prelaunch implementation/gate interval is therefore approximately two to
+   four hours rather than four to seven hours.
+
+   A read-only public-testnet lifecycle preflight on 2026-09-03 found and
+   failed closed on a stale role assumption before any mutation: churn
+   identities 1--5 had already been consumed by setup replacements, while the
+   original fleet-5/fleet-6 identities remained live and therefore could not
+   serve as the intended runtime-452 victims. At finalized native block
+   7,922,728 (`0x246be86072be5624a6425e483b24da7f536692a55c386c346e9cc074446beec9`),
+   the complete census instead bound churn-6 to UID 7, churn-7 to UID 8 and
+   churn-8 to UID 9 with their exact owners. The pinned runtime ordering chose
+   churn-6/UID 7. UID 1 was neither immortal nor immune and had zero emission,
+   but it was the subnet's only non-immune UID while
+   `min_allowed_uids=10`; runtime-452 therefore protected it through the
+   minimum-non-immune floor and selected the oldest zero-emission immune row.
+   The root cause was treating originally reserved role numbers as persistent
+   live slots instead of authenticating their current UID/owner and the full
+   prune-order input set. The corrected M2 lifecycle rejects every non-live or
+   shifted role map, records the exact finalized prune inputs, uses
+   churn-6/churn-7 as the two provider identities, churn-1 as the approved
+   fallback and churn-8 as the terminal victim, and replays three plan-bound
+   registrations plus cleanup, commitment, mirror and binding receipts. A
+   deterministic regression covers the observed already-pruned role map and
+   adjacent UID, owner, ordering, immunity and minimum-floor drift. This
+   pre-campaign anomaly is resolved in code but remains part of the final
+   zero-anomaly/root-cause dossier.
+
+   A subsequent producer/capture audit found a second prelaunch lifecycle
+   defect before launch: the first lifecycle schema and fixtures used the EVM
+   settlement-epoch number as though it were Subtensor's native subnet-epoch
+   number. Those are intentionally independent clocks under section 5. Six
+   synthetic `E1`--`E6` validator censuses therefore appeared to fit inside a
+   `5 * 300 + 150`-block release window even though a tempo-360 subnet can
+   produce only four or five native decisions in that interval. Worse, a
+   generation installed in settlement epoch E5 becomes binding-effective in
+   E6; a CRv4 intent made after that activation has a one-native-epoch reveal
+   delay and cannot be guaranteed to apply during the remaining 150 blocks.
+   A public read at finalized native block 7,923,210 confirmed runtime spec
+   452, native subnet epoch 1,226, `tempo=360`,
+   `reveal_period_epochs=1`, last epoch block 7,923,131 and predicted next
+   reveal block 7,923,491.
+
+   The correction keeps those real protocol parameters. Lifecycle evidence
+   carries distinct `settlement_epoch` and `subnet_epoch` domains and records
+   every applied decision in the covered interval. The composite campaign
+   requires four ordered, finalized native milestones: takeover rejected,
+   fallback active, restored provider active and terminal generation active.
+   Each mutation follows the preceding applied milestone; its binding and
+   payout eligibility use the actual settlement epoch observed at execution,
+   never a fixed synthetic offset. `release-1.0` may close only after its five
+   complete settlement epochs and terminal finalization. Reaching the release
+   handoff additionally requires the first three causal native milestones and
+   a finalized terminal binding. Their conservative runtime-452 bound from the
+   release acceptance start is
+   `3 * (reveal_period_epochs + 1) * tempo + 3 * 100 = 2,460` blocks. If that
+   work is not complete at the fixed 1,650-block terminal, `release-1.0`
+   continues through a separately labeled release-handoff evidence tail of at
+   most 810 blocks. The two lifecycle filters and adversarial campaign remain
+   active until their evidence-driven restoration in that tail; neither those
+   tail blocks nor their restoration are reported as accepted-epoch coverage.
+   All other release faults retain their original acceptance-window bounds.
+
+   Before making any production mutation, `production-soak`
+   must authenticate the exact owner-signed release result, completion and
+   handoff bytes named by its durable attempt record; it may neither discover a
+   newer release dynamically nor replace its run ID after cancellation or
+   failure. It then resumes that exact plan/journal-bound, append-only lifecycle
+   and must capture the later terminal-active native decision before the
+   composite `release-candidate` can pass.
+
+   The fixed acceptance geometry is exactly 1,650 release blocks
+   (`5 * 300 + 150`) plus 1,260 production blocks (`3 * 360 + 180`), or 2,910
+   blocks from release acceptance start through the production terminal window.
+   A discarded partial epoch and timeout headroom are not counted as guaranteed
+   evidence. Because 2,910 blocks do not cover the conservative four-milestone
+   CRv4 schedule under every phase alignment, production stops at the end of its
+   third accepted epoch only when terminal-active has already been finalized.
+   Otherwise it enters a separately named production post-acceptance lifecycle
+   evidence tail, bounded from the pinned live tempo, reveal period, terminal
+   binding receipt and finalized native schedule, and stops at the first
+   finalized terminal-active proof. Tail blocks are never reported as a fourth
+   accepted production epoch. Release-handoff and production tails are bounded
+   and reported independently. This overlaps as
+   much of the unavoidable CRv4 wait as possible with the mandatory production
+   window without silently shortening tempo, reveal delay or acceptance.
+   Deterministic regressions use deliberately different counters and phases and
+   reject missing, duplicate, stale-snapshot, reused-UID, ambiguous-owner,
+   handoff substitution, fresh-run-ID rebinding, pre-authentication mutation,
+   adverse phase alignment and overrun of the calculated tail bound.
+
+   Once the producer gate and live replay are clean, `release-1.0` discards its
+   post-preparation partial epoch, observes five sequential 300-block epochs
+   (approximately five hours), and waits through their terminal finalization.
+   `production-soak` then schedules the 360-block policy and observes its
+   future-effective boundary, discards the
    partial epoch containing the first observation, proves three complete
    approximately-72-minute epochs, and waits through the final 180-block
-   settlement window. Adversarial actors overlap both happy paths; the expected
-   remaining live-chain evidence window is approximately 12--15 hours,
-   excluding any root-cause rerun.
+   settlement window. If required, only its bounded terminal-proof tail follows
+   that exact production acceptance window. Adversarial actors overlap both
+   happy paths and both possible lifecycle tails; the expected remaining
+   live-chain evidence window is approximately 12--15 hours, excluding any
+   root-cause rerun.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -3940,9 +4127,9 @@ completed successfully after the release lock was frozen:
 |---|---|
 | `go test ./...` in `sn` | Pass, including all miner, validator, protocol, CRv4 and `sim-testnet` packages; the final ordinary simulator suite completed in 179.823 seconds. |
 | Race detector on release Go packages | Pass for `crv4`, `miner/...`, `protocol`, `sim-testnet` and `validator`; the final full simulator race suite completed in 664.973 seconds under the regression-pinned 15-minute harness deadline. |
-| Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero findings** for both deployable roots (26/27 transitive contracts, 64 detectors); its target-only Foundry graphs are isolated from canonical release artifacts. |
-| `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 23,646 bytes (930-byte EIP-170 margin), the testnet-only coordinator adversary at 24,513 bytes (63-byte margin), and `STFleetBatcher` at 4,003 bytes. |
-| `forge test --summary` | **146 passed, 0 failed, 0 skipped**, including the epoch-end deposit-deadline boundary, maximum 10-by-4 atomic fleet batches, the live two-share-floor regressions and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
+| Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** for all four deployable testnet roots: coordinator (26 transitive contracts), fleet batcher (27), precompile probe (8), and governance adversary (24), each under 64 detectors; its target-only Foundry graphs are isolated from canonical release artifacts. |
+| `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 24,299 bytes (277-byte EIP-170 margin), the storage-isolated testnet coordinator adversary at 2,536 bytes, `STFleetBatcher` at 4,003 bytes, and `STSubnetProbe` at 7,265 bytes. |
+| `forge test --summary` | **156 passed, 0 failed, 0 skipped**, including the epoch-end deposit-deadline boundary, maximum 10-by-4 atomic fleet batches, the live two-share-floor and malformed-absent-UID regressions, stable-v1 governance-drill compatibility, and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
 | Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, account-wide nonce reconciliation, coordinator isolation, validator-local assignment filtering, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 139.371 seconds, model in 140.573 seconds, and all 75 proxy roots in 529.355 seconds. Focused race reruns completed in 151.097 and 155.491 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or database-backed tests from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
 | Subtensor infrastructure regressions | **35 passed**, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |

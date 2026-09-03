@@ -326,7 +326,7 @@ func TestLiveBalanceProbe(t *testing.T) {
 		t.Logf("setup readiness: %v", setupErr)
 	}
 	rewards, rewardsErr := inspectNativeRewards(cfg, cfg.OperationalSubstrate)
-	if rewardsErr != "" || rewards == nil || facts == nil || len(rewards.EmissionRao) != int(facts.ExistingUIDCount) || len(rewards.Incentive) != int(facts.ExistingUIDCount) || len(rewards.Dividends) != int(facts.ExistingUIDCount) {
+	if rewardsErr != "" || rewards == nil || facts == nil || len(rewards.EmissionRao) != int(facts.ExistingUIDCount) || len(rewards.Incentive) != int(facts.ExistingUIDCount) || len(rewards.Dividends) != int(facts.ExistingUIDCount) || len(rewards.TotalHotkeyAlphaRao) != int(facts.ExistingUIDCount) {
 		t.Fatalf("native reward vectors=%+v error=%s existing_uids=%v", rewards, rewardsErr, func() any {
 			if facts == nil {
 				return nil
@@ -334,7 +334,7 @@ func TestLiveBalanceProbe(t *testing.T) {
 			return facts.ExistingUIDCount
 		}())
 	}
-	t.Logf("native rewards at block %d: emission=%v incentive=%v dividends=%v", rewards.FinalizedHead.Number, rewards.EmissionRao, rewards.Incentive, rewards.Dividends)
+	t.Logf("native rewards at block %d: emission=%v incentive=%v dividends=%v total_hotkey_alpha=%v", rewards.FinalizedHead.Number, rewards.EmissionRao, rewards.Incentive, rewards.Dividends, rewards.TotalHotkeyAlphaRao)
 	chain, err := crv4.DialChain(cfg.OperationalSubstrate)
 	if err != nil {
 		t.Fatal(err)

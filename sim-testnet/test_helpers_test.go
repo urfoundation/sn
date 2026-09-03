@@ -85,7 +85,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 	}}
 	release.Runtime.CodeHash = "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc"
 	hyperparameters := &Hyperparameters{SchemaVersion: 1, Profile: releaseProfile, OwnerControlled: map[string]any{
-		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "burn_half_life": 1, "immunity_period": testnetBootstrapImmunityPeriodBlocks,
+		"tempo": 360, "max_allowed_uids": 256, "commit_reveal_weights_enabled": true, "commit_reveal_period": 1, "burn_half_life": 1, "immunity_period": testnetBootstrapImmunityPeriodBlocks,
 	}, ProductionOwnerControlled: map[string]any{"burn_half_life": 360, "immunity_period": 360}}
 	configHash, err := releaseConfigHash(cfg, public, hyperparameters)
 	if err != nil {
@@ -112,7 +112,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 		Hyperparameters: hyperparameters,
 		Repos: RepoPaths{
 			SN: snRepo, Server: filepath.Join(filepath.Dir(snRepo), "server"), Vault: filepath.Join(filepath.Dir(snRepo), "vault"),
-			PlatformConfig: filepath.Join(filepath.Dir(snRepo), "config"),
+			OperatorProxy: filepath.Join(filepath.Dir(snRepo), "operator-proxy"), PlatformConfig: filepath.Join(filepath.Dir(snRepo), "config"),
 		},
 		Netuid: 7, ChainID: testnetChainID, Authority: "127.0.0.1:9944", OperationalRPCMode: rpcModePrivateAuthority,
 		OperationalSubstrate: "ws://127.0.0.1:9944", OperationalEVM: "http://127.0.0.1:9944", ObjectStoreHost: "127.0.0.1",

@@ -468,7 +468,11 @@ func run(opts docopt.Opts) {
 		TrailEngineConfig{M: m},
 	)
 
-	go engine.Run(ctx, concurrency)
+	go func() {
+		if err := engine.Run(ctx, concurrency); err != nil && ctx.Err() == nil {
+			panic(fmt.Errorf("validator trail engine: %w", err))
+		}
+	}()
 
 	// The flag-mode runner is measurement-only. Release weight writes require
 	// the strict multi-NO config path, which uses per-NO quality and exact CRv4

@@ -43,6 +43,22 @@ type releaseOperatorRuntime struct {
 	close       func()
 }
 
+type releaseTrailRunner interface {
+	Run(context.Context, int) error
+}
+
+func reportReleaseTrailEngineError(ctx context.Context, runner releaseTrailRunner, noID uint64, concurrency int, output chan<- error) {
+	if err := runner.Run(ctx, concurrency); err != nil && ctx.Err() == nil {
+		output <- fmt.Errorf("validator no_id %d trail engine: %w", noID, err)
+	}
+}
+
+type releaseAttemptState struct {
+	stats  *StatsEngine
+	ledger *AttemptLedger
+	store  *ProofStore
+}
+
 func loadClientSeed(path string) ([]byte, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -164,7 +180,65 @@ func releaseSeedAttemptInterval(hardLimit int) (time.Duration, error) {
 	return interval, nil
 }
 
-func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorConfig, epochFn func() uint64) (*releaseOperatorRuntime, error) {
+func newReleaseAttemptBoundaryResolver(chain *ChainClient, cfg *ReleaseConfig) *cachedAttemptBoundaryResolver {
+	return newCachedAttemptBoundaryResolver(&chainAttemptBoundaryRPC{chain: chain, netuid: cfg.Netuid})
+}
+
+func loadReleaseAttemptState(cfg *ReleaseConfig, op OperatorConfig, validatorUID uint16) (*releaseAttemptState, error) {
+	seed, err := loadClientSeed(op.ClientKeySeedFile)
+	if err != nil {
+		return nil, fmt.Errorf("no_id %d client key: %w", op.NoID, err)
+	}
+	stats := NewStatsEngine(StatsConfig{
+		AMin:             cfg.Policy.Verify.ReliabilityAMin,
+		AlphaNumerator:   1,
+		AlphaDenominator: 10,
+		LatRefMillis:     4000,
+	})
+	if err := stats.Load(op.StateDir); err != nil {
+		return nil, fmt.Errorf("no_id %d stats: %w", op.NoID, err)
+	}
+	ledger, err := NewAttemptLedger(op.StateDir, AttemptLedgerIdentity{
+		DeploymentID: cfg.DeploymentID, ChainID: cfg.ChainID, GenesisHash: strings.ToLower(cfg.GenesisHash),
+		Netuid: cfg.Netuid, ValidatorID: cfg.ValidatorID, ValidatorUID: validatorUID, NoID: op.NoID,
+	}, ed25519.NewKeyFromSeed(seed))
+	if err != nil {
+		return nil, fmt.Errorf("no_id %d attempt ledger: %w", op.NoID, err)
+	}
+	if err := stats.AttachAttemptLedger(ledger, op.StateDir); err != nil {
+		return nil, fmt.Errorf("no_id %d attempt ledger recovery: %w", op.NoID, err)
+	}
+	store, err := NewProofStore(op.StateDir)
+	if err != nil {
+		return nil, fmt.Errorf("no_id %d proof projection: %w", op.NoID, err)
+	}
+	if err := store.ReconcileAttemptProofs(ledger); err != nil {
+		return nil, fmt.Errorf("no_id %d proof projection reconciliation: %w", op.NoID, err)
+	}
+	return &releaseAttemptState{stats: stats, ledger: ledger, store: store}, nil
+}
+
+func releasePriorSettlementBoundary(chain *ChainClient, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
+	if chain == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() || snapshot.Epoch.Sign() == 0 {
+		return AttemptBoundary{}, errors.New("cannot resolve the prior settlement boundary")
+	}
+	startBlock, err := chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, snapshot.Epoch)
+	if err != nil || startBlock == 0 {
+		return AttemptBoundary{}, fmt.Errorf("current settlement start block: %w", err)
+	}
+	block := startBlock - 1
+	hash, err := chain.BlockHash(block)
+	if err != nil {
+		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal block: %w", err)
+	}
+	epoch, err := chainViewAtContext(context.Background(), chain, block, chain.coordinator.PackCurrentEpoch(), chain.coordinator.UnpackCurrentEpoch)
+	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64()+1 != snapshot.Epoch.Uint64() {
+		return AttemptBoundary{}, errors.New("prior settlement terminal block has the wrong epoch")
+	}
+	return AttemptBoundary{SettlementEpoch: epoch.Uint64(), EVMBlock: block, EVMBlockHash: attemptHex32(hash)}, nil
+}
+
+func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorConfig, epochFn func() uint64, attemptResolver AttemptBoundaryResolver, attemptState *releaseAttemptState) (*releaseOperatorRuntime, error) {
 	seedAttemptInterval, err := releaseSeedAttemptInterval(cfg.Policy.Verify.HardSeedPerMinutePerSource)
 	if err != nil {
 		return nil, fmt.Errorf("no_id %d seed pacing: %w", op.NoID, err)
@@ -221,26 +295,18 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 		})
 	}
 
-	stats := NewStatsEngine(StatsConfig{
-		AMin:             cfg.Policy.Verify.ReliabilityAMin,
-		AlphaNumerator:   1,
-		AlphaDenominator: 10,
-		LatRefMillis:     4000,
-	})
-	if err := stats.Load(op.StateDir); err != nil {
+	if epochFn == nil || attemptResolver == nil || attemptState == nil || attemptState.stats == nil || attemptState.ledger == nil || attemptState.store == nil {
 		closeResources()
-		return nil, fmt.Errorf("no_id %d stats: %w", op.NoID, err)
+		return nil, fmt.Errorf("no_id %d prepared attempt state is incomplete", op.NoID)
 	}
-	store, err := NewProofStore(op.StateDir)
-	if err != nil {
-		closeResources()
-		return nil, err
-	}
+	stats, ledger := attemptState.stats, attemptState.ledger
+	store := attemptState.store
 	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	engine := NewTrailEngine(clientID, ed25519.NewKeyFromSeed(seed), transport, NewApiServerKeyRing(api), NewFindProvidersSeedPicker(api, clientID), stats, store, epochFn, TrailEngineConfig{
 		M:                   cfg.Policy.Verify.TrailDepth,
 		StepTimeout:         time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
 		SeedAttemptInterval: seedAttemptInterval,
+		AttemptLedger:       ledger, AttemptBoundaryResolver: attemptResolver,
 	})
 	measurement := &ReleaseMeasurementContext{
 		NoID:      op.NoID,
@@ -333,6 +399,40 @@ func RunRelease(ctx context.Context, configPath string) error {
 		return err
 	}
 	settlementEpoch.Store(snapshot.Epoch.Uint64())
+	validatorUID, found, err := chain.FindUidByHotkeyAt(snapshot.BlockNumber, cfg.Netuid, hotkey.PublicKey())
+	if err != nil || !found {
+		return fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d: %w", snapshot.BlockNumber, err)
+	}
+	settlementParticipants := make([]AttemptSettlementParticipant, len(cfg.Operators))
+	for index, operator := range cfg.Operators {
+		settlementParticipants[index] = AttemptSettlementParticipant{NoID: operator.NoID, StateDir: operator.StateDir}
+	}
+	if err := RecoverAttemptSettlementEpoch(cfg.StateDir, settlementParticipants); err != nil {
+		return fmt.Errorf("recover validator settlement transaction: %w", err)
+	}
+	attemptStates := make(map[uint64]*releaseAttemptState, len(cfg.Operators))
+	for index, operator := range cfg.Operators {
+		state, err := loadReleaseAttemptState(cfg, operator, validatorUID)
+		if err != nil {
+			return err
+		}
+		attemptStates[operator.NoID] = state
+		settlementParticipants[index].Stats = state.stats
+	}
+	var terminalBoundary AttemptBoundary
+	for _, participant := range settlementParticipants {
+		if participant.Stats.requiresSettlementAdvance(snapshot.Epoch.Uint64()) && participant.Stats.settlementEpochKnown {
+			terminalBoundary, err = releasePriorSettlementBoundary(chain, snapshot)
+			if err != nil {
+				return err
+			}
+			break
+		}
+	}
+	if err := AdvanceAttemptSettlementEpoch(cfg.StateDir, snapshot.Epoch.Uint64(), terminalBoundary, settlementParticipants); err != nil {
+		return fmt.Errorf("advance validator settlement transaction: %w", err)
+	}
+	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(chain, cfg)
 	go func() {
 		ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
 		defer ticker.Stop()
@@ -342,7 +442,10 @@ func RunRelease(ctx context.Context, configPath string) error {
 				return
 			case <-ticker.C:
 				if snapshot, err := chain.ReleaseSnapshotContext(ctx); err == nil {
-					settlementEpoch.Store(snapshot.Epoch.Uint64())
+					if settlementEpoch.Load() != snapshot.Epoch.Uint64() {
+						attemptBoundaryResolver.invalidateLatest()
+						settlementEpoch.Store(snapshot.Epoch.Uint64())
+					}
 				} else if ctx.Err() == nil {
 					fmt.Printf("validator release snapshot refresh: %v\n", err)
 				}
@@ -352,7 +455,7 @@ func RunRelease(ctx context.Context, configPath string) error {
 
 	var runtimes []*releaseOperatorRuntime
 	for _, op := range cfg.Operators {
-		runtime, err := startReleaseOperator(ctx, cfg, op, settlementEpoch.Load)
+		runtime, err := startReleaseOperator(ctx, cfg, op, settlementEpoch.Load, attemptBoundaryResolver.Resolve, attemptStates[op.NoID])
 		if err != nil {
 			for _, started := range runtimes {
 				started.close()
@@ -360,7 +463,12 @@ func RunRelease(ctx context.Context, configPath string) error {
 			return err
 		}
 		runtimes = append(runtimes, runtime)
-		go runtime.engine.Run(ctx, op.Concurrency)
+	}
+	runtimeErrors := make(chan error, len(runtimes)+2)
+	for index, runtime := range runtimes {
+		operatorID := cfg.Operators[index].NoID
+		concurrency := cfg.Operators[index].Concurrency
+		go reportReleaseTrailEngineError(ctx, runtime.engine, operatorID, concurrency, runtimeErrors)
 	}
 	defer func() {
 		for _, runtime := range runtimes {
@@ -375,7 +483,11 @@ func RunRelease(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	go steerer.Run(ctx)
+	go func() {
+		if err := steerer.Run(ctx); err != nil {
+			runtimeErrors <- err
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
@@ -386,15 +498,20 @@ func RunRelease(ctx context.Context, configPath string) error {
 			case <-ticker.C:
 				for i, runtime := range runtimes {
 					if err := runtime.stats.Save(cfg.Operators[i].StateDir); err != nil {
-						fmt.Printf("validator no_id %d stats save: %v\n", cfg.Operators[i].NoID, err)
+						runtimeErrors <- fmt.Errorf("validator no_id %d stats save: %w", cfg.Operators[i].NoID, err)
+						return
 					}
 				}
 			}
 		}
 	}()
 	fmt.Printf("validator release 1.0 running: validator=%d netuid=%d hotkey=%s operators=%d\n", cfg.ValidatorID, cfg.Netuid, hotkey.Address(), len(runtimes))
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-runtimeErrors:
+		return err
+	}
 }
 
 func runReleaseConfig(configPath string) {

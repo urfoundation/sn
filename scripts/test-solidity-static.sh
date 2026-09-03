@@ -54,9 +54,16 @@ slither_foundry_cache="${SLITHER_FOUNDRY_CACHE_PATH:-cache/slither}"
 cd "$evm_repo"
 # STSubnet.sol is the retained pre-1.0 monolith and is not installed by
 # sim-testnet. The coordinator root traverses immutable custody, proxy libraries,
-# and runtime-precompile interfaces. The additive fleet batcher is a standalone
-# testnet deployment root and must be analyzed separately.
-for contract in src/STCoordinator.sol src/STFleetBatcher.sol; do
+# and runtime-precompile interfaces. The fleet batcher, disposable precompile
+# probe, and hostile governance-drill implementation are separately deployed
+# testnet roots, so the release gate analyzes each of them too.
+contracts=(
+  src/STCoordinator.sol
+  src/STFleetBatcher.sol
+  src/probe/STSubnetProbe.sol
+  src/testnet/STCoordinatorAdversary.sol
+)
+for contract in "${contracts[@]}"; do
   rm -f -- "$report"
   if ! FOUNDRY_OUT="$slither_foundry_out" FOUNDRY_CACHE_PATH="$slither_foundry_cache" "$slither_bin" "$contract" \
     --solc "$solc_bin" \
@@ -77,4 +84,4 @@ for contract in src/STCoordinator.sol src/STFleetBatcher.sol; do
   fi
 done
 
-echo "release Solidity static gate passed for both deployable roots (Slither 0.11.6; no high/medium findings)"
+echo "release Solidity static gate passed for all ${#contracts[@]} deployable roots (Slither 0.11.6; no high/medium findings)"

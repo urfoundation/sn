@@ -61,16 +61,23 @@ type artifactDefinition struct {
 	// unnamed/compiler-id ordering convention.
 	immutableNames   []string
 	immutableSources []string
+	// requireEmptyLinearStorage prevents the deliberately minimal testnet UUPS
+	// drill implementation from acquiring coordinator storage slots. It reads
+	// only OpenZeppelin's shared namespaced owner slot and the ERC1967 slot.
+	requireEmptyLinearStorage bool
+	// requiredStorageSlots binds any deliberately hard-coded upgrade-drill
+	// coordinate to the release coordinator's compiler layout.
+	requiredStorageSlots map[string]string
 }
 
 var artifactDefinitions = []artifactDefinition{
-	{"ReserveSink", "STReserveSink.sol/STReserveSink.json", true, "", []string{"netuid", "reserveHotkey", "selfColdkey", "bootstrap"}, []string{"src/STReserveSink.sol"}},
-	{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "minimumTransferTaoRao", "bootstrap"}, []string{"src/STSettlementVault.sol"}},
-	{"Coordinator", "STCoordinator.sol/STCoordinator.json", true, "", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
-	{"ERC1967Proxy", "ERC1967Proxy.sol/ERC1967Proxy.json", true, "", nil, nil},
-	{"CoordinatorAdversary", "STCoordinatorAdversary.sol/STCoordinatorAdversary.json", false, "TestnetGovernanceDrillArtifact", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}},
-	{"SubnetProbe", "STSubnetProbe.sol/STSubnetProbe.json", false, "TestnetPrecompileProbeArtifact", []string{"owner", "netuid"}, []string{"src/probe/STSubnetProbe.sol"}},
-	{"FleetBatcher", "STFleetBatcher.sol/STFleetBatcher.json", false, "TestnetFleetBatcherArtifact", []string{"coordinator", "oracle"}, []string{"src/STFleetBatcher.sol"}},
+	{"ReserveSink", "STReserveSink.sol/STReserveSink.json", true, "", []string{"netuid", "reserveHotkey", "selfColdkey", "bootstrap"}, []string{"src/STReserveSink.sol"}, false, nil},
+	{"SettlementVault", "STSettlementVault.sol/STSettlementVault.json", true, "", []string{"netuid", "escrowHotkey", "selfColdkey", "minimumClaimTTLBlocks", "minimumTransferTaoRao", "bootstrap"}, []string{"src/STSettlementVault.sol"}, false, nil},
+	{"Coordinator", "STCoordinator.sol/STCoordinator.json", true, "", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}, false, map[string]string{"netuid": "0", "settlementVault": "2", "reserveSink": "3"}},
+	{"ERC1967Proxy", "ERC1967Proxy.sol/ERC1967Proxy.json", true, "", nil, nil, false, nil},
+	{"CoordinatorAdversary", "STCoordinatorAdversary.sol/STCoordinatorAdversary.json", false, "TestnetGovernanceDrillArtifact", []string{"__self"}, []string{"lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol"}, true, nil},
+	{"SubnetProbe", "STSubnetProbe.sol/STSubnetProbe.json", false, "TestnetPrecompileProbeArtifact", []string{"owner", "netuid"}, []string{"src/probe/STSubnetProbe.sol"}, false, nil},
+	{"FleetBatcher", "STFleetBatcher.sol/STFleetBatcher.json", false, "TestnetFleetBatcherArtifact", []string{"coordinator", "oracle"}, []string{"src/STFleetBatcher.sol"}, false, nil},
 }
 
 // Foundry includes compilation-unit AST ids in storage entries and Solidity
@@ -151,7 +158,14 @@ func main() {
 	if len(os.Args) > 2 {
 		out = os.Args[2]
 	}
-	formatted, err := renderContractArtifacts(loadContractItems(root))
+	items := loadContractItems(root)
+	if existing, err := os.ReadFile(out); err == nil {
+		items, err = preserveReviewedBytecode(out, existing, items)
+		must(err)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		must(err)
+	}
+	formatted, err := renderContractArtifacts(items)
 	must(err)
 	must(os.WriteFile(out, formatted, 0o644))
 }
@@ -166,6 +180,12 @@ func loadContractItems(root string) []item {
 		must(err)
 		var a artifact
 		must(json.Unmarshal(raw, &a))
+		if d.requireEmptyLinearStorage {
+			must(validateEmptyLinearStorage(d.name, a.StorageLayout))
+		}
+		if len(d.requiredStorageSlots) != 0 {
+			must(validateLinearStorageCoordinates(d.name, a.StorageLayout, d.requiredStorageSlots))
+		}
 		abi, err := json.Marshal(a.ABI)
 		must(err)
 		creation := trim0x(a.Bytecode.Object)
@@ -233,6 +253,53 @@ func loadContractItems(root string) []item {
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return items
+}
+
+func validateEmptyLinearStorage(name string, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%s: storage layout is absent", name)
+	}
+	var layout struct {
+		Storage []json.RawMessage `json:"storage"`
+	}
+	if err := json.Unmarshal(raw, &layout); err != nil {
+		return fmt.Errorf("%s: decode storage layout: %w", name, err)
+	}
+	if len(layout.Storage) != 0 {
+		return fmt.Errorf("%s: minimal upgrade implementation declares %d linear storage slots", name, len(layout.Storage))
+	}
+	return nil
+}
+
+func validateLinearStorageCoordinates(name string, raw json.RawMessage, required map[string]string) error {
+	if len(raw) == 0 || len(required) == 0 {
+		return fmt.Errorf("%s: required storage coordinates are unavailable", name)
+	}
+	var layout struct {
+		Storage []struct {
+			Label string `json:"label"`
+			Slot  string `json:"slot"`
+		} `json:"storage"`
+	}
+	if err := json.Unmarshal(raw, &layout); err != nil {
+		return fmt.Errorf("%s: decode storage coordinates: %w", name, err)
+	}
+	seen := make(map[string]string, len(required))
+	for _, entry := range layout.Storage {
+		if _, needed := required[entry.Label]; !needed {
+			continue
+		}
+		if _, duplicate := seen[entry.Label]; duplicate {
+			return fmt.Errorf("%s: storage coordinate %s is duplicated", name, entry.Label)
+		}
+		seen[entry.Label] = entry.Slot
+	}
+	for label, slot := range required {
+		if seen[label] != slot {
+			return fmt.Errorf("%s: storage coordinate %s=%q, want %q", name, label, seen[label], slot)
+		}
+	}
+	return nil
 }
 
 func renderContractArtifacts(items []item) ([]byte, error) {
@@ -336,6 +403,73 @@ func requiredGeneratedConstant(constants map[string]string, name string) (string
 		return "", fmt.Errorf("generated payload has no %s constant", name)
 	}
 	return value, nil
+}
+
+// preserveReviewedBytecode keeps a previously reviewed deployment payload when
+// a clean full-project Foundry build changed only Solidity's graph-sensitive
+// IPFS metadata digest. The old runtime hash must authenticate the old bytes,
+// and the current artifact's ABI, selectors, normalized storage layout and
+// semantic immutable offsets must authenticate both old bytecode values. Any
+// executable or deployment-interface change therefore selects the rebuilt
+// payload instead.
+func preserveReviewedBytecode(path string, source []byte, items []item) ([]item, error) {
+	constants, err := generatedStringConstants(path, source)
+	if err != nil {
+		return nil, err
+	}
+	result := append([]item(nil), items...)
+	for index := range result {
+		contract := &result[index]
+		oldCreation, err := requiredGeneratedConstant(constants, contract.Name+"CreationBytecode")
+		if err != nil {
+			return nil, err
+		}
+		oldRuntime, err := requiredGeneratedConstant(constants, contract.Name+"RuntimeBytecode")
+		if err != nil {
+			return nil, err
+		}
+		oldCreationNormalized, err := normalizeSolidityMetadataDigest(oldCreation)
+		if err != nil {
+			return nil, fmt.Errorf("%sCreationBytecode: %w", contract.Name, err)
+		}
+		newCreationNormalized, err := normalizeSolidityMetadataDigest(contract.Creation)
+		if err != nil {
+			return nil, fmt.Errorf("rebuilt %sCreationBytecode: %w", contract.Name, err)
+		}
+		oldRuntimeNormalized, err := normalizeSolidityMetadataDigest(oldRuntime)
+		if err != nil {
+			return nil, fmt.Errorf("%sRuntimeBytecode: %w", contract.Name, err)
+		}
+		newRuntimeNormalized, err := normalizeSolidityMetadataDigest(contract.Runtime)
+		if err != nil {
+			return nil, fmt.Errorf("rebuilt %sRuntimeBytecode: %w", contract.Name, err)
+		}
+		if oldCreationNormalized != newCreationNormalized || oldRuntimeNormalized != newRuntimeNormalized {
+			continue
+		}
+
+		oldRuntimeHash, err := requiredGeneratedConstant(constants, contract.Name+"RuntimeBytecodeHash")
+		if err != nil {
+			return nil, err
+		}
+		oldRuntimeBytes, decodeErr := hex.DecodeString(trim0x(oldRuntime))
+		if decodeErr != nil || !strings.EqualFold(crypto.Keccak256Hash(oldRuntimeBytes).Hex(), oldRuntimeHash) {
+			continue
+		}
+		oldArtifactHash, err := requiredGeneratedConstant(constants, contract.Name+"FoundryArtifactHash")
+		if err != nil {
+			return nil, err
+		}
+		if got := canonicalArtifactHashForBytecode(contract.Artifact, contract.References, oldCreation, oldRuntime); !strings.EqualFold(got, oldArtifactHash) {
+			continue
+		}
+
+		contract.Creation = trim0x(oldCreation)
+		contract.Runtime = trim0x(oldRuntime)
+		contract.RuntimeHash = oldRuntimeHash
+		contract.ArtifactHash = oldArtifactHash
+	}
+	return result, nil
 }
 
 func replaceGeneratedConstant(source []byte, name, before, after string) ([]byte, error) {

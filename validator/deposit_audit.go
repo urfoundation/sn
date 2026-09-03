@@ -34,6 +34,18 @@ type DepositAudit struct {
 	Epoch                  uint64 `json:"epoch"`
 	SourceEpoch            uint64 `json:"source_epoch"`
 	ArtifactHash           string `json:"artifact_hash,omitempty"`
+	CommittedArtifactHash  string `json:"committed_artifact_hash,omitempty"`
+	PayoutRoot             string `json:"payout_root,omitempty"`
+	ArtifactSigner         string `json:"artifact_signer,omitempty"`
+	RootCommitter          string `json:"root_committer,omitempty"`
+	RootSigner             string `json:"root_signer,omitempty"`
+	SourceStartBlock       uint64 `json:"source_start_block,omitempty"`
+	SourceStartHash        string `json:"source_start_hash,omitempty"`
+	SourceEndBlock         uint64 `json:"source_end_block,omitempty"`
+	SourceEndHash          string `json:"source_end_hash,omitempty"`
+	RootCommitBlock        uint64 `json:"root_commit_block,omitempty"`
+	ObservedAtBlock        uint64 `json:"observed_at_block"`
+	ArtifactDeadlineBlock  uint64 `json:"artifact_deadline_block"`
 	UsageBytes             uint64 `json:"usage_bytes"`
 	ConvictionBeforeRao    string `json:"conviction_before_rao"`
 	RateNumeratorRaoPerGiB uint64 `json:"rate_numerator_rao_per_gib"`
@@ -115,6 +127,16 @@ func EvaluateDepositArtifact(
 		return audit
 	}
 	audit.ArtifactHash = artifact.ContentHash
+	audit.ArtifactSigner = strings.ToLower(artifact.Signer.Hex())
+	audit.SourceStartBlock = artifact.Start.Number
+	audit.SourceStartHash = strings.ToLower(artifact.Start.Hash)
+	audit.SourceEndBlock = artifact.End.Number
+	audit.SourceEndHash = strings.ToLower(artifact.End.Hash)
+	audit.CommittedArtifactHash = "0x" + hex.EncodeToString(expectation.ArtifactHash[:])
+	audit.PayoutRoot = "0x" + hex.EncodeToString(expectation.PayoutRoot[:])
+	audit.RootCommitter = strings.ToLower(expectation.Committer.Hex())
+	audit.RootSigner = strings.ToLower(expectation.RootSigner.Hex())
+	audit.RootCommitBlock = expectation.CommitBlock
 	if artifact.DeploymentID != expectation.DeploymentID || artifact.ChainID != expectation.ChainID || artifact.Netuid != expectation.Netuid || artifact.Coordinator != expectation.Coordinator || artifact.SettlementVault != expectation.SettlementVault || artifact.Epoch != expectation.Epoch || artifact.NoID != expectation.NoID || artifact.Signer != expectation.Signer || !strings.EqualFold(artifact.GenesisHash, expectation.GenesisHash) || !strings.EqualFold(artifact.PolicyHash, expectation.PolicyHash) {
 		audit.Error = "payout artifact deployment identity mismatch"
 		return audit

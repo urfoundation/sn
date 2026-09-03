@@ -189,6 +189,16 @@ contract MockNeuron {
         uidExists[netuid][hotkey] = true;
     }
 
+    function setUidResponse(uint16 netuid, bytes32 hotkey, bool exists, uint16 uid) external {
+        uids[netuid][hotkey] = uid;
+        uidExists[netuid][hotkey] = exists;
+    }
+
+    function clearUid(uint16 netuid, bytes32 hotkey) external {
+        delete uids[netuid][hotkey];
+        delete uidExists[netuid][hotkey];
+    }
+
     function burnedRegister(uint16 netuid, bytes32 hotkey) external payable {
         require(address(this) == address(0x804), "runtime452: foreign neuron frame");
         registerCount++;

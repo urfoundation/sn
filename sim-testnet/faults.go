@@ -19,16 +19,20 @@ import (
 )
 
 type scenarioFaultSpec struct {
-	ID                    string   `json:"id"`
-	Kind                  string   `json:"kind"`
-	Targets               []string `json:"targets"`
-	Impacts               []string `json:"impacts,omitempty"`
-	ValidatorID           int      `json:"validator_id,omitempty"`
-	FleetIndex            int      `json:"fleet_index,omitempty"`
-	RestoreCondition      string   `json:"restore_condition,omitempty"`
-	MinimumDurationBlocks uint64   `json:"minimum_duration_blocks,omitempty"`
-	TriggerOffsetBlocks   uint64   `json:"trigger_offset_blocks"`
-	DurationBlocks        uint64   `json:"duration_blocks"`
+	ID                         string   `json:"id"`
+	Kind                       string   `json:"kind"`
+	Targets                    []string `json:"targets"`
+	Impacts                    []string `json:"impacts,omitempty"`
+	ValidatorID                int      `json:"validator_id,omitempty"`
+	FleetIndex                 int      `json:"fleet_index,omitempty"`
+	FleetIndices               []int    `json:"fleet_indices,omitempty"`
+	PreAcceptance              bool     `json:"pre_acceptance,omitempty"`
+	PostAcceptanceEvidenceTail bool     `json:"post_acceptance_evidence_tail,omitempty"`
+	ActivationCondition        string   `json:"activation_condition,omitempty"`
+	RestoreCondition           string   `json:"restore_condition,omitempty"`
+	MinimumDurationBlocks      uint64   `json:"minimum_duration_blocks,omitempty"`
+	TriggerOffsetBlocks        uint64   `json:"trigger_offset_blocks"`
+	DurationBlocks             uint64   `json:"duration_blocks"`
 }
 
 type FaultProcessEvidence struct {
@@ -39,26 +43,34 @@ type FaultProcessEvidence struct {
 }
 
 type ScenarioFaultRecord struct {
-	ID                    string                 `json:"id"`
-	Kind                  string                 `json:"kind"`
-	Targets               []string               `json:"targets"`
-	Impacts               []string               `json:"impacts,omitempty"`
-	ValidatorID           int                    `json:"validator_id,omitempty"`
-	FleetIndex            int                    `json:"fleet_index,omitempty"`
-	RestoreCondition      string                 `json:"restore_condition,omitempty"`
-	MinimumDurationBlocks uint64                 `json:"minimum_duration_blocks,omitempty"`
-	TriggerBlock          uint64                 `json:"trigger_block"`
-	RestoreBlock          uint64                 `json:"restore_block"`
-	AppliedBlock          uint64                 `json:"applied_block,omitempty"`
-	AppliedBlockHash      string                 `json:"applied_block_hash,omitempty"`
-	RestoredBlock         uint64                 `json:"restored_block,omitempty"`
-	RestoredBlockHash     string                 `json:"restored_block_hash,omitempty"`
-	RestoreConditionMet   bool                   `json:"restore_condition_met,omitempty"`
-	RestoreConditionBlock uint64                 `json:"restore_condition_block,omitempty"`
-	Processes             []FaultProcessEvidence `json:"processes,omitempty"`
-	RestoredProcesses     []FaultProcessEvidence `json:"restored_processes,omitempty"`
-	Status                string                 `json:"status"`
-	Error                 string                 `json:"error,omitempty"`
+	ID                         string                 `json:"id"`
+	Kind                       string                 `json:"kind"`
+	Targets                    []string               `json:"targets"`
+	Impacts                    []string               `json:"impacts,omitempty"`
+	ValidatorID                int                    `json:"validator_id,omitempty"`
+	FleetIndex                 int                    `json:"fleet_index,omitempty"`
+	FleetIndices               []int                  `json:"fleet_indices,omitempty"`
+	PreAcceptance              bool                   `json:"pre_acceptance,omitempty"`
+	PostAcceptanceEvidenceTail bool                   `json:"post_acceptance_evidence_tail,omitempty"`
+	ArmedBlock                 uint64                 `json:"armed_block,omitempty"`
+	ArmedBlockHash             string                 `json:"armed_block_hash,omitempty"`
+	ActivationCondition        string                 `json:"activation_condition,omitempty"`
+	RestoreCondition           string                 `json:"restore_condition,omitempty"`
+	MinimumDurationBlocks      uint64                 `json:"minimum_duration_blocks,omitempty"`
+	TriggerBlock               uint64                 `json:"trigger_block"`
+	RestoreBlock               uint64                 `json:"restore_block"`
+	AppliedBlock               uint64                 `json:"applied_block,omitempty"`
+	AppliedBlockHash           string                 `json:"applied_block_hash,omitempty"`
+	RestoredBlock              uint64                 `json:"restored_block,omitempty"`
+	RestoredBlockHash          string                 `json:"restored_block_hash,omitempty"`
+	RestoreConditionMet        bool                   `json:"restore_condition_met,omitempty"`
+	RestoreConditionBlock      uint64                 `json:"restore_condition_block,omitempty"`
+	ActivationConditionMet     bool                   `json:"activation_condition_met,omitempty"`
+	ActivationConditionBlock   uint64                 `json:"activation_condition_block,omitempty"`
+	Processes                  []FaultProcessEvidence `json:"processes,omitempty"`
+	RestoredProcesses          []FaultProcessEvidence `json:"restored_processes,omitempty"`
+	Status                     string                 `json:"status"`
+	Error                      string                 `json:"error,omitempty"`
 }
 
 type scenarioFaultDriver interface {
@@ -75,6 +87,8 @@ type scenarioContainerRuntime interface {
 type liveScenarioFaultDriver struct {
 	stateDir        string
 	cfg             *ResolvedConfig
+	planHash        string
+	coordinator     string
 	containers      scenarioContainerRuntime
 	minerControlURL func(swarm int, target, action string) string
 }
@@ -588,6 +602,26 @@ func (d *liveScenarioFaultDriver) Apply(ctx context.Context, spec scenarioFaultS
 	if err != nil {
 		return nil, err
 	}
+	// Pre-acceptance faults are armed before the accepted boundary and then
+	// adopted by the ordinary in-window scheduler. Exact adoption is
+	// idempotent; a merely matching ID or overlapping target still fails below.
+	if index, exactErr := activeFaultIndex(active, spec); exactErr == nil {
+		targets := make(map[string]bool, len(active.Faults[index].Targets))
+		for _, target := range active.Faults[index].Targets {
+			targets[target] = true
+		}
+		processes := make([]FaultProcessEvidence, 0, len(targets))
+		for _, process := range active.Processes {
+			if targets[process.ID] {
+				processes = append(processes, process)
+			}
+		}
+		if len(processes) != len(targets) {
+			return nil, fmt.Errorf("fault %s has incomplete adopted process evidence", spec.ID)
+		}
+		sort.Slice(processes, func(i, j int) bool { return processes[i].ID < processes[j].ID })
+		return processes, nil
+	}
 	if err := validateFaultActivation(active, spec); err != nil {
 		return nil, err
 	}
@@ -923,6 +957,57 @@ func releaseHeadBoundaryFault(cfg *ResolvedConfig, firstOffset uint64) (scenario
 	}, nil
 }
 
+func releaseFleetLifecycleFaults(cfg *ResolvedConfig, _ uint64) ([]scenarioFaultSpec, error) {
+	if err := validateFleetLifecycleTopology(cfg.Config.Topology); err != nil {
+		return nil, err
+	}
+	campaignBlocks, ok := checkedMul(uint64(cfg.Config.Scenarios.ShortEpochs), cfg.Policy.Settlement.EpochBlocks)
+	tempo := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"])
+	revealPeriods := hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["commit_reveal_period"])
+	required, scheduleErr := fleetLifecycleReleaseScheduleRequired(tempo, revealPeriods)
+	if !ok || scheduleErr != nil || campaignBlocks < 2 || required <= 1 {
+		return nil, errors.New("fleet lifecycle faults do not fit the accelerated acceptance window")
+	}
+	// These rules are armed before the accepted boundary so no validator can
+	// publish an accepted decision that pays either soon-to-be-pruned UID. The
+	// scheduler adopts them at offset one and removes them after the exact
+	// evidence-driven restoration. Their hard bound is the separately labeled
+	// release-handoff tail; no tail block is counted as an accepted epoch.
+	duration := required - 1
+	build := func(id string, fleet int, restoreCondition string, minimum uint64) (scenarioFaultSpec, error) {
+		operator := operatorForMiner(cfg, fleetMemberMinerIndex(cfg, fleet, 1))
+		if operator < 1 {
+			return scenarioFaultSpec{}, errors.New("fleet lifecycle fault has no operator")
+		}
+		for member := 2; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			if operatorForMiner(cfg, fleetMemberMinerIndex(cfg, fleet, member)) != operator {
+				return scenarioFaultSpec{}, errors.New("fleet lifecycle fault crosses operators")
+			}
+		}
+		return scenarioFaultSpec{
+			ID: id, Kind: validatorLocalHeadBoundaryFaultKind,
+			Targets: []string{lifecycleValidatorViewFaultTarget(operator)}, Impacts: []string{"validator-1", "validator-2"},
+			FleetIndices: []int{fleet}, PreAcceptance: true, PostAcceptanceEvidenceTail: true,
+			RestoreCondition: restoreCondition, MinimumDurationBlocks: minimum,
+			TriggerOffsetBlocks: 1, DurationBlocks: duration,
+		}, nil
+	}
+	targetMinimum, ok := checkedMul(4, cfg.Policy.Settlement.EpochBlocks)
+	if !ok || targetMinimum == 0 {
+		return nil, errors.New("fleet lifecycle target fault geometry overflows")
+	}
+	targetMinimum--
+	target, err := build("fleet-lifecycle-target-prune", fleetLifecycleTargetFleet, "fleet-lifecycle-provider-paid", targetMinimum)
+	if err != nil {
+		return nil, err
+	}
+	companion, err := build("fleet-lifecycle-companion-prune", fleetLifecycleCompanionFleet, "fleet-lifecycle-terminal-effective", campaignBlocks-1)
+	if err != nil {
+		return nil, err
+	}
+	return []scenarioFaultSpec{target, companion}, nil
+}
+
 func namedProcessFault(cfg *ResolvedConfig, name string) (scenarioFaultSpec, bool) {
 	start := cfg.Config.Scenarios.QualityFaultStartBlocks
 	duration := cfg.Config.Scenarios.QualityFaultDurationBlocks
@@ -1075,11 +1160,16 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	if err != nil {
 		return nil, err
 	}
+	lifecycle, err := releaseFleetLifecycleFaults(cfg, head.TriggerOffsetBlocks)
+	if err != nil {
+		return nil, err
+	}
 	// The long logical-miner decay and the restart lane are independent. Run
 	// them concurrently, while keeping all dependency/process restarts within
 	// that second lane strictly sequential for deterministic attribution.
 	firstRestart := head.TriggerOffsetBlocks + spacing
 	faults := []scenarioFaultSpec{quality, validatorView, head}
+	faults = append(faults, lifecycle...)
 	dependencies := dependencyOutageFaults(cfg, "release-dependency", firstRestart)
 	faults = append(faults, dependencies...)
 	last := dependencies[len(dependencies)-1]
@@ -1109,6 +1199,38 @@ func releaseCampaignFaults(cfg *ResolvedConfig) ([]scenarioFaultSpec, error) {
 	return faults, nil
 }
 
+// armPreAcceptanceFaults installs only explicitly marked rules before the
+// post-preparation snapshot. That exact snapshot proves the filters were live
+// before the next complete accepted epoch began. The ordinary scheduler later
+// adopts the same authenticated faults at their in-window trigger.
+func armPreAcceptanceFaults(ctx context.Context, specs []scenarioFaultSpec, driver scenarioFaultDriver) (map[string][]FaultProcessEvidence, error) {
+	armed := make(map[string][]FaultProcessEvidence)
+	if driver == nil {
+		for _, spec := range specs {
+			if spec.PreAcceptance {
+				return nil, errors.New("pre-acceptance fault requires a live fault driver")
+			}
+		}
+		return armed, nil
+	}
+	var applied []scenarioFaultSpec
+	for _, spec := range specs {
+		if !spec.PreAcceptance {
+			continue
+		}
+		processes, err := driver.Apply(ctx, spec)
+		if err != nil {
+			for index := len(applied) - 1; index >= 0; index-- {
+				_, _ = driver.Restore(context.Background(), applied[index])
+			}
+			return nil, fmt.Errorf("arm pre-acceptance fault %s: %w", spec.ID, err)
+		}
+		armed[spec.ID] = append([]FaultProcessEvidence(nil), processes...)
+		applied = append(applied, spec)
+	}
+	return armed, nil
+}
+
 func initializeFaultRecords(start uint64, specs []scenarioFaultSpec) ([]ScenarioFaultRecord, error) {
 	records := make([]ScenarioFaultRecord, len(specs))
 	for i, spec := range specs {
@@ -1118,7 +1240,12 @@ func initializeFaultRecords(start uint64, specs []scenarioFaultSpec) ([]Scenario
 		if (spec.RestoreCondition == "" && spec.MinimumDurationBlocks != 0) || (spec.RestoreCondition != "" && spec.MinimumDurationBlocks == 0) || spec.MinimumDurationBlocks > spec.DurationBlocks {
 			return nil, fmt.Errorf("invalid conditional fault schedule at index %d", i)
 		}
-		records[i] = ScenarioFaultRecord{ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), Impacts: append([]string(nil), spec.Impacts...), ValidatorID: spec.ValidatorID, FleetIndex: spec.FleetIndex, RestoreCondition: spec.RestoreCondition, MinimumDurationBlocks: spec.MinimumDurationBlocks, TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending"}
+		records[i] = ScenarioFaultRecord{
+			ID: spec.ID, Kind: spec.Kind, Targets: append([]string(nil), spec.Targets...), Impacts: append([]string(nil), spec.Impacts...),
+			ValidatorID: spec.ValidatorID, FleetIndex: spec.FleetIndex, FleetIndices: append([]int(nil), spec.FleetIndices...), PreAcceptance: spec.PreAcceptance, PostAcceptanceEvidenceTail: spec.PostAcceptanceEvidenceTail, ActivationCondition: spec.ActivationCondition,
+			RestoreCondition: spec.RestoreCondition, MinimumDurationBlocks: spec.MinimumDurationBlocks,
+			TriggerBlock: start + spec.TriggerOffsetBlocks, RestoreBlock: start + spec.TriggerOffsetBlocks + spec.DurationBlocks, Status: "pending",
+		}
 	}
 	return records, nil
 }
@@ -1131,12 +1258,34 @@ func advanceFaults(ctx context.Context, head ChainHead, specs []scenarioFaultSpe
 // DurationBlocks as a fail-safe deadline. Only explicitly conditional faults
 // consult ready, and they must remain active for their minimum duration first.
 func advanceFaultsWhen(ctx context.Context, head ChainHead, specs []scenarioFaultSpec, records []ScenarioFaultRecord, driver scenarioFaultDriver, ready func(scenarioFaultSpec) (bool, error)) error {
+	return advanceFaultsWithConditions(ctx, head, specs, records, driver, nil, ready)
+}
+
+// advanceFaultsWithConditions gates a pending fault on immutable scenario
+// evidence before applying it. This is used when the same logical miners must
+// be restored for a payout epoch and disabled again only after their new UID
+// exists; it prevents overlapping control mutations on the same target.
+func advanceFaultsWithConditions(ctx context.Context, head ChainHead, specs []scenarioFaultSpec, records []ScenarioFaultRecord, driver scenarioFaultDriver, activateReady, restoreReady func(scenarioFaultSpec) (bool, error)) error {
 	for i := range records {
 		record := &records[i]
 		switch record.Status {
 		case "pending":
 			if head.Number < record.TriggerBlock {
 				continue
+			}
+			if specs[i].ActivationCondition != "" {
+				if activateReady == nil {
+					continue
+				}
+				conditionMet, err := activateReady(specs[i])
+				if err != nil {
+					record.Status, record.Error = "failed", err.Error()
+					return err
+				}
+				if !conditionMet {
+					continue
+				}
+				record.ActivationConditionMet, record.ActivationConditionBlock = true, head.Number
 			}
 			processes, err := driver.Apply(ctx, specs[i])
 			if err != nil {
@@ -1150,19 +1299,19 @@ func advanceFaultsWhen(ctx context.Context, head ChainHead, specs []scenarioFaul
 				record.Status, record.Error = "failed", "fault minimum restoration block overflows"
 				return errors.New(record.Error)
 			}
-			restore := head.Number >= record.RestoreBlock && (specs[i].RestoreCondition == "" || head.Number >= minimumRestore)
-			if !restore && specs[i].RestoreCondition != "" && head.Number >= minimumRestore && ready != nil {
-				conditionMet, err := ready(specs[i])
+			shouldRestore := head.Number >= record.RestoreBlock && (specs[i].RestoreCondition == "" || head.Number >= minimumRestore)
+			if !shouldRestore && specs[i].RestoreCondition != "" && head.Number >= minimumRestore && restoreReady != nil {
+				conditionMet, err := restoreReady(specs[i])
 				if err != nil {
 					record.Status, record.Error = "failed", err.Error()
 					return err
 				}
 				if conditionMet {
 					record.RestoreConditionMet, record.RestoreConditionBlock = true, head.Number
-					restore = true
+					shouldRestore = true
 				}
 			}
-			if !restore {
+			if !shouldRestore {
 				continue
 			}
 			processes, err := driver.Restore(ctx, specs[i])

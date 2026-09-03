@@ -244,7 +244,7 @@ func runDoctor(ctx context.Context, cfg *ResolvedConfig, approved *doctorPlanBud
 			r.add("supervisor/systemd-user", true, nil, state)
 		}
 	}
-	for name, path := range map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server, "vault": cfg.Repos.Vault, "platform-config": cfg.Repos.PlatformConfig} {
+	for name, path := range map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server, "operator-proxy": cfg.Repos.OperatorProxy, "vault": cfg.Repos.Vault, "platform-config": cfg.Repos.PlatformConfig} {
 		err := validateRepoIdentity(name, path)
 		r.add("repository/"+name, true, err, path)
 	}
@@ -483,7 +483,7 @@ func validateRepoIdentity(name, path string) error {
 		return err
 	}
 	switch name {
-	case "sn", "server":
+	case "sn", "server", "operator-proxy":
 		b, err := os.ReadFile(filepath.Join(path, "go.mod"))
 		if err != nil {
 			return err
@@ -491,6 +491,8 @@ func validateRepoIdentity(name, path string) error {
 		want := "github.com/urfoundation/sn"
 		if name == "server" {
 			want = "github.com/urnetwork/server"
+		} else if name == "operator-proxy" {
+			want = "github.com/urnetwork/operator-proxy"
 		}
 		if !strings.Contains(string(b), "module "+want) {
 			return fmt.Errorf("go.mod is not %s", want)

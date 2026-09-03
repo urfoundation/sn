@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/stabi"
 )
 
 type ReleaseMeasurementContext struct {
@@ -33,16 +35,20 @@ type ReleaseSteerer struct {
 	operators map[uint64]OperatorConfig
 	intents   *IntentStore
 	headEMA   *HeadEMAStore
-	lastFold  uint64
-	foldKnown bool
 
 	// A native-tempo egress window is detached exactly once and then reused for
 	// retries in that epoch. Without this cache, a transient EVM read failure
 	// after rotation could make the retry score a new, nearly empty window.
-	headWindowEpoch     uint64
-	headWindowKnown     bool
-	headEgressByNO      map[uint64]map[connect.Id]map[[32]byte]bool
-	headProviderIDsByNO map[uint64][]connect.Id
+	headWindowEpoch uint64
+	headWindowKnown bool
+	headInputsByNO  map[uint64]ReleaseMeasurementInput
+}
+
+func releaseAttemptClaimMatchesBinding(claim AttemptEgressClaim, binding stabi.STCoordinatorBindingRecord, uid uint16) bool {
+	return claim.Binding.Active && claim.Binding.UIDFound &&
+		claim.Binding.FleetID == releaseHex32(binding.FleetId) &&
+		claim.Binding.Hotkey == releaseHex32(binding.Hotkey) &&
+		claim.Binding.Generation == binding.Generation && claim.Binding.UID == uid
 }
 
 func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey *crv4.Keypair, contexts []*ReleaseMeasurementContext) (*ReleaseSteerer, error) {
@@ -168,6 +174,9 @@ type releaseHeadResult struct {
 	SelectedUIDs  []uint16
 	RejectedUIDs  []uint16
 	StaleBindings []StaleHeadBinding
+	Inputs        []ReleaseMeasurementInput
+	Bindings      []ReleaseBindingMeasurement
+	HeadEMA       []HeadEMAMeasurement
 }
 
 // Every live, valid fleet binding is promoted out of its NO's pool accounting
@@ -190,13 +199,21 @@ func excludeLiveHeadMembers(bound map[uint64]map[connect.Id]bool, controlledNO m
 	return controlledHead
 }
 
-func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch uint64) (map[uint64]map[connect.Id]map[[32]byte]bool, map[uint64][]connect.Id, error) {
+func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch, nativeBlock uint64, nativeHash string, snapshot *ReleaseSnapshot) (map[uint64]ReleaseMeasurementInput, error) {
+	if snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
+		return nil, errors.New("head evidence settlement snapshot is invalid")
+	}
 	if s.headWindowKnown {
 		if subnetEpoch < s.headWindowEpoch {
-			return nil, nil, fmt.Errorf("native head window epoch regressed from %d to %d", s.headWindowEpoch, subnetEpoch)
+			return nil, fmt.Errorf("native head window epoch regressed from %d to %d", s.headWindowEpoch, subnetEpoch)
 		}
 		if subnetEpoch == s.headWindowEpoch {
-			return s.headEgressByNO, s.headProviderIDsByNO, nil
+			for noID, input := range s.headInputsByNO {
+				if input.SettlementEpoch != snapshot.Epoch.Uint64() {
+					return nil, fmt.Errorf("native head window no_id %d crossed settlement epoch %d to %d", noID, input.SettlementEpoch, snapshot.Epoch.Uint64())
+				}
+			}
+			return s.headInputsByNO, nil
 		}
 	}
 	noIDs := make([]uint64, 0, len(s.contexts))
@@ -204,31 +221,20 @@ func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch uint64) (map[uint64]map[co
 		noIDs = append(noIDs, noID)
 	}
 	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
-	egressByNO := make(map[uint64]map[connect.Id]map[[32]byte]bool, len(noIDs))
-	providerIDsByNO := make(map[uint64][]connect.Id, len(noIDs))
+	inputsByNO := make(map[uint64]ReleaseMeasurementInput, len(noIDs))
 	for _, noID := range noIDs {
-		measurement := s.contexts[noID]
-		egress := measurement.Stats.TakeEgressIpHashes()
-		providerSet := map[connect.Id]bool{}
-		for _, clientID := range measurement.Stats.ProviderIDs() {
-			providerSet[clientID] = true
+		input, err := s.loadOrDetachReleaseMeasurementInput(noID, subnetEpoch, nativeBlock, nativeHash, snapshot)
+		if err != nil {
+			return nil, err
 		}
-		for clientID := range egress {
-			providerSet[clientID] = true
-		}
-		providerIDs := make([]connect.Id, 0, len(providerSet))
-		for clientID := range providerSet {
-			providerIDs = append(providerIDs, clientID)
-		}
-		sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i].LessThan(providerIDs[j]) })
-		egressByNO[noID], providerIDsByNO[noID] = egress, providerIDs
+		inputsByNO[noID] = input
 	}
 	s.headWindowEpoch, s.headWindowKnown = subnetEpoch, true
-	s.headEgressByNO, s.headProviderIDsByNO = egressByNO, providerIDsByNO
-	return egressByNO, providerIDsByNO, nil
+	s.headInputsByNO = inputsByNO
+	return inputsByNO, nil
 }
 
-func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint64) (releaseHeadResult, error) {
+func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string) (releaseHeadResult, error) {
 	bound := map[uint64]map[connect.Id]bool{}
 	controlledNO := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
@@ -240,7 +246,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 	// Rotate every operator's head window before doing any remote lookup. This
 	// gives one native decision a coherent cut across NOs; a slow binding read
 	// cannot move only the later operators into the following tempo.
-	egressByNO, providerIDsByNO, err := s.takeHeadEvidence(subnetEpoch)
+	inputsByNO, err := s.takeHeadEvidence(subnetEpoch, nativeBlock, nativeHash, snapshot)
 	if err != nil {
 		return releaseHeadResult{}, err
 	}
@@ -249,17 +255,48 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 		noIDs = append(noIDs, noID)
 	}
 	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
+	inputs := make([]ReleaseMeasurementInput, 0, len(noIDs))
+	bindings := make([]ReleaseBindingMeasurement, 0)
 	for _, noID := range noIDs {
 		measurement := s.contexts[noID]
 		bound[noID] = map[connect.Id]bool{}
-		egress := egressByNO[noID]
-		for _, clientID := range providerIDsByNO[noID] {
-			hashes := egress[clientID]
+		input := inputsByNO[noID]
+		inputs = append(inputs, input)
+		verifiedStats, verifyErr := VerifyReleaseStatsMeasurement(input.Stats)
+		if verifyErr != nil {
+			return releaseHeadResult{}, fmt.Errorf("no_id %d measurement input: %w", noID, verifyErr)
+		}
+		if input.Stats.AttemptCut == nil {
+			return releaseHeadResult{}, fmt.Errorf("no_id %d measurement input has no signed attempt cut", noID)
+		}
+		egressClaims, err := AttemptCutEgressClaims(input.Stats.AttemptCut)
+		if err != nil {
+			return releaseHeadResult{}, fmt.Errorf("no_id %d attempt egress claims: %w", noID, err)
+		}
+		claimsByClient := map[connect.Id][]AttemptEgressClaim{}
+		for _, claim := range egressClaims {
+			claimsByClient[claim.Binding.ClientID] = append(claimsByClient[claim.Binding.ClientID], claim)
+		}
+		providerIDs := make([]connect.Id, 0, len(verifiedStats.Providers))
+		for clientID := range verifiedStats.Providers {
+			providerIDs = append(providerIDs, clientID)
+		}
+		sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i].LessThan(providerIDs[j]) })
+		for _, clientID := range providerIDs {
 			binding, err := s.chain.ReleaseBindingAt(snapshot.BlockNumber, [16]byte(clientID), snapshot.Epoch)
 			if err != nil {
 				return releaseHeadResult{}, fmt.Errorf("bindingAt no_id %d client %s: %w", noID, clientID, err)
 			}
+			observation := ReleaseBindingMeasurement{
+				NoID: noID, ClientID: clientID.String(), Active: binding.Active,
+				FleetID: releaseHex32(binding.Record.FleetId), Hotkey: releaseHex32(binding.Record.Hotkey),
+				ClientKey: releaseHex32(binding.Record.ClientKey), LocalClientKey: releaseHex32([32]byte{}),
+				CommitmentHash: releaseHex32(binding.Record.CommitmentHash), Generation: binding.Record.Generation,
+				ValidFromEpoch: binding.Record.ValidFromEpoch, ValidToEpoch: binding.Record.ValidToEpoch,
+				CleanedAtEpoch: binding.Record.CleanedAtEpoch, RecordUID: binding.Record.Uid, Cleaned: binding.Record.Cleaned,
+			}
 			if !binding.Active {
+				bindings = append(bindings, observation)
 				continue
 			}
 			clientKey, ok, err := measurement.ClientKey(clientID)
@@ -272,10 +309,14 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 			if clientKey != binding.Record.ClientKey {
 				return releaseHeadResult{}, fmt.Errorf("active binding client key mismatch for no_id %d client %s", noID, clientID)
 			}
+			observation.LocalClientKey = releaseHex32(clientKey)
 			uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, binding.Record.Hotkey)
 			if err != nil {
 				return releaseHeadResult{}, fmt.Errorf("live head UID for client %s: %w", clientID, err)
 			}
+			observation.LiveUIDFound = found
+			observation.LiveUID = uid
+			bindings = append(bindings, observation)
 			if !found || uid != binding.Record.Uid {
 				staleBindings = append(staleBindings, StaleHeadBinding{NoID: noID, ClientID: clientID.String(), RecordUID: binding.Record.Uid, LiveUID: uid, Found: found})
 				continue
@@ -284,7 +325,14 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 			if fleets[key] == nil {
 				fleets[key] = map[[32]byte]bool{}
 			}
-			for hash := range hashes {
+			for _, claim := range claimsByClient[clientID] {
+				if !releaseAttemptClaimMatchesBinding(claim, binding.Record, uid) {
+					continue
+				}
+				hash, err := parseReleaseHex32("attempt egress hash", claim.EgressIPHash, false)
+				if err != nil {
+					return releaseHeadResult{}, fmt.Errorf("no_id %d client %s: %w", noID, clientID, err)
+				}
 				fleets[key][hash] = true
 			}
 			membersByUID[uid] = append(membersByUID[uid], releaseHeadMember{NoID: noID, ClientID: clientID})
@@ -306,7 +354,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 		}
 		raw[key] = score
 	}
-	ema, err := s.headEMA.Fold(raw, s.cfg.Policy.Steering.HeadScoreEMA)
+	ema, headEMA, err := s.headEMA.PreviewForEpoch(subnetEpoch, raw, s.cfg.Policy.Steering.HeadScoreEMA)
 	if err != nil {
 		return releaseHeadResult{}, err
 	}
@@ -339,10 +387,16 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch uint6
 		SelectedUIDs:  headSelectionUIDs(selection.Selected),
 		RejectedUIDs:  headSelectionUIDs(selection.Rejected),
 		StaleBindings: staleBindings,
+		Inputs:        inputs,
+		Bindings:      bindings,
+		HeadEMA:       headEMA,
 	}, nil
 }
 
-func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {
+func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, poolObservations *[]ReleasePoolMeasurement) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {
+	if poolObservations == nil {
+		return nil, nil, nil, errors.New("pool observation destination is nil")
+	}
 	count, err := s.chain.ReleaseOperatorCountAt(snapshot.BlockNumber)
 	if err != nil {
 		return nil, nil, nil, err
@@ -392,6 +446,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		if err != nil || !found {
 			return nil, nil, nil, fmt.Errorf("active no_id %d pool hotkey has no live UID: %w", noID, err)
 		}
+		*poolObservations = append(*poolObservations, ReleasePoolMeasurement{NoID: noID, UID: uid, PoolHotkey: releaseHex32(op.PoolHotkey)})
 		deposit, err := s.chain.ReleaseEpochDepositAt(snapshot.BlockNumber, snapshot.Epoch, noIDBig)
 		if err != nil {
 			return nil, nil, nil, err
@@ -419,6 +474,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 				audit.Compliant = true
 			} else {
 				audit.Status = DepositAuditMismatch
+				audit.Disposition = "zero_pool_weight"
 				audit.Error = "bootstrap epoch deposit must be zero without a prior usage artifact"
 			}
 		} else {
@@ -487,6 +543,8 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 				}
 			}
 		}
+		audit.ObservedAtBlock = snapshot.BlockNumber
+		audit.ArtifactDeadlineBlock = artifactDeadline
 		audits = append(audits, audit)
 		if controlled[noID] {
 			masked[uid] = true
@@ -495,7 +553,18 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		if !audit.Compliant || audit.Status == DepositAuditBootstrap {
 			continue
 		}
-		quality := PoolQualityPPM(measurement.Stats, bound[noID])
+		input, inputOK := s.headInputsByNO[noID]
+		if !inputOK {
+			return nil, nil, nil, fmt.Errorf("no_id %d has no atomic statistics input", noID)
+		}
+		verifiedStats, verifyErr := VerifyReleaseStatsMeasurement(input.Stats)
+		if verifyErr != nil {
+			return nil, nil, nil, fmt.Errorf("no_id %d statistics input: %w", noID, verifyErr)
+		}
+		quality, qualityErr := ExactPoolQualityFromReleaseStats(verifiedStats, bound[noID])
+		if qualityErr != nil {
+			return nil, nil, nil, fmt.Errorf("no_id %d pool quality: %w", noID, qualityErr)
+		}
 		score, err := impliedUsageQuality(deposit, convictionBefore, quality, s.cfg.Policy)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("no_id %d weight: %w", noID, err)
@@ -506,25 +575,37 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		return nil, nil, nil, fmt.Errorf("active operator count %d below policy minimum %d", active, s.cfg.Policy.Safety.MinimumHealthyNOCount)
 	}
 	sort.Slice(audits, func(i, j int) bool { return audits[i].NoID < audits[j].NoID })
+	sort.Slice(*poolObservations, func(i, j int) bool { return (*poolObservations)[i].NoID < (*poolObservations)[j].NoID })
 	return pools, masked, audits, nil
 }
 
-func (s *ReleaseSteerer) foldSettlementEpoch(epoch uint64) error {
-	if !s.foldKnown {
-		s.lastFold, s.foldKnown = epoch, true
-		return nil
+func (s *ReleaseSteerer) foldSettlementEpoch(snapshot *ReleaseSnapshot) error {
+	if snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
+		return errors.New("settlement snapshot is invalid")
 	}
-	if epoch <= s.lastFold {
-		return nil
+	epoch := snapshot.Epoch.Uint64()
+	noIDs := make([]uint64, 0, len(s.contexts))
+	for noID := range s.contexts {
+		noIDs = append(noIDs, noID)
 	}
-	for noID, measurement := range s.contexts {
-		measurement.Stats.Fold()
-		if err := measurement.Stats.Save(measurementStateDir(s.cfg, noID)); err != nil {
-			return err
+	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
+	participants := make([]AttemptSettlementParticipant, 0, len(noIDs))
+	var terminalBoundary AttemptBoundary
+	for _, noID := range noIDs {
+		stats := s.contexts[noID].Stats
+		if stats == nil {
+			return fmt.Errorf("no_id %d has no settlement statistics", noID)
+		}
+		participants = append(participants, AttemptSettlementParticipant{NoID: noID, StateDir: measurementStateDir(s.cfg, noID), Stats: stats})
+		if terminalBoundary == (AttemptBoundary{}) && stats.requiresSettlementAdvance(epoch) {
+			boundary, err := releasePriorSettlementBoundary(s.chain, snapshot)
+			if err != nil {
+				return err
+			}
+			terminalBoundary = boundary
 		}
 	}
-	s.lastFold = epoch
-	return nil
+	return AdvanceAttemptSettlementEpoch(s.cfg.StateDir, epoch, terminalBoundary, participants)
 }
 
 func measurementStateDir(cfg *ReleaseConfig, noID uint64) string {
@@ -571,6 +652,27 @@ func (s *ReleaseSteerer) checkApplication(snapshot *ReleaseSnapshot) error {
 		}
 	}
 	return s.intents.MarkApplied(current.VectorHash, block, hash.Hex())
+}
+
+// restoreHeadEMA completes the second half of the intent/EMA write protocol.
+// The intent is the durable authority: if a crash lands after Begin but before
+// the EMA state write, its verified artifact deterministically replays the
+// missing commit before any pending submission or later epoch is processed.
+func (s *ReleaseSteerer) restoreHeadEMA(intent *SteeringIntent) error {
+	if intent == nil {
+		return nil
+	}
+	artifact, verified, err := s.intents.MeasurementArtifact(intent)
+	if err != nil {
+		return fmt.Errorf("restore head EMA measurement: %w", err)
+	}
+	if err := VerifyReleaseMeasurementIntent(intent, artifact, verified); err != nil {
+		return fmt.Errorf("restore head EMA intent: %w", err)
+	}
+	if err := s.headEMA.CommitForEpoch(artifact.SubnetEpoch, artifact.HeadEMA, artifact.Policy.Steering.HeadScoreEMA); err != nil {
+		return fmt.Errorf("restore head EMA state: %w", err)
+	}
+	return nil
 }
 
 // reconcilePending proves whether the exact write-ahead extrinsic finalized,
@@ -645,10 +747,17 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.validatePinnedChains(snapshot, nativeState, nativeHash); err != nil {
 		return err
 	}
+	current, err := s.intents.Current()
+	if err != nil {
+		return err
+	}
+	if err := s.restoreHeadEMA(current); err != nil {
+		return err
+	}
 	if err := s.checkApplication(snapshot); err != nil {
 		return err
 	}
-	if current, err := s.intents.Current(); err != nil {
+	if current, err = s.intents.Current(); err != nil {
 		return err
 	} else if current != nil {
 		if current.Status == "pending" {
@@ -673,19 +782,17 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 			return fmt.Errorf("prior subnet epoch %d intent is %s; refusing a new commit", current.SubnetEpoch, current.Status)
 		}
 	}
-	if err := s.foldSettlementEpoch(snapshot.Epoch.Uint64()); err != nil {
+	if err := s.foldSettlementEpoch(snapshot); err != nil {
 		return err
 	}
-	head, err := s.gatherHead(snapshot, nativeState.SubnetEpochIndex)
+	head, err := s.gatherHead(snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex())
 	if err != nil {
 		return err
 	}
-	pools, masked, depositAudits, err := s.gatherPools(ctx, snapshot, head.Bound)
+	var poolObservations []ReleasePoolMeasurement
+	_, _, depositAudits, err := s.gatherPools(ctx, snapshot, head.Bound, &poolObservations)
 	if err != nil {
 		return err
-	}
-	for uid := range head.Controlled {
-		masked[uid] = true
 	}
 	selfUID, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, s.hotkey.PublicKey())
 	if err != nil {
@@ -694,23 +801,43 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("self-mask: validator hotkey has no live UID on netuid %d", s.cfg.Netuid)
 	}
-	masked[selfUID] = true
-	maskedUIDs := make([]uint16, 0, len(masked))
-	for uid := range masked {
-		maskedUIDs = append(maskedUIDs, uid)
+	previousArtifactHash := ""
+	if current, currentErr := s.intents.Current(); currentErr != nil {
+		return currentErr
+	} else if current != nil {
+		previousArtifactHash = current.MeasurementArtifactHash
 	}
-	sort.Slice(maskedUIDs, func(i, j int) bool { return maskedUIDs[i] < maskedUIDs[j] })
-	uids, scores, err := BuildWeightVectorExact(pools, head.Weights, s.cfg.Policy.Steering.Theta, masked)
+	controlledNOIDs := append(make([]uint64, 0, len(s.cfg.ControlledNOIDs)), s.cfg.ControlledNOIDs...)
+	sort.Slice(controlledNOIDs, func(i, j int) bool { return controlledNOIDs[i] < controlledNOIDs[j] })
+	measurementArtifact := &ReleaseMeasurementArtifact{
+		Schema: ReleaseMeasurementSchema, DeploymentID: s.cfg.DeploymentID, ChainID: s.cfg.ChainID,
+		GenesisHash: strings.ToLower(s.cfg.GenesisHash), Coordinator: s.cfg.Coordinator,
+		SettlementVault: s.cfg.SettlementVault, ValidatorID: s.cfg.ValidatorID, Netuid: s.cfg.Netuid,
+		SubnetEpoch: nativeState.SubnetEpochIndex, NativeSnapshotBlock: nativeState.CurrentBlock,
+		NativeSnapshotHash: strings.ToLower(nativeHash.Hex()), EVMSnapshotBlock: snapshot.BlockNumber,
+		EVMSnapshotHash: releaseHex32(snapshot.BlockHash), SettlementEpoch: snapshot.Epoch.Uint64(),
+		PolicyHash: strings.ToLower(s.cfg.PolicyHash), Policy: s.cfg.Policy,
+		PreviousArtifactHash: previousArtifactHash, ControlledNOIDs: controlledNOIDs,
+		Inputs: head.Inputs, Bindings: head.Bindings, HeadEMA: head.HeadEMA,
+		Pools: poolObservations, DepositAudits: depositAudits, SelfUID: selfUID,
+	}
+	measurementBytes, measurementHash, verifiedMeasurement, err := SealReleaseMeasurementArtifact(measurementArtifact)
 	if err != nil {
 		return err
 	}
+	measurementPath, measurementSize, err := persistReleaseMeasurementArtifact(s.cfg.StateDir, measurementBytes, measurementHash)
+	if err != nil {
+		return err
+	}
+	uids := verifiedMeasurement.UIDs
+	scores := verifiedMeasurement.Scores
 	encodedScores, err := rationalJSON(scores)
 	if err != nil {
 		return err
 	}
-	eligibleScores := make([]*big.Rat, len(head.Eligible))
-	for index := range head.Eligible {
-		eligibleScores[index] = head.Eligible[index].Score
+	eligibleScores := make([]*big.Rat, len(verifiedMeasurement.EligibleHead))
+	for index := range verifiedMeasurement.EligibleHead {
+		eligibleScores[index] = verifiedMeasurement.EligibleHead[index].Score
 	}
 	encodedEligibleScores, err := rationalJSON(eligibleScores)
 	if err != nil {
@@ -723,30 +850,47 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if prepared.SubnetEpoch != nativeState.SubnetEpochIndex {
 		return fmt.Errorf("native epoch crossed during steering snapshot: started %d prepared %d", nativeState.SubnetEpochIndex, prepared.SubnetEpoch)
 	}
+	envelopeBytes, envelopeHash, _, err := SealReleaseMeasurementEnvelope(measurementBytes, selfUID, s.hotkey, strings.ToLower(prepared.ExtrinsicHash), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	envelopePath, envelopeSize, err := persistReleaseMeasurementEnvelope(s.cfg.StateDir, envelopeBytes, envelopeHash)
+	if err != nil {
+		return err
+	}
 	intent, err := s.intents.Begin(SteeringIntent{
-		ValidatorID:         s.cfg.ValidatorID,
-		Netuid:              s.cfg.Netuid,
-		SubnetEpoch:         nativeState.SubnetEpochIndex,
-		NativeSnapshotBlock: nativeState.CurrentBlock,
-		NativeSnapshotHash:  nativeHash.Hex(),
-		EVMSnapshotBlock:    snapshot.BlockNumber,
-		EVMSnapshotHash:     fmt.Sprintf("0x%x", snapshot.BlockHash),
-		SettlementEpoch:     snapshot.Epoch.Uint64(),
-		PolicyHash:          s.cfg.PolicyHash,
-		SelfUID:             selfUID,
-		MaskedUIDs:          maskedUIDs,
-		EligibleHeadUIDs:    head.EligibleUIDs,
-		EligibleHeadScores:  encodedEligibleScores,
-		SelectedHeadUIDs:    head.SelectedUIDs,
-		RejectedHeadUIDs:    head.RejectedUIDs,
-		StaleHeadBindings:   head.StaleBindings,
-		DepositAudits:       depositAudits,
-		UIDs:                uids,
-		Scores:              encodedScores,
-		Prepared:            prepared,
+		ValidatorID:             s.cfg.ValidatorID,
+		Netuid:                  s.cfg.Netuid,
+		SubnetEpoch:             nativeState.SubnetEpochIndex,
+		NativeSnapshotBlock:     nativeState.CurrentBlock,
+		NativeSnapshotHash:      nativeHash.Hex(),
+		EVMSnapshotBlock:        snapshot.BlockNumber,
+		EVMSnapshotHash:         fmt.Sprintf("0x%x", snapshot.BlockHash),
+		SettlementEpoch:         snapshot.Epoch.Uint64(),
+		PolicyHash:              s.cfg.PolicyHash,
+		MeasurementArtifactPath: measurementPath,
+		MeasurementArtifactHash: measurementHash,
+		MeasurementArtifactSize: measurementSize,
+		MeasurementEnvelopePath: envelopePath,
+		MeasurementEnvelopeHash: envelopeHash,
+		MeasurementEnvelopeSize: envelopeSize,
+		SelfUID:                 selfUID,
+		MaskedUIDs:              verifiedMeasurement.MaskedUIDs,
+		EligibleHeadUIDs:        headSelectionUIDs(verifiedMeasurement.EligibleHead),
+		EligibleHeadScores:      encodedEligibleScores,
+		SelectedHeadUIDs:        headSelectionUIDs(verifiedMeasurement.SelectedHead),
+		RejectedHeadUIDs:        headSelectionUIDs(verifiedMeasurement.RejectedHead),
+		StaleHeadBindings:       verifiedMeasurement.StaleBindings,
+		DepositAudits:           depositAudits,
+		UIDs:                    uids,
+		Scores:                  encodedScores,
+		Prepared:                prepared,
 	})
 	if err != nil {
 		return err
+	}
+	if err := s.headEMA.CommitForEpoch(measurementArtifact.SubnetEpoch, measurementArtifact.HeadEMA, measurementArtifact.Policy.Steering.HeadScoreEMA); err != nil {
+		return fmt.Errorf("commit head EMA after steering intent: %w", err)
 	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, prepared)
 	if err != nil {
@@ -758,33 +902,69 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	return s.intents.MarkFinalized(intent.VectorHash, result.TxHash.Hex(), result.FinalizedBlock, result.FinalizedBlockHash.Hex(), result.RevealBlock, result.Values)
 }
 
-func (s *ReleaseSteerer) Run(ctx context.Context) {
-	poll := time.NewTicker(time.Duration(s.cfg.PollSeconds) * time.Second)
-	defer poll.Stop()
-	var observed uint64
-	known := false
+const releaseSteeringFailureLimit = 10
+
+// runReleaseSteeringLoop retries an incomplete native epoch until the exact
+// intent is finalized. Merely observing an epoch never suppresses a retry.
+// Repeated failures become process-visible, and advancing past an incomplete
+// epoch fails closed instead of silently creating a gap in public lineage.
+func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func() (uint64, error), submit func() error) error {
+	if ctx == nil || poll <= 0 || epoch == nil || submit == nil {
+		return errors.New("release steering loop configuration is incomplete")
+	}
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	var targetEpoch uint64
+	targetKnown := false
+	completed := false
+	failures := 0
 	for {
-		state, _, err := s.native.EpochScheduleStateFinalized(s.cfg.Netuid)
-		if err != nil {
-			fmt.Printf("release steer: finalized scheduler: %v\n", err)
-		} else {
-			shouldSubmit := !known || state.SubnetEpochIndex > observed
-			if current, currentErr := s.intents.Current(); currentErr != nil {
-				fmt.Printf("release steer: pending intent: %v\n", currentErr)
-			} else if current != nil && current.Status == "pending" {
-				shouldSubmit = true
+		currentEpoch, err := epoch()
+		if err == nil {
+			if targetKnown && currentEpoch < targetEpoch {
+				return fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch)
 			}
-			observed, known = state.SubnetEpochIndex, true
-			if shouldSubmit {
-				if err := s.SubmitOnce(ctx); err != nil && !errors.Is(err, ErrSteeringAlreadyFinal) && !errors.Is(err, ErrSteeringIntentPending) {
-					fmt.Printf("release steer: subnet epoch %d: %v\n", observed, err)
+			if !targetKnown || currentEpoch > targetEpoch {
+				if targetKnown && !completed {
+					return fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch)
+				}
+				targetEpoch, targetKnown, completed, failures = currentEpoch, true, false, 0
+			}
+			if !completed {
+				err = submit()
+				if err == nil || errors.Is(err, ErrSteeringAlreadyFinal) {
+					completed, failures = true, 0
+				} else {
+					failures++
+					fmt.Printf("release steer: subnet epoch %d attempt %d: %v\n", targetEpoch, failures, err)
 				}
 			}
+		} else {
+			failures++
+			fmt.Printf("release steer: finalized scheduler attempt %d: %v\n", failures, err)
+		}
+		if failures >= releaseSteeringFailureLimit {
+			return fmt.Errorf("release steering failed %d consecutive attempts: %w", failures, err)
 		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-poll.C:
+			return nil
+		case <-ticker.C:
 		}
 	}
+}
+
+// Run supervises release steering until cancellation or a process-fatal state
+// error. The caller must propagate a non-nil result to its service supervisor.
+func (s *ReleaseSteerer) Run(ctx context.Context) error {
+	poll := time.Duration(s.cfg.PollSeconds) * time.Second
+	return runReleaseSteeringLoop(ctx, poll, func() (uint64, error) {
+		state, _, err := s.native.EpochScheduleStateFinalized(s.cfg.Netuid)
+		if err != nil {
+			return 0, err
+		}
+		return state.SubnetEpochIndex, nil
+	}, func() error {
+		return s.SubmitOnce(ctx)
+	})
 }

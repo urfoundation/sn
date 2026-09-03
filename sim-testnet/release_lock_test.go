@@ -16,6 +16,16 @@ func runTestGit(t *testing.T, root string, args ...string) {
 	}
 }
 
+func testGitOutput(t *testing.T, root string, args ...string) []byte {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+	return output
+}
+
 func TestCleanGitSubtreeHashRejectsRuntimeAssetDrift(t *testing.T) {
 	root := t.TempDir()
 	runTestGit(t, root, "init", "-q")
@@ -125,6 +135,157 @@ func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	changed, _ := digestNamedFiles(dir, []string{"a", "b"})
 	if changed == first {
 		t.Fatal("content change did not change digest")
+	}
+}
+
+func TestSoliditySourceHashCoversDeploymentScripts(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"evm/src", "evm/script"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "evm", "src", "Contract.sol"), []byte("contract C {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deploy := filepath.Join(root, "evm", "script", "Deploy.s.sol")
+	if err := os.WriteFile(deploy, []byte("contract Deploy {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := soliditySourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(deploy, []byte("contract Deploy { function run() external {} }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := soliditySourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("deployment-script drift did not change the Solidity release source hash")
+	}
+}
+
+func TestCleanGitRevisionRejectsDependencyDrift(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	dependency := filepath.Join(root, "Library.sol")
+	if err := os.WriteFile(dependency, []byte("library Library {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "Library.sol")
+	runTestGit(t, root, "commit", "-qm", "pin dependency")
+	want := strings.TrimSpace(string(testGitOutput(t, root, "rev-parse", "HEAD")))
+	got, err := cleanGitRevision(root)
+	if err != nil || got != want {
+		t.Fatalf("clean dependency revision = %q, want %q: %v", got, want, err)
+	}
+	if err := os.WriteFile(dependency, []byte("library Library { function changed() external {} }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanGitRevision(root); err == nil {
+		t.Fatal("modified dependency checkout was accepted")
+	}
+	if err := os.WriteFile(dependency, []byte("library Library {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Untracked.sol"), []byte("contract Untracked {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cleanGitRevision(root); err == nil {
+		t.Fatal("untracked dependency source was accepted")
+	}
+}
+
+func TestOperatorProxyReleaseObservationBindsCleanCommitAndSource(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/urnetwork/operator-proxy\n\ngo 1.26.3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "proxy.go")
+	if err := os.WriteFile(source, []byte("package operatorproxy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "go.mod", "proxy.go")
+	runTestGit(t, root, "commit", "-qm", "initial operator proxy")
+	first, err := observeOperatorProxyReleaseSource(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCommit := strings.TrimSpace(string(testGitOutput(t, root, "rev-parse", "HEAD")))
+	wantHash, err := goReleaseSourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 || first["operator_proxy_commit"] != wantCommit || first["operator_proxy_go_source_hash"] != wantHash {
+		t.Fatalf("operator-proxy observation = %+v, want commit=%s source=%s", first, wantCommit, wantHash)
+	}
+	if err := os.WriteFile(source, []byte("package operatorproxy\n\nconst Version = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := observeOperatorProxyReleaseSource(root); err == nil {
+		t.Fatal("dirty operator-proxy source was accepted")
+	}
+	runTestGit(t, root, "add", "proxy.go")
+	runTestGit(t, root, "commit", "-qm", "update operator proxy")
+	second, err := observeOperatorProxyReleaseSource(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second["operator_proxy_commit"] == first["operator_proxy_commit"] || second["operator_proxy_go_source_hash"] == first["operator_proxy_go_source_hash"] {
+		t.Fatalf("committed operator-proxy drift was not bound: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestReleaseRepositorySchemaRequiresCanonicalOperatorProxyFields(t *testing.T) {
+	repositories := map[string]any{
+		"operator_proxy_go_source_hash": "sha256:" + strings.Repeat("1", 64),
+		"operator_proxy_commit":         strings.Repeat("a", 40),
+	}
+	if err := validateReleaseRepositorySchema(repositories); err != nil {
+		t.Fatal(err)
+	}
+	delete(repositories, "operator_proxy_commit")
+	if err := validateReleaseRepositorySchema(repositories); err == nil {
+		t.Fatal("release repository schema without an operator-proxy commit was accepted")
+	}
+	repositories["operator_proxy_commit"] = strings.Repeat("A", 40)
+	if err := validateReleaseRepositorySchema(repositories); err == nil {
+		t.Fatal("noncanonical operator-proxy commit was accepted")
+	}
+	repositories["operator_proxy_commit"] = strings.Repeat("a", 40)
+	repositories["operator_proxy_go_source_hash"] = "sha256:not-a-hash"
+	if err := validateReleaseRepositorySchema(repositories); err == nil {
+		t.Fatal("noncanonical operator-proxy source hash was accepted")
+	}
+}
+
+func TestParseFoundryVersion(t *testing.T) {
+	version, commit, err := parseFoundryVersion([]byte("forge Version: 1.7.1\nCommit SHA: 4072E48705AF9D93E3C0F6E29E93B5E9A40CAED8\nBuild Profile: dist\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "1.7.1" || commit != "4072e48705af9d93e3c0f6e29e93b5e9a40caed8" {
+		t.Fatalf("foundry identity = %q %q", version, commit)
+	}
+}
+
+func TestParseFoundryVersionRejectsIncompleteOutput(t *testing.T) {
+	if _, _, err := parseFoundryVersion([]byte("forge Version: 1.7.1\n")); err == nil {
+		t.Fatal("forge output without a commit was accepted")
+	}
+	if _, _, err := parseFoundryVersion([]byte("forge Version: 1.7.1\nCommit SHA: not-a-commit\n")); err == nil {
+		t.Fatal("forge output with a malformed commit was accepted")
+	}
+	if _, _, err := parseFoundryVersion([]byte("forge Version: 1.7.1\nforge Version: 1.7.1\nCommit SHA: 4072e48705af9d93e3c0f6e29e93b5e9a40caed8\n")); err == nil {
+		t.Fatal("forge output with duplicate identity fields was accepted")
 	}
 }
 

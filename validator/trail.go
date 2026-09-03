@@ -216,8 +216,25 @@ func VerifyProofRecord(record *ProofRecord, expectedVPK ed25519.PublicKey, serve
 
 // ProofStore is an append-only JSONL store of completed proofs.
 type ProofStore struct {
-	mu   sync.Mutex
-	path string
+	mu              sync.Mutex
+	path            string
+	projectionDirty bool
+}
+
+// validatePathWithLock rejects links, special files, and group/world access
+// before a caller reads or appends validator-owned evidence.
+func (self *ProofStore) validatePathWithLock() (bool, error) {
+	info, err := os.Lstat(self.path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return false, errors.New("proof store is not a private regular file")
+	}
+	return true, nil
 }
 
 func NewProofStore(dir string) (*ProofStore, error) {
@@ -230,6 +247,9 @@ func NewProofStore(dir string) (*ProofStore, error) {
 func (self *ProofStore) Append(record *ProofRecord) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	if _, err := self.validatePathWithLock(); err != nil {
+		return err
+	}
 	b, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -239,6 +259,11 @@ func (self *ProofStore) Append(record *ProofRecord) error {
 		return err
 	}
 	defer f.Close()
+	if info, err := f.Stat(); err != nil {
+		return err
+	} else if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("proof store is not a private regular file")
+	}
 	payload := make([]byte, 0, len(b)+2)
 	info, err := f.Stat()
 	if err != nil {
@@ -270,10 +295,14 @@ func (self *ProofStore) Append(record *ProofRecord) error {
 func (self *ProofStore) Load() ([]*ProofRecord, int, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	b, err := os.ReadFile(self.path)
-	if os.IsNotExist(err) {
+	exists, err := self.validatePathWithLock()
+	if err != nil {
+		return nil, 0, err
+	}
+	if !exists {
 		return nil, 0, nil
 	}
+	b, err := os.ReadFile(self.path)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -291,6 +320,96 @@ func (self *ProofStore) Load() ([]*ProofRecord, int, error) {
 		records = append(records, &rec)
 	}
 	return records, skipped, nil
+}
+
+func attemptProofProjection(ledger *AttemptLedger) ([]byte, error) {
+	if ledger == nil {
+		return nil, errors.New("attempt proof projection ledger is nil")
+	}
+	records, err := ledger.RecordsAfter(0)
+	if err != nil {
+		return nil, err
+	}
+	var projection []byte
+	for index := range records {
+		record := &records[index]
+		if record.Disposition != AttemptDispositionComplete {
+			continue
+		}
+		if record.Proof == nil {
+			return nil, fmt.Errorf("completed attempt sequence %d has no proof", record.Sequence)
+		}
+		encoded, err := json.Marshal(record.Proof)
+		if err != nil {
+			return nil, err
+		}
+		projection = append(projection, encoded...)
+		projection = append(projection, '\n')
+	}
+	return projection, nil
+}
+
+func (self *ProofStore) reconcileAttemptProofsWithWrite(ledger *AttemptLedger, write func(string, []byte) error) error {
+	if write == nil {
+		return errors.New("attempt proof projection writer is nil")
+	}
+	expected, err := attemptProofProjection(ledger)
+	if err != nil {
+		return err
+	}
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	actual, err := os.ReadFile(self.path)
+	if errors.Is(err, os.ErrNotExist) {
+		actual = nil
+	} else if err != nil {
+		self.projectionDirty = true
+		return err
+	} else {
+		info, statErr := os.Lstat(self.path)
+		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+			self.projectionDirty = true
+			return errors.New("attempt proof projection is not a private regular file")
+		}
+	}
+	if !bytes.HasPrefix(expected, actual) {
+		self.projectionDirty = true
+		return errors.New("attempt proof projection conflicts with the signed ledger")
+	}
+	if bytes.Equal(actual, expected) {
+		self.projectionDirty = false
+		return nil
+	}
+	if err := write(self.path, expected); err != nil {
+		self.projectionDirty = true
+		return err
+	}
+	self.projectionDirty = false
+	return nil
+}
+
+// ReconcileAttemptProofs repairs a missing or torn suffix from the signed
+// ledger while rejecting any conflicting, duplicate, or orphan proof.
+func (self *ProofStore) ReconcileAttemptProofs(ledger *AttemptLedger) error {
+	return self.reconcileAttemptProofsWithWrite(ledger, func(path string, payload []byte) error {
+		return atomicStateWrite(path, payload, 0o600)
+	})
+}
+
+func (self *ProofStore) projectAttemptProof(ledger *AttemptLedger, proof *ProofRecord) error {
+	self.mu.Lock()
+	dirty := self.projectionDirty
+	self.mu.Unlock()
+	if dirty {
+		return self.ReconcileAttemptProofs(ledger)
+	}
+	if err := self.Append(proof); err == nil {
+		return nil
+	}
+	self.mu.Lock()
+	self.projectionDirty = true
+	self.mu.Unlock()
+	return self.ReconcileAttemptProofs(ledger)
 }
 
 // --- wire response parsing ---
@@ -335,6 +454,31 @@ func (self *TrailError) Unwrap() error {
 	return self.Err
 }
 
+// TrailFatalError marks a local state failure after which measurement cannot
+// safely continue. The externally driven Run lifecycle returns the first such
+// error so its owner can stop or restart the validator instead of silently
+// sampling around missing durable evidence.
+type TrailFatalError struct {
+	Err error
+}
+
+func (self *TrailFatalError) Error() string {
+	return fmt.Sprintf("fatal trail state: %v", self.Err)
+}
+
+func (self *TrailFatalError) Unwrap() error {
+	return self.Err
+}
+
+// fatalTrailState preserves the underlying cause while marking a failure that
+// must end the externally owned measurement lifecycle.
+func fatalTrailState(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &TrailFatalError{Err: fmt.Errorf("%s: %w", operation, err)}
+}
+
 // TrailEngineConfig tunes the engine. Zero values take defaults.
 type TrailEngineConfig struct {
 	// M is the requested trail depth (server clamps to [MMin, MMax]).
@@ -355,6 +499,10 @@ type TrailEngineConfig struct {
 	// Zero disables the gate for single-trail callers and unit tests; the
 	// release runner derives a positive value from the locked policy.
 	SeedAttemptInterval time.Duration
+	// AttemptLedger and AttemptBoundaryResolver are an all-or-nothing release
+	// measurement seam. Legacy/unit callers may omit both.
+	AttemptLedger           *AttemptLedger
+	AttemptBoundaryResolver AttemptBoundaryResolver
 }
 
 func (self TrailEngineConfig) withDefaults() TrailEngineConfig {
@@ -388,6 +536,8 @@ type TrailEngine struct {
 	// (nil / 0 = unknown).
 	epochFn func() uint64
 	cfg     TrailEngineConfig
+	ledger  *AttemptLedger
+	resolve AttemptBoundaryResolver
 
 	seedDiscoverySchedule attemptSchedule
 	seedPostSchedule      attemptSchedule
@@ -476,7 +626,64 @@ func NewTrailEngine(
 		store:     store,
 		epochFn:   epochFn,
 		cfg:       cfg.withDefaults(),
+		ledger:    cfg.AttemptLedger,
+		resolve:   cfg.AttemptBoundaryResolver,
 	}
+}
+
+func (self *TrailEngine) captureAttemptAssignment(ctx context.Context, record *AttemptRecord, assign *connect.VerifyAssignResult) error {
+	if record == nil || assign == nil || self.resolve == nil {
+		return errors.New("attempt assignment capture is not configured")
+	}
+	var pinned *AttemptBoundary
+	if len(record.Assignments) != 0 {
+		pinned = &record.Boundary
+	}
+	boundary, bindings, err := self.resolve(ctx, pinned, []connect.Id{assign.NextHop})
+	if err != nil {
+		return fmt.Errorf("resolve attempt binding: %w", err)
+	}
+	if err := validateAttemptBoundary(boundary); err != nil {
+		return err
+	}
+	if pinned != nil && boundary != *pinned {
+		return errors.New("attempt binding resolver changed the pinned EVM boundary")
+	}
+	if len(bindings) != 1 {
+		return errors.New("attempt binding resolver returned incomplete coverage")
+	}
+	if err := validateAttemptBinding(bindings[0], assign.NextHop); err != nil {
+		return err
+	}
+	walked := append(append([]connect.Id(nil), assign.Trail...), assign.NextHop)
+	message, err := connect.BuildVerifyAssignMessage(assign.ServerKeyId, assign.TrailId, assign.ServerNonce, self.vpk, byte(assign.M), walked)
+	if err != nil {
+		return err
+	}
+	if len(record.Assignments) == 0 {
+		record.Boundary = boundary
+		record.TrailID = assign.TrailId
+		record.ServerNonce = append([]byte(nil), assign.ServerNonce...)
+		record.M = assign.M
+	} else if record.TrailID != assign.TrailId || !bytes.Equal(record.ServerNonce, assign.ServerNonce) || record.M != assign.M {
+		return errors.New("attempt assignment changed trail identity")
+	}
+	record.Assignments = append(record.Assignments, AttemptAssignment{
+		Trail: append([]connect.Id(nil), assign.Trail...), NextHop: assign.NextHop,
+		ServerKeyID: assign.ServerKeyId, AssignMessage: message,
+		AssignSignature: append([]byte(nil), assign.AssignSig...), Binding: bindings[0],
+	})
+	return nil
+}
+
+func (self *TrailEngine) finishAttempt(record *AttemptRecord, disposition string, proof *ProofRecord) error {
+	if record == nil || self.ledger == nil {
+		return errors.New("attempt finish is not configured")
+	}
+	record.Disposition = disposition
+	record.Proof = proof
+	_, err := self.stats.commitAttempt(self.ledger, self.store, *record)
+	return fatalTrailState("commit attempt evidence", err)
 }
 
 // Completed / Failed report engine counters.
@@ -557,6 +764,10 @@ func (self *TrailEngine) postStep(ctx context.Context, hop connect.Id, body []by
 // through each server-assigned hop, then verify + co-sign the FINAL proof
 // and persist it. Returns the persisted record or a *TrailError.
 func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
+	ledgerEnabled := self.ledger != nil || self.resolve != nil
+	if ledgerEnabled && (self.ledger == nil || self.resolve == nil || self.stats == nil) {
+		return nil, errors.New("attempt ledger and boundary resolver must be configured together")
+	}
 	if err := self.waitForSeedDiscovery(ctx); err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: fmt.Errorf("seed discovery pace: %w", err)}
 	}
@@ -608,9 +819,59 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 	serverNonce := assign.ServerNonce
 	m := assign.M
 
-	// The first server-assigned exposure (§7.2). The seed hop is never
-	// recorded (§7.6).
-	self.stats.RecordAssignment(assign.NextHop)
+	var attemptRecord AttemptRecord
+	attemptActive := false
+	if ledgerEnabled {
+		if err := self.captureAttemptAssignment(ctx, &attemptRecord, &assign); err != nil {
+			return nil, fmt.Errorf("capture first server assignment: %w", err)
+		}
+		if err := self.stats.beginAttempt(attemptRecord.Boundary.SettlementEpoch, self.ledger); err != nil {
+			if !errors.Is(err, errAttemptCutPending) {
+				return nil, fatalTrailState("begin attempt evidence", err)
+			}
+			return nil, err
+		}
+		attemptActive = true
+		if err := self.stats.checkpointAttempt(self.ledger, attemptRecord); err != nil {
+			self.stats.abortAttempt()
+			attemptActive = false
+			return nil, fatalTrailState("checkpoint attempt evidence", err)
+		}
+	} else {
+		// The first server-assigned exposure (§7.2). The seed hop is never
+		// recorded (§7.6).
+		self.stats.RecordAssignment(assign.NextHop)
+	}
+	defer func() {
+		if attemptActive {
+			self.stats.abortAttempt()
+		}
+	}()
+	commitFailure := func(disposition string) error {
+		if !ledgerEnabled {
+			return nil
+		}
+		err := self.finishAttempt(&attemptRecord, disposition, nil)
+		attemptActive = false
+		return err
+	}
+	recordConfirmation := func(latencyMs float64) {
+		if !ledgerEnabled {
+			self.stats.RecordConfirmation(assign.NextHop, latencyMs)
+			return
+		}
+		index := len(attemptRecord.Assignments) - 1
+		attemptRecord.Assignments[index].Confirmed = true
+		attemptRecord.Assignments[index].HasLatency = true
+		attemptRecord.Assignments[index].LatencyBucket = uint8(latencyBucket(latencyMs))
+	}
+	failAttempt := func(kind TrailErrorKind, hop connect.Id, disposition string, cause error) (*ProofRecord, error) {
+		trailErr := &TrailError{Kind: kind, Hop: hop, Err: cause}
+		if err := commitFailure(disposition); err != nil {
+			return nil, errors.Join(trailErr, err)
+		}
+		return nil, trailErr
+	}
 
 	// --- EXTEND loop (§4.2) ---
 	for depth := 2; depth <= m; depth++ {
@@ -618,7 +879,7 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 		trail := append(append([]connect.Id{}, confirmed...), pendingHop)
 		extendMessage, err := connect.BuildVerifyExtendMessage(trailId, serverNonce, self.vpk, byte(m), trail)
 		if err != nil {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+			return failAttempt(TrailErrorProtocol, connect.Id{}, AttemptDispositionValidatorError, err)
 		}
 		extendSig := connect.SignVerifyMessage(self.vsk, extendMessage)
 		extendBody, err := json.Marshal(&connect.VerifyExtendArgs{
@@ -628,7 +889,7 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 			ExtendSig: extendSig,
 		})
 		if err != nil {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+			return failAttempt(TrailErrorProtocol, connect.Id{}, AttemptDispositionValidatorError, err)
 		}
 
 		stepStart := time.Now()
@@ -637,41 +898,49 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 			// The assigned hop never confirmed: local failure attribution
 			// to the pending hop (§4.4/§7.2) — the exposure recorded at
 			// ASSIGN time stands unconfirmed.
-			return nil, &TrailError{Kind: TrailErrorHop, Hop: pendingHop, Err: err}
+			return failAttempt(TrailErrorHop, pendingHop, AttemptDispositionHopFailure, err)
 		}
 		latencyMs := float64(time.Since(stepStart)) / float64(time.Millisecond)
 
 		if err := json.Unmarshal(responseBody, &envelope); err != nil {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+			return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, err)
 		}
 
 		if envelope.Status == connect.VerifyStatusComplete {
 			if depth != m {
-				return nil, &TrailError{Kind: TrailErrorProtocol, Err: fmt.Errorf("server finalized at depth %d, expected %d", depth, m)}
+				return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, fmt.Errorf("server finalized at depth %d, expected %d", depth, m))
 			}
 			var final connect.VerifyFinalResult
 			if err := json.Unmarshal(responseBody, &final); err != nil {
-				return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+				return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, err)
 			}
 			record, err := self.acceptFinal(final.Proof, trailId, serverNonce, m, trail, extendSig)
 			if err != nil {
 				// Unknown outcome (§9): a poisoned or forged FINAL is
 				// indistinguishable from the real thing except by its
 				// signatures. Do not record the last hop, do not persist.
-				return nil, &TrailError{Kind: TrailErrorUnknownOutcome, Hop: pendingHop, Err: err}
+				return failAttempt(TrailErrorUnknownOutcome, pendingHop, AttemptDispositionUnknownFinal, err)
 			}
 			// The last hop's confirmation is only known genuine via the
 			// verified FINAL.
-			self.stats.RecordConfirmation(pendingHop, latencyMs)
-			// Each server-assigned hop's egress-IP-hash for the head routable-IP
-			// score (§8.4/§11.1, D27) — from the VERIFIED proof only, seed
-			// (hop 0) excluded (§7.6), symmetric with the confirmation stats.
-			for i := 1; i < len(record.Hops); i++ {
-				self.stats.RecordEgressHash(record.Hops[i].ClientId, record.Hops[i].EgressIpHash)
-			}
-			if self.store != nil {
-				if err := self.store.Append(record); err != nil {
-					return record, fmt.Errorf("proof persist: %w", err)
+			recordConfirmation(latencyMs)
+			if ledgerEnabled {
+				record.Epoch = attemptRecord.Boundary.SettlementEpoch
+				if err := self.finishAttempt(&attemptRecord, AttemptDispositionComplete, record); err != nil {
+					attemptActive = false
+					return record, err
+				}
+				attemptActive = false
+			} else {
+				// Each server-assigned hop's egress-IP-hash comes only from the
+				// verified FINAL, with the validator-selected seed excluded.
+				for i := 1; i < len(record.Hops); i++ {
+					self.stats.RecordEgressHash(record.Hops[i].ClientId, record.Hops[i].EgressIpHash)
+				}
+				if self.store != nil {
+					if err := self.store.Append(record); err != nil {
+						return record, fatalTrailState("persist proof", err)
+					}
 				}
 			}
 			return record, nil
@@ -679,22 +948,35 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 
 		var nextAssign connect.VerifyAssignResult
 		if err := json.Unmarshal(responseBody, &nextAssign); err != nil {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+			return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, err)
 		}
 		if nextAssign.TrailId != trailId || !bytes.Equal(nextAssign.ServerNonce, serverNonce) || nextAssign.M != m {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: fmt.Errorf("assign switched trail identity")}
+			return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, fmt.Errorf("assign switched trail identity"))
 		}
 		// The response confirms the pending hop: echoed confirmed hops must
 		// now be the previous trail including it.
 		if err := self.verifyAssign(&nextAssign, trail); err != nil {
-			return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
+			return failAttempt(TrailErrorProtocol, pendingHop, AttemptDispositionProtocol, err)
 		}
-		self.stats.RecordConfirmation(pendingHop, latencyMs)
-		self.stats.RecordAssignment(nextAssign.NextHop)
+		recordConfirmation(latencyMs)
+		if ledgerEnabled {
+			if err := self.captureAttemptAssignment(ctx, &attemptRecord, &nextAssign); err != nil {
+				self.stats.abortAttempt()
+				attemptActive = false
+				return nil, fatalTrailState("capture assigned hop after durable checkpoint", err)
+			}
+			if err := self.stats.checkpointAttempt(self.ledger, attemptRecord); err != nil {
+				self.stats.abortAttempt()
+				attemptActive = false
+				return nil, fatalTrailState("checkpoint attempt evidence", err)
+			}
+		} else {
+			self.stats.RecordAssignment(nextAssign.NextHop)
+		}
 		confirmed = trail
 		assign = nextAssign
 	}
-	return nil, &TrailError{Kind: TrailErrorProtocol, Err: fmt.Errorf("server never finalized at depth %d", m)}
+	return failAttempt(TrailErrorProtocol, connect.Id{}, AttemptDispositionProtocol, fmt.Errorf("server never finalized at depth %d", m))
 }
 
 // acceptFinal verifies a FINAL proof end to end and builds the ProofRecord:
@@ -805,9 +1087,21 @@ func (self *TrailEngine) acceptFinal(
 }
 
 // Run walks trails continuously with bounded concurrency until ctx is done.
-func (self *TrailEngine) Run(ctx context.Context, concurrency int) {
+// A local evidence durability failure cancels every worker and is returned to
+// the lifecycle owner; ordinary peer and protocol failures remain sampled.
+func (self *TrailEngine) Run(ctx context.Context, concurrency int) error {
 	if concurrency < 1 {
 		concurrency = 1
+	}
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	fatalErrors := make(chan error, 1)
+	var fatalOnce sync.Once
+	failClosed := func(err error) {
+		fatalOnce.Do(func() {
+			fatalErrors <- err
+			cancel()
+		})
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
@@ -816,13 +1110,21 @@ func (self *TrailEngine) Run(ctx context.Context, concurrency int) {
 			defer wg.Done()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-workerCtx.Done():
 					return
 				default:
 				}
-				record, err := self.RunTrail(ctx)
+				record, err := self.RunTrail(workerCtx)
 				if err != nil {
 					self.failed.Add(1)
+					var fatalErr *TrailFatalError
+					if errors.As(err, &fatalErr) {
+						failClosed(err)
+						return
+					}
+					if workerCtx.Err() != nil {
+						return
+					}
 					var trailErr *TrailError
 					if errors.As(err, &trailErr) {
 						fmt.Printf("[trail %d] %v\n", worker, trailErr)
@@ -835,7 +1137,7 @@ func (self *TrailEngine) Run(ctx context.Context, concurrency int) {
 						worker, record.TrailId, record.M, record.Epoch, self.completed.Load())
 				}
 				select {
-				case <-ctx.Done():
+				case <-workerCtx.Done():
 					return
 				case <-time.After(self.cfg.Pace):
 				}
@@ -843,4 +1145,10 @@ func (self *TrailEngine) Run(ctx context.Context, concurrency int) {
 		}(i)
 	}
 	wg.Wait()
+	select {
+	case err := <-fatalErrors:
+		return err
+	default:
+		return nil
+	}
 }

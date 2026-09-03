@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -422,9 +423,15 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 	}
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
 	persistentCount := 2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
-	want := 3 + dependencyCount + persistentCount
+	want := 5 + dependencyCount + persistentCount
 	if len(faults) != want || faults[0].ID != "quality-cohort" || faults[1].ID != validatorLocalHeadBoundaryFaultID || faults[2].ID != "head-boundary" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)
+	}
+	for index, wantID := range []string{"fleet-lifecycle-target-prune", "fleet-lifecycle-companion-prune"} {
+		fault := faults[index+3]
+		if fault.ID != wantID || !fault.PreAcceptance || fault.Kind != validatorLocalHeadBoundaryFaultKind || len(fault.Impacts) != cfg.Config.Topology.Validators {
+			t.Fatalf("lifecycle fault %d=%+v, want pre-acceptance %s across every validator", index, fault, wantID)
+		}
 	}
 	view := faults[1]
 	head := faults[2]
@@ -437,7 +444,7 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 	}
 	seen := map[string]bool{}
 	var laneEnd uint64
-	for _, fault := range faults[3:] {
+	for _, fault := range faults[5:] {
 		if fault.TriggerOffsetBlocks <= laneEnd || fault.TriggerOffsetBlocks <= head.TriggerOffsetBlocks {
 			t.Fatalf("background fault is not sequential: %+v lane_end=%d head_start=%d", fault, laneEnd, head.TriggerOffsetBlocks)
 		}
@@ -460,14 +467,29 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 		t.Fatalf("persistent restart coverage=%d want=%d targets=%v", len(seen), persistentCount, seen)
 	}
 	campaignBlocks := uint64(cfg.Config.Scenarios.ShortEpochs) * cfg.Policy.Settlement.EpochBlocks
-	maximumEnd := uint64(0)
+	maximumEnd, tailEnd, tailCount := uint64(0), uint64(0), 0
 	for _, fault := range faults {
-		if end := fault.TriggerOffsetBlocks + fault.DurationBlocks; end > maximumEnd {
+		end := fault.TriggerOffsetBlocks + fault.DurationBlocks
+		if fault.PostAcceptanceEvidenceTail {
+			tailCount++
+			if end > tailEnd {
+				tailEnd = end
+			}
+			continue
+		}
+		if end > maximumEnd {
 			maximumEnd = end
 		}
 	}
 	if maximumEnd > campaignBlocks {
 		t.Fatalf("release fault schedule ends at block %d after %d-block campaign", maximumEnd, campaignBlocks)
+	}
+	wantTail, err := fleetLifecycleReleaseScheduleRequired(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["tempo"]), hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["commit_reveal_period"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tailCount != 2 || tailEnd != wantTail {
+		t.Fatalf("release lifecycle tail faults=%d end=%d, want two exact faults ending at %d", tailCount, tailEnd, wantTail)
 	}
 }
 
@@ -661,7 +683,7 @@ func validatorViewFaultDriverFixture(t *testing.T) (*ResolvedConfig, *liveScenar
 	}
 	process := ProcessSpec{
 		ID: "operator-2-api", Role: "operator-api", Identity: "no:2",
-		Env: map[string]string{servercontroller.VerifySimulationAssignmentFilterFileEnv: verifyAssignmentFilterPath(stateDir, operator)},
+		Env: map[string]string{servercontroller.VerifySimulationAssignmentFilterFileEnv: verifyAssignmentFilterPath(stateDir, operator), validatorViewFilterPlanHashEnv: "0x" + strings.Repeat("11", 32)},
 	}
 	manifest := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: "hash", Specs: []ProcessSpec{process}}
 	manifestHash, err := canonicalHashHex(manifest)
@@ -678,7 +700,7 @@ func validatorViewFaultDriverFixture(t *testing.T) (*ResolvedConfig, *liveScenar
 	if err := writePublicJSON(filepath.Join(stateDir, "supervisor.state.json"), state); err != nil {
 		t.Fatal(err)
 	}
-	return cfg, &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg}, fault, roles
+	return cfg, &liveScenarioFaultDriver{stateDir: stateDir, cfg: cfg, planHash: "0x" + strings.Repeat("11", 32), coordinator: "0x" + strings.Repeat("22", 20)}, fault, roles
 }
 
 func TestValidatorViewFaultWritesExactPrivateFilterAndRestores(t *testing.T) {
@@ -695,7 +717,7 @@ func TestValidatorViewFaultWritesExactPrivateFilterAndRestores(t *testing.T) {
 	if err := readJSONFile(path, &filter); err != nil {
 		t.Fatal(err)
 	}
-	if filter.Schema != validatorViewFilterSchema || filter.ValidatorVPK != roles.Clients["validator-1-no-2"].PublicKeyHex || len(filter.ExcludedClientIDs) != driver.cfg.Config.Topology.ClientsPerHeadFleet || !sort.StringsAreSorted(filter.ExcludedClientIDs) {
+	if filter.Schema != validatorViewFilterSchema || len(filter.Rules) != 1 || len(filter.Rules[0].ValidatorVPKs) != 1 || filter.Rules[0].ValidatorVPKs[0] != roles.Clients["validator-1-no-2"].PublicKeyHex || len(filter.Rules[0].ExcludedClientIDs) != driver.cfg.Config.Topology.ClientsPerHeadFleet || !sort.StringsAreSorted(filter.Rules[0].ExcludedClientIDs) {
 		t.Fatalf("validator-view filter=%+v", filter)
 	}
 	info, err := os.Stat(path)
@@ -723,6 +745,10 @@ func TestValidatorViewFaultRejectsMutationBeforeRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := verifyAssignmentFilterPath(driver.stateDir, 2)
+	expected, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := atomicWrite(path, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -731,10 +757,6 @@ func TestValidatorViewFaultRejectsMutationBeforeRestore(t *testing.T) {
 	}
 	if _, err := os.Stat(driver.activePath()); err != nil {
 		t.Fatalf("failed restore erased recovery ledger: %v", err)
-	}
-	_, _, expected, err := driver.validatorViewFilter(fault)
-	if err != nil {
-		t.Fatal(err)
 	}
 	if err := atomicWrite(path, expected, 0o600); err != nil {
 		t.Fatal(err)

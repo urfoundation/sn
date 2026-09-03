@@ -566,10 +566,16 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		}
 		state["address"], state["balance_wei"], state["minimum_wei"], state["existential_deposit_rao"] = addr.Hex(), balance.String(), want.String(), e.plan.LiveFacts.ExistentialDepositRao
 		return state, nil
+	case strings.HasPrefix(a.ID, "lifecycle."):
+		return e.verifyFleetLifecyclePostcondition(ctx, a, evmHead, state)
 	case strings.HasPrefix(a.ID, "fleet.fund."):
 		return e.verifySubstrateFunding(a, fleetColdkeyLabel(suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "fleet.fund-hotkey."):
-		return e.verifySubstrateFunding(a, fleetHotkeyLabel(suffixInt(a.ID)), state)
+		role, err := fleetHotkeyFundingRole(e.cfg, a)
+		if err != nil {
+			return nil, err
+		}
+		return e.verifySubstrateFunding(a, role, state)
 	case strings.HasPrefix(a.ID, "churn.fund."):
 		return e.verifySubstrateFunding(a, churnColdkeyLabel(suffixInt(a.ID)), state)
 	case strings.HasPrefix(a.ID, "validator.fund."):
@@ -708,7 +714,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err := e.ensurePayloads(ctx); err != nil {
 			return nil, err
 		}
-		implementation, err := implementationAt(ctx, e.owner, e.payloads.Manifest.CoordinatorProxy, evmHead.Number)
+		implementation, err := implementationAt(ctx, e.owner, e.payloads.Manifest.CoordinatorProxy, evmHead)
 		if err != nil || implementation != e.payloads.CoordinatorUpgrade.Implementation {
 			return nil, stateMismatchError(err, "coordinator implementation=%s", implementation)
 		}
@@ -909,7 +915,7 @@ func (e *Executor) verifyVoluntaryConvictionPostState(ctx context.Context, head 
 }
 
 func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPolicyEvidence, gate *ReleaseCampaignGate) bool {
-	if cfg == nil || gate == nil {
+	if cfg == nil || validateReleaseCampaignGateShape(cfg, gate) != nil {
 		return false
 	}
 	p := cfg.Policy.ProductionCadence
@@ -919,11 +925,23 @@ func productionPolicyEvidenceMatches(cfg *ResolvedConfig, evidence ProductionPol
 	return evidence.Schema == "urnetwork-production-policy-evidence-v2" && evidence.DeploymentID == cfg.Config.Deployment.DeploymentID &&
 		strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) && evidence.ReleaseRunID == gate.RunID &&
 		strings.EqualFold(evidence.ReleaseResultHash, gate.ResultHash) && strings.EqualFold(evidence.ReleaseCompleteHash, gate.CompleteContentHash) &&
+		strings.EqualFold(evidence.ReleaseHandoffHash, gate.LifecycleHandoff.ContentHash) && evidence.ReleaseHandoffSize == gate.LifecycleHandoff.SizeBytes &&
 		evidence.CampaignStartEpoch == gate.StartEpoch && evidence.CampaignEndEpoch == gate.EndEpoch && evidence.ScheduledFromEpoch >= gate.EndEpoch &&
 		evidence.EffectiveEpoch == evidence.ScheduledFromEpoch+1 && evidence.EffectiveBlock != 0 &&
 		evidence.PriorEpochBlocks == cfg.Policy.Settlement.EpochBlocks && evidence.EpochBlocks == p.EpochBlocks &&
 		evidence.RootCommitWindowBlocks == p.RootCommitWindowBlocks && evidence.FinalizeOffsetBlocks == p.FinalizeOffsetBlocks &&
 		evidence.CloseGraceBlocks == p.CloseGraceBlocks && validConformanceTransaction(evidence.TransactionHash, evidence.FinalizedBlockHash, evidence.FinalizedBlock)
+}
+
+func productionPolicyReleaseGate(evidence ProductionPolicyEvidence) *ReleaseCampaignGate {
+	return &ReleaseCampaignGate{
+		Schema: releaseCampaignGateSchema, RunID: evidence.ReleaseRunID, ResultHash: evidence.ReleaseResultHash,
+		CompleteContentHash: evidence.ReleaseCompleteHash, StartEpoch: evidence.CampaignStartEpoch, EndEpoch: evidence.CampaignEndEpoch,
+		LifecycleHandoff: ScenarioLifecycleHandoff{
+			Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: evidence.ReleaseRunID, Stage: fleetLifecycleStageReleaseHandoff,
+			File: scenarioLifecycleHandoffFilename, ContentHash: evidence.ReleaseHandoffHash, SizeBytes: evidence.ReleaseHandoffSize,
+		},
+	}
 }
 
 func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head ChainHead, state map[string]any) (map[string]any, error) {
@@ -934,9 +952,12 @@ func (e *Executor) verifyProductionPolicyPostState(ctx context.Context, head Cha
 	if err := readJSONFile(filepath.Join(e.stateDir, "public", "production-policy.json"), &evidence); err != nil {
 		return nil, err
 	}
-	gate, err := loadReleaseCampaignGate(e.cfg, e.stateDir, e.roles)
-	if err != nil {
+	gate := productionPolicyReleaseGate(evidence)
+	if _, _, err := validateExactReleaseCampaignGate(e.cfg, e.stateDir, e.roles, gate); err != nil {
 		return nil, fmt.Errorf("production release gate: %w", err)
+	}
+	if e.releaseGate != nil && !releaseCampaignGatesEqual(e.releaseGate, gate) {
+		return nil, errors.New("production policy evidence names a different release than the active production attempt")
 	}
 	if !productionPolicyEvidenceMatches(e.cfg, evidence, gate) {
 		return nil, errors.New("production policy evidence does not match the approved cadence")

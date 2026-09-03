@@ -16,6 +16,7 @@ import (
 	"fmt"
 	mathrand "math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -43,6 +44,58 @@ func TestProofStoreAppendSeparatesTornTail(t *testing.T) {
 	}
 	if skipped != 1 || len(records) != 1 || records[0].TrailId != want.TrailId {
 		t.Fatalf("recovered proof store records=%+v skipped=%d", records, skipped)
+	}
+}
+
+func TestProofStoreRejectsSymlinkWithoutMutatingTarget(t *testing.T) {
+	stateDir := t.TempDir()
+	store, err := NewProofStore(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPath := filepath.Join(t.TempDir(), "target.jsonl")
+	want := []byte("unchanged\n")
+	if err := os.WriteFile(targetPath, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(targetPath, store.path); err != nil {
+		t.Fatal(err)
+	}
+	record := &ProofRecord{Version: 1, TrailId: connect.NewId(), Coverage: 1, CompleteTimeMs: 1}
+	if err := store.Append(record); err == nil {
+		t.Fatal("proof store append followed a symlink")
+	}
+	if _, _, err := store.Load(); err == nil {
+		t.Fatal("proof store load followed a symlink")
+	}
+	got, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("proof store symlink target = %q, want %q", got, want)
+	}
+}
+
+func TestProofStoreRejectsPublicFileBeforeAppend(t *testing.T) {
+	store, err := NewProofStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("unchanged\n")
+	if err := os.WriteFile(store.path, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record := &ProofRecord{Version: 1, TrailId: connect.NewId(), Coverage: 1, CompleteTimeMs: 1}
+	if err := store.Append(record); err == nil {
+		t.Fatal("proof store appended to a public file")
+	}
+	got, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("public proof store = %q, want %q", got, want)
 	}
 }
 
@@ -164,7 +217,9 @@ func (self *mockVerifyServer) assignResponse(state *mockTrailState) ([]byte, err
 func (self *mockVerifyServer) finalResponse(state *mockTrailState) ([]byte, error) {
 	hops := make([]connect.VerifyProofHop, len(state.confirmed))
 	for i, hop := range state.confirmed {
-		hops[i] = connect.VerifyProofHop{ClientId: hop, TimeMs: state.confirmedAt[i]}
+		egressIPHash := [32]byte{}
+		copy(egressIPHash[:], hop[:])
+		hops[i] = connect.VerifyProofHop{ClientId: hop, TimeMs: state.confirmedAt[i], EgressIpHash: egressIPHash}
 	}
 	finalMessage, err := connect.BuildVerifyFinalMessage(
 		self.serverKeyId, state.trailId, state.serverNonce, state.vpk, byte(state.m), hops)
@@ -447,10 +502,15 @@ func TestTrailEngineCanceledSeedDiscoveryStopsBeforePicker(t *testing.T) {
 
 type failingTrailTransport struct {
 	attempts int
+	cancel   context.CancelFunc
+	cancelAt int
 }
 
 func (self *failingTrailTransport) PostVerify(context.Context, connect.Id, []byte) ([]byte, error) {
 	self.attempts++
+	if self.cancel != nil && self.attempts == self.cancelAt {
+		self.cancel()
+	}
 	return nil, errors.New("synthetic transport failure")
 }
 
@@ -484,6 +544,30 @@ func TestTrailEngineSeedPacingMetersEveryRetry(t *testing.T) {
 	}
 	if transport.attempts != 3 || paced != 3 {
 		t.Fatalf("EXTEND transport attempts/preserved pace = %d/%d, want 3/3", transport.attempts, paced)
+	}
+}
+
+func TestTrailEngineRunContinuesAfterTransientPeerFailure(t *testing.T) {
+	server, validatorKey, clientID := newMockVerifyServer(t, 12)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	transport := &failingTrailTransport{cancel: cancel, cancelAt: 4}
+	engine := NewTrailEngine(
+		clientID,
+		validatorKey,
+		transport,
+		NewStaticServerKeyRing(server.serverPublicKeys()),
+		func(context.Context) (connect.Id, error) { return server.providers[0], nil },
+		NewStatsEngine(StatsConfig{}),
+		nil,
+		nil,
+		TrailEngineConfig{M: 4, StepTimeout: time.Second, ExtendAttempts: 3, Pace: time.Millisecond},
+	)
+	if err := engine.Run(ctx, 1); err != nil {
+		t.Fatalf("transient peer failure stopped engine with fatal error: %v", err)
+	}
+	if transport.attempts != 4 {
+		t.Fatalf("transient peer attempts = %d, want a second trail after three retries", transport.attempts)
 	}
 }
 
@@ -751,5 +835,60 @@ func TestTrailSeedFailureNotAttributed(t *testing.T) {
 	}
 	if len(stats.Exposure()) != 0 {
 		t.Fatal("seed failure polluted the stats")
+	}
+}
+
+func TestTrailEngineRunFailsClosedOnAttemptLedgerAppendFailure(t *testing.T) {
+	stateDir := t.TempDir()
+	server, validatorKey, clientID := newMockVerifyServer(t, 12)
+	store, err := NewProofStore(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, stats, _ := newTestEngine(t, server, validatorKey, clientID, 4, store)
+	generation := uint64(1)
+	ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
+	expected := errors.New("synthetic durable attempt append failure")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	appendCalls := 0
+	ledger.appendFn = func(string, []byte) error {
+		appendCalls++
+		if appendCalls == 2 {
+			cancel()
+		}
+		return expected
+	}
+	err = engine.Run(ctx, 1)
+	var fatalErr *TrailFatalError
+	if !errors.Is(err, expected) || !errors.As(err, &fatalErr) {
+		t.Fatalf("engine run error = %v, want fatal append failure", err)
+	}
+	if appendCalls != 1 {
+		t.Fatalf("engine continued after durable append failure: append calls %d", appendCalls)
+	}
+	if ledger.LastSequence() != 0 || len(stats.ProviderIDs()) != 0 {
+		t.Fatalf("failed append mutated sequence/providers = %d/%v", ledger.LastSequence(), stats.ProviderIDs())
+	}
+}
+
+func TestTrailEngineRunFailsClosedOnProofProjectionFailure(t *testing.T) {
+	stateDir := t.TempDir()
+	server, validatorKey, clientID := newMockVerifyServer(t, 12)
+	store, err := NewProofStore(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, stats, _ := newTestEngine(t, server, validatorKey, clientID, 4, store)
+	generation := uint64(1)
+	ledger := configureAttemptLedgerTestEngine(t, engine, stats, stateDir, &generation)
+	store.path = stateDir
+	err = engine.Run(context.Background(), 1)
+	var fatalErr *TrailFatalError
+	if err == nil || !errors.As(err, &fatalErr) {
+		t.Fatalf("engine run error = %v, want fatal proof projection failure", err)
+	}
+	if ledger.LastSequence() != 4 || len(stats.ProviderIDs()) != 3 {
+		t.Fatalf("authoritative completion sequence/providers = %d/%v, want 4/3", ledger.LastSequence(), stats.ProviderIDs())
 	}
 }

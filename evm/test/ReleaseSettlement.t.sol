@@ -209,6 +209,25 @@ contract ReleaseSettlementTest is ReleaseBase {
         assertTrue(vault.conservationHolds());
     }
 
+    function test_lateFinalizerPreservesMinimumClaimWindowWithoutStrandingRoot() public {
+        _accrue(NO1, 1_000);
+        _close(0, NO1);
+        (bytes32 root,) = _singleLeaf(PROVIDER1, 10_000);
+        vm.prank(rootSigner1);
+        coordinator.commitOperatorRoot(0, NO1, root, keccak256("late-finalizer-artifact"));
+
+        uint256 policyExpiry = coordinator.epochStartBlock(10) - 1;
+        vm.roll(policyExpiry + 7);
+        uint256 finalizedAt = block.number;
+        coordinator.finalizeOperatorEpoch(0, NO1);
+
+        STSettlementVault.Entitlement memory entitlement = vault.entitlement(0, NO1);
+        assertEq(uint256(entitlement.status), uint256(STSettlementVault.EpochStatus.Finalized));
+        assertEq(entitlement.total, 1_000);
+        assertEq(entitlement.expiryBlock, finalizedAt + MINIMUM_CLAIM_TTL_BLOCKS);
+        assertTrue(vault.conservationHolds());
+    }
+
     function test_partialClaimExpiryCarriesExactRemainderToSameOperator() public {
         _accrue(NO1, 1_001);
         _close(0, NO1);
@@ -312,6 +331,17 @@ contract ReleaseSettlementTest is ReleaseBase {
         assertEq(afterEntitlement.artifactHash, beforeEntitlement.artifactHash);
         assertEq(afterEntitlement.total, beforeEntitlement.total);
         assertEq(afterEntitlement.expiryBlock, beforeEntitlement.expiryBlock);
+
+        STCoordinator reviewed = new STCoordinator();
+        vm.prank(owner);
+        STCoordinatorAdversary(payable(address(coordinator))).upgradeToAndCall(address(reviewed), bytes(""));
+        assertEq(coordinator.owner(), owner);
+        assertEq(coordinator.netuid(), NETUID);
+        assertEq(address(coordinator.settlementVault()), address(vault));
+        assertEq(address(coordinator.reserveSink()), address(sink));
+        assertTrue(coordinator.paused());
+        vm.prank(owner);
+        coordinator.setPaused(false);
 
         // Claims are deliberately outside the coordinator pause/upgrade path.
         vault.claim(0, NO1, PROVIDER1, 10_000, proof);

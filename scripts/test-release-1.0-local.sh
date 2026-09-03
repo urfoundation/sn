@@ -3,7 +3,7 @@ set -euo pipefail
 
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard vault xops config)
+release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)
 
 if ! command -v forge >/dev/null 2>&1 && [[ -x "$HOME/.foundry/bin/forge" ]]; then
   export PATH="$HOME/.foundry/bin:$PATH"
@@ -55,7 +55,12 @@ echo "[release-1.0] operator pure/unit suites"
   cd "$workspace/server"
   go test . -run '^Test(PgResourcesRedirectMaintenancePoolAndRestore|DatabaseTimeMatchesPostgresPrecision)$'
   go test ./st ./startifact
-  go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|CoreStClientBindingsAt|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|StTransactionCancellation|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature|VerifySimulationAssignmentFilter(IsValidatorLocalAndFailClosed|RejectsAmbiguousFiles)|StripeReconcileCredentialsRequireNonblankAPIToken|AppleReconcileCredentialsRequireCompleteServerAPIIdentity|PlayReconcileCredentialsRequireOAuthPackageAndSKUs|SolanaReconcileCredentialsRequireNonblankHeliusAPIKey)'
+  go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|CoreStClientBindingsAt|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|StTransactionCancellation|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature|StripeReconcileCredentialsRequireNonblankAPIToken|AppleReconcileCredentialsRequireCompleteServerAPIIdentity|PlayReconcileCredentialsRequireOAuthPackageAndSKUs|SolanaReconcileCredentialsRequireNonblankHeliusAPIKey)'
+  # Keep every file-backed validator filter regression in the aggregate gate,
+  # while excluding the two stateful cases until the isolated DB profile below.
+  filter_pure_tests='^TestVerifySimulationAssignmentFilter(IsValidatorLocalAndFailClosed|RejectsAmbiguousFiles|V[12].*|Rejects(Leaf|Parent)Symlink|AtomicReplacementPinsOpenedDescriptor)$'
+  go test ./controller -run "$filter_pure_tests" -count=1
+  go test -race ./controller -run "$filter_pure_tests" -count=1
   go test ./session -run 'Test.*(UrForwardedAddress|LegacyForwardedHeaders|RemoteAddress)'
   go test ./router -run 'TestTrie'
   go test ./model -run '^Test(VerifyEgressExactIndexAndPrefixScoreAreIndependent|StTransactionAdvisoryLockKeyUsesEthereumNonceScope|StHeadBoundCkeysFromEvents|ParseHeadEventCkey)$'
@@ -67,7 +72,9 @@ echo "[release-1.0] operator pure/unit suites"
   # that dataset with its own checker and compile every executable package.
   "$workspace/server/connect/sim-latency/baseline/verify.sh" >/dev/null
   echo "sim-latency immutable baseline: verified"
-  mapfile -t server_packages < <(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')
+  server_package_list="$(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')"
+  [[ -n "$server_package_list" ]]
+  mapfile -t server_packages <<<"$server_package_list"
   go test "${server_packages[@]}" -run '^$'
 )
 
@@ -112,6 +119,24 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test -race ./cmd/mobileexports -count=1
 )
 
+echo "[release-1.0] operator-proxy module"
+(
+  cd "$workspace/operator-proxy"
+  go mod tidy
+  git diff --exit-code -- go.mod go.sum
+  go build ./...
+  go vet ./...
+  unformatted="$(gofmt -l .)"
+  if [[ -n "$unformatted" ]]; then
+    echo "gofmt needed for:"
+    echo "$unformatted"
+    gofmt -d .
+    exit 1
+  fi
+  go test -count=1 -timeout 20m ./...
+  go test -race -count=1 -timeout 20m ./...
+)
+
 echo "[release-1.0] operator Connect ingress and owned-session lifecycle regressions"
 (
   cd "$workspace/server"
@@ -141,16 +166,21 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     export WARP_VERSION=0.0.0
     export BRINGYOUR_POSTGRES_HOSTNAME=local-pg.bringyour.com
     export BRINGYOUR_REDIS_HOSTNAME=local-redis.bringyour.com
-    controller_db_tests='^Test(VerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)|VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)|AuthNetworkClientFeedsConfiguredProxyEgressNamespace|PaymentReconcile(SkipsStripeWithSKUOnlyVault|MalformedCredentialResourcesSkipAllStores)|StAccountReconcile|StSyncChainEventsBatchesCanonicalEventBlocks|StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation)'
-    model_db_tests='Test(SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail|StDeploymentStateIsIsolatedAcrossCoordinatorReplacements|StTransactionIntentReservationUsesChainAccountNonceScope|StTransactionRevertRetryCreatesOneImmutableSuccessor|StTransactionAttemptCandidatesConvergeOnOneWinner|StTransactionCancellationCannotRegress|StTransactionFinalizedAttemptCannotRegress)'
+    controller_db_tests='^Test(CreateContractRejectsInactiveClient|VerifyController(FullTrailFlow|PoisonAndFailurePaths|ConcurrentExtendReloadsAfterLock|ReplayCannotReadANewerCachedResponse)|VerifySimulationAssignmentFilter(BlocksSeedPendingAndFutureAssignments|DoesNotAffectAnotherValidator)|AuthNetworkClientFeedsConfiguredProxyEgressNamespace|PaymentReconcile(SkipsStripeWithSKUOnlyVault|MalformedCredentialResourcesSkipAllStores)|StAccountReconcile|StSyncChainEventsBatchesCanonicalEventBlocks|StSyncChainEventsRejectsIncompleteCanonicalBatchBeforeMutation)'
+    model_db_tests='Test(FindActiveClientNetwork|StreamHopListenerPrunesInactiveAdjacentClients|ActiveStreamHopsBoundsConcurrentStaleReAdd|ForceCloseRequiresPositiveParallelism|ForceCloseDisputedContract|ForceCloseDirectSettlementRemovesStream|ForceCloseMalformedContractRemovesStreamAndReturnsError|SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail|StDeploymentStateIsIsolatedAcrossCoordinatorReplacements|StTransactionIntentReservationUsesChainAccountNonceScope|StTransactionRevertRetryCreatesOneImmutableSuccessor|StTransactionAttemptCandidatesConvergeOnOneWinner|StTransactionCancellationCannotRegress|StTransactionFinalizedAttemptCannotRegress)'
     go test ./controller -run "$controller_db_tests"
     go test ./model -run "$model_db_tests"
+    # Task registration is part of the operator startup boundary. Keep its
+    # database-backed stale-chain cleanup regressions in the managed profile;
+    # running them without this profile only exercises TestEnv's retry path.
+    go test ./taskworker -count=1
     # Account-wide nonce reconciliation, canonical event batching and the
     # validator-local assignment filter all mutate shared database state. Keep
     # their focused race coverage in the repeatable release gate as well as the
     # deterministic ordinary suite.
     go test -race ./controller -run "$controller_db_tests"
     go test -race ./model -run "$model_db_tests"
+    go test -race ./taskworker -count=1
     go test ./connect -run '^TestConnectionVerifyEgressUsesControllerHashNamespace$' -count=1
     go test -race ./connect -run '^TestConnectionVerifyEgressUsesControllerHashNamespace$' -count=1
     go test . -run '^TestIncrementRateLimitWindowResetsAtExactBoundary$' -count=1

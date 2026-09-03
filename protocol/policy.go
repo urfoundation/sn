@@ -239,14 +239,14 @@ func (p Policy) Validate() error {
 	if s.EpochBlocks == 0 || s.RootCommitWindowBlocks == 0 || s.FinalizeOffsetBlocks == 0 || s.CloseGraceBlocks == 0 {
 		return errors.New("settlement block windows must be nonzero")
 	}
-	if s.CloseGraceBlocks > s.RootCommitWindowBlocks || s.RootCommitWindowBlocks > s.FinalizeOffsetBlocks {
+	if s.CloseGraceBlocks > s.RootCommitWindowBlocks || s.RootCommitWindowBlocks > s.FinalizeOffsetBlocks || s.FinalizeOffsetBlocks >= s.EpochBlocks {
 		return errors.New("invalid settlement close/root/finalize windows")
 	}
 	production := p.ProductionCadence
 	if production.AfterAcceleratedEpochs == 0 || production.EpochBlocks == 0 || production.RootCommitWindowBlocks == 0 || production.FinalizeOffsetBlocks == 0 || production.CloseGraceBlocks == 0 {
 		return errors.New("production cadence fields must be nonzero")
 	}
-	if production.CloseGraceBlocks > production.RootCommitWindowBlocks || production.RootCommitWindowBlocks > production.FinalizeOffsetBlocks || production.EpochBlocks <= s.EpochBlocks {
+	if production.CloseGraceBlocks > production.RootCommitWindowBlocks || production.RootCommitWindowBlocks > production.FinalizeOffsetBlocks || production.FinalizeOffsetBlocks >= production.EpochBlocks || production.EpochBlocks <= s.EpochBlocks {
 		return errors.New("invalid production cadence")
 	}
 	if p.NetworkProfile == "testnet" && production.EpochBlocks != 360 {
@@ -257,6 +257,21 @@ func (p Policy) Validate() error {
 	}
 	if s.ClaimTTLEpochs == 0 || s.ClaimGraceEpochs > s.ClaimTTLEpochs {
 		return errors.New("invalid claim ttl/grace")
+	}
+	// Every implementation derives a block horizon from the TTL, grace, and
+	// one following epoch. Reject arithmetic which would wrap in the Go plan or
+	// evidence paths even though Solidity itself would revert on overflow.
+	const maximumUint64 = ^uint64(0)
+	if s.ClaimTTLEpochs > maximumUint64-s.ClaimGraceEpochs {
+		return errors.New("claim retention epoch count overflows uint64")
+	}
+	claimRetentionEpochs := s.ClaimTTLEpochs + s.ClaimGraceEpochs
+	if claimRetentionEpochs == maximumUint64 {
+		return errors.New("claim retention epoch count overflows uint64")
+	}
+	claimRetentionEpochs++
+	if s.EpochBlocks > maximumUint64/claimRetentionEpochs || production.EpochBlocks > maximumUint64/claimRetentionEpochs {
+		return errors.New("claim retention block horizon overflows uint64")
 	}
 	if s.MissedRootAction != "carry_same_operator" || s.ExpiredClaimAction != "carry_same_operator" {
 		return errors.New("pool value may only carry to the same operator")

@@ -117,8 +117,10 @@ func TestPolicyCadenceWindowsFailClosed(t *testing.T) {
 	tests := []func(*Policy){
 		func(v *Policy) { v.Settlement.CloseGraceBlocks = 0 },
 		func(v *Policy) { v.Settlement.CloseGraceBlocks = v.Settlement.RootCommitWindowBlocks + 1 },
+		func(v *Policy) { v.Settlement.FinalizeOffsetBlocks = v.Settlement.EpochBlocks },
 		func(v *Policy) { v.ProductionCadence.AfterAcceleratedEpochs = 0 },
 		func(v *Policy) { v.ProductionCadence.EpochBlocks = v.Settlement.EpochBlocks },
+		func(v *Policy) { v.ProductionCadence.FinalizeOffsetBlocks = v.ProductionCadence.EpochBlocks },
 		func(v *Policy) {
 			v.ProductionCadence.RootCommitWindowBlocks = v.ProductionCadence.FinalizeOffsetBlocks + 1
 		},
@@ -129,6 +131,33 @@ func TestPolicyCadenceWindowsFailClosed(t *testing.T) {
 		if err := copy.Validate(); err == nil {
 			t.Fatalf("invalid cadence mutation %d accepted", index)
 		}
+	}
+}
+
+func TestPolicyRejectsOverflowingClaimRetentionEpochCount(t *testing.T) {
+	p, err := LoadPolicy(testPolicyPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Settlement.ClaimTTLEpochs = ^uint64(0)
+	p.Settlement.ClaimGraceEpochs = 1
+	if err := p.Validate(); err == nil {
+		t.Fatal("overflowing claim-retention epoch count was accepted")
+	}
+}
+
+func TestPolicyRejectsOverflowingProductionClaimBlockHorizon(t *testing.T) {
+	p, err := LoadPolicy(testPolicyPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Settlement.ClaimTTLEpochs = ^uint64(0)/p.ProductionCadence.EpochBlocks + 1
+	p.Settlement.ClaimGraceEpochs = 0
+	if p.Settlement.EpochBlocks > ^uint64(0)/p.Settlement.ClaimTTLEpochs {
+		t.Fatal("fixture also overflows the accelerated horizon")
+	}
+	if err := p.Validate(); err == nil {
+		t.Fatal("overflowing production claim block horizon was accepted")
 	}
 }
 

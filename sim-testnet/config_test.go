@@ -198,6 +198,18 @@ func TestHarnessConfigRejectsRegistrationBudgetOutsideApprovalRange(t *testing.T
 	}
 }
 
+func TestHarnessConfigBudgetsAllThreeLiveLifecycleRegistrationWaves(t *testing.T) {
+	cfg := testResolvedConfig(t).Config
+	cfg.Budgets.MaximumRegistrations = 258
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "registration budget") {
+		t.Fatalf("budget omitting one lifecycle registration was accepted: %v", err)
+	}
+	cfg.Budgets.MaximumRegistrations = 259
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("exact 256 setup plus three lifecycle registration budget was rejected: %v", err)
+	}
+}
+
 func TestReleaseCampaignBudgetCoversEveryProductionBoundary(t *testing.T) {
 	r := testResolvedConfig(t)
 	r.Release.Runtime.SpecVersion = r.Public.Chain.ExpectedRuntimeSpec
@@ -488,7 +500,7 @@ func TestResolvedConfigJSONRedactsWalletAndVault(t *testing.T) {
 }
 
 func TestResolvedConfigRejectsDuplicatePublicOperatorOrigins(t *testing.T) {
-	if _, err := validateOperatorAPIOrigins([]string{"https://same.example/", "https://same.example"}, 2); err == nil || !strings.Contains(err.Error(), "duplicates") {
+	if _, err := validateOperatorAPIOrigins([]string{"https://same.example/", "https://same.example"}, 2, testnetChainID, testnetGenesis, "bittensor-testnet"); err == nil || !strings.Contains(err.Error(), "duplicates") {
 		t.Fatalf("duplicate public operator origins were accepted: %v", err)
 	}
 }
@@ -511,7 +523,7 @@ func TestRepositoryDiscoveryUsesModuleIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SN != r.Repos.SN || got.Server != r.Repos.Server || got.Vault != r.Repos.Vault || got.PlatformConfig != r.Repos.PlatformConfig {
+	if got.SN != r.Repos.SN || got.Server != r.Repos.Server || got.OperatorProxy != r.Repos.OperatorProxy || got.Vault != r.Repos.Vault || got.PlatformConfig != r.Repos.PlatformConfig {
 		t.Fatalf("discovered repositories = %+v, want %+v", got, r.Repos)
 	}
 }
@@ -590,6 +602,29 @@ func TestResolvedConfigRequiresRuntimeDefaultMinTransfer(t *testing.T) {
 	cfg.Public.Chain.ExpectedDefaultMinTransferRao = 0
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "runtime transfer minimum") {
 		t.Fatalf("zero public runtime transfer minimum was accepted: %v", err)
+	}
+}
+
+func TestSettlementVaultClaimWindowAcceptsReleaseCadences(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	if err := validateSettlementVaultClaimWindows(cfg.Policy); err != nil {
+		t.Fatalf("release claim windows were rejected: %v", err)
+	}
+}
+
+func TestSettlementVaultClaimWindowRejectsInsufficientAcceleratedGrace(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Policy.Settlement.ClaimGraceEpochs = 0
+	if err := validateSettlementVaultClaimWindows(cfg.Policy); err == nil || !strings.Contains(err.Error(), "accelerated") {
+		t.Fatalf("insufficient accelerated claim window was accepted: %v", err)
+	}
+}
+
+func TestSettlementVaultClaimWindowRejectsInsufficientProductionHorizon(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Policy.ProductionCadence.FinalizeOffsetBlocks = 900
+	if err := validateSettlementVaultClaimWindows(cfg.Policy); err == nil || !strings.Contains(err.Error(), "production") {
+		t.Fatalf("insufficient production claim window was accepted: %v", err)
 	}
 }
 

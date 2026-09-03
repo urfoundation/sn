@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -23,12 +26,16 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/urfoundation/sn/ss58"
 )
 
 type ChainHead struct {
 	Number uint64 `json:"number"`
 	Hash   string `json:"hash"`
 }
+
+type campaignFinalSemanticVerifier func(context.Context, *PublicDeploymentManifest, *FinalSemanticEvidence, string) error
 
 // finalizedEVMHeadContextKey binds all nested reads in one postcondition to
 // the exact finalized checkpoint selected by its caller. Without this, helper
@@ -68,6 +75,7 @@ type ContractView struct {
 	CurrentEpoch       uint64              `json:"current_epoch"`
 	CurrentEpochStart  uint64              `json:"current_epoch_start_block"`
 	CurrentEpochEnd    uint64              `json:"current_epoch_end_block"`
+	CoordinatorOwner   string              `json:"coordinator_owner"`
 	OperatorCount      uint64              `json:"operator_count"`
 	PolicyHash         string              `json:"policy_hash,omitempty"`
 	ConservationHolds  bool                `json:"conservation_holds"`
@@ -82,9 +90,38 @@ type ContractView struct {
 	ReserveLiveStake   string              `json:"reserve_live_stake_rao,omitempty"`
 	RuntimeCodeHashes  map[string]string   `json:"runtime_code_hashes,omitempty"`
 	RuntimeCodeMatches bool                `json:"runtime_code_matches"`
+	CustodyIdentity    ContractCustodyView `json:"custody_identity"`
 	Policy             PolicyView          `json:"policy"`
 	Operators          []OperatorView      `json:"operators"`
 	Epochs             []EpochView         `json:"epochs"`
+}
+
+// ContractCustodyView records the complete immutable and one-shot-linked
+// custody identity at the same finalized block as the accounting snapshot.
+// These values are deliberately not inferred from deployment calldata: an
+// external reviewer must be able to prove the live coordinator, vault and
+// reserve are still wired to the intended netuid and contract-owned coldkeys.
+type ContractCustodyView struct {
+	CoordinatorNetuid                 uint16 `json:"coordinator_netuid"`
+	CoordinatorSelfColdkey            string `json:"coordinator_self_coldkey"`
+	CoordinatorGuardian               string `json:"coordinator_guardian"`
+	CoordinatorActiveGuardian         string `json:"coordinator_active_guardian"`
+	CoordinatorPaused                 bool   `json:"coordinator_paused"`
+	CoordinatorCommitmentOracle       string `json:"coordinator_commitment_oracle"`
+	CoordinatorActiveCommitmentOracle string `json:"coordinator_active_commitment_oracle"`
+	CoordinatorVault                  string `json:"coordinator_settlement_vault"`
+	CoordinatorReserve                string `json:"coordinator_reserve_sink"`
+	VaultCoordinator                  string `json:"vault_coordinator"`
+	VaultNetuid                       uint16 `json:"vault_netuid"`
+	VaultSelfColdkey                  string `json:"vault_self_coldkey"`
+	VaultEscrowHotkey                 string `json:"vault_escrow_hotkey"`
+	VaultEscrowRegistered             bool   `json:"vault_escrow_registered"`
+	VaultMinimumClaimTTLBlocks        uint64 `json:"vault_minimum_claim_ttl_blocks"`
+	VaultMinimumTransferRao           uint64 `json:"vault_minimum_transfer_tao_rao"`
+	ReserveRecorder                   string `json:"reserve_recorder"`
+	ReserveNetuid                     uint16 `json:"reserve_netuid"`
+	ReserveSelfColdkey                string `json:"reserve_self_coldkey"`
+	ReserveHotkey                     string `json:"reserve_hotkey"`
 }
 
 type PolicyView struct {
@@ -217,7 +254,7 @@ func Inspect(ctx context.Context, cfg *ResolvedConfig, stateDir, manifest string
 	journal := JournalSummary{}
 	var publicManifest *PublicDeploymentManifest
 	if manifest != "" {
-		_, publicManifest, err = loadDeploymentReference(ctx, stateDir, manifest)
+		_, publicManifest, err = loadDeploymentReferenceForConfig(ctx, cfg, stateDir, manifest)
 		if err != nil {
 			return nil, err
 		}
@@ -259,59 +296,34 @@ func Inspect(ctx context.Context, cfg *ResolvedConfig, stateDir, manifest string
 
 func Analyze(ctx context.Context, cfg *ResolvedConfig, stateDir, manifest string) (*AnalysisReport, error) {
 	probe := &liveScenarioProbe{cfg: cfg, stateDir: stateDir, client: &http.Client{Timeout: 30 * time.Second}}
-	var observation *ScenarioObservation
-	var err error
-	if manifest == "" {
-		observation, err = probe.Snapshot(ctx)
-	} else {
-		view, viewErr := inspectContracts(ctx, cfg, stateDir, manifest)
-		if viewErr != nil {
-			return nil, viewErr
-		}
-		_, public, loadErr := loadDeploymentReference(ctx, stateDir, manifest)
+	if manifest != "" {
+		probe.publicManifestURI = manifest
+		_, public, loadErr := loadDeploymentReferenceForConfig(ctx, cfg, stateDir, manifest)
 		if loadErr != nil {
 			return nil, loadErr
 		}
 		if public == nil {
 			return nil, errors.New("independent analysis requires a public deployment manifest, not a bare contract manifest")
 		}
+		if err := validatePublicCampaignOperatorOrigins(public); err != nil {
+			return nil, err
+		}
 		bundle, bundleErr := probe.fetchLatestScenarioBundle(ctx, public)
 		if bundleErr != nil {
 			return nil, fmt.Errorf("public scenario evidence: %w", bundleErr)
 		}
-		if bundle.Observation == nil {
-			return nil, errors.New("public scenario evidence has no observation")
+		if bundle.Analysis == nil {
+			return nil, errors.New("public scenario evidence has no signed analysis")
 		}
-		observation = bundle.Observation
-		observation.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		observation.Status = &DeploymentStatus{Schema: "urnetwork-sim-status-v1", DeploymentID: public.DeploymentID, ConfigHash: public.ConfigHash, PolicyHash: public.PolicyHash, Netuid: public.Netuid, Contracts: view, Healthy: view.ConservationHolds && view.RuntimeCodeMatches}
-		var expectedSigners map[int]string
-		observation.PublicIdentityCount, expectedSigners = inspectPublicIdentityBytes(cfg, public.Identities)
-		observation.PublicIdentitiesValid = observation.PublicIdentityCount > 0
-		minerClients, minerClientsErr := inspectMinerClientIDsBytes(cfg, public.Identities)
-		if minerClientsErr != nil {
-			observation.PublicIdentitiesValid = false
+		report := *bundle.Analysis
+		if cfg.Config.Analysis.WriteJSON || cfg.Config.Analysis.WriteHTML {
+			if err := writeStandaloneAnalysis(stateDir, &report); err != nil {
+				return nil, err
+			}
 		}
-		expectedCoordinator := common.Address{}
-		if public.Contracts != nil {
-			expectedCoordinator = public.Contracts.CoordinatorProxy
-		}
-		observation.FleetCommitmentValid, observation.FleetBindingCount, observation.FleetBindingsValid, observation.CandidateFleetUIDs = inspectFleetEvidenceBytes(cfg, public.SetupEvidence, expectedCoordinator)
-		generation := uint64(0)
-		if public.Contracts != nil {
-			generation = public.Contracts.RegistrationRoleGeneration
-		}
-		observation.ReserveValidatorRegistered, observation.ReserveValidatorUID, observation.ReserveDelegateTake, observation.EscrowHotkeyRegistered, observation.EscrowHotkeyUID, observation.NativeCustodyError = inspectNativeCustodyRolesBytes(cfg, public.Identities, public.SubstrateRPC, generation)
-		observation.NativeRewards, observation.NativeRewardsError = inspectNativeRewards(cfg, public.SubstrateRPC)
-		depositSigner := publicEVMRole(public.Identities, "operator-1-deposit")
-		observation.VoluntaryConviction, observation.VoluntaryConvictionValid, observation.VoluntaryConvictionError = inspectVoluntaryConvictionBytes(ctx, cfg, public.SetupEvidence["voluntary_conviction"], view, public.EVMRPC, depositSigner)
-		observation.Operators = nil
-		for _, operator := range public.Operators {
-			observation.Operators = append(observation.Operators, probe.inspectOperatorAt(ctx, view, operator.NoID, expectedSigners[operator.NoID], operator.APIURL, minerClients))
-		}
-		observation.ObservationHash = ""
-		observation.ObservationHash, err = canonicalHashHex(observation)
+		return &report, nil
 	}
+	observation, err := probe.Snapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -359,31 +371,678 @@ func evidenceHistoryKeys(b []byte) []string {
 	return keys
 }
 
-func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, public *PublicDeploymentManifest) (*ScenarioEvidenceBundle, error) {
+func validatePublicCampaignOperatorOrigins(public *PublicDeploymentManifest) error {
+	if public == nil || len(public.Operators) == 0 {
+		return errors.New("public campaign operator directory is empty")
+	}
+	profile, err := effectivePublicEvidenceTransportProfile(public)
+	if err != nil {
+		return fmt.Errorf("public campaign evidence transport: %w", err)
+	}
+	if public.Topology.Operators != 0 && len(public.Operators) != public.Topology.Operators {
+		return errors.New("public campaign operator directory does not match the signed topology")
+	}
+	seen := make(map[string]bool, len(public.Operators))
+	seenOperators := make(map[int]bool, len(public.Operators))
+	for _, operator := range public.Operators {
+		if operator.NoID < 1 || operator.NoID > len(public.Operators) || seenOperators[operator.NoID] {
+			return fmt.Errorf("public campaign operator %d identity is invalid or duplicated", operator.NoID)
+		}
+		seenOperators[operator.NoID] = true
+		parsed, err := url.Parse(operator.APIURL)
+		origin, originErr := canonicalBarePublicEvidenceOrigin(operator.APIURL, profile, public.ChainID, public.GenesisHash)
+		if err != nil || originErr != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path != "" && parsed.Path != "/" {
+			return fmt.Errorf("public campaign operator %d API URL is not an allowed bare evidence origin", operator.NoID)
+		}
+		if profile == publicEvidenceTransportTestnetLoopbackHTTP && (operator.NoID < 1 || operator.NoID > len(testnetLoopbackEvidenceOrigins) || origin != testnetLoopbackEvidenceOrigins[operator.NoID-1]) {
+			return fmt.Errorf("public campaign operator %d does not use its fixed testnet loopback evidence origin", operator.NoID)
+		}
+		if seen[origin] {
+			return fmt.Errorf("public campaign operator %d duplicates API origin %q", operator.NoID, origin)
+		}
+		seen[origin] = true
+		wantVerify := strings.TrimSuffix(operator.APIURL, "/") + "/verify"
+		wantHistory := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence/history"
+		if operator.VerifyURL != wantVerify || operator.HistoryURL != wantHistory {
+			return fmt.Errorf("public campaign operator %d verify/history URL is outside its authenticated API origin", operator.NoID)
+		}
+	}
+	if profile == publicEvidenceTransportTestnetLoopbackHTTP && len(seen) != len(testnetLoopbackEvidenceOrigins) {
+		return errors.New("testnet loopback evidence transport requires exactly two fixed operator origins")
+	}
+	return nil
+}
+
+func (p *liveScenarioProbe) fetchReplicatedCampaignEnvelope(ctx context.Context, public *PublicDeploymentManifest, hash, kind, runID, ownerSigner string) (*ReleaseEvidenceEnvelope, error) {
+	if public == nil || !validSHA256ContentHash(hash) || kind == "" || runID == "" || !common.IsHexAddress(ownerSigner) {
+		return nil, errors.New("campaign evidence fetch identity is invalid")
+	}
+	var firstBytes []byte
+	var first *ReleaseEvidenceEnvelope
+	for _, operator := range public.Operators {
+		evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=" + strings.ToLower(hash)
+		encoded, _, err := p.get(ctx, evidenceURL, maximumCampaignEvidenceEnvelopeBytes)
+		if err != nil {
+			return nil, fmt.Errorf("operator %d campaign evidence %s: %w", operator.NoID, hash, err)
+		}
+		var envelope ReleaseEvidenceEnvelope
+		if decodeStrictJSONBytes(encoded, &envelope) != nil || verifyEvidence(&envelope, nil) != nil || !strings.EqualFold(envelope.ContentHash, hash) || envelope.Kind != kind || envelope.RunID != runID || envelope.DeploymentID != public.DeploymentID || envelope.ChainID != public.ChainID || envelope.Netuid != public.Netuid || !strings.EqualFold(envelope.GenesisHash, public.GenesisHash) || !strings.EqualFold(envelope.Signer.Hex(), ownerSigner) {
+			return nil, fmt.Errorf("operator %d returned invalid campaign evidence %s", operator.NoID, hash)
+		}
+		if first == nil {
+			copyEnvelope := envelope
+			first = &copyEnvelope
+			firstBytes = append([]byte(nil), encoded...)
+			continue
+		}
+		if !bytes.Equal(firstBytes, encoded) {
+			return nil, fmt.Errorf("campaign evidence %s differs between operator replicas", hash)
+		}
+	}
+	if first == nil || len(public.Operators) == 0 {
+		return nil, errors.New("campaign evidence has no operator replicas")
+	}
+	return first, nil
+}
+
+func (p *liveScenarioProbe) resolveCampaignEvidenceOwner(ctx context.Context, public *PublicDeploymentManifest, result *ScenarioResult) (common.Address, error) {
+	if p.trustedEvidenceOwner != (common.Address{}) {
+		return p.trustedEvidenceOwner, nil
+	}
+	if p.cfg == nil || public == nil || public.Contracts == nil || public.Contracts.DeploymentID != public.DeploymentID || public.Contracts.CoordinatorProxy == (common.Address{}) || strings.TrimSpace(public.EVMRPC) == "" || result == nil || result.EndHead.Number == 0 || result.EndHead.Hash == "" {
+		return common.Address{}, errors.New("historical campaign owner lookup has incomplete deployment or checkpoint identity")
+	}
+	if _, err := decodeHex32("campaign terminal EVM block hash", result.EndHead.Hash); err != nil {
+		return common.Address{}, err
+	}
+	client, err := dialConfiguredEVMClient(ctx, p.cfg, public.EVMRPC)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("historical EVM archive required for campaign owner lookup: %w", err)
+	}
+	defer client.Close()
+	chainID, err := client.ChainID(ctx)
+	if err != nil || !chainID.IsUint64() || chainID.Uint64() != public.ChainID {
+		return common.Address{}, stateMismatchError(err, "historical campaign owner RPC chain identity=%v, want %d", chainID, public.ChainID)
+	}
+	finalized, err := finalizedEVMHead(ctx, client)
+	if err != nil || finalized.Number < result.EndHead.Number {
+		return common.Address{}, stateMismatchError(err, "campaign terminal EVM block %d is not finalized", result.EndHead.Number)
+	}
+	hash, err := canonicalEVMBlockHash(ctx, ethEVMBlockReader{client: client}, result.EndHead.Number)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("historical EVM archive cannot serve campaign block %d: %w", result.EndHead.Number, err)
+	}
+	if !strings.EqualFold(hash, result.EndHead.Hash) {
+		return common.Address{}, fmt.Errorf("campaign terminal EVM block %d hash %s does not match canonical %s", result.EndHead.Number, result.EndHead.Hash, hash)
+	}
+	coordinator, err := abi.JSON(strings.NewReader(CoordinatorABI))
+	if err != nil {
+		return common.Address{}, err
+	}
+	values, err := contractCallAt(ctx, client, public.Contracts.CoordinatorProxy, coordinator, "owner", result.EndHead.Number)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("historical EVM archive cannot read coordinator owner at campaign block %d: %w", result.EndHead.Number, err)
+	}
+	if len(values) != 1 {
+		return common.Address{}, fmt.Errorf("coordinator owner at campaign block %d returned %d values", result.EndHead.Number, len(values))
+	}
+	owner, ok := values[0].(common.Address)
+	if !ok || owner == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("coordinator owner at campaign block %d is invalid", result.EndHead.Number)
+	}
+	return owner, nil
+}
+
+func validateCampaignEvidenceJSONSchemas(files map[string][]byte) error {
+	for name, raw := range files {
+		switch {
+		case strings.HasSuffix(name, ".json"):
+			var object map[string]json.RawMessage
+			if json.Unmarshal(raw, &object) != nil || len(object) == 0 {
+				return fmt.Errorf("campaign evidence file %q is not a JSON object", name)
+			}
+			var schema string
+			if json.Unmarshal(object["schema"], &schema) != nil || strings.TrimSpace(schema) == "" {
+				return fmt.Errorf("campaign evidence file %q has no schema", name)
+			}
+		case strings.HasSuffix(name, ".jsonl"):
+			lines := bytes.Split(bytes.TrimSpace(raw), []byte{'\n'})
+			if len(lines) == 0 || len(lines[0]) == 0 {
+				return fmt.Errorf("campaign evidence file %q is empty", name)
+			}
+			for index, line := range lines {
+				var object map[string]json.RawMessage
+				var schema string
+				if json.Unmarshal(line, &object) != nil || json.Unmarshal(object["schema"], &schema) != nil || strings.TrimSpace(schema) == "" {
+					return fmt.Errorf("campaign evidence file %q line %d has no valid schema", name, index+1)
+				}
+			}
+		case strings.HasSuffix(name, ".xml"):
+			decoder := xml.NewDecoder(bytes.NewReader(raw))
+			for {
+				if _, err := decoder.Token(); err != nil {
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					return fmt.Errorf("campaign evidence file %q is invalid XML: %w", name, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateCampaignEvidenceSemantics(files map[string][]byte, completion scenarioCompletePayload, bundle *ScenarioEvidenceBundle) error {
+	required := []string{"result.json", "assertions.json", "anomalies.json", "adversaries.json", "analysis.json", "analysis.html", "junit.xml", "observations.jsonl", finalSemanticEvidenceFilename, finalSemanticMarkdownFilename}
+	for _, name := range required {
+		if len(files[name]) == 0 {
+			return fmt.Errorf("campaign evidence required file %q is missing", name)
+		}
+	}
+	if err := validateCampaignEvidenceJSONSchemas(files); err != nil {
+		return err
+	}
+	if bundle == nil || bundle.Result == nil || bundle.Observation == nil || bundle.Analysis == nil {
+		return errors.New("campaign evidence bundle is incomplete")
+	}
+	var result ScenarioResult
+	if err := decodeStrictJSONBytes(files["result.json"], &result); err != nil {
+		return fmt.Errorf("campaign evidence result: %w", err)
+	}
+	resultHash, err := canonicalScenarioResultHash(&result)
+	if err != nil || result.Schema != "urnetwork-sim-scenario-result-v1" || !strings.EqualFold(result.EvidenceHash, completion.ResultHash) || !strings.EqualFold(resultHash, completion.ResultHash) || result.RunID != bundle.Result.RunID {
+		return stateMismatchError(err, "campaign evidence result does not match the signed completion and bundle")
+	}
+	var assertions assertionFile
+	if err := decodeStrictJSONBytes(files["assertions.json"], &assertions); err != nil || assertions.Schema != "urnetwork-sim-assertions-v1" || !reflect.DeepEqual(assertions.Assertions, result.Assertions) {
+		return stateMismatchError(err, "campaign evidence assertions do not match the result")
+	}
+	var anomalies ScenarioAnomalyLedger
+	if err := decodeStrictJSONBytes(files["anomalies.json"], &anomalies); err != nil || anomalies.Schema != "urnetwork-sim-anomaly-ledger-v1" || result.Anomalies == nil || !reflect.DeepEqual(&anomalies, result.Anomalies) {
+		return stateMismatchError(err, "campaign evidence anomalies do not match the result")
+	}
+	var adversaries AdversaryCampaignEvidence
+	if err := decodeStrictJSONBytes(files["adversaries.json"], &adversaries); err != nil || strings.TrimSpace(adversaries.Schema) == "" || result.Adversaries == nil || !reflect.DeepEqual(&adversaries, result.Adversaries) {
+		return stateMismatchError(err, "campaign evidence adversaries do not match the result")
+	}
+	var analysis AnalysisReport
+	if err := decodeStrictJSONBytes(files["analysis.json"], &analysis); err != nil || analysis.Schema != "urnetwork-sim-analysis-v1" || !reflect.DeepEqual(&analysis, bundle.Analysis) {
+		return stateMismatchError(err, "campaign evidence analysis does not match the signed bundle")
+	}
+	if bundle.Observation.Schema != "urnetwork-sim-scenario-observation-v1" {
+		return errors.New("campaign evidence bundle observation schema is invalid")
+	}
+	return nil
+}
+
+func verifyPublicFinalSemanticEvidence(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string) error {
+	reader, err := NewPublicFinalSemanticChainReader(ctx, public, evidence, evidenceURI)
+	if err != nil {
+		return err
+	}
+	verifyErr := VerifyFinalSemanticEvidenceOnChain(ctx, evidence, reader)
+	return errors.Join(verifyErr, reader.Close())
+}
+
+type authenticatedCampaignSemantic struct {
+	Evidence         *FinalSemanticEvidence
+	EvidenceManifest *ReleaseEvidenceEnvelope
+	PriorCompletion  *ReleaseEvidenceEnvelope
+	PriorPayload     *scenarioCompletePayload
+	PriorManifest    *ReleaseEvidenceEnvelope
+	Artifacts        map[string][]byte
+}
+
+func authenticatePriorPhaseArtifacts(public *PublicDeploymentManifest, semantic *FinalSemanticEvidence, allFiles map[string][]byte) (*ReleaseEvidenceEnvelope, *scenarioCompletePayload, *ReleaseEvidenceEnvelope, error) {
+	if semantic == nil || semantic.PriorPhase == nil {
+		return nil, nil, nil, nil
+	}
+	prior := semantic.PriorPhase
+	completionBytes := allFiles[prior.Completion.URI]
+	manifestBytes := allFiles[prior.EvidenceManifest.URI]
+	if len(completionBytes) == 0 || len(manifestBytes) == 0 {
+		return nil, nil, nil, errors.New("prior release completion or evidence manifest is absent from the authenticated campaign graph")
+	}
+	var completion ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONBytes(completionBytes, &completion); err != nil || verifyEvidence(&completion, nil) != nil || public == nil || completion.Kind != "scenario-complete" || completion.RunID != prior.RunID || !strings.EqualFold(completion.ContentHash, prior.OwnerCompletionEnvelopeHash) || completion.DeploymentID != public.DeploymentID || completion.ChainID != public.ChainID || completion.Netuid != public.Netuid || !strings.EqualFold(completion.GenesisHash, public.GenesisHash) {
+		return nil, nil, nil, stateMismatchError(err, "prior release owner completion is invalid")
+	}
+	var payload scenarioCompletePayload
+	if err := decodeStrictJSONBytes(completion.Payload, &payload); err != nil || !strings.EqualFold(payload.ResultHash, prior.ResultHash) || !validSHA256ContentHash(payload.BundlePayloadHash) || !validSHA256ContentHash(payload.EvidenceManifestHash) || len(payload.Files) == 0 {
+		return nil, nil, nil, stateMismatchError(err, "prior release completion payload is invalid")
+	}
+	var manifestEnvelope ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONBytes(manifestBytes, &manifestEnvelope); err != nil || verifyEvidence(&manifestEnvelope, nil) != nil || manifestEnvelope.Kind != campaignEvidenceManifestKind || manifestEnvelope.RunID != prior.RunID || !strings.EqualFold(manifestEnvelope.ContentHash, prior.EvidenceManifestEnvelopeHash) || manifestEnvelope.DeploymentID != public.DeploymentID || manifestEnvelope.ChainID != public.ChainID || manifestEnvelope.Netuid != public.Netuid || !strings.EqualFold(manifestEnvelope.GenesisHash, public.GenesisHash) || manifestEnvelope.Signer != completion.Signer || !strings.EqualFold(manifestEnvelope.ContentHash, payload.EvidenceManifestHash) {
+		return nil, nil, nil, stateMismatchError(err, "prior release evidence manifest envelope is invalid")
+	}
+	manifest, err := decodeCampaignEvidenceManifest(&manifestEnvelope)
+	if err != nil || !strings.EqualFold(manifest.ResultHash, prior.ResultHash) || !strings.EqualFold(manifest.BundlePayloadHash, payload.BundlePayloadHash) {
+		return nil, nil, nil, stateMismatchError(err, "prior release evidence manifest does not bind its completion")
+	}
+	files, err := campaignEvidenceManifestFiles(manifest.Files)
+	if err != nil || !stringMapsEqual(files, payload.Files) {
+		return nil, nil, nil, stateMismatchError(err, "prior release evidence manifest files do not match its completion")
+	}
+	return &completion, &payload, &manifestEnvelope, nil
+}
+
+func (p *liveScenarioProbe) verifyCampaignFinalSemanticEvidence(ctx context.Context, public *PublicDeploymentManifest, ownerSigner string, bundle *ScenarioEvidenceBundle, files, referencedFiles, httpsFiles map[string][]byte) (*authenticatedCampaignSemantic, error) {
+	type semanticObject struct {
+		name string
+		raw  []byte
+	}
+	semanticObjects := make([]semanticObject, 0, 1)
+	allFiles := make(map[string][]byte, len(files)+len(referencedFiles)+len(httpsFiles))
+	for _, source := range []map[string][]byte{files, referencedFiles, httpsFiles} {
+		for name, raw := range source {
+			allFiles[name] = raw
+			if !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			var header struct {
+				Schema string `json:"schema"`
+			}
+			if json.Unmarshal(raw, &header) == nil && header.Schema == finalSemanticEvidenceSchema {
+				semanticObjects = append(semanticObjects, semanticObject{name: name, raw: raw})
+			}
+		}
+	}
+	if len(semanticObjects) != 1 {
+		return nil, fmt.Errorf("authenticated campaign graph contains %d final semantic evidence objects, want exactly 1", len(semanticObjects))
+	}
+	object := semanticObjects[0]
+	var semantic FinalSemanticEvidence
+	if err := decodeStrictJSONBytes(object.raw, &semantic); err != nil {
+		return nil, fmt.Errorf("campaign final semantic evidence %q: %w", object.name, err)
+	}
+	if public == nil || public.Contracts == nil || bundle == nil || bundle.Result == nil || bundle.Result.AcceptanceWindow == nil || public.PlanHash == "" ||
+		semantic.Phase != bundle.Result.Name || semantic.RunID != bundle.Result.RunID || !strings.EqualFold(semantic.ResultHash, bundle.Result.EvidenceHash) || semantic.DeploymentID != public.DeploymentID || semantic.PlanHash != public.PlanHash || semantic.ConfigHash != public.ConfigHash || !strings.EqualFold(semantic.PolicyHash, public.PolicyHash) ||
+		semantic.ChainID != public.ChainID || semantic.Netuid != public.Netuid || !strings.EqualFold(semantic.GenesisHash, public.GenesisHash) || semantic.EVMTerminalHead != bundle.Result.EndHead ||
+		!reflect.DeepEqual(semantic.Window, *bundle.Result.AcceptanceWindow) || semantic.ExpectedOperators != public.Topology.Operators || semantic.ExpectedValidators != public.Topology.Validators || semantic.ExpectedMiners != public.Topology.Miners ||
+		semantic.ExpectedCandidates != public.Topology.HeadFleets+public.Topology.ChallengerFleets || semantic.ExpectedHeadSlots != public.Topology.HeadSlots ||
+		!strings.EqualFold(semantic.Deployment.CoordinatorProxy, public.Contracts.CoordinatorProxy.Hex()) || !strings.EqualFold(semantic.Deployment.SettlementVault, public.Contracts.SettlementVault.Hex()) ||
+		!strings.EqualFold(semantic.Deployment.ReserveSink, public.Contracts.ReserveSink.Hex()) || !strings.EqualFold(semantic.Deployment.CoordinatorImplementation, public.Contracts.CoordinatorImplementation.Hex()) ||
+		!strings.EqualFold(semantic.Deployment.GovernanceOwner, ownerSigner) {
+		return nil, errors.New("final semantic evidence does not bind the signed campaign, deployment, topology, and terminal checkpoint")
+	}
+	loader := func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
+		raw, ok := allFiles[locator.URI]
+		if !ok {
+			return nil, fmt.Errorf("artifact locator %q is not in the authenticated campaign graph", locator.URI)
+		}
+		return append([]byte(nil), raw...), nil
+	}
+	if err := VerifyFinalSemanticArtifacts(ctx, &semantic, loader); err != nil {
+		return nil, err
+	}
+	if semantic.PublicVerification == nil || semantic.PublicVerification.EvidenceURI == "" {
+		return nil, errors.New("final semantic evidence does not bind a public deployment-manifest URI")
+	}
+	allowedOrigins, err := campaignArtifactAllowedOrigins(public, p.publicManifestURI)
+	if err != nil {
+		return nil, fmt.Errorf("final semantic deployment-manifest transport: %w", err)
+	}
+	if err := validateCampaignArtifactOrigin(semantic.PublicVerification.EvidenceURI, allowedOrigins); err != nil {
+		return nil, fmt.Errorf("final semantic deployment-manifest URI: %w", err)
+	}
+	if p.finalSemanticVerify == nil {
+		publicManifestHash, err := canonicalHashHex(public)
+		publicProfile, profileErr := effectivePublicEvidenceTransportProfile(public)
+		if err != nil || profileErr != nil || semantic.PublicVerification.PublicManifestHash != publicManifestHash || semantic.PublicVerification.SubstrateRPC != public.SubstrateRPC || semantic.PublicVerification.EVMRPC != public.EVMRPC || semantic.PublicVerification.EvidenceTransportProfile != publicProfile {
+			err = errors.Join(err, profileErr)
+			return nil, stateMismatchError(err, "final semantic evidence does not bind the authenticated public manifest hash and exact public RPC endpoints")
+		}
+	}
+	if semantic.PublicVerification.EvidenceURI != p.publicManifestURI {
+		profile, profileErr := effectivePublicEvidenceTransportProfile(public)
+		if profileErr != nil {
+			return nil, fmt.Errorf("final semantic deployment-manifest transport: %w", profileErr)
+		}
+		_, discovered, err := loadDeploymentReferenceWithTransport(ctx, "", semantic.PublicVerification.EvidenceURI, profile, public.ChainID, public.GenesisHash)
+		if err != nil || discovered == nil {
+			return nil, stateMismatchError(err, "final semantic deployment-manifest URI is unavailable or unauthenticated")
+		}
+		wantHash, wantErr := canonicalHashHex(public)
+		gotHash, gotErr := canonicalHashHex(discovered)
+		if wantErr != nil || gotErr != nil || wantHash != gotHash {
+			return nil, errors.Join(wantErr, gotErr, errors.New("final semantic deployment-manifest URI resolves to a different public manifest"))
+		}
+	}
+	verify := p.finalSemanticVerify
+	if verify == nil {
+		verify = verifyPublicFinalSemanticEvidence
+	}
+	if err := verify(ctx, public, &semantic, semantic.PublicVerification.EvidenceURI); err != nil {
+		return nil, fmt.Errorf("final semantic public archive replay: %w", err)
+	}
+	markdown, err := RenderFinalSemanticEvidenceMarkdown(&semantic)
+	if err != nil {
+		return nil, fmt.Errorf("render authenticated final semantic evidence: %w", err)
+	}
+	if !bytes.Equal(files[finalSemanticMarkdownFilename], markdown) {
+		return nil, errors.New("authenticated FINAL.md does not match the sealed final semantic evidence")
+	}
+	priorCompletion, priorPayload, priorManifest, err := authenticatePriorPhaseArtifacts(public, &semantic, allFiles)
+	if err != nil {
+		return nil, err
+	}
+	return &authenticatedCampaignSemantic{Evidence: &semantic, PriorCompletion: priorCompletion, PriorPayload: priorPayload, PriorManifest: priorManifest, Artifacts: allFiles}, nil
+}
+
+func (p *liveScenarioProbe) verifyPublicCampaignEvidence(ctx context.Context, public *PublicDeploymentManifest, ownerSigner string, complete *ReleaseEvidenceEnvelope, completion scenarioCompletePayload, bundle *ScenarioEvidenceBundle) (*authenticatedCampaignSemantic, error) {
+	if complete == nil || !validSHA256ContentHash(completion.EvidenceManifestHash) {
+		return nil, errors.New("scenario completion has no campaign evidence manifest")
+	}
+	manifestEnvelope, err := p.fetchReplicatedCampaignEnvelope(ctx, public, completion.EvidenceManifestHash, campaignEvidenceManifestKind, complete.RunID, ownerSigner)
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := decodeCampaignEvidenceManifest(manifestEnvelope)
+	if err != nil || !strings.EqualFold(manifest.ResultHash, completion.ResultHash) || !strings.EqualFold(manifest.BundlePayloadHash, completion.BundlePayloadHash) {
+		return nil, stateMismatchError(err, "campaign evidence manifest does not bind the signed completion")
+	}
+	manifestFiles, err := campaignEvidenceManifestFiles(manifest.Files)
+	if err != nil || !stringMapsEqual(manifestFiles, completion.Files) {
+		return nil, stateMismatchError(err, "campaign evidence manifest files do not match the signed completion")
+	}
+	files := make(map[string][]byte, len(manifest.Files))
+	referencedFiles := make(map[string][]byte, len(manifest.References))
+	for _, group := range []struct {
+		scope   string
+		entries []campaignEvidenceFileEntry
+		target  map[string][]byte
+	}{{"run", manifest.Files, files}, {"reference", manifest.References, referencedFiles}} {
+		for _, entry := range group.entries {
+			envelope, err := p.fetchReplicatedCampaignEnvelope(ctx, public, entry.EnvelopeHash, campaignEvidenceFileKind, complete.RunID, ownerSigner)
+			if err != nil {
+				return nil, err
+			}
+			var payload campaignEvidenceFilePayload
+			if err := decodeStrictJSONBytes(envelope.Payload, &payload); err != nil || payload.Schema != campaignEvidenceFileSchema || payload.RunID != complete.RunID || payload.Scope != group.scope || payload.Path != entry.Path || payload.Size != entry.Size || !strings.EqualFold(payload.ContentHash, entry.ContentHash) || uint64(len(payload.Data)) != entry.Size || !strings.EqualFold(bytesSHA256(payload.Data), entry.ContentHash) {
+				return nil, stateMismatchError(err, "campaign evidence %s file %q has invalid signed content", group.scope, entry.Path)
+			}
+			group.target[entry.Path] = append([]byte(nil), payload.Data...)
+		}
+	}
+	if err := validateCampaignEvidenceSemantics(files, completion, bundle); err != nil {
+		return nil, err
+	}
+	references := map[string]campaignArtifactReference{}
+	edges := map[string]map[string]bool{}
+	fileNames := make([]string, 0, len(files))
+	var aggregate uint64
+	for name, raw := range files {
+		fileNames = append(fileNames, name)
+		aggregate += uint64(len(raw))
+	}
+	for _, raw := range referencedFiles {
+		aggregate += uint64(len(raw))
+	}
+	if aggregate > maximumCampaignEvidenceAggregateBytes {
+		return nil, fmt.Errorf("campaign evidence graph exceeds %d aggregate bytes", maximumCampaignEvidenceAggregateBytes)
+	}
+	sort.Strings(fileNames)
+	for _, name := range fileNames {
+		if err := mergeCampaignArtifactSource(references, edges, name, files[name]); err != nil {
+			return nil, err
+		}
+		if err := validateCampaignArtifactObjectCount(len(files), references); err != nil {
+			return nil, err
+		}
+	}
+	expectedReferences := make(map[string]string)
+	httpsFiles := make(map[string][]byte)
+	processedReferences := map[string]bool{}
+	allowedOrigins, err := campaignArtifactAllowedOrigins(public, p.publicManifestURI)
+	if err != nil {
+		return nil, fmt.Errorf("campaign artifact transport: %w", err)
+	}
+	for len(processedReferences) < len(references) {
+		names := make([]string, 0, len(references)-len(processedReferences))
+		for name := range references {
+			if !processedReferences[name] {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		name := names[0]
+		processedReferences[name] = true
+		reference := references[name]
+		parsed, _ := url.Parse(name)
+		var raw []byte
+		if parsed.Scheme == "" {
+			if runRaw, exists := files[name]; exists {
+				raw = runRaw
+				if uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+					return nil, fmt.Errorf("campaign artifact locator %q does not match its run file", name)
+				}
+			} else {
+				expectedReferences[name] = reference.ContentHash
+				var exists bool
+				raw, exists = referencedFiles[name]
+				if !exists || uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+					return nil, fmt.Errorf("campaign referenced artifact %q is unavailable or has invalid content", name)
+				}
+			}
+		} else {
+			if err := validateCampaignArtifactOrigin(name, allowedOrigins); err != nil {
+				return nil, err
+			}
+			if reference.Size > maximumCampaignEvidenceAggregateBytes-aggregate {
+				return nil, fmt.Errorf("campaign evidence graph exceeds %d aggregate bytes", maximumCampaignEvidenceAggregateBytes)
+			}
+			var err error
+			raw, _, err = p.get(ctx, name, int64(reference.Size))
+			if err != nil || uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+				return nil, stateMismatchError(err, "public campaign artifact %q is unavailable or has invalid content", name)
+			}
+			httpsFiles[name] = raw
+			aggregate += uint64(len(raw))
+		}
+		if err := mergeCampaignArtifactSource(references, edges, name, raw); err != nil {
+			return nil, err
+		}
+		if err := validateCampaignArtifactObjectCount(len(files), references); err != nil {
+			return nil, err
+		}
+	}
+	if err := validateCampaignArtifactGraph(edges); err != nil {
+		return nil, err
+	}
+	manifestReferences, err := campaignEvidenceEntryFiles(manifest.References)
+	if err != nil || !stringMapsEqual(manifestReferences, expectedReferences) {
+		return nil, stateMismatchError(err, "campaign evidence manifest external references do not match its raw locators")
+	}
+	authenticated, err := p.verifyCampaignFinalSemanticEvidence(ctx, public, ownerSigner, bundle, files, referencedFiles, httpsFiles)
+	if err != nil {
+		return nil, err
+	}
+	authenticated.EvidenceManifest = manifestEnvelope
+	return authenticated, nil
+}
+
+type publicScenarioCandidate struct {
+	bundle  *ScenarioEvidenceBundle
+	payload string
+	signers map[int]bool
+	time    time.Time
+}
+
+type publicScenarioCompletionCandidate struct {
+	envelope  *ReleaseEvidenceEnvelope
+	payload   scenarioCompletePayload
+	operators map[int]bool
+}
+
+type authenticatedPublicScenarioCandidate struct {
+	candidate  *publicScenarioCandidate
+	completion *publicScenarioCompletionCandidate
+	semantic   *authenticatedCampaignSemantic
+	prior      *authenticatedPublicScenarioCandidate
+}
+
+// AuthenticatedPublicCampaign is the complete secretless replay input rooted
+// in one all-operator history commit. Artifacts contains only bytes reached
+// through the signed, bounded campaign manifest graph.
+type AuthenticatedPublicCampaign struct {
+	PublicManifestURI string
+	PublicManifest    *PublicDeploymentManifest
+	Bundle            *ScenarioEvidenceBundle
+	Semantic          *FinalSemanticEvidence
+	OwnerCompletion   *ReleaseEvidenceEnvelope
+	EvidenceManifest  *ReleaseEvidenceEnvelope
+	Artifacts         map[string][]byte
+	Prior             *AuthenticatedPublicCampaign
+}
+
+func (campaign *AuthenticatedPublicCampaign) ArtifactLoader() FinalArtifactLoader {
+	return func(ctx context.Context, locator FinalArtifactLocator) ([]byte, error) {
+		if campaign == nil {
+			return nil, errors.New("authenticated public campaign is unavailable")
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		raw, ok := campaign.Artifacts[locator.URI]
+		if !ok {
+			return nil, fmt.Errorf("artifact locator %q is outside the authenticated public campaign graph", locator.URI)
+		}
+		return append([]byte(nil), raw...), nil
+	}
+}
+
+func materializeAuthenticatedPublicCampaign(public *PublicDeploymentManifest, manifestURI string, authenticated *authenticatedPublicScenarioCandidate) *AuthenticatedPublicCampaign {
+	if authenticated == nil || authenticated.semantic == nil {
+		return nil
+	}
+	artifacts := make(map[string][]byte, len(authenticated.semantic.Artifacts))
+	for name, raw := range authenticated.semantic.Artifacts {
+		artifacts[name] = append([]byte(nil), raw...)
+	}
+	result := &AuthenticatedPublicCampaign{
+		PublicManifestURI: manifestURI,
+		PublicManifest:    public,
+		Bundle:            authenticated.candidate.bundle,
+		Semantic:          authenticated.semantic.Evidence,
+		OwnerCompletion:   authenticated.completion.envelope,
+		EvidenceManifest:  authenticated.semantic.EvidenceManifest,
+		Artifacts:         artifacts,
+	}
+	result.Prior = materializeAuthenticatedPublicCampaign(public, manifestURI, authenticated.prior)
+	return result
+}
+
+func evidenceEnvelopesEqual(left, right *ReleaseEvidenceEnvelope) bool {
+	return left != nil && right != nil && left.ContentHash == right.ContentHash && left.Signature == right.Signature && reflect.DeepEqual(left, right)
+}
+
+func validateAuthenticatedPublicPhaseLineage(current, prior *authenticatedPublicScenarioCandidate) error {
+	if current == nil || current.candidate == nil || current.candidate.bundle == nil || current.candidate.bundle.Result == nil || current.candidate.bundle.Result.AcceptanceWindow == nil || current.completion == nil || current.semantic == nil || current.semantic.Evidence == nil {
+		return errors.New("current public campaign phase is incomplete")
+	}
+	result := current.candidate.bundle.Result
+	semantic := current.semantic.Evidence
+	if result.Name == "release-1.0" {
+		if semantic.Phase != "release-1.0" || semantic.PriorPhase != nil || prior != nil {
+			return errors.New("release-1.0 public campaign must not claim a predecessor")
+		}
+		return nil
+	}
+	if result.Name != "production-soak" || semantic.Phase != "production-soak" || semantic.PriorPhase == nil {
+		return errors.New("production public campaign lacks an authenticated release-1.0 predecessor")
+	}
+	if prior == nil || prior.candidate == nil || prior.candidate.bundle == nil || prior.candidate.bundle.Result == nil || prior.candidate.bundle.Result.AcceptanceWindow == nil || prior.completion == nil || prior.semantic == nil || prior.semantic.Evidence == nil || prior.semantic.EvidenceManifest == nil {
+		return errors.New("production public campaign predecessor is incomplete")
+	}
+	priorResult := prior.candidate.bundle.Result
+	priorSemantic := prior.semantic.Evidence
+	binding := semantic.PriorPhase
+	if priorResult.Name != "release-1.0" || priorSemantic.Phase != "release-1.0" || priorSemantic.PriorPhase != nil ||
+		binding.RunID != priorResult.RunID || !strings.EqualFold(binding.ResultHash, priorResult.EvidenceHash) ||
+		!strings.EqualFold(binding.OwnerCompletionEnvelopeHash, prior.completion.envelope.ContentHash) || !strings.EqualFold(binding.EvidenceManifestEnvelopeHash, prior.semantic.EvidenceManifest.ContentHash) ||
+		!reflect.DeepEqual(binding.AcceptanceWindow, *priorResult.AcceptanceWindow) || binding.TerminalEVMHead != priorResult.EndHead ||
+		binding.TerminalNativeHead != priorSemantic.NativeTerminalHead ||
+		result.DeploymentID != priorResult.DeploymentID || result.ConfigHash != priorResult.ConfigHash || !strings.EqualFold(result.PolicyHash, priorResult.PolicyHash) ||
+		result.ChainID != priorResult.ChainID || result.Netuid != priorResult.Netuid || !strings.EqualFold(result.GenesisHash, priorResult.GenesisHash) {
+		return errors.New("production public campaign predecessor does not bind the authenticated release result and semantic checkpoints")
+	}
+	if current.semantic.PriorCompletion == nil || current.semantic.PriorPayload == nil || current.semantic.PriorManifest == nil ||
+		!evidenceEnvelopesEqual(current.semantic.PriorCompletion, prior.completion.envelope) ||
+		!reflect.DeepEqual(*current.semantic.PriorPayload, prior.completion.payload) ||
+		!evidenceEnvelopesEqual(current.semantic.PriorManifest, prior.semantic.EvidenceManifest) {
+		return errors.New("production public campaign predecessor objects do not match the independently replicated release history")
+	}
+	priorCompleted, completedErr := time.Parse(time.RFC3339Nano, priorResult.CompletedAt)
+	currentStarted, startedErr := time.Parse(time.RFC3339Nano, result.StartedAt)
+	if completedErr != nil || startedErr != nil || currentStarted.Before(priorCompleted) || priorResult.EndHead.Number >= result.AcceptanceWindow.BaselineHead.Number {
+		return errors.Join(completedErr, startedErr, errors.New("production public campaign does not follow the authenticated release boundary"))
+	}
+	return nil
+}
+
+func findPublicCampaignPredecessor(semantic *authenticatedCampaignSemantic, candidates map[string]*publicScenarioCandidate, completions map[string]*publicScenarioCompletionCandidate, operatorCount int) (*publicScenarioCandidate, *publicScenarioCompletionCandidate, error) {
+	if semantic == nil || semantic.Evidence == nil || semantic.Evidence.PriorPhase == nil || semantic.PriorCompletion == nil || semantic.PriorPayload == nil || operatorCount <= 0 {
+		return nil, nil, errors.New("production public campaign has no authenticated predecessor objects")
+	}
+	encodedCompletion, err := json.Marshal(semantic.PriorCompletion)
+	if err != nil {
+		return nil, nil, err
+	}
+	completion := completions[bytesSHA256(encodedCompletion)]
+	candidate := candidates[semantic.PriorCompletion.RunID+"\x00"+semantic.PriorPayload.BundlePayloadHash]
+	if completion == nil || candidate == nil {
+		return nil, nil, errors.New("production predecessor is absent from replicated public scenario history")
+	}
+	if len(completion.operators) != operatorCount || len(candidate.signers) != operatorCount || !evidenceEnvelopesEqual(semantic.PriorCompletion, completion.envelope) || !reflect.DeepEqual(*semantic.PriorPayload, completion.payload) {
+		return nil, nil, errors.New("production predecessor does not have byte-identical bundle and completion commits at every operator")
+	}
+	return candidate, completion, nil
+}
+
+func selectAuthenticatedPublicCampaign(current, candidate *authenticatedPublicScenarioCandidate, requestedRunID string) (*authenticatedPublicScenarioCandidate, error) {
+	if candidate == nil || candidate.candidate == nil || candidate.candidate.bundle == nil || candidate.candidate.bundle.Result == nil || candidate.completion == nil || candidate.completion.envelope == nil {
+		return nil, errors.New("authenticated public campaign selection candidate is incomplete")
+	}
+	if current == nil {
+		return candidate, nil
+	}
+	if current.candidate == nil || current.candidate.bundle == nil || current.candidate.bundle.Result == nil || current.completion == nil || current.completion.envelope == nil {
+		return nil, errors.New("authenticated public campaign selection state is incomplete")
+	}
+	currentResult := current.candidate.bundle.Result
+	candidateResult := candidate.candidate.bundle.Result
+	sameIdentity := currentResult.RunID == candidateResult.RunID && current.candidate.payload == candidate.candidate.payload && evidenceEnvelopesEqual(current.completion.envelope, candidate.completion.envelope)
+	if requestedRunID != "" {
+		if !sameIdentity {
+			return nil, fmt.Errorf("public campaign run %q has multiple authenticated signed bundles or owner completions", requestedRunID)
+		}
+		return current, nil
+	}
+	if candidate.candidate.time.After(current.candidate.time) {
+		return candidate, nil
+	}
+	if candidate.candidate.time.Equal(current.candidate.time) && !sameIdentity {
+		return nil, errors.New("public campaign selection is ambiguous at the latest completion time; specify an exact run id")
+	}
+	return current, nil
+}
+
+func (p *liveScenarioProbe) fetchAuthenticatedScenarioCampaign(ctx context.Context, public *PublicDeploymentManifest, requestedRunID, requestedPhase string) (*authenticatedPublicScenarioCandidate, error) {
 	if public == nil {
 		return nil, errors.New("public deployment manifest is missing")
 	}
-	_, expected := inspectPublicIdentityBytes(p.cfg, public.Identities)
-	var identities struct {
-		EVM map[string]string `json:"evm"`
+	if requestedRunID != "" && (requestedRunID != strings.TrimSpace(requestedRunID) || strings.ContainsAny(requestedRunID, "/\\\r\n\x00")) {
+		return nil, errors.New("requested public campaign run id is invalid")
 	}
-	if json.Unmarshal(public.Identities, &identities) != nil || identities.EVM["testnet-owner"] == "" || len(expected) != len(public.Operators) {
+	if requestedPhase != "" && requestedPhase != "release-1.0" && requestedPhase != "production-soak" {
+		return nil, fmt.Errorf("requested public campaign phase %q is invalid", requestedPhase)
+	}
+	_, expected := inspectPublicIdentityBytes(p.cfg, public.Identities)
+	if len(expected) != len(public.Operators) {
 		return nil, errors.New("public scenario evidence signer directory is invalid")
 	}
-	ownerSigner := identities.EVM["testnet-owner"]
-	type candidate struct {
-		bundle  *ScenarioEvidenceBundle
-		payload string
-		signers map[int]bool
-		time    time.Time
-	}
-	type completionCandidate struct {
-		envelope  *ReleaseEvidenceEnvelope
-		payload   scenarioCompletePayload
-		operators map[int]bool
-	}
-	candidates := map[string]*candidate{}
-	completions := map[string]*completionCandidate{}
+	candidates := map[string]*publicScenarioCandidate{}
+	completions := map[string]*publicScenarioCompletionCandidate{}
 	for _, operator := range public.Operators {
 		if operator.NoID < 1 || operator.NoID > len(public.Operators) || expected[operator.NoID] == "" || operator.APIURL == "" || operator.HistoryURL == "" {
 			return nil, errors.New("public scenario evidence operator directory is invalid")
@@ -398,7 +1057,7 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 			query.Set("netuid", fmt.Sprint(public.Netuid))
 			query.Set("kind", kind)
 			history.RawQuery = query.Encode()
-			body, _, err := p.get(ctx, history.String(), 16<<20)
+			body, _, err := p.get(ctx, history.String(), 16*1024*1024)
 			if err != nil {
 				return nil, err
 			}
@@ -417,7 +1076,7 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 				continue
 			}
 			evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=sha256:" + hash
-			encoded, _, fetchErr := p.get(ctx, evidenceURL, 64<<20)
+			encoded, _, fetchErr := p.get(ctx, evidenceURL, 64*1024*1024)
 			if fetchErr != nil {
 				continue
 			}
@@ -426,11 +1085,18 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 				continue
 			}
 			var bundle ScenarioEvidenceBundle
-			if json.Unmarshal(envelope.Payload, &bundle) != nil || bundle.Schema != "urnetwork-sim-scenario-evidence-v1" || bundle.Result == nil || bundle.Observation == nil || bundle.Result.Result != "pass" || bundle.Result.DeploymentID != public.DeploymentID || bundle.Result.Netuid != public.Netuid || bundle.Result.ConfigHash != public.ConfigHash || !strings.EqualFold(bundle.Result.PolicyHash, public.PolicyHash) {
+			if decodeStrictJSONBytes(envelope.Payload, &bundle) != nil || bundle.Schema != "urnetwork-sim-scenario-evidence-v1" || bundle.Result == nil || bundle.Observation == nil || bundle.Analysis == nil || bundle.Result.Schema != "urnetwork-sim-scenario-result-v1" || bundle.Result.Release != "1.0" || bundle.Result.RunID == "" || bundle.Result.Result != "pass" || bundle.Result.DeploymentID != public.DeploymentID || bundle.Result.ChainID != public.ChainID || !strings.EqualFold(bundle.Result.GenesisHash, public.GenesisHash) || bundle.Result.Netuid != public.Netuid || bundle.Result.ConfigHash != public.ConfigHash || !strings.EqualFold(bundle.Result.PolicyHash, public.PolicyHash) {
 				continue
 			}
 			resultHash, hashErr := canonicalScenarioResultHash(bundle.Result)
 			if hashErr != nil || !strings.EqualFold(resultHash, bundle.Result.EvidenceHash) {
+				continue
+			}
+			verifyResult := p.campaignResultVerify
+			if verifyResult == nil {
+				verifyResult = validateScenarioCampaignResult
+			}
+			if verifyResult(p.cfg, bundle.Result, bundle.Result.Name) != nil {
 				continue
 			}
 			payloadHash := bytesSHA256(envelope.Payload)
@@ -439,7 +1105,7 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 			item := candidates[candidateKey]
 			if item == nil {
 				copy := bundle
-				item = &candidate{bundle: &copy, payload: payloadHash, signers: map[int]bool{}, time: completed}
+				item = &publicScenarioCandidate{bundle: &copy, payload: payloadHash, signers: map[int]bool{}, time: completed}
 				candidates[candidateKey] = item
 			}
 			item.signers[operator.NoID] = true
@@ -455,7 +1121,7 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 				continue
 			}
 			evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=sha256:" + hash
-			encoded, _, fetchErr := p.get(ctx, evidenceURL, 64<<20)
+			encoded, _, fetchErr := p.get(ctx, evidenceURL, 64*1024*1024)
 			if fetchErr != nil {
 				continue
 			}
@@ -464,45 +1130,155 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 				continue
 			}
 			var envelope ReleaseEvidenceEnvelope
-			if decodeStrictJSONBytes(operatorEnvelope.Payload, &envelope) != nil || verifyEvidence(&envelope, nil) != nil || envelope.Kind != "scenario-complete" || envelope.RunID != operatorEnvelope.RunID || envelope.DeploymentID != public.DeploymentID || envelope.ChainID != public.ChainID || envelope.Netuid != public.Netuid || !strings.EqualFold(envelope.GenesisHash, public.GenesisHash) || !strings.EqualFold(envelope.Signer.Hex(), ownerSigner) {
+			if decodeStrictJSONBytes(operatorEnvelope.Payload, &envelope) != nil || verifyEvidence(&envelope, nil) != nil || envelope.Kind != "scenario-complete" || envelope.RunID != operatorEnvelope.RunID || envelope.DeploymentID != public.DeploymentID || envelope.ChainID != public.ChainID || envelope.Netuid != public.Netuid || !strings.EqualFold(envelope.GenesisHash, public.GenesisHash) {
 				continue
 			}
 			var payload scenarioCompletePayload
-			if decodeStrictJSONBytes(envelope.Payload, &payload) != nil || !validCanonicalHashHex(payload.ResultHash) || !validSHA256ContentHash(payload.BundlePayloadHash) || len(payload.Files) == 0 {
+			if decodeStrictJSONBytes(envelope.Payload, &payload) != nil || !validCanonicalHashHex(payload.ResultHash) || !validSHA256ContentHash(payload.BundlePayloadHash) || !validSHA256ContentHash(payload.EvidenceManifestHash) || len(payload.Files) == 0 {
 				continue
 			}
-			item := completions[envelope.ContentHash]
+			completionKey := bytesSHA256(operatorEnvelope.Payload)
+			item := completions[completionKey]
 			if item == nil {
 				copyEnvelope := envelope
-				item = &completionCandidate{envelope: &copyEnvelope, payload: payload, operators: map[int]bool{}}
-				completions[envelope.ContentHash] = item
+				item = &publicScenarioCompletionCandidate{envelope: &copyEnvelope, payload: payload, operators: map[int]bool{}}
+				completions[completionKey] = item
 			}
 			item.operators[operator.NoID] = true
 		}
 	}
-	var latest *candidate
+	var latest *authenticatedPublicScenarioCandidate
+	var verificationErr error
+	authenticated := map[string]*authenticatedPublicScenarioCandidate{}
+	visiting := map[string]bool{}
+	var authenticate func(*publicScenarioCandidate, *publicScenarioCompletionCandidate) (*authenticatedPublicScenarioCandidate, error)
+	authenticate = func(item *publicScenarioCandidate, completion *publicScenarioCompletionCandidate) (*authenticatedPublicScenarioCandidate, error) {
+		if item == nil || item.bundle == nil || item.bundle.Result == nil || completion == nil || completion.envelope == nil || len(item.signers) != len(public.Operators) || len(completion.operators) != len(public.Operators) ||
+			completion.envelope.RunID != item.bundle.Result.RunID || !strings.EqualFold(completion.payload.ResultHash, item.bundle.Result.EvidenceHash) || !strings.EqualFold(completion.payload.BundlePayloadHash, item.payload) {
+			return nil, errors.New("scenario campaign candidate and completion identity is incomplete")
+		}
+		key := item.bundle.Result.RunID + "\x00" + item.payload + "\x00" + completion.envelope.ContentHash + "\x00" + completion.envelope.Signature
+		if result := authenticated[key]; result != nil {
+			return result, nil
+		}
+		if visiting[key] {
+			return nil, errors.New("public campaign phase lineage contains a cycle")
+		}
+		visiting[key] = true
+		defer delete(visiting, key)
+		owner, err := p.resolveCampaignEvidenceOwner(ctx, public, item.bundle.Result)
+		if err != nil {
+			return nil, err
+		}
+		if owner != completion.envelope.Signer {
+			return nil, errors.New("scenario completion owner does not match the coordinator owner at the campaign terminal block")
+		}
+		semantic, err := p.verifyPublicCampaignEvidence(ctx, public, owner.Hex(), completion.envelope, completion.payload, item.bundle)
+		if err != nil {
+			return nil, err
+		}
+		current := &authenticatedPublicScenarioCandidate{candidate: item, completion: completion, semantic: semantic}
+		if semantic.Evidence.Phase == "release-1.0" {
+			if err := validateAuthenticatedPublicPhaseLineage(current, nil); err != nil {
+				return nil, err
+			}
+		} else {
+			if semantic.PriorCompletion == nil || semantic.PriorPayload == nil {
+				return nil, errors.New("production public campaign has no authenticated predecessor objects")
+			}
+			priorItem, priorCompletion, err := findPublicCampaignPredecessor(semantic, candidates, completions, len(public.Operators))
+			if err != nil {
+				return nil, err
+			}
+			prior, err := authenticate(priorItem, priorCompletion)
+			if err != nil {
+				return nil, fmt.Errorf("authenticate production predecessor: %w", err)
+			}
+			if err := validateAuthenticatedPublicPhaseLineage(current, prior); err != nil {
+				return nil, err
+			}
+			current.prior = prior
+		}
+		authenticated[key] = current
+		return current, nil
+	}
 	for _, item := range candidates {
-		if len(item.signers) != len(public.Operators) {
+		if len(item.signers) != len(public.Operators) || requestedRunID != "" && item.bundle.Result.RunID != requestedRunID || requestedPhase != "" && item.bundle.Result.Name != requestedPhase {
 			continue
 		}
-		committed := false
+		var committed *authenticatedPublicScenarioCandidate
+		ambiguousCompletion := false
 		for _, completion := range completions {
 			if len(completion.operators) == len(public.Operators) && completion.envelope.RunID == item.bundle.Result.RunID && strings.EqualFold(completion.payload.ResultHash, item.bundle.Result.EvidenceHash) && strings.EqualFold(completion.payload.BundlePayloadHash, item.payload) {
-				committed = true
-				break
+				if verified, err := authenticate(item, completion); err == nil {
+					if committed != nil && !evidenceEnvelopesEqual(committed.completion.envelope, verified.completion.envelope) {
+						verificationErr = errors.New("public campaign has multiple fully replicated owner completions for one signed bundle")
+						ambiguousCompletion = true
+						break
+					}
+					committed = verified
+				} else {
+					verificationErr = err
+				}
 			}
 		}
-		if !committed {
+		if committed == nil || ambiguousCompletion {
 			continue
 		}
-		if latest == nil || item.time.After(latest.time) {
-			latest = item
+		selected, selectionErr := selectAuthenticatedPublicCampaign(latest, committed, requestedRunID)
+		if selectionErr != nil {
+			return nil, selectionErr
 		}
+		latest = selected
 	}
 	if latest == nil {
+		if verificationErr != nil {
+			return nil, fmt.Errorf("no scenario bundle has a fully authenticated public completion: %w", verificationErr)
+		}
 		return nil, errors.New("no scenario bundle has byte-identical operator signatures and a replicated owner completion commit")
 	}
-	return latest.bundle, nil
+	return latest, nil
+}
+
+func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, public *PublicDeploymentManifest) (*ScenarioEvidenceBundle, error) {
+	authenticated, err := p.fetchAuthenticatedScenarioCampaign(ctx, public, "", "")
+	if err != nil {
+		return nil, err
+	}
+	return authenticated.candidate.bundle, nil
+}
+
+// FetchAuthenticatedPublicCampaign starts only from a public manifest URI
+// admitted by the configured evidence transport profile. It performs the
+// all-operator history walk, recursive phase authentication, closed artifact
+// fetch, and pinned archive replay before returning any campaign.
+func FetchAuthenticatedPublicCampaign(ctx context.Context, cfg *ResolvedConfig, manifestURI, runID, phase string) (*AuthenticatedPublicCampaign, error) {
+	if ctx == nil || cfg == nil || cfg.Config == nil {
+		return nil, errors.New("public campaign replay context is incomplete")
+	}
+	profile, err := resolvedPublicEvidenceTransportProfile(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("public campaign evidence transport: %w", err)
+	}
+	if err := verifyFinalEvidenceURI("public campaign manifest", manifestURI, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash); err != nil {
+		return nil, err
+	}
+	if err := adoptPublicManifest(ctx, cfg, manifestURI); err != nil {
+		return nil, err
+	}
+	_, public, err := loadDeploymentReferenceWithTransport(ctx, "", manifestURI, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+	if err != nil || public == nil {
+		return nil, stateMismatchError(err, "authenticate public campaign deployment manifest")
+	}
+	if err := validatePublicCampaignOperatorOrigins(public); err != nil {
+		return nil, err
+	}
+	probe := &liveScenarioProbe{cfg: cfg, client: &http.Client{Timeout: 30 * time.Second}, publicManifestURI: manifestURI}
+	authenticated, err := probe.fetchAuthenticatedScenarioCampaign(ctx, public, runID, phase)
+	if err != nil {
+		return nil, err
+	}
+	return materializeAuthenticatedPublicCampaign(public, manifestURI, authenticated), nil
 }
 
 // adoptPublicManifest lets a clean second checkout inspect a deployment
@@ -510,7 +1286,16 @@ func (p *liveScenarioProbe) fetchLatestScenarioBundle(ctx context.Context, publi
 // release config and policy still have to hash to the public manifest; only
 // deployment facts discovered by setup are adopted.
 func adoptPublicManifest(ctx context.Context, cfg *ResolvedConfig, source string) error {
-	_, public, err := loadDeploymentReference(ctx, "", source)
+	profile, err := resolvedPublicEvidenceTransportProfile(cfg)
+	if err != nil {
+		return fmt.Errorf("public manifest evidence transport: %w", err)
+	}
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		if err := verifyFinalEvidenceURI("public deployment manifest", source, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash); err != nil {
+			return err
+		}
+	}
+	_, public, err := loadDeploymentReferenceWithTransport(ctx, "", source, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
 	if err != nil {
 		return err
 	}
@@ -529,25 +1314,18 @@ func adoptPublicManifest(ctx context.Context, cfg *ResolvedConfig, source string
 	if len(public.Operators) != cfg.Config.Topology.Operators {
 		return errors.New("public manifest operator topology is incomplete")
 	}
-	origins := make([]string, len(public.Operators))
-	seen := map[int]bool{}
-	for _, operator := range public.Operators {
-		if operator.NoID < 1 || operator.NoID > len(origins) || seen[operator.NoID] || operator.APIURL == "" {
-			return errors.New("public manifest operator directory is invalid")
-		}
-		seen[operator.NoID] = true
-		origins[operator.NoID-1] = strings.TrimSuffix(operator.APIURL, "/")
+	if err := validatePublicEvidenceManifestTransportAgainstConfig(cfg, public); err != nil {
+		return err
 	}
 	cfg.Netuid = public.Netuid
 	cfg.ChainID = public.ChainID
 	cfg.Public.Chain.EVMPublicReadEndpoint = public.EVMRPC
 	cfg.Public.Chain.SubstratePublicReadEndpoint = public.SubstrateRPC
-	cfg.OperatorAPIOrigins = origins
 	return nil
 }
 
 func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manifestPath string) (*ContractView, error) {
-	deployment, publicManifest, err := loadDeploymentReference(ctx, stateDir, manifestPath)
+	deployment, publicManifest, err := loadDeploymentReferenceForConfig(ctx, cfg, stateDir, manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("contract manifest: %w", err)
 	}
@@ -592,17 +1370,41 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	baseResults, err := readContractBatchAt(ctx, client, head.Number, []contractReadSpec{
 		{ID: "current_epoch", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "currentEpoch", Args: []any{}},
 		{ID: "operator_count", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "operatorCount", Args: []any{}},
+		{ID: "coordinator_owner", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "owner", Args: []any{}},
+		{ID: "coordinator_netuid", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "netuid", Args: []any{}},
+		{ID: "coordinator_self_coldkey", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "selfColdkey", Args: []any{}},
+		{ID: "coordinator_guardian", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "guardian", Args: []any{}},
+		{ID: "coordinator_active_guardian", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "activeGuardian", Args: []any{}},
+		{ID: "coordinator_paused", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "paused", Args: []any{}},
+		{ID: "coordinator_commitment_oracle", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "commitmentOracle", Args: []any{}},
+		{ID: "coordinator_active_commitment_oracle", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "activeCommitmentOracle", Args: []any{}},
+		{ID: "coordinator_vault", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "settlementVault", Args: []any{}},
+		{ID: "coordinator_reserve", Address: deployment.CoordinatorProxy, ContractABI: coord, Method: "reserveSink", Args: []any{}},
 		{ID: "conservation_holds", Address: deployment.SettlementVault, ContractABI: vault, Method: "conservationHolds", Args: []any{}},
 		{ID: "total_captured", Address: deployment.SettlementVault, ContractABI: vault, Method: "totalCaptured", Args: []any{}},
 		{ID: "total_paid", Address: deployment.SettlementVault, ContractABI: vault, Method: "totalPaid", Args: []any{}},
-		{ID: "minimum_transfer", Address: deployment.SettlementVault, ContractABI: vault, Method: "minimumTransferTaoRao", Args: []any{}},
+		{ID: "vault_minimum_claim_ttl", Address: deployment.SettlementVault, ContractABI: vault, Method: "minimumClaimTTLBlocks", Args: []any{}},
+		{ID: "vault_minimum_transfer", Address: deployment.SettlementVault, ContractABI: vault, Method: "minimumTransferTaoRao", Args: []any{}},
+		{ID: "vault_coordinator", Address: deployment.SettlementVault, ContractABI: vault, Method: "coordinator", Args: []any{}},
+		{ID: "vault_netuid", Address: deployment.SettlementVault, ContractABI: vault, Method: "netuid", Args: []any{}},
+		{ID: "vault_self_coldkey", Address: deployment.SettlementVault, ContractABI: vault, Method: "selfColdkey", Args: []any{}},
+		{ID: "vault_escrow_hotkey", Address: deployment.SettlementVault, ContractABI: vault, Method: "escrowHotkey", Args: []any{}},
+		{ID: "vault_escrow_registered", Address: deployment.SettlementVault, ContractABI: vault, Method: "escrowRegistered", Args: []any{}},
 		{ID: "escrow_accounted", Address: deployment.SettlementVault, ContractABI: vault, Method: "escrowAccounted", Args: []any{}},
 		{ID: "pending_funding", Address: deployment.SettlementVault, ContractABI: vault, Method: "pendingFunding", Args: []any{}},
 		{ID: "outstanding_liability", Address: deployment.SettlementVault, ContractABI: vault, Method: "outstandingLiability", Args: []any{}},
 		{ID: "live_escrow_stake", Address: deployment.SettlementVault, ContractABI: vault, Method: "liveEscrowStake", Args: []any{}},
 		{ID: "reserve_principal", Address: deployment.ReserveSink, ContractABI: reserve, Method: "principal", Args: []any{}},
 		{ID: "reserve_live_stake", Address: deployment.ReserveSink, ContractABI: reserve, Method: "liveStake", Args: []any{}},
+		{ID: "reserve_recorder", Address: deployment.ReserveSink, ContractABI: reserve, Method: "recorder", Args: []any{}},
+		{ID: "reserve_netuid", Address: deployment.ReserveSink, ContractABI: reserve, Method: "netuid", Args: []any{}},
+		{ID: "reserve_self_coldkey", Address: deployment.ReserveSink, ContractABI: reserve, Method: "selfColdkey", Args: []any{}},
+		{ID: "reserve_hotkey", Address: deployment.ReserveSink, ContractABI: reserve, Method: "reserveHotkey", Args: []any{}},
 	})
+	if err != nil {
+		return nil, err
+	}
+	custodyIdentity, err := decodeContractCustodyView(baseResults, deployment, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -616,6 +1418,14 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	}
 	if operatorCount != uint64(cfg.Config.Topology.Operators) {
 		return nil, fmt.Errorf("contract operator count %d does not match release topology %d", operatorCount, cfg.Config.Topology.Operators)
+	}
+	ownerValue, err := requiredContractScalar(baseResults, "coordinator_owner")
+	if err != nil {
+		return nil, err
+	}
+	coordinatorOwner, ok := ownerValue.(common.Address)
+	if !ok || coordinatorOwner == (common.Address{}) {
+		return nil, fmt.Errorf("coordinator owner returned invalid value %T", ownerValue)
 	}
 	policySpecs := make([]contractReadSpec, 0, operatorCount+3)
 	policySpecs = append(policySpecs, contractReadSpec{
@@ -690,10 +1500,7 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
-	minimumTransfer, err := callUint64(requiredContractScalar(baseResults, "minimum_transfer"))
-	if err != nil {
-		return nil, fmt.Errorf("minimumTransferTaoRao: %w", err)
-	}
+	minimumTransfer := custodyIdentity.VaultMinimumTransferRao
 	escrowAccounted, err := callDecimal(requiredContractScalar(baseResults, "escrow_accounted"))
 	if err != nil {
 		return nil, err
@@ -733,16 +1540,150 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
-	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, Policy: policy, Operators: operators, Epochs: epochs}, nil
+	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, CoordinatorOwner: coordinatorOwner.Hex(), OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, CustodyIdentity: custodyIdentity, Policy: policy, Operators: operators, Epochs: epochs}, nil
+}
+
+func decodeContractCustodyView(results map[string][]any, deployment *ContractDeployment, cfg *ResolvedConfig) (ContractCustodyView, error) {
+	if deployment == nil || cfg == nil || cfg.Config == nil || cfg.Policy == nil || cfg.Netuid == 0 {
+		return ContractCustodyView{}, errors.New("contract custody identity context is incomplete")
+	}
+	address := func(id string) (string, error) {
+		value, err := requiredContractScalar(results, id)
+		if err != nil {
+			return "", err
+		}
+		decoded, ok := value.(common.Address)
+		if !ok || decoded == (common.Address{}) {
+			return "", fmt.Errorf("contract read %s returned invalid address %T", id, value)
+		}
+		return strings.ToLower(decoded.Hex()), nil
+	}
+	hex32 := func(id string) (string, error) {
+		value, err := requiredContractScalar(results, id)
+		if err != nil {
+			return "", err
+		}
+		encoded := strings.ToLower(valueHex(value))
+		decoded, decodeErr := decodeHex32(id, encoded)
+		if decodeErr != nil || decoded == ([32]byte{}) {
+			return "", stateMismatchError(decodeErr, "contract read %s returned an invalid zero bytes32", id)
+		}
+		return encoded, nil
+	}
+	netuid := func(id string) (uint16, error) {
+		value, err := requiredContractScalar(results, id)
+		if err != nil {
+			return 0, err
+		}
+		decoded := valueUint64(value)
+		if decoded == 0 || decoded > math.MaxUint16 {
+			return 0, fmt.Errorf("contract read %s returned invalid netuid %T/%d", id, value, decoded)
+		}
+		return uint16(decoded), nil
+	}
+	boolean := func(id string) (bool, error) {
+		return callBool(requiredContractScalar(results, id))
+	}
+	uint64Value := func(id string) (uint64, error) {
+		return callUint64(requiredContractScalar(results, id))
+	}
+
+	var view ContractCustodyView
+	var err error
+	if view.CoordinatorNetuid, err = netuid("coordinator_netuid"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorSelfColdkey, err = hex32("coordinator_self_coldkey"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorGuardian, err = address("coordinator_guardian"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorActiveGuardian, err = address("coordinator_active_guardian"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorPaused, err = boolean("coordinator_paused"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorCommitmentOracle, err = address("coordinator_commitment_oracle"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorActiveCommitmentOracle, err = address("coordinator_active_commitment_oracle"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorVault, err = address("coordinator_vault"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.CoordinatorReserve, err = address("coordinator_reserve"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultCoordinator, err = address("vault_coordinator"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultNetuid, err = netuid("vault_netuid"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultSelfColdkey, err = hex32("vault_self_coldkey"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultEscrowHotkey, err = hex32("vault_escrow_hotkey"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultEscrowRegistered, err = boolean("vault_escrow_registered"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultMinimumClaimTTLBlocks, err = uint64Value("vault_minimum_claim_ttl"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.VaultMinimumTransferRao, err = uint64Value("vault_minimum_transfer"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.ReserveRecorder, err = address("reserve_recorder"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.ReserveNetuid, err = netuid("reserve_netuid"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.ReserveSelfColdkey, err = hex32("reserve_self_coldkey"); err != nil {
+		return ContractCustodyView{}, err
+	}
+	if view.ReserveHotkey, err = hex32("reserve_hotkey"); err != nil {
+		return ContractCustodyView{}, err
+	}
+
+	proxy := strings.ToLower(deployment.CoordinatorProxy.Hex())
+	vault := strings.ToLower(deployment.SettlementVault.Hex())
+	reserve := strings.ToLower(deployment.ReserveSink.Hex())
+	coordinatorMirror := ss58.EvmMirrorPubkey(deployment.CoordinatorProxy)
+	vaultMirror := ss58.EvmMirrorPubkey(deployment.SettlementVault)
+	reserveMirror := ss58.EvmMirrorPubkey(deployment.ReserveSink)
+	minimumTTL, ok := checkedMul(cfg.Policy.Settlement.EpochBlocks, cfg.Policy.Settlement.ClaimTTLEpochs)
+	if !ok {
+		return ContractCustodyView{}, errors.New("release minimum claim TTL overflows uint64")
+	}
+	if view.CoordinatorNetuid != cfg.Netuid || view.VaultNetuid != cfg.Netuid || view.ReserveNetuid != cfg.Netuid ||
+		view.CoordinatorVault != vault || view.CoordinatorReserve != reserve || view.VaultCoordinator != proxy || view.ReserveRecorder != proxy ||
+		view.CoordinatorSelfColdkey != fmt.Sprintf("0x%x", coordinatorMirror) || view.VaultSelfColdkey != fmt.Sprintf("0x%x", vaultMirror) || view.ReserveSelfColdkey != fmt.Sprintf("0x%x", reserveMirror) ||
+		!view.VaultEscrowRegistered || view.VaultMinimumClaimTTLBlocks != minimumTTL || view.VaultMinimumTransferRao == 0 {
+		return ContractCustodyView{}, errors.New("live contract custody identity differs from immutable release wiring")
+	}
+	return view, nil
 }
 
 func readDeploymentReference(ctx context.Context, source string) ([]byte, error) {
+	return readDeploymentReferenceWithTransport(ctx, source, publicEvidenceTransportHTTPS, 0, "")
+}
+
+func readDeploymentReferenceWithTransport(ctx context.Context, source, profile string, chainID uint64, genesisHash string) ([]byte, error) {
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		if err := verifyPublicEvidenceObjectURI("deployment manifest", source, profile, chainID, genesisHash); err != nil {
+			return nil, err
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 		if err != nil {
 			return nil, err
 		}
-		client := &http.Client{Timeout: 30 * time.Second}
+		client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, err
@@ -751,11 +1692,11 @@ func readDeploymentReference(ctx context.Context, source string) ([]byte, error)
 		if resp.StatusCode/100 != 2 {
 			return nil, fmt.Errorf("manifest HTTP %d", resp.StatusCode)
 		}
-		b, err := io.ReadAll(io.LimitReader(resp.Body, (16<<20)+1))
+		b, err := io.ReadAll(io.LimitReader(resp.Body, (16*1024*1024)+1))
 		if err != nil {
 			return nil, err
 		}
-		if len(b) > 16<<20 {
+		if len(b) > 16*1024*1024 {
 			return nil, errors.New("manifest exceeds 16 MiB")
 		}
 		return b, nil
@@ -763,12 +1704,27 @@ func readDeploymentReference(ctx context.Context, source string) ([]byte, error)
 	return os.ReadFile(source)
 }
 
+func loadDeploymentReferenceForConfig(ctx context.Context, cfg *ResolvedConfig, stateDir, source string) (*ContractDeployment, *PublicDeploymentManifest, error) {
+	if source == "" || !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
+		return loadDeploymentReference(ctx, stateDir, source)
+	}
+	profile, err := resolvedPublicEvidenceTransportProfile(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return loadDeploymentReferenceWithTransport(ctx, stateDir, source, profile, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+}
+
 func loadDeploymentReference(ctx context.Context, stateDir, source string) (*ContractDeployment, *PublicDeploymentManifest, error) {
+	return loadDeploymentReferenceWithTransport(ctx, stateDir, source, publicEvidenceTransportHTTPS, 0, "")
+}
+
+func loadDeploymentReferenceWithTransport(ctx context.Context, stateDir, source, profile string, chainID uint64, genesisHash string) (*ContractDeployment, *PublicDeploymentManifest, error) {
 	if source == "" {
 		deployment, err := loadContractDeployment(stateDir)
 		return deployment, nil, err
 	}
-	b, err := readDeploymentReference(ctx, source)
+	b, err := readDeploymentReferenceWithTransport(ctx, source, profile, chainID, genesisHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -783,6 +1739,9 @@ func loadDeploymentReference(ctx context.Context, stateDir, source string) (*Con
 	if json.Unmarshal(b, &public) == nil && public.Schema == "urnetwork-sim-public-deployment-v1" {
 		if public.Release != "1.0" || public.DeploymentID == "" || public.ChainID != testnetChainID || !strings.EqualFold(public.GenesisHash, testnetGenesis) || public.RuntimeSpec == 0 || public.Netuid == 0 || public.Contracts == nil || public.CoordinatorUpgrade.Implementation == (common.Address{}) || public.EVMRPC == "" || public.SubstrateRPC == "" || public.ConfigHash == "" || public.PolicyHash == "" || public.ReleaseLockHash == "" || len(public.SetupEvidence) == 0 || len(public.Operators) == 0 || validatePublicManifestRevision(&public) != nil {
 			return nil, nil, errors.New("invalid public deployment manifest identity")
+		}
+		if err := validatePublicCampaignOperatorOrigins(&public); err != nil {
+			return nil, nil, fmt.Errorf("invalid public deployment manifest evidence transport: %w", err)
 		}
 		if envelope.Schema == releaseEvidenceSchema {
 			_, signers := inspectPublicIdentityBytesForManifest(public.Identities, public.DeploymentID, public.Topology)

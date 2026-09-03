@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {STSubnetProbe} from "../src/probe/STSubnetProbe.sol";
 import {Blake2b} from "../src/lib/Blake2b.sol";
@@ -118,6 +119,12 @@ contract SP1ProbeTest is Test {
         assertEq(b.nominatorMinimum, 1_000, "nominator minimum reported");
     }
 
+    function test_readBattery_rejectsMalformedAbsentUidResponse() public {
+        neuron.setUidResponse(NETUID, ABSENT_HOTKEY, false, 9);
+        STSubnetProbe.Battery memory b = probe.readBattery(SAMPLE_HOTKEY, ABSENT_HOTKEY);
+        assertFalse(b.absentRejected, "absent response must carry canonical zero uid");
+    }
+
     function test_seedFromTao_custodyIsContractColdkey() public {
         vm.prank(deployer);
         probe.seedFromTao(HOTKEY_A, 1_000);
@@ -166,6 +173,16 @@ contract SP1ProbeTest is Test {
         assertEq(baseline, 1_000);
         assertEq(current, 1_050, "dividends auto-compounded, no action taken");
         assertEq(sinceBlock, uint64(block.number));
+    }
+
+    function test_snapshotRejectsBlockNumberDowncastOverflow() public {
+        uint256 overflowing = uint256(type(uint64).max) + 1;
+        vm.roll(overflowing);
+        vm.prank(deployer);
+        vm.expectRevert(
+            abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintDowncast.selector, 64, overflowing)
+        );
+        probe.snapshot(SAMPLE_HOTKEY);
     }
 
     function test_valueBearingChecks_areOwnerGated() public {

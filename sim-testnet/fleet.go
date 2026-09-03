@@ -27,6 +27,10 @@ import (
 
 type FleetCommitmentEvidence struct {
 	Schema             string `json:"schema"`
+	DeploymentID       string `json:"deployment_id,omitempty"`
+	PlanHash           string `json:"plan_hash,omitempty"`
+	ActionID           string `json:"action_id,omitempty"`
+	IntentHash         string `json:"intent_hash,omitempty"`
 	ManifestURI        string `json:"manifest_uri"`
 	CommitmentHash     string `json:"commitment_hash"`
 	Hotkey             string `json:"hotkey"`
@@ -38,6 +42,10 @@ type FleetCommitmentEvidence struct {
 
 type FleetBindingEvidence struct {
 	Schema          string `json:"schema"`
+	DeploymentID    string `json:"deployment_id,omitempty"`
+	PlanHash        string `json:"plan_hash,omitempty"`
+	ActionID        string `json:"action_id,omitempty"`
+	IntentHash      string `json:"intent_hash,omitempty"`
 	ClientID        string `json:"client_id"`
 	ClientKey       string `json:"client_key"`
 	FleetID         string `json:"fleet_id"`
@@ -158,6 +166,17 @@ func fleetManifestForGeneration(cfg *ResolvedConfig, stateDir string, roles *Rol
 	if fleetIndex < 1 || fleetIndex > cfg.Config.Topology.fleetCandidates() {
 		return protocol.FleetManifest{}, nil, [32]byte{}, fmt.Errorf("fleet index %d out of range", fleetIndex)
 	}
+	miners := make([]int, 0, cfg.Config.Topology.ClientsPerHeadFleet)
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		miners = append(miners, fleetMemberMinerIndex(cfg, fleetIndex, member))
+	}
+	return fleetManifestForMembers(cfg, stateDir, roles, derive32(cfg, fmt.Sprintf("fleet-id/%d", fleetIndex)), fleetHotkeyLabel(fleetIndex), generation, miners)
+}
+
+func fleetManifestForMembers(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets, fleetID [32]byte, hotkeyLabel string, generation uint64, miners []int) (protocol.FleetManifest, []byte, [32]byte, error) {
+	if cfg == nil || cfg.Config == nil || roles == nil || fleetID == ([32]byte{}) || hotkeyLabel == "" || len(miners) != cfg.Config.Topology.ClientsPerHeadFleet {
+		return protocol.FleetManifest{}, nil, [32]byte{}, errors.New("fleet manifest member inputs are incomplete")
+	}
 	if generation == 0 {
 		return protocol.FleetManifest{}, nil, [32]byte{}, errors.New("fleet manifest generation is zero")
 	}
@@ -165,16 +184,14 @@ func fleetManifestForGeneration(cfg *ResolvedConfig, stateDir string, roles *Rol
 	if err != nil {
 		return protocol.FleetManifest{}, nil, [32]byte{}, err
 	}
-	hotkey, err := roleBytes32(roles, fleetHotkeyLabel(fleetIndex))
+	hotkey, err := roleBytes32(roles, hotkeyLabel)
 	if err != nil {
 		return protocol.FleetManifest{}, nil, [32]byte{}, err
 	}
-	fleetID := derive32(cfg, fmt.Sprintf("fleet-id/%d", fleetIndex))
 	var coordinator [20]byte
 	copy(coordinator[:], deployment.CoordinatorProxy[:])
 	m := protocol.FleetManifest{Schema: protocol.FleetManifestSchema, ChainID: testnetChainID, Netuid: cfg.Netuid, Coordinator: coordinator, FleetID: fleetID, Hotkey: hotkey, Generation: generation}
-	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
-		minerIndex := fleetMemberMinerIndex(cfg, fleetIndex, member)
+	for _, minerIndex := range miners {
 		role, ok := roles.Clients[fmt.Sprintf("miner-%d", minerIndex)]
 		if !ok || role.ClientIDHex == "" {
 			return protocol.FleetManifest{}, nil, [32]byte{}, fmt.Errorf("miner-%d has no provisioned client_id", minerIndex)

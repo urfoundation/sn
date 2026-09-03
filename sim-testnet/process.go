@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
@@ -64,6 +66,7 @@ type SupervisorState struct {
 	SupervisorPID            int            `json:"supervisor_pid"`
 	SupervisorStartTimeTicks uint64         `json:"supervisor_start_time_ticks"`
 	ManifestHash             string         `json:"manifest_hash"`
+	ContractCleanupCutoff    string         `json:"contract_cleanup_cutoff,omitempty"`
 	Processes                []ProcessState `json:"processes"`
 }
 
@@ -166,6 +169,15 @@ const (
 	connectServerBinaryName       = "sim-testnet-connect"
 	connectBindServiceCapability  = "cap_net_bind_service=+ep"
 	connectBoundServiceCapability = "cap_net_bind_service=ep"
+)
+
+const (
+	supervisorConsumerStopTimeout       = 10 * time.Second
+	supervisorProviderStopTimeout       = 30 * time.Second
+	supervisorInfrastructureStopTimeout = 10 * time.Second
+	supervisorGracefulStopTimeout       = supervisorConsumerStopTimeout + supervisorProviderStopTimeout + supervisorInfrastructureStopTimeout
+	supervisorSystemdStopTimeout        = supervisorGracefulStopTimeout + 10*time.Second
+	supervisorFailedLaunchStopTimeout   = supervisorSystemdStopTimeout + 10*time.Second
 )
 
 // Gives every operator an independent production-style ingress identity. The
@@ -562,7 +574,7 @@ func releaseTopologyProofPaths(cfg *ResolvedConfig, stateDir string) map[string]
 // being silently omitted from its freshness count.
 func completedReleaseProofLines(path string) ([][]byte, error) {
 	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
 		return nil, nil
 	}
 	if err != nil {
@@ -705,7 +717,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
 		return err
 	}
-	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins)
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, bins, p.PlanHash)
 	if err != nil {
 		return err
 	}
@@ -870,7 +882,7 @@ func cleanupFailedPersistentLaunch(stateDir string, started bool, launchErr erro
 	if stop == nil {
 		return errors.Join(launchErr, errors.New("cleanup failed persistent launch: stop callback is missing"))
 	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), supervisorFailedLaunchStopTimeout)
 	defer cancel()
 	if _, err := stop(cleanupCtx, stateDir); err != nil {
 		return errors.Join(launchErr, fmt.Errorf("cleanup failed persistent launch: %w", err))
@@ -1259,7 +1271,7 @@ func operatorConnectWarpPorts(statusPort int) string {
 	return strings.Join(portPairs, ",")
 }
 
-func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string) ([]ProcessSpec, error) {
+func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]string, approvedPlanHash ...string) ([]ProcessSpec, error) {
 	if bins["sim-testnet"] == "" {
 		return nil, errors.New("workload RPC proxy requires the sim-testnet release binary")
 	}
@@ -1313,6 +1325,15 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 			env := cloneStrings(baseEnv)
 			if svc.role == "api" {
 				env[servercontroller.VerifySimulationAssignmentFilterFileEnv] = verifyAssignmentFilterPath(stateDir, i)
+				if len(approvedPlanHash) > 1 {
+					return nil, errors.New("operator API received multiple approved plan hashes")
+				}
+				if len(approvedPlanHash) == 1 {
+					if _, ok := evidenceFixedHex(approvedPlanHash[0], 32); !ok || approvedPlanHash[0] != strings.ToLower(approvedPlanHash[0]) {
+						return nil, errors.New("operator API approved plan hash is not canonical")
+					}
+					env[validatorViewFilterPlanHashEnv] = approvedPlanHash[0]
+				}
 			}
 			env["WARP_SERVICE"] = svc.role
 			listenIP := "127.0.0.1"
@@ -1722,7 +1743,10 @@ func startSpecWithExit(ctx context.Context, s ProcessSpec) (*exec.Cmd, <-chan er
 	cmd.Env = envList(s.Env)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// A graceful supervisor cancellation owns phased process-group shutdown.
+	// Kernel parent death remains a separate hard backstop, including SIGKILL
+	// and host/service-manager failures where no Go defer can run.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 	if err := cmd.Start(); err != nil {
 		stdout.Close()
 		stderr.Close()
@@ -1737,13 +1761,13 @@ func startSpecWithExit(ctx context.Context, s ProcessSpec) (*exec.Cmd, <-chan er
 	}()
 	return cmd, exited, nil
 }
-func stopCommands(cmds []*exec.Cmd) {
+func stopCommandsWithin(cmds []*exec.Cmd, timeout time.Duration) {
 	for _, c := range cmds {
 		if c != nil && c.Process != nil {
 			_ = syscall.Kill(-c.Process.Pid, syscall.SIGTERM)
 		}
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		alive := false
 		for _, c := range cmds {
@@ -1761,6 +1785,161 @@ func stopCommands(cmds []*exec.Cmd) {
 			_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
 		}
 	}
+}
+
+func stopCommands(cmds []*exec.Cmd) {
+	stopCommandsWithin(cmds, 10*time.Second)
+}
+
+type supervisedProcessIdentity struct {
+	PID             int
+	ProcessGroupID  int
+	StartTimeTicks  uint64
+	Executable      string
+	CommandLineHash string
+}
+
+// Captures lightweight immutable kernel identity for frequent shutdown polls.
+// Hashing the full executable here would multiply large binary reads across
+// every process and poll; the proc executable link and argv hash distinguish
+// the recorded process while start ticks protect against PID reuse.
+func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error) {
+	startTimeTicks, err := processStartTimeTicks(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	processGroupID, err := syscall.Getpgid(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	executable, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	commandLine, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil || len(commandLine) == 0 {
+		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
+	}
+	commandLineHash := sha256.Sum256(commandLine)
+	return supervisedProcessIdentity{
+		PID: pid, ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
+		Executable: executable, CommandLineHash: hex.EncodeToString(commandLineHash[:]),
+	}, nil
+}
+
+type supervisedCommand struct {
+	spec     ProcessSpec
+	cmd      *exec.Cmd
+	identity supervisedProcessIdentity
+}
+
+// Addresses a process group only while its recorded leader has the exact
+// immutable kernel and executable identity. An observation failure or mismatch
+// fails closed because os.Process may be backed by a reusable numeric PID.
+func signalSupervisedCommand(command supervisedCommand, signal syscall.Signal) {
+	signalSupervisedCommandWithObserver(command, signal, observeSupervisedProcessIdentity, syscall.Kill)
+}
+
+// Accepts injected kernel operations so PID-reuse rejection is deterministic
+// in tests without attempting to manufacture a reused host PID.
+func signalSupervisedCommandWithObserver(
+	command supervisedCommand,
+	signal syscall.Signal,
+	observe func(int) (supervisedProcessIdentity, error),
+	signalProcessGroup func(int, syscall.Signal) error,
+) bool {
+	if command.cmd == nil || command.cmd.Process == nil {
+		return false
+	}
+	observed, err := observe(command.cmd.Process.Pid)
+	if err == nil && command.identity == observed && command.identity.ProcessGroupID == command.identity.PID {
+		return signalProcessGroup(-command.identity.ProcessGroupID, signal) == nil
+	}
+	return false
+}
+
+// Reports liveness only for the exact recorded generation. Linux and Go can
+// fall back to a reusable numeric process handle when pidfds are unavailable.
+func supervisedCommandAlive(command supervisedCommand) bool {
+	return supervisedCommandAliveWithObserver(command, observeSupervisedProcessIdentity)
+}
+
+// Accepts an injected kernel observation for exact mismatch coverage.
+func supervisedCommandAliveWithObserver(command supervisedCommand, observe func(int) (supervisedProcessIdentity, error)) bool {
+	if command.cmd == nil || command.cmd.Process == nil {
+		return false
+	}
+	observed, err := observe(command.cmd.Process.Pid)
+	if err == nil && command.identity == observed {
+		return true
+	}
+	return false
+}
+
+// Reports whether members remain in an owned group after its leader was
+// reaped. A positive result blocks replacement but is never used as authority
+// to signal the reusable numeric group id.
+func supervisedProcessGroupHasMembers(identity supervisedProcessIdentity) bool {
+	if identity.PID <= 1 || identity.ProcessGroupID != identity.PID {
+		return false
+	}
+	err := syscall.Kill(-identity.ProcessGroupID, syscall.Signal(0))
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// Infrastructure remains live while consumers and then providers release SDK
+// devices, contracts, and durable sessions. Unknown future roles are treated
+// as consumers so they cannot outlive a service they may depend on.
+func supervisorShutdownPhases(commands []supervisedCommand) [][]supervisedCommand {
+	consumers := make([]supervisedCommand, 0, len(commands))
+	providers := make([]supervisedCommand, 0, len(commands))
+	infrastructure := make([]supervisedCommand, 0, len(commands))
+	for _, command := range commands {
+		switch command.spec.Role {
+		case "dependency-rpc-proxy", "operator-api", "operator-connect", "operator-taskworker":
+			infrastructure = append(infrastructure, command)
+		case "miner-swarm":
+			providers = append(providers, command)
+		default:
+			consumers = append(consumers, command)
+		}
+	}
+	return [][]supervisedCommand{consumers, providers, infrastructure}
+}
+
+// Gives the 1,000-member SDK fleet enough time to perform its synchronous
+// close path before the APIs and Connect servers disappear. A hard bound and
+// the next-start server recovery cover an unresponsive client or host loss.
+func stopSupervisorCommands(commands []supervisedCommand) {
+	timeouts := []time.Duration{supervisorConsumerStopTimeout, supervisorProviderStopTimeout, supervisorInfrastructureStopTimeout}
+	for phaseIndex, phase := range supervisorShutdownPhases(commands) {
+		for _, command := range phase {
+			signalSupervisedCommand(command, syscall.SIGTERM)
+		}
+		deadline := time.Now().Add(timeouts[phaseIndex])
+		for time.Now().Before(deadline) {
+			alive := false
+			for _, command := range phase {
+				alive = alive || supervisedCommandAlive(command)
+			}
+			if !alive {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		for _, command := range phase {
+			if supervisedCommandAlive(command) {
+				signalSupervisedCommand(command, syscall.SIGKILL)
+			}
+		}
+	}
+}
+
+// Keeps ordinary supervisor cancellation from triggering CommandContext's
+// immediate kill before phased shutdown can run. The explicit cancel remains
+// the final join backstop once every process group has been handled.
+func supervisorChildContext(supervisorCtx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithCancel(context.WithoutCancel(supervisorCtx))
 }
 
 // Completes a real TLS-authenticated QUIC handshake through the exact socket
@@ -2090,11 +2269,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=%s __supervise --config %s --state-dir %s --manifest %s
-Restart=on-failure
-RestartSec=5
-KillMode=control-group
-TimeoutStopSec=30
-`, deploymentToken, binaryArg, configArg, stateArg, manifestArg), nil
+Restart=no
+KillMode=mixed
+TimeoutStopSec=%d
+`, deploymentToken, binaryArg, configArg, stateArg, manifestArg, int(supervisorSystemdStopTimeout/time.Second)), nil
 }
 
 // Remove any legacy boot activation before starting the unit for this boot.
@@ -2179,7 +2357,7 @@ func liveRecordedSupervisor(stateDir string) (*SupervisorState, error) {
 		return nil, fmt.Errorf("inspect existing supervisor pid %d: %w", state.SupervisorPID, err)
 	}
 	observed, err := processStartTimeTicks(state.SupervisorPID)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
 		return nil, nil
 	}
 	if err != nil {
@@ -2189,6 +2367,39 @@ func liveRecordedSupervisor(stateDir string) (*SupervisorState, error) {
 		return nil, nil
 	}
 	return &state, nil
+}
+
+// Opens a kernel process handle before rechecking the recorded start time.
+// The subsequent signal therefore cannot move to a different process if the
+// numeric PID exits and is reused between validation and delivery.
+func signalRecordedSupervisor(state SupervisorState, signal syscall.Signal) (bool, error) {
+	if state.SupervisorPID <= 1 || state.SupervisorStartTimeTicks == 0 {
+		return false, nil
+	}
+	pidfd, err := unix.PidfdOpen(state.SupervisorPID, 0)
+	if errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("open supervisor pidfd: %w", err)
+	}
+	defer unix.Close(pidfd)
+	observed, err := processStartTimeTicks(state.SupervisorPID)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if observed != state.SupervisorStartTimeTicks {
+		return false, nil
+	}
+	if err := unix.PidfdSendSignal(pidfd, unix.Signal(signal), nil, 0); errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func supervisorLockHeld(stateDir string) (bool, error) {
@@ -2227,12 +2438,12 @@ func ensureNoLiveSupervisorForLaunch(stateDir string) error {
 	return nil
 }
 
-// Identify the listener-bearing services every release workload contacts while
-// starting. Waiting on these exact roles prevents a newly spawned client herd
-// from racing API, Connect or RPC listener initialization.
+// Identifies listener services and the maintenance owner needed before a
+// release workload starts. The one-shot server reconciliation runs first;
+// taskworker readiness then prevents the client herd from racing maintenance.
 func supervisorStartupPrerequisite(spec ProcessSpec) bool {
 	switch spec.Role {
-	case "dependency-rpc-proxy", "operator-api", "operator-connect":
+	case "dependency-rpc-proxy", "operator-api", "operator-connect", "operator-taskworker":
 		return true
 	default:
 		return false
@@ -2245,8 +2456,8 @@ func supervisorStartupProvider(spec ProcessSpec) bool {
 	return spec.Role == "miner-swarm"
 }
 
-// Starts listener prerequisites and provider swarms across two explicit
-// health barriers, then starts validators, relayers and background workers.
+// Starts service prerequisites and provider swarms across two explicit health
+// barriers, then starts validators and relayers.
 // Callbacks keep the ordering deterministic in tests while production retains
 // the supervisor's real process ownership.
 func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
@@ -2397,6 +2608,15 @@ func waitSupervisorReady(ctx context.Context, stateDir string, want SupervisorFi
 }
 
 func supervise(ctx context.Context, stateDir, specPath string) error {
+	return superviseWithContractCleanup(ctx, stateDir, specPath, runSupervisorServerContractCleanup)
+}
+
+type supervisorContractCleanup func(context.Context, string, []ProcessSpec, time.Time) error
+
+func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string, cleanup supervisorContractCleanup) error {
+	if cleanup == nil {
+		return errors.New("supervisor contract cleanup callback is missing")
+	}
 	lock, err := os.OpenFile(filepath.Join(stateDir, "supervisor.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
@@ -2433,9 +2653,19 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	if err != nil {
 		return fmt.Errorf("observe supervisor process generation: %w", err)
 	}
+	// No long-lived child exists at this boundary. Reconcile transfer state
+	// left by every earlier generation before a provider can receive a stale
+	// route or create another contract through it.
+	cleanupCutoff := time.Now().UTC()
+	if err := cleanup(ctx, stateDir, sf.Specs, cleanupCutoff); err != nil {
+		return fmt.Errorf("supervisor pre-start contract cleanup: %w", err)
+	}
+	childCtx, cancelChildren := supervisorChildContext(ctx)
+	defer cancelChildren()
 	type running struct {
 		spec       ProcessSpec
 		cmd        *exec.Cmd
+		identity   supervisedProcessIdentity
 		state      ProcessState
 		generation uint64
 	}
@@ -2455,7 +2685,11 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	publish := func() error {
 		mu.Lock()
 		defer mu.Unlock()
-		s := SupervisorState{Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano), SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: supervisorStartTimeTicks, ManifestHash: manifestHash}
+		s := SupervisorState{
+			Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			SupervisorPID: os.Getpid(), SupervisorStartTimeTicks: supervisorStartTimeTicks, ManifestHash: manifestHash,
+			ContractCleanupCutoff: cleanupCutoff.Format(time.RFC3339Nano),
+		}
 		for _, r := range runs {
 			s.Processes = append(s.Processes, r.state)
 		}
@@ -2470,11 +2704,20 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 		return nil
 	}
 	start := func(r *running) error {
-		cmd, exited, err := startSpecWithExit(ctx, r.spec)
+		r.cmd = nil
+		r.identity = supervisedProcessIdentity{}
+		cmd, exited, err := startSpecWithExit(childCtx, r.spec)
 		if err != nil {
 			return err
 		}
+		identity, err := observeSupervisedProcessIdentity(cmd.Process.Pid)
+		if err != nil || identity.ProcessGroupID != identity.PID {
+			_ = cmd.Process.Kill()
+			_ = <-exited
+			return stateMismatchError(err, "record supervisor child %s kernel identity", r.spec.ID)
+		}
 		r.cmd = cmd
+		r.identity = identity
 		r.generation++
 		r.state.PID = cmd.Process.Pid
 		r.state.StartedAt = time.Now().UTC().Format(time.RFC3339)
@@ -2491,11 +2734,12 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 		runs[spec.ID] = r
 	}
 	defer func() {
-		var commands []*exec.Cmd
-		for _, current := range runs {
-			commands = append(commands, current.cmd)
+		commands := make([]supervisedCommand, 0, len(runs))
+		for _, spec := range sf.Specs {
+			current := runs[spec.ID]
+			commands = append(commands, supervisedCommand{spec: current.spec, cmd: current.cmd, identity: current.identity})
 		}
-		stopCommands(commands)
+		stopSupervisorCommands(commands)
 	}()
 	if err := startSupervisorSpecsWithReadiness(
 		sf.Specs,
@@ -2520,11 +2764,12 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 	for {
 		select {
 		case <-ctx.Done():
-			var commands []*exec.Cmd
-			for _, current := range runs {
-				commands = append(commands, current.cmd)
+			commands := make([]supervisedCommand, 0, len(runs))
+			for _, spec := range sf.Specs {
+				current := runs[spec.ID]
+				commands = append(commands, supervisedCommand{spec: current.spec, cmd: current.cmd, identity: current.identity})
 			}
-			stopCommands(commands)
+			stopSupervisorCommands(commands)
 			for _, current := range runs {
 				current.state.PID = 0
 				current.state.Healthy = false
@@ -2536,12 +2781,22 @@ func supervise(ctx context.Context, stateDir, specPath string) error {
 			if r == nil || notice.generation != r.generation {
 				continue
 			}
+			lingeringProcessGroup := supervisedProcessGroupHasMembers(r.identity)
+			r.cmd = nil
+			r.identity = supervisedProcessIdentity{}
 			r.state.PID = 0
 			r.state.Healthy = false
 			if notice.err != nil {
 				r.state.ExitError = notice.err.Error()
 			} else {
 				r.state.ExitError = "process exited"
+			}
+			if lingeringProcessGroup {
+				r.state.ExitError += "; process-group descendants remained after leader exit"
+				if err := publish(); err != nil {
+					return err
+				}
+				return fmt.Errorf("supervisor process %s left process-group descendants after leader exit", r.spec.ID)
 			}
 			if r.state.Restarts < r.spec.RestartLimit {
 				r.state.Restarts++
@@ -2619,6 +2874,11 @@ func StopDeployment(ctx context.Context, stateDir string) (map[string]any, error
 			return nil, decodeErr
 		}
 	}
+	liveSupervisor, err := liveRecordedSupervisor(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect supervisor generation before stop: %w", err)
+	}
+	supervisorOwned := liveSupervisor != nil
 	stopped := []string{}
 	serviceStopped := ""
 	if serviceBytes, readErr := os.ReadFile(filepath.Join(stateDir, "supervisor.service.json")); readErr == nil {
@@ -2633,25 +2893,45 @@ func StopDeployment(ctx context.Context, stateDir string) (map[string]any, error
 			}
 		}
 	}
-	if serviceStopped == "" && s.SupervisorPID > 1 {
-		_ = syscall.Kill(s.SupervisorPID, syscall.SIGTERM)
+	if serviceStopped == "" && supervisorOwned {
+		signalled, signalErr := signalRecordedSupervisor(s, syscall.SIGTERM)
+		if signalErr != nil {
+			return nil, fmt.Errorf("stop exact supervisor generation: %w", signalErr)
+		}
+		if !signalled {
+			supervisorOwned = false
+		}
 	}
-	deadline := time.Now().Add(15 * time.Second)
-	for s.SupervisorPID > 1 && time.Now().Before(deadline) && syscall.Kill(s.SupervisorPID, syscall.Signal(0)) == nil {
+	// The supervisor owns bounded consumer, provider and infrastructure phases.
+	// Do not bypass that ordering with direct child signals while it is still
+	// making progress.
+	deadline := time.Now().Add(supervisorSystemdStopTimeout)
+	for supervisorOwned && time.Now().Before(deadline) {
+		live, liveErr := liveRecordedSupervisor(stateDir)
+		if liveErr != nil {
+			return nil, fmt.Errorf("inspect supervisor generation during stop: %w", liveErr)
+		}
+		if live == nil {
+			supervisorOwned = false
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	for _, p := range s.Processes {
-		if p.PID > 1 {
-			if err := syscall.Kill(-p.PID, syscall.SIGTERM); err == nil || errors.Is(err, syscall.ESRCH) {
-				stopped = append(stopped, p.ID)
+	if supervisorOwned {
+		return nil, fmt.Errorf("supervisor generation pid=%d did not stop within %s", s.SupervisorPID, supervisorSystemdStopTimeout)
+	}
+	if serviceStopped != "" || liveSupervisor != nil {
+		for _, process := range s.Processes {
+			if process.PID > 1 {
+				stopped = append(stopped, process.ID)
 			}
 		}
 	}
-	return map[string]any{"stopped": stopped, "service": serviceStopped, "on_chain_state_preserved": true, "state_dir": stateDir}, nil
+	return map[string]any{"stopped": stopped, "service": serviceStopped, "supervisor_generation_owned": liveSupervisor != nil, "on_chain_state_preserved": true, "state_dir": stateDir}, nil
 }
 func Tail(ctx context.Context, stateDir string, w io.Writer) error {
 	files, err := filepath.Glob(filepath.Join(stateDir, "processes", "*.log"))

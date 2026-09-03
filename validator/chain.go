@@ -323,7 +323,15 @@ func (self *ChainClient) BlockNumber() (uint64, error) {
 
 // BlockHash returns the hash of a block by number.
 func (self *ChainClient) BlockHash(number uint64) ([32]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+	return self.BlockHashContext(context.Background(), number)
+}
+
+// BlockHashContext returns one numbered block hash under caller cancellation.
+func (self *ChainClient) BlockHashContext(ctx context.Context, number uint64) ([32]byte, error) {
+	if ctx == nil {
+		return [32]byte{}, errors.New("block hash context is nil")
+	}
+	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
 	defer cancel()
 	header, err := self.client.HeaderByNumber(ctx, new(big.Int).SetUint64(number))
 	if err != nil {
@@ -426,14 +434,21 @@ func (self *ChainClient) DepositedSums(fromBlock uint64, toBlock uint64, epochFi
 	if toBlock < fromBlock {
 		return sums, nil
 	}
+	if self == nil || self.client == nil || self.st == nil || self.contractAddr == (common.Address{}) {
+		return nil, errors.New("Deposited event scanner is unavailable")
+	}
+	if epochFilter != nil && (epochFilter.Sign() < 0 || epochFilter.BitLen() > 256) {
+		return nil, errors.New("Deposited event epoch filter is outside uint256")
+	}
 	topics := [][]common.Hash{{common.Hash(depositedTopic0)}}
 	if epochFilter != nil {
 		topics = append(topics, []common.Hash{common.BigToHash(epochFilter)})
 	}
-	for from := fromBlock; ; from += getLogsChunkBlocks {
-		to := from + getLogsChunkBlocks - 1
-		if to > toBlock {
-			to = toBlock
+	seenLogs := map[string]bool{}
+	for from := fromBlock; ; {
+		to := toBlock
+		if toBlock-from >= getLogsChunkBlocks {
+			to = from + getLogsChunkBlocks - 1
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
 		logs, err := self.client.FilterLogs(ctx, ethereum.FilterQuery{
@@ -447,17 +462,34 @@ func (self *ChainClient) DepositedSums(fromBlock uint64, toBlock uint64, epochFi
 			return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d]: %w", from, to, err)
 		}
 		for i := range logs {
-			event, err := self.st.UnpackDepositedEvent(&logs[i])
+			log := &logs[i]
+			if log.Removed || log.Address != self.contractAddr || log.BlockNumber < from || log.BlockNumber > to || log.BlockHash == (common.Hash{}) || log.TxHash == (common.Hash{}) || len(log.Topics) != 3 || log.Topics[0] != common.Hash(depositedTopic0) || len(log.Data) != 64 {
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] returned malformed log %d", from, to, i)
+			}
+			if epochFilter != nil && log.Topics[1] != common.BigToHash(epochFilter) {
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] returned log %d outside the requested epoch", from, to, i)
+			}
+			identity := fmt.Sprintf("%s/%s/%d", log.BlockHash, log.TxHash, log.Index)
+			if seenLogs[identity] {
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] repeated log %s", from, to, identity)
+			}
+			seenLogs[identity] = true
+			event, err := self.st.UnpackDepositedEvent(log)
 			if err != nil {
-				// Not a Deposited log we can decode (topic0 collision / reorg
-				// artifact) — skip it rather than fail the whole scan.
-				continue
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] cannot decode log %d: %w", from, to, i, err)
+			}
+			if event.E == nil || event.NoId == nil || event.Amount == nil || event.NoId.Sign() <= 0 || event.Amount.Sign() <= 0 {
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] decoded log %d into invalid values", from, to, i)
+			}
+			if epochFilter != nil && event.E.Cmp(epochFilter) != 0 {
+				return nil, fmt.Errorf("eth_getLogs Deposited [%d,%d] decoded log %d into another epoch", from, to, i)
 			}
 			sums.add(event.NoId, event.Amount)
 		}
 		if to == toBlock {
 			break
 		}
+		from = to + 1
 	}
 	return sums, nil
 }
@@ -586,7 +618,14 @@ func (self *ChainClient) ethCall(to common.Address, calldata []byte) ([]byte, er
 }
 
 func (self *ChainClient) ethCallAt(to common.Address, calldata []byte, blockNumber *big.Int) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), chainCallTimeout)
+	return self.ethCallAtContext(context.Background(), to, calldata, blockNumber)
+}
+
+func (self *ChainClient) ethCallAtContext(ctx context.Context, to common.Address, calldata []byte, blockNumber *big.Int) ([]byte, error) {
+	if ctx == nil {
+		return nil, errors.New("EVM call context is nil")
+	}
+	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
 	defer cancel()
 	return self.client.CallContract(ctx, ethereum.CallMsg{To: &to, Data: calldata}, blockNumber)
 }
@@ -669,4 +708,47 @@ func (self *ChainClient) FindUidByHotkeyAt(block uint64, netuid uint16, hotkey [
 		}
 	}
 	return 0, false, nil
+}
+
+// MetagraphHotkeysAtContext snapshots every live hotkey once at one canonical
+// block, allowing many binding lookups to share the bounded UID scan.
+func (self *ChainClient) MetagraphHotkeysAtContext(ctx context.Context, block uint64, netuid uint16) (map[[32]byte]uint16, error) {
+	if ctx == nil || block == 0 {
+		return nil, errors.New("metagraph snapshot context or block is invalid")
+	}
+	blockNumber := new(big.Int).SetUint64(block)
+	selector := evmSelector("getUidCount(uint16)")
+	argNetuid := evmUint16Word(netuid)
+	out, err := self.ethCallAtContext(ctx, metagraphAddress, append(selector[:], argNetuid[:]...), blockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("metagraph getUidCount: %w", err)
+	}
+	if len(out) < 32 {
+		return nil, fmt.Errorf("metagraph getUidCount: short return (%d bytes)", len(out))
+	}
+	count := uint16(out[len(out)-2])<<8 | uint16(out[len(out)-1])
+	hotkeys := make(map[[32]byte]uint16, count)
+	for uidValue := uint32(0); uidValue < uint32(count); uidValue++ {
+		uid := uint16(uidValue)
+		selector := evmSelector("getHotkey(uint16,uint16)")
+		argUID := evmUint16Word(uid)
+		calldata := make([]byte, 0, 68)
+		calldata = append(calldata, selector[:]...)
+		calldata = append(calldata, argNetuid[:]...)
+		calldata = append(calldata, argUID[:]...)
+		out, err := self.ethCallAtContext(ctx, metagraphAddress, calldata, blockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("metagraph getHotkey uid %d: %w", uid, err)
+		}
+		if len(out) < 32 {
+			return nil, fmt.Errorf("metagraph getHotkey uid %d: short return (%d bytes)", uid, len(out))
+		}
+		var hotkey [32]byte
+		copy(hotkey[:], out[len(out)-32:])
+		if _, duplicated := hotkeys[hotkey]; duplicated {
+			return nil, fmt.Errorf("metagraph hotkey is duplicated at uid %d", uid)
+		}
+		hotkeys[hotkey] = uid
+	}
+	return hotkeys, nil
 }

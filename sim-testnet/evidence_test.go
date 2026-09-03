@@ -40,9 +40,10 @@ func (store *failingPutBlobStore) Put(context.Context, string, string, string) e
 func scenarioCompletionTestEnvelope(t *testing.T, cfg *ResolvedConfig, roles *RoleSecrets, runID string) (*ReleaseEvidenceEnvelope, []byte) {
 	t.Helper()
 	complete, err := signEvidence(cfg, "scenario-complete", runID, scenarioCompletePayload{
-		ResultHash:        "0x" + strings.Repeat("11", 32),
-		Files:             map[string]string{"result.json": "sha256:" + strings.Repeat("22", 32)},
-		BundlePayloadHash: "sha256:" + strings.Repeat("33", 32),
+		ResultHash:           "0x" + strings.Repeat("11", 32),
+		Files:                map[string]string{"result.json": "sha256:" + strings.Repeat("22", 32)},
+		BundlePayloadHash:    "sha256:" + strings.Repeat("33", 32),
+		EvidenceManifestHash: "sha256:" + strings.Repeat("44", 32),
 	}, roles.EVM["testnet-owner"])
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +170,233 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutSupervisedAPIHTTP(t *tes
 		if err != nil || len(objects) != 1 || !strings.Contains(objects[0].Key, strings.TrimPrefix(commit.ContentHash, "sha256:")) {
 			t.Fatalf("operator %d direct completion history = %+v, %v", operator, objects, err)
 		}
+	}
+}
+
+func TestCampaignEvidenceArchivePublishesEveryRawFileThroughDirectStores(t *testing.T) {
+	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := "direct-campaign-archive"
+	runDir := filepath.Join(stateDir, "runs", runID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rawFiles := map[string][]byte{
+		"result.json":      []byte(`{"schema":"urnetwork-sim-scenario-result-v1"}` + "\n"),
+		"nested/proof.bin": {0x00, 0x01, 0x02, 0xff},
+	}
+	hashes := make(map[string]string, len(rawFiles))
+	for name, raw := range rawFiles {
+		if err := atomicWrite(filepath.Join(runDir, filepath.FromSlash(name)), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		hashes[name] = bytesSHA256(raw)
+	}
+	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+	}
+	transport := &forbiddenScenarioCommitSupervisedAPITransport{}
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+	manifestEnvelope, err := publishCampaignEvidenceArchive(context.Background(), cfg, roles, stateDir, runID, "0x"+strings.Repeat("11", 32), "sha256:"+strings.Repeat("22", 32), hashes, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transport.calls != 0 {
+		t.Fatalf("campaign evidence archive made %d supervised API requests", transport.calls)
+	}
+	manifest, err := decodeCampaignEvidenceManifest(manifestEnvelope)
+	if err != nil || len(manifest.Files) != len(rawFiles) {
+		t.Fatalf("campaign evidence manifest = %+v, %v", manifest, err)
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		for _, hash := range append([]string{manifestEnvelope.ContentHash}, manifestFileEnvelopeHashes(manifest.Files)...) {
+			key, err := startifact.EvidenceContentKey(stores[operator], hash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader, err := stores[operator].Get(context.Background(), key)
+			if err != nil {
+				t.Fatalf("operator %d missing campaign object %s: %v", operator, hash, err)
+			}
+			_ = reader.Close()
+		}
+	}
+}
+
+func manifestFileEnvelopeHashes(entries []campaignEvidenceFileEntry) []string {
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, entry.EnvelopeHash)
+	}
+	return result
+}
+
+func TestCampaignEvidenceArchiveFailureCannotExposeLocalCompletion(t *testing.T) {
+	cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := "failed-campaign-archive"
+	runDir := filepath.Join(stateDir, "runs", runID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"schema":"urnetwork-sim-scenario-result-v1"}` + "\n")
+	if err := atomicWrite(filepath.Join(runDir, "result.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+	}
+	stores[2] = &failingPutBlobStore{BlobStore: stores[2], err: errors.New("injected archive-store failure")}
+	_, err = publishCampaignEvidenceArchive(context.Background(), cfg, roles, stateDir, runID, "0x"+strings.Repeat("11", 32), "sha256:"+strings.Repeat("22", 32), map[string]string{"result.json": bytesSHA256(raw)}, func(operator int) (server.BlobStore, error) {
+		return stores[operator], nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "injected archive-store failure") {
+		t.Fatalf("campaign evidence archive failure = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir, "complete.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed campaign archive exposed local completion: %v", err)
+	}
+}
+
+func TestCampaignEvidenceManifestRejectsUnsafeAndDuplicatePaths(t *testing.T) {
+	hash := "sha256:" + strings.Repeat("11", 32)
+	for _, name := range []string{"../result.json", "/result.json", "nested/../result.json", `nested\result.json`, "complete.json", campaignEvidenceManifestFilename, "scenario-complete-commit.operator-1.evidence.json"} {
+		if err := validateCampaignEvidencePath(name); err == nil {
+			t.Errorf("unsafe or reserved campaign evidence path %q was accepted", name)
+		}
+	}
+	entries := []campaignEvidenceFileEntry{
+		{Path: "result.json", ContentHash: hash, EnvelopeHash: hash},
+		{Path: "result.json", ContentHash: hash, EnvelopeHash: hash},
+	}
+	if _, err := campaignEvidenceManifestFiles(entries); err == nil {
+		t.Fatal("duplicate campaign evidence path was accepted")
+	}
+}
+
+func TestCampaignArtifactLocatorAllowsOnlyExactContentHashQuery(t *testing.T) {
+	hash := "sha256:" + strings.Repeat("11", 32)
+	for _, uri := range []string{
+		"https://operator.example/sn/artifact?hash=" + hash,
+		"https://operator.example/sn/artifact?hash=sha256%3A" + strings.Repeat("11", 32),
+	} {
+		raw, err := json.Marshal(FinalArtifactLocator{Kind: "proof", URI: uri, ContentHash: hash, SizeBytes: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := campaignArtifactReferences(map[string][]byte{"locator.json": raw}); err != nil {
+			t.Errorf("exact content-addressed locator %q rejected: %v", uri, err)
+		}
+	}
+	for _, uri := range []string{
+		"https://operator.example/sn/artifact?token=secret",
+		"https://operator.example/sn/artifact?hash=sha256:" + strings.Repeat("22", 32),
+		"https://operator.example/sn/artifact?hash=" + hash + "&extra=1",
+	} {
+		raw, err := json.Marshal(FinalArtifactLocator{Kind: "proof", URI: uri, ContentHash: hash, SizeBytes: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := campaignArtifactReferences(map[string][]byte{"locator.json": raw}); err == nil {
+			t.Errorf("noncanonical locator query %q was accepted", uri)
+		}
+	}
+}
+
+func TestCampaignEvidenceGraphHardBoundsAndCycles(t *testing.T) {
+	hash := "sha256:" + strings.Repeat("11", 32)
+	t.Run("object count", func(t *testing.T) {
+		entries := make([]campaignEvidenceFileEntry, maximumCampaignEvidenceObjects+1)
+		for index := range entries {
+			entries[index] = campaignEvidenceFileEntry{Path: fmt.Sprintf("objects/%05d.bin", index), ContentHash: hash, EnvelopeHash: hash}
+		}
+		if _, err := campaignEvidenceEntryFiles(entries); err == nil || !strings.Contains(err.Error(), "maximum") {
+			t.Fatalf("oversized object set = %v", err)
+		}
+	})
+	t.Run("aggregate bytes", func(t *testing.T) {
+		entries := make([]campaignEvidenceFileEntry, maximumCampaignEvidenceAggregateBytes/maximumCampaignEvidenceRawFileBytes+1)
+		for index := range entries {
+			entries[index] = campaignEvidenceFileEntry{Path: fmt.Sprintf("objects/%05d.bin", index), ContentHash: hash, EnvelopeHash: hash, Size: maximumCampaignEvidenceRawFileBytes}
+		}
+		if _, err := campaignEvidenceEntryFiles(entries); err == nil || !strings.Contains(err.Error(), "aggregate") {
+			t.Fatalf("oversized aggregate = %v", err)
+		}
+	})
+	t.Run("JSON depth", func(t *testing.T) {
+		raw := []byte(strings.Repeat("[", maximumCampaignEvidenceJSONDepth+2) + "0" + strings.Repeat("]", maximumCampaignEvidenceJSONDepth+2))
+		if _, err := campaignArtifactReferences(map[string][]byte{"deep.json": raw}); err == nil || !strings.Contains(err.Error(), "maximum depth") {
+			t.Fatalf("deep JSON graph = %v", err)
+		}
+	})
+	t.Run("reference depth", func(t *testing.T) {
+		edges := map[string]map[string]bool{}
+		for index := 0; index <= maximumCampaignEvidenceJSONDepth; index++ {
+			edges[fmt.Sprintf("node-%d", index)] = map[string]bool{fmt.Sprintf("node-%d", index+1): true}
+		}
+		if err := validateCampaignArtifactGraph(edges); err == nil || !strings.Contains(err.Error(), "maximum depth") {
+			t.Fatalf("deep reference graph = %v", err)
+		}
+	})
+	t.Run("cycle", func(t *testing.T) {
+		edges := map[string]map[string]bool{"a": {"b": true}, "b": {"a": true}}
+		if err := validateCampaignArtifactGraph(edges); err == nil || !strings.Contains(err.Error(), "cycle") {
+			t.Fatalf("cyclic reference graph = %v", err)
+		}
+	})
+	t.Run("locator count", func(t *testing.T) {
+		references := make(map[string]campaignArtifactReference, maximumCampaignEvidenceObjects)
+		for index := 0; index < maximumCampaignEvidenceObjects; index++ {
+			references[fmt.Sprintf("objects/%05d.bin", index)] = campaignArtifactReference{Kind: "proof", URI: fmt.Sprintf("objects/%05d.bin", index), ContentHash: hash, Size: 1}
+		}
+		addition := map[string]campaignArtifactReference{"objects/overflow.bin": {Kind: "proof", URI: "objects/overflow.bin", ContentHash: hash, Size: 1}}
+		if err := mergeCampaignArtifactReferences(references, addition); err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("oversized locator set = %v", err)
+		}
+	})
+	t.Run("combined root and locator count", func(t *testing.T) {
+		references := make(map[string]campaignArtifactReference, maximumCampaignEvidenceObjects)
+		for index := 0; index < maximumCampaignEvidenceObjects; index++ {
+			uri := fmt.Sprintf("objects/%05d.bin", index)
+			references[uri] = campaignArtifactReference{Kind: "proof", URI: uri, ContentHash: hash, Size: 1}
+		}
+		if err := validateCampaignArtifactObjectCount(1, references); err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("oversized combined graph = %v", err)
+		}
+	})
+}
+
+func TestCampaignEvidenceReadCannotFollowSymlinkOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := atomicWrite(filepath.Join(outside, "secret.json"), []byte(`{"schema":"outside"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "public")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCampaignEvidenceRegularFile(root, "public/secret.json"); err == nil {
+		t.Fatal("campaign evidence reader followed a symlink outside its authenticated root")
 	}
 }
 
@@ -697,7 +925,7 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 		t.Fatalf("public override assurance was overstated in manifest: %+v", first)
 	}
 	wantEvidence := 1 + cfg.Config.Topology.fleetCandidates()*(2+cfg.Config.Topology.ClientsPerHeadFleet)
-	if len(first.SetupEvidence) != wantEvidence || first.Operators[0].APIURL != "https://no1.example" || strings.Contains(first.Operators[0].APIURL, "127.0.0.1") {
+	if len(first.SetupEvidence) != wantEvidence || first.EvidenceTransportProfile != publicEvidenceTransportHTTPS || first.Operators[0].APIURL != "https://no1.example" || strings.Contains(first.Operators[0].APIURL, "127.0.0.1") {
 		t.Fatalf("manifest is not independently reachable/complete: %+v", first)
 	}
 	for name, command := range first.Commands {
@@ -883,8 +1111,9 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 func TestEvidenceFileHashesExcludeOnlyExactRootCompletionFiles(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"result.json":   "result\n",
-		"complete.json": "root marker\n",
+		"result.json":                    "result\n",
+		"complete.json":                  "root marker\n",
+		campaignEvidenceManifestFilename: "root manifest\n",
 		"scenario-complete-commit.operator-1.evidence.json":        "operator one\n",
 		"scenario-complete-commit.operator-2.evidence.json":        "operator two\n",
 		"scenario-complete-commit.operator-3.evidence.json":        "extra operator\n",
@@ -901,7 +1130,7 @@ func TestEvidenceFileHashesExcludeOnlyExactRootCompletionFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, excluded := range []string{"complete.json", "scenario-complete-commit.operator-1.evidence.json", "scenario-complete-commit.operator-2.evidence.json"} {
+	for _, excluded := range []string{"complete.json", campaignEvidenceManifestFilename, "scenario-complete-commit.operator-1.evidence.json", "scenario-complete-commit.operator-2.evidence.json"} {
 		if hashes[excluded] != "" {
 			t.Errorf("exact completion file %s was hashed", excluded)
 		}

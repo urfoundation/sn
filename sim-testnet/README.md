@@ -188,17 +188,23 @@ shortfall without persisting or broadcasting transaction bytes.
   `server/local`; they never use shared PG or Redis services. PostgreSQL data
   volumes and containers carry the same complete release/config hash, and stale
   or unlabelled volumes are rejected instead of silently reusing old init hooks.
-- The locked `sn`, `server`, `vault`, platform `config`, `connect`, `sdk`, `glog`,
-  `goidenticons`, `proxy`, `userwireguard`, and `xops` repositories checked out
-  beneath one parent. Repository discovery uses Go module identity plus required
-  resource files; `--sn-repo`, `--server-repo`, `--vault-repo`, and
-  `--platform-config-repo` are available when the layout differs. Both executable
-  Go sources and the non-secret operator config tree are content-locked.
+- The locked `sn`, `server`, `operator-proxy`, `vault`, platform `config`,
+  `connect`, `sdk`, `glog`, `goidenticons`, `proxy`, `userwireguard`, and `xops`
+  repositories checked out beneath one parent. Repository discovery uses Go
+  module identity plus required resource files; `--sn-repo`, `--server-repo`,
+  `--operator-proxy-repo`, `--vault-repo`, and `--platform-config-repo` are
+  available when the layout differs. Operator-proxy is bound by both its
+  production-source hash and exact clean Git commit; the other executable Go
+  sources and non-secret operator config tree are content-locked as documented
+  in `release.lock.yml`.
 - Network reachability to the selected operational Substrate/EVM pair, public
   comparison endpoints, and existing MinIO service. Private fallback additionally
   requires the overlay gateway.
-- Foundry 1.7.1 only for developer rebuild/review. A launch embeds locked bytecode
-  and never compiles Solidity at runtime.
+- Foundry 1.7.1 build commit
+  `4072e48705af9d93e3c0f6e29e93b5e9a40caed8` only for developer
+  rebuild/review. The release gate also requires the exact clean, commit-pinned
+  forge-std and OpenZeppelin checkouts named in `release.lock.yml`. A launch
+  embeds locked bytecode and never compiles Solidity at runtime.
 
 On this checkout Foundry is installed at `/home/by/.foundry/bin`.
 
@@ -402,10 +408,13 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
 
 `release-candidate` is a resumable orchestration name, not a weaker scenario.
 It runs `release-1.0`, independently reloads and authenticates the signed result,
-complete marker and every named evidence file, then starts `production-soak`
-without an operator handoff gap. If M2 is already valid it runs only M3; if both
-are valid it performs no scenario action. A failed or unsigned M3 is never
-adopted: the next invocation retains M2 and starts a fresh three-epoch soak.
+complete marker, lifecycle-handoff bytes and every named evidence file, then
+binds those exact hashes into a durable production attempt before any production
+mutation. It never selects a merely newer release. If M2 is already valid it
+runs only its bound M3 attempt; if both are valid it performs no scenario action.
+A failed, canceled or unsigned phase is never adopted and never silently
+replaced with a new run ID: the next invocation reopens the same attempt and
+reconciles its signed checkpoints before resuming.
 
 `release-1.0` requires five accelerated epochs, real two-NO verification,
 independently applied CRv4 vectors and self masks, isolated deposits and conviction,
@@ -451,8 +460,14 @@ The runner snapshots finalized contract geometry after preparation, discards
 that containing epoch, accepts only the next five complete epochs, then waits
 through terminal finalization. Its signed result binds the baseline observation,
 exact start/end/terminal blocks and terminal status for both operator positions;
-the campaign verifier reconstructs those boundaries independently. Every M2
-fault must also trigger and restore inside the accepted five-epoch interval.
+the campaign verifier reconstructs those boundaries independently. Every
+ordinary M2 fault must also trigger and restore inside the accepted five-epoch
+interval. The two lifecycle filters are the explicit exception: if the
+independent native clock cannot complete the three causal pre-handoff decisions
+inside those 1,650 blocks, they remain active only through a separately reported,
+schedule-bounded release-handoff tail (at most 810 blocks for the pinned
+tempo-360/reveal-period-1 profile) and restore as soon as their exact evidence
+conditions hold. Tail blocks never count as a sixth accepted epoch.
 `production-soak` schedules the testnet-only 360-block (approximately 72-minute)
 policy and immunity period, deliberately under-deposits one operator and proves
 that both validators zero its pool until an exact later deposit recovers it,
@@ -460,7 +475,13 @@ rotates each operator verification key while retaining old proof verification,
 runs three consecutive fully observed production epochs, and genuinely restarts
 (new PID, healthy replacement) every operator service, miner/claim daemon and
 validator without overlapping faults. Mainnet remains locked to the whitepaper's
-separately reviewed 50,400-block/seven-day cadence.
+separately reviewed 50,400-block/seven-day cadence. The three production epochs
+and 180-block terminal interval remain the exact acceptance window. If their
+terminal head does not yet contain the finalized terminal-generation CRv4
+application, the runner continues only through a separately labeled,
+schedule-derived evidence tail and stops at the first such proof. It never
+reports tail blocks as an additional accepted epoch; the signed evidence exposes
+both settlement and native-subnet clock domains and the exact tail bound.
 
 While the topology is live, one supervised non-faulted loopback EVM egress owns
 the configured upstream quota. Workloads reach it through their faultable proxy;

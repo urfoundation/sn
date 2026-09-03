@@ -209,3 +209,54 @@ func TestReconcileClaimEntryUsesFinalizedLeafClaimed(t *testing.T) {
 		t.Fatalf("zero payout reconciliation = %q, %v", status, err)
 	}
 }
+
+func TestRecordFinalizedClaimReceiptBindsCanonicalInclusionAndLogs(t *testing.T) {
+	txHash := common.HexToHash("0x1234")
+	blockHash := common.HexToHash("0x5678")
+	receipt := &ethTypes.Receipt{
+		Status:      ethTypes.ReceiptStatusSuccessful,
+		TxHash:      txHash,
+		BlockNumber: big.NewInt(91),
+		BlockHash:   blockHash,
+		Logs: []*ethTypes.Log{{
+			Address:     common.HexToAddress("0x9999"),
+			Topics:      []common.Hash{common.HexToHash("0xabcd")},
+			Data:        []byte{1, 2, 3},
+			BlockNumber: 91,
+			TxHash:      txHash,
+			BlockHash:   blockHash,
+			Index:       7,
+		}},
+	}
+	entry := &ClaimQueueEntry{TxHash: strings.ToLower(txHash.Hex())}
+	if err := recordFinalizedClaimReceipt(entry, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if entry.FinalizedBlock != 91 || entry.FinalizedBlockHash != strings.ToLower(blockHash.Hex()) || entry.ReceiptStatus != ethTypes.ReceiptStatusSuccessful || !strings.HasPrefix(entry.ReceiptLogsHash, "sha256:") || len(entry.ReceiptLogsHash) != len("sha256:")+64 {
+		t.Fatalf("finalized receipt evidence is incomplete: %+v", entry)
+	}
+	wantHash := entry.ReceiptLogsHash
+	receipt.Logs[0].Data[0] ^= 1
+	other := &ClaimQueueEntry{TxHash: strings.ToLower(txHash.Hex())}
+	if err := recordFinalizedClaimReceipt(other, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if other.ReceiptLogsHash == wantHash {
+		t.Fatal("receipt log mutation retained the original evidence hash")
+	}
+
+	for name, mutate := range map[string]func(*ethTypes.Receipt){
+		"failed":            func(value *ethTypes.Receipt) { value.Status = ethTypes.ReceiptStatusFailed },
+		"missing block":     func(value *ethTypes.Receipt) { value.BlockNumber = nil },
+		"wrong transaction": func(value *ethTypes.Receipt) { value.TxHash = common.HexToHash("0x8888") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			copy := *receipt
+			mutate(&copy)
+			candidate := &ClaimQueueEntry{TxHash: strings.ToLower(txHash.Hex())}
+			if err := recordFinalizedClaimReceipt(candidate, &copy); err == nil {
+				t.Fatal("invalid finalized receipt was accepted")
+			}
+		})
+	}
+}

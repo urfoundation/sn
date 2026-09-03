@@ -130,3 +130,33 @@ func TestReleaseSeedAttemptIntervalReservesHardLimitHeadroom(t *testing.T) {
 		t.Fatal("zero hard seed rate limit was accepted")
 	}
 }
+
+type failingReleaseTrailRunner struct{ err error }
+
+func (runner failingReleaseTrailRunner) Run(context.Context, int) error { return runner.err }
+
+func TestReleaseTrailDurabilityFailureReachesProcessLifecycle(t *testing.T) {
+	want := errors.New("durable attempt ledger failed")
+	output := make(chan error, 1)
+	reportReleaseTrailEngineError(context.Background(), failingReleaseTrailRunner{err: want}, 2, 4, output)
+	select {
+	case err := <-output:
+		if !errors.Is(err, want) || err.Error() != "validator no_id 2 trail engine: durable attempt ledger failed" {
+			t.Fatalf("error = %v", err)
+		}
+	default:
+		t.Fatal("trail durability failure was not reported")
+	}
+}
+
+func TestReleaseTrailCancellationDoesNotReportAnExpectedShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	output := make(chan error, 1)
+	reportReleaseTrailEngineError(ctx, failingReleaseTrailRunner{err: context.Canceled}, 1, 1, output)
+	select {
+	case err := <-output:
+		t.Fatalf("expected shutdown was reported as a failure: %v", err)
+	default:
+	}
+}

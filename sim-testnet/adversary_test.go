@@ -103,9 +103,15 @@ func (self *scenarioAdversaryStub) Stop(context.Context) (*AdversaryCampaignEvid
 func (self *scenarioAdversaryStub) Snapshot() *AdversaryCampaignEvidence { return self.evidence }
 
 func healthyAdversaryEvidence() *AdversaryCampaignEvidence {
+	started := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	happyStarted := started.Add(time.Minute)
+	happyCompleted := happyStarted.Add(10 * time.Minute)
+	stopped := happyCompleted.Add(time.Second)
 	evidence := &AdversaryCampaignEvidence{
 		Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", MatrixHash: "0x" + strings.Repeat("ab", 32),
+		StartedAt: started.Format(time.RFC3339Nano), HappyPathStartedAt: happyStarted.Format(time.RFC3339Nano), HappyPathCompletedAt: happyCompleted.Format(time.RFC3339Nano), StoppedAt: stopped.Format(time.RFC3339Nano),
 		StartedBeforeHappyPath: true, StoppedAfterHappyPath: true, MinimumSamplesPerActor: 10,
+		MaximumSampleGapMillis:   25_000,
 		MaximumActorErrorRatePPM: 10_000, MaximumP99Milliseconds: 15_000, MaximumAttackControlRatio: 20_000_000, Status: "stopped",
 	}
 	for _, id := range releaseAdversaryActorIDs {
@@ -116,6 +122,7 @@ func healthyAdversaryEvidence() *AdversaryCampaignEvidence {
 		}
 		evidence.Actors = append(evidence.Actors, AdversaryActorEvidence{
 			ID: id, VectorIDs: []string{"vector"}, Status: "stopped", Samples: 10, ControlSamples: 2, AttackSamples: 8,
+			StartedAt: evidence.StartedAt, StoppedAt: evidence.StoppedAt, FirstSampleAt: started.Add(time.Second).Format(time.RFC3339Nano), LastSampleAt: happyCompleted.Format(time.RFC3339Nano), MaximumSampleGapMillis: 1_000,
 			Successful: 10, P99LatencyMilliseconds: 10, Metrics: metrics,
 		})
 	}
@@ -332,6 +339,40 @@ func TestAdversaryCampaignEnforcesErrorAndLatencyBounds(t *testing.T) {
 	}
 	if !foundFailure {
 		t.Fatalf("adversarial error/latency breach did not fail %s", wantID)
+	}
+}
+
+func TestAdversaryCampaignRejectsUnsignedSamplingGapAcrossHappyPath(t *testing.T) {
+	evidence := healthyAdversaryEvidence()
+	evidence.Actors[0].MaximumSampleGapMillis = evidence.MaximumSampleGapMillis + 1
+	wantID := "adversary_" + evidence.Actors[0].ID + "_continuous_sampling"
+	found := false
+	for _, assertion := range adversaryAssertions(evidence, time.Now().Add(-time.Second), "observation") {
+		if assertion.ID == wantID && !assertion.Passed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("adversary sampling gap did not fail %s", wantID)
+	}
+}
+
+func TestAdversaryCampaignRejectsLastSampleBeforeHappyPathCompletion(t *testing.T) {
+	evidence := healthyAdversaryEvidence()
+	happyCompleted, err := time.Parse(time.RFC3339Nano, evidence.HappyPathCompletedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence.Actors[0].LastSampleAt = happyCompleted.Add(-time.Duration(evidence.MaximumSampleGapMillis+1) * time.Millisecond).Format(time.RFC3339Nano)
+	wantID := "adversary_" + evidence.Actors[0].ID + "_continuous_sampling"
+	found := false
+	for _, assertion := range adversaryAssertions(evidence, time.Now().Add(-time.Second), "observation") {
+		if assertion.ID == wantID && !assertion.Passed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("early final adversary sample did not fail %s", wantID)
 	}
 }
 

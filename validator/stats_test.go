@@ -4,7 +4,12 @@ package validator
 // EMA folding, a_min gating, latency buckets, persistence.
 
 import (
+	"crypto/ed25519"
+	"errors"
 	"math"
+	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/urnetwork/connect"
@@ -197,38 +202,212 @@ func TestEgressIpHashAccumulation(t *testing.T) {
 // the following epoch then receives evidence recorded after the first cut.
 func TestReleaseHeadEvidenceRotatesOncePerNativeEpoch(t *testing.T) {
 	first, second := NewStatsEngine(StatsConfig{}), NewStatsEngine(StatsConfig{})
-	firstID, secondID := connect.NewId(), connect.NewId()
-	first.RecordEgressHash(firstID, iphash(1))
-	second.RecordEgressHash(secondID, iphash(2))
-	steerer := &ReleaseSteerer{contexts: map[uint64]*ReleaseMeasurementContext{
+	stateDir := t.TempDir()
+	firstState := filepath.Join(stateDir, "no-3")
+	secondState := filepath.Join(stateDir, "no-9")
+	cfg := &ReleaseConfig{
+		StateDir: stateDir, DeploymentID: "measurement-restart", ChainID: 945,
+		GenesisHash: releaseHex32([32]byte{1}), Coordinator: "0x0000000000000000000000000000000000000001",
+		ValidatorID: 1, Netuid: 521, PolicyHash: releaseHex32([32]byte{2}),
+		Operators: []OperatorConfig{{NoID: 3, StateDir: firstState}, {NoID: 9, StateDir: secondState}},
+	}
+	validatorKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	for _, setup := range []struct {
+		noID  uint64
+		stats *StatsEngine
+		dir   string
+	}{{noID: 3, stats: first, dir: firstState}, {noID: 9, stats: second, dir: secondState}} {
+		if err := setup.stats.AdvanceSettlementEpoch(4, setup.dir); err != nil {
+			t.Fatal(err)
+		}
+		ledger, err := NewAttemptLedger(setup.dir, AttemptLedgerIdentity{
+			DeploymentID: cfg.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.GenesisHash,
+			Netuid: cfg.Netuid, ValidatorID: cfg.ValidatorID, NoID: setup.noID,
+		}, validatorKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := setup.stats.AttachAttemptLedger(ledger, setup.dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	contexts := map[uint64]*ReleaseMeasurementContext{
 		9: {NoID: 9, Stats: second},
 		3: {NoID: 3, Stats: first},
-	}}
+	}
+	steerer := &ReleaseSteerer{cfg: cfg, contexts: contexts}
+	snapshot := &ReleaseSnapshot{BlockNumber: 98, BlockHash: [32]byte{7}, Epoch: big.NewInt(4)}
 
-	initial, providers, err := steerer.takeHeadEvidence(41)
+	initial, err := steerer.takeHeadEvidence(41, 100, releaseHex32([32]byte{3}), snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !initial[3][firstID][iphash(1)] || !initial[9][secondID][iphash(2)] || len(providers[3]) != 1 || len(providers[9]) != 1 {
-		t.Fatalf("initial native window evidence=%v providers=%v", initial, providers)
-	}
-	first.RecordEgressHash(firstID, iphash(3))
-	retry, _, err := steerer.takeHeadEvidence(41)
+	firstInitial, err := VerifyReleaseStatsMeasurement(initial[3].Stats)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retry[3][firstID][iphash(3)] || !retry[3][firstID][iphash(1)] {
-		t.Fatalf("same-epoch retry changed detached evidence: %v", retry[3][firstID])
-	}
-	next, _, err := steerer.takeHeadEvidence(42)
+	secondInitial, err := VerifyReleaseStatsMeasurement(initial[9].Stats)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !next[3][firstID][iphash(3)] || next[3][firstID][iphash(1)] {
-		t.Fatalf("next native epoch evidence=%v, want only post-cut evidence", next[3][firstID])
+	if len(firstInitial.Providers) != 0 || len(secondInitial.Providers) != 0 || initial[3].EgressGeneration != 0 || initial[9].EgressGeneration != 0 {
+		t.Fatalf("initial native window evidence=%v", initial)
 	}
-	if _, _, err := steerer.takeHeadEvidence(41); err == nil {
+	// Reconstructing the steerer forces the same-epoch retry through durable
+	// journals rather than relying on its in-memory cache.
+	steerer = &ReleaseSteerer{cfg: cfg, contexts: contexts}
+	retry, err := steerer.takeHeadEvidence(41, 101, releaseHex32([32]byte{4}), snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryStats, err := VerifyReleaseStatsMeasurement(retry[3].Stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retryStats.Providers) != 0 || retry[3].EgressGeneration != initial[3].EgressGeneration || retry[3].Stats.AttemptCut.Root != initial[3].Stats.AttemptCut.Root {
+		t.Fatalf("same-epoch retry changed detached evidence: %v", retry[3])
+	}
+	next, err := steerer.takeHeadEvidence(42, 102, releaseHex32([32]byte{5}), snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextStats, err := VerifyReleaseStatsMeasurement(next[3].Stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nextStats.Providers) != 0 || next[3].EgressGeneration != initial[3].EgressGeneration+1 {
+		t.Fatalf("next native epoch evidence=%v, want exactly one generation advance", next[3])
+	}
+	crossedSettlement := *snapshot
+	crossedSettlement.Epoch = big.NewInt(5)
+	if _, err := steerer.takeHeadEvidence(42, 103, releaseHex32([32]byte{6}), &crossedSettlement); err == nil {
+		t.Fatal("same native window crossed into a different settlement epoch")
+	}
+	if _, err := steerer.takeHeadEvidence(41, 103, releaseHex32([32]byte{6}), snapshot); err == nil {
 		t.Fatal("native epoch regression was accepted")
+	}
+}
+
+// A failed write-ahead journal must leave the native egress window intact;
+// only a successfully persisted atomic snapshot owns and rotates the evidence.
+func TestReleaseStatsDetachRotatesOnlyAfterPersistence(t *testing.T) {
+	dir := t.TempDir()
+	stats := NewStatsEngine(StatsConfig{AMin: 1})
+	clientID := connect.NewId()
+	hash := iphash(9)
+	stats.RecordAssignment(clientID)
+	stats.RecordConfirmation(clientID, 100)
+	stats.RecordEgressHash(clientID, hash)
+	expectedFailure := errors.New("journal unavailable")
+	if _, err := stats.detachReleaseStatsMeasurement(dir, func(ReleaseStatsMeasurement, uint64) error { return expectedFailure }); !errors.Is(err, expectedFailure) {
+		t.Fatalf("failed journal result = %v", err)
+	}
+	if !stats.EgressIpHashes()[clientID][hash] {
+		t.Fatal("failed journal write destroyed native egress evidence")
+	}
+	measurement, err := stats.detachReleaseStatsMeasurement(dir, func(ReleaseStatsMeasurement, uint64) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := VerifyReleaseStatsMeasurement(measurement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verified.Providers[clientID].EgressIPHashes[hash] || verified.Providers[clientID].Exposure != 1 || !verified.Providers[clientID].HasQuality || len(stats.EgressIpHashes()) != 0 {
+		t.Fatalf("persisted atomic measurement did not own the complete cut: %+v", verified.Providers[clientID])
+	}
+}
+
+// Journal-first recovery clears exactly the old durable generation and never
+// erases a repeated prefix recorded in the following native window.
+func TestReleaseStatsCutReconcilesCrashWithoutDuplicateOrLoss(t *testing.T) {
+	dir := t.TempDir()
+	stats := NewStatsEngine(StatsConfig{AMin: 1})
+	clientID := connect.NewId()
+	hash := iphash(7)
+	stats.RecordEgressHash(clientID, hash)
+	if err := stats.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(t.TempDir(), "regular-file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cutGeneration := uint64(99)
+	_, err := stats.detachReleaseStatsMeasurement(blocker, func(_ ReleaseStatsMeasurement, generation uint64) error {
+		cutGeneration = generation
+		return nil
+	})
+	if err == nil || cutGeneration != 0 {
+		t.Fatalf("simulated post-journal crash generation=%d err=%v", cutGeneration, err)
+	}
+	restarted := NewStatsEngine(StatsConfig{AMin: 1})
+	if err := restarted.Load(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileReleaseStatsCut(dir, cutGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if len(restarted.EgressIpHashes()) != 0 || restarted.egressGeneration != 1 {
+		t.Fatalf("recovered cut egress=%v generation=%d", restarted.EgressIpHashes(), restarted.egressGeneration)
+	}
+	restarted.RecordEgressHash(clientID, hash)
+	if err := restarted.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileReleaseStatsCut(dir, cutGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if !restarted.EgressIpHashes()[clientID][hash] {
+		t.Fatal("old journal erased a repeated prefix from the next generation")
+	}
+}
+
+// Settlement ownership is persisted with the quality state, so restarts and a
+// failed atomic write cannot skip or duplicate an epoch fold.
+func TestStatsSettlementAdvanceIsDurableAndTransactional(t *testing.T) {
+	dir := t.TempDir()
+	stats := NewStatsEngine(StatsConfig{AMin: 1, AlphaNumerator: 1, AlphaDenominator: 2})
+	if err := stats.AdvanceSettlementEpoch(4, dir); err != nil {
+		t.Fatal(err)
+	}
+	clientID := connect.NewId()
+	stats.RecordAssignment(clientID)
+	stats.RecordConfirmation(clientID, 100)
+	before := stats.QualityPPM()[clientID]
+
+	badStateRoot := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(badStateRoot, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stats.AdvanceSettlementEpoch(5, badStateRoot); err == nil {
+		t.Fatal("settlement fold unexpectedly persisted beneath a regular file")
+	}
+	if assignments, confirmations := stats.WindowCounts(clientID); assignments != 1 || confirmations != 1 {
+		t.Fatalf("failed boundary write mutated the live window: %d/%d", assignments, confirmations)
+	}
+	if err := stats.AdvanceSettlementEpoch(5, dir); err != nil {
+		t.Fatal(err)
+	}
+	if assignments, _ := stats.WindowCounts(clientID); assignments != 0 {
+		t.Fatal("successful boundary did not clear the folded window")
+	}
+	if got := stats.QualityPPM()[clientID]; got != before {
+		t.Fatalf("first durable fold quality %d, want %d", got, before)
+	}
+
+	restarted := NewStatsEngine(StatsConfig{AMin: 1, AlphaNumerator: 1, AlphaDenominator: 2})
+	if err := restarted.Load(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.AdvanceSettlementEpoch(5, dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := restarted.QualityPPM()[clientID]; got != before {
+		t.Fatalf("same-epoch restart applied the fold twice: %d, want %d", got, before)
+	}
+	if err := restarted.AdvanceSettlementEpoch(7, dir); err == nil {
+		t.Fatal("unobservable skipped settlement epoch was accepted")
 	}
 }
 

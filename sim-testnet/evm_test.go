@@ -866,12 +866,12 @@ func TestPrecompileProbeArtifactIsLockedAndTestnetOnly(t *testing.T) {
 	}
 }
 
-func TestGovernanceDrillImplementationIsStorageCompatibleAndTestnetOnly(t *testing.T) {
+func TestGovernanceDrillImplementationIsStorageIsolatedAndTestnetOnly(t *testing.T) {
 	if CoordinatorStorageLayoutHash == "" || CoordinatorAdversaryStorageLayoutHash == "" {
 		t.Fatal("coordinator storage layout hashes are missing")
 	}
-	if CoordinatorStorageLayoutHash != CoordinatorAdversaryStorageLayoutHash {
-		t.Fatalf("testnet adversary storage layout %s differs from coordinator %s", CoordinatorAdversaryStorageLayoutHash, CoordinatorStorageLayoutHash)
+	if CoordinatorStorageLayoutHash == CoordinatorAdversaryStorageLayoutHash {
+		t.Fatal("minimal testnet adversary unexpectedly embeds the coordinator storage layout")
 	}
 	if TestnetGovernanceDrillArtifact.Name == "" || TestnetGovernanceDrillArtifact.CreationBytecode == "" {
 		t.Fatal("testnet governance drill artifact is missing")

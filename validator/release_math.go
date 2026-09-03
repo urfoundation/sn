@@ -137,32 +137,11 @@ func PoolQualityPPM(stats *StatsEngine, bound map[connect.Id]bool) uint32 {
 	if stats == nil {
 		return 0
 	}
-	quality := stats.QualityPPM()
-	exposure := stats.Exposure()
-	var numerator, denominator uint64
-	for id, q := range quality {
-		if bound[id] {
-			continue
-		}
-		weight := exposure[id]
-		if weight == 0 {
-			weight = 1
-		}
-		// q <= 1e6 and an in-memory window cannot approach uint64 overflow;
-		// use saturation defensively so malformed snapshots fail low.
-		if q != 0 && weight > (^uint64(0)-numerator)/uint64(q) {
-			return 0
-		}
-		numerator += uint64(q) * weight
-		if ^uint64(0)-denominator < weight {
-			return 0
-		}
-		denominator += weight
-	}
-	if denominator == 0 {
+	verified, err := VerifyReleaseStatsMeasurement(stats.currentReleaseStatsMeasurement())
+	if err != nil {
 		return 0
 	}
-	return uint32(numerator / denominator)
+	return PoolQualityFromReleaseStats(verified, bound)
 }
 
 func ExactHeadScores(fleets map[uint16]map[[32]byte]bool) map[uint16]*big.Rat {

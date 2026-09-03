@@ -24,6 +24,7 @@ abstract contract ReleaseBase is Test {
     uint64 internal constant START_BLOCK = 1_000;
     uint64 internal constant REGISTRATION_BURN_LIMIT = 100_000_000;
     uint64 internal constant MINIMUM_TRANSFER_TAO_RAO = 1;
+    uint64 internal constant MINIMUM_CLAIM_TTL_BLOCKS = EPOCH_BLOCKS * 8;
 
     uint256 internal constant NO1 = 1;
     uint256 internal constant NO2 = 2;
@@ -72,7 +73,12 @@ abstract contract ReleaseBase is Test {
 
         sink = new STReserveSink(NETUID, RESERVE_HOTKEY, SINK_COLDKEY, address(this));
         vault = new STSettlementVault(
-            NETUID, ESCROW_HOTKEY, VAULT_COLDKEY, 1, MINIMUM_TRANSFER_TAO_RAO, address(this)
+            NETUID,
+            ESCROW_HOTKEY,
+            VAULT_COLDKEY,
+            MINIMUM_CLAIM_TTL_BLOCKS,
+            MINIMUM_TRANSFER_TAO_RAO,
+            address(this)
         );
         alpha.setAlphaPrice(NETUID, 1 ether);
         neuron.setUid(NETUID, ESCROW_HOTKEY, 10);

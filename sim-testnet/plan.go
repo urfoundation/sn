@@ -553,6 +553,17 @@ func setupEVMGasUnitLimits(cfg *ResolvedConfig) map[string]uint64 {
 			limits[fmt.Sprintf("fleet.bind.%d.%d", fleet, member)] = 400_000
 		}
 	}
+	for _, id := range []string{"lifecycle.prepare.target.mirror", "lifecycle.prepare.companion.mirror", "lifecycle.fallback.mirror", "lifecycle.provider.mirror", "lifecycle.terminal.mirror"} {
+		limits[id] = 200_000
+	}
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		for _, prefix := range []string{"lifecycle.prepare.target.bind", "lifecycle.prepare.companion.bind", "lifecycle.fallback.bind", "lifecycle.provider.bind", "lifecycle.terminal.bind"} {
+			limits[fmt.Sprintf("%s.%d", prefix, member)] = 400_000
+		}
+		for _, prefix := range []string{"lifecycle.provider.cleanup", "lifecycle.terminal.cleanup-companion", "lifecycle.terminal.cleanup-fallback"} {
+			limits[fmt.Sprintf("%s.%d", prefix, member)] = 200_000
+		}
+	}
 	for batch := 1; batch <= (cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize; batch++ {
 		limits[fmt.Sprintf("fleet.install.batch.%d", batch)] = 18_000_000
 		limits[fmt.Sprintf("fleet.refresh.batch.%d", batch)] = 24_000_000
@@ -1104,6 +1115,27 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 			return nil, err
 		}
 	}
+	for _, id := range []string{"lifecycle.prepare.target.mirror", "lifecycle.prepare.companion.mirror", "lifecycle.fallback.mirror", "lifecycle.provider.mirror", "lifecycle.terminal.mirror"} {
+		if err := addRoleGas("commitment-oracle", gasCaps[id]); err != nil {
+			return nil, err
+		}
+	}
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		for _, id := range []string{
+			fmt.Sprintf("lifecycle.prepare.target.bind.%d", member),
+			fmt.Sprintf("lifecycle.prepare.companion.bind.%d", member),
+			fmt.Sprintf("lifecycle.fallback.bind.%d", member),
+			fmt.Sprintf("lifecycle.provider.cleanup.%d", member),
+			fmt.Sprintf("lifecycle.provider.bind.%d", member),
+			fmt.Sprintf("lifecycle.terminal.cleanup-companion.%d", member),
+			fmt.Sprintf("lifecycle.terminal.cleanup-fallback.%d", member),
+			fmt.Sprintf("lifecycle.terminal.bind.%d", member),
+		} {
+			if err := addRoleGas("keeper", gasCaps[id]); err != nil {
+				return nil, err
+			}
+		}
+	}
 	var campaignWeight uint64
 	remainingWeightedRoles := 0
 	for _, role := range gasRoles {
@@ -1357,9 +1389,10 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		}
 	}
 	// Two production hyperparameter transitions, both head-fleet commitment
-	// generations, every challenger registration/commitment pair, and the M0B
-	// replace/restore pair are added after this reservation is constructed.
-	nativeWrites += uint64(2*cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 4)
+	// generations, every challenger registration/commitment pair, the M0B
+	// replace/restore pair, and sixteen explicit M2 lifecycle native writes are
+	// added after this reservation is constructed.
+	nativeWrites += uint64(2*cfg.Config.Topology.HeadFleets + 2*cfg.Config.Topology.ChallengerFleets + 4 + 16)
 	feeReserve, ok := checkedMul(nativeWrites, nativeFeeLimit)
 	if !ok {
 		return nil, fmt.Errorf("native fee reserve overflow")
@@ -1531,6 +1564,113 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		}
 	}
 	add(Action{ID: "churn.tournament-complete", Kind: "local", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: "prove both live challengers replaced exactly the two oldest eligible remaining churn-floor UIDs while all 202 measured fleets remain registered", DependsOn: []string{lastChallenger}})
+	lifecycleCommitmentFunding, err := registrationRoleFunding(0, nativeFeeLimit, facts.ExistentialDepositRao)
+	if err != nil {
+		return nil, fmt.Errorf("fleet lifecycle commitment funding: %w", err)
+	}
+	lifecyclePrepareBarrier := "churn.tournament-complete"
+	for _, preparation := range []struct {
+		name  string
+		fleet int
+		churn int
+		uid   uint16
+	}{{"target", fleetLifecycleTargetFleet, fleetLifecycleTargetChurn, fleetLifecycleTargetExpectedUID}, {"companion", fleetLifecycleCompanionFleet, fleetLifecycleCompanionChurn, fleetLifecycleCompanionExpectedUID}} {
+		prefix := "lifecycle.prepare." + preparation.name
+		fundID := prefix + ".fund-hotkey"
+		add(Action{ID: fundID, Kind: "substrate-extrinsic", Target: churnHotkeyLabel(preparation.churn), Description: "fund the exact live churn hotkey for its generation-3 provider takeover commitment", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao), "expected_uid": strconv.Itoa(int(preparation.uid))}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{lifecyclePrepareBarrier}})
+		commitID := prefix + ".commitment"
+		add(Action{ID: commitID, Kind: "substrate-extrinsic", Target: churnHotkeyLabel(preparation.churn), Description: "publish the pre-acceptance generation-3 takeover commitment for the exact live prune candidate", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": strconv.FormatUint(fleetLifecycleTakeoverGeneration, 10), "expected_uid": strconv.Itoa(int(preparation.uid))}, DependsOn: []string{fundID}})
+		mirrorID := prefix + ".mirror"
+		add(Action{ID: mirrorID, Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the exact finalized generation-3 takeover commitment", Spend: Spend{EVMGasWei: gasCaps[mirrorID]}, DependsOn: []string{commitID, "evm.fund-commitment-oracle"}})
+		lifecyclePrepareBarrier = mirrorID
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			id := fmt.Sprintf("%s.bind.%d", prefix, member)
+			miner := fleetMemberMinerIndex(cfg, preparation.fleet, member)
+			add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "move one existing provider client to its exact live runtime-452 prune candidate at generation 3", Parameters: map[string]string{"expected_uid": strconv.Itoa(int(preparation.uid))}, Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecyclePrepareBarrier, "evm.fund-keeper"}})
+			lifecyclePrepareBarrier = id
+		}
+		installedID := prefix + ".installed"
+		add(Action{ID: installedID, Kind: "local", Target: fmt.Sprintf("fleet:%d", preparation.fleet), Description: "prove all generation-3 takeover bindings resolve to the exact expected live UID", Parameters: map[string]string{"expected_uid": strconv.Itoa(int(preparation.uid))}, DependsOn: []string{lifecyclePrepareBarrier}})
+		lifecyclePrepareBarrier = installedID
+	}
+	lifecycleRegistrationParameters := registrationFundingParameters()
+	lifecycleRegistrationParameters["expected_pruned_fleet"] = strconv.Itoa(fleetLifecycleTargetFleet)
+	lifecycleRegistrationParameters["expected_pruned_hotkey"] = fleetProviderHotkeyLabel(fleetLifecycleTargetFleet)
+	lifecycleRegistrationParameters["expected_pruned_uid"] = strconv.Itoa(fleetLifecycleTargetExpectedUID)
+	lifecycleRegistrationParameters["expected_replacement_hotkey"] = churnHotkeyLabel(fleetLifecycleFallbackChurn)
+	add(Action{ID: "lifecycle.fallback.fund", Kind: "substrate-extrinsic", Target: churnColdkeyLabel(fleetLifecycleFallbackChurn), Description: "fund the previously pruned fallback provider coldkey for one exact bounded runtime-452 registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecyclePrepareBarrier}})
+	add(Action{ID: "lifecycle.fallback.register", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "replace the exact zero-emission fleet-5 provider selected by runtime-452 with the approved fallback identity", Parameters: lifecycleRegistrationParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.fallback.fund"}})
+	add(Action{ID: "lifecycle.fallback.fund-hotkey", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "fund the fallback hotkey for its exact bounded commitment write", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{"lifecycle.fallback.register"}})
+	add(Action{ID: "lifecycle.fallback.commitment", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "publish the fallback provider's fresh finalized fleet commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": "1"}, DependsOn: []string{"lifecycle.fallback.fund-hotkey"}})
+	add(Action{ID: "lifecycle.fallback.mirror", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the fallback provider commitment at its exact finalized native block", Spend: Spend{EVMGasWei: gasCaps["lifecycle.fallback.mirror"]}, DependsOn: []string{"lifecycle.fallback.commitment", "evm.fund-commitment-oracle"}})
+	lifecycleFallbackBarrier := "lifecycle.fallback.mirror"
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		miner, minerErr := fleetLifecycleFallbackMinerIndex(cfg, member)
+		if minerErr != nil {
+			return nil, minerErr
+		}
+		id := fmt.Sprintf("lifecycle.fallback.bind.%d", member)
+		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "bind one pool-tail client to the newly registered fallback provider effective next epoch", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecycleFallbackBarrier, "evm.fund-keeper"}})
+		lifecycleFallbackBarrier = id
+	}
+	add(Action{ID: "lifecycle.fallback.installed", Kind: "local", Target: fmt.Sprintf("fleet:%d", fleetLifecycleTargetFleet), Description: "verify the fallback registration and all four future-effective client bindings", DependsOn: []string{lifecycleFallbackBarrier}})
+	lifecycleProviderBarrier := "lifecycle.fallback.installed"
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		id := fmt.Sprintf("lifecycle.provider.cleanup.%d", member)
+		miner := fleetMemberMinerIndex(cfg, fleetLifecycleTargetFleet, member)
+		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "clean one stale generation-3 takeover binding only after its complete pool-payout epoch is preserved", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecycleProviderBarrier, "evm.fund-keeper"}})
+		lifecycleProviderBarrier = id
+	}
+	lifecycleProviderParameters := registrationFundingParameters()
+	lifecycleProviderParameters["expected_pruned_fleet"] = strconv.Itoa(fleetLifecycleCompanionFleet)
+	lifecycleProviderParameters["expected_pruned_hotkey"] = fleetProviderHotkeyLabel(fleetLifecycleCompanionFleet)
+	lifecycleProviderParameters["expected_pruned_uid"] = strconv.Itoa(fleetLifecycleCompanionExpectedUID)
+	lifecycleProviderParameters["expected_replacement_hotkey"] = fleetProviderHotkeyLabel(fleetLifecycleTargetFleet)
+	add(Action{ID: "lifecycle.provider.fund", Kind: "substrate-extrinsic", Target: fleetProviderColdkeyLabel(fleetLifecycleTargetFleet), Description: "fund the original provider coldkey for one exact bounded re-registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecycleProviderBarrier}})
+	add(Action{ID: "lifecycle.provider.register", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "re-register the same provider identity into the exact runtime-452 UID vacated by fleet 6", Parameters: lifecycleProviderParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.provider.fund"}})
+	add(Action{ID: "lifecycle.provider.fund-hotkey", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "fund the re-registered provider hotkey for its fresh generation-4 commitment", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{"lifecycle.provider.register"}})
+	add(Action{ID: "lifecycle.provider.commitment", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "publish the re-registered provider's fresh generation-4 finalized commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": strconv.FormatUint(fleetLifecycleGeneration, 10)}, DependsOn: []string{"lifecycle.provider.fund-hotkey"}})
+	add(Action{ID: "lifecycle.provider.mirror", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the re-registered provider generation-4 commitment before rebinding clients", Spend: Spend{EVMGasWei: gasCaps["lifecycle.provider.mirror"]}, DependsOn: []string{"lifecycle.provider.commitment", "evm.fund-commitment-oracle"}})
+	lifecycleProviderBarrier = "lifecycle.provider.mirror"
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		id := fmt.Sprintf("lifecycle.provider.bind.%d", member)
+		miner := fleetMemberMinerIndex(cfg, fleetLifecycleTargetFleet, member)
+		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "bind one original client to the same re-registered provider identity at generation 4 effective next epoch", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecycleProviderBarrier, "evm.fund-keeper"}})
+		lifecycleProviderBarrier = id
+	}
+	add(Action{ID: "lifecycle.provider.installed", Kind: "local", Target: fmt.Sprintf("fleet:%d", fleetLifecycleTargetFleet), Description: "verify all generation-4 bindings and preserve a post-registration reward baseline before the future full epoch", DependsOn: []string{lifecycleProviderBarrier}})
+	lifecycleTerminalBarrier := "lifecycle.provider.installed"
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		fallbackMiner, fallbackErr := fleetLifecycleFallbackMinerIndex(cfg, member)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		for _, cleanup := range []struct {
+			prefix string
+			miner  int
+		}{{"lifecycle.terminal.cleanup-companion", fleetMemberMinerIndex(cfg, fleetLifecycleCompanionFleet, member)}, {"lifecycle.terminal.cleanup-fallback", fallbackMiner}} {
+			id := fmt.Sprintf("%s.%d", cleanup.prefix, member)
+			add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", cleanup.miner), Description: "clean one superseded lifecycle binding after preserving its full-epoch head/pool disposition", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecycleTerminalBarrier, "evm.fund-keeper"}})
+			lifecycleTerminalBarrier = id
+		}
+	}
+	lifecycleTerminalParameters := registrationFundingParameters()
+	lifecycleTerminalParameters["expected_pruned_fleet"] = "0"
+	lifecycleTerminalParameters["expected_pruned_hotkey"] = churnHotkeyLabel(fleetLifecycleTerminalVictimChurn)
+	lifecycleTerminalParameters["expected_pruned_uid"] = strconv.Itoa(fleetLifecycleTerminalVictimUID)
+	lifecycleTerminalParameters["expected_replacement_hotkey"] = churnHotkeyLabel(fleetLifecycleCompanionChurn)
+	add(Action{ID: "lifecycle.terminal.fund", Kind: "substrate-extrinsic", Target: churnColdkeyLabel(fleetLifecycleCompanionChurn), Description: "fund the companion provider coldkey for its exact terminal re-registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecycleTerminalBarrier}})
+	add(Action{ID: "lifecycle.terminal.register", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleCompanionChurn), Description: "re-register the companion provider by replacing exact unused churn-8 UID 9", Parameters: lifecycleTerminalParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.terminal.fund"}})
+	add(Action{ID: "lifecycle.terminal.fund-hotkey", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleCompanionChurn), Description: "fund the terminal companion hotkey for its fresh generation-4 commitment", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{"lifecycle.terminal.register"}})
+	add(Action{ID: "lifecycle.terminal.commitment", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleCompanionChurn), Description: "publish the restored companion's fresh generation-4 finalized commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": strconv.FormatUint(fleetLifecycleGeneration, 10)}, DependsOn: []string{"lifecycle.terminal.fund-hotkey"}})
+	add(Action{ID: "lifecycle.terminal.mirror", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the terminal companion generation-4 commitment", Spend: Spend{EVMGasWei: gasCaps["lifecycle.terminal.mirror"]}, DependsOn: []string{"lifecycle.terminal.commitment", "evm.fund-commitment-oracle"}})
+	lifecycleTerminalBarrier = "lifecycle.terminal.mirror"
+	for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+		id := fmt.Sprintf("lifecycle.terminal.bind.%d", member)
+		add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", fleetMemberMinerIndex(cfg, fleetLifecycleCompanionFleet, member)), Description: "restore one canonical fleet-6 client at generation 4 effective at its observed next settlement boundary", Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecycleTerminalBarrier, "evm.fund-keeper"}})
+		lifecycleTerminalBarrier = id
+	}
+	add(Action{ID: "lifecycle.terminal.installed", Kind: "local", Target: fmt.Sprintf("fleet:%d", fleetLifecycleCompanionFleet), Description: "prove all canonical companion clients are rebound for terminal live topology", DependsOn: []string{lifecycleTerminalBarrier}})
 	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the exact generation-2 fleet commitment with a finalized one-field SHA-256 conformance commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"churn.tournament-complete"}})
 	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "restore the exact generation-2 fleet hash and prove the restored finalized bytes", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"precompile.commitment-write"}})
 	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-452-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.commitment-restore", "precompile.probe-deploy"}})
@@ -1595,12 +1735,10 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		add(Action{ID: id, Kind: "substrate-extrinsic", Target: fmt.Sprintf("netuid:%d", cfg.Netuid), Description: fmt.Sprintf("after M2, converge %s to its production value and verify finalized state", name), Parameters: map[string]string{"value": fmt.Sprint(value)}, DependsOn: []string{productionDependency}})
 		productionDependency = id
 	}
-	add(Action{
-		ID: "campaign.dishonest-deposit.2", Kind: "evm-transaction", Target: "no:2",
-		Description: "post a deliberate 50-percent demand underpayment in the first fresh production-cadence epoch and prove live validators reject the signed-usage mismatch",
-		Parameters:  map[string]string{"no_id": "2", "amount_rao": fmt.Sprint(cfg.Config.Scenarios.DishonestDepositRao), "target_epoch": "next_fresh_production_epoch", "reserve_runtime_share_transitions": strconv.FormatUint(reserveRuntimeShareTransitionCount, 10), "reserve_rounding_allowance_rao": strconv.FormatUint(reserveRoundingAllowancePerCallRao, 10)},
-		Spend:       Spend{EVMGasWei: dishonestDepositGas}, DependsOn: []string{"topology.launch", "campaign.evm-gas-reserve", productionDependency},
-	})
+	dishonestDeposit := dishonestDepositBaseAction(cfg)
+	dishonestDeposit.Spend = Spend{EVMGasWei: dishonestDepositGas}
+	dishonestDeposit.DependsOn = []string{"topology.launch", "campaign.evm-gas-reserve", productionDependency}
+	add(dishonestDeposit)
 	add(Action{ID: "retirement.evm-gas-reserve", Kind: "budget-reserve", Target: cfg.Config.Deployment.DeploymentID, Description: "reserve a separately approved gas ceiling for future-effective retirement of every operator", Parameters: map[string]string{"operators": fmt.Sprint(operatorCount)}, Spend: Spend{EVMGasWei: retirementGas}, DependsOn: []string{"topology.launch"}})
 	p.MaximumSpend, err = maximumActionSpend(p.Actions)
 	if err != nil {

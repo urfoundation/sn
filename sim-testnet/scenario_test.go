@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	gsrpcTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/urnetwork/connect"
 
@@ -749,6 +750,74 @@ func TestNativeRewardChecksBindTopBoundaryPoolsAndValidatorDividends(t *testing.
 	}
 }
 
+func TestNativeRewardStakeRequiresExactNonnegativeUIDCensus(t *testing.T) {
+	rewards := &NativeRewardObservation{
+		EmissionRao:         []string{"0", "7"},
+		Incentive:           []uint16{0, 1},
+		Dividends:           []uint16{0, 0},
+		TotalHotkeyAlphaRao: []string{"0", "123456789"},
+	}
+	stake, ok := nativeRewardStakeAt(rewards, 1)
+	if !ok || stake.String() != "123456789" {
+		t.Fatalf("exact native stake decoded as %v/%t", stake, ok)
+	}
+	for _, malformed := range []string{"", "-1", "1.5", "+1", " 1", "01"} {
+		rewards.TotalHotkeyAlphaRao[1] = malformed
+		if stake, ok := nativeRewardStakeAt(rewards, 1); ok || stake != nil {
+			t.Errorf("malformed native stake %q decoded as %v/%t", malformed, stake, ok)
+		}
+	}
+	rewards.TotalHotkeyAlphaRao = rewards.TotalHotkeyAlphaRao[:1]
+	if stake, ok := nativeRewardStakeAt(rewards, 1); ok || stake != nil {
+		t.Fatalf("missing UID stake decoded as %v/%t", stake, ok)
+	}
+}
+
+func TestNativeRewardObservationBindsStakeToExactUIDOrder(t *testing.T) {
+	head := ChainHead{Number: 77, Hash: "0xhead"}
+	reward, err := nativeRewardObservationFromFinalizedState(
+		head,
+		[]gsrpcTypes.U64{3, 5},
+		[]gsrpcTypes.U16{7, 11},
+		[]gsrpcTypes.U16{13, 17},
+		[]ExistingUIDFact{{UID: 0, TotalHotkeyAlphaRao: 19}, {UID: 1, TotalHotkeyAlphaRao: 23}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reward.FinalizedHead != head || !slices.Equal(reward.EmissionRao, []string{"3", "5"}) || !slices.Equal(reward.Incentive, []uint16{7, 11}) || !slices.Equal(reward.Dividends, []uint16{13, 17}) || !slices.Equal(reward.TotalHotkeyAlphaRao, []string{"19", "23"}) {
+		t.Fatalf("native reward snapshot is not exact: %+v", reward)
+	}
+}
+
+func TestNativeRewardObservationRejectsEveryAdjacentShapeMismatch(t *testing.T) {
+	head := ChainHead{Number: 77, Hash: "0xhead"}
+	emission := []gsrpcTypes.U64{3, 5}
+	incentive := []gsrpcTypes.U16{7, 11}
+	dividends := []gsrpcTypes.U16{13, 17}
+	facts := []ExistingUIDFact{{UID: 0, TotalHotkeyAlphaRao: 19}, {UID: 1, TotalHotkeyAlphaRao: 23}}
+	tests := []struct {
+		name      string
+		head      ChainHead
+		emission  []gsrpcTypes.U64
+		incentive []gsrpcTypes.U16
+		dividends []gsrpcTypes.U16
+		facts     []ExistingUIDFact
+	}{
+		{name: "zero head", head: ChainHead{}, emission: emission, incentive: incentive, dividends: dividends, facts: facts},
+		{name: "empty emission", head: head, emission: nil, incentive: nil, dividends: nil, facts: nil},
+		{name: "short incentive", head: head, emission: emission, incentive: incentive[:1], dividends: dividends, facts: facts},
+		{name: "short dividends", head: head, emission: emission, incentive: incentive, dividends: dividends[:1], facts: facts},
+		{name: "short stake", head: head, emission: emission, incentive: incentive, dividends: dividends, facts: facts[:1]},
+		{name: "reordered UID", head: head, emission: emission, incentive: incentive, dividends: dividends, facts: []ExistingUIDFact{{UID: 1}, {UID: 0}}},
+	}
+	for _, test := range tests {
+		if value, err := nativeRewardObservationFromFinalizedState(test.head, test.emission, test.incentive, test.dividends, test.facts); err == nil || value != nil {
+			t.Errorf("%s mismatch returned value=%+v error=%v", test.name, value, err)
+		}
+	}
+}
+
 // The release-sized fixture proves that each validator's own 202-score record
 // reconstructs its own top 200 even when the boundary differs, that only its
 // selected claimants receive positive submitted weights, and that an unrelated
@@ -1077,14 +1146,14 @@ func TestValidatorLocalTopTwoHundredBoundaryRejectsMissingWeightAndRestorationEv
 	}
 }
 
-func TestInspectValidatorIntentReadsVersionFourHeadAndDepositEvidence(t *testing.T) {
+func TestInspectValidatorIntentRejectsUnauthenticatedCurrentHeadEvidence(t *testing.T) {
 	stateDir := t.TempDir()
 	intentDir := filepath.Join(stateDir, "runtime", "validator-1", "state")
 	if err := os.MkdirAll(intentDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	intent := validatorpkg.SteeringIntent{
-		Schema: "urnetwork-validator-steering-intent-v4", SubnetEpoch: 9, SelfUID: 4, MaskedUIDs: []uint16{4},
+		Schema: validatorpkg.SteeringIntentSchema, SubnetEpoch: 9, SelfUID: 4, MaskedUIDs: []uint16{4},
 		EligibleHeadUIDs: []uint16{10, 11, 12}, EligibleHeadScores: descendingHeadScores(3, 1), SelectedHeadUIDs: []uint16{10, 11}, RejectedHeadUIDs: []uint16{12},
 		StaleHeadBindings: []validatorpkg.StaleHeadBinding{}, Status: "applied",
 		DepositAudits: []validatorpkg.DepositAudit{{NoID: 1, Epoch: 4, SourceEpoch: 3, Status: validatorpkg.DepositAuditCompliant, Compliant: true, Disposition: "pool_weight_eligible", RequiredDepositRao: "1", ObservedDepositRao: "1", ConvictionBeforeRao: "0", ArtifactHash: "sha256:test"}},
@@ -1095,13 +1164,13 @@ func TestInspectValidatorIntentReadsVersionFourHeadAndDepositEvidence(t *testing
 		t.Fatal(err)
 	}
 	intent.VectorHash = hash
-	store := map[string]any{"schema": "urnetwork-validator-steering-intent-v4", "current": intent, "history": []any{}}
+	store := map[string]any{"schema": validatorpkg.SteeringIntentSchema, "current": intent, "history": []any{}}
 	if err := writePublicJSON(filepath.Join(intentDir, "steering-intents.json"), store); err != nil {
 		t.Fatal(err)
 	}
 	observed := inspectValidatorIntent(stateDir, 1, 2, 3)
-	if observed.Error != "" || observed.CurrentEpoch != 9 || len(observed.EligibleHeadUIDs) != 3 || len(observed.EligibleHeadScores) != 3 || len(observed.SelectedHeadUIDs) != 2 || len(observed.RejectedHeadUIDs) != 1 || observed.StaleHeadBindings != 0 || len(observed.DepositAudits) != 1 || !observed.DepositAudits[0].Compliant || len(observed.HeadDecisions) != 1 || observed.HeadDecisions[0].VectorHash != intent.VectorHash || len(observed.HeadDecisions[0].AppliedWeights) != 2 {
-		t.Fatalf("version four intent evidence was not preserved: %+v", observed)
+	if observed.Error == "" || observed.AppliedIntents != 0 || len(observed.HeadDecisions) != 0 {
+		t.Fatalf("unauthenticated intent lifecycle reached scenario evidence: %+v", observed)
 	}
 }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 import {IStaking, ISTAKING_ADDRESS} from "../interfaces/stakingV2.sol";
 import {INeuron, INeuron_ADDRESS} from "../interfaces/neuron.sol";
 import {IMetagraph, IMetagraph_ADDRESS} from "../interfaces/metagraph.sol";
@@ -204,8 +206,8 @@ contract STSubnetProbe {
             b.sampleExists = exists;
             b.sampleUid = uid;
         } catch {}
-        try INeuron(INeuron_ADDRESS).getUid(netuid, absentHotkey) returns (bool exists, uint16) {
-            b.absentRejected = !exists;
+        try INeuron(INeuron_ADDRESS).getUid(netuid, absentHotkey) returns (bool exists, uint16 uid) {
+            b.absentRejected = !exists && uid == 0;
         } catch {}
 
         // --- 0x805 staking view: the probe's OWN stake at sampleHotkey ---
@@ -295,8 +297,9 @@ contract STSubnetProbe {
         uint256 base =
             IStaking(ISTAKING_ADDRESS).getStake(hotkey, Blake2b.mirror(address(this)), uint256(netuid));
         divBaseline[hotkey] = base;
-        divBaselineBlock[hotkey] = uint64(block.number);
-        emit DividendSnapshot(hotkey, base, uint64(block.number));
+        uint64 snapshotBlock = SafeCast.toUint64(block.number);
+        divBaselineBlock[hotkey] = snapshotBlock;
+        emit DividendSnapshot(hotkey, base, snapshotBlock);
     }
 
     function dividendDelta(bytes32 hotkey)

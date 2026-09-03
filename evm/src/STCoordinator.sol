@@ -259,8 +259,9 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         PolicySnapshot memory first = initialPolicy;
         first.effectiveEpoch = 0;
-        first.effectiveBlock = uint64(block.number);
+        first.effectiveBlock = SafeCast.toUint64(block.number);
         _validatePolicy(first);
+        _validateSettlementWindow(first);
         _policies.push(first);
         emit PolicyScheduled(0, first.policyHash, 0, first.effectiveBlock);
         emit GuardianSet(guardian_);
@@ -311,8 +312,9 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert InvalidEpoch();
         }
         PolicySnapshot memory scheduled = next;
-        scheduled.effectiveBlock = uint64(epochStartBlock(next.effectiveEpoch));
+        scheduled.effectiveBlock = SafeCast.toUint64(epochStartBlock(next.effectiveEpoch));
         _validatePolicy(scheduled);
+        _validateSettlementWindow(scheduled);
         _policies.push(scheduled);
         emit PolicyScheduled(
             _policies.length - 1, scheduled.policyHash, scheduled.effectiveEpoch, scheduled.effectiveBlock
@@ -333,8 +335,20 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         ) revert InvalidPolicy();
         if (
             p.closeGraceBlocks > p.rootCommitWindowBlocks || p.rootCommitWindowBlocks > p.finalizeOffsetBlocks
-                || p.claimGraceEpochs > p.claimTTLEpochs || p.epochDepositCapRao > p.campaignDepositCapRao
+                || p.finalizeOffsetBlocks >= p.epochBlocks || p.claimGraceEpochs > p.claimTTLEpochs
+                || p.epochDepositCapRao > p.campaignDepositCapRao
         ) revert InvalidPolicy();
+    }
+
+    /// @dev A timely finalizer must leave the vault's immutable minimum claim
+    /// window after the policy's finalize offset. Without this check a valid
+    /// governance update could make every entitlement finalization revert.
+    function _validateSettlementWindow(PolicySnapshot memory p) internal view {
+        uint256 claimHorizon =
+            (uint256(p.claimTTLEpochs) + uint256(p.claimGraceEpochs)) * uint256(p.epochBlocks);
+        uint256 required =
+            uint256(settlementVault.minimumClaimTTLBlocks()) + uint256(p.finalizeOffsetBlocks) + 1;
+        if (claimHorizon < required) revert InvalidPolicy();
     }
 
     function operatorCount() external view returns (uint256) {
@@ -415,7 +429,9 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
         if (
             effectiveEpoch <= currentEpoch() || effectiveEpoch <= versions[versions.length - 1].effectiveEpoch
-        ) revert InvalidEpoch();
+        ) {
+            revert InvalidEpoch();
+        }
         OperatorVersion storage prior = versions[versions.length - 1];
         _validateOperator(prior.coldkey, prior.poolHotkey, depositHotkey, depositSigner, rootSigner);
         if (depositHotkey != prior.depositHotkey) {
@@ -596,7 +612,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             payoutRoot: payoutRoot,
             artifactHash: artifactHash,
             committer: msg.sender,
-            commitBlock: uint64(block.number)
+            commitBlock: SafeCast.toUint64(block.number)
         });
         emit OperatorRootCommitted(epoch_, noId, payoutRoot, artifactHash, msg.sender);
     }
@@ -610,6 +626,8 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (present) {
             uint256 expiryEpoch = epoch_ + p.claimTTLEpochs + p.claimGraceEpochs + 1;
             uint256 expiry = epochStartBlock(expiryEpoch) - 1;
+            uint256 minimumExpiry = block.number + settlementVault.minimumClaimTTLBlocks();
+            if (expiry < minimumExpiry) expiry = minimumExpiry;
             settlementVault.finalizeEntitlement(
                 epoch_, noId, root.payoutRoot, root.artifactHash, SafeCast.toUint64(expiry)
             );
@@ -655,7 +673,10 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (prior.finalizedBlock != 0) {
             if (finalizedBlock < prior.finalizedBlock) revert StaleCommitment();
             if (finalizedBlock == prior.finalizedBlock) {
-                if (prior.commitmentHash != commitmentHash || prior.finalizedBlockHash != finalizedBlockHash) revert StaleCommitment();
+                if (prior.commitmentHash != commitmentHash || prior.finalizedBlockHash != finalizedBlockHash)
+                {
+                    revert StaleCommitment();
+                }
                 return;
             }
         }
@@ -785,6 +806,10 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             record = candidate;
             active =
                 epoch_ <= candidate.validToEpoch && (!candidate.cleaned || epoch_ < candidate.cleanedAtEpoch);
+            if (active) {
+                (bool exists, uint16 liveUid) = INeuron(INeuron_ADDRESS).getUid(netuid, candidate.hotkey);
+                active = exists && liveUid == candidate.uid;
+            }
             return (active, record);
         }
     }
@@ -797,7 +822,7 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return keccak256(
             abi.encodePacked(
                 bytes(FLEET_REVOKE_DOMAIN),
-                uint64(block.chainid),
+                _checkedChainId(block.chainid),
                 netuid,
                 address(this),
                 clientId,
@@ -805,6 +830,10 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
                 effectiveEpoch
             )
         );
+    }
+
+    function _checkedChainId(uint256 chainId_) internal pure returns (uint64) {
+        return SafeCast.toUint64(chainId_);
     }
 
     function revokeFleetBinding(
