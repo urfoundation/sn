@@ -44,10 +44,10 @@ evm_build:
   abi_hash: "sha256:661fdfabdc59a6b8844b43e88afe966bd6fa5f0ebd851bd3b5080a9577dd2fa1"
 repositories:
   sn_audited_base_commit: "900b973e1a31dff617d420a374eb29e307dd462e"
-  server_audited_base_commit: "fdce608213d5a5d1baac830a022a820c84998f3f"
+  server_audited_base_commit: "7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4"
   vault_audited_base_commit: "992f69a4ba744dabf43c71401a3f355f05f46428"
   sn_go_source_hash: "sha256:68f52a530068742044d3e3cbb7c09f055704811d53c9be6c4f9ae77a5eaa4075"
-  server_go_source_hash: "sha256:a65c75015b650a4b860d89ff1c377263e30c13e35cf85c06fbd76fc5b0a63aa5"
+  server_go_source_hash: "sha256:07ec4cb6764f582d368ac77c9886950ff55c3dedfe50a0b47939a7de588c2ab4"
   connect_go_source_hash: "sha256:d0741e9f7e6f0f7b31d979e6fa8db8f6eaa9c948c8c7f44750cf3d8e2b3595ac"
   sdk_go_source_hash: "sha256:5b64b722c0a3b18361c560ad528b7588bfab6c2e957df4feddbaeee0265f5353"
   sdk_mobile_build_tree_hash: "sha256:4ac75ef4751360d93d9140347b7ece533d69705dca206f97b81d063314da89fb"
