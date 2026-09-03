@@ -157,11 +157,15 @@ func finalSemanticFixturePolicy(source *FinalSemanticEvidence, artifacts map[str
 // retain distinct strict decoding boundaries.
 func TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire(t *testing.T) {
 	cfg := testResolvedConfig(t)
-	canonical, err := cfg.Policy.CanonicalBytes()
+	policy, err := finalSemanticFixtureReleasePolicy(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	policyHash, err := cfg.Policy.HashHex()
+	canonical, err := policy.CanonicalBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyHash, err := policy.HashHex()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +175,7 @@ func TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire(t *testing.T) {
 	source := &FinalSemanticEvidence{PolicyHash: policyHash, PolicyArtifact: locator(canonical)}
 	artifacts := map[string][]byte{source.PolicyArtifact.URI: canonical}
 	decoded, err := finalSemanticFixturePolicy(source, artifacts)
-	if err != nil || !reflect.DeepEqual(decoded, cfg.Policy) {
+	if err != nil || !reflect.DeepEqual(decoded, &policy) {
 		t.Fatalf("canonical policy artifact was rejected: %v", err)
 	}
 	if _, err := protocol.ParsePolicy(canonical); err == nil {
@@ -180,14 +184,14 @@ func TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire(t *testing.T) {
 
 	wrapped, err := json.Marshal(struct {
 		Policy protocol.Policy `json:"policy"`
-	}{Policy: *cfg.Policy})
+	}{Policy: policy})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := protocol.ParsePolicy(wrapped); err != nil {
 		t.Fatalf("wrapped policy configuration was rejected: %v", err)
 	}
-	noncanonical, err := json.MarshalIndent(cfg.Policy, "", "  ")
+	noncanonical, err := json.MarshalIndent(policy, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}

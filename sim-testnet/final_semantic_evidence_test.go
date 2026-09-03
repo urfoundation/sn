@@ -1090,6 +1090,100 @@ func TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection(t *testing.T)
 	}
 }
 
+// Construct the synthetic evidence policy from release-scale resolved inputs.
+// Its reduced usage rate retains production epoch and campaign ceilings.
+func finalSemanticFixtureReleasePolicy(cfg *ResolvedConfig) (protocol.Policy, error) {
+	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || uint64(cfg.Config.Scenarios.ShortEpochs) != finalReleaseEpochCount {
+		return protocol.Policy{}, fmt.Errorf("semantic fixture release policy context is incomplete")
+	}
+	if len(cfg.Policy.Deposit.Tiers) < 2 || cfg.Policy.Deposit.Tiers[1].MinConvictionRao != cfg.Config.Scenarios.VoluntaryConvictionRao || cfg.Config.Scenarios.DishonestDepositRao < cfg.Config.Scenarios.VoluntaryConvictionRao || cfg.Config.Scenarios.DishonestDepositRao >= cfg.Policy.Deposit.EpochCapRaoPerOperator {
+		return protocol.Policy{}, fmt.Errorf("semantic fixture release deposit economics are inconsistent")
+	}
+	policy := *cfg.Policy
+	policy.EffectiveEpoch = 10
+	policy.Settlement.EpochBlocks = finalReleaseEpochBlocks
+	policy.Settlement.RootCommitWindowBlocks = 1
+	policy.Settlement.FinalizeOffsetBlocks = finalReleaseFinalizeOffsetBlocks
+	policy.Settlement.CloseGraceBlocks = 1
+	policy.Steering.MaxWeightLimitU16 = crv4.U16Max
+	policy.Deposit.Tiers = append([]protocol.DepositTier(nil), cfg.Policy.Deposit.Tiers...)
+	policy.Deposit.Tiers[0].RateNumeratorRaoPerGiB = 100
+	policy.Deposit.Tiers[0].RateDenominator = 1
+	policy.Verify.TrailDepth = 2
+	resolved := *cfg
+	resolved.Policy = &policy
+	requiredRao, err := releaseCampaignDepositRequirement(&resolved)
+	if err != nil {
+		return protocol.Policy{}, fmt.Errorf("derive semantic fixture campaign cap: %w", err)
+	}
+	policy.Deposit.TotalTestCampaignCapRao = requiredRao
+	if err := policy.Validate(); err != nil {
+		return protocol.Policy{}, err
+	}
+	return policy, nil
+}
+
+// Proves the fixture admits the exact release campaign requirement, rejects
+// one rao less, and conserves that cap across operator allocations.
+func TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	policy, err := finalSemanticFixtureReleasePolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := *cfg
+	resolved.Policy = &policy
+	resolved.PolicyHash, err = policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requiredRao, err := releaseCampaignDepositRequirement(&resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Deposit.TotalTestCampaignCapRao != requiredRao {
+		t.Fatalf("fixture campaign cap=%d, want derived requirement %d", policy.Deposit.TotalTestCampaignCapRao, requiredRao)
+	}
+	if policy.Deposit.EpochCapRaoPerOperator != cfg.Policy.Deposit.EpochCapRaoPerOperator || policy.Deposit.EpochCapRaoPerOperator <= cfg.Config.Scenarios.DishonestDepositRao || len(policy.Deposit.Tiers) != len(cfg.Policy.Deposit.Tiers) || policy.Deposit.Tiers[1].MinConvictionRao != cfg.Config.Scenarios.VoluntaryConvictionRao {
+		t.Fatal("fixture policy changed or invalidated release-scale epoch-cap and conviction boundaries")
+	}
+	publicRoles, err := derivePublicRoles(&resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(&resolved, testSetupFacts(), publicRoles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatalf("exact fixture campaign requirement was rejected: %v", err)
+	}
+	allocatedRao := uint64(0)
+	operatorActionCount := 0
+	for _, action := range plan.Actions {
+		if !strings.HasPrefix(action.ID, "alpha.transfer.operator-deposit.") {
+			continue
+		}
+		amountRao, parseErr := strconv.ParseUint(action.Parameters["campaign_requirement_rao"], 10, 64)
+		var addOK bool
+		allocatedRao, addOK = checkedAdd(allocatedRao, amountRao)
+		if parseErr != nil || !addOK {
+			t.Fatalf("operator campaign allocation is invalid: %v", parseErr)
+		}
+		operatorActionCount++
+	}
+	if operatorActionCount != cfg.Config.Topology.Operators || allocatedRao != policy.Deposit.TotalTestCampaignCapRao {
+		t.Fatalf("operator campaign allocations=%d/%d, want %d actions totaling cap %d", operatorActionCount, allocatedRao, cfg.Config.Topology.Operators, policy.Deposit.TotalTestCampaignCapRao)
+	}
+	underfunded := policy
+	underfunded.Deposit.TotalTestCampaignCapRao--
+	resolved.Policy = &underfunded
+	resolved.PolicyHash, err = underfunded.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildPlan(&resolved, testSetupFacts(), publicRoles, time.Unix(1, 0).UTC()); err == nil || !strings.Contains(err.Error(), "below release requirement") {
+		t.Fatalf("underfunded fixture campaign was accepted: %v", err)
+	}
+}
+
 func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
 	t.Helper()
 	artifacts := map[string][]byte{}
@@ -1099,17 +1193,10 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		return FinalArtifactLocator{Kind: kind, URI: uri, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
 	cfg := testResolvedConfig(t)
-	policy := *cfg.Policy
-	policy.EffectiveEpoch = 10
-	policy.Settlement.EpochBlocks = finalReleaseEpochBlocks
-	policy.Settlement.RootCommitWindowBlocks = 1
-	policy.Settlement.FinalizeOffsetBlocks = finalReleaseFinalizeOffsetBlocks
-	policy.Settlement.CloseGraceBlocks = 1
-	policy.Steering.MaxWeightLimitU16 = crv4.U16Max
-	policy.Deposit.EpochCapRaoPerOperator = 1_000
-	policy.Deposit.TotalTestCampaignCapRao = 100_000
-	policy.Deposit.Tiers = []protocol.DepositTier{{MinConvictionRao: 0, RateNumeratorRaoPerGiB: 100, RateDenominator: 1}}
-	policy.Verify.TrailDepth = 2
+	policy, err := finalSemanticFixtureReleasePolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	policyBytes, err := policy.CanonicalBytes()
 	if err != nil {
 		t.Fatal(err)
@@ -1176,7 +1263,7 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		cycle.Pools = append(cycle.Pools, FinalPoolWeightEvidence{
 			NoID: uint64(noID + 1), UID: uid, SourceEpoch: 9, UsageBytes: 1 << 30,
 			ConvictionBeforeRao: "1000", RateNumeratorRaoPerGiB: policy.Deposit.Tiers[0].RateNumeratorRaoPerGiB, RateDenominator: policy.Deposit.Tiers[0].RateDenominator,
-			EpochDepositCapRao: "1000", RequiredDepositRao: "100", ObservedDepositRao: "100",
+			EpochDepositCapRao: strconv.FormatUint(policy.Deposit.EpochCapRaoPerOperator, 10), RequiredDepositRao: "100", ObservedDepositRao: "100",
 			QualityPPM: 500_000, QualityFactor: FinalRational{Numerator: "3", Denominator: "4"},
 			ImpliedUsageGiB: FinalRational{Numerator: "1", Denominator: "1"}, RawScore: FinalRational{Numerator: "3", Denominator: "4"},
 			Formula: finalDepositFormula, AuditStatus: validatorpkg.DepositAuditCompliant, AuditCompliant: true, AuditDisposition: "pool_weight_eligible",
