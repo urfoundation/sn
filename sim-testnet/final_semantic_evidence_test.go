@@ -1171,13 +1171,22 @@ func TestFinalSemanticFixtureSnapshotsAreDetached(t *testing.T) {
 	if len(first.Validators) == 0 || len(first.Validators[0].Cycles) == 0 || len(first.Validators[0].Cycles[0].Candidates) == 0 {
 		t.Fatal("release-scale fixture has no candidate to mutate")
 	}
+	if first.FleetLifecycle == nil {
+		t.Fatal("release-scale fixture has no fleet lifecycle to mutate")
+	}
 	first.Validators[0].Cycles[0].Candidates[0].FleetID++
+	first.FleetLifecycle.State.RunID = "poisoned-run"
 	artifactURI := first.PolicyArtifact.URI
 	if len(firstArtifacts[artifactURI]) == 0 {
 		t.Fatal("release-scale fixture policy artifact is empty")
 	}
 	firstArtifacts[artifactURI][0] ^= 0xff
 	delete(firstArtifacts, artifactURI)
+	lineageURI := first.FleetLifecycle.LineageArtifact.URI
+	if len(firstArtifacts[lineageURI]) == 0 {
+		t.Fatal("release-scale fixture lifecycle lineage artifact is empty")
+	}
+	firstArtifacts[lineageURI][0] ^= 0xff
 	if got := mustFinalSemanticJSON(t, &second); !bytes.Equal(got, baselineEvidence) {
 		t.Fatal("one fixture caller mutated another caller's evidence graph")
 	}
@@ -2860,6 +2869,7 @@ func mustFinalSemanticJSON(t *testing.T, value any) []byte {
 
 type finalTestChainReader struct {
 	evidence              *FinalSemanticEvidence
+	publicManifestHash    string
 	failCanonical         bool
 	corruptWeights        bool
 	corruptPoolOwnership  bool
@@ -2877,7 +2887,12 @@ func (r *finalTestChainReader) Endpoints() (string, string, string) {
 	return "wss://substrate.example/rpc", "https://evm.example/rpc", "https://evidence.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("11", 32)
 }
 
-func (r *finalTestChainReader) PublicManifestHash() string { return finalTestHex(0x5a) }
+func (r *finalTestChainReader) PublicManifestHash() string {
+	if r.publicManifestHash != "" {
+		return r.publicManifestHash
+	}
+	return finalTestHex(0x5a)
+}
 
 func (r *finalTestChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
 	return []FinalOperatorEvidenceOrigin{

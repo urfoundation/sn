@@ -346,6 +346,60 @@ func TestCampaignArtifactOriginsAreAllowlistedAndRedirectsRejected(t *testing.T)
 	}
 }
 
+// finalSemanticPublicManifestFixture builds the exact public transport and
+// deployment identity which the sealed semantic transcript authenticates.
+func finalSemanticPublicManifestFixture(t *testing.T, cfg *ResolvedConfig, evidence *FinalSemanticEvidence, reader *finalTestChainReader) *PublicDeploymentManifest {
+	t.Helper()
+	if cfg == nil || cfg.Config == nil || cfg.Public == nil || cfg.Release == nil || evidence == nil || reader == nil {
+		t.Fatal("final semantic public manifest fixture context is incomplete")
+	}
+	substrateRPC, evmRPC, _ := reader.Endpoints()
+	releaseLockHash, err := canonicalHashHex(cfg.Release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := &PublicDeploymentManifest{
+		Schema: "urnetwork-sim-public-deployment-v1", Release: "1.0", Revision: 1, GeneratedAt: evidence.CampaignCompletedAt,
+		DeploymentID: evidence.DeploymentID, PlanHash: evidence.PlanHash, ConfigHash: evidence.ConfigHash, PolicyHash: evidence.PolicyHash,
+		GenesisHash: evidence.GenesisHash, ChainID: evidence.ChainID, Netuid: evidence.Netuid, Topology: cfg.Config.Topology,
+		RuntimeSpec: cfg.Public.Chain.ExpectedRuntimeSpec, TransactionVersion: cfg.Public.Chain.ExpectedTransactionVersion, StateVersion: cfg.Public.Chain.ExpectedStateVersion,
+		RuntimeCodeHash: cfg.Release.Runtime.CodeHash, RuntimeMetadataHash: cfg.Release.Runtime.MetadataHash, ReleaseLockHash: releaseLockHash,
+		EVMRPC: evmRPC, SubstrateRPC: substrateRPC, OperationalRPCMode: cfg.OperationalRPCMode, IndependentRPC: independentRPCRequired(cfg),
+		EvidenceTransportProfile: publicEvidenceTransportHTTPS, Commands: map[string]string{},
+		Contracts: &ContractDeployment{
+			Schema: "urnetwork-contract-deployment-v1", DeploymentID: evidence.DeploymentID,
+			CoordinatorProxy: common.HexToAddress(evidence.Deployment.CoordinatorProxy), CoordinatorImplementation: common.HexToAddress(evidence.Deployment.CoordinatorImplementation),
+			SettlementVault: common.HexToAddress(evidence.Deployment.SettlementVault), ReserveSink: common.HexToAddress(evidence.Deployment.ReserveSink),
+		},
+	}
+	for _, origin := range reader.OperatorEvidenceOrigins() {
+		apiURL, err := publicEvidenceOrigin(origin.ManifestURI, public.EvidenceTransportProfile, public.ChainID, public.GenesisHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		public.Operators = append(public.Operators, PublicOperator{
+			NoID: origin.OperatorNoID, APIURL: apiURL, VerifyURL: apiURL + "/verify", HistoryURL: apiURL + "/sn/evidence/history",
+		})
+	}
+	if err := validatePublicCampaignOperatorOrigins(public); err != nil {
+		t.Fatalf("final semantic public manifest fixture: %v", err)
+	}
+	allowed, err := campaignArtifactAllowedOrigins(public, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, origin := range reader.OperatorEvidenceOrigins() {
+		if err := validateCampaignArtifactOrigin(origin.ManifestURI, allowed); err != nil {
+			t.Fatalf("final semantic operator %d fixture origin: %v", origin.OperatorNoID, err)
+		}
+	}
+	reader.publicManifestHash, err = canonicalHashHex(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return public
+}
+
 func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	source, artifacts := finalSemanticFixture(t)
@@ -353,7 +407,9 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	semantic, err := SealFinalSemanticEvidenceOnChain(context.Background(), draft, &finalTestChainReader{evidence: draft})
+	reader := &finalTestChainReader{evidence: draft}
+	public := finalSemanticPublicManifestFixture(t, cfg, draft, reader)
+	semantic, err := SealFinalSemanticEvidenceOnChain(context.Background(), draft, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,14 +421,8 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	public := &PublicDeploymentManifest{
-		Schema: "urnetwork-sim-public-deployment-v1", DeploymentID: semantic.DeploymentID, PlanHash: semantic.PlanHash,
-		ConfigHash: semantic.ConfigHash, PolicyHash: semantic.PolicyHash, GenesisHash: semantic.GenesisHash, ChainID: semantic.ChainID, Netuid: semantic.Netuid,
-		Topology: cfg.Config.Topology,
-		Contracts: &ContractDeployment{
-			CoordinatorProxy: common.HexToAddress(semantic.Deployment.CoordinatorProxy), CoordinatorImplementation: common.HexToAddress(semantic.Deployment.CoordinatorImplementation),
-			SettlementVault: common.HexToAddress(semantic.Deployment.SettlementVault), ReserveSink: common.HexToAddress(semantic.Deployment.ReserveSink),
-		},
+	if semantic.PublicVerification == nil || semantic.PublicVerification.PublicManifestHash != reader.publicManifestHash || semantic.PublicVerification.SubstrateRPC != public.SubstrateRPC || semantic.PublicVerification.EVMRPC != public.EVMRPC || semantic.PublicVerification.EvidenceTransportProfile != public.EvidenceTransportProfile {
+		t.Fatal("sealed semantic fixture does not bind its exact public manifest and transport")
 	}
 	window := semantic.Window
 	bundle := &ScenarioEvidenceBundle{Result: &ScenarioResult{
@@ -384,7 +434,7 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		publicManifestURI: semantic.PublicVerification.EvidenceURI,
 		finalSemanticVerify: func(ctx context.Context, _ *PublicDeploymentManifest, evidence *FinalSemanticEvidence, _ string) error {
 			verifyCalls++
-			return VerifyFinalSemanticEvidenceOnChain(ctx, evidence, &finalTestChainReader{evidence: evidence})
+			return VerifyFinalSemanticEvidenceOnChain(ctx, evidence, &finalTestChainReader{evidence: evidence, publicManifestHash: reader.publicManifestHash})
 		},
 	}
 	owner := semantic.Deployment.GovernanceOwner
@@ -398,8 +448,17 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	if verifyCalls != 1 {
 		t.Fatalf("public archive verifier calls = %d, want 1", verifyCalls)
 	}
+	detachedPublic := *public
+	generatedAt, err := time.Parse(time.RFC3339Nano, public.GeneratedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detachedPublic.GeneratedAt = generatedAt.Add(time.Nanosecond).UTC().Format(time.RFC3339Nano)
+	if detachedHash, err := canonicalHashHex(&detachedPublic); err != nil || detachedHash == semantic.PublicVerification.PublicManifestHash {
+		t.Fatalf("detached public manifest did not change only its canonical hash: hash=%q err=%v", detachedHash, err)
+	}
 	defaultProbe := &liveScenarioProbe{publicManifestURI: semantic.PublicVerification.EvidenceURI}
-	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, files, artifacts, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
+	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), &detachedPublic, owner, bundle, files, artifacts, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
 		t.Fatalf("semantic evidence detached from the authenticated public manifest was accepted: %v", err)
 	}
 	tamperedMarkdownFiles := map[string][]byte{"final-semantic-evidence.json": encoded, finalSemanticMarkdownFilename: []byte("# unbound report\n")}
@@ -698,6 +757,66 @@ func TestJournalSummaryUsesLatestActionStage(t *testing.T) {
 	}
 }
 
+// rebindFinalSemanticReleaseRunFixture moves a detached release fixture to a
+// new run while preserving every byte-addressed lifecycle handoff binding.
+func rebindFinalSemanticReleaseRunFixture(t *testing.T, source *FinalSemanticEvidence, artifacts map[string][]byte, runID string) ([]byte, *ScenarioLifecycleHandoff) {
+	t.Helper()
+	if source == nil || source.Phase != "release-1.0" || source.FleetLifecycle == nil || source.RunID == "" || runID == "" || runID == source.RunID {
+		t.Fatal("final semantic release-run fixture context is incomplete")
+	}
+	lifecycle := source.FleetLifecycle
+	lineageBytes, ok := artifacts[lifecycle.LineageArtifact.URI]
+	if !ok || len(lineageBytes) == 0 {
+		t.Fatalf("final semantic lifecycle lineage %q is unavailable", lifecycle.LineageArtifact.URI)
+	}
+	if lifecycle.LineageArtifact.ContentHash != bytesSHA256(lineageBytes) || lifecycle.LineageArtifact.SizeBytes != uint64(len(lineageBytes)) {
+		t.Fatal("final semantic lifecycle lineage locator differs from its bytes")
+	}
+	var lineage finalFleetLifecycleLineageArtifact
+	if err := decodeStrictJSONBytes(lineageBytes, &lineage); err != nil {
+		t.Fatalf("decode final semantic lifecycle lineage: %v", err)
+	}
+	if lineage.Schema != finalFleetLifecycleLineageSchema || lineage.DeploymentID != source.DeploymentID || lineage.PlanHash != source.PlanHash || lineage.RunID != source.RunID || lifecycle.State.RunID != source.RunID {
+		t.Fatal("final semantic lifecycle lineage does not match its source run")
+	}
+	originalStateBytes, err := fleetLifecycleCanonicalBytes(&lifecycle.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateFile := -1
+	for index := range lineage.Files {
+		file := &lineage.Files[index]
+		if file.Path != "public/fleet-lifecycle.json" {
+			continue
+		}
+		if stateFile != -1 || file.ContentHash != bytesSHA256(file.Data) || file.SizeBytes != uint64(len(file.Data)) || !bytes.Equal(file.Data, originalStateBytes) {
+			t.Fatal("final semantic lifecycle lineage has a duplicate or detached terminal state")
+		}
+		stateFile = index
+	}
+	if stateFile == -1 || lifecycle.ReleaseHandoffHash != bytesSHA256(originalStateBytes) || lifecycle.ReleaseHandoffSize != uint64(len(originalStateBytes)) {
+		t.Fatal("final semantic lifecycle handoff is not bound to its original terminal state")
+	}
+
+	source.RunID = runID
+	lifecycle.State.RunID = runID
+	stateBytes, err := fleetLifecycleCanonicalBytes(&lifecycle.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycle.ReleaseHandoffHash = bytesSHA256(stateBytes)
+	lifecycle.ReleaseHandoffSize = uint64(len(stateBytes))
+	lineage.RunID = runID
+	lineage.Files[stateFile].Data = append([]byte(nil), stateBytes...)
+	lineage.Files[stateFile].ContentHash = lifecycle.ReleaseHandoffHash
+	lineage.Files[stateFile].SizeBytes = lifecycle.ReleaseHandoffSize
+	replaceFinalSemanticFixtureArtifact(t, &lifecycle.LineageArtifact, artifacts, lineage)
+	return stateBytes, &ScenarioLifecycleHandoff{
+		Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: runID, Stage: fleetLifecycleStageReleaseHandoff,
+		File: scenarioLifecycleHandoffFilename, ContentHash: lifecycle.ReleaseHandoffHash, SizeBytes: lifecycle.ReleaseHandoffSize,
+	}
+}
+
 func TestDecodeHashRejectsZeroLengthAndMalformedValues(t *testing.T) {
 	if _, err := decodeHash("0x" + strings.Repeat("ab", 32)); err != nil {
 		t.Fatal(err)
@@ -744,13 +863,18 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		renamedSemanticArtifacts["public/final-"+name] = raw
 	}
 	semanticArtifacts = renamedSemanticArtifacts
+	const committedRunID = "committed-run"
+	lifecycleHandoffBytes, lifecycleHandoff := rebindFinalSemanticReleaseRunFixture(t, &semanticSource, semanticArtifacts, committedRunID)
+	if err := validateScenarioLifecycleHandoffBinding(cfg, *lifecycleHandoff, lifecycleHandoffBytes); err != nil {
+		t.Fatalf("rebound semantic lifecycle handoff: %v", err)
+	}
 	window := semanticSource.Window
 	result := &ScenarioResult{
-		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: "committed-run", DeploymentID: cfg.Config.Deployment.DeploymentID,
+		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: committedRunID, DeploymentID: cfg.Config.Deployment.DeploymentID,
 		Name: "release-1.0", ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID,
 		GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, CompletedAt: time.Now().UTC().Format(time.RFC3339Nano), Result: "pass",
-		EndHead: semanticSource.EVMTerminalHead, AcceptanceWindow: &window, Assertions: []AssertionRecord{},
-		Anomalies:   &ScenarioAnomalyLedger{Schema: "urnetwork-sim-anomaly-ledger-v1", Release: "1.0", RunID: "committed-run", Status: "clean", Entries: []ScenarioAnomaly{}},
+		EndHead: semanticSource.EVMTerminalHead, AcceptanceWindow: &window, Assertions: []AssertionRecord{}, LifecycleHandoff: lifecycleHandoff,
+		Anomalies:   &ScenarioAnomalyLedger{Schema: "urnetwork-sim-anomaly-ledger-v1", Release: "1.0", RunID: committedRunID, Status: "clean", Entries: []ScenarioAnomaly{}},
 		Adversaries: &AdversaryCampaignEvidence{Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", Actors: []AdversaryActorEvidence{}, Vectors: []AdversaryVectorEvidence{}},
 	}
 	result.EvidenceHash, err = canonicalScenarioResultHash(result)
@@ -758,7 +882,9 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		t.Fatal(err)
 	}
 	semanticSource.Phase = result.Name
-	semanticSource.RunID = result.RunID
+	if semanticSource.RunID != result.RunID || semanticSource.FleetLifecycle == nil || semanticSource.FleetLifecycle.State.RunID != result.RunID {
+		t.Fatal("rebound semantic source does not consistently use the committed run")
+	}
 	semanticSource.ResultHash = result.EvidenceHash
 	semanticDraft, err := BuildFinalSemanticEvidence(semanticSource)
 	if err != nil {
@@ -767,6 +893,9 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	semantic, err := SealFinalSemanticEvidenceOnChain(context.Background(), semanticDraft, &finalTestChainReader{evidence: semanticDraft})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if semantic.FleetLifecycle == nil || semantic.FleetLifecycle.State.RunID != result.RunID || semantic.FleetLifecycle.ReleaseHandoffHash != lifecycleHandoff.ContentHash || semantic.FleetLifecycle.ReleaseHandoffSize != lifecycleHandoff.SizeBytes {
+		t.Fatal("sealed semantic evidence detached from the committed lifecycle handoff")
 	}
 	observation := &ScenarioObservation{Schema: "urnetwork-sim-scenario-observation-v1", ObservationHash: "observation"}
 	analysis := &AnalysisReport{Schema: "urnetwork-sim-analysis-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ObservationHash: observation.ObservationHash}
@@ -798,6 +927,9 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		if err := writePublicJSON(filepath.Join(runDir, name), value); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := atomicWrite(filepath.Join(runDir, lifecycleHandoff.File), lifecycleHandoffBytes, 0o644); err != nil {
+		t.Fatal(err)
 	}
 	observationBytes, err := json.Marshal(observation)
 	if err != nil {
@@ -867,6 +999,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	complete, err := signEvidence(cfg, "scenario-complete", result.RunID, scenarioCompletePayload{
 		ResultHash: result.EvidenceHash, BundlePayloadHash: bytesSHA256(bundlePayload), Files: fileHashes, EvidenceManifestHash: archive.Manifest.ContentHash,
+		LifecycleHandoff: lifecycleHandoff,
 	}, roles.EVM["testnet-owner"])
 	if err != nil {
 		t.Fatal(err)
