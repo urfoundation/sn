@@ -974,6 +974,122 @@ func requireFinalSemanticReleaseScaleFixture(t *testing.T) {
 	}
 }
 
+// Build exact prefix claims from the raw-score inputs. A numerator is the
+// number of claims per fleet and a denominator is the number of fleets sharing
+// each claim, so the independent verifier reconstructs the declared rational.
+func finalSemanticFixtureHeadEgress(t *testing.T, candidates []FinalHeadCandidateEvidence, memberCount int, settlementEpoch uint64) (map[uint64][][32]byte, map[uint64]*big.Rat) {
+	t.Helper()
+	if memberCount <= 0 || settlementEpoch == 0 {
+		t.Fatal("fixture head egress context is incomplete")
+	}
+	groups := map[string][]FinalHeadCandidateEvidence{}
+	scores := map[string]*big.Rat{}
+	seenFleets := map[uint64]bool{}
+	for _, candidate := range candidates {
+		if candidate.FleetID == 0 || seenFleets[candidate.FleetID] {
+			t.Fatalf("fixture head fleet %d is zero or duplicated", candidate.FleetID)
+		}
+		seenFleets[candidate.FleetID] = true
+		score, err := finalPositiveRational("fixture candidate raw score", candidate.RawScore)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := score.RatString()
+		groups[key] = append(groups[key], candidate)
+		scores[key] = score
+	}
+	groupKeys := make([]string, 0, len(groups))
+	for key := range groups {
+		groupKeys = append(groupKeys, key)
+	}
+	sort.Strings(groupKeys)
+	egressByFleet := make(map[uint64][][32]byte, len(candidates))
+	for _, key := range groupKeys {
+		group := groups[key]
+		sort.Slice(group, func(i, j int) bool { return group[i].FleetID < group[j].FleetID })
+		numerator, denominator := scores[key].Num(), scores[key].Denom()
+		if !numerator.IsUint64() || !denominator.IsUint64() {
+			t.Fatalf("fixture candidate score %s exceeds uint64", key)
+		}
+		numeratorValue, denominatorValue := numerator.Uint64(), denominator.Uint64()
+		if numeratorValue == 0 || numeratorValue > uint64(memberCount) {
+			t.Fatalf("fixture candidate score %s needs %d claims but fleets have %d members", key, numeratorValue, memberCount)
+		}
+		if denominatorValue == 0 || denominatorValue > uint64(len(group)) || uint64(len(group))%denominatorValue != 0 {
+			t.Fatalf("fixture candidate score %s has %d fleets, not complete groups of %d", key, len(group), denominatorValue)
+		}
+		groupSize := int(denominatorValue)
+		for groupStart := 0; groupStart < len(group); groupStart += groupSize {
+			for claimIndex := uint64(0); claimIndex < numeratorValue; claimIndex++ {
+				egress := sha256.Sum256([]byte(fmt.Sprintf("final-semantic-fixture/egress/v1/%d/%s/%d/%d", settlementEpoch, key, groupStart/groupSize, claimIndex)))
+				if egress == ([32]byte{}) {
+					t.Fatal("fixture candidate egress hash is zero")
+				}
+				for index := groupStart; index < groupStart+groupSize; index++ {
+					fleetID := group[index].FleetID
+					egressByFleet[fleetID] = append(egressByFleet[fleetID], egress)
+				}
+			}
+		}
+	}
+	claimCounts := map[[32]byte]uint64{}
+	for fleetID, egresses := range egressByFleet {
+		seenEgress := map[[32]byte]bool{}
+		for _, egress := range egresses {
+			if seenEgress[egress] {
+				t.Fatalf("fixture head fleet %d repeats an egress claim", fleetID)
+			}
+			seenEgress[egress] = true
+			claimCounts[egress]++
+		}
+	}
+	rawByFleet := make(map[uint64]*big.Rat, len(candidates))
+	for _, candidate := range candidates {
+		raw := new(big.Rat)
+		for _, egress := range egressByFleet[candidate.FleetID] {
+			raw.Add(raw, new(big.Rat).SetFrac(big.NewInt(1), new(big.Int).SetUint64(claimCounts[egress])))
+		}
+		declared, err := finalPositiveRational("fixture candidate raw score", candidate.RawScore)
+		if err != nil || raw.Cmp(declared) != 0 {
+			t.Fatalf("fixture head fleet %d prefix score=%s, want %s: %v", candidate.FleetID, raw.RatString(), candidate.RawScore.Numerator+"/"+candidate.RawScore.Denominator, err)
+		}
+		rawByFleet[candidate.FleetID] = raw
+	}
+	return egressByFleet, rawByFleet
+}
+
+// Selection is downstream of prefix evidence; changing a pre-seal selection
+// hint must not change the raw claims or their exact reconstructed scores.
+func TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection(t *testing.T) {
+	candidates := []FinalHeadCandidateEvidence{
+		{FleetID: 1, UID: 101, RawScore: FinalRational{Numerator: "2", Denominator: "1"}},
+		{FleetID: 2, UID: 102, RawScore: FinalRational{Numerator: "1", Denominator: "1"}, Selected: true},
+		{FleetID: 3, UID: 103, RawScore: FinalRational{Numerator: "1", Denominator: "2"}},
+		{FleetID: 4, UID: 104, RawScore: FinalRational{Numerator: "1", Denominator: "2"}, Selected: true},
+		{FleetID: 5, UID: 105, RawScore: FinalRational{Numerator: "3", Denominator: "2"}},
+		{FleetID: 6, UID: 106, RawScore: FinalRational{Numerator: "3", Denominator: "2"}, Selected: true},
+	}
+	firstEgress, firstRaw := finalSemanticFixtureHeadEgress(t, candidates, 4, 10)
+	for index := range candidates {
+		candidates[index].Selected = !candidates[index].Selected
+	}
+	secondEgress, secondRaw := finalSemanticFixtureHeadEgress(t, candidates, 4, 10)
+	wantClaims := map[uint64]int{1: 2, 2: 1, 3: 1, 4: 1, 5: 3, 6: 3}
+	for fleetID, want := range wantClaims {
+		if len(firstEgress[fleetID]) != want || len(secondEgress[fleetID]) != want || firstRaw[fleetID].Cmp(secondRaw[fleetID]) != 0 {
+			t.Fatalf("fixture head fleet %d claims/raw changed with selection: %d/%d %s/%s", fleetID, len(firstEgress[fleetID]), len(secondEgress[fleetID]), firstRaw[fleetID], secondRaw[fleetID])
+		}
+		for index := range firstEgress[fleetID] {
+			if firstEgress[fleetID][index] != secondEgress[fleetID][index] {
+				t.Fatalf("fixture head fleet %d claim %d changed with selection", fleetID, index)
+			}
+		}
+	}
+	if firstEgress[3][0] != firstEgress[4][0] || firstEgress[5][0] != firstEgress[6][0] || firstEgress[5][1] != firstEgress[6][1] || firstEgress[5][2] != firstEgress[6][2] {
+		t.Fatal("fixture shared-prefix groups are not exact")
+	}
+}
+
 func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
 	t.Helper()
 	artifacts := map[string][]byte{}
@@ -1092,16 +1208,15 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 	previousMeasurement := map[uint64][]byte{}
 	previousArtifact := map[uint64]*validatorpkg.ReleaseMeasurementArtifact{}
 	attemptRoots := map[uint64]string{}
-	buildMeasurement := func(cycle FinalCRv4Cycle, validatorID uint64) ([]byte, string) {
+	buildMeasurement := func(cycle FinalCRv4Cycle, validatorID uint64) ([]byte, string, *validatorpkg.VerifiedReleaseMeasurement) {
 		statsByNO := map[uint64][]validatorpkg.ReleaseProviderMeasurement{1: {}, 2: {}}
 		bindings := make([]validatorpkg.ReleaseBindingMeasurement, 0, 1000)
 		headKeys := make(map[uint64]validatorpkg.FleetScoreKey, finalHeadCandidateCount)
-		candidateByFleet := make(map[uint64]FinalHeadCandidateEvidence, len(cycle.Candidates))
 		candidateUIDs := make(map[uint64]uint16, len(cycle.Candidates))
 		for _, candidate := range cycle.Candidates {
-			candidateByFleet[candidate.FleetID] = candidate
 			candidateUIDs[candidate.FleetID] = candidate.UID
 		}
+		egressByFleet, rawByFleet := finalSemanticFixtureHeadEgress(t, cycle.Candidates, cfg.Config.Topology.ClientsPerHeadFleet, cycle.SettlementEpoch)
 		zero := hex32([32]byte{})
 		for minerID := uint64(1); minerID <= 1000; minerID++ {
 			clientID := minerClientID(minerID)
@@ -1121,15 +1236,9 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 				fleetKey, hotkey := fleetManifest.FleetID, fleetManifest.Hotkey
 				clientKey := key32("client", minerID)
 				uid := candidateUIDs[fleetID]
-				egress := key32("egress", fleetID)
-				if !candidateByFleet[fleetID].Selected {
-					// The two lifecycle demotion candidates share one observed
-					// prefix, giving each the exact 1/2 raw score which places
-					// them below the 200 independently-routable candidates.
-					egress = key32("lifecycle-shared-egress", cycle.SettlementEpoch)
-				}
-				if (minerID-1)%4 == 0 {
-					provider.EgressIPHashHexes = []string{hex32(egress)}
+				memberIndex := int((minerID - 1) % uint64(cfg.Config.Topology.ClientsPerHeadFleet))
+				if egresses := egressByFleet[fleetID]; memberIndex < len(egresses) {
+					provider.EgressIPHashHexes = []string{hex32(egresses[memberIndex])}
 				}
 				binding = validatorpkg.ReleaseBindingMeasurement{
 					NoID: noID, ClientID: clientID.String(), Active: true, FleetID: hex32(fleetKey), Hotkey: hex32(hotkey),
@@ -1156,13 +1265,12 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		}
 		currentEMA := make(map[string]fixtureEMAValue, finalHeadCandidateCount)
 		for fleetID := uint64(1); fleetID <= finalHeadCandidateCount; fleetID++ {
-			candidate := candidateByFleet[fleetID]
-			raw, rawErr := finalPositiveRational("fixture candidate score", candidate.RawScore)
-			if rawErr != nil {
-				t.Fatal(rawErr)
+			raw := rawByFleet[fleetID]
+			if raw == nil {
+				t.Fatalf("fixture head fleet %d has no reconstructed raw score", fleetID)
 			}
 			key := headKeys[fleetID]
-			currentEMA[key.String()] = fixtureEMAValue{key: key, value: raw}
+			currentEMA[key.String()] = fixtureEMAValue{key: key, value: new(big.Rat).Set(raw)}
 		}
 		priorEMA := map[string]fixtureEMAValue{}
 		if prior := previousArtifact[validatorID]; prior != nil {
@@ -1244,13 +1352,13 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			attemptRoots[validatorID] = t.TempDir()
 		}
 		attachFinalAttemptCuts(t, measurement, validatorPathKeys[validatorID-1], operatorServerKeys, attemptRoots[validatorID], previousArtifact[validatorID])
-		encoded, contentHash, _, err := validatorpkg.SealReleaseMeasurementArtifact(measurement)
+		encoded, contentHash, verified, err := validatorpkg.SealReleaseMeasurementArtifact(measurement)
 		if err != nil {
 			t.Fatalf("%v; first binding=%+v", err, bindings[0])
 		}
 		previousMeasurement[validatorID] = append([]byte(nil), encoded...)
 		previousArtifact[validatorID] = measurement
-		return encoded, contentHash
+		return encoded, contentHash, verified
 	}
 	sealCycle := func(cycle FinalCRv4Cycle, validatorID uint64) FinalCRv4Cycle {
 		epochStart := uint64(100) + (cycle.SettlementEpoch-10)*finalReleaseEpochBlocks
@@ -1258,26 +1366,42 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		cycle.Commit.Block = ChainHead{Number: epochStart + 10 + validatorID, Hash: finalTestHex(byte(epochStart + 10 + validatorID))}
 		cycle.Reveal.Block = ChainHead{Number: epochStart + 20 + validatorID, Hash: finalTestHex(byte(epochStart + 20 + validatorID))}
 		cycle.Application.Block = ChainHead{Number: epochStart + 30 + validatorID, Hash: finalTestHex(byte(epochStart + 30 + validatorID))}
-		headInputs := make([]validatorpkg.ExactWeightInput, 0, finalHeadSlotCount)
+		fleetByUID := make(map[uint16]uint64, len(cycle.Candidates))
 		for _, candidate := range cycle.Candidates {
-			if candidate.Selected {
-				score, scoreErr := finalPositiveRational("fixture selected score", candidate.RawScore)
-				if scoreErr != nil {
-					t.Fatal(scoreErr)
-				}
-				headInputs = append(headInputs, validatorpkg.ExactWeightInput{UID: candidate.UID, Score: score})
+			if candidate.UID == 0 || fleetByUID[candidate.UID] != 0 {
+				t.Fatalf("fixture candidate UID %d is zero or duplicated", candidate.UID)
 			}
+			fleetByUID[candidate.UID] = candidate.FleetID
 		}
-		poolInputs := []validatorpkg.ExactWeightInput{{UID: 11, Score: big.NewRat(3, 4)}, {UID: 13, Score: big.NewRat(3, 4)}}
-		uids, scores, err := validatorpkg.BuildWeightVectorExact(poolInputs, headInputs, protocol.Rational{Numerator: 3, Denominator: 10}, nil)
-		if err != nil {
-			t.Fatal(err)
+		measurementBytes, measurementHash, verified := buildMeasurement(cycle, validatorID)
+		if verified == nil {
+			t.Fatal("fixture release measurement has no verified decision")
+		}
+		selected := make(map[uint16]bool, len(verified.SelectedHead))
+		for _, head := range verified.SelectedHead {
+			selected[head.UID] = true
+		}
+		cycle.Candidates = make([]FinalHeadCandidateEvidence, 0, len(verified.EligibleHead))
+		for rank, head := range verified.EligibleHead {
+			fleetID := fleetByUID[head.UID]
+			if fleetID == 0 {
+				t.Fatalf("verified fixture candidate UID %d has no fleet", head.UID)
+			}
+			cycle.Candidates = append(cycle.Candidates, FinalHeadCandidateEvidence{
+				FleetID: fleetID, Rank: uint16(rank + 1), UID: head.UID,
+				RawScore: finalRationalFromBig(head.Score), Selected: selected[head.UID],
+			})
+		}
+		valueUIDs := append([]uint16(nil), verified.UIDs...)
+		scores := make([]*big.Rat, len(verified.Scores))
+		for index, score := range verified.Scores {
+			scores[index] = new(big.Rat).Set(score)
 		}
 		capped, err := crv4.ApplyMaxWeightLimitRational(scores, cycle.MaxWeightLimitU16)
 		if err != nil {
 			t.Fatal(err)
 		}
-		valueUIDs, values, err := crv4.NormalizeRationalToU16(uids, capped)
+		valueUIDs, values, err := crv4.NormalizeRationalToU16(valueUIDs, capped)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1311,17 +1435,16 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		cycle.ValuesHash = bytesSHA256(encodedValues)
 		eligibleUIDs := make([]uint16, len(cycle.Candidates))
 		eligibleScores := make([]validatorpkg.RationalJSON, len(cycle.Candidates))
-		selected, rejected := finalCandidateUIDs(cycle.Candidates)
 		for index, candidate := range cycle.Candidates {
 			eligibleUIDs[index] = candidate.UID
 			eligibleScores[index] = validatorpkg.RationalJSON{Numerator: candidate.RawScore.Numerator, Denominator: candidate.RawScore.Denominator}
 		}
+		selectedUIDs, rejectedUIDs := finalCandidateUIDs(cycle.Candidates)
 		intentScores := make([]validatorpkg.RationalJSON, len(cycle.Submitted))
 		for index, submitted := range cycle.Submitted {
 			intentScores[index] = validatorpkg.RationalJSON{Numerator: submitted.Score.Numerator, Denominator: submitted.Score.Denominator}
 		}
-		cycle.MaskedUIDs = []uint16{uint16(10 + 2*validatorID)}
-		measurementBytes, measurementHash := buildMeasurement(cycle, validatorID)
+		cycle.MaskedUIDs = append([]uint16(nil), verified.MaskedUIDs...)
 		cycle.MeasurementArtifact = artifact("validator-release-measurement", fmt.Sprintf("validator-%d-measurement-%d.json", validatorID, cycle.SettlementEpoch), measurementBytes)
 		prepared := finalTestPreparedSubmission(t, valueUIDs, values, cycle, validatorHotkeys[validatorID-1].PublicKey())
 		cycle.Commit.ExtrinsicHash = prepared.ExtrinsicHash
@@ -1342,7 +1465,7 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 			MeasurementArtifactHash: measurementHash, MeasurementArtifactSize: uint64(len(measurementBytes)), SelfUID: uint16(10 + 2*validatorID),
 			MeasurementEnvelopePath: "measurements/envelopes/" + strings.TrimPrefix(envelopeHash, "sha256:") + ".json", MeasurementEnvelopeHash: envelopeHash, MeasurementEnvelopeSize: uint64(len(envelopeBytes)),
 			MaskedUIDs: cycle.MaskedUIDs, EligibleHeadUIDs: eligibleUIDs, EligibleHeadScores: eligibleScores,
-			SelectedHeadUIDs: selected, RejectedHeadUIDs: rejected, DepositAudits: audits,
+			SelectedHeadUIDs: selectedUIDs, RejectedHeadUIDs: rejectedUIDs, DepositAudits: audits,
 			UIDs: valueUIDs, Scores: intentScores, Prepared: prepared,
 		}
 		vectorHash, err := intent.ReconstructedVectorHash()
@@ -1642,27 +1765,14 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 	for _, value := range []*FinalCRv4Cycle{&cycle, &cycle11, &cycle12, &cycle13, &cycle14, &cycle2, &cycle211, &cycle212, &cycle213, &cycle214} {
 		applyLifecycleCandidateUIDs(value)
 	}
-	// Validator 1 has one exact local-view substitution in epoch 10;
-	// validator 2 remains the control and both views agree from epoch 11.
+	// Validator 1 has one exact local-view substitution in epoch 10. Three
+	// fleets share two prefixes so fleet 5 wins the final slot by UID; after
+	// one ordinary raw window, the exact EMA restores fleet 200 in epoch 11.
 	for index := range cycle.Candidates {
 		switch cycle.Candidates[index].FleetID {
-		case 5:
-			cycle.Candidates[index].RawScore = FinalRational{Numerator: "2", Denominator: "1"}
-		case 200:
-			cycle.Candidates[index].RawScore = FinalRational{Numerator: "1", Denominator: "2"}
+		case 5, 6, 200:
+			cycle.Candidates[index].RawScore = FinalRational{Numerator: "2", Denominator: "3"}
 		}
-	}
-	sort.Slice(cycle.Candidates, func(i, j int) bool {
-		left, _ := finalPositiveRational("fixture divergent candidate score", cycle.Candidates[i].RawScore)
-		right, _ := finalPositiveRational("fixture divergent candidate score", cycle.Candidates[j].RawScore)
-		if comparison := left.Cmp(right); comparison != 0 {
-			return comparison > 0
-		}
-		return cycle.Candidates[i].UID < cycle.Candidates[j].UID
-	})
-	for index := range cycle.Candidates {
-		cycle.Candidates[index].Rank = uint16(index + 1)
-		cycle.Candidates[index].Selected = index < finalHeadSlotCount
 	}
 	applyCyclePayouts(&cycle)
 	applyCyclePayouts(&cycle11)

@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,18 @@ func TestFinalOperatorManifestOriginsResolveIndependentSignedPayloads(t *testing
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Deployment manifests are published after provisioning assigns every
+	// client ID. Complete that lifecycle before encoding the signer directory.
+	clientLabels := make([]string, 0, len(roles.Clients))
+	for label := range roles.Clients {
+		clientLabels = append(clientLabels, label)
+	}
+	sort.Strings(clientLabels)
+	for index, label := range clientLabels {
+		role := roles.Clients[label]
+		role.ClientIDHex = fmt.Sprintf("%032x", index+1)
+		roles.Clients[label] = role
 	}
 	identities, err := json.Marshal(roles.Public())
 	if err != nil {
