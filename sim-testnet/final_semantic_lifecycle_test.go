@@ -67,7 +67,7 @@ func resolveFinalSemanticFixtureJournalBinding(plan *SetupPlan, action Action, b
 	}
 	postcondition := carried.postcondition
 	receipt := carried.receipt
-	if block != 0 || recovery != 0 || postcondition == nil || postcondition.ActionID != action.ID || postcondition.PlanHash == plan.PlanHash || !plan.allowedPlanHashes()[postcondition.PlanHash] || len(action.AcceptedPriorIntentHashes) != 1 || action.AcceptedPriorIntentHashes[0] != postcondition.IntentHash || action.IntentHash == postcondition.IntentHash || receipt.ExtrinsicHash == "" || receipt.Block.Number < 2 || receipt.Block.Hash == "" || postcondition.SubstrateFinalized.Number < receipt.Block.Number {
+	if block != 0 || recovery != 0 || postcondition == nil || postcondition.ActionID != action.ID || postcondition.PlanHash == plan.PlanHash || !plan.allowedPlanHashes()[postcondition.PlanHash] || len(action.AcceptedPriorIntentHashes) != 0 || action.IntentHash != postcondition.IntentHash || receipt.ExtrinsicHash == "" || receipt.Block.Number < 2 || receipt.Block.Hash == "" || postcondition.SubstrateFinalized.Number < receipt.Block.Number {
 		return finalSemanticFixtureJournalBinding{}, fmt.Errorf("carried fixture action %s has invalid prior-plan lineage", action.ID)
 	}
 	return finalSemanticFixtureJournalBinding{
@@ -82,9 +82,8 @@ func resolveFinalSemanticFixtureJournalBinding(plan *SetupPlan, action Action, b
 func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations(t *testing.T) {
 	priorPlanHash := finalTestHex(0x21)
 	currentPlanHash := finalTestHex(0x22)
-	priorIntentHash := finalTestHex(0x23)
-	makeAction := func(id string, accepted ...string) Action {
-		action := Action{ID: id, Kind: "substrate-extrinsic", Target: id, AcceptedPriorIntentHashes: accepted}
+	makeAction := func(id string) Action {
+		action := Action{ID: id, Kind: "substrate-extrinsic", Target: id}
 		intentHash, err := actionIntentHash(action)
 		if err != nil {
 			t.Fatal(err)
@@ -94,7 +93,7 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	}
 	selected := makeAction("fixture.selected.register")
 	rejected := makeAction("fixture.rejected.register")
-	carriedAction := makeAction("fleet.register.201", priorIntentHash)
+	carriedAction := makeAction("fleet.register.201")
 	plan := &SetupPlan{PlanHash: currentPlanHash, PriorPlanHashes: []string{priorPlanHash}, Actions: []Action{selected, rejected, carriedAction}}
 
 	for _, test := range []struct {
@@ -116,7 +115,7 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	}
 
 	postcondition := &ActionPostcondition{
-		PlanHash: priorPlanHash, ActionID: carriedAction.ID, IntentHash: priorIntentHash,
+		PlanHash: priorPlanHash, ActionID: carriedAction.ID, IntentHash: carriedAction.IntentHash,
 		SubstrateFinalized: ChainHead{Number: 90, Hash: finalTestHex(90)},
 	}
 	receipt := FinalNativeReceipt{ExtrinsicHash: finalTestHex(0x24), Block: ChainHead{Number: 80, Hash: finalTestHex(80)}}
@@ -125,7 +124,7 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binding.planHash != priorPlanHash || binding.intentHash != priorIntentHash || binding.transactionHash != receipt.ExtrinsicHash || binding.block != receipt.Block.Number || binding.blockHash != receipt.Block.Hash {
+	if binding.planHash != priorPlanHash || binding.intentHash != carriedAction.IntentHash || binding.transactionHash != receipt.ExtrinsicHash || binding.block != receipt.Block.Number || binding.blockHash != receipt.Block.Hash {
 		t.Fatalf("carried binding=%+v", binding)
 	}
 	if _, err := resolveFinalSemanticFixtureJournalBinding(plan, selected, 0, 0, nil); err == nil {
@@ -138,6 +137,144 @@ func TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegis
 	wrongPrior.IntentHash = finalTestHex(0x25)
 	if _, err := resolveFinalSemanticFixtureJournalBinding(plan, carriedAction, 0, 0, &finalSemanticFixtureCarriedAction{postcondition: &wrongPrior, receipt: receipt}); err == nil {
 		t.Fatal("carried registration with unaccepted prior intent was accepted")
+	}
+}
+
+// Build the lifecycle fixture on the same complete budget and deployment
+// envelope as a production release plan. The semantic archive supplies only
+// its synthetic genesis, authenticated ancestor, and coordinator targets.
+func finalSemanticFixtureSetupPlan(cfg *ResolvedConfig, source *FinalSemanticEvidence) (*SetupPlan, error) {
+	if cfg == nil || cfg.Config == nil || source == nil || source.PlanHash == "" || source.DeploymentID == "" || source.GenesisHash == "" || source.ConfigHash == "" || source.PolicyHash == "" || !common.IsHexAddress(source.Deployment.CoordinatorProxy) {
+		return nil, fmt.Errorf("semantic fixture setup plan context is incomplete")
+	}
+	if cfg.Config.Deployment.DeploymentID != source.DeploymentID || cfg.ChainID != source.ChainID || cfg.Netuid != source.Netuid || cfg.ConfigHash != source.ConfigHash || cfg.PolicyHash != source.PolicyHash {
+		return nil, fmt.Errorf("semantic fixture resolved identity differs from its evidence")
+	}
+	if _, err := decodeHex32("semantic fixture genesis hash", source.GenesisHash); err != nil {
+		return nil, err
+	}
+	if _, err := decodeHex32("semantic fixture prior plan hash", source.PlanHash); err != nil {
+		return nil, err
+	}
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1_700_000_000, 0).UTC())
+	if err != nil {
+		return nil, err
+	}
+	if plan.Schema != currentSetupPlanSchema || plan.Release != "1.0" || plan.DeploymentID != source.DeploymentID || plan.ChainID != source.ChainID || plan.Netuid != source.Netuid || plan.ConfigHash != source.ConfigHash || plan.PolicyHash != source.PolicyHash {
+		return nil, fmt.Errorf("production fixture plan differs from semantic identity")
+	}
+	plan.GenesisHash = source.GenesisHash
+	plan.PriorPlanHashes = []string{source.PlanHash}
+	mirrorActionIDs := make(map[string]bool, len(finalFleetLifecycleVariantNames()))
+	for _, name := range finalFleetLifecycleVariantNames() {
+		actionID, actionErr := fleetLifecycleMirrorActionID(name)
+		if actionErr != nil {
+			return nil, actionErr
+		}
+		mirrorActionIDs[actionID] = true
+	}
+	seenMirrorActionIDs := make(map[string]bool, len(mirrorActionIDs))
+	for index := range plan.Actions {
+		action := &plan.Actions[index]
+		if !mirrorActionIDs[action.ID] {
+			continue
+		}
+		action.Target = source.Deployment.CoordinatorProxy
+		action.IntentHash, err = actionIntentHash(*action)
+		if err != nil {
+			return nil, err
+		}
+		seenMirrorActionIDs[action.ID] = true
+	}
+	if len(seenMirrorActionIDs) != len(mirrorActionIDs) {
+		return nil, fmt.Errorf("production fixture plan lacks lifecycle mirror actions")
+	}
+	plan.PlanHash = ""
+	if err := validatePlanBudget(plan); err != nil {
+		return nil, fmt.Errorf("validate semantic fixture setup plan: %w", err)
+	}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+// Proves every current release budget field and the resolved identity survive
+// fixture serialization, and that self-consistently rehashed omissions still
+// fail production persisted-plan validation.
+func TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.Config.Deployment.DeploymentID = "semantic-plan-fixture"
+	cfg.Netuid = 521
+	source := &FinalSemanticEvidence{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, PlanHash: finalTestHex(0x31), ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash,
+		GenesisHash: finalTestHex(0x32), ChainID: cfg.ChainID, Netuid: cfg.Netuid,
+		Deployment: FinalContractDeploymentEvidence{CoordinatorProxy: "0x1111111111111111111111111111111111111111"},
+	}
+	plan, err := finalSemanticFixtureSetupPlan(cfg, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseLockHash, err := canonicalHashHex(cfg.Release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedHash, err := resolvedInputsHash(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootstrapHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
+	productionHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
+	if plan.Schema != currentSetupPlanSchema || plan.Release != "1.0" || plan.ReleaseLockHash != releaseLockHash || plan.DeploymentID != source.DeploymentID || plan.ChainID != source.ChainID || plan.GenesisHash != source.GenesisHash || plan.Netuid != source.Netuid || plan.Owner != cfg.WalletPublic || plan.ConfigHash != source.ConfigHash || plan.ResolvedInputsHash != resolvedHash || plan.PolicyHash != source.PolicyHash || len(plan.PriorPlanHashes) != 1 || plan.PriorPlanHashes[0] != source.PlanHash || !reflect.DeepEqual(plan.Roles, publicRoles) {
+		t.Fatalf("fixture setup plan identity is incomplete: %+v", plan)
+	}
+	if plan.RegistrationBurnLimitRao != cfg.Config.Budgets.MaximumRegistrationBurnRao || plan.NativeTransactionFeeLimitRao != cfg.Config.Budgets.MaximumNativeTransactionFeeRao || plan.MaximumEVMFeePerGasWei != cfg.Config.Budgets.MaximumEVMFeePerGasWei || plan.AlphaTransferMarginBPS != cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS || plan.MinimumSourceRemainingRao != cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao || plan.BootstrapBurnHalfLifeBlocks != bootstrapHalfLife || plan.ProductionBurnHalfLifeBlocks != productionHalfLife || plan.Limits != configuredPlanLimits(cfg) {
+		t.Fatalf("fixture setup plan budget envelope is incomplete: %+v", plan)
+	}
+	planBytes, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded, decodeErr := decodePersistedPlanBytes(planBytes); decodeErr != nil || decoded.PlanHash != plan.PlanHash {
+		t.Fatalf("complete fixture setup plan was rejected: %v", decodeErr)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*SetupPlan)
+	}{
+		{name: "registration burn", mutate: func(candidate *SetupPlan) { candidate.RegistrationBurnLimitRao = 0 }},
+		{name: "native transaction fee", mutate: func(candidate *SetupPlan) { candidate.NativeTransactionFeeLimitRao = 0 }},
+		{name: "EVM fee per gas", mutate: func(candidate *SetupPlan) { candidate.MaximumEVMFeePerGasWei = 0 }},
+		{name: "alpha transfer margin", mutate: func(candidate *SetupPlan) { candidate.AlphaTransferMarginBPS = 0 }},
+		{name: "minimum source remainder", mutate: func(candidate *SetupPlan) { candidate.MinimumSourceRemainingRao = 0 }},
+		{name: "bootstrap burn half life", mutate: func(candidate *SetupPlan) { candidate.BootstrapBurnHalfLifeBlocks = 0 }},
+		{name: "production burn half life", mutate: func(candidate *SetupPlan) { candidate.ProductionBurnHalfLifeBlocks = 0 }},
+	} {
+		var candidate SetupPlan
+		if err := json.Unmarshal(planBytes, &candidate); err != nil {
+			t.Fatal(err)
+		}
+		test.mutate(&candidate)
+		candidate.PlanHash, err = candidate.hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidateBytes, marshalErr := json.Marshal(candidate)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if _, decodeErr := decodePersistedPlanBytes(candidateBytes); decodeErr == nil {
+			t.Fatalf("self-hashed setup plan with omitted %s budget was accepted", test.name)
+		}
 	}
 }
 
@@ -316,11 +453,27 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		artifacts[uri] = append([]byte(nil), data...)
 		return FinalArtifactLocator{Kind: kind, URI: uri, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
+	setArtifact := func(locator *FinalArtifactLocator, data []byte) {
+		artifacts[locator.URI] = append([]byte(nil), data...)
+		locator.ContentHash = bytesSHA256(data)
+		locator.SizeBytes = uint64(len(data))
+	}
 
 	cfg := testResolvedConfig(t)
 	cfg.Config.Deployment.DeploymentID = source.DeploymentID
 	cfg.Netuid = source.Netuid
 	cfg.ChainID = source.ChainID
+	cfg.ConfigHash = source.ConfigHash
+	cfg.PolicyHash = source.PolicyHash
+	fixturePolicy, err := protocol.ParsePolicy(artifacts[source.PolicyArtifact.URI])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePolicyHash, err := fixturePolicy.HashHex()
+	if err != nil || fixturePolicyHash != source.PolicyHash {
+		t.Fatalf("lifecycle fixture policy hash=%q, want %q: %v", fixturePolicyHash, source.PolicyHash, err)
+	}
+	cfg.Policy = fixturePolicy
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -407,103 +560,90 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		commitmentHashByVariant[name] = hash
 	}
 
-	actions := make([]Action, 0, 64)
-	carriedActions := make(map[string]finalSemanticFixtureCarriedAction, len(source.HeadTransitions))
-	addAction := func(action Action) {
-		hash, hashErr := actionIntentHash(action)
-		if hashErr != nil {
-			t.Fatal(hashErr)
+	planValue, err := finalSemanticFixtureSetupPlan(cfg, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := *planValue
+	actionByID := make(map[string]Action, len(plan.Actions))
+	for _, action := range plan.Actions {
+		if _, exists := actionByID[action.ID]; exists {
+			t.Fatalf("production fixture plan duplicates action %s", action.ID)
 		}
-		action.IntentHash = hash
+		actionByID[action.ID] = action
+	}
+	actions := make([]Action, 0, 64)
+	selectedActions := make(map[string]bool, 64)
+	addAction := func(actionID string) {
+		action, exists := actionByID[actionID]
+		if !exists || selectedActions[actionID] {
+			t.Fatalf("production fixture plan action %s is missing or duplicated", actionID)
+		}
+		selectedActions[actionID] = true
 		actions = append(actions, action)
 	}
 	for _, name := range finalFleetLifecycleVariantNames() {
-		variant, _ := fleetLifecycleVariantFor(name)
 		commitmentID, _ := fleetLifecycleCommitmentActionID(name)
-		addAction(Action{ID: commitmentID, Kind: "substrate-extrinsic", Target: variant.HotkeyLabel, Description: name + " commitment", Parameters: map[string]string{"generation": fmt.Sprint(variant.Generation)}})
+		addAction(commitmentID)
 		mirrorID, _ := fleetLifecycleMirrorActionID(name)
-		addAction(Action{ID: mirrorID, Kind: "evm-transaction", Target: coordinator.Hex(), Description: name + " mirror"})
+		addAction(mirrorID)
 		for member := 1; member <= 4; member++ {
 			bindingID, _ := fleetLifecycleBindingActionID(name, member)
-			miner := fleetMemberMinerIndex(cfg, variant.Fleet, member)
-			if variant.Fallback {
-				miner, err = fleetLifecycleFallbackMinerIndex(cfg, member)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			addAction(Action{ID: bindingID, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: name + " binding"})
+			addAction(bindingID)
 		}
 	}
 	for _, name := range []string{fleetLifecycleVariantFallback, fleetLifecycleVariantProvider, fleetLifecycleVariantTerminal} {
-		expected, expectationErr := fleetLifecycleRegistrationExpectationFor(name)
-		if expectationErr != nil {
-			t.Fatal(expectationErr)
-		}
 		actionID, _ := fleetLifecycleRegistrationActionIDFor(name)
-		addAction(Action{ID: actionID, Kind: "substrate-extrinsic", Target: expected.replacementHotkeyLabel, Description: name + " registration", Parameters: map[string]string{
-			"expected_pruned_fleet": fmt.Sprint(expected.victimFleet), "expected_pruned_hotkey": expected.victimHotkeyLabel,
-			"expected_pruned_uid": fmt.Sprint(expected.expectedUID), "expected_replacement_hotkey": expected.replacementHotkeyLabel,
-		}})
+		addAction(actionID)
 	}
 	for _, name := range []string{fleetLifecycleVariantTargetTakeover, fleetLifecycleVariantCompanionTakeover, fleetLifecycleVariantFallback} {
-		variant, _ := fleetLifecycleVariantFor(name)
 		for member := 1; member <= 4; member++ {
 			cleanupID, _ := fleetLifecycleCleanupActionID(name, member)
-			miner := fleetMemberMinerIndex(cfg, variant.Fleet, member)
-			if variant.Fallback {
-				miner, err = fleetLifecycleFallbackMinerIndex(cfg, member)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			addAction(Action{ID: cleanupID, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: name + " cleanup"})
+			addAction(cleanupID)
 		}
 	}
-	for _, transition := range source.HeadTransitions {
+	carriedActions := make(map[string]finalSemanticFixtureCarriedAction, len(source.HeadTransitions))
+	for transitionIndex := range source.HeadTransitions {
+		transition := &source.HeadTransitions[transitionIndex]
+		actionID := fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID)
+		action, exists := actionByID[actionID]
+		if !exists {
+			t.Fatalf("production fixture plan lacks carried tournament action %s", actionID)
+		}
 		var artifact finalHeadTournamentTransitionArtifact
 		if err := json.Unmarshal(artifacts[transition.Artifact.URI], &artifact); err != nil || artifact.Postcondition == nil {
 			t.Fatalf("decode carried tournament postcondition: %v", err)
 		}
-		actionID := fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID)
 		if _, exists := carriedActions[actionID]; exists {
 			t.Fatalf("duplicate carried tournament action %s", actionID)
 		}
+		artifact.Postcondition.IntentHash = action.IntentHash
+		postconditionBytes, marshalErr := json.Marshal(artifact.Postcondition)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Registration.Proof, postconditionBytes)
+		source.HeadFleets[transition.ChallengerFleetID-1].Registration.Proof = transition.Registration.Proof
+		artifactBytes, marshalErr := json.Marshal(artifact)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Artifact, artifactBytes)
 		carriedActions[actionID] = finalSemanticFixtureCarriedAction{postcondition: artifact.Postcondition, receipt: transition.Registration}
-		addAction(Action{
-			ID:                        actionID,
-			Kind:                      "substrate-extrinsic",
-			Target:                    fmt.Sprintf("fleet-%d-hotkey", transition.ChallengerFleetID),
-			Description:               "head tournament challenger registration",
-			AcceptedPriorIntentHashes: []string{artifact.Postcondition.IntentHash},
-		})
-	}
-	plan := SetupPlan{
-		Schema: currentSetupPlanSchema, Release: "1.0", DeploymentID: source.DeploymentID,
-		ChainID: source.ChainID, GenesisHash: source.GenesisHash, Netuid: source.Netuid,
-		PriorPlanHashes: []string{finalTestHex(2)}, ConfigHash: source.ConfigHash, PolicyHash: source.PolicyHash, Actions: actions,
-		LiveFacts: SetupFacts{FinalizedBlock: 1, FinalizedBlockHash: finalTestHex(1)},
-	}
-	plan.PlanHash, err = plan.hash()
-	if err != nil {
-		t.Fatal(err)
+		addAction(actionID)
 	}
 	planBytes, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted, hashErr := persistedSetupPlanHash(planBytes, plan.Schema); hashErr != nil || persisted != plan.PlanHash {
-		t.Fatalf("lifecycle fixture plan hash=%q: %v", persisted, hashErr)
+	if persisted, decodeErr := decodePersistedPlanBytes(planBytes); decodeErr != nil || persisted.PlanHash != plan.PlanHash {
+		t.Fatalf("lifecycle fixture persisted plan=%v: %v", persisted, decodeErr)
 	}
 	source.PlanHash = plan.PlanHash
 	planURI := "artifacts/setup-plan.json"
 	artifacts[planURI] = append([]byte(nil), planBytes...)
 	source.PlanArtifact = FinalArtifactLocator{Kind: "setup-plan", URI: planURI, ContentHash: bytesSHA256(planBytes), SizeBytes: uint64(len(planBytes))}
 
-	actionByID := make(map[string]Action, len(actions))
-	for _, action := range actions {
-		actionByID[action.ID] = action
-	}
 	blockForVariant := map[string]struct{ commitment, mirror, binding uint64 }{
 		fleetLifecycleVariantTargetTakeover:    {20, 30, 40},
 		fleetLifecycleVariantCompanionTakeover: {21, 31, 45},
@@ -1106,11 +1246,6 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	source.Deployment.Artifact.ContentHash = bytesSHA256(data)
 	source.Deployment.Artifact.SizeBytes = uint64(len(data))
 
-	setArtifact := func(locator *FinalArtifactLocator, data []byte) {
-		artifacts[locator.URI] = append([]byte(nil), data...)
-		locator.ContentHash = bytesSHA256(data)
-		locator.SizeBytes = uint64(len(data))
-	}
 	for index := range source.HeadFleets {
 		fleet := &source.HeadFleets[index]
 		var wrapper struct {

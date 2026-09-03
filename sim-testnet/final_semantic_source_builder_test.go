@@ -108,18 +108,20 @@ func TestFinalSemanticArchiveAdjacentPersistedWiresMatchProductionWriters(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := SetupPlan{
-		Schema: currentSetupPlanSchema, DeploymentID: cfg.Config.Deployment.DeploymentID,
-		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
-		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash,
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
 	}
-	plan.PlanHash, err = plan.hash()
+	plan, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0).UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
 	planBytes, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if persisted, decodeErr := decodePersistedPlanBytes(planBytes); decodeErr != nil || persisted.PlanHash != plan.PlanHash {
+		t.Fatalf("production setup plan wire was rejected: %v", decodeErr)
 	}
 	archive := &finalSemanticArchive{files: map[string][]byte{
 		"launch-foundation/plan.json": planBytes,

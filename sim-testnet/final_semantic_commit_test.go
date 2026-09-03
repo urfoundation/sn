@@ -447,16 +447,15 @@ func TestFinalSemanticCapturedDependenciesIgnoreConcurrentMutablePointers(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolvedHash, err := resolvedInputsHash(cfg)
+	publicRoles, err := derivePublicRoles(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := SetupPlan{Schema: currentSetupPlanSchema, DeploymentID: cfg.Config.Deployment.DeploymentID, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ResolvedInputsHash: resolvedHash}
-	plan.PlanHash, err = plan.hash()
+	plan, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1, 0).UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
-	planBytes, err := json.Marshal(&plan)
+	planBytes, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
