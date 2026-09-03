@@ -94,7 +94,7 @@ func authenticatePinnedNativeRuntimeAt(chain *crv4.Chain, cfg *ReleaseConfig, fi
 }
 
 func authenticatePinnedNativeRuntime(chain *crv4.Chain, cfg *ReleaseConfig) (types.Hash, error) {
-	if chain == nil || chain.API == nil {
+	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.Chain == nil {
 		return types.Hash{}, errors.New("native runtime chain is unavailable")
 	}
 	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()

@@ -1964,6 +1964,9 @@ func evaluateCompatibilityGate(gate CompatibilityGate, observed []uint64) error 
 }
 
 func verifyCompatibilityGates(chain *crv4.Chain, cfg *ResolvedConfig) (map[string]any, error) {
+	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.Chain == nil {
+		return nil, errors.New("compatibility-gate chain is unavailable")
+	}
 	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
 	if err != nil {
 		return nil, err
@@ -1972,9 +1975,18 @@ func verifyCompatibilityGates(chain *crv4.Chain, cfg *ResolvedConfig) (map[strin
 }
 
 func verifyCompatibilityGatesAt(chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) (map[string]any, error) {
-	if _, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalized); err != nil {
+	if cfg == nil || cfg.Hyperparameters == nil {
+		return nil, errors.New("compatibility-gate configuration is unavailable")
+	}
+	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.State == nil {
+		return nil, errors.New("compatibility-gate state reader is unavailable")
+	}
+	authenticated, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalized)
+	if err != nil {
 		return nil, fmt.Errorf("authenticate compatibility-gate runtime: %w", err)
 	}
+	authenticatedChain := *chain
+	bindAuthenticatedRuntime(&authenticatedChain, authenticated)
 	out := map[string]any{}
 	names := make([]string, 0, len(cfg.Hyperparameters.ObservedCompatibilityGates))
 	for name := range cfg.Hyperparameters.ObservedCompatibilityGates {
@@ -1987,33 +1999,34 @@ func verifyCompatibilityGatesAt(chain *crv4.Chain, cfg *ResolvedConfig, finalize
 		if gate.Scope == "netuid" {
 			args = append(args, netuidArg(cfg.Netuid))
 		}
-		key, keyErr := types.CreateStorageKey(chain.Meta, crv4.PalletName, gate.Storage, args...)
+		key, keyErr := types.CreateStorageKey(authenticatedChain.Meta, crv4.PalletName, gate.Storage, args...)
 		if keyErr != nil {
 			return nil, fmt.Errorf("compatibility gate %s storage: %w", name, keyErr)
 		}
 		var observed []uint64
 		var present bool
+		var readErr error
 		switch gate.Kind {
 		case "u16":
 			var value types.U16
-			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
+			present, readErr = readStorageAt(&authenticatedChain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value)}
 		case "u64":
 			var value types.U64
-			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
+			present, readErr = readStorageAt(&authenticatedChain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value)}
 		case "u16_pair":
 			var value struct {
 				Low  types.U16
 				High types.U16
 			}
-			present, err = readStorageAt(chain, key, crv4.PalletName, gate.Storage, &value, finalized)
+			present, readErr = readStorageAt(&authenticatedChain, key, crv4.PalletName, gate.Storage, &value, finalized)
 			observed = []uint64{uint64(value.Low), uint64(value.High)}
 		default:
 			return nil, fmt.Errorf("compatibility gate %s has unsupported kind %s", name, gate.Kind)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("compatibility gate %s read: %w", name, err)
+		if readErr != nil {
+			return nil, fmt.Errorf("compatibility gate %s read: %w", name, readErr)
 		}
 		if !present {
 			return nil, fmt.Errorf("compatibility gate %s storage is absent", name)
