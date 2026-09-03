@@ -21,6 +21,8 @@ var (
 	releaseLayoutTypeASTID = regexp.MustCompile(`(t_(?:struct|contract|enum|userDefinedValueType)\([^)]*\))\d+`)
 	releaseGitCommit       = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	releaseSHA256          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	releaseHex256          = regexp.MustCompile(`^0x[0-9a-f]{64}$`)
+	releaseImageDigest     = regexp.MustCompile(`^[^@[:space:]]+@sha256:[0-9a-f]{64}$`)
 )
 
 const (
@@ -74,28 +76,90 @@ func digestBytes(data []byte) string {
 }
 
 func digestNamedFiles(root string, names []string) (string, error) {
-	paths := append([]string(nil), names...)
+	paths := make([]string, 0, len(names))
+	seenPaths := map[string]struct{}{}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve release-lock root %s: %w", root, err)
+	}
+	resolvedRoot, err = filepath.Abs(resolvedRoot)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range names {
+		clean := filepath.Clean(name)
+		if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("unsafe release-lock path %q", name)
+		}
+		portable := filepath.ToSlash(clean)
+		if _, ok := seenPaths[portable]; ok {
+			return "", fmt.Errorf("duplicate release-lock path %q", portable)
+		}
+		seenPaths[portable] = struct{}{}
+		paths = append(paths, portable)
+	}
 	sort.Strings(paths)
 	h := sha256.New()
 	var size [8]byte
 	for _, name := range paths {
-		clean := filepath.Clean(name)
-		if filepath.IsAbs(clean) || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("unsafe release-lock path %q", name)
-		}
-		data, err := os.ReadFile(filepath.Join(root, clean))
+		path := filepath.Join(root, filepath.FromSlash(name))
+		info, err := os.Lstat(path)
 		if err != nil {
 			return "", err
 		}
-		portable := filepath.ToSlash(clean)
-		binary.BigEndian.PutUint64(size[:], uint64(len(portable)))
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return "", fmt.Errorf("release-lock path %q is not a regular file", name)
+		}
+		resolvedPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return "", err
+		}
+		resolvedPath, err = filepath.Abs(resolvedPath)
+		if err != nil {
+			return "", err
+		}
+		expectedPath := filepath.Join(resolvedRoot, filepath.FromSlash(name))
+		if resolvedPath != expectedPath {
+			return "", fmt.Errorf("release-lock path %q traverses a symlink", name)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		binary.BigEndian.PutUint64(size[:], uint64(len(name)))
 		_, _ = h.Write(size[:])
-		_, _ = h.Write([]byte(portable))
+		_, _ = h.Write([]byte(name))
 		binary.BigEndian.PutUint64(size[:], uint64(len(data)))
 		_, _ = h.Write(size[:])
 		_, _ = h.Write(data)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Fixed-path release inputs must also be reviewed Git files. A clean worktree
+// does not report ignored files, so accepting a merely present path would let
+// local ignored bytes enter a freshly rendered lock.
+func digestTrackedNamedFiles(root string, names []string) (string, error) {
+	output, err := exec.Command("git", "-C", root, "ls-files", "-z", "--cached").Output()
+	if err != nil {
+		return "", fmt.Errorf("enumerate reviewed release-lock files in %s: %w", root, err)
+	}
+	tracked := map[string]struct{}{}
+	for _, raw := range bytes.Split(output, []byte{0}) {
+		if len(raw) != 0 {
+			tracked[filepath.ToSlash(filepath.Clean(filepath.FromSlash(string(raw))))] = struct{}{}
+		}
+	}
+	for _, name := range names {
+		clean := filepath.Clean(name)
+		if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("unsafe reviewed release-lock path %q", name)
+		}
+		if _, ok := tracked[filepath.ToSlash(clean)]; !ok {
+			return "", fmt.Errorf("release-lock path %q is not a reviewed Git file", name)
+		}
+	}
+	return digestNamedFiles(root, names)
 }
 
 // cleanGitSubtreeHash binds large, shared runtime assets without reading
@@ -105,7 +169,7 @@ func digestNamedFiles(root string, names []string) (string, error) {
 // stable SHA-256 release-lock fingerprint.
 func cleanGitSubtreeHash(root, subtree string) (string, error) {
 	clean := filepath.Clean(subtree)
-	if filepath.IsAbs(clean) || clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("unsafe git subtree %q", subtree)
 	}
 	status := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--untracked-files=all", "--", clean)
@@ -136,44 +200,145 @@ func sdkMobileBuildTreeHash(sdkRoot string) (string, error) {
 	return cleanGitSubtreeHash(sdkRoot, "build")
 }
 
-func filesUnder(root string, roots []string, include func(string) bool) ([]string, error) {
-	var names []string
+// Enumerate only reviewed Git paths beneath explicit source roots. Comparing
+// the filesystem selection with the index rejects ignored source/config bytes
+// that ordinary Git cleanliness does not report. Working-tree bytes are hashed
+// later, while the observer brackets the read with clean revision snapshots.
+func trackedFilesUnder(root string, roots []string, include func(string) bool, skipDirectory func(string) bool) ([]string, error) {
+	if len(roots) == 0 || include == nil {
+		return nil, errors.New("release-lock source roots are empty")
+	}
+	arguments := []string{"-C", root, "ls-files", "-z", "--cached", "--"}
+	cleanRoots := make([]string, 0, len(roots))
+	filesystemNames := map[string]struct{}{}
 	for _, relativeRoot := range roots {
-		start := filepath.Join(root, relativeRoot)
-		err := filepath.WalkDir(start, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() {
-				switch entry.Name() {
-				case ".git", "out", "lib", "build", "runs", "node_modules", "vendor":
-					if path != start {
-						return filepath.SkipDir
-					}
-				}
-				return nil
-			}
-			rel, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			if include(filepath.ToSlash(rel)) {
-				names = append(names, rel)
-			}
-			return nil
-		})
+		clean := filepath.Clean(relativeRoot)
+		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("unsafe release-lock source root %q", relativeRoot)
+		}
+		path := filepath.Join(root, clean)
+		info, err := os.Lstat(path)
 		if err != nil {
 			return nil, err
 		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return nil, fmt.Errorf("release-lock source root %q is not a directory", relativeRoot)
+		}
+		cleanRoots = append(cleanRoots, filepath.ToSlash(clean))
+		if err := filepath.WalkDir(path, func(candidate string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if candidate == path {
+				return nil
+			}
+			relative, err := filepath.Rel(root, candidate)
+			if err != nil {
+				return err
+			}
+			portable := filepath.ToSlash(relative)
+			if entry.IsDir() {
+				if skipDirectory != nil && skipDirectory(portable) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+				return fmt.Errorf("release-lock source path %q is not a regular file", portable)
+			}
+			if include(portable) {
+				if _, exists := filesystemNames[portable]; exists {
+					return fmt.Errorf("duplicate release-lock source path %q", portable)
+				}
+				filesystemNames[portable] = struct{}{}
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
 	}
+	arguments = append(arguments, cleanRoots...)
+	output, err := exec.Command("git", arguments...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("enumerate tracked release-lock files in %s: %w", root, err)
+	}
+	trackedNames := map[string]struct{}{}
+	for _, raw := range bytes.Split(output, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		name := string(raw)
+		clean := filepath.Clean(filepath.FromSlash(name))
+		if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("Git returned unsafe release-lock path %q", name)
+		}
+		portable := filepath.ToSlash(clean)
+		if include(portable) {
+			trackedNames[portable] = struct{}{}
+		}
+	}
+	for name := range filesystemNames {
+		if _, ok := trackedNames[name]; !ok {
+			return nil, fmt.Errorf("release-lock source path %q is not a reviewed Git file", name)
+		}
+	}
+	for name := range trackedNames {
+		if _, ok := filesystemNames[name]; !ok {
+			return nil, fmt.Errorf("reviewed release-lock source path %q is missing from the worktree", name)
+		}
+	}
+	if len(trackedNames) == 0 {
+		return nil, fmt.Errorf("release-lock source roots %v contain no reviewed files", cleanRoots)
+	}
+	names := make([]string, 0, len(trackedNames))
+	for name := range trackedNames {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	return names, nil
 }
 
+// Exclude only conventional generated/dependency trees. A nested first-party
+// source directory named lib or build remains covered; the SDK's top-level
+// build module is deliberately bound by sdkMobileBuildTreeHash instead.
+func includeGoReleaseSource(name string) bool {
+	parts := strings.Split(filepath.ToSlash(name), "/")
+	for index, part := range parts[:len(parts)-1] {
+		switch part {
+		case ".git", "node_modules", "out", "runs", "vendor":
+			return false
+		case "build":
+			if index == 0 {
+				return false
+			}
+		}
+	}
+	base := parts[len(parts)-1]
+	return (strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")) || base == "go.mod" || base == "go.sum"
+}
+
+func skipGoReleaseDirectory(name string) bool {
+	portable := filepath.ToSlash(name)
+	parts := strings.Split(portable, "/")
+	base := parts[len(parts)-1]
+	switch base {
+	case ".git", "node_modules", "out", "runs", "vendor":
+		return true
+	case "build":
+		return len(parts) == 1
+	case "lib":
+		return len(parts) == 2 && parts[0] == "evm"
+	default:
+		return false
+	}
+}
+
 func goReleaseSourceHash(root string) (string, error) {
-	names, err := filesUnder(root, []string{"."}, func(name string) bool {
-		base := filepath.Base(name)
-		return (strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")) || base == "go.mod" || base == "go.sum"
-	})
+	names, err := trackedFilesUnder(root, []string{"."}, includeGoReleaseSource, skipGoReleaseDirectory)
 	if err != nil {
 		return "", err
 	}
@@ -216,16 +381,44 @@ func observeOperatorProxyReleaseSource(root string) (map[string]string, error) {
 }
 
 func soliditySourceHash(snRoot string) (string, error) {
-	names, err := filesUnder(snRoot, []string{"evm/src", "evm/script"}, func(name string) bool {
+	names, err := trackedFilesUnder(snRoot, []string{"evm/src", "evm/script"}, func(name string) bool {
 		return strings.HasSuffix(name, ".sol")
-	})
+	}, nil)
 	if err != nil {
 		return "", err
 	}
 	return digestNamedFiles(snRoot, names)
 }
 
+func solidityCompilerSettingsHash(snRoot string) (string, error) {
+	return digestTrackedNamedFiles(snRoot, []string{"evm/foundry.toml", "evm/remappings.txt"})
+}
+
 func cleanGitRevision(root string) (string, error) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve dependency checkout %s: %w", root, err)
+	}
+	resolvedRoot, err = filepath.Abs(resolvedRoot)
+	if err != nil {
+		return "", err
+	}
+	topLevel := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel")
+	topLevelOutput, err := topLevel.Output()
+	if err != nil {
+		return "", fmt.Errorf("locate dependency checkout %s: %w", root, err)
+	}
+	resolvedTopLevel, err := filepath.EvalSymlinks(strings.TrimSpace(string(topLevelOutput)))
+	if err != nil {
+		return "", fmt.Errorf("resolve dependency checkout root %s: %w", root, err)
+	}
+	resolvedTopLevel, err = filepath.Abs(resolvedTopLevel)
+	if err != nil {
+		return "", err
+	}
+	if resolvedRoot != resolvedTopLevel {
+		return "", fmt.Errorf("dependency checkout %s is not its Git worktree root", root)
+	}
 	status := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all")
 	statusOutput, err := status.Output()
 	if err != nil {
@@ -287,9 +480,9 @@ func observeFoundryVersion() (string, string, error) {
 }
 
 func protocolSourceHash(snRoot string) (string, error) {
-	names, err := filesUnder(snRoot, []string{"protocol", "docs/spec"}, func(name string) bool {
+	names, err := trackedFilesUnder(snRoot, []string{"protocol", "docs/spec"}, func(name string) bool {
 		return !strings.HasSuffix(name, "_test.go")
-	})
+	}, nil)
 	if err != nil {
 		return "", err
 	}
@@ -303,7 +496,7 @@ func protocolSourceHash(snRoot string) (string, error) {
 		"scripts/test-release-1.0-local.sh",
 		"scripts/test-release-1.0-producer-gate.sh",
 	)
-	return digestNamedFiles(snRoot, names)
+	return digestTrackedNamedFiles(snRoot, names)
 }
 
 // serverLocalDependencyConfigHash covers the server/local compose contract
@@ -311,12 +504,12 @@ func protocolSourceHash(snRoot string) (string, error) {
 // release containers. Enumerating the directory also makes newly added hooks
 // fail the lock instead of executing as unreviewed container input.
 func serverLocalDependencyConfigHash(serverRoot string) (string, error) {
-	names, err := filesUnder(serverRoot, []string{"local/postgres/initdb"}, func(string) bool { return true })
+	names, err := trackedFilesUnder(serverRoot, []string{"local/postgres/initdb"}, func(string) bool { return true }, nil)
 	if err != nil {
 		return "", err
 	}
 	names = append(names, "local/docker-compose.yml")
-	return digestNamedFiles(serverRoot, names)
+	return digestTrackedNamedFiles(serverRoot, names)
 }
 
 // releaseABI names one generated interface included in the aggregate ABI lock.
@@ -382,8 +575,23 @@ func foundryStorageLayoutHash(snRoot, artifact string) (string, error) {
 
 func moduleRoot(parent, name string) (string, error) {
 	root := filepath.Join(parent, name)
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+	module, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
 		return "", fmt.Errorf("release module %s: %w", name, err)
+	}
+	want := "github.com/urnetwork/" + name
+	found := ""
+	for _, line := range strings.Split(string(module), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "module" {
+			if found != "" {
+				return "", fmt.Errorf("release module %s declares multiple module identities", name)
+			}
+			found = fields[1]
+		}
+	}
+	if found != want {
+		return "", fmt.Errorf("release module %s declares %q, want %q", name, found, want)
 	}
 	return root, nil
 }
@@ -411,7 +619,7 @@ var subtensorNodeReleaseFiles = []string{
 	"main/ansible/tasks/subtensor-lightnode-preflight.yml",
 }
 
-func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
+func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if cfg == nil || cfg.Repos.SN == "" || cfg.Repos.Server == "" || cfg.Repos.OperatorProxy == "" {
 		return nil, errors.New("release repository paths are incomplete")
 	}
@@ -435,11 +643,10 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 			return nil, err
 		}
 	}
-	foundry, err := os.ReadFile(filepath.Join(cfg.Repos.SN, "evm", "foundry.toml"))
+	observation.EVMBuild["compiler_settings_hash"], err = solidityCompilerSettingsHash(cfg.Repos.SN)
 	if err != nil {
 		return nil, err
 	}
-	observation.EVMBuild["compiler_settings_hash"] = digestBytes(foundry)
 	observation.EVMBuild["reserve_sink_runtime_hash"] = ReserveSinkRuntimeBytecodeHash
 	observation.EVMBuild["settlement_vault_runtime_hash"] = SettlementVaultRuntimeBytecodeHash
 	observation.EVMBuild["coordinator_implementation_runtime_hash"] = CoordinatorRuntimeBytecodeHash
@@ -490,7 +697,7 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if err != nil {
 		return nil, err
 	}
-	configNames, err := filesUnder(cfg.Repos.PlatformConfig, []string{"local"}, func(string) bool { return true })
+	configNames, err := trackedFilesUnder(cfg.Repos.PlatformConfig, []string{"local"}, func(string) bool { return true }, nil)
 	if err != nil {
 		return nil, fmt.Errorf("enumerate platform config: %w", err)
 	}
@@ -503,7 +710,7 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 		return nil, fmt.Errorf("hash shared platform config: %w", err)
 	}
 
-	interfaces, err := filesUnder(cfg.Repos.SN, []string{"evm/src/interfaces"}, func(name string) bool { return strings.HasSuffix(name, ".sol") })
+	interfaces, err := trackedFilesUnder(cfg.Repos.SN, []string{"evm/src/interfaces"}, func(name string) bool { return strings.HasSuffix(name, ".sol") }, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -513,11 +720,11 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	}
 
 	xops := filepath.Join(parent, "xops")
-	observation.Infrastructure["gateway_config_hash"], err = digestNamedFiles(xops, subtensorGatewayReleaseFiles)
+	observation.Infrastructure["gateway_config_hash"], err = digestTrackedNamedFiles(xops, subtensorGatewayReleaseFiles)
 	if err != nil {
 		return nil, fmt.Errorf("hash RPC gateway config: %w", err)
 	}
-	observation.Infrastructure["node_config_hash"], err = digestNamedFiles(xops, subtensorNodeReleaseFiles)
+	observation.Infrastructure["node_config_hash"], err = digestTrackedNamedFiles(xops, subtensorNodeReleaseFiles)
 	if err != nil {
 		return nil, fmt.Errorf("hash Subtensor node config: %w", err)
 	}
@@ -525,12 +732,15 @@ func observeReleaseLock(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hash server/local dependency config: %w", err)
 	}
+	if err := validateReleaseLockObservation(observation); err != nil {
+		return nil, err
+	}
 	return observation, nil
 }
 
 func lockString(section map[string]any, key string) (string, error) {
 	value, ok := section[key]
-	if !ok || strings.TrimSpace(fmt.Sprint(value)) == "" {
+	if !ok || value == nil || strings.TrimSpace(fmt.Sprint(value)) == "" {
 		return "", fmt.Errorf("release lock field %s is missing", key)
 	}
 	return strings.TrimSpace(fmt.Sprint(value)), nil
@@ -588,60 +798,20 @@ func validateReviewedRuntimeIdentity(lock *ReleaseLock) error {
 }
 
 func validateReleaseLock(cfg *ResolvedConfig) error {
-	if cfg.Release == nil || cfg.Release.SchemaVersion != 1 || cfg.Release.Release != "1.0" {
-		return errors.New("release lock schema or release is not the reviewed 1.0 release")
+	if cfg == nil {
+		return errors.New("resolved release configuration is missing")
 	}
-	if err := validateReviewedRuntimeIdentity(cfg.Release); err != nil {
+	if err := validateReleaseLockStatic(cfg.Release); err != nil {
 		return err
-	}
-	if !strings.Contains(cfg.Release.Runtime.Image, "@sha256:") || strings.Contains(cfg.Release.Runtime.Image, "placeholder") {
-		return fmt.Errorf("runtime image is not digest-pinned")
-	}
-	for name, image := range cfg.Release.Dependencies {
-		if !strings.Contains(image, "@sha256:") || strings.Contains(image, "placeholder") {
-			return fmt.Errorf("dependency %s is not digest-pinned", name)
-		}
-	}
-	for _, section := range []map[string]any{cfg.Release.EVMBuild, cfg.Release.Repositories, cfg.Release.Interfaces, cfg.Release.Infrastructure} {
-		for key, value := range section {
-			if value == nil || strings.TrimSpace(fmt.Sprint(value)) == "" || strings.Contains(strings.ToLower(fmt.Sprint(value)), "placeholder") {
-				return fmt.Errorf("release lock field %s is unresolved", key)
-			}
-		}
-	}
-	if err := validateReleaseRepositorySchema(cfg.Release.Repositories); err != nil {
-		return err
-	}
-	for key, want := range map[string]string{
-		"solidity":                      "0.8.24",
-		"evm_version":                   "cancun",
-		"foundry":                       "1.7.1",
-		"foundry_commit":                "4072e48705af9d93e3c0f6e29e93b5e9a40caed8",
-		"optimizer":                     "true",
-		"optimizer_runs":                "200",
-		"forge_std_commit":              "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b",
-		"openzeppelin_contracts_commit": "5fd1781b1454fd1ef8e722282f86f9293cacf256",
-		"openzeppelin_contracts_upgradeable_commit": "7bf4727aacdbfaa0f36cbd664654d0c9e1dc52bf",
-	} {
-		got, err := lockString(cfg.Release.EVMBuild, key)
-		if err != nil || !strings.EqualFold(got, want) {
-			return fmt.Errorf("release lock evm_build.%s=%q, want %q", key, got, want)
-		}
 	}
 	observed, err := observeReleaseLock(cfg)
 	if err != nil {
 		return err
 	}
-	evmAnnotations := map[string]struct{}{
-		"solidity": {}, "evm_version": {}, "optimizer": {}, "optimizer_runs": {},
-	}
-	repositoryAnnotations := map[string]struct{}{
-		"sn_audited_base_commit": {}, "server_audited_base_commit": {}, "vault_audited_base_commit": {},
-	}
-	if err := compareLockSection("evm_build", cfg.Release.EVMBuild, observed.EVMBuild, evmAnnotations); err != nil {
+	if err := compareLockSection("evm_build", cfg.Release.EVMBuild, observed.EVMBuild, releaseKeySet(releaseEVMAnnotationKeys)); err != nil {
 		return err
 	}
-	if err := compareLockSection("repositories", cfg.Release.Repositories, observed.Repositories, repositoryAnnotations); err != nil {
+	if err := compareLockSection("repositories", cfg.Release.Repositories, observed.Repositories, releaseKeySet(releaseRepositoryAnnotationKeys)); err != nil {
 		return err
 	}
 	if err := compareLockSection("interfaces", cfg.Release.Interfaces, observed.Interfaces, nil); err != nil {

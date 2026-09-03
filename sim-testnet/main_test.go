@@ -17,7 +17,7 @@ func TestImportedProductionModulesKeepJSONStdoutSeparateFromDiagnostics(t *testi
 
 func TestParseCLIReleaseCommandsAndWriteGuardFlags(t *testing.T) {
 	for _, command := range []string{
-		"doctor", "plan", "setup", "launch", "resume", "status", "inspect",
+		"doctor", "release-lock", "plan", "setup", "launch", "resume", "status", "inspect",
 		"analyze", "scenario", "tail", "stop", "retire",
 	} {
 		got, options, err := parseCLI([]string{command, "--format", "json"})

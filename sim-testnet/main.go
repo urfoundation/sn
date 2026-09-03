@@ -37,6 +37,7 @@ Usage: sim-testnet <command> [options]
 
 Commands:
   doctor   read-only configuration, repository, tool, RPC, wallet, and subnet checks
+  release-lock  render or atomically refresh observed release-lock fields from clean repositories
   plan     print the canonical setup diff, costs, actions, and plan hash; never writes
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
@@ -58,7 +59,7 @@ Common options:
   --vault-repo PATH   repository discovery override
   --platform-config-repo PATH  platform config repository override
   --format human|json
-  --apply --plan-hash HASH  mandatory pair for any write
+  --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -70,7 +71,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", cliOptions{}, errors.New("missing command")
 	}
 	cmd := args[0]
-	valid := map[string]bool{"doctor": true, "plan": true, "setup": true, "launch": true, "resume": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "setup": true, "launch": true, "resume": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -280,6 +281,9 @@ func runMain(args []string) error {
 	resolved, err := LoadResolved(LoadOptions{ConfigPath: o.Config, SNRepo: o.SNRepo, ServerRepo: o.ServerRepo, OperatorProxyRepo: o.OperatorProxyRepo, VaultRepo: o.VaultRepo, PlatformConfigRepo: o.PlatformConfigRepo, RequireSecrets: requireSecrets})
 	if err != nil {
 		return err
+	}
+	if cmd == "release-lock" {
+		return runReleaseLockCommand(resolved, o)
 	}
 	if (cmd == "inspect" || cmd == "analyze") && o.Manifest != "" {
 		if err := adoptPublicManifest(ctx, resolved, o.Manifest); err != nil {

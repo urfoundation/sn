@@ -224,6 +224,33 @@ shortfall without persisting or broadcasting transaction bytes.
 
 On this checkout Foundry is installed at `/home/by/.foundry/bin`.
 
+## Atomic release-lock refresh
+
+Refresh observed source, interface, infrastructure, and EVM fields only after
+every contributing repository is frozen in a clean commit. The renderer uses
+the verifier's exact observation schema, checks all configured and sibling
+repositories plus the three Foundry dependency worktrees before and after the
+observation, and preserves the separately reviewed runtime, image,
+dependency, compiler-policy, and audited-base fields.
+
+From the `sn` repository, review the canonical candidate without writing:
+
+```bash
+go run ./sim-testnet release-lock --config sim-testnet/testnet.yml
+```
+
+Then install those exact bytes with one atomic replacement:
+
+```bash
+go run ./sim-testnet release-lock --config sim-testnet/testnet.yml --apply
+```
+
+The apply form refuses a missing or dirty checkout, a checkout that advances
+during observation, an incomplete observation, a symlinked or escaping lock
+path, or lock bytes changed since configuration load. It intentionally leaves
+the `sn` worktree dirty only by the updated `deploy/testnet/release.lock.yml`;
+review and commit that file before running `doctor` or refreshing again.
+
 ## Build and read-only preflight
 
 From the `sn` repository:

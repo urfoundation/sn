@@ -138,8 +138,58 @@ func TestDigestNamedFilesIsOrderedAndContentSensitive(t *testing.T) {
 	}
 }
 
+func TestDigestNamedFilesRejectsSymlinksAndPathEscape(t *testing.T) {
+	root := t.TempDir()
+	outsideRoot := t.TempDir()
+	outside := filepath.Join(outsideRoot, "outside")
+	if err := os.WriteFile(outside, []byte("outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := digestNamedFiles(root, []string{"../outside"}); err == nil {
+		t.Fatal("release digest accepted a parent path")
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := digestNamedFiles(root, []string{"linked"}); err == nil {
+		t.Fatal("release digest followed a source symlink")
+	}
+	if err := os.Symlink(outsideRoot, filepath.Join(root, "linked-directory")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := digestNamedFiles(root, []string{"linked-directory/outside"}); err == nil {
+		t.Fatal("release digest followed an intermediate directory symlink")
+	}
+}
+
+func TestDigestTrackedNamedFilesRejectsIgnoredUnreviewedInput(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.yml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ignored.yml"), []byte("local: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", ".gitignore")
+	runTestGit(t, root, "commit", "-qm", "review ignore policy")
+	if _, err := digestTrackedNamedFiles(root, []string{"ignored.yml"}); err == nil || !strings.Contains(err.Error(), "not a reviewed Git file") {
+		t.Fatalf("ignored local input entered release digest: %v", err)
+	}
+	runTestGit(t, root, "add", "-f", "ignored.yml")
+	runTestGit(t, root, "commit", "-qm", "review fixed input")
+	if _, err := digestTrackedNamedFiles(root, []string{"ignored.yml"}); err != nil {
+		t.Fatalf("reviewed fixed input was rejected: %v", err)
+	}
+}
+
 func TestSoliditySourceHashCoversDeploymentScripts(t *testing.T) {
 	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
 	for _, dir := range []string{"evm/src", "evm/script"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
 			t.Fatal(err)
@@ -152,6 +202,8 @@ func TestSoliditySourceHashCoversDeploymentScripts(t *testing.T) {
 	if err := os.WriteFile(deploy, []byte("contract Deploy {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	runTestGit(t, root, "add", "evm/src/Contract.sol", "evm/script/Deploy.s.sol")
+	runTestGit(t, root, "commit", "-qm", "review Solidity sources")
 	first, err := soliditySourceHash(root)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +217,176 @@ func TestSoliditySourceHashCoversDeploymentScripts(t *testing.T) {
 	}
 	if first == second {
 		t.Fatal("deployment-script drift did not change the Solidity release source hash")
+	}
+}
+
+func TestSoliditySourceHashCoversNestedLibrariesAndExcludesDependencyRoots(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	files := map[string]string{
+		"evm/src/Contract.sol":    "contract Contract {}\n",
+		"evm/src/lib/Library.sol": "library Library {}\n",
+		"evm/script/Deploy.s.sol": "contract Deploy {}\n",
+		"evm/lib/Dependency.sol":  "library Dependency {}\n",
+		"evm/out/Generated.sol":   "contract Generated {}\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review nested Solidity sources")
+	baseline, err := soliditySourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstParty := filepath.Join(root, "evm", "src", "lib", "Library.sol")
+	if err := os.WriteFile(firstParty, []byte("library Library { function changed() external {} }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withFirstPartyChange, err := soliditySourceHash(root)
+	if err != nil || withFirstPartyChange == baseline {
+		t.Fatalf("nested first-party library was not covered: %s %s %v", baseline, withFirstPartyChange, err)
+	}
+	if err := os.WriteFile(firstParty, []byte(files["evm/src/lib/Library.sol"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "evm", "lib", "Dependency.sol"), []byte("library Dependency { function changed() external {} }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "evm", "out", "Generated.sol"), []byte("contract Generated { function changed() external {} }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withDependencyChanges, err := soliditySourceHash(root)
+	if err != nil || withDependencyChanges != baseline {
+		t.Fatalf("external dependency/cache roots entered source hash: %s %s %v", baseline, withDependencyChanges, err)
+	}
+}
+
+func TestSolidityCompilerSettingsHashCoversFoundryAndRemappings(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	evmRoot := filepath.Join(root, "evm")
+	if err := os.Mkdir(evmRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evmRoot, "foundry.toml"), []byte("[profile.default]\nlibs = [\"lib\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	remappings := filepath.Join(evmRoot, "remappings.txt")
+	if err := os.WriteFile(remappings, []byte("dependency/=lib/dependency/src/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "evm/foundry.toml", "evm/remappings.txt")
+	runTestGit(t, root, "commit", "-qm", "review compiler settings")
+	baseline, err := solidityCompilerSettingsHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(remappings, []byte("dependency/=lib/other/src/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := solidityCompilerSettingsHash(root)
+	if err != nil || changed == baseline {
+		t.Fatalf("remapping drift was not covered: %s %s %v", baseline, changed, err)
+	}
+}
+
+func TestGoReleaseSourceHashCoversNestedSourceDirectoriesAndExcludesCaches(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	files := map[string]string{
+		"go.mod":                         "module example.invalid/release\n\ngo 1.26.3\n",
+		"lib/source.go":                  "package lib\n\nconst TopLevelValue = 1\n",
+		"pkg/lib/source.go":              "package lib\n\nconst Value = 1\n",
+		"pkg/build/source.go":            "package build\n\nconst Value = 1\n",
+		"build/excluded.go":              "package buildtool\n",
+		"out/generated.go":               "package generated\n",
+		"runs/generated.go":              "package generated\n",
+		"vendor/vendor.go":               "package vendor\n",
+		"web/node_modules/dependency.go": "package dependency\n",
+		"evm/lib/dependency.go":          "package dependency\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runTestGit(t, root, "add", ".")
+	runTestGit(t, root, "commit", "-qm", "review Go sources")
+	baseline, err := goReleaseSourceHash(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "pkg", "lib", "source.go")
+	if err := os.WriteFile(nested, []byte("package lib\n\nconst Value = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withNestedChange, err := goReleaseSourceHash(root)
+	if err != nil || withNestedChange == baseline {
+		t.Fatalf("nested Go source directory was not covered: %s %s %v", baseline, withNestedChange, err)
+	}
+	if err := os.WriteFile(nested, []byte(files["pkg/lib/source.go"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nestedBuild := filepath.Join(root, "pkg", "build", "source.go")
+	if err := os.WriteFile(nestedBuild, []byte("package build\n\nconst Value = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withNestedBuildChange, err := goReleaseSourceHash(root)
+	if err != nil || withNestedBuildChange == baseline {
+		t.Fatalf("nested Go build-named source directory was not covered: %s %s %v", baseline, withNestedBuildChange, err)
+	}
+	if err := os.WriteFile(nestedBuild, []byte(files["pkg/build/source.go"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	topLevelLibrary := filepath.Join(root, "lib", "source.go")
+	if err := os.WriteFile(topLevelLibrary, []byte("package lib\n\nconst TopLevelValue = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withTopLevelLibraryChange, err := goReleaseSourceHash(root)
+	if err != nil || withTopLevelLibraryChange == baseline {
+		t.Fatalf("top-level first-party Go library was not covered: %s %s %v", baseline, withTopLevelLibraryChange, err)
+	}
+	if err := os.WriteFile(topLevelLibrary, []byte(files["lib/source.go"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "build", "excluded.go"), []byte("package buildtool\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "out", "generated.go"), []byte("package generated\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "runs", "generated.go"), []byte("package generated\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "vendor", "vendor.go"), []byte("package vendor\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "web", "node_modules", "dependency.go"), []byte("package dependency\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "evm", "lib", "dependency.go"), []byte("package dependency\n\nconst Drift = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withCacheChanges, err := goReleaseSourceHash(root)
+	if err != nil || withCacheChanges != baseline {
+		t.Fatalf("Go cache roots entered source hash: %s %s %v", baseline, withCacheChanges, err)
 	}
 }
 
@@ -198,6 +420,47 @@ func TestCleanGitRevisionRejectsDependencyDrift(t *testing.T) {
 	}
 	if _, err := cleanGitRevision(root); err == nil {
 		t.Fatal("untracked dependency source was accepted")
+	}
+}
+
+func TestCleanGitRevisionRejectsNestedWorktreePath(t *testing.T) {
+	root := t.TempDir()
+	runTestGit(t, root, "init", "-q")
+	runTestGit(t, root, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, root, "config", "user.name", "sim-testnet")
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "source.go"), []byte("package nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, root, "add", "nested/source.go")
+	runTestGit(t, root, "commit", "-qm", "review nested source")
+	if _, err := cleanGitRevision(nested); err == nil || !strings.Contains(err.Error(), "not its Git worktree root") {
+		t.Fatalf("nested path was accepted as a complete checkout: %v", err)
+	}
+}
+
+func TestModuleRootRequiresExactModuleIdentity(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "sdk")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	goMod := filepath.Join(root, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module example.invalid/sdk\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := moduleRoot(parent, "sdk"); err == nil || !strings.Contains(err.Error(), "want \"github.com/urnetwork/sdk\"") {
+		t.Fatalf("wrong sibling module identity was accepted: %v", err)
+	}
+	if err := os.WriteFile(goMod, []byte("module github.com/urnetwork/sdk\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := moduleRoot(parent, "sdk")
+	if err != nil || resolved != root {
+		t.Fatalf("exact sibling module identity resolved to %q: %v", resolved, err)
 	}
 }
 
@@ -312,6 +575,9 @@ func TestGeneratedABIHashBindsFleetBatcher(t *testing.T) {
 
 func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	serverRoot := t.TempDir()
+	runTestGit(t, serverRoot, "init", "-q")
+	runTestGit(t, serverRoot, "config", "user.email", "sim-testnet@example.invalid")
+	runTestGit(t, serverRoot, "config", "user.name", "sim-testnet")
 	initDir := filepath.Join(serverRoot, "local", "postgres", "initdb")
 	if err := os.MkdirAll(initDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -322,6 +588,8 @@ func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(initDir, "01-init.sh"), []byte("first\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	runTestGit(t, serverRoot, "add", ".")
+	runTestGit(t, serverRoot, "commit", "-qm", "review local dependency config")
 	first, err := serverLocalDependencyConfigHash(serverRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -329,6 +597,7 @@ func TestServerLocalDependencyHashCoversEveryPostgresInitHook(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(initDir, "02-unreviewed.sh"), []byte("second\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	runTestGit(t, serverRoot, "add", "local/postgres/initdb/02-unreviewed.sh")
 	second, err := serverLocalDependencyConfigHash(serverRoot)
 	if err != nil {
 		t.Fatal(err)
