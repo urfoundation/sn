@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"reflect"
 	"sort"
 	"strings"
@@ -510,6 +511,158 @@ func TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles(t *testing.T
 	source.Validators[0].Cycles[0].Pools[0].AppliedWeight = 0
 	if _, _, err := finalSemanticFixtureRewardDecisions(source, 10); err == nil {
 		t.Fatal("eligible pool without an applied-weight channel was accepted")
+	}
+}
+
+// Derive one persisted lifecycle row from an independently sealed validator
+// cycle. Ranked candidates, rather than expected lifecycle identities, are the
+// sole authority for the selected/rejected partition and applied weights.
+func finalSemanticFixtureLifecycleValidatorCensus(validatorID int, cycle *FinalCRv4Cycle) (FleetLifecycleValidatorCensus, error) {
+	if validatorID < 1 || validatorID > 2 || cycle == nil || len(cycle.Candidates) != finalHeadCandidateCount {
+		return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d cycle is incomplete", validatorID)
+	}
+	row := FleetLifecycleValidatorCensus{
+		ValidatorID: validatorID, SettlementEpoch: cycle.SettlementEpoch, SubnetEpoch: cycle.SubnetEpoch,
+		NativeSnapshot: cycle.NativeSnapshot, EVMSnapshot: cycle.EVMSnapshot, MeasurementArtifactHash: cycle.MeasurementArtifact.ContentHash,
+		VectorHash: cycle.IntentVectorHash, ExtrinsicHash: cycle.Commit.ExtrinsicHash, Commit: cycle.Commit.Block,
+		RevealBlock: cycle.Reveal.Block.Number, RevealBlockHash: cycle.Reveal.Block.Hash, Application: cycle.Application.Block,
+	}
+	seenUIDs := make(map[uint16]bool, len(cycle.Candidates))
+	var priorScore *big.Rat
+	var priorUID uint16
+	for index, candidate := range cycle.Candidates {
+		selected := index < finalHeadSlotCount
+		score, scoreErr := finalPositiveRational("fixture lifecycle candidate score", candidate.RawScore)
+		if scoreErr != nil || candidate.Rank != uint16(index+1) || seenUIDs[candidate.UID] || candidate.Selected != selected {
+			return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d candidate rank %d is not canonical", validatorID, index+1)
+		}
+		if priorScore != nil {
+			comparison := priorScore.Cmp(score)
+			if comparison < 0 || comparison == 0 && candidate.UID <= priorUID {
+				return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d candidate rank %d is not score ordered", validatorID, index+1)
+			}
+		}
+		if selected && candidate.AppliedWeight == 0 {
+			return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d selected rank %d has zero applied weight", validatorID, index+1)
+		}
+		if !selected && candidate.AppliedWeight != 0 {
+			return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d rejected rank %d has positive applied weight", validatorID, index+1)
+		}
+		seenUIDs[candidate.UID] = true
+		priorScore = score
+		priorUID = candidate.UID
+		row.EligibleUIDs = append(row.EligibleUIDs, candidate.UID)
+		row.AppliedWeights = append(row.AppliedWeights, IntentWeightObservation{UID: candidate.UID, Value: candidate.AppliedWeight})
+		if selected {
+			row.SelectedUIDs = append(row.SelectedUIDs, candidate.UID)
+		} else {
+			row.RejectedUIDs = append(row.RejectedUIDs, candidate.UID)
+		}
+	}
+	if len(row.SelectedUIDs) != finalHeadSlotCount || len(row.RejectedUIDs) != finalHeadCandidateCount-finalHeadSlotCount {
+		return FleetLifecycleValidatorCensus{}, fmt.Errorf("fixture lifecycle validator %d partition is not exact %d/%d", validatorID, finalHeadSlotCount, finalHeadCandidateCount-finalHeadSlotCount)
+	}
+	return row, nil
+}
+
+// Proves both validator rows preserve ranks 199/200 as positive selections
+// and ranks 201/202 as zero-weight rejects in the persisted lifecycle census.
+func TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary(t *testing.T) {
+	rejectedUIDs := []uint16{fleetLifecycleTargetExpectedUID, fleetLifecycleCompanionExpectedUID}
+	cycleFor := func(validatorID int) FinalCRv4Cycle {
+		cycle := FinalCRv4Cycle{
+			SettlementEpoch: 10, SubnetEpoch: 7,
+			NativeSnapshot: ChainHead{Number: uint64(10 + validatorID), Hash: finalTestHex(byte(10 + validatorID))},
+			EVMSnapshot:    ChainHead{Number: uint64(20 + validatorID), Hash: finalTestHex(byte(20 + validatorID))},
+			Commit: FinalNativeReceipt{
+				ExtrinsicHash: finalTestHex(byte(30 + validatorID)),
+				Block:         ChainHead{Number: uint64(30 + validatorID), Hash: finalTestHex(byte(40 + validatorID))},
+			},
+			Reveal: FinalNativeReceipt{Block: ChainHead{Number: uint64(40 + validatorID), Hash: finalTestHex(byte(50 + validatorID))}},
+			Application: FinalNativeReceipt{
+				Block: ChainHead{Number: uint64(50 + validatorID), Hash: finalTestHex(byte(60 + validatorID))},
+			},
+			IntentVectorHash: finalTestHex(byte(70 + validatorID)),
+			MeasurementArtifact: FinalArtifactLocator{
+				ContentHash: bytesSHA256([]byte(fmt.Sprintf("lifecycle-validator-%d-measurement", validatorID))),
+			},
+		}
+		for rank := 1; rank <= finalHeadCandidateCount; rank++ {
+			uid := uint16(999 + rank)
+			selected := rank <= finalHeadSlotCount
+			weight := uint16(0)
+			score := FinalRational{Numerator: "1", Denominator: "2"}
+			if selected {
+				weight = uint16(rank)
+				score = FinalRational{Numerator: "1", Denominator: "1"}
+			} else {
+				uid = rejectedUIDs[rank-finalHeadSlotCount-1]
+			}
+			cycle.Candidates = append(cycle.Candidates, FinalHeadCandidateEvidence{
+				FleetID: uint64(rank), Rank: uint16(rank), UID: uid, RawScore: score, Selected: selected, AppliedWeight: weight,
+			})
+		}
+		return cycle
+	}
+
+	cycles := []FinalCRv4Cycle{cycleFor(1), cycleFor(2)}
+	census := FleetLifecycleCandidateCensus{
+		Phase: "release-1.0", Milestone: fleetLifecycleMilestoneTakeoverRejected, ObservationHash: finalTestHex(80),
+		ObservedHead: ChainHead{Number: 100, Hash: finalTestHex(81)}, NativeObservedHead: ChainHead{Number: 100, Hash: finalTestHex(82)},
+	}
+	for _, candidate := range cycles[0].Candidates {
+		census.CandidateUIDs = append(census.CandidateUIDs, candidate.UID)
+		census.CandidateHotkeys = append(census.CandidateHotkeys, fmt.Sprintf("0x%064x", candidate.UID))
+	}
+	for index := range cycles {
+		row, err := finalSemanticFixtureLifecycleValidatorCensus(index+1, &cycles[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+		census.Validators = append(census.Validators, row)
+	}
+	if err := validateFleetLifecyclePersistedCensus(census); err != nil {
+		t.Fatalf("verified top-200 census was rejected: %v", err)
+	}
+	if !fleetLifecycleCensusRejects(census, rejectedUIDs...) {
+		t.Fatal("verified validator rows do not both reject the lifecycle claimants")
+	}
+	for validatorIndex, row := range census.Validators {
+		cycle := cycles[validatorIndex]
+		for _, rank := range []int{199, 200, 201, 202} {
+			candidate := cycle.Candidates[rank-1]
+			weight := row.AppliedWeights[rank-1]
+			if weight.UID != candidate.UID || weight.Value != candidate.AppliedWeight {
+				t.Fatalf("validator %d rank %d applied weight=%+v, want UID %d value %d", row.ValidatorID, rank, weight, candidate.UID, candidate.AppliedWeight)
+			}
+			if rank <= finalHeadSlotCount {
+				if row.SelectedUIDs[rank-1] != candidate.UID || weight.Value == 0 {
+					t.Fatalf("validator %d rank %d is not a positive selected claimant", row.ValidatorID, rank)
+				}
+			} else if row.RejectedUIDs[rank-finalHeadSlotCount-1] != candidate.UID || weight.Value != 0 {
+				t.Fatalf("validator %d rank %d is not a zero-weight rejected claimant", row.ValidatorID, rank)
+			}
+		}
+	}
+
+	mutations := []struct {
+		name string
+		edit func(*FinalCRv4Cycle)
+	}{
+		{name: "rank 200 zero weight", edit: func(cycle *FinalCRv4Cycle) { cycle.Candidates[199].AppliedWeight = 0 }},
+		{name: "rank 200 below rejected score", edit: func(cycle *FinalCRv4Cycle) {
+			cycle.Candidates[199].RawScore = FinalRational{Numerator: "1", Denominator: "4"}
+		}},
+		{name: "rank 201 positive weight", edit: func(cycle *FinalCRv4Cycle) { cycle.Candidates[200].AppliedWeight = 1 }},
+		{name: "rank 201 selected", edit: func(cycle *FinalCRv4Cycle) { cycle.Candidates[200].Selected = true }},
+	}
+	for _, mutation := range mutations {
+		cycle := cycles[0]
+		cycle.Candidates = append([]FinalHeadCandidateEvidence(nil), cycle.Candidates...)
+		mutation.edit(&cycle)
+		if _, err := finalSemanticFixtureLifecycleValidatorCensus(1, &cycle); err == nil {
+			t.Fatalf("%s mutation was accepted", mutation.name)
+		}
 	}
 }
 
@@ -1066,20 +1219,9 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 			if cycle == nil {
 				t.Fatalf("missing lifecycle validator %d cycle for settlement epoch %d", validatorID, epoch)
 			}
-			row := FleetLifecycleValidatorCensus{
-				ValidatorID: validatorID, SettlementEpoch: cycle.SettlementEpoch, SubnetEpoch: cycle.SubnetEpoch,
-				NativeSnapshot: cycle.NativeSnapshot, EVMSnapshot: cycle.EVMSnapshot, MeasurementArtifactHash: cycle.MeasurementArtifact.ContentHash,
-				VectorHash: cycle.IntentVectorHash, ExtrinsicHash: cycle.Commit.ExtrinsicHash, Commit: cycle.Commit.Block,
-				RevealBlock: cycle.Reveal.Block.Number, RevealBlockHash: cycle.Reveal.Block.Hash, Application: cycle.Application.Block,
-			}
-			for _, candidate := range cycle.Candidates {
-				row.EligibleUIDs = append(row.EligibleUIDs, candidate.UID)
-				row.AppliedWeights = append(row.AppliedWeights, IntentWeightObservation{UID: candidate.UID, Value: candidate.AppliedWeight})
-				if candidate.Selected {
-					row.SelectedUIDs = append(row.SelectedUIDs, candidate.UID)
-				} else {
-					row.RejectedUIDs = append(row.RejectedUIDs, candidate.UID)
-				}
+			row, rowErr := finalSemanticFixtureLifecycleValidatorCensus(validatorID, cycle)
+			if rowErr != nil {
+				t.Fatal(rowErr)
 			}
 			census.Validators = append(census.Validators, row)
 			if row.Application.Number+5 > census.NativeObservedHead.Number {

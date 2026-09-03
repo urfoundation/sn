@@ -43,6 +43,15 @@ const (
 	finalAttemptSettlementSignDomain   = "urnetwork/validator/settlement-transition/sign/v1\x00"
 )
 
+// Keep the independent-view substitution between lifecycle milestones so
+// their two-validator rejection decisions remain authentic.
+const (
+	finalSemanticFixtureViewFaultEpoch         = 12
+	finalSemanticFixtureViewRestoredEpoch      = 13
+	finalSemanticFixtureViewWithheldFleetID    = finalHeadCandidateCount
+	finalSemanticFixtureViewReplacementFleetID = fleetLifecycleTargetFleet
+)
+
 // These local wire projections deliberately reproduce the public settlement
 // protocol instead of reaching into validator internals. The fixture thereby
 // checks that an independent consumer can reconstruct both the content digest
@@ -418,7 +427,7 @@ func TestFinalSemanticDerivedTransitionsRejectIndependentMutations(t *testing.T)
 			evidence.ValidatorView.WithheldFleetID = 199
 		}},
 		{name: "artifact", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
-			value := finalValidatorViewTransitionArtifact{FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 199, ReplacementFleetID: 5}
+			value := finalValidatorViewTransitionArtifact{FaultEpoch: finalSemanticFixtureViewFaultEpoch, RestoredEpoch: finalSemanticFixtureViewRestoredEpoch, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 199, ReplacementFleetID: finalSemanticFixtureViewReplacementFleetID}
 			replaceFinalSemanticFixtureArtifact(t, &evidence.ValidatorView.Artifact, artifacts, value)
 		}},
 		{name: "cycle", edit: func(evidence *FinalSemanticEvidence, _ map[string][]byte) {
@@ -471,8 +480,8 @@ func TestFinalSemanticDerivedTransitionsRejectIndependentMutations(t *testing.T)
 			replaceFinalSemanticFixtureArtifact(t, &fleet.BindingArtifact, artifacts, wrapper)
 		}},
 		{name: "restoration", edit: func(evidence *FinalSemanticEvidence, artifacts map[string][]byte) {
-			evidence.ValidatorView.RestoredEpoch = 12
-			value := finalValidatorViewTransitionArtifact{FaultEpoch: 10, RestoredEpoch: 12, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5}
+			evidence.ValidatorView.RestoredEpoch = 14
+			value := finalValidatorViewTransitionArtifact{FaultEpoch: finalSemanticFixtureViewFaultEpoch, RestoredEpoch: 14, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: finalSemanticFixtureViewWithheldFleetID, ReplacementFleetID: finalSemanticFixtureViewReplacementFleetID}
 			replaceFinalSemanticFixtureArtifact(t, &evidence.ValidatorView.Artifact, artifacts, value)
 		}},
 	}
@@ -1913,13 +1922,15 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 	for _, value := range []*FinalCRv4Cycle{&cycle, &cycle11, &cycle12, &cycle13, &cycle14, &cycle2, &cycle211, &cycle212, &cycle213, &cycle214} {
 		applyLifecycleCandidateUIDs(value)
 	}
-	// Validator 1 has one exact local-view substitution in epoch 10. Three
-	// fleets share two prefixes so fleet 5 wins the final slot by UID; after
-	// one ordinary raw window, the exact EMA restores fleet 200 in epoch 11.
-	for index := range cycle.Candidates {
-		switch cycle.Candidates[index].FleetID {
-		case 5, 6, 200:
-			cycle.Candidates[index].RawScore = FinalRational{Numerator: "2", Denominator: "3"}
+	// In non-milestone epoch 12, target raw 2 and control rank-200 raw 1/2
+	// fold to 7/8; UID 7 wins the final slot. Sharing the half-score prefix
+	// with the companion keeps raw evidence causal, and epoch 13 restores.
+	for index := range cycle12.Candidates {
+		switch cycle12.Candidates[index].FleetID {
+		case finalSemanticFixtureViewReplacementFleetID:
+			cycle12.Candidates[index].RawScore = FinalRational{Numerator: "2", Denominator: "1"}
+		case fleetLifecycleCompanionFleet, finalSemanticFixtureViewWithheldFleetID:
+			cycle12.Candidates[index].RawScore = FinalRational{Numerator: "1", Denominator: "2"}
 		}
 	}
 	applyCyclePayouts(&cycle)
@@ -2446,9 +2457,9 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		ExpectedOperators: 2, ExpectedValidators: 2, ExpectedMiners: 1000, ExpectedCandidates: finalHeadCandidateCount, ExpectedHeadSlots: finalHeadSlotCount,
 		Topology: topology, HeadFleets: headFleets, HeadTransitions: headTransitions,
 		ValidatorView: FinalValidatorViewTransition{
-			FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5,
+			FaultEpoch: finalSemanticFixtureViewFaultEpoch, RestoredEpoch: finalSemanticFixtureViewRestoredEpoch, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: finalSemanticFixtureViewWithheldFleetID, ReplacementFleetID: finalSemanticFixtureViewReplacementFleetID,
 			Artifact: artifact("validator-view-transition", "validator-view-transition.json", mustFinalSemanticJSON(t, finalValidatorViewTransitionArtifact{
-				FaultEpoch: 10, RestoredEpoch: 11, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: 200, ReplacementFleetID: 5,
+				FaultEpoch: finalSemanticFixtureViewFaultEpoch, RestoredEpoch: finalSemanticFixtureViewRestoredEpoch, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: finalSemanticFixtureViewWithheldFleetID, ReplacementFleetID: finalSemanticFixtureViewReplacementFleetID,
 			})),
 		},
 		ContractCleanup: cleanup, ArchiveRetention: archiveEvidence, Deployment: deployment, SettlementAccounting: settlementAccounting, Reserve: reserve, Pools: pools, Validators: validators, Epochs: epochs,
