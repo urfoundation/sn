@@ -1,14 +1,15 @@
 # UR Subnet release 1.0 finalization plan
 
-**Status (2026-09-02 UTC):** release-1.0 implementation and the continuous
+**Historical status (2026-09-02 UTC; superseded as a release approval):** release-1.0 implementation and the continuous
 61-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
 on netuid 521 installed and verified all 200 production fleets plus both
 generation-2 challenger fleets, reverified 1,000/1,000 historical receipts and
-all 2,204 carried actions, and reached the complete 32-process topology
+all 2,204 carried actions, and reached the complete topology of 33 managed child
+processes
 representing 1,000 miners without entering M0B/phase 2. Successive fail-closed
 replays exposed and repaired provider discovery, public-RPC fairness/snapshot,
 retry, proof-persistence, supervisor-generation, startup-order and Connect
-ingress defects. The latest source-current qualification additionally exposed a
+ingress defects. The then-source-current qualification additionally exposed a
 load-sensitive Connect/Pion lifetime race: canceled peer startup could mutate a
 closed PeerConnection and strand an ICE task loop. Commit `a177b57` serializes
 every bounded Pion mutation with teardown, keeps blocking application hooks out
@@ -16,7 +17,7 @@ of that gate, normalizes the signaling lock order, makes every test-owned
 WebRTC manager join, and adds deterministic owner regressions. Exact-source
 Connect normal, vet, four exhaustive race shards and repeated focused stress
 are green. Server, SDK, xops and Connect are clean and their reviewed inputs
-are release-locked. The source-current aggregate gate passed again with
+are release-locked. The then-current aggregate gate passed again with
 PostgreSQL/Redis integration enabled after adding explicit canonical EVM-block
 identity/event-batch coverage and independent validator-local 202-to-200 head
 selection evidence. The read-only restart audit then found that verified and
@@ -38,8 +39,21 @@ duplicate proof records fail closed. The continuous custody adversary must use
 a real signed artifact against the deployed testnet vault and observe the exact
 `InvalidProof` revert with unchanged pinned entitlement and conservation state
 for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After
-clean M0A, the practical irreducible public-chain evidence window is
-approximately 12--15 hours.
+clean M0A, the scheduler-controlled public-chain evidence window is exactly
+3,004--4,380 blocks (10:00:48--14:36:00 at 12 seconds per block).
+
+**Current pre-freeze status (2026-09-04 UTC):** the evidence-integrity/runtime
+candidate, its 33-test ordinary and exact race qualification, and the adjacent
+33-child topology regressions are green. It is integrated on canonical `main`
+at checkpoint `8c9a0716d16432f568550443bdc9c5bb7cb7ee27`; documentation
+reconciliation and push, release-lock refresh, producer gate, complete aggregate
+gate, two-plan review and live campaign remain pending. The 2026-09-02 records
+below are historical diagnosis and provenance, not approval for the current
+candidate. The current pre-freeze execution record is maintained in
+`FINALIZE-COMPLETE.md` section 12; it becomes an immutable approval record only
+after the source freeze and both required gates, and `FINAL.md` must then
+supersede it with live evidence.
+
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
 
@@ -77,7 +91,8 @@ read-only plans matched exactly at
 The approved replay authenticated all 2,218 carried actions and finalized the
 single bounded 3,000-alpha reserve repair as testnet transaction
 `0x77844b9bfc943fdded79951daa621072ebaad9af471d8ef39c88c8468954a600`.
-All 33 real processes reached healthy state with zero supervisor restarts, but
+All 33 managed child processes reached healthy state with zero supervisor
+restarts, but
 the semantic gate correctly stopped after neither validator could complete a
 fresh trail through either operator. Exact validator diagnostics proved that
 the API returned a synthetic seed identity for an otherwise live provider:
@@ -200,11 +215,14 @@ All 17 blockers found by the initial audit are addressed:
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | The historical runtime-451/452 doctor and bounded setup completed, but resume is authorized only after the runtime-453 doctor authenticates spec/transaction/state versions, Wasm and metadata at one finalized hash. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 32 processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic and cryptographically verified fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. The adjusted aggregate gate, focused normal/race tests and full 1,000-miner renderer pass; implementation checkpoints SN `69259be` and Connect `d73d7f9` are pushed for exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 360-block M3 epochs and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | The historical runtime-451/452 doctor and bounded setup completed, but resume is authorized only after the runtime-453 doctor authenticates spec/transaction/state versions, Wasm and metadata at one finalized hash. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 33 managed child processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic and cryptographically verified fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. The adjusted aggregate gate, focused normal/race tests and full 1,000-miner renderer pass; implementation checkpoints SN `69259be` and Connect `d73d7f9` are pushed for exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 360-block M3 epochs and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
-The original audit and acceptance plan follows. Statements in its “initial/current
-state” columns record the pre-implementation baseline; the completion tables above
-and the final verification appendix are authoritative for this checkout.
+The original audit and acceptance plan follows. Statements in its
+“initial/current state” columns record the pre-implementation baseline. Dated
+completion entries and Appendix A preserve historical evidence. Until source
+freeze, `FINALIZE-COMPLETE.md` section 12 is the authoritative pre-freeze
+execution record; after source freeze, its frozen record, followed by
+`FINAL.md`, is authoritative for the current checkout.
 
 ## 2. Initial audit evidence (historical baseline)
 
@@ -1660,7 +1678,7 @@ Tests must inject a crash after every state transition and every “intent/broad
 
 #### 8.1.12 On-chain and operational analysis
 
-Every live deployment gets a local public, redacted manifest at `sim-testnet/runs/<deployment-id>/public.json` and a content-addressed copy in the existing MinIO store through `server/blob`. The server API exposes that manifest and every run artifact as the canonical public history surface. `inspect` queries current finalized truth and displays at least:
+Every live deployment gets a local public, redacted manifest at `sim-testnet/runs/<deployment-id>/public.json` and a content-addressed copy in the existing MinIO store through `server/blob`. The server API exposes that manifest and every run artifact as the canonical public history surface. Exact evidence verification binds deployment, netuid, kind, run, content hash, canonical history key, a one-object response and closed pagination; it never accepts a hash substring from a broad or unrelated history page. New deployment-scoped evidence uses the reserved `_deployment` run ID, while the legacy `deployment` spelling is readable only by exact hash. Payout history is traversed in canonical pages of at most 256 objects and 2 MiB under a 4,096-object global cap, rejecting cursor/order/scope/hash drift and duplicates before fetching objects. The server fails closed when paged storage is unavailable, and exact-hash reads do not fan out over an accumulated run prefix. `inspect` queries current finalized truth and displays at least:
 
 - subnet hyperparameters, metagraph UIDs, hotkeys/coldkeys, stake, incentive, dividends, vtrust, permits, weights, and CR state;
 - contract versions/code hashes/roles, epoch windows, operators, bindings, deposits/conviction, pool accrual/funding/totals, roots, claims/carry/expiry, and reserve principal/live stake;
@@ -1669,7 +1687,7 @@ Every live deployment gets a local public, redacted manifest at `sim-testnet/run
 
 `analyze` produces canonical JSON plus a self-contained HTML report and optionally serves a read-only local dashboard. It must reconstruct rather than trust stored summaries. It includes tables/plots for `D_n`, tier/rate/implied usage, `Q_n`, head prefix scores, raw/final weights, realized theta, Yuma results, vtrust/dividends, pool payouts, head native rewards, reserve growth, claim status, deadline latency, and exact conservation.
 
-The persistent deployment must be analyzable even when the supervisor host is down: on-chain addresses plus the server API/MinIO artifact history, server key histories, receipts, and redacted manifest are sufficient for a separate `sim-testnet inspect --manifest <url-or-file>` process on any compatible checkout host to recover its public state.
+The persistent deployment must be analyzable even when the supervisor host is down: on-chain addresses plus the server API/MinIO artifact history, server key histories, receipts, and redacted manifest are sufficient for a separate `sim-testnet inspect --manifest <url-or-file>` process on any compatible checkout host to recover its public state. Final discovery and `FINAL.md` must name the latest authorized strict-format manifest revision. A signed pre-fix revision-zero manifest remains immutable lineage evidence only; forensic analysis must pair it with the exact signed `--run-id`, and current/legacy locator mixtures fail closed.
 
 #### 8.1.13 Evidence and exit behavior
 
@@ -1778,8 +1796,9 @@ canonical evidence minimum remains five complete 300-block accelerated epochs,
 then a future-effective 360/60/180/6 policy and three complete production
 epochs. At the pinned 12-second cadence, the five accelerated epochs alone are
 five hours and the three production epochs are 3.6 hours. Root/finalization
-windows, the future-effective transition, and boundary alignment make the
-practical clean M0A-to-M3 chain window approximately 12--15 hours. Shortening an
+windows, the future-effective transition, boundary alignment and the bounded
+release native handoff make the scheduler-controlled M0A-to-M3 interval exactly
+3,004--4,380 blocks (10:00:48--14:36:00 at 12 seconds per block). Shortening an
 epoch, reducing either epoch count, omitting terminal finalization, or counting
 a partially observed epoch produces a diagnostic run, not release-1.0 evidence,
 and would still require the canonical campaign afterwards.
@@ -2425,8 +2444,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    complete 300-block accelerated epochs (approximately five hours), then uses
    a future-effective 360-block policy, discards one post-preparation production
    epoch, observes three full epochs, and waits through the final 180-block
-   settlement window. Boundary alignment makes the combined
-   live acceptance path approximately 12--15 hours.
+   settlement window. Boundary alignment and the release native handoff make
+   the combined scheduler-controlled path exactly 3,004--4,380 blocks
+   (10:00:48--14:36:00 at 12 seconds per block).
    These are protocol-time acceptance gates, not setup inefficiencies, and must
    not be bypassed with an off-chain clock.
 
@@ -2963,7 +2983,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    Its complete observation showed all five changed hashes; every unrelated
    hard doctor check was green and the journal remained untouched.
 
-   The aggregate gate now lists all eleven release workspace repositories for
+   The aggregate gate now lists all twelve release workspace repositories for
    staged and unstaged patch hygiene and reruns
    `TestReleaseLockMatchesCheckout` after every other check. A deterministic
    test fixes both the repository census and final ordering. The server's
@@ -3145,16 +3165,17 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    linkage and every runtime-manifest failure class, including final- or
    parent-component symlink substitution.
 
-   The first aggregate run exposed a release-harness defect rather than a code
-   race: the complete launch-scale simulator race suite reached the script's
-   fixed ten-minute package deadline even though its prior clean baseline was
-   already 584.794 seconds and no individual test was stalled. The gate now
-   retains the exact same test selection with a deterministic 15-minute package
-   deadline, and a regression pins that boundary. On the final locked source the
-   ordinary simulator suite passed in 172.398 seconds and the complete race suite
-   passed in 602.017 seconds. The subsequent Slither, Foundry, generated-artifact,
-   operator/shared-client, PostgreSQL/Redis, Subtensor-infrastructure, patch-
-   hygiene and final checkout-lock stages all passed in the same aggregate run.
+   Historical 2026-09-02 aggregate record: the complete launch-scale simulator
+   race suite reached that script's fixed ten-minute package deadline even
+   though its prior clean baseline was already 584.794 seconds and no individual
+   test was stalled. The then-current gate retained the same test selection with
+   a 15-minute package deadline. On that locked source the ordinary simulator
+   suite passed in 172.398 seconds and the complete race suite passed in 602.017
+   seconds; the subsequent Slither, Foundry, generated-artifact,
+   operator/shared-client, PostgreSQL/Redis, Subtensor-infrastructure,
+   patch-hygiene and final checkout-lock stages also passed. That historical
+   deadline is superseded by the current candidate's measured 90-minute bound in
+   `FINALIZE-COMPLETE.md` section 4.4.
 
    Two pre-lock read-only builds produced the same schema-v11 candidate plan
    `0xd50a9e2ae7eff5050a5796d64fdfc25221d161539528dfe65d36ee66b939ddc8`
@@ -3712,10 +3733,10 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    passes, both event-sync tests pass normally and under the race detector with
    the managed database profile, and the complete aggregate gate passes.
 
-   The final source-freeze qualification on 2026-09-02 then completed the full
+   The historical source-freeze qualification on 2026-09-02 then completed the full
    aggregate again: the ordinary 1,000-miner simulator suite passed in 179.823
    seconds, its race suite passed in 664.973 seconds, both deployable Solidity
-   roots had zero Slither findings, all 146 Foundry tests passed with 4,608
+   roots had zero Slither findings, all 156 Foundry tests passed with 4,608
    invariant calls, the managed controller/model/proxy suites passed in
    139.371/140.573/529.355 seconds, and all 35 Subtensor infrastructure tests
    passed. The last test-only filter/profile assertions also passed normally and
@@ -3744,8 +3765,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
    The resulting authorized launch reached the real topology on 2026-09-02. It
    reverified all 1,000 historical miners and all 2,220 carried actions, reran
-   the isolated PostgreSQL migrations and account provisioning, started all 33
-   supervised processes, and required a fresh completed path proof from each
+   the isolated PostgreSQL migrations and account provisioning, started that
+   historical generation's 33 managed child processes, and required a fresh
+   completed path proof from each
    validator through each operator. `topology.launch` was durably verified at
    journal sequences 10,039/10,040. The next non-transactional step then failed
    because the fixed `public.json` pointer treated changed config, policy, plan
@@ -3764,11 +3786,29 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    operator-signed envelopes by content hash, and archive/remove old active
    locators before advancing `public.json`. New locators bind the exact manifest
    hash and revision and appear only after every operator publication and public
-   history readback succeeds. Legacy manifests without a revision field are
-   revision one and retain their original canonical hash. Deterministic tests
-   cover legacy migration, replay byte-idempotence, ordinary evidence
+   history readback succeeds. Legacy pre-fix manifests have an absent/zero raw
+   `revision` field (their effective lineage ordinal is one) and retain their
+   original canonical bytes. They are archive/lineage evidence only, never the
+   final discovery pointer; `FINAL.md` and clean-checkout locators must cite the
+   latest authorized strict-format revision. Deterministic tests cover legacy
+   migration, replay byte-idempotence, ordinary evidence
    immutability, partial-retry history, same-plan/unrelated-plan rejection,
    locator completeness, and predecessor tampering.
+
+   The same stopped-boundary audit found a process-inventory drift that would
+   have blocked the legitimate attempt-4 revision. The policy-migration
+   verifier retained a hand-written two-proxy count from before the dedicated
+   public EVM egress quota owner was added; the real supervisor manifest has 33
+   managed children, not 32. A count-only correction would still have accepted
+   a self-consistent manifest with a substituted process. The verifier now
+   projects the exact ID/role/identity set through the real server and client
+   process builders and requires an unordered, duplicate-free exact match
+   before authenticating stopped state or its receipt. Deterministic normal and
+   race regressions use the real 33-child manifest and reject a deleted
+   Substrate proxy, same-count replacement ID, and role or identity
+   substitution. An adjacent parity regression proves the rolling restart lane
+   is exactly those 33 children minus only the intentionally non-faulted public
+   EVM egress process; both workload RPC proxies remain faulted.
 
    The adjacent detached-process ownership defect is also closed. Launch checks
    both the kernel process generation and held supervisor lock before migrations
@@ -3930,6 +3970,18 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    force-close branch, empty-pass/cancellation/nonconvergence, parent death,
    phased/systemd shutdown and exited or reused generations.
 
+   The pre-freeze host audit also found that the installed but inactive user
+   unit predated that source correction and still declared
+   `Restart=on-failure`. No workload was running and the unit had no install
+   symlink or reverse dependency. It was reconciled in place to the current
+   source contract (`Restart=no`, `KillMode=mixed`, `TimeoutStopSec=60`), then
+   daemon-reloaded, stopped and re-observed as static/inactive with zero PID and
+   zero restarts; user lingering was disabled. The four retained PostgreSQL and
+   Redis containers independently declare `restart=no`. Final doctor and launch
+   must re-render and reauthenticate this state, so host configuration drift is
+   evidence to close rather than a reason to assume the checked-in unit was
+   deployed.
+
    Final publication is now a closed, public evidence graph rather than a signed
    summary that trusts the producing host. Exactly one semantic evidence object
    binds the deployment, plan, config, policy, fixed 1,000-miner/202-fleet/
@@ -3982,8 +4034,11 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    envelopes/intents, lossless capture, terminal process-log fencing, direct
    artifact publication, operator proof APIs, PostgreSQL/Redis persistence and
    the deployable contracts. It finishes by rechecking patch hygiene and the
-   exact release lock. `doctor`, two byte-identical read-only plans and the
-   approved plan/spend hash remain immediate launch prerequisites.
+   exact release lock. The complete aggregate gate remains mandatory once on
+   the same immutable checkout, but may run concurrently with live acceptance
+   after this producer fence; any failure invalidates the candidate. `doctor`,
+   two byte-identical read-only plans and the approved plan/spend hash remain
+   immediate launch prerequisites.
 
    A passing live phase now ends after all live-only inputs have been collected,
    content-addressed, strictly reread, secret-scanned, fenced by the terminal log
@@ -4013,6 +4068,24 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    longer needs a live service behind the immutable capture boundary. The target
    prelaunch implementation/gate interval is therefore approximately two to
    four hours rather than four to seven hours.
+
+   The final evidence-integrity audit then found that the public verifier could
+   query broad history and accept a matching hash substring from an unrelated
+   or fanout page, while direct publication listed an entire storage prefix.
+   It did not bind the signed run, canonical history key, pagination closure and
+   exact object together. The corrected path uses query-complete bounded
+   deployment/artifact locators, exact one-object evidence lookup and strict
+   paged artifact traversal. It also rejects duplicate semantic-supplement
+   hashes before object fetch. The originally generated public `analyze`
+   command omitted its now-mandatory run ID; current manifests include the exact
+   `--run-id`. Exact signed pre-fix manifests are admitted only as one coherent
+   immutable legacy generation for lineage, never mixed with current locators.
+   Same-plan resume retains their bytes, while a release-lock change forces an
+   authorized plan revision and publishes a new strict-format manifest before
+   any final evidence locator is cited. Deterministic tests cover foreign
+   origins, added query keys, mixed generations, tampered predecessors,
+   pagination/cursor/scope drift, duplicates, restart retention and revised-plan
+   migration.
 
    A read-only public-testnet lifecycle preflight on 2026-09-03 found and
    failed closed on a stale role assumption before any mutation: churn
@@ -4081,21 +4154,24 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    and must capture the later terminal-active native decision before the
    composite `release-candidate` can pass.
 
-   The fixed acceptance geometry is exactly 1,650 release blocks
+   The fixed accepted-epoch geometry is exactly 1,650 release blocks
    (`5 * 300 + 150`) plus 1,260 production blocks (`3 * 360 + 180`), or 2,910
-   blocks from release acceptance start through the production terminal window.
-   A discarded partial epoch and timeout headroom are not counted as guaranteed
-   evidence. Because 2,910 blocks do not cover the conservative four-milestone
-   CRv4 schedule under every phase alignment, production stops at the end of its
-   third accepted epoch only when terminal-active has already been finalized.
-   Otherwise it enters a separately named production post-acceptance lifecycle
-   evidence tail, bounded from the pinned live tempo, reveal period, terminal
-   binding receipt and finalized native schedule, and stops at the first
-   finalized terminal-active proof. Tail blocks are never reported as a fourth
-   accepted production epoch. Release-handoff and production tails are bounded
-   and reported independently. This overlaps as
-   much of the unavoidable CRv4 wait as possible with the mandatory production
-   window without silently shortening tempo, reveal delay or acceptance.
+   blocks. That is not the complete command-to-terminal interval: release
+   boundary alignment and its authenticated native handoff produce
+   1,743--2,760 scheduler-controlled blocks, while production alignment and its
+   fixed terminal produce 1,261--1,620. The combined exact range is therefore
+   3,004--4,380 blocks, or 10:00:48--14:36:00 at 12 seconds per block. A
+   discarded partial epoch and timeout headroom are not accepted evidence.
+
+   The inclusive EVM evidence deadline is
+   `max(acceptance_terminal_block, native_application_deadline_block)`; native
+   application and EVM evidence retain independent bounds. Release may have a
+   bounded native-handoff tail when its native deadline is later. Under the
+   pinned production profile the native deadline is no later than start+820 and
+   the terminal is start+1,260, so production's EVM deadline equals its terminal
+   and there is no production post-acceptance tail. This overlaps as much of the
+   unavoidable CRv4 wait as possible with the mandatory production window
+   without silently shortening tempo, reveal delay or acceptance.
    Deterministic regressions use deliberately different counters and phases and
    reject missing, duplicate, stale-snapshot, reused-UID, ambiguous-owner,
    handoff substitution, fresh-run-ID rebinding, pre-authentication mutation,
@@ -4108,11 +4184,10 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    future-effective boundary, discards the
    partial epoch containing the first observation, proves three complete
    approximately-72-minute epochs, and waits through the final 180-block
-   settlement window. If required, only its bounded terminal-proof tail follows
-   that exact production acceptance window. Adversarial actors overlap both
-   happy paths and both possible lifecycle tails; the expected remaining
-   live-chain evidence window is approximately 12--15 hours, excluding any
-   root-cause rerun.
+   settlement window. Adversarial actors overlap both happy paths and the
+   possible release-handoff tail. The exact scheduler-controlled interval is
+   10:00:48--14:36:00 at the pinned 12-second cadence, excluding preparation,
+   asynchronous semantic work and any root-cause rerun.
 5. Build the corrected state-aware plan twice and require an identical hash,
    exact cumulative spend, a coordinator implementation upgrade, and only the
    required carried/top-up alpha actions. Apply that exact bounded revision, then
@@ -4128,10 +4203,11 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 ## Appendix A — Reproducible audit commands
 
-### Final local release-gate record (2026-09-02 UTC)
+### Historical local release-gate record (2026-09-02 UTC)
 
-The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. Its latest run
-completed successfully after the release lock was frozen:
+The checked-in aggregate gate is `scripts/test-release-1.0-local.sh`. This run
+completed successfully after its then-current release lock was frozen. It is
+historical provenance and does not approve the 2026-09-04 candidate:
 
 | Gate | Final result |
 |---|---|
@@ -4143,7 +4219,7 @@ completed successfully after the release lock was frozen:
 | Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
 | Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, account-wide nonce reconciliation, coordinator isolation, validator-local assignment filtering, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 139.371 seconds, model in 140.573 seconds, and all 75 proxy roots in 529.355 seconds. Focused race reruns completed in 151.097 and 155.491 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or database-backed tests from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
 | Subtensor infrastructure regressions | **35 passed**, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
-| Release-lock self-check and patch hygiene | Pass across all eleven release workspace repositories; the exact checkout lock is rechecked after every other gate. |
+| Release-lock self-check and patch hygiene | Pass across all twelve release workspace repositories; the exact checkout lock is rechecked after every other gate. |
 
 The contract generator applies canonical Go formatting, while the release gate's
 `gencontracts --check` mode deliberately preserves the exact checked-in/live

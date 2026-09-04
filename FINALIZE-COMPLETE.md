@@ -1,9 +1,11 @@
 # Release 1.0 testnet completion handoff
 
-Status: live working document, first written 2026-09-03 UTC before source
-freeze. Refresh every item marked FREEZE-UPDATE after the final gates and
-commits. This document is the operational continuation point if another agent
-has to finish the testnet campaign.
+Status: live working document, first written 2026-09-03 UTC and last reconciled
+2026-09-04 UTC before the final source freeze. Refresh every item marked
+FREEZE-UPDATE after the final commits and gates. This document is the
+operational continuation point if another agent has to finish the testnet
+campaign. Historical green gates in FINALIZE.md are not approval for the
+current candidate; section 12 below is the only current execution record.
 
 The objective is not merely to make the simulator exit successfully. The
 objective is to produce independently replayable, on-chain evidence that every
@@ -24,10 +26,13 @@ Testnet is complete only when all of the following are true:
 
 1. The release source is frozen, committed, rebased onto current upstream,
    pushed, and exactly represented by deploy/testnet/release.lock.yml.
-2. The launch-critical producer gate and the complete release gate both pass
-   against that exact multi-repository checkout, including ordinary, race,
-   PostgreSQL/Redis, Foundry, Slither, generated-artifact, infrastructure, and
-   patch-hygiene checks.
+2. The launch-critical producer gate passes before any live campaign write,
+   and the complete release gate passes against the same immutable
+   multi-repository checkout before final acceptance. The complete gate may run
+   concurrently with live acceptance after the producer gate; neither result
+   can be borrowed from an older source revision. Together they cover ordinary,
+   race, PostgreSQL/Redis, Foundry, Slither, generated-artifact,
+   infrastructure, and patch-hygiene checks.
 3. Two independent read-only plan builds against the authoritative attempt-4
    state produce byte-identical plans, the same plan hash, and the same bounded
    cumulative spend.
@@ -37,9 +42,12 @@ Testnet is complete only when all of the following are true:
 5. release-1.0 records five consecutive complete 300-block settlement epochs
    plus terminal finalization. production-soak then applies the
    future-effective production policy and records three consecutive complete
-   360-block epochs plus its 180-block settlement window. The native lifecycle
-   handoff/tail may extend either phase only as already bounded in FINALIZE.md;
-   tail blocks do not count as accepted epochs.
+   360-block epochs plus its 180-block settlement window. Only the release
+   native handoff can extend beyond its acceptance terminal under the pinned
+   profile; production's native deadline is earlier than its terminal. The
+   complete scheduler-controlled interval is 3,004--4,380 blocks
+   (10:00:48--14:36:00 at 12 seconds per block), and no tail block counts as an
+   accepted epoch.
 6. All 61 mandatory adversarial vectors are sampled through seven attributed
    actors running concurrently with the happy path. The attempt
    ledger is clean: no unexplained error, panic, failed invariant, missing
@@ -99,9 +107,16 @@ These facts are safe to use for continuation. Re-read them before mutation.
   written. Its journal ended at sequence 10040 with topology.launch
   postcondition_verified from an earlier, now-stopped source generation.
   Current-plan launch readiness must be proved again.
-- No campaign is currently running. The prior user-systemd service is inactive
-  and not enabled/installed. This is intentional: the simulator must not
-  survive a host reboot without an explicit resume.
+- No campaign is currently running. A pre-freeze host audit found the inactive
+  user-systemd unit still carried a historical `Restart=on-failure` rendering
+  even though current source already emits the required stop boundary. The
+  installed inactive unit was reconciled to `Restart=no`, `KillMode=mixed` and
+  `TimeoutStopSec=60`; it is static, has no install symlink or reverse
+  dependency, and user lingering is disabled. The simulator therefore cannot
+  survive a host reboot without an explicit resume. The four simulator-owned
+  PostgreSQL/Redis containers remain intentionally reusable with `restart=no`;
+  final doctor must authenticate their locked specifications rather than
+  deleting or trusting them implicitly.
 - Existing attempt-4 deployment:
   - coordinator proxy:
     0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8
@@ -117,6 +132,32 @@ These facts are safe to use for continuation. Re-read them before mutation.
   redeploy immutable custody simply because the implementation changed.
 
 FREEZE-UPDATE repository revisions:
+
+The first-draft table is retained below as historical provenance. The current
+pre-integration snapshot, fetched and verified clean/equal to upstream on
+2026-09-04 UTC, is:
+
+| Repository | Branch | Current pre-integration revision | State |
+|---|---|---|---|
+| sn | main | f5f1e46890240c4ca2fd44ebcc973faa897e2428 | clean/equal; final candidate pending |
+| server | main | 2b09692ac256fbc380a46bc7f957fdf8c510add6 | clean/equal |
+| operator-proxy | main | e1a76e03a60e6f81c49376556aacb3f0f9289d8a | clean/equal |
+| connect | main | 86715ee66950c2386b0aa5ce45459fb6911c3582 | clean/equal; generated blocker/CFAA policy refresh reviewed |
+| sdk | main | 2fca65408c9f8b52f5bd20d2c957e67b828d746c | clean/equal |
+| glog | master | 2bdcce5f8be023947f26a247eb5665c56b69b2e3 | clean/equal |
+| goidenticons | main | 325750b38314313dc5f44c880ab6f12f6c1ecb3c | clean/equal |
+| proxy | main | 1c72dfd66f8c7fbe72120b6657c8a445f7f25499 | clean/equal |
+| userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/equal |
+| vault | main | 992f69a4ba744dabf43c71401a3f355f05f46428 | clean/equal |
+| xops | main | 0a215e96348027c40fad3569fa7c422cdc4d57aa | clean/equal |
+| config | main | 205eae72d13527e71bb895923a1782fffe0d9ed2 | clean/equal |
+
+FREEZE-UPDATE the SN row to the final pushed commit and reverify all twelve
+rows immediately before each exact gate. The candidate at
+`temp/sn-test-runtime-fix` is deliberately separate from these release roots
+until it is committed, reviewed, and integrated.
+
+Historical first-draft snapshot:
 
 | Repository | Branch | Revision at first draft | Upstream/state |
 |---|---|---|---|
@@ -138,7 +179,11 @@ after the source and dependency checkouts are final.
 
 ## 3. Current implementation/gate continuation point
 
-Source freeze is not complete. The expensive
+Source freeze is not complete. The reviewed implementation candidate
+`3f3118979c1b9bf51f7e4168553ddf54057955bf` was cherry-picked onto canonical
+`main` as implementation checkpoint
+`8c9a0716d16432f568550443bdc9c5bb7cb7ee27`; documentation reconciliation,
+push, release-lock refresh and both frozen gates remain pending. The expensive
 TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper regression now
 passes and provides a narrow walk through the complete 1,000-miner semantic
 fixture. The following real defects have already been corrected in the working
@@ -159,6 +204,37 @@ tree:
   vector, allowing lifecycle validation to test candidate entries without
   deleting pool entries.
 
+The final evidence and release-boundary audit also corrected five blocking
+integration defects before any new testnet write:
+
+- capture manifests exclude all post-capture semantic outputs, while an
+  owner-signed supplement binds, replicates, and rereads every derived byte;
+- exact public evidence reads bind deployment, netuid, kind, run, hash,
+  canonical storage key, a one-object response, and closed pagination; new
+  deployment history uses `_deployment`, while legacy `deployment` history is
+  readable only by exact hash;
+- payout history traverses canonical 256-object pages under a 4,096-object
+  global cap and rejects short continuation pages, cursor drift, duplicates,
+  cross-scope keys, and malformed hashes before object fetch;
+- `evm_evidence_deadline = max(acceptance_terminal_block,
+  native_application_deadline_block)` is inclusive. Native application and EVM
+  evidence retain independent bounds; release can have a native handoff tail,
+  while pinned production has no post-terminal tail;
+- the stopped-topology migration verifier no longer carries a two-proxy count
+  from before the public EVM egress process existed. It derives the exact
+  33-child ID/role/identity inventory through the real server and client process
+  builders, rejects missing and same-count substituted processes, and proves
+  that the 32-process rolling-fault lane is precisely that inventory minus the
+  deliberately non-faulted public egress quota owner.
+
+The generated public manifest now advertises a runnable exact-run `analyze`
+command and bounded query-complete history locators. Current manifests require
+one coherent strict locator generation across both operators. The exact signed
+pre-fix v1 locator/command encoding remains accepted only as immutable legacy
+metadata, with same-plan byte retention; mixed or tampered legacy/current forms
+fail. A release-lock-driven plan revision must publish the strict current
+format before final peer-review evidence is cited.
+
 The former `public native reward UID 1000` mismatch was a stale fixture view and
 is fixed; the full mocked semantic supplement passed in 226.948 seconds. Rerun
 it from the frozen checkout before launch:
@@ -168,20 +244,22 @@ it from the frozen checkout before launch:
       -count=1 -timeout=30m
 
 Then run all final semantic tests ordinary and race before widening to the
-producer and aggregate gates. A requirement-to-evidence audit still requires
-deep peer replay of validator-view divergence and head transitions, complete
-FINAL.md dual-origin inspect/analyze instructions, atomic MinIO create-or-verify
-semantics under concurrent writers, and direct server evidence publish/get/history
-API coverage before the live campaign can count as final validation. Treat those
-as implementation blockers, not report-only cleanup.
+producer and aggregate gates. The implementation and focused tests now cover
+validator-view divergence, head transitions, dual-origin exact-run analysis,
+atomic MinIO create-or-verify behavior, and direct server evidence
+publish/get/history. Their final frozen producer/aggregate results and live
+dual-origin replay remain required; focused prequalification is not a substitute
+for either gate.
 
-The complete server model package previously reached a 30-minute command
-deadline amid full-suite database churn. The test active at timeout,
-TestIndexSearchLocationsSkipUnchanged, passed alone in about 11 seconds and
-PostgreSQL stayed healthy. This does not count as a complete suite pass. Rerun
-the unchanged package with an explicit adequate timeout after the server rebase,
-and treat any repeat as a root-cause item rather than merely extending the
-deadline.
+The complete server model package historically reached a 30-minute command
+deadline amid full-suite database churn. On current server `2b09692a`, every
+release-selected PostgreSQL/Redis controller, model, and taskworker test passed
+normally and under the race detector, and the complete proxy package passed in
+529.073 seconds; both services remained healthy. This is strong
+prequalification but does not claim a new complete unselected `server/model`
+package run. The exact frozen producer and aggregate selections must still pass,
+and any repeat timeout is a root-cause item rather than permission to extend a
+deadline silently.
 
 ## 4. Source-freeze procedure
 
@@ -209,7 +287,29 @@ Useful focused commands:
     go vet ./...
     git diff --check
 
-### 4.2 Run the launch-critical producer gate
+### 4.2 Create the immutable release candidate
+
+The exact gates refuse a dirty or unpushed release root. After focused
+correctness is green:
+
+1. Review and commit every intended implementation, regression, documentation,
+   ABI, contract, config, and gate change. Exclude run state, logs, caches,
+   build products, and secrets.
+2. Fetch and pull/rebase each changed repository, resolve semantically, rerun
+   conflict-adjacent tests, and push.
+3. Verify all twelve release roots are clean and `HEAD == @{upstream}`.
+4. From SN, run `go run ./sim-testnet release-lock --apply`. Review every
+   changed runtime, source, artifact, interface, infrastructure, and config
+   digest; never bless an unexplained mismatch.
+5. Commit and push the release lock plus the reconciled handoff documents.
+6. Fetch again and run `scripts/check-release-source-freeze.sh
+   /home/by/urnetwork`. Record its exact twelve-repository output.
+
+Any later source edit creates a new candidate: regenerate the lock, commit,
+push, and restart both gates. A passing test from the dirty staging worktree is
+prequalification only.
+
+### 4.3 Run the launch-critical producer gate
 
 Run from /home/by/urnetwork/sn:
 
@@ -220,13 +320,10 @@ This gate must cover the complete compiled simulator/validator graph, signed
 attempt transitions, terminal cuts, atomic settlement, lossless capture,
 process-log fencing, direct publication, operator proof APIs, isolated
 PostgreSQL/Redis evidence paths, deployable contract behavior, generated
-contract/ABI freshness, and the final source/release-lock fence.
+contract/ABI freshness, and the final source/release-lock fence. It is the
+bounded launch-critical fence; no live campaign write precedes it.
 
-Because the release lock is intentionally stale while code changes, run the
-body gates first if necessary, refresh the lock only after all source is
-settled, then rerun the exact checked-in script end to end.
-
-### 4.3 Run the complete aggregate gate
+### 4.4 Run the complete aggregate gate
 
 With local PostgreSQL/Redis healthy:
 
@@ -237,7 +334,7 @@ With local PostgreSQL/Redis healthy:
 Required results:
 
 - all SN Go packages pass;
-- full sim-testnet race suite passes within its checked-in 15-minute deadline;
+- full sim-testnet race suite passes within its checked-in 90-minute deadline;
 - all four deployable Solidity roots have zero Slither high/medium findings;
 - forge fmt/build/test pass, with all 156 or more current tests passing;
 - generated contract payload, storage layout, ABI, and Go bindings are fresh;
@@ -248,34 +345,19 @@ Required results:
 - every release repository passes staged and unstaged diff checks;
 - the final release-lock checkout test passes after every other long gate.
 
-Do not call source frozen until both gate scripts pass from the same unchanged
-filesystem tree.
+The complete gate is mandatory exactly once against this locked source for the
+final acceptance record. Under the user-approved accelerated schedule, start it
+as soon as the producer gate passes; it may run concurrently with the live
+acceptance windows because the checkout is immutable and the campaign uses
+separate managed runtime state. Do not run its PostgreSQL/Redis section
+concurrently with another suite against the same test databases. Any aggregate
+failure invalidates the live candidate, stops new mutations, and invokes the
+failure protocol even if chain progress has already begun.
 
-### 4.4 Commit, update upstream, revalidate, and push
-
-The user explicitly requested committing all changes after source freeze.
-
-1. Review every dirty and untracked path in sn and server. Exclude generated
-   run state, logs, secrets, caches, and build products; include every intended
-   implementation, test, documentation, ABI, contract, config, and gate change.
-2. Commit the server changes and the SN changes in their respective
-   repositories with release-1.0 checkpoint messages.
-3. Fetch and pull/rebase each dirty repository. Server is known to be behind
-   upstream and has overlapping changed paths, including controller Connect/ST
-   code, network-client model code, and taskworker tests. Resolve semantically;
-   never discard either side wholesale.
-4. Rerun all conflict-adjacent tests, then both full gates.
-5. Refresh release.lock.yml with the final commit pins and observed source,
-   generated artifact, interface, infrastructure, and config hashes. Review
-   every mismatch; do not mechanically bless an unexplained digest.
-6. Commit the refreshed lock and this updated handoff document.
-7. Pull --rebase once more, rerun the final lock/patch gates, then push each
-   changed repository.
-8. Record the pushed full revisions in section 2 and the immutable gate results
-   in section 12.
-
-If upstream moves after a passing gate, the checkout is no longer frozen.
-Rebase, rerun affected gates plus the final complete gate, and issue a new lock.
+Do not call testnet validated until both gate scripts pass from the same
+unchanged, pushed filesystem tree. If upstream moves after either gate, the
+checkout is no longer frozen: rebase, rerun affected tests and both final source
+fences, regenerate the lock if necessary, and issue a new plan.
 
 ## 5. Read-only prelaunch procedure
 
@@ -382,7 +464,7 @@ Launch must prove:
   restart policy no;
 - runtime config manifest covers every static input with no extra/symlinked
   file;
-- all 32 expected long-lived processes start in one current supervisor
+- all 33 expected managed child processes start in one current supervisor
   generation;
 - both operator APIs and direct Connect ingress are reachable;
 - all 1,000 miner identities are live through their 20 production swarms, and
@@ -418,22 +500,37 @@ The command is designed to run release-1.0 and production-soak without a manual
 pause. If interrupted, invoke the same exact command and hash. Do not select a
 new run ID and do not delete an open attempt.
 
-Expected irreducible live duration from a clean acceptance start:
+Expected irreducible live duration from the release scheduler observation after
+preparation:
 
 - release fixed geometry: 5 x 300 + 150 = 1,650 blocks;
 - production fixed geometry: 3 x 360 + 180 = 1,260 blocks;
-- combined fixed geometry: 2,910 blocks, about 9 hours 42 minutes at 12 seconds
-  per block;
-- boundary alignment plus native CRv4 release-handoff/terminal-active tails:
-  expected total about 12 to 15 hours;
+- combined fixed accepted-epoch geometry: 2,910 blocks, about 9 hours 42 minutes
+  at 12 seconds per block; it excludes boundary alignment before each
+  acceptance start;
+- release alignment plus its authenticated CRv4 handoff yields 1,743--2,760
+  scheduler-controlled blocks; production alignment plus its fixed terminal
+  yields 1,261--1,620 blocks;
+- the exact combined scheduler-controlled range is therefore 3,004--4,380
+  blocks, or 10:00:48--14:36:00 at 12 seconds per block; its phase-neutral
+  planning midpoint is 3,692 blocks, or 12:18:24;
 - semantic analysis is asynchronous after capture closure and should overlap
   the next live phase.
 
 The release phase must not be marked complete merely because five settlement
 epochs elapsed. Its first three causal native milestones and terminal binding
 must also satisfy the runtime-453 schedule. Production must obtain the later
-terminal-active native decision. The bound is evidence-driven from live tempo
-and reveal-period state.
+terminal-active native decision by its fixed acceptance terminal. The inclusive
+EVM evidence deadline is the later of the acceptance terminal and native
+application deadline; the two domains are checked independently. Under the
+pinned production profile the native deadline is no later than start+820 while
+the terminal is start+1,260, so production has no post-acceptance temporal tail.
+
+These are exact chain-clock bounds after preparation. RPC/finality work,
+transaction inclusion, capture publication, and semantic replay are not covered
+by a campaign-wide wall-clock SLA. Monitor their explicit state transitions and
+watchdogs; never reinterpret the 14:36:00 scheduler maximum as permission to
+ignore a stalled process.
 
 Monitor without bypassing the shared public-provider egress gate:
 
@@ -522,7 +619,7 @@ commands for a separate agent to validate each claim on chain.
 | Adversarial resilience | all 61 mandatory vectors through seven attributed concurrent actors, seed/matrix hash, samples, latency/error metrics, applied/restored faults, no cross-operator or cross-validator contamination, clean attempt ledger |
 | Process/runtime resilience | exact binaries/config manifest, current supervisor generation, expected process inventory, zero unexplained restarts/panics/errors, bounded intentional fault recoveries, stopped-on-reboot policy |
 | Public artifact history | both operator archive roots, MinIO locators, byte sizes/content hashes, replica readback, secret-scan result, owner completion/supplement signatures, capture/input/evidence manifests |
-| Three clean production blocks | three consecutive complete production UR epochs under 360/60/180/6 policy with zero failures, plus the preceding five clean accelerated epochs; clearly separate lifecycle tail blocks |
+| Three clean production epochs | three consecutive complete production UR epochs under 360/60/180/6 policy with zero failures, plus the preceding five clean accelerated epochs; clearly separate the bounded release lifecycle tail from accepted epochs |
 | Independent replay | public manifest locators for both NOs, transcript hash and pinned JSON-RPC exchanges, clean-checkout inspect/analyze commands and matching result hashes |
 
 Also include:
@@ -555,6 +652,7 @@ From a clean compatible checkout with no simulator state or wallet secrets:
        ./build/sim-testnet analyze \
          --config sim-testnet/testnet.yml \
          --manifest 'https://OPERATOR/sn/evidence?hash=sha256:...' \
+         --run-id 'SIGNED_CAMPAIGN_RUN_ID' \
          --format json
 
 4. Repeat with the other operator locator.
@@ -569,9 +667,45 @@ From a clean compatible checkout with no simulator state or wallet secrets:
 
 Any peer-review discrepancy reopens testnet validation.
 
+FINAL.md and every clean-checkout command must cite the latest authorized
+strict-format deployment-manifest revision. Revision-zero manifests with the
+exact pre-fix locator/command encoding are immutable archive/lineage evidence,
+not the final discovery pointer; they remain analyzable only when the reviewer
+supplies the exact signed campaign run ID explicitly.
+
 ## 12. Freeze and execution record
 
 FREEZE-UPDATE this table as work completes.
+
+Prequalification recorded 2026-09-03/04 UTC is diagnostic evidence, not final
+freeze approval:
+
+- canonical SN `f5f1e46` passed the four-root Solidity static gate with zero
+  high/medium findings, Forge format/build and 156/0/0 tests, generated-contract
+  and ABI freshness, plus validator ordinary/race/vet (33.821s/282.409s/green);
+- the dirty SN candidate compiled all packages in 8.37 seconds and passed full
+  vet in 4.90 seconds. Its evidence-integrity selector passed 33/33 normally in
+  380.477 seconds. The same exact 33-test union passed under the race detector
+  in three non-overlapping shards: 2 tests in 403.618 seconds, 10 tests in
+  1,592.441 seconds, and 21 tests in 1,740.076 seconds, with zero skips and no
+  race report. Their 3,736.135-second sequential lower bound is why the complete
+  package has a 90-minute harness deadline; the final frozen aggregate remains
+  pending. After cherry-pick, canonical SN against Connect `86715ee` passed the
+  seven exact topology/gate regressions normally and under race in 1.312 and
+  11.199 seconds, compiled the simulator graph, and passed simulator vet;
+- server `2b09692a` passed focused artifact/history suites, full compile/vet,
+  release-selected controller/model/taskworker ordinary and race suites, and
+  the complete proxy package in 529.073 seconds. PostgreSQL and Redis were
+  healthy before and after;
+- operator-proxy `e1a76e03`, SDK `2fca654`, and its mobile export policy passed
+  their checked-in ordinary/race gate selections; Connect `86715ee` passed its
+  generated blocker/CFAA table, lookup, policy-hash, consumer, race, compile and
+  vet checks; xops `0a215e9` passed all 38 selected infrastructure regressions
+  in 9.393 seconds.
+
+Do not infer an unselected full Server model/repository pass, source freeze,
+producer pass, aggregate pass, or live campaign result from these focused
+records.
 
 | Item | Result | UTC / immutable reference |
 |---|---|---|
@@ -584,7 +718,8 @@ FREEZE-UPDATE this table as work completes.
 | Aggregate gate with DB tests | pending | |
 | Foundry | prior 156/0/0; final pending | |
 | Slither | prior 0 high/medium; final pending | |
-| Server full DB/package qualification | pending after rebase | |
+| Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
+| Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
 | SN frozen commit | pending | |
 | Server frozen commit | pending | |
 | Other changed repo commits | pending | |
