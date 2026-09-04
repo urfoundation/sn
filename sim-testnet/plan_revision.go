@@ -2612,7 +2612,12 @@ func preserveVerifiedFleetBatchActions(cfg *ResolvedConfig, stateDir string, rev
 		if len(candidates) == 0 {
 			continue
 		}
-		entry := candidates[len(candidates)-1]
+		entry := candidates[0]
+		for _, candidate := range candidates[1:] {
+			if candidate.PlanHash != entry.PlanHash || candidate.IntentHash != entry.IntentHash || candidate.PostconditionHash != entry.PostconditionHash {
+				return fmt.Errorf("verified fleet batch %s has conflicting source generations", current.ID)
+			}
+		}
 		sourcePlan, err := loadPlan(entry.PlanHash)
 		if err != nil {
 			return err
