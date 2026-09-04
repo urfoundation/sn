@@ -112,12 +112,14 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test . -run "$socket_cap_tests" -count=1
   go test -race . -run "$socket_cap_tests" -count=1
 
-  # Generated blocker/CFAA data is release-critical. Exercise both the
-  # checked-in table invariants and their concurrent readers whenever the
-  # pinned Connect source changes.
-  security_table_tests='^Test(BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors|CfaaBlockedIps|CfaaBlockedPrefixInvariant|CfaaBlockedPrefix6Invariant)$'
+  # Generated blocker/CFAA data is release-critical. Exercise the checked-in
+  # table invariants, concurrent readers, and both generator contracts whenever
+  # the pinned Connect source changes.
+  security_table_tests='^Test(BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors|BlockerZeroAlloc|BlockerFalsePositiveProbe|BlockerIp4|BlockerIp6|BlockerToggleRace|CfaaPortClassification|CfaaBlockedIps|CfaaDisabled|CfaaIngressMirrorsSourceDrops|CfaaBlockedPrefixInvariant|CfaaBlockedIp4BruteForce|CfaaBlockedIp4ZeroAlloc|CfaaSearch6|CfaaInspectV6|CfaaBlockedPrefix6Invariant|CfaaInspectIcmp|TelegramCallReflectorRanges|TelegramCallV12TcpFallback|CfaaTelegramCallException|SecurityPolicyAllowsTelegramCallReflectors)$'
   go test . -run "$security_table_tests" -count=1
   go test -race . -run "$security_table_tests" -count=1
+  go test ./blocker ./security -count=1
+  go test -race ./blocker ./security -count=1
 
   # Cancellation is only a stop request: every admitted strategy/dial/stream
   # worker must be joined before its owner publishes lifecycle completion.

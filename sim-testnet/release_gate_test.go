@@ -10,6 +10,45 @@ import (
 	"testing"
 )
 
+const releaseConnectPolicySelector = "^Test(BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors|BlockerZeroAlloc|BlockerFalsePositiveProbe|BlockerIp4|BlockerIp6|BlockerToggleRace|CfaaPortClassification|CfaaBlockedIps|CfaaDisabled|CfaaIngressMirrorsSourceDrops|CfaaBlockedPrefixInvariant|CfaaBlockedIp4BruteForce|CfaaBlockedIp4ZeroAlloc|CfaaSearch6|CfaaInspectV6|CfaaBlockedPrefix6Invariant|CfaaInspectIcmp|TelegramCallReflectorRanges|TelegramCallV12TcpFallback|CfaaTelegramCallException|SecurityPolicyAllowsTelegramCallReflectors)$"
+
+// Extracts one unambiguous shell selector assignment.
+func releaseConnectPolicySelectorAssignment(script string, variable string) (string, error) {
+	pattern := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(variable) + `='([^'\n]+)'\s*$`)
+	matches := pattern.FindAllStringSubmatch(script, -1)
+	if len(matches) != 1 {
+		return "", fmt.Errorf("release gate has %d %s assignments, want exactly 1", len(matches), variable)
+	}
+	return matches[0][1], nil
+}
+
+// Pins every generated-policy consumer selected by either release gate.
+func assertReleaseConnectPolicySelector(t *testing.T, script string, variable string) {
+	t.Helper()
+	selector, err := releaseConnectPolicySelectorAssignment(script, variable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selector != releaseConnectPolicySelector {
+		t.Errorf("%s = %q, want exact generated-policy selector %q", variable, selector, releaseConnectPolicySelector)
+	}
+}
+
+// Rejects a later shell assignment that could replace the reviewed selector.
+func TestReleaseConnectPolicySelectorRejectsDuplicateAssignments(t *testing.T) {
+	script := "policy_tests='" + releaseConnectPolicySelector + "'\npolicy_tests='^TestWeakened$'\n"
+	if _, err := releaseConnectPolicySelectorAssignment(script, "policy_tests"); err == nil {
+		t.Fatal("duplicate policy selector assignments accepted")
+	}
+}
+
+// Rejects a script that omits the reviewed selector entirely.
+func TestReleaseConnectPolicySelectorRejectsMissingAssignment(t *testing.T) {
+	if _, err := releaseConnectPolicySelectorAssignment("echo no-policy-selector\n", "policy_tests"); err == nil {
+		t.Fatal("missing policy selector assignment accepted")
+	}
+}
+
 // A sibling release module can advance while the long race and Solidity gates
 // are running. The final check must cover every module hashed by the release
 // lock and occur after all other checked-in gate work.
@@ -19,6 +58,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := string(scriptBytes)
+	assertReleaseConnectPolicySelector(t, script, "security_table_tests")
 	const repositories = "release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)"
 	if !strings.Contains(script, repositories) || !strings.Contains(script, `for repo in "${release_repos[@]}"`) {
 		t.Fatal("local release gate does not check every release repository")
@@ -69,6 +109,9 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"ZZZNoPerInstanceLifecycleResidue",
 		"BlockerGeneratedTables",
 		"CfaaBlockedPrefix6Invariant",
+		"CfaaInspectIcmp",
+		"go test ./blocker ./security -count=1",
+		"go test -race ./blocker ./security -count=1",
 		"ApiCloseAndWaitJoinsRefreshWorker",
 		"NetworkSpaceCloseJoinsClientStrategyRelease",
 		"NetworkSpaceManagerReplacementDoesNotHoldStateLockDuringClose",
@@ -908,6 +951,7 @@ func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := string(scriptBytes)
+	assertReleaseConnectPolicySelector(t, script, "policy_tests")
 	for _, required := range []string{
 		"go test ./validator ./sim-testnet -run '^$'",
 		"Attempt|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop",
@@ -922,6 +966,14 @@ func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
 		"go run ./sim-testnet/gencontracts --check",
 		"./stabi/generate.sh --check",
 		"go test ./st ./startifact",
+		"Generated policy data is executable release input",
+		"BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors",
+		"CfaaPortClassification|CfaaBlockedIps|CfaaDisabled|CfaaIngressMirrorsSourceDrops|CfaaBlockedPrefixInvariant",
+		"CfaaBlockedIp4BruteForce|CfaaBlockedIp4ZeroAlloc|CfaaSearch6|CfaaInspectV6|CfaaBlockedPrefix6Invariant|CfaaInspectIcmp",
+		"go test . -run \"$policy_tests\"",
+		"go test -race . -run \"$policy_tests\"",
+		"go test ./blocker ./security -count=1",
+		"go test -race ./blocker ./security -count=1",
 		"VerifyController(FullTrailFlow|PoisonAndFailurePaths",
 		"StSyncChainEventsBatchesCanonicalEventBlocks",
 		"StTransactionIntentReservationUsesChainAccountNonceScope",

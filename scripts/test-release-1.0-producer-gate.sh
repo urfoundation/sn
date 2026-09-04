@@ -80,6 +80,15 @@ echo "[release-1.0 producer] operator proof and artifact APIs"
   cd "$workspace/connect"
   go test . -run '^Test(Verify|Sn|PlatformPacketConnClampsQuic)' -count=1
   go test . -run '^TestCreateContractReportsSenderSequenceRole$' -count=1
+
+  # Generated policy data is executable release input. Exercise both its
+  # structural/runtime invariants and the generator contract before a source
+  # refresh can reach the live launch path.
+  policy_tests='^Test(BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors|BlockerZeroAlloc|BlockerFalsePositiveProbe|BlockerIp4|BlockerIp6|BlockerToggleRace|CfaaPortClassification|CfaaBlockedIps|CfaaDisabled|CfaaIngressMirrorsSourceDrops|CfaaBlockedPrefixInvariant|CfaaBlockedIp4BruteForce|CfaaBlockedIp4ZeroAlloc|CfaaSearch6|CfaaInspectV6|CfaaBlockedPrefix6Invariant|CfaaInspectIcmp|TelegramCallReflectorRanges|TelegramCallV12TcpFallback|CfaaTelegramCallException|SecurityPolicyAllowsTelegramCallReflectors)$'
+  go test . -run "$policy_tests" -count=1
+  go test -race . -run "$policy_tests" -count=1
+  go test ./blocker ./security -count=1
+  go test -race ./blocker ./security -count=1
 )
 
 echo "[release-1.0 producer] operator-proxy source and behavior"
