@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1191,11 +1192,30 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifactHash := strings.TrimPrefix(artifact.ContentHash, "sha256:")
+	historyKey := fmt.Sprintf("blob/operator-1/st/v1/history/%s/%d/%d/%d/%s.json", cfg.Config.Deployment.DeploymentID, cfg.Netuid, artifact.Epoch, artifact.NoID, artifactHash)
+	historyBytes, err := json.Marshal(payoutArtifactHistoryPage{
+		Schema: "urnetwork-payout-artifact-history-v1",
+		Objects: []payoutArtifactHistoryObject{{
+			Key:         historyKey,
+			Size:        int64(len(artifactBytes)),
+			ContentHash: artifact.ContentHash,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var invalidHistoryQuery atomic.Uint64
 	operatorServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/sn/artifacts":
-			_, _ = writer.Write([]byte(fmt.Sprintf(`{"schema":"urnetwork-payout-artifact-history-v1","objects":[{"key":"blob/%s.json"}]}`, artifactHash)))
+			query := request.URL.Query()
+			if request.Method != http.MethodGet || query.Get("deployment_id") != cfg.Config.Deployment.DeploymentID || query.Get("netuid") != strconv.FormatUint(uint64(cfg.Netuid), 10) || query.Get("limit") != strconv.Itoa(payoutArtifactHistoryPageObjects) || query.Get("after") != "" {
+				invalidHistoryQuery.Add(1)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_, _ = writer.Write(historyBytes)
 		case "/sn/artifact":
 			if request.URL.Query().Get("hash") != artifact.ContentHash {
 				writer.WriteHeader(http.StatusNotFound)
@@ -1268,8 +1288,8 @@ func TestLiveInvalidMerkleProofProbeUsesPinnedReadOnlyCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evidence.Epoch != 4 || evidence.NoID != 1 || evidence.FinalizedBlock != 100 || evidence.Requests != 8 || claimCalls.Load() != 1 || invalidMethod.Load() != 0 || invalidBlock.Load() != 0 {
-		t.Fatalf("live Merkle evidence=%+v claim_calls=%d invalid_method=%d invalid_block=%d", evidence, claimCalls.Load(), invalidMethod.Load(), invalidBlock.Load())
+	if evidence.Epoch != 4 || evidence.NoID != 1 || evidence.FinalizedBlock != 100 || evidence.Requests != 8 || claimCalls.Load() != 1 || invalidHistoryQuery.Load() != 0 || invalidMethod.Load() != 0 || invalidBlock.Load() != 0 {
+		t.Fatalf("live Merkle evidence=%+v claim_calls=%d invalid_history_query=%d invalid_method=%d invalid_block=%d", evidence, claimCalls.Load(), invalidHistoryQuery.Load(), invalidMethod.Load(), invalidBlock.Load())
 	}
 	claimCalls.Store(0)
 	mutateAfterClaim.Store(true)

@@ -1446,6 +1446,10 @@ func TestFetchPayoutArtifactHistoryRejectsTruncationCursorAndScope(t *testing.T)
 		{name: "duplicate", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{valid, valid}}},
 		{name: "unsafe-separator", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, "/10/1/", "\\10/1/", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
 		{name: "foreign-deployment", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, cfg.Config.Deployment.DeploymentID, "foreign", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "foreign-netuid", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, fmt.Sprintf("/%d/10/1/", cfg.Netuid), fmt.Sprintf("/%d/10/1/", cfg.Netuid+1), 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "extra-scope-segment", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, "/10/1/", "/extra/10/1/", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "noncanonical-epoch", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, "/10/1/", "/010/1/", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "zero-operator", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, "/10/1/", "/10/0/", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
 		{name: "content-mismatch", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: valid.Key, Size: valid.Size, ContentHash: "sha256:" + strings.Repeat("cd", 32)}}}},
 	}
 	for _, testCase := range tests {
