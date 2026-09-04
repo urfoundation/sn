@@ -76,6 +76,7 @@ echo "[release-1.0 producer] operator proof and artifact APIs"
 (
   cd "$workspace/connect"
   go test . -run '^Test(Verify|Sn|PlatformPacketConnClampsQuic)' -count=1
+  go test . -run '^TestCreateContractReportsSenderSequenceRole$' -count=1
 )
 
 echo "[release-1.0 producer] operator-proxy source and behavior"

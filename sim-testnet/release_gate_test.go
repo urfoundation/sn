@@ -165,6 +165,45 @@ func TestLocalReleaseGateAllowsCompleteSimulatorRaceSuite(t *testing.T) {
 	}
 }
 
+// Keeps the additive contract-lane diagnostic in both release paths instead
+// of merely compiling its regression without executing it.
+func TestReleaseGatesExerciseContractSenderRoleDiagnostic(t *testing.T) {
+	testCases := []struct {
+		path     string
+		commands []string
+	}{
+		{
+			path: "../scripts/test-release-1.0-local.sh",
+			commands: []string{
+				`go test . -run "$contract_sender_diagnostic_tests" -count=1`,
+				`go test -race . -run "$contract_sender_diagnostic_tests" -count=1`,
+			},
+		},
+		{
+			path: "../scripts/test-release-1.0-producer-gate.sh",
+			commands: []string{
+				`go test . -run '^TestCreateContractReportsSenderSequenceRole$' -count=1`,
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		scriptBytes, err := os.ReadFile(testCase.path)
+		if err != nil {
+			t.Errorf("read %s: %v", testCase.path, err)
+			continue
+		}
+		script := string(scriptBytes)
+		if testCase.path == "../scripts/test-release-1.0-local.sh" && !strings.Contains(script, `contract_sender_diagnostic_tests='^TestCreateContractReportsSenderSequenceRole$'`) {
+			t.Errorf("%s lacks the exact contract sender diagnostic selector", testCase.path)
+		}
+		for _, command := range testCase.commands {
+			if strings.Count(script, command) != 1 {
+				t.Errorf("%s contains %d copies of %q, want 1", testCase.path, strings.Count(script, command), command)
+			}
+		}
+	}
+}
+
 // Keep operator-proxy checks inside the module directory and make every source
 // gate explicit. Mere patch-hygiene coverage cannot prove that the independent
 // module compiles, remains tidy, or passes its concurrent behavior suite.

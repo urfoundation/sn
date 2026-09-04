@@ -99,6 +99,10 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test ./... -run '^$'
   go test . -run '^Test(Verify|Sn)'
 
+  contract_sender_diagnostic_tests='^TestCreateContractReportsSenderSequenceRole$'
+  go test . -run "$contract_sender_diagnostic_tests" -count=1
+  go test -race . -run "$contract_sender_diagnostic_tests" -count=1
+
   # The 1,000-device simulator depends on Connect retaining its per-device
   # socket budget even when quic-go requests a process-oriented 7 MiB buffer.
   socket_cap_tests='^TestPlatformPacketConnClampsQuic(SocketRequests|RequestToDeviceMemoryTarget)$'

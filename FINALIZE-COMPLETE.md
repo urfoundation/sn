@@ -144,7 +144,7 @@ upstream on 2026-09-04 UTC, is:
 | sn | main | 5f882b20790aba1333664323f3bf748933f62273 | clean/equal; runtime-evidence candidate |
 | server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; post-candidate upstream integration under qualification |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
-| connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; contract-sender diagnostics and generated blocker/CFAA refresh under qualification |
+| connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; sender-role and blocker/CFAA focused ordinary/race plus consumer compile pass; aggregate qualification pending |
 | sdk | main | 857248fc82695e9cf7ecd43978511c332e02dc85 | clean/equal; post-candidate upstream integration under qualification |
 | glog | master | 2bdcce5f8be023947f26a247eb5665c56b69b2e3 | clean/equal |
 | goidenticons | main | 325750b38314313dc5f44c880ab6f12f6c1ecb3c | clean/equal |
@@ -735,18 +735,22 @@ freeze approval:
   1,592.441 seconds, and 21 tests in 1,740.076 seconds, with zero skips and no
   race report. Their 3,736.135-second sequential lower bound is why the complete
   package has a 90-minute harness deadline; the final frozen aggregate remains
-  pending. After cherry-pick, canonical SN against Connect `86715ee` passed the
-  seven exact topology/gate regressions normally and under race in 1.312 and
-  11.199 seconds, compiled the simulator graph, and passed simulator vet;
+  pending. Against Connect
+  `fb888dc8883efb12dd570e5514e866dba14d987e`, canonical SN compiled the
+  simulator graph and focused sender-role plus generated blocker/CFAA
+  invariants passed normally and under race; the frozen aggregate remains
+  pending;
 - server `2b09692a` passed focused artifact/history suites, full compile/vet,
   release-selected controller/model/taskworker ordinary and race suites, and
   the complete proxy package in 529.073 seconds. PostgreSQL and Redis were
   healthy before and after;
 - operator-proxy `e1a76e03`, SDK `2fca654`, and its mobile export policy passed
-  their checked-in ordinary/race gate selections; Connect `86715ee` passed its
-  generated blocker/CFAA table, lookup, policy-hash, consumer, race, compile and
-  vet checks; xops `0a215e9` passed all 38 selected infrastructure regressions
-  in 9.393 seconds.
+  their checked-in ordinary/race gate selections; Connect
+  `fb888dc8883efb12dd570e5514e866dba14d987e` passed focused sender-role and
+  generated blocker/CFAA ordinary/race qualification plus SN, server, and
+  operator-proxy consumer compilation; its complete compile/vet and aggregate
+  gate remain pending; xops `0a215e9` passed all 38 selected infrastructure
+  regressions in 9.393 seconds.
 - canonical SN `7d634c4` replaces the serial final-evidence hot path with
   bounded `GOMAXPROCS` workers for independent lifecycle decisions, accepted
   and dishonest-deposit measurements, and lineage edges while retaining
