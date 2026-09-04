@@ -135,23 +135,23 @@ These facts are safe to use for continuation. Re-read them before mutation.
 
 FREEZE-UPDATE repository revisions:
 
-The first-draft table is retained below as historical provenance. The frozen
-runtime snapshot, fetched and verified clean/equal to upstream on 2026-09-04
-UTC, is:
+The first-draft table is retained below as historical provenance. The current
+source candidate and dependency snapshot, fetched and verified clean/equal to
+upstream on 2026-09-04 UTC, is:
 
 | Repository | Branch | Current pre-integration revision | State |
 |---|---|---|---|
-| sn | main | 5d779cdd8a9430ea6364aa695b1ddd05d644f6ea | clean/equal; frozen runtime candidate |
-| server | main | 2b09692ac256fbc380a46bc7f957fdf8c510add6 | clean/equal |
-| operator-proxy | main | e1a76e03a60e6f81c49376556aacb3f0f9289d8a | clean/equal |
-| connect | main | 86715ee66950c2386b0aa5ce45459fb6911c3582 | clean/equal; generated blocker/CFAA policy refresh reviewed |
-| sdk | main | 2fca65408c9f8b52f5bd20d2c957e67b828d746c | clean/equal |
+| sn | main | 5f882b20790aba1333664323f3bf748933f62273 | clean/equal; runtime-evidence candidate |
+| server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; post-candidate upstream integration under qualification |
+| operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
+| connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; contract-sender diagnostics and generated blocker/CFAA refresh under qualification |
+| sdk | main | 857248fc82695e9cf7ecd43978511c332e02dc85 | clean/equal; post-candidate upstream integration under qualification |
 | glog | master | 2bdcce5f8be023947f26a247eb5665c56b69b2e3 | clean/equal |
 | goidenticons | main | 325750b38314313dc5f44c880ab6f12f6c1ecb3c | clean/equal |
 | proxy | main | 1c72dfd66f8c7fbe72120b6657c8a445f7f25499 | clean/equal |
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/equal |
-| vault | main | 992f69a4ba744dabf43c71401a3f355f05f46428 | clean/equal |
-| xops | main | 0a215e96348027c40fad3569fa7c422cdc4d57aa | clean/equal |
+| vault | main | 8b41923ba3c65aec3bc416a5c5365b4f457b5dc5 | clean/equal; encrypted monitor update |
+| xops | main | 7ca1e15d0d8084e3ad500593b1a80e3a4c4289f4 | clean/equal; post-candidate upstream integration under qualification |
 | config | main | 205eae72d13527e71bb895923a1782fffe0d9ed2 | clean/equal |
 
 Reverify all twelve rows immediately before each exact gate. Any later
@@ -175,17 +175,19 @@ Historical first-draft snapshot:
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/current |
 | xops | main | fbd291a1849d5769e67efe278c2f4e5da65275aa | clean/current |
 
-The release lock in the pre-freeze tree is stale by design and must not be
-treated as an approval. Its hashes and audited commits must be refreshed only
-after the source and dependency checkouts are final.
+The working-tree release lock was refreshed for this exact snapshot at
+2026-09-04 15:52 UTC but is not approval until committed/pushed and accepted by
+the frozen producer gate.
 
 ## 3. Current implementation/gate continuation point
 
-Source freeze is not complete. The reviewed implementation candidate
-`3f3118979c1b9bf51f7e4168553ddf54057955bf` was cherry-picked onto canonical
-`main` as implementation checkpoint
-`8c9a0716d16432f568550443bdc9c5bb7cb7ee27`; documentation reconciliation,
-push, release-lock refresh and both frozen gates remain pending. The expensive
+Source freeze is not complete. Runtime-evidence candidate
+`5f882b20790aba1333664323f3bf748933f62273` is committed, pushed, and passed
+its focused normal/race/vet qualification. A freeze fence then correctly found
+new Server, operator-proxy, Connect, SDK, Vault and xops upstream commits; those
+clean checkouts were fast-forwarded and the exact twelve-root fence passed.
+Their affected qualification, the refreshed-lock commit, and both frozen gates
+remain pending. The expensive
 TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper regression now
 passes and provides a narrow walk through the complete 1,000-miner semantic
 fixture. The following real defects have already been corrected in the working
@@ -856,10 +858,10 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all three versions at 2026-09-04 15:36 UTC; static source and three upstream metadata tests also pass |
 | Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | focused qualification pass; exact revision and freeze rerun pending | candidate based on `6a6c74f0a1f07577a8abaebbb864446ebaaf9e4c`; normal/race/vet and adjacent watch/recovery regressions pass |
-| Server frozen commit | pass | `2b09692ac256fbc380a46bc7f957fdf8c510add6` |
-| Other frozen repository commits | pass | exact eleven non-SN revisions in section 2; final source-freeze fence passed |
-| Release-lock hash | refreshed; commit/freeze test pending | `sha256:c221b19964ba95c395bc4f04228a87433d0bda80fed27ce1f2ef880e3f48ecfd` |
+| SN runtime candidate | focused qualification pass; frozen gate pending | `5f882b20790aba1333664323f3bf748933f62273`; normal/race/vet and adjacent watch/recovery regressions pass |
+| Server candidate commit | affected qualification in progress; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
+| Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed |
+| Release-lock hash | refreshed; commit/freeze test pending | `sha256:988fb8288f4daed06971498f6fcacc07c6973440040ea4c2d7af7c8c52de6dc5` |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360` |
 | Approved plan hash/spend | superseded; current rerun pending | prior plan `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; never use it with the current lock |
 | Resume/launch | pending | |

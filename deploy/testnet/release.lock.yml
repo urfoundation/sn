@@ -44,21 +44,21 @@ evm_build:
     solidity: 0.8.24
     source_hash: sha256:642fdb618f58a6f1e46d40cbe09795eceeb9e8a804381d097c80b1ecaa14cf53
 repositories:
-    connect_go_source_hash: sha256:2466a12a97f5bf780ce22f7d6274b033d0f53de08139ba90f131531cc4a1f69a
+    connect_go_source_hash: sha256:c403125f2dc8bdc72c5c465c3f488e1a78487b429323acfe0274da3b7a0e67a5
     glog_go_source_hash: sha256:3fb2eadda7c6918f8497d451998c33ba39370c7b985482a51b4320056da6617e
     goidenticons_go_source_hash: sha256:e335a5bf9b3194faeeab2f1a2e1f11c8c765e3bb6950faa28bf56ad7231ca2f8
-    operator_proxy_commit: e1a76e03a60e6f81c49376556aacb3f0f9289d8a
-    operator_proxy_go_source_hash: sha256:b015b55c0ae0e28978d04333eef32122a9d2e5297178d769575aa826d82001d1
+    operator_proxy_commit: 0285a79d87b996bce50f2d18a824c750ad76233f
+    operator_proxy_go_source_hash: sha256:4f4e01776bfc4c41057369644224e18110fc36b0a98527261be6fd22e61f3a09
     platform_config_shared_tree_hash: sha256:3a4ec6daf322b601e58bc282505a05cdd8734307d046e9198bd5b211269e269e
     platform_config_source_hash: sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a
-    protocol_source_hash: sha256:d37db555d1c8a3147f60534a472f0052676038a6fe710aa6272a13b8d39a4499
+    protocol_source_hash: sha256:836094ad41b6704f43530b920c68f73920db0bd61f133a580da911966ed8575f
     proxy_go_source_hash: sha256:5fcc678f092c40138c3875c8196fd9d8a313b239a9ebc3b46551e9bc793fa0e0
-    sdk_go_source_hash: sha256:dc88d24e8ea37a085868c95b96136799b06b0b516addcd28eff480816d1d5d8a
+    sdk_go_source_hash: sha256:e54db4249525fe384f1b5e6c42461d3beec233e9fde14e04be30c67e0e7c212f
     sdk_mobile_build_tree_hash: sha256:4ac75ef4751360d93d9140347b7ece533d69705dca206f97b81d063314da89fb
     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
-    server_go_source_hash: sha256:8d6c64e8035ad9c8e6c9b3ed870e9f5cd2789e568708a4bd9348b4289fbe1359
+    server_go_source_hash: sha256:72a95c85a9cec6bfdbfb133604366d460b15ea77be9c4248c9ac5e11f3926971
     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
-    sn_go_source_hash: sha256:99de99d932815f37b7e3185556cb7cacfb000ca094afa1740e54fb5cc1f97654
+    sn_go_source_hash: sha256:96f489557ddb93adc869de6fea427a616395fd029f2a93189d8d6a80395bf8d4
     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
     vault_audited_base_commit: 992f69a4ba744dabf43c71401a3f355f05f46428
 dependencies:
