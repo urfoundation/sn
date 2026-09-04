@@ -34,8 +34,10 @@ Testnet is complete only when all of the following are true:
    race, PostgreSQL/Redis, Foundry, Slither, generated-artifact,
    infrastructure, and patch-hygiene checks.
 3. Two independent read-only plan builds against the authoritative attempt-4
-   state produce byte-identical plans, the same plan hash, and the same bounded
-   cumulative spend.
+   state produce the same approval projection, plan hash, actions, and bounded
+   cumulative spend. Their raw diagnostic JSON is expected to differ only in
+   generation time and finalized observation checkpoints as the live chain
+   advances; any other difference is release-fatal.
 4. The exact approved plan is resumed/launched. The real server/connect,
    miner, and validator modules run; no substitute CLI-only implementation is
    accepted.
@@ -133,13 +135,13 @@ These facts are safe to use for continuation. Re-read them before mutation.
 
 FREEZE-UPDATE repository revisions:
 
-The first-draft table is retained below as historical provenance. The current
-pre-integration snapshot, fetched and verified clean/equal to upstream on
-2026-09-04 UTC, is:
+The first-draft table is retained below as historical provenance. The frozen
+runtime snapshot, fetched and verified clean/equal to upstream on 2026-09-04
+UTC, is:
 
 | Repository | Branch | Current pre-integration revision | State |
 |---|---|---|---|
-| sn | main | f5f1e46890240c4ca2fd44ebcc973faa897e2428 | clean/equal; final candidate pending |
+| sn | main | 5d779cdd8a9430ea6364aa695b1ddd05d644f6ea | clean/equal; frozen runtime candidate |
 | server | main | 2b09692ac256fbc380a46bc7f957fdf8c510add6 | clean/equal |
 | operator-proxy | main | e1a76e03a60e6f81c49376556aacb3f0f9289d8a | clean/equal |
 | connect | main | 86715ee66950c2386b0aa5ce45459fb6911c3582 | clean/equal; generated blocker/CFAA policy refresh reviewed |
@@ -152,10 +154,10 @@ pre-integration snapshot, fetched and verified clean/equal to upstream on
 | xops | main | 0a215e96348027c40fad3569fa7c422cdc4d57aa | clean/equal |
 | config | main | 205eae72d13527e71bb895923a1782fffe0d9ed2 | clean/equal |
 
-FREEZE-UPDATE the SN row to the final pushed commit and reverify all twelve
-rows immediately before each exact gate. The candidate at
-`temp/sn-test-runtime-fix` is deliberately separate from these release roots
-until it is committed, reviewed, and integrated.
+Reverify all twelve rows immediately before each exact gate. Any later
+documentation-only handoff commit must be recorded separately from the frozen
+runtime candidate; any runtime-source edit creates a new candidate and requires
+the full lock/freeze/gate cycle.
 
 Historical first-draft snapshot:
 
@@ -394,8 +396,37 @@ Build the plan twice without any intervening write:
       --format json \
       > /tmp/ur-subnet-testnet-plan-b.json
 
-    cmp /tmp/ur-subnet-testnet-plan-a.json \
-        /tmp/ur-subnet-testnet-plan-b.json
+    jq -S 'del(
+      .generated_at,
+      .live_facts.finalized_block,
+      .live_facts.finalized_block_hash,
+      .live_facts.evm_finalized_block,
+      .live_facts.evm_finalized_block_hash,
+      .coordinator_upgrade_baseline.finalized_block,
+      .coordinator_upgrade_baseline.finalized_block_hash
+    )' /tmp/ur-subnet-testnet-plan-a.json \
+      > /tmp/ur-subnet-testnet-plan-a.approval.json
+
+    jq -S 'del(
+      .generated_at,
+      .live_facts.finalized_block,
+      .live_facts.finalized_block_hash,
+      .live_facts.evm_finalized_block,
+      .live_facts.evm_finalized_block_hash,
+      .coordinator_upgrade_baseline.finalized_block,
+      .coordinator_upgrade_baseline.finalized_block_hash
+    )' /tmp/ur-subnet-testnet-plan-b.json \
+      > /tmp/ur-subnet-testnet-plan-b.approval.json
+
+    cmp /tmp/ur-subnet-testnet-plan-a.approval.json \
+        /tmp/ur-subnet-testnet-plan-b.approval.json
+
+This projection exactly mirrors the observation-only fields normalized by
+`SetupPlan.hash`. Keep both raw files as evidence: their moving checkpoints
+prove independent live reads. `TestPlanHashExcludesGenerationTimeButIncludesLiveFacts`
+deterministically proves that observation-only drift preserves approval while
+an approval-bearing economic or topology change does not. Never replace this
+allowlist with a broad or recursive field deletion.
 
 Review and record:
 
@@ -416,17 +447,29 @@ The user has already authorized executing the ready testnet plan; no additional
 spend confirmation pause is required. The hash must still be mechanically exact
 and recorded here before apply.
 
-FREEZE-UPDATE approved plan:
+Current approved plan candidate, independently rebuilt twice on 2026-09-04 UTC:
 
-- plan hash: pending
-- plan file SHA-256: pending
-- action count: pending
-- maximum cumulative TAO rao: pending
-- maximum cumulative alpha rao: pending
-- maximum EVM gas wei: pending
-- maximum registrations: pending
-- subnet creations: must remain 0
-- finalized native/EVM plan checkpoints: pending
+- plan hash: `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`
+- canonical approval-projection SHA-256: `5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360`
+- raw plan A SHA-256: `df2d5fb11430b47f450c7b404c150f901b103b2ff4321a2597fc82431bc595db`
+- raw plan B SHA-256: `056e528e358ee71226cfb9f08e351193056a4279c7490834b70182148ff78ee6`
+- action count: 2,298
+- maximum cumulative TAO rao: 165,748,236,000
+- maximum cumulative alpha rao: 24,748,499,999,949
+- maximum EVM gas wei: 147,549,500,000,000,000,000
+- maximum registrations: 259
+- subnet creations: 0
+- plan A native/EVM checkpoints: 7,931,639 / 7,931,639; coordinator
+  baseline 7,931,640
+- plan B native/EVM checkpoints: 7,931,655 / 7,931,655; coordinator
+  baseline 7,931,656
+- the raw diff contains only the seven explicitly allowed generated/checkpoint
+  fields above; plan hash, approval projection, all 2,298 actions, cumulative
+  spend, limits, roles, code identities, and lineage are identical
+- the revision adds exactly 58 fleet-lifecycle actions, three bounded
+  registrations, 27,004,000 TAO rao, zero alpha, and
+  1,140,000,000,000,000,000 EVM gas wei relative to the persisted action set;
+  no subnet creation or immutable-custody redeployment is introduced
 
 ## 6. Exact launch/resume
 
@@ -716,10 +759,19 @@ freeze approval:
   `-json` stdout/stderr multiplexing for an imported-module alias. The latter
   now uses a child process with independently wired descriptors and passes both
   ordinary and `-json` invocation; a frozen full rerun remains mandatory.
+- frozen SN runtime candidate `5d779cd` passed the launch-critical producer
+  gate on 2026-09-04 UTC. Signed validator ordinary/race suites passed in
+  32.903/277.286 seconds; lossless capture ordinary/race passed in
+  63.745/356.492 seconds; all 156 Foundry tests and 4,608 invariant calls
+  passed; operator proof/artifact APIs, operator-proxy ordinary/race suites,
+  isolated PostgreSQL/Redis controller/model/taskworker paths, the release-lock
+  test, and both source-freeze fences passed. The authoritative doctor passed
+  all 64 checks; only the two declared non-hard same-public-provider
+  independence caveats remain.
 
-Do not infer an unselected full Server model/repository pass, source freeze,
-producer pass, aggregate pass, or live campaign result from these focused
-records.
+Do not infer an unselected full Server model/repository pass, aggregate pass,
+or live campaign result from the focused records. The source freeze and
+producer pass are separately recorded above.
 
 | Item | Result | UTC / immutable reference |
 |---|---|---|
@@ -728,18 +780,18 @@ records.
 | All final semantic race tests | prequalified in shards; frozen aggregate pending | `7d634c4`; affected heavy selection 524.891s; latest worker/cache/stdio selection 222.138s |
 | Full sim-testnet ordinary | pending | |
 | Full sim-testnet race | pending | |
-| Producer gate | pending | |
+| Producer gate | pass | frozen runtime candidate `5d779cd`; 2026-09-04 UTC |
 | Aggregate gate with DB tests | pending | |
-| Foundry | prior 156/0/0; final pending | |
+| Foundry | pass in producer; aggregate rerun pending | 156/0/0; 4,608 invariant calls |
 | Slither | prior 0 high/medium; final pending | |
 | Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN frozen commit | pending | |
-| Server frozen commit | pending | |
-| Other changed repo commits | pending | |
-| Release-lock hash | pending | |
-| Two identical plan builds | pending | |
-| Approved plan hash/spend | pending | |
+| SN frozen runtime commit | pass | `5d779cdd8a9430ea6364aa695b1ddd05d644f6ea` |
+| Server frozen commit | pass | `2b09692ac256fbc380a46bc7f957fdf8c510add6` |
+| Other frozen repository commits | pass | exact eleven non-SN revisions in section 2; final source-freeze fence passed |
+| Release-lock hash | pass | `sha256:9672e5d1df5c914907c40e09dbd4f297eeab17cc26b99835a2d3ff133a654e09` |
+| Two approval-identical plan builds | pass | approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360`; raw observation-only diff recorded above |
+| Approved plan hash/spend | pass for launch candidate | `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; exact cumulative limits recorded above |
 | Resume/launch | pending | |
 | release-1.0 capture_closed | pending | |
 | release-1.0 semantic_verified | pending | |
@@ -776,7 +828,7 @@ mainnet:
 - compare live mainnet runtime/hyperparameters/precompiles/fees/burn/liquidity
   against the release assumptions;
 - resolve every item in the FINAL.md mainnet-delta section;
-- create a separate byte-identical mainnet plan approval. Never reuse the
+- create a separate approval-identical mainnet plan review. Never reuse the
   testnet plan hash or keys.
 
 The final handoff is complete only when another agent can start with this file,

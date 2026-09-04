@@ -4042,8 +4042,10 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    exact release lock. The complete aggregate gate remains mandatory once on
    the same immutable checkout, but may run concurrently with live acceptance
    after this producer fence; any failure invalidates the candidate. `doctor`,
-   two byte-identical read-only plans and the approved plan/spend hash remain
-   immediate launch prerequisites.
+   two approval-identical read-only plans and the approved plan/spend hash
+   remain immediate launch prerequisites. Raw diagnostic JSON may differ only
+   in the explicitly unapproved generation time and finalized observation
+   checkpoints as the live chain advances.
 
    A passing live phase now ends after all live-only inputs have been collected,
    content-addressed, strictly reread, secret-scanned, fenced by the terminal log
