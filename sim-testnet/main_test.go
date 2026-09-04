@@ -1,17 +1,35 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+const importedModuleStdioProbeEnv = "URNETWORK_SIM_TESTNET_STDIO_PROBE"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(importedModuleStdioProbeEnv) == "1" {
+		if os.Stdout == os.Stderr || os.Stdout.Fd() == os.Stderr.Fd() {
+			os.Exit(97)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestImportedProductionModulesKeepJSONStdoutSeparateFromDiagnostics(t *testing.T) {
-	if os.Stdout == os.Stderr || os.Stdout.Fd() == os.Stderr.Fd() {
-		t.Fatal("an imported production module aliased stderr to stdout")
+	command := exec.Command(os.Args[0], "-test.run=^$")
+	command.Env = append(os.Environ(), importedModuleStdioProbeEnv+"=1")
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("isolated imported-module stdio probe: %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
 	}
 }
 

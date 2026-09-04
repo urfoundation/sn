@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net/url"
 	"path"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -2620,6 +2621,64 @@ func verifyFinalPathProofs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 	return nil
 }
 
+type finalSemanticArtifactVerificationTask func() (*validatorpkg.ReleaseMeasurementArtifact, error)
+
+type finalSemanticArtifactVerificationResult struct {
+	measurement *validatorpkg.ReleaseMeasurementArtifact
+	err         error
+}
+
+func finalSemanticArtifactVerificationWorkers(taskCount int) int {
+	if taskCount <= 0 {
+		return 0
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > taskCount {
+		workers = taskCount
+	}
+	return workers
+}
+
+// Measurement verification is CPU-bound and independent across signed
+// validator cycles. Keep results in canonical task order so the caller can
+// retain deterministic error and lineage semantics after all workers join.
+func runFinalSemanticArtifactVerificationTasks(ctx context.Context, tasks []finalSemanticArtifactVerificationTask, workers int) []finalSemanticArtifactVerificationResult {
+	results := make([]finalSemanticArtifactVerificationResult, len(tasks))
+	if len(tasks) == 0 {
+		return results
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(tasks) {
+		workers = len(tasks)
+	}
+	jobs := make(chan int, len(tasks))
+	var wait sync.WaitGroup
+	wait.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		go func() {
+			defer wait.Done()
+			for index := range jobs {
+				if err := ctx.Err(); err != nil {
+					results[index].err = err
+					continue
+				}
+				results[index].measurement, results[index].err = tasks[index]()
+			}
+		}()
+	}
+	for index := range tasks {
+		jobs <- index
+	}
+	close(jobs)
+	wait.Wait()
+	return results
+}
+
 // VerifyFinalSemanticArtifacts proves every referenced immutable object by
 // content and performs an additional semantic check of steering-intent and
 // JSONL path-proof artifacts.
@@ -2841,20 +2900,26 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		if err := verifyFinalFleetLifecycleArtifacts(evidence, cache[evidence.FleetLifecycle.LineageArtifact.URI]); err != nil {
 			return err
 		}
-		for index := range evidence.FleetLifecycle.AppliedDecisions {
-			decision := &evidence.FleetLifecycle.AppliedDecisions[index]
-			if decision.CensusIndex >= uint64(len(evidence.FleetLifecycle.State.CandidateCensuses)) {
-				return fmt.Errorf("fleet lifecycle signed decision %d has an invalid census index", index)
-			}
-			census := &evidence.FleetLifecycle.State.CandidateCensuses[decision.CensusIndex]
-			var row *FleetLifecycleValidatorCensus
-			for rowIndex := range census.Validators {
-				if uint64(census.Validators[rowIndex].ValidatorID) == decision.ValidatorID {
-					row = &census.Validators[rowIndex]
+		decisionCount := len(evidence.FleetLifecycle.AppliedDecisions)
+		if decisionCount > 0 {
+			if err := runOrderedConcurrentAudits(decisionCount, finalSemanticArtifactVerificationWorkers(decisionCount), func(index int) error {
+				decision := &evidence.FleetLifecycle.AppliedDecisions[index]
+				if decision.CensusIndex >= uint64(len(evidence.FleetLifecycle.State.CandidateCensuses)) {
+					return fmt.Errorf("fleet lifecycle signed decision %d has an invalid census index", index)
 				}
-			}
-			if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence, decision, row, finalFleetLifecycleValidator(evidence, decision.ValidatorID), cache[decision.Intent.URI], cache[decision.Measurement.URI], cache[decision.Envelope.URI]); err != nil {
-				return fmt.Errorf("fleet lifecycle signed decision %d: %w", index, err)
+				census := &evidence.FleetLifecycle.State.CandidateCensuses[decision.CensusIndex]
+				var row *FleetLifecycleValidatorCensus
+				for rowIndex := range census.Validators {
+					if uint64(census.Validators[rowIndex].ValidatorID) == decision.ValidatorID {
+						row = &census.Validators[rowIndex]
+					}
+				}
+				if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence, decision, row, finalFleetLifecycleValidator(evidence, decision.ValidatorID), cache[decision.Intent.URI], cache[decision.Measurement.URI], cache[decision.Envelope.URI]); err != nil {
+					return fmt.Errorf("fleet lifecycle signed decision %d: %w", index, err)
+				}
+				return nil
+			}); err != nil {
+				return err
 			}
 		}
 	}
@@ -2878,51 +2943,119 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 			return err
 		}
 	}
+	cycleTaskIndexes := make([][]int, len(evidence.Validators))
+	penaltyTaskIndexes := make([]int, len(evidence.Validators))
+	penaltyCycles := make([]*FinalCRv4Cycle, len(evidence.Validators))
+	for index := range penaltyTaskIndexes {
+		penaltyTaskIndexes[index] = -1
+	}
+	verificationTasks := make([]finalSemanticArtifactVerificationTask, 0)
 	for validatorIndex := range evidence.Validators {
 		validator := &evidence.Validators[validatorIndex]
-		var previousMeasurement []byte
-		var firstAcceptedMeasurement *validatorpkg.ReleaseMeasurementArtifact
+		cycleTaskIndexes[validatorIndex] = make([]int, len(validator.Cycles))
 		for cycleIndex := range validator.Cycles {
 			cycle := &validator.Cycles[cycleIndex]
-			measurementData := cache[cycle.MeasurementArtifact.URI]
-			var measurement *validatorpkg.ReleaseMeasurementArtifact
-			if err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], measurementData, cache[cycle.MeasurementEnvelope.URI], &measurement); err != nil {
-				return fmt.Errorf("validator %d epoch %d measurement decision: %w", validator.ValidatorID, cycle.SettlementEpoch, err)
-			}
-			if cycleIndex > 0 {
-				if err := validatorpkg.VerifyReleaseMeasurementLineage(previousMeasurement, measurement); err != nil {
-					return fmt.Errorf("validator %d epoch %d measurement lineage: %w", validator.ValidatorID, cycle.SettlementEpoch, err)
-				}
-			} else {
-				firstAcceptedMeasurement = measurement
-			}
-			previousMeasurement = measurementData
+			cycleTaskIndexes[validatorIndex][cycleIndex] = len(verificationTasks)
+			verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+				var measurement *validatorpkg.ReleaseMeasurementArtifact
+				err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], cache[cycle.MeasurementArtifact.URI], cache[cycle.MeasurementEnvelope.URI], &measurement)
+				return measurement, err
+			})
 		}
 		if evidence.DishonestDeposit != nil {
-			var penalty *FinalCRv4Cycle
 			for decisionIndex := range evidence.DishonestDeposit.Penalties {
 				decision := &evidence.DishonestDeposit.Penalties[decisionIndex]
 				if decision.ValidatorID == validator.ValidatorID {
-					penalty = &decision.Cycle
+					penaltyCycles[validatorIndex] = &decision.Cycle
 				}
 			}
-			if penalty == nil || len(validator.Cycles) == 0 {
-				return fmt.Errorf("validator %d dishonest-deposit measurement lineage is incomplete", validator.ValidatorID)
-			}
-			penaltyMeasurement := cache[penalty.MeasurementArtifact.URI]
-			var verifiedPenalty *validatorpkg.ReleaseMeasurementArtifact
-			if err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], penaltyMeasurement, cache[penalty.MeasurementEnvelope.URI], &verifiedPenalty); err != nil {
-				return fmt.Errorf("validator %d dishonest-deposit measurement decision: %w", validator.ValidatorID, err)
-			}
-			if verifiedPenalty == nil || firstAcceptedMeasurement == nil {
-				return fmt.Errorf("validator %d dishonest-deposit decoded measurement lineage is incomplete", validator.ValidatorID)
-			}
-			if err := validatorpkg.VerifyReleaseMeasurementLineage(penaltyMeasurement, firstAcceptedMeasurement); err != nil {
-				return fmt.Errorf("validator %d dishonest-deposit to acceptance measurement lineage: %w", validator.ValidatorID, err)
+			if penalty := penaltyCycles[validatorIndex]; penalty != nil && len(validator.Cycles) > 0 {
+				penaltyTaskIndexes[validatorIndex] = len(verificationTasks)
+				verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+					var measurement *validatorpkg.ReleaseMeasurementArtifact
+					err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], cache[penalty.MeasurementArtifact.URI], cache[penalty.MeasurementEnvelope.URI], &measurement)
+					return measurement, err
+				})
 			}
 		}
 	}
-	if err := verifyFinalHeadTournamentTransitionArtifacts(evidence, cache); err != nil {
+	verificationResults := runFinalSemanticArtifactVerificationTasks(ctx, verificationTasks, finalSemanticArtifactVerificationWorkers(len(verificationTasks)))
+	lineageTaskIndexes := make([][]int, len(evidence.Validators))
+	penaltyLineageTaskIndexes := make([]int, len(evidence.Validators))
+	for index := range penaltyLineageTaskIndexes {
+		penaltyLineageTaskIndexes[index] = -1
+	}
+	lineageTasks := make([]finalSemanticArtifactVerificationTask, 0)
+	for validatorIndex := range evidence.Validators {
+		validator := &evidence.Validators[validatorIndex]
+		lineageTaskIndexes[validatorIndex] = make([]int, len(validator.Cycles))
+		for index := range lineageTaskIndexes[validatorIndex] {
+			lineageTaskIndexes[validatorIndex][index] = -1
+		}
+		for cycleIndex := 1; cycleIndex < len(validator.Cycles); cycleIndex++ {
+			previousCycle := &validator.Cycles[cycleIndex-1]
+			currentResult := verificationResults[cycleTaskIndexes[validatorIndex][cycleIndex]]
+			lineageTaskIndexes[validatorIndex][cycleIndex] = len(lineageTasks)
+			lineageTasks = append(lineageTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+				if currentResult.measurement == nil {
+					return nil, nil
+				}
+				err := validatorpkg.VerifyReleaseMeasurementLineage(cache[previousCycle.MeasurementArtifact.URI], currentResult.measurement)
+				return currentResult.measurement, err
+			})
+		}
+		if penalty := penaltyCycles[validatorIndex]; penalty != nil && len(validator.Cycles) > 0 && penaltyTaskIndexes[validatorIndex] >= 0 {
+			firstResult := verificationResults[cycleTaskIndexes[validatorIndex][0]]
+			penaltyLineageTaskIndexes[validatorIndex] = len(lineageTasks)
+			lineageTasks = append(lineageTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+				if firstResult.measurement == nil {
+					return nil, nil
+				}
+				err := validatorpkg.VerifyReleaseMeasurementLineage(cache[penalty.MeasurementArtifact.URI], firstResult.measurement)
+				return firstResult.measurement, err
+			})
+		}
+	}
+	lineageResults := runFinalSemanticArtifactVerificationTasks(ctx, lineageTasks, finalSemanticArtifactVerificationWorkers(len(lineageTasks)))
+	verifiedMeasurements := make(map[string]*validatorpkg.ReleaseMeasurementArtifact, len(verificationTasks))
+	for validatorIndex := range evidence.Validators {
+		validator := &evidence.Validators[validatorIndex]
+		var firstAcceptedMeasurement *validatorpkg.ReleaseMeasurementArtifact
+		for cycleIndex := range validator.Cycles {
+			cycle := &validator.Cycles[cycleIndex]
+			result := verificationResults[cycleTaskIndexes[validatorIndex][cycleIndex]]
+			if result.err != nil {
+				return fmt.Errorf("validator %d epoch %d measurement decision: %w", validator.ValidatorID, cycle.SettlementEpoch, result.err)
+			}
+			if cycleIndex > 0 {
+				lineageResult := lineageResults[lineageTaskIndexes[validatorIndex][cycleIndex]]
+				if lineageResult.err != nil {
+					return fmt.Errorf("validator %d epoch %d measurement lineage: %w", validator.ValidatorID, cycle.SettlementEpoch, lineageResult.err)
+				}
+			} else {
+				firstAcceptedMeasurement = result.measurement
+			}
+			verifiedMeasurements[cycle.MeasurementArtifact.URI] = result.measurement
+		}
+		if evidence.DishonestDeposit != nil {
+			penalty := penaltyCycles[validatorIndex]
+			if penalty == nil || len(validator.Cycles) == 0 {
+				return fmt.Errorf("validator %d dishonest-deposit measurement lineage is incomplete", validator.ValidatorID)
+			}
+			penaltyResult := verificationResults[penaltyTaskIndexes[validatorIndex]]
+			if penaltyResult.err != nil {
+				return fmt.Errorf("validator %d dishonest-deposit measurement decision: %w", validator.ValidatorID, penaltyResult.err)
+			}
+			if penaltyResult.measurement == nil || firstAcceptedMeasurement == nil {
+				return fmt.Errorf("validator %d dishonest-deposit decoded measurement lineage is incomplete", validator.ValidatorID)
+			}
+			lineageResult := lineageResults[penaltyLineageTaskIndexes[validatorIndex]]
+			if lineageResult.err != nil {
+				return fmt.Errorf("validator %d dishonest-deposit to acceptance measurement lineage: %w", validator.ValidatorID, lineageResult.err)
+			}
+		}
+	}
+	if err := verifyFinalHeadTournamentTransitionArtifactsWithMeasurements(evidence, cache, verifiedMeasurements); err != nil {
 		return err
 	}
 	if err := verifyFinalValidatorViewTransitionArtifact(evidence, cache[evidence.ValidatorView.Artifact.URI]); err != nil {
@@ -3553,6 +3686,10 @@ func verifyFinalSignedCycleFleetIdentity(identity finalHeadFleetManifestIdentity
 }
 
 func verifyFinalHeadTournamentTransitionArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte) error {
+	return verifyFinalHeadTournamentTransitionArtifactsWithMeasurements(evidence, cache, nil)
+}
+
+func verifyFinalHeadTournamentTransitionArtifactsWithMeasurements(evidence *FinalSemanticEvidence, cache map[string][]byte, measurements map[string]*validatorpkg.ReleaseMeasurementArtifact) error {
 	plan, err := verifyFinalSetupPlanArtifact(evidence, cache[evidence.PlanArtifact.URI])
 	if err != nil {
 		return err
@@ -3578,7 +3715,9 @@ func verifyFinalHeadTournamentTransitionArtifacts(evidence *FinalSemanticEvidenc
 		}
 		ownersByFleet[binding.FleetID][client] = binding.NoID
 	}
-	measurements := map[string]*validatorpkg.ReleaseMeasurementArtifact{}
+	if measurements == nil {
+		measurements = map[string]*validatorpkg.ReleaseMeasurementArtifact{}
+	}
 	for index := range evidence.HeadTransitions {
 		transition := &evidence.HeadTransitions[index]
 		if transition.ChallengerFleetID == 0 || transition.ChallengerFleetID > uint64(len(evidence.HeadFleets)) {

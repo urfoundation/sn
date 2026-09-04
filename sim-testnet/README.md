@@ -26,6 +26,20 @@ then reruns the affected test matrix. This division does not relax any gate or
 authorize a simulator write; the normal plan-hash and `--apply` boundaries
 still control all testnet mutations.
 
+## Host concurrency
+
+The release binary uses Go's effective `GOMAXPROCS` for CPU-bound evidence
+verification and starts one bounded worker per independent signed validator
+cycle, dishonest-deposit decision, lineage edge, or lifecycle decision, up to
+that processor limit. Results are joined and inspected in canonical evidence
+order, so scheduling cannot change the reported first failure. The live
+topology also runs 20 miner-swarm processes, two validator processes, two claim
+swarms, and the operator services concurrently. An individual process may show
+100% while its ordered setup, nonce, or block-finality path is active; inspect
+the complete supervisor process group to measure campaign-wide CPU use. Chain
+mutations sharing a signer and causally ordered lineage transitions remain
+serial by design.
+
 ## Pre-launch approval
 
 The testnet inputs are stored under testnet-prefixed keys in

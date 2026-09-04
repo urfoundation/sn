@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,6 +57,71 @@ const (
 	finalSemanticFixtureViewWithheldFleetID    = finalHeadCandidateCount
 	finalSemanticFixtureViewReplacementFleetID = fleetLifecycleTargetFleet
 )
+
+// The release verifier must use more than one worker for independent signed
+// cycles without letting completion order change the canonical failure order.
+func TestFinalSemanticArtifactVerificationTasksRunConcurrentlyInCanonicalOrder(t *testing.T) {
+	available := runtime.GOMAXPROCS(0)
+	if got := finalSemanticArtifactVerificationWorkers(available + 3); got != available {
+		t.Fatalf("release verification workers = %d, want all %d available processors", got, available)
+	}
+	if got := finalSemanticArtifactVerificationWorkers(2); got != min(2, available) {
+		t.Fatalf("bounded release verification workers = %d, want %d", got, min(2, available))
+	}
+	if got := finalSemanticArtifactVerificationWorkers(0); got != 0 {
+		t.Fatalf("empty release verification workers = %d, want 0", got)
+	}
+	firstStarted := make(chan struct{})
+	secondCompleted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstErr := errors.New("first canonical failure")
+	secondErr := errors.New("second canonical failure")
+	firstMeasurement := &validatorpkg.ReleaseMeasurementArtifact{ValidatorID: 1}
+	secondMeasurement := &validatorpkg.ReleaseMeasurementArtifact{ValidatorID: 2}
+	tasks := []finalSemanticArtifactVerificationTask{
+		func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+			close(firstStarted)
+			<-releaseFirst
+			return firstMeasurement, firstErr
+		},
+		func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
+			<-firstStarted
+			close(secondCompleted)
+			return secondMeasurement, secondErr
+		},
+	}
+	done := make(chan []finalSemanticArtifactVerificationResult, 1)
+	go func() {
+		done <- runFinalSemanticArtifactVerificationTasks(context.Background(), tasks, 2)
+	}()
+	select {
+	case <-secondCompleted:
+	case <-time.After(5 * time.Second):
+		close(releaseFirst)
+		<-done
+		t.Fatal("independent semantic verification tasks did not overlap")
+	}
+	close(releaseFirst)
+	var results []finalSemanticArtifactVerificationResult
+	select {
+	case results = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("parallel semantic verification tasks did not join")
+	}
+	if len(results) != 2 || results[0].measurement != firstMeasurement || results[1].measurement != secondMeasurement || !errors.Is(results[0].err, firstErr) || !errors.Is(results[1].err, secondErr) {
+		t.Fatalf("parallel semantic results lost canonical task slots: %+v", results)
+	}
+	var canonicalErr error
+	for _, result := range results {
+		if result.err != nil {
+			canonicalErr = result.err
+			break
+		}
+	}
+	if !errors.Is(canonicalErr, firstErr) {
+		t.Fatalf("canonical parallel error = %v, want %v", canonicalErr, firstErr)
+	}
+}
 
 // These local wire projections deliberately reproduce the public settlement
 // protocol instead of reaching into validator internals. The fixture thereby
@@ -1663,22 +1729,31 @@ func cloneFinalSemanticFixtureArtifacts(source map[string][]byte) map[string][]b
 // immutable canonical graph only once for the current test binary.
 func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
 	t.Helper()
-	finalSemanticFixtureCache.stateLock.Lock()
-	defer finalSemanticFixtureCache.stateLock.Unlock()
-	if len(finalSemanticFixtureCache.evidenceBytes) == 0 {
-		source, artifacts := buildFinalSemanticFixture(t)
-		encoded, err := json.Marshal(&source)
-		if err != nil {
-			t.Fatal(err)
+	var evidenceBytes []byte
+	var artifactURIBytes map[string][]byte
+	func() {
+		finalSemanticFixtureCache.stateLock.Lock()
+		defer finalSemanticFixtureCache.stateLock.Unlock()
+		if len(finalSemanticFixtureCache.evidenceBytes) == 0 {
+			source, artifacts := buildFinalSemanticFixture(t)
+			encoded, err := json.Marshal(&source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			finalSemanticFixtureCache.evidenceBytes = append([]byte(nil), encoded...)
+			finalSemanticFixtureCache.artifactURIBytes = cloneFinalSemanticFixtureArtifacts(artifacts)
 		}
-		finalSemanticFixtureCache.evidenceBytes = append([]byte(nil), encoded...)
-		finalSemanticFixtureCache.artifactURIBytes = cloneFinalSemanticFixtureArtifacts(artifacts)
-	}
+		evidenceBytes = finalSemanticFixtureCache.evidenceBytes
+		artifactURIBytes = finalSemanticFixtureCache.artifactURIBytes
+	}()
+	// Cache values are immutable after first publication. Decode and deep-copy
+	// them outside the initialization lock so parallel release tests can use
+	// the available CPUs instead of serializing on a test-only mutex.
 	var source FinalSemanticEvidence
-	if err := json.Unmarshal(finalSemanticFixtureCache.evidenceBytes, &source); err != nil {
+	if err := json.Unmarshal(evidenceBytes, &source); err != nil {
 		t.Fatal(err)
 	}
-	return source, cloneFinalSemanticFixtureArtifacts(finalSemanticFixtureCache.artifactURIBytes)
+	return source, cloneFinalSemanticFixtureArtifacts(artifactURIBytes)
 }
 
 // buildFinalSemanticFixture derives the complete 1,000-miner, 202-candidate,
