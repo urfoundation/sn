@@ -86,7 +86,10 @@ MinIO and Subtensor are the only external shared services.
 The active release pin is Subtensor runtime 453, transaction version 1, source
 tag `v453`, commit `823bdcbc58a29f60b243be4737a7c72b34ac7d93`, and finalized
 Wasm storage hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4`.
-The source-to-chain identity and five-delta compatibility review are recorded in
+The mandatory release gate also executes the exact v451/v452/v453 on-chain
+artifacts under a storage-free host boundary and reproduces the complete
+version, code and metadata identities in
+`docs/spec/runtime-metadata-artifacts.json`. The source-to-chain identity and five-delta compatibility review are recorded in
 [`docs/spec/runtime-v453-audit.md`](../docs/spec/runtime-v453-audit.md).
 
 Runtime 453 retains the distinction between atomic alpha transfers (`TransferToggle`, managed by
@@ -230,6 +233,9 @@ shortfall without persisting or broadcasting transaction bytes.
 - Network reachability to the selected operational Substrate/EVM pair, public
   comparison endpoints, and existing MinIO service. Private fallback additionally
   requires the overlay gateway.
+- Rust 1.89 with Cargo, plus `curl`, `jq`, `sha256sum` and `xxd`. The first
+  exact-runtime gate builds its pinned restricted Wasm executor in the sibling
+  `temp/runtime-metadata-probe-target` cache; later gates reuse that target.
 - Foundry 1.7.1 build commit
   `4072e48705af9d93e3c0f6e29e93b5e9a40caed8` only for developer
   rebuild/review. The release gate also requires the exact clean, commit-pinned

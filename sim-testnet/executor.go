@@ -734,7 +734,7 @@ func (e *Executor) consumedActionTransaction(action Action, verified JournalEntr
 	if verified.Stage != StageVerified || verified.ActionID != action.ID || !actionAcceptsIntent(action, verified.IntentHash) || !e.plan.allowedPlanHashes()[verified.PlanHash] {
 		return JournalEntry{}, fmt.Errorf("consumed action %s has invalid verified plan evidence", action.ID)
 	}
-	transaction, ok := e.journal.LatestTransaction(verified.PlanHash, action.ID, action.IntentHash)
+	transaction, ok := e.journal.LatestTransaction(verified.PlanHash, action.ID, verified.IntentHash)
 	if !ok || transaction.Stage != StageFinalized {
 		return JournalEntry{}, fmt.Errorf("consumed action %s has no finalized transaction evidence", action.ID)
 	}
@@ -826,10 +826,18 @@ func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, ac
 	return e.verifyHistoricalEVMPostcondition(ctx, action, record)
 }
 
-func (e *Executor) verifyConsumedActionHistory(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition) error {
+func (e *Executor) verifyConsumedActionHistory(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedNativeHead *ChainHead) error {
 	transaction, err := e.consumedActionTransaction(action, verified)
 	if err == nil {
-		return e.verifySubstrateTransactionEvidence(
+		if sharedNativeHead != nil {
+			return e.verifySubstrateTransactionEvidenceAtHead(
+				ctx,
+				ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
+				transaction.TransactionHash,
+				*sharedNativeHead,
+			)
+		}
+		return e.verifySubstrateTransactionEvidence(ctx,
 			ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
 			transaction.TransactionHash,
 		)
@@ -854,7 +862,7 @@ func (e *Executor) verifyVerifiedActionState(ctx context.Context, action Action,
 	if err != nil {
 		return fmt.Errorf("persisted postcondition: %w", err)
 	}
-	return e.verifyVerifiedActionStateWithRecord(ctx, action, verified, record, nil)
+	return e.verifyVerifiedActionStateWithRecord(ctx, action, verified, record, nil, nil)
 }
 
 // These postconditions are wholly local or native-chain observations. Keep
@@ -1046,7 +1054,7 @@ func (e *Executor) fleetInstallBatchSuperseded(action Action) (bool, error) {
 	return verified, nil
 }
 
-func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead *ChainHead) error {
+func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead, sharedNativeHead *ChainHead) error {
 	if e.carriedFleetHistoryKeys[carriedVerificationKey(verified)] {
 		if record == nil || action.ID != verified.ActionID || record.PlanHash != verified.PlanHash || record.ActionID != verified.ActionID || record.IntentHash != verified.IntentHash || !actionAcceptsIntent(action, verified.IntentHash) {
 			return errors.New("batched historical fleet receipt identity mismatch")
@@ -1092,6 +1100,17 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 		}
 		return nil
 	}
+	// Point-in-time native transfers with exact finalized transaction evidence
+	// are expected to be consumed. Prove their receipt directly instead of
+	// first issuing a live balance read whose failure is the normal path.
+	if !actionRequiresCurrentPostcondition(verifiedAction) {
+		if _, transactionErr := verifier.consumedActionTransaction(verifiedAction, verified); transactionErr == nil {
+			if historyErr := verifier.verifyConsumedActionHistory(ctx, verifiedAction, verified, record, sharedNativeHead); historyErr != nil {
+				return fmt.Errorf("historical postcondition: %w", historyErr)
+			}
+			return nil
+		}
+	}
 	if actionRequiresCurrentPostcondition(action) {
 		if err := verifier.verifyCurrentActionPostState(ctx, verifiedAction, sharedEVMHead); err != nil {
 			return fmt.Errorf("current postcondition: %w", err)
@@ -1102,7 +1121,7 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 	if currentErr == nil {
 		return nil
 	}
-	if historyErr := e.verifyConsumedActionHistory(ctx, action, verified, record); historyErr != nil {
+	if historyErr := verifier.verifyConsumedActionHistory(ctx, verifiedAction, verified, record, sharedNativeHead); historyErr != nil {
 		return fmt.Errorf("current postcondition: %v; historical postcondition: %w", currentErr, historyErr)
 	}
 	return nil
@@ -3361,7 +3380,7 @@ func (e *Executor) reconcileAlphaTransfer(ctx context.Context, action Action) er
 	if err != nil || block == 0 {
 		return fmt.Errorf("alpha reconciliation %s has invalid recovery block", action.ID)
 	}
-	if err := e.verifySubstrateTransactionEvidence(ChainHead{Number: block, Hash: action.Parameters[alphaRecoveryBlockHashParameter]}, action.Parameters[alphaRecoveryTransactionHashParameter]); err != nil {
+	if err := e.verifySubstrateTransactionEvidence(ctx, ChainHead{Number: block, Hash: action.Parameters[alphaRecoveryBlockHashParameter]}, action.Parameters[alphaRecoveryTransactionHashParameter]); err != nil {
 		return fmt.Errorf("alpha reconciliation %s canonical transaction: %w", action.ID, err)
 	}
 	kind, index, err := alphaTransferTargetFromActionID(action.ID)
@@ -3706,10 +3725,10 @@ const (
 	carriedActionProgressInterval    = 50
 )
 
-// Execute independent read-only audits concurrently, but report the first
-// failure in canonical plan order. This keeps diagnostics deterministic while
-// avoiding a linear multi-hour replay as the 1,000-miner release accumulates
-// hundreds of finalized funding and registration proofs.
+// Execute independent read-only audits in bounded concurrent batches, but
+// report the first failure in canonical plan order. A failed batch prevents
+// later work from reaching a rate-limited public archive after the release is
+// already known to be invalid.
 func runOrderedConcurrentAudits(count, workers int, audit func(int) error) error {
 	if count < 0 || workers <= 0 || audit == nil {
 		return errors.New("concurrent audit configuration is invalid")
@@ -3720,26 +3739,26 @@ func runOrderedConcurrentAudits(count, workers int, audit func(int) error) error
 	if workers > count {
 		workers = count
 	}
-	jobs := make(chan int, count)
-	errs := make([]error, count)
-	var wait sync.WaitGroup
-	wait.Add(workers)
-	for worker := 0; worker < workers; worker++ {
-		go func() {
-			defer wait.Done()
-			for index := range jobs {
-				errs[index] = audit(index)
+	for first := 0; first < count; first += workers {
+		last := first + workers
+		if last > count {
+			last = count
+		}
+		errs := make([]error, last-first)
+		var wait sync.WaitGroup
+		wait.Add(last - first)
+		for index := first; index < last; index++ {
+			index := index
+			go func() {
+				defer wait.Done()
+				errs[index-first] = audit(index)
+			}()
+		}
+		wait.Wait()
+		for _, err := range errs {
+			if err != nil {
+				return err
 			}
-		}()
-	}
-	for index := 0; index < count; index++ {
-		jobs <- index
-	}
-	close(jobs)
-	wait.Wait()
-	for _, err := range errs {
-		if err != nil {
-			return err
 		}
 	}
 	return nil
@@ -3808,12 +3827,29 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 		sharedEVMHead = &head
 		break
 	}
+	var sharedNativeHead *ChainHead
+	for _, audit := range audits {
+		if actionRequiresCurrentPostcondition(audit.action) {
+			continue
+		}
+		if _, transactionErr := e.consumedActionTransaction(audit.action, audit.entry); transactionErr == nil {
+			if e.substrate == nil {
+				return errors.New("prepare carried native checkpoint: Substrate postcondition client is unavailable")
+			}
+			nativeHash, nativeNumber, err := e.substrate.finalizedHeadContext(ctx)
+			if err != nil {
+				return fmt.Errorf("prepare carried native checkpoint: %w", err)
+			}
+			sharedNativeHead = &ChainHead{Number: nativeNumber, Hash: nativeHash.Hex()}
+			break
+		}
+	}
 	var completed atomic.Uint64
 	if err := runOrderedConcurrentAudits(len(audits), carriedActionVerificationWorkers, func(index int) error {
 		audit := audits[index]
 		auditCtx, cancel := context.WithTimeout(ctx, carriedActionVerificationTimeout)
 		defer cancel()
-		err := e.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEVMHead)
+		err := e.verifyVerifiedActionStateWithRecord(auditCtx, audit.action, audit.entry, audit.record, sharedEVMHead, sharedNativeHead)
 		count := completed.Add(1)
 		if count%carriedActionProgressInterval == 0 || count == uint64(len(audits)) {
 			fmt.Fprintf(os.Stderr, "sim-testnet: carried action audit %d/%d\n", count, len(audits))

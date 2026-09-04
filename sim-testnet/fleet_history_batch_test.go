@@ -380,7 +380,7 @@ func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
 	executor.carriedFleetHistoryKeys = keys
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, supersession.sourceEntry, supersession.sourceRecord, nil); err != nil {
+	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, supersession.sourceEntry, supersession.sourceRecord, nil, nil); err != nil {
 		t.Fatalf("exact preverified action was replayed: %v", err)
 	}
 	tamperedRecord := *supersession.sourceRecord
@@ -389,12 +389,12 @@ func TestCarriedFleetHistoryBatchCachesOnlyExactVerifiedAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	tamperedRecord.Observed["finalized_block"] = 8
-	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, supersession.sourceEntry, &tamperedRecord, nil); err == nil {
+	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, supersession.sourceEntry, &tamperedRecord, nil, nil); err == nil {
 		t.Fatal("tampered receipt body inherited the historical fleet cache")
 	}
 	adjacent := supersession.sourceEntry
 	adjacent.PostconditionHash = "0x" + strings.Repeat("99", 32)
-	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, adjacent, supersession.sourceRecord, nil); err == nil {
+	if err := executor.verifyVerifiedActionStateWithRecord(cancelled, supersession.sourceAction, adjacent, supersession.sourceRecord, nil, nil); err == nil {
 		t.Fatal("adjacent postcondition hash inherited the historical fleet cache")
 	}
 }

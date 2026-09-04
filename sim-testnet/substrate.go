@@ -1271,19 +1271,75 @@ func (m *SubstrateManager) Runtime453PruneCandidate() (uint16, error) {
 	return runtime453PruneCandidate(neurons, minimumNonImmune)
 }
 
+// Preserves the contextless compatibility surface for existing callers.
 func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
-	hash, err := m.chain.API.RPC.Chain.GetFinalizedHead()
+	return m.finalizedHeadContext(context.Background())
+}
+
+// Authenticates one finalized checkpoint without allowing a stalled public
+// provider to outlive the caller's release-preflight deadline.
+func (self *SubstrateManager) finalizedHeadContext(ctx context.Context) (types.Hash, uint64, error) {
+	if ctx == nil || self == nil || self.chain == nil || self.chain.API == nil || self.chain.API.Client == nil {
+		return types.Hash{}, 0, errors.New("finalized native checkpoint context is unavailable")
+	}
+	var hashHex string
+	err := retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return self.chain.API.Client.CallContext(attemptCtx, &hashHex, "chain_getFinalizedHead")
+	})
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
-	if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, hash); err != nil {
+	hash, err := types.NewHashFromHexString(hashHex)
+	if err != nil {
+		return types.Hash{}, 0, err
+	}
+	if _, err := readAuthenticatedRuntimeMetadataAtContext(ctx, self.chain, self.cfg, hash); err != nil {
 		return types.Hash{}, 0, fmt.Errorf("authenticate finalized runtime at %s: %w", hash.Hex(), err)
 	}
-	header, err := m.chain.API.RPC.Chain.GetHeader(hash)
+	var header types.Header
+	err = retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return self.chain.API.Client.CallContext(attemptCtx, &header, "chain_getHeader", hash.Hex())
+	})
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
 	return hash, uint64(header.Number), nil
+}
+
+// Resolves one canonical block number through the caller's bounded public-RPC
+// retry and cancellation policy.
+func (self *SubstrateManager) blockHashAtContext(ctx context.Context, block uint64) (types.Hash, error) {
+	if ctx == nil || self == nil || self.chain == nil || self.chain.API == nil || self.chain.API.Client == nil {
+		return types.Hash{}, errors.New("native block-hash context is unavailable")
+	}
+	var hashHex string
+	err := retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return self.chain.API.Client.CallContext(attemptCtx, &hashHex, "chain_getBlockHash", block)
+	})
+	if err != nil {
+		return types.Hash{}, err
+	}
+	hash, err := types.NewHashFromHexString(hashHex)
+	if err != nil {
+		return types.Hash{}, fmt.Errorf("decode native block %d hash: %w", block, err)
+	}
+	return hash, nil
+}
+
+// Reads one exact native header without escaping the caller's retry and
+// cancellation boundary.
+func (self *SubstrateManager) headerAtContext(ctx context.Context, hash types.Hash) (*types.Header, error) {
+	if ctx == nil || self == nil || self.chain == nil || self.chain.API == nil || self.chain.API.Client == nil || hash == (types.Hash{}) {
+		return nil, errors.New("native block-header context is unavailable")
+	}
+	var header types.Header
+	err := retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return self.chain.API.Client.CallContext(attemptCtx, &header, "chain_getHeader", hash.Hex())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &header, nil
 }
 
 // Build a metadata view for an immutable carried block without mutating the
@@ -1291,14 +1347,20 @@ func (m *SubstrateManager) finalizedHead() (types.Hash, uint64, error) {
 // v452 or current v453 artifacts; callers must use this only for historical
 // reads, never to construct or submit a transaction.
 func (m *SubstrateManager) releaseHistoryChainAt(blockHash types.Hash) (*crv4.Chain, error) {
-	if m == nil || m.chain == nil {
+	return m.releaseHistoryChainAtContext(context.Background(), blockHash)
+}
+
+// Propagates cancellation through historical runtime authentication while
+// keeping the shared current signing client immutable.
+func (self *SubstrateManager) releaseHistoryChainAtContext(ctx context.Context, blockHash types.Hash) (*crv4.Chain, error) {
+	if self == nil || self.chain == nil {
 		return nil, errors.New("historical native runtime chain is unavailable")
 	}
-	authenticated, err := readReleaseHistoryRuntimeMetadataAt(m.chain, m.cfg, blockHash)
+	authenticated, err := readReleaseHistoryRuntimeMetadataAtContext(ctx, self.chain, self.cfg, blockHash)
 	if err != nil {
 		return nil, err
 	}
-	historical := *m.chain
+	historical := *self.chain
 	bindAuthenticatedRuntime(&historical, authenticated)
 	return &historical, nil
 }
@@ -1373,7 +1435,7 @@ func (m *SubstrateManager) waitForFinalizedReadCheckpoint(ctx context.Context, b
 	defer cancel()
 	target := ChainHead{Number: block, Hash: hash.Hex()}
 	return waitForFinalizedCheckpoint(waitCtx, target, 500*time.Millisecond, func() (ChainHead, string, error) {
-		finalizedHash, finalizedBlock, err := m.finalizedHead()
+		finalizedHash, finalizedBlock, err := m.finalizedHeadContext(waitCtx)
 		if err != nil {
 			return ChainHead{}, "", err
 		}
@@ -1381,7 +1443,7 @@ func (m *SubstrateManager) waitForFinalizedReadCheckpoint(ctx context.Context, b
 		if finalizedBlock < block {
 			return head, "", nil
 		}
-		canonical, err := m.chain.API.RPC.Chain.GetBlockHash(block)
+		canonical, err := m.blockHashAtContext(waitCtx, block)
 		if err != nil {
 			return head, "", err
 		}
@@ -1515,29 +1577,37 @@ func (m *SubstrateManager) FreeBalance(account [32]byte) (uint64, error) {
 // Read one exact finalized balance through either the current release runtime
 // or the reviewed evidence-only runtime history. Historical metadata is bound
 // to a copy of the client and can never affect signing or later current reads.
-func (m *SubstrateManager) freeBalanceAtBlock(account [32]byte, block uint64, releaseHistory bool) (uint64, error) {
-	_, finalizedBlock, err := m.finalizedHead()
+func (self *SubstrateManager) freeBalanceAtBlockContext(ctx context.Context, account [32]byte, block uint64, releaseHistory bool) (uint64, error) {
+	if ctx == nil {
+		return 0, errors.New("native balance context is unavailable")
+	}
+	_, finalizedBlock, err := self.finalizedHeadContext(ctx)
 	if err != nil {
 		return 0, err
 	}
 	if block > finalizedBlock {
-		return 0, fmt.Errorf("native finalized head %d is behind requested EVM block %d", finalizedBlock, block)
+		return 0, fmt.Errorf("native finalized head %d is behind requested native block %d", finalizedBlock, block)
 	}
-	hash, err := m.chain.API.RPC.Chain.GetBlockHash(block)
+	hash, err := self.blockHashAtContext(ctx, block)
 	if err != nil {
 		return 0, err
 	}
 	if releaseHistory {
-		historical, historyErr := m.releaseHistoryChainAt(hash)
+		historical, historyErr := self.releaseHistoryChainAtContext(ctx, hash)
 		if historyErr != nil {
 			return 0, fmt.Errorf("authenticate requested native history block %d/%s: %w", block, hash.Hex(), historyErr)
 		}
-		return readFreeBalanceAtHash(historical, account, hash)
+		return readFreeBalanceAtHashContext(ctx, historical, account, hash)
 	}
-	if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, hash); err != nil {
+	if _, err := readAuthenticatedRuntimeMetadataAtContext(ctx, self.chain, self.cfg, hash); err != nil {
 		return 0, fmt.Errorf("authenticate requested native block %d/%s: %w", block, hash.Hex(), err)
 	}
-	return m.freeBalanceAtHash(account, hash)
+	return readFreeBalanceAtHashContext(ctx, self.chain, account, hash)
+}
+
+// Preserves the contextless compatibility surface for existing callers.
+func (m *SubstrateManager) freeBalanceAtBlock(account [32]byte, block uint64, releaseHistory bool) (uint64, error) {
+	return m.freeBalanceAtBlockContext(context.Background(), account, block, releaseHistory)
 }
 
 // FreeBalanceAtBlock reads the same native block used by a current EVM
@@ -1547,11 +1617,23 @@ func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (u
 	return m.freeBalanceAtBlock(account, block, false)
 }
 
+// Keeps a current-runtime point-in-time balance read within the caller's
+// cancellation boundary.
+func (self *SubstrateManager) FreeBalanceAtBlockContext(ctx context.Context, account [32]byte, block uint64) (uint64, error) {
+	return self.freeBalanceAtBlockContext(ctx, account, block, false)
+}
+
 // Read a carried receipt's immutable balance through the exact reviewed
 // runtime artifact at that block. This path is evidence-only and unexported so
 // no transaction precondition can silently widen its runtime requirement.
 func (m *SubstrateManager) releaseHistoryFreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error) {
 	return m.freeBalanceAtBlock(account, block, true)
+}
+
+// Keeps an evidence-only historical balance read within the caller's
+// cancellation boundary.
+func (self *SubstrateManager) releaseHistoryFreeBalanceAtBlockContext(ctx context.Context, account [32]byte, block uint64) (uint64, error) {
+	return self.freeBalanceAtBlockContext(ctx, account, block, true)
 }
 
 func (m *SubstrateManager) freeBalanceAtHash(account [32]byte, finalized types.Hash) (uint64, error) {
@@ -1560,20 +1642,36 @@ func (m *SubstrateManager) freeBalanceAtHash(account [32]byte, finalized types.H
 
 // Read runtime 453's u64 System.Account balance at one explicit native hash.
 func readFreeBalanceAtHash(chain *crv4.Chain, account [32]byte, blockHash types.Hash) (uint64, error) {
-	if chain == nil || chain.API == nil {
+	return readFreeBalanceAtHashContext(context.Background(), chain, account, blockHash)
+}
+
+// Reads one account through the caller's cancellation and bounded transient
+// retry policy after its metadata has been authenticated separately.
+func readFreeBalanceAtHashContext(ctx context.Context, chain *crv4.Chain, account [32]byte, blockHash types.Hash) (uint64, error) {
+	if ctx == nil || chain == nil || chain.API == nil || chain.API.Client == nil {
 		return 0, errors.New("native balance chain is unavailable")
 	}
 	key, err := types.CreateStorageKey(chain.Meta, "System", "Account", account[:])
 	if err != nil {
 		return 0, err
 	}
-	var info subtensorAccountInfo
-	ok, err := chain.API.RPC.State.GetStorage(key, &info, blockHash)
+	var encoded *string
+	err = retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return chain.API.Client.CallContext(attemptCtx, &encoded, "state_getStorage", key.Hex(), blockHash.Hex())
+	})
 	if err != nil {
 		return 0, err
 	}
-	if !ok {
+	if encoded == nil {
 		return 0, nil
+	}
+	raw, err := codec.HexDecodeString(*encoded)
+	if err != nil {
+		return 0, err
+	}
+	var info subtensorAccountInfo
+	if err := codec.Decode(raw, &info); err != nil {
+		return 0, err
 	}
 	return uint64(info.Data.Free), nil
 }
@@ -1621,11 +1719,11 @@ func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, p
 		}
 		return m.watchRaw(ctx, planHash, a, raw, hash, prior.RecoveryBlock, prior.RecoveryBlockHash, false)
 	}
-	if _, _, err := m.finalizedHead(); err != nil {
+	if _, _, err := m.finalizedHeadContext(ctx); err != nil {
 		return types.Hash{}, 0, fmt.Errorf("authenticate native runtime before signing: %w", err)
 	}
 	var nonce uint32
-	if err := m.chain.API.Client.Call(&nonce, "system_accountNextIndex", signer.Address); err != nil {
+	if err := m.chain.API.Client.CallContext(ctx, &nonce, "system_accountNextIndex", signer.Address); err != nil {
 		return types.Hash{}, 0, err
 	}
 	raw, err := encodeSignedSubstrateCall(m.chain, signer, call, nonce)
@@ -1638,7 +1736,7 @@ func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, p
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
-	recoveryHash, recoveryBlock, err := m.finalizedHead()
+	recoveryHash, recoveryBlock, err := m.finalizedHeadContext(ctx)
 	if err != nil {
 		return types.Hash{}, 0, err
 	}
@@ -1860,12 +1958,35 @@ func validateHotkeyOwner(label string, actual, expected [32]byte) error {
 	return nil
 }
 
+// Proves one receipt with metadata authenticated at that receipt's exact
+// block, without mutating the shared signing chain.
+func verifyAuthenticatedFinalizedExtrinsicContext(ctx context.Context, chain *crv4.Chain, authenticated authenticatedRuntimeMetadata, blockHash, extrinsicHash types.Hash) error {
+	if ctx == nil || chain == nil || blockHash == (types.Hash{}) || extrinsicHash == (types.Hash{}) || authenticated.Metadata == nil {
+		return errors.New("authenticated finalized extrinsic context is unavailable")
+	}
+	if authenticated.FinalizedHash != blockHash {
+		return fmt.Errorf("authenticated finalized hash %s, receipt block is %s", authenticated.FinalizedHash.Hex(), blockHash.Hex())
+	}
+	if authenticated.Version.SpecName == "" || authenticated.Version.SpecVersion == 0 || authenticated.Version.TransactionVersion == 0 || authenticated.Version.StateVersion == 0 {
+		return errors.New("authenticated finalized extrinsic runtime version is incomplete")
+	}
+	if err := validateRuntimeCodeHash(authenticated.CodeHash, authenticated.CodeHash); err != nil {
+		return fmt.Errorf("authenticated finalized extrinsic code identity: %w", err)
+	}
+	if err := validateRuntimeMetadataHash(authenticated.MetadataHash, authenticated.MetadataHash); err != nil {
+		return fmt.Errorf("authenticated finalized extrinsic metadata identity: %w", err)
+	}
+	finalizedChain := *chain
+	bindAuthenticatedRuntime(&finalizedChain, authenticated)
+	return finalizedChain.VerifyFinalizedExtrinsicContext(ctx, blockHash, extrinsicHash)
+}
+
 func (m *SubstrateManager) appendRecoveredFinality(ctx context.Context, planHash string, a Action, hash types.Hash, receipt *crv4.FinalizedExtrinsic, recoveryBlock uint64, recoveryHash string) (types.Hash, uint64, error) {
 	if receipt == nil || receipt.BlockHash == (types.Hash{}) {
 		return hash, 0, errors.New("recovered substrate finality is incomplete")
 	}
-	if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, receipt.BlockHash); err != nil {
-		return hash, 0, fmt.Errorf("authenticate recovered inclusion runtime: %w", err)
+	if err := verifyReleaseHistoryFinalizedExtrinsicContext(ctx, m.chain, m.cfg, receipt.BlockHash, hash); err != nil {
+		return hash, 0, fmt.Errorf("verify recovered finalized extrinsic: %w", err)
 	}
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: hash.Hex(), BlockNumber: receipt.BlockNumber, BlockHash: receipt.BlockHash.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash}); err != nil {
 		return hash, 0, err
@@ -1877,10 +1998,10 @@ func (m *SubstrateManager) appendRecoveredFinality(ctx context.Context, planHash
 }
 
 func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Action, raw []byte, hash types.Hash, recoveryBlock uint64, recoveryHash string, feeChecked bool) (types.Hash, uint64, error) {
-	if _, _, err := m.finalizedHead(); err != nil {
+	if _, _, err := m.finalizedHeadContext(ctx); err != nil {
 		return hash, 0, err
 	}
-	if receipt, found, err := m.chain.FindFinalizedExtrinsic(ctx, hash, recoveryBlock); err != nil {
+	if receipt, found, err := m.chain.LocateFinalizedExtrinsic(ctx, hash, recoveryBlock); err != nil {
 		return hash, 0, err
 	} else if found {
 		return m.appendRecoveredFinality(ctx, planHash, a, hash, receipt, recoveryBlock, recoveryHash)
@@ -1892,11 +2013,11 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 	if err != nil {
 		return hash, 0, fmt.Errorf("decode substrate recovery checkpoint: %w", err)
 	}
-	canonicalRecovery, err := m.chain.API.RPC.Chain.GetBlockHash(recoveryBlock)
+	canonicalRecovery, err := m.blockHashAtContext(ctx, recoveryBlock)
 	if err != nil || canonicalRecovery != recoveryCheckpoint {
 		return hash, 0, stateMismatchError(err, "substrate recovery checkpoint %d/%s is not canonical", recoveryBlock, recoveryHash)
 	}
-	if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, recoveryCheckpoint); err != nil {
+	if _, err := readAuthenticatedRuntimeMetadataAtContext(ctx, m.chain, m.cfg, recoveryCheckpoint); err != nil {
 		return hash, 0, fmt.Errorf("authenticate substrate recovery runtime before broadcast: %w", err)
 	}
 	if !feeChecked {
@@ -1907,7 +2028,7 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 	statuses := make(chan types.ExtrinsicStatus)
 	sub, err := m.chain.API.Client.Subscribe(ctx, "author", "submitAndWatchExtrinsic", "unwatchExtrinsic", "extrinsicUpdate", statuses, codec.HexEncodeToString(raw))
 	if err != nil {
-		if receipt, found, scanErr := m.chain.FindFinalizedExtrinsic(ctx, hash, recoveryBlock); scanErr == nil && found {
+		if receipt, found, scanErr := m.chain.LocateFinalizedExtrinsic(ctx, hash, recoveryBlock); scanErr == nil && found {
 			return m.appendRecoveredFinality(ctx, planHash, a, hash, receipt, recoveryBlock, recoveryHash)
 		}
 		return types.Hash{}, 0, err
@@ -1928,7 +2049,7 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 			}
 			if status.IsInBlock {
 				included = status.AsInBlock
-				header, e := m.chain.API.RPC.Chain.GetHeader(included)
+				header, e := m.headerAtContext(ctx, included)
 				if e == nil {
 					if err := m.journal.Append(JournalEntry{DeploymentID: m.cfg.Config.Deployment.DeploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageIncluded, TransactionHash: hash.Hex(), BlockNumber: uint64(header.Number), BlockHash: included.Hex(), RecoveryBlock: recoveryBlock, RecoveryBlockHash: recoveryHash}); err != nil {
 						return hash, 0, err
@@ -1936,13 +2057,14 @@ func (m *SubstrateManager) watchRaw(ctx context.Context, planHash string, a Acti
 				}
 			}
 			if status.IsFinalized {
-				if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, status.AsFinalized); err != nil {
+				authenticated, err := readAuthenticatedRuntimeMetadataAtContext(ctx, m.chain, m.cfg, status.AsFinalized)
+				if err != nil {
 					return hash, 0, fmt.Errorf("authenticate inclusion runtime: %w", err)
 				}
-				if e := m.chain.VerifyFinalizedExtrinsic(status.AsFinalized, hash); e != nil {
+				if e := verifyAuthenticatedFinalizedExtrinsicContext(ctx, m.chain, authenticated, status.AsFinalized, hash); e != nil {
 					return hash, 0, e
 				}
-				header, e := m.chain.API.RPC.Chain.GetHeader(status.AsFinalized)
+				header, e := m.headerAtContext(ctx, status.AsFinalized)
 				if e != nil {
 					return hash, 0, e
 				}

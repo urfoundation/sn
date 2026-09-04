@@ -240,12 +240,12 @@ type registrationNativeBalanceFixture struct {
 	releaseHistoryBlocks []uint64
 }
 
-func (self *registrationNativeBalanceFixture) FreeBalanceAtBlock(_ [32]byte, block uint64) (uint64, error) {
+func (self *registrationNativeBalanceFixture) FreeBalanceAtBlockContext(_ context.Context, _ [32]byte, block uint64) (uint64, error) {
 	self.currentBlocks = append(self.currentBlocks, block)
 	return block + 1_000_000, nil
 }
 
-func (self *registrationNativeBalanceFixture) releaseHistoryFreeBalanceAtBlock(_ [32]byte, block uint64) (uint64, error) {
+func (self *registrationNativeBalanceFixture) releaseHistoryFreeBalanceAtBlockContext(_ context.Context, _ [32]byte, block uint64) (uint64, error) {
 	self.releaseHistoryBlocks = append(self.releaseHistoryBlocks, block)
 	return block + 2_000_000, nil
 }
@@ -264,11 +264,11 @@ func TestCarriedRegistrationBalanceUsesReviewedRuntimeHistoryAtUpgradeBoundary(t
 		t.Fatalf("carried registration checkpoint = %d history=%t, want 7895362/true: %v", block, releaseHistory, err)
 	}
 	reader := &registrationNativeBalanceFixture{}
-	before, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{1}, block-1)
+	before, err := readRegistrationNativeBalance(context.Background(), reader, releaseHistory, [32]byte{1}, block-1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{1}, block)
+	after, err := readRegistrationNativeBalance(context.Background(), reader, releaseHistory, [32]byte{1}, block)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,14 +290,14 @@ func TestCurrentRegistrationBalanceRemainsStrictlyReleaseRuntimeBound(t *testing
 		t.Fatalf("current registration checkpoint = %d history=%t, want 8000000/false: %v", block, releaseHistory, err)
 	}
 	reader := &registrationNativeBalanceFixture{}
-	value, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{2}, block)
+	value, err := readRegistrationNativeBalance(context.Background(), reader, releaseHistory, [32]byte{2}, block)
 	if err != nil || value != 9_000_000 || !slices.Equal(reader.currentBlocks, []uint64{8_000_000}) || len(reader.releaseHistoryBlocks) != 0 {
 		t.Fatalf("current registration reads current=%v history=%v value=%d err=%v", reader.currentBlocks, reader.releaseHistoryBlocks, value, err)
 	}
 }
 
 func TestRegistrationBalanceReaderRejectsMissingDependency(t *testing.T) {
-	if _, err := readRegistrationNativeBalance(nil, true, [32]byte{}, 7_895_361); err == nil {
+	if _, err := readRegistrationNativeBalance(context.Background(), nil, true, [32]byte{}, 7_895_361); err == nil {
 		t.Fatal("missing registration native balance reader was accepted")
 	}
 }
@@ -396,7 +396,7 @@ func TestConsumedEVMFundingHistoryReplaysConvergedBalanceAfterGasSpend(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executor.verifyConsumedActionHistory(context.Background(), action, entry, authenticated); err != nil {
+	if err := executor.verifyConsumedActionHistory(context.Background(), action, entry, authenticated, nil); err != nil {
 		t.Fatalf("converged funding history was not replayed: %v", err)
 	}
 	historicalSelector := "0x" + new(big.Int).SetUint64(fixture.historical.Number).Text(16)

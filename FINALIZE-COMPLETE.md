@@ -783,6 +783,60 @@ freeze approval:
   removed or copied. The deterministic ordinary/race compatibility selections
   and simulator vet pass. This source change supersedes the earlier freeze,
   producer result, release lock, doctor, and plan; all must be regenerated.
+- the next attempt-4 resume used SN `6a6c74f` and read-only plan
+  `0xc6780c45cb140eb4bd24a8bcbe21ae9a6a3cce706f8da581c7094efef7202b0f`
+  (2,298 actions, including 2,198 carried-history audits). It stopped before
+  its first mutation when the public Substrate provider returned `Historical
+  work rate limit exceeded` while authenticating `fleet.fund.167`. The journal
+  remains exactly 10,040 entries; its last entry is the 2026-09-02
+  `topology.launch` postcondition, so this failed preflight consumed no nonce or
+  spend. Root-cause review found that every carried receipt downloaded the
+  complete 334-KiB historical metadata response, often through two paths, and
+  the concurrent audit scheduler dispatched every later receipt after the
+  earliest failure. The adjacent lineage audit also found that a verified
+  ancestor intent could be accepted while transaction lookup incorrectly used
+  the descendant intent.
+- the current candidate repair rechecks complete runtime version and
+  `System.Code` at every historical block but singleflights exact metadata per
+  independently dialed provider and complete `(version, code, metadata)` tuple.
+  Successful bytes alone are cached; cancellation and failures cannot poison
+  the cache; it is bounded to the exact v451/v452/v453 identities and cannot
+  satisfy the strict v453 signing boundary. Carried audits now run in ordered
+  eight-item batches and stop before dispatching the next batch after failure;
+  exact verified ancestor intent selects its own transaction. All affected RPC
+  reads carry the five-minute per-audit cancellation boundary. Deterministic
+  tests cover singleflight, provider isolation, drift, failure/cancellation,
+  the fourth-identity bound, exact historical throttling/retry, strict-current
+  isolation, both serial and concurrent fail-fast barriers, and ancestor-intent
+  lookup. The broad affected selection passed normally in 55.380 seconds and
+  under the race detector in 205.110 seconds with `GOMAXPROCS=24`; simulator
+  and CRv4 vet passed in 5.397 seconds. The later adjacent live-write audit
+  also found context loss and latest-metadata dispatch verification in native
+  watch/recovery. Finalized-head, block/hash/header, nonce, block body, event
+  and read-checkpoint RPCs now preserve caller cancellation. Recovery locates
+  inclusion first, then verifies dispatch exactly once with metadata
+  authenticated at that receipt's block on a private chain copy before a
+  finalized journal append. Deterministic ordinary/race tests cover the
+  cancellation, exact-block association, malformed identity and immutable
+  signing-client boundaries. Frozen-gate qualification remains mandatory.
+- static-source review found an important proof gap before launch: generated
+  metadata includes executable constant getters, so source equality and a
+  no-`TestExternalities` upstream test alone cannot prove state independence.
+  `docs/spec/runtime-metadata-artifacts.json`,
+  `scripts/check-runtime-metadata-artifacts.sh`, and the pinned Rust tool under
+  `tools/runtime-metadata-probe` close that gap. The mandatory producer and
+  aggregate gates authenticate the testnet genesis and observation block,
+  match each exact compressed artifact to on-chain `System.Code`, and execute
+  `Core_version`/`Metadata_metadata` with only allocator, logging and hashing
+  host functions. They require exact version, size, SHA-256, BLAKE2b-256,
+  metadata-v14 and no trailing SCALE bytes; invoking a storage host function is
+  a deterministic hard-failure test. Separate clean detached upstream builds
+  passed `runtime/tests/metadata.rs` 1/1 at each exact v451/v452/v453 commit.
+  Those builds emitted raw, not compact deployed, Wasm and are correctly used
+  only as source-test corroboration. The exact compressed artifact gate passed
+  all three versions against the public testnet endpoint at 2026-09-04 15:36
+  UTC; the frozen producer and aggregate gates must repeat it after the source
+  and release lock are committed.
 
 Do not infer an unselected full Server model/repository pass, aggregate pass,
 or live campaign result from the focused records. The source freeze and
@@ -799,9 +853,10 @@ producer pass are separately recorded above.
 | Aggregate gate with DB tests | current rerun pending | `5257b2f` attempt reached ordinary simulator tests and timed out at exactly 600.146s with no assertion failure |
 | Foundry | pass in producer; aggregate rerun pending | 156/0/0; 4,608 invariant calls |
 | Slither | prior 0 high/medium; final pending | |
+| Exact v451/v452/v453 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all three versions at 2026-09-04 15:36 UTC; static source and three upstream metadata tests also pass |
 | Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | focused qualification pass; freeze rerun pending | `8c29d561be77b8c4fa5b9f47311c31f2f9957b39` |
+| SN runtime candidate | focused qualification pass; exact revision and freeze rerun pending | candidate based on `6a6c74f0a1f07577a8abaebbb864446ebaaf9e4c`; normal/race/vet and adjacent watch/recovery regressions pass |
 | Server frozen commit | pass | `2b09692ac256fbc380a46bc7f957fdf8c510add6` |
 | Other frozen repository commits | pass | exact eleven non-SN revisions in section 2; final source-freeze fence passed |
 | Release-lock hash | refreshed; commit/freeze test pending | `sha256:c221b19964ba95c395bc4f04228a87433d0bda80fed27ce1f2ef880e3f48ecfd` |

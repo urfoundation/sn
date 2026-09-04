@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -735,16 +736,19 @@ func TestConsumedActionHistoryUsesItsVerifiedAncestorPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer journal.Close()
-	action := Action{ID: "evm.fund-owner", IntentHash: "same-intent", Kind: "substrate-extrinsic"}
+	action := Action{
+		ID: "evm.fund-owner", IntentHash: "current-intent", Kind: "substrate-extrinsic",
+		AcceptedPriorIntentHashes: []string{"ancestor-intent"},
+	}
 	finalized := JournalEntry{
-		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: "ancestor-intent",
 		Stage: StageFinalized, TransactionHash: "0xancestor-transaction", BlockNumber: 10, BlockHash: "0xancestor-block",
 	}
 	if err := journal.Append(finalized); err != nil {
 		t.Fatal(err)
 	}
 	verified := JournalEntry{
-		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: action.IntentHash,
+		DeploymentID: "deployment", PlanHash: "ancestor", ActionID: action.ID, IntentHash: "ancestor-intent",
 		Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/evm.fund-owner.json",
 	}
 	if err := journal.Append(verified); err != nil {
@@ -762,6 +766,66 @@ func TestConsumedActionHistoryUsesItsVerifiedAncestorPlan(t *testing.T) {
 	wrongPlan.PlanHash = "unapproved"
 	if _, err := executor.consumedActionTransaction(action, wrongPlan); err == nil {
 		t.Fatal("unapproved ancestor evidence was accepted")
+	}
+}
+
+// Stops at the first failed batch so an invalid release cannot continue
+// consuming public archive quota on work that cannot affect the outcome.
+func TestOrderedConcurrentAuditsStopDispatchAfterFailure(t *testing.T) {
+	called := make([]bool, 10)
+	err := runOrderedConcurrentAudits(len(called), 1, func(index int) error {
+		called[index] = true
+		if index == 3 {
+			return errors.New("stop")
+		}
+		return nil
+	})
+	if err == nil || err.Error() != "stop" {
+		t.Fatalf("ordered audit failure=%v", err)
+	}
+	for index, wasCalled := range called {
+		wantCalled := index <= 3
+		if wasCalled != wantCalled {
+			t.Fatalf("audit %d called=%t, want %t", index, wasCalled, wantCalled)
+		}
+	}
+}
+
+// Preserves the bounded-batch guarantee with real concurrency: all work in
+// the failing batch may finish, but no index in the next batch can start.
+func TestOrderedConcurrentAuditsStopBeforeNextConcurrentBatch(t *testing.T) {
+	const workers = 3
+	called := make([]atomic.Bool, 9)
+	started := make(chan int, workers)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- runOrderedConcurrentAudits(len(called), workers, func(index int) error {
+			called[index].Store(true)
+			if index < workers {
+				started <- index
+				<-release
+				if index == 1 {
+					return errors.New("stop concurrent batch")
+				}
+			}
+			return nil
+		})
+	}()
+	for index := 0; index < workers; index++ {
+		startedIndex := <-started
+		if startedIndex >= workers {
+			t.Fatalf("later audit %d started before the first batch completed", startedIndex)
+		}
+	}
+	close(release)
+	if err := <-done; err == nil || err.Error() != "stop concurrent batch" {
+		t.Fatalf("ordered concurrent audit failure=%v", err)
+	}
+	for index := workers; index < len(called); index++ {
+		if called[index].Load() {
+			t.Fatalf("later-batch audit %d ran after a prior batch failed", index)
+		}
 	}
 }
 

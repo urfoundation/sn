@@ -12,6 +12,9 @@ printf '%s\n' "$release_source_snapshot"
 echo "[release-1.0] runtime 453 source attestation"
 "$sn_repo/scripts/check-runtime-v453-source.sh"
 
+echo "[release-1.0] exact runtime metadata artifact attestation"
+"$sn_repo/scripts/check-runtime-metadata-artifacts.sh"
+
 if ! command -v forge >/dev/null 2>&1 && [[ -x "$HOME/.foundry/bin/forge" ]]; then
   export PATH="$HOME/.foundry/bin:$PATH"
 fi

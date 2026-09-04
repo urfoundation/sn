@@ -773,24 +773,43 @@ func precompileEvidenceComplete(evidence *PrecompileConformanceEvidence) bool {
 		evidence.Dividend.FinalizedHead.Number <= evidence.Transfer.BlockNumber
 }
 
-func (e *Executor) verifySubstrateTransactionEvidence(recorded ChainHead, transactionHash string) error {
-	if e.substrate == nil || !validConformanceTransaction(transactionHash, recorded.Hash, recorded.Number) {
+// Resolves one fresh strict finalized head for callers outside the shared
+// carried-history preflight.
+func (self *Executor) verifySubstrateTransactionEvidence(ctx context.Context, recorded ChainHead, transactionHash string) error {
+	if self.substrate == nil || !validConformanceTransaction(transactionHash, recorded.Hash, recorded.Number) {
 		return errors.New("Substrate transaction evidence is incomplete")
 	}
-	finalizedHash, finalizedNumber, err := e.substrate.finalizedHead()
+	finalizedHash, finalizedNumber, err := self.substrate.finalizedHeadContext(ctx)
 	if err != nil {
 		return err
 	}
-	canonical, err := e.substrate.chain.API.RPC.Chain.GetBlockHash(recorded.Number)
+	return self.verifySubstrateTransactionEvidenceAtHead(ctx, recorded, transactionHash, ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()})
+}
+
+// Reuses one strictly authenticated finalized head during a bounded carried-
+// receipt audit. Native finality is monotonic, while each receipt still proves
+// its own canonical block hash, exact runtime artifact and dispatch event.
+func (self *Executor) verifySubstrateTransactionEvidenceAtHead(ctx context.Context, recorded ChainHead, transactionHash string, finalized ChainHead) error {
+	if ctx == nil || self == nil || self.substrate == nil || !validConformanceTransaction(transactionHash, recorded.Hash, recorded.Number) || finalized.Number == 0 || finalized.Hash == "" {
+		return errors.New("Substrate transaction evidence or finalized checkpoint is incomplete")
+	}
+	var canonicalHex string
+	err := retryFinalSemanticRPCCall(ctx, nil, releaseRuntimeRPCRetryPolicy(), func(attemptCtx context.Context) error {
+		return self.substrate.chain.API.Client.CallContext(attemptCtx, &canonicalHex, "chain_getBlockHash", recorded.Number)
+	})
 	if err != nil {
 		return err
 	}
-	ready, err := checkpointVisibility(recorded, ChainHead{Number: finalizedNumber, Hash: finalizedHash.Hex()}, canonical.Hex())
+	canonical, err := gsrpcTypes.NewHashFromHexString(canonicalHex)
+	if err != nil {
+		return err
+	}
+	ready, err := checkpointVisibility(recorded, finalized, canonical.Hex())
 	if err != nil {
 		return err
 	}
 	if !ready {
-		return fmt.Errorf("recorded Substrate block %d is not finalized (head %d)", recorded.Number, finalizedNumber)
+		return fmt.Errorf("recorded Substrate block %d is not finalized (head %d)", recorded.Number, finalized.Number)
 	}
 	blockHash, err := gsrpcTypes.NewHashFromHexString(recorded.Hash)
 	if err != nil {
@@ -800,7 +819,7 @@ func (e *Executor) verifySubstrateTransactionEvidence(recorded ChainHead, transa
 	if err != nil {
 		return err
 	}
-	return verifyReleaseHistoryFinalizedExtrinsic(e.substrate.chain, e.cfg, blockHash, txHash)
+	return verifyReleaseHistoryFinalizedExtrinsicContext(ctx, self.substrate.chain, self.cfg, blockHash, txHash)
 }
 
 func batteryTupleCompatible(evidence *PrecompileConformanceEvidence, tuple *precompileBatteryTuple, nominatorMinimum uint64) bool {
@@ -847,9 +866,9 @@ func (e *Executor) verifyPrecompileChainEvidence(ctx context.Context, action Act
 	var blockNumber uint64
 	switch action.ID {
 	case "precompile.commitment-write":
-		return e.verifySubstrateTransactionEvidence(evidence.Commitment.WriteFinalizedHead, evidence.Commitment.WriteTransactionHash)
+		return e.verifySubstrateTransactionEvidence(ctx, evidence.Commitment.WriteFinalizedHead, evidence.Commitment.WriteTransactionHash)
 	case "precompile.commitment-restore":
-		if err := e.verifySubstrateTransactionEvidence(evidence.Commitment.RestoreFinalizedHead, evidence.Commitment.RestoreTransactionHash); err != nil {
+		if err := e.verifySubstrateTransactionEvidence(ctx, evidence.Commitment.RestoreFinalizedHead, evidence.Commitment.RestoreTransactionHash); err != nil {
 			return err
 		}
 		canonical, decodeErr := decodeHex32("precompile canonical commitment", evidence.Commitment.CanonicalHash)

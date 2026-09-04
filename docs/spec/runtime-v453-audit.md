@@ -73,22 +73,30 @@ once and encoded as canonical unsigned JSON integers. Missing, string, signed,
 fractional, exponent, duplicate, overflowing and trailing encodings fail before
 metadata can drive a storage key or call. It then checks the exact code and raw
 SCALE metadata digests from the release lock and binds that authenticated
-metadata plus spec/transaction versions to the client. Setup, planning,
-execution, revision and read-only scenario paths use the same binding helper.
+metadata plus spec/transaction versions to the client. Operational setup,
+planning, execution and revision re-check the complete version and `:code` at
+every requested block. Each independently dialed connection downloads, decodes
+and hashes the large metadata bytes once per exact reviewed
+`(version, code hash, metadata hash)` tuple, then reuses that immutable decoded
+object only after the per-block version and code checks match the same tuple.
+Concurrent loads are singleflighted; failures are never cached; the cache is
+hard-bounded to the three reviewed artifacts and is not shared across providers.
 Signed deployment and production manifests disclose spec, transaction and
 state versions plus the code and metadata hashes; readers compare all five to
 the locally authenticated release lock. Secretless readers require the same
 reviewed `453/1/1` and exact artifact hashes rather than allowing a manifest
-signer to redefine release 1.0. Public semantic replay also reads the complete
-version object, `System.Code` hash and raw SCALE metadata at
+signer to redefine release 1.0. Public semantic replay deliberately remains
+outside that operational cache. It reads the complete version object,
+`System.Code` hash and raw SCALE metadata at
 each metadata-driven native checkpoint at or after the signed campaign start,
 compares them to that signed manifest, and records all three authoritative
 responses in its immutable transcript. The archive-retention preflight likewise
 authenticates its public endpoint's current finalized version, code and metadata
 before it trusts historical-availability probes. Carried pre-campaign finalized
 setup receipts remain explicit runtime-451/452 compatibility evidence: replay
-requires exact `451/1/1` or `452/1/1` versions plus the known code and metadata
-hashes at each block, without relabeling those historical bytes as runtime 453.
+requires exact `451/1/1` or `452/1/1` versions and code hashes at each block,
+then selects only metadata whose exact bytes previously matched that tuple's
+known digest, without relabeling those historical bytes as runtime 453.
 Historical native-funding reconciliation also requires its recovery and
 inclusion checkpoints to share one complete artifact identity and reconstructs
 the signed bytes with that authenticated historical metadata/version.
@@ -110,7 +118,53 @@ SUBTENSOR_RUNTIME_SOURCE=/absolute/path/to/subtensor \
   scripts/check-runtime-v453-source.sh
 ```
 
-This gate proves that the reviewed implementation and regression-test bytes are
+The source gate also pins the code and upstream test which corroborate the
+artifact-level result instead of inferring purity from a generator alone. The upstream
+`release-v451` branch and tags `v452` and `v453` resolve respectively to commits
+`d78d9cc6a6ee4d805f74a35414baaef8be025a5f`,
+`da06f033663896ef2fdbbfc3ecc68ca908fba0f5` and
+`823bdcbc58a29f60b243be4737a7c72b34ac7d93`. In each pinned
+`runtime/src/lib.rs`, `sp_api::Metadata::metadata()` delegates directly to
+`Runtime::metadata()`. The three pinned refs carry byte-identical metadata
+generation source at
+`support/procedural-fork/src/construct_runtime/expand/metadata.rs` (SHA-256
+`17f41b4de6093b44aa28b2cd47d91af0f3f1e7a576c236f7070a3c35dd3f7b96`),
+whose generated metadata IR contains type/pallet declarations, constants,
+signed extensions, runtime API descriptors and outer enums. Because associated
+constant implementations are executable Rust, the generator alone is not
+treated as proof that metadata is independent of chain state. The byte-identical upstream
+`runtime/tests/metadata.rs` calls the complete `Runtime::metadata()` path before
+installing any `TestExternalities`; release qualification executes that pinned
+test for all three refs. The nine exact source identities are locked in
+`docs/spec/runtime-metadata-static-source.sha256`.
+
+The authoritative cache-reuse qualification executes the deployed artifacts,
+not a locally rebuilt approximation:
+
+```bash
+scripts/check-runtime-metadata-artifacts.sh
+```
+
+`docs/spec/runtime-metadata-artifacts.json` binds the testnet genesis, three
+observation heights and hashes, exact source commits, runtime versions, artifact
+locations, sizes, SHA-256 and BLAKE2b-256 digests, metadata sizes/digests and
+FRAME metadata version. The checker resolves each block number again and
+compares its `System.Code` storage hash. Runtime 451's complete compressed Wasm
+is fetched from `state_getStorage(:code)` at its pinned historical block;
+runtimes 452 and 453 use their immutable official release assets after matching
+those bytes to the corresponding on-chain code hashes. The independently locked
+Rust tool under `tools/runtime-metadata-probe` uses polkadot-sdk revision
+`cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a` to execute `Core_version` and
+`Metadata_metadata`. Its host-function tuple exposes only allocation, logging
+and hashing. Missing imports may link so a normal compressed runtime can load,
+but invoking a storage or offchain import is an execution failure; a synthetic
+runtime that invokes `ext_storage_get_version_1` deterministically tests that
+boundary. Both runtime API envelopes and the complete FRAME metadata require
+exact SCALE decoding with no trailing bytes. Cache reuse is admitted only after
+all those checks reproduce the manifest's exact values for v451, v452 and v453;
+no such property is inferred for an unreviewed runtime.
+
+The source gate proves that the reviewed implementation and regression-test bytes are
 the bytes at commit `823bdcbc58a29f60b243be4737a7c72b34ac7d93`; it does not
 compile the runtime or execute FRAME. The authoritative Terra run used the
 following commands from a clean detached checkout at that exact commit. Clang
@@ -142,6 +196,22 @@ All ten named regressions passed: 10 passed, 0 failed, 0 ignored. The first
 runtime test required about 9 minutes 49 seconds for the initial compile; the
 two runtime tests completed in about 4.8 seconds with that persistent target
 warm. These timings are recorded observations, not weakened test timeouts.
+
+The metadata integration test was also run from separate clean detached
+checkouts of each exact v451/v452/v453 source commit with the checkout-specific
+workspace hint and one external target:
+
+```bash
+WASM_BUILD_WORKSPACE_HINT="$PWD" \
+  CARGO_TARGET_DIR=/absolute/persistent/subtensor-metadata-target \
+  cargo test --locked -p node-subtensor-runtime --test metadata test_metadata
+```
+
+Each ref passed 1/1 with none failed or ignored. Those builds emitted a raw
+local Wasm whose packaging and bytes differ from the compact deployed artifact,
+so their hashes are not used as artifact provenance. The mandatory exact-Wasm
+checker above operates on the compressed bytes independently authenticated
+against testnet.
 
 ## Reviewed deltas
 

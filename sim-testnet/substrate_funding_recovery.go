@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -284,8 +285,8 @@ func verifiedSubstrateFundingDescendant(cfg *ResolvedConfig, stateDir string, pr
 
 // Authenticate signed bytes, canonical history, historical balance, and live
 // convergence for the sole idempotent native-write recovery family.
-func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, chain *crv4.Chain, raw []byte, transaction planRevisionTransaction) (finalizedSubstrateFundingRecovery, error) {
-	if cfg == nil || prior == nil || chain == nil || chain.API == nil || len(raw) == 0 || transaction.TransactionHash == "" || transaction.Signer == "" || transaction.Nonce == "" || transaction.RecoveryBlock == 0 || transaction.RecoveryBlockHash == "" || transaction.BlockNumber == 0 || transaction.BlockHash == "" {
+func detectFinalizedSubstrateFundingRecovery(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, chain *crv4.Chain, raw []byte, transaction planRevisionTransaction) (finalizedSubstrateFundingRecovery, error) {
+	if ctx == nil || cfg == nil || prior == nil || chain == nil || chain.API == nil || len(raw) == 0 || transaction.TransactionHash == "" || transaction.Signer == "" || transaction.Nonce == "" || transaction.RecoveryBlock == 0 || transaction.RecoveryBlockHash == "" || transaction.BlockNumber == 0 || transaction.BlockHash == "" {
 		return finalizedSubstrateFundingRecovery{}, errors.New("successful native funding recovery context is incomplete")
 	}
 	sourcePlan, err := loadSubstrateFundingLineagePlan(stateDir, prior, transaction.PlanHash)
@@ -323,24 +324,21 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	finalizedHash, err := chain.API.RPC.Chain.GetFinalizedHead()
+	nativeManager := &SubstrateManager{chain: chain, cfg: cfg}
+	finalizedHash, finalizedBlock, err := nativeManager.finalizedHeadContext(ctx)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	finalizedHeader, err := chain.API.RPC.Chain.GetHeader(finalizedHash)
-	if err != nil {
-		return finalizedSubstrateFundingRecovery{}, err
-	}
-	canonicalRecovery, recoveryErr := chain.API.RPC.Chain.GetBlockHash(transaction.RecoveryBlock)
-	canonicalInclusion, inclusionErr := chain.API.RPC.Chain.GetBlockHash(transaction.BlockNumber)
-	if recoveryErr != nil || inclusionErr != nil || uint64(finalizedHeader.Number) < transaction.BlockNumber || transaction.RecoveryBlock >= transaction.BlockNumber || canonicalRecovery != recoveryHash || canonicalInclusion != inclusionHash {
+	canonicalRecovery, recoveryErr := nativeManager.blockHashAtContext(ctx, transaction.RecoveryBlock)
+	canonicalInclusion, inclusionErr := nativeManager.blockHashAtContext(ctx, transaction.BlockNumber)
+	if recoveryErr != nil || inclusionErr != nil || finalizedBlock < transaction.BlockNumber || transaction.RecoveryBlock >= transaction.BlockNumber || canonicalRecovery != recoveryHash || canonicalInclusion != inclusionHash {
 		return finalizedSubstrateFundingRecovery{}, stateMismatchError(errors.Join(recoveryErr, inclusionErr), "substrate-funding recovery and inclusion checkpoints are not canonical and ordered")
 	}
-	recoveryRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, recoveryHash)
+	recoveryRuntime, err := readReleaseHistoryRuntimeMetadataAtContext(ctx, chain, cfg, recoveryHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate substrate-funding recovery runtime: %w", err)
 	}
-	inclusionRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, inclusionHash)
+	inclusionRuntime, err := readReleaseHistoryRuntimeMetadataAtContext(ctx, chain, cfg, inclusionHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate substrate-funding inclusion runtime: %w", err)
 	}
@@ -349,7 +347,7 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 		!strings.EqualFold(recoveryRuntime.MetadataHash, inclusionRuntime.MetadataHash) {
 		return finalizedSubstrateFundingRecovery{}, errors.New("substrate-funding recovery crossed a runtime identity boundary")
 	}
-	if err := verifyReleaseHistoryFinalizedExtrinsic(chain, cfg, inclusionHash, transactionHash); err != nil {
+	if err := verifyReleaseHistoryFinalizedExtrinsicContext(ctx, chain, cfg, inclusionHash, transactionHash); err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("substrate-funding finalized transaction: %w", err)
 	}
 	recoveryChain := *chain
@@ -364,11 +362,11 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	recoveryBalance, err := readFreeBalanceAtHash(&recoveryChain, account, recoveryHash)
+	recoveryBalance, err := readFreeBalanceAtHashContext(ctx, &recoveryChain, account, recoveryHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding recovery balance: %w", err)
 	}
-	inclusionBalance, err := readFreeBalanceAtHash(&inclusionChain, account, inclusionHash)
+	inclusionBalance, err := readFreeBalanceAtHashContext(ctx, &inclusionChain, account, inclusionHash)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding inclusion balance: %w", err)
 	}
@@ -378,13 +376,13 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	}
 	currentBalance := action.Spend.TAORao
 	if !descendantVerified {
-		currentRuntime, runtimeErr := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalizedHash)
+		currentRuntime, runtimeErr := readAuthenticatedRuntimeMetadataAtContext(ctx, chain, cfg, finalizedHash)
 		if runtimeErr != nil {
 			return finalizedSubstrateFundingRecovery{}, fmt.Errorf("authenticate current substrate-funding runtime: %w", runtimeErr)
 		}
 		currentChain := *chain
 		bindAuthenticatedRuntime(&currentChain, currentRuntime)
-		currentBalance, err = readFreeBalanceAtHash(&currentChain, account, finalizedHash)
+		currentBalance, err = readFreeBalanceAtHashContext(ctx, &currentChain, account, finalizedHash)
 		if err != nil {
 			return finalizedSubstrateFundingRecovery{}, fmt.Errorf("read substrate-funding current balance: %w", err)
 		}
@@ -393,8 +391,8 @@ func detectFinalizedSubstrateFundingRecovery(cfg *ResolvedConfig, stateDir strin
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}
-	manager := &SubstrateManager{chain: &recoveryChain, cfg: cfg}
-	call, err := manager.FundCall(account, transfer)
+	recoveryManager := &SubstrateManager{chain: &recoveryChain, cfg: cfg}
+	call, err := recoveryManager.FundCall(account, transfer)
 	if err != nil {
 		return finalizedSubstrateFundingRecovery{}, err
 	}

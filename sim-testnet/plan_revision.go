@@ -1025,7 +1025,7 @@ func validateFailedSubstrateRevisionTransaction(ctx context.Context, chain *crv4
 		return err
 	}
 	proveFailure := func(blockHash substrateTypes.Hash) error {
-		verificationErr := verifyReleaseHistoryFinalizedExtrinsic(chain, cfg, blockHash, txHash)
+		verificationErr := verifyReleaseHistoryFinalizedExtrinsicContext(ctx, chain, cfg, blockHash, txHash)
 		var dispatchError *crv4.FinalizedDispatchError
 		if errors.As(verificationErr, &dispatchError) {
 			return nil
@@ -1040,19 +1040,16 @@ func validateFailedSubstrateRevisionTransaction(ctx context.Context, chain *crv4
 		if hashErr != nil {
 			return hashErr
 		}
-		finalizedHash, finalizedErr := chain.API.RPC.Chain.GetFinalizedHead()
+		manager := &SubstrateManager{chain: chain, cfg: cfg}
+		_, finalizedBlock, finalizedErr := manager.finalizedHeadContext(ctx)
 		if finalizedErr != nil {
 			return finalizedErr
 		}
-		finalizedHeader, finalizedErr := chain.API.RPC.Chain.GetHeader(finalizedHash)
-		if finalizedErr != nil {
-			return finalizedErr
-		}
-		canonicalHash, canonicalErr := chain.API.RPC.Chain.GetBlockHash(transaction.BlockNumber)
+		canonicalHash, canonicalErr := manager.blockHashAtContext(ctx, transaction.BlockNumber)
 		if canonicalErr != nil {
 			return canonicalErr
 		}
-		if uint64(finalizedHeader.Number) < transaction.BlockNumber || canonicalHash != blockHash {
+		if finalizedBlock < transaction.BlockNumber || canonicalHash != blockHash {
 			return errors.New("prior native transaction inclusion is not canonical and finalized")
 		}
 		return proveFailure(blockHash)
@@ -1312,7 +1309,7 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 					if recoverableFinalizedAlphaTransaction(prior, entries, transaction) || reconciled {
 						continue
 					}
-					recovery, recoveryErr := detectFinalizedSubstrateFundingRecovery(cfg, stateDir, prior, entries, substrateChain, raw, transaction)
+					recovery, recoveryErr := detectFinalizedSubstrateFundingRecovery(ctx, cfg, stateDir, prior, entries, substrateChain, raw, transaction)
 					if recoveryErr == nil {
 						recoveries.SubstrateFundings = append(recoveries.SubstrateFundings, recovery)
 						continue

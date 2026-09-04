@@ -530,10 +530,45 @@ func TestReleaseGatesBracketWorkWithExactSourceFreezeSnapshots(t *testing.T) {
 	}
 }
 
+// Mirrors the strict release manifest so unknown or missing provenance fields
+// fail the deterministic gate test before the network-backed checker runs.
+type releaseRuntimeMetadataArtifactManifest struct {
+	SchemaVersion         uint32                           `json:"schema_version"`
+	Network               string                           `json:"network"`
+	SubstrateRPCURL       string                           `json:"substrate_rpc_url"`
+	GenesisHash           string                           `json:"genesis_hash"`
+	RuntimeSpecName       string                           `json:"runtime_spec_name"`
+	TransactionVersion    uint32                           `json:"transaction_version"`
+	StateVersion          uint8                            `json:"state_version"`
+	MetadataVersion       uint32                           `json:"metadata_version"`
+	RuntimeCodeStorageKey string                           `json:"runtime_code_storage_key"`
+	PolkadotSDKRevision   string                           `json:"polkadot_sdk_revision"`
+	Artifacts             []releaseRuntimeMetadataArtifact `json:"artifacts"`
+}
+
+// Binds one historical observation to its exact source ref, Wasm bytes and
+// runtime-produced metadata bytes.
+type releaseRuntimeMetadataArtifact struct {
+	SpecVersion          uint32  `json:"spec_version"`
+	SourceRefKind        string  `json:"source_ref_kind"`
+	SourceRefName        string  `json:"source_ref_name"`
+	SourceCommit         string  `json:"source_commit"`
+	ObservationBlock     uint64  `json:"observation_block"`
+	ObservationBlockHash string  `json:"observation_block_hash"`
+	CodeSource           string  `json:"code_source"`
+	CodeURL              *string `json:"code_url"`
+	CodeSize             uint64  `json:"code_size"`
+	CodeSHA256           string  `json:"code_sha256"`
+	CodeBlake2b256       string  `json:"code_blake2b_256"`
+	MetadataSize         uint64  `json:"metadata_size"`
+	MetadataSHA256       string  `json:"metadata_sha256"`
+	MetadataBlake2b256   string  `json:"metadata_blake2b_256"`
+}
+
 // Go decision models are useful supplements, but they cannot prove what the
 // deployed FRAME runtime contains. Require both release entry points to hash
-// the exact reviewed upstream Rust sources and regression tests at the tag's
-// immutable commit before any local gate work begins.
+// the exact reviewed upstream Rust sources and execute the exact observed Wasm
+// under a storage-free host boundary before any local gate work begins.
 func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 	manifestBytes, err := os.ReadFile("../docs/spec/runtime-v453-source.sha256")
 	if err != nil {
@@ -572,6 +607,101 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 			t.Errorf("runtime 453 source manifest omits %s", path)
 		}
 	}
+	metadataManifestBytes, err := os.ReadFile("../docs/spec/runtime-metadata-static-source.sha256")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataRows := strings.Split(strings.TrimSpace(string(metadataManifestBytes)), "\n")
+	if len(metadataRows) != 9 {
+		t.Fatalf("runtime metadata source manifest has %d rows, want 9", len(metadataRows))
+	}
+	wantMetadataCommits := map[string]string{
+		"head:release-v451": "d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
+		"tag:v452":          "da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
+		"tag:v453":          "823bdcbc58a29f60b243be4737a7c72b34ac7d93",
+	}
+	seenMetadataPaths := map[string]bool{}
+	for _, row := range metadataRows {
+		fields := strings.Fields(row)
+		if len(fields) != 5 {
+			t.Fatalf("non-canonical runtime metadata source row %q", row)
+		}
+		ref := fields[0] + ":" + fields[1]
+		if wantMetadataCommits[ref] != fields[2] || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(fields[3]) {
+			t.Fatalf("non-canonical runtime metadata source row %q", row)
+		}
+		if fields[4] != "runtime/src/lib.rs" && fields[4] != "runtime/tests/metadata.rs" && fields[4] != "support/procedural-fork/src/construct_runtime/expand/metadata.rs" {
+			t.Fatalf("unexpected runtime metadata source path %q", fields[4])
+		}
+		key := ref + ":" + fields[4]
+		if seenMetadataPaths[key] {
+			t.Fatalf("duplicate runtime metadata source row %q", key)
+		}
+		seenMetadataPaths[key] = true
+	}
+	artifactManifestBytes, err := os.ReadFile("../docs/spec/runtime-metadata-artifacts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var artifactManifest releaseRuntimeMetadataArtifactManifest
+	if err := decodeStrictJSONBytes(artifactManifestBytes, &artifactManifest); err != nil {
+		t.Fatalf("decode runtime metadata artifact manifest: %v", err)
+	}
+	if artifactManifest.SchemaVersion != 1 || artifactManifest.Network != "bittensor-testnet" ||
+		artifactManifest.SubstrateRPCURL != "https://test.finney.opentensor.ai:443" ||
+		artifactManifest.GenesisHash != testnetGenesis || artifactManifest.RuntimeSpecName != "node-subtensor" ||
+		artifactManifest.TransactionVersion != 1 || artifactManifest.StateVersion != 1 || artifactManifest.MetadataVersion != 14 ||
+		artifactManifest.RuntimeCodeStorageKey != "0x3a636f6465" ||
+		artifactManifest.PolkadotSDKRevision != "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" {
+		t.Fatalf("runtime metadata artifact manifest identity=%+v", artifactManifest)
+	}
+	if len(artifactManifest.Artifacts) != 3 {
+		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 3", len(artifactManifest.Artifacts))
+	}
+	wantArtifacts := map[uint32]releaseRuntimeMetadataArtifact{
+		451: {
+			SpecVersion: 451, SourceRefKind: "head", SourceRefName: "release-v451", SourceCommit: "d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
+			ObservationBlock: 7887357, ObservationBlockHash: "0x1e708e8ce43d0205a7b9841874d7c3fa59bcc100af5f6dc6f7e087ea7b2d92ac",
+			CodeSource: "substrate-storage", CodeSize: 2514870, CodeSHA256: "7a16d39f2c1f7c9984834a7cede18baf1d08306707bc8aeb0e2409324b2ec56f",
+			CodeBlake2b256: "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08",
+			MetadataSize:   334487, MetadataSHA256: "39787898474fa5d27ce07097c30f1c7ba1472abdcb2c88b7957039eba1144ba7",
+			MetadataBlake2b256: "0xeecd7e7c00377caec23c3dc754fd621963cc456fa5d02a4f66ff267b0494bd9d",
+		},
+		452: {
+			SpecVersion: 452, SourceRefKind: "tag", SourceRefName: "v452", SourceCommit: "da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
+			ObservationBlock: 7891059, ObservationBlockHash: "0x638f2b015e5b6e11b27ee7aaae272f0965ba2f7c1b71dcb50472bfe99676b236",
+			CodeSource: "github-release", CodeSize: 2515476, CodeSHA256: "05616e9ddf330e4c0f880fff1fb155162b7837bb4171b7ffc779680379eb9d8b",
+			CodeBlake2b256: "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc",
+			MetadataSize:   334487, MetadataSHA256: "79fc9235a87651a0cd5b93856d4b5696ffb8a0bd26c6f30a1f1402ac8aaad195",
+			MetadataBlake2b256: "0x2e1d4f992a978fdd58652c8cf434c26bb8f89170e6a0fdbc9362b29e8fe8a835",
+		},
+		453: {
+			SpecVersion: 453, SourceRefKind: "tag", SourceRefName: "v453", SourceCommit: "823bdcbc58a29f60b243be4737a7c72b34ac7d93",
+			ObservationBlock: 7925883, ObservationBlockHash: "0x87c707403ffe5b36afb7796e1bd84126cdbcf181a61f97c3f1491c8354ae96f0",
+			CodeSource: "github-release", CodeSize: 2515038, CodeSHA256: "9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e",
+			CodeBlake2b256: "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4",
+			MetadataSize:   334667, MetadataSHA256: "99380e7d01eccc41ffa1304e782658c86b38ba9986acefa371e79ad367f76658",
+			MetadataBlake2b256: "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce",
+		},
+	}
+	for index, artifact := range artifactManifest.Artifacts {
+		want, ok := wantArtifacts[artifact.SpecVersion]
+		if !ok || artifact.SpecVersion != uint32(451+index) {
+			t.Fatalf("runtime metadata artifact %d has unexpected version %d", index, artifact.SpecVersion)
+		}
+		if artifact.CodeURL != nil {
+			want.CodeURL = artifact.CodeURL
+			wantURL := fmt.Sprintf("https://github.com/RaoFoundation/subtensor/releases/download/v%d/subtensor.wasm", artifact.SpecVersion)
+			if artifact.CodeSource != "github-release" || *artifact.CodeURL != wantURL {
+				t.Fatalf("runtime metadata artifact %d URL/source=%s/%s", artifact.SpecVersion, *artifact.CodeURL, artifact.CodeSource)
+			}
+		} else if artifact.SpecVersion != 451 || artifact.CodeSource != "substrate-storage" {
+			t.Fatalf("runtime metadata artifact %d lacks its release URL", artifact.SpecVersion)
+		}
+		if artifact != want {
+			t.Fatalf("runtime metadata artifact %d=%+v, want %+v", artifact.SpecVersion, artifact, want)
+		}
+	}
 
 	checkerBytes, err := os.ReadFile("../scripts/check-runtime-v453-source.sh")
 	if err != nil {
@@ -584,6 +714,12 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 		"v453",
 		"823bdcbc58a29f60b243be4737a7c72b34ac7d93",
 		"runtime-v453-source.sha256",
+		"runtime-metadata-static-source.sha256",
+		"d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
+		"da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
+		"support/procedural-fork/src/construct_runtime/expand/metadata.rs",
+		"runtime/tests/metadata.rs",
+		"git ls-remote --heads",
 		"git ls-remote --tags",
 		"SUBTENSOR_RUNTIME_SOURCE",
 		"status --porcelain=v1 --untracked-files=all",
@@ -591,6 +727,29 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 	} {
 		if !strings.Contains(checker, required) {
 			t.Errorf("runtime source checker omits %q", required)
+		}
+	}
+	artifactCheckerBytes, err := os.ReadFile("../scripts/check-runtime-metadata-artifacts.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactChecker := string(artifactCheckerBytes)
+	for _, required := range []string{
+		"runtime-metadata-artifacts.json",
+		"tools/runtime-metadata-probe",
+		"Cargo.toml",
+		"chain_getBlockHash",
+		"state_getStorageHash",
+		"state_getStorage",
+		"cargo build",
+		"--locked",
+		"probe_process_ids",
+		"wait \"${probe_process_ids[$spec_version]}\"",
+		"sha256sum",
+		"runtime metadata artifacts verified",
+	} {
+		if !strings.Contains(artifactChecker, required) {
+			t.Errorf("runtime metadata artifact checker omits %q", required)
 		}
 	}
 
@@ -601,9 +760,11 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 		}
 		script := string(scriptBytes)
 		attestation := strings.Index(script, "check-runtime-v453-source.sh")
+		artifactAttestation := strings.Index(script, "check-runtime-metadata-artifacts.sh")
 		preflight := strings.Index(script, "check-release-source-freeze.sh")
-		if strings.Count(script, "check-runtime-v453-source.sh") != 1 || attestation <= preflight {
-			t.Errorf("%s does not attest runtime 453 immediately after source-freeze preflight", scriptPath)
+		if strings.Count(script, "check-runtime-v453-source.sh") != 1 || strings.Count(script, "check-runtime-metadata-artifacts.sh") != 1 ||
+			attestation <= preflight || artifactAttestation <= attestation {
+			t.Errorf("%s does not attest runtime source and exact artifacts immediately after source-freeze preflight", scriptPath)
 		}
 	}
 }

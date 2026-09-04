@@ -1,0 +1,23 @@
+[package]
+name = "runtime-metadata-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Keep this audit tool independent from any Cargo workspace that may later be
+# added above it in the repository.
+[workspace]
+resolver = "2"
+
+[dependencies]
+frame-metadata = "=23.0.0"
+hex = "=0.4.3"
+parity-scale-codec = "=3.7.5"
+sc-executor = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-core = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-io = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-state-machine = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-version = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+
+[dev-dependencies]
+wat = "=1.0.70"

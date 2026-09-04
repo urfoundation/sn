@@ -1779,20 +1779,20 @@ func validateRegistrationBalanceObservation(observation registrationBalanceObser
 // history. Keeping the historical method unexported prevents other packages
 // from treating compatibility artifacts as valid transaction dependencies.
 type registrationNativeBalanceReader interface {
-	FreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error)
-	releaseHistoryFreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error)
+	FreeBalanceAtBlockContext(ctx context.Context, account [32]byte, block uint64) (uint64, error)
+	releaseHistoryFreeBalanceAtBlockContext(ctx context.Context, account [32]byte, block uint64) (uint64, error)
 }
 
 // Route only an authenticated ancestor receipt through runtime history. The
 // active plan always uses the strict release-runtime reader.
-func readRegistrationNativeBalance(reader registrationNativeBalanceReader, releaseHistory bool, account [32]byte, block uint64) (uint64, error) {
-	if reader == nil {
+func readRegistrationNativeBalance(ctx context.Context, reader registrationNativeBalanceReader, releaseHistory bool, account [32]byte, block uint64) (uint64, error) {
+	if ctx == nil || reader == nil {
 		return 0, errors.New("registration native balance reader is unavailable")
 	}
 	if releaseHistory {
-		return reader.releaseHistoryFreeBalanceAtBlock(account, block)
+		return reader.releaseHistoryFreeBalanceAtBlockContext(ctx, account, block)
 	}
-	return reader.FreeBalanceAtBlock(account, block)
+	return reader.FreeBalanceAtBlockContext(ctx, account, block)
 }
 
 func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action, addresses ...common.Address) ([]registrationBalanceObservation, error) {
@@ -1811,11 +1811,11 @@ func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action
 			return nil, fmt.Errorf("read %s registration post-balance at %d: %w", address, block, readErr)
 		}
 		mirror := ss58Mirror(address)
-		nativeBefore, readErr := readRegistrationNativeBalance(e.substrate, releaseHistory, mirror, block-1)
+		nativeBefore, readErr := readRegistrationNativeBalance(ctx, e.substrate, releaseHistory, mirror, block-1)
 		if readErr != nil {
 			return nil, fmt.Errorf("read %s registration pre-free-balance at %d: %w", address, block-1, readErr)
 		}
-		nativeAfter, readErr := readRegistrationNativeBalance(e.substrate, releaseHistory, mirror, block)
+		nativeAfter, readErr := readRegistrationNativeBalance(ctx, e.substrate, releaseHistory, mirror, block)
 		if readErr != nil {
 			return nil, fmt.Errorf("read %s registration post-free-balance at %d: %w", address, block, readErr)
 		}

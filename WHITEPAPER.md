@@ -353,12 +353,23 @@ The upstream release proposal separately binds call hash
 multisig timepoint `8987926:11`; those two proposal fields authenticate the official source release and
 are **not** evidence of its testnet inclusion. Testnet inclusion is proved independently by its finalized
 spec/transaction/state versions, `System.Code` hash and exact metadata digest at the testnet block above.
-Doctor and every release native current-state/signing boundary read the complete runtime version, code hash
-and metadata at an explicit finalized hash and fail closed if any active identity field is missing,
-ambiguously encoded or drifts. Secretless semantic replay repeats all three checks from its signed v453
-campaign start onward; carried pre-campaign receipts retain their exact v451/v452 version, code and metadata
-identities instead of being relabeled. The continuous sentinel repeats complete version and code-hash checks
-on both endpoints.
+Doctor reads the complete runtime version, code hash and metadata at one explicit finalized hash per endpoint.
+Every operational native current-state/signing boundary then re-checks the complete version and code hash at
+its explicit finalized block and selects only metadata whose exact SCALE bytes were already hash-authenticated
+on that independently dialed connection for the same complete reviewed artifact tuple. This content-addressed
+reuse is limited to v451/v452/v453. A mandatory release gate resolves their pinned testnet blocks, authenticates
+the on-chain `System.Code` hashes, obtains the exact chain or official-release Wasm bytes, and executes
+`Core_version` plus `Metadata_metadata` in a pinned Wasm executor exposing only allocator, logging and hashing
+host functions. Any attempted storage/offchain host call is a hard failure. The gate requires the exact
+version tuple, code size/SHA-256/BLAKE2b-256, metadata size/SHA-256/BLAKE2b-256, complete SCALE decode and
+FRAME metadata v14 recorded in `docs/spec/runtime-metadata-artifacts.json`. Pinned upstream metadata tests
+without `TestExternalities` independently corroborate the result. Caches are per provider, singleflighted,
+failure-free and hard-bounded to those three identities; historical identities remain read-only and cannot
+satisfy the v453 signing boundary.
+Secretless semantic replay intentionally downloads and records all three raw responses at every evidence
+checkpoint from its signed v453 campaign start onward; carried pre-campaign receipts retain their exact
+v451/v452 identities instead of being relabeled. The continuous sentinel repeats complete version and
+code-hash checks on both endpoints.
 
 The v452→v453 audit is one upstream release commit and adds five security/economic boundaries. The release
 gate hashes all 12 changed upstream Rust source/test files at the pinned commit; Terra's clean pinned-source

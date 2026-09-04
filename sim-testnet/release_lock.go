@@ -574,9 +574,15 @@ func protocolSourceHash(snRoot string) (string, error) {
 	names = append(names,
 		"WHITEPAPER.md",
 		"VALIDATOR.md",
+		"scripts/check-runtime-metadata-artifacts.sh",
 		"scripts/check-runtime-v453-source.sh",
 		"scripts/test-release-1.0-local.sh",
 		"scripts/test-release-1.0-producer-gate.sh",
+		"tools/runtime-metadata-probe/Cargo.lock",
+		"tools/runtime-metadata-probe/Cargo.toml",
+		"tools/runtime-metadata-probe/rust-toolchain.toml",
+		"tools/runtime-metadata-probe/src/lib.rs",
+		"tools/runtime-metadata-probe/src/main.rs",
 	)
 	return digestTrackedNamedFiles(snRoot, names)
 }

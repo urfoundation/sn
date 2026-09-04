@@ -13,6 +13,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/registry"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/registry/parser"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types/block"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/extrinsic/extensions"
@@ -69,6 +70,10 @@ type Chain struct {
 	Meta        *types.Metadata
 	GenesisHash types.Hash
 	Runtime     *types.RuntimeVersion
+
+	// Shared by read-only copies. Every lookup still checks the requested block's
+	// complete version and :code hash before consulting authenticated bytes.
+	runtimeArtifacts *runtimeMetadataArtifactCache
 }
 
 // FinalizedExtrinsic is the canonical receipt for a native Substrate write.
@@ -116,41 +121,43 @@ func extrinsicIndex(encoded []string, hash types.Hash) (uint32, bool, error) {
 	return 0, false, nil
 }
 
-// VerifyFinalizedExtrinsic proves both canonical inclusion and successful
-// dispatch. A finalized block is not sufficient: Substrate records dispatch
-// errors as System.ExtrinsicFailed events while the containing block remains
-// perfectly valid and finalized. Event storage is decoded with c.Meta directly;
-// release callers bind that metadata only after authenticating its exact-block
-// digest, so a parse which happens to succeed against unrelated latest metadata
-// cannot become evidence.
-func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) error {
-	if c == nil || c.API == nil || c.API.RPC == nil || c.API.RPC.State == nil || c.Meta == nil {
+// Proves canonical inclusion and dispatch success while allowing the caller to
+// cancel both reads. A finalized block is insufficient because Substrate also
+// finalizes dispatch failures. Event storage uses metadata bound to the exact
+// reviewed runtime artifact present at this block.
+func (self *Chain) VerifyFinalizedExtrinsicContext(ctx context.Context, blockHash, extrinsicHash types.Hash) error {
+	if ctx == nil || self == nil || self.API == nil || self.API.Client == nil || self.Meta == nil {
 		return errors.New("crv4: finalized extrinsic metadata context is unavailable")
 	}
-	block, err := c.API.RPC.Chain.GetBlock(blockHash)
-	if err != nil {
+	var signedBlock block.SignedBlock
+	if err := self.API.Client.CallContext(ctx, &signedBlock, "chain_getBlock", blockHash.Hex()); err != nil {
 		return fmt.Errorf("crv4: finalized block %s: %w", blockHash.Hex(), err)
 	}
-	index, found, err := extrinsicIndex(block.Block.Extrinsics, extrinsicHash)
+	index, found, err := extrinsicIndex(signedBlock.Block.Extrinsics, extrinsicHash)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return fmt.Errorf("crv4: extrinsic %s absent from finalized block %s", extrinsicHash.Hex(), blockHash.Hex())
 	}
-	eventsKey, err := types.CreateStorageKey(c.Meta, "System", "Events")
+	eventsKey, err := types.CreateStorageKey(self.Meta, "System", "Events")
 	if err != nil {
 		return fmt.Errorf("crv4: construct finalized events key: %w", err)
 	}
-	eventsRaw, err := c.API.RPC.State.GetStorageRaw(eventsKey, blockHash)
-	if err != nil {
+	var encodedEvents string
+	if err := self.API.Client.CallContext(ctx, &encodedEvents, "state_getStorage", eventsKey.Hex(), blockHash.Hex()); err != nil {
 		return fmt.Errorf("crv4: read finalized events at %s: %w", blockHash.Hex(), err)
 	}
-	eventRegistry, err := registry.NewFactory().CreateEventRegistry(c.Meta)
+	eventsBytes, err := codec.HexDecodeString(encodedEvents)
+	if err != nil {
+		return fmt.Errorf("crv4: decode finalized events storage at %s: %w", blockHash.Hex(), err)
+	}
+	eventsRaw := types.NewStorageDataRaw(eventsBytes)
+	eventRegistry, err := registry.NewFactory().CreateEventRegistry(self.Meta)
 	if err != nil {
 		return fmt.Errorf("crv4: construct finalized event registry: %w", err)
 	}
-	records, err := parser.NewEventParser().ParseEvents(eventRegistry, eventsRaw)
+	records, err := parser.NewEventParser().ParseEvents(eventRegistry, &eventsRaw)
 	if err != nil {
 		return fmt.Errorf("crv4: decode finalized events at %s with bound metadata: %w", blockHash.Hex(), err)
 	}
@@ -161,7 +168,7 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 		}
 		switch event.Name {
 		case "System.ExtrinsicFailed", "ExtrinsicFailed":
-			return &FinalizedDispatchError{ExtrinsicHash: extrinsicHash, BlockHash: blockHash, Detail: formatDecodedEventFields(c.Meta, event.Fields)}
+			return &FinalizedDispatchError{ExtrinsicHash: extrinsicHash, BlockHash: blockHash, Detail: formatDecodedEventFields(self.Meta, event.Fields)}
 		case "System.ExtrinsicSuccess", "ExtrinsicSuccess":
 			success = true
 		}
@@ -170,6 +177,12 @@ func (c *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) er
 		return fmt.Errorf("crv4: extrinsic %s has no System.ExtrinsicSuccess event", extrinsicHash.Hex())
 	}
 	return nil
+}
+
+// Preserves the contextless API for callers outside cancellable release
+// workflows.
+func (self *Chain) VerifyFinalizedExtrinsic(blockHash, extrinsicHash types.Hash) error {
+	return self.VerifyFinalizedExtrinsicContext(context.Background(), blockHash, extrinsicHash)
 }
 
 // Preserve structured dispatch detail and resolve a pallet error through the
@@ -316,15 +329,22 @@ func decodedErrorIndex(value any) ([4]types.U8, bool) {
 // use the returned block to authenticate and bind its exact metadata before
 // proving dispatch success or failure.
 func (c *Chain) LocateFinalizedExtrinsic(ctx context.Context, extrinsicHash types.Hash, fromBlock uint64) (*FinalizedExtrinsic, bool, error) {
+	if ctx == nil || c == nil || c.API == nil || c.API.Client == nil {
+		return nil, false, errors.New("crv4: finalized extrinsic search context is unavailable")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	finalizedHash, err := c.API.RPC.Chain.GetFinalizedHead()
+	var finalizedHashHex string
+	if err := c.API.Client.CallContext(ctx, &finalizedHashHex, "chain_getFinalizedHead"); err != nil {
+		return nil, false, err
+	}
+	finalizedHash, err := types.NewHashFromHexString(finalizedHashHex)
 	if err != nil {
 		return nil, false, err
 	}
-	header, err := c.API.RPC.Chain.GetHeader(finalizedHash)
-	if err != nil {
+	var header types.Header
+	if err := c.API.Client.CallContext(ctx, &header, "chain_getHeader", finalizedHash.Hex()); err != nil {
 		return nil, false, err
 	}
 	finalizedNumber := uint64(header.Number)
@@ -335,15 +355,19 @@ func (c *Chain) LocateFinalizedExtrinsic(ctx context.Context, extrinsicHash type
 		if err := ctx.Err(); err != nil {
 			return nil, false, err
 		}
-		blockHash, err := c.API.RPC.Chain.GetBlockHash(number)
-		if err != nil {
+		var blockHashHex string
+		if err := c.API.Client.CallContext(ctx, &blockHashHex, "chain_getBlockHash", number); err != nil {
 			return nil, false, fmt.Errorf("crv4: block hash %d: %w", number, err)
 		}
-		block, err := c.API.RPC.Chain.GetBlock(blockHash)
+		blockHash, err := types.NewHashFromHexString(blockHashHex)
 		if err != nil {
+			return nil, false, fmt.Errorf("crv4: decode block hash %d: %w", number, err)
+		}
+		var signedBlock block.SignedBlock
+		if err := c.API.Client.CallContext(ctx, &signedBlock, "chain_getBlock", blockHash.Hex()); err != nil {
 			return nil, false, fmt.Errorf("crv4: block %d: %w", number, err)
 		}
-		_, found, err := extrinsicIndex(block.Block.Extrinsics, extrinsicHash)
+		_, found, err := extrinsicIndex(signedBlock.Block.Extrinsics, extrinsicHash)
 		if err != nil {
 			return nil, false, err
 		}
@@ -365,7 +389,7 @@ func (c *Chain) FindFinalizedExtrinsic(ctx context.Context, extrinsicHash types.
 	if err != nil || !found {
 		return receipt, found, err
 	}
-	if err := c.VerifyFinalizedExtrinsic(receipt.BlockHash, extrinsicHash); err != nil {
+	if err := c.VerifyFinalizedExtrinsicContext(ctx, receipt.BlockHash, extrinsicHash); err != nil {
 		return nil, false, err
 	}
 	return receipt, true, nil
@@ -391,7 +415,7 @@ func DialChain(wsURL string) (*Chain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("crv4: runtime version: %w", err)
 	}
-	return &Chain{API: api, Meta: meta, GenesisHash: genesis, Runtime: rv}, nil
+	return &Chain{API: api, Meta: meta, GenesisHash: genesis, Runtime: rv, runtimeArtifacts: newRuntimeMetadataArtifactCache()}, nil
 }
 
 func encodeNetuid(netuid uint16) []byte {

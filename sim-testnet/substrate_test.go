@@ -5,14 +5,21 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	gsrpcblock "github.com/centrifuge/go-substrate-rpc-client/v4/types/block"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
+	"golang.org/x/crypto/blake2b"
+
+	"github.com/urfoundation/sn/crv4"
 )
 
 func TestFinalizedCheckpointWaitsForReadSurfaceAfterSubscription(t *testing.T) {
@@ -56,6 +63,229 @@ func TestFinalizedCheckpointWaitHonorsContext(t *testing.T) {
 	})
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("checkpoint wait ignored its deadline: %v", err)
+	}
+}
+
+// Keeps cancellation attached to the initial authenticated-head read before a
+// recovered transaction scan or rebroadcast can begin.
+func TestWatchRawPropagatesCallerContextToFinalizedHead(t *testing.T) {
+	type callerContextKey struct{}
+	const callerContextValue = "watch-raw"
+	var reachedOnce sync.Once
+	reached := make(chan struct{})
+	client := &releaseRuntimeTestClient{callContext: func(ctx context.Context, _ any, method string, _ ...any) error {
+		if method != "chain_getFinalizedHead" {
+			return errors.New("unexpected watch RPC")
+		}
+		reachedOnce.Do(func() { close(reached) })
+		if ctx.Value(callerContextKey{}) != callerContextValue {
+			return errors.New("watch lost caller context")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	manager := &SubstrateManager{
+		chain: &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}},
+		cfg:   testResolvedConfig(t),
+	}
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), callerContextKey{}, callerContextValue))
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := manager.watchRaw(ctx, "plan", Action{ID: "action", IntentHash: "intent"}, nil, types.Hash{1}, 1, types.Hash{2}.Hex(), true)
+		done <- err
+	}()
+	<-reached
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "lost caller context") {
+		t.Fatalf("canceled watch error=%v", err)
+	}
+}
+
+// Keeps recovered-receipt authentication inside the watcher's cancellation
+// boundary before any durable finalized entry can be appended.
+func TestAppendRecoveredFinalityPropagatesCallerContext(t *testing.T) {
+	type callerContextKey struct{}
+	const callerContextValue = "recovered-finality"
+	var reachedOnce sync.Once
+	reached := make(chan struct{})
+	client := &releaseRuntimeTestClient{callContext: func(ctx context.Context, _ any, method string, _ ...any) error {
+		if method != "state_getRuntimeVersion" {
+			return errors.New("unexpected recovered-finality RPC")
+		}
+		reachedOnce.Do(func() { close(reached) })
+		if ctx.Value(callerContextKey{}) != callerContextValue {
+			return errors.New("recovered finality lost caller context")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	manager := &SubstrateManager{
+		chain:   &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}},
+		cfg:     testResolvedConfig(t),
+		journal: &Journal{},
+	}
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), callerContextKey{}, callerContextValue))
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := manager.appendRecoveredFinality(
+			ctx,
+			"plan",
+			Action{ID: "action", IntentHash: "intent"},
+			types.Hash{1},
+			&crv4.FinalizedExtrinsic{BlockHash: types.Hash{2}, BlockNumber: 9},
+			8,
+			types.Hash{3}.Hex(),
+		)
+		done <- err
+	}()
+	<-reached
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "lost caller context") {
+		t.Fatalf("canceled recovered finality error=%v", err)
+	}
+}
+
+// Uses the exact authenticated metadata on a private chain copy, leaving the
+// shared signing metadata untouched while proving the receipt.
+func TestAuthenticatedFinalizedExtrinsicBindsExactMetadataAndContext(t *testing.T) {
+	type callerContextKey struct{}
+	const callerContextValue = "finalized-receipt"
+	metadata, encodedEventsJSON := finalSemanticSuccessfulDispatchFixture(t, 0)
+	var encodedEvents string
+	if err := json.Unmarshal(encodedEventsJSON, &encodedEvents); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte{1, 2, 3, 4}
+	digest := blake2b.Sum256(raw)
+	extrinsicHash := types.Hash(digest)
+	blockHash := types.Hash{9}
+	calls := 0
+	client := &releaseRuntimeTestClient{callContext: func(ctx context.Context, result any, method string, args ...any) error {
+		if ctx.Value(callerContextKey{}) != callerContextValue {
+			return errors.New("finalized receipt lost caller context")
+		}
+		if len(args) == 0 || args[len(args)-1] != blockHash.Hex() {
+			return errors.New("finalized receipt changed block hash")
+		}
+		calls++
+		switch method {
+		case "chain_getBlock":
+			*(result.(*gsrpcblock.SignedBlock)) = gsrpcblock.SignedBlock{Block: gsrpcblock.Block{Extrinsics: []string{codec.HexEncodeToString(raw)}}}
+		case "state_getStorage":
+			*(result.(*string)) = encodedEvents
+		default:
+			return errors.New("unexpected finalized receipt RPC")
+		}
+		return nil
+	}}
+	sharedMetadata := types.NewMetadataV14()
+	chain := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}, Meta: sharedMetadata}
+	authenticated := authenticatedRuntimeMetadata{
+		FinalizedHash: blockHash,
+		Version:       crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1, StateVersion: 1},
+		CodeHash:      "0x" + strings.Repeat("11", 32),
+		MetadataHash:  "0x" + strings.Repeat("22", 32),
+		Metadata:      metadata,
+	}
+	ctx := context.WithValue(context.Background(), callerContextKey{}, callerContextValue)
+	if err := verifyAuthenticatedFinalizedExtrinsicContext(ctx, chain, authenticated, blockHash, extrinsicHash); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("finalized receipt RPC calls=%d, want 2", calls)
+	}
+	if chain.Meta != sharedMetadata {
+		t.Fatal("receipt verification mutated shared signing metadata")
+	}
+}
+
+// Rejects a receipt/runtime association unless every carried identity field is
+// present and the authenticated block is the exact receipt block.
+func TestAuthenticatedFinalizedExtrinsicRejectsMismatchedAndIncompleteIdentity(t *testing.T) {
+	blockHash := types.Hash{9}
+	extrinsicHash := types.Hash{8}
+	testCases := []struct {
+		name        string
+		mutate      func(*authenticatedRuntimeMetadata)
+		errorDetail string
+	}{
+		{
+			name: "different finalized hash",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.FinalizedHash = types.Hash{7}
+			},
+			errorDetail: "authenticated finalized hash",
+		},
+		{
+			name: "missing spec name",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.Version.SpecName = ""
+			},
+			errorDetail: "runtime version is incomplete",
+		},
+		{
+			name: "missing spec version",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.Version.SpecVersion = 0
+			},
+			errorDetail: "runtime version is incomplete",
+		},
+		{
+			name: "missing transaction version",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.Version.TransactionVersion = 0
+			},
+			errorDetail: "runtime version is incomplete",
+		},
+		{
+			name: "missing state version",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.Version.StateVersion = 0
+			},
+			errorDetail: "runtime version is incomplete",
+		},
+		{
+			name: "missing code hash",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.CodeHash = ""
+			},
+			errorDetail: "code identity",
+		},
+		{
+			name: "malformed metadata hash",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.MetadataHash = "0x1234"
+			},
+			errorDetail: "metadata identity",
+		},
+		{
+			name: "missing decoded metadata",
+			mutate: func(authenticated *authenticatedRuntimeMetadata) {
+				authenticated.Metadata = nil
+			},
+			errorDetail: "context is unavailable",
+		},
+	}
+	client := &releaseRuntimeTestClient{callContext: func(context.Context, any, string, ...any) error {
+		return errors.New("receipt RPC reached")
+	}}
+	chain := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: client}}
+	for _, testCase := range testCases {
+		authenticated := authenticatedRuntimeMetadata{
+			FinalizedHash: blockHash,
+			Version:       crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1, StateVersion: 1},
+			CodeHash:      "0x" + strings.Repeat("11", 32),
+			MetadataHash:  "0x" + strings.Repeat("22", 32),
+			Metadata:      types.NewMetadataV14(),
+		}
+		testCase.mutate(&authenticated)
+		err := verifyAuthenticatedFinalizedExtrinsicContext(context.Background(), chain, authenticated, blockHash, extrinsicHash)
+		if err == nil || !strings.Contains(err.Error(), testCase.errorDetail) {
+			t.Errorf("%s error=%v, want detail %q", testCase.name, err, testCase.errorDetail)
+		}
+		if err != nil && strings.Contains(err.Error(), "receipt RPC reached") {
+			t.Errorf("%s reached receipt RPC before identity rejection", testCase.name)
+		}
 	}
 }
 

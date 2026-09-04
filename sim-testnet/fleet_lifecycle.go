@@ -725,7 +725,7 @@ func (self *Executor) validateFleetLifecycleCommitmentAction(ctx context.Context
 	if evidence.ManifestURI != variant.ManifestName || !strings.EqualFold(evidence.CommitmentHash, fleetLifecycleHex(commitmentHash)) || !strings.EqualFold(evidence.Hotkey, fleetLifecycleHex(manifest.Hotkey)) {
 		return errors.New("fleet lifecycle commitment differs from its exact manifest identity")
 	}
-	if err := self.verifySubstrateTransactionEvidence(ChainHead{Number: evidence.FinalizedBlock, Hash: evidence.FinalizedBlockHash}, evidence.ExtrinsicHash); err != nil {
+	if err := self.verifySubstrateTransactionEvidence(ctx, ChainHead{Number: evidence.FinalizedBlock, Hash: evidence.FinalizedBlockHash}, evidence.ExtrinsicHash); err != nil {
 		return err
 	}
 	blockHash, err := types.NewHashFromHexString(evidence.FinalizedBlockHash)
@@ -1375,7 +1375,7 @@ func (self *Executor) validateFleetLifecycleRegistrationAction(ctx context.Conte
 	if err := validateFleetLifecycleRegistrationLineage(evidence, action, variantName, self.cfg.Config.Deployment.DeploymentID, self.plan.PlanHash, self.roles, transaction); err != nil {
 		return err
 	}
-	if err := self.verifySubstrateTransactionEvidence(ChainHead{Number: evidence.BlockNumber, Hash: evidence.BlockHash}, evidence.TransactionHash); err != nil {
+	if err := self.verifySubstrateTransactionEvidence(ctx, ChainHead{Number: evidence.BlockNumber, Hash: evidence.BlockHash}, evidence.TransactionHash); err != nil {
 		return err
 	}
 	recoveryHash, err := types.NewHashFromHexString(evidence.PrePrune.Head.Hash)

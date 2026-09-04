@@ -338,27 +338,24 @@ func verifiedFleetMirrorDescendant(cfg *ResolvedConfig, stateDir string, prior *
 
 // Prove the native evidence against canonical historical storage and the
 // current finalized commitment before trusting its EVM mirror.
-func validateFleetMirrorNativeEvidence(chain *crv4.Chain, cfg *ResolvedConfig, hotkey, commitmentHash [32]byte, evidence *FleetCommitmentEvidence, requireExactCurrent bool) error {
-	if chain == nil || cfg == nil || evidence == nil {
+func validateFleetMirrorNativeEvidence(ctx context.Context, chain *crv4.Chain, cfg *ResolvedConfig, hotkey, commitmentHash [32]byte, evidence *FleetCommitmentEvidence, requireExactCurrent bool) error {
+	if ctx == nil || chain == nil || cfg == nil || evidence == nil {
 		return errors.New("fleet-mirror native evidence context is incomplete")
 	}
 	blockHash, err := types.NewHashFromHexString(evidence.FinalizedBlockHash)
 	if err != nil {
 		return err
 	}
-	finalizedHash, err := chain.API.RPC.Chain.GetFinalizedHead()
+	manager := &SubstrateManager{chain: chain, cfg: cfg}
+	finalizedHash, finalizedBlock, err := manager.finalizedHeadContext(ctx)
 	if err != nil {
 		return err
 	}
-	finalizedHeader, err := chain.API.RPC.Chain.GetHeader(finalizedHash)
-	if err != nil {
-		return err
-	}
-	canonicalHash, err := chain.API.RPC.Chain.GetBlockHash(evidence.FinalizedBlock)
-	if err != nil || uint64(finalizedHeader.Number) < evidence.FinalizedBlock || canonicalHash != blockHash {
+	canonicalHash, err := manager.blockHashAtContext(ctx, evidence.FinalizedBlock)
+	if err != nil || finalizedBlock < evidence.FinalizedBlock || canonicalHash != blockHash {
 		return stateMismatchError(err, "fleet-mirror native block %d is not canonical and finalized", evidence.FinalizedBlock)
 	}
-	historicalRuntime, err := readReleaseHistoryRuntimeMetadataAt(chain, cfg, blockHash)
+	historicalRuntime, err := readReleaseHistoryRuntimeMetadataAtContext(ctx, chain, cfg, blockHash)
 	if err != nil {
 		return fmt.Errorf("authenticate fleet-mirror history at %s: %w", blockHash.Hex(), err)
 	}
@@ -372,7 +369,7 @@ func validateFleetMirrorNativeEvidence(chain *crv4.Chain, cfg *ResolvedConfig, h
 		return err
 	}
 	if requireExactCurrent {
-		currentRuntime, err := readAuthenticatedRuntimeMetadataAt(chain, cfg, finalizedHash)
+		currentRuntime, err := readAuthenticatedRuntimeMetadataAtContext(ctx, chain, cfg, finalizedHash)
 		if err != nil {
 			return fmt.Errorf("authenticate fleet-mirror finalized runtime at %s: %w", finalizedHash.Hex(), err)
 		}
@@ -443,7 +440,7 @@ func detectFinalizedFleetMirrorRecovery(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
-	if err := validateFleetMirrorNativeEvidence(chain, cfg, manifest.Hotkey, commitmentHash, evidence, !descendantVerified); err != nil {
+	if err := validateFleetMirrorNativeEvidence(ctx, chain, cfg, manifest.Hotkey, commitmentHash, evidence, !descendantVerified); err != nil {
 		return finalizedFleetMirrorRecovery{}, err
 	}
 	historical, err := fleetMirrorAt(ctx, client, coordinator, manifest.Hotkey, receipt.BlockNumber.Uint64())
