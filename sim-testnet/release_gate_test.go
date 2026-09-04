@@ -151,6 +151,49 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	}
 }
 
+// The exact binding generator must fail before runtime attestation and long
+// language suites, not near the end after their work has already completed.
+func TestReleaseGatesPreflightBindingToolBeforeLongWork(t *testing.T) {
+	testCases := []struct {
+		path          string
+		sourceMarker  string
+		runtimeMarker string
+		longMarker    string
+	}{
+		{
+			path:          "../scripts/test-release-1.0-local.sh",
+			sourceMarker:  "source-freeze preflight",
+			runtimeMarker: "runtime 453 source attestation",
+			longMarker:    "sn Go tests",
+		},
+		{
+			path:          "../scripts/test-release-1.0-producer-gate.sh",
+			sourceMarker:  "source-freeze preflight",
+			runtimeMarker: "runtime 453 source attestation",
+			longMarker:    "compile complete simulator and validator graph",
+		},
+	}
+	const preflight = `"$sn_repo/stabi/generate.sh" --preflight`
+	for _, testCase := range testCases {
+		scriptBytes, err := os.ReadFile(testCase.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(scriptBytes)
+		if count := strings.Count(script, preflight); count != 1 {
+			t.Errorf("%s binding preflight count = %d, want 1", testCase.path, count)
+			continue
+		}
+		sourceIndex := strings.Index(script, testCase.sourceMarker)
+		preflightIndex := strings.Index(script, preflight)
+		runtimeIndex := strings.Index(script, testCase.runtimeMarker)
+		longIndex := strings.Index(script, testCase.longMarker)
+		if sourceIndex < 0 || preflightIndex <= sourceIndex || runtimeIndex <= preflightIndex || longIndex <= preflightIndex {
+			t.Errorf("%s preflight ordering source=%d preflight=%d runtime=%d long=%d", testCase.path, sourceIndex, preflightIndex, runtimeIndex, longIndex)
+		}
+	}
+}
+
 // Keep enough deadline headroom for the complete launch-scale race suite. The
 // three focused integrity shards exceed 62 minutes when serialized, before the
 // rest of the package and concurrent live-campaign load. A 90-minute deadline

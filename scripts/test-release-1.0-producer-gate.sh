@@ -9,6 +9,9 @@ echo "[release-1.0 producer] source-freeze preflight"
 release_source_snapshot="$("$sn_repo/scripts/check-release-source-freeze.sh" "$workspace")"
 printf '%s\n' "$release_source_snapshot"
 
+echo "[release-1.0 producer] generated binding toolchain preflight"
+"$sn_repo/stabi/generate.sh" --preflight
+
 echo "[release-1.0 producer] runtime 453 source attestation"
 "$sn_repo/scripts/check-runtime-v453-source.sh"
 

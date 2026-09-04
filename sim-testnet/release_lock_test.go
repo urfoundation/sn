@@ -725,6 +725,36 @@ func TestParseFoundryVersionRejectsIncompleteOutput(t *testing.T) {
 	}
 }
 
+// The release lock accepts only the one canonical line emitted by the shared
+// generator preflight, not banners or partially matching tool identities.
+func TestParseAbigenVersion(t *testing.T) {
+	version, err := parseAbigenVersion([]byte("abigen version 1.17.0-stable\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "1.17.0" {
+		t.Fatalf("abigen version = %q", version)
+	}
+}
+
+// Similar-looking banners and non-semantic-version identities fail closed.
+func TestParseAbigenVersionRejectsMalformedOutput(t *testing.T) {
+	for _, output := range []string{
+		"abigen version 1.17.0-stable",
+		" abigen version 1.17.0-stable\n",
+		"abigen version 1.17.0",
+		"abigen version v1.17.0-stable",
+		"abigen version 1.17-stable",
+		"abigen version 1..0-stable",
+		"banner\nabigen version 1.17.0-stable",
+		"abigen version 1.17.0-stable\nextra",
+	} {
+		if _, err := parseAbigenVersion([]byte(output)); err == nil {
+			t.Errorf("malformed abigen identity %q was accepted", output)
+		}
+	}
+}
+
 // TestGeneratedABIHashBindsFleetBatcher proves the accelerated setup helper is
 // an authenticated release input rather than an unreviewed testnet sidecar.
 func TestGeneratedABIHashBindsFleetBatcher(t *testing.T) {

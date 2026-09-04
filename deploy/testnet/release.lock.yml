@@ -15,6 +15,7 @@ runtime:
     image: ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de
 evm_build:
     abi_hash: sha256:661fdfabdc59a6b8844b43e88afe966bd6fa5f0ebd851bd3b5080a9577dd2fa1
+    abigen: 1.17.0
     compiler_settings_hash: sha256:49cab513b2adb541cd3304065d7e543684978ba19d56c0efa50f405f04023560
     coordinator_implementation_artifact_hash: 0x6f15033581aa68179bcda27f45005d2584123f7c61bf637fb1aed32eb81a5316
     coordinator_implementation_runtime_hash: 0x595f6fe933b3c95f136745c85cafa3c3435686dea329a31de8768fcc6b4a92ec

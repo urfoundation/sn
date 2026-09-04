@@ -23,6 +23,7 @@ var (
 	releaseSHA256          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	releaseHex256          = regexp.MustCompile(`^0x[0-9a-f]{64}$`)
 	releaseImageDigest     = regexp.MustCompile(`^[^@[:space:]]+@sha256:[0-9a-f]{64}$`)
+	releaseAbigenVersion   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 )
 
 const (
@@ -547,6 +548,39 @@ func parseFoundryVersion(output []byte) (string, string, error) {
 	return version, commit, nil
 }
 
+// The sole success line emitted by the shared binding-generator preflight is
+// the complete identity contract for release observation and generation.
+func parseAbigenVersion(output []byte) (string, error) {
+	const prefix = "abigen version "
+	const suffix = "-stable"
+	raw := string(output)
+	if !strings.HasSuffix(raw, "\n") || strings.Count(raw, "\n") != 1 || strings.Contains(raw, "\r") {
+		return "", errors.New("abigen version output is malformed")
+	}
+	value := strings.TrimSuffix(raw, "\n")
+	if !strings.HasPrefix(value, prefix) || !strings.HasSuffix(value, suffix) {
+		return "", errors.New("abigen version output is malformed")
+	}
+	version := strings.TrimSuffix(strings.TrimPrefix(value, prefix), suffix)
+	if !releaseAbigenVersion.MatchString(version) {
+		return "", errors.New("abigen version output is malformed")
+	}
+	return version, nil
+}
+
+// Use the generator's own resolver and version policy so the release lock
+// cannot attest a different executable than binding generation will run.
+func observeAbigenVersion(snRoot string) (string, error) {
+	executable := filepath.Join(snRoot, "stabi", "generate.sh")
+	command := exec.Command(executable, "--preflight")
+	command.Dir = snRoot
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("preflight abigen: %w: %s", err, bytes.TrimSpace(output))
+	}
+	return parseAbigenVersion(output)
+}
+
 func observeFoundryVersion() (string, string, error) {
 	executable, err := exec.LookPath("forge")
 	if err != nil {
@@ -574,6 +608,7 @@ func protocolSourceHash(snRoot string) (string, error) {
 	names = append(names,
 		"WHITEPAPER.md",
 		"VALIDATOR.md",
+		"stabi/generate.sh",
 		"scripts/check-runtime-metadata-artifacts.sh",
 		"scripts/check-runtime-v453-source.sh",
 		"scripts/test-release-1.0-local.sh",
@@ -714,6 +749,10 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 	observation := &releaseLockObservation{EVMBuild: map[string]string{}, Repositories: map[string]string{}, Interfaces: map[string]string{}, Infrastructure: map[string]string{}}
 	var err error
 	observation.EVMBuild["source_hash"], err = soliditySourceHash(cfg.Repos.SN)
+	if err != nil {
+		return nil, err
+	}
+	observation.EVMBuild["abigen"], err = observeAbigenVersion(cfg.Repos.SN)
 	if err != nil {
 		return nil, err
 	}

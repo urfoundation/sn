@@ -15,6 +15,7 @@ import (
 
 var releaseEVMObservedKeys = []string{
 	"source_hash",
+	"abigen",
 	"foundry",
 	"foundry_commit",
 	"forge_std_commit",
@@ -353,6 +354,7 @@ func validateReleaseLockStatic(lock *ReleaseLock) error {
 		}
 	}
 	for key, want := range map[string]string{
+		"abigen":                        "1.17.0",
 		"solidity":                      "0.8.24",
 		"evm_version":                   "cancun",
 		"foundry":                       "1.7.1",
