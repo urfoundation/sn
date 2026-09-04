@@ -133,12 +133,14 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutSupervisedAPIHTTP(t *tes
 	}
 	complete, encoded := scenarioCompletionTestEnvelope(t, cfg, roles, runID)
 	stores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
+	backingStores := make(map[int]server.BlobStore, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		prefix, err := operatorArtifactPrefix(cfg.Config, operator)
 		if err != nil {
 			t.Fatal(err)
 		}
-		stores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+		backingStores[operator] = server.NewLocalBlobStore(filepath.Join(stateDir, "object-store"), prefix)
+		stores[operator] = &directEvidenceNoListStore{BlobStore: backingStores[operator]}
 	}
 	transport := &forbiddenScenarioCommitSupervisedAPITransport{}
 	previousTransport := http.DefaultTransport
@@ -172,7 +174,7 @@ func TestScenarioCompletionCommitsUseDirectStoresWithoutSupervisedAPIHTTP(t *tes
 		if err != nil {
 			t.Fatal(err)
 		}
-		objects, err := stores[operator].List(context.Background(), prefix)
+		objects, err := backingStores[operator].List(context.Background(), prefix)
 		if err != nil || len(objects) != 1 || !strings.Contains(objects[0].Key, strings.TrimPrefix(commit.ContentHash, "sha256:")) {
 			t.Fatalf("operator %d direct completion history = %+v, %v", operator, objects, err)
 		}
@@ -427,8 +429,9 @@ func TestDirectScenarioCompletionFailureLeavesNoLocalComplete(t *testing.T) {
 		inject func(*fixtureFailureBlobStore, error)
 	}{
 		{name: "write", inject: func(store *fixtureFailureBlobStore, err error) { store.writeErr = err }},
-		{name: "read", inject: func(store *fixtureFailureBlobStore, err error) { store.readErr = err }},
-		{name: "list", inject: func(store *fixtureFailureBlobStore, err error) { store.listErr = err }},
+		{name: "open", inject: func(store *fixtureFailureBlobStore, err error) { store.readErr = err }},
+		{name: "read", inject: func(store *fixtureFailureBlobStore, err error) { store.streamReadErr = err }},
+		{name: "close", inject: func(store *fixtureFailureBlobStore, err error) { store.closeErr = err }},
 	}
 	for _, failure := range failures {
 		cfg, stateDir := runtimeConfigManifestFixtureForOperators(t, 2)

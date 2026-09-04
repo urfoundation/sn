@@ -16,11 +16,13 @@ import (
 // fixtureFailureBlobStore keeps fault injection explicit at every BlobStore
 // boundary so promoted delegate methods cannot bypass the intended failure.
 type fixtureFailureBlobStore struct {
-	store        server.BlobStore
-	writeErr     error
-	readErr      error
-	listErr      error
-	lifecycleErr error
+	store         server.BlobStore
+	writeErr      error
+	readErr       error
+	streamReadErr error
+	closeErr      error
+	listErr       error
+	lifecycleErr  error
 }
 
 var _ server.BlobStore = (*fixtureFailureBlobStore)(nil)
@@ -41,12 +43,41 @@ func (self *fixtureFailureBlobStore) PutIfAbsent(ctx context.Context, key, local
 	return self.store.PutIfAbsent(ctx, key, localPath, contentType)
 }
 
-// Reject object read-back without changing other store behavior.
+// Reject object open or wrap its returned stream with an injected read/close
+// failure without changing other store behavior.
 func (self *fixtureFailureBlobStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	if self.readErr != nil {
 		return nil, self.readErr
 	}
-	return self.store.Get(ctx, key)
+	reader, err := self.store.Get(ctx, key)
+	if err != nil || self.streamReadErr == nil && self.closeErr == nil {
+		return reader, err
+	}
+	return &fixtureFailureReadCloser{ReadCloser: reader, readErr: self.streamReadErr, closeErr: self.closeErr}, nil
+}
+
+// Keeps stream faults deterministic while still closing the backing object.
+type fixtureFailureReadCloser struct {
+	io.ReadCloser
+	readErr  error
+	closeErr error
+}
+
+// Reject a stream read before consuming backing bytes.
+func (self *fixtureFailureReadCloser) Read(buffer []byte) (int, error) {
+	if self.readErr != nil {
+		return 0, self.readErr
+	}
+	return self.ReadCloser.Read(buffer)
+}
+
+// Close the backing object, then surface the injected close failure.
+func (self *fixtureFailureReadCloser) Close() error {
+	err := self.ReadCloser.Close()
+	if self.closeErr != nil {
+		return errors.Join(err, self.closeErr)
+	}
+	return err
 }
 
 // Reject prefix enumeration without changing other store behavior.
@@ -144,6 +175,28 @@ func TestFixtureFailureBlobStoreCoversEveryBehaviorBoundary(t *testing.T) {
 	readErr = errors.New("injected read failure")
 	if reader, err := (&fixtureFailureBlobStore{store: backing, readErr: readErr}).Get(ctx, "blob/immutable"); reader != nil || !errors.Is(err, readErr) {
 		t.Fatalf("read failure reader=%v err=%v", reader, err)
+	}
+	streamReadErr := errors.New("injected stream read failure")
+	reader, err = (&fixtureFailureBlobStore{store: backing, streamReadErr: streamReadErr}).Get(ctx, "blob/immutable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, err := io.ReadAll(reader); len(value) != 0 || !errors.Is(err, streamReadErr) {
+		t.Fatalf("stream read failure value=%q err=%v", value, err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("stream read failure close=%v", err)
+	}
+	injectedCloseErr := errors.New("injected close failure")
+	reader, err = (&fixtureFailureBlobStore{store: backing, closeErr: injectedCloseErr}).Get(ctx, "blob/immutable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, err := io.ReadAll(reader); err != nil || !bytes.Equal(value, first) {
+		t.Fatalf("close failure read value=%q err=%v", value, err)
+	}
+	if err := reader.Close(); !errors.Is(err, injectedCloseErr) {
+		t.Fatalf("close failure=%v", err)
 	}
 	listErr := errors.New("injected list failure")
 	if objects, err := (&fixtureFailureBlobStore{store: backing, listErr: listErr}).List(ctx, "blob/"); objects != nil || !errors.Is(err, listErr) {
