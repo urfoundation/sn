@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.8.28
+  version: 2026.9.4
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -14,9 +14,13 @@ info:
     is finalized after ordered honesty review, then exposes the seed, immutable
     workload, and results.
     Identical canonical patch bytes in one round map to one durable job/result.
+    Before epoch one, an operator may create a single epoch-zero staging round
+    for API integration. Staging submissions are retained and pollable but are
+    never charged, evaluated, ranked, or published; committing epoch one
+    atomically cancels the staging round and all unfinished staging jobs.
   contact:
     name: URnetwork
-    email: support@ur.io
+    email: support@ur.xyz
     url: https://ur.io
   license:
     name: Mozilla Public License, v. 2.0
@@ -131,6 +135,34 @@ paths:
         "503":
           $ref: "#/components/responses/CompetitionUnavailable"
 
+  /competition/generate-staging-round:
+    post:
+      operationId: CompetitionGenerateStagingRound
+      tags: [Competition operator]
+      summary: Generate the one pre-season API integration round
+      description: |
+        Creates epoch zero with server-selected timing and workload identity.
+        Its submissions exercise authenticated patch validation, immutable
+        artifact retention, cache identity, and polling, but never enter the
+        evaluator FIFO or fee/score/leaderboard paths. Only one staging round
+        may ever exist for a competition, and no staging round may be created
+        after the first production epoch is committed.
+      responses:
+        "201":
+          description: Staging round created; use its round_id for test submissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionRoundResult"
+        "400":
+          $ref: "#/components/responses/CompetitionBadRequest"
+        "401":
+          $ref: "#/components/responses/CompetitionUnauthorized"
+        "409":
+          $ref: "#/components/responses/CompetitionConflict"
+        "503":
+          $ref: "#/components/responses/CompetitionUnavailable"
+
   /competition/round/{roundId}/providers.yml:
     get:
       operationId: CompetitionGetRoundWorkload
@@ -178,7 +210,12 @@ paths:
         another draw from evaluator noise. Accepted unique jobs are unbounded
         per epoch and enter the single FIFO immediately. The Apex adapter
         collects the published $20 USD submission fee exactly once before
-        forwarding an admission. Any patch operation targeting
+        forwarding a production admission. A response with `staging: true`
+        is a fee-free API integration admission: it remains pollable in
+        `queued` state, never enters the evaluator, and becomes `canceled`
+        when epoch one is committed. The canceled response exposes only the
+        non-retriable `staging_discarded` reason, never a measured outcome. Any
+        patch operation targeting
         `connect/sim-latency/**` is a terminal invalid submission; the
         simulator, runner, and scorer implementation is not an editable
         competition surface.
@@ -366,6 +403,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CompetitionRoundResult"
             - type: "null"
+        staging_round:
+          description: The pre-season API-test round, omitted after epoch one is committed.
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionRoundResult"
+            - type: "null"
 
     CompetitionPatchPolicy:
       type: object
@@ -549,6 +591,7 @@ components:
       required:
         - round_id
         - epoch
+        - staging
         - status
         - workload_commitment
         - providers_sha256
@@ -563,8 +606,12 @@ components:
           format: uuid
         epoch:
           type: integer
-          minimum: 1
+          minimum: 0
           maximum: 6
+          description: Zero only for the one pre-season staging round; production epochs are 1 through 6.
+        staging:
+          type: boolean
+          description: True only for epoch zero, which is excluded from evaluation, fees, ranking, and publication.
         status:
           type: string
           enum: [scheduled, open, grading, finalized, canceled]
@@ -701,7 +748,7 @@ components:
     CompetitionScoreAcceptedResult:
       type: object
       additionalProperties: false
-      required: [job_id, round_id, patch_sha256, state, cache_hit, status_url]
+      required: [job_id, round_id, staging, patch_sha256, state, cache_hit, status_url]
       properties:
         job_id:
           type: string
@@ -709,6 +756,9 @@ components:
         round_id:
           type: string
           format: uuid
+        staging:
+          type: boolean
+          description: True when this admission is an uncharged API-integration test that will not be evaluated.
         patch_sha256:
           $ref: "#/components/schemas/Sha256"
         state:
@@ -725,6 +775,7 @@ components:
       required:
         - job_id
         - round_id
+        - staging
         - patch_sha256
         - state
         - submitted_at
@@ -738,6 +789,9 @@ components:
         round_id:
           type: string
           format: uuid
+        staging:
+          type: boolean
+          description: True for an epoch-zero API-integration job; it remains queued until epoch one cancels it.
         patch_sha256:
           $ref: "#/components/schemas/Sha256"
         state:
