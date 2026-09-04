@@ -363,3 +363,32 @@ func TestInspectRuntimeCodeAtUsesOnePinnedMixedBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestInspectRuntimeCodeAtAuthenticatesRetiredAndReplacementProbes(t *testing.T) {
+	retired := common.HexToAddress("0x1234567890123456789012345678901234567890")
+	replacement := common.HexToAddress("0x2234567890123456789012345678901234567890")
+	retiredCode := []byte{0x60, 0x01}
+	replacementCode := []byte{0x60, 0x02}
+	fixture := &runtimeCodeBatchRPC{
+		t: t,
+		codes: map[string]string{
+			strings.ToLower(retired.Hex()):     hexutil.Encode(retiredCode),
+			strings.ToLower(replacement.Hex()): hexutil.Encode(replacementCode),
+		},
+	}
+	client, cleanup := newObserveBatchClient(t, fixture)
+	defer cleanup()
+	deployment := &ContractDeployment{RuntimeHashes: map[string]string{
+		retired.Hex():     crypto.Keccak256Hash(retiredCode).Hex(),
+		replacement.Hex(): crypto.Keccak256Hash(replacementCode).Hex(),
+	}}
+	hashes, matches, err := inspectRuntimeCodeAt(context.Background(), client, deployment, CoordinatorUpgrade{}, []common.Address{retired, replacement}, 77)
+	if err != nil || !matches || len(hashes) != 2 || fmt.Sprint(fixture.httpBatchSizes) != "[2]" {
+		t.Fatalf("dual probe inspection=%t/%v/%v error=%v", matches, hashes, fixture.httpBatchSizes, err)
+	}
+	fixture.codes[strings.ToLower(retired.Hex())] = hexutil.Encode([]byte{0x60, 0x03})
+	_, matches, err = inspectRuntimeCodeAt(context.Background(), client, deployment, CoordinatorUpgrade{}, []common.Address{retired, replacement}, 78)
+	if err != nil || matches {
+		t.Fatalf("retired probe drift was accepted: matches=%t error=%v", matches, err)
+	}
+}

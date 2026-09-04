@@ -925,6 +925,8 @@ func TestCoordinatorUpgradeRebindMovesEveryFleetBatcherReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	oldRestore := actionByID(t, plan, "fleet.refresh.oracle-restore")
+	oldAwaitRestored := actionByID(t, plan, "fleet.refresh.oracle-await-restored")
 	oldBatcher := payloads.FleetBatcherAddress
 	if err := configureCoordinatorUpgradeNonce(payloads, payloads.CoordinatorUpgrade.DeployerNonce+7); err != nil {
 		t.Fatal(err)
@@ -949,6 +951,68 @@ func TestCoordinatorUpgradeRebindMovesEveryFleetBatcherReference(t *testing.T) {
 			if common.HexToAddress(action.Target) != payloads.FleetBatcherAddress {
 				t.Fatalf("fleet batcher reference %s retained %s, want %s", action.ID, action.Target, payloads.FleetBatcherAddress)
 			}
+		case action.ID == "fleet.refresh.oracle-restore", action.ID == "fleet.refresh.oracle-await-restored":
+			if action.Parameters[fleetRefreshBatcherParameter] != payloads.FleetBatcherAddress.Hex() {
+				t.Fatalf("fleet restore action %s does not bind helper generation: %+v", action.ID, action.Parameters)
+			}
 		}
+	}
+	newRestore := actionByID(t, plan, oldRestore.ID)
+	newAwaitRestored := actionByID(t, plan, oldAwaitRestored.ID)
+	if newRestore.IntentHash == oldRestore.IntentHash || newAwaitRestored.IntentHash == oldAwaitRestored.IntentHash {
+		t.Fatal("replacement helper retained an old restore-generation intent")
+	}
+	executor := &Executor{plan: plan, journal: &Journal{entries: []JournalEntry{
+		{PlanHash: plan.PlanHash, ActionID: oldRestore.ID, IntentHash: oldRestore.IntentHash, Stage: StageVerified},
+		{PlanHash: plan.PlanHash, ActionID: oldAwaitRestored.ID, IntentHash: oldAwaitRestored.IntentHash, Stage: StageVerified},
+	}}}
+	if _, ok := executor.verifiedActionEntry(newRestore); ok {
+		t.Fatal("old verified restore satisfied the replacement helper generation")
+	}
+	if _, ok := executor.verifiedActionEntry(newAwaitRestored); ok {
+		t.Fatal("old verified await-restored satisfied the replacement helper generation")
+	}
+}
+
+func TestFleetRefreshRestoreGenerationBindingIsStrictAndLegacyCompatible(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads, err := buildDeploymentPayloads(cfg, secrets, plan.Deployment.InitialNonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := actionByID(t, plan, "fleet.refresh.oracle-restore")
+	if _, err := fleetRefreshOracleTarget(restore, payloads); err != nil {
+		t.Fatalf("legacy restore without a generation field was rejected: %v", err)
+	}
+	restore.Parameters = cloneStrings(restore.Parameters)
+	restore.Parameters[fleetRefreshBatcherParameter] = common.HexToAddress("0x1234").Hex()
+	if _, err := fleetRefreshOracleTarget(restore, payloads); err == nil {
+		t.Fatal("legacy restore with a wrong nonempty generation field was accepted")
+	}
+	restore.Parameters[fleetRefreshBatcherParameter] = payloads.FleetBatcherAddress.Hex()
+	if _, err := fleetRefreshOracleTarget(restore, payloads); err != nil {
+		t.Fatalf("legacy restore with an exact generation field was rejected: %v", err)
+	}
+	delete(restore.Parameters, fleetRefreshBatcherParameter)
+	if err := configureCoordinatorUpgradeNonce(payloads, payloads.CoordinatorUpgrade.DeployerNonce+4); err != nil {
+		t.Fatal(err)
+	}
+	if err := configurePrecompileProbeNonce(payloads, payloads.CoordinatorUpgrade.DeployerNonce-1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fleetRefreshOracleTarget(restore, payloads); err == nil || !strings.Contains(err.Error(), "activated fleet batcher") {
+		t.Fatalf("replacement-generation restore without a helper binding was accepted: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -347,6 +348,423 @@ func TestDeploymentPayloadsAreStableAndMatchPlanRoles(t *testing.T) {
 	}
 }
 
+func replacementPrecompileProbeFixtureAt(t *testing.T, replacementNonce uint64) (*ResolvedConfig, *DeploymentPayloads, ContractDeployment, CoordinatorUpgradeBaseline, string) {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads, err := buildDeploymentPayloads(cfg, roles, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := payloads.CoordinatorUpgrade
+	releaseHash, err := contractDeploymentIdentityHash(payloads.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveExecutable, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.ReserveSink], artifactByName("ReserveSink"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vaultExecutable, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.SettlementVault], artifactByName("SettlementVault"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyExecutable, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.CoordinatorProxy], artifactByName("ERC1967Proxy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeExecutable, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.PrecompileProbeAddress], TestnetPrecompileProbeArtifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained := payloads.Manifest
+	retained.RuntimeHashes = cloneStrings(payloads.Manifest.RuntimeHashes)
+	retained.RuntimeHashes[retained.PrecompileProbe.Hex()] = crypto.Keccak256Hash([]byte{1}).Hex()
+	retainedHash, err := contractDeploymentIdentityHash(retained)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configureCoordinatorUpgradeNonce(payloads, replacementNonce+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := configurePrecompileProbeNonce(payloads, replacementNonce); err != nil {
+		t.Fatal(err)
+	}
+	baseline := CoordinatorUpgradeBaseline{
+		Schema: "urnetwork-coordinator-upgrade-baseline-v4", PriorDeploymentHash: retainedHash,
+		ReleaseDeploymentHash: releaseHash, ReboundDeploymentHash: retainedHash,
+		ReserveSinkExecutableHash: reserveExecutable, SettlementVaultExecutableHash: vaultExecutable,
+		GovernanceDrillVersion: crypto.Keccak256Hash([]byte("urnetwork/coordinator-adversary/v1")).Hex(), GovernanceProxiableUUID: erc1967ImplementationSlot,
+		DeployerNonce: payloads.CoordinatorUpgrade.DeployerNonce, ProbeAddressEmpty: true,
+		ActiveImplementation: active.Implementation.Hex(), ActiveImplementationHash: active.RuntimeCodeHash,
+		PrecompileProbeExecutableHash: probeExecutable, CoordinatorProxyExecutableHash: proxyExecutable,
+		ReplacementPrecompileProbe: payloads.PrecompileProbeAddress.Hex(), ReplacementPrecompileProbeNonce: payloads.PrecompileProbeNonce,
+		ReplacementPrecompileProbeHash: crypto.Keccak256Hash(payloads.ExpectedRuntime[payloads.PrecompileProbeAddress]).Hex(),
+		RetiredPrecompileProbe:         retained.PrecompileProbe.Hex(), RetiredPrecompileProbeHash: retained.RuntimeHashes[retained.PrecompileProbe.Hex()],
+		FinalizedBlock: 123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
+	}
+	return cfg, payloads, retained, baseline, releaseHash
+}
+
+func replacementPrecompileProbeFixture(t *testing.T) (*ResolvedConfig, *DeploymentPayloads, ContractDeployment, CoordinatorUpgradeBaseline, string) {
+	t.Helper()
+	return replacementPrecompileProbeFixtureAt(t, 29)
+}
+
+func TestHistoricalPrecompileProbeGenerationRequiresExactReplacement(t *testing.T) {
+	_, payloads, _, baseline, _ := replacementPrecompileProbeFixture(t)
+	current := payloads.ExpectedRuntime[payloads.PrecompileProbeAddress]
+	if len(current) != 7_265 {
+		t.Fatalf("current SubnetProbe runtime length=%d, want 7265", len(current))
+	}
+	historical := make([]byte, 7_224)
+	if _, err := matchingNormalizedSolidityExecutableHash("precompile probe", historical, current, TestnetPrecompileProbeArtifact); err == nil || !strings.Contains(err.Error(), "SubnetProbe runtime length=7224 want=7265") {
+		t.Fatalf("historical normalization mismatch was not reproduced: %v", err)
+	}
+	const historicalExecutable = "0x987d1bdfc26675cbb0e6c8f45c910c877536f307264f7c047a2b1bbcf637c7bc"
+	activeHash, releaseHash, replace, err := comparePrecompileProbeRelease(historical, historicalExecutable, current)
+	if err != nil || activeHash != historicalExecutable || releaseHash != baseline.PrecompileProbeExecutableHash || !replace {
+		t.Fatalf("historical probe decision=%s/%s/%t error=%v", activeHash, releaseHash, replace, err)
+	}
+	if _, _, replace, err := comparePrecompileProbeRelease(current, releaseHash, current); err != nil || replace {
+		t.Fatalf("current probe generation was not reusable: replace=%t error=%v", replace, err)
+	}
+}
+
+func TestReplacementPrecompileProbeKeepsCoreIdentityAndContiguousCreates(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	gotHash, err := contractDeploymentIdentityHash(retained)
+	if err != nil || gotHash != baseline.ReboundDeploymentHash {
+		t.Fatalf("replacement changed core deployment identity: got=%s want=%s error=%v", gotHash, baseline.ReboundDeploymentHash, err)
+	}
+	if len(retained.RuntimeHashes) != 6 || retained.RuntimeHashes[retained.PrecompileProbe.Hex()] != baseline.RetiredPrecompileProbeHash {
+		t.Fatalf("replacement changed immutable runtime census: %+v", retained.RuntimeHashes)
+	}
+	if payloads.PrecompileProbeNonce != 29 || payloads.CoordinatorUpgrade.DeployerNonce != 30 || payloads.FleetBatcherNonce != 31 || payloads.PrecompileProbeAddress != crypto.CreateAddress(payloads.Deployer, 29) || payloads.CoordinatorUpgrade.Implementation != crypto.CreateAddress(payloads.Deployer, 30) || payloads.FleetBatcherAddress != crypto.CreateAddress(payloads.Deployer, 31) {
+		t.Fatalf("replacement CREATE sequence is not contiguous: probe=%d/%s coordinator=%d/%s batcher=%d/%s", payloads.PrecompileProbeNonce, payloads.PrecompileProbeAddress, payloads.CoordinatorUpgrade.DeployerNonce, payloads.CoordinatorUpgrade.Implementation, payloads.FleetBatcherNonce, payloads.FleetBatcherAddress)
+	}
+	if err := validateCoordinatorUpgradeBaselineRelease(baseline, retained, payloads.Manifest, payloads.CoordinatorUpgrade); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, retained, payloads); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutation := range []struct {
+		name   string
+		change func(*CoordinatorUpgradeBaseline)
+	}{
+		{"replacement gap", func(value *CoordinatorUpgradeBaseline) { value.ReplacementPrecompileProbeNonce-- }},
+		{"false empty checkpoint", func(value *CoordinatorUpgradeBaseline) { value.ProbeAddressEmpty = false }},
+		{"foreign replacement", func(value *CoordinatorUpgradeBaseline) {
+			value.ReplacementPrecompileProbe = common.HexToAddress("0x1234").Hex()
+		}},
+		{"wrong replacement runtime", func(value *CoordinatorUpgradeBaseline) {
+			value.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("11", 32)
+		}},
+		{"wrong retired runtime", func(value *CoordinatorUpgradeBaseline) {
+			value.RetiredPrecompileProbeHash = "0x" + strings.Repeat("22", 32)
+		}},
+	} {
+		changed := baseline
+		mutation.change(&changed)
+		err := validateCoordinatorUpgradeBaseline(changed, retained, payloads.CoordinatorUpgrade)
+		if err == nil {
+			err = validatePrecompileProbeReplacement(changed, payloads.Deployer, retained, payloads.CoordinatorUpgrade)
+		}
+		if err == nil {
+			err = validateCoordinatorUpgradePayloadBaseline(changed, retained, payloads)
+		}
+		if err == nil {
+			t.Fatalf("%s replacement baseline was accepted", mutation.name)
+		}
+	}
+	badBatcher := *payloads
+	badBatcher.FleetBatcherNonce++
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, retained, &badBatcher); err == nil {
+		t.Fatal("non-contiguous fleet batcher was accepted")
+	}
+	nextUpgrade := payloads.CoordinatorUpgrade
+	nextUpgrade.DeployerNonce = payloads.FleetBatcherNonce + 1
+	nextUpgrade.Implementation = crypto.CreateAddress(payloads.Deployer, nextUpgrade.DeployerNonce)
+	if err := validateCoordinatorUpgradeBaseline(baseline, retained, nextUpgrade); err == nil {
+		t.Fatalf("terminal v4 replacement checkpoint was rebound to a later coordinator CREATE: %v", err)
+	}
+	consumedNonce := baseline
+	consumedNonce.ReplacementPrecompileProbeNonce = payloads.Manifest.InitialNonce + 9
+	consumedNonce.ReplacementPrecompileProbe = crypto.CreateAddress(payloads.Deployer, consumedNonce.ReplacementPrecompileProbeNonce).Hex()
+	consumedNonce.DeployerNonce = consumedNonce.ReplacementPrecompileProbeNonce + 1
+	consumedUpgrade := payloads.CoordinatorUpgrade
+	consumedUpgrade.DeployerNonce = consumedNonce.DeployerNonce
+	consumedUpgrade.Implementation = crypto.CreateAddress(payloads.Deployer, consumedUpgrade.DeployerNonce)
+	if err := validateCoordinatorUpgradeBaseline(consumedNonce, retained, consumedUpgrade); err == nil {
+		t.Fatal("v4 replacement reused the already-consumed first coordinator upgrade nonce")
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered, err := buildDeploymentPayloads(cfg, roles, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configureCoordinatorUpgradeNonce(ordered, 29); err != nil {
+		t.Fatal(err)
+	}
+	if err := configurePrecompileProbeNonce(ordered, 29); err == nil || !strings.Contains(err.Error(), "active release CREATE") {
+		t.Fatalf("replacement probe collided with the current coordinator candidate: %v", err)
+	}
+	if err := configureCoordinatorUpgradeNonce(ordered, 30); err != nil {
+		t.Fatal(err)
+	}
+	if err := configurePrecompileProbeNonce(ordered, 29); err != nil {
+		t.Fatal(err)
+	}
+	if len(ordered.ExpectedRuntime[ordered.PrecompileProbeAddress]) == 0 || len(ordered.ExpectedRuntime[ordered.CoordinatorUpgrade.Implementation]) == 0 || ordered.PrecompileProbeAddress == ordered.CoordinatorUpgrade.Implementation {
+		t.Fatalf("ordered replacement lost a CREATE runtime: probe=%d coordinator=%d", len(ordered.ExpectedRuntime[ordered.PrecompileProbeAddress]), len(ordered.ExpectedRuntime[ordered.CoordinatorUpgrade.Implementation]))
+	}
+}
+
+func TestPublicReplacementPrecompileProbeBindsAuthenticatedDeployer(t *testing.T) {
+	_, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	identities, err := json.Marshal(finalPublicIdentities{
+		Schema: "urnetwork-sim-public-identities-v1", DeploymentID: payloads.Manifest.DeploymentID,
+		EVM: map[string]string{"deployer": payloads.Deployer.Hex()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := &PublicDeploymentManifest{
+		DeploymentID: payloads.Manifest.DeploymentID, Contracts: &retained,
+		CoordinatorUpgrade: payloads.CoordinatorUpgrade, CoordinatorUpgradeBaseline: &baseline,
+		Identities: identities,
+	}
+	if err := validatePublicPrecompileProbeGeneration(public); err != nil {
+		t.Fatal(err)
+	}
+	wrongAddress := *public
+	wrongBaseline := baseline
+	wrongBaseline.ReplacementPrecompileProbe = common.HexToAddress("0x1234").Hex()
+	wrongAddress.CoordinatorUpgradeBaseline = &wrongBaseline
+	if err := validatePublicPrecompileProbeGeneration(&wrongAddress); err == nil || !strings.Contains(err.Error(), "deterministic CREATE") {
+		t.Fatalf("forged public replacement address was accepted: %v", err)
+	}
+	wrongDeployer := *public
+	identities, err = json.Marshal(finalPublicIdentities{
+		Schema: "urnetwork-sim-public-identities-v1", DeploymentID: payloads.Manifest.DeploymentID,
+		EVM: map[string]string{"deployer": common.HexToAddress("0x5678").Hex()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongDeployer.Identities = identities
+	if err := validatePublicPrecompileProbeGeneration(&wrongDeployer); err == nil || !strings.Contains(err.Error(), "deterministic CREATE") {
+		t.Fatalf("forged public deployer was accepted: %v", err)
+	}
+}
+
+func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *testing.T) {
+	cfg, payloads, legacy, baseline, releaseHash := replacementPrecompileProbeFixture(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyHash, err := contractDeploymentIdentityHash(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacyHash == releaseHash || strings.EqualFold(legacy.RuntimeHashes[legacy.PrecompileProbe.Hex()], payloads.Manifest.RuntimeHashes[payloads.Manifest.PrecompileProbe.Hex()]) {
+		t.Fatal("historical and release probe generations unexpectedly have the same deployment identity")
+	}
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, legacy, payloads); err != nil {
+		t.Fatalf("genuinely different retired and release probe runtimes were rejected: %v", err)
+	}
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, payloads.Manifest, payloads); err == nil || !strings.Contains(err.Error(), "retired precompile probe") {
+		t.Fatalf("release manifest was accepted as the retained historical deployment: %v", err)
+	}
+	plan := &SetupPlan{Schema: currentSetupPlanSchema, Deployment: legacy, CoordinatorUpgrade: payloads.CoordinatorUpgrade, CoordinatorUpgradeBaseline: baseline}
+	stateDir := t.TempDir()
+	if err := saveContractDeployment(stateDir, legacy); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, roles: roles}
+		if err := executor.ensurePayloads(context.Background()); err != nil {
+			t.Fatalf("resume %d: %v", attempt, err)
+		}
+		if executor.payloads.PrecompileProbeAddress != payloads.PrecompileProbeAddress || executor.payloads.PrecompileProbeNonce != payloads.PrecompileProbeNonce || executor.payloads.CoordinatorUpgrade != payloads.CoordinatorUpgrade {
+			t.Fatalf("resume %d changed replacement payload: %+v", attempt, executor.payloads)
+		}
+		stored, err := loadContractDeployment(stateDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedHash, err := contractDeploymentIdentityHash(*stored)
+		if err != nil || storedHash != legacyHash || len(stored.RuntimeHashes) != 6 || stored.RuntimeHashes[stored.PrecompileProbe.Hex()] != baseline.RetiredPrecompileProbeHash {
+			t.Fatalf("resume %d changed persisted core deployment: hash=%s manifest=%+v error=%v", attempt, storedHash, stored, err)
+		}
+	}
+}
+
+func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t *testing.T) {
+	cfg, payloads, _, replacement, manifestHash := replacementPrecompileProbeFixture(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := buildDeploymentPayloads(cfg, roles, payloads.Manifest.InitialNonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveExecutable, _ := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.ReserveSink], artifactByName("ReserveSink"))
+	vaultExecutable, _ := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.SettlementVault], artifactByName("SettlementVault"))
+	probeExecutable, _ := normalizedSolidityExecutableHash(initial.ExpectedRuntime[initial.Manifest.PrecompileProbe], TestnetPrecompileProbeArtifact)
+	proxyExecutable, _ := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.CoordinatorProxy], artifactByName("ERC1967Proxy"))
+	baseline := CoordinatorUpgradeBaseline{
+		Schema: "urnetwork-coordinator-upgrade-baseline-v3", PriorDeploymentHash: manifestHash,
+		ReleaseDeploymentHash: manifestHash, ReboundDeploymentHash: manifestHash,
+		ReserveSinkExecutableHash: reserveExecutable, SettlementVaultExecutableHash: vaultExecutable,
+		GovernanceDrillVersion: crypto.Keccak256Hash([]byte("urnetwork/coordinator-adversary/v1")).Hex(), GovernanceProxiableUUID: erc1967ImplementationSlot,
+		DeployerNonce: payloads.CoordinatorUpgrade.DeployerNonce, ActiveImplementation: initial.CoordinatorUpgrade.Implementation.Hex(), ActiveImplementationHash: initial.CoordinatorUpgrade.RuntimeCodeHash,
+		PrecompileProbeExecutableHash: probeExecutable, CoordinatorProxyExecutableHash: proxyExecutable,
+		FinalizedBlock: 123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
+	}
+	base := SetupPlan{
+		Schema: currentSetupPlanSchema, Deployment: payloads.Manifest,
+		CoordinatorUpgrade: payloads.CoordinatorUpgrade, CoordinatorUpgradeBaseline: baseline,
+	}
+	validDir := t.TempDir()
+	if err := saveContractDeployment(validDir, payloads.Manifest); err != nil {
+		t.Fatal(err)
+	}
+	valid := &Executor{cfg: cfg, stateDir: validDir, plan: &base, roles: roles}
+	if err := valid.ensurePayloads(context.Background()); err != nil {
+		t.Fatalf("valid equal-core repeated baseline was rejected: %v", err)
+	}
+	for _, mutation := range []struct {
+		name   string
+		change func(*CoordinatorUpgradeBaseline)
+	}{
+		{name: "release manifest", change: func(value *CoordinatorUpgradeBaseline) { value.ReleaseDeploymentHash = "0x" + strings.Repeat("81", 32) }},
+		{name: "replacement runtime", change: func(value *CoordinatorUpgradeBaseline) {
+			value.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("82", 32)
+		}},
+		{name: "replacement executable", change: func(value *CoordinatorUpgradeBaseline) {
+			value.PrecompileProbeExecutableHash = "0x" + strings.Repeat("83", 32)
+		}},
+	} {
+		plan := base
+		plan.CoordinatorUpgradeBaseline = replacement
+		plan.CoordinatorUpgradeBaseline.PriorDeploymentHash = manifestHash
+		plan.CoordinatorUpgradeBaseline.ReboundDeploymentHash = manifestHash
+		plan.CoordinatorUpgradeBaseline.RetiredPrecompileProbeHash = payloads.Manifest.RuntimeHashes[payloads.Manifest.PrecompileProbe.Hex()]
+		mutation.change(&plan.CoordinatorUpgradeBaseline)
+		stateDir := t.TempDir()
+		if err := saveContractDeployment(stateDir, payloads.Manifest); err != nil {
+			t.Fatal(err)
+		}
+		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &plan, roles: roles}
+		if err := executor.ensurePayloads(context.Background()); err == nil {
+			t.Errorf("%s mutation was accepted", mutation.name)
+		}
+		stored, err := loadContractDeployment(stateDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedHash, err := contractDeploymentIdentityHash(*stored)
+		if err != nil || storedHash != manifestHash {
+			t.Errorf("%s rejection mutated core deployment: hash=%s want=%s error=%v", mutation.name, storedHash, manifestHash, err)
+		}
+		if _, err := os.Stat(filepath.Join(stateDir, "public", "deployments")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s rejection created a deployment archive: %v", mutation.name, err)
+		}
+	}
+}
+
+func TestLegacyCoordinatorBaselinesRejectReplacementProbeFields(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := buildDeploymentPayloads(cfg, roles, 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestHash, err := contractDeploymentIdentityHash(initial.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveExecutable, _ := normalizedSolidityExecutableHash(initial.ExpectedRuntime[initial.Manifest.ReserveSink], artifactByName("ReserveSink"))
+	vaultExecutable, _ := normalizedSolidityExecutableHash(initial.ExpectedRuntime[initial.Manifest.SettlementVault], artifactByName("SettlementVault"))
+	probeExecutable, _ := normalizedSolidityExecutableHash(initial.ExpectedRuntime[initial.Manifest.PrecompileProbe], TestnetPrecompileProbeArtifact)
+	proxyExecutable, _ := normalizedSolidityExecutableHash(initial.ExpectedRuntime[initial.Manifest.CoordinatorProxy], artifactByName("ERC1967Proxy"))
+	governanceVersion := crypto.Keccak256Hash([]byte("urnetwork/coordinator-adversary/v1")).Hex()
+	base := CoordinatorUpgradeBaseline{
+		PriorDeploymentHash: manifestHash, ReleaseDeploymentHash: manifestHash, ReboundDeploymentHash: manifestHash,
+		ReserveSinkExecutableHash: reserveExecutable, SettlementVaultExecutableHash: vaultExecutable,
+		GovernanceDrillVersion: governanceVersion, GovernanceProxiableUUID: erc1967ImplementationSlot,
+		FinalizedBlock: 123, FinalizedBlockHash: "0x" + strings.Repeat("99", 32),
+	}
+	v1 := base
+	v1.Schema, v1.DeployerNonce, v1.ProbeAddressEmpty = "urnetwork-coordinator-upgrade-baseline-v1", initial.Manifest.InitialNonce+8, true
+	if err := validateCoordinatorUpgradeBaseline(v1, initial.Manifest, initial.CoordinatorUpgrade); err != nil {
+		t.Fatalf("valid v1 fixture: %v", err)
+	}
+	active := initial.CoordinatorUpgrade
+	if err := configureCoordinatorUpgradeNonce(initial, active.DeployerNonce+1); err != nil {
+		t.Fatal(err)
+	}
+	v2 := base
+	v2.Schema, v2.DeployerNonce = "urnetwork-coordinator-upgrade-baseline-v2", initial.CoordinatorUpgrade.DeployerNonce
+	v2.ActiveImplementation, v2.ActiveImplementationHash = active.Implementation.Hex(), active.RuntimeCodeHash
+	v2.PrecompileProbeExecutableHash = probeExecutable
+	if err := validateCoordinatorUpgradeBaseline(v2, initial.Manifest, initial.CoordinatorUpgrade); err != nil {
+		t.Fatalf("valid v2 fixture: %v", err)
+	}
+	v3 := v2
+	v3.Schema, v3.CoordinatorProxyExecutableHash = "urnetwork-coordinator-upgrade-baseline-v3", proxyExecutable
+	if err := validateCoordinatorUpgradeBaseline(v3, initial.Manifest, initial.CoordinatorUpgrade); err != nil {
+		t.Fatalf("valid v3 fixture: %v", err)
+	}
+	for _, fixture := range []struct {
+		name     string
+		baseline CoordinatorUpgradeBaseline
+		upgrade  CoordinatorUpgrade
+	}{
+		{"v1", v1, active},
+		{"v2", v2, initial.CoordinatorUpgrade},
+		{"v3", v3, initial.CoordinatorUpgrade},
+	} {
+		for _, mutation := range []struct {
+			name   string
+			change func(*CoordinatorUpgradeBaseline)
+		}{
+			{"address", func(value *CoordinatorUpgradeBaseline) {
+				value.ReplacementPrecompileProbe = common.HexToAddress("0x1234").Hex()
+			}},
+			{"nonce", func(value *CoordinatorUpgradeBaseline) { value.ReplacementPrecompileProbeNonce = 29 }},
+			{"runtime", func(value *CoordinatorUpgradeBaseline) {
+				value.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("11", 32)
+			}},
+			{"retired address", func(value *CoordinatorUpgradeBaseline) {
+				value.RetiredPrecompileProbe = initial.Manifest.PrecompileProbe.Hex()
+			}},
+			{"retired runtime", func(value *CoordinatorUpgradeBaseline) {
+				value.RetiredPrecompileProbeHash = "0x" + strings.Repeat("22", 32)
+			}},
+		} {
+			changed := fixture.baseline
+			mutation.change(&changed)
+			if err := validateCoordinatorUpgradeBaseline(changed, initial.Manifest, fixture.upgrade); err == nil {
+				t.Fatalf("%s baseline accepted v4-only %s", fixture.name, mutation.name)
+			}
+		}
+	}
+}
+
 func TestDeploymentGenerationChangesOnlyGenerationBoundVaultIdentityAtOneNonce(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := BuildRoleSecrets(cfg)
@@ -489,12 +907,12 @@ func TestRepeatedCoordinatorUpgradeBindsNextNonceAndImmutableExecutableBaseline(
 	if err := validateCoordinatorUpgradeBaselineRelease(baseline, payloads.Manifest, payloads.Manifest, payloads.CoordinatorUpgrade); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateCoordinatorUpgradePayloadBaseline(baseline, payloads); err != nil {
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, payloads.Manifest, payloads); err != nil {
 		t.Fatal(err)
 	}
 	wrongExecutable := baseline
 	wrongExecutable.PrecompileProbeExecutableHash = "0x" + strings.Repeat("77", 32)
-	if err := validateCoordinatorUpgradePayloadBaseline(wrongExecutable, payloads); err == nil || !strings.Contains(err.Error(), "precompile probe") {
+	if err := validateCoordinatorUpgradePayloadBaseline(wrongExecutable, payloads.Manifest, payloads); err == nil || !strings.Contains(err.Error(), "precompile probe") {
 		t.Fatalf("probe executable drift was accepted: %v", err)
 	}
 	metadataOnly := *payloads
@@ -505,11 +923,11 @@ func TestRepeatedCoordinatorUpgradeBindsNextNonceAndImmutableExecutableBaseline(
 		t.Fatal(err)
 	}
 	metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy][len(executable)+1] ^= 0x01
-	if err := validateCoordinatorUpgradePayloadBaseline(baseline, &metadataOnly); err != nil {
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, payloads.Manifest, &metadataOnly); err != nil {
 		t.Fatalf("proxy metadata-only drift was rejected: %v", err)
 	}
 	metadataOnly.ExpectedRuntime[payloads.Manifest.CoordinatorProxy][40] ^= 0x01
-	if err := validateCoordinatorUpgradePayloadBaseline(baseline, &metadataOnly); err == nil || !strings.Contains(err.Error(), "proxy executable") {
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, payloads.Manifest, &metadataOnly); err == nil || !strings.Contains(err.Error(), "proxy executable") {
 		t.Fatalf("proxy executable drift was accepted: %v", err)
 	}
 	wrongActive := baseline

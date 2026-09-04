@@ -51,6 +51,7 @@ var (
 	errPriorEVMTransactionSucceeded    = errors.New("prior EVM transaction succeeded without durable postcondition verification")
 )
 
+// Carries one finalized compatibility observation into pure revision rendering.
 type coordinatorUpgradeMigration struct {
 	Deployment ContractDeployment
 	Baseline   CoordinatorUpgradeBaseline
@@ -166,6 +167,9 @@ func repeatedCoordinatorUpgradeBoundary(prior *SetupPlan, entries []JournalEntry
 func coordinatorUpgradeMigrationNonceMatches(prior *SetupPlan, migration *coordinatorUpgradeMigration, payloads *DeploymentPayloads, currentNonce uint64, entries []JournalEntry) (bool, error) {
 	if prior == nil || migration == nil || payloads == nil {
 		return false, errors.New("coordinator upgrade migration nonce context is unavailable")
+	}
+	if migration.Baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && migration.Baseline.ProbeAddressEmpty && currentNonce == migration.Baseline.ReplacementPrecompileProbeNonce {
+		return true, nil
 	}
 	if currentNonce == migration.Baseline.DeployerNonce || currentNonce == payloads.CoordinatorUpgrade.DeployerNonce {
 		return true, nil
@@ -1629,7 +1633,7 @@ func reuseExactActiveCoordinatorUpgrade(prior *SetupPlan, built *DeploymentPaylo
 	}
 	reuse := batcherMatches && built.CoordinatorUpgrade == prior.CoordinatorUpgrade &&
 		validateCoordinatorUpgradeBaselineRelease(prior.CoordinatorUpgradeBaseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade) == nil &&
-		validateCoordinatorUpgradePayloadBaseline(prior.CoordinatorUpgradeBaseline, built) == nil
+		validateCoordinatorUpgradePayloadBaseline(prior.CoordinatorUpgradeBaseline, prior.Deployment, built) == nil
 	if reuse {
 		return true, nil
 	}
@@ -1639,7 +1643,187 @@ func reuseExactActiveCoordinatorUpgrade(prior *SetupPlan, built *DeploymentPaylo
 	return false, nil
 }
 
-func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, roles *RoleSecrets, built *DeploymentPayloads) (*coordinatorUpgradeMigration, error) {
+// Refuses to abandon any conformance effect or partially persisted evidence
+// when moving to a different disposable probe generation.
+func validateUnusedPrecompileProbeGeneration(stateDir string, prior *SetupPlan, entries []JournalEntry) error {
+	if prior == nil {
+		return errors.New("prior precompile probe generation is unavailable")
+	}
+	for _, entry := range entries {
+		if prior.allowedPlanHashes()[entry.PlanHash] && strings.HasPrefix(entry.ActionID, "precompile.") && entry.ActionID != "precompile.probe-deploy" {
+			return fmt.Errorf("precompile probe generation cannot change after action %s entered the durable journal", entry.ActionID)
+		}
+	}
+	if _, err := os.Stat(precompileEvidencePath(stateDir)); err == nil {
+		return errors.New("precompile probe generation cannot change after conformance evidence was persisted")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect prior precompile conformance evidence: %w", err)
+	}
+	return nil
+}
+
+// Classifies only journal records authenticated by one plan-lineage action.
+// A successful CREATE must reach its exact postcondition before a revision;
+// generic transaction recovery separately rejects successful unverified writes.
+func coordinatorMigrationActionProgress(prior *SetupPlan, entries []JournalEntry, actionID string) (bool, bool, error) {
+	action, err := exactPlanActionByID(prior, actionID)
+	if err != nil {
+		return false, false, err
+	}
+	allowed := prior.allowedPlanHashes()
+	verified, durable := false, false
+	for _, entry := range entries {
+		if !allowed[entry.PlanHash] || entry.ActionID != actionID {
+			continue
+		}
+		if !actionAcceptsIntent(action, entry.IntentHash) {
+			// A v4 plan deliberately rejects the retired generation's intents,
+			// which remain visible through authenticated ancestor history. Only
+			// an inconsistent entry attributed to the current plan is malformed.
+			if entry.PlanHash == prior.PlanHash {
+				return false, false, fmt.Errorf("coordinator migration action %s has an unauthenticated current-plan journal intent", actionID)
+			}
+			continue
+		}
+		switch entry.Stage {
+		case StageBroadcast, StageIncluded, StageFinalized:
+			durable = true
+		case StageVerified:
+			durable = true
+			verified = true
+		}
+		if entry.TransactionHash != "" {
+			durable = true
+		}
+	}
+	return verified, durable, nil
+}
+
+// Authenticates every finalized CREATE and dependency at the four resumable
+// boundaries of the one-off probe replacement. The immutable six-contract
+// deployment remains the retained identity while the additive probe, upgrade,
+// and batcher occupy an exact contiguous nonce suffix.
+func observePersistedPrecompileProbeReplacement(ctx context.Context, cfg *ResolvedConfig, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, roles *RoleSecrets, existing ContractDeployment, built *DeploymentPayloads) (*coordinatorUpgradeMigration, error) {
+	if cfg == nil || prior == nil || current == nil || roles == nil || built == nil || prior.CoordinatorUpgradeBaseline.Schema != "urnetwork-coordinator-upgrade-baseline-v4" {
+		return nil, errors.New("persisted replacement precompile probe context is unavailable")
+	}
+	baseline := prior.CoordinatorUpgradeBaseline
+	if !contractDeploymentAddressesEqual(existing, prior.Deployment) || !contractDeploymentRuntimeHashesCompatible(existing, prior.Deployment) {
+		return nil, errors.New("persisted replacement changed the immutable deployment identity")
+	}
+	if err := validateCoordinatorUpgradeBaselineRelease(baseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade); err != nil {
+		return nil, err
+	}
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, prior.Deployment, built); err != nil {
+		return nil, err
+	}
+	if built.FleetBatcherNonce == ^uint64(0) {
+		return nil, errors.New("persisted replacement nonce range overflows")
+	}
+	firstNonce, terminalNonce := baseline.ReplacementPrecompileProbeNonce, built.FleetBatcherNonce+1
+	if current.DeployerNonce < firstNonce || current.DeployerNonce > terminalNonce {
+		return nil, fmt.Errorf("persisted replacement deployer nonce=%d, want one of %d..%d", current.DeployerNonce, firstNonce, terminalNonce)
+	}
+
+	client, err := dialConfiguredEVMClient(ctx, cfg, cfg.OperationalEVM)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	head, err := finalizedEVMHead(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+	if head.Number < current.EVMFinalizedBlock || head.Number < baseline.FinalizedBlock {
+		return nil, fmt.Errorf("persisted replacement finalized head %d predates facts/baseline %d/%d", head.Number, current.EVMFinalizedBlock, baseline.FinalizedBlock)
+	}
+	block := new(big.Int).SetUint64(head.Number)
+	deployer, err := roles.EVMAddress("deployer")
+	if err != nil {
+		return nil, err
+	}
+	nonce, err := client.NonceAt(ctx, deployer, block)
+	if err != nil || nonce != current.DeployerNonce {
+		return nil, stateMismatchError(err, "persisted replacement deployer nonce=%d want=%d", nonce, current.DeployerNonce)
+	}
+
+	priorHashes, err := normalizedDeploymentRuntimeHashes(prior.Deployment)
+	if err != nil || len(priorHashes) != len(contractDeploymentAddresses(prior.Deployment)) {
+		return nil, stateMismatchError(err, "persisted replacement immutable runtime census is incomplete")
+	}
+	for _, address := range contractDeploymentAddresses(prior.Deployment) {
+		code, codeErr := client.CodeAt(ctx, address, block)
+		got := crypto.Keccak256Hash(code).Hex()
+		if codeErr != nil || len(code) == 0 || !strings.EqualFold(got, priorHashes[address]) {
+			return nil, stateMismatchError(codeErr, "persisted replacement immutable runtime mismatch at %s: got=%s want=%s", address, got, priorHashes[address])
+		}
+	}
+
+	creates := []struct {
+		name     string
+		actionID string
+		nonce    uint64
+		address  common.Address
+		runtime  []byte
+	}{
+		{name: "replacement precompile probe", actionID: "precompile.probe-deploy", nonce: built.PrecompileProbeNonce, address: built.PrecompileProbeAddress, runtime: built.ExpectedRuntime[built.PrecompileProbeAddress]},
+		{name: "coordinator implementation", actionID: "evm.coordinator-upgrade-implementation", nonce: built.CoordinatorUpgrade.DeployerNonce, address: built.CoordinatorUpgrade.Implementation, runtime: built.ExpectedRuntime[built.CoordinatorUpgrade.Implementation]},
+		{name: "fleet batcher", actionID: "fleet.refresh.deploy-batcher", nonce: built.FleetBatcherNonce, address: built.FleetBatcherAddress, runtime: built.FleetBatcherRuntime},
+	}
+	for _, create := range creates {
+		if len(create.runtime) == 0 {
+			return nil, fmt.Errorf("persisted replacement %s has no locked runtime", create.name)
+		}
+		code, codeErr := client.CodeAt(ctx, create.address, block)
+		verified, durable, progressErr := coordinatorMigrationActionProgress(prior, entries, create.actionID)
+		if progressErr != nil {
+			return nil, progressErr
+		}
+		consumed := current.DeployerNonce > create.nonce
+		if !consumed {
+			if codeErr != nil || len(code) != 0 || durable {
+				return nil, stateMismatchError(codeErr, "unconsumed %s boundary has code=%d durable_journal=%t", create.name, len(code), durable)
+			}
+			continue
+		}
+		got, want := crypto.Keccak256Hash(code).Hex(), crypto.Keccak256Hash(create.runtime).Hex()
+		if codeErr != nil || len(code) == 0 || !strings.EqualFold(got, want) || !verified {
+			return nil, stateMismatchError(codeErr, "consumed %s runtime/verification=%s/%t want=%s/true", create.name, got, verified, want)
+		}
+	}
+
+	activationVerified, activationDurable, err := coordinatorMigrationActionProgress(prior, entries, "evm.coordinator-upgrade-activate")
+	if err != nil {
+		return nil, err
+	}
+	implementationCreated := current.DeployerNonce > built.CoordinatorUpgrade.DeployerNonce
+	batcherCreated := current.DeployerNonce > built.FleetBatcherNonce
+	if activationDurable && !activationVerified {
+		return nil, errors.New("persisted coordinator activation has no exact verified postcondition")
+	}
+	if activationVerified && !implementationCreated || batcherCreated && !activationVerified {
+		return nil, errors.New("persisted replacement violates coordinator activation dependencies")
+	}
+	implementationSlot, err := client.StorageAt(ctx, prior.Deployment.CoordinatorProxy, common.HexToHash(erc1967ImplementationSlot), block)
+	if err != nil || len(implementationSlot) != 32 {
+		return nil, stateMismatchError(err, "read persisted replacement coordinator implementation slot length=%d", len(implementationSlot))
+	}
+	activeImplementation := common.BytesToAddress(implementationSlot[12:])
+	wantImplementation := common.HexToAddress(baseline.ActiveImplementation)
+	wantRuntimeHash := baseline.ActiveImplementationHash
+	if activationVerified {
+		wantImplementation = built.CoordinatorUpgrade.Implementation
+		wantRuntimeHash = built.CoordinatorUpgrade.RuntimeCodeHash
+	}
+	activeCode, err := client.CodeAt(ctx, activeImplementation, block)
+	activeHash := crypto.Keccak256Hash(activeCode).Hex()
+	if err != nil || activeImplementation != wantImplementation || len(activeCode) == 0 || !strings.EqualFold(activeHash, wantRuntimeHash) {
+		return nil, stateMismatchError(err, "persisted replacement active coordinator=%s/%s want=%s/%s", activeImplementation, activeHash, wantImplementation, wantRuntimeHash)
+	}
+	return &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: baseline, Upgrade: prior.CoordinatorUpgrade}, nil
+}
+
+func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, roles *RoleSecrets, built *DeploymentPayloads) (*coordinatorUpgradeMigration, error) {
 	implementationVerified := exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-implementation")
 	activationVerified := exactVerifiedPlanAction(prior, entries, "evm.coordinator-upgrade-activate")
 	if !implementationVerified {
@@ -1698,9 +1882,8 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		}
 	}
 	priorHashes, priorErr := normalizedDeploymentRuntimeHashes(prior.Deployment)
-	builtHashes, builtErr := normalizedDeploymentRuntimeHashes(built.Manifest)
-	if priorErr != nil || builtErr != nil || len(priorHashes) != 6 || len(builtHashes) != 6 {
-		return nil, errors.New("active or release deployment runtime manifest is incomplete")
+	if priorErr != nil || len(priorHashes) != 6 {
+		return nil, errors.New("active deployment runtime manifest is incomplete")
 	}
 	codeByAddress := map[common.Address][]byte{}
 	for _, address := range contractDeploymentAddresses(prior.Deployment) {
@@ -1745,6 +1928,56 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 			return &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: prior.CoordinatorUpgradeBaseline, Upgrade: prior.CoordinatorUpgrade}, nil
 		}
 	}
+	authenticatedProbeExecutable := ""
+	if prior.CoordinatorUpgradeBaseline.isRepeated() {
+		authenticatedProbeExecutable = prior.CoordinatorUpgradeBaseline.PrecompileProbeExecutableHash
+	}
+	activeProbeAddress := effectivePrecompileProbe(prior.Deployment, prior.CoordinatorUpgradeBaseline)
+	activeProbeCode := codeByAddress[prior.Deployment.PrecompileProbe]
+	if activeProbeAddress != prior.Deployment.PrecompileProbe {
+		activeProbeCode, err = client.CodeAt(ctx, activeProbeAddress, block)
+		if err != nil {
+			return nil, fmt.Errorf("read active replacement precompile probe: %w", err)
+		}
+		if got, want := crypto.Keccak256Hash(activeProbeCode).Hex(), prior.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeHash; len(activeProbeCode) == 0 || !strings.EqualFold(got, want) {
+			return nil, fmt.Errorf("active replacement precompile probe runtime mismatch at %s: got=%s want=%s", activeProbeAddress, got, want)
+		}
+	}
+	_, releaseProbeExecutable, replaceProbe, err := comparePrecompileProbeRelease(activeProbeCode, authenticatedProbeExecutable, built.ExpectedRuntime[built.PrecompileProbeAddress])
+	if err != nil {
+		return nil, err
+	}
+	if replaceProbe {
+		if continuingActivation {
+			return nil, errors.New("current precompile probe replacement cannot precede an interrupted coordinator activation")
+		}
+		if prior.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+			return nil, errors.New("active replacement precompile probe executable changed again")
+		}
+		if err := validateUnusedPrecompileProbeGeneration(stateDir, prior, entries); err != nil {
+			return nil, err
+		}
+		if expectedNonce == ^uint64(0) {
+			return nil, errors.New("replacement precompile probe nonce range overflows")
+		}
+		if err := configureCoordinatorUpgradeNonce(built, expectedNonce+1); err != nil {
+			return nil, err
+		}
+		if err := configurePrecompileProbeNonce(built, expectedNonce); err != nil {
+			return nil, err
+		}
+		probeCode, probeErr := client.CodeAt(ctx, built.PrecompileProbeAddress, block)
+		if probeErr != nil {
+			return nil, fmt.Errorf("read replacement precompile probe address: %w", probeErr)
+		}
+		if len(probeCode) != 0 {
+			return nil, fmt.Errorf("replacement precompile probe CREATE address already has %d runtime bytes", len(probeCode))
+		}
+	}
+	builtHashes, builtErr := normalizedDeploymentRuntimeHashes(built.Manifest)
+	if builtErr != nil || len(builtHashes) != 6 {
+		return nil, errors.New("release deployment runtime manifest is incomplete")
+	}
 	newCode, err := client.CodeAt(ctx, built.CoordinatorUpgrade.Implementation, block)
 	if err != nil {
 		return nil, err
@@ -1769,10 +2002,7 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 	if err != nil {
 		return nil, err
 	}
-	probeExecutable, err := matchingNormalizedSolidityExecutableHash("precompile probe", codeByAddress[prior.Deployment.PrecompileProbe], built.ExpectedRuntime[built.Manifest.PrecompileProbe], TestnetPrecompileProbeArtifact)
-	if err != nil {
-		return nil, err
-	}
+	probeExecutable := releaseProbeExecutable
 	version, err := callBytes32SelectorAt(ctx, client, prior.Deployment.GovernanceDrillImplementation, "DRILL_VERSION()", head.Number)
 	if err != nil {
 		return nil, fmt.Errorf("active governance drill version: %w", err)
@@ -1797,7 +2027,7 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		if err := validateCoordinatorUpgradeBaselineRelease(baseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade); err != nil {
 			return nil, err
 		}
-		if err := validateCoordinatorUpgradePayloadBaseline(baseline, built); err != nil {
+		if err := validateCoordinatorUpgradePayloadBaseline(baseline, prior.Deployment, built); err != nil {
 			return nil, err
 		}
 		return &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: baseline, Upgrade: built.CoordinatorUpgrade}, nil
@@ -1813,10 +2043,25 @@ func observeRepeatedCoordinatorUpgrade(ctx context.Context, cfg *ResolvedConfig,
 		CoordinatorProxyExecutableHash: proxyExecutable,
 		FinalizedBlock:                 head.Number, FinalizedBlockHash: head.Hash,
 	}
+	if replaceProbe {
+		baseline.Schema = "urnetwork-coordinator-upgrade-baseline-v4"
+		baseline.DeployerNonce = built.CoordinatorUpgrade.DeployerNonce
+		baseline.ProbeAddressEmpty = true
+		baseline.ReplacementPrecompileProbe = built.PrecompileProbeAddress.Hex()
+		baseline.ReplacementPrecompileProbeNonce = built.PrecompileProbeNonce
+		baseline.ReplacementPrecompileProbeHash = crypto.Keccak256Hash(built.ExpectedRuntime[built.PrecompileProbeAddress]).Hex()
+		baseline.RetiredPrecompileProbe = prior.Deployment.PrecompileProbe.Hex()
+		baseline.RetiredPrecompileProbeHash = priorHashes[prior.Deployment.PrecompileProbe]
+	} else if prior.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+		// V4 is a terminal one-off replacement checkpoint. A later coordinator
+		// release needs a reviewed successor schema that records its own current
+		// nonce boundary without rewriting the historical adjacent CREATE proof.
+		return nil, errors.New("an active replacement precompile probe cannot be rebound to another coordinator release")
+	}
 	if err := validateCoordinatorUpgradeBaselineRelease(baseline, prior.Deployment, built.Manifest, built.CoordinatorUpgrade); err != nil {
 		return nil, err
 	}
-	if err := validateCoordinatorUpgradePayloadBaseline(baseline, built); err != nil {
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, prior.Deployment, built); err != nil {
 		return nil, err
 	}
 	return &coordinatorUpgradeMigration{Deployment: prior.Deployment, Baseline: baseline, Upgrade: built.CoordinatorUpgrade}, nil
@@ -1842,6 +2087,15 @@ func observeCoordinatorUpgradeMigration(ctx context.Context, cfg *ResolvedConfig
 	if err != nil {
 		return nil, err
 	}
+	if prior.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+		if err := configureCoordinatorUpgradeNonce(built, prior.CoordinatorUpgrade.DeployerNonce); err != nil {
+			return nil, fmt.Errorf("bind prior replacement coordinator: %w", err)
+		}
+		if err := configurePrecompileProbeNonce(built, prior.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeNonce); err != nil {
+			return nil, fmt.Errorf("bind prior replacement probe: %w", err)
+		}
+		return observePersistedPrecompileProbeReplacement(ctx, cfg, prior, current, entries, roles, *existing, built)
+	}
 	if contractDeploymentAddressesEqual(*existing, built.Manifest) && contractDeploymentRuntimeHashesCompatible(*existing, built.Manifest) {
 		return nil, nil
 	}
@@ -1852,7 +2106,7 @@ func observeCoordinatorUpgradeMigration(ctx context.Context, cfg *ResolvedConfig
 		return nil, errors.New("legacy deployment addresses or recorded runtime hashes differ from the authenticated prior plan")
 	}
 	if (prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v1" || prior.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2") && prior.CoordinatorUpgrade.DeployerNonce != ^uint64(0) && current.DeployerNonce > prior.CoordinatorUpgrade.DeployerNonce {
-		return observeRepeatedCoordinatorUpgrade(ctx, cfg, prior, current, entries, roles, built)
+		return observeRepeatedCoordinatorUpgrade(ctx, cfg, stateDir, prior, current, entries, roles, built)
 	}
 	if prior.Deployment.InitialNonce > ^uint64(0)-9 {
 		return nil, errors.New("legacy deployment nonce range overflows")
@@ -2126,10 +2380,30 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 		return err
 	}
 	plan.CoordinatorUpgrade = payloads.CoordinatorUpgrade
-	implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount := 0, 0, 0, 0, 0
+	probeCount, implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount := 0, 0, 0, 0, 0, 0
 	for index := range plan.Actions {
 		action := &plan.Actions[index]
+		precompileAction := plan.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && strings.HasPrefix(action.ID, "precompile.")
+		if precompileAction {
+			action.Parameters = cloneStrings(action.Parameters)
+			action.Parameters[precompileProbeAddressParameter] = payloads.PrecompileProbeAddress.Hex()
+			action.Parameters[precompileProbeRuntimeParameter] = crypto.Keccak256Hash(payloads.ExpectedRuntime[payloads.PrecompileProbeAddress]).Hex()
+		}
 		switch action.ID {
+		case "precompile.probe-deploy":
+			probeCount++
+			if payloads.PrecompileProbeAddress == payloads.Manifest.PrecompileProbe {
+				continue
+			}
+			action.Description = "deploy the locked, owner-gated runtime-453 conformance probe at its approval-bound nonce"
+			action.Parameters = cloneStrings(action.Parameters)
+			envelope, ok := deploymentActionEnvelope(payloads, action.ID, plan.RegistrationBurnLimitRao)
+			if !ok {
+				return errors.New("precompile probe replacement has no exact transaction envelope")
+			}
+			for key, value := range envelope {
+				action.Parameters[key] = value
+			}
 		case "evm.coordinator-upgrade-implementation":
 			implementationCount++
 			action.Target = payloads.CoordinatorUpgrade.Implementation.Hex()
@@ -2168,6 +2442,9 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			action.Parameters["oracle"] = payloads.FleetBatcherAddress.Hex()
 		case "fleet.refresh.oracle-await-active":
 			action.Target = payloads.FleetBatcherAddress.Hex()
+		case "fleet.refresh.oracle-restore", "fleet.refresh.oracle-await-restored":
+			action.Parameters = cloneStrings(action.Parameters)
+			action.Parameters[fleetRefreshBatcherParameter] = payloads.FleetBatcherAddress.Hex()
 		default:
 			if strings.HasPrefix(action.ID, "fleet.install.batch.") {
 				installBatchCount++
@@ -2175,7 +2452,7 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			} else if strings.HasPrefix(action.ID, "fleet.refresh.batch.") {
 				refreshBatchCount++
 				action.Target = payloads.FleetBatcherAddress.Hex()
-			} else {
+			} else if !precompileAction {
 				continue
 			}
 		}
@@ -2185,8 +2462,8 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			return err
 		}
 	}
-	if implementationCount != 1 || activationCount != 1 || batcherCount != 1 || installBatchCount == 0 || installBatchCount != refreshBatchCount {
-		return fmt.Errorf("revised plan has %d coordinator implementation, %d activation, %d fleet batcher deployment, %d install batches, and %d refresh batches", implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount)
+	if probeCount != 1 || implementationCount != 1 || activationCount != 1 || batcherCount != 1 || installBatchCount == 0 || installBatchCount != refreshBatchCount {
+		return fmt.Errorf("revised plan has %d precompile probe, %d coordinator implementation, %d activation, %d fleet batcher deployment, %d install batches, and %d refresh batches", probeCount, implementationCount, activationCount, batcherCount, installBatchCount, refreshBatchCount)
 	}
 	return nil
 }
@@ -2240,6 +2517,132 @@ func sameEVMTransactionExceptGasUnits(left, right Action) bool {
 	leftSpend, rightSpend := left.Spend, right.Spend
 	leftSpend.EVMGasWei, rightSpend.EVMGasWei = "0", "0"
 	return leftSpend == rightSpend
+}
+
+// Authenticates a completed atomic fleet write across only the helper CREATE
+// generation. The immutable coordinator, exact fleet range, calldata inputs,
+// dependencies, and all non-gas spend must remain unchanged.
+func validateFleetBatchGenerationCarry(cfg *ResolvedConfig, currentPlan, sourcePlan *SetupPlan, current, source Action) error {
+	if cfg == nil || currentPlan == nil || sourcePlan == nil || current.ID != source.ID ||
+		(!strings.HasPrefix(current.ID, "fleet.install.batch.") && !strings.HasPrefix(current.ID, "fleet.refresh.batch.")) {
+		return errors.New("fleet batch generation carry context is invalid")
+	}
+	currentTarget, currentTargetErr := fleetBatcherAddressForAction(current)
+	sourceTarget, sourceTargetErr := fleetBatcherAddressForAction(source)
+	currentBatcher, currentBatcherErr := exactPlanActionByID(currentPlan, "fleet.refresh.deploy-batcher")
+	sourceBatcher, sourceBatcherErr := exactPlanActionByID(sourcePlan, "fleet.refresh.deploy-batcher")
+	currentBatcherAddress, currentBatcherAddressErr := fleetBatcherAddressForAction(currentBatcher)
+	sourceBatcherAddress, sourceBatcherAddressErr := fleetBatcherAddressForAction(sourceBatcher)
+	if currentTargetErr != nil || sourceTargetErr != nil || currentBatcherErr != nil || sourceBatcherErr != nil || currentBatcherAddressErr != nil || sourceBatcherAddressErr != nil ||
+		currentTarget != currentBatcherAddress || sourceTarget != sourceBatcherAddress ||
+		!strings.EqualFold(currentBatcher.Parameters["expected_created_address"], currentBatcherAddress.Hex()) ||
+		!strings.EqualFold(sourceBatcher.Parameters["expected_created_address"], sourceBatcherAddress.Hex()) {
+		return errors.New("fleet batch generation carry has an unauthenticated helper target")
+	}
+	currentFirst, currentLast, err := planBoundFleetBatchRange(cfg, current)
+	if err != nil {
+		return err
+	}
+	sourceFirst, sourceLast, err := planBoundFleetBatchRange(cfg, source)
+	if err != nil {
+		return err
+	}
+	if currentFirst != sourceFirst || currentLast != sourceLast {
+		return errors.New("fleet batch generation carry range differs")
+	}
+	currentDeploymentHash, err := contractDeploymentIdentityHash(currentPlan.Deployment)
+	if err != nil {
+		return err
+	}
+	sourceDeploymentHash, err := contractDeploymentIdentityHash(sourcePlan.Deployment)
+	if err != nil {
+		return err
+	}
+	if currentPlan.DeploymentID != sourcePlan.DeploymentID || currentPlan.ChainID != sourcePlan.ChainID || currentPlan.Netuid != sourcePlan.Netuid || currentDeploymentHash != sourceDeploymentHash {
+		return errors.New("fleet batch generation carry deployment differs")
+	}
+	normalized := current
+	normalized.Target = source.Target
+	if !sameEVMTransactionExceptGasUnits(source, normalized) {
+		return errors.New("fleet batch generation carry changed transaction semantics beyond its helper target")
+	}
+	return nil
+}
+
+// Retains each exact verified atomic batch under its authenticated historical
+// helper, while leaving incomplete batches bound to the new helper generation.
+func preserveVerifiedFleetBatchActions(cfg *ResolvedConfig, stateDir string, revised, prior *SetupPlan, entries []JournalEntry) error {
+	if cfg == nil || revised == nil || prior == nil {
+		return errors.New("revised and prior plans are required to preserve fleet batches")
+	}
+	allowedPlans := prior.allowedPlanHashes()
+	planCache := map[string]*SetupPlan{prior.PlanHash: prior}
+	loadPlan := func(planHash string) (*SetupPlan, error) {
+		if plan := planCache[planHash]; plan != nil {
+			return plan, nil
+		}
+		if !allowedPlans[planHash] {
+			return nil, fmt.Errorf("fleet batch source plan %s is outside the approved lineage", planHash)
+		}
+		if _, err := decodeHex32("fleet batch source plan hash", planHash); err != nil {
+			return nil, err
+		}
+		plan, err := readPersistedPlanFile(filepath.Join(stateDir, "plans", stringsTrim0x(planHash)+".json"))
+		if err != nil {
+			return nil, fmt.Errorf("read fleet batch source plan %s: %w", planHash, err)
+		}
+		if !strings.EqualFold(plan.PlanHash, planHash) {
+			return nil, fmt.Errorf("fleet batch source plan identity %s does not match requested %s", plan.PlanHash, planHash)
+		}
+		planCache[planHash] = plan
+		return plan, nil
+	}
+	verifiedEntries := map[string][]JournalEntry{}
+	for _, entry := range entries {
+		if allowedPlans[entry.PlanHash] && entry.Stage == StageVerified && (strings.HasPrefix(entry.ActionID, "fleet.install.batch.") || strings.HasPrefix(entry.ActionID, "fleet.refresh.batch.")) {
+			verifiedEntries[entry.ActionID] = append(verifiedEntries[entry.ActionID], entry)
+		}
+	}
+	for index := range revised.Actions {
+		current := revised.Actions[index]
+		if !strings.HasPrefix(current.ID, "fleet.install.batch.") && !strings.HasPrefix(current.ID, "fleet.refresh.batch.") {
+			continue
+		}
+		candidates := verifiedEntries[current.ID]
+		if len(candidates) == 0 {
+			continue
+		}
+		entry := candidates[len(candidates)-1]
+		sourcePlan, err := loadPlan(entry.PlanHash)
+		if err != nil {
+			return err
+		}
+		var source *Action
+		for actionIndex := range sourcePlan.Actions {
+			candidate := &sourcePlan.Actions[actionIndex]
+			if candidate.ID != entry.ActionID || candidate.IntentHash != entry.IntentHash {
+				continue
+			}
+			if source != nil {
+				return fmt.Errorf("fleet batch source plan %s has duplicate exact action %s", sourcePlan.PlanHash, current.ID)
+			}
+			copy := *candidate
+			source = &copy
+		}
+		if source == nil {
+			return fmt.Errorf("verified fleet batch %s has no exact source action", current.ID)
+		}
+		if err := validateFleetBatchGenerationCarry(cfg, revised, sourcePlan, current, *source); err != nil {
+			return fmt.Errorf("preserve verified fleet batch %s: %w", current.ID, err)
+		}
+		revised.Actions[index] = *source
+	}
+	maximum, err := maximumActionSpend(revised.Actions)
+	if err != nil {
+		return err
+	}
+	revised.MaximumSpend = maximum
+	return nil
 }
 
 // Recognize the one release transition which replaces an already-finalized
@@ -3273,6 +3676,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 				return nil, stateMismatchError(err, "coordinator upgrade migration payload differs from its approved identity")
 			}
 		}
+		if migration != nil && migration.Baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+			if err := configurePrecompileProbeNonce(currentPayloads, migration.Baseline.ReplacementPrecompileProbeNonce); err != nil {
+				return nil, fmt.Errorf("bind revised precompile probe: %w", err)
+			}
+		}
 		if contractDeploymentAddressesEqual(*existingDeployment, currentPayloads.Manifest) && contractDeploymentRuntimeHashesCompatible(*existingDeployment, currentPayloads.Manifest) {
 			normalized.DeployerNonce = existingDeployment.InitialNonce
 		} else if promotionErr := validateRegistrationRoleGenerationPromotion(cfg, prior, *existingDeployment, currentPayloads.Manifest, current.DeployerNonce, entries); promotionErr == nil {
@@ -3297,7 +3705,7 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			if err := validateCoordinatorUpgradeBaselineRelease(migration.Baseline, migration.Deployment, currentPayloads.Manifest, currentPayloads.CoordinatorUpgrade); err != nil {
 				return nil, err
 			}
-			if err := validateCoordinatorUpgradePayloadBaseline(migration.Baseline, currentPayloads); err != nil {
+			if err := validateCoordinatorUpgradePayloadBaseline(migration.Baseline, migration.Deployment, currentPayloads); err != nil {
 				return nil, err
 			}
 			normalized.DeployerNonce = existingDeployment.InitialNonce
@@ -3404,6 +3812,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			revised.CoordinatorUpgradeBaseline = migration.Baseline
 			if err := rebindPlanCoordinatorUpgrade(revised, currentPayloads); err != nil {
 				return nil, fmt.Errorf("bind repeated coordinator upgrade: %w", err)
+			}
+			if err := preserveVerifiedFleetBatchActions(cfg, stateDir, revised, prior, entries); err != nil {
+				return nil, fmt.Errorf("preserve verified fleet batches: %w", err)
 			}
 		}
 		if err := preserveVerifiedBaselineDeploymentActions(revised, prior, entries); err != nil {

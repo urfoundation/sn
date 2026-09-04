@@ -223,6 +223,14 @@ func fleetRefreshOracleTarget(action Action, payloads *DeploymentPayloads) (comm
 	default:
 		return common.Address{}, fmt.Errorf("action %s is not a fleet refresh oracle action", action.ID)
 	}
+	if action.ID == "fleet.refresh.oracle-restore" || action.ID == "fleet.refresh.oracle-await-restored" {
+		generation := action.Parameters[fleetRefreshBatcherParameter]
+		presentInvalid := generation != "" && generation != payloads.FleetBatcherAddress.Hex()
+		requiredMissing := payloads.PrecompileProbeAddress != payloads.Manifest.PrecompileProbe && generation == ""
+		if presentInvalid || requiredMissing {
+			return common.Address{}, fmt.Errorf("action %s does not bind the activated fleet batcher generation", action.ID)
+		}
+	}
 	if strings.Contains(action.ID, "await") {
 		if !common.IsHexAddress(action.Target) || common.HexToAddress(action.Target) != target {
 			return common.Address{}, fmt.Errorf("action %s target differs from its approved oracle", action.ID)

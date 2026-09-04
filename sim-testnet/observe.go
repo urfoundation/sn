@@ -72,31 +72,32 @@ func boundFinalizedEVMHead(ctx context.Context) (ChainHead, bool) {
 }
 
 type ContractView struct {
-	Deployment         *ContractDeployment `json:"deployment,omitempty"`
-	CoordinatorUpgrade CoordinatorUpgrade  `json:"coordinator_upgrade"`
-	FinalizedHead      ChainHead           `json:"finalized_head"`
-	CurrentEpoch       uint64              `json:"current_epoch"`
-	CurrentEpochStart  uint64              `json:"current_epoch_start_block"`
-	CurrentEpochEnd    uint64              `json:"current_epoch_end_block"`
-	CoordinatorOwner   string              `json:"coordinator_owner"`
-	OperatorCount      uint64              `json:"operator_count"`
-	PolicyHash         string              `json:"policy_hash,omitempty"`
-	ConservationHolds  bool                `json:"conservation_holds"`
-	MinimumTransferRao uint64              `json:"minimum_transfer_tao_rao"`
-	TotalCaptured      string              `json:"total_captured_rao,omitempty"`
-	TotalPaid          string              `json:"total_paid_rao,omitempty"`
-	EscrowAccounted    string              `json:"escrow_accounted_rao,omitempty"`
-	PendingFunding     string              `json:"pending_funding_rao,omitempty"`
-	Outstanding        string              `json:"outstanding_liability_rao,omitempty"`
-	LiveEscrowStake    string              `json:"live_escrow_stake_rao,omitempty"`
-	ReservePrincipal   string              `json:"reserve_principal_rao,omitempty"`
-	ReserveLiveStake   string              `json:"reserve_live_stake_rao,omitempty"`
-	RuntimeCodeHashes  map[string]string   `json:"runtime_code_hashes,omitempty"`
-	RuntimeCodeMatches bool                `json:"runtime_code_matches"`
-	CustodyIdentity    ContractCustodyView `json:"custody_identity"`
-	Policy             PolicyView          `json:"policy"`
-	Operators          []OperatorView      `json:"operators"`
-	Epochs             []EpochView         `json:"epochs"`
+	Deployment                 *ContractDeployment         `json:"deployment,omitempty"`
+	CoordinatorUpgrade         CoordinatorUpgrade          `json:"coordinator_upgrade"`
+	CoordinatorUpgradeBaseline *CoordinatorUpgradeBaseline `json:"coordinator_upgrade_baseline,omitempty"`
+	FinalizedHead              ChainHead                   `json:"finalized_head"`
+	CurrentEpoch               uint64                      `json:"current_epoch"`
+	CurrentEpochStart          uint64                      `json:"current_epoch_start_block"`
+	CurrentEpochEnd            uint64                      `json:"current_epoch_end_block"`
+	CoordinatorOwner           string                      `json:"coordinator_owner"`
+	OperatorCount              uint64                      `json:"operator_count"`
+	PolicyHash                 string                      `json:"policy_hash,omitempty"`
+	ConservationHolds          bool                        `json:"conservation_holds"`
+	MinimumTransferRao         uint64                      `json:"minimum_transfer_tao_rao"`
+	TotalCaptured              string                      `json:"total_captured_rao,omitempty"`
+	TotalPaid                  string                      `json:"total_paid_rao,omitempty"`
+	EscrowAccounted            string                      `json:"escrow_accounted_rao,omitempty"`
+	PendingFunding             string                      `json:"pending_funding_rao,omitempty"`
+	Outstanding                string                      `json:"outstanding_liability_rao,omitempty"`
+	LiveEscrowStake            string                      `json:"live_escrow_stake_rao,omitempty"`
+	ReservePrincipal           string                      `json:"reserve_principal_rao,omitempty"`
+	ReserveLiveStake           string                      `json:"reserve_live_stake_rao,omitempty"`
+	RuntimeCodeHashes          map[string]string           `json:"runtime_code_hashes,omitempty"`
+	RuntimeCodeMatches         bool                        `json:"runtime_code_matches"`
+	CustodyIdentity            ContractCustodyView         `json:"custody_identity"`
+	Policy                     PolicyView                  `json:"policy"`
+	Operators                  []OperatorView              `json:"operators"`
+	Epochs                     []EpochView                 `json:"epochs"`
 }
 
 // ContractCustodyView records the complete immutable and one-shot-linked
@@ -1718,10 +1719,15 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		return nil, fmt.Errorf("contract manifest: %w", err)
 	}
 	upgrade := CoordinatorUpgrade{}
+	baseline := CoordinatorUpgradeBaseline{}
 	if publicManifest != nil {
 		upgrade = publicManifest.CoordinatorUpgrade
+		if publicManifest.CoordinatorUpgradeBaseline != nil {
+			baseline = *publicManifest.CoordinatorUpgradeBaseline
+		}
 	} else if plan, planErr := readPersistedPlan(stateDir); planErr == nil {
 		upgrade = plan.CoordinatorUpgrade
+		baseline = plan.CoordinatorUpgradeBaseline
 	}
 	endpoint := ""
 	if publicManifest != nil {
@@ -1913,14 +1919,20 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
-	addresses := []common.Address{deployment.ReserveSink, deployment.SettlementVault, deployment.CoordinatorImplementation, deployment.CoordinatorProxy, deployment.GovernanceDrillImplementation}
-	if deployment.PrecompileProbe != (common.Address{}) {
-		addresses = append(addresses, deployment.PrecompileProbe)
+	probe := effectivePrecompileProbe(*deployment, baseline)
+	addresses := []common.Address{deployment.ReserveSink, deployment.SettlementVault, deployment.CoordinatorImplementation, deployment.CoordinatorProxy, deployment.GovernanceDrillImplementation, deployment.PrecompileProbe}
+	if probe != (common.Address{}) && probe != deployment.PrecompileProbe {
+		addresses = append(addresses, probe)
 	}
 	if upgrade.Implementation != (common.Address{}) {
 		addresses = append(addresses, upgrade.Implementation)
 	}
-	hashes, matches, err := inspectRuntimeCodeAt(ctx, client, deployment, upgrade, addresses, head.Number)
+	runtimeDeployment := *deployment
+	if probe != deployment.PrecompileProbe {
+		runtimeDeployment.RuntimeHashes = cloneStrings(deployment.RuntimeHashes)
+		runtimeDeployment.RuntimeHashes[probe.Hex()] = baseline.ReplacementPrecompileProbeHash
+	}
+	hashes, matches, err := inspectRuntimeCodeAt(ctx, client, &runtimeDeployment, upgrade, addresses, head.Number)
 	if err != nil {
 		return nil, err
 	}
@@ -1928,7 +1940,12 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if err != nil {
 		return nil, err
 	}
-	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, CoordinatorOwner: coordinatorOwner.Hex(), OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, CustodyIdentity: custodyIdentity, Policy: policy, Operators: operators, Epochs: epochs}, nil
+	var baselineView *CoordinatorUpgradeBaseline
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+		copy := baseline
+		baselineView = &copy
+	}
+	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, CoordinatorUpgradeBaseline: baselineView, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, CoordinatorOwner: coordinatorOwner.Hex(), OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, CustodyIdentity: custodyIdentity, Policy: policy, Operators: operators, Epochs: epochs}, nil
 }
 
 func decodeContractCustodyView(results map[string][]any, deployment *ContractDeployment, cfg *ResolvedConfig) (ContractCustodyView, error) {
@@ -2118,6 +2135,29 @@ func loadDeploymentReference(ctx context.Context, stateDir, source string) (*Con
 	return loadDeploymentReferenceWithTransport(ctx, stateDir, source, publicEvidenceTransportHTTPS, 0, "")
 }
 
+// Proves a published replacement is the exact CREATE authorized by its
+// signed role directory and immutable deployment lineage.
+func validatePublicPrecompileProbeGeneration(public *PublicDeploymentManifest) error {
+	if public == nil || public.CoordinatorUpgradeBaseline == nil {
+		return nil
+	}
+	if public.Contracts == nil || public.CoordinatorUpgradeBaseline.Schema != "urnetwork-coordinator-upgrade-baseline-v4" {
+		return errors.New("public deployment manifest has an unsupported conformance probe generation")
+	}
+	baseline := *public.CoordinatorUpgradeBaseline
+	if err := validateCoordinatorUpgradeBaseline(baseline, *public.Contracts, public.CoordinatorUpgrade); err != nil {
+		return fmt.Errorf("public deployment manifest conformance probe generation: %w", err)
+	}
+	var identities finalPublicIdentities
+	if err := json.Unmarshal(public.Identities, &identities); err != nil || identities.Schema != "urnetwork-sim-public-identities-v1" || identities.DeploymentID != public.DeploymentID || !common.IsHexAddress(identities.EVM["deployer"]) {
+		return errors.New("public deployment manifest has no authenticated contract deployer")
+	}
+	if err := validatePrecompileProbeReplacement(baseline, common.HexToAddress(identities.EVM["deployer"]), *public.Contracts, public.CoordinatorUpgrade); err != nil {
+		return fmt.Errorf("public deployment manifest replacement probe: %w", err)
+	}
+	return nil
+}
+
 func loadDeploymentReferenceWithTransport(ctx context.Context, stateDir, source, profile string, chainID uint64, genesisHash string) (*ContractDeployment, *PublicDeploymentManifest, error) {
 	if source == "" {
 		deployment, err := loadContractDeployment(stateDir)
@@ -2144,6 +2184,9 @@ func loadDeploymentReferenceWithTransport(ctx context.Context, stateDir, source,
 		}
 		if err := validatePublicCampaignOperatorOrigins(&public); err != nil {
 			return nil, nil, fmt.Errorf("invalid public deployment manifest evidence transport: %w", err)
+		}
+		if err := validatePublicPrecompileProbeGeneration(&public); err != nil {
+			return nil, nil, err
 		}
 		if envelope.Schema == releaseEvidenceSchema {
 			_, signers := inspectPublicIdentityBytesForManifest(public.Identities, public.DeploymentID, public.Topology)

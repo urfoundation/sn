@@ -34,6 +34,326 @@ func actionByID(t *testing.T, plan *SetupPlan, id string) Action {
 	return Action{}
 }
 
+func TestReplacementPrecompileProbeRequiresUnusedConformanceGeneration(t *testing.T) {
+	prior := &SetupPlan{PlanHash: "0x" + strings.Repeat("11", 32), PriorPlanHashes: []string{"0x" + strings.Repeat("22", 32)}}
+	if err := validateUnusedPrecompileProbeGeneration(t.TempDir(), prior, []JournalEntry{{PlanHash: prior.PlanHash, ActionID: "precompile.probe-deploy", Stage: StageVerified}}); err != nil {
+		t.Fatalf("probe-only generation was rejected: %v", err)
+	}
+	for _, entry := range []JournalEntry{
+		{PlanHash: prior.PlanHash, ActionID: "precompile.commitment-write", Stage: StageIntent},
+		{PlanHash: prior.PlanHash, ActionID: "precompile.read-battery", Stage: StageVerified},
+		{PlanHash: prior.PriorPlanHashes[0], ActionID: "precompile.seed", Stage: StageBroadcast},
+		{PlanHash: prior.PlanHash, ActionID: "precompile.move-forward", Stage: StageFailed},
+		{PlanHash: prior.PlanHash, ActionID: "precompile.snapshot", Stage: StageFinalized},
+		{PlanHash: prior.PlanHash, ActionID: "precompile.transfer-out", Stage: StageVerified},
+	} {
+		if err := validateUnusedPrecompileProbeGeneration(t.TempDir(), prior, []JournalEntry{entry}); err == nil || !strings.Contains(err.Error(), entry.ActionID) {
+			t.Fatalf("journaled generation action %+v was accepted: %v", entry, err)
+		}
+	}
+	stateDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(precompileEvidencePath(stateDir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(precompileEvidencePath(stateDir), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateUnusedPrecompileProbeGeneration(stateDir, prior, nil); err == nil || !strings.Contains(err.Error(), "evidence was persisted") {
+		t.Fatalf("persisted conformance generation was accepted: %v", err)
+	}
+}
+
+func TestReplacementPrecompileProbeRebindsOnlyProbeGenerationAndCountsRetiredGasOnce(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = payloads.Manifest.InitialNonce
+	prior, err := buildPlan(cfg, &facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(prior, retained); err != nil {
+		t.Fatal(err)
+	}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised, err := buildPlan(cfg, &facts, roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(revised, retained); err != nil {
+		t.Fatal(err)
+	}
+	priorDeploymentHash, err := contractDeploymentIdentityHash(prior.Deployment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised.CoordinatorUpgradeBaseline = baseline
+	if err := rebindPlanCoordinatorUpgrade(revised, payloads); err != nil {
+		t.Fatal(err)
+	}
+	revisedDeploymentHash, err := contractDeploymentIdentityHash(revised.Deployment)
+	if err != nil || revisedDeploymentHash != priorDeploymentHash {
+		t.Fatalf("probe replacement changed deployment identity: prior=%s revised=%s error=%v", priorDeploymentHash, revisedDeploymentHash, err)
+	}
+	for _, id := range []string{"operator.register.1", "alpha.transfer.operator-deposit.1", "fleet.mirror.1"} {
+		before, after := actionByID(t, prior, id), actionByID(t, revised, id)
+		if before.IntentHash != after.IntentHash || !actionAcceptsIntent(after, before.IntentHash) || after.Parameters[deploymentManifestHashParameter] != priorDeploymentHash {
+			t.Fatalf("verified value-bearing action %s was not carried exactly: before=%s after=%s", id, before.IntentHash, after.IntentHash)
+		}
+	}
+	for _, before := range prior.Actions {
+		if !strings.HasPrefix(before.ID, "precompile.") {
+			continue
+		}
+		after := actionByID(t, revised, before.ID)
+		if after.IntentHash == before.IntentHash || actionAcceptsIntent(after, before.IntentHash) || after.Parameters[precompileProbeAddressParameter] != payloads.PrecompileProbeAddress.Hex() || !strings.EqualFold(after.Parameters[precompileProbeRuntimeParameter], baseline.ReplacementPrecompileProbeHash) || after.Parameters[deploymentManifestHashParameter] != priorDeploymentHash {
+			t.Fatalf("precompile action %s did not bind only the replacement generation: before=%s after=%s parameters=%+v", before.ID, before.IntentHash, after.IntentHash, after.Parameters)
+		}
+	}
+	retiredIDs := []string{
+		"precompile.probe-deploy",
+		"evm.coordinator-upgrade-implementation",
+		"evm.coordinator-upgrade-activate",
+		"fleet.refresh.deploy-batcher",
+		"fleet.refresh.oracle-activate",
+		"fleet.refresh.oracle-restore",
+	}
+	entries := make([]JournalEntry, 0, len(retiredIDs)+2*((cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize))
+	wantGas := decimalUint64(0)
+	for _, id := range retiredIDs {
+		action := actionByID(t, prior, id)
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		wantGas, err = addDecimalUint(wantGas, action.Spend.EVMGasWei)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	carriedBatches := 0
+	for _, action := range prior.Actions {
+		if !strings.HasPrefix(action.ID, "fleet.install.batch.") && !strings.HasPrefix(action.ID, "fleet.refresh.batch.") {
+			continue
+		}
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		carriedBatches++
+	}
+	if err := preserveVerifiedFleetBatchActions(cfg, t.TempDir(), revised, prior, entries); err != nil {
+		t.Fatal(err)
+	}
+	retired, err := addRetiredVerifiedEVMGas(prior, revised, entries, Spend{})
+	if err != nil || retired.EVMGasWei != wantGas {
+		t.Fatalf("retired probe/upgrade/batcher/oracle gas=%s want=%s carried_batches=%d error=%v", retired.EVMGasWei, wantGas, carriedBatches, err)
+	}
+	revised.PriorPlanHashes = []string{prior.PlanHash}
+	revised.PlanHash, err = revised.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := *revised
+	retiredAgain, err := addRetiredVerifiedEVMGas(revised, &next, entries, retired)
+	if err != nil || retiredAgain != retired {
+		t.Fatalf("repeated revision double-counted retired gas: first=%+v second=%+v error=%v", retired, retiredAgain, err)
+	}
+}
+
+func TestReplacementBatcherCarriesEveryVerifiedFleetBatchWithoutExecution(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = payloads.Manifest.InitialNonce
+	prior, err := buildPlan(cfg, &facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(prior, retained); err != nil {
+		t.Fatal(err)
+	}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	clonePlan := func(source *SetupPlan, releaseLockByte string) *SetupPlan {
+		encoded, cloneErr := json.Marshal(source)
+		if cloneErr != nil {
+			t.Fatal(cloneErr)
+		}
+		var clone SetupPlan
+		if cloneErr := json.Unmarshal(encoded, &clone); cloneErr != nil {
+			t.Fatal(cloneErr)
+		}
+		clone.ReleaseLockHash = "0x" + strings.Repeat(releaseLockByte, 32)
+		clone.PriorPlanHashes = nil
+		clone.PlanHash, cloneErr = clone.hash()
+		if cloneErr != nil || validatePlanBudget(&clone) != nil {
+			t.Fatalf("build archived fleet batch source: hash_error=%v validation=%v", cloneErr, validatePlanBudget(&clone))
+		}
+		wire, cloneErr := json.MarshalIndent(&clone, "", "  ")
+		if cloneErr != nil {
+			t.Fatal(cloneErr)
+		}
+		if cloneErr := atomicWrite(filepath.Join(stateDir, "plans", stringsTrim0x(clone.PlanHash)+".json"), append(wire, '\n'), 0o600); cloneErr != nil {
+			t.Fatal(cloneErr)
+		}
+		return &clone
+	}
+	ancestorOne := clonePlan(prior, "a1")
+	ancestorTwo := clonePlan(prior, "b2")
+	prior.PriorPlanHashes = []string{ancestorOne.PlanHash, ancestorTwo.PlanHash}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	buildRebound := func() *SetupPlan {
+		plan, buildErr := buildPlan(cfg, &facts, roles, time.Unix(2, 0))
+		if buildErr != nil {
+			t.Fatal(buildErr)
+		}
+		if rebindErr := rebindPlanDeployment(plan, retained); rebindErr != nil {
+			t.Fatal(rebindErr)
+		}
+		plan.CoordinatorUpgradeBaseline = baseline
+		if rebindErr := rebindPlanCoordinatorUpgrade(plan, payloads); rebindErr != nil {
+			t.Fatal(rebindErr)
+		}
+		plan.PriorPlanHashes = append(plan.PriorPlanHashes, prior.PriorPlanHashes...)
+		plan.PriorPlanHashes = append(plan.PriorPlanHashes, prior.PlanHash)
+		plan.PlanHash, buildErr = plan.hash()
+		if buildErr != nil || plan.PlanHash == prior.PlanHash {
+			t.Fatalf("hash rebound fleet plan: hash=%s prior=%s error=%v", plan.PlanHash, prior.PlanHash, buildErr)
+		}
+		return plan
+	}
+	revised := buildRebound()
+	entries := make([]JournalEntry, 0, 2*((cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize))
+	for _, action := range prior.Actions {
+		if strings.HasPrefix(action.ID, "fleet.install.batch.") || strings.HasPrefix(action.ID, "fleet.refresh.batch.") {
+			sourcePlanHash := prior.PlanHash
+			if len(entries) < 10 {
+				sourcePlanHash = ancestorOne.PlanHash
+			} else if len(entries) < 20 {
+				sourcePlanHash = ancestorTwo.PlanHash
+			}
+			entries = append(entries, JournalEntry{PlanHash: sourcePlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		}
+	}
+	wantBatches := 2 * ((cfg.Config.Topology.HeadFleets + fleetRefreshBatchSize - 1) / fleetRefreshBatchSize)
+	if len(entries) != wantBatches {
+		t.Fatalf("verified fleet batch fixture count=%d want=%d", len(entries), wantBatches)
+	}
+	if err := preserveVerifiedFleetBatchActions(cfg, stateDir, revised, prior, entries); err != nil {
+		t.Fatal(err)
+	}
+	carried := 0
+	for _, entry := range entries {
+		before := actionByID(t, prior, entry.ActionID)
+		after := actionByID(t, revised, entry.ActionID)
+		beforeHash, beforeErr := canonicalHashHex(before)
+		afterHash, afterErr := canonicalHashHex(after)
+		if beforeErr != nil || afterErr != nil || beforeHash != afterHash || after.Target == payloads.FleetBatcherAddress.Hex() {
+			t.Fatalf("verified batch %s was not retained under its historical helper: before=%s after=%s errors=%v/%v", entry.ActionID, beforeHash, afterHash, beforeErr, afterErr)
+		}
+		carried++
+	}
+	if carried != wantBatches {
+		t.Fatalf("carried fleet batches=%d want=%d", carried, wantBatches)
+	}
+
+	partial := buildRebound()
+	last := entries[len(entries)-1]
+	partialEntries := append([]JournalEntry(nil), entries[:len(entries)-1]...)
+	partialEntries = append(partialEntries, JournalEntry{PlanHash: last.PlanHash, ActionID: last.ActionID, IntentHash: last.IntentHash, Stage: StageFinalized})
+	if err := preserveVerifiedFleetBatchActions(cfg, stateDir, partial, prior, partialEntries); err != nil {
+		t.Fatal(err)
+	}
+	pending := actionByID(t, partial, last.ActionID)
+	if pending.Target != payloads.FleetBatcherAddress.Hex() || pending.IntentHash == last.IntentHash {
+		t.Fatalf("incomplete batch was carried instead of rebound: %+v", pending)
+	}
+
+	for _, entry := range entries {
+		action := actionByID(t, revised, entry.ActionID)
+		journalEntries := []JournalEntry{entry}
+		for _, dependencyID := range action.DependsOn {
+			dependency := actionByID(t, revised, dependencyID)
+			journalEntries = append(journalEntries, JournalEntry{PlanHash: revised.PlanHash, ActionID: dependency.ID, IntentHash: dependency.IntentHash, Stage: StageVerified})
+		}
+		executor := &Executor{
+			cfg: cfg, plan: revised, journal: &Journal{entries: journalEntries},
+			carriedVerificationKeys: map[string]bool{carriedVerificationKey(entry): true},
+		}
+		if err := executor.Execute(context.Background(), action); err != nil {
+			t.Fatalf("carried batch %s reached execution instead of the verified-history fast path: %v", action.ID, err)
+		}
+	}
+}
+
+func TestFleetBatchGenerationCarryRejectsTargetRangeAndDeploymentDrift(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = payloads.Manifest.InitialNonce
+	source, err := buildPlan(cfg, &facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(source, retained); err != nil {
+		t.Fatal(err)
+	}
+	current, err := buildPlan(cfg, &facts, roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(current, retained); err != nil {
+		t.Fatal(err)
+	}
+	current.CoordinatorUpgradeBaseline = baseline
+	if err := rebindPlanCoordinatorUpgrade(current, payloads); err != nil {
+		t.Fatal(err)
+	}
+	currentAction := actionByID(t, current, "fleet.refresh.batch.1")
+	sourceAction := actionByID(t, source, currentAction.ID)
+	if err := validateFleetBatchGenerationCarry(cfg, current, source, currentAction, sourceAction); err != nil {
+		t.Fatalf("exact fleet batch helper transition was rejected: %v", err)
+	}
+	mutations := []struct {
+		name   string
+		change func(*SetupPlan, *Action)
+	}{
+		{name: "foreign helper target", change: func(_ *SetupPlan, action *Action) { action.Target = common.HexToAddress("0x1234").Hex() }},
+		{name: "changed fleet range", change: func(_ *SetupPlan, action *Action) {
+			action.Parameters = cloneStrings(action.Parameters)
+			action.Parameters["last_fleet"] = "9"
+		}},
+		{name: "changed deployment", change: func(plan *SetupPlan, _ *Action) {
+			plan.Deployment.RuntimeHashes = cloneStrings(plan.Deployment.RuntimeHashes)
+			plan.Deployment.RuntimeHashes[plan.Deployment.ReserveSink.Hex()] = "0x" + strings.Repeat("ef", 32)
+		}},
+	}
+	for _, mutation := range mutations {
+		candidatePlan := *source
+		candidatePlan.Deployment = source.Deployment
+		candidatePlan.Deployment.RuntimeHashes = cloneStrings(source.Deployment.RuntimeHashes)
+		candidateAction := sourceAction
+		candidateAction.Parameters = cloneStrings(sourceAction.Parameters)
+		mutation.change(&candidatePlan, &candidateAction)
+		if err := validateFleetBatchGenerationCarry(cfg, current, &candidatePlan, currentAction, candidateAction); err == nil {
+			t.Fatalf("%s fleet batch generation drift was accepted", mutation.name)
+		}
+	}
+}
+
 // Remove only the reserve-composition fields introduced by v9, preserving the
 // exact authenticated v8 action semantics used by the live testnet ancestor.
 func downgradeReserveEnvelopeToV8(t *testing.T, plan *SetupPlan) {

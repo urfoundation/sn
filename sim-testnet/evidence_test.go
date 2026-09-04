@@ -1485,6 +1485,80 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestPublicDeploymentManifestPublishesAuthenticatedReplacementProbe(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.example"
+	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://test.substrate.example"
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for label, role := range roles.Clients {
+		role.ClientIDHex = strings.Repeat("01", 16)
+		roles.Clients[label] = role
+	}
+	stateDir := t.TempDir()
+	if err := saveContractDeployment(stateDir, retained); err != nil {
+		t.Fatal(err)
+	}
+	identities, err := json.Marshal(roles.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identitiesPath := filepath.Join(stateDir, "public", "identities.json")
+	if err := atomicWrite(identitiesPath, identities, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setupFiles := []string{"voluntary-conviction.json"}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		setupFiles = append(setupFiles, fmt.Sprintf("fleet-%d.json", fleet), fmt.Sprintf("fleet-%d.commitment.json", fleet))
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			setupFiles = append(setupFiles, fmt.Sprintf("fleet-%d-member-%d.binding.json", fleet, member))
+		}
+	}
+	for _, name := range setupFiles {
+		if err := atomicWrite(filepath.Join(stateDir, "public", name), []byte("{\"evidence\":true}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := &SetupPlan{
+		PlanHash: "0x" + strings.Repeat("12", 32), CoordinatorUpgrade: payloads.CoordinatorUpgrade,
+		CoordinatorUpgradeBaseline: baseline,
+	}
+	manifest, err := writePublicDeploymentManifest(cfg, stateDir, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.CoordinatorUpgradeBaseline == nil || *manifest.CoordinatorUpgradeBaseline != baseline {
+		t.Fatalf("published manifest dropped the replacement probe generation: %+v", manifest.CoordinatorUpgradeBaseline)
+	}
+	_, loaded, err := loadDeploymentReferenceWithTransport(context.Background(), "", filepath.Join(stateDir, "public.json"), publicEvidenceTransportHTTPS, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+	if err != nil || loaded == nil || loaded.CoordinatorUpgradeBaseline == nil || *loaded.CoordinatorUpgradeBaseline != baseline {
+		t.Fatalf("replacement probe publication did not round-trip: loaded=%+v written=%+v error=%v", loaded, manifest, err)
+	}
+
+	publicBytes, err := os.ReadFile(filepath.Join(stateDir, "public.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicIdentities := roles.Public()
+	delete(publicIdentities.EVM, "deployer")
+	missingDeployer, err := json.Marshal(publicIdentities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(identitiesPath, missingDeployer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writePublicDeploymentManifest(cfg, stateDir, plan); err == nil || !strings.Contains(err.Error(), "authenticated contract deployer") {
+		t.Fatalf("replacement probe without a published deployer was accepted: %v", err)
+	}
+	unchanged, err := os.ReadFile(filepath.Join(stateDir, "public.json"))
+	if err != nil || !bytes.Equal(unchanged, publicBytes) {
+		t.Fatalf("rejected replacement publication changed public.json: %v", err)
+	}
+}
+
 func TestEvidenceFileHashesExcludeOnlyExactRootCompletionFiles(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{

@@ -1100,7 +1100,7 @@ func validateVoluntaryConvictionReconciliationAction(plan *SetupPlan, action Act
 		voluntary.Parameters[deploymentManifestHashParameter] != action.Parameters[deploymentManifestHashParameter] {
 		return "", errors.New("voluntary-conviction reconciliation differs from the active original action")
 	}
-	if plan.Schema == currentSetupPlanSchema && voluntary.IntentHash != action.Parameters[voluntaryRecoveryOriginalIntentHashParameter] {
+	if planUsesRevisionRecoveryEnvelope(plan.Schema) && voluntary.IntentHash != action.Parameters[voluntaryRecoveryOriginalIntentHashParameter] {
 		return "", errors.New("voluntary-conviction reconciliation does not retain the authenticated original intent")
 	}
 	gasBefore, beforeGasErr := parseDecimalUint(action.Parameters[voluntaryRecoverySupersededGasBeforeParameter])

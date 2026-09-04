@@ -246,11 +246,11 @@ func (e *Executor) precompileIdentities(ctx context.Context) (*PrecompileConform
 	if err != nil {
 		return nil, sample, move, recovery, err
 	}
-	probeColdkey := ss58Mirror(e.payloads.Manifest.PrecompileProbe)
+	probeColdkey := ss58Mirror(e.payloads.PrecompileProbeAddress)
 	evidence := &PrecompileConformanceEvidence{
 		Schema: "urnetwork-precompile-conformance-v1", DeploymentID: e.cfg.Config.Deployment.DeploymentID,
 		ConfigHash: e.cfg.ConfigHash, PolicyHash: e.cfg.PolicyHash, ChainID: testnetChainID,
-		GenesisHash: testnetGenesis, Netuid: e.cfg.Netuid, ProbeAddress: e.payloads.Manifest.PrecompileProbe.Hex(),
+		GenesisHash: testnetGenesis, Netuid: e.cfg.Netuid, ProbeAddress: e.payloads.PrecompileProbeAddress.Hex(),
 		ProbeColdkey: hexBytesValue(probeColdkey[:]), Owner: deployer.Hex(), SampleHotkey: hexBytesValue(sample[:]), SampleUID: uid,
 		AbsentHotkey: hexBytesValue(absent[:]), MoveHotkey: hexBytesValue(move[:]), RecoveryColdkey: hexBytesValue(recovery[:]),
 	}
@@ -271,10 +271,10 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 		evidence = identity
 	} else if err != nil {
 		return err
-	} else if err := validatePrecompileEvidenceIdentity(e.cfg, &e.payloads.Manifest, evidence); err != nil {
+	} else if err := validatePrecompileEvidenceIdentity(e.cfg, e.payloads.PrecompileProbeAddress, evidence); err != nil {
 		return err
 	}
-	probe := e.payloads.Manifest.PrecompileProbe
+	probe := e.payloads.PrecompileProbeAddress
 	probeColdkey := ss58Mirror(probe)
 
 	switch action.ID {
@@ -568,7 +568,7 @@ func (e *Executor) executePrecompileConformance(ctx context.Context, action Acti
 }
 
 func (e *Executor) executePrecompileMove(ctx context.Context, action Action, parsed abi.ABI, evidence *PrecompileConformanceEvidence, from, to [32]byte, step *PrecompileMoveStep, amount uint64) error {
-	probe := e.payloads.Manifest.PrecompileProbe
+	probe := e.payloads.PrecompileProbeAddress
 	coldkey := ss58Mirror(probe)
 	if step.AmountRao == 0 {
 		fromBefore, err := e.readStakeFinalized(ctx, from, coldkey)
@@ -706,14 +706,14 @@ func exactIncrease(before, after, amount uint64) bool {
 
 func hexBytesValue(value []byte) string { return "0x" + hex.EncodeToString(value) }
 
-func validatePrecompileEvidenceIdentity(cfg *ResolvedConfig, deployment *ContractDeployment, evidence *PrecompileConformanceEvidence) error {
-	if evidence == nil || deployment == nil {
-		return errors.New("precompile conformance evidence/deployment is unavailable")
+func validatePrecompileEvidenceIdentity(cfg *ResolvedConfig, probe common.Address, evidence *PrecompileConformanceEvidence) error {
+	if evidence == nil || probe == (common.Address{}) {
+		return errors.New("precompile conformance evidence/probe is unavailable")
 	}
-	if evidence.Schema != "urnetwork-precompile-conformance-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.ConfigHash != cfg.ConfigHash || evidence.PolicyHash != cfg.PolicyHash || evidence.ChainID != testnetChainID || strings.ToLower(evidence.GenesisHash) != testnetGenesis || evidence.Netuid != cfg.Netuid || !strings.EqualFold(evidence.ProbeAddress, deployment.PrecompileProbe.Hex()) {
+	if evidence.Schema != "urnetwork-precompile-conformance-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.ConfigHash != cfg.ConfigHash || evidence.PolicyHash != cfg.PolicyHash || evidence.ChainID != testnetChainID || strings.ToLower(evidence.GenesisHash) != testnetGenesis || evidence.Netuid != cfg.Netuid || !strings.EqualFold(evidence.ProbeAddress, probe.Hex()) {
 		return errors.New("precompile conformance evidence identity does not match the approved deployment")
 	}
-	probeColdkey := ss58Mirror(deployment.PrecompileProbe)
+	probeColdkey := ss58Mirror(probe)
 	if !strings.EqualFold(evidence.ProbeColdkey, hexBytesValue(probeColdkey[:])) {
 		return errors.New("precompile conformance probe coldkey does not match mirror(probe)")
 	}
@@ -827,7 +827,7 @@ func (e *Executor) verifyCurrentPrecompileBattery(ctx context.Context, head Chai
 	if err != nil {
 		return err
 	}
-	values, err := contractCallAt(ctx, e.deployer.client, e.payloads.Manifest.PrecompileProbe, parsed, "readBattery", head.Number, sample, absent)
+	values, err := contractCallAt(ctx, e.deployer.client, e.payloads.PrecompileProbeAddress, parsed, "readBattery", head.Number, sample, absent)
 	if err != nil || len(values) != 1 {
 		return stateMismatchError(err, "independent readBattery returned %d values", len(values))
 	}
@@ -890,7 +890,7 @@ func (e *Executor) verifyPrecompileChainEvidence(ctx context.Context, action Act
 		if err != nil {
 			return err
 		}
-		baseline, current, since, err := readDividendAtFinalized(ctx, e.deployer.client, e.payloads.Manifest.PrecompileProbe, parsed, sample)
+		baseline, current, since, err := readDividendAtFinalized(ctx, e.deployer.client, e.payloads.PrecompileProbeAddress, parsed, sample)
 		if err != nil || baseline != evidence.Dividend.BaselineRao || since != evidence.Dividend.SinceBlock || current < evidence.Dividend.CurrentRao {
 			return stateMismatchError(err, "independent dividend state baseline=%d current=%d since=%d", baseline, current, since)
 		}
@@ -912,7 +912,7 @@ func (e *Executor) verifyPrecompileConformancePostState(ctx context.Context, act
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePrecompileEvidenceIdentity(e.cfg, &e.payloads.Manifest, evidence); err != nil {
+	if err := validatePrecompileEvidenceIdentity(e.cfg, e.payloads.PrecompileProbeAddress, evidence); err != nil {
 		return nil, err
 	}
 	passed := false

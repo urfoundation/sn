@@ -1259,40 +1259,41 @@ func publishedEvidenceKeyHasSuffix(key, suffix string) bool {
 }
 
 type PublicDeploymentManifest struct {
-	Schema                   string                     `json:"schema"`
-	Release                  string                     `json:"release"`
-	DeploymentID             string                     `json:"deployment_id"`
-	Revision                 uint64                     `json:"revision,omitempty"`
-	PreviousManifestHash     string                     `json:"previous_manifest_hash,omitempty"`
-	GeneratedAt              string                     `json:"generated_at"`
-	ChainID                  uint64                     `json:"chain_id"`
-	GenesisHash              string                     `json:"genesis_hash"`
-	RuntimeSpec              uint32                     `json:"runtime_spec"`
-	TransactionVersion       uint32                     `json:"transaction_version"`
-	StateVersion             uint8                      `json:"state_version"`
-	RuntimeCodeHash          string                     `json:"runtime_code_hash"`
-	RuntimeMetadataHash      string                     `json:"runtime_metadata_hash"`
-	Netuid                   uint16                     `json:"netuid"`
-	EVMRPC                   string                     `json:"evm_rpc"`
-	SubstrateRPC             string                     `json:"substrate_rpc"`
-	OperationalEVMRPC        string                     `json:"operational_evm_rpc,omitempty"`
-	OperationalSubstrateRPC  string                     `json:"operational_substrate_rpc,omitempty"`
-	OperationalRPCMode       string                     `json:"operational_rpc_mode"`
-	IndependentRPC           bool                       `json:"independent_rpc"`
-	EvidenceTransportProfile string                     `json:"evidence_transport_profile,omitempty"`
-	ConfigHash               string                     `json:"config_hash"`
-	PolicyHash               string                     `json:"policy_hash"`
-	PlanHash                 string                     `json:"plan_hash"`
-	ReleaseLockHash          string                     `json:"release_lock_hash"`
-	Contracts                *ContractDeployment        `json:"contracts"`
-	CoordinatorUpgrade       CoordinatorUpgrade         `json:"coordinator_upgrade"`
-	Identities               json.RawMessage            `json:"identities"`
-	SetupEvidence            map[string]json.RawMessage `json:"setup_evidence"`
-	Operators                []PublicOperator           `json:"operators"`
-	Topology                 TopologyConfig             `json:"topology"`
-	ArtifactStores           []string                   `json:"artifact_history_endpoints"`
-	EvidenceStores           []string                   `json:"release_evidence_history_endpoints"`
-	Commands                 map[string]string          `json:"commands"`
+	Schema                     string                      `json:"schema"`
+	Release                    string                      `json:"release"`
+	DeploymentID               string                      `json:"deployment_id"`
+	Revision                   uint64                      `json:"revision,omitempty"`
+	PreviousManifestHash       string                      `json:"previous_manifest_hash,omitempty"`
+	GeneratedAt                string                      `json:"generated_at"`
+	ChainID                    uint64                      `json:"chain_id"`
+	GenesisHash                string                      `json:"genesis_hash"`
+	RuntimeSpec                uint32                      `json:"runtime_spec"`
+	TransactionVersion         uint32                      `json:"transaction_version"`
+	StateVersion               uint8                       `json:"state_version"`
+	RuntimeCodeHash            string                      `json:"runtime_code_hash"`
+	RuntimeMetadataHash        string                      `json:"runtime_metadata_hash"`
+	Netuid                     uint16                      `json:"netuid"`
+	EVMRPC                     string                      `json:"evm_rpc"`
+	SubstrateRPC               string                      `json:"substrate_rpc"`
+	OperationalEVMRPC          string                      `json:"operational_evm_rpc,omitempty"`
+	OperationalSubstrateRPC    string                      `json:"operational_substrate_rpc,omitempty"`
+	OperationalRPCMode         string                      `json:"operational_rpc_mode"`
+	IndependentRPC             bool                        `json:"independent_rpc"`
+	EvidenceTransportProfile   string                      `json:"evidence_transport_profile,omitempty"`
+	ConfigHash                 string                      `json:"config_hash"`
+	PolicyHash                 string                      `json:"policy_hash"`
+	PlanHash                   string                      `json:"plan_hash"`
+	ReleaseLockHash            string                      `json:"release_lock_hash"`
+	Contracts                  *ContractDeployment         `json:"contracts"`
+	CoordinatorUpgrade         CoordinatorUpgrade          `json:"coordinator_upgrade"`
+	CoordinatorUpgradeBaseline *CoordinatorUpgradeBaseline `json:"coordinator_upgrade_baseline,omitempty"`
+	Identities                 json.RawMessage             `json:"identities"`
+	SetupEvidence              map[string]json.RawMessage  `json:"setup_evidence"`
+	Operators                  []PublicOperator            `json:"operators"`
+	Topology                   TopologyConfig              `json:"topology"`
+	ArtifactStores             []string                    `json:"artifact_history_endpoints"`
+	EvidenceStores             []string                    `json:"release_evidence_history_endpoints"`
+	Commands                   map[string]string           `json:"commands"`
 }
 
 type PublicOperator struct {
@@ -1483,6 +1484,10 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	if plan != nil {
 		manifest.PlanHash = plan.PlanHash
 		manifest.CoordinatorUpgrade = plan.CoordinatorUpgrade
+		if plan.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+			baseline := plan.CoordinatorUpgradeBaseline
+			manifest.CoordinatorUpgradeBaseline = &baseline
+		}
 	}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		if len(cfg.OperatorAPIOrigins) != cfg.Config.Topology.Operators {
@@ -1504,6 +1509,9 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 	manifest.Commands["analyze"] = publicManifestAnalyzeCommand
 	if err := validatePublicCampaignOperatorOrigins(manifest); err != nil {
 		return nil, fmt.Errorf("public deployment manifest evidence transport: %w", err)
+	}
+	if err := validatePublicPrecompileProbeGeneration(manifest); err != nil {
+		return nil, fmt.Errorf("public deployment manifest conformance probe generation: %w", err)
 	}
 	path := filepath.Join(stateDir, "public.json")
 	if existing, readErr := os.ReadFile(path); readErr == nil {

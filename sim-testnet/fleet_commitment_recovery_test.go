@@ -381,6 +381,37 @@ func TestFleetCommitmentRecoveryPlanValidationRejectsAdjacentExceptions(t *testi
 	}
 }
 
+func TestV10FleetCommitmentRecoveryRetainsExactLineageAndBudget(t *testing.T) {
+	fixture := newFleetCommitmentRecoveryFixture(t, 31, 1)
+	plan := fixture.reviseAt(t, fixture.evidence.FinalizedBlock+fixture.maximumAge+1)
+	plan.Schema = setupPlanSchemaV10
+	recovery := actionByID(t, plan, fixture.action.ID)
+	if err := validateFleetCommitmentRecoveryPlanAction(plan, recovery); err != nil {
+		t.Fatalf("valid v10 recovery lineage was rejected: %v", err)
+	}
+	if err := validateFleetCommitmentRecoveryBudget(plan); err != nil {
+		t.Fatalf("valid v10 recovery budget was rejected: %v", err)
+	}
+
+	changed := *plan
+	changed.Actions = append([]Action(nil), plan.Actions...)
+	action := findMutableAction(&changed, fixture.action.ID)
+	action.Parameters = cloneStrings(action.Parameters)
+	action.Parameters[fleetCommitmentRecoveryFeeParameter] = strconv.FormatUint(plan.NativeTransactionFeeLimitRao+1, 10)
+	if err := validateFleetCommitmentRecoveryPlanAction(&changed, *action); err == nil {
+		t.Fatal("v10 recovery with a changed authenticated fee limit was accepted")
+	}
+
+	changed = *plan
+	changed.Actions = append([]Action(nil), plan.Actions...)
+	funding := findMutableAction(&changed, "fleet.fund-hotkey.31")
+	funding.Parameters = cloneStrings(funding.Parameters)
+	funding.Parameters[fleetCommitmentFundingCountParameter] = "2"
+	if err := validateFleetCommitmentRecoveryBudget(&changed); err == nil {
+		t.Fatal("v10 recovery with changed cumulative funding was accepted")
+	}
+}
+
 func findMutableAction(plan *SetupPlan, actionID string) *Action {
 	for index := range plan.Actions {
 		if plan.Actions[index].ID == actionID {

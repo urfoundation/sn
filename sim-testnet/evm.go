@@ -63,27 +63,32 @@ type CoordinatorUpgrade struct {
 // binds the immutable proxy's executable body separately so a compilation-
 // graph-only CBOR change cannot masquerade as executable drift.
 type CoordinatorUpgradeBaseline struct {
-	Schema                         string `json:"schema"`
-	PriorDeploymentHash            string `json:"prior_deployment_hash"`
-	ReleaseDeploymentHash          string `json:"release_deployment_hash"`
-	ReboundDeploymentHash          string `json:"rebound_deployment_hash"`
-	ReserveSinkExecutableHash      string `json:"reserve_sink_executable_hash"`
-	SettlementVaultExecutableHash  string `json:"settlement_vault_executable_hash"`
-	GovernanceDrillVersion         string `json:"governance_drill_version"`
-	GovernanceProxiableUUID        string `json:"governance_proxiable_uuid"`
-	DeployerNonce                  uint64 `json:"deployer_nonce"`
-	ProbeAddressEmpty              bool   `json:"probe_address_empty"`
-	ActiveImplementation           string `json:"active_implementation,omitempty"`
-	ActiveImplementationHash       string `json:"active_implementation_runtime_hash,omitempty"`
-	PrecompileProbeExecutableHash  string `json:"precompile_probe_executable_hash,omitempty"`
-	CoordinatorProxyExecutableHash string `json:"coordinator_proxy_executable_hash,omitempty"`
-	FinalizedBlock                 uint64 `json:"finalized_block"`
-	FinalizedBlockHash             string `json:"finalized_block_hash"`
+	Schema                          string `json:"schema"`
+	PriorDeploymentHash             string `json:"prior_deployment_hash"`
+	ReleaseDeploymentHash           string `json:"release_deployment_hash"`
+	ReboundDeploymentHash           string `json:"rebound_deployment_hash"`
+	ReserveSinkExecutableHash       string `json:"reserve_sink_executable_hash"`
+	SettlementVaultExecutableHash   string `json:"settlement_vault_executable_hash"`
+	GovernanceDrillVersion          string `json:"governance_drill_version"`
+	GovernanceProxiableUUID         string `json:"governance_proxiable_uuid"`
+	DeployerNonce                   uint64 `json:"deployer_nonce"`
+	ProbeAddressEmpty               bool   `json:"probe_address_empty"`
+	ActiveImplementation            string `json:"active_implementation,omitempty"`
+	ActiveImplementationHash        string `json:"active_implementation_runtime_hash,omitempty"`
+	PrecompileProbeExecutableHash   string `json:"precompile_probe_executable_hash,omitempty"`
+	CoordinatorProxyExecutableHash  string `json:"coordinator_proxy_executable_hash,omitempty"`
+	ReplacementPrecompileProbe      string `json:"replacement_precompile_probe,omitempty"`
+	ReplacementPrecompileProbeNonce uint64 `json:"replacement_precompile_probe_nonce,omitempty"`
+	ReplacementPrecompileProbeHash  string `json:"replacement_precompile_probe_runtime_hash,omitempty"`
+	RetiredPrecompileProbe          string `json:"retired_precompile_probe,omitempty"`
+	RetiredPrecompileProbeHash      string `json:"retired_precompile_probe_runtime_hash,omitempty"`
+	FinalizedBlock                  uint64 `json:"finalized_block"`
+	FinalizedBlockHash              string `json:"finalized_block_hash"`
 }
 
 type DeploymentPayloads struct {
-	Deployer, CommitmentOracle, FleetBatcherAddress                                                                                                 common.Address
-	FleetBatcherNonce                                                                                                                               uint64
+	Deployer, CommitmentOracle, FleetBatcherAddress, PrecompileProbeAddress                                                                         common.Address
+	FleetBatcherNonce, PrecompileProbeNonce                                                                                                         uint64
 	Manifest                                                                                                                                        ContractDeployment
 	CoordinatorUpgrade                                                                                                                              CoordinatorUpgrade
 	Reserve, Vault, Implementation, RegisterEscrow, Proxy, GovernanceDrill, FixVault, FixSink, PrecompileProbe, UpgradeImplementation, FleetBatcher []byte
@@ -110,7 +115,7 @@ func (baseline CoordinatorUpgradeBaseline) isZero() bool {
 }
 
 func (baseline CoordinatorUpgradeBaseline) isRepeated() bool {
-	return baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v2" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3"
+	return baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v2" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4"
 }
 
 func validateCoordinatorUpgradeBaseline(baseline CoordinatorUpgradeBaseline, deployment ContractDeployment, upgrade CoordinatorUpgrade) error {
@@ -123,8 +128,27 @@ func validateCoordinatorUpgradeBaseline(baseline CoordinatorUpgradeBaseline, dep
 	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v1" && (!baseline.ProbeAddressEmpty || baseline.DeployerNonce != deployment.InitialNonce+8 || upgrade.Schema != "urnetwork-coordinator-upgrade-v1" || upgrade.DeployerNonce != baseline.DeployerNonce+1) {
 		return errors.New("coordinator upgrade baseline has an invalid v1 nonce boundary")
 	}
-	if baseline.isRepeated() && (baseline.ProbeAddressEmpty || upgrade.Schema != "urnetwork-coordinator-upgrade-v2" || baseline.DeployerNonce != upgrade.DeployerNonce || !common.IsHexAddress(baseline.ActiveImplementation)) {
+	if baseline.isRepeated() && (upgrade.Schema != "urnetwork-coordinator-upgrade-v2" || baseline.DeployerNonce != upgrade.DeployerNonce || !common.IsHexAddress(baseline.ActiveImplementation) || common.HexToAddress(baseline.ActiveImplementation) == (common.Address{})) {
 		return errors.New("coordinator upgrade baseline has an invalid repeated-upgrade boundary")
+	}
+	if baseline.Schema != "urnetwork-coordinator-upgrade-baseline-v4" && (baseline.ReplacementPrecompileProbe != "" || baseline.ReplacementPrecompileProbeNonce != 0 || baseline.ReplacementPrecompileProbeHash != "" || baseline.RetiredPrecompileProbe != "" || baseline.RetiredPrecompileProbeHash != "") {
+		return errors.New("coordinator upgrade baseline has an invalid retained-probe boundary")
+	}
+	if baseline.Schema != "urnetwork-coordinator-upgrade-baseline-v1" && baseline.Schema != "urnetwork-coordinator-upgrade-baseline-v4" && baseline.ProbeAddressEmpty {
+		return errors.New("repeated coordinator upgrade baseline has an invalid probe observation")
+	}
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+		if !baseline.ProbeAddressEmpty || baseline.ReplacementPrecompileProbeNonce <= deployment.InitialNonce+9 || baseline.ReplacementPrecompileProbeNonce == ^uint64(0) || baseline.ReplacementPrecompileProbeNonce+1 != upgrade.DeployerNonce || !common.IsHexAddress(baseline.ReplacementPrecompileProbe) || !common.IsHexAddress(baseline.RetiredPrecompileProbe) || !strings.EqualFold(baseline.RetiredPrecompileProbe, deployment.PrecompileProbe.Hex()) || strings.EqualFold(baseline.ReplacementPrecompileProbe, baseline.RetiredPrecompileProbe) || strings.EqualFold(baseline.ReplacementPrecompileProbeHash, baseline.RetiredPrecompileProbeHash) {
+			return errors.New("coordinator upgrade baseline has an invalid replacement-probe boundary")
+		}
+		for name, value := range map[string]string{
+			"replacement precompile probe runtime hash": baseline.ReplacementPrecompileProbeHash,
+			"retired precompile probe runtime hash":     baseline.RetiredPrecompileProbeHash,
+		} {
+			if _, err := decodeHex32(name, value); err != nil {
+				return err
+			}
+		}
 	}
 	for name, value := range map[string]string{
 		"prior deployment hash":            baseline.PriorDeploymentHash,
@@ -150,7 +174,7 @@ func validateCoordinatorUpgradeBaseline(baseline CoordinatorUpgradeBaseline, dep
 			}
 		}
 	}
-	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" {
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
 		if _, err := decodeHex32("coordinator proxy executable hash", baseline.CoordinatorProxyExecutableHash); err != nil {
 			return err
 		}
@@ -165,6 +189,25 @@ func validateCoordinatorUpgradeBaseline(baseline CoordinatorUpgradeBaseline, dep
 	}
 	if baseline.isRepeated() && (baseline.PriorDeploymentHash != reboundHash || common.HexToAddress(baseline.ActiveImplementation) == upgrade.Implementation) {
 		return errors.New("repeated coordinator upgrade baseline does not bind a distinct active implementation")
+	}
+	return nil
+}
+
+// Authenticates the additive probe generation against the deployment signer.
+func validatePrecompileProbeReplacement(baseline CoordinatorUpgradeBaseline, deployer common.Address, deployment ContractDeployment, upgrade CoordinatorUpgrade) error {
+	if baseline.Schema != "urnetwork-coordinator-upgrade-baseline-v4" {
+		return nil
+	}
+	address := common.HexToAddress(baseline.ReplacementPrecompileProbe)
+	if deployer == (common.Address{}) || address == (common.Address{}) || address != crypto.CreateAddress(deployer, baseline.ReplacementPrecompileProbeNonce) {
+		return errors.New("replacement precompile probe is not the approved deterministic CREATE")
+	}
+	if baseline.ReplacementPrecompileProbeNonce == ^uint64(0) || upgrade.DeployerNonce != baseline.ReplacementPrecompileProbeNonce+1 {
+		return errors.New("replacement precompile probe is not immediately before its coordinator upgrade")
+	}
+	runtimeHashes, err := normalizedDeploymentRuntimeHashes(deployment)
+	if err != nil || !strings.EqualFold(runtimeHashes[deployment.PrecompileProbe], baseline.RetiredPrecompileProbeHash) {
+		return stateMismatchError(err, "retired precompile probe does not match the immutable deployment")
 	}
 	return nil
 }
@@ -257,11 +300,9 @@ func contractDeploymentUpgradeBaselineCompatible(planned, built ContractDeployme
 	return plannedHashes[planned.CoordinatorImplementation] != "" && builtHashes[built.CoordinatorImplementation] != ""
 }
 
-// Validate the release-facing half of a finalized legacy-baseline proof. The
-// current probe and immutable proxy must be byte exact. Older sink, vault,
-// original coordinator, and testnet-only hostile implementation hashes are
-// retained by the rebound manifest only after the live observer has produced
-// the stronger executable/conformance evidence recorded in baseline.
+// Validate the release-facing half of a finalized legacy-baseline proof.
+// Immutable custody stays in place; v4 alone replaces the disposable probe at
+// an authenticated empty CREATE boundary when its executable semantics changed.
 func validateCoordinatorUpgradeBaselineRelease(baseline CoordinatorUpgradeBaseline, planned, built ContractDeployment, upgrade CoordinatorUpgrade) error {
 	if err := validateCoordinatorUpgradeBaseline(baseline, planned, upgrade); err != nil {
 		return err
@@ -284,7 +325,7 @@ func validateCoordinatorUpgradeBaselineRelease(baseline CoordinatorUpgradeBaseli
 		// body is bound separately after normalizing compiler metadata. V3
 		// does the same for the already-deployed immutable proxy; V2 retains
 		// its historical byte-exact rule while an observer promotes it.
-		if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" {
+		if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
 			releaseExecuted = nil
 		} else {
 			releaseExecuted = []common.Address{planned.CoordinatorProxy}
@@ -298,12 +339,15 @@ func validateCoordinatorUpgradeBaselineRelease(baseline CoordinatorUpgradeBaseli
 	return nil
 }
 
-func validateCoordinatorUpgradePayloadBaseline(baseline CoordinatorUpgradeBaseline, payloads *DeploymentPayloads) error {
+func validateCoordinatorUpgradePayloadBaseline(baseline CoordinatorUpgradeBaseline, retained ContractDeployment, payloads *DeploymentPayloads) error {
 	if !baseline.isRepeated() {
 		return nil
 	}
 	if payloads == nil {
 		return errors.New("repeated coordinator upgrade payload is unavailable")
+	}
+	if err := validatePrecompileProbeReplacement(baseline, payloads.Deployer, retained, payloads.CoordinatorUpgrade); err != nil {
+		return err
 	}
 	for _, check := range []struct {
 		name     string
@@ -313,20 +357,34 @@ func validateCoordinatorUpgradePayloadBaseline(baseline CoordinatorUpgradeBaseli
 	}{
 		{"reserve sink", payloads.Manifest.ReserveSink, artifactByName("ReserveSink"), baseline.ReserveSinkExecutableHash},
 		{"settlement vault", payloads.Manifest.SettlementVault, artifactByName("SettlementVault"), baseline.SettlementVaultExecutableHash},
-		{"precompile probe", payloads.Manifest.PrecompileProbe, TestnetPrecompileProbeArtifact, baseline.PrecompileProbeExecutableHash},
+		{"precompile probe", payloads.PrecompileProbeAddress, TestnetPrecompileProbeArtifact, baseline.PrecompileProbeExecutableHash},
 	} {
 		got, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[check.address], check.artifact)
 		if err != nil || got != check.want {
 			return stateMismatchError(err, "repeated coordinator upgrade %s executable=%s want=%s", check.name, got, check.want)
 		}
 	}
-	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" {
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v3" || baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
 		got, err := normalizedSolidityExecutableHash(payloads.ExpectedRuntime[payloads.Manifest.CoordinatorProxy], artifactByName("ERC1967Proxy"))
 		if err != nil || got != baseline.CoordinatorProxyExecutableHash {
 			return stateMismatchError(err, "repeated coordinator upgrade proxy executable=%s want=%s", got, baseline.CoordinatorProxyExecutableHash)
 		}
 	}
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+		got := crypto.Keccak256Hash(payloads.ExpectedRuntime[payloads.PrecompileProbeAddress]).Hex()
+		if payloads.PrecompileProbeAddress != common.HexToAddress(baseline.ReplacementPrecompileProbe) || payloads.PrecompileProbeNonce != baseline.ReplacementPrecompileProbeNonce || !strings.EqualFold(got, baseline.ReplacementPrecompileProbeHash) || payloads.CoordinatorUpgrade.DeployerNonce == ^uint64(0) || payloads.FleetBatcherNonce != payloads.CoordinatorUpgrade.DeployerNonce+1 || payloads.FleetBatcherAddress != crypto.CreateAddress(payloads.Deployer, payloads.FleetBatcherNonce) {
+			return fmt.Errorf("replacement precompile probe identity=%s/%d/%s want=%s/%d/%s", payloads.PrecompileProbeAddress, payloads.PrecompileProbeNonce, got, baseline.ReplacementPrecompileProbe, baseline.ReplacementPrecompileProbeNonce, baseline.ReplacementPrecompileProbeHash)
+		}
+	}
 	return nil
+}
+
+// Resolves the disposable probe generation without changing custody identity.
+func effectivePrecompileProbe(deployment ContractDeployment, baseline CoordinatorUpgradeBaseline) common.Address {
+	if baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && common.IsHexAddress(baseline.ReplacementPrecompileProbe) {
+		return common.HexToAddress(baseline.ReplacementPrecompileProbe)
+	}
+	return deployment.PrecompileProbe
 }
 
 // Compare two Solidity runtimes by executable body while retaining canonical
@@ -341,6 +399,26 @@ func matchingNormalizedSolidityExecutableHash(name string, active, release []byt
 		return "", stateMismatchError(err, "%s executable changed: active=%s release=%s", name, activeHash, releaseHash)
 	}
 	return activeHash, nil
+}
+
+// Compares a current locked probe to either the prior baseline's authenticated
+// executable or an active runtime built from the same artifact generation.
+func comparePrecompileProbeRelease(active []byte, authenticatedExecutableHash string, release []byte) (string, string, bool, error) {
+	activeHash := authenticatedExecutableHash
+	if activeHash == "" {
+		var err error
+		activeHash, err = normalizedSolidityExecutableHash(active, TestnetPrecompileProbeArtifact)
+		if err != nil {
+			return "", "", true, nil
+		}
+	} else if _, err := decodeHex32("authenticated precompile probe executable hash", activeHash); err != nil {
+		return "", "", false, err
+	}
+	releaseHash, err := normalizedSolidityExecutableHash(release, TestnetPrecompileProbeArtifact)
+	if err != nil {
+		return "", "", false, fmt.Errorf("normalize release precompile probe: %w", err)
+	}
+	return activeHash, releaseHash, !strings.EqualFold(activeHash, releaseHash), nil
 }
 
 // Normalize a Solidity runtime for executable compatibility checks. Immutable
@@ -443,7 +521,7 @@ func deploymentActionEnvelope(payloads *DeploymentPayloads, actionID string, reg
 	case "evm.sink-fix-recorder":
 		nonce, to, data = initialNonce+7, payloads.Manifest.ReserveSink.Hex(), payloads.FixSink
 	case "precompile.probe-deploy":
-		nonce, data, created = initialNonce+8, payloads.PrecompileProbe, payloads.Manifest.PrecompileProbe
+		nonce, data, created = payloads.PrecompileProbeNonce, payloads.PrecompileProbe, payloads.PrecompileProbeAddress
 	case "evm.coordinator-upgrade-implementation":
 		nonce, data, created = payloads.CoordinatorUpgrade.DeployerNonce, payloads.UpgradeImplementation, payloads.CoordinatorUpgrade.Implementation
 	case "fleet.refresh.deploy-batcher":
@@ -468,11 +546,43 @@ func buildDeploymentPayloads(cfg *ResolvedConfig, roles *RoleSecrets, initialNon
 	return buildDeploymentPayloadsWithRegistrationGeneration(cfg, roles, initialNonce, 0)
 }
 
+// Moves only the disposable probe to an unused deterministic CREATE boundary.
+func configurePrecompileProbeNonce(payloads *DeploymentPayloads, nonce uint64) error {
+	if payloads == nil || payloads.Deployer == (common.Address{}) || payloads.Manifest.InitialNonce > ^uint64(0)-8 || nonce <= payloads.Manifest.InitialNonce+8 {
+		return errors.New("replacement precompile probe payload context is invalid")
+	}
+	oldAddress := payloads.PrecompileProbeAddress
+	runtime := payloads.ExpectedRuntime[oldAddress]
+	if len(runtime) == 0 {
+		return errors.New("replacement precompile probe has no locked runtime")
+	}
+	address := crypto.CreateAddress(payloads.Deployer, nonce)
+	for _, immutable := range []common.Address{payloads.Manifest.ReserveSink, payloads.Manifest.SettlementVault, payloads.Manifest.CoordinatorImplementation, payloads.Manifest.CoordinatorProxy, payloads.Manifest.GovernanceDrillImplementation} {
+		if address == immutable {
+			return errors.New("replacement precompile probe collides with an immutable deployment address")
+		}
+	}
+	if address == payloads.CoordinatorUpgrade.Implementation || address == payloads.FleetBatcherAddress {
+		return errors.New("replacement precompile probe collides with an active release CREATE address")
+	}
+	delete(payloads.ExpectedRuntime, oldAddress)
+	payloads.PrecompileProbeAddress = address
+	payloads.PrecompileProbeNonce = nonce
+	payloads.ExpectedRuntime[address] = runtime
+	return nil
+}
+
 func configureCoordinatorUpgradeNonce(payloads *DeploymentPayloads, nonce uint64) error {
 	if payloads == nil || payloads.Deployer == (common.Address{}) || payloads.CommitmentOracle == (common.Address{}) || payloads.Manifest.InitialNonce > ^uint64(0)-10 || nonce == ^uint64(0) {
 		return errors.New("coordinator upgrade payload context is invalid")
 	}
 	minimumNonce := payloads.Manifest.InitialNonce + 9
+	if payloads.PrecompileProbeNonce >= minimumNonce {
+		if payloads.PrecompileProbeNonce == ^uint64(0) {
+			return errors.New("coordinator upgrade nonce range overflows")
+		}
+		minimumNonce = payloads.PrecompileProbeNonce + 1
+	}
 	if nonce < minimumNonce {
 		return fmt.Errorf("coordinator upgrade nonce %d is below initial upgrade nonce %d", nonce, minimumNonce)
 	}
@@ -485,7 +595,7 @@ func configureCoordinatorUpgradeNonce(payloads *DeploymentPayloads, nonce uint64
 		return err
 	}
 	schema := "urnetwork-coordinator-upgrade-v1"
-	if nonce > minimumNonce {
+	if nonce > payloads.Manifest.InitialNonce+9 {
 		schema = "urnetwork-coordinator-upgrade-v2"
 	}
 	payloads.ExpectedRuntime[implementation] = runtime
@@ -622,7 +732,7 @@ func buildDeploymentPayloadsWithRegistrationGeneration(cfg *ResolvedConfig, role
 	if err != nil {
 		return nil, err
 	}
-	p := &DeploymentPayloads{Deployer: deployer, CommitmentOracle: oracle, Manifest: m, Reserve: append(hexBytes(ReserveSinkCreationBytecode), sinkArgs...), Vault: append(hexBytes(SettlementVaultCreationBytecode), vaultArgs...), Implementation: hexBytes(CoordinatorCreationBytecode), RegisterEscrow: registerEscrow, Proxy: append(hexBytes(ERC1967ProxyCreationBytecode), proxyArgs...), GovernanceDrill: hexBytes(CoordinatorAdversaryCreationBytecode), FixVault: fixVault, FixSink: fixSink, PrecompileProbe: append(hexBytes(SubnetProbeCreationBytecode), probeArgs...), UpgradeImplementation: hexBytes(CoordinatorCreationBytecode), ExpectedRuntime: map[common.Address][]byte{}}
+	p := &DeploymentPayloads{Deployer: deployer, CommitmentOracle: oracle, PrecompileProbeAddress: m.PrecompileProbe, PrecompileProbeNonce: initialNonce + 8, Manifest: m, Reserve: append(hexBytes(ReserveSinkCreationBytecode), sinkArgs...), Vault: append(hexBytes(SettlementVaultCreationBytecode), vaultArgs...), Implementation: hexBytes(CoordinatorCreationBytecode), RegisterEscrow: registerEscrow, Proxy: append(hexBytes(ERC1967ProxyCreationBytecode), proxyArgs...), GovernanceDrill: hexBytes(CoordinatorAdversaryCreationBytecode), FixVault: fixVault, FixSink: fixSink, PrecompileProbe: append(hexBytes(SubnetProbeCreationBytecode), probeArgs...), UpgradeImplementation: hexBytes(CoordinatorCreationBytecode), ExpectedRuntime: map[common.Address][]byte{}}
 	p.ExpectedRuntime[m.ReserveSink], err = runtimeWithImmutables(artifactByName("ReserveSink"), map[string][]byte{"netuid": abiWordUint(uint64(cfg.Netuid)), "reserveHotkey": reserveHotkey[:], "selfColdkey": sinkSelf[:], "bootstrap": abiWordAddress(deployer)})
 	if err != nil {
 		return nil, err

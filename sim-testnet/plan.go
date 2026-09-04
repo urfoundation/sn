@@ -50,6 +50,9 @@ const (
 	evmMaximumGasUnitsParameter     = "maximum_gas_units"
 	evmMaximumFeePerGasParameter    = "maximum_fee_per_gas_wei"
 	deploymentManifestHashParameter = "deployment_manifest_hash"
+	precompileProbeAddressParameter = "precompile_probe_address"
+	precompileProbeRuntimeParameter = "precompile_probe_runtime_hash"
+	fleetRefreshBatcherParameter    = "activated_fleet_batcher"
 	fleetCommitmentStorageParameter = "commitment_storage_schema"
 	// Persisted compatibility identifier: runtime 453 retains this exact v452
 	// SCALE shape, and changing the string would orphan authenticated plans.
@@ -446,6 +449,12 @@ func planUsesTwoTransitionReserveEnvelope(schema string) bool {
 // Schema v11 makes rendered runtime identity part of both local action intents.
 func planUsesRuntimeConfigIdentityEnvelope(schema string) bool {
 	return schema == currentSetupPlanSchema
+}
+
+// V10 introduced exact recovery lineage for native commitment retries and
+// duplicate voluntary-conviction repair; v11 retains those checks.
+func planUsesRevisionRecoveryEnvelope(schema string) bool {
+	return schema == setupPlanSchemaV10 || schema == currentSetupPlanSchema
 }
 
 // Accept the current policy or the exact historical policy linked through the
@@ -1990,6 +1999,9 @@ func validatePlanBudget(p *SetupPlan) error {
 			if !p.CoordinatorUpgradeBaseline.isZero() && len(p.PriorPlanHashes) == 0 {
 				return errors.New("coordinator upgrade baseline has no authenticated prior plan")
 			}
+			if err := validatePrecompileProbeReplacement(p.CoordinatorUpgradeBaseline, deployer, p.Deployment, p.CoordinatorUpgrade); err != nil {
+				return err
+			}
 		}
 		deploymentHash, err = contractDeploymentIdentityHash(p.Deployment)
 		if err != nil {
@@ -2073,6 +2085,25 @@ func validatePlanBudget(p *SetupPlan) error {
 		}
 		if planUsesContractDeploymentEnvelope(p.Schema) && actionUsesContractDeployment(action) && action.Parameters[deploymentManifestHashParameter] != deploymentHash {
 			return fmt.Errorf("action %s does not bind the approved contract deployment", action.ID)
+		}
+		if p.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && strings.HasPrefix(action.ID, "precompile.") {
+			probe := effectivePrecompileProbe(p.Deployment, p.CoordinatorUpgradeBaseline)
+			runtimeHash := p.Deployment.RuntimeHashes[p.Deployment.PrecompileProbe.Hex()]
+			if p.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+				runtimeHash = p.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeHash
+			}
+			if action.Parameters[precompileProbeAddressParameter] != probe.Hex() || !strings.EqualFold(action.Parameters[precompileProbeRuntimeParameter], runtimeHash) {
+				return fmt.Errorf("action %s does not bind the approved precompile probe generation", action.ID)
+			}
+		}
+		if action.ID == "fleet.refresh.oracle-restore" || action.ID == "fleet.refresh.oracle-await-restored" {
+			batcher, ok := seenActionDetails["fleet.refresh.deploy-batcher"]
+			generation := action.Parameters[fleetRefreshBatcherParameter]
+			presentInvalid := generation != "" && (!ok || !common.IsHexAddress(batcher.Target) || generation != common.HexToAddress(batcher.Target).Hex())
+			requiredMissing := p.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && generation == ""
+			if presentInvalid || requiredMissing {
+				return fmt.Errorf("action %s does not bind the activated fleet batcher generation", action.ID)
+			}
 		}
 		if planUsesRuntimeConfigIdentityEnvelope(p.Schema) && (action.ID == "config.render" || action.ID == "topology.launch") &&
 			(action.Parameters["config_hash"] != p.ConfigHash || action.Parameters["policy_hash"] != p.PolicyHash) {

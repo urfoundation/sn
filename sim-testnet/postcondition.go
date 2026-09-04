@@ -1598,7 +1598,7 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		return nil, err
 	}
 	p := e.payloads
-	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.Manifest.PrecompileProbe, "evm.coordinator-upgrade-implementation": p.CoordinatorUpgrade.Implementation, "fleet.refresh.deploy-batcher": p.FleetBatcherAddress}
+	addresses := map[string]common.Address{"evm.reserve-sink": p.Manifest.ReserveSink, "evm.settlement-vault": p.Manifest.SettlementVault, "evm.coordinator-implementation": p.Manifest.CoordinatorImplementation, "evm.coordinator-proxy": p.Manifest.CoordinatorProxy, "evm.governance-drill-implementation": p.Manifest.GovernanceDrillImplementation, "precompile.probe-deploy": p.PrecompileProbeAddress, "evm.coordinator-upgrade-implementation": p.CoordinatorUpgrade.Implementation, "fleet.refresh.deploy-batcher": p.FleetBatcherAddress}
 	if address, ok := addresses[a.ID]; ok {
 		code, err := e.deployer.client.CodeAt(ctx, address, new(big.Int).SetUint64(head.Number))
 		expected := p.ExpectedRuntime[address]
@@ -1611,6 +1611,9 @@ func (e *Executor) verifyDeploymentPostState(ctx context.Context, a Action, head
 		wantHash := p.Manifest.RuntimeHashes[address.Hex()]
 		if address == p.CoordinatorUpgrade.Implementation {
 			wantHash = p.CoordinatorUpgrade.RuntimeCodeHash
+		}
+		if address == p.PrecompileProbeAddress && p.PrecompileProbeAddress != p.Manifest.PrecompileProbe {
+			wantHash = cryptoKeccak(p.ExpectedRuntime[address])
 		}
 		if address == p.FleetBatcherAddress {
 			wantHash = cryptoKeccak(p.FleetBatcherRuntime)

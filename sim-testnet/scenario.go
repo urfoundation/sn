@@ -574,10 +574,17 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		observation.PrecompileConformance = evidence
 		if status.Contracts == nil || status.Contracts.Deployment == nil {
 			observation.PrecompileConformanceError = "contract deployment is unavailable"
-		} else if validateErr := validatePrecompileEvidenceIdentity(p.cfg, status.Contracts.Deployment, evidence); validateErr != nil {
-			observation.PrecompileConformanceError = validateErr.Error()
 		} else {
-			observation.PrecompileConformanceValid = precompileEvidenceComplete(evidence)
+			baseline := CoordinatorUpgradeBaseline{}
+			if status.Contracts.CoordinatorUpgradeBaseline != nil {
+				baseline = *status.Contracts.CoordinatorUpgradeBaseline
+			}
+			probe := effectivePrecompileProbe(*status.Contracts.Deployment, baseline)
+			if validateErr := validatePrecompileEvidenceIdentity(p.cfg, probe, evidence); validateErr != nil {
+				observation.PrecompileConformanceError = validateErr.Error()
+			} else {
+				observation.PrecompileConformanceValid = precompileEvidenceComplete(evidence)
+			}
 		}
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		observation.PrecompileConformanceError = readErr.Error()
@@ -4687,7 +4694,7 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 			if scenarioExecutor.payloads == nil {
 				return errors.New("release scenario requires installed deployment payloads")
 			}
-			if identityErr := validatePrecompileEvidenceIdentity(cfg, &scenarioExecutor.payloads.Manifest, precompile); identityErr != nil {
+			if identityErr := validatePrecompileEvidenceIdentity(cfg, scenarioExecutor.payloads.PrecompileProbeAddress, precompile); identityErr != nil {
 				return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
 			}
 			if !precompileEvidenceComplete(precompile) {

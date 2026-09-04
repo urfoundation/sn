@@ -260,6 +260,35 @@ func TestPlanRevisionReconcilesExactDuplicateVoluntaryConvictionOnce(t *testing.
 	}
 }
 
+func TestV10VoluntaryConvictionRecoveryRetainsOriginalIntent(t *testing.T) {
+	cfg, stateDir, prior, current, entries, recovery := testVoluntaryConvictionDuplicateRecovery(t)
+	wire, err := json.MarshalIndent(prior, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "plans", stringsTrim0x(prior.PlanHash)+".json"), append(wire, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlanRevisionFromFactsWithMigrationAndRecoveries(cfg, stateDir, prior, current, entries, time.Unix(3, 0), nil, []voluntaryConvictionDuplicateRecovery{recovery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Schema = setupPlanSchemaV10
+	reconciliation := actionByID(t, plan, voluntaryConvictionReconciliationActionID)
+	priorHashes := map[string]bool{}
+	for _, hash := range plan.PriorPlanHashes {
+		priorHashes[hash] = true
+	}
+	if _, err := validateVoluntaryConvictionReconciliationAction(plan, reconciliation, priorHashes); err != nil {
+		t.Fatalf("valid v10 conviction recovery was rejected: %v", err)
+	}
+	voluntary := findMutableAction(plan, voluntaryConvictionActionID)
+	voluntary.IntentHash = "0x" + strings.Repeat("fa", 32)
+	if _, err := validateVoluntaryConvictionReconciliationAction(plan, reconciliation, priorHashes); err == nil || !strings.Contains(err.Error(), "authenticated original intent") {
+		t.Fatalf("v10 conviction recovery accepted changed original intent: %v", err)
+	}
+}
+
 func TestCarriedVoluntaryConvictionUsesAuthenticatedSourcePolicy(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	roles, err := derivePublicRoles(cfg)

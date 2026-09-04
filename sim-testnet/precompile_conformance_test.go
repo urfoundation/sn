@@ -133,12 +133,23 @@ func TestPrecompileEvidenceHashAndIdentityFailClosed(t *testing.T) {
 	evidence.ProbeAddress = probe.Hex()
 	coldkey := ss58Mirror(probe)
 	evidence.ProbeColdkey = hexBytesValue(coldkey[:])
-	if err := validatePrecompileEvidenceIdentity(cfg, deployment, evidence); err != nil {
+	if err := validatePrecompileEvidenceIdentity(cfg, deployment.PrecompileProbe, evidence); err != nil {
 		t.Fatal(err)
+	}
+	replacement := common.HexToAddress("0x0000000000000000000000000000000000005678")
+	if err := validatePrecompileEvidenceIdentity(cfg, replacement, evidence); err == nil {
+		t.Fatal("retired-probe evidence was accepted for its replacement generation")
+	}
+	replacementEvidence := *evidence
+	replacementEvidence.ProbeAddress = replacement.Hex()
+	replacementColdkey := ss58Mirror(replacement)
+	replacementEvidence.ProbeColdkey = hexBytesValue(replacementColdkey[:])
+	if err := validatePrecompileEvidenceIdentity(cfg, replacement, &replacementEvidence); err != nil {
+		t.Fatalf("replacement-probe evidence was rejected: %v", err)
 	}
 	wrongGeneration := *evidence
 	wrongGeneration.Commitment.CanonicalGeneration = 1
-	if err := validatePrecompileEvidenceIdentity(cfg, deployment, &wrongGeneration); err == nil {
+	if err := validatePrecompileEvidenceIdentity(cfg, deployment.PrecompileProbe, &wrongGeneration); err == nil {
 		t.Fatal("foreign canonical fleet generation passed evidence identity validation")
 	}
 	dir := t.TempDir()

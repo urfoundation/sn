@@ -170,7 +170,7 @@ func validateFleetCommitmentRecoveryPlanAction(plan *SetupPlan, action Action) e
 	wantHeadTarget := fmt.Sprintf("head-fleet:%d", fleet)
 	wantChallengerTarget := fmt.Sprintf("challenger-fleet:%d", fleet)
 	targetOK := action.Target == wantHeadTarget || !refresh && action.Target == wantChallengerTarget
-	if plan == nil || plan.Schema != currentSetupPlanSchema || len(plan.PriorPlanHashes) == 0 || parseErr != nil || fleet < 1 || action.ID != canonicalID ||
+	if plan == nil || !planUsesRevisionRecoveryEnvelope(plan.Schema) || len(plan.PriorPlanHashes) == 0 || parseErr != nil || fleet < 1 || action.ID != canonicalID ||
 		action.Kind != "substrate-extrinsic" || !targetOK || action.Parameters[fleetCommitmentStorageParameter] != fleetCommitmentStorageV2 ||
 		refresh && action.Parameters["generation"] != "2" || fee != plan.NativeTransactionFeeLimitRao || floor > max(plan.LiveFacts.FinalizedBlock, plan.LiveFacts.EVMFinalizedBlock) ||
 		len(action.AcceptedPriorIntentHashes) != 0 || !spendIsZero(action.Spend) {
@@ -182,7 +182,7 @@ func validateFleetCommitmentRecoveryPlanAction(plan *SetupPlan, action Action) e
 // Proves that cumulative retry funding and the global native-write reserve
 // exactly match every recovery count carried by the plan.
 func validateFleetCommitmentRecoveryBudget(plan *SetupPlan) error {
-	if plan == nil || plan.Schema != currentSetupPlanSchema {
+	if plan == nil || !planUsesRevisionRecoveryEnvelope(plan.Schema) {
 		return nil
 	}
 	counts := map[int]uint64{}

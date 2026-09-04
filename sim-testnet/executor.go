@@ -2453,6 +2453,11 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 				return fmt.Errorf("build approved coordinator upgrade payload: %w", err)
 			}
 		}
+		if e.plan.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
+			if err := configurePrecompileProbeNonce(p, e.plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeNonce); err != nil {
+				return fmt.Errorf("build approved replacement probe payload: %w", err)
+			}
+		}
 		builtHash, err := contractDeploymentIdentityHash(p.Manifest)
 		if err != nil {
 			return err
@@ -2461,16 +2466,19 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if !e.plan.CoordinatorUpgradeBaseline.isZero() {
+			if err := validateCoordinatorUpgradeBaselineRelease(e.plan.CoordinatorUpgradeBaseline, planned, p.Manifest, p.CoordinatorUpgrade); err != nil {
+				return fmt.Errorf("approved coordinator upgrade baseline: %w", err)
+			}
+			if err := validateCoordinatorUpgradePayloadBaseline(e.plan.CoordinatorUpgradeBaseline, planned, p); err != nil {
+				return fmt.Errorf("approved coordinator executable baseline: %w", err)
+			}
+		}
 		if builtHash != plannedHash {
 			if e.plan.CoordinatorUpgradeBaseline.isZero() {
 				if !contractDeploymentUpgradeBaselineCompatible(planned, p.Manifest) {
 					return fmt.Errorf("approved contract deployment does not match this release payload: approved=%s built=%s", plannedHash, builtHash)
 				}
-			} else if err := validateCoordinatorUpgradeBaselineRelease(e.plan.CoordinatorUpgradeBaseline, planned, p.Manifest, p.CoordinatorUpgrade); err != nil {
-				return fmt.Errorf("approved coordinator upgrade baseline: %w", err)
-			}
-			if err := validateCoordinatorUpgradePayloadBaseline(e.plan.CoordinatorUpgradeBaseline, p); err != nil {
-				return fmt.Errorf("approved coordinator executable baseline: %w", err)
 			}
 			builtManifest := p.Manifest
 			p.Manifest = planned
@@ -2603,7 +2611,7 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		addr = p.Manifest.GovernanceDrillImplementation
 		data = p.GovernanceDrill
 	case "precompile.probe-deploy":
-		addr = p.Manifest.PrecompileProbe
+		addr = p.PrecompileProbeAddress
 		data = p.PrecompileProbe
 	case "evm.coordinator-upgrade-implementation":
 		addr = p.CoordinatorUpgrade.Implementation
@@ -2650,14 +2658,15 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 	if to == nil && receipt.ContractAddress != addr {
 		return fmt.Errorf("deployed %s, predicted %s", receipt.ContractAddress, addr)
 	}
-	if receipt.BlockNumber.Uint64() > p.Manifest.DeployBlock {
+	replacementProbe := a.ID == "precompile.probe-deploy" && p.PrecompileProbeAddress != p.Manifest.PrecompileProbe
+	if !replacementProbe && receipt.BlockNumber.Uint64() > p.Manifest.DeployBlock {
 		p.Manifest.DeployBlock = receipt.BlockNumber.Uint64()
 		p.Manifest.DeployBlockHash = receipt.BlockHash.Hex()
 	}
 	if a.ID == "evm.governance-drill-implementation" {
 		deployed := make(map[common.Address][]byte, len(p.ExpectedRuntime)-2)
 		for address, runtime := range p.ExpectedRuntime {
-			if address != p.Manifest.PrecompileProbe && address != p.CoordinatorUpgrade.Implementation && len(runtime) > 0 {
+			if address != p.PrecompileProbeAddress && address != p.CoordinatorUpgrade.Implementation && len(runtime) > 0 {
 				deployed[address] = runtime
 			}
 		}
@@ -2673,6 +2682,19 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		p.Manifest.RuntimeHashes = hashes
 	}
 	if a.ID == "precompile.probe-deploy" {
+		if replacementProbe {
+			expected := p.ExpectedRuntime[p.PrecompileProbeAddress]
+			if len(expected) == 0 {
+				return errors.New("replacement precompile probe runtime is unavailable")
+			}
+			if _, err := verifyRuntimeCode(ctx, e.deployer.client, map[common.Address][]byte{p.PrecompileProbeAddress: expected}); err != nil {
+				return err
+			}
+			// The disposable replacement is authenticated by the v4 upgrade
+			// baseline. The persisted deployment remains the immutable six-
+			// contract custody identity used by prior value-bearing actions.
+			return saveContractDeployment(e.stateDir, p.Manifest)
+		}
 		baseRuntime := make(map[common.Address][]byte, len(p.ExpectedRuntime)-1)
 		for address, runtime := range p.ExpectedRuntime {
 			if address != p.CoordinatorUpgrade.Implementation && len(runtime) > 0 {
