@@ -768,6 +768,21 @@ freeze approval:
   test, and both source-freeze fences passed. The authoritative doctor passed
   all 64 checks; only the two declared non-hard same-public-provider
   independence caveats remain.
+- the first aggregate run from docs head `5257b2f` reached the ordinary
+  simulator package with no assertion failure, then Go terminated the package
+  at its implicit 10-minute total deadline while three independent semantic
+  supplement tests were concurrently inside durable `fsync`. A scheduler and
+  CPU profile proved the process had 30 threads, CPUs 0-23 available, no cgroup
+  quota, and only transient serial plan work; the isolated profiled revision
+  regression completed in 1.580 seconds. Runtime source `8c29d56` gives the
+  ordinary aggregate pass the same explicit 90-minute ceiling as the complete
+  race pass. It also separates PostgreSQL's persistent-data identity from
+  reviewed comments, host paths, port bindings, tuning, and restart policy.
+  Both retained operator volumes passed the live Docker probe against their
+  exact cryptographic August predecessor identities; no durable data was
+  removed or copied. The deterministic ordinary/race compatibility selections
+  and simulator vet pass. This source change supersedes the earlier freeze,
+  producer result, release lock, doctor, and plan; all must be regenerated.
 
 Do not infer an unselected full Server model/repository pass, aggregate pass,
 or live campaign result from the focused records. The source freeze and
@@ -778,20 +793,20 @@ producer pass are separately recorded above.
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3 |
 | All final semantic ordinary tests | prequalified; frozen rerun pending | `7d634c4`; 204 selected test/subtest names, 416.901s package / 447.81s wall |
 | All final semantic race tests | prequalified in shards; frozen aggregate pending | `7d634c4`; affected heavy selection 524.891s; latest worker/cache/stdio selection 222.138s |
-| Full sim-testnet ordinary | pending | |
+| Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
 | Full sim-testnet race | pending | |
-| Producer gate | pass | frozen runtime candidate `5d779cd`; 2026-09-04 UTC |
-| Aggregate gate with DB tests | pending | |
+| Producer gate | prior candidate passed; current rerun pending | `5d779cd`; 2026-09-04 UTC |
+| Aggregate gate with DB tests | current rerun pending | `5257b2f` attempt reached ordinary simulator tests and timed out at exactly 600.146s with no assertion failure |
 | Foundry | pass in producer; aggregate rerun pending | 156/0/0; 4,608 invariant calls |
 | Slither | prior 0 high/medium; final pending | |
 | Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN frozen runtime commit | pass | `5d779cdd8a9430ea6364aa695b1ddd05d644f6ea` |
+| SN runtime candidate | focused qualification pass; freeze rerun pending | `8c29d561be77b8c4fa5b9f47311c31f2f9957b39` |
 | Server frozen commit | pass | `2b09692ac256fbc380a46bc7f957fdf8c510add6` |
 | Other frozen repository commits | pass | exact eleven non-SN revisions in section 2; final source-freeze fence passed |
-| Release-lock hash | pass | `sha256:9672e5d1df5c914907c40e09dbd4f297eeab17cc26b99835a2d3ff133a654e09` |
-| Two approval-identical plan builds | pass | approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360`; raw observation-only diff recorded above |
-| Approved plan hash/spend | pass for launch candidate | `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; exact cumulative limits recorded above |
+| Release-lock hash | refreshed; commit/freeze test pending | `sha256:c221b19964ba95c395bc4f04228a87433d0bda80fed27ce1f2ef880e3f48ecfd` |
+| Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360` |
+| Approved plan hash/spend | superseded; current rerun pending | prior plan `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; never use it with the current lock |
 | Resume/launch | pending | |
 | release-1.0 capture_closed | pending | |
 | release-1.0 semantic_verified | pending | |
