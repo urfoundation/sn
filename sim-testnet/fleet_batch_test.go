@@ -993,6 +993,18 @@ func TestFleetRefreshRestoreGenerationBindingIsStrictAndLegacyCompatible(t *test
 		t.Fatal(err)
 	}
 	restore := actionByID(t, plan, "fleet.refresh.oracle-restore")
+	batcher := actionByID(t, plan, "fleet.refresh.deploy-batcher")
+	for _, baselineSchema := range []string{"urnetwork-coordinator-upgrade-baseline-v2", "urnetwork-coordinator-upgrade-baseline-v3"} {
+		if err := validateFleetRefreshGenerationBinding(baselineSchema, batcher, true, restore); err != nil {
+			t.Errorf("%s rejected a historical restore without a generation field: %v", baselineSchema, err)
+		}
+		wrong := restore
+		wrong.Parameters = cloneStrings(restore.Parameters)
+		wrong.Parameters[fleetRefreshBatcherParameter] = common.HexToAddress("0x1234").Hex()
+		if err := validateFleetRefreshGenerationBinding(baselineSchema, batcher, true, wrong); err == nil {
+			t.Errorf("%s accepted a restore with a wrong nonempty generation field", baselineSchema)
+		}
+	}
 	if _, err := fleetRefreshOracleTarget(restore, payloads); err != nil {
 		t.Fatalf("legacy restore without a generation field was rejected: %v", err)
 	}

@@ -527,6 +527,63 @@ func TestReplacementPrecompileProbeKeepsCoreIdentityAndContiguousCreates(t *test
 	}
 }
 
+func TestReplacementProbeUsesFirstUnusedPostUpgradeNonceAcrossResumeAndRevision(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixtureAt(t, 27)
+	if payloads.PrecompileProbeNonce != retained.InitialNonce+10 || payloads.CoordinatorUpgrade.DeployerNonce != retained.InitialNonce+11 || payloads.FleetBatcherNonce != retained.InitialNonce+12 {
+		t.Fatalf("first-unused replacement nonce chain=%d/%d/%d want=%d/%d/%d", payloads.PrecompileProbeNonce, payloads.CoordinatorUpgrade.DeployerNonce, payloads.FleetBatcherNonce, retained.InitialNonce+10, retained.InitialNonce+11, retained.InitialNonce+12)
+	}
+	if err := validateCoordinatorUpgradeBaselineRelease(baseline, retained, payloads.Manifest, payloads.CoordinatorUpgrade); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCoordinatorUpgradePayloadBaseline(baseline, retained, payloads); err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = retained.InitialNonce
+	prior, err := buildPlan(cfg, &facts, publicRoles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(prior, retained); err != nil {
+		t.Fatal(err)
+	}
+	prior.CoordinatorUpgradeBaseline = baseline
+	if err := rebindPlanCoordinatorUpgrade(prior, payloads); err != nil {
+		t.Fatal(err)
+	}
+	prior.PriorPlanHashes = []string{"0x" + strings.Repeat("88", 32)}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	if err := saveContractDeployment(stateDir, retained); err != nil {
+		t.Fatal(err)
+	}
+	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: prior, roles: secrets}
+	if err := executor.ensurePayloads(context.Background()); err != nil {
+		t.Fatalf("first-unused replacement resume was rejected: %v", err)
+	}
+	current := facts
+	current.DeployerNonce = payloads.PrecompileProbeNonce
+	migration := &coordinatorUpgradeMigration{Deployment: retained, Baseline: baseline, Upgrade: payloads.CoordinatorUpgrade}
+	revised, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, prior, &current, nil, time.Unix(2, 0), migration)
+	if err != nil {
+		t.Fatalf("first-unused replacement revision was rejected: %v", err)
+	}
+	if revised.CoordinatorUpgradeBaseline != baseline || revised.CoordinatorUpgrade != payloads.CoordinatorUpgrade {
+		t.Fatalf("first-unused replacement revision changed its nonce chain: baseline=%+v upgrade=%+v", revised.CoordinatorUpgradeBaseline, revised.CoordinatorUpgrade)
+	}
+}
+
 func TestPublicReplacementPrecompileProbeBindsAuthenticatedDeployer(t *testing.T) {
 	_, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
 	identities, err := json.Marshal(finalPublicIdentities{
@@ -606,6 +663,64 @@ func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *test
 			t.Fatalf("resume %d changed persisted core deployment: hash=%s manifest=%+v error=%v", attempt, storedHash, stored, err)
 		}
 	}
+	base := SetupPlan{Schema: currentSetupPlanSchema, Deployment: legacy, CoordinatorUpgrade: payloads.CoordinatorUpgrade, CoordinatorUpgradeBaseline: baseline}
+	for _, mutation := range []struct {
+		name   string
+		change func(*SetupPlan)
+	}{
+		{name: "prior deployment", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.PriorDeploymentHash = "0x" + strings.Repeat("91", 32)
+		}},
+		{name: "rebound deployment", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.ReboundDeploymentHash = "0x" + strings.Repeat("92", 32)
+		}},
+		{name: "release deployment", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.ReleaseDeploymentHash = "0x" + strings.Repeat("93", 32)
+		}},
+		{name: "replacement nonce", change: func(plan *SetupPlan) { plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeNonce-- }},
+		{name: "replacement address", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbe = common.HexToAddress("0x1234").Hex()
+		}},
+		{name: "replacement runtime", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.ReplacementPrecompileProbeHash = "0x" + strings.Repeat("94", 32)
+		}},
+		{name: "retired runtime", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.RetiredPrecompileProbeHash = "0x" + strings.Repeat("95", 32)
+		}},
+		{name: "probe executable", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgradeBaseline.PrecompileProbeExecutableHash = "0x" + strings.Repeat("96", 32)
+		}},
+		{name: "coordinator nonce", change: func(plan *SetupPlan) {
+			plan.CoordinatorUpgrade.DeployerNonce++
+			plan.CoordinatorUpgrade.Implementation = crypto.CreateAddress(payloads.Deployer, plan.CoordinatorUpgrade.DeployerNonce)
+		}},
+		{name: "coordinator runtime", change: func(plan *SetupPlan) { plan.CoordinatorUpgrade.RuntimeCodeHash = "0x" + strings.Repeat("97", 32) }},
+	} {
+		plan := base
+		mutation.change(&plan)
+		mutationDir := t.TempDir()
+		if err := saveContractDeployment(mutationDir, legacy); err != nil {
+			t.Fatal(err)
+		}
+		executor := &Executor{cfg: cfg, stateDir: mutationDir, plan: &plan, roles: roles}
+		if err := executor.ensurePayloads(context.Background()); err == nil {
+			t.Errorf("%s v4 mutation was accepted", mutation.name)
+		}
+		if executor.payloads != nil {
+			t.Errorf("%s v4 rejection retained unauthenticated payloads", mutation.name)
+		}
+		stored, err := loadContractDeployment(mutationDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedHash, err := contractDeploymentIdentityHash(*stored)
+		if err != nil || storedHash != legacyHash {
+			t.Errorf("%s v4 rejection mutated core deployment: hash=%s want=%s error=%v", mutation.name, storedHash, legacyHash, err)
+		}
+		if _, err := os.Stat(filepath.Join(mutationDir, "public", "deployments")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s v4 rejection created a deployment archive: %v", mutation.name, err)
+		}
+	}
 }
 
 func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t *testing.T) {
@@ -668,6 +783,9 @@ func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t 
 		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: &plan, roles: roles}
 		if err := executor.ensurePayloads(context.Background()); err == nil {
 			t.Errorf("%s mutation was accepted", mutation.name)
+		}
+		if executor.payloads != nil {
+			t.Errorf("%s rejection retained unauthenticated payloads", mutation.name)
 		}
 		stored, err := loadContractDeployment(stateDir)
 		if err != nil {

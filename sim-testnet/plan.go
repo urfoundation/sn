@@ -2098,11 +2098,8 @@ func validatePlanBudget(p *SetupPlan) error {
 		}
 		if action.ID == "fleet.refresh.oracle-restore" || action.ID == "fleet.refresh.oracle-await-restored" {
 			batcher, ok := seenActionDetails["fleet.refresh.deploy-batcher"]
-			generation := action.Parameters[fleetRefreshBatcherParameter]
-			presentInvalid := generation != "" && (!ok || !common.IsHexAddress(batcher.Target) || generation != common.HexToAddress(batcher.Target).Hex())
-			requiredMissing := p.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && generation == ""
-			if presentInvalid || requiredMissing {
-				return fmt.Errorf("action %s does not bind the activated fleet batcher generation", action.ID)
+			if err := validateFleetRefreshGenerationBinding(p.CoordinatorUpgradeBaseline.Schema, batcher, ok, action); err != nil {
+				return err
 			}
 		}
 		if planUsesRuntimeConfigIdentityEnvelope(p.Schema) && (action.ID == "config.render" || action.ID == "topology.launch") &&
@@ -2304,6 +2301,18 @@ func validatePlanBudget(p *SetupPlan) error {
 	}
 	if p.MaximumSpend.SubnetCreations != 0 || p.Limits.SubnetCreations != 0 {
 		return fmt.Errorf("subnet creation is forbidden")
+	}
+	return nil
+}
+
+// Accepts an absent generation marker only for historical pre-v4 plans, while
+// rejecting any present marker which differs from the approved helper CREATE.
+func validateFleetRefreshGenerationBinding(baselineSchema string, batcher Action, batcherFound bool, action Action) error {
+	generation := action.Parameters[fleetRefreshBatcherParameter]
+	presentInvalid := generation != "" && (!batcherFound || !common.IsHexAddress(batcher.Target) || generation != common.HexToAddress(batcher.Target).Hex())
+	requiredMissing := baselineSchema == "urnetwork-coordinator-upgrade-baseline-v4" && generation == ""
+	if presentInvalid || requiredMissing {
+		return fmt.Errorf("action %s does not bind the activated fleet batcher generation", action.ID)
 	}
 	return nil
 }
