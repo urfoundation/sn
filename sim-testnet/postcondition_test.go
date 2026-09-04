@@ -233,6 +233,75 @@ func TestRegistrationBalanceObservationRejectsEveryAdjacentAccountingDrift(t *te
 	}
 }
 
+// Records which runtime policy was selected without requiring a live RPC.
+// Distinct return ranges make an accidental route visible to the caller too.
+type registrationNativeBalanceFixture struct {
+	currentBlocks        []uint64
+	releaseHistoryBlocks []uint64
+}
+
+func (self *registrationNativeBalanceFixture) FreeBalanceAtBlock(_ [32]byte, block uint64) (uint64, error) {
+	self.currentBlocks = append(self.currentBlocks, block)
+	return block + 1_000_000, nil
+}
+
+func (self *registrationNativeBalanceFixture) releaseHistoryFreeBalanceAtBlock(_ [32]byte, block uint64) (uint64, error) {
+	self.releaseHistoryBlocks = append(self.releaseHistoryBlocks, block)
+	return block + 2_000_000, nil
+}
+
+func TestCarriedRegistrationBalanceUsesReviewedRuntimeHistoryAtUpgradeBoundary(t *testing.T) {
+	action := Action{ID: "evm.vault-register-escrow", IntentHash: "ancestor-intent"}
+	ancestorPlanHash := "0x" + strings.Repeat("aa", 32)
+	activePlanHash := "0x" + strings.Repeat("bb", 32)
+	entries := []JournalEntry{
+		{PlanHash: ancestorPlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, BlockNumber: 7_895_362},
+		{PlanHash: ancestorPlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/ancestor.json"},
+	}
+	executor := &Executor{plan: &SetupPlan{PlanHash: activePlanHash, PriorPlanHashes: []string{ancestorPlanHash}}, journal: &Journal{entries: entries}}
+	block, releaseHistory, err := executor.finalizedRegistrationActionCheckpoint(action)
+	if err != nil || block != 7_895_362 || !releaseHistory {
+		t.Fatalf("carried registration checkpoint = %d history=%t, want 7895362/true: %v", block, releaseHistory, err)
+	}
+	reader := &registrationNativeBalanceFixture{}
+	before, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{1}, block-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{1}, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != 9_895_361 || after != 9_895_362 || len(reader.currentBlocks) != 0 || !slices.Equal(reader.releaseHistoryBlocks, []uint64{7_895_361, 7_895_362}) {
+		t.Fatalf("carried registration reads current=%v history=%v values=%d/%d", reader.currentBlocks, reader.releaseHistoryBlocks, before, after)
+	}
+}
+
+func TestCurrentRegistrationBalanceRemainsStrictlyReleaseRuntimeBound(t *testing.T) {
+	action := Action{ID: "operator.register.1", IntentHash: "current-intent"}
+	activePlanHash := "0x" + strings.Repeat("cc", 32)
+	entries := []JournalEntry{
+		{PlanHash: activePlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, BlockNumber: 8_000_000},
+		{PlanHash: activePlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/current.json"},
+	}
+	executor := &Executor{plan: &SetupPlan{PlanHash: activePlanHash}, journal: &Journal{entries: entries}}
+	block, releaseHistory, err := executor.finalizedRegistrationActionCheckpoint(action)
+	if err != nil || block != 8_000_000 || releaseHistory {
+		t.Fatalf("current registration checkpoint = %d history=%t, want 8000000/false: %v", block, releaseHistory, err)
+	}
+	reader := &registrationNativeBalanceFixture{}
+	value, err := readRegistrationNativeBalance(reader, releaseHistory, [32]byte{2}, block)
+	if err != nil || value != 9_000_000 || !slices.Equal(reader.currentBlocks, []uint64{8_000_000}) || len(reader.releaseHistoryBlocks) != 0 {
+		t.Fatalf("current registration reads current=%v history=%v value=%d err=%v", reader.currentBlocks, reader.releaseHistoryBlocks, value, err)
+	}
+}
+
+func TestRegistrationBalanceReaderRejectsMissingDependency(t *testing.T) {
+	if _, err := readRegistrationNativeBalance(nil, true, [32]byte{}, 7_895_361); err == nil {
+		t.Fatal("missing registration native balance reader was accepted")
+	}
+}
+
 func TestEVMCheckpointComparesOnlyCanonicalEVMRPCHashes(t *testing.T) {
 	canonical := testEVMHead(20, 0x20)
 	fixture := &evmFinalityFixture{canonical: map[uint64]ChainHead{20: canonical}}
@@ -1199,6 +1268,20 @@ func TestFinalizedRegistrationActionBlockUsesExactVerifiedAncestor(t *testing.T)
 	block, err := executor.finalizedRegistrationActionBlock(action)
 	if err != nil || block != 12 {
 		t.Fatalf("carried registration block = %d, want exact ancestor block 12: %v", block, err)
+	}
+}
+
+func TestFinalizedRegistrationActionBlockUsesAcceptedAncestorIntent(t *testing.T) {
+	action := Action{ID: "evm.vault-register-escrow", IntentHash: "current-intent", AcceptedPriorIntentHashes: []string{"ancestor-intent"}}
+	entries := []JournalEntry{
+		{PlanHash: "ancestor", ActionID: action.ID, IntentHash: "ancestor-intent", Stage: StageFinalized, BlockNumber: 12},
+		{PlanHash: "ancestor", ActionID: action.ID, IntentHash: "ancestor-intent", Stage: StageVerified, PostconditionHash: "0xpost", PostconditionPath: "receipts/postconditions/ancestor.json"},
+		{PlanHash: "ancestor", ActionID: action.ID, IntentHash: "unaccepted-intent", Stage: StageFinalized, BlockNumber: 13},
+	}
+	executor := &Executor{plan: &SetupPlan{PlanHash: "active", PriorPlanHashes: []string{"ancestor"}}, journal: &Journal{entries: entries}}
+	block, releaseHistory, err := executor.finalizedRegistrationActionCheckpoint(action)
+	if err != nil || block != 12 || !releaseHistory {
+		t.Fatalf("accepted ancestor registration checkpoint = %d history=%t, want 12/true: %v", block, releaseHistory, err)
 	}
 }
 

@@ -1707,24 +1707,36 @@ func finalizedActionBlock(entries []JournalEntry, planHash string, action Action
 	return 0, fmt.Errorf("action %s has no finalized transaction block", action.ID)
 }
 
-// Use the verified ancestor that owns a carried action; before the first
-// verification, only the active plan may supply its transaction checkpoint.
-func (e *Executor) finalizedRegistrationActionBlock(action Action) (uint64, error) {
+// Resolve the exact transaction checkpoint and whether it belongs to carried
+// release history. Accepted ancestor intents retain their own immutable intent
+// hash instead of being searched under the descendant action's hash.
+func (e *Executor) finalizedRegistrationActionCheckpoint(action Action) (uint64, bool, error) {
 	if e == nil || e.plan == nil || e.journal == nil {
-		return 0, errors.New("registration transaction evidence is unavailable")
+		return 0, false, errors.New("registration transaction evidence is unavailable")
 	}
 	if action.Kind == "substrate-reconciliation" {
 		block, err := strconv.ParseUint(action.Parameters[alphaRecoveryBlockParameter], 10, 64)
 		if err != nil || block == 0 || !hasFinalizedAlphaRecoveryEvidence(e.plan, action, e.journal.Entries()) {
-			return 0, fmt.Errorf("action %s has no exact finalized recovery block", action.ID)
+			return 0, false, fmt.Errorf("action %s has no exact finalized recovery block", action.ID)
 		}
-		return block, nil
+		return block, true, nil
 	}
 	planHash := e.plan.PlanHash
 	if verified, ok := e.verifiedActionEntry(action); ok {
 		planHash = verified.PlanHash
+		action.IntentHash = verified.IntentHash
+		block, err := finalizedActionBlock(e.journal.Entries(), planHash, action)
+		return block, planHash != e.plan.PlanHash, err
 	}
-	return finalizedActionBlock(e.journal.Entries(), planHash, action)
+	block, err := finalizedActionBlock(e.journal.Entries(), planHash, action)
+	return block, false, err
+}
+
+// Preserve the simpler block-only API for transfer and registration callers
+// which do not read runtime-dependent native state themselves.
+func (e *Executor) finalizedRegistrationActionBlock(action Action) (uint64, error) {
+	block, _, err := e.finalizedRegistrationActionCheckpoint(action)
+	return block, err
 }
 
 // Records both EVM-reducible and native-free views across one registration.
@@ -1763,8 +1775,28 @@ func validateRegistrationBalanceObservation(observation registrationBalanceObser
 	return nil
 }
 
+// The two readers deliberately separate live v453 state from reviewed carried
+// history. Keeping the historical method unexported prevents other packages
+// from treating compatibility artifacts as valid transaction dependencies.
+type registrationNativeBalanceReader interface {
+	FreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error)
+	releaseHistoryFreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error)
+}
+
+// Route only an authenticated ancestor receipt through runtime history. The
+// active plan always uses the strict release-runtime reader.
+func readRegistrationNativeBalance(reader registrationNativeBalanceReader, releaseHistory bool, account [32]byte, block uint64) (uint64, error) {
+	if reader == nil {
+		return 0, errors.New("registration native balance reader is unavailable")
+	}
+	if releaseHistory {
+		return reader.releaseHistoryFreeBalanceAtBlock(account, block)
+	}
+	return reader.FreeBalanceAtBlock(account, block)
+}
+
 func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action, addresses ...common.Address) ([]registrationBalanceObservation, error) {
-	block, err := e.finalizedRegistrationActionBlock(action)
+	block, releaseHistory, err := e.finalizedRegistrationActionCheckpoint(action)
 	if err != nil || block == 0 {
 		return nil, err
 	}
@@ -1779,11 +1811,11 @@ func (e *Executor) verifyRegistrationBalances(ctx context.Context, action Action
 			return nil, fmt.Errorf("read %s registration post-balance at %d: %w", address, block, readErr)
 		}
 		mirror := ss58Mirror(address)
-		nativeBefore, readErr := e.substrate.FreeBalanceAtBlock(mirror, block-1)
+		nativeBefore, readErr := readRegistrationNativeBalance(e.substrate, releaseHistory, mirror, block-1)
 		if readErr != nil {
 			return nil, fmt.Errorf("read %s registration pre-free-balance at %d: %w", address, block-1, readErr)
 		}
-		nativeAfter, readErr := e.substrate.FreeBalanceAtBlock(mirror, block)
+		nativeAfter, readErr := readRegistrationNativeBalance(e.substrate, releaseHistory, mirror, block)
 		if readErr != nil {
 			return nil, fmt.Errorf("read %s registration post-free-balance at %d: %w", address, block, readErr)
 		}

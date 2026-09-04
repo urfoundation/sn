@@ -1512,10 +1512,10 @@ func (m *SubstrateManager) FreeBalance(account [32]byte) (uint64, error) {
 	return m.freeBalanceAtHash(account, finalized)
 }
 
-// FreeBalanceAtBlock reads the same native block used by an EVM balance
-// query. This prevents independently fronted RPC endpoints from producing a
-// mixed-height funding decision.
-func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error) {
+// Read one exact finalized balance through either the current release runtime
+// or the reviewed evidence-only runtime history. Historical metadata is bound
+// to a copy of the client and can never affect signing or later current reads.
+func (m *SubstrateManager) freeBalanceAtBlock(account [32]byte, block uint64, releaseHistory bool) (uint64, error) {
 	_, finalizedBlock, err := m.finalizedHead()
 	if err != nil {
 		return 0, err
@@ -1527,10 +1527,31 @@ func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (u
 	if err != nil {
 		return 0, err
 	}
+	if releaseHistory {
+		historical, historyErr := m.releaseHistoryChainAt(hash)
+		if historyErr != nil {
+			return 0, fmt.Errorf("authenticate requested native history block %d/%s: %w", block, hash.Hex(), historyErr)
+		}
+		return readFreeBalanceAtHash(historical, account, hash)
+	}
 	if _, err := readAuthenticatedRuntimeMetadataAt(m.chain, m.cfg, hash); err != nil {
 		return 0, fmt.Errorf("authenticate requested native block %d/%s: %w", block, hash.Hex(), err)
 	}
 	return m.freeBalanceAtHash(account, hash)
+}
+
+// FreeBalanceAtBlock reads the same native block used by a current EVM
+// balance query and requires the exact release runtime. This prevents mixed-
+// height funding decisions and keeps every live write dependency on v453.
+func (m *SubstrateManager) FreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error) {
+	return m.freeBalanceAtBlock(account, block, false)
+}
+
+// Read a carried receipt's immutable balance through the exact reviewed
+// runtime artifact at that block. This path is evidence-only and unexported so
+// no transaction precondition can silently widen its runtime requirement.
+func (m *SubstrateManager) releaseHistoryFreeBalanceAtBlock(account [32]byte, block uint64) (uint64, error) {
+	return m.freeBalanceAtBlock(account, block, true)
 }
 
 func (m *SubstrateManager) freeBalanceAtHash(account [32]byte, finalized types.Hash) (uint64, error) {
