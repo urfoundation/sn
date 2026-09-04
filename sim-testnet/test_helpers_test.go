@@ -55,7 +55,7 @@ func testResolvedConfig(t *testing.T) *ResolvedConfig {
 			},
 		},
 		Budgets: BudgetConfig{
-			MaximumSubnetCreations: 0, MaximumRegistrations: 260, MaximumRegistrationBurnRao: 1_000_000, MaximumNativeTransactionFeeRao: 3_000_000, MaximumEVMFeePerGasWei: 100_000_000_000,
+			MaximumSubnetCreations: 0, MaximumRegistrations: 262, MaximumRegistrationBurnRao: 1_000_000, MaximumNativeTransactionFeeRao: 3_000_000, MaximumEVMFeePerGasWei: 100_000_000_000,
 			MaximumTotalTAORaoFrom:   "vault://main/st.yml#testnet-spending-limit-tao-rao",
 			MaximumTotalAlphaRaoFrom: "vault://main/st.yml#testnet-spending-limit-alpha-rao",
 			MaximumEVMGasWeiFrom:     "vault://main/st.yml#testnet-spending-limit-evm-gas-wei",

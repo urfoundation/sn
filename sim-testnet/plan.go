@@ -2040,7 +2040,12 @@ func validatePlanBudget(p *SetupPlan) error {
 			seenDeployments[identityHash] = true
 			previousNonce = superseded.InitialNonce
 		}
-		if len(p.SupersededDeployments) == 0 && (p.SupersededSpend.Registrations != 0 || !p.SupersededSpend.EVMGasWei.IsZero() && !hasVoluntaryRecovery) {
+		// An authenticated in-place coordinator generation can retire verified
+		// transaction ceilings without retiring the immutable deployment. Those
+		// ceilings only reduce the remaining reserve; registration spend still
+		// requires an actual superseded deployment generation.
+		hasInPlaceEVMRetirement := !p.CoordinatorUpgradeBaseline.isZero()
+		if len(p.SupersededDeployments) == 0 && (p.SupersededSpend.Registrations != 0 || !p.SupersededSpend.EVMGasWei.IsZero() && !hasVoluntaryRecovery && !hasInPlaceEVMRetirement) {
 			return errors.New("v4 plan has superseded deployment spend without a superseded deployment")
 		}
 	}

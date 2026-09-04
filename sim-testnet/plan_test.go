@@ -1508,6 +1508,59 @@ func TestPlanValidationRejectsEveryMalformedSupersededDeployment(t *testing.T) {
 	}
 }
 
+func TestAttemptFourRegistrationLineageUsesExactCumulativeHeadroom(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = 17
+	plan, err := buildPlanWithRegistrationGeneration(cfg, &facts, roles, time.Unix(1, 0), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycleRegistrations := uint32(0)
+	for _, action := range plan.Actions {
+		if strings.HasPrefix(action.ID, "lifecycle.") {
+			lifecycleRegistrations += action.Spend.Registrations
+		}
+	}
+	if lifecycleRegistrations != 3 || plan.MaximumSpend.Registrations-lifecycleRegistrations != 256 {
+		t.Fatalf("registration lineage current=%d lifecycle=%d historical-current=%d want=259/3/256", plan.MaximumSpend.Registrations, lifecycleRegistrations, plan.MaximumSpend.Registrations-lifecycleRegistrations)
+	}
+	secrets, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired, err := buildDeploymentPayloadsWithRegistrationGeneration(cfg, secrets, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.SupersededDeployments = []ContractDeployment{retired.Manifest}
+	plan.SupersededSpend.Registrations = uint32(contractRegistrationRoleCount(cfg.Config.Topology))
+	if total := plan.MaximumSpend.Registrations + plan.SupersededSpend.Registrations; total != 262 {
+		t.Fatalf("attempt-four cumulative registration ceiling=%d want=262", total)
+	}
+	if err := validatePlanBudget(plan); err != nil {
+		t.Fatalf("exact attempt-four cumulative registration ceiling was rejected: %v", err)
+	}
+
+	over := *plan
+	over.SupersededSpend.Registrations++
+	before, err := canonicalHashHex(over)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(&over); err == nil || !strings.Contains(err.Error(), "registration plan 263 exceeds limit 262") {
+		t.Fatalf("263rd cumulative registration was accepted: %v", err)
+	}
+	after, err := canonicalHashHex(over)
+	if err != nil || before != after {
+		t.Fatalf("rejected cumulative registration plan was mutated: before=%s after=%s error=%v", before, after, err)
+	}
+}
+
 func TestCheckedArithmeticAndMulDiv(t *testing.T) {
 	if _, ok := checkedAdd(math.MaxUint64, 1); ok {
 		t.Fatal("checkedAdd overflow accepted")

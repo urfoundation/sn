@@ -256,15 +256,15 @@ func TestHarnessConfigRejectsRegistrationBudgetOutsideApprovalRange(t *testing.T
 	}
 }
 
-func TestHarnessConfigBudgetsAllThreeLiveLifecycleRegistrationWaves(t *testing.T) {
+func TestHarnessConfigBudgetsLifecycleAndOneRetiredContractRegistrationGeneration(t *testing.T) {
 	cfg := testResolvedConfig(t).Config
-	cfg.Budgets.MaximumRegistrations = 258
+	cfg.Budgets.MaximumRegistrations = 261
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "registration budget") {
-		t.Fatalf("budget omitting one lifecycle registration was accepted: %v", err)
+		t.Fatalf("budget omitting one cumulative registration was accepted: %v", err)
 	}
-	cfg.Budgets.MaximumRegistrations = 259
+	cfg.Budgets.MaximumRegistrations = 262
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("exact 256 setup plus three lifecycle registration budget was rejected: %v", err)
+		t.Fatalf("exact 256 setup plus three lifecycle and three retired contract registrations was rejected: %v", err)
 	}
 }
 

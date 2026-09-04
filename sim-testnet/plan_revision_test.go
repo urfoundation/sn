@@ -161,6 +161,286 @@ func TestReplacementPrecompileProbeRebindsOnlyProbeGenerationAndCountsRetiredGas
 	}
 }
 
+func TestReplacementProbeRevisionCarriesAllBatchesAndChargesRetiredGasOnceAcrossContinuation(t *testing.T) {
+	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = retained.InitialNonce
+	prior, err := buildPlan(cfg, &facts, roles, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rebindPlanDeployment(prior, retained); err != nil {
+		t.Fatal(err)
+	}
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	if err := saveContractDeployment(stateDir, retained); err != nil {
+		t.Fatal(err)
+	}
+	persistFleetCommitmentRecoveryTestPlan(t, stateDir, prior)
+
+	retiredIDs := []string{
+		"precompile.probe-deploy",
+		"evm.coordinator-upgrade-implementation",
+		"evm.coordinator-upgrade-activate",
+		"fleet.refresh.deploy-batcher",
+		"fleet.refresh.oracle-activate",
+		"fleet.refresh.oracle-restore",
+	}
+	entries := make([]JournalEntry, 0, len(retiredIDs)+2*((cfg.Config.Topology.HeadFleets+fleetRefreshBatchSize-1)/fleetRefreshBatchSize))
+	wantRetiredGas := decimalUint64(0)
+	for _, id := range retiredIDs {
+		action := actionByID(t, prior, id)
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		wantRetiredGas, err = addDecimalUint(wantRetiredGas, action.Spend.EVMGasWei)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantBatches := 0
+	for _, action := range prior.Actions {
+		if !strings.HasPrefix(action.ID, "fleet.install.batch.") && !strings.HasPrefix(action.ID, "fleet.refresh.batch.") {
+			continue
+		}
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		wantBatches++
+	}
+	if wantBatches != 40 {
+		t.Fatalf("production-shaped verified fleet batch count=%d want=40", wantBatches)
+	}
+
+	current := facts
+	current.DeployerNonce = baseline.ReplacementPrecompileProbeNonce
+	migration := &coordinatorUpgradeMigration{Deployment: retained, Baseline: baseline, Upgrade: payloads.CoordinatorUpgrade}
+	revised, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, prior, &current, entries, time.Unix(2, 0), migration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revised.SupersededSpend.EVMGasWei != wantRetiredGas {
+		t.Fatalf("first replacement revision retired gas=%s want=%s", revised.SupersededSpend.EVMGasWei, wantRetiredGas)
+	}
+	revisedTotal, err := addSpends(revised.MaximumSpend, revised.SupersededSpend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison, comparisonErr := revisedTotal.EVMGasWei.Cmp(revised.Limits.EVMGasWei); comparisonErr != nil || comparison != 0 {
+		t.Fatalf("first replacement revision cumulative gas=%s want exact limit=%s: %v", revisedTotal.EVMGasWei, revised.Limits.EVMGasWei, comparisonErr)
+	}
+	revisedReserve := actionByID(t, revised, "campaign.evm-gas-reserve").Spend.EVMGasWei
+	retiredAction := actionByID(t, prior, retiredIDs[0])
+	for _, unauthenticated := range []JournalEntry{
+		{PlanHash: prior.PlanHash, ActionID: retiredAction.ID, IntentHash: retiredAction.IntentHash, Stage: StageFinalized},
+		{PlanHash: prior.PlanHash, ActionID: retiredAction.ID, IntentHash: "0x" + strings.Repeat("fe", 32), Stage: StageVerified},
+		{PlanHash: "0x" + strings.Repeat("fd", 32), ActionID: retiredAction.ID, IntentHash: retiredAction.IntentHash, Stage: StageVerified},
+	} {
+		ignored, ignoredErr := addRetiredVerifiedEVMGas(prior, revised, []JournalEntry{unauthenticated}, Spend{})
+		if ignoredErr != nil || !ignored.EVMGasWei.IsZero() {
+			t.Fatalf("unauthenticated retired entry %+v contributed gas %+v: %v", unauthenticated, ignored, ignoredErr)
+		}
+	}
+	for _, id := range retiredIDs {
+		before, after := actionByID(t, prior, id), actionByID(t, revised, id)
+		if before.IntentHash == after.IntentHash || actionAcceptsIntent(after, before.IntentHash) {
+			t.Fatalf("first replacement revision carried retired action %s", id)
+		}
+	}
+	for _, entry := range entries[len(retiredIDs):] {
+		before, after := actionByID(t, prior, entry.ActionID), actionByID(t, revised, entry.ActionID)
+		beforeHash, beforeErr := canonicalHashHex(before)
+		afterHash, afterErr := canonicalHashHex(after)
+		if beforeErr != nil || afterErr != nil || beforeHash != afterHash {
+			t.Fatalf("first replacement revision changed carried batch %s: before=%s after=%s errors=%v/%v", entry.ActionID, beforeHash, afterHash, beforeErr, afterErr)
+		}
+	}
+
+	continued, err := buildPlanRevisionFromFactsWithMigration(cfg, stateDir, revised, &current, entries, time.Unix(3, 0), migration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued.SupersededSpend != revised.SupersededSpend || continued.SupersededSpend.EVMGasWei != wantRetiredGas {
+		t.Fatalf("second replacement revision duplicated retired spend: first=%+v second=%+v", revised.SupersededSpend, continued.SupersededSpend)
+	}
+	continuedTotal, err := addSpends(continued.MaximumSpend, continued.SupersededSpend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	continuedReserve := actionByID(t, continued, "campaign.evm-gas-reserve").Spend.EVMGasWei
+	if comparison, comparisonErr := continuedTotal.EVMGasWei.Cmp(continued.Limits.EVMGasWei); comparisonErr != nil || comparison != 0 || continuedReserve != revisedReserve {
+		t.Fatalf("second replacement revision changed cumulative gas/reserve: total=%s/%s reserve=%s/%s error=%v", continuedTotal.EVMGasWei, continued.Limits.EVMGasWei, continuedReserve, revisedReserve, comparisonErr)
+	}
+	carried := 0
+	for _, entry := range entries[len(retiredIDs):] {
+		before, after := actionByID(t, revised, entry.ActionID), actionByID(t, continued, entry.ActionID)
+		beforeHash, beforeErr := canonicalHashHex(before)
+		afterHash, afterErr := canonicalHashHex(after)
+		if beforeErr != nil || afterErr != nil || beforeHash != afterHash {
+			t.Fatalf("second replacement revision changed carried batch %s: before=%s after=%s errors=%v/%v", entry.ActionID, beforeHash, afterHash, beforeErr, afterErr)
+		}
+		carried++
+	}
+	if carried != wantBatches {
+		t.Fatalf("second replacement revision carried batches=%d want=%d", carried, wantBatches)
+	}
+}
+
+func TestAttemptFourRegistrationCapRevisionAddsOnlyLifecycleHeadroom(t *testing.T) {
+	oldCfg := testResolvedConfig(t)
+	oldCfg.Config.Budgets.MaximumRegistrations = 260
+	oldConfigHash, err := releaseConfigHash(oldCfg.Config, oldCfg.Public, oldCfg.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCfg.ConfigHash = oldConfigHash
+	roles, err := derivePublicRoles(oldCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts := *testSetupFacts()
+	facts.DeployerNonce = 17
+	prior, err := buildPlanWithRegistrationGeneration(oldCfg, &facts, roles, time.Unix(1, 0), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycleRegistrationIDs := map[string]bool{
+		"lifecycle.fallback.register": true,
+		"lifecycle.provider.register": true,
+		"lifecycle.terminal.register": true,
+	}
+	for index := range prior.Actions {
+		action := &prior.Actions[index]
+		if !lifecycleRegistrationIDs[action.ID] {
+			continue
+		}
+		if action.Spend.Registrations != 1 {
+			t.Fatalf("historical lifecycle registration %s has spend %d want=1 before fixture projection", action.ID, action.Spend.Registrations)
+		}
+		action.Spend.Registrations = 0
+		action.IntentHash, err = actionIntentHash(*action)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	prior.MaximumSpend, err = maximumActionSpend(prior.Actions)
+	if err != nil || prior.MaximumSpend.Registrations != 256 {
+		t.Fatalf("attempt-four historical registration maximum=%d want=256: %v", prior.MaximumSpend.Registrations, err)
+	}
+	secrets, err := BuildRoleSecrets(oldCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired, err := buildDeploymentPayloadsWithRegistrationGeneration(oldCfg, secrets, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior.SupersededDeployments = []ContractDeployment{retired.Manifest}
+	prior.SupersededSpend.Registrations = uint32(contractRegistrationRoleCount(oldCfg.Config.Topology))
+	prior.PlanHash, err = prior.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlanBudget(prior); err != nil || prior.MaximumSpend.Registrations+prior.SupersededSpend.Registrations != 259 {
+		t.Fatalf("attempt-four historical cumulative registration plan was invalid: active=%d superseded=%d error=%v", prior.MaximumSpend.Registrations, prior.SupersededSpend.Registrations, err)
+	}
+
+	labels := tournamentTopologyRoleLabels(oldCfg.Config.Topology, 1)
+	identities, err := expectedRegistrationIdentities(oldCfg, prior, 1, secrets, labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := *testSetupFacts()
+	current.DeployerNonce = prior.Deployment.InitialNonce
+	for index, label := range labels {
+		identity := identities[label]
+		current.ExistingUIDs = append(current.ExistingUIDs, ExistingUIDFact{
+			UID: uint16(len(current.ExistingUIDs)), Hotkey: fmt.Sprintf("0x%x", identity.hotkey),
+			Coldkey: fmt.Sprintf("0x%x", identity.coldkey), RegistrationBlock: uint64(1_000 + index),
+		})
+	}
+	current.ExistingUIDCount = uint16(len(current.ExistingUIDs))
+	entries := make([]JournalEntry, 0, prior.MaximumSpend.Registrations)
+	for _, action := range prior.Actions {
+		if action.Spend.Registrations == 0 {
+			continue
+		}
+		entries = append(entries, JournalEntry{PlanHash: prior.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+	}
+	remaining, err := remainingPlanSpend(prior, entries)
+	if err != nil || remaining.Registrations != 0 || len(entries) != 256 {
+		t.Fatalf("attempt-four historical registration remainder=%d entries=%d want=0/256: %v", remaining.Registrations, len(entries), err)
+	}
+	stateDir := t.TempDir()
+	if err := saveContractDeployment(stateDir, prior.Deployment); err != nil {
+		t.Fatal(err)
+	}
+	deploymentPath := filepath.Join(stateDir, "public", "contracts.json")
+	beforeState, err := os.ReadFile(deploymentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newCfg := testResolvedConfig(t)
+	revised, err := buildPlanRevisionFromFacts(newCfg, stateDir, prior, &current, entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revised.MaximumSpend.Registrations != 259 || revised.SupersededSpend.Registrations != 3 || revised.Limits.Registrations != 262 {
+		t.Fatalf("revised cumulative registration shape active=%d superseded=%d limit=%d want=259/3/262", revised.MaximumSpend.Registrations, revised.SupersededSpend.Registrations, revised.Limits.Registrations)
+	}
+	added := map[string]bool{}
+	for _, action := range revised.Actions {
+		priorAction := actionByID(t, prior, action.ID)
+		if action.Spend.Registrations == priorAction.Spend.Registrations {
+			continue
+		}
+		if priorAction.Spend.Registrations != 0 || action.Spend.Registrations != 1 {
+			t.Fatalf("revision changed unexpected registration spend for %s: %d to %d", action.ID, priorAction.Spend.Registrations, action.Spend.Registrations)
+		}
+		added[action.ID] = true
+	}
+	if !maps.Equal(added, lifecycleRegistrationIDs) {
+		t.Fatalf("revision registration additions=%v want=%v", added, lifecycleRegistrationIDs)
+	}
+	revisedRemaining, err := remainingPlanSpend(revised, entries)
+	if err != nil || revisedRemaining.Registrations != 3 {
+		t.Fatalf("revised registration remainder=%d want=3: %v", revisedRemaining.Registrations, err)
+	}
+
+	under := *newCfg
+	underConfig := *newCfg.Config
+	under.Config = &underConfig
+	under.Config.Budgets.MaximumRegistrations = 261
+	under.ConfigHash, err = releaseConfigHash(under.Config, under.Public, under.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejected, revisionErr := buildPlanRevisionFromFacts(&under, stateDir, prior, &current, entries, time.Unix(2, 0)); revisionErr == nil || rejected != nil || !strings.Contains(revisionErr.Error(), "registration plan 262 exceeds limit 261") {
+		t.Fatalf("underfunded cumulative registration revision result=%v error=%v", rejected, revisionErr)
+	}
+	afterState, err := os.ReadFile(deploymentPath)
+	if err != nil || !slices.Equal(beforeState, afterState) {
+		t.Fatalf("rejected registration revision mutated persisted deployment: error=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "plans")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected registration revision persisted a plan: %v", err)
+	}
+
+	persistFleetCommitmentRecoveryTestPlan(t, stateDir, prior)
+	continued, err := buildPlanRevisionFromFacts(newCfg, stateDir, revised, &current, entries, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued.MaximumSpend.Registrations != revised.MaximumSpend.Registrations || continued.SupersededSpend.Registrations != revised.SupersededSpend.Registrations || continued.Limits.Registrations != revised.Limits.Registrations {
+		t.Fatalf("second registration revision changed cumulative accounting: first=%+v/%+v/%+v second=%+v/%+v/%+v", revised.MaximumSpend, revised.SupersededSpend, revised.Limits, continued.MaximumSpend, continued.SupersededSpend, continued.Limits)
+	}
+}
+
 func TestReplacementBatcherCarriesEveryVerifiedFleetBatchWithoutExecution(t *testing.T) {
 	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
 	roles, err := derivePublicRoles(cfg)

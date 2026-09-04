@@ -540,7 +540,10 @@ func (c *HarnessConfig) Validate() error {
 	// validator; initial and challenger fleets consume one registration each;
 	// churn-floor UIDs fill capacity; claims escrow needs a live hotkey; and the
 	// M2 fallback/provider/terminal waves each consume one real registration.
-	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1 + 3
+	// Retain room for one exact superseded contract-role generation as well: a
+	// repaired pre-campaign deployment has already consumed its escrow and pool
+	// registrations even though only the replacement generation remains live.
+	requiredRegistrations := 2*c.Topology.Operators + c.Topology.Validators + c.Topology.fleetCandidates() + c.Topology.ChurnFloorUIDs + 1 + 3 + contractRegistrationRoleCount(c.Topology)
 	if c.Budgets.MaximumRegistrations < requiredRegistrations || uint64(c.Budgets.MaximumRegistrations) > uint64(math.MaxUint32) {
 		return errors.New("registration budget is outside the topology requirement and uint32 approval range")
 	}

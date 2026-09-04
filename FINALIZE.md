@@ -1349,7 +1349,7 @@ budgets:
   maximum_total_tao_rao_from: "vault://main/st.yml#testnet-spending-limit-tao-rao"
   maximum_total_alpha_rao_from: "vault://main/st.yml#testnet-spending-limit-alpha-rao"
   maximum_evm_gas_tao_wei_from: "vault://main/st.yml#testnet-spending-limit-evm-gas-wei"
-  maximum_registrations: 260
+  maximum_registrations: 262
   maximum_registration_burn_rao: 1000000
   maximum_native_transaction_fee_rao: 3000000
   maximum_evm_fee_per_gas_wei: 100000000000
@@ -1367,6 +1367,10 @@ analysis:
 All references resolve relative to the config file or a discovered repository root, never the current working directory or `/home/by`. CLI repository overrides make the same profile runnable on any host with compatible checkouts. `doctor` verifies repository identity/commit, decrypted vault readability, tool/container/runtime capabilities, default state-disk capacity, private RPC access, and the server API/blob-store configuration and readiness before planning. The immediately pre-apply host gate rechecks the selected state filesystem and every simulator-owned process port before constructing a transaction-capable executor.
 
 The wallet literal is redacted before any diagnostic serialization. Zero/empty vault inputs, an owner mismatch for the supplied netuid, an unpinned dependency, or an unavailable server API/MinIO store is fatal. The receipt materializer copies only the verified public netuid/owner, budgets, and derived public keys into the redacted deployment manifest.
+
+The 262-registration ceiling covers the exact 259-action current topology and
+lifecycle sequence plus one authenticated, three-registration retired contract
+role generation. A 263rd cumulative registration remains fail-closed.
 
 ### 7.9 Automated materialization sequence
 
