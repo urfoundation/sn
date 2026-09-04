@@ -20,14 +20,15 @@ import (
 )
 
 type finalSemanticSupplementTestFixture struct {
-	cfg       *ResolvedConfig
-	roles     *RoleSecrets
-	stateDir  string
-	runDir    string
-	result    *ScenarioResult
-	load      FinalArtifactLoader
-	stores    map[int]server.BlobStore
-	storeRoot string
+	cfg              *ResolvedConfig
+	roles            *RoleSecrets
+	stateDir         string
+	runDir           string
+	result           *ScenarioResult
+	load             FinalArtifactLoader
+	stores           map[int]server.BlobStore
+	storeRoot        string
+	derivedFileCount int
 }
 
 // finalSemanticCampaignResultFixture binds the release-scale semantic graph to
@@ -187,6 +188,7 @@ func finalSemanticCampaignResultFixture(t *testing.T, cfg *ResolvedConfig, roles
 }
 
 func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing.T) {
+	t.Parallel()
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	dependencies := fixture.dependencies()
 	first, err := publishOrResumeFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, dependencies)
@@ -204,7 +206,7 @@ func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing
 	if err := decodeStrictJSONBytes(first.Payload, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Status != finalSemanticSupplementStatus || payload.ScenarioCompleteHash == "" || payload.ScenarioEvidenceManifestHash == "" || payload.CaptureStatusHash == "" || payload.CollectedInputsHash == "" || payload.SemanticEvidenceHash == "" || payload.PublicTranscriptHash == "" || len(payload.Files) != 2 {
+	if payload.Status != finalSemanticSupplementStatus || payload.ScenarioCompleteHash == "" || payload.ScenarioEvidenceManifestHash == "" || payload.CaptureStatusHash == "" || payload.CollectedInputsHash == "" || payload.SemanticEvidenceHash == "" || payload.PublicTranscriptHash == "" || len(payload.Files) != 2+fixture.derivedFileCount {
 		t.Fatalf("semantic supplement payload is incomplete: %+v", payload)
 	}
 	for index, entry := range payload.Files {
@@ -305,6 +307,7 @@ func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing
 }
 
 func TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker(t *testing.T) {
+	t.Parallel()
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	originalMarker, err := os.ReadFile(filepath.Join(fixture.runDir, scenarioCampaignStartFilename))
 	if err != nil {
@@ -406,6 +409,7 @@ func rewriteFinalSemanticOriginalClosureFile(t *testing.T, fixture *finalSemanti
 }
 
 func TestFinalSemanticSupplementFailedReplicaDoesNotCommitAndRetryReusesStage(t *testing.T) {
+	t.Parallel()
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	goodSecond := fixture.stores[2]
 	fixture.stores[2] = &fixtureFailureBlobStore{store: goodSecond, writeErr: errors.New("injected semantic replica write failure")}
@@ -614,6 +618,7 @@ func TestFinalSemanticSupplementPublicationLockHonorsCancellation(t *testing.T) 
 }
 
 func TestValidateFinalSemanticSupplementDefaultCapturedStoresRequiresEveryReplica(t *testing.T) {
+	t.Parallel()
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	if _, err := publishOrResumeFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, fixture.dependencies()); err != nil {
 		t.Fatal(err)
@@ -968,6 +973,7 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	derivedFileCount := writeFinalSemanticSupplementFixtureDerivedFiles(t, runDir, &source, artifacts)
 	resultWire := finalSemanticSupplementJSON(t, result)
 	if err := atomicWrite(filepath.Join(runDir, "result.json"), resultWire, 0o644); err != nil {
 		t.Fatal(err)
@@ -1060,7 +1066,76 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 		}
 		stores[operator] = server.NewLocalBlobStore(storeRoot, prefix)
 	}
-	return &finalSemanticSupplementTestFixture{cfg: cfg, roles: roles, stateDir: stateDir, runDir: runDir, result: result, load: load, stores: stores, storeRoot: storeRoot}
+	return &finalSemanticSupplementTestFixture{cfg: cfg, roles: roles, stateDir: stateDir, runDir: runDir, result: result, load: load, stores: stores, storeRoot: storeRoot, derivedFileCount: derivedFileCount}
+}
+
+// Materialize only the exact derived locators carried by the sealed fixture.
+// Production reconstruction creates them through the same immutable archive
+// boundary; the test fixture otherwise supplies them only through its loader.
+func writeFinalSemanticSupplementFixtureDerivedFiles(t *testing.T, runDir string, source *FinalSemanticEvidence, artifacts map[string][]byte) int {
+	t.Helper()
+	if source == nil {
+		t.Fatal("semantic supplement fixture source is unavailable")
+	}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	references := map[string]campaignArtifactReference{}
+	if err := collectCampaignArtifactReferences(raw, references, 0); err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, len(references))
+	for path := range references {
+		if strings.HasPrefix(path, "final-derived/") {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		reference := references[path]
+		data, ok := artifacts[path]
+		if !ok || uint64(len(data)) != reference.Size || !strings.EqualFold(bytesSHA256(data), reference.ContentHash) {
+			t.Fatalf("fixture derived artifact %s differs from its semantic locator", path)
+		}
+		locator, err := persistFinalCollectedArtifact(runDir, reference.Kind, path, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if locator.URI != reference.URI || locator.Kind != reference.Kind || locator.SizeBytes != reference.Size || !strings.EqualFold(locator.ContentHash, reference.ContentHash) {
+			t.Fatalf("materialized fixture derived artifact %s changed identity", path)
+		}
+	}
+	return len(paths)
+}
+
+func TestValidateFinalSemanticDerivedFilesReportsCanonicalFirstFailure(t *testing.T) {
+	valid := []byte("valid derived artifact")
+	reference := func(path string) campaignArtifactReference {
+		return campaignArtifactReference{Kind: "fixture", URI: path, ContentHash: bytesSHA256(valid), Size: uint64(len(valid))}
+	}
+	wanted := map[string]campaignArtifactReference{
+		"final-derived/z.json": reference("final-derived/z.json"),
+		"final-derived/a.json": reference("final-derived/a.json"),
+	}
+	for iteration := 0; iteration < 20; iteration++ {
+		err := validateFinalSemanticDerivedFiles(map[string][]byte{}, wanted)
+		if err == nil || !strings.Contains(err.Error(), "final-derived/a.json") {
+			t.Fatalf("iteration %d missing-file error is not canonical: %v", iteration, err)
+		}
+	}
+	files := map[string][]byte{
+		"final-derived/z-extra.json": valid,
+		"final-derived/a-extra.json": valid,
+		"final-derived/a.json":       valid,
+		"final-derived/z.json":       valid,
+	}
+	for iteration := 0; iteration < 20; iteration++ {
+		err := validateFinalSemanticDerivedFiles(files, wanted)
+		if err == nil || !strings.Contains(err.Error(), "final-derived/a-extra.json") {
+			t.Fatalf("iteration %d extra-file error is not canonical: %v", iteration, err)
+		}
+	}
 }
 
 func (fixture *finalSemanticSupplementTestFixture) dependencies() finalSemanticSupplementDependencies {

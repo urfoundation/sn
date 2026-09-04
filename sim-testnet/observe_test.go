@@ -746,6 +746,10 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		Name: semantic.Phase, RunID: semantic.RunID, EvidenceHash: semantic.ResultHash, DeploymentID: semantic.DeploymentID, ConfigHash: semantic.ConfigHash, PolicyHash: semantic.PolicyHash,
 		ChainID: semantic.ChainID, GenesisHash: semantic.GenesisHash, Netuid: semantic.Netuid, StartedAt: semantic.CampaignStartedAt, CompletedAt: semantic.CampaignCompletedAt,
 		CampaignStartHead: semantic.EVMCampaignStartHead, EndHead: semantic.EVMTerminalHead, AcceptanceWindow: &window,
+		LifecycleHandoff: &ScenarioLifecycleHandoff{
+			Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: semantic.RunID, Stage: fleetLifecycleStageReleaseHandoff,
+			File: scenarioLifecycleHandoffFilename, ContentHash: semantic.FleetLifecycle.ReleaseHandoffHash, SizeBytes: semantic.FleetLifecycle.ReleaseHandoffSize,
+		},
 	}}
 	verifyCalls := 0
 	probe := &liveScenarioProbe{
@@ -756,11 +760,40 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		},
 	}
 	owner := semantic.Deployment.GovernanceOwner
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, nil, artifacts, nil); err == nil || !strings.Contains(err.Error(), "final semantic") {
+	cloneFiles := func(source map[string][]byte) map[string][]byte {
+		clone := make(map[string][]byte, len(source))
+		for name, raw := range source {
+			clone[name] = raw
+		}
+		return clone
+	}
+	// The fixture builder retains intermediate artifacts which are deliberately
+	// absent from the sealed graph. Reconstruct the authenticated scopes from
+	// the graph's exact locator census, just as the production collector does.
+	semanticReferences := map[string]campaignArtifactReference{}
+	if err := collectCampaignArtifactReferences(encoded, semanticReferences, 0); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{}
+	referencedFiles := map[string][]byte{}
+	for name, reference := range semanticReferences {
+		raw, ok := artifacts[name]
+		if !ok || uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+			t.Fatalf("sealed semantic fixture artifact %q is unavailable or differs from its locator", name)
+		}
+		if strings.HasPrefix(name, "final-derived/") {
+			files[name] = raw
+		} else {
+			referencedFiles[name] = raw
+		}
+	}
+	missingSemanticFiles := cloneFiles(files)
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, missingSemanticFiles, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "final semantic") {
 		t.Fatalf("campaign without final semantic evidence = %v", err)
 	}
-	files := map[string][]byte{"final-semantic-evidence.json": encoded, finalSemanticMarkdownFilename: markdown}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, artifacts, nil); err != nil {
+	files[finalSemanticEvidenceFilename] = encoded
+	files[finalSemanticMarkdownFilename] = markdown
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, referencedFiles, nil); err != nil {
 		t.Fatalf("one closed final semantic object = %v", err)
 	}
 	if verifyCalls != 1 {
@@ -802,8 +835,10 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		mutatedFiles := map[string][]byte{finalSemanticEvidenceFilename: mutatedJSON, finalSemanticMarkdownFilename: mutatedMarkdown}
-		if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, mutatedFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "does not bind") {
+		mutatedFiles := cloneFiles(files)
+		mutatedFiles[finalSemanticEvidenceFilename] = mutatedJSON
+		mutatedFiles[finalSemanticMarkdownFilename] = mutatedMarkdown
+		if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, mutatedFiles, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "does not bind") {
 			t.Fatalf("signed semantic %s mutation detached from its scenario result was accepted: %v", name, err)
 		}
 	}
@@ -811,8 +846,9 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	noncanonicalFiles := map[string][]byte{finalSemanticEvidenceFilename: noncanonical, finalSemanticMarkdownFilename: markdown}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, noncanonicalFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "not canonical") {
+	noncanonicalFiles := cloneFiles(files)
+	noncanonicalFiles[finalSemanticEvidenceFilename] = noncanonical
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, noncanonicalFiles, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "not canonical") {
 		t.Fatalf("signed noncanonical semantic JSON was accepted: %v", err)
 	}
 	unreferencedDerived := make(map[string][]byte, len(files)+1)
@@ -820,13 +856,10 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		unreferencedDerived[name] = raw
 	}
 	unreferencedDerived["final-derived/unreferenced.json"] = []byte("{\"schema\":\"urnetwork-unreferenced-v1\"}\n")
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, unreferencedDerived, artifacts, nil); err == nil || !strings.Contains(err.Error(), "unreferenced derived") {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, unreferencedDerived, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "unreferenced derived") {
 		t.Fatalf("unreferenced signed final-derived file was accepted: %v", err)
 	}
-	collidingArtifacts := make(map[string][]byte, len(artifacts)+1)
-	for name, raw := range artifacts {
-		collidingArtifacts[name] = raw
-	}
+	collidingArtifacts := cloneFiles(referencedFiles)
 	collidingArtifacts[finalSemanticMarkdownFilename] = markdown
 	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, collidingArtifacts, nil); err == nil || !strings.Contains(err.Error(), "multiple evidence scopes") {
 		t.Fatalf("cross-scope semantic URI collision was accepted: %v", err)
@@ -841,27 +874,21 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		t.Fatalf("detached public manifest did not change only its canonical hash: hash=%q err=%v", detachedHash, err)
 	}
 	defaultProbe := &liveScenarioProbe{publicManifestURI: semantic.PublicVerification.EvidenceURI}
-	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), &detachedPublic, owner, bundle, nil, files, artifacts, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
+	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), &detachedPublic, owner, bundle, nil, files, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
 		t.Fatalf("semantic evidence detached from the authenticated public manifest was accepted: %v", err)
 	}
-	tamperedMarkdownFiles := map[string][]byte{"final-semantic-evidence.json": encoded, finalSemanticMarkdownFilename: []byte("# unbound report\n")}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, tamperedMarkdownFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "does not match") {
+	tamperedMarkdownFiles := cloneFiles(files)
+	tamperedMarkdownFiles[finalSemanticMarkdownFilename] = []byte("# unbound report\n")
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, tamperedMarkdownFiles, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("unbound FINAL.md = %v", err)
 	}
-	missingArtifacts := make(map[string][]byte, len(artifacts)-1)
+	missingArtifacts := cloneFiles(files)
 	missing := semantic.Validators[0].Cycles[0].IntentArtifact.URI
-	for name, raw := range artifacts {
-		if name != missing {
-			missingArtifacts[name] = raw
-		}
-	}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, missingArtifacts, nil); err == nil || !strings.Contains(err.Error(), "authenticated campaign graph") {
+	delete(missingArtifacts, missing)
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, missingArtifacts, referencedFiles, nil); err == nil || !strings.Contains(err.Error(), "differs from semantic locator") {
 		t.Fatalf("semantic evidence with missing external artifact = %v", err)
 	}
-	duplicates := make(map[string][]byte, len(artifacts)+1)
-	for name, raw := range artifacts {
-		duplicates[name] = raw
-	}
+	duplicates := cloneFiles(referencedFiles)
 	duplicates["duplicate-final-semantic-evidence.json"] = encoded
 	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, duplicates, nil); err == nil || !strings.Contains(err.Error(), "unexpected final semantic") {
 		t.Fatalf("campaign with duplicate final semantic evidence = %v", err)

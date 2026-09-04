@@ -1120,20 +1120,42 @@ func validateFinalSemanticOutputFiles(files map[string][]byte) (*FinalSemanticEv
 			wantDerived[uri] = reference
 		}
 	}
-	for path, reference := range wantDerived {
+	if err := validateFinalSemanticDerivedFiles(files, wantDerived); err != nil {
+		return nil, err
+	}
+	return &semantic, nil
+}
+
+// validateFinalSemanticDerivedFiles proves that the signed supplement carries
+// exactly the derived objects referenced by the sealed semantic graph. Sort
+// both failure domains so a malformed graph always reports the same first
+// object instead of depending on Go map iteration order.
+func validateFinalSemanticDerivedFiles(files map[string][]byte, wantDerived map[string]campaignArtifactReference) error {
+	wantedPaths := make([]string, 0, len(wantDerived))
+	for path := range wantDerived {
+		wantedPaths = append(wantedPaths, path)
+	}
+	sort.Strings(wantedPaths)
+	for _, path := range wantedPaths {
+		reference := wantDerived[path]
 		data, ok := files[path]
 		if !ok || uint64(len(data)) != reference.Size || !strings.EqualFold(bytesSHA256(data), reference.ContentHash) {
-			return nil, fmt.Errorf("signed derived artifact %s differs from semantic locator", path)
+			return fmt.Errorf("signed derived artifact %s differs from semantic locator", path)
 		}
 	}
+	extraPaths := make([]string, 0)
 	for path := range files {
 		if strings.HasPrefix(path, "final-derived/") {
 			if _, ok := wantDerived[path]; !ok {
-				return nil, fmt.Errorf("signed semantic supplement contains unreferenced derived file %s", path)
+				extraPaths = append(extraPaths, path)
 			}
 		}
 	}
-	return &semantic, nil
+	sort.Strings(extraPaths)
+	if len(extraPaths) != 0 {
+		return fmt.Errorf("signed semantic supplement contains unreferenced derived file %s", extraPaths[0])
+	}
+	return nil
 }
 
 // validateFinalSemanticSupplementOutput additionally binds the canonical

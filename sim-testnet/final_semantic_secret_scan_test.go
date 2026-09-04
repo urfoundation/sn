@@ -27,6 +27,9 @@ func TestFinalSemanticSecretMatcherNormalizesLargeHaystackOnceAndDeduplicates(t 
 	if got, want := len(matcher.needles), 2_000; got != want {
 		t.Fatalf("deduplicated matcher needles=%d, want %d", got, want)
 	}
+	if len(matcher.nodes) == 0 {
+		t.Fatal("large secret inventory did not compile a matcher automaton")
+	}
 	normalizations := 0
 	matcher.lowercase = func(data []byte) []byte {
 		normalizations++
@@ -45,6 +48,72 @@ func TestFinalSemanticSecretMatcherNormalizesLargeHaystackOnceAndDeduplicates(t 
 	}
 	if normalizations != 2 {
 		t.Fatalf("second haystack normalizations=%d, want exactly 2 total", normalizations)
+	}
+}
+
+func TestFinalSemanticSecretMatcherPreservesOverlappingSubstringSemantics(t *testing.T) {
+	matcher := newFinalSemanticSecretMatcher(nil,
+		"abcdefgh", "bcdefghi", "abcdefghij", "XYZxyz12", "xyZXYz12",
+		"short", "", "  ",
+	)
+	if got, want := len(matcher.needles), 4; got != want {
+		t.Fatalf("normalized matcher needles=%d, want %d", got, want)
+	}
+	for _, test := range []struct {
+		name    string
+		content string
+		match   bool
+	}{
+		{name: "exact", content: "abcdefgh", match: true},
+		{name: "proper prefix needle", content: "--ABCDEFGHIJ--", match: true},
+		{name: "proper suffix overlap", content: "aBCDEFGHi", match: true},
+		{name: "case folded duplicate", content: "prefix-XyZxYz12-suffix", match: true},
+		{name: "crosses ordinary prefix", content: "01234567abcdefgh89", match: true},
+		{name: "one byte short", content: "abcdefg", match: false},
+		{name: "near miss", content: "abcdxfghij", match: false},
+		{name: "ignored short candidate", content: "short", match: false},
+	} {
+		err := matcher.scan(test.name, []byte(test.content))
+		if test.match && err == nil {
+			t.Fatalf("%s: secret substring was not detected", test.name)
+		}
+		if !test.match && err != nil {
+			t.Fatalf("%s: public content was rejected: %v", test.name, err)
+		}
+	}
+}
+
+func TestFinalSemanticSecretMatcherMatchesReferenceSearchAcrossAdjacentInputs(t *testing.T) {
+	candidates := []string{
+		"aaaaaaaa", "aaaaaaab", "baaaaaaa", "abababab", "babababa",
+		"0123456789abcdef", "FEDCBA9876543210", "mixedCASE-secret",
+		"unicode-Ångström", "shared-prefix-one", "shared-prefix-two",
+	}
+	matcher := newFinalSemanticSecretMatcher(nil, candidates...)
+	haystacks := [][]byte{
+		{}, []byte("public evidence"), []byte("aaaaaaa"), []byte("aaaaaaaaa"),
+		[]byte("xxABABABABxx"), []byte("prefix-mIxEdCaSe-SeCrEt-suffix"),
+		[]byte("UNICODE-åNGSTRÖM"), []byte("shared-prefix-three"),
+	}
+	for index := 0; index < 256; index++ {
+		candidate := []byte(fmt.Sprintf("public-%03d-%064x", index, index*index+17))
+		if index%7 == 0 {
+			candidate = append(candidate, candidates[index%len(candidates)]...)
+		}
+		haystacks = append(haystacks, candidate)
+	}
+	for index, haystack := range haystacks {
+		normalized := bytes.ToLower(haystack)
+		want := false
+		for _, needle := range matcher.needles {
+			if bytes.Contains(normalized, needle) {
+				want = true
+				break
+			}
+		}
+		if got := matcher.containsNormalized(normalized); got != want {
+			t.Fatalf("case %d automaton match=%t, reference=%t", index, got, want)
+		}
 	}
 }
 

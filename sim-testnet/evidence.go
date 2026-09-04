@@ -1991,6 +1991,16 @@ func evidenceFileHashes(root string, operators int) (map[string]string, error) {
 type finalSemanticSecretMatcher struct {
 	needles   [][]byte
 	lowercase func([]byte) []byte
+	nodes     []finalSemanticSecretMatcherNode
+}
+
+// One sparse Aho-Corasick state. A sparse byte map keeps the launch-scale
+// inventory bounded: a dense 256-way transition table would consume hundreds
+// of megabytes for generated miner/client keys without adding matching strength.
+type finalSemanticSecretMatcherNode struct {
+	next  map[byte]int
+	fail  int
+	match bool
 }
 
 // Build one shared, canonical matcher for both the full evidence-tree scan and
@@ -2030,7 +2040,88 @@ func newFinalSemanticSecretMatcher(roles *RoleSecrets, walletSecrets ...string) 
 		matcher.needles = append(matcher.needles, normalized)
 	}
 	sort.Slice(matcher.needles, func(i, j int) bool { return bytes.Compare(matcher.needles[i], matcher.needles[j]) < 0 })
+	matcher.buildAutomaton()
 	return matcher
+}
+
+// Compile normalized, deduplicated needles into one deterministic
+// multi-pattern matcher. This preserves bytes.Contains semantics without one
+// complete traversal of every large evidence object for every role secret.
+func (m *finalSemanticSecretMatcher) buildAutomaton() {
+	if m == nil || len(m.needles) == 0 {
+		return
+	}
+	m.nodes = []finalSemanticSecretMatcherNode{{next: map[byte]int{}}}
+	for _, needle := range m.needles {
+		state := 0
+		for _, value := range needle {
+			next, ok := m.nodes[state].next[value]
+			if !ok {
+				next = len(m.nodes)
+				m.nodes[state].next[value] = next
+				m.nodes = append(m.nodes, finalSemanticSecretMatcherNode{next: map[byte]int{}})
+			}
+			state = next
+		}
+		m.nodes[state].match = true
+	}
+
+	queue := make([]int, 0, len(m.nodes)-1)
+	for value := 0; value <= 255; value++ {
+		if child, ok := m.nodes[0].next[byte(value)]; ok {
+			queue = append(queue, child)
+		}
+	}
+	for head := 0; head < len(queue); head++ {
+		state := queue[head]
+		for value := 0; value <= 255; value++ {
+			byteValue := byte(value)
+			child, ok := m.nodes[state].next[byteValue]
+			if !ok {
+				continue
+			}
+			failure := m.nodes[state].fail
+			for failure != 0 {
+				if target, exists := m.nodes[failure].next[byteValue]; exists {
+					failure = target
+					break
+				}
+				failure = m.nodes[failure].fail
+			}
+			if failure == 0 {
+				if target, exists := m.nodes[0].next[byteValue]; exists {
+					failure = target
+				}
+			}
+			m.nodes[child].fail = failure
+			m.nodes[child].match = m.nodes[child].match || m.nodes[failure].match
+			queue = append(queue, child)
+		}
+	}
+}
+
+// Search one already-normalized evidence object without allocating per secret.
+func (m *finalSemanticSecretMatcher) containsNormalized(haystack []byte) bool {
+	if m == nil || len(m.nodes) == 0 {
+		return false
+	}
+	state := 0
+	for _, value := range haystack {
+		for {
+			if next, ok := m.nodes[state].next[value]; ok {
+				state = next
+				break
+			}
+			if state == 0 {
+				break
+			}
+			state = m.nodes[state].fail
+		}
+		if m.nodes[state].match {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *finalSemanticSecretMatcher) scan(path string, data []byte) error {
@@ -2042,10 +2133,8 @@ func (m *finalSemanticSecretMatcher) scan(path string, data []byte) error {
 		lowercase = bytes.ToLower
 	}
 	haystack := lowercase(data)
-	for _, needle := range m.needles {
-		if bytes.Contains(haystack, needle) {
-			return fmt.Errorf("secret material found in evidence file %s", path)
-		}
+	if m.containsNormalized(haystack) {
+		return fmt.Errorf("secret material found in evidence file %s", path)
 	}
 	return nil
 }

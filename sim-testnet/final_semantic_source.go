@@ -3116,8 +3116,11 @@ func (a *finalSemanticArchive) buildEpochs(source *FinalSemanticEvidence, termin
 						return fmt.Errorf("epoch %d operator %d claim is absent from payout Merkle leaves", epoch, noID)
 					}
 					claimPaid, claimDeferred, err := finalSemanticClaimOutput(events, claimEvent, coldkey)
-					if err != nil || new(big.Int).Add(new(big.Int).Set(claimPaid), claimDeferred).Cmp(amount) != 0 {
+					if err != nil {
 						return fmt.Errorf("epoch %d operator %d claim payment mismatch: %w", epoch, noID, err)
+					}
+					if new(big.Int).Add(new(big.Int).Set(claimPaid), claimDeferred).Cmp(amount) != 0 {
+						return fmt.Errorf("epoch %d operator %d claim payment does not equal the claimed amount", epoch, noID)
 					}
 					receipt, err := a.receiptFromIndex(events, claimEvent, fmt.Sprintf("epoch-%d-pool-%d-claim-%d", epoch, noID, leafIndex))
 					if err != nil {

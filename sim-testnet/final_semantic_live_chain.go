@@ -420,8 +420,11 @@ func captureFinalNativeState(ctx context.Context, cfg *ResolvedConfig, stateRoot
 	heads := make([]ChainHead, len(numbers))
 	for index, number := range numbers {
 		blockHash, hashErr := chain.API.RPC.Chain.GetBlockHash(number)
-		if hashErr != nil || blockHash == (types.Hash{}) {
+		if hashErr != nil {
 			return nil, nil, fmt.Errorf("resolve referenced native block %d: %w", number, hashErr)
+		}
+		if blockHash == (types.Hash{}) {
+			return nil, nil, fmt.Errorf("resolve referenced native block %d: empty block hash", number)
 		}
 		heads[index] = ChainHead{Number: number, Hash: strings.ToLower(blockHash.Hex())}
 		if rewardHead, ok := rewardByNumber[number]; ok && heads[index] != rewardHead {

@@ -267,6 +267,46 @@ func finalAttemptFixtureID(value uint64) connect.Id {
 	return id
 }
 
+// The release-scale semantic fixture keeps all 1,000 clients, 202 fleets,
+// validators, operators, epochs, signatures, and pending-to-complete ledger
+// transitions, but groups trails just above the protocol minimum. Maximum-depth trail
+// construction and verification are covered exhaustively in validator's
+// release-measurement suite. Using M=16 here repeats every growing pending
+// prefix for 593 signed output objects and inflates four publication tests by
+// hundreds of megabytes without exercising a different semantic branch. M=5
+// also partitions each exact 500-client operator population without a short
+// terminal trail.
+const finalSemanticFixtureMaximumAttemptM = connect.VerifyMMin + 2
+
+// Select a near-minimum valid trail without leaving an invalid final group.
+func finalSemanticFixtureAttemptGroupSize(remaining int) int {
+	const minimumProviders = connect.VerifyMMin - 1
+	if remaining < minimumProviders {
+		return 0
+	}
+	if remaining <= finalSemanticFixtureMaximumAttemptM-1 {
+		return remaining
+	}
+	if remaining%minimumProviders == 0 {
+		return minimumProviders
+	}
+	return minimumProviders + 1
+}
+
+// Count the complete records required to exhaust one provider population.
+func finalSemanticFixtureAttemptGroupCount(providers int) int {
+	groups := 0
+	for providers != 0 {
+		size := finalSemanticFixtureAttemptGroupSize(providers)
+		if size == 0 {
+			return 0
+		}
+		providers -= size
+		groups++
+	}
+	return groups
+}
+
 // attachFinalAttemptCuts mirrors the production append order and signed chain
 // without fsyncing thousands of synthetic records. The production verifier
 // remains authoritative for every counter, proof, and chain transition.
@@ -344,13 +384,7 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 		}
 		sequence := uint64(0)
 		for len(tokens) != 0 {
-			groupSize := len(tokens)
-			if groupSize > connect.VerifyMMax-1 {
-				groupSize = connect.VerifyMMax - 1
-				if remainder := len(tokens) - groupSize; remainder > 0 && remainder < connect.VerifyMMin-1 {
-					groupSize -= connect.VerifyMMin - 1 - remainder
-				}
-			}
+			groupSize := finalSemanticFixtureAttemptGroupSize(len(tokens))
 			if groupSize < connect.VerifyMMin-1 {
 				t.Fatalf("fixture attempt group has only %d providers", groupSize)
 			}
@@ -1207,6 +1241,29 @@ func TestFinalSemanticFixtureSnapshotsAreDetached(t *testing.T) {
 
 // TestFinalAttemptFixtureLedgerMatchesDurableProductionWire proves the
 // accelerated builder is byte-identical for the same signed trail.
+func TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation(t *testing.T) {
+	for providers := connect.VerifyMMin - 1; providers <= 1_000; providers++ {
+		remaining := providers
+		groups := 0
+		for remaining != 0 {
+			size := finalSemanticFixtureAttemptGroupSize(remaining)
+			if size < connect.VerifyMMin-1 || size > finalSemanticFixtureMaximumAttemptM-1 || size > remaining {
+				t.Fatalf("providers=%d remaining=%d produced invalid group size %d", providers, remaining, size)
+			}
+			remaining -= size
+			groups++
+		}
+		if got := finalSemanticFixtureAttemptGroupCount(providers); got != groups || got == 0 {
+			t.Fatalf("providers=%d group count=%d, want %d", providers, got, groups)
+		}
+	}
+	for _, providers := range []int{-1, 0, 1, connect.VerifyMMin - 2} {
+		if got := finalSemanticFixtureAttemptGroupSize(providers); got != 0 {
+			t.Fatalf("invalid provider population %d produced group size %d", providers, got)
+		}
+	}
+}
+
 func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 	source, artifacts := finalSemanticFixture(t)
 	measurementLocator := source.Validators[0].Cycles[0].MeasurementArtifact
@@ -1216,6 +1273,43 @@ func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 	}
 	if len(measurement.Inputs) == 0 || measurement.Inputs[0].Stats.AttemptCut == nil || len(measurement.Inputs[0].Stats.AttemptCut.Records) == 0 {
 		t.Fatal("release-scale fixture has no signed attempt records")
+	}
+	if len(measurement.Inputs) != 2 {
+		t.Fatalf("release-scale fixture inputs=%d, want two operator populations", len(measurement.Inputs))
+	}
+	providerTotal := 0
+	for _, input := range measurement.Inputs {
+		if len(input.Stats.Providers) < connect.VerifyMMin-1 || input.Stats.AttemptCut == nil {
+			t.Fatalf("operator %d fixture providers=%d or cut is absent", input.NoID, len(input.Stats.Providers))
+		}
+		providerTotal += len(input.Stats.Providers)
+		eligibleProviders := 0
+		for _, provider := range input.Stats.Providers {
+			if len(provider.EgressIPHashHexes) != 0 {
+				eligibleProviders++
+			}
+		}
+		pending, complete := 0, 0
+		for _, record := range input.Stats.AttemptCut.Records {
+			if record.M < connect.VerifyMMin || record.M > finalSemanticFixtureMaximumAttemptM {
+				t.Fatalf("operator %d fixture trail M=%d, want [%d,%d]", input.NoID, record.M, connect.VerifyMMin, finalSemanticFixtureMaximumAttemptM)
+			}
+			switch record.Disposition {
+			case validatorpkg.AttemptDispositionPending:
+				pending++
+			case validatorpkg.AttemptDispositionComplete:
+				complete++
+			default:
+				t.Fatalf("operator %d fixture has unexpected disposition %s", input.NoID, record.Disposition)
+			}
+		}
+		wantComplete := finalSemanticFixtureAttemptGroupCount(eligibleProviders)
+		if pending != eligibleProviders || complete != wantComplete || wantComplete == 0 {
+			t.Fatalf("operator %d fixture pending/complete=%d/%d, want %d/%d", input.NoID, pending, complete, eligibleProviders, wantComplete)
+		}
+	}
+	if providerTotal != 1_000 {
+		t.Fatalf("release-scale fixture providers=%d, want 1,000 across both operators", providerTotal)
 	}
 	wantCut := measurement.Inputs[0].Stats.AttemptCut
 	validatorKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x41}, ed25519.SeedSize))
