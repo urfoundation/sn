@@ -1244,13 +1244,19 @@ func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContaine
 	if err != nil {
 		return fmt.Errorf("hash container %s spec: %w", spec.Name, err)
 	}
-	dataSpecHash, err := managedContainerDataSpecHash(spec)
-	if err != nil {
-		return fmt.Errorf("hash container %s data spec: %w", spec.Name, err)
-	}
-	for _, volume := range spec.DataVolumes {
-		if err := ensureManagedVolume(ctx, docker, volume, dataSpecHash, spec.CompatibleDataHashes); err != nil {
-			return err
+	if len(spec.DataVolumes) == 0 {
+		if spec.DataCompatibilityHash != "" || len(spec.CompatibleDataHashes) != 0 {
+			return fmt.Errorf("container %s has persistent-data compatibility identities without a data volume", spec.Name)
+		}
+	} else {
+		dataSpecHash, err := managedContainerDataSpecHash(spec)
+		if err != nil {
+			return fmt.Errorf("hash container %s data spec: %w", spec.Name, err)
+		}
+		for _, volume := range spec.DataVolumes {
+			if err := ensureManagedVolume(ctx, docker, volume, dataSpecHash, spec.CompatibleDataHashes); err != nil {
+				return err
+			}
 		}
 	}
 	inspect := docker.commandContext(ctx, "container", "inspect", "--format", "{{.Config.Image}}|{{index .Config.Labels \""+managedContainerSpecHashLabel+"\"}}", spec.Name)

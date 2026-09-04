@@ -2087,6 +2087,135 @@ func TestManagedVolumeDataHashAcceptsOnlyCurrentOrExactReviewedPredecessor(t *te
 	}
 }
 
+func TestEnsureContainerStartsEphemeralDependencyWithoutPersistentDataIdentity(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	logPath := filepath.Join(dir, "docker.log")
+	script := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$SIM_TESTNET_DOCKER_LOG"
+if [ "$1" = container ] && [ "$2" = inspect ]; then
+  printf 'Error: No such container\n' >&2
+  exit 1
+fi
+if [ "$1" = run ] && [ "$2" = -d ]; then
+  printf 'ephemeral-container-id\n'
+  exit 0
+fi
+printf 'unexpected Docker command: %s\n' "$*" >&2
+exit 99
+`
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SIM_TESTNET_DOCKER_LOG", logPath)
+	spec := managedContainerSpec{
+		Name:              "redis",
+		Image:             "redis:8-alpine@sha256:" + strings.Repeat("a", 64),
+		ConfigurationHash: "sha256:" + strings.Repeat("b", 64),
+		RestartPolicy:     "no",
+		RunArgs:           []string{"-p", "127.0.0.11:6379:6379"},
+		Command:           []string{"redis-server", "--save", ""},
+	}
+	if err := ensureContainer(context.Background(), dockerCLI{Executable: docker}, spec); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(commands) != 2 || !strings.HasPrefix(commands[0], "container inspect ") || !strings.HasPrefix(commands[1], "run -d ") {
+		t.Fatalf("ephemeral dependency Docker commands = %q, want inspect then run with no volume command", commands)
+	}
+	for _, command := range commands {
+		if strings.Contains(command, "volume") {
+			t.Fatalf("ephemeral dependency invoked a persistent-volume command: %q", command)
+		}
+	}
+}
+
+func TestEnsureContainerRestartsExistingEphemeralDependencyWithoutPersistentDataIdentity(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	logPath := filepath.Join(dir, "docker.log")
+	script := `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$SIM_TESTNET_DOCKER_LOG"
+if [ "$1" = container ] && [ "$2" = inspect ]; then
+  printf '%s\n' "$SIM_TESTNET_CONTAINER_INSPECT"
+  exit 0
+fi
+if [ "$1" = start ]; then
+  printf '%s\n' "$2"
+  exit 0
+fi
+printf 'unexpected Docker command: %s\n' "$*" >&2
+exit 99
+`
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec := managedContainerSpec{
+		Name:              "redis",
+		Image:             "redis:8-alpine@sha256:" + strings.Repeat("a", 64),
+		ConfigurationHash: "sha256:" + strings.Repeat("b", 64),
+		RestartPolicy:     "no",
+		RunArgs:           []string{"-p", "127.0.0.11:6379:6379"},
+		Command:           []string{"redis-server", "--save", ""},
+	}
+	specHash, err := managedContainerSpecHash(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SIM_TESTNET_DOCKER_LOG", logPath)
+	t.Setenv("SIM_TESTNET_CONTAINER_INSPECT", spec.Image+"|"+specHash)
+	if err := ensureContainer(context.Background(), dockerCLI{Executable: docker}, spec); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(commands) != 2 || !strings.HasPrefix(commands[0], "container inspect ") || commands[1] != "start redis" {
+		t.Fatalf("existing ephemeral dependency Docker commands = %q, want inspect then start with no volume command", commands)
+	}
+	for _, command := range commands {
+		if strings.Contains(command, "volume") {
+			t.Fatalf("existing ephemeral dependency invoked a persistent-volume command: %q", command)
+		}
+	}
+}
+
+func TestEnsureContainerRejectsInconsistentPersistentDataIdentity(t *testing.T) {
+	base := managedContainerSpec{
+		Name:          "dependency",
+		Image:         "image@sha256:" + strings.Repeat("a", 64),
+		RestartPolicy: "no",
+	}
+	volumeWithoutIdentity := base
+	volumeWithoutIdentity.DataVolumes = []string{"dependency-data"}
+	identityWithoutVolume := base
+	identityWithoutVolume.DataCompatibilityHash = "0x" + strings.Repeat("b", 64)
+	predecessorWithoutVolume := base
+	predecessorWithoutVolume.CompatibleDataHashes = []string{strings.Repeat("c", 64)}
+	for _, testCase := range []struct {
+		name        string
+		spec        managedContainerSpec
+		wantMessage string
+	}{
+		{name: "volume without identity", spec: volumeWithoutIdentity, wantMessage: "managed persistent volume has no data compatibility identity"},
+		{name: "identity without volume", spec: identityWithoutVolume, wantMessage: "persistent-data compatibility identities without a data volume"},
+		{name: "predecessor without volume", spec: predecessorWithoutVolume, wantMessage: "persistent-data compatibility identities without a data volume"},
+	} {
+		err := ensureContainer(context.Background(), dockerCLI{Executable: filepath.Join(t.TempDir(), "unreachable-docker")}, testCase.spec)
+		if err == nil || !strings.Contains(err.Error(), testCase.wantMessage) {
+			t.Errorf("%s error = %v, want %q", testCase.name, err, testCase.wantMessage)
+		}
+	}
+}
+
 func TestLiveManagedDependencyVolumesMatchCurrentOrReviewedPredecessor(t *testing.T) {
 	if os.Getenv("SIM_TESTNET_LIVE_DOCKER") != "1" {
 		t.Skip("set SIM_TESTNET_LIVE_DOCKER=1 to inspect the configured simulator volumes")
