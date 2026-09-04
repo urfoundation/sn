@@ -141,11 +141,11 @@ upstream on 2026-09-04 UTC, is:
 
 | Repository | Branch | Current pre-integration revision | State |
 |---|---|---|---|
-| sn | main | 5f882b20790aba1333664323f3bf748933f62273 | clean/equal; runtime-evidence candidate |
-| server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; post-candidate upstream integration under qualification |
+| sn | main | eb9f0a41eb8c3514cc4d356f539fc7627af3ce66 | clean/equal; runtime-evidence and release-gate selection candidate |
+| server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; affected normal/race/vet and managed-DB qualification pass |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; sender-role and blocker/CFAA focused ordinary/race plus consumer compile pass; aggregate qualification pending |
-| sdk | main | 857248fc82695e9cf7ecd43978511c332e02dc85 | clean/equal; post-candidate upstream integration under qualification |
+| sdk | main | 2f3e7058873498099a88aee3e158caa11aefbda1 | clean/equal; canonical-format repair plus full normal, affected race, nested-module and vet qualification pass |
 | glog | master | 2bdcce5f8be023947f26a247eb5665c56b69b2e3 | clean/equal |
 | goidenticons | main | 325750b38314313dc5f44c880ab6f12f6c1ecb3c | clean/equal |
 | proxy | main | 1c72dfd66f8c7fbe72120b6657c8a445f7f25499 | clean/equal |
@@ -175,19 +175,25 @@ Historical first-draft snapshot:
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/current |
 | xops | main | fbd291a1849d5769e67efe278c2f4e5da65275aa | clean/current |
 
-The working-tree release lock was refreshed for this exact snapshot at
-2026-09-04 15:52 UTC but is not approval until committed/pushed and accepted by
-the frozen producer gate.
+The release lock was refreshed for this exact snapshot at 2026-09-04 16:17 UTC
+as `sha256:e465e68d78ad7eefd7221cfb3606bd9b9f94f2c105515bfd5680d2010e42ec75`.
+Its only changes from the prior lock are the reviewed protocol-source and SDK
+Go-source hashes. It is not launch approval until committed/pushed and accepted
+by the frozen producer gate.
 
 ## 3. Current implementation/gate continuation point
 
-Source freeze is not complete. Runtime-evidence candidate
-`5f882b20790aba1333664323f3bf748933f62273` is committed, pushed, and passed
-its focused normal/race/vet qualification. A freeze fence then correctly found
-new Server, operator-proxy, Connect, SDK, Vault and xops upstream commits; those
-clean checkouts were fast-forwarded and the exact twelve-root fence passed.
-Their affected qualification, the refreshed-lock commit, and both frozen gates
-remain pending. The expensive
+The final frozen gates remain pending. Runtime-evidence candidate
+`5f882b20790aba1333664323f3bf748933f62273` and the release-gate selector
+follow-up `eb9f0a41eb8c3514cc4d356f539fc7627af3ce66` are committed, pushed, and
+passed their focused normal/race/vet qualification. A freeze fence correctly
+found new Server, operator-proxy, Connect, SDK, Vault and xops upstream commits;
+those clean checkouts were fast-forwarded, affected qualification passed, and
+the exact twelve-root fence passed before the final lock refresh. The SDK also
+contained five pre-existing canonical-format defects; formatting-only commit
+`2f3e7058873498099a88aee3e158caa11aefbda1` fixes them and is pushed after full
+root normal, affected normal/race, nested build/cgo normal/race, vet, and
+cross-repository simulator compile checks passed. The expensive
 TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper regression now
 passes and provides a narrow walk through the complete 1,000-miner semantic
 fixture. The following real defects have already been corrected in the working
@@ -860,12 +866,14 @@ producer pass are separately recorded above.
 | Foundry | pass in producer; aggregate rerun pending | 156/0/0; 4,608 invariant calls |
 | Slither | prior 0 high/medium; final pending | |
 | Exact v451/v452/v453 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all three versions at 2026-09-04 15:36 UTC; static source and three upstream metadata tests also pass |
-| Server release-selected DB/proxy qualification | prequalified; frozen gate pending | `2b09692a`; controller 187.290/209.749s, model 204.658/225.727s, taskworker 42.164/49.247s, proxy 529.073s |
+| Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | focused qualification pass; frozen gate pending | `5f882b20790aba1333664323f3bf748933f62273`; normal/race/vet and adjacent watch/recovery regressions pass |
-| Server candidate commit | affected qualification in progress; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
+| SN runtime candidate | focused qualification pass; frozen gate pending | `eb9f0a41eb8c3514cc4d356f539fc7627af3ce66`; runtime cache/watch/recovery normal/race/vet plus deterministic sender-role gate-selection regression pass |
+| Server candidate commit | affected qualification pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
+| Connect candidate commit | affected qualification pass; frozen aggregate pending | `fb888dc8883efb12dd570e5514e866dba14d987e`; full compile, sender-role/blocker/CFAA/contract normal 12.552s, race 70.272s, vet 5.596s |
+| SDK candidate commit | affected qualification pass; frozen aggregate pending | `2f3e7058873498099a88aee3e158caa11aefbda1`; full root normal 443.170s, changed focus 243.280/245.255s, nested build/cgo normal/race/vet, all Go files formatted |
 | Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed |
-| Release-lock hash | refreshed; commit/freeze test pending | `sha256:988fb8288f4daed06971498f6fcacc07c6973440040ea4c2d7af7c8c52de6dc5` |
+| Release-lock hash | refreshed; commit/frozen gate pending | `sha256:e465e68d78ad7eefd7221cfb3606bd9b9f94f2c105515bfd5680d2010e42ec75`; only reviewed protocol and SDK source hashes changed |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360` |
 | Approved plan hash/spend | superseded; current rerun pending | prior plan `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; never use it with the current lock |
 | Resume/launch | pending | |
