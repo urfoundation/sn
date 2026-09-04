@@ -147,19 +147,30 @@ func resolveDockerCLI(ctx context.Context) (dockerCLI, error) {
 // managedContainerSpec is the complete reproducible Docker contract for one
 // simulator-owned dependency. RunArgs precede the image and Command follows it.
 type managedContainerSpec struct {
-	Name              string
-	Image             string
-	ConfigurationHash string
-	RestartPolicy     string
-	RunArgs           []string
-	Command           []string
-	DataVolumes       []string
-	ReadyProbe        []string
-	ReadyExpected     string
-	ReadyTimeout      time.Duration
+	Name                  string
+	Image                 string
+	ConfigurationHash     string
+	DataCompatibilityHash string
+	CompatibleDataHashes  []string
+	RestartPolicy         string
+	RunArgs               []string
+	Command               []string
+	DataVolumes           []string
+	ReadyProbe            []string
+	ReadyExpected         string
+	ReadyTimeout          time.Duration
 }
 
 const managedContainerSpecHashLabel = "com.urnetwork.sim-testnet.spec-hash"
+
+// Bump only when an initialized PostgreSQL volume cannot be brought forward by
+// the normal server schema migrations and authenticated readiness checks.
+const managedPostgresDataCompatibilitySchema = "urnetwork-sim-postgres-data-v1"
+
+// The August testnet databases were initialized under this exact reviewed
+// server/local generation. Its successor changed comments only. Retain the
+// legacy digest solely to authenticate those pre-schema volume labels.
+const managedPostgresLegacyServerLocalConfigHash = "sha256:06e97da3bfb4bfc0fbe3a25b4fa76d8404bb4d3e75d93683ebd44c58d2e2dd6b"
 
 const minimumReleaseStateFreeBytes uint64 = 20 * 1024 * 1024 * 1024
 
@@ -1039,6 +1050,32 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 		pgPassword := hex.EncodeToString(pgSeed[:])
 		pgSuperuserSeed := derive32(cfg, fmt.Sprintf("dependency/postgres-superuser-%d", i))
 		pgSuperuserPassword := hex.EncodeToString(pgSuperuserSeed[:])
+		dataCompatibilityHash, err := canonicalHashHex(struct {
+			Schema            string `json:"schema"`
+			Locale            string `json:"locale"`
+			InitDBArgs        string `json:"initdb_args"`
+			Superuser         string `json:"superuser"`
+			SuperuserPassword string `json:"superuser_password"`
+			InitialDatabase   string `json:"initial_database"`
+			ApplicationUser   string `json:"application_user"`
+			ApplicationPass   string `json:"application_password"`
+			ApplicationDB     string `json:"application_database"`
+			DataDestination   string `json:"data_destination"`
+		}{
+			Schema:            managedPostgresDataCompatibilitySchema,
+			Locale:            "en_US.UTF-8",
+			InitDBArgs:        "--locale=en_US.UTF-8",
+			Superuser:         "postgres",
+			SuperuserPassword: pgSuperuserPassword,
+			InitialDatabase:   "postgres",
+			ApplicationUser:   "bringyour",
+			ApplicationPass:   pgPassword,
+			ApplicationDB:     "bringyour",
+			DataDestination:   "/var/lib/postgresql",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("hash operator %d PostgreSQL data compatibility: %w", i, err)
+		}
 		postgresArgs := []string{
 			"--mount", "type=volume,src=" + pgName + "-data,dst=/var/lib/postgresql",
 			"--mount", "type=bind,src=" + initDir + ",dst=/docker-entrypoint-initdb.d,readonly",
@@ -1053,14 +1090,15 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 			"-p", ip + ":5432:5432",
 		}
 		postgresCommand := []string{"postgres", "-c", "max_connections=512", "-c", "shared_buffers=256MB"}
-		specs = append(specs, managedContainerSpec{
-			Name:              pgName,
-			Image:             postgresImage,
-			ConfigurationHash: localConfigHash,
-			RestartPolicy:     "no",
-			RunArgs:           postgresArgs,
-			Command:           postgresCommand,
-			DataVolumes:       []string{pgName + "-data"},
+		postgresSpec := managedContainerSpec{
+			Name:                  pgName,
+			Image:                 postgresImage,
+			ConfigurationHash:     localConfigHash,
+			DataCompatibilityHash: dataCompatibilityHash,
+			RestartPolicy:         "no",
+			RunArgs:               postgresArgs,
+			Command:               postgresCommand,
+			DataVolumes:           []string{pgName + "-data"},
 			ReadyProbe: []string{
 				"env", "PGPASSWORD=" + pgPassword,
 				"psql", "-h", "127.0.0.1", "-U", "bringyour", "-d", "bringyour", "-Atqc",
@@ -1068,7 +1106,13 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 			},
 			ReadyExpected: "512:256MB:en_US.UTF-8",
 			ReadyTimeout:  90 * time.Second,
-		})
+		}
+		legacyDataHash, err := managedContainerLegacyDataSpecHash(postgresSpec, managedPostgresLegacyServerLocalConfigHash)
+		if err != nil {
+			return nil, fmt.Errorf("hash operator %d legacy PostgreSQL data compatibility: %w", i, err)
+		}
+		postgresSpec.CompatibleDataHashes = []string{legacyDataHash}
+		specs = append(specs, postgresSpec)
 		redisArgs := []string{
 			"--ulimit", "nofile=65536:65536",
 			"--sysctl", "net.core.somaxconn=65535",
@@ -1095,16 +1139,72 @@ func dependencyContainerSpecs(cfg *ResolvedConfig) ([]managedContainerSpec, erro
 // prevents an old same-image container from silently reusing stale settings.
 func managedContainerSpecHash(spec managedContainerSpec) (string, error) {
 	canonical := struct {
+		Image                 string   `json:"image"`
+		ConfigurationHash     string   `json:"configuration_hash"`
+		DataCompatibilityHash string   `json:"data_compatibility_hash,omitempty"`
+		RestartPolicy         string   `json:"restart_policy"`
+		RunArgs               []string `json:"run_args"`
+		Command               []string `json:"command"`
+		DataVolumes           []string `json:"data_volumes"`
+	}{
+		Image:                 spec.Image,
+		ConfigurationHash:     spec.ConfigurationHash,
+		DataCompatibilityHash: spec.DataCompatibilityHash,
+		RestartPolicy:         spec.RestartPolicy,
+		RunArgs:               spec.RunArgs,
+		Command:               spec.Command,
+		DataVolumes:           spec.DataVolumes,
+	}
+	b, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// Bind only settings that determine persistent data compatibility. Exact
+// reviewed init-hook bytes remain in the container/release hash, but those
+// hooks run only when a volume is empty. Existing databases advance through
+// migrations and authenticated probes, so comments, host paths, port bindings,
+// runtime tuning and lifecycle policy cannot invalidate durable data.
+func managedContainerDataSpecHash(spec managedContainerSpec) (string, error) {
+	if len(spec.DataVolumes) == 0 || spec.DataCompatibilityHash == "" {
+		return "", errors.New("managed persistent volume has no data compatibility identity")
+	}
+	canonical := struct {
+		Image                 string   `json:"image"`
+		DataCompatibilityHash string   `json:"data_compatibility_hash"`
+		DataVolumes           []string `json:"data_volumes"`
+	}{
+		Image:                 spec.Image,
+		DataCompatibilityHash: spec.DataCompatibilityHash,
+		DataVolumes:           spec.DataVolumes,
+	}
+	b, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// Reconstruct the pre-schema persistent-volume label. It bound the complete
+// creation arguments and therefore admits only the reviewed August generation,
+// while the new identity no longer couples durable data to host-only settings.
+func managedContainerLegacyDataSpecHash(spec managedContainerSpec, configurationHash string) (string, error) {
+	if configurationHash == "" {
+		return "", errors.New("legacy managed persistent volume has no configuration hash")
+	}
+	canonical := struct {
 		Image             string   `json:"image"`
 		ConfigurationHash string   `json:"configuration_hash"`
-		RestartPolicy     string   `json:"restart_policy"`
 		RunArgs           []string `json:"run_args"`
 		Command           []string `json:"command"`
 		DataVolumes       []string `json:"data_volumes"`
 	}{
 		Image:             spec.Image,
-		ConfigurationHash: spec.ConfigurationHash,
-		RestartPolicy:     spec.RestartPolicy,
+		ConfigurationHash: configurationHash,
 		RunArgs:           spec.RunArgs,
 		Command:           spec.Command,
 		DataVolumes:       spec.DataVolumes,
@@ -1117,28 +1217,21 @@ func managedContainerSpecHash(spec managedContainerSpec) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// Bind only settings that determine persistent data compatibility. Container
-// lifecycle policy can change without invalidating an initialized database.
-func managedContainerDataSpecHash(spec managedContainerSpec) (string, error) {
-	canonical := struct {
-		Image             string   `json:"image"`
-		ConfigurationHash string   `json:"configuration_hash"`
-		RunArgs           []string `json:"run_args"`
-		Command           []string `json:"command"`
-		DataVolumes       []string `json:"data_volumes"`
-	}{
-		Image:             spec.Image,
-		ConfigurationHash: spec.ConfigurationHash,
-		RunArgs:           spec.RunArgs,
-		Command:           spec.Command,
-		DataVolumes:       spec.DataVolumes,
+// Accept the active data schema or one exact reviewed predecessor. Empty and
+// duplicate compatibility values do not broaden the match.
+func managedVolumeDataHashAccepted(observedHash, requiredHash string, compatibleHashes []string) bool {
+	if observedHash == "" || requiredHash == "" {
+		return false
 	}
-	b, err := json.Marshal(canonical)
-	if err != nil {
-		return "", err
+	if observedHash == requiredHash {
+		return true
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	for _, compatibleHash := range compatibleHashes {
+		if compatibleHash != "" && observedHash == compatibleHash {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureContainer creates or starts a simulator-owned container only when its
@@ -1156,7 +1249,7 @@ func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContaine
 		return fmt.Errorf("hash container %s data spec: %w", spec.Name, err)
 	}
 	for _, volume := range spec.DataVolumes {
-		if err := ensureManagedVolume(ctx, docker, volume, dataSpecHash); err != nil {
+		if err := ensureManagedVolume(ctx, docker, volume, dataSpecHash, spec.CompatibleDataHashes); err != nil {
 			return err
 		}
 	}
@@ -1187,12 +1280,13 @@ func ensureContainer(ctx context.Context, docker dockerCLI, spec managedContaine
 
 // ensureManagedVolume prevents PostgreSQL from silently reusing data created
 // by another release, init-hook set, password derivation, or container spec.
-func ensureManagedVolume(ctx context.Context, docker dockerCLI, name, specHash string) error {
+func ensureManagedVolume(ctx context.Context, docker dockerCLI, name, specHash string, compatibleHashes []string) error {
 	inspect := docker.commandContext(ctx, "volume", "inspect", "--format", "{{index .Labels \""+managedContainerSpecHashLabel+"\"}}", name)
 	out, err := inspect.CombinedOutput()
 	if err == nil {
-		if strings.TrimSpace(string(out)) != specHash {
-			return fmt.Errorf("volume %s does not match its release-locked creation spec; remove that exact simulator volume before retrying", name)
+		observedHash := strings.TrimSpace(string(out))
+		if !managedVolumeDataHashAccepted(observedHash, specHash, compatibleHashes) {
+			return fmt.Errorf("volume %s has persistent-data compatibility hash %q, require %q; preserve and migrate that exact simulator volume before retrying", name, observedHash, specHash)
 		}
 		return nil
 	}

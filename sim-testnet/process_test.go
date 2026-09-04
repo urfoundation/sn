@@ -1915,6 +1915,15 @@ func TestManagedDependencySpecsMirrorServerLocalAndIsolateOperators(t *testing.T
 	if len(postgresOne.DataVolumes) != 1 || postgresOne.DataVolumes[0] != "unit-test-deployment-pg-1-data" || postgresOne.ReadyExpected != "512:256MB:en_US.UTF-8" {
 		t.Fatalf("PostgreSQL durable/readiness contract drifted: volumes=%v expected=%q", postgresOne.DataVolumes, postgresOne.ReadyExpected)
 	}
+	if !strings.HasPrefix(postgresOne.DataCompatibilityHash, "0x") || len(postgresOne.DataCompatibilityHash) != 66 || postgresOne.DataCompatibilityHash == postgresTwo.DataCompatibilityHash {
+		t.Fatalf("PostgreSQL persistent-data identities are missing or shared across operators: %q / %q", postgresOne.DataCompatibilityHash, postgresTwo.DataCompatibilityHash)
+	}
+	if len(postgresOne.CompatibleDataHashes) != 1 || len(postgresOne.CompatibleDataHashes[0]) != 64 || postgresOne.CompatibleDataHashes[0] == postgresTwo.CompatibleDataHashes[0] {
+		t.Fatalf("PostgreSQL legacy data identities are missing or shared across operators: %q / %q", postgresOne.CompatibleDataHashes, postgresTwo.CompatibleDataHashes)
+	}
+	if redisOne.DataCompatibilityHash != "" || redisTwo.DataCompatibilityHash != "" {
+		t.Fatalf("ephemeral Redis unexpectedly has a persistent-data identity: %q / %q", redisOne.DataCompatibilityHash, redisTwo.DataCompatibilityHash)
+	}
 	if postgresOne.RestartPolicy != "no" || redisOne.RestartPolicy != "no" || postgresTwo.RestartPolicy != "no" || redisTwo.RestartPolicy != "no" {
 		t.Fatalf("managed dependencies can restart after reboot: %q/%q/%q/%q", postgresOne.RestartPolicy, redisOne.RestartPolicy, postgresTwo.RestartPolicy, redisTwo.RestartPolicy)
 	}
@@ -1958,16 +1967,17 @@ func TestMutationPreflightRunsBeforeWriteCapableExecution(t *testing.T) {
 
 func TestManagedContainerSpecHashCoversCreationSettings(t *testing.T) {
 	spec := managedContainerSpec{
-		Name:              "one",
-		Image:             "image@sha256:" + strings.Repeat("a", 64),
-		ConfigurationHash: "sha256:" + strings.Repeat("b", 64),
-		RestartPolicy:     "no",
-		RunArgs:           []string{"-p", "127.0.0.11:5432:5432"},
-		Command:           []string{"server", "--limit", "1"},
-		DataVolumes:       []string{"one-data"},
-		ReadyProbe:        []string{"ready"},
-		ReadyExpected:     "ready",
-		ReadyTimeout:      time.Second,
+		Name:                  "one",
+		Image:                 "image@sha256:" + strings.Repeat("a", 64),
+		ConfigurationHash:     "sha256:" + strings.Repeat("b", 64),
+		DataCompatibilityHash: "0x" + strings.Repeat("d", 64),
+		RestartPolicy:         "no",
+		RunArgs:               []string{"-p", "127.0.0.11:5432:5432"},
+		Command:               []string{"server", "--limit", "1"},
+		DataVolumes:           []string{"one-data"},
+		ReadyProbe:            []string{"ready"},
+		ReadyExpected:         "ready",
+		ReadyTimeout:          time.Second,
 	}
 	first, err := managedContainerSpecHash(spec)
 	if err != nil {
@@ -2030,8 +2040,88 @@ func TestManagedContainerSpecHashCoversCreationSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if dataThird != dataFirst {
+		t.Fatal("reviewed container configuration drift invalidated compatible persistent data")
+	}
+	changed = spec
+	changed.RunArgs = []string{"-p", "127.0.0.99:5432:5432"}
+	dataThird, err = managedContainerDataSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataThird != dataFirst {
+		t.Fatal("host-only port drift invalidated compatible persistent data")
+	}
+	changed = spec
+	changed.DataCompatibilityHash = "0x" + strings.Repeat("e", 64)
+	dataThird, err = managedContainerDataSpecHash(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if dataThird == dataFirst {
-		t.Fatal("data-affecting configuration drift preserved the volume hash")
+		t.Fatal("persistent initialization identity drift preserved the volume hash")
+	}
+	changed = spec
+	changed.DataCompatibilityHash = ""
+	if _, err := managedContainerDataSpecHash(changed); err == nil {
+		t.Fatal("persistent volume without a compatibility identity was accepted")
+	}
+}
+
+func TestManagedVolumeDataHashAcceptsOnlyCurrentOrExactReviewedPredecessor(t *testing.T) {
+	requiredHash := strings.Repeat("a", 64)
+	compatibleHash := strings.Repeat("b", 64)
+	if !managedVolumeDataHashAccepted(requiredHash, requiredHash, []string{compatibleHash}) {
+		t.Fatal("current persistent-data identity was rejected")
+	}
+	if !managedVolumeDataHashAccepted(compatibleHash, requiredHash, []string{"", compatibleHash, compatibleHash}) {
+		t.Fatal("exact reviewed predecessor persistent-data identity was rejected")
+	}
+	for _, observedHash := range []string{"", strings.Repeat("c", 64)} {
+		if managedVolumeDataHashAccepted(observedHash, requiredHash, []string{compatibleHash}) {
+			t.Fatalf("foreign persistent-data identity %q was accepted", observedHash)
+		}
+	}
+	if managedVolumeDataHashAccepted(requiredHash, "", []string{requiredHash}) {
+		t.Fatal("empty required persistent-data identity was accepted")
+	}
+}
+
+func TestLiveManagedDependencyVolumesMatchCurrentOrReviewedPredecessor(t *testing.T) {
+	if os.Getenv("SIM_TESTNET_LIVE_DOCKER") != "1" {
+		t.Skip("set SIM_TESTNET_LIVE_DOCKER=1 to inspect the configured simulator volumes")
+	}
+	cfg, err := LoadResolved(LoadOptions{ConfigPath: "testnet.yml", RequireSecrets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	specs, err := dependencyContainerSpecs(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docker, err := resolveDockerCLI(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range specs {
+		if len(spec.DataVolumes) == 0 {
+			continue
+		}
+		requiredHash, err := managedContainerDataSpecHash(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, volume := range spec.DataVolumes {
+			inspect := docker.commandContext(context.Background(), "volume", "inspect", "--format", "{{index .Labels \""+managedContainerSpecHashLabel+"\"}}", volume)
+			output, err := inspect.CombinedOutput()
+			if err != nil {
+				t.Fatalf("inspect managed volume %s: %v: %s", volume, err, strings.TrimSpace(string(output)))
+			}
+			observedHash := strings.TrimSpace(string(output))
+			if !managedVolumeDataHashAccepted(observedHash, requiredHash, spec.CompatibleDataHashes) {
+				t.Fatalf("managed volume %s has foreign persistent-data identity %q; require %q or %q", volume, observedHash, requiredHash, spec.CompatibleDataHashes)
+			}
+		}
 	}
 }
 

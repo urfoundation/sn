@@ -19,7 +19,11 @@ fi
 echo "[release-1.0] sn Go tests"
 (
   cd "$sn_repo"
-  go test ./...
+  # sim-testnet contains launch-scale 1,000-miner fixtures. The package has an
+  # isolated 90-minute race deadline below; do not let Go's implicit 10-minute
+  # package deadline terminate the faster ordinary pass while its independent
+  # durability tests are still running.
+  go test -timeout 90m ./...
   go test -race ./crv4 ./miner/... ./protocol ./validator
   validator_lifecycle_tests='^Test(TunnelAttemptCloseJoinsPumpBeforeGenerator|TunnelAttemptCloseReleasesPartialConstruction)$'
   go test ./validator -run "$validator_lifecycle_tests" -count=1
