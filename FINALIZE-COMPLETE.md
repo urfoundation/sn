@@ -702,6 +702,20 @@ freeze approval:
   generated blocker/CFAA table, lookup, policy-hash, consumer, race, compile and
   vet checks; xops `0a215e9` passed all 38 selected infrastructure regressions
   in 9.393 seconds.
+- canonical SN `7d634c4` replaces the serial final-evidence hot path with
+  bounded `GOMAXPROCS` workers for independent lifecycle decisions, accepted
+  and dishonest-deposit measurements, and lineage edges while retaining
+  canonical first-error order. The release-scale build/render/artifact test
+  fell from 84.950 to 33.766 seconds and reached 464-664% observed process CPU
+  on this 24-CPU host. The widened ordinary semantic selection passed 204
+  unique test/subtest names in 416.901 seconds (447.81 seconds wall), the
+  affected heavy race selection passed in 524.891 seconds, and the final
+  worker/cache/stdio race regression passed in 222.138 seconds. Simulator vet
+  remained green. The prior 942.675-second full ordinary run had only two
+  failures: the deliberately stale release lock and a test which mistook Go's
+  `-json` stdout/stderr multiplexing for an imported-module alias. The latter
+  now uses a child process with independently wired descriptors and passes both
+  ordinary and `-json` invocation; a frozen full rerun remains mandatory.
 
 Do not infer an unselected full Server model/repository pass, source freeze,
 producer pass, aggregate pass, or live campaign result from these focused
@@ -710,8 +724,8 @@ records.
 | Item | Result | UTC / immutable reference |
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3 |
-| All final semantic ordinary tests | pending | |
-| All final semantic race tests | pending | |
+| All final semantic ordinary tests | prequalified; frozen rerun pending | `7d634c4`; 204 selected test/subtest names, 416.901s package / 447.81s wall |
+| All final semantic race tests | prequalified in shards; frozen aggregate pending | `7d634c4`; affected heavy selection 524.891s; latest worker/cache/stdio selection 222.138s |
 | Full sim-testnet ordinary | pending | |
 | Full sim-testnet race | pending | |
 | Producer gate | pending | |
