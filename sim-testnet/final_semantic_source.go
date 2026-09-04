@@ -322,7 +322,7 @@ func openFinalSemanticArchive(ctx context.Context, cfg *ResolvedConfig, stateDir
 		}
 	}
 	if collected.PriorPhase != nil {
-		priorLocators := []FinalArtifactLocator{collected.PriorPhase.ScenarioResult, collected.PriorPhase.OwnerCompletion, collected.PriorPhase.EvidenceManifest, collected.PriorPhase.CaptureStatus, collected.PriorPhase.CollectedInputsManifest, collected.PriorPhase.SemanticSupplement}
+		priorLocators := []FinalArtifactLocator{collected.PriorPhase.ScenarioResult, collected.PriorPhase.OwnerCompletion, collected.PriorPhase.EvidenceManifest, collected.PriorPhase.LifecycleHandoff, collected.PriorPhase.CaptureStatus, collected.PriorPhase.CollectedInputsManifest, collected.PriorPhase.SemanticSupplement}
 		priorLocators = append(priorLocators, collected.PriorPhase.LiveChainBundles...)
 		priorLocators = append(priorLocators, collected.PriorPhase.SemanticFileEnvelopes...)
 		for _, locator := range priorLocators {
@@ -875,6 +875,10 @@ func (a *finalSemanticArchive) buildPriorPhase(source *FinalSemanticEvidence, id
 	if result.AcceptanceWindow == nil || result.RunID != prior.RunID || result.EvidenceHash != prior.ResultHash || result.LifecycleHandoff == nil || result.PriorRelease != nil {
 		return errors.New("closed prior release result differs from its manifest binding")
 	}
+	resultHash, err := canonicalScenarioResultHash(&result)
+	if err != nil || resultHash != prior.ResultHash {
+		return stateMismatchError(err, "closed prior release result hash differs from its canonical bytes")
+	}
 	completionData, _, err := a.file(prior.OwnerCompletion.URI)
 	if err != nil {
 		return err
@@ -908,6 +912,13 @@ func (a *finalSemanticArchive) buildPriorPhase(source *FinalSemanticEvidence, id
 	var completionPayload scenarioCompletePayload
 	if err := decodeStrictJSONBytes(completion.Payload, &completionPayload); err != nil || !strings.EqualFold(completionPayload.ResultHash, prior.ResultHash) || !strings.EqualFold(completionPayload.EvidenceManifestHash, manifestEnvelope.ContentHash) || completionPayload.LifecycleHandoff == nil || *completionPayload.LifecycleHandoff != *result.LifecycleHandoff || completionPayload.PriorRelease != nil {
 		return errors.Join(err, errors.New("closed prior completion does not bind its evidence manifest"))
+	}
+	handoffData, _, err := a.file(prior.LifecycleHandoff.URI)
+	if err != nil {
+		return err
+	}
+	if err := validateFinalCollectedPriorLifecycleHandoff(a.cfg, &result, &completionPayload, prior.LifecycleHandoff, handoffData); err != nil {
+		return fmt.Errorf("verify closed prior lifecycle handoff: %w", err)
 	}
 	captureData, _, err := a.file(prior.CaptureStatus.URI)
 	if err != nil {

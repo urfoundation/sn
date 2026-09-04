@@ -323,11 +323,19 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 		if priorErr != nil {
 			t.Fatalf("production fixture requires an authenticated release phase: %v", priorErr)
 		}
+		if prior.LifecycleHandoff == nil {
+			t.Fatal("production fixture prior release has no lifecycle handoff")
+		}
+		priorHandoffBytes, readErr := os.ReadFile(filepath.Join(stateDir, "runs", prior.RunID, prior.LifecycleHandoff.File))
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
 		collected.PriorPhase = &FinalCollectedPriorPhaseInputs{
 			Phase: "release-1.0", RunID: prior.RunID, ResultHash: prior.EvidenceHash, Window: *prior.AcceptanceWindow,
 			ScenarioResult:          fixtureLocator("prior-scenario-result", "prior-result.json.bin", jsonFixture),
 			OwnerCompletion:         fixtureLocator("prior-owner-completion-envelope", "prior-complete.json.bin", jsonFixture),
 			EvidenceManifest:        fixtureLocator("prior-evidence-manifest-envelope", "prior-manifest.json.bin", jsonFixture),
+			LifecycleHandoff:        fixtureLocator("prior-lifecycle-handoff", "prior-lifecycle-handoff.json.bin", priorHandoffBytes),
 			CaptureStatus:           fixtureLocator("prior-capture-status", "prior-capture.json.bin", jsonFixture),
 			CollectedInputsManifest: fixtureLocator("prior-collected-input-manifest", "prior-inputs.json.bin", jsonFixture),
 			LiveChainBundles:        []FinalArtifactLocator{common["prior-chain"]},

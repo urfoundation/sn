@@ -376,7 +376,7 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 	cfg := testResolvedConfig(t)
 	faults := productionRollingFaults(cfg)
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
+	persistentCount := len(rollingProcessTargets(cfg))
 	want := dependencyCount + persistentCount
 	if len(faults) != want {
 		t.Fatalf("fault count = %d, want %d", len(faults), want)
@@ -415,6 +415,35 @@ func TestProductionRollingFaultsCoverEveryPersistentRoleWithoutOverlap(t *testin
 	}
 }
 
+func TestRollingProcessTargetsMatchRestartableReleaseInventory(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	specs, err := expectedReleaseProcessSpecs(cfg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := make(map[string]bool, len(specs)-1)
+	for _, spec := range specs {
+		if spec.ID == publicEVMEgressProcessID {
+			continue
+		}
+		expected[spec.ID] = true
+	}
+	targets := rollingProcessTargets(cfg)
+	seen := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		if target == publicEVMEgressProcessID || seen[target] || !expected[target] {
+			t.Fatalf("restartable process target %q is excluded, duplicated, or unknown", target)
+		}
+		seen[target] = true
+	}
+	if len(specs) != 33 || len(expected) != 32 || len(seen) != len(expected) {
+		t.Fatalf("launch/restartable process inventories=%d/%d/%d, want 33/32/32", len(specs), len(expected), len(seen))
+	}
+	if !seen[workloadRPCProxyProcessID] || !seen[workloadSubstrateProcessID] {
+		t.Fatal("restartable inventory omitted a workload RPC proxy")
+	}
+}
+
 func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	faults, err := releaseCampaignFaults(cfg)
@@ -422,7 +451,7 @@ func TestReleaseCampaignCombinesQualityFaultAndEveryPersistentRestart(t *testing
 		t.Fatal(err)
 	}
 	dependencyCount := 2*cfg.Config.Topology.Operators + 1
-	persistentCount := 2 + 4*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Validators
+	persistentCount := len(rollingProcessTargets(cfg))
 	want := 5 + dependencyCount + persistentCount
 	if len(faults) != want || faults[0].ID != "quality-cohort" || faults[1].ID != validatorLocalHeadBoundaryFaultID || faults[2].ID != "head-boundary" {
 		t.Fatalf("release faults=%d first=%+v want=%d", len(faults), faults[0], want)

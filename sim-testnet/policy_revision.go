@@ -303,7 +303,15 @@ func validateStoppedTopologyPolicyRevision(cfg *ResolvedConfig, stateDir string)
 	if err := decodeStrictJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
 		return stoppedTopologyBoundary{}, err
 	}
-	expectedProcesses := 2 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
+	expectedSpecs, err := expectedReleaseProcessSpecs(cfg, stateDir)
+	if err != nil {
+		return stoppedTopologyBoundary{}, fmt.Errorf("derive stopped topology process inventory: %w", err)
+	}
+	expectedInventory, err := releaseProcessIdentityInventory(expectedSpecs)
+	if err != nil {
+		return stoppedTopologyBoundary{}, fmt.Errorf("derive stopped topology process identities: %w", err)
+	}
+	expectedProcesses := len(expectedInventory)
 	if manifest.Schema != "urnetwork-sim-supervisor-v1" || manifest.DeploymentID != cfg.Config.Deployment.DeploymentID || len(manifest.Specs) != expectedProcesses {
 		return stoppedTopologyBoundary{}, errors.New("stopped topology manifest identity is incomplete")
 	}
@@ -336,8 +344,9 @@ func validateStoppedTopologyPolicyRevision(cfg *ResolvedConfig, stateDir string)
 	}
 	specs := make(map[string]ProcessSpec, len(manifest.Specs))
 	for _, spec := range manifest.Specs {
-		if spec.ID == "" || specs[spec.ID].ID != "" {
-			return stoppedTopologyBoundary{}, errors.New("stopped topology manifest has invalid process identities")
+		expected, ok := expectedInventory[spec.ID]
+		if spec.ID == "" || specs[spec.ID].ID != "" || !ok || spec.Role != expected.role || spec.Identity != expected.identity {
+			return stoppedTopologyBoundary{}, errors.New("stopped topology manifest does not match the exact release process identity inventory")
 		}
 		specs[spec.ID] = spec
 	}

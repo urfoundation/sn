@@ -30,6 +30,162 @@ type finalSemanticSupplementTestFixture struct {
 	storeRoot string
 }
 
+// finalSemanticCampaignResultFixture binds the release-scale semantic graph to
+// the same fully validated result and signed acceptance marker required in
+// production. The returned source and artifacts remain caller-owned.
+func finalSemanticCampaignResultFixture(t *testing.T, cfg *ResolvedConfig, roles *RoleSecrets, source *FinalSemanticEvidence, artifacts map[string][]byte) (*ScenarioResult, []byte, []byte) {
+	t.Helper()
+	if cfg == nil || cfg.Config == nil || roles == nil || source == nil || source.Phase != "release-1.0" {
+		t.Fatal("final semantic campaign fixture context is incomplete")
+	}
+	started, err := time.Parse(time.RFC3339Nano, source.CampaignStartedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := time.Parse(time.RFC3339Nano, source.CampaignCompletedAt)
+	if err != nil || completed.Before(started) {
+		t.Fatalf("final semantic campaign fixture interval is invalid: %v", err)
+	}
+	runID := fmt.Sprintf("%s-%s", started.UTC().Format("20060102T150405.000000000Z"), source.Phase)
+	lifecycleBytes, lifecycleHandoff := rebindFinalSemanticReleaseRunFixture(t, source, artifacts, runID)
+	definition, err := scenarioDefinitionFor(cfg, source.Phase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitionHash, err := scenarioDefinitionHash(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := source.Window
+	initialFaults, err := initializeFaultRecords(window.StartBlock, definition.Faults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range initialFaults {
+		if initialFaults[index].PreAcceptance {
+			initialFaults[index].ArmedBlock = window.StartBlock - 1
+			initialFaults[index].ArmedBlockHash = "0x" + strings.Repeat("30", 32)
+		}
+	}
+	faults := cloneScenarioFaultRecords(initialFaults)
+	for index, spec := range definition.Faults {
+		processes := make([]FaultProcessEvidence, 0, len(spec.Targets))
+		restored := make([]FaultProcessEvidence, 0, len(spec.Targets))
+		for processIndex, target := range spec.Targets {
+			processes = append(processes, FaultProcessEvidence{ID: target, Role: "fixture", Identity: target, PID: 100 + processIndex})
+			restored = append(restored, FaultProcessEvidence{ID: target, Role: "fixture", Identity: target, PID: 200 + processIndex})
+		}
+		faults[index].AppliedBlock = faults[index].TriggerBlock
+		faults[index].AppliedBlockHash = "0x" + strings.Repeat("31", 32)
+		faults[index].ActivationConditionMet = spec.ActivationCondition != ""
+		if faults[index].ActivationConditionMet {
+			faults[index].ActivationConditionBlock = faults[index].TriggerBlock
+		}
+		faults[index].RestoredBlock = faults[index].RestoreBlock
+		faults[index].RestoredBlockHash = "0x" + strings.Repeat("32", 32)
+		faults[index].RestoreConditionMet = spec.RestoreCondition != ""
+		if faults[index].RestoreConditionMet {
+			faults[index].RestoreConditionBlock = faults[index].RestoreBlock
+		}
+		faults[index].Processes = processes
+		faults[index].RestoredProcesses = restored
+		faults[index].Status = "restored"
+	}
+	adversaries := healthyAdversaryEvidence()
+	adversaryConfig := cfg.Config.Scenarios.Adversaries
+	adversaries.MatrixHash = definition.AdversarialMatrixHash
+	adversaries.Seed = adversaryConfig.Seed
+	adversaries.MinimumSamplesPerActor = adversaryConfig.MinimumSamplesPerActor
+	adversaries.MaximumActorErrorRatePPM = adversaryConfig.MaximumActorErrorRatePPM
+	adversaries.MaximumP99Milliseconds = adversaryConfig.MaximumP99LatencyMilliseconds
+	adversaries.MaximumAttackControlRatio = adversaryConfig.MaximumAttackControlP95Ratio
+	adversaries.MaximumSampleGapMillis = int64(adversaryConfig.SampleIntervalMilliseconds + 2*adversaryConfig.RequestTimeoutMilliseconds)
+	adversaries.OperatorRequestCeilingQPS = adversaryConfig.MaximumOperatorRequestsPerSec
+	adversaries.RPCRequestCeilingQPS = adversaryConfig.MaximumRPCRequestsPerSec
+	adversaries.StartedAt = started.Add(-time.Minute).Format(time.RFC3339Nano)
+	adversaries.HappyPathStartedAt = started.Format(time.RFC3339Nano)
+	adversaries.HappyPathCompletedAt = completed.Format(time.RFC3339Nano)
+	adversaries.StoppedAt = completed.Add(time.Minute).Format(time.RFC3339Nano)
+	for index := range adversaries.Actors {
+		adversaries.Actors[index].StartedAt = adversaries.StartedAt
+		adversaries.Actors[index].StoppedAt = adversaries.StoppedAt
+		adversaries.Actors[index].FirstSampleAt = started.Format(time.RFC3339Nano)
+		adversaries.Actors[index].LastSampleAt = completed.Format(time.RFC3339Nano)
+		adversaries.Actors[index].MaximumSampleGapMillis = 1_000
+		adversaries.Actors[index].Samples = uint64(adversaryConfig.MinimumSamplesPerActor)
+		adversaries.Actors[index].ControlSamples = 1
+		adversaries.Actors[index].AttackSamples = uint64(adversaryConfig.MinimumSamplesPerActor - 1)
+		adversaries.Actors[index].Successful = uint64(adversaryConfig.MinimumSamplesPerActor)
+	}
+	for index := range adversaries.Vectors {
+		adversaries.Vectors[index].SampleFloor = uint64(adversaryConfig.MinimumSamplesPerActor)
+	}
+	assertionsByID := map[string]AssertionRecord{}
+	addAssertion := func(assertion AssertionRecord) { assertionsByID[assertion.ID] = assertion }
+	for _, check := range definition.Checks {
+		addAssertion(AssertionRecord{ID: check.ID, Passed: true, Message: "fixture", StartedAt: source.CampaignStartedAt, CompletedAt: source.CampaignCompletedAt})
+	}
+	for _, assertion := range appendFaultAssertions(nil, faults, started, &ScenarioObservation{}) {
+		addAssertion(assertion)
+	}
+	for _, assertion := range appendAcceptanceFaultAssertion(nil, faults, &window, started, &ScenarioObservation{}) {
+		addAssertion(assertion)
+	}
+	for _, assertion := range adversaryAssertions(adversaries, started, "") {
+		addAssertion(assertion)
+	}
+	addAssertion(AssertionRecord{ID: "adversary_signed_start_continuity", Passed: true, Message: "fixture", StartedAt: source.CampaignStartedAt, CompletedAt: source.CampaignCompletedAt})
+	assertions := make([]AssertionRecord, 0, len(assertionsByID))
+	for _, assertion := range assertionsByID {
+		assertions = append(assertions, assertion)
+	}
+	result := &ScenarioResult{
+		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: source.RunID,
+		DeploymentID: source.DeploymentID, Name: source.Phase, ScenarioDefinition: definitionHash,
+		ScenarioMatrix: definition.MatrixHash, AdversarialMatrix: definition.AdversarialMatrixHash,
+		ConfigHash: source.ConfigHash, PolicyHash: source.PolicyHash, ChainID: source.ChainID, GenesisHash: source.GenesisHash, Netuid: source.Netuid,
+		StartedAt: source.CampaignStartedAt, CompletedAt: source.CampaignCompletedAt,
+		CampaignStartHead: source.EVMCampaignStartHead, CampaignStartEpoch: window.BaselineEpoch,
+		StartHead: window.BaselineHead, EndHead: source.EVMTerminalHead, StartEpoch: window.BaselineEpoch,
+		EndEpoch: window.FirstEpoch + window.EpochCount, AcceptanceWindow: &window, Assertions: assertions,
+		Faults: faults, Adversaries: adversaries, ValueReconciliation: map[string]string{"captured_rao": "1"},
+		LifecycleHandoff: lifecycleHandoff, Result: "pass",
+	}
+	attachScenarioAnomalyGate(result, completed, nil, nil)
+	result.EvidenceHash, err = canonicalScenarioResultHash(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.ResultHash = result.EvidenceHash
+	boundary := &scenarioCampaignAcceptanceBoundary{
+		ProcessSessionID: "0x" + strings.Repeat("77", 32), AcceptanceStartedAt: started.Add(2 * time.Minute).Format(time.RFC3339Nano),
+		ScenarioDefinitionHash: definitionHash, AdversarialMatrixHash: definition.AdversarialMatrixHash,
+		AdversaryStartedAt: adversaries.StartedAt, AdversaryHappyPathStartedAt: adversaries.HappyPathStartedAt,
+		CampaignStartHead: result.CampaignStartHead, CampaignStartEpoch: result.CampaignStartEpoch,
+		CampaignStartObservationHash: "0x" + strings.Repeat("41", 32), AcceptanceWindow: window,
+		ObservationLogContentHash: bytesSHA256([]byte("final semantic campaign fixture observation prefix")), ObservationLogBytes: 1,
+		LastObservationHead: window.BaselineHead, LastObservationEpoch: window.BaselineEpoch,
+		LastObservationHash: "0x" + strings.Repeat("42", 32), Faults: initialFaults,
+	}
+	payload := scenarioCampaignAttemptPayload{
+		Schema: scenarioCampaignAttemptSchema, Phase: result.Name, RunID: result.RunID, StartedAt: result.StartedAt,
+		ConfigHash: result.ConfigHash, PolicyHash: result.PolicyHash, PlanHash: source.PlanHash,
+		PreparationComplete: true, AcceptanceBoundary: boundary,
+	}
+	marker, err := signEvidence(cfg, scenarioCampaignAttemptEvidenceKind, result.RunID, payload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	markerBytes := finalSemanticSupplementEnvelopeJSON(t, marker)
+	if err := validateScenarioCampaignResult(cfg, result, result.Name); err != nil {
+		t.Fatalf("full final semantic campaign result fixture: %v", err)
+	}
+	if err := validateScenarioCampaignStartMarkerBytes(cfg, result, result.Name, roles.EVM["testnet-owner"].Address, markerBytes); err != nil {
+		t.Fatalf("signed final semantic campaign start fixture: %v", err)
+	}
+	return result, lifecycleBytes, markerBytes
+}
+
 func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing.T) {
 	fixture := newFinalSemanticSupplementTestFixture(t)
 	dependencies := fixture.dependencies()
@@ -99,6 +255,153 @@ func TestFinalSemanticSupplementPublishesResumesAndRejectsLooseTamper(t *testing
 	}
 	if _, err := validateFinalSemanticSupplement(context.Background(), fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result, dependencies); err != nil {
 		t.Fatalf("owner-signed file envelopes did not validate without optional loose outputs: %v", err)
+	}
+	var originalManifest ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(fixture.runDir, campaignEvidenceManifestFilename), &originalManifest); err != nil {
+		t.Fatal(err)
+	}
+	manifestPayload, err := decodeCampaignEvidenceManifest(&originalManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPayload.References = append(manifestPayload.References, campaignEvidenceFileEntry{
+		Path: "final-derived/forged.json", ContentHash: "sha256:" + strings.Repeat("a1", 32), Size: 1, EnvelopeHash: "sha256:" + strings.Repeat("b2", 32),
+	})
+	forgedManifest, err := signEvidence(fixture.cfg, campaignEvidenceManifestKind, fixture.result.RunID, manifestPayload, fixture.roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(fixture.runDir, campaignEvidenceManifestFilename), forgedManifest); err != nil {
+		t.Fatal(err)
+	}
+	var originalComplete ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(fixture.runDir, "complete.json"), &originalComplete); err != nil {
+		t.Fatal(err)
+	}
+	var completePayload scenarioCompletePayload
+	if err := decodeStrictJSONBytes(originalComplete.Payload, &completePayload); err != nil {
+		t.Fatal(err)
+	}
+	completePayload.EvidenceManifestHash = forgedManifest.ContentHash
+	forgedComplete, err := signEvidence(fixture.cfg, "scenario-complete", fixture.result.RunID, completePayload, fixture.roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(fixture.runDir, "complete.json"), forgedComplete); err != nil {
+		t.Fatal(err)
+	}
+	for operator := 1; operator <= fixture.cfg.Config.Topology.Operators; operator++ {
+		commit, err := signEvidence(fixture.cfg, "scenario-complete-commit", fixture.result.RunID, forgedComplete, fixture.roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writePublicJSON(filepath.Join(fixture.runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator)), commit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := authenticateFinalSemanticOriginalClosure(fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result); err == nil || !strings.Contains(err.Error(), "post-capture") {
+		t.Fatalf("local supplement retry accepted a signed post-capture archive reference: %v", err)
+	}
+}
+
+func TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker(t *testing.T) {
+	fixture := newFinalSemanticSupplementTestFixture(t)
+	originalMarker, err := os.ReadFile(filepath.Join(fixture.runDir, scenarioCampaignStartFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authenticateFinalSemanticOriginalClosure(fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result); err != nil {
+		t.Fatalf("valid campaign start marker rejected: %v", err)
+	}
+	if err := os.Remove(filepath.Join(fixture.runDir, scenarioCampaignStartFilename)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authenticateFinalSemanticOriginalClosure(fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result); err == nil || !strings.Contains(err.Error(), scenarioCampaignStartFilename) {
+		t.Fatalf("missing campaign start marker accepted: %v", err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.runDir, scenarioCampaignStartFilename), originalMarker, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var marker ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONBytes(originalMarker, &marker); err != nil {
+		t.Fatal(err)
+	}
+	var payload scenarioCampaignAttemptPayload
+	if err := decodeStrictJSONBytes(marker.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload.AcceptanceBoundary.CampaignStartHead.Hash = finalTestHex(71)
+	resignedMarker, err := signEvidence(fixture.cfg, scenarioCampaignAttemptEvidenceKind, fixture.result.RunID, payload, fixture.roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewriteFinalSemanticOriginalClosureFile(t, fixture, scenarioCampaignStartFilename, finalSemanticSupplementEnvelopeJSON(t, resignedMarker))
+	if _, err := authenticateFinalSemanticOriginalClosure(fixture.cfg, fixture.roles, fixture.stateDir, fixture.runDir, fixture.result); err == nil || !strings.Contains(err.Error(), "differs from its completed result boundary") {
+		t.Fatalf("re-signed divergent campaign start marker accepted: %v", err)
+	}
+}
+
+func rewriteFinalSemanticOriginalClosureFile(t *testing.T, fixture *finalSemanticSupplementTestFixture, name string, raw []byte) {
+	t.Helper()
+	if fixture == nil || len(raw) == 0 {
+		t.Fatal("closure rewrite fixture is incomplete")
+	}
+	if err := atomicWrite(filepath.Join(fixture.runDir, filepath.FromSlash(name)), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var manifest ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(fixture.runDir, campaignEvidenceManifestFilename), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := decodeCampaignEvidenceManifest(&manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for index := range payload.Files {
+		if payload.Files[index].Path != name {
+			continue
+		}
+		payload.Files[index].ContentHash = bytesSHA256(raw)
+		payload.Files[index].Size = uint64(len(raw))
+		found = true
+	}
+	if !found {
+		t.Fatalf("closure manifest does not contain %s", name)
+	}
+	resignedManifest, err := signEvidence(fixture.cfg, campaignEvidenceManifestKind, fixture.result.RunID, payload, fixture.roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.runDir, campaignEvidenceManifestFilename), finalSemanticSupplementEnvelopeJSON(t, resignedManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var complete ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(fixture.runDir, "complete.json"), &complete); err != nil {
+		t.Fatal(err)
+	}
+	var completePayload scenarioCompletePayload
+	if err := decodeStrictJSONBytes(complete.Payload, &completePayload); err != nil {
+		t.Fatal(err)
+	}
+	completePayload.Files[name] = bytesSHA256(raw)
+	completePayload.EvidenceManifestHash = resignedManifest.ContentHash
+	resignedComplete, err := signEvidence(fixture.cfg, "scenario-complete", fixture.result.RunID, completePayload, fixture.roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.runDir, "complete.json"), finalSemanticSupplementEnvelopeJSON(t, resignedComplete), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for operator := 1; operator <= fixture.cfg.Config.Topology.Operators; operator++ {
+		commit, err := signEvidence(fixture.cfg, "scenario-complete-commit", fixture.result.RunID, resignedComplete, fixture.roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(fixture.runDir, fmt.Sprintf("scenario-complete-commit.operator-%d.evidence.json", operator))
+		if err := atomicWrite(path, finalSemanticSupplementEnvelopeJSON(t, commit), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -419,6 +722,52 @@ func TestFinalSemanticSupplementStoreCensusRejectsMissingOperator(t *testing.T) 
 	}
 }
 
+func TestFinalSemanticSupplementCausalOrderBindsEveryPublicationBoundary(t *testing.T) {
+	base := time.Date(2026, 9, 2, 1, 0, 0, 0, time.UTC)
+	envelope := func(offset time.Duration) *ReleaseEvidenceEnvelope {
+		return &ReleaseEvidenceEnvelope{CreatedAt: base.Add(offset).Format(time.RFC3339Nano)}
+	}
+	result := &ScenarioResult{CompletedAt: base.Format(time.RFC3339Nano)}
+	manifest := envelope(time.Second)
+	complete := envelope(2 * time.Second)
+	files := []*ReleaseEvidenceEnvelope{envelope(2 * time.Second), envelope(3 * time.Second)}
+	supplement := envelope(3 * time.Second)
+	if err := validateFinalSemanticSupplementCausalOrder(result, manifest, complete, files, supplement); err != nil {
+		t.Fatalf("ordered semantic publication rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*ScenarioResult, *ReleaseEvidenceEnvelope, *ReleaseEvidenceEnvelope, []*ReleaseEvidenceEnvelope, *ReleaseEvidenceEnvelope){
+		"manifest before result": func(_ *ScenarioResult, value *ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope, _ []*ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope) {
+			value.CreatedAt = base.Add(-time.Nanosecond).Format(time.RFC3339Nano)
+		},
+		"completion before manifest": func(_ *ScenarioResult, _ *ReleaseEvidenceEnvelope, value *ReleaseEvidenceEnvelope, _ []*ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope) {
+			value.CreatedAt = base.Format(time.RFC3339Nano)
+		},
+		"file before completion": func(_ *ScenarioResult, _ *ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope, values []*ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope) {
+			values[0].CreatedAt = base.Add(time.Second).Format(time.RFC3339Nano)
+		},
+		"file after marker": func(_ *ScenarioResult, _ *ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope, values []*ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope) {
+			values[1].CreatedAt = base.Add(4 * time.Second).Format(time.RFC3339Nano)
+		},
+		"marker before completion": func(_ *ScenarioResult, _ *ReleaseEvidenceEnvelope, _ *ReleaseEvidenceEnvelope, _ []*ReleaseEvidenceEnvelope, value *ReleaseEvidenceEnvelope) {
+			value.CreatedAt = base.Add(time.Second).Format(time.RFC3339Nano)
+		},
+	} {
+		changedResult := *result
+		changedManifest := *manifest
+		changedComplete := *complete
+		changedSupplement := *supplement
+		changedFiles := make([]*ReleaseEvidenceEnvelope, len(files))
+		for index, file := range files {
+			copy := *file
+			changedFiles[index] = &copy
+		}
+		mutate(&changedResult, &changedManifest, &changedComplete, changedFiles, &changedSupplement)
+		if err := validateFinalSemanticSupplementCausalOrder(&changedResult, &changedManifest, &changedComplete, changedFiles, &changedSupplement); err == nil || !strings.Contains(err.Error(), "causal") {
+			t.Fatalf("%s publication inversion was accepted: %v", name, err)
+		}
+	}
+}
+
 func TestFinalSemanticCapturedDependenciesIgnoreConcurrentMutablePointers(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://substrate.example"
@@ -613,21 +962,7 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 		t.Fatal(err)
 	}
 	source.Deployment.GovernanceOwner = strings.ToLower(roles.EVM["testnet-owner"].Address)
-	result := &ScenarioResult{
-		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: source.RunID,
-		DeploymentID: source.DeploymentID, Name: source.Phase, ConfigHash: source.ConfigHash,
-		PolicyHash: source.PolicyHash, ChainID: source.ChainID, GenesisHash: source.GenesisHash, Netuid: source.Netuid,
-		StartedAt: source.CampaignStartedAt, CompletedAt: source.CampaignCompletedAt,
-		CampaignStartHead: source.EVMCampaignStartHead, StartHead: source.Window.BaselineHead,
-		EndHead: source.EVMTerminalHead, StartEpoch: source.Window.BaselineEpoch,
-		EndEpoch: source.Window.FirstEpoch + source.Window.EpochCount, AcceptanceWindow: &source.Window,
-		Assertions: []AssertionRecord{}, ValueReconciliation: map[string]string{}, Result: "pass",
-	}
-	result.EvidenceHash, err = canonicalScenarioResultHash(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source.ResultHash = result.EvidenceHash
+	result, lifecycleBytes, campaignStartBytes := finalSemanticCampaignResultFixture(t, cfg, roles, &source, artifacts)
 	stateDir := t.TempDir()
 	runDir := filepath.Join(stateDir, "runs", result.RunID)
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
@@ -635,6 +970,12 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	}
 	resultWire := finalSemanticSupplementJSON(t, result)
 	if err := atomicWrite(filepath.Join(runDir, "result.json"), resultWire, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(runDir, scenarioCampaignStartFilename), campaignStartBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(runDir, result.LifecycleHandoff.File), lifecycleBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	collected := finalSemanticSupplementCollectedFixture(t, cfg, source, result, resultWire)
@@ -654,7 +995,8 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	}
 	rawFiles := map[string][]byte{
 		"result.json": resultWire, "final-inputs/manifest.json": collectedWire,
-		finalSemanticCaptureStatusFilename: captureWire,
+		finalSemanticCaptureStatusFilename: captureWire, scenarioCampaignStartFilename: campaignStartBytes,
+		result.LifecycleHandoff.File: lifecycleBytes,
 	}
 	fileHashes := make(map[string]string, len(rawFiles))
 	entries := make([]campaignEvidenceFileEntry, 0, len(rawFiles))
@@ -679,6 +1021,7 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	}
 	complete, err := signEvidence(cfg, "scenario-complete", result.RunID, scenarioCompletePayload{
 		ResultHash: result.EvidenceHash, Files: fileHashes, BundlePayloadHash: bundleHash, EvidenceManifestHash: manifest.ContentHash,
+		LifecycleHandoff: result.LifecycleHandoff,
 	}, owner)
 	if err != nil {
 		t.Fatal(err)
@@ -733,7 +1076,7 @@ func (fixture *finalSemanticSupplementTestFixture) dependencies() finalSemanticS
 func finalSemanticSupplementCollectedFixture(t *testing.T, cfg *ResolvedConfig, source FinalSemanticEvidence, result *ScenarioResult, resultWire []byte) *FinalSemanticCollectedInputs {
 	t.Helper()
 	locator := func(kind, name string) FinalArtifactLocator {
-		data := []byte(kind + ":" + name)
+		data := finalSemanticSupplementFixtureArtifactBytes(t, kind, name)
 		return FinalArtifactLocator{Kind: kind, URI: name, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
 	collected := &FinalSemanticCollectedInputs{
@@ -776,6 +1119,21 @@ func finalSemanticSupplementCollectedFixture(t *testing.T, cfg *ResolvedConfig, 
 		t.Fatal(err)
 	}
 	return collected
+}
+
+// finalSemanticSupplementFixtureArtifactBytes returns the canonical JSON used
+// for synthetic closed-input artifacts whose production counterparts are JSON.
+func finalSemanticSupplementFixtureArtifactBytes(t testing.TB, kind, name string) []byte {
+	t.Helper()
+	data, err := json.MarshalIndent(struct {
+		Schema string `json:"schema"`
+		Kind   string `json:"kind"`
+		Path   string `json:"path"`
+	}{Schema: "urnetwork-final-semantic-fixture-artifact-v1", Kind: kind, Path: name}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(data, '\n')
 }
 
 func finalSemanticSupplementJSON(t *testing.T, value any) []byte {

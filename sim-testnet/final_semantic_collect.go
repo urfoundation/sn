@@ -122,6 +122,7 @@ type FinalCollectedPriorPhaseInputs struct {
 	ScenarioResult          FinalArtifactLocator     `json:"scenario_result"`
 	OwnerCompletion         FinalArtifactLocator     `json:"owner_completion"`
 	EvidenceManifest        FinalArtifactLocator     `json:"evidence_manifest"`
+	LifecycleHandoff        FinalArtifactLocator     `json:"lifecycle_handoff"`
 	CaptureStatus           FinalArtifactLocator     `json:"capture_status"`
 	CollectedInputsManifest FinalArtifactLocator     `json:"collected_inputs_manifest"`
 	LiveChainBundles        []FinalArtifactLocator   `json:"live_chain_bundles"`
@@ -365,7 +366,7 @@ func awaitFinalPriorSemanticReadyObserved(ctx context.Context, cfg *ResolvedConf
 			if err := decodeStrictJSONBytes(envelope.Payload, &payload); err != nil {
 				return fmt.Errorf("decode prior semantic_verified readiness payload: %w", err)
 			}
-			if payload.Schema != finalSemanticSupplementSchema || payload.Status != finalSemanticSupplementStatus || payload.Phase != "release-1.0" || payload.RunID != prior.RunID || payload.ResultHash != prior.EvidenceHash || !validSHA256ContentHash(payload.ScenarioCompleteHash) || !validSHA256ContentHash(payload.ScenarioEvidenceManifestHash) || !validSHA256ContentHash(payload.CaptureStatusHash) || !validSHA256ContentHash(payload.CollectedInputsHash) || !validCanonicalHashHex(payload.SemanticEvidenceHash) || !validCanonicalHashHex(payload.PublicTranscriptHash) || len(payload.Files) < 2 || len(payload.Files) > maximumCampaignEvidenceObjects {
+			if payload.Schema != finalSemanticSupplementSchema || payload.Status != finalSemanticSupplementStatus || payload.Phase != "release-1.0" || payload.RunID != prior.RunID || payload.ResultHash != prior.EvidenceHash || !validSHA256ContentHash(payload.ScenarioCompleteHash) || !validSHA256ContentHash(payload.ScenarioEvidenceManifestHash) || !validCanonicalHashHex(payload.CaptureStatusHash) || !validCanonicalHashHex(payload.CollectedInputsHash) || !validCanonicalHashHex(payload.SemanticEvidenceHash) || !validCanonicalHashHex(payload.PublicTranscriptHash) || validateFinalSemanticSupplementFileManifest(&payload) != nil {
 				return errors.New("prior semantic_verified readiness marker does not bind the release closure")
 			}
 			return nil
@@ -527,6 +528,13 @@ func collectFinalPriorPhaseInputs(cfg *ResolvedConfig, stateRoot, runRoot string
 	if err != nil {
 		return nil, err
 	}
+	if prior.LifecycleHandoff == nil {
+		return nil, errors.New("authenticated prior release has no lifecycle handoff")
+	}
+	handoffLocator, err := copyExact("prior-lifecycle-handoff", prior.LifecycleHandoff.File, "fleet-lifecycle-handoff.json.bin")
+	if err != nil {
+		return nil, err
+	}
 	captureLocator, err := copyExact("prior-capture-status", finalSemanticCaptureStatusFilename, "final-semantic-capture.json.bin")
 	if err != nil {
 		return nil, err
@@ -554,6 +562,10 @@ func collectFinalPriorPhaseInputs(cfg *ResolvedConfig, stateRoot, runRoot string
 	if err != nil {
 		return nil, err
 	}
+	handoffData, err := readPrior(prior.LifecycleHandoff.File)
+	if err != nil {
+		return nil, err
+	}
 	manifestData, err := readPrior(campaignEvidenceManifestFilename)
 	if err != nil {
 		return nil, err
@@ -567,10 +579,17 @@ func collectFinalPriorPhaseInputs(cfg *ResolvedConfig, stateRoot, runRoot string
 		return nil, err
 	}
 	var completion, manifestEnvelope ReleaseEvidenceEnvelope
+	var completionPayload scenarioCompletePayload
 	var capture FinalSemanticCaptureStatus
 	var priorInputs FinalSemanticCollectedInputs
 	if err := decodeStrictJSONBytes(completionData, &completion); err != nil {
 		return nil, fmt.Errorf("decode prior completion for semantic lineage: %w", err)
+	}
+	if err := decodeStrictJSONBytes(completion.Payload, &completionPayload); err != nil {
+		return nil, fmt.Errorf("decode prior completion payload for semantic lineage: %w", err)
+	}
+	if err := validateFinalCollectedPriorLifecycleHandoff(cfg, prior, &completionPayload, handoffLocator, handoffData); err != nil {
+		return nil, fmt.Errorf("authenticate prior lifecycle handoff for semantic lineage: %w", err)
 	}
 	if err := decodeStrictJSONBytes(manifestData, &manifestEnvelope); err != nil {
 		return nil, fmt.Errorf("decode prior evidence manifest for semantic lineage: %w", err)
@@ -686,8 +705,28 @@ func collectFinalPriorPhaseInputs(cfg *ResolvedConfig, stateRoot, runRoot string
 	return &FinalCollectedPriorPhaseInputs{
 		Phase: "release-1.0", RunID: prior.RunID, ResultHash: prior.EvidenceHash, Window: *prior.AcceptanceWindow,
 		ScenarioResult: resultLocator, OwnerCompletion: completionLocator, EvidenceManifest: manifestLocator,
-		CaptureStatus: captureLocator, CollectedInputsManifest: inputsLocator, LiveChainBundles: liveChainBundles, SemanticSupplement: supplementLocator, SemanticFileEnvelopes: semanticFiles,
+		LifecycleHandoff: handoffLocator, CaptureStatus: captureLocator, CollectedInputsManifest: inputsLocator,
+		LiveChainBundles: liveChainBundles, SemanticSupplement: supplementLocator, SemanticFileEnvelopes: semanticFiles,
 	}, nil
+}
+
+// validateFinalCollectedPriorLifecycleHandoff proves that the copied handoff
+// is the exact file committed by the authenticated prior result and completion.
+// The current phase must never reconstruct lineage from the mutable prior run.
+func validateFinalCollectedPriorLifecycleHandoff(cfg *ResolvedConfig, result *ScenarioResult, completion *scenarioCompletePayload, locator FinalArtifactLocator, data []byte) error {
+	if err := verifyFinalArtifact("collected prior lifecycle handoff", locator, "prior-lifecycle-handoff"); err != nil {
+		return err
+	}
+	if uint64(len(data)) != locator.SizeBytes || bytesSHA256(data) != locator.ContentHash {
+		return errors.New("collected prior lifecycle handoff differs from its locator")
+	}
+	if result == nil || result.LifecycleHandoff == nil || completion == nil {
+		return errors.New("collected prior lifecycle handoff context is incomplete")
+	}
+	if locator.ContentHash != result.LifecycleHandoff.ContentHash || locator.SizeBytes != result.LifecycleHandoff.SizeBytes {
+		return errors.New("collected prior lifecycle handoff differs from the signed archive census")
+	}
+	return validateScenarioArchiveLineage(cfg, result, completion, map[string][]byte{result.LifecycleHandoff.File: data})
 }
 
 func verifyFinalCollectedPriorPhase(prior *FinalCollectedPriorPhaseInputs, current *FinalSemanticCollectedInputs) error {
@@ -701,6 +740,7 @@ func verifyFinalCollectedPriorPhase(prior *FinalCollectedPriorPhaseInputs, curre
 		"scenario result":          {locator: prior.ScenarioResult, kind: "prior-scenario-result"},
 		"owner completion":         {locator: prior.OwnerCompletion, kind: "prior-owner-completion-envelope"},
 		"evidence manifest":        {locator: prior.EvidenceManifest, kind: "prior-evidence-manifest-envelope"},
+		"lifecycle handoff":        {locator: prior.LifecycleHandoff, kind: "prior-lifecycle-handoff"},
 		"capture status":           {locator: prior.CaptureStatus, kind: "prior-capture-status"},
 		"collected input manifest": {locator: prior.CollectedInputsManifest, kind: "prior-collected-input-manifest"},
 		"semantic supplement":      {locator: prior.SemanticSupplement, kind: "prior-semantic-supplement-envelope"},
@@ -1667,7 +1707,7 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 	}
 	locators := []FinalArtifactLocator{value.Policy, value.ScenarioResult, value.TerminalObservation, value.ObservationHistory}
 	if value.PriorPhase != nil {
-		locators = append(locators, value.PriorPhase.ScenarioResult, value.PriorPhase.OwnerCompletion, value.PriorPhase.EvidenceManifest, value.PriorPhase.CaptureStatus, value.PriorPhase.CollectedInputsManifest, value.PriorPhase.SemanticSupplement)
+		locators = append(locators, value.PriorPhase.ScenarioResult, value.PriorPhase.OwnerCompletion, value.PriorPhase.EvidenceManifest, value.PriorPhase.LifecycleHandoff, value.PriorPhase.CaptureStatus, value.PriorPhase.CollectedInputsManifest, value.PriorPhase.SemanticSupplement)
 		locators = append(locators, value.PriorPhase.LiveChainBundles...)
 		locators = append(locators, value.PriorPhase.SemanticFileEnvelopes...)
 	}
@@ -1849,6 +1889,10 @@ func verifyFinalCollectedPriorPhaseBytes(cfg *ResolvedConfig, prior *FinalCollec
 	if result.Name != "release-1.0" || result.RunID != prior.RunID || result.EvidenceHash != prior.ResultHash || result.AcceptanceWindow == nil || *result.AcceptanceWindow != prior.Window || result.LifecycleHandoff == nil || result.PriorRelease != nil {
 		return errors.New("collected prior scenario result differs from its lineage")
 	}
+	resultHash, err := canonicalScenarioResultHash(&result)
+	if err != nil || resultHash != prior.ResultHash {
+		return stateMismatchError(err, "collected prior scenario result hash differs from its canonical bytes")
+	}
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		return err
@@ -1868,6 +1912,9 @@ func verifyFinalCollectedPriorPhaseBytes(cfg *ResolvedConfig, prior *FinalCollec
 	var completePayload scenarioCompletePayload
 	if err := decodeStrictJSONBytes(complete.Payload, &completePayload); err != nil || completePayload.ResultHash != prior.ResultHash || !validSHA256ContentHash(completePayload.EvidenceManifestHash) || completePayload.LifecycleHandoff == nil || *completePayload.LifecycleHandoff != *result.LifecycleHandoff || completePayload.PriorRelease != nil {
 		return stateMismatchError(err, "collected prior owner completion payload is invalid")
+	}
+	if err := validateFinalCollectedPriorLifecycleHandoff(cfg, &result, &completePayload, prior.LifecycleHandoff, loaded[prior.LifecycleHandoff.URI]); err != nil {
+		return err
 	}
 	var manifestEnvelope ReleaseEvidenceEnvelope
 	if err := decodeStrictJSONBytes(loaded["prior-evidence-manifest-envelope"], &manifestEnvelope); err != nil {

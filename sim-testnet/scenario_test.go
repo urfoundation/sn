@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1382,12 +1383,113 @@ func TestReleaseScenarioTimeoutCoversCompleteBoundaryWait(t *testing.T) {
 	}
 }
 
-func TestArtifactHistoryKeysAcceptsBlobObjectShape(t *testing.T) {
+func TestFetchPayoutArtifactHistoryTraversesBoundedCanonicalPages(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	objects := make([]payoutArtifactHistoryObject, payoutArtifactHistoryPageObjects+1)
+	for index := range objects {
+		hash := fmt.Sprintf("%064x", index+1)
+		objects[index] = payoutArtifactHistoryObject{
+			Key:  fmt.Sprintf("blob/operator-1/st/v1/history/%s/%d/10/1/%s.json", cfg.Config.Deployment.DeploymentID, cfg.Netuid, hash),
+			Size: 10, ContentHash: "sha256:" + hash,
+		}
+	}
+	requests := 0
+	getter := func(_ context.Context, endpoint string, limit int64) ([]byte, int, error) {
+		requests++
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Query().Get("deployment_id") != cfg.Config.Deployment.DeploymentID || parsed.Query().Get("netuid") != fmt.Sprint(cfg.Netuid) || parsed.Query().Get("limit") != fmt.Sprint(payoutArtifactHistoryPageObjects) || limit != maximumPayoutArtifactHistoryPageBytes {
+			t.Fatalf("history request %d is not exactly scoped: %s limit=%d", requests, endpoint, limit)
+		}
+		page := payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1"}
+		if requests == 1 {
+			if parsed.Query().Get("after") != "" {
+				t.Fatalf("first history request has cursor %q", parsed.Query().Get("after"))
+			}
+			page.Objects = objects[:payoutArtifactHistoryPageObjects]
+			page.More = true
+			page.NextAfter = page.Objects[len(page.Objects)-1].Key
+		} else {
+			if parsed.Query().Get("after") != objects[payoutArtifactHistoryPageObjects-1].Key {
+				t.Fatalf("second history cursor = %q", parsed.Query().Get("after"))
+			}
+			page.Objects = objects[payoutArtifactHistoryPageObjects:]
+		}
+		encoded, err := json.Marshal(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded, http.StatusOK, nil
+	}
+	keys, gotRequests, err := fetchPayoutArtifactHistory(context.Background(), "https://operator.example", cfg.Config.Deployment.DeploymentID, cfg.Netuid, getter)
+	if err != nil || gotRequests != 2 || requests != 2 || len(keys) != len(objects) || keys[0] != objects[0].Key || keys[len(keys)-1] != objects[len(objects)-1].Key {
+		t.Fatalf("bounded artifact history keys=%d requests=%d/%d error=%v", len(keys), gotRequests, requests, err)
+	}
+}
+
+func TestFetchPayoutArtifactHistoryRejectsTruncationCursorAndScope(t *testing.T) {
+	cfg := testResolvedConfig(t)
 	hash := strings.Repeat("ab", 32)
-	b := []byte(`{"schema":"urnetwork-payout-artifact-history-v1","objects":[{"Key":"prefix/` + hash + `.json","Size":10}]}`)
-	keys := artifactHistoryKeys(b)
-	if len(keys) != 1 || !strings.Contains(keys[0], hash) {
-		t.Fatalf("keys = %v", keys)
+	valid := payoutArtifactHistoryObject{
+		Key:  fmt.Sprintf("blob/operator-1/st/v1/history/%s/%d/10/1/%s.json", cfg.Config.Deployment.DeploymentID, cfg.Netuid, hash),
+		Size: 10, ContentHash: "sha256:" + hash,
+	}
+	tests := []struct {
+		name string
+		page payoutArtifactHistoryPage
+	}{
+		{name: "truncated", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{valid}, More: true}},
+		{name: "short-continuation", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{valid}, More: true, NextAfter: valid.Key}},
+		{name: "terminal-cursor", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{valid}, NextAfter: valid.Key}},
+		{name: "duplicate", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{valid, valid}}},
+		{name: "unsafe-separator", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, "/10/1/", "\\10/1/", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "foreign-deployment", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: strings.Replace(valid.Key, cfg.Config.Deployment.DeploymentID, "foreign", 1), Size: valid.Size, ContentHash: valid.ContentHash}}}},
+		{name: "content-mismatch", page: payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", Objects: []payoutArtifactHistoryObject{{Key: valid.Key, Size: valid.Size, ContentHash: "sha256:" + strings.Repeat("cd", 32)}}}},
+	}
+	for _, testCase := range tests {
+		getter := func(context.Context, string, int64) ([]byte, int, error) {
+			encoded, err := json.Marshal(testCase.page)
+			return encoded, http.StatusOK, err
+		}
+		if _, requests, err := fetchPayoutArtifactHistory(context.Background(), "https://operator.example", cfg.Config.Deployment.DeploymentID, cfg.Netuid, getter); err == nil || requests != 1 {
+			t.Fatalf("%s invalid artifact history page accepted requests=%d error=%v", testCase.name, requests, err)
+		}
+	}
+}
+
+func TestFetchPayoutArtifactHistoryRejectsContinuationBeyondGlobalCap(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	pageNo := 0
+	getter := func(_ context.Context, endpoint string, _ int64) ([]byte, int, error) {
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := payoutArtifactHistoryPage{Schema: "urnetwork-payout-artifact-history-v1", More: true}
+		for index := 0; index < payoutArtifactHistoryPageObjects; index++ {
+			ordinal := pageNo*payoutArtifactHistoryPageObjects + index + 1
+			hash := fmt.Sprintf("%064x", ordinal)
+			page.Objects = append(page.Objects, payoutArtifactHistoryObject{
+				Key:  fmt.Sprintf("blob/operator-1/st/v1/history/%s/%d/10/1/%s.json", cfg.Config.Deployment.DeploymentID, cfg.Netuid, hash),
+				Size: 10, ContentHash: "sha256:" + hash,
+			})
+		}
+		if pageNo == 0 {
+			if parsed.Query().Get("after") != "" {
+				t.Fatalf("first page cursor = %q", parsed.Query().Get("after"))
+			}
+		} else if parsed.Query().Get("after") == "" {
+			t.Fatal("continued page omitted its cursor")
+		}
+		page.NextAfter = page.Objects[len(page.Objects)-1].Key
+		pageNo++
+		encoded, err := json.Marshal(page)
+		return encoded, http.StatusOK, err
+	}
+	if _, requests, err := fetchPayoutArtifactHistory(context.Background(), "https://operator.example", cfg.Config.Deployment.DeploymentID, cfg.Netuid, getter); err == nil || !strings.Contains(err.Error(), "over limit") || requests != uint64(maximumPayoutArtifactHistoryKeys/payoutArtifactHistoryPageObjects) {
+		t.Fatalf("history beyond global cap requests=%d error=%v", requests, err)
 	}
 }
 

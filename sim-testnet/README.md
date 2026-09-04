@@ -609,8 +609,13 @@ compatible checkout:
 
 ./build/sim-testnet analyze \
   --config sim-testnet/testnet.yml \
-  --manifest 'https://NO/sn/evidence?hash=sha256:...'
+  --manifest 'https://NO/sn/evidence?hash=sha256:...' \
+  --run-id 'SIGNED_CAMPAIGN_RUN_ID'
 ```
+
+Final validation must use the latest authorized strict-format manifest. A
+revision-zero pre-fix locator is lineage-only and still requires its exact
+signed `--run-id`; mixed legacy/current reviewer metadata fails closed.
 
 ## Stop and retire
 

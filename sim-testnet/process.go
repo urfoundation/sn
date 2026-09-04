@@ -1285,7 +1285,7 @@ func buildServerSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		{id: workloadRPCProxyProcessID, identity: "operational-evm-rpc", endpoint: "http://" + campaignEVMAuthority(), listen: workloadRPCProxyAddress, health: workloadRPCProxyHealthAddress},
 		{id: workloadSubstrateProcessID, identity: "operational-substrate-rpc", endpoint: cfg.OperationalSubstrate, listen: workloadSubstrateProxyAddress, health: workloadSubstrateHealthAddress},
 	}
-	out := make([]ProcessSpec, 0, 3+3*cfg.Config.Topology.Operators)
+	out := make([]ProcessSpec, 0, len(proxyInputs)+3*cfg.Config.Topology.Operators)
 	for _, input := range proxyInputs {
 		proxy, err := rpcProxyConfigForEndpoint(input.endpoint, input.listen, input.health)
 		if err != nil {
@@ -1447,6 +1447,50 @@ func buildClientSpecs(cfg *ResolvedConfig, stateDir string, bins map[string]stri
 		out = append(out, ProcessSpec{ID: id, Role: "validator", Identity: roles.Substrate[validatorHotkeyLabel(i)].SS58, Command: bins["sim-testnet"], Args: args, WorkDir: cfg.Repos.SN, Env: env, StdoutPath: filepath.Join(stateDir, "processes", id+".stdout.log"), StderrPath: filepath.Join(stateDir, "processes", id+".stderr.log"), RestartLimit: 5})
 	}
 	return out
+}
+
+// Projects the stopped-boundary identity inventory through the same builders as
+// a real launch. Inert binary paths are sufficient because policy migration
+// authenticates process ID, role, and identity only.
+func expectedReleaseProcessSpecs(cfg *ResolvedConfig, stateDir string) ([]ProcessSpec, error) {
+	if cfg == nil || cfg.Config == nil {
+		return nil, errors.New("release process inventory config is unavailable")
+	}
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("derive release process identities: %w", err)
+	}
+	binaries := map[string]string{
+		"sim-testnet":           "/release/sim-testnet",
+		connectServerBinaryName: "/release/sim-testnet-connect",
+	}
+	serverSpecs, err := buildServerSpecs(cfg, stateDir, binaries)
+	if err != nil {
+		return nil, err
+	}
+	clientSpecs := buildClientSpecs(cfg, stateDir, binaries, roles)
+	return append(append([]ProcessSpec(nil), serverSpecs...), clientSpecs...), nil
+}
+
+type releaseProcessIdentity struct {
+	role     string
+	identity string
+}
+
+// Reduces rendered process specs to the exact immutable tuple authenticated at
+// the stopped policy-revision boundary.
+func releaseProcessIdentityInventory(specs []ProcessSpec) (map[string]releaseProcessIdentity, error) {
+	inventory := make(map[string]releaseProcessIdentity, len(specs))
+	for _, spec := range specs {
+		if spec.ID == "" || spec.Role == "" || spec.Identity == "" {
+			return nil, errors.New("release process identity is incomplete")
+		}
+		if _, ok := inventory[spec.ID]; ok {
+			return nil, fmt.Errorf("release process identity %q is duplicated", spec.ID)
+		}
+		inventory[spec.ID] = releaseProcessIdentity{role: spec.Role, identity: spec.Identity}
+	}
+	return inventory, nil
 }
 
 // minerTestEgressSourceIP gives every logical provider a distinct loopback

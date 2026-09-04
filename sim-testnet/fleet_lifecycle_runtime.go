@@ -671,8 +671,12 @@ func (self *liveFleetLifecycle) validatePersistedStateForPhase(phase, runID stri
 		if err := validateFleetLifecycleNativeSchedule(evidence.ReleaseHandoffSchedule, "release-1.0", evidence.AcceptanceStartBlock, evidence.AcceptanceTerminalBlock); err != nil {
 			return err
 		}
-		if evidence.ReleaseEVMEvidenceDeadlineBlock != evidence.ReleaseHandoffSchedule.ApplicationDeadlineBlock || evidence.ReleaseEVMEvidenceDeadlineBlock < evidence.AcceptanceTerminalBlock {
-			return errors.New("fleet lifecycle release EVM evidence bound differs from its signed native schedule maximum")
+		expectedDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(evidence.AcceptanceTerminalBlock, evidence.ReleaseHandoffSchedule)
+		if err != nil {
+			return err
+		}
+		if evidence.ReleaseEVMEvidenceDeadlineBlock != expectedDeadline {
+			return errors.New("fleet lifecycle release EVM evidence bound differs from its acceptance/native maximum")
 		}
 	} else if rank > 0 {
 		return errors.New("fleet lifecycle mutation exists without its signed release handoff schedule")
@@ -693,8 +697,12 @@ func (self *liveFleetLifecycle) validatePersistedStateForPhase(phase, runID stri
 		if err := validateFleetLifecycleNativeSchedule(evidence.ProductionNativeSchedule, "production-soak", evidence.ProductionAcceptanceStartBlock, evidence.ProductionAcceptanceTerminalBlock); err != nil {
 			return err
 		}
-		if evidence.ProductionEVMEvidenceDeadlineBlock != evidence.ProductionNativeSchedule.ApplicationDeadlineBlock || evidence.ProductionEVMEvidenceDeadlineBlock < evidence.ProductionAcceptanceTerminalBlock {
-			return errors.New("fleet lifecycle production EVM evidence bound differs from its signed native schedule maximum")
+		expectedDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(evidence.ProductionAcceptanceTerminalBlock, evidence.ProductionNativeSchedule)
+		if err != nil {
+			return err
+		}
+		if evidence.ProductionEVMEvidenceDeadlineBlock != expectedDeadline {
+			return errors.New("fleet lifecycle production EVM evidence bound differs from its acceptance/native maximum")
 		}
 		if err := validateFleetLifecycleProductionSchedulePredecessor(evidence); err != nil {
 			return err
@@ -1094,6 +1102,20 @@ func validateFleetLifecycleNativeSchedule(schedule *FleetLifecycleNativeSchedule
 	return nil
 }
 
+// fleetLifecycleExpectedEVMEvidenceDeadline keeps EVM evidence available
+// through the later acceptance/native boundary and requires a representable
+// exclusive end for every inclusive range consumer.
+func fleetLifecycleExpectedEVMEvidenceDeadline(acceptanceTerminal uint64, schedule *FleetLifecycleNativeSchedule) (uint64, error) {
+	if acceptanceTerminal == 0 || schedule == nil || schedule.ApplicationDeadlineBlock == 0 {
+		return 0, errors.New("fleet lifecycle EVM evidence deadline inputs are incomplete")
+	}
+	deadline := max(acceptanceTerminal, schedule.ApplicationDeadlineBlock)
+	if _, ok := checkedAdd(deadline, 1); !ok {
+		return 0, errors.New("fleet lifecycle EVM evidence deadline overflows its inclusive range")
+	}
+	return deadline, nil
+}
+
 func (self *liveFleetLifecycle) bindNativeSchedule(phase string) error {
 	var schedule **FleetLifecycleNativeSchedule
 	var evmDeadline *uint64
@@ -1117,10 +1139,17 @@ func (self *liveFleetLifecycle) bindNativeSchedule(phase string) error {
 		return errors.New("fleet lifecycle native schedule phase is invalid")
 	}
 	if *schedule != nil {
-		if *evmDeadline != (*schedule).ApplicationDeadlineBlock {
-			return errors.New("fleet lifecycle EVM evidence bound differs from its persisted signed schedule")
+		if err := validateFleetLifecycleNativeSchedule(*schedule, phase, acceptanceStart, acceptanceTerminal); err != nil {
+			return err
 		}
-		return validateFleetLifecycleNativeSchedule(*schedule, phase, acceptanceStart, acceptanceTerminal)
+		expectedDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(acceptanceTerminal, *schedule)
+		if err != nil {
+			return err
+		}
+		if *evmDeadline != expectedDeadline {
+			return errors.New("fleet lifecycle EVM evidence bound differs from its persisted acceptance/native maximum")
+		}
+		return nil
 	}
 	if self.executor == nil || self.executor.substrate == nil || self.executor.substrate.chain == nil {
 		return errors.New("fleet lifecycle production CRv4 schedule reader is unavailable")
@@ -1158,16 +1187,21 @@ func (self *liveFleetLifecycle) bindNativeSchedule(phase string) error {
 	if !periodsOK || !blocksOK || !remainingOK || !mutationOK || !deadlineOK || !mutationDeadlineOK || !safetyDeadlineOK {
 		return errors.New("fleet lifecycle production application deadline overflows")
 	}
-	*schedule = &FleetLifecycleNativeSchedule{
+	nativeSchedule := &FleetLifecycleNativeSchedule{
 		Phase:        phase,
 		ObservedHead: ChainHead{Number: state.CurrentBlock, Hash: strings.ToLower(blockHash.Hex())}, LastEpochBlock: state.LastEpochBlock,
 		PendingEpochAt: state.PendingEpochAt, SubnetEpoch: state.SubnetEpochIndex, Tempo: state.Tempo, BlocksSinceLastStep: state.BlocksSinceLastStep,
 		RevealPeriodEpochs: revealPeriods, RequiredMilestones: requiredMilestones, RequiredMutations: requiredMutations, ApplicationSafetyBlocks: applicationSafety, FirstQualifyingRevealBlock: reveal, ApplicationDeadlineBlock: deadline,
 	}
-	*evmDeadline = deadline
-	if err := validateFleetLifecycleNativeSchedule(*schedule, phase, acceptanceStart, acceptanceTerminal); err != nil {
+	if err := validateFleetLifecycleNativeSchedule(nativeSchedule, phase, acceptanceStart, acceptanceTerminal); err != nil {
 		return err
 	}
+	expectedDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(acceptanceTerminal, nativeSchedule)
+	if err != nil {
+		return err
+	}
+	*schedule = nativeSchedule
+	*evmDeadline = expectedDeadline
 	return self.write()
 }
 

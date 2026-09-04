@@ -1511,9 +1511,25 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 	clientSpecs := buildClientSpecs(cfg, stateDir, map[string]string{"sim-testnet": "/release/sim-testnet"}, roles)
+	actualSpecs := append(append([]ProcessSpec(nil), serverSpecs...), clientSpecs...)
+	actualInventory, err := releaseProcessIdentityInventory(actualSpecs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedSpecs, err := expectedReleaseProcessSpecs(cfg, stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedInventory, err := releaseProcessIdentityInventory(expectedSpecs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expectedInventory) != 33 || !reflect.DeepEqual(actualInventory, expectedInventory) {
+		t.Fatalf("real release process identity inventory=%d/%v, want exact 33-entry builder projection", len(actualInventory), reflect.DeepEqual(actualInventory, expectedInventory))
+	}
 	prerequisiteCount := 0
 	dependentCount := 0
-	for _, spec := range append(serverSpecs, clientSpecs...) {
+	for _, spec := range actualSpecs {
 		switch spec.Role {
 		case "dependency-rpc-proxy", "operator-api", "operator-connect", "operator-taskworker":
 			if !supervisorStartupPrerequisite(spec) || spec.HealthURL == "" {
@@ -1529,8 +1545,8 @@ func TestReleaseProcessInventoryClassifiesEveryStartupDependency(t *testing.T) {
 			t.Fatalf("release process role has no startup classification: %+v", spec)
 		}
 	}
-	wantPrerequisites := 3 + 3*cfg.Config.Topology.Operators
-	wantDependents := cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
+	wantPrerequisites := len(serverSpecs)
+	wantDependents := len(clientSpecs)
 	if prerequisiteCount != wantPrerequisites || dependentCount != wantDependents {
 		t.Fatalf("release startup prerequisites/dependents=%d/%d, want %d/%d", prerequisiteCount, dependentCount, wantPrerequisites, wantDependents)
 	}

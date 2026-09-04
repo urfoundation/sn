@@ -37,11 +37,32 @@ const (
 	campaignEvidenceManifestFilename      = "campaign-evidence-manifest.evidence.json"
 	maximumCampaignEvidenceRawFileBytes   = 32 * 1024 * 1024
 	maximumCampaignEvidenceEnvelopeBytes  = 64 * 1024 * 1024
+	maximumCampaignFileEnvelopeOverhead   = 1024 * 1024
 	maximumCampaignEvidenceAggregateBytes = 256 * 1024 * 1024
 	maximumCampaignEvidenceObjects        = 4096
 	maximumCampaignEvidenceJSONDepth      = 64
+	publishedEvidenceExactHistoryObjects  = 1
+	publicManifestHistoryPageObjects      = 256
+	publicManifestAnalyzeCommand          = "sim-testnet analyze --config <path-to-testnet.yml> --manifest <public-manifest-url-or-file> --run-id <exact-scenario-run-id>"
+	legacyPublicManifestAnalyzeCommand    = "sim-testnet analyze --config <path-to-testnet.yml> --manifest <public-manifest-url-or-file>"
 	campaignEvidenceLocalArchiveDirectory = "campaign-evidence"
 )
+
+// maximumCampaignFileEnvelopeBytes bounds the JSON/base64 carrier from the
+// authenticated raw-file size. A fixed metadata allowance covers the signed
+// envelope, identities, path, and JSON punctuation without permitting every
+// tiny manifest entry to consume the global 64 MiB envelope ceiling.
+func maximumCampaignFileEnvelopeBytes(size uint64) (int64, error) {
+	if size > maximumCampaignEvidenceRawFileBytes {
+		return 0, fmt.Errorf("campaign evidence file size %d exceeds %d", size, maximumCampaignEvidenceRawFileBytes)
+	}
+	base64Bytes := ((size + 2) / 3) * 4
+	limit := base64Bytes + maximumCampaignFileEnvelopeOverhead
+	if limit > maximumCampaignEvidenceEnvelopeBytes {
+		return 0, errors.New("campaign evidence file envelope size overflows its limit")
+	}
+	return int64(limit), nil
+}
 
 type campaignEvidenceFilePayload struct {
 	Schema      string `json:"schema"`
@@ -237,7 +258,7 @@ func verifyDirectEvidencePublication(ctx context.Context, store server.BlobStore
 		return err
 	}
 	hashHex := strings.TrimPrefix(strings.ToLower(envelope.ContentHash), "sha256:")
-	wantHistoryKey := filepath.ToSlash(filepath.Join(store.Prefix(), "st", "v1", "evidence", "history", envelope.DeploymentID, fmt.Sprint(envelope.Netuid), envelope.Kind, envelope.RunID, hashHex+".json"))
+	wantHistoryKey := filepath.ToSlash(filepath.Join(store.Prefix(), "st", "v1", "evidence", "history", envelope.DeploymentID, fmt.Sprint(envelope.Netuid), envelope.Kind, evidenceHistoryStorageRunID(envelope.RunID), hashHex+".json"))
 	if published.ContentKey != wantContentKey || published.HistoryKey != wantHistoryKey {
 		return errors.New("direct evidence receipt keys do not match the rendered store")
 	}
@@ -262,20 +283,7 @@ func verifyDirectEvidencePublication(ctx context.Context, store server.BlobStore
 			return fmt.Errorf("direct evidence object %s differs from its signed envelope", key)
 		}
 	}
-	prefix, err := startifact.EvidenceHistoryPrefix(store, envelope.DeploymentID, envelope.Netuid, envelope.Kind)
-	if err != nil {
-		return err
-	}
-	objects, err := store.List(ctx, prefix)
-	if err != nil {
-		return fmt.Errorf("list direct evidence history: %w", err)
-	}
-	for _, object := range objects {
-		if object.Key == published.HistoryKey {
-			return nil
-		}
-	}
-	return errors.New("direct evidence history does not contain the signed envelope")
+	return nil
 }
 
 func validateCampaignEvidencePath(name string) error {
@@ -389,7 +397,29 @@ func decodeCampaignEvidenceManifest(envelope *ReleaseEvidenceEnvelope) (*campaig
 			return nil, fmt.Errorf("campaign evidence path %q is both a run file and an external reference", name)
 		}
 	}
+	if err := validateCampaignEvidenceClosureBoundary(&manifest); err != nil {
+		return nil, err
+	}
 	return &manifest, nil
+}
+
+// validateCampaignEvidenceClosureBoundary keeps every post-capture semantic
+// path out of both halves of the immutable scenario evidence manifest.
+func validateCampaignEvidenceClosureBoundary(manifest *campaignEvidenceManifestPayload) error {
+	if manifest == nil {
+		return errors.New("campaign evidence manifest is missing")
+	}
+	for _, group := range []struct {
+		scope   string
+		entries []campaignEvidenceFileEntry
+	}{{scope: "run", entries: manifest.Files}, {scope: "reference", entries: manifest.References}} {
+		for _, entry := range group.entries {
+			if isFinalSemanticPostCapturePath(entry.Path) {
+				return fmt.Errorf("campaign evidence closed %s archive contains post-capture path %q", group.scope, entry.Path)
+			}
+		}
+	}
+	return nil
 }
 
 type campaignArtifactReference struct {
@@ -1080,7 +1110,7 @@ func verifyPublishedEvidenceOrigin(ctx context.Context, cfg *ResolvedConfig, rol
 }
 
 func verifyPublishedEvidenceOriginWithKey(ctx context.Context, cfg *ResolvedConfig, expected *ecdsa.PublicKey, origin string, published PublishedEvidence) error {
-	if cfg == nil || expected == nil || origin == "" || published.ContentHash == "" {
+	if cfg == nil || expected == nil || origin == "" || published.ContentHash == "" || published.ContentKey == "" || published.HistoryKey == "" {
 		return errors.New("invalid public evidence origin verification")
 	}
 	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -1108,12 +1138,28 @@ func verifyPublishedEvidenceOriginWithKey(ctx context.Context, cfg *ResolvedConf
 	if json.Unmarshal(body, &envelope) != nil || verifyEvidence(&envelope, expected) != nil {
 		return errors.New("content endpoint returned invalid signed evidence")
 	}
-	if !strings.EqualFold(envelope.ContentHash, published.ContentHash) || envelope.DeploymentID != cfg.Config.Deployment.DeploymentID || envelope.ChainID != cfg.ChainID || envelope.Netuid != cfg.Netuid || !strings.EqualFold(envelope.GenesisHash, cfg.Public.Chain.GenesisHash) {
+	if envelope.ContentHash != published.ContentHash || envelope.DeploymentID != cfg.Config.Deployment.DeploymentID || envelope.ChainID != cfg.ChainID || envelope.Netuid != cfg.Netuid || !strings.EqualFold(envelope.GenesisHash, cfg.Public.Chain.GenesisHash) {
 		return errors.New("content endpoint returned evidence for a different deployment")
 	}
+	historyRunID, err := validatePublishedEvidenceStorageKeys(published, &envelope)
+	if err != nil {
+		return err
+	}
 
-	historyURL := fmt.Sprintf("%s/sn/evidence/history?deployment_id=%s&netuid=%d&kind=%s", strings.TrimSuffix(origin, "/"), cfg.Config.Deployment.DeploymentID, cfg.Netuid, envelope.Kind)
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, historyURL, nil)
+	historyURL, err := url.Parse(strings.TrimSuffix(origin, "/") + "/sn/evidence/history")
+	if err != nil {
+		return err
+	}
+	runID := historyRunID
+	query := historyURL.Query()
+	query.Set("deployment_id", cfg.Config.Deployment.DeploymentID)
+	query.Set("netuid", fmt.Sprint(cfg.Netuid))
+	query.Set("kind", envelope.Kind)
+	query.Set("run_id", runID)
+	query.Set("hash", published.ContentHash)
+	query.Set("limit", fmt.Sprint(publishedEvidenceExactHistoryObjects))
+	historyURL.RawQuery = query.Encode()
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, historyURL.String(), nil)
 	if err != nil {
 		return err
 	}
@@ -1132,13 +1178,84 @@ func verifyPublishedEvidenceOriginWithKey(ctx context.Context, cfg *ResolvedConf
 	if len(history) > 16*1024*1024 {
 		return errors.New("history endpoint exceeded 16 MiB")
 	}
-	want := strings.TrimPrefix(strings.ToLower(published.ContentHash), "sha256:")
-	for _, object := range evidenceHistoryKeys(history) {
-		if strings.Contains(strings.ToLower(object), want) {
-			return nil
+	var listing struct {
+		Schema    string            `json:"schema"`
+		Objects   []json.RawMessage `json:"objects"`
+		More      bool              `json:"more"`
+		NextAfter string            `json:"next_after"`
+	}
+	if err := json.Unmarshal(history, &listing); err != nil || listing.Schema != "urnetwork-release-evidence-history-v1" || listing.More || listing.NextAfter != "" || len(listing.Objects) != publishedEvidenceExactHistoryObjects {
+		return stateMismatchError(err, "public history response is invalid, incomplete, or over limit")
+	}
+	found := false
+	seen := map[string]bool{}
+	for _, raw := range listing.Objects {
+		var object struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(raw, &object); err != nil || object.Key == "" || seen[object.Key] {
+			return stateMismatchError(err, "public history contains an invalid or duplicate object")
+		}
+		seen[object.Key] = true
+		found = found || object.Key == published.HistoryKey
+	}
+	if found {
+		return nil
+	}
+	return errors.New("public history does not contain the exact published history key")
+}
+
+// validatePublishedEvidenceStorageKeys proves that a receipt names canonical
+// content/history paths for its signed envelope and returns the exact storage
+// run segment, including receipt-directed legacy empty-run compatibility.
+func validatePublishedEvidenceStorageKeys(published PublishedEvidence, envelope *ReleaseEvidenceEnvelope) (string, error) {
+	if envelope == nil || envelope.ContentHash == "" || published.ContentHash != envelope.ContentHash {
+		return "", errors.New("published evidence storage identity is incomplete")
+	}
+	hashHex := strings.TrimPrefix(envelope.ContentHash, "sha256:")
+	runID := evidenceHistoryStorageRunID(envelope.RunID)
+	for label, segment := range map[string]string{
+		"deployment": envelope.DeploymentID,
+		"kind":       envelope.Kind,
+		"run":        runID,
+	} {
+		if segment == "" || segment == "." || segment == ".." || url.PathEscape(segment) != segment {
+			return "", fmt.Errorf("published evidence %s storage segment is noncanonical", label)
 		}
 	}
-	return errors.New("public history does not contain the published content hash")
+	contentSuffix := path.Join("st", "v1", "evidence", "content", "sha256", hashHex+".json")
+	if !publishedEvidenceKeyHasSuffix(published.ContentKey, contentSuffix) {
+		return "", errors.New("published evidence content or history key is outside its canonical signed scope")
+	}
+	historySuffix := func(candidate string) string {
+		return path.Join("st", "v1", "evidence", "history", envelope.DeploymentID, fmt.Sprint(envelope.Netuid), envelope.Kind, candidate, hashHex+".json")
+	}
+	if !publishedEvidenceKeyHasSuffix(published.HistoryKey, historySuffix(runID)) {
+		if envelope.RunID != "" || !publishedEvidenceKeyHasSuffix(published.HistoryKey, historySuffix(startifact.EvidenceLegacyDeploymentHistoryRunID)) {
+			return "", errors.New("published evidence content or history key is outside its canonical signed scope")
+		}
+		runID = startifact.EvidenceLegacyDeploymentHistoryRunID
+	}
+	return runID, nil
+}
+
+// evidenceHistoryStorageRunID maps unsigned deployment evidence to the
+// reserved server history segment while leaving signed campaign runs exact.
+func evidenceHistoryStorageRunID(runID string) string {
+	if runID == "" {
+		return startifact.EvidenceDeploymentHistoryRunID
+	}
+	return runID
+}
+
+// publishedEvidenceKeyHasSuffix matches a canonical relative object key on a
+// complete path-segment suffix without accepting traversal or absolute paths.
+func publishedEvidenceKeyHasSuffix(key, suffix string) bool {
+	key = filepath.ToSlash(key)
+	if key == "" || strings.HasPrefix(key, "/") || path.Clean(key) != key {
+		return false
+	}
+	return key == suffix || strings.HasSuffix(key, "/"+suffix)
 }
 
 type PublicDeploymentManifest struct {
@@ -1184,6 +1301,143 @@ type PublicOperator struct {
 	ConnectURL string `json:"connect_url,omitempty"`
 	VerifyURL  string `json:"verify_url"`
 	HistoryURL string `json:"history_url"`
+}
+
+// Renders the two signed reviewer-facing history queries. Operators retain a
+// separate bare HistoryURL for internal exact-kind/run requests; these links
+// must be immediately bounded and valid.
+func publicOperatorHistoryEndpoints(apiURL, deploymentID string, netuid uint16) (string, string, error) {
+	if apiURL == "" || deploymentID == "" || netuid == 0 {
+		return "", "", errors.New("public operator history identity is incomplete")
+	}
+	origin, err := url.Parse(strings.TrimSuffix(apiURL, "/"))
+	if err != nil || origin.Scheme == "" || origin.Host == "" || origin.User != nil || origin.Opaque != "" || origin.RawPath != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.Path != "" {
+		return "", "", stateMismatchError(err, "public operator history API URL is not a bare origin")
+	}
+	build := func(endpointPath string, query url.Values) string {
+		endpoint := *origin
+		endpoint.Path = endpointPath
+		endpoint.RawQuery = query.Encode()
+		return endpoint.String()
+	}
+	commonQuery := url.Values{
+		"deployment_id": {deploymentID},
+		"limit":         {fmt.Sprint(publicManifestHistoryPageObjects)},
+		"netuid":        {fmt.Sprint(netuid)},
+	}
+	artifactQuery := make(url.Values, len(commonQuery))
+	for key, values := range commonQuery {
+		artifactQuery[key] = append([]string(nil), values...)
+	}
+	evidenceQuery := make(url.Values, len(commonQuery)+2)
+	for key, values := range commonQuery {
+		evidenceQuery[key] = append([]string(nil), values...)
+	}
+	evidenceQuery.Set("kind", "deployment-manifest")
+	evidenceQuery.Set("run_id", startifact.EvidenceDeploymentHistoryRunID)
+	return build("/sn/artifacts", artifactQuery), build("/sn/evidence/history", evidenceQuery), nil
+}
+
+// Reproduces the exact signed locator bytes emitted before reviewer history
+// queries became bounded and scoped. It exists only to authenticate and retain
+// an immutable prior publication.
+func legacyPublicOperatorHistoryEndpoints(apiURL, deploymentID string, netuid uint16) (string, string, error) {
+	if _, _, err := publicOperatorHistoryEndpoints(apiURL, deploymentID, netuid); err != nil {
+		return "", "", err
+	}
+	base := strings.TrimSuffix(apiURL, "/")
+	artifact := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", base, deploymentID, netuid)
+	evidence := fmt.Sprintf("%s/sn/evidence/history?deployment_id=%s&netuid=%d", base, deploymentID, netuid)
+	return artifact, evidence, nil
+}
+
+type publicManifestHistoryLocatorGeneration uint8
+
+const (
+	publicManifestHistoryLocatorsCurrent publicManifestHistoryLocatorGeneration = iota + 1
+	publicManifestHistoryLocatorsLegacy
+)
+
+// Authenticates one coherent generation of reviewer locators. Per-operator or
+// cross-array generation mixtures are rejected so compatibility cannot
+// normalize partially rewritten metadata.
+func publicManifestHistoryLocatorEncoding(manifest *PublicDeploymentManifest) (publicManifestHistoryLocatorGeneration, error) {
+	if manifest == nil || len(manifest.Operators) == 0 || len(manifest.ArtifactStores) != len(manifest.Operators) || len(manifest.EvidenceStores) != len(manifest.Operators) {
+		return 0, errors.New("public campaign requires exactly one artifact and evidence history locator per operator")
+	}
+	var generation publicManifestHistoryLocatorGeneration
+	for index, operator := range manifest.Operators {
+		currentArtifact, currentEvidence, err := publicOperatorHistoryEndpoints(operator.APIURL, manifest.DeploymentID, manifest.Netuid)
+		if err != nil {
+			return 0, fmt.Errorf("public campaign operator %d reviewer history origin: %w", operator.NoID, err)
+		}
+		legacyArtifact, legacyEvidence, err := legacyPublicOperatorHistoryEndpoints(operator.APIURL, manifest.DeploymentID, manifest.Netuid)
+		if err != nil {
+			return 0, fmt.Errorf("public campaign operator %d legacy reviewer history origin: %w", operator.NoID, err)
+		}
+		var operatorGeneration publicManifestHistoryLocatorGeneration
+		switch {
+		case manifest.ArtifactStores[index] == currentArtifact && manifest.EvidenceStores[index] == currentEvidence:
+			operatorGeneration = publicManifestHistoryLocatorsCurrent
+		case manifest.ArtifactStores[index] == legacyArtifact && manifest.EvidenceStores[index] == legacyEvidence:
+			operatorGeneration = publicManifestHistoryLocatorsLegacy
+		default:
+			return 0, fmt.Errorf("public campaign operator %d reviewer history locators are not one exact supported generation", operator.NoID)
+		}
+		if generation != 0 && generation != operatorGeneration {
+			return 0, errors.New("public campaign reviewer history locators mix generations")
+		}
+		generation = operatorGeneration
+	}
+	return generation, nil
+}
+
+// Binds the advertised analyze command to the exact locator generation. This
+// keeps public import fail closed while admitting the one fully coherent
+// pre-fix encoding already signed in v1.
+func validatePublicManifestReviewerMetadata(manifest *PublicDeploymentManifest) (publicManifestHistoryLocatorGeneration, error) {
+	generation, err := publicManifestHistoryLocatorEncoding(manifest)
+	if err != nil {
+		return 0, err
+	}
+	wantAnalyze := publicManifestAnalyzeCommand
+	if generation == publicManifestHistoryLocatorsLegacy {
+		wantAnalyze = legacyPublicManifestAnalyzeCommand
+	}
+	if manifest.Commands == nil || manifest.Commands["analyze"] != wantAnalyze {
+		return 0, errors.New("public deployment manifest analyze command does not match its reviewer locator generation")
+	}
+	return generation, nil
+}
+
+// Maps the one authenticated legacy reviewer-metadata encoding to its current
+// meaning for equality only. The original signed bytes remain untouched and all
+// new publications stay current.
+func normalizePublicManifestCompatibility(manifest *PublicDeploymentManifest) error {
+	generation, err := validatePublicManifestReviewerMetadata(manifest)
+	if err != nil {
+		return err
+	}
+	commands := make(map[string]string, len(manifest.Commands))
+	for name, command := range manifest.Commands {
+		commands[name] = command
+	}
+	commands["analyze"] = publicManifestAnalyzeCommand
+	manifest.Commands = commands
+	if generation == publicManifestHistoryLocatorsCurrent {
+		return nil
+	}
+	manifest.ArtifactStores = make([]string, len(manifest.Operators))
+	manifest.EvidenceStores = make([]string, len(manifest.Operators))
+	for index, operator := range manifest.Operators {
+		artifact, evidence, err := publicOperatorHistoryEndpoints(operator.APIURL, manifest.DeploymentID, manifest.Netuid)
+		if err != nil {
+			return err
+		}
+		manifest.ArtifactStores[index] = artifact
+		manifest.EvidenceStores[index] = evidence
+	}
+	return nil
 }
 
 type deploymentManifestLocator struct {
@@ -1236,17 +1490,20 @@ func writePublicDeploymentManifest(cfg *ResolvedConfig, stateDir string, plan *S
 		}
 		base := strings.TrimSuffix(cfg.OperatorAPIOrigins[operator-1], "/")
 		manifest.Operators = append(manifest.Operators, PublicOperator{NoID: operator, APIURL: base, VerifyURL: base + "/verify", HistoryURL: base + "/sn/evidence/history"})
-		manifest.ArtifactStores = append(manifest.ArtifactStores, fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", base, cfg.Config.Deployment.DeploymentID, cfg.Netuid))
-		manifest.EvidenceStores = append(manifest.EvidenceStores, fmt.Sprintf("%s/sn/evidence/history?deployment_id=%s&netuid=%d", base, cfg.Config.Deployment.DeploymentID, cfg.Netuid))
-	}
-	if err := validatePublicCampaignOperatorOrigins(manifest); err != nil {
-		return nil, fmt.Errorf("public deployment manifest evidence transport: %w", err)
+		artifactHistory, evidenceHistory, err := publicOperatorHistoryEndpoints(base, cfg.Config.Deployment.DeploymentID, cfg.Netuid)
+		if err != nil {
+			return nil, fmt.Errorf("public operator %d history endpoints: %w", operator, err)
+		}
+		manifest.ArtifactStores = append(manifest.ArtifactStores, artifactHistory)
+		manifest.EvidenceStores = append(manifest.EvidenceStores, evidenceHistory)
 	}
 	for _, command := range []string{"status", "tail", "scenario", "stop", "resume"} {
 		manifest.Commands[command] = fmt.Sprintf("sim-testnet %s --config <path-to-testnet.yml> --state-dir <deployment-state-dir>", command)
 	}
-	for _, command := range []string{"inspect", "analyze"} {
-		manifest.Commands[command] = fmt.Sprintf("sim-testnet %s --config <path-to-testnet.yml> --manifest <public-manifest-url-or-file>", command)
+	manifest.Commands["inspect"] = "sim-testnet inspect --config <path-to-testnet.yml> --manifest <public-manifest-url-or-file>"
+	manifest.Commands["analyze"] = publicManifestAnalyzeCommand
+	if err := validatePublicCampaignOperatorOrigins(manifest); err != nil {
+		return nil, fmt.Errorf("public deployment manifest evidence transport: %w", err)
 	}
 	path := filepath.Join(stateDir, "public.json")
 	if existing, readErr := os.ReadFile(path); readErr == nil {
@@ -1547,6 +1804,9 @@ func validateLocalPublicManifestHistory(stateDir string, current *PublicDeployme
 	if current == nil {
 		return errors.New("public deployment manifest history has no current revision")
 	}
+	if err := validatePublicCampaignOperatorOrigins(current); err != nil {
+		return fmt.Errorf("public deployment manifest current revision evidence transport: %w", err)
+	}
 	next := *current
 	for next.Revision > 1 {
 		path := filepath.Join(stateDir, "public", "deployment-manifests", stringsTrim0x(strings.ToLower(next.PreviousManifestHash))+".json")
@@ -1557,6 +1817,9 @@ func validateLocalPublicManifestHistory(stateDir string, current *PublicDeployme
 		var previous PublicDeploymentManifest
 		if json.Unmarshal(exact, &previous) != nil || validatePublicManifestRevision(&previous) != nil {
 			return fmt.Errorf("public deployment manifest predecessor revision %d is invalid", next.Revision-1)
+		}
+		if err := validatePublicCampaignOperatorOrigins(&previous); err != nil {
+			return fmt.Errorf("public deployment manifest predecessor revision %d evidence transport: %w", next.Revision-1, err)
 		}
 		hash, err := canonicalHashHex(&previous)
 		if err != nil {
@@ -1595,6 +1858,12 @@ func publicManifestEquivalent(prior, current *PublicDeploymentManifest) (bool, e
 		return false, errors.Join(leftErr, rightErr)
 	}
 	left.EvidenceTransportProfile, right.EvidenceTransportProfile = leftProfile, rightProfile
+	if err := normalizePublicManifestCompatibility(&left); err != nil {
+		return false, fmt.Errorf("existing public deployment manifest compatibility: %w", err)
+	}
+	if err := normalizePublicManifestCompatibility(&right); err != nil {
+		return false, fmt.Errorf("current public deployment manifest compatibility: %w", err)
+	}
 	left.GeneratedAt, right.GeneratedAt = "", ""
 	left.Revision, right.Revision = 0, 0
 	left.PreviousManifestHash, right.PreviousManifestHash = "", ""

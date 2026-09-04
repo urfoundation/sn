@@ -5,19 +5,42 @@ import (
 	"testing"
 )
 
-func loopbackEvidenceManifestForTest(explicit bool) *PublicDeploymentManifest {
+func bindPublicHistoryEndpointsForTest(t *testing.T, manifest *PublicDeploymentManifest) {
+	t.Helper()
+	if manifest.Commands == nil {
+		manifest.Commands = map[string]string{}
+	}
+	manifest.Commands["analyze"] = publicManifestAnalyzeCommand
+	manifest.ArtifactStores = nil
+	manifest.EvidenceStores = nil
+	for _, operator := range manifest.Operators {
+		artifactHistory, evidenceHistory, err := publicOperatorHistoryEndpoints(operator.APIURL, manifest.DeploymentID, manifest.Netuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest.ArtifactStores = append(manifest.ArtifactStores, artifactHistory)
+		manifest.EvidenceStores = append(manifest.EvidenceStores, evidenceHistory)
+	}
+}
+
+func loopbackEvidenceManifestForTest(t *testing.T, explicit bool) *PublicDeploymentManifest {
+	t.Helper()
 	manifest := &PublicDeploymentManifest{
-		ChainID:     testnetChainID,
-		GenesisHash: testnetGenesis,
-		Topology:    TopologyConfig{Operators: 2},
+		DeploymentID: "test-deployment",
+		ChainID:      testnetChainID,
+		GenesisHash:  testnetGenesis,
+		Netuid:       1,
+		Topology:     TopologyConfig{Operators: 2},
 		Operators: []PublicOperator{
 			{NoID: 1, APIURL: testnetLoopbackEvidenceOrigins[0], VerifyURL: testnetLoopbackEvidenceOrigins[0] + "/verify", HistoryURL: testnetLoopbackEvidenceOrigins[0] + "/sn/evidence/history"},
 			{NoID: 2, APIURL: testnetLoopbackEvidenceOrigins[1], VerifyURL: testnetLoopbackEvidenceOrigins[1] + "/verify", HistoryURL: testnetLoopbackEvidenceOrigins[1] + "/sn/evidence/history"},
 		},
+		Commands: map[string]string{"analyze": publicManifestAnalyzeCommand},
 	}
 	if explicit {
 		manifest.EvidenceTransportProfile = publicEvidenceTransportTestnetLoopbackHTTP
 	}
+	bindPublicHistoryEndpointsForTest(t, manifest)
 	return manifest
 }
 
@@ -74,22 +97,42 @@ func TestPublicEvidenceTransportKeepsPublicHTTPSAndSSRFFailClosed(t *testing.T) 
 }
 
 func TestSignedPublicManifestTransportProfileMatchesIdentityAndOrigins(t *testing.T) {
-	legacy := loopbackEvidenceManifestForTest(false)
-	profile, err := effectivePublicEvidenceTransportProfile(legacy)
+	legacyProfile := loopbackEvidenceManifestForTest(t, false)
+	profile, err := effectivePublicEvidenceTransportProfile(legacyProfile)
 	if err != nil || profile != publicEvidenceTransportTestnetLoopbackHTTP {
 		t.Fatalf("legacy exact signed tuple profile = %q, %v", profile, err)
 	}
-	if err := validatePublicCampaignOperatorOrigins(legacy); err != nil {
+	if err := validatePublicCampaignOperatorOrigins(legacyProfile); err != nil {
 		t.Fatalf("legacy exact signed tuple rejected: %v", err)
 	}
 
-	explicit := loopbackEvidenceManifestForTest(true)
+	explicit := loopbackEvidenceManifestForTest(t, true)
 	if err := validatePublicCampaignOperatorOrigins(explicit); err != nil {
 		t.Fatalf("explicit loopback transport rejected: %v", err)
 	}
-	equivalent, err := publicManifestEquivalent(legacy, explicit)
+	equivalent, err := publicManifestEquivalent(legacyProfile, explicit)
 	if err != nil || !equivalent {
-		t.Fatalf("legacy and explicit exact transports equivalent=%t, err=%v", equivalent, err)
+		t.Fatalf("pre-profile and explicit exact transports equivalent=%t, err=%v", equivalent, err)
+	}
+
+	legacyLocators := *legacyProfile
+	legacyLocators.ArtifactStores = make([]string, len(legacyLocators.Operators))
+	legacyLocators.EvidenceStores = make([]string, len(legacyLocators.Operators))
+	legacyLocators.Commands = map[string]string{"analyze": legacyPublicManifestAnalyzeCommand}
+	for index, operator := range legacyLocators.Operators {
+		artifact, evidence, err := legacyPublicOperatorHistoryEndpoints(operator.APIURL, legacyLocators.DeploymentID, legacyLocators.Netuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacyLocators.ArtifactStores[index] = artifact
+		legacyLocators.EvidenceStores[index] = evidence
+	}
+	if err := validatePublicCampaignOperatorOrigins(&legacyLocators); err != nil {
+		t.Fatalf("exact pre-fix reviewer locators rejected: %v", err)
+	}
+	equivalent, err = publicManifestEquivalent(&legacyLocators, explicit)
+	if err != nil || !equivalent {
+		t.Fatalf("pre-fix and current reviewer metadata equivalent=%t, err=%v", equivalent, err)
 	}
 
 	for name, mutate := range map[string]func(*PublicDeploymentManifest){
@@ -101,10 +144,22 @@ func TestSignedPublicManifestTransportProfileMatchesIdentityAndOrigins(t *testin
 		"cross origin": func(value *PublicDeploymentManifest) {
 			value.Operators[1].HistoryURL = testnetLoopbackEvidenceOrigins[0] + "/sn/evidence/history"
 		},
+		"legacy extra query": func(value *PublicDeploymentManifest) {
+			value.ArtifactStores[0] = legacyLocators.ArtifactStores[0] + "&limit=256"
+		},
+		"legacy artifact current evidence": func(value *PublicDeploymentManifest) {
+			value.ArtifactStores[0] = legacyLocators.ArtifactStores[0]
+		},
+		"legacy one operator": func(value *PublicDeploymentManifest) {
+			value.ArtifactStores[0] = legacyLocators.ArtifactStores[0]
+			value.EvidenceStores[0] = legacyLocators.EvidenceStores[0]
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			value := *explicit
 			value.Operators = append([]PublicOperator(nil), explicit.Operators...)
+			value.ArtifactStores = append([]string(nil), explicit.ArtifactStores...)
+			value.EvidenceStores = append([]string(nil), explicit.EvidenceStores...)
 			mutate(&value)
 			if err := validatePublicCampaignOperatorOrigins(&value); err == nil {
 				t.Fatal("inconsistent signed transport was accepted")
@@ -116,7 +171,9 @@ func TestSignedPublicManifestTransportProfileMatchesIdentityAndOrigins(t *testin
 func TestSignedPublicManifestTransportIsBoundToResolvedConfigOrigins(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	public := &PublicDeploymentManifest{
-		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash,
+		DeploymentID: cfg.Config.Deployment.DeploymentID,
+		ChainID:      cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash,
+		Netuid:                   cfg.Netuid,
 		EvidenceTransportProfile: publicEvidenceTransportHTTPS,
 		Topology:                 TopologyConfig{Operators: 2},
 		Operators: []PublicOperator{
@@ -124,6 +181,7 @@ func TestSignedPublicManifestTransportIsBoundToResolvedConfigOrigins(t *testing.
 			{NoID: 2, APIURL: cfg.OperatorAPIOrigins[1], VerifyURL: cfg.OperatorAPIOrigins[1] + "/verify", HistoryURL: cfg.OperatorAPIOrigins[1] + "/sn/evidence/history"},
 		},
 	}
+	bindPublicHistoryEndpointsForTest(t, public)
 	if err := validatePublicEvidenceManifestTransportAgainstConfig(cfg, public); err != nil {
 		t.Fatalf("matching config-bound HTTPS transport rejected: %v", err)
 	}
@@ -135,14 +193,14 @@ func TestSignedPublicManifestTransportIsBoundToResolvedConfigOrigins(t *testing.
 	}
 
 	cfg.OperatorAPIOrigins = append([]string(nil), testnetLoopbackEvidenceOrigins[:]...)
-	loopback := loopbackEvidenceManifestForTest(true)
+	loopback := loopbackEvidenceManifestForTest(t, true)
 	if err := validatePublicEvidenceManifestTransportAgainstConfig(cfg, loopback); err != nil {
 		t.Fatalf("matching config-bound loopback transport rejected: %v", err)
 	}
 }
 
 func TestLoopbackCampaignArtifactAllowlistIsExact(t *testing.T) {
-	public := loopbackEvidenceManifestForTest(true)
+	public := loopbackEvidenceManifestForTest(t, true)
 	hash := "sha256:" + strings.Repeat("11", 32)
 	manifestURI := testnetLoopbackEvidenceOrigins[0] + "/sn/evidence?hash=" + hash
 	allowed, err := campaignArtifactAllowedOrigins(public, manifestURI)

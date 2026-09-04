@@ -39,6 +39,16 @@ func TestParseCLIReleaseCommandsAndWriteGuardFlags(t *testing.T) {
 	if command != "launch" || !options.Apply || !options.Detach || options.PlanHash != "sha256:approved" || options.OperatorProxyRepo != "/release/operator-proxy" {
 		t.Fatalf("write flags parsed incorrectly: command=%q options=%+v", command, options)
 	}
+	command, options, err = parseCLI([]string{"analyze", "--manifest", "https://operator.example/manifest", "--run-id", "20260903T010203.000000000Z-production-soak"})
+	if err != nil || command != "analyze" || options.RunID != "20260903T010203.000000000Z-production-soak" {
+		t.Fatalf("exact public analyze flags = command %q options=%+v err=%v", command, options, err)
+	}
+	if _, _, err := parseCLI([]string{"analyze", "--manifest", "https://operator.example/manifest"}); err == nil || !strings.Contains(err.Error(), "--run-id") {
+		t.Fatalf("public analyze without exact run id was accepted: %v", err)
+	}
+	if _, _, err := parseCLI([]string{"inspect", "--run-id", "release-run"}); err == nil || !strings.Contains(err.Error(), "only") {
+		t.Fatalf("run id on a non-campaign command was accepted: %v", err)
+	}
 }
 
 // Only observation commands can switch to the live campaign's shared EVM

@@ -155,7 +155,14 @@ func TestPolicyRevisionFailsClosedOnHistoryOrLiveWorkloadMismatch(t *testing.T) 
 
 func TestPolicyRevisionRequiresExactStoppedTopologyBoundary(t *testing.T) {
 	cfg, stateDir, prior, entries := testFuturePolicyRevision(t)
-	expectedProcesses := 2 + 3*cfg.Config.Topology.Operators + cfg.Config.Topology.MinerSwarmProcesses + cfg.Config.Topology.Operators + cfg.Config.Topology.Validators
+	expectedSpecs, err := expectedReleaseProcessSpecs(cfg, stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedProcesses := len(expectedSpecs)
+	if expectedProcesses != 33 {
+		t.Fatalf("production release process inventory=%d, want 33", expectedProcesses)
+	}
 	manifest := SupervisorFile{
 		Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		BinaryHash: "sha256:" + strings.Repeat("11", 32),
@@ -164,8 +171,7 @@ func TestPolicyRevisionRequiresExactStoppedTopologyBoundary(t *testing.T) {
 		Schema: "urnetwork-sim-supervisor-state-v1", UpdatedAt: time.Unix(10, 0).UTC().Format(time.RFC3339Nano),
 		SupervisorPID: 99_999_999, SupervisorStartTimeTicks: 1,
 	}
-	for index := 0; index < expectedProcesses; index++ {
-		spec := ProcessSpec{ID: "process-" + strconv.Itoa(index), Role: "test-role", Identity: "identity-" + strconv.Itoa(index)}
+	for _, spec := range expectedSpecs {
 		manifest.Specs = append(manifest.Specs, spec)
 		state.Processes = append(state.Processes, ProcessState{ID: spec.ID, Role: spec.Role, Identity: spec.Identity, ExitError: "supervisor stopped"})
 	}
@@ -214,6 +220,97 @@ func TestPolicyRevisionRequiresExactStoppedTopologyBoundary(t *testing.T) {
 	decision, err := classifyPolicyRevision(cfg, stateDir, prior, entries)
 	if err != nil || decision.Class != policyRevisionFutureAcceleration || !decision.RestartRequired {
 		t.Fatalf("stopped topology decision=%+v error=%v", decision, err)
+	}
+	for _, mutation := range []struct {
+		name  string
+		apply func(*SupervisorFile, *SupervisorState)
+	}{
+		{name: "missing third proxy", apply: func(candidateManifest *SupervisorFile, candidateState *SupervisorState) {
+			filteredSpecs := make([]ProcessSpec, 0, len(candidateManifest.Specs)-1)
+			for _, spec := range candidateManifest.Specs {
+				if spec.ID != workloadSubstrateProcessID {
+					filteredSpecs = append(filteredSpecs, spec)
+				}
+			}
+			candidateManifest.Specs = filteredSpecs
+			filteredProcesses := make([]ProcessState, 0, len(candidateState.Processes)-1)
+			for _, process := range candidateState.Processes {
+				if process.ID != workloadSubstrateProcessID {
+					filteredProcesses = append(filteredProcesses, process)
+				}
+			}
+			candidateState.Processes = filteredProcesses
+		}},
+		{name: "same-count proxy ID replacement", apply: func(candidateManifest *SupervisorFile, candidateState *SupervisorState) {
+			for index := range candidateManifest.Specs {
+				if candidateManifest.Specs[index].ID == workloadSubstrateProcessID {
+					candidateManifest.Specs[index].ID = workloadSubstrateProcessID + "-replacement"
+				}
+			}
+			for index := range candidateState.Processes {
+				if candidateState.Processes[index].ID == workloadSubstrateProcessID {
+					candidateState.Processes[index].ID = workloadSubstrateProcessID + "-replacement"
+				}
+			}
+		}},
+		{name: "proxy role substitution", apply: func(candidateManifest *SupervisorFile, candidateState *SupervisorState) {
+			for index := range candidateManifest.Specs {
+				if candidateManifest.Specs[index].ID == workloadSubstrateProcessID {
+					candidateManifest.Specs[index].Role = "operator-api"
+				}
+			}
+			for index := range candidateState.Processes {
+				if candidateState.Processes[index].ID == workloadSubstrateProcessID {
+					candidateState.Processes[index].Role = "operator-api"
+				}
+			}
+		}},
+		{name: "proxy identity substitution", apply: func(candidateManifest *SupervisorFile, candidateState *SupervisorState) {
+			for index := range candidateManifest.Specs {
+				if candidateManifest.Specs[index].ID == workloadSubstrateProcessID {
+					candidateManifest.Specs[index].Identity = "forged-substrate-rpc"
+				}
+			}
+			for index := range candidateState.Processes {
+				if candidateState.Processes[index].ID == workloadSubstrateProcessID {
+					candidateState.Processes[index].Identity = "forged-substrate-rpc"
+				}
+			}
+		}},
+	} {
+		candidateManifest := manifest
+		candidateManifest.Specs = append([]ProcessSpec(nil), manifest.Specs...)
+		candidateState := state
+		candidateState.Processes = append([]ProcessState(nil), state.Processes...)
+		mutation.apply(&candidateManifest, &candidateState)
+		candidateHash, err := canonicalHashHex(candidateManifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidateState.ManifestHash = candidateHash
+		candidateManifestWire, err := json.Marshal(candidateManifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidateStateWire, err := json.Marshal(candidateState)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := atomicWrite(filepath.Join(stateDir, "supervisor.json"), candidateManifestWire, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), candidateStateWire, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := validateStoppedTopologyPolicyRevision(cfg, stateDir); err == nil {
+			t.Fatalf("stopped topology with %s was accepted", mutation.name)
+		}
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.json"), manifestWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(stateDir, "supervisor.state.json"), wire, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	topologyEntryIndex := len(entries) - 2
 	churnEntryIndex := len(entries) - 1

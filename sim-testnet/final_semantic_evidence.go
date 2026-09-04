@@ -3035,11 +3035,23 @@ func verifyFinalReserveArtifact(evidence *FinalSemanticEvidence, data []byte) er
 	if err := decodeStrictJSONBytes(data, &artifact); err != nil {
 		return fmt.Errorf("decode reserve accounting artifact: %w", err)
 	}
-	if artifact.Before == nil || artifact.After == nil || artifact.Before.FinalizedHead != evidence.Reserve.Before || artifact.After.FinalizedHead != evidence.Reserve.After ||
-		artifact.Before.ReservePrincipal != evidence.Reserve.PrincipalBeforeRao || artifact.After.ReservePrincipal != evidence.Reserve.PrincipalAfterRao ||
-		artifact.Before.ReserveLiveStake != evidence.Reserve.LiveStakeBeforeRao || artifact.After.ReserveLiveStake != evidence.Reserve.LiveStakeAfterRao ||
-		!finalJSONEqual(artifact.SettlementAccounting, evidence.SettlementAccounting) || !finalJSONEqual(artifact.PrincipalAdditions, evidence.Reserve.PrincipalAdditions) {
-		return errors.New("reserve accounting artifact differs from signed baseline/terminal/event evidence")
+	if artifact.Before == nil || artifact.After == nil {
+		return errors.New("reserve accounting artifact omits its baseline or terminal view")
+	}
+	if artifact.Before.FinalizedHead != evidence.Reserve.Before || artifact.After.FinalizedHead != evidence.Reserve.After {
+		return errors.New("reserve accounting artifact heads differ from signed baseline/terminal evidence")
+	}
+	if artifact.Before.ReservePrincipal != evidence.Reserve.PrincipalBeforeRao || artifact.After.ReservePrincipal != evidence.Reserve.PrincipalAfterRao {
+		return errors.New("reserve accounting artifact principal differs from signed baseline/terminal evidence")
+	}
+	if artifact.Before.ReserveLiveStake != evidence.Reserve.LiveStakeBeforeRao || artifact.After.ReserveLiveStake != evidence.Reserve.LiveStakeAfterRao {
+		return errors.New("reserve accounting artifact live stake differs from signed baseline/terminal evidence")
+	}
+	if !finalJSONEqual(artifact.SettlementAccounting, evidence.SettlementAccounting) {
+		return errors.New("reserve accounting artifact settlement state differs from signed baseline/terminal evidence")
+	}
+	if !finalJSONEqual(artifact.PrincipalAdditions, evidence.Reserve.PrincipalAdditions) {
+		return errors.New("reserve accounting artifact principal additions differ from signed event evidence")
 	}
 	return nil
 }
@@ -4548,7 +4560,7 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 	fmt.Fprintf(&out, "Archive-retention preflight `%s`, generated `%s`, proves public history depth %d blocks for the %d-block composite campaign plus a %d-block peer-review margin; immutable receipt [%s](%s).\n\n", evidence.ArchiveRetention.EvidenceHash, evidence.ArchiveRetention.GeneratedAt, evidence.ArchiveRetention.RequiredDepthBlocks, evidence.ArchiveRetention.PlannedSpanBlocks, evidence.ArchiveRetention.SafetyMarginBlocks, evidence.ArchiveRetention.Artifact.ContentHash, finalMarkdown(evidence.ArchiveRetention.Artifact.URI))
 	fmt.Fprintf(&out, "Authenticated public deployment manifest `%s` is replicated at exactly two distinct operator origins; primary/current URI `%s` is one of them. Public archive verification transcript `%s` contains %d pinned JSON-RPC exchanges against Substrate `%s` (terminal %d/`%s`) and EVM `%s` (terminal %d/`%s`). From a clean checkout with no existing simulator state, independently inspect and analyze the complete signed deployment/completion/archive graph through each origin:\n\n", evidence.PublicVerification.PublicManifestHash, finalMarkdown(evidence.PublicVerification.EvidenceURI), evidence.PublicVerification.TranscriptHash, len(evidence.PublicVerification.Exchanges), finalMarkdown(evidence.PublicVerification.SubstrateRPC), evidence.NativeTerminalHead.Number, evidence.NativeTerminalHead.Hash, finalMarkdown(evidence.PublicVerification.EVMRPC), evidence.EVMTerminalHead.Number, evidence.EVMTerminalHead.Hash)
 	for _, origin := range evidence.PublicVerification.OperatorEvidenceOrigins {
-		fmt.Fprintf(&out, "Operator %d manifest `%s`:\n\n```sh\ngo run ./sim-testnet inspect --config sim-testnet/testnet.yml --manifest %s --format json\ngo run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --format json\n```\n\n", origin.OperatorNoID, finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI))
+		fmt.Fprintf(&out, "Operator %d manifest `%s`:\n\n```sh\ngo run ./sim-testnet inspect --config sim-testnet/testnet.yml --manifest %s --format json\ngo run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --run-id %s --format json\n```\n\n", origin.OperatorNoID, finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(evidence.RunID))
 	}
 	fmt.Fprintf(&out, "Topology is exactly %d SDK miner instances hosted by %d swarm processes in %d candidate fleets competing for %d slots, with %d validator processes and %d operator pools. Full process and member censuses: [%s](%s), [%s](%s).\n\n", evidence.Topology.MinerSDKInstances, evidence.Topology.MinerSwarmProcesses, evidence.Topology.HeadCandidateFleets, evidence.Topology.HeadSlots, evidence.Topology.ValidatorProcesses, evidence.Topology.OperatorPools, evidence.Topology.MinerManifestHash, finalMarkdown(evidence.Topology.MinerManifest.URI), evidence.Topology.BindingManifestHash, finalMarkdown(evidence.Topology.BindingManifest.URI))
 	if lifecycle := evidence.FleetLifecycle; lifecycle != nil {

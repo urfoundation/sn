@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -176,7 +177,11 @@ func fleetLifecycleReleaseHandoffStateFixture(t *testing.T) (*liveFleetLifecycle
 	evidence.AcceptanceEndBlock = 2_500
 	evidence.AcceptanceTerminalBlock = 2_650
 	evidence.ReleaseHandoffSchedule = fleetLifecycleNativeScheduleFixture(t, "release-1.0", evidence.AcceptanceStartBlock, evidence.AcceptanceTerminalBlock)
-	evidence.ReleaseEVMEvidenceDeadlineBlock = evidence.ReleaseHandoffSchedule.ApplicationDeadlineBlock
+	releaseDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(evidence.AcceptanceTerminalBlock, evidence.ReleaseHandoffSchedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence.ReleaseEVMEvidenceDeadlineBlock = releaseDeadline
 	evidence.FallbackEffectiveEpoch = 102
 	evidence.ProviderEffectiveEpoch = 103
 	evidence.TerminalEffectiveEpoch = 105
@@ -288,6 +293,71 @@ func TestFleetLifecycleProductionAdoptsOnlyExactReleaseSuccessor(t *testing.T) {
 	}
 	if err := retry.BeginPhase("production-soak", "foreign-production-run"); err == nil {
 		t.Fatal("production successor was rebound to a fresh run identity")
+	}
+}
+
+func TestFleetLifecycleProductionAdvancePersistsAndResumesDistinctEVMEvidenceDeadline(t *testing.T) {
+	lifecycle, release := fleetLifecycleReleaseHandoffStateFixture(t)
+	if err := os.MkdirAll(filepath.Join(lifecycle.stateDir, "public"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePublicJSON(filepath.Join(lifecycle.stateDir, "public", "fleet-lifecycle.json"), release); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := fleetLifecycleCanonicalBytes(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := bytesSHA256(encoded)
+	if err := lifecycle.AuthenticateReleaseHandoff(encoded, hash, release.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.BeginPhase("production-soak", "production-run"); err != nil {
+		t.Fatal(err)
+	}
+	window := &ScenarioAcceptanceWindow{EpochCount: 3, EpochBlocks: 360, FinalizeOffsetBlocks: 180, FirstEpoch: release.TerminalEffectiveEpoch, StartBlock: 5_000, EndBlock: 6_080, TerminalBlock: 6_260}
+	if err := lifecycle.BindAcceptanceWindowForPhase("production-soak", window); err != nil {
+		t.Fatal(err)
+	}
+	schedule := fleetLifecycleNativeScheduleFixture(t, "production-soak", window.StartBlock, window.TerminalBlock)
+	deadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(window.TerminalBlock, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if schedule.ApplicationDeadlineBlock >= window.TerminalBlock || deadline != window.TerminalBlock {
+		t.Fatalf("production native/EVM deadlines=%d/%d, want native below terminal %d and EVM at terminal", schedule.ApplicationDeadlineBlock, deadline, window.TerminalBlock)
+	}
+	lifecycle.evidence.ProductionNativeSchedule = schedule
+	lifecycle.evidence.ProductionEVMEvidenceDeadlineBlock = deadline
+	// The test isolates the schedule persistence boundary; immutable on-chain
+	// lineage replay is covered separately and has already succeeded for this
+	// fixture before a production poll may run.
+	lifecycle.resumeValidated = true
+	observation := &ScenarioObservation{Status: &DeploymentStatus{Contracts: &ContractView{}}}
+	if err := lifecycle.Advance(context.Background(), observation, nil); err != nil {
+		t.Fatalf("production advance with distinct EVM/native bounds: %v", err)
+	}
+	persisted, err := loadFleetLifecycleEvidence(lifecycle.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.ProductionEVMEvidenceDeadlineBlock != window.TerminalBlock || persisted.ProductionNativeSchedule == nil || persisted.ProductionNativeSchedule.ApplicationDeadlineBlock != schedule.ApplicationDeadlineBlock {
+		t.Fatalf("persisted production deadlines=%d/%+v", persisted.ProductionEVMEvidenceDeadlineBlock, persisted.ProductionNativeSchedule)
+	}
+
+	retry := &liveFleetLifecycle{cfg: lifecycle.cfg, stateDir: lifecycle.stateDir, executor: lifecycle.executor}
+	if err := retry.AuthenticateReleaseHandoff(encoded, hash, release.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := retry.BeginPhase("production-soak", "production-run"); err != nil {
+		t.Fatalf("production schedule could not resume after persistence: %v", err)
+	}
+	for _, drift := range []uint64{schedule.ApplicationDeadlineBlock, deadline - 1, deadline + 1} {
+		candidate := *persisted
+		candidate.ProductionEVMEvidenceDeadlineBlock = drift
+		if err := retry.validatePersistedStateForPhase("production-soak", candidate.ProductionRunID, &candidate); err == nil {
+			t.Fatalf("off-by-one production EVM deadline %d was accepted", drift)
+		}
 	}
 }
 

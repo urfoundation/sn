@@ -257,7 +257,7 @@ func (self *operatorAPIAdversary) Sample(ctx context.Context, phase adversarySam
 		paths := []string{
 			"/verify/stats?limit=100000",
 			"/verify/proofs?limit=10000",
-			fmt.Sprintf("/sn/artifacts?deployment_id=%s&netuid=%d", self.cfg.Config.Deployment.DeploymentID, self.cfg.Netuid),
+			fmt.Sprintf("/sn/artifacts?deployment_id=%s&netuid=%d&limit=%d", self.cfg.Config.Deployment.DeploymentID, self.cfg.Netuid, payoutArtifactHistoryPageObjects),
 			"/verify/keys",
 		}
 		endpoint = base + paths[int(sequence%uint64(len(paths)))]
@@ -625,40 +625,40 @@ func (self *artifactAdversary) FaultWindow() *adversaryFaultWindow { return self
 func (self *artifactAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
 	operator := 1 + int(sequence%uint64(self.cfg.Config.Topology.Operators))
 	base := fmt.Sprintf("http://127.0.0.1:%d", 18080+operator)
-	history := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", base, self.cfg.Config.Deployment.DeploymentID, self.cfg.Netuid)
-	status, body, err := self.http.do(ctx, http.MethodGet, history, "", nil, 16*1024*1024)
-	if err != nil || status/100 != 2 {
+	keys, requests, err := fetchPayoutArtifactHistory(ctx, base, self.cfg.Config.Deployment.DeploymentID, self.cfg.Netuid, func(ctx context.Context, endpoint string, limit int64) ([]byte, int, error) {
+		status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, limit)
+		return body, status, err
+	})
+	if err != nil {
 		if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
-			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled artifact API fault status=%d error=%v", operator, status, err), Requests: 1, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
+			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled artifact API fault error=%v", operator, err), Requests: requests, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
 		}
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("history status=%d error=%v", status, err), Requests: 1, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("history error=%v", err), Requests: requests, MaxInFlight: 1}
 	}
-	keys := artifactHistoryKeys(body)
 	if len(keys) == 0 {
-		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: fmt.Sprintf("operator=%d has no finalized artifact yet", operator), Requests: 1, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeSkipped, Detail: fmt.Sprintf("operator=%d has no finalized artifact yet", operator), Requests: requests, MaxInFlight: 1}
 	}
-	sort.Strings(keys)
 	hash := strings.TrimSuffix(filepath.Base(keys[len(keys)-1]), filepath.Ext(keys[len(keys)-1]))
-	status, body, err = self.http.do(ctx, http.MethodGet, base+"/sn/artifact?hash=sha256:"+hash, "", nil, 32*1024*1024)
+	status, body, err := self.http.do(ctx, http.MethodGet, base+"/sn/artifact?hash=sha256:"+hash, "", nil, 32*1024*1024)
 	if err != nil || status/100 != 2 {
 		if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
-			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled artifact API fault status=%d error=%v", operator, status, err), Requests: 2, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
+			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled artifact API fault status=%d error=%v", operator, status, err), Requests: requests + 1, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
 		}
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("artifact status=%d error=%v", status, err), Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("artifact status=%d error=%v", status, err), Requests: requests + 1, MaxInFlight: 1}
 	}
 	var artifact payoutArtifact
 	if json.Unmarshal(body, &artifact) != nil || verifyPayoutArtifact(&artifact) != nil {
-		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "canonical artifact failed local verification", Requests: 2, MaxInFlight: 1}
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "canonical artifact failed local verification", Requests: requests + 1, MaxInFlight: 1}
 	}
 	if phase == adversaryAttackPhase {
 		tampered := artifact
 		tampered.NoID++
 		if verifyPayoutArtifact(&tampered) == nil {
-			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "tampered artifact was accepted", Requests: 2, MaxInFlight: 1}
+			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "tampered artifact was accepted", Requests: requests + 1, MaxInFlight: 1}
 		}
 	}
 	return adversarySampleResult{
-		Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("operator=%d artifact=%s tamper_rejected=%t", operator, artifact.ContentHash, phase == adversaryAttackPhase), Requests: 2, MaxInFlight: 1,
+		Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("operator=%d artifact=%s tamper_rejected=%t", operator, artifact.ContentHash, phase == adversaryAttackPhase), Requests: requests + 1, MaxInFlight: 1,
 		Metrics: map[string]uint64{
 			"missing_artifacts": 0, "hash_mismatches": 0, "origin_equivocations": 0,
 			"tamper_rejects":               boolUint64(phase == adversaryAttackPhase),
@@ -911,16 +911,14 @@ func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, state
 	if deployment.SettlementVault == (common.Address{}) || deployment.CoordinatorProxy == (common.Address{}) {
 		return evidence, errors.New("deployed contract identity has a zero address")
 	}
-	historyURL := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", operatorBase, cfg.Config.Deployment.DeploymentID, cfg.Netuid)
-	evidence.Requests++
-	status, body, err := operatorHTTP.do(ctx, http.MethodGet, historyURL, "", nil, 16*1024*1024)
+	keys, historyRequests, err := fetchPayoutArtifactHistory(ctx, operatorBase, cfg.Config.Deployment.DeploymentID, cfg.Netuid, func(ctx context.Context, endpoint string, limit int64) ([]byte, int, error) {
+		status, body, err := operatorHTTP.do(ctx, http.MethodGet, endpoint, "", nil, limit)
+		return body, status, err
+	})
+	evidence.Requests += historyRequests
 	if err != nil {
 		return evidence, fmt.Errorf("%w: fetch payout artifact history: %v", errLiveMerkleOperatorUnavailable, err)
 	}
-	if status/100 != 2 {
-		return evidence, fmt.Errorf("%w: fetch payout artifact history returned HTTP %d", errLiveMerkleOperatorUnavailable, status)
-	}
-	keys := artifactHistoryKeys(body)
 	if len(keys) == 0 {
 		return evidence, fmt.Errorf("%w: operator has no payout artifact", errLiveMerkleEvidenceUnavailable)
 	}
@@ -938,7 +936,7 @@ func liveInvalidMerkleProofProbe(ctx context.Context, cfg *ResolvedConfig, state
 		}
 		seenKeys[hash] = true
 		evidence.Requests++
-		status, body, err = operatorHTTP.do(ctx, http.MethodGet, operatorBase+"/sn/artifact?hash=sha256:"+hash, "", nil, 32*1024*1024)
+		status, body, err := operatorHTTP.do(ctx, http.MethodGet, operatorBase+"/sn/artifact?hash=sha256:"+hash, "", nil, 32*1024*1024)
 		if err != nil {
 			return evidence, fmt.Errorf("%w: fetch payout artifact: %v", errLiveMerkleOperatorUnavailable, err)
 		}

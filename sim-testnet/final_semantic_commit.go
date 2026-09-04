@@ -407,6 +407,11 @@ func authenticateFinalSemanticOriginalClosure(cfg *ResolvedConfig, roles *RoleSe
 	if err != nil || !strings.EqualFold(wantResultHash, result.EvidenceHash) {
 		return nil, stateMismatchError(err, "completed semantic scenario result hash differs")
 	}
+	if result.Name == "production-soak" {
+		if _, _, err := validateExactReleaseCampaignGate(cfg, stateRoot, roles, result.PriorRelease); err != nil {
+			return nil, fmt.Errorf("authenticate exact semantic predecessor: %w", err)
+		}
+	}
 	owner, ok := roles.EVM["testnet-owner"]
 	if !ok {
 		return nil, errors.New("semantic supplement testnet owner role is missing")
@@ -461,6 +466,15 @@ func authenticateFinalSemanticOriginalClosure(cfg *ResolvedConfig, roles *RoleSe
 	var archivedResult ScenarioResult
 	if err := decodeStrictJSONBytes(resultRaw, &archivedResult); err != nil || !finalJSONEqual(archivedResult, *result) {
 		return nil, stateMismatchError(err, "scenario result differs from the owner-signed archive")
+	}
+	if err := validateScenarioCampaignResult(cfg, &archivedResult, archivedResult.Name); err != nil {
+		return nil, fmt.Errorf("authenticate semantic scenario result: %w", err)
+	}
+	if err := validateScenarioCampaignStartMarkerBytes(cfg, &archivedResult, archivedResult.Name, owner.Address, authenticatedRaw[scenarioCampaignStartFilename]); err != nil {
+		return nil, fmt.Errorf("authenticate semantic campaign start marker: %w", err)
+	}
+	if err := validateScenarioArchiveLineage(cfg, &archivedResult, &completePayload, authenticatedRaw); err != nil {
+		return nil, err
 	}
 	for _, required := range []string{"final-inputs/manifest.json", finalSemanticCaptureStatusFilename} {
 		if _, ok := authenticatedRaw[required]; !ok {
@@ -1005,15 +1019,15 @@ func verifyFinalSemanticSupplementEnvelope(ctx context.Context, cfg *ResolvedCon
 	for _, file := range files {
 		byPath[file.Path] = file.Data
 	}
-	var semantic FinalSemanticEvidence
-	if err := decodeStrictJSONBytes(byPath[finalSemanticEvidenceFilename], &semantic); err != nil || semantic.PublicVerification == nil || !strings.EqualFold(semantic.EvidenceHash, payload.SemanticEvidenceHash) || !strings.EqualFold(semantic.PublicVerification.TranscriptHash, payload.PublicTranscriptHash) {
-		return nil, nil, stateMismatchError(err, "semantic supplement object hashes differ")
+	semantic, err := validateFinalSemanticSupplementOutput(payload, byPath)
+	if err != nil {
+		return nil, nil, err
 	}
 	verified, _, err := loadAndVerifyFinalSemanticBytes(ctx, cfg, roles, result, files, load)
 	if err != nil {
 		return nil, nil, err
 	}
-	if !strings.EqualFold(verified.EvidenceHash, payload.SemanticEvidenceHash) {
+	if !strings.EqualFold(verified.EvidenceHash, semantic.EvidenceHash) {
 		return nil, nil, errors.New("verified semantic evidence hash differs from supplement")
 	}
 	return payload, files, nil
@@ -1030,10 +1044,17 @@ func verifyFinalSemanticSupplementBinding(cfg *ResolvedConfig, result *ScenarioR
 	if err := decodeStrictJSONBytes(envelope.Payload, &payload); err != nil {
 		return nil, nil, err
 	}
-	if payload.Schema != finalSemanticSupplementSchema || payload.Status != finalSemanticSupplementStatus || payload.Phase != result.Name || payload.RunID != result.RunID || !strings.EqualFold(payload.ResultHash, result.EvidenceHash) || !strings.EqualFold(payload.ScenarioCompleteHash, closure.complete.ContentHash) || !strings.EqualFold(payload.ScenarioEvidenceManifestHash, closure.manifest.ContentHash) || !strings.EqualFold(payload.CaptureStatusHash, closure.capture.EvidenceHash) || !strings.EqualFold(payload.CollectedInputsHash, closure.collected.EvidenceHash) || !validCanonicalHashHex(payload.SemanticEvidenceHash) || !validCanonicalHashHex(payload.PublicTranscriptHash) {
-		return nil, nil, errors.New("semantic supplement payload does not bind the completed capture")
+	if err := validateFinalSemanticSupplementPayload(&payload, result, closure.complete.ContentHash, closure.manifest.ContentHash, closure.capture.EvidenceHash, closure.collected.EvidenceHash); err != nil {
+		return nil, nil, err
 	}
-	files, err := loadFinalSemanticSupplementFiles(cfg, closure, &payload, stateRoot)
+	fileEnvelopes, err := loadFinalSemanticSupplementFileEnvelopes(cfg, closure, &payload, stateRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateFinalSemanticSupplementCausalOrder(result, closure.manifest, closure.complete, fileEnvelopes, envelope); err != nil {
+		return nil, nil, err
+	}
+	files, err := decodeFinalSemanticSupplementFiles(&payload, fileEnvelopes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1045,34 +1066,53 @@ func loadAndVerifyFinalSemanticBytes(ctx context.Context, cfg *ResolvedConfig, r
 	for _, file := range files {
 		byPath[file.Path] = file.Data
 	}
-	var semantic FinalSemanticEvidence
-	if err := decodeStrictJSONBytes(byPath[finalSemanticEvidenceFilename], &semantic); err != nil {
+	semantic, err := validateFinalSemanticOutputFiles(byPath)
+	if err != nil {
 		return nil, nil, err
 	}
-	if err := VerifyFinalSemanticEvidence(&semantic); err != nil || semantic.PublicVerification == nil {
+	if err := VerifyFinalSemanticEvidence(semantic); err != nil || semantic.PublicVerification == nil {
 		return nil, nil, stateMismatchError(err, "signed final semantic evidence is invalid")
 	}
-	if err := validateScenarioFinalSemanticSource(cfg, roles, result, &semantic); err != nil {
+	if err := validateScenarioFinalSemanticSource(cfg, roles, result, semantic); err != nil {
 		return nil, nil, err
+	}
+	signedLoad := func(loadCtx context.Context, locator FinalArtifactLocator) ([]byte, error) {
+		if data, ok := byPath[locator.URI]; ok {
+			return append([]byte(nil), data...), nil
+		}
+		return load(loadCtx, locator)
+	}
+	if err := VerifyFinalSemanticArtifacts(ctx, semantic, signedLoad); err != nil {
+		return nil, nil, err
+	}
+	return semantic, byPath, nil
+}
+
+// validateFinalSemanticOutputFiles enforces the exact canonical output pair
+// and proves that carried final-derived files equal, and exhaust, its locators.
+func validateFinalSemanticOutputFiles(files map[string][]byte) (*FinalSemanticEvidence, error) {
+	var semantic FinalSemanticEvidence
+	if err := decodeStrictJSONBytes(files[finalSemanticEvidenceFilename], &semantic); err != nil {
+		return nil, fmt.Errorf("decode signed final semantic evidence: %w", err)
 	}
 	canonicalJSON, err := json.MarshalIndent(&semantic, "", "  ")
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if canonicalJSON = append(canonicalJSON, '\n'); !bytes.Equal(canonicalJSON, byPath[finalSemanticEvidenceFilename]) {
-		return nil, nil, errors.New("signed final semantic evidence bytes are not canonical")
+	if canonicalJSON = append(canonicalJSON, '\n'); !bytes.Equal(canonicalJSON, files[finalSemanticEvidenceFilename]) {
+		return nil, errors.New("signed final semantic evidence bytes are not canonical")
 	}
 	markdown, err := RenderFinalSemanticEvidenceMarkdown(&semantic)
-	if err != nil || !bytes.Equal(markdown, byPath[finalSemanticMarkdownFilename]) {
-		return nil, nil, stateMismatchError(err, "signed FINAL.md differs from semantic evidence")
+	if err != nil || !bytes.Equal(markdown, files[finalSemanticMarkdownFilename]) {
+		return nil, stateMismatchError(err, "authenticated FINAL.md does not match the sealed final semantic evidence")
 	}
 	encoded, err := json.Marshal(&semantic)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	references := map[string]campaignArtifactReference{}
 	if err := collectCampaignArtifactReferences(encoded, references, 0); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	wantDerived := map[string]campaignArtifactReference{}
 	for uri, reference := range references {
@@ -1081,34 +1121,132 @@ func loadAndVerifyFinalSemanticBytes(ctx context.Context, cfg *ResolvedConfig, r
 		}
 	}
 	for path, reference := range wantDerived {
-		data, ok := byPath[path]
+		data, ok := files[path]
 		if !ok || uint64(len(data)) != reference.Size || !strings.EqualFold(bytesSHA256(data), reference.ContentHash) {
-			return nil, nil, fmt.Errorf("signed derived artifact %s differs from semantic locator", path)
+			return nil, fmt.Errorf("signed derived artifact %s differs from semantic locator", path)
 		}
 	}
-	for path := range byPath {
+	for path := range files {
 		if strings.HasPrefix(path, "final-derived/") {
 			if _, ok := wantDerived[path]; !ok {
-				return nil, nil, fmt.Errorf("signed semantic supplement contains unreferenced derived file %s", path)
+				return nil, fmt.Errorf("signed semantic supplement contains unreferenced derived file %s", path)
 			}
 		}
 	}
-	signedLoad := func(loadCtx context.Context, locator FinalArtifactLocator) ([]byte, error) {
-		if data, ok := byPath[locator.URI]; ok {
-			return append([]byte(nil), data...), nil
+	return &semantic, nil
+}
+
+// validateFinalSemanticSupplementOutput additionally binds the canonical
+// output pair to the hashes committed by its semantic_verified marker.
+func validateFinalSemanticSupplementOutput(payload *FinalSemanticSupplementPayload, files map[string][]byte) (*FinalSemanticEvidence, error) {
+	semantic, err := validateFinalSemanticOutputFiles(files)
+	if err != nil {
+		return nil, err
+	}
+	if payload == nil || semantic.PublicVerification == nil || !strings.EqualFold(semantic.EvidenceHash, payload.SemanticEvidenceHash) || !strings.EqualFold(semantic.PublicVerification.TranscriptHash, payload.PublicTranscriptHash) {
+		return nil, errors.New("semantic supplement object hashes differ")
+	}
+	return semantic, nil
+}
+
+// canonicalEvidenceCreationTime accepts only the UTC wire form signed into an
+// evidence envelope so equivalent offsets cannot alter causal comparisons.
+func canonicalEvidenceCreationTime(envelope *ReleaseEvidenceEnvelope) (time.Time, error) {
+	if envelope == nil {
+		return time.Time{}, errors.New("evidence envelope is missing")
+	}
+	created, err := time.Parse(time.RFC3339Nano, envelope.CreatedAt)
+	if err != nil || envelope.CreatedAt != created.UTC().Format(time.RFC3339Nano) {
+		return time.Time{}, stateMismatchError(err, "evidence envelope timestamp is not canonical UTC")
+	}
+	return created, nil
+}
+
+// validateFinalSemanticSupplementCausalOrder proves the semantic publication
+// follows the immutable capture, and every carried file precedes its commit.
+func validateFinalSemanticSupplementCausalOrder(result *ScenarioResult, manifest, complete *ReleaseEvidenceEnvelope, files []*ReleaseEvidenceEnvelope, supplement *ReleaseEvidenceEnvelope) error {
+	if result == nil || manifest == nil || complete == nil || supplement == nil || len(files) == 0 {
+		return errors.New("semantic supplement causal context is incomplete")
+	}
+	completed, err := time.Parse(time.RFC3339Nano, result.CompletedAt)
+	if err != nil || result.CompletedAt != completed.UTC().Format(time.RFC3339Nano) {
+		return stateMismatchError(err, "scenario completion timestamp is not canonical UTC")
+	}
+	manifestCreated, err := canonicalEvidenceCreationTime(manifest)
+	if err != nil {
+		return fmt.Errorf("campaign evidence manifest: %w", err)
+	}
+	completeCreated, err := canonicalEvidenceCreationTime(complete)
+	if err != nil {
+		return fmt.Errorf("scenario completion: %w", err)
+	}
+	supplementCreated, err := canonicalEvidenceCreationTime(supplement)
+	if err != nil {
+		return fmt.Errorf("semantic supplement: %w", err)
+	}
+	if completed.After(manifestCreated) || manifestCreated.After(completeCreated) || completeCreated.After(supplementCreated) {
+		return errors.New("scenario result, evidence manifest, completion, and semantic supplement have invalid causal ordering")
+	}
+	for _, file := range files {
+		fileCreated, err := canonicalEvidenceCreationTime(file)
+		if err != nil {
+			return fmt.Errorf("semantic supplement file: %w", err)
 		}
-		return load(loadCtx, locator)
+		if fileCreated.Before(completeCreated) || fileCreated.After(supplementCreated) {
+			return errors.New("semantic supplement file has invalid causal ordering")
+		}
 	}
-	if err := VerifyFinalSemanticArtifacts(ctx, &semantic, signedLoad); err != nil {
-		return nil, nil, err
+	return nil
+}
+
+// validateFinalSemanticSupplementPayload binds a semantic_verified statement
+// to one exact closed scenario capture without depending on its storage form.
+func validateFinalSemanticSupplementPayload(payload *FinalSemanticSupplementPayload, result *ScenarioResult, completeHash, manifestHash, captureHash, collectedHash string) error {
+	if payload == nil || result == nil || !validCanonicalHashHex(result.EvidenceHash) || !validSHA256ContentHash(completeHash) || !validSHA256ContentHash(manifestHash) || !validCanonicalHashHex(captureHash) || !validCanonicalHashHex(collectedHash) || payload.Schema != finalSemanticSupplementSchema || payload.Status != finalSemanticSupplementStatus || payload.Phase != result.Name || payload.RunID != result.RunID || !strings.EqualFold(payload.ResultHash, result.EvidenceHash) || !strings.EqualFold(payload.ScenarioCompleteHash, completeHash) || !strings.EqualFold(payload.ScenarioEvidenceManifestHash, manifestHash) || !strings.EqualFold(payload.CaptureStatusHash, captureHash) || !strings.EqualFold(payload.CollectedInputsHash, collectedHash) || !validCanonicalHashHex(payload.SemanticEvidenceHash) || !validCanonicalHashHex(payload.PublicTranscriptHash) {
+		return errors.New("semantic supplement payload does not bind the completed capture")
 	}
-	return &semantic, byPath, nil
+	return validateFinalSemanticSupplementFileManifest(payload)
+}
+
+// validateFinalSemanticSupplementFileManifest enforces the deterministic,
+// bounded census shared by local validation and secretless public replay.
+func validateFinalSemanticSupplementFileManifest(payload *FinalSemanticSupplementPayload) error {
+	if payload == nil || len(payload.Files) < 2 || len(payload.Files) > maximumCampaignEvidenceObjects {
+		return errors.New("semantic supplement file manifest is incomplete")
+	}
+	seenEvidence, seenMarkdown := false, false
+	seenEnvelopes := make(map[string]bool, len(payload.Files))
+	previous := ""
+	var aggregate uint64
+	for index, entry := range payload.Files {
+		if err := validateFinalSemanticPostCapturePath(entry.Path); err != nil || index > 0 && entry.Path <= previous || entry.Size == 0 || entry.Size > maximumCampaignEvidenceRawFileBytes || !validSHA256ContentHash(entry.ContentHash) || !validSHA256ContentHash(entry.EnvelopeHash) || seenEnvelopes[strings.ToLower(entry.EnvelopeHash)] || entry.Size > maximumCampaignEvidenceAggregateBytes-aggregate {
+			return stateMismatchError(err, "semantic supplement file manifest is invalid at %q", entry.Path)
+		}
+		aggregate += entry.Size
+		seenEvidence = seenEvidence || entry.Path == finalSemanticEvidenceFilename
+		seenMarkdown = seenMarkdown || entry.Path == finalSemanticMarkdownFilename
+		seenEnvelopes[strings.ToLower(entry.EnvelopeHash)] = true
+		previous = entry.Path
+	}
+	if !seenEvidence || !seenMarkdown {
+		return errors.New("semantic supplement omits its evidence or markdown output")
+	}
+	return nil
 }
 
 func loadFinalSemanticSupplementFiles(cfg *ResolvedConfig, closure *finalSemanticOriginalClosure, payload *FinalSemanticSupplementPayload, stateRoot string) ([]finalSemanticRawFile, error) {
 	envelopes, err := loadFinalSemanticSupplementFileEnvelopes(cfg, closure, payload, stateRoot)
 	if err != nil {
 		return nil, err
+	}
+	return decodeFinalSemanticSupplementFiles(payload, envelopes)
+}
+
+// decodeFinalSemanticSupplementFiles reconstructs the exact ordered semantic
+// file set only after every signed envelope matches its manifest entry.
+func decodeFinalSemanticSupplementFiles(payload *FinalSemanticSupplementPayload, envelopes []*ReleaseEvidenceEnvelope) ([]finalSemanticRawFile, error) {
+	if payload == nil || len(envelopes) != len(payload.Files) {
+		return nil, errors.New("semantic supplement file envelopes do not match their manifest")
 	}
 	result := make([]finalSemanticRawFile, 0, len(envelopes))
 	for index, envelope := range envelopes {
@@ -1126,20 +1264,14 @@ func loadFinalSemanticSupplementFiles(cfg *ResolvedConfig, closure *finalSemanti
 }
 
 func loadFinalSemanticSupplementFileEnvelopes(cfg *ResolvedConfig, closure *finalSemanticOriginalClosure, payload *FinalSemanticSupplementPayload, stateRoot string) ([]*ReleaseEvidenceEnvelope, error) {
-	if cfg == nil || closure == nil || payload == nil || len(payload.Files) < 2 || len(payload.Files) > maximumCampaignEvidenceObjects {
+	if cfg == nil || closure == nil {
 		return nil, errors.New("semantic supplement file manifest is incomplete")
 	}
-	seenEvidence, seenMarkdown := false, false
-	previous := ""
-	var aggregate uint64
+	if err := validateFinalSemanticSupplementFileManifest(payload); err != nil {
+		return nil, err
+	}
 	result := make([]*ReleaseEvidenceEnvelope, 0, len(payload.Files))
-	for index, entry := range payload.Files {
-		if err := validateFinalSemanticPostCapturePath(entry.Path); err != nil || (index > 0 && entry.Path <= previous) || entry.Size == 0 || entry.Size > maximumCampaignEvidenceRawFileBytes || !validSHA256ContentHash(entry.ContentHash) || !validSHA256ContentHash(entry.EnvelopeHash) || entry.Size > maximumCampaignEvidenceAggregateBytes-aggregate {
-			return nil, stateMismatchError(err, "semantic supplement file manifest is invalid at %q", entry.Path)
-		}
-		aggregate += entry.Size
-		seenEvidence = seenEvidence || entry.Path == finalSemanticEvidenceFilename
-		seenMarkdown = seenMarkdown || entry.Path == finalSemanticMarkdownFilename
+	for _, entry := range payload.Files {
 		pathHash := sha256.Sum256([]byte(entry.Path))
 		path := filepath.Join(finalSemanticSupplementStageRoot(stateRoot, payload.RunID), "files", hex.EncodeToString(pathHash[:])+".evidence.json")
 		var envelope ReleaseEvidenceEnvelope
@@ -1150,10 +1282,6 @@ func loadFinalSemanticSupplementFileEnvelopes(cfg *ResolvedConfig, closure *fina
 			return nil, stateMismatchError(err, "staged semantic file %s envelope is invalid", entry.Path)
 		}
 		result = append(result, &envelope)
-		previous = entry.Path
-	}
-	if !seenEvidence || !seenMarkdown {
-		return nil, errors.New("semantic supplement omits its evidence or markdown output")
 	}
 	return result, nil
 }

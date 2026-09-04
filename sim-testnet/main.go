@@ -26,8 +26,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
-	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, Format string
-	Apply, Detach                                                                                                            bool
+	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
+	Apply, Detach                                                                                                                   bool
 }
 
 func usage() {
@@ -63,6 +63,7 @@ Common options:
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
+  --run-id ID         exact signed campaign run for public analyze
 `)
 }
 
@@ -89,6 +90,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.Format, "format", "human", "")
 	fs.StringVar(&o.Name, "name", "", "")
 	fs.StringVar(&o.Manifest, "manifest", "", "")
+	fs.StringVar(&o.RunID, "run-id", "", "")
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -99,6 +101,12 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if o.Format != "human" && o.Format != "json" {
 		return "", o, errors.New("--format must be human or json")
+	}
+	if o.RunID != "" && (cmd != "analyze" || o.Manifest == "") {
+		return "", o, errors.New("--run-id is valid only for public analyze with --manifest")
+	}
+	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
+		return "", o, errors.New("public analyze requires a valid exact --run-id")
 	}
 	return cmd, o, nil
 }
@@ -324,7 +332,7 @@ func runMain(args []string) error {
 		v, err := Inspect(ctx, readResolved, stateDir, o.Manifest)
 		return printResult(o.Format, v, err)
 	case "analyze":
-		v, err := Analyze(ctx, readResolved, stateDir, o.Manifest)
+		v, err := Analyze(ctx, readResolved, stateDir, o.Manifest, o.RunID)
 		return printResult(o.Format, v, err)
 	case "tail":
 		return Tail(ctx, stateDir, os.Stdout)

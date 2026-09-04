@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -1079,16 +1080,25 @@ func validateScenarioCampaignStartMarker(cfg *ResolvedConfig, roles *RoleSecrets
 	if !ok {
 		return errors.New("scenario campaign start marker has no owner")
 	}
-	key, err := crypto.HexToECDSA(strings.TrimPrefix(owner.PrivateKeyHex, "0x"))
+	raw, err := os.ReadFile(filepath.Join(runDir, scenarioCampaignStartFilename))
 	if err != nil {
-		return err
-	}
-	var envelope ReleaseEvidenceEnvelope
-	if err := decodeStrictJSONFile(filepath.Join(runDir, scenarioCampaignStartFilename), &envelope); err != nil {
 		return fmt.Errorf("scenario campaign start marker: %w", err)
 	}
-	if err := verifyEvidence(&envelope, &key.PublicKey); err != nil {
-		return fmt.Errorf("scenario campaign start marker signature: %w", err)
+	return validateScenarioCampaignStartMarkerBytes(cfg, result, name, owner.Address, raw)
+}
+
+// validateScenarioCampaignStartMarkerBytes authenticates the owner-signed
+// acceptance boundary directly from an already closed archive byte graph.
+func validateScenarioCampaignStartMarkerBytes(cfg *ResolvedConfig, result *ScenarioResult, name, expectedOwner string, raw []byte) error {
+	if cfg == nil || cfg.Config == nil || result == nil || !common.IsHexAddress(expectedOwner) || common.HexToAddress(expectedOwner) == (common.Address{}) || len(raw) == 0 {
+		return errors.New("scenario campaign start marker context is incomplete")
+	}
+	var envelope ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONBytes(raw, &envelope); err != nil {
+		return fmt.Errorf("scenario campaign start marker: %w", err)
+	}
+	if err := verifyEvidence(&envelope, nil); err != nil || !strings.EqualFold(envelope.Signer.Hex(), expectedOwner) {
+		return stateMismatchError(err, "scenario campaign start marker signature or owner is invalid")
 	}
 	if envelope.Kind != scenarioCampaignAttemptEvidenceKind || envelope.RunID != result.RunID || envelope.DeploymentID != result.DeploymentID || envelope.ChainID != result.ChainID || envelope.Netuid != result.Netuid || !strings.EqualFold(envelope.GenesisHash, result.GenesisHash) {
 		return errors.New("scenario campaign start marker has the wrong deployment or run identity")

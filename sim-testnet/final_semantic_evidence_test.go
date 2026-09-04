@@ -519,6 +519,9 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 	for _, origin := range first.PublicVerification.OperatorEvidenceOrigins {
 		for _, command := range []string{"inspect", "analyze"} {
 			want := fmt.Sprintf("go run ./sim-testnet %s --config sim-testnet/testnet.yml --manifest %s --format json", command, origin.ManifestURI)
+			if command == "analyze" {
+				want = fmt.Sprintf("go run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --run-id %s --format json", origin.ManifestURI, first.RunID)
+			}
 			if !bytes.Contains(markdown, []byte(want)) {
 				t.Fatalf("FINAL.md does not emit operator %d %s command", origin.OperatorNoID, command)
 			}
@@ -1590,7 +1593,11 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	t.Helper()
 	artifacts := map[string][]byte{}
 	artifact := func(kind, name string, data []byte) FinalArtifactLocator {
-		uri := "artifacts/" + name
+		// Production semantic reconstruction persists every derived proof under
+		// this post-capture namespace. Keeping the release-scale fixture in the
+		// same namespace preserves locator identity inside artifacts which embed
+		// other locators, such as reserve principal-addition receipts.
+		uri := "final-derived/" + name
 		artifacts[uri] = append([]byte(nil), data...)
 		return FinalArtifactLocator{Kind: kind, URI: uri, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}

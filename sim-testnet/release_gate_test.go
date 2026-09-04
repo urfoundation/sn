@@ -152,16 +152,16 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 }
 
 // Keep enough deadline headroom for the complete launch-scale race suite. The
-// measured baseline exceeded 9m40s before the policy-migration regressions were
-// added, so restoring Go's 10-minute default would deterministically truncate
-// required coverage on this release host.
+// three focused integrity shards exceed 62 minutes when serialized, before the
+// rest of the package and concurrent live-campaign load. A 90-minute deadline
+// retains deterministic headroom without changing test selection.
 func TestLocalReleaseGateAllowsCompleteSimulatorRaceSuite(t *testing.T) {
 	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-local.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(scriptBytes), "go test -race -timeout 15m ./sim-testnet") {
-		t.Fatal("local release gate lacks the reviewed 15-minute full simulator race deadline")
+	if !strings.Contains(string(scriptBytes), "go test -race -timeout 90m ./sim-testnet") {
+		t.Fatal("local release gate lacks the reviewed 90-minute full simulator race deadline")
 	}
 }
 
@@ -692,7 +692,7 @@ func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
 		"go test ./...",
 		"ProduceFinalSemanticOutputs",
 		"FinalSemanticEvidenceBuild",
-		"go test -race -timeout 15m ./sim-testnet",
+		"go test -race -timeout 90m ./sim-testnet",
 		"test-solidity-static.sh",
 	} {
 		if strings.Contains(script, deferred) {

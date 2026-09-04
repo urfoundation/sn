@@ -1515,12 +1515,19 @@ func newFinalSemanticBarrierFixture(t *testing.T) *finalSemanticBarrierFixture {
 	return &finalSemanticBarrierFixture{cfg: cfg, stateRoot: stateRoot, prior: prior, roles: roles, priorRunRoot: priorRunRoot, production: production, productionRunRoot: filepath.Join(stateRoot, "runs", production.RunID)}
 }
 
+// writeMarker publishes the canonical readiness marker used by barrier tests.
 func (fixture *finalSemanticBarrierFixture) writeMarker(t *testing.T, resultHash string) string {
+	return fixture.writeMarkerWithClosureHashes(t, resultHash, finalTestHex(0x33), finalTestHex(0x44))
+}
+
+// writeMarkerWithClosureHashes lets barrier regressions distinguish canonical
+// evidence identities from SHA-256 storage-address identities.
+func (fixture *finalSemanticBarrierFixture) writeMarkerWithClosureHashes(t *testing.T, resultHash, captureHash, collectedHash string) string {
 	t.Helper()
 	payload := FinalSemanticSupplementPayload{
 		Schema: finalSemanticSupplementSchema, Status: finalSemanticSupplementStatus, Phase: "release-1.0", RunID: fixture.prior.RunID, ResultHash: resultHash,
 		ScenarioCompleteHash: "sha256:" + strings.Repeat("11", 32), ScenarioEvidenceManifestHash: "sha256:" + strings.Repeat("22", 32),
-		CaptureStatusHash: "sha256:" + strings.Repeat("33", 32), CollectedInputsHash: "sha256:" + strings.Repeat("44", 32),
+		CaptureStatusHash: captureHash, CollectedInputsHash: collectedHash,
 		SemanticEvidenceHash: finalTestHex(0x81), PublicTranscriptHash: finalTestHex(0x82),
 		Files: []FinalSemanticSupplementFile{
 			{Path: finalSemanticMarkdownFilename, ContentHash: "sha256:" + strings.Repeat("55", 32), Size: 1, EnvelopeHash: "sha256:" + strings.Repeat("66", 32)},
@@ -1605,6 +1612,14 @@ func TestFinalSemanticProductionCollectorRejectsAuthenticatedWrongReleaseMarker(
 	fixture.writeMarker(t, finalTestHex(0xee))
 	if err := awaitFinalPriorSemanticReady(context.Background(), fixture.cfg, fixture.stateRoot, fixture.production); err == nil || !strings.Contains(err.Error(), "does not bind") {
 		t.Fatalf("authenticated marker for another result was accepted: %v", err)
+	}
+}
+
+func TestFinalSemanticProductionCollectorRejectsStorageHashesForCanonicalClosure(t *testing.T) {
+	fixture := newFinalSemanticBarrierFixture(t)
+	fixture.writeMarkerWithClosureHashes(t, fixture.prior.EvidenceHash, "sha256:"+strings.Repeat("33", 32), "sha256:"+strings.Repeat("44", 32))
+	if err := awaitFinalPriorSemanticReady(context.Background(), fixture.cfg, fixture.stateRoot, fixture.production); err == nil || !strings.Contains(err.Error(), "does not bind") {
+		t.Fatalf("storage-address hashes bypassed canonical prior closure identities: %v", err)
 	}
 }
 

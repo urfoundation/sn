@@ -416,6 +416,65 @@ func TestFleetLifecycleProductionScheduleRejectsStalePreApplicationDeadline(t *t
 	}
 }
 
+func TestFleetLifecycleEVMEvidenceDeadlineUsesLaterIndependentBound(t *testing.T) {
+	releaseTerminal := uint64(2_650)
+	releaseSchedule := fleetLifecycleNativeScheduleFixture(t, "release-1.0", 1_000, releaseTerminal)
+	if releaseSchedule.ApplicationDeadlineBlock != 3_000 {
+		t.Fatalf("release fixture native deadline=%d, want 3000 after terminal %d", releaseSchedule.ApplicationDeadlineBlock, releaseTerminal)
+	}
+	releaseDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(releaseTerminal, releaseSchedule)
+	if err != nil || releaseDeadline != releaseSchedule.ApplicationDeadlineBlock {
+		t.Fatalf("release EVM deadline=%d error=%v, want native deadline %d", releaseDeadline, err, releaseSchedule.ApplicationDeadlineBlock)
+	}
+
+	productionTerminal := uint64(6_260)
+	productionSchedule := fleetLifecycleNativeScheduleFixture(t, "production-soak", 5_000, productionTerminal)
+	if productionSchedule.FirstQualifyingRevealBlock != 5_260 || productionSchedule.ApplicationDeadlineBlock != 5_360 {
+		t.Fatalf("production fixture reveal/native deadlines=%d/%d, want 5260/5360 before terminal %d", productionSchedule.FirstQualifyingRevealBlock, productionSchedule.ApplicationDeadlineBlock, productionTerminal)
+	}
+	productionDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(productionTerminal, productionSchedule)
+	if err != nil || productionDeadline != productionTerminal {
+		t.Fatalf("production EVM deadline=%d error=%v, want acceptance terminal %d", productionDeadline, err, productionTerminal)
+	}
+
+	overflow := *productionSchedule
+	overflow.ApplicationDeadlineBlock = math.MaxUint64
+	if _, err := fleetLifecycleExpectedEVMEvidenceDeadline(productionTerminal, &overflow); err == nil {
+		t.Fatal("overflowing inclusive EVM evidence deadline was accepted")
+	}
+}
+
+func TestFleetLifecycleProductionCensusUsesIndependentEVMAndNativeDeadlines(t *testing.T) {
+	schedule := fleetLifecycleNativeScheduleFixture(t, "production-soak", 5_000, 6_260)
+	evidence := &FleetLifecycleEvidence{
+		ProductionFirstSettlementEpoch:     200,
+		ProductionAcceptanceStartBlock:     5_000,
+		ProductionAcceptanceTerminalBlock:  6_260,
+		ProductionNativeSchedule:           schedule,
+		ProductionEVMEvidenceDeadlineBlock: 6_260,
+	}
+	census := FleetLifecycleCandidateCensus{
+		Phase: "production-soak", ObservedHead: ChainHead{Number: 6_260}, NativeObservedHead: ChainHead{Number: 5_360},
+		Validators: []FleetLifecycleValidatorCensus{
+			{SettlementEpoch: 203, NativeSnapshot: ChainHead{Number: 5_200}, EVMSnapshot: ChainHead{Number: 6_260}, Commit: ChainHead{Number: 5_260}, RevealBlock: 5_300, Application: ChainHead{Number: 5_359}},
+			{SettlementEpoch: 203, NativeSnapshot: ChainHead{Number: 5_200}, EVMSnapshot: ChainHead{Number: 6_260}, Commit: ChainHead{Number: 5_260}, RevealBlock: 5_300, Application: ChainHead{Number: 5_360}},
+		},
+	}
+	if err := validateFleetLifecycleCensusBlockRange(evidence, census); err != nil {
+		t.Fatalf("exact EVM terminal/native application boundaries were rejected: %v", err)
+	}
+	census.Validators[0].EVMSnapshot.Number = 6_261
+	if err := validateFleetLifecycleCensusBlockRange(evidence, census); err == nil {
+		t.Fatal("EVM snapshot one block after its independent deadline was accepted")
+	}
+	census.Validators[0].EVMSnapshot.Number = 6_260
+	census.Validators[0].Application.Number = 5_361
+	census.NativeObservedHead.Number = 5_361
+	if err := validateFleetLifecycleCensusBlockRange(evidence, census); err == nil {
+		t.Fatal("native application one block after its independent deadline was accepted")
+	}
+}
+
 func TestFleetLifecycleProductionScheduleStartsAfterTerminalMutation(t *testing.T) {
 	evidence := &FleetLifecycleEvidence{
 		TerminalRegistration:     &FleetLifecycleRegistrationEvidence{BlockNumber: 200},

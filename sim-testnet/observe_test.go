@@ -132,12 +132,300 @@ func TestFinalOperatorSignedArchiveGraphRequiresByteIdenticalReplicas(t *testing
 	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(objects[request.URL.Host])), Request: request}, nil
 	})}}
-	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex()); err == nil || !strings.Contains(err.Error(), "differs between operator replicas") {
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex(), maximumCampaignEvidenceEnvelopeBytes); err == nil || !strings.Contains(err.Error(), "differs between operator replicas") {
 		t.Fatalf("semantically equal but byte-different signed archive replicas were accepted: %v", err)
 	}
 	objects["operator-2.example"] = canonical
-	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex()); err != nil {
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, envelope.RunID, envelope.Signer.Hex(), maximumCampaignEvidenceEnvelopeBytes); err != nil {
 		t.Fatalf("byte-identical signed archive replicas were rejected: %v", err)
+	}
+}
+
+func TestCampaignFileEnvelopeReadLimitIsDerivedFromSignedSize(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const runID = "bounded-file-run"
+	payload := campaignEvidenceFilePayload{Schema: campaignEvidenceFileSchema, RunID: runID, Scope: "run", Path: "tiny.json", ContentHash: bytesSHA256([]byte{'x'}), Size: 1, Data: []byte{'x'}}
+	envelope, err := signEvidence(cfg, campaignEvidenceFileKind, runID, payload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit, err := maximumCampaignFileEnvelopeBytes(payload.Size)
+	if err != nil || limit >= maximumCampaignEvidenceEnvelopeBytes {
+		t.Fatalf("tiny file envelope limit=%d error=%v", limit, err)
+	}
+	response := encoded
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(response)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		Operators: []PublicOperator{{NoID: 1, APIURL: "https://operator.example"}},
+	}
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, runID, envelope.Signer.Hex(), limit); err != nil {
+		t.Fatalf("valid size-bound file envelope rejected: %v", err)
+	}
+	response = bytes.Repeat([]byte{'x'}, int(limit)+1)
+	if _, err := probe.fetchReplicatedCampaignEnvelope(context.Background(), public, envelope.ContentHash, envelope.Kind, runID, envelope.Signer.Hex(), limit); err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("oversized carrier for a one-byte file was accepted: %v", err)
+	}
+	if _, err := maximumCampaignFileEnvelopeBytes(maximumCampaignEvidenceRawFileBytes); err != nil {
+		t.Fatalf("maximum valid raw file has no safe envelope bound: %v", err)
+	}
+	if _, err := maximumCampaignFileEnvelopeBytes(maximumCampaignEvidenceRawFileBytes + 1); err == nil {
+		t.Fatal("oversized raw file received an envelope bound")
+	}
+}
+
+func TestCampaignEvidenceAggregatePreflightPreventsFileFetch(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const runID = "aggregate-preflight-run"
+	entries := make([]campaignEvidenceFileEntry, 9)
+	files := make(map[string]string, len(entries))
+	for index := range entries {
+		name := fmt.Sprintf("file-%02d.json", index)
+		entries[index] = campaignEvidenceFileEntry{
+			Path: name, ContentHash: fmt.Sprintf("sha256:%064x", index+1), Size: maximumCampaignEvidenceRawFileBytes,
+			EnvelopeHash: fmt.Sprintf("sha256:%064x", index+100),
+		}
+		files[name] = entries[index].ContentHash
+	}
+	manifestPayload := campaignEvidenceManifestPayload{
+		Schema: campaignEvidenceManifestSchema, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID,
+		GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, RunID: runID, ResultHash: finalTestHex(73),
+		BundlePayloadHash: "sha256:" + strings.Repeat("74", 32), Files: entries,
+	}
+	manifest, err := signEvidence(cfg, campaignEvidenceManifestKind, runID, manifestPayload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectGets := 0
+	probe := &liveScenarioProbe{cfg: cfg, client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		objectGets++
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(manifestBytes)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		Operators: []PublicOperator{{NoID: 1, APIURL: "https://operator.example"}},
+	}
+	complete := &ReleaseEvidenceEnvelope{RunID: runID}
+	completion := scenarioCompletePayload{ResultHash: manifestPayload.ResultHash, BundlePayloadHash: manifestPayload.BundlePayloadHash, EvidenceManifestHash: manifest.ContentHash, Files: files}
+	bundle := &ScenarioEvidenceBundle{Result: &ScenarioResult{RunID: runID}}
+	if _, err := probe.verifyPublicCampaignEvidence(context.Background(), public, roles.EVM["testnet-owner"].Address, complete, completion, bundle); err == nil || !strings.Contains(err.Error(), "aggregate") {
+		t.Fatalf("over-aggregate manifest reached file fetches: %v", err)
+	}
+	if objectGets != 1 {
+		t.Fatalf("over-aggregate manifest caused %d object GETs, want manifest only", objectGets)
+	}
+}
+
+func TestCampaignEvidenceCombinedAggregatePreflightPreventsSemanticFileFetch(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const runID = "semantic-aggregate-preflight-run"
+	result := &ScenarioResult{Name: "release-1.0", RunID: runID, EvidenceHash: finalTestHex(75)}
+	complete, err := signEvidence(cfg, "scenario-complete", runID, map[string]string{"schema": "complete"}, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := signEvidence(cfg, campaignEvidenceManifestKind, runID, map[string]string{"schema": campaignEvidenceManifestSchema}, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := FinalSemanticSupplementPayload{
+		Schema: finalSemanticSupplementSchema, Status: finalSemanticSupplementStatus, Phase: result.Name, RunID: runID,
+		ResultHash: result.EvidenceHash, ScenarioCompleteHash: complete.ContentHash, ScenarioEvidenceManifestHash: manifest.ContentHash,
+		CaptureStatusHash: finalTestHex(76), CollectedInputsHash: finalTestHex(77), SemanticEvidenceHash: finalTestHex(78), PublicTranscriptHash: finalTestHex(79),
+		Files: []FinalSemanticSupplementFile{
+			{Path: finalSemanticMarkdownFilename, ContentHash: "sha256:" + strings.Repeat("81", 32), Size: 1, EnvelopeHash: "sha256:" + strings.Repeat("82", 32)},
+			{Path: finalSemanticEvidenceFilename, ContentHash: "sha256:" + strings.Repeat("83", 32), Size: 1, EnvelopeHash: "sha256:" + strings.Repeat("84", 32)},
+		},
+	}
+	supplement, err := signEvidence(cfg, finalSemanticSupplementKind, runID, payload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	supplementBytes, err := json.Marshal(supplement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectGets := 0
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		objectGets++
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(supplementBytes)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{
+		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		Operators: []PublicOperator{{NoID: 1, APIURL: "https://operator.example"}},
+	}
+	if _, _, err := probe.authenticateReplicatedFinalSemanticSupplement(context.Background(), public, roles.EVM["testnet-owner"].Address, supplement.ContentHash, complete, manifest, result, payload.CaptureStatusHash, payload.CollectedInputsHash, 1); err == nil || !strings.Contains(err.Error(), "aggregate") {
+		t.Fatalf("combined base/supplement aggregate overflow was accepted: %v", err)
+	}
+	if objectGets != 1 {
+		t.Fatalf("combined aggregate overflow caused %d object GETs, want supplement marker only", objectGets)
+	}
+}
+
+func TestCampaignEvidenceClosureRejectsSignedPostCaptureReference(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := func(name, hash string) campaignEvidenceFileEntry {
+		return campaignEvidenceFileEntry{Path: name, ContentHash: hash, Size: 1, EnvelopeHash: "sha256:" + strings.Repeat("22", 32)}
+	}
+	payload := campaignEvidenceManifestPayload{
+		Schema: campaignEvidenceManifestSchema, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID,
+		GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, RunID: "release-run", ResultHash: finalTestHex(0x11),
+		BundlePayloadHash: "sha256:" + strings.Repeat("33", 32),
+		Files:             []campaignEvidenceFileEntry{entry("result.json", "sha256:"+strings.Repeat("44", 32))},
+		References:        []campaignEvidenceFileEntry{entry("final-derived/forged.json", "sha256:"+strings.Repeat("55", 32))},
+	}
+	envelope, err := signEvidence(cfg, campaignEvidenceManifestKind, payload.RunID, payload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeCampaignEvidenceManifest(envelope); err == nil || !strings.Contains(err.Error(), "post-capture") {
+		t.Fatalf("signed post-capture reference entered the closed archive: %v", err)
+	}
+}
+
+func TestSemanticSupplementHistoryCapPreventsEvidenceFanout(t *testing.T) {
+	objects := make([]map[string]string, maximumCampaignEvidenceObjects+1)
+	for index := range objects {
+		objects[index] = map[string]string{"key": fmt.Sprintf("history/%064x.json", index+1)}
+	}
+	history, err := json.Marshal(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": objects})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidenceFetches := 0
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/sn/evidence") {
+			evidenceFetches++
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(history)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{DeploymentID: "deployment", Netuid: 1, Operators: []PublicOperator{
+		{NoID: 1, HistoryURL: "https://operator-1.example/sn/evidence/history"},
+		{NoID: 2, HistoryURL: "https://operator-2.example/sn/evidence/history"},
+	}}
+	if _, err := probe.discoverReplicatedFinalSemanticSupplementHashes(context.Background(), public, "release-run"); err == nil || !strings.Contains(err.Error(), "exceeds 8") {
+		t.Fatalf("over-cap semantic supplement history was accepted: %v", err)
+	}
+	if evidenceFetches != 0 {
+		t.Fatalf("over-cap semantic supplement history triggered %d evidence-object fetches", evidenceFetches)
+	}
+}
+
+func TestSemanticSupplementPerRunCandidateCapPreventsEvidenceFanout(t *testing.T) {
+	objects := make([]map[string]string, maximumFinalSemanticSupplementCandidatesPerRun+1)
+	for index := range objects {
+		objects[index] = map[string]string{"key": fmt.Sprintf("prefix/st/v1/evidence/history/deployment/1/%s/release-run/%064x.json", finalSemanticSupplementKind, index+1)}
+	}
+	history, err := json.Marshal(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": objects})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidenceFetches := 0
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/sn/evidence") {
+			evidenceFetches++
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(history)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{DeploymentID: "deployment", Netuid: 1, Operators: []PublicOperator{
+		{NoID: 1, HistoryURL: "https://operator-1.example/sn/evidence/history"},
+		{NoID: 2, HistoryURL: "https://operator-2.example/sn/evidence/history"},
+	}}
+	if _, err := probe.discoverReplicatedFinalSemanticSupplementHashes(context.Background(), public, "release-run"); err == nil || !strings.Contains(err.Error(), "exceeds 8") {
+		t.Fatalf("over-cap per-run semantic supplement history was accepted: %v", err)
+	}
+	if evidenceFetches != 0 {
+		t.Fatalf("over-cap per-run semantic supplement history triggered %d evidence-object fetches", evidenceFetches)
+	}
+}
+
+func TestSemanticSupplementRunScopedHistoryRejectsPaginationAndOffPrefix(t *testing.T) {
+	hash := strings.Repeat("61", 32)
+	responses := map[string][]byte{}
+	evidenceFetches := 0
+	queries := 0
+	probe := &liveScenarioProbe{client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/sn/evidence") {
+			evidenceFetches++
+		}
+		if strings.HasSuffix(request.URL.Path, "/sn/evidence/history") {
+			queries++
+			if request.URL.Query().Get("run_id") != "release-run" || request.URL.Query().Get("limit") != fmt.Sprint(maximumFinalSemanticSupplementCandidatesPerRun) {
+				t.Fatalf("semantic history query = %q", request.URL.RawQuery)
+			}
+		}
+		body := responses[request.URL.Host]
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(body)), Request: request}, nil
+	})}}
+	public := &PublicDeploymentManifest{DeploymentID: "deployment", Netuid: 1, Operators: []PublicOperator{
+		{NoID: 1, HistoryURL: "https://operator-1.example/sn/evidence/history"},
+		{NoID: 2, HistoryURL: "https://operator-2.example/sn/evidence/history"},
+	}}
+	page, err := json.Marshal(map[string]any{
+		"schema": "urnetwork-release-evidence-history-v1", "more": true,
+		"next_after": "prefix/st/v1/evidence/history/deployment/1/" + finalSemanticSupplementKind + "/release-run/" + hash + ".json",
+		"objects":    []map[string]string{{"key": "prefix/st/v1/evidence/history/deployment/1/" + finalSemanticSupplementKind + "/release-run/" + hash + ".json"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses["operator-1.example"], responses["operator-2.example"] = page, page
+	if _, err := probe.discoverReplicatedFinalSemanticSupplementHashes(context.Background(), public, "release-run"); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("paginated semantic history was accepted: %v", err)
+	}
+	offPrefix, err := json.Marshal(map[string]any{
+		"schema": "urnetwork-release-evidence-history-v1", "more": false, "next_after": "",
+		"objects": []map[string]string{{"key": "prefix/st/v1/evidence/history/deployment/1/" + finalSemanticSupplementKind + "/other-run/" + hash + ".json"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses["operator-1.example"], responses["operator-2.example"] = offPrefix, offPrefix
+	if _, err := probe.discoverReplicatedFinalSemanticSupplementHashes(context.Background(), public, "release-run"); err == nil || !strings.Contains(err.Error(), "outside the requested run") {
+		t.Fatalf("off-prefix semantic history was accepted: %v", err)
+	}
+	duplicate, err := json.Marshal(map[string]any{
+		"schema": "urnetwork-release-evidence-history-v1", "more": false, "next_after": "",
+		"objects": []map[string]string{
+			{"key": "prefix/st/v1/evidence/history/deployment/1/" + finalSemanticSupplementKind + "/release-run/" + hash + ".json"},
+			{"key": "prefix/st/v1/evidence/history/deployment/1/" + finalSemanticSupplementKind + "/release-run/" + hash + ".json"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses["operator-1.example"], responses["operator-2.example"] = duplicate, duplicate
+	if _, err := probe.discoverReplicatedFinalSemanticSupplementHashes(context.Background(), public, "release-run"); err == nil || !strings.Contains(err.Error(), "repeats") {
+		t.Fatalf("duplicate semantic supplement history was accepted: %v", err)
+	}
+	if evidenceFetches != 0 || queries != 3 {
+		t.Fatalf("rejected semantic histories made evidence=%d history=%d requests, want 0/3", evidenceFetches, queries)
 	}
 }
 
@@ -320,28 +608,55 @@ func TestCampaignArtifactOriginsAreAllowlistedAndRedirectsRejected(t *testing.T)
 	if targetCalls != 0 {
 		t.Fatalf("campaign evidence client followed redirect to target %d times", targetCalls)
 	}
-	validDirectory := &PublicDeploymentManifest{Operators: []PublicOperator{
-		{NoID: 1, APIURL: "https://operator-1.example", VerifyURL: "https://operator-1.example/verify", HistoryURL: "https://operator-1.example/sn/evidence/history"},
-		{NoID: 2, APIURL: "https://operator-2.example/", VerifyURL: "https://operator-2.example/verify", HistoryURL: "https://operator-2.example/sn/evidence/history"},
-	}}
+	validDirectory := &PublicDeploymentManifest{
+		DeploymentID: "deployment", Netuid: 1, Topology: TopologyConfig{Operators: 2},
+		Operators: []PublicOperator{
+			{NoID: 1, APIURL: "https://operator-1.example", VerifyURL: "https://operator-1.example/verify", HistoryURL: "https://operator-1.example/sn/evidence/history"},
+			{NoID: 2, APIURL: "https://operator-2.example/", VerifyURL: "https://operator-2.example/verify", HistoryURL: "https://operator-2.example/sn/evidence/history"},
+		},
+	}
+	bindPublicHistoryEndpointsForTest(t, validDirectory)
 	if err := validatePublicCampaignOperatorOrigins(validDirectory); err != nil {
 		t.Fatalf("public HTTPS operator directory rejected: %v", err)
 	}
-	for name, mutate := range map[string]func(*PublicDeploymentManifest){
-		"insecure API": func(value *PublicDeploymentManifest) { value.Operators[0].APIURL = "http://operator-1.example" },
-		"cross-origin history": func(value *PublicDeploymentManifest) {
+	mutations := []struct {
+		name   string
+		mutate func(*PublicDeploymentManifest)
+	}{
+		{name: "insecure API", mutate: func(value *PublicDeploymentManifest) { value.Operators[0].APIURL = "http://operator-1.example" }},
+		{name: "cross-origin history", mutate: func(value *PublicDeploymentManifest) {
 			value.Operators[0].HistoryURL = "https://attacker.example/sn/evidence/history"
-		},
-		"duplicate origin": func(value *PublicDeploymentManifest) {
+		}},
+		{name: "duplicate origin", mutate: func(value *PublicDeploymentManifest) {
 			value.Operators[1].APIURL = value.Operators[0].APIURL
 			value.Operators[1].HistoryURL = value.Operators[0].HistoryURL
-		},
-	} {
-		copy := *validDirectory
-		copy.Operators = append([]PublicOperator(nil), validDirectory.Operators...)
-		mutate(&copy)
-		if err := validatePublicCampaignOperatorOrigins(&copy); err == nil {
-			t.Fatalf("public operator directory with %s was accepted", name)
+		}},
+		{name: "missing artifact locator", mutate: func(value *PublicDeploymentManifest) { value.ArtifactStores = value.ArtifactStores[:1] }},
+		{name: "missing evidence locator", mutate: func(value *PublicDeploymentManifest) { value.EvidenceStores = value.EvidenceStores[:1] }},
+		{name: "duplicate artifact locator", mutate: func(value *PublicDeploymentManifest) { value.ArtifactStores[1] = value.ArtifactStores[0] }},
+		{name: "duplicate evidence locator", mutate: func(value *PublicDeploymentManifest) { value.EvidenceStores[1] = value.EvidenceStores[0] }},
+		{name: "tampered artifact origin", mutate: func(value *PublicDeploymentManifest) {
+			value.ArtifactStores[0] = strings.Replace(value.ArtifactStores[0], "operator-1.example", "attacker.example", 1)
+		}},
+		{name: "extra artifact query", mutate: func(value *PublicDeploymentManifest) { value.ArtifactStores[0] += "&after=forged" }},
+		{name: "extra evidence query", mutate: func(value *PublicDeploymentManifest) { value.EvidenceStores[0] += "&after=forged" }},
+		{name: "missing analyze command", mutate: func(value *PublicDeploymentManifest) { delete(value.Commands, "analyze") }},
+		{name: "legacy analyze with current locators", mutate: func(value *PublicDeploymentManifest) {
+			value.Commands["analyze"] = legacyPublicManifestAnalyzeCommand
+		}},
+	}
+	for _, mutation := range mutations {
+		candidate := *validDirectory
+		candidate.Operators = append([]PublicOperator(nil), validDirectory.Operators...)
+		candidate.ArtifactStores = append([]string(nil), validDirectory.ArtifactStores...)
+		candidate.EvidenceStores = append([]string(nil), validDirectory.EvidenceStores...)
+		candidate.Commands = make(map[string]string, len(validDirectory.Commands))
+		for name, command := range validDirectory.Commands {
+			candidate.Commands[name] = command
+		}
+		mutation.mutate(&candidate)
+		if err := validatePublicCampaignOperatorOrigins(&candidate); err == nil {
+			t.Fatalf("public operator directory with %s was accepted", mutation.name)
 		}
 	}
 }
@@ -381,6 +696,7 @@ func finalSemanticPublicManifestFixture(t *testing.T, cfg *ResolvedConfig, evide
 			NoID: origin.OperatorNoID, APIURL: apiURL, VerifyURL: apiURL + "/verify", HistoryURL: apiURL + "/sn/evidence/history",
 		})
 	}
+	bindPublicHistoryEndpointsForTest(t, public)
 	if err := validatePublicCampaignOperatorOrigins(public); err != nil {
 		t.Fatalf("final semantic public manifest fixture: %v", err)
 	}
@@ -413,10 +729,11 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(semantic)
+	encoded, err := json.MarshalIndent(semantic, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
+	encoded = append(encoded, '\n')
 	markdown, err := RenderFinalSemanticEvidenceMarkdown(semantic)
 	if err != nil {
 		t.Fatal(err)
@@ -427,7 +744,8 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 	window := semantic.Window
 	bundle := &ScenarioEvidenceBundle{Result: &ScenarioResult{
 		Name: semantic.Phase, RunID: semantic.RunID, EvidenceHash: semantic.ResultHash, DeploymentID: semantic.DeploymentID, ConfigHash: semantic.ConfigHash, PolicyHash: semantic.PolicyHash,
-		ChainID: semantic.ChainID, GenesisHash: semantic.GenesisHash, Netuid: semantic.Netuid, EndHead: semantic.EVMTerminalHead, AcceptanceWindow: &window,
+		ChainID: semantic.ChainID, GenesisHash: semantic.GenesisHash, Netuid: semantic.Netuid, StartedAt: semantic.CampaignStartedAt, CompletedAt: semantic.CampaignCompletedAt,
+		CampaignStartHead: semantic.EVMCampaignStartHead, EndHead: semantic.EVMTerminalHead, AcceptanceWindow: &window,
 	}}
 	verifyCalls := 0
 	probe := &liveScenarioProbe{
@@ -438,15 +756,80 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		},
 	}
 	owner := semantic.Deployment.GovernanceOwner
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, artifacts, nil); err == nil || !strings.Contains(err.Error(), "0 final semantic") {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, nil, artifacts, nil); err == nil || !strings.Contains(err.Error(), "final semantic") {
 		t.Fatalf("campaign without final semantic evidence = %v", err)
 	}
 	files := map[string][]byte{"final-semantic-evidence.json": encoded, finalSemanticMarkdownFilename: markdown}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, files, artifacts, nil); err != nil {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, artifacts, nil); err != nil {
 		t.Fatalf("one closed final semantic object = %v", err)
 	}
 	if verifyCalls != 1 {
 		t.Fatalf("public archive verifier calls = %d, want 1", verifyCalls)
+	}
+	for name, mutate := range map[string]func(*FinalSemanticEvidence){
+		"campaign start head": func(value *FinalSemanticEvidence) { value.EVMCampaignStartHead.Hash = finalTestHex(0xfe) },
+		"campaign start time": func(value *FinalSemanticEvidence) {
+			started, parseErr := time.Parse(time.RFC3339Nano, value.CampaignStartedAt)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			value.CampaignStartedAt = started.Add(time.Second).UTC().Format(time.RFC3339Nano)
+		},
+		"campaign completion time": func(value *FinalSemanticEvidence) {
+			completed, parseErr := time.Parse(time.RFC3339Nano, value.CampaignCompletedAt)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			value.CampaignCompletedAt = completed.Add(-time.Second).UTC().Format(time.RFC3339Nano)
+		},
+	} {
+		mutatedSource := source
+		mutate(&mutatedSource)
+		mutatedDraft, err := BuildFinalSemanticEvidence(mutatedSource)
+		if err != nil {
+			t.Fatalf("build internally valid %s mutation: %v", name, err)
+		}
+		mutated, err := SealFinalSemanticEvidenceOnChain(context.Background(), mutatedDraft, &finalTestChainReader{evidence: mutatedDraft, publicManifestHash: reader.publicManifestHash})
+		if err != nil {
+			t.Fatalf("seal internally valid %s mutation: %v", name, err)
+		}
+		mutatedJSON, err := json.MarshalIndent(mutated, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutatedJSON = append(mutatedJSON, '\n')
+		mutatedMarkdown, err := RenderFinalSemanticEvidenceMarkdown(mutated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutatedFiles := map[string][]byte{finalSemanticEvidenceFilename: mutatedJSON, finalSemanticMarkdownFilename: mutatedMarkdown}
+		if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, mutatedFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "does not bind") {
+			t.Fatalf("signed semantic %s mutation detached from its scenario result was accepted: %v", name, err)
+		}
+	}
+	noncanonical, err := json.Marshal(semantic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noncanonicalFiles := map[string][]byte{finalSemanticEvidenceFilename: noncanonical, finalSemanticMarkdownFilename: markdown}
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, noncanonicalFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "not canonical") {
+		t.Fatalf("signed noncanonical semantic JSON was accepted: %v", err)
+	}
+	unreferencedDerived := make(map[string][]byte, len(files)+1)
+	for name, raw := range files {
+		unreferencedDerived[name] = raw
+	}
+	unreferencedDerived["final-derived/unreferenced.json"] = []byte("{\"schema\":\"urnetwork-unreferenced-v1\"}\n")
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, unreferencedDerived, artifacts, nil); err == nil || !strings.Contains(err.Error(), "unreferenced derived") {
+		t.Fatalf("unreferenced signed final-derived file was accepted: %v", err)
+	}
+	collidingArtifacts := make(map[string][]byte, len(artifacts)+1)
+	for name, raw := range artifacts {
+		collidingArtifacts[name] = raw
+	}
+	collidingArtifacts[finalSemanticMarkdownFilename] = markdown
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, collidingArtifacts, nil); err == nil || !strings.Contains(err.Error(), "multiple evidence scopes") {
+		t.Fatalf("cross-scope semantic URI collision was accepted: %v", err)
 	}
 	detachedPublic := *public
 	generatedAt, err := time.Parse(time.RFC3339Nano, public.GeneratedAt)
@@ -458,11 +841,11 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		t.Fatalf("detached public manifest did not change only its canonical hash: hash=%q err=%v", detachedHash, err)
 	}
 	defaultProbe := &liveScenarioProbe{publicManifestURI: semantic.PublicVerification.EvidenceURI}
-	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), &detachedPublic, owner, bundle, files, artifacts, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
+	if _, err := defaultProbe.verifyCampaignFinalSemanticEvidence(context.Background(), &detachedPublic, owner, bundle, nil, files, artifacts, nil); err == nil || !strings.Contains(err.Error(), "public manifest hash") {
 		t.Fatalf("semantic evidence detached from the authenticated public manifest was accepted: %v", err)
 	}
 	tamperedMarkdownFiles := map[string][]byte{"final-semantic-evidence.json": encoded, finalSemanticMarkdownFilename: []byte("# unbound report\n")}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, tamperedMarkdownFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "does not match") {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, tamperedMarkdownFiles, artifacts, nil); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("unbound FINAL.md = %v", err)
 	}
 	missingArtifacts := make(map[string][]byte, len(artifacts)-1)
@@ -472,7 +855,7 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 			missingArtifacts[name] = raw
 		}
 	}
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, files, missingArtifacts, nil); err == nil || !strings.Contains(err.Error(), "authenticated campaign graph") {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, missingArtifacts, nil); err == nil || !strings.Contains(err.Error(), "authenticated campaign graph") {
 		t.Fatalf("semantic evidence with missing external artifact = %v", err)
 	}
 	duplicates := make(map[string][]byte, len(artifacts)+1)
@@ -480,8 +863,28 @@ func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.
 		duplicates[name] = raw
 	}
 	duplicates["duplicate-final-semantic-evidence.json"] = encoded
-	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, files, duplicates, nil); err == nil || !strings.Contains(err.Error(), "2 final semantic") {
+	if _, err := probe.verifyCampaignFinalSemanticEvidence(context.Background(), public, owner, bundle, nil, files, duplicates, nil); err == nil || !strings.Contains(err.Error(), "unexpected final semantic") {
 		t.Fatalf("campaign with duplicate final semantic evidence = %v", err)
+	}
+}
+
+func TestCampaignFinalSemanticObjectCensusAllowsOnlyBoundPriorReport(t *testing.T) {
+	current := []byte(`{"schema":"` + finalSemanticEvidenceSchema + `"}`)
+	prior := []byte(`{"schema":"` + finalSemanticEvidenceSchema + `","phase":"release-1.0"}`)
+	priorPath := "final-derived/prior-release/final-semantic-evidence.json"
+	semantic := &FinalSemanticEvidence{PriorPhase: &FinalPriorPhaseBinding{SemanticEvidence: FinalArtifactLocator{URI: priorPath}}}
+	files := map[string][]byte{finalSemanticEvidenceFilename: current, priorPath: prior}
+	if err := validateCampaignFinalSemanticObjectCensus(semantic, files); err != nil {
+		t.Fatalf("current and bound prior semantic reports were rejected: %v", err)
+	}
+	files["final-derived/unexpected/final-semantic-evidence.json"] = prior
+	if err := validateCampaignFinalSemanticObjectCensus(semantic, files); err == nil || !strings.Contains(err.Error(), "unexpected") {
+		t.Fatalf("unbound third semantic report was accepted: %v", err)
+	}
+	delete(files, "final-derived/unexpected/final-semantic-evidence.json")
+	delete(files, priorPath)
+	if err := validateCampaignFinalSemanticObjectCensus(semantic, files); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("missing bound prior semantic report was accepted: %v", err)
 	}
 }
 
@@ -489,36 +892,49 @@ func publicPhaseLineageFixture(t *testing.T) (*authenticatedPublicScenarioCandid
 	t.Helper()
 	releaseWindow := &ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 90, Hash: "0x" + strings.Repeat("10", 32)}, TerminalBlock: 120, EpochCount: 5}
 	productionWindow := &ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 200, Hash: "0x" + strings.Repeat("20", 32)}, TerminalBlock: 260, EpochCount: 3}
+	handoffBytes := []byte("authenticated release lifecycle handoff")
+	handoff := &ScenarioLifecycleHandoff{
+		Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: "release-run", Stage: fleetLifecycleStageReleaseHandoff,
+		File: scenarioLifecycleHandoffFilename, ContentHash: bytesSHA256(handoffBytes), SizeBytes: uint64(len(handoffBytes)),
+	}
 	releaseResult := &ScenarioResult{
 		Name: "release-1.0", RunID: "release-run", EvidenceHash: "0x" + strings.Repeat("31", 32), DeploymentID: "deployment",
 		ConfigHash: "0x" + strings.Repeat("32", 32), PolicyHash: "0x" + strings.Repeat("33", 32), GenesisHash: "0x" + strings.Repeat("34", 32), ChainID: 945, Netuid: 521,
-		CompletedAt: "2026-09-02T01:00:00Z", EndHead: ChainHead{Number: 120, Hash: "0x" + strings.Repeat("35", 32)}, AcceptanceWindow: releaseWindow,
+		CompletedAt: "2026-09-02T01:00:00Z", EndHead: ChainHead{Number: 120, Hash: "0x" + strings.Repeat("35", 32)}, StartEpoch: 25, EndEpoch: 30, AcceptanceWindow: releaseWindow, LifecycleHandoff: handoff,
+	}
+	releaseComplete := &ReleaseEvidenceEnvelope{RunID: releaseResult.RunID, ContentHash: "sha256:" + strings.Repeat("54", 32), Signature: "0xrelease", Payload: json.RawMessage(`{"result":"release"}`)}
+	gate := &ReleaseCampaignGate{
+		Schema: releaseCampaignGateSchema, RunID: releaseResult.RunID, ResultHash: releaseResult.EvidenceHash, CompleteContentHash: releaseComplete.ContentHash,
+		StartEpoch: releaseResult.StartEpoch, EndEpoch: releaseResult.EndEpoch, LifecycleHandoff: *handoff,
 	}
 	productionResult := &ScenarioResult{
 		Name: "production-soak", RunID: "production-run", EvidenceHash: "0x" + strings.Repeat("41", 32), DeploymentID: releaseResult.DeploymentID,
 		ConfigHash: releaseResult.ConfigHash, PolicyHash: releaseResult.PolicyHash, GenesisHash: releaseResult.GenesisHash, ChainID: releaseResult.ChainID, Netuid: releaseResult.Netuid,
-		StartedAt: "2026-09-02T02:00:00Z", EndHead: ChainHead{Number: 260, Hash: "0x" + strings.Repeat("42", 32)}, AcceptanceWindow: productionWindow,
+		StartedAt: "2026-09-02T02:00:00Z", EndHead: ChainHead{Number: 260, Hash: "0x" + strings.Repeat("42", 32)}, AcceptanceWindow: productionWindow, PriorRelease: gate,
 	}
 	releasePayload := scenarioCompletePayload{
 		ResultHash: releaseResult.EvidenceHash, BundlePayloadHash: "sha256:" + strings.Repeat("51", 32), EvidenceManifestHash: "sha256:" + strings.Repeat("52", 32), Files: map[string]string{"result.json": "sha256:" + strings.Repeat("53", 32)},
+		LifecycleHandoff: handoff,
 	}
-	releaseComplete := &ReleaseEvidenceEnvelope{RunID: releaseResult.RunID, ContentHash: "sha256:" + strings.Repeat("54", 32), Signature: "0xrelease", Payload: json.RawMessage(`{"result":"release"}`)}
 	releaseCompleteBytes, err := json.Marshal(releaseComplete)
 	if err != nil {
 		t.Fatal(err)
 	}
 	releaseManifest := &ReleaseEvidenceEnvelope{RunID: releaseResult.RunID, ContentHash: releasePayload.EvidenceManifestHash, Signature: "0xmanifest", Payload: json.RawMessage(`{"manifest":"release"}`)}
 	nativeTerminal := ChainHead{Number: 119, Hash: "0x" + strings.Repeat("55", 32)}
-	releaseSemantic := &FinalSemanticEvidence{Phase: "release-1.0", NativeTerminalHead: nativeTerminal}
+	releaseSemantic := &FinalSemanticEvidence{Phase: "release-1.0", NativeTerminalHead: nativeTerminal, FleetLifecycle: &FinalFleetLifecycleEvidence{ReleaseHandoffHash: handoff.ContentHash, ReleaseHandoffSize: handoff.SizeBytes}}
 	priorBinding := &FinalPriorPhaseBinding{
 		RunID: releaseResult.RunID, ResultHash: releaseResult.EvidenceHash, OwnerCompletionEnvelopeHash: releaseComplete.ContentHash, EvidenceManifestEnvelopeHash: releaseManifest.ContentHash, AcceptanceWindow: *releaseWindow,
 		TerminalNativeHead: nativeTerminal, TerminalEVMHead: releaseResult.EndHead,
 	}
-	productionSemantic := &FinalSemanticEvidence{Phase: "production-soak", PriorPhase: priorBinding}
+	productionSemantic := &FinalSemanticEvidence{Phase: "production-soak", PriorPhase: priorBinding, FleetLifecycle: &FinalFleetLifecycleEvidence{ReleaseHandoffHash: handoff.ContentHash, ReleaseHandoffSize: handoff.SizeBytes}}
 	prior := &authenticatedPublicScenarioCandidate{
 		candidate:  &publicScenarioCandidate{bundle: &ScenarioEvidenceBundle{Result: releaseResult}, payload: releasePayload.BundlePayloadHash, signers: map[int]bool{1: true, 2: true}},
 		completion: &publicScenarioCompletionCandidate{envelope: releaseComplete, payload: releasePayload, payloadBytes: releaseCompleteBytes, operators: map[int]bool{1: true, 2: true}},
-		semantic:   &authenticatedCampaignSemantic{Evidence: releaseSemantic, EvidenceManifest: releaseManifest},
+		semantic: &authenticatedCampaignSemantic{
+			Evidence: releaseSemantic, EvidenceManifest: releaseManifest,
+			Artifacts: map[string][]byte{handoff.File: handoffBytes},
+		},
 	}
 	current := &authenticatedPublicScenarioCandidate{
 		candidate:  &publicScenarioCandidate{bundle: &ScenarioEvidenceBundle{Result: productionResult}},
@@ -570,6 +986,26 @@ func TestAuthenticatedPublicProductionRequiresExactReleaseLineage(t *testing.T) 
 	current.semantic.Evidence.PriorPhase = nil
 	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "lacks") {
 		t.Fatalf("missing release binding accepted: %v", err)
+	}
+
+	current, prior = publicPhaseLineageFixture(t)
+	current.candidate.bundle.Result.PriorRelease.EndEpoch++
+	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "does not bind") {
+		t.Fatalf("release gate detached from authenticated prior result accepted: %v", err)
+	}
+
+	current, prior = publicPhaseLineageFixture(t)
+	prior.semantic.Artifacts[scenarioLifecycleHandoffFilename] = []byte("substituted lifecycle handoff")
+	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "handoff bytes") {
+		t.Fatalf("substituted release lifecycle handoff bytes accepted: %v", err)
+	}
+
+	current, prior = publicPhaseLineageFixture(t)
+	changed := *prior.completion.payload.LifecycleHandoff
+	changed.SizeBytes++
+	prior.completion.payload.LifecycleHandoff = &changed
+	if err := validateAuthenticatedPublicPhaseLineage(current, prior); err == nil || !strings.Contains(err.Error(), "completion lineage") {
+		t.Fatalf("prior completion with divergent lifecycle handoff accepted: %v", err)
 	}
 }
 
@@ -688,16 +1124,24 @@ func TestScenarioFinalSemanticSourceBindsRunResultAndPhase(t *testing.T) {
 		Name: "release-1.0", RunID: "release-run", EvidenceHash: finalTestHex(1),
 		DeploymentID: cfg.Config.Deployment.DeploymentID, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash,
 		ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		StartedAt: time.Date(2026, 9, 1, 1, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), CompletedAt: time.Date(2026, 9, 1, 2, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
 		CampaignStartHead: ChainHead{Number: 5, Hash: finalTestHex(5)}, EndHead: terminal, AcceptanceWindow: &window,
 	}
+	handoff := &ScenarioLifecycleHandoff{
+		Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: result.RunID, Stage: fleetLifecycleStageReleaseHandoff,
+		File: scenarioLifecycleHandoffFilename, ContentHash: "sha256:" + strings.Repeat("31", 32), SizeBytes: 128,
+	}
+	result.LifecycleHandoff = handoff
 	source := FinalSemanticEvidence{
 		Phase: result.Name, RunID: result.RunID, ResultHash: result.EvidenceHash,
+		CampaignStartedAt: result.StartedAt, CampaignCompletedAt: result.CompletedAt,
 		DeploymentID: result.DeploymentID, PlanHash: finalTestHex(2), ConfigHash: result.ConfigHash, PolicyHash: result.PolicyHash,
 		ChainID: result.ChainID, GenesisHash: result.GenesisHash, Netuid: result.Netuid,
 		Window: window, EVMCampaignStartHead: result.CampaignStartHead, EVMTerminalHead: terminal,
 		ExpectedOperators: cfg.Config.Topology.Operators, ExpectedValidators: cfg.Config.Topology.Validators, ExpectedMiners: cfg.Config.Topology.Miners,
 		ExpectedCandidates: cfg.Config.Topology.HeadFleets + cfg.Config.Topology.ChallengerFleets, ExpectedHeadSlots: cfg.Config.Topology.HeadSlots,
-		Deployment: FinalContractDeploymentEvidence{GovernanceOwner: roles.EVM["testnet-owner"].Address},
+		Deployment:     FinalContractDeploymentEvidence{GovernanceOwner: roles.EVM["testnet-owner"].Address},
+		FleetLifecycle: &FinalFleetLifecycleEvidence{ReleaseHandoffHash: handoff.ContentHash, ReleaseHandoffSize: handoff.SizeBytes},
 	}
 	if err := validateScenarioFinalSemanticSource(cfg, roles, result, &source); err != nil {
 		t.Fatalf("exact semantic campaign source rejected: %v", err)
@@ -706,12 +1150,201 @@ func TestScenarioFinalSemanticSourceBindsRunResultAndPhase(t *testing.T) {
 		"phase":       func(value *FinalSemanticEvidence) { value.Phase = "production-soak" },
 		"run id":      func(value *FinalSemanticEvidence) { value.RunID = "other-run" },
 		"result hash": func(value *FinalSemanticEvidence) { value.ResultHash = finalTestHex(0xee) },
+		"campaign start": func(value *FinalSemanticEvidence) {
+			value.CampaignStartedAt = time.Date(2026, 9, 1, 1, 0, 1, 0, time.UTC).Format(time.RFC3339Nano)
+		},
+		"campaign end": func(value *FinalSemanticEvidence) {
+			value.CampaignCompletedAt = time.Date(2026, 9, 1, 2, 0, 1, 0, time.UTC).Format(time.RFC3339Nano)
+		},
+		"start head": func(value *FinalSemanticEvidence) { value.EVMCampaignStartHead.Number++ },
+		"lifecycle handoff": func(value *FinalSemanticEvidence) {
+			value.FleetLifecycle = &FinalFleetLifecycleEvidence{ReleaseHandoffHash: "sha256:" + strings.Repeat("32", 32), ReleaseHandoffSize: handoff.SizeBytes}
+		},
 	} {
 		changed := source
 		mutate(&changed)
 		if err := validateScenarioFinalSemanticSource(cfg, roles, result, &changed); err == nil || !strings.Contains(err.Error(), "does not bind") {
 			t.Fatalf("wrong semantic source %s accepted: %v", name, err)
 		}
+	}
+}
+
+func TestScenarioFinalSemanticSourceBindsProductionReleaseLineage(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 100, Hash: finalTestHex(10)}, BaselineEpoch: 30, FirstEpoch: 31, EpochCount: 2, TerminalBlock: 120}
+	priorWindow := ScenarioAcceptanceWindow{Schema: "urnetwork-sim-acceptance-window-v1", BaselineHead: ChainHead{Number: 10, Hash: finalTestHex(11)}, BaselineEpoch: 5, FirstEpoch: 6, EpochCount: 3, TerminalBlock: 20}
+	handoff := ScenarioLifecycleHandoff{
+		Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: "release-run", Stage: fleetLifecycleStageReleaseHandoff,
+		File: scenarioLifecycleHandoffFilename, ContentHash: "sha256:" + strings.Repeat("41", 32), SizeBytes: 256,
+	}
+	gate := &ReleaseCampaignGate{
+		Schema: releaseCampaignGateSchema, RunID: handoff.ReleaseRunID, ResultHash: finalTestHex(42), CompleteContentHash: "sha256:" + strings.Repeat("43", 32),
+		StartEpoch: priorWindow.BaselineEpoch, EndEpoch: priorWindow.BaselineEpoch + priorWindow.EpochCount, LifecycleHandoff: handoff,
+	}
+	result := &ScenarioResult{
+		Name: "production-soak", RunID: "production-run", EvidenceHash: finalTestHex(1), DeploymentID: cfg.Config.Deployment.DeploymentID,
+		ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid,
+		StartedAt: "2026-09-01T03:00:00Z", CompletedAt: "2026-09-01T04:00:00Z", CampaignStartHead: ChainHead{Number: 90, Hash: finalTestHex(12)}, EndHead: ChainHead{Number: 120, Hash: finalTestHex(13)},
+		AcceptanceWindow: &window, PriorRelease: gate,
+	}
+	source := FinalSemanticEvidence{
+		Phase: result.Name, RunID: result.RunID, ResultHash: result.EvidenceHash, CampaignStartedAt: result.StartedAt, CampaignCompletedAt: result.CompletedAt,
+		DeploymentID: result.DeploymentID, PlanHash: finalTestHex(2), ConfigHash: result.ConfigHash, PolicyHash: result.PolicyHash, ChainID: result.ChainID, GenesisHash: result.GenesisHash, Netuid: result.Netuid,
+		Window: window, EVMCampaignStartHead: result.CampaignStartHead, EVMTerminalHead: result.EndHead,
+		ExpectedOperators: cfg.Config.Topology.Operators, ExpectedValidators: cfg.Config.Topology.Validators, ExpectedMiners: cfg.Config.Topology.Miners,
+		ExpectedCandidates: cfg.Config.Topology.HeadFleets + cfg.Config.Topology.ChallengerFleets, ExpectedHeadSlots: cfg.Config.Topology.HeadSlots,
+		Deployment:     FinalContractDeploymentEvidence{GovernanceOwner: roles.EVM["testnet-owner"].Address},
+		PriorPhase:     &FinalPriorPhaseBinding{RunID: gate.RunID, ResultHash: gate.ResultHash, OwnerCompletionEnvelopeHash: gate.CompleteContentHash, AcceptanceWindow: priorWindow},
+		FleetLifecycle: &FinalFleetLifecycleEvidence{ReleaseHandoffHash: handoff.ContentHash, ReleaseHandoffSize: handoff.SizeBytes},
+	}
+	if err := validateScenarioFinalSemanticSource(cfg, roles, result, &source); err != nil {
+		t.Fatalf("exact production release lineage rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*FinalSemanticEvidence){
+		"prior result": func(value *FinalSemanticEvidence) { value.PriorPhase.ResultHash = finalTestHex(0xee) },
+		"prior completion": func(value *FinalSemanticEvidence) {
+			value.PriorPhase.OwnerCompletionEnvelopeHash = "sha256:" + strings.Repeat("ee", 32)
+		},
+		"prior window":    func(value *FinalSemanticEvidence) { value.PriorPhase.AcceptanceWindow.BaselineEpoch++ },
+		"release handoff": func(value *FinalSemanticEvidence) { value.FleetLifecycle.ReleaseHandoffSize++ },
+	} {
+		changed := source
+		prior := *source.PriorPhase
+		lifecycle := *source.FleetLifecycle
+		changed.PriorPhase = &prior
+		changed.FleetLifecycle = &lifecycle
+		mutate(&changed)
+		if err := validateScenarioFinalSemanticSource(cfg, roles, result, &changed); err == nil || !strings.Contains(err.Error(), "lineage") {
+			t.Fatalf("divergent production %s lineage was accepted: %v", name, err)
+		}
+	}
+}
+
+func TestScenarioCompletionLineageBindsSignedResult(t *testing.T) {
+	handoff := &ScenarioLifecycleHandoff{Schema: scenarioLifecycleHandoffSchema, ReleaseRunID: "release-run", Stage: fleetLifecycleStageReleaseHandoff, File: scenarioLifecycleHandoffFilename, ContentHash: "sha256:" + strings.Repeat("51", 32), SizeBytes: 1}
+	release := &ScenarioResult{Name: "release-1.0", LifecycleHandoff: handoff}
+	releaseCompletion := &scenarioCompletePayload{LifecycleHandoff: handoff}
+	if err := validateScenarioCompletionLineage(release, releaseCompletion); err != nil {
+		t.Fatalf("exact release completion lineage rejected: %v", err)
+	}
+	changedHandoff := *handoff
+	changedHandoff.SizeBytes++
+	releaseCompletion.LifecycleHandoff = &changedHandoff
+	if err := validateScenarioCompletionLineage(release, releaseCompletion); err == nil {
+		t.Fatal("release completion with a different lifecycle handoff was accepted")
+	}
+	gate := &ReleaseCampaignGate{Schema: releaseCampaignGateSchema, RunID: "release-run", ResultHash: finalTestHex(52), CompleteContentHash: "sha256:" + strings.Repeat("53", 32), StartEpoch: 1, EndEpoch: 2, LifecycleHandoff: *handoff}
+	production := &ScenarioResult{Name: "production-soak", PriorRelease: gate}
+	productionCompletion := &scenarioCompletePayload{PriorRelease: gate}
+	if err := validateScenarioCompletionLineage(production, productionCompletion); err != nil {
+		t.Fatalf("exact production completion lineage rejected: %v", err)
+	}
+	changedGate := *gate
+	changedGate.CompleteContentHash = "sha256:" + strings.Repeat("54", 32)
+	productionCompletion.PriorRelease = &changedGate
+	if err := validateScenarioCompletionLineage(production, productionCompletion); err == nil {
+		t.Fatal("production completion with a different release gate was accepted")
+	}
+}
+
+func TestScenarioArchiveLineageBindsRawHandoffAndExactResultBytes(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	result, roles, runDir := writeScenarioCampaignFixture(t, cfg, stateDir, "release-1.0", 9, 15)
+	owner := roles.EVM["testnet-owner"]
+	var complete ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONFile(filepath.Join(runDir, "complete.json"), &complete); err != nil {
+		t.Fatal(err)
+	}
+	var completion scenarioCompletePayload
+	if err := decodeStrictJSONBytes(complete.Payload, &completion); err != nil {
+		t.Fatal(err)
+	}
+	lifecycleRaw, err := os.ReadFile(filepath.Join(runDir, result.LifecycleHandoff.File))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{result.LifecycleHandoff.File: lifecycleRaw}
+	if err := validateScenarioArchiveLineage(cfg, result, &completion, files); err != nil {
+		t.Fatalf("exact archived lifecycle handoff rejected: %v", err)
+	}
+	delete(files, result.LifecycleHandoff.File)
+	if err := validateScenarioArchiveLineage(cfg, result, &completion, files); err == nil || !strings.Contains(err.Error(), "omits") {
+		t.Fatalf("missing archived lifecycle handoff accepted: %v", err)
+	}
+	files[result.LifecycleHandoff.File] = append(append([]byte(nil), lifecycleRaw...), ' ')
+	if err := validateScenarioArchiveLineage(cfg, result, &completion, files); err == nil || !strings.Contains(err.Error(), "differs") {
+		t.Fatalf("changed archived lifecycle handoff accepted: %v", err)
+	}
+	production := &ScenarioResult{Name: "production-soak"}
+	productionCompletion := scenarioCompletePayload{}
+	if err := validateScenarioArchiveLineage(cfg, production, &productionCompletion, files); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale release handoff in production archive accepted: %v", err)
+	}
+
+	files[result.LifecycleHandoff.File] = lifecycleRaw
+	analysis := &AnalysisReport{Schema: "urnetwork-sim-analysis-v1"}
+	for _, name := range []string{"result.json", "assertions.json", "anomalies.json", "adversaries.json", "observations.jsonl", scenarioCampaignStartFilename, "final-inputs/manifest.json", finalSemanticCaptureStatusFilename} {
+		files[name], err = os.ReadFile(filepath.Join(runDir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	files["analysis.json"], _ = json.Marshal(analysis)
+	files["analysis.html"] = []byte("<!doctype html>\n")
+	files["junit.xml"] = []byte("<testsuite></testsuite>\n")
+	bundle := &ScenarioEvidenceBundle{
+		Result: result, Observation: &ScenarioObservation{Schema: "urnetwork-sim-scenario-observation-v1"}, Analysis: analysis,
+	}
+	if err := validateCampaignEvidenceSemantics(cfg, owner.Address, files, completion, bundle); err != nil {
+		t.Fatalf("exact archived result rejected: %v", err)
+	}
+	originalStart := append([]byte(nil), files[scenarioCampaignStartFilename]...)
+	delete(files, scenarioCampaignStartFilename)
+	if err := validateCampaignEvidenceSemantics(cfg, owner.Address, files, completion, bundle); err == nil || !strings.Contains(err.Error(), "required file") {
+		t.Fatalf("public archive without campaign start marker accepted: %v", err)
+	}
+	files[scenarioCampaignStartFilename] = originalStart
+	var marker ReleaseEvidenceEnvelope
+	if err := decodeStrictJSONBytes(originalStart, &marker); err != nil {
+		t.Fatal(err)
+	}
+	var markerPayload scenarioCampaignAttemptPayload
+	if err := decodeStrictJSONBytes(marker.Payload, &markerPayload); err != nil {
+		t.Fatal(err)
+	}
+	markerPayload.AcceptanceBoundary.CampaignStartHead.Hash = finalTestHex(72)
+	resignedMarker, err := signEvidence(cfg, scenarioCampaignAttemptEvidenceKind, result.RunID, markerPayload, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files[scenarioCampaignStartFilename], err = json.Marshal(resignedMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCampaignEvidenceSemantics(cfg, owner.Address, files, completion, bundle); err == nil || !strings.Contains(err.Error(), "differs from its completed result boundary") {
+		t.Fatalf("public archive with re-signed divergent campaign start marker accepted: %v", err)
+	}
+	files[scenarioCampaignStartFilename] = originalStart
+	changedResult := *result
+	changedResult.PublishedEvidence = []PublishedEvidence{{ContentHash: "sha256:" + strings.Repeat("62", 32)}}
+	changedBundle := *bundle
+	changedBundle.Result = &changedResult
+	if err := validateCampaignEvidenceSemantics(cfg, owner.Address, files, completion, &changedBundle); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("archive and bundle differing only in published evidence were accepted: %v", err)
+	}
+}
+
+func TestCampaignEvidenceHistoryRejectsDuplicateKeysBeforeFetch(t *testing.T) {
+	public := &PublicDeploymentManifest{DeploymentID: "deployment", Netuid: 1}
+	hash := strings.Repeat("63", 32)
+	key := "fixture/st/v1/evidence/history/deployment/1/scenario-bundle/release.1/" + hash + ".json"
+	if _, err := campaignEvidenceHistoryHashes(public, "scenario-bundle", "release.1", []string{key, key}); err == nil || !strings.Contains(err.Error(), "repeats") {
+		t.Fatalf("duplicate run-scoped history keys were accepted: %v", err)
 	}
 }
 
@@ -817,6 +1450,70 @@ func rebindFinalSemanticReleaseRunFixture(t *testing.T, source *FinalSemanticEvi
 	}
 }
 
+// writePublicFinalSemanticClosureFixture writes a valid pre-semantic capture
+// graph while preserving the same closed/archive boundary as production.
+func writePublicFinalSemanticClosureFixture(t *testing.T, cfg *ResolvedConfig, stateDir, runDir string, semantic FinalSemanticEvidence, result *ScenarioResult, artifacts map[string][]byte) (*FinalSemanticCollectedInputs, *FinalSemanticCaptureStatus) {
+	t.Helper()
+	resultWire, err := os.ReadFile(filepath.Join(runDir, "result.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyBytes, ok := artifacts[semantic.PolicyArtifact.URI]
+	if !ok {
+		t.Fatalf("semantic policy artifact %q is unavailable", semantic.PolicyArtifact.URI)
+	}
+	const collectedPolicyPath = "final-inputs/policy.json"
+	collectedSource := semantic
+	collectedSource.PolicyArtifact = FinalArtifactLocator{Kind: "policy", URI: collectedPolicyPath, ContentHash: bytesSHA256(policyBytes), SizeBytes: uint64(len(policyBytes))}
+	collected := finalSemanticSupplementCollectedFixture(t, cfg, collectedSource, result, resultWire)
+	collectedWire := finalSemanticSupplementJSON(t, collected)
+	if err := atomicWrite(filepath.Join(runDir, "final-inputs", "manifest.json"), collectedWire, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	references := map[string]campaignArtifactReference{}
+	if err := collectCampaignArtifactReferences(collectedWire, references, 0); err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(references))
+	for name := range references {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		reference := references[name]
+		if name == "result.json" {
+			continue
+		}
+		raw, ok := artifacts[name]
+		if name == collectedPolicyPath {
+			raw, ok = policyBytes, true
+		}
+		if !ok {
+			raw = finalSemanticSupplementFixtureArtifactBytes(t, reference.Kind, name)
+		}
+		if uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+			t.Fatalf("collected-input fixture artifact %q does not match its locator", name)
+		}
+		root := stateDir
+		if strings.HasPrefix(name, "final-inputs/") {
+			root = runDir
+		}
+		if err := atomicWrite(filepath.Join(root, filepath.FromSlash(name)), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifestLocator := FinalArtifactLocator{Kind: "final-semantic-input-manifest", URI: "final-inputs/manifest.json", ContentHash: bytesSHA256(collectedWire), SizeBytes: uint64(len(collectedWire))}
+	capture := finalSemanticCaptureStatus(result, collected, manifestLocator)
+	capture.EvidenceHash, err = finalSemanticCaptureStatusHash(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(runDir, finalSemanticCaptureStatusFilename), finalSemanticSupplementJSON(t, capture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return collected, capture
+}
+
 func TestDecodeHashRejectsZeroLengthAndMalformedValues(t *testing.T) {
 	if _, err := decodeHash("0x" + strings.Repeat("ab", 32)); err != nil {
 		t.Fatal(err)
@@ -832,7 +1529,16 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	cfg := testResolvedConfig(t)
 	semanticSource, semanticArtifacts := finalSemanticFixture(t)
 	cfg.Config.Deployment.DeploymentID = semanticSource.DeploymentID
+	cfg.Config.Scenarios.ShortEpochs = int(semanticSource.Window.EpochCount)
+	cfg.Config.Topology.Operators = semanticSource.ExpectedOperators
+	cfg.Config.Topology.Validators = semanticSource.ExpectedValidators
+	cfg.Config.Topology.Miners = semanticSource.ExpectedMiners
 	cfg.ConfigHash = semanticSource.ConfigHash
+	policy, err := finalSemanticFixturePolicy(&semanticSource, semanticArtifacts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Policy = policy
 	cfg.PolicyHash = semanticSource.PolicyHash
 	cfg.Public.Chain.GenesisHash = semanticSource.GenesisHash
 	cfg.ChainID = semanticSource.ChainID
@@ -850,42 +1556,11 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		t.Fatal(err)
 	}
 	semanticSource.Deployment.GovernanceOwner = strings.ToLower(roles.EVM["testnet-owner"].Address)
-	semanticWire, err := json.Marshal(semanticSource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	semanticWire = bytes.ReplaceAll(semanticWire, []byte(`"artifacts/`), []byte(`"public/final-artifacts/`))
-	if err := json.Unmarshal(semanticWire, &semanticSource); err != nil {
-		t.Fatal(err)
-	}
-	renamedSemanticArtifacts := make(map[string][]byte, len(semanticArtifacts))
-	for name, raw := range semanticArtifacts {
-		renamedSemanticArtifacts["public/final-"+name] = raw
-	}
-	semanticArtifacts = renamedSemanticArtifacts
-	const committedRunID = "committed-run"
-	lifecycleHandoffBytes, lifecycleHandoff := rebindFinalSemanticReleaseRunFixture(t, &semanticSource, semanticArtifacts, committedRunID)
-	if err := validateScenarioLifecycleHandoffBinding(cfg, *lifecycleHandoff, lifecycleHandoffBytes); err != nil {
-		t.Fatalf("rebound semantic lifecycle handoff: %v", err)
-	}
-	window := semanticSource.Window
-	result := &ScenarioResult{
-		Schema: "urnetwork-sim-scenario-result-v1", Release: "1.0", RunID: committedRunID, DeploymentID: cfg.Config.Deployment.DeploymentID,
-		Name: "release-1.0", ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID,
-		GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, CompletedAt: time.Now().UTC().Format(time.RFC3339Nano), Result: "pass",
-		EndHead: semanticSource.EVMTerminalHead, AcceptanceWindow: &window, Assertions: []AssertionRecord{}, LifecycleHandoff: lifecycleHandoff,
-		Anomalies:   &ScenarioAnomalyLedger{Schema: "urnetwork-sim-anomaly-ledger-v1", Release: "1.0", RunID: committedRunID, Status: "clean", Entries: []ScenarioAnomaly{}},
-		Adversaries: &AdversaryCampaignEvidence{Schema: "urnetwork-adversary-campaign-v1", Release: "1.0", Actors: []AdversaryActorEvidence{}, Vectors: []AdversaryVectorEvidence{}},
-	}
-	result.EvidenceHash, err = canonicalScenarioResultHash(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	semanticSource.Phase = result.Name
+	result, lifecycleHandoffBytes, campaignStartBytes := finalSemanticCampaignResultFixture(t, cfg, roles, &semanticSource, semanticArtifacts)
+	lifecycleHandoff := result.LifecycleHandoff
 	if semanticSource.RunID != result.RunID || semanticSource.FleetLifecycle == nil || semanticSource.FleetLifecycle.State.RunID != result.RunID {
 		t.Fatal("rebound semantic source does not consistently use the committed run")
 	}
-	semanticSource.ResultHash = result.EvidenceHash
 	semanticDraft, err := BuildFinalSemanticEvidence(semanticSource)
 	if err != nil {
 		t.Fatal(err)
@@ -896,6 +1571,22 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	if semantic.FleetLifecycle == nil || semantic.FleetLifecycle.State.RunID != result.RunID || semantic.FleetLifecycle.ReleaseHandoffHash != lifecycleHandoff.ContentHash || semantic.FleetLifecycle.ReleaseHandoffSize != lifecycleHandoff.SizeBytes {
 		t.Fatal("sealed semantic evidence detached from the committed lifecycle handoff")
+	}
+	reserveBytes, ok := semanticArtifacts[semantic.Reserve.Artifact.URI]
+	if !ok {
+		t.Fatalf("sealed semantic reserve artifact %q is unavailable", semantic.Reserve.Artifact.URI)
+	}
+	if err := verifyFinalReserveArtifact(semantic, reserveBytes); err != nil {
+		t.Fatalf("sealed semantic reserve artifact fixture is internally inconsistent: %v", err)
+	}
+	if err := VerifyFinalSemanticArtifacts(context.Background(), semantic, func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
+		raw, exists := semanticArtifacts[locator.URI]
+		if !exists {
+			return nil, fmt.Errorf("fixture artifact %s is missing", locator.URI)
+		}
+		return append([]byte(nil), raw...), nil
+	}); err != nil {
+		t.Fatalf("sealed semantic artifact fixture is internally inconsistent: %v", err)
 	}
 	observation := &ScenarioObservation{Schema: "urnetwork-sim-scenario-observation-v1", ObservationHash: "observation"}
 	analysis := &AnalysisReport{Schema: "urnetwork-sim-analysis-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ObservationHash: observation.ObservationHash}
@@ -931,6 +1622,9 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if err := atomicWrite(filepath.Join(runDir, lifecycleHandoff.File), lifecycleHandoffBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := atomicWrite(filepath.Join(runDir, scenarioCampaignStartFilename), campaignStartBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	observationBytes, err := json.Marshal(observation)
 	if err != nil {
 		t.Fatal(err)
@@ -954,11 +1648,32 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if err := atomicWrite(filepath.Join(runDir, finalSemanticMarkdownFilename), semanticMarkdown, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	semanticBytes, err := json.Marshal(semantic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semanticReferences := map[string]campaignArtifactReference{}
+	if err := collectCampaignArtifactReferences(semanticBytes, semanticReferences, 0); err != nil {
+		t.Fatal(err)
+	}
+	referencedSemanticArtifacts := make(map[string][]byte, len(semanticReferences))
+	for name, reference := range semanticReferences {
+		if !strings.HasPrefix(name, "final-derived/") {
+			continue
+		}
+		raw, ok := semanticArtifacts[name]
+		if !ok || uint64(len(raw)) != reference.Size || !strings.EqualFold(bytesSHA256(raw), reference.ContentHash) {
+			t.Fatalf("sealed semantic artifact %q is unavailable or differs from its locator", name)
+		}
+		referencedSemanticArtifacts[name] = raw
+	}
+	semanticArtifacts = referencedSemanticArtifacts
 	for name, raw := range semanticArtifacts {
-		if err := atomicWrite(filepath.Join(stateDir, filepath.FromSlash(name)), raw, 0o644); err != nil {
+		if err := atomicWrite(filepath.Join(runDir, filepath.FromSlash(name)), raw, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
+	collected, capture := writePublicFinalSemanticClosureFixture(t, cfg, stateDir, runDir, *semantic, result, semanticArtifacts)
 	receiptPath := "receipts/external-receipt.json"
 	nestedProofPath := "public/nested-proof.json"
 	nestedProofBytes := []byte(`{"schema":"urnetwork-test-proof-v1","value":"verified"}` + "\n")
@@ -986,6 +1701,12 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, exists := fileHashes[finalSemanticEvidenceFilename]; exists {
+		t.Fatal("post-capture semantic evidence entered the closed scenario file census")
+	}
+	if _, exists := fileHashes[finalSemanticMarkdownFilename]; exists {
+		t.Fatal("post-capture semantic markdown entered the closed scenario file census")
+	}
 	archive, err := prepareCampaignEvidenceArchive(cfg, roles, stateDir, result.RunID, result.EvidenceHash, bytesSHA256(bundlePayload), fileHashes)
 	if err != nil {
 		t.Fatal(err)
@@ -1009,6 +1730,33 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		t.Fatal("owner completion envelope did not encode")
 	}
 	objects[complete.ContentHash] = completeBytes
+	rawSemanticFiles, err := enumerateFinalSemanticRawFiles(runDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semanticFileEnvelopes, semanticFileEntries, err := prepareFinalSemanticSupplementFiles(cfg, stateDir, result.RunID, roles.EVM["testnet-owner"], rawSemanticFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	supplementPayload := FinalSemanticSupplementPayload{
+		Schema: finalSemanticSupplementSchema, Status: finalSemanticSupplementStatus,
+		Phase: result.Name, RunID: result.RunID, ResultHash: result.EvidenceHash,
+		ScenarioCompleteHash: complete.ContentHash, ScenarioEvidenceManifestHash: archive.Manifest.ContentHash,
+		CaptureStatusHash: capture.EvidenceHash, CollectedInputsHash: collected.EvidenceHash,
+		SemanticEvidenceHash: semantic.EvidenceHash, PublicTranscriptHash: semantic.PublicVerification.TranscriptHash,
+		Files: semanticFileEntries,
+	}
+	supplement, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, supplementPayload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, envelope := range append(semanticFileEnvelopes, supplement) {
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects[envelope.ContentHash] = encoded
+	}
 	commitHashes := make([]string, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		commit, err := signEvidence(cfg, "scenario-complete-commit", result.RunID, complete, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
@@ -1020,7 +1768,12 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		commitHashes[operator-1] = commit.ContentHash
 	}
 	commitVisible := map[int]bool{}
+	supplementHistory := map[int][]string{}
+	objectOverrides := map[int]map[string][]byte{1: {}, 2: {}}
 	directOwnerVisible := true
+	historyKey := func(kind, hash string) string {
+		return "fixture/st/v1/evidence/history/" + cfg.Config.Deployment.DeploymentID + "/" + fmt.Sprint(cfg.Netuid) + "/" + kind + "/" + result.RunID + "/" + strings.TrimPrefix(hash, "sha256:") + ".json"
+	}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		operator := 0
 		if strings.HasPrefix(r.URL.Path, "/operator-1/") {
@@ -1033,18 +1786,26 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 			var keys []map[string]string
 			switch r.URL.Query().Get("kind") {
 			case "scenario-bundle":
-				keys = append(keys, map[string]string{"key": "history/" + strings.TrimPrefix(bundleHashes[operator-1], "sha256:") + ".json"})
+				keys = append(keys, map[string]string{"key": historyKey("scenario-bundle", bundleHashes[operator-1])})
 			case "scenario-complete-commit":
 				if directOwnerVisible {
-					keys = append(keys, map[string]string{"key": "history/" + strings.TrimPrefix(complete.ContentHash, "sha256:") + ".json"})
+					keys = append(keys, map[string]string{"key": historyKey("scenario-complete-commit", complete.ContentHash)})
 				}
 				if commitVisible[operator] {
-					keys = append(keys, map[string]string{"key": "history/" + strings.TrimPrefix(commitHashes[operator-1], "sha256:") + ".json"})
+					keys = append(keys, map[string]string{"key": historyKey("scenario-complete-commit", commitHashes[operator-1])})
+				}
+			case finalSemanticSupplementKind:
+				for _, hash := range supplementHistory[operator] {
+					keys = append(keys, map[string]string{"key": historyKey(finalSemanticSupplementKind, hash)})
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": keys})
 		case operator != 0 && strings.HasSuffix(r.URL.Path, "/sn/evidence"):
-			encoded := objects[r.URL.Query().Get("hash")]
+			hash := r.URL.Query().Get("hash")
+			encoded, overridden := objectOverrides[operator][hash]
+			if !overridden {
+				encoded = objects[hash]
+			}
 			if len(encoded) == 0 {
 				http.NotFound(w, r)
 				return
@@ -1091,28 +1852,35 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 			return VerifyFinalSemanticEvidenceOnChain(ctx, evidence, &finalTestChainReader{evidence: evidence})
 		},
 	}
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	fetchBundle := func() (*ScenarioEvidenceBundle, error) {
+		authenticated, err := probe.fetchAuthenticatedScenarioCampaign(context.Background(), public, result.RunID, result.Name)
+		if err != nil {
+			return nil, err
+		}
+		return authenticated.candidate.bundle, nil
+	}
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("direct owner envelope bypassed the per-operator completion commit")
 	}
 	directOwnerVisible = false
 	commitVisible[1] = true
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("completion commit present at only one operator was accepted")
 	}
 	commitVisible[2] = true
 	wantOwner := probe.trustedEvidenceOwner
 	probe.trustedEvidenceOwner = common.HexToAddress(roles.EVM["operator-1-artifact"].Address)
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("self-declared owner signer bypassed the finalized coordinator owner")
 	}
 	probe.trustedEvidenceOwner = wantOwner
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("syntactic pass without the approved scenario assertions was accepted")
 	}
 	probe.campaignResultVerify = func(*ResolvedConfig, *ScenarioResult, string) error { return nil }
 	manifestBytes := objects[archive.Manifest.ContentHash]
 	delete(objects, archive.Manifest.ContentHash)
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("completion with a missing campaign manifest was accepted")
 	}
 	objects[archive.Manifest.ContentHash] = manifestBytes
@@ -1127,13 +1895,13 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	resultEnvelopeBytes := objects[resultEnvelopeHash]
 	delete(objects, resultEnvelopeHash)
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("syntactic hash for a nonexistent result object was accepted")
 	}
 	tamperedResultEnvelope := append([]byte(nil), resultEnvelopeBytes...)
 	tamperedResultEnvelope[len(tamperedResultEnvelope)/2] ^= 1
 	objects[resultEnvelopeHash] = tamperedResultEnvelope
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("tampered campaign evidence object was accepted")
 	}
 	objects[resultEnvelopeHash] = resultEnvelopeBytes
@@ -1156,17 +1924,101 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	referenceEnvelopeBytes := objects[referenceEnvelopeHash]
 	delete(objects, referenceEnvelopeHash)
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("completion with an unavailable referenced external receipt was accepted")
 	}
 	tamperedReferenceEnvelope := append([]byte(nil), referenceEnvelopeBytes...)
 	tamperedReferenceEnvelope[len(tamperedReferenceEnvelope)/2] ^= 1
 	objects[referenceEnvelopeHash] = tamperedReferenceEnvelope
-	if _, err := probe.fetchLatestScenarioBundle(context.Background(), public); err == nil {
+	if _, err := fetchBundle(); err == nil {
 		t.Fatal("completion with a tampered referenced external receipt was accepted")
 	}
 	objects[referenceEnvelopeHash] = referenceEnvelopeBytes
-	got, err := probe.fetchLatestScenarioBundle(context.Background(), public)
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("closed campaign without a semantic supplement was accepted")
+	}
+	supplementHistory[1] = []string{supplement.ContentHash}
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement visible at only one operator was accepted")
+	}
+	supplementHistory[2] = []string{supplement.ContentHash}
+	supplementBytes := objects[supplement.ContentHash]
+	tamperedSupplement := append([]byte(nil), supplementBytes...)
+	tamperedSupplement[len(tamperedSupplement)/2] ^= 1
+	objectOverrides[2][supplement.ContentHash] = tamperedSupplement
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement differing between operator replicas was accepted")
+	}
+	delete(objectOverrides[2], supplement.ContentHash)
+	semanticFileHash := semanticFileEntries[0].EnvelopeHash
+	objectOverrides[2][semanticFileHash] = nil
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement with a file missing at one operator was accepted")
+	}
+	tamperedSemanticFile := append([]byte(nil), objects[semanticFileHash]...)
+	tamperedSemanticFile[len(tamperedSemanticFile)/2] ^= 1
+	objectOverrides[2][semanticFileHash] = tamperedSemanticFile
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement with a tampered file replica was accepted")
+	}
+	delete(objectOverrides[2], semanticFileHash)
+	uppercaseEntryPayload := supplementPayload
+	uppercaseEntryPayload.Files = append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...)
+	uppercaseEntryPayload.Files[0].ContentHash = strings.ToUpper(uppercaseEntryPayload.Files[0].ContentHash)
+	uppercaseEntrySupplement, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, uppercaseEntryPayload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	uppercaseEntryBytes, err := json.Marshal(uppercaseEntrySupplement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects[uppercaseEntrySupplement.ContentHash] = uppercaseEntryBytes
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		supplementHistory[operator] = []string{uppercaseEntrySupplement.ContentHash}
+	}
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement with non-exact file content hash casing was accepted")
+	}
+	ambiguousFilePayload := supplementPayload
+	ambiguousFilePayload.Files = append(append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...), supplementPayload.Files[0])
+	ambiguousFileSupplement, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, ambiguousFilePayload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ambiguousFileBytes, err := json.Marshal(ambiguousFileSupplement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects[ambiguousFileSupplement.ContentHash] = ambiguousFileBytes
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		supplementHistory[operator] = []string{ambiguousFileSupplement.ContentHash}
+	}
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("semantic supplement with an ambiguous file census was accepted")
+	}
+	alternatePayload := supplementPayload
+	alternatePayload.Files = append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...)
+	alternatePayload.ScenarioCompleteHash = strings.ToUpper(alternatePayload.ScenarioCompleteHash)
+	alternate, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, alternatePayload, roles.EVM["testnet-owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	alternateBytes, err := json.Marshal(alternate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects[alternate.ContentHash] = alternateBytes
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		supplementHistory[operator] = []string{supplement.ContentHash, alternate.ContentHash}
+	}
+	if _, err := fetchBundle(); err == nil {
+		t.Fatal("multiple fully replicated semantic supplements were accepted")
+	}
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		supplementHistory[operator] = []string{supplement.ContentHash}
+	}
+	got, err := fetchBundle()
 	if err != nil || got.Result == nil || got.Result.RunID != result.RunID {
 		t.Fatalf("replicated committed scenario bundle = %+v, %v", got, err)
 	}

@@ -13,7 +13,9 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -1428,13 +1430,11 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 	}
 	lifecycleEpochs := fleetLifecyclePayoutEpochs(lifecycle)
 	lifecycleArtifacts := map[uint64]bool{}
-	historyURL := fmt.Sprintf("%s/sn/artifacts?deployment_id=%s&netuid=%d", base, p.cfg.Config.Deployment.DeploymentID, p.cfg.Netuid)
-	historyBytes, _, err := p.get(ctx, historyURL, 16*1024*1024)
+	keys, _, err := fetchPayoutArtifactHistory(ctx, base, p.cfg.Config.Deployment.DeploymentID, p.cfg.Netuid, p.get)
 	var latestMatching *payoutArtifact
 	if err != nil {
 		problems = append(problems, "artifacts: "+err.Error())
 	} else {
-		keys := artifactHistoryKeys(historyBytes)
 		o.ArtifactHistoryObjects = len(keys)
 		seen := map[string]bool{}
 		for _, key := range keys {
@@ -1513,29 +1513,126 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 	return o
 }
 
-func artifactHistoryKeys(b []byte) []string {
-	var result struct {
-		Schema  string            `json:"schema"`
-		Objects []json.RawMessage `json:"objects"`
+const (
+	payoutArtifactHistoryPageObjects      = 256
+	maximumPayoutArtifactHistoryKeys      = maximumCampaignEvidenceObjects
+	maximumPayoutArtifactHistoryPageBytes = 2 * 1024 * 1024
+)
+
+type payoutArtifactHistoryObject struct {
+	Key         string `json:"key"`
+	Size        int64  `json:"size"`
+	ContentHash string `json:"content_hash"`
+}
+
+type payoutArtifactHistoryPage struct {
+	Schema    string                        `json:"schema"`
+	Objects   []payoutArtifactHistoryObject `json:"objects"`
+	More      bool                          `json:"more"`
+	NextAfter string                        `json:"next_after"`
+}
+
+type payoutArtifactHistoryPageGetter func(context.Context, string, int64) ([]byte, int, error)
+
+// fetchPayoutArtifactHistory follows the server's bounded lexical cursor and
+// validates every page before returning any key to an artifact fetch caller.
+func fetchPayoutArtifactHistory(ctx context.Context, base, deploymentID string, netuid uint16, get payoutArtifactHistoryPageGetter) ([]string, uint64, error) {
+	if ctx == nil || strings.TrimSpace(base) == "" || deploymentID == "" || netuid == 0 || get == nil {
+		return nil, 0, errors.New("payout artifact history context is incomplete")
 	}
-	if json.Unmarshal(b, &result) != nil || result.Schema != "urnetwork-payout-artifact-history-v1" {
-		return nil
+	endpoint, err := url.Parse(strings.TrimSuffix(base, "/") + "/sn/artifacts")
+	if err != nil {
+		return nil, 0, err
 	}
-	keys := make([]string, 0, len(result.Objects))
-	for _, raw := range result.Objects {
-		var object struct {
-			Key string `json:"key"`
+	query := endpoint.Query()
+	query.Set("deployment_id", deploymentID)
+	query.Set("netuid", strconv.FormatUint(uint64(netuid), 10))
+	query.Set("limit", strconv.Itoa(payoutArtifactHistoryPageObjects))
+	keys := make([]string, 0, payoutArtifactHistoryPageObjects)
+	seen := map[string]bool{}
+	after := ""
+	var requests uint64
+	for {
+		if after == "" {
+			query.Del("after")
+		} else {
+			query.Set("after", after)
 		}
-		if json.Unmarshal(raw, &object) == nil && object.Key != "" {
+		endpoint.RawQuery = query.Encode()
+		raw, status, getErr := get(ctx, endpoint.String(), maximumPayoutArtifactHistoryPageBytes)
+		requests++
+		if getErr != nil {
+			return nil, requests, getErr
+		}
+		if status/100 != 2 {
+			return nil, requests, fmt.Errorf("payout artifact history returned HTTP %d", status)
+		}
+		var page payoutArtifactHistoryPage
+		if err := decodeStrictJSONBytes(raw, &page); err != nil || page.Schema != "urnetwork-payout-artifact-history-v1" || len(page.Objects) > payoutArtifactHistoryPageObjects {
+			return nil, requests, stateMismatchError(err, "payout artifact history page is invalid")
+		}
+		if page.More && len(page.Objects) != payoutArtifactHistoryPageObjects {
+			return nil, requests, errors.New("continued payout artifact history page is not full")
+		}
+		previous := after
+		for _, object := range page.Objects {
+			if object.Size < 0 || object.Key <= previous || seen[object.Key] {
+				return nil, requests, errors.New("payout artifact history is unordered or duplicated")
+			}
+			if err := validatePayoutArtifactHistoryObject(object, deploymentID, netuid); err != nil {
+				return nil, requests, err
+			}
+			if len(keys) >= maximumPayoutArtifactHistoryKeys {
+				return nil, requests, fmt.Errorf("payout artifact history exceeds %d objects", maximumPayoutArtifactHistoryKeys)
+			}
+			seen[object.Key] = true
 			keys = append(keys, object.Key)
-			continue
+			previous = object.Key
 		}
-		var key string
-		if json.Unmarshal(raw, &key) == nil && key != "" {
-			keys = append(keys, key)
+		if !page.More {
+			if page.NextAfter != "" {
+				return nil, requests, errors.New("terminal payout artifact history page has a cursor")
+			}
+			return keys, requests, nil
+		}
+		if len(page.Objects) == 0 || page.NextAfter != previous || page.NextAfter == after || len(keys) >= maximumPayoutArtifactHistoryKeys {
+			return nil, requests, errors.New("payout artifact history continuation is invalid or over limit")
+		}
+		after = page.NextAfter
+	}
+}
+
+// validatePayoutArtifactHistoryObject confines one server history row to the
+// requested deployment/netuid tree and binds its filename to its content hash.
+func validatePayoutArtifactHistoryObject(object payoutArtifactHistoryObject, deploymentID string, netuid uint16) error {
+	if strings.ContainsAny(object.Key, "\\\r\n\x00") {
+		return errors.New("payout artifact history contains an unsafe key")
+	}
+	key := filepath.ToSlash(object.Key)
+	if key == "" || strings.HasPrefix(key, "/") || path.Clean(key) != key {
+		return errors.New("payout artifact history contains a noncanonical key")
+	}
+	segments := strings.Split(key, "/")
+	if len(segments) < 8 {
+		return errors.New("payout artifact history key is outside its exact scope")
+	}
+	tail := segments[len(segments)-8:]
+	if tail[0] != "st" || tail[1] != "v1" || tail[2] != "history" || tail[3] != deploymentID || tail[4] != strconv.FormatUint(uint64(netuid), 10) {
+		return errors.New("payout artifact history key is outside its exact scope")
+	}
+	for index, label := range []string{"epoch", "operator"} {
+		value, err := strconv.ParseUint(tail[5+index], 10, 64)
+		if err != nil || tail[5+index] != strconv.FormatUint(value, 10) || label == "operator" && value == 0 {
+			return fmt.Errorf("payout artifact history %s is noncanonical", label)
 		}
 	}
-	return keys
+	filename := tail[7]
+	hashHex := strings.TrimSuffix(filename, ".json")
+	decoded, err := hex.DecodeString(hashHex)
+	if err != nil || len(decoded) != sha256.Size || filename != hashHex+".json" || hashHex != strings.ToLower(hashHex) || object.ContentHash != "sha256:"+hashHex {
+		return errors.New("payout artifact history content identity is invalid")
+	}
+	return nil
 }
 
 func payoutArtifactMatchesChain(a *payoutArtifact, contracts *ContractView) bool {
@@ -4187,7 +4284,7 @@ func validateScenarioFinalSemanticSource(cfg *ResolvedConfig, roles *RoleSecrets
 	if !ok || !common.IsHexAddress(owner.Address) || common.HexToAddress(owner.Address) == (common.Address{}) {
 		return errors.New("final semantic campaign owner is unavailable")
 	}
-	if source.Phase != result.Name || source.RunID != result.RunID || !strings.EqualFold(source.ResultHash, result.EvidenceHash) || source.DeploymentID != result.DeploymentID || source.DeploymentID != cfg.Config.Deployment.DeploymentID || source.ConfigHash != result.ConfigHash || source.ConfigHash != cfg.ConfigHash ||
+	if source.Phase != result.Name || source.RunID != result.RunID || !strings.EqualFold(source.ResultHash, result.EvidenceHash) || source.CampaignStartedAt != result.StartedAt || source.CampaignCompletedAt != result.CompletedAt || source.DeploymentID != result.DeploymentID || source.DeploymentID != cfg.Config.Deployment.DeploymentID || source.ConfigHash != result.ConfigHash || source.ConfigHash != cfg.ConfigHash ||
 		!strings.EqualFold(source.PolicyHash, result.PolicyHash) || !strings.EqualFold(source.PolicyHash, cfg.PolicyHash) || source.ChainID != result.ChainID || source.ChainID != cfg.ChainID ||
 		source.Netuid != result.Netuid || source.Netuid != cfg.Netuid || !strings.EqualFold(source.GenesisHash, result.GenesisHash) || !strings.EqualFold(source.GenesisHash, cfg.Public.Chain.GenesisHash) ||
 		source.EVMCampaignStartHead != result.CampaignStartHead || source.EVMTerminalHead != result.EndHead || source.Window != *result.AcceptanceWindow || !validCanonicalHashHex(source.PlanHash) ||
@@ -4195,6 +4292,91 @@ func validateScenarioFinalSemanticSource(cfg *ResolvedConfig, roles *RoleSecrets
 		source.ExpectedCandidates != cfg.Config.Topology.HeadFleets+cfg.Config.Topology.ChallengerFleets || source.ExpectedHeadSlots != cfg.Config.Topology.HeadSlots ||
 		!strings.EqualFold(source.Deployment.GovernanceOwner, owner.Address) {
 		return errors.New("final semantic source does not bind the canonical scenario, configuration, topology, terminal checkpoint, and owner")
+	}
+	if err := validateScenarioFinalSemanticLineage(result, source); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateScenarioCompletionLineage prevents a signed completion from
+// replacing the result's release handoff or authenticated predecessor.
+func validateScenarioCompletionLineage(result *ScenarioResult, completion *scenarioCompletePayload) error {
+	if result == nil || completion == nil {
+		return errors.New("scenario completion lineage is incomplete")
+	}
+	sameHandoff := result.LifecycleHandoff == nil && completion.LifecycleHandoff == nil
+	if result.LifecycleHandoff != nil && completion.LifecycleHandoff != nil {
+		sameHandoff = *result.LifecycleHandoff == *completion.LifecycleHandoff
+	}
+	if !sameHandoff || !releaseCampaignGatesEqual(result.PriorRelease, completion.PriorRelease) {
+		return errors.New("scenario completion lineage does not bind the signed result")
+	}
+	return nil
+}
+
+// validateScenarioArchiveLineage authenticates the completion fields and the
+// exact release handoff bytes inside the immutable campaign file census.
+func validateScenarioArchiveLineage(cfg *ResolvedConfig, result *ScenarioResult, completion *scenarioCompletePayload, files map[string][]byte) error {
+	if err := validateScenarioCompletionLineage(result, completion); err != nil {
+		return err
+	}
+	if result == nil {
+		return errors.New("scenario archive lineage is incomplete")
+	}
+	switch result.Name {
+	case "release-1.0":
+		if result.LifecycleHandoff == nil {
+			return errors.New("release scenario archive has no lifecycle handoff")
+		}
+		committedHash, committed := completion.Files[result.LifecycleHandoff.File]
+		if !committed || committedHash != result.LifecycleHandoff.ContentHash {
+			return errors.New("release scenario archive completion omits or changes its lifecycle handoff")
+		}
+		raw, ok := files[result.LifecycleHandoff.File]
+		if !ok {
+			return errors.New("release scenario archive omits its lifecycle handoff bytes")
+		}
+		if result.LifecycleHandoff.ReleaseRunID != result.RunID {
+			return errors.New("release scenario archive lifecycle handoff names another run")
+		}
+		if err := validateScenarioLifecycleHandoffBinding(cfg, *result.LifecycleHandoff, raw); err != nil {
+			return err
+		}
+	case "production-soak":
+		if _, exists := files[scenarioLifecycleHandoffFilename]; exists {
+			return errors.New("production scenario archive contains a stale release lifecycle handoff")
+		}
+	default:
+		return fmt.Errorf("unsupported scenario archive phase %q", result.Name)
+	}
+	return nil
+}
+
+// validateScenarioFinalSemanticLineage binds the phase-specific lifecycle
+// fields copied from the result to the semantic report that later verifies it.
+func validateScenarioFinalSemanticLineage(result *ScenarioResult, source *FinalSemanticEvidence) error {
+	if result == nil || source == nil || source.FleetLifecycle == nil {
+		return errors.New("final semantic lifecycle lineage is incomplete")
+	}
+	switch result.Name {
+	case "release-1.0":
+		handoff := result.LifecycleHandoff
+		if result.PriorRelease != nil || handoff == nil || source.PriorPhase != nil || handoff.Schema != scenarioLifecycleHandoffSchema || handoff.ReleaseRunID != result.RunID || handoff.Stage != fleetLifecycleStageReleaseHandoff || handoff.File != scenarioLifecycleHandoffFilename || handoff.ContentHash != source.FleetLifecycle.ReleaseHandoffHash || handoff.SizeBytes != source.FleetLifecycle.ReleaseHandoffSize {
+			return errors.New("final semantic release lifecycle does not bind the signed result handoff")
+		}
+	case "production-soak":
+		gate := result.PriorRelease
+		prior := source.PriorPhase
+		if result.LifecycleHandoff != nil || gate == nil || prior == nil {
+			return errors.New("final semantic production lineage does not bind the signed release gate")
+		}
+		endEpoch, ok := checkedAdd(prior.AcceptanceWindow.BaselineEpoch, prior.AcceptanceWindow.EpochCount)
+		if !ok || gate.Schema != releaseCampaignGateSchema || gate.RunID != prior.RunID || !strings.EqualFold(gate.ResultHash, prior.ResultHash) || !strings.EqualFold(gate.CompleteContentHash, prior.OwnerCompletionEnvelopeHash) || gate.StartEpoch == 0 || gate.StartEpoch != prior.AcceptanceWindow.BaselineEpoch || gate.EndEpoch < endEpoch || gate.LifecycleHandoff.Schema != scenarioLifecycleHandoffSchema || gate.LifecycleHandoff.ReleaseRunID != prior.RunID || gate.LifecycleHandoff.Stage != fleetLifecycleStageReleaseHandoff || gate.LifecycleHandoff.File != scenarioLifecycleHandoffFilename || gate.LifecycleHandoff.ContentHash != source.FleetLifecycle.ReleaseHandoffHash || gate.LifecycleHandoff.SizeBytes != source.FleetLifecycle.ReleaseHandoffSize {
+			return errors.New("final semantic production lineage does not bind the signed release gate")
+		}
+	default:
+		return fmt.Errorf("unsupported final semantic phase %q", result.Name)
 	}
 	return nil
 }

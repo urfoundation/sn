@@ -306,8 +306,12 @@ func finalFleetLifecycleVariantRange(state *FleetLifecycleEvidence, name string)
 		}
 		return 1, state.AcceptanceStartBlock, state.AcceptanceStartBlock, state.TakeoverEffectiveEpoch, nil
 	}
-	if state.ReleaseHandoffSchedule == nil || state.ReleaseHandoffSchedule.ApplicationDeadlineBlock < state.AcceptanceTerminalBlock || state.ReleaseEVMEvidenceDeadlineBlock < state.AcceptanceTerminalBlock {
+	if state.ReleaseHandoffSchedule == nil {
 		return 0, 0, 0, 0, errors.New("fleet lifecycle release lineage bounds are unavailable")
+	}
+	expectedEVMDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(state.AcceptanceTerminalBlock, state.ReleaseHandoffSchedule)
+	if err != nil || state.ReleaseEVMEvidenceDeadlineBlock != expectedEVMDeadline {
+		return 0, 0, 0, 0, stateMismatchError(err, "fleet lifecycle release lineage bounds are unavailable")
 	}
 	nativeEnd, nativeOK := checkedAdd(state.ReleaseHandoffSchedule.ApplicationDeadlineBlock, 1)
 	evmEnd, evmOK := checkedAdd(state.ReleaseEVMEvidenceDeadlineBlock, 1)
@@ -967,6 +971,39 @@ func verifyFinalFleetLifecycleContinuity(prior, current *FinalFleetLifecycleEvid
 	return nil
 }
 
+// validateFinalFleetLifecycleSchedules applies the persisted-state deadline
+// rules to semantic evidence: native work keeps its own bounded deadline while
+// EVM evidence remains valid through the later acceptance/native boundary.
+func validateFinalFleetLifecycleSchedules(state *FleetLifecycleEvidence, production bool) error {
+	if state == nil || state.ReleaseHandoffSchedule == nil {
+		return errors.New("fleet lifecycle semantic schedule is incomplete")
+	}
+	if err := validateFleetLifecycleNativeSchedule(state.ReleaseHandoffSchedule, "release-1.0", state.AcceptanceStartBlock, state.AcceptanceTerminalBlock); err != nil {
+		return err
+	}
+	releaseDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(state.AcceptanceTerminalBlock, state.ReleaseHandoffSchedule)
+	if err != nil {
+		return err
+	}
+	if state.ReleaseEVMEvidenceDeadlineBlock != releaseDeadline {
+		return errors.New("fleet lifecycle release EVM evidence-tail bound differs from its authenticated schedule")
+	}
+	if !production {
+		return nil
+	}
+	if err := validateFleetLifecycleNativeSchedule(state.ProductionNativeSchedule, "production-soak", state.ProductionAcceptanceStartBlock, state.ProductionAcceptanceTerminalBlock); err != nil {
+		return err
+	}
+	productionDeadline, err := fleetLifecycleExpectedEVMEvidenceDeadline(state.ProductionAcceptanceTerminalBlock, state.ProductionNativeSchedule)
+	if err != nil {
+		return err
+	}
+	if state.ProductionEVMEvidenceDeadlineBlock != productionDeadline {
+		return errors.New("fleet lifecycle production EVM evidence-tail bound differs from its authenticated schedule")
+	}
+	return nil
+}
+
 func verifyFinalFleetLifecycle(evidence *FinalSemanticEvidence) error {
 	if evidence == nil {
 		return errors.New("final semantic evidence is unavailable")
@@ -994,19 +1031,8 @@ func verifyFinalFleetLifecycle(evidence *FinalSemanticEvidence) error {
 	if state.ReleaseHandoffSchedule == nil || state.PostRegistrationRewardBaseline.Number == 0 || requireFinalHex32("fleet lifecycle reward fence", strings.ToLower(state.PostRegistrationRewardBaseline.Hash)) != nil {
 		return errors.New("fleet lifecycle semantic schedule or reward fence is incomplete")
 	}
-	if err := validateFleetLifecycleNativeSchedule(state.ReleaseHandoffSchedule, "release-1.0", state.AcceptanceStartBlock, state.AcceptanceTerminalBlock); err != nil {
+	if err := validateFinalFleetLifecycleSchedules(state, evidence.Phase == "production-soak"); err != nil {
 		return err
-	}
-	if state.ReleaseEVMEvidenceDeadlineBlock != state.ReleaseHandoffSchedule.ApplicationDeadlineBlock || state.ReleaseEVMEvidenceDeadlineBlock < state.AcceptanceTerminalBlock {
-		return errors.New("fleet lifecycle release EVM evidence-tail bound differs from its authenticated schedule")
-	}
-	if evidence.Phase == "production-soak" {
-		if err := validateFleetLifecycleNativeSchedule(state.ProductionNativeSchedule, "production-soak", state.ProductionAcceptanceStartBlock, state.ProductionAcceptanceTerminalBlock); err != nil {
-			return err
-		}
-		if state.ProductionEVMEvidenceDeadlineBlock != state.ProductionNativeSchedule.ApplicationDeadlineBlock || state.ProductionEVMEvidenceDeadlineBlock < state.ProductionAcceptanceTerminalBlock {
-			return errors.New("fleet lifecycle production EVM evidence-tail bound differs from its authenticated schedule")
-		}
 	}
 	seenRoles := map[string]bool{}
 	for _, role := range lifecycle.Roles {

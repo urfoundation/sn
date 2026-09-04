@@ -36,6 +36,43 @@ type finalSemanticFixtureCarriedAction struct {
 	receipt       FinalNativeReceipt
 }
 
+func TestFinalFleetLifecycleSchedulesBindIndependentEVMDeadline(t *testing.T) {
+	releaseSchedule := fleetLifecycleNativeScheduleFixture(t, "release-1.0", 1_000, 2_650)
+	productionSchedule := fleetLifecycleNativeScheduleFixture(t, "production-soak", 5_000, 6_260)
+	state := FleetLifecycleEvidence{
+		AcceptanceStartBlock:               1_000,
+		AcceptanceTerminalBlock:            2_650,
+		ReleaseHandoffSchedule:             releaseSchedule,
+		ReleaseEVMEvidenceDeadlineBlock:    3_000,
+		ProductionAcceptanceStartBlock:     5_000,
+		ProductionAcceptanceTerminalBlock:  6_260,
+		ProductionNativeSchedule:           productionSchedule,
+		ProductionEVMEvidenceDeadlineBlock: 6_260,
+	}
+	if err := validateFinalFleetLifecycleSchedules(&state, true); err != nil {
+		t.Fatalf("valid release/production semantic deadlines: %v", err)
+	}
+	mutations := []struct {
+		name       string
+		release    uint64
+		production uint64
+	}{
+		{name: "release one block short", release: 2_999, production: 6_260},
+		{name: "release one block long", release: 3_001, production: 6_260},
+		{name: "production aliases native", release: 3_000, production: 5_360},
+		{name: "production one block short", release: 3_000, production: 6_259},
+		{name: "production one block long", release: 3_000, production: 6_261},
+	}
+	for _, mutation := range mutations {
+		candidate := state
+		candidate.ReleaseEVMEvidenceDeadlineBlock = mutation.release
+		candidate.ProductionEVMEvidenceDeadlineBlock = mutation.production
+		if err := validateFinalFleetLifecycleSchedules(&candidate, true); err == nil {
+			t.Fatalf("%s semantic deadline mutation was accepted", mutation.name)
+		}
+	}
+}
+
 // Resolve whether a fixture action was executed under the current plan or is
 // carried from an authenticated ancestor. Current actions need an explicit
 // synthetic block; carried actions instead retain the exact prior-plan receipt
@@ -677,7 +714,7 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		t.Fatal("nil semantic fixture")
 	}
 	addArtifact := func(kind, name string, data []byte) FinalArtifactLocator {
-		uri := "artifacts/" + name
+		uri := "final-derived/" + name
 		artifacts[uri] = append([]byte(nil), data...)
 		return FinalArtifactLocator{Kind: kind, URI: uri, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
@@ -864,7 +901,7 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		t.Fatalf("lifecycle fixture persisted plan=%v: %v", persisted, decodeErr)
 	}
 	source.PlanHash = plan.PlanHash
-	planURI := "artifacts/setup-plan.json"
+	planURI := "final-derived/setup-plan.json"
 	artifacts[planURI] = append([]byte(nil), planBytes...)
 	source.PlanArtifact = FinalArtifactLocator{Kind: "setup-plan", URI: planURI, ContentHash: bytesSHA256(planBytes), SizeBytes: uint64(len(planBytes))}
 
@@ -1615,7 +1652,7 @@ func rebuildFinalSemanticRewardFixtureArtifacts(t *testing.T, source *FinalSeman
 		if err != nil {
 			t.Fatal(err)
 		}
-		locator := FinalArtifactLocator{Kind: "native-reward-snapshot", URI: fmt.Sprintf("artifacts/native-reward-epoch-%d.json", epoch), ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
+		locator := FinalArtifactLocator{Kind: "native-reward-snapshot", URI: fmt.Sprintf("final-derived/native-reward-epoch-%d.json", epoch), ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 		artifacts[locator.URI] = data
 		for _, index := range indices {
 			source.NativeRewards[index].SnapshotArtifact = locator

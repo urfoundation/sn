@@ -26,10 +26,11 @@ echo "[release-1.0] sn Go tests"
   go test -race ./validator -run "$validator_lifecycle_tests" -count=1
   # Keep the launch-scale simulator isolated so its package deadline and any
   # race report remain attributable without weakening the 1,000-miner tests.
-  # The launch-scale race suite's measured baseline already exceeds 9m40s.
-  # Keep deterministic headroom for required regressions and slower CI hosts;
-  # this changes only the harness deadline, never the test selection.
-  go test -race -timeout 15m ./sim-testnet
+  # Three isolated launch-integrity shards require more than 62m when summed,
+  # before the rest of the package and concurrent live-campaign load. Keep
+  # deterministic headroom for the complete package and slower CI hosts; this
+  # changes only the harness deadline, never the test selection.
+  go test -race -timeout 90m ./sim-testnet
 )
 
 echo "[release-1.0] deployable Solidity static analysis"

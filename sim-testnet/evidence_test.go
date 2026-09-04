@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,14 @@ import (
 
 type forbiddenScenarioCommitSupervisedAPITransport struct {
 	calls int
+}
+
+type directEvidenceNoListStore struct {
+	server.BlobStore
+}
+
+func (*directEvidenceNoListStore) List(context.Context, string) ([]server.BlobObject, error) {
+	panic("direct evidence verification must not list broad history")
 }
 
 func (transport *forbiddenScenarioCommitSupervisedAPITransport) RoundTrip(*http.Request) (*http.Response, error) {
@@ -922,35 +931,192 @@ func TestVerifyPublishedEvidenceOriginChecksContentSignerAndHistory(t *testing.T
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(envelope)
+	contentKey := "fixture/st/v1/evidence/content/sha256/" + strings.TrimPrefix(envelope.ContentHash, "sha256:") + ".json"
+	historyKey := "fixture/st/v1/evidence/history/" + cfg.Config.Deployment.DeploymentID + "/" + fmt.Sprint(cfg.Netuid) + "/deployment-manifest/" + startifact.EvidenceDeploymentHistoryRunID + "/" + strings.TrimPrefix(envelope.ContentHash, "sha256:") + ".json"
+	deploymentHistory := make([]string, 10)
+	for index := range deploymentHistory[:len(deploymentHistory)-1] {
+		deploymentHistory[index] = strings.TrimSuffix(historyKey, filepath.Base(historyKey)) + fmt.Sprintf("%064x.json", index+1)
+	}
+	deploymentHistory[len(deploymentHistory)-1] = historyKey
 	historyHasObject := true
+	historyMissing := false
+	expectedRunID := startifact.EvidenceDeploymentHistoryRunID
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sn/evidence":
 			_, _ = w.Write(encoded)
 		case "/sn/evidence/history":
-			key := "different.json"
-			if historyHasObject {
-				key = "history/" + strings.TrimPrefix(envelope.ContentHash, "sha256:") + ".json"
+			if r.URL.Query().Get("run_id") != expectedRunID || r.URL.Query().Get("hash") != envelope.ContentHash || r.URL.Query().Get("limit") != fmt.Sprint(publishedEvidenceExactHistoryObjects) {
+				t.Errorf("deployment history query = %q", r.URL.RawQuery)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": []map[string]string{{"key": key}}})
+			key := deploymentHistory[0]
+			if historyHasObject {
+				key = deploymentHistory[len(deploymentHistory)-1]
+			}
+			objects := []map[string]string{{"key": key}}
+			if historyMissing {
+				objects = nil
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": objects})
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
-	published := PublishedEvidence{ContentHash: envelope.ContentHash}
+	published := PublishedEvidence{ContentHash: envelope.ContentHash, ContentKey: contentKey, HistoryKey: historyKey}
 	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err != nil {
 		t.Fatal(err)
+	}
+	legacyHistoryKey := strings.Replace(historyKey, "/"+startifact.EvidenceDeploymentHistoryRunID+"/", "/"+startifact.EvidenceLegacyDeploymentHistoryRunID+"/", 1)
+	published.HistoryKey = legacyHistoryKey
+	historyKey = legacyHistoryKey
+	deploymentHistory[len(deploymentHistory)-1] = legacyHistoryKey
+	expectedRunID = startifact.EvidenceLegacyDeploymentHistoryRunID
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err != nil {
+		t.Fatalf("legacy receipt-directed empty-run history rejected: %v", err)
 	}
 	historyHasObject = false
 	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "history") {
 		t.Fatalf("missing public history object was accepted: %v", err)
 	}
+	historyMissing = true
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("empty exact-hash public history response was accepted: %v", err)
+	}
+	historyMissing = false
 	tampered := append([]byte(nil), encoded...)
 	tampered[len(tampered)-2] ^= 1
 	encoded = tampered
 	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil {
 		t.Fatal("tampered public evidence was accepted")
+	}
+}
+
+func TestVerifyDirectEvidencePublicationUsesDeploymentHistorySentinel(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := signEvidence(cfg, "deployment-manifest", "", map[string]any{"release": "1.0"}, roles.EVM["operator-1-artifact"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverEnvelope, err := startifactEvidenceEnvelope(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := startifact.EvidenceBytes(serverEnvelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	store := server.NewLocalBlobStore(filepath.Join(root, "objects"), "operator-1")
+	contentKey, err := startifact.EvidenceContentKey(store, envelope.ContentHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashHex := strings.TrimPrefix(envelope.ContentHash, "sha256:")
+	historyKey := filepath.ToSlash(filepath.Join(store.Prefix(), "st", "v1", "evidence", "history", envelope.DeploymentID, fmt.Sprint(envelope.Netuid), envelope.Kind, startifact.EvidenceDeploymentHistoryRunID, hashHex+".json"))
+	source := filepath.Join(root, "evidence.json")
+	if err := atomicWrite(source, wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{contentKey, historyKey} {
+		if err := store.Put(context.Background(), key, source, "application/json"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	published := &startifact.Published{ContentHash: envelope.ContentHash, ContentKey: contentKey, HistoryKey: historyKey, Bucket: store.Bucket()}
+	if err := verifyDirectEvidencePublication(context.Background(), &directEvidenceNoListStore{BlobStore: store}, serverEnvelope, published); err != nil {
+		t.Fatalf("empty-run deployment publication rejected: %v", err)
+	}
+	missingStore := server.NewLocalBlobStore(filepath.Join(root, "missing-history"), "operator-1")
+	if err := missingStore.Put(context.Background(), contentKey, source, "application/json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyDirectEvidencePublication(context.Background(), &directEvidenceNoListStore{BlobStore: missingStore}, serverEnvelope, published); err == nil || !strings.Contains(err.Error(), "read direct evidence object") {
+		t.Fatalf("missing exact direct history object accepted: %v", err)
+	}
+	corruptSource := filepath.Join(root, "corrupt.json")
+	if err := atomicWrite(corruptSource, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(context.Background(), historyKey, corruptSource, "application/json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyDirectEvidencePublication(context.Background(), &directEvidenceNoListStore{BlobStore: store}, serverEnvelope, published); err == nil || !strings.Contains(err.Error(), "differs") {
+		t.Fatalf("corrupt exact direct history object accepted: %v", err)
+	}
+	legacy := *published
+	legacy.HistoryKey = strings.Replace(historyKey, "/"+startifact.EvidenceDeploymentHistoryRunID+"/", "/"+startifact.EvidenceLegacyDeploymentHistoryRunID+"/", 1)
+	if err := verifyDirectEvidencePublication(context.Background(), store, serverEnvelope, &legacy); err == nil || !strings.Contains(err.Error(), "receipt keys") {
+		t.Fatalf("legacy empty-run history path accepted as a new receipt: %v", err)
+	}
+}
+
+func TestVerifyPublishedEvidenceOriginUsesExactDottedRunHistoryPage(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	roles, err := BuildRoleSecrets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := "2026.09.03-release"
+	envelope, err := signEvidence(cfg, "scenario-bundle", runID, map[string]any{"release": "1.0"}, roles.EVM["operator-1-artifact"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contentKey := "fixture/st/v1/evidence/content/sha256/" + strings.TrimPrefix(envelope.ContentHash, "sha256:") + ".json"
+	historyKey := "fixture/st/v1/evidence/history/" + cfg.Config.Deployment.DeploymentID + "/" + fmt.Sprint(cfg.Netuid) + "/" + envelope.Kind + "/" + runID + "/" + strings.TrimPrefix(envelope.ContentHash, "sha256:") + ".json"
+	historyObjects := []map[string]string{{"key": historyKey}}
+	more := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sn/evidence":
+			_, _ = w.Write(encoded)
+		case "/sn/evidence/history":
+			if r.URL.Query().Get("run_id") != runID || r.URL.Query().Get("hash") != envelope.ContentHash || r.URL.Query().Get("limit") != fmt.Sprint(publishedEvidenceExactHistoryObjects) {
+				t.Errorf("dotted run history query = %q", r.URL.RawQuery)
+			}
+			next := ""
+			if more {
+				next = historyKey
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": historyObjects, "more": more, "next_after": next})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	published := PublishedEvidence{ContentHash: envelope.ContentHash, ContentKey: contentKey, HistoryKey: historyKey}
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err != nil {
+		t.Fatalf("exact dotted-run history rejected: %v", err)
+	}
+	published.HistoryKey = strings.Replace(historyKey, "/"+runID+"/", "/foreign-run/", 1)
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "canonical signed scope") {
+		t.Fatalf("out-of-run published history key was accepted: %v", err)
+	}
+	published.HistoryKey = historyKey
+	published.ContentKey = strings.Replace(contentKey, "/content/sha256/", "/content/sha512/", 1)
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "canonical signed scope") {
+		t.Fatalf("out-of-scope published content key was accepted: %v", err)
+	}
+	published.ContentKey = contentKey
+	historyObjects = []map[string]string{{"key": strings.TrimSuffix(historyKey, ".json") + "0.json"}}
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "exact") {
+		t.Fatalf("near-hash history decoy was accepted: %v", err)
+	}
+	historyObjects = make([]map[string]string, publishedEvidenceExactHistoryObjects)
+	for index := range historyObjects {
+		historyObjects[index] = map[string]string{"key": fmt.Sprintf("unrelated/%d.json", index)}
+	}
+	more = true
+	if err := verifyPublishedEvidenceOrigin(context.Background(), cfg, roles, 1, server.URL, published); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("truncated history page was accepted: %v", err)
 	}
 }
 
@@ -994,7 +1160,10 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plan := &SetupPlan{PlanHash: "0x" + strings.Repeat("12", 32)}
+	plan := &SetupPlan{
+		PlanHash:           "0x" + strings.Repeat("12", 32),
+		CoordinatorUpgrade: CoordinatorUpgrade{Implementation: common.HexToAddress("0x0000000000000000000000000000000000000055")},
+	}
 	first, err := writePublicDeploymentManifest(cfg, dir, plan)
 	if err != nil {
 		t.Fatal(err)
@@ -1026,18 +1195,106 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 			t.Fatalf("command %s is host-specific: %s", name, command)
 		}
 	}
-	// Exercise the deployed pre-revision encoding: revision zero must hash as
-	// the exact legacy schema, without synthesizing a JSON revision field.
-	legacyBefore := bytes.Replace(before, []byte("  \"revision\": 1,\n"), nil, 1)
-	if bytes.Equal(legacyBefore, before) {
+	if len(first.ArtifactStores) != len(first.Operators) || len(first.EvidenceStores) != len(first.Operators) {
+		t.Fatalf("reviewer history locator counts=%d/%d, want %d", len(first.ArtifactStores), len(first.EvidenceStores), len(first.Operators))
+	}
+	for index, operator := range first.Operators {
+		for _, endpoint := range []struct {
+			name       string
+			raw        string
+			path       string
+			kind       string
+			runID      string
+			queryCount int
+		}{
+			{name: "artifact", raw: first.ArtifactStores[index], path: "/sn/artifacts", queryCount: 3},
+			{name: "evidence", raw: first.EvidenceStores[index], path: "/sn/evidence/history", kind: "deployment-manifest", runID: startifact.EvidenceDeploymentHistoryRunID, queryCount: 5},
+		} {
+			parsed, err := url.Parse(endpoint.raw)
+			if err != nil {
+				t.Fatalf("operator %d %s history URL: %v", operator.NoID, endpoint.name, err)
+			}
+			query := parsed.Query()
+			if parsed.Scheme+"://"+parsed.Host != strings.TrimSuffix(operator.APIURL, "/") || parsed.Path != endpoint.path || parsed.Fragment != "" || parsed.RawQuery != query.Encode() || len(query) != endpoint.queryCount || query.Get("deployment_id") != first.DeploymentID || query.Get("netuid") != fmt.Sprint(first.Netuid) || query.Get("limit") != fmt.Sprint(publicManifestHistoryPageObjects) || query.Get("kind") != endpoint.kind || query.Get("run_id") != endpoint.runID {
+				t.Fatalf("operator %d %s history URL is not an immediately valid bounded query: %s", operator.NoID, endpoint.name, endpoint.raw)
+			}
+		}
+	}
+	manifestURI := "https://operator.example/public.json"
+	runID := "20260903T010203.000000000Z-production-soak"
+	for _, name := range []string{"inspect", "analyze"} {
+		advertised := strings.ReplaceAll(first.Commands[name], "<public-manifest-url-or-file>", manifestURI)
+		advertised = strings.ReplaceAll(advertised, "<exact-scenario-run-id>", runID)
+		tokens := strings.Fields(advertised)
+		if len(tokens) < 2 || tokens[0] != "sim-testnet" {
+			t.Fatalf("advertised %s command is not tokenizable: %q", name, advertised)
+		}
+		command, options, err := parseCLI(tokens[1:])
+		if err != nil || command != name || options.Manifest != manifestURI || name == "analyze" && options.RunID != runID || name == "inspect" && options.RunID != "" {
+			t.Fatalf("advertised %s command does not satisfy the CLI contract: command=%q options=%+v error=%v", name, command, options, err)
+		}
+	}
+	// Exercise the deployed pre-revision and pre-bounded-history encoding:
+	// revision zero and its exact legacy reviewer metadata must remain signed
+	// byte-for-byte, without being republished as a new same-plan revision.
+	legacyWithoutRevision := bytes.Replace(before, []byte("  \"revision\": 1,\n"), nil, 1)
+	if bytes.Equal(legacyWithoutRevision, before) {
 		t.Fatal("test fixture did not remove the revision field")
+	}
+	var legacy PublicDeploymentManifest
+	if err := json.Unmarshal(legacyWithoutRevision, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Commands["analyze"] = legacyPublicManifestAnalyzeCommand
+	for index, operator := range legacy.Operators {
+		artifact, evidence, err := legacyPublicOperatorHistoryEndpoints(operator.APIURL, legacy.DeploymentID, legacy.Netuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy.ArtifactStores[index] = artifact
+		legacy.EvidenceStores[index] = evidence
+	}
+	legacyBefore, err := json.MarshalIndent(&legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyBefore = append(legacyBefore, '\n')
+	if err := validatePublicCampaignOperatorOrigins(&legacy); err != nil {
+		t.Fatalf("exact pre-fix manifest locators rejected: %v", err)
+	}
+	for _, mutation := range []struct {
+		name  string
+		apply func(*PublicDeploymentManifest)
+	}{
+		{name: "foreign origin", apply: func(value *PublicDeploymentManifest) {
+			value.ArtifactStores[0] = strings.Replace(value.ArtifactStores[0], "no1.example", "attacker.example", 1)
+		}},
+		{name: "extra query", apply: func(value *PublicDeploymentManifest) {
+			value.EvidenceStores[0] += "&limit=256"
+		}},
+	} {
+		candidate := legacy
+		candidate.ArtifactStores = append([]string(nil), legacy.ArtifactStores...)
+		candidate.EvidenceStores = append([]string(nil), legacy.EvidenceStores...)
+		mutation.apply(&candidate)
+		if err := validatePublicCampaignOperatorOrigins(&candidate); err == nil {
+			t.Fatalf("%s pre-fix reviewer metadata was accepted", mutation.name)
+		}
 	}
 	if err := atomicWrite(filepath.Join(dir, "public.json"), legacyBefore, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var legacy PublicDeploymentManifest
-	if err := json.Unmarshal(legacyBefore, &legacy); err != nil {
-		t.Fatal(err)
+	_, importedLegacy, err := loadDeploymentReferenceWithTransport(context.Background(), "", filepath.Join(dir, "public.json"), publicEvidenceTransportHTTPS, cfg.ChainID, cfg.Public.Chain.GenesisHash)
+	if err != nil || importedLegacy == nil {
+		t.Fatalf("import exact pre-fix deployment manifest: %v", err)
+	}
+	retained, err := writePublicDeploymentManifest(cfg, dir, plan)
+	if err != nil {
+		t.Fatalf("resume exact pre-fix deployment manifest: %v", err)
+	}
+	retainedBytes, err := os.ReadFile(filepath.Join(dir, "public.json"))
+	if err != nil || retained.Revision != 0 || !bytes.Equal(retainedBytes, legacyBefore) {
+		t.Fatalf("same-plan resume rewrote immutable pre-fix manifest bytes: revision=%d error=%v", retained.Revision, err)
 	}
 	firstHash, err := canonicalHashHex(&legacy)
 	if err != nil {
@@ -1117,6 +1374,10 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	if revised.Revision != 2 || revised.PreviousManifestHash != firstHash || revised.ConfigHash != cfg.ConfigHash || revised.PolicyHash != cfg.PolicyHash || revised.PlanHash != plan.PlanHash {
 		t.Fatalf("revised manifest linkage = %+v", revised)
 	}
+	generation, err := publicManifestHistoryLocatorEncoding(revised)
+	if err != nil || generation != publicManifestHistoryLocatorsCurrent || revised.Commands["analyze"] != publicManifestAnalyzeCommand {
+		t.Fatalf("revised manifest did not emit current bounded reviewer metadata: generation=%d command=%q error=%v", generation, revised.Commands["analyze"], err)
+	}
 	archivePath := filepath.Join(dir, "public", "deployment-manifests", stringsTrim0x(firstHash)+".json")
 	archived, err := os.ReadFile(archivePath)
 	if err != nil {
@@ -1173,6 +1434,26 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 	}
 	if err := atomicWrite(archivePath, archived, 0o644); err != nil {
 		t.Fatal(err)
+	}
+	tamperedHistoryDir := t.TempDir()
+	tamperedPredecessor := legacy
+	tamperedPredecessor.ArtifactStores = append([]string(nil), legacy.ArtifactStores...)
+	tamperedPredecessor.ArtifactStores[0] += "&after=forged"
+	tamperedPredecessorBytes, err := json.MarshalIndent(&tamperedPredecessor, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamperedPredecessorHash, err := canonicalHashHex(&tamperedPredecessor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamperedCurrent := *revised
+	tamperedCurrent.PreviousManifestHash = tamperedPredecessorHash
+	if err := atomicWrite(filepath.Join(tamperedHistoryDir, "public", "deployment-manifests", stringsTrim0x(tamperedPredecessorHash)+".json"), append(tamperedPredecessorBytes, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateLocalPublicManifestHistory(tamperedHistoryDir, &tamperedCurrent); err == nil || !strings.Contains(err.Error(), "predecessor revision 1 evidence transport") {
+		t.Fatalf("tampered archived pre-fix reviewer metadata was accepted: %v", err)
 	}
 	revisionConfigHash := cfg.ConfigHash
 	cfg.ConfigHash = "0x" + strings.Repeat("9a", 32)
