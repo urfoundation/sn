@@ -141,7 +141,7 @@ upstream on 2026-09-04 UTC, is:
 
 | Repository | Branch | Current pre-integration revision | State |
 |---|---|---|---|
-| sn | main | eb9f0a41eb8c3514cc4d356f539fc7627af3ce66 | clean/equal; runtime-evidence and release-gate selection candidate |
+| sn | main | 2519581 (source commit; release-lock/handoff commit pending) | local source candidate; exact upstream equality must be restored before the gate |
 | server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; affected normal/race/vet and managed-DB qualification pass |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; sender-role and blocker/CFAA focused ordinary/race plus consumer compile pass; aggregate qualification pending |
@@ -175,13 +175,43 @@ Historical first-draft snapshot:
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/current |
 | xops | main | fbd291a1849d5769e67efe278c2f4e5da65275aa | clean/current |
 
-The release lock was refreshed for this exact snapshot at 2026-09-04 16:17 UTC
-as `sha256:e465e68d78ad7eefd7221cfb3606bd9b9f94f2c105515bfd5680d2010e42ec75`.
-Its only changes from the prior lock are the reviewed protocol-source and SDK
-Go-source hashes. It is not launch approval until committed/pushed and accepted
-by the frozen producer gate.
+The release lock was refreshed from clean source commit `2519581` at 2026-09-04
+16:57 UTC as
+`sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`.
+It adds the exact `abigen` 1.17.0 identity and updates only the expected SN Go
+and protocol-source hashes. It is not launch approval until committed/pushed
+and accepted by the frozen producer gate.
 
 ## 3. Current implementation/gate continuation point
+
+The 2026-09-04 16:21 UTC producer attempt passed source/runtime attestation,
+the exact v451/v452/v453 metadata gate, graph compilation, validator
+ordinary/race, lossless-capture ordinary/race, and all 156 Foundry tests before
+failing generated-binding freshness with `abigen: command not found`. Its log is
+`/home/by/urnetwork/temp/producer-gate-20260904T1621Z.log`, SHA-256
+`f4fe1b9a440d6cf257bff1626e85e51b4fcfb6a59fbaabc2e6a7e02fa95591ae`.
+The executable existed in GOPATH; the launch PATH omitted GOPATH/bin, the
+generator documentation still named go-ethereum 1.16.7 while `go.mod` requires
+1.17.0, and neither release gate failed early or release-locked the generator.
+
+Source commit `2519581` fixes the complete failure class. The shared generator
+resolves explicit `ABIGEN`, PATH, GOBIN, then the first GOPATH/bin; requires
+exact `abigen version 1.17.0-stable`; offers a no-artifact `--preflight`; and is
+called by both gates immediately after source-freeze. Hermetic tests cover every
+resolution path, precedence, wrong/missing tools, and no-JQ preflight behavior
+normally and under the race detector. The release lock now observes the same
+shared preflight and binds the generator script into `protocol_source_hash`.
+The canonical v1.17.0 generator produces byte-identical checked-in bindings.
+The corrected producer gate has not yet run; do not infer a pass from the
+focused qualification.
+
+The two approval-identical plans built immediately before this source change
+had plan hash
+`0xcef66045f86d23d64991f94458482ec318565525491e459e467f2caabe14bbc6`
+and approval-projection SHA-256
+`62850f696035015e53abc07e2377cf73e71d44db2d86626859706a2e1fe4d1fd`.
+They are now superseded and must never be applied. Build two new plans after
+the corrected frozen producer gate.
 
 The final frozen gates remain pending. Runtime-evidence candidate
 `5f882b20790aba1333664323f3bf748933f62273` and the release-gate selector
@@ -868,12 +898,12 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all three versions at 2026-09-04 15:36 UTC; static source and three upstream metadata tests also pass |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | focused qualification pass; frozen gate pending | `eb9f0a41eb8c3514cc4d356f539fc7627af3ce66`; runtime cache/watch/recovery normal/race/vet plus deterministic sender-role gate-selection regression pass |
+| SN runtime candidate | abigen regression qualification pass; frozen gate pending | source `2519581`; stabi and focused release-lock/gate normal/race, shell syntax, and v1.17 generated-byte checks pass |
 | Server candidate commit | affected qualification pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
 | Connect candidate commit | affected qualification pass; frozen aggregate pending | `fb888dc8883efb12dd570e5514e866dba14d987e`; full compile, sender-role/blocker/CFAA/contract normal 12.552s, race 70.272s, vet 5.596s |
 | SDK candidate commit | affected qualification pass; frozen aggregate pending | `2f3e7058873498099a88aee3e158caa11aefbda1`; full root normal 443.170s, changed focus 243.280/245.255s, nested build/cgo normal/race/vet, all Go files formatted |
 | Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed |
-| Release-lock hash | refreshed; commit/frozen gate pending | `sha256:e465e68d78ad7eefd7221cfb3606bd9b9f94f2c105515bfd5680d2010e42ec75`; only reviewed protocol and SDK source hashes changed |
+| Release-lock hash | refreshed; commit/frozen gate pending | `sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`; abigen 1.17.0 plus expected SN Go/protocol source changes |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360` |
 | Approved plan hash/spend | superseded; current rerun pending | prior plan `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; never use it with the current lock |
 | Resume/launch | pending | |

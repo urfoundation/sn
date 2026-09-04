@@ -42,17 +42,22 @@ for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After
 clean M0A, the scheduler-controlled public-chain evidence window is exactly
 3,004--4,380 blocks (10:00:48--14:36:00 at 12 seconds per block).
 
-**Current pre-freeze status (2026-09-04 UTC):** the evidence-integrity/runtime
-candidate, its 33-test ordinary and exact race qualification, and the adjacent
-33-child topology regressions are green. It is integrated on canonical `main`
-at checkpoint `8c9a0716d16432f568550443bdc9c5bb7cb7ee27`; documentation
-reconciliation and push, release-lock refresh, producer gate, complete aggregate
-gate, two-plan review and live campaign remain pending. The 2026-09-02 records
+**Current pre-freeze status (2026-09-04 UTC):** source commit `2519581` closes
+the launch-critical gate's late `abigen` discovery/version failure with one
+shared exact-v1.17.0 resolver, an early no-artifact preflight in both release
+gates, hermetic normal/race regression coverage, release-lock tool identity,
+and protocol-digest coverage of the generator. The canonical v1.17.0 tool
+produces byte-identical bindings. The clean source render produced release lock
+`sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`;
+its commit/push, producer rerun, complete aggregate gate, two-plan review and
+live campaign remain pending. The failed 16:21 UTC producer attempt had already
+passed runtime artifacts, validator/capture normal and race suites, and all 156
+Foundry tests before reaching the old late tool lookup. The 2026-09-02 records
 below are historical diagnosis and provenance, not approval for the current
-candidate. The current pre-freeze execution record is maintained in
-`FINALIZE-COMPLETE.md` section 12; it becomes an immutable approval record only
-after the source freeze and both required gates, and `FINAL.md` must then
-supersede it with live evidence.
+candidate. The exact continuation record is maintained in
+`FINALIZE-COMPLETE.md`; it becomes an immutable approval record only after the
+source freeze and both required gates, and `FINAL.md` must then supersede it
+with live evidence.
 
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
