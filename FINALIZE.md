@@ -1368,9 +1368,10 @@ All references resolve relative to the config file or a discovered repository ro
 
 The wallet literal is redacted before any diagnostic serialization. Zero/empty vault inputs, an owner mismatch for the supplied netuid, an unpinned dependency, or an unavailable server API/MinIO store is fatal. The receipt materializer copies only the verified public netuid/owner, budgets, and derived public keys into the redacted deployment manifest.
 
-The 262-registration ceiling covers the exact 259-action current topology and
-lifecycle sequence plus one authenticated, three-registration retired contract
-role generation. A 263rd cumulative registration remains fail-closed.
+The 262-registration ceiling covers the exact 259 active registration ceilings
+in the current topology and lifecycle sequence plus one authenticated,
+three-registration retired contract role generation. A 263rd cumulative
+registration remains fail-closed.
 
 ### 7.9 Automated materialization sequence
 
