@@ -51,6 +51,9 @@ echo "[release-1.0] sn Go tests"
   # durability tests are still running.
   go test -parallel=4 -timeout 90m ./...
   go test -race ./crv4 ./miner/... ./protocol ./validator
+  settlement_closure_tests='^Test(Attempt(Settlement|Cut|Assignment)|ReleaseSettlementRefresh|ReleaseSteeringLoop)'
+  go test ./validator -run "$settlement_closure_tests" -count=1
+  go test -race ./validator -run "$settlement_closure_tests" -count=1
   validator_lifecycle_tests='^Test(TunnelAttemptCloseJoinsPumpBeforeGenerator|TunnelAttemptCloseReleasesPartialConstruction)$'
   go test ./validator -run "$validator_lifecycle_tests" -count=1
   go test -race ./validator -run "$validator_lifecycle_tests" -count=1

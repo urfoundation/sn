@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	finalSemanticCollectedInputsSchema = "urnetwork-final-semantic-collected-inputs-v2"
+	finalSemanticCollectedInputsSchema = "urnetwork-final-semantic-collected-inputs-v3"
 	finalCollectedProofRecordSchema    = "urnetwork-final-validator-path-proof-record-v1"
 	finalCollectedAttemptRecordsSchema = "urnetwork-final-validator-attempt-records-v1"
 	finalSemanticCaptureStatusSchema   = "urnetwork-final-semantic-capture-status-v1"
@@ -71,7 +71,16 @@ type FinalCollectedValidatorInputs struct {
 	Intents                []FinalCollectedValidatorIntent    `json:"intents"`
 	LifecycleIntents       []FinalCollectedValidatorIntent    `json:"lifecycle_intents,omitempty"`
 	Attempts               []FinalCollectedValidatorAttempts  `json:"attempts"`
+	SettlementClosures     []FinalCollectedSettlementClosure  `json:"settlement_closures"`
 	PathProofs             []FinalCollectedValidatorPathProof `json:"path_proofs"`
+}
+
+// Carries the original signed all-operator batch, including epochs retained
+// only to bridge selected lifecycle measurements outside acceptance.
+type FinalCollectedSettlementClosure struct {
+	Epoch    uint64               `json:"epoch"`
+	Boundary ChainHead            `json:"boundary"`
+	Artifact FinalArtifactLocator `json:"artifact"`
 }
 
 type FinalCollectedValidatorAttempts struct {
@@ -1156,7 +1165,7 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 		if err != nil {
 			return nil, err
 		}
-		intents, err := readValidatorIntentFile(stateRoot, validatorID)
+		intents, err := decodeValidatorIntentBytes(storeEntry.Data, validatorID)
 		if err != nil {
 			return nil, err
 		}
@@ -1168,6 +1177,7 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 		privateKey := ed25519.NewKeyFromSeed(seed)
 		vpk := privateKey.Public().(ed25519.PublicKey)
 		attemptRecords := make(map[uint64]map[uint64]validatorpkg.AttemptRecord, cfg.Config.Topology.Operators)
+		var selectedMeasurements [][]byte
 		for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
 			attemptRecords[uint64(noID)] = map[uint64]validatorpkg.AttemptRecord{}
 		}
@@ -1185,6 +1195,7 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 				if err := collectFinalAttemptCuts(validatorID, measurementData, vpk, serverKeys, attemptRecords); err != nil {
 					return FinalCollectedValidatorIntent{}, err
 				}
+				selectedMeasurements = append(selectedMeasurements, measurementData)
 			}
 			envelope, err := collectFinalValidatorMeasurementEnvelope(stateRoot, root, runRoot, validatorID, intent, measurementData, startedAt, completedAt)
 			if err != nil {
@@ -1278,6 +1289,49 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 				return nil, fmt.Errorf("validator %d lifecycle settlement/subnet epoch %d/%d exact applied intent is missing", validatorID, expected.SettlementEpoch, expected.SubnetEpoch)
 			}
 		}
+		firstClosure, lastClosure := window.FirstEpoch, lastEpoch
+		for _, records := range attemptRecords {
+			for _, record := range records {
+				if record.Boundary.SettlementEpoch < firstClosure {
+					firstClosure = record.Boundary.SettlementEpoch
+				}
+				if record.Boundary.SettlementEpoch > lastClosure+1 {
+					lastClosure = record.Boundary.SettlementEpoch - 1
+				}
+			}
+		}
+		identity, err := finalCollectedAttemptIdentity(cfg, terminal, uint64(validatorID), vpk)
+		if err != nil {
+			return nil, err
+		}
+		var previousClosure *validatorpkg.AttemptSettlementClosure
+		closuresByEpoch := map[uint64]*validatorpkg.AttemptSettlementClosure{}
+		for epoch := firstClosure; epoch <= lastClosure; epoch++ {
+			data, err := validatorpkg.ReadAttemptSettlementClosure(root, epoch)
+			if err != nil {
+				return nil, fmt.Errorf("validator %d closed settlement epoch %d: %w", validatorID, epoch, err)
+			}
+			closure, err := collectFinalSettlementClosure(data, epoch, identity, serverKeys, attemptRecords)
+			if err != nil {
+				return nil, err
+			}
+			if err := verifyFinalSettlementClosureContinuation(previousClosure, closure); err != nil {
+				return nil, err
+			}
+			previousClosure = closure
+			closuresByEpoch[closure.Epoch] = closure
+			locator, err := persistFinalCollectedArtifact(runRoot, "validator-settlement-closure", fmt.Sprintf("final-inputs/validators/validator-%d-settlement-%d.json", validatorID, epoch), data)
+			if err != nil {
+				return nil, err
+			}
+			boundary := closure.Transitions[0].FromBoundary
+			collected.SettlementClosures = append(collected.SettlementClosures, FinalCollectedSettlementClosure{Epoch: epoch, Boundary: ChainHead{Number: boundary.EVMBlock, Hash: boundary.EVMBlockHash}, Artifact: locator})
+		}
+		for _, measurementData := range selectedMeasurements {
+			if err := verifyFinalMeasurementSettlementClosures(measurementData, closuresByEpoch); err != nil {
+				return nil, err
+			}
+		}
 		for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {
 			records, summary, err := persistFinalAttemptRecords(runRoot, validatorID, noID, attemptRecords[uint64(noID)])
 			if err != nil {
@@ -1291,7 +1345,7 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 			}
 			authoritative := map[connect.Id]validatorpkg.ProofRecord{}
 			for _, record := range records {
-				if record.Disposition == validatorpkg.AttemptDispositionComplete && record.Proof != nil {
+				if record.Disposition == validatorpkg.AttemptDispositionComplete && record.Proof != nil && record.Proof.Epoch >= window.FirstEpoch && record.Proof.Epoch <= lastEpoch {
 					if prior, exists := authoritative[record.Proof.TrailId]; exists {
 						if !finalJSONEqual(prior, *record.Proof) {
 							return nil, fmt.Errorf("validator %d operator %d trail %s has conflicting authoritative proofs", validatorID, noID, record.Proof.TrailId)
@@ -1326,7 +1380,7 @@ func collectFinalValidatorInputs(cfg *ResolvedConfig, stateRoot, runRoot string,
 			covered := map[uint64]bool{}
 			count := uint64(0)
 			for _, record := range records {
-				if record.Disposition != validatorpkg.AttemptDispositionComplete || record.Proof == nil {
+				if record.Disposition != validatorpkg.AttemptDispositionComplete || record.Proof == nil || record.Proof.Epoch < window.FirstEpoch || record.Proof.Epoch > lastEpoch {
 					continue
 				}
 				if !projected[record.Proof.TrailId] {
@@ -1363,23 +1417,25 @@ func collectFinalAttemptCuts(validatorID int, measurementData []byte, validatorV
 		return fmt.Errorf("validator %d decode attempt-backed measurement: %w", validatorID, err)
 	}
 	for _, input := range artifact.Inputs {
-		cut := input.Stats.AttemptCut
 		records, ok := recordsByNO[input.NoID]
 		keys := serverKeys[input.NoID]
-		if !ok || len(keys) == 0 || cut == nil {
+		if !ok || len(keys) == 0 || input.Stats.AttemptCut == nil {
 			return fmt.Errorf("validator %d operator %d attempt authority is incomplete", validatorID, input.NoID)
 		}
-		if err := validatorpkg.VerifyAttemptLedgerCut(cut, validatorVPK, keys); err != nil {
-			return fmt.Errorf("validator %d operator %d attempt cut: %w", validatorID, input.NoID, err)
+		cuts := []*validatorpkg.AttemptLedgerCut{input.Stats.AttemptCut}
+		if transition := input.Stats.SettlementTransition; transition != nil {
+			cuts = append(cuts, transition.PreFold.AttemptCut)
 		}
-		for _, record := range cut.Records {
-			if previous, exists := records[record.Sequence]; exists {
-				if !finalJSONEqual(previous, record) {
-					return fmt.Errorf("validator %d operator %d attempt sequence %d differs across signed cuts", validatorID, input.NoID, record.Sequence)
-				}
-				continue
+		for _, cut := range cuts {
+			if cut == nil || cut.Identity.DeploymentID != artifact.DeploymentID || cut.Identity.ChainID != artifact.ChainID || !strings.EqualFold(cut.Identity.GenesisHash, artifact.GenesisHash) || cut.Identity.Netuid != artifact.Netuid || cut.Identity.ValidatorID != uint64(validatorID) || cut.Identity.NoID != input.NoID {
+				return errors.New("measurement attempt cut domain differs")
 			}
-			records[record.Sequence] = record
+			if err := validatorpkg.VerifyAttemptLedgerCut(cut, validatorVPK, keys); err != nil {
+				return fmt.Errorf("validator %d operator %d attempt cut: %w", validatorID, input.NoID, err)
+			}
+			if err := mergeFinalAttemptCut(cut, records); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -1714,6 +1770,9 @@ func verifyFinalSemanticCollectedInputs(cfg *ResolvedConfig, value *FinalSemanti
 		if err := verifyFinalArtifact("collected validator intent store", validator.IntentStore, "validator-steering-intent-store"); err != nil {
 			return err
 		}
+		if err := verifyFinalSettlementClosureLocators(validator.SettlementClosures, value.Window, false); err != nil {
+			return fmt.Errorf("collected validator %d terminal authority: %w", validator.ValidatorID, err)
+		}
 		if value.Phase == "release-1.0" && validator.DishonestDepositIntent != nil {
 			return errors.New("release collected inputs unexpectedly contain a dishonest-deposit intent")
 		}
@@ -1801,6 +1860,9 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 		for _, attempts := range validator.Attempts {
 			locators = append(locators, attempts.Artifact)
 		}
+		for _, closure := range validator.SettlementClosures {
+			locators = append(locators, closure.Artifact)
+		}
 	}
 	seen := map[string]bool{}
 	loaded := map[string][]byte{}
@@ -1861,6 +1923,9 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 	var terminal ScenarioObservation
 	if err := decodeStrictJSONBytes(loaded[value.TerminalObservation.URI], &terminal); err != nil {
 		return fmt.Errorf("decode collected terminal observation for lifecycle payout replay: %w", err)
+	}
+	if err := verifyFinalCollectedSettlementAuthority(cfg, value, &terminal, loaded); err != nil {
+		return err
 	}
 	if err := verifyFinalCollectedLifecyclePayouts(value, &terminal, loaded); err != nil {
 		return err

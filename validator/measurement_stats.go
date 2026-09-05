@@ -134,6 +134,12 @@ func releaseQualityPPM(config ReleaseStatsConfig, provider ReleaseProviderMeasur
 // VerifyReleaseStatsMeasurement rejects non-canonical or internally
 // inconsistent measurements and returns their independently derived scores.
 func VerifyReleaseStatsMeasurement(measurement ReleaseStatsMeasurement) (VerifiedReleaseStats, error) {
+	return verifyReleaseStatsMeasurementWithCutVerifier(measurement, verifyAttemptLedgerCut)
+}
+
+// A containing settlement verification can supply the same full cut primitive
+// while retaining every statistics and recursive transition check.
+func verifyReleaseStatsMeasurementWithCutVerifier(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier) (VerifiedReleaseStats, error) {
 	config := measurement.Config
 	if config.AMin == 0 || config.AlphaDenominator == 0 || config.AlphaNumerator > config.AlphaDenominator || config.LatRefMillis == 0 {
 		return VerifiedReleaseStats{}, errors.New("release statistics config is invalid")
@@ -184,7 +190,7 @@ func VerifyReleaseStatsMeasurement(measurement ReleaseStatsMeasurement) (Verifie
 		if err != nil {
 			return VerifiedReleaseStats{}, err
 		}
-		if err := verifyAttemptLedgerCut(measurement.AttemptCut, vpkBytes[:], nil, false); err != nil {
+		if err := verifyCut(measurement.AttemptCut, vpkBytes[:], nil, false); err != nil {
 			return VerifiedReleaseStats{}, fmt.Errorf("attempt cut: %w", err)
 		}
 		if err := verifyReleaseStatsAgainstAttemptCut(measurement, verified); err != nil {
@@ -192,7 +198,7 @@ func VerifyReleaseStatsMeasurement(measurement ReleaseStatsMeasurement) (Verifie
 		}
 	}
 	if measurement.SettlementTransition != nil {
-		if err := verifyAttemptSettlementTransitionForMeasurement(measurement.SettlementTransition, measurement); err != nil {
+		if err := verifyAttemptSettlementTransitionForMeasurementWithCutVerifier(measurement.SettlementTransition, measurement, verifyCut); err != nil {
 			return VerifiedReleaseStats{}, fmt.Errorf("settlement transition: %w", err)
 		}
 	}
@@ -384,12 +390,15 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string,
 	if self.attemptLedger == nil {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics attempt ledger is absent")
 	}
+	if !self.settlementEpochKnown || boundary.SettlementEpoch != self.settlementEpoch {
+		return ReleaseStatsMeasurement{}, errors.New("attempt cut boundary differs from the active settlement epoch")
+	}
+	if self.attemptSettlementCutPending {
+		return ReleaseStatsMeasurement{}, errAttemptCutPending
+	}
 	self.attemptCutPending = true
 	if self.activeAttemptCount != 0 {
 		return ReleaseStatsMeasurement{}, errAttemptCutPending
-	}
-	if !self.settlementEpochKnown || boundary.SettlementEpoch != self.settlementEpoch {
-		return ReleaseStatsMeasurement{}, errors.New("attempt cut boundary differs from the active settlement epoch")
 	}
 	if self.egressGeneration == ^uint64(0) {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics egress generation overflow")
@@ -428,6 +437,9 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string,
 func (self *StatsEngine) reconcileReleaseStatsCut(dir string, cutGeneration uint64, attemptCuts ...*AttemptLedgerCut) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	if self.attemptSettlementCutPending {
+		return errAttemptCutPending
+	}
 	if self.egressGeneration < cutGeneration {
 		return fmt.Errorf("statistics egress generation %d precedes journal generation %d", self.egressGeneration, cutGeneration)
 	}

@@ -123,7 +123,8 @@ func pathWithinRoot(root, candidate string) bool {
 // finalSemanticArchive is an authenticated, in-memory view of the closed
 // collection graph. Files inside a bundle are addressed by the path they had
 // at capture time. Direct run artifacts retain their manifest locator. Nothing
-// in this type can fall through to a mutable state-directory read.
+// in this type can fall through to a mutable state-directory read. One
+// sequential reconstruction owns each archive; methods are not concurrent.
 type finalSemanticArchive struct {
 	ctx       context.Context
 	cfg       *ResolvedConfig
@@ -141,6 +142,10 @@ type finalSemanticArchive struct {
 	// used only with an immutable locator/data map, so reconstruction can prove
 	// a captured source graph without creating a second artifact tree.
 	artifactDeriver finalSemanticArtifactDeriver
+	// Each reconstruction owns its decoder so deterministic work counts do not
+	// replace the production plan authentication or share hooks across tests.
+	planDecoder       func([]byte) (*SetupPlan, error)
+	planPathSnapshots map[string]finalSemanticPlanSnapshot
 }
 
 // Supplies a content-addressed output to a closed-archive reconstruction.
@@ -397,6 +402,11 @@ func openFinalSemanticArchive(ctx context.Context, cfg *ResolvedConfig, stateDir
 		}
 		for _, attempt := range validator.Attempts {
 			if err := addDirect(attempt.Artifact); err != nil {
+				return nil, err
+			}
+		}
+		for _, closure := range validator.SettlementClosures {
+			if err := addDirect(closure.Artifact); err != nil {
 				return nil, err
 			}
 		}
@@ -954,7 +964,7 @@ func (a *finalSemanticArchive) nativeActionPlan(planHash, actionID, intentHash s
 	if err != nil {
 		return nil, nil, err
 	}
-	current, err := decodePersistedPlanBytes(currentData)
+	current, err := a.decodeSetupPlan("launch-foundation/plan.json", currentData)
 	if err != nil {
 		return nil, nil, fmt.Errorf("authenticate current native registration plan: %w", err)
 	}
@@ -969,7 +979,7 @@ func (a *finalSemanticArchive) nativeActionPlan(planHash, actionID, intentHash s
 	if err != nil {
 		return nil, nil, fmt.Errorf("authenticate carried native registration plan %s: %w", planHash, err)
 	}
-	plan, err := decodePersistedPlanBytes(planData)
+	plan, err := a.decodeSetupPlan(path, planData)
 	if err != nil || plan.PlanHash != planHash {
 		return nil, nil, stateMismatchError(err, "carried native registration plan %s differs from its canonical archive path", planHash)
 	}
@@ -3788,6 +3798,12 @@ func (a *finalSemanticArchive) buildPathProofs(source *FinalSemanticEvidence) er
 		return errors.New("closed canonical policy has no path-proof trail depth")
 	}
 	for _, validator := range a.collected.Validators {
+		var acceptedClosures []FinalCollectedSettlementClosure
+		for _, closure := range validator.SettlementClosures {
+			if closure.Epoch >= source.Window.FirstEpoch && closure.Epoch < source.Window.FirstEpoch+source.Window.EpochCount {
+				acceptedClosures = append(acceptedClosures, closure)
+			}
+		}
 		for _, proof := range validator.PathProofs {
 			if proof.FirstEpoch != source.Window.FirstEpoch || proof.LastEpoch != source.Window.FirstEpoch+source.Window.EpochCount-1 || proof.ProofCount < source.Window.EpochCount {
 				return fmt.Errorf("validator %d operator %d path-proof coverage differs from acceptance", validator.ValidatorID, proof.NoID)
@@ -3795,6 +3811,7 @@ func (a *finalSemanticArchive) buildPathProofs(source *FinalSemanticEvidence) er
 			source.PathProofs = append(source.PathProofs, FinalValidatorPathProofEvidence{
 				ValidatorID: validator.ValidatorID, NoID: proof.NoID, FirstEpoch: proof.FirstEpoch, LastEpoch: proof.LastEpoch,
 				ProofCount: proof.ProofCount, TrailDepth: policy.Verify.TrailDepth, ProofsHash: proof.Artifact.ContentHash, Artifact: proof.Artifact,
+				SettlementClosures: append([]FinalCollectedSettlementClosure(nil), acceptedClosures...),
 			})
 		}
 	}

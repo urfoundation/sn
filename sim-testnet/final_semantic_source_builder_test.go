@@ -1435,6 +1435,7 @@ func finalSemanticBuilderCollectedManifest(cfg *ResolvedConfig, runID, resultHas
 		for offset := uint64(0); offset < window.EpochCount; offset++ {
 			epoch := window.FirstEpoch + offset
 			name := id + "-" + new(big.Int).SetUint64(epoch).String()
+			validator.SettlementClosures = append(validator.SettlementClosures, FinalCollectedSettlementClosure{Epoch: epoch, Boundary: ChainHead{Number: window.StartBlock + (offset+1)*window.EpochBlocks - 1, Hash: finalTestHex(byte(epoch))}, Artifact: dummy("validator-settlement-closure", "closure-"+name)})
 			validator.Intents = append(validator.Intents, FinalCollectedValidatorIntent{Sequence: offset + 1, SettlementEpoch: epoch, SubnetEpoch: epoch + 100, Status: "applied", VectorHash: finalTestHex(byte(epoch + uint64(validatorID))), Artifact: dummy("steering-intent", "intent-"+name), Measurement: dummy("validator-release-measurement", "measurement-"+name), Envelope: dummy("validator-release-measurement-envelope", "envelope-"+name)})
 		}
 		for noID := 1; noID <= cfg.Config.Topology.Operators; noID++ {

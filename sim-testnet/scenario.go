@@ -367,22 +367,23 @@ type scenarioEvaluation struct {
 }
 
 type scenarioRunOptions struct {
-	Now                    func() time.Time
-	PollInterval           time.Duration
-	Timeout                time.Duration
-	Roles                  *RoleSecrets
-	Publish                bool
-	FaultDriver            scenarioFaultDriver
-	Adversaries            adversaryCampaign
-	Prepare                func(context.Context) error
-	ProcessLogs            scenarioProcessLogGate
-	CollectFinalSemantic   finalSemanticCampaignInputCollector
-	BuildFinalSemantic     finalSemanticCampaignSourceBuilder
-	FinalSemanticArtifacts FinalArtifactLoader
-	FinalSemanticReader    FinalSemanticChainReaderFactory
-	FleetLifecycle         scenarioFleetLifecycle
-	Attempt                *scenarioCampaignAttempt
-	ProcessSessionID       string
+	Now                         func() time.Time
+	PollInterval                time.Duration
+	Timeout                     time.Duration
+	Roles                       *RoleSecrets
+	Publish                     bool
+	FaultDriver                 scenarioFaultDriver
+	Adversaries                 adversaryCampaign
+	Prepare                     func(context.Context) error
+	ProcessLogs                 scenarioProcessLogGate
+	CollectFinalSemantic        finalSemanticCampaignInputCollector
+	WaitFinalSettlementClosures func(context.Context, *ResolvedConfig, string, *ScenarioObservation, *ScenarioAcceptanceWindow, time.Time, time.Duration) error
+	BuildFinalSemantic          finalSemanticCampaignSourceBuilder
+	FinalSemanticArtifacts      FinalArtifactLoader
+	FinalSemanticReader         FinalSemanticChainReaderFactory
+	FleetLifecycle              scenarioFleetLifecycle
+	Attempt                     *scenarioCampaignAttempt
+	ProcessSessionID            string
 }
 
 type scenarioFleetLifecycleHandoffAuthenticator interface {
@@ -3973,6 +3974,16 @@ scenarioLoop:
 		}
 	}
 	acceptanceIncomplete := terminalErr != nil || faultErr != nil || !assertionsPass(assertions) || !faultsComplete(faults) || options.FleetLifecycle != nil && !options.FleetLifecycle.Complete() || options.Adversaries != nil && !options.Adversaries.Ready()
+	if !acceptanceIncomplete && options.Publish && (definition.Name == "release-1.0" || definition.Name == "production-soak") {
+		waitClosures := options.WaitFinalSettlementClosures
+		if waitClosures == nil {
+			waitClosures = waitFinalValidatorSettlementClosures
+		}
+		if err := waitClosures(ctx, cfg, stateDir, current, window, deadline, options.PollInterval); err != nil {
+			terminalErr = fmt.Errorf("validator terminal settlement closure: %w", err)
+			acceptanceIncomplete = true
+		}
+	}
 	if boundaryCommitted && acceptanceIncomplete {
 		if terminalErr == nil {
 			terminalErr = errors.New("signed scenario acceptance ended before every assertion, fault, lifecycle, and adversary gate completed")

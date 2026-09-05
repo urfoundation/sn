@@ -1187,6 +1187,7 @@ func finalSemanticSupplementCollectedFixture(t *testing.T, cfg *ResolvedConfig, 
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
 		validator := FinalCollectedValidatorInputs{ValidatorID: uint64(validatorID), PathVPK: finalTestHex(byte(0x70 + validatorID)), IntentStore: locator("validator-steering-intent-store", fmt.Sprintf("final-inputs/validators/%d-intents.json", validatorID))}
 		for index, epoch := 0, source.Window.FirstEpoch; epoch <= lastEpoch; index, epoch = index+1, epoch+1 {
+			validator.SettlementClosures = append(validator.SettlementClosures, FinalCollectedSettlementClosure{Epoch: epoch, Boundary: ChainHead{Number: source.Window.StartBlock + (epoch-source.Window.FirstEpoch+1)*source.Window.EpochBlocks - 1, Hash: finalTestHex(byte(epoch))}, Artifact: locator("validator-settlement-closure", fmt.Sprintf("final-inputs/validators/%d-closure-%d.json", validatorID, epoch))})
 			validator.Intents = append(validator.Intents, FinalCollectedValidatorIntent{
 				Sequence: uint64(index + 1), SettlementEpoch: epoch, SubnetEpoch: epoch, Status: "applied", VectorHash: finalTestHex(byte(0x20 + validatorID + index)),
 				Artifact:    locator("steering-intent", fmt.Sprintf("final-inputs/validators/%d-intent-%d.json", validatorID, epoch)),

@@ -456,39 +456,15 @@ func RunRelease(ctx context.Context, configPath string) error {
 		attemptStates[operator.NoID] = state
 		settlementParticipants[index].Stats = state.stats
 	}
-	var terminalBoundary AttemptBoundary
-	for _, participant := range settlementParticipants {
-		if participant.Stats.requiresSettlementAdvance(snapshot.Epoch.Uint64()) && participant.Stats.settlementEpochKnown {
-			terminalBoundary, err = releasePriorSettlementBoundary(ctx, chain, snapshot)
-			if err != nil {
-				return err
-			}
-			break
-		}
+	advanceSettlement := func(ctx context.Context, snapshot *ReleaseSnapshot) error {
+		return advanceReleaseSettlementSnapshot(ctx, cfg.StateDir, snapshot, settlementParticipants, func(ctx context.Context, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
+			return releasePriorSettlementBoundary(ctx, chain, snapshot)
+		})
 	}
-	if err := AdvanceAttemptSettlementEpoch(cfg.StateDir, snapshot.Epoch.Uint64(), terminalBoundary, settlementParticipants); err != nil {
+	if err := advanceSettlement(ctx, snapshot); err != nil {
 		return fmt.Errorf("advance validator settlement transaction: %w", err)
 	}
 	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(chain, cfg)
-	go func() {
-		ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if snapshot, err := chain.ReleaseSnapshotContext(ctx); err == nil {
-					if settlementEpoch.Load() != snapshot.Epoch.Uint64() {
-						attemptBoundaryResolver.invalidateLatest()
-						settlementEpoch.Store(snapshot.Epoch.Uint64())
-					}
-				} else if ctx.Err() == nil {
-					fmt.Printf("validator release snapshot refresh: %v\n", err)
-				}
-			}
-		}
-	}()
 
 	var runtimes []*releaseOperatorRuntime
 	for _, op := range cfg.Operators {
@@ -501,17 +477,35 @@ func RunRelease(ctx context.Context, configPath string) error {
 		}
 		runtimes = append(runtimes, runtime)
 	}
-	runtimeErrors := make(chan error, len(runtimes)+2)
-	for index, runtime := range runtimes {
-		operatorID := cfg.Operators[index].NoID
-		concurrency := cfg.Operators[index].Concurrency
-		go reportReleaseTrailEngineError(ctx, runtime.engine, operatorID, concurrency, runtimeErrors)
-	}
+	runtimeErrors := make(chan error, len(runtimes)+3)
+	var workers sync.WaitGroup
 	defer func() {
+		cancel()
+		workers.Wait()
 		for _, runtime := range runtimes {
 			runtime.close()
 		}
 	}()
+	workers.Go(func() {
+		err := runReleaseSettlementRefresh(ctx, time.Duration(cfg.PollSeconds)*time.Second, chain.ReleaseSnapshotContext, func(ctx context.Context, snapshot *ReleaseSnapshot) error {
+			return advanceReleaseSettlementSnapshotWithMode(ctx, cfg.StateDir, snapshot, settlementParticipants, func(ctx context.Context, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
+				return releasePriorSettlementBoundary(ctx, chain, snapshot)
+			}, false)
+		}, func(snapshot *ReleaseSnapshot) {
+			if settlementEpoch.Load() < snapshot.Epoch.Uint64() {
+				attemptBoundaryResolver.invalidateLatest()
+				settlementEpoch.Store(snapshot.Epoch.Uint64())
+			}
+		}, waitReleaseSnapshotRetry)
+		if err != nil && ctx.Err() == nil {
+			runtimeErrors <- err
+		}
+	})
+	for index, runtime := range runtimes {
+		operatorID := cfg.Operators[index].NoID
+		concurrency := cfg.Operators[index].Concurrency
+		workers.Go(func() { reportReleaseTrailEngineError(ctx, runtime.engine, operatorID, concurrency, runtimeErrors) })
+	}
 	measurements := make([]*ReleaseMeasurementContext, len(runtimes))
 	for i, runtime := range runtimes {
 		measurements[i] = runtime.measurement
@@ -520,12 +514,12 @@ func RunRelease(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	go func() {
+	workers.Go(func() {
 		if err := steerer.Run(ctx); err != nil {
 			runtimeErrors <- err
 		}
-	}()
-	go func() {
+	})
+	workers.Go(func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for {
@@ -541,7 +535,7 @@ func RunRelease(ctx context.Context, configPath string) error {
 				}
 			}
 		}
-	}()
+	})
 	fmt.Printf("validator release 1.0 running: validator=%d netuid=%d hotkey=%s operators=%d\n", cfg.ValidatorID, cfg.Netuid, hotkey.Address(), len(runtimes))
 	select {
 	case <-ctx.Done():

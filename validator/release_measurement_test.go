@@ -125,7 +125,11 @@ func attachReleaseMeasurementAttemptCuts(t *testing.T, artifact *ReleaseMeasurem
 		if err != nil {
 			t.Fatal(err)
 		}
-		ledger.appendFn = func(string, []byte) error { return nil }
+		t.Cleanup(func() {
+			if err := ledger.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		boundary := AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
 		maxConfirmations := uint64(0)
 		for _, provider := range input.Stats.Providers {

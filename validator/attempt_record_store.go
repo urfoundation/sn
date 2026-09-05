@@ -59,12 +59,7 @@ type attemptRecordStoreBounds struct {
 }
 
 // These counters describe one complete committed prefix, never a pending batch.
-type attemptRecordStoreHead struct {
-	LastSequence uint64 `json:"last_sequence"`
-	Root         string `json:"root"`
-	RecordBytes  uint64 `json:"record_bytes"`
-	TrailCount   uint64 `json:"trail_count"`
-}
+type attemptRecordStoreHead = AttemptLedgerHead
 
 // The coordinator is local namespace context; unchanged v1 records do not
 // acquire a new signed field. Future public v2 headers bind it independently.
@@ -117,6 +112,12 @@ func openAttemptRecordStore(ctx context.Context, path string, identity AttemptLe
 
 // Adds deterministic failure points without changing the production path.
 func openAttemptRecordStoreWithHooks(ctx context.Context, path string, identity AttemptLedgerIdentity, coordinator string, vpk ed25519.PublicKey, bounds attemptRecordStoreBounds, hooks attemptRecordStoreHooks) (*attemptRecordStore, error) {
+	return openAttemptRecordStoreWithParent(ctx, path, identity, coordinator, vpk, bounds, hooks, nil)
+}
+
+// Migration passes its already opened parent root; no pathname re-resolution
+// can redirect the database away from the state-directory migration gate.
+func openAttemptRecordStoreWithParent(ctx context.Context, path string, identity AttemptLedgerIdentity, coordinator string, vpk ed25519.PublicKey, bounds attemptRecordStoreBounds, hooks attemptRecordStoreHooks, parent *os.Root) (*attemptRecordStore, error) {
 	if ctx == nil || ctx.Err() != nil {
 		return nil, errors.New("attempt record store opening context is unavailable")
 	}
@@ -136,7 +137,12 @@ func openAttemptRecordStoreWithHooks(ctx context.Context, path string, identity 
 		identity: attemptRecordStoreIdentity{Schema: attemptStoreSchema, Identity: identity, Coordinator: coordinator},
 		vpk:      append(ed25519.PublicKey(nil), vpk...), bounds: bounds,
 	}
-	disk, err := openAttemptRecordStoreStorage(path, bounds, hooks, self.latchFault)
+	var disk *attemptRecordStoreStorage
+	if parent == nil {
+		disk, err = openAttemptRecordStoreStorage(path, bounds, hooks, self.latchFault)
+	} else {
+		disk, err = openAttemptRecordStoreStorageAt(parent, path, bounds, hooks, self.latchFault)
+	}
 	if err != nil {
 		cancel()
 		return nil, err

@@ -60,7 +60,7 @@ func newFinalFleetGenerationSource(archive *finalSemanticArchive, evidence *Fina
 	if err != nil {
 		return nil, err
 	}
-	current, err := decodePersistedPlanBytes(planBytes)
+	current, err := archive.decodeSetupPlan("launch-foundation/plan.json", planBytes)
 	if err != nil || current.PlanHash != evidence.PlanHash || current.DeploymentID != evidence.DeploymentID || current.ChainID != evidence.ChainID || current.Netuid != evidence.Netuid {
 		return nil, stateMismatchError(err, "ordinary fleet generation current plan differs from semantic identity")
 	}
@@ -110,7 +110,7 @@ func newFinalFleetGenerationSource(archive *finalSemanticArchive, evidence *Fina
 	sort.Strings(names)
 	for _, name := range names {
 		data := archive.files[name]
-		plan, decodeErr := decodePersistedPlanBytes(data)
+		plan, decodeErr := archive.decodeSetupPlan(name, data)
 		if decodeErr != nil {
 			return nil, fmt.Errorf("ordinary fleet generation decode %s: %w", name, decodeErr)
 		}

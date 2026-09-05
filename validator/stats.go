@@ -214,7 +214,10 @@ type StatsEngine struct {
 	attemptEgressFirstSequence     uint64
 	activeAttemptCount             uint64
 	attemptCutPending              bool
-	settlementTransition           *AttemptSettlementTransition
+	// Tracks the settlement owner's target separately from an ordinary detach.
+	attemptSettlementCutPending bool
+	attemptSettlementCutEpoch   uint64
+	settlementTransition        *AttemptSettlementTransition
 }
 
 func NewStatsEngine(cfg StatsConfig) *StatsEngine {
@@ -546,6 +549,14 @@ func (self *StatsEngine) saveWithLock(dir string) error {
 func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	var nextAttemptSequence uint64
+	if self.attemptLedger != nil {
+		head, err := self.attemptLedger.checkedHead()
+		if err != nil || head.LastSequence == ^uint64(0) {
+			return errors.Join(errors.New("cannot advance statistics from an unavailable attempt head"), err)
+		}
+		nextAttemptSequence = head.LastSequence + 1
+	}
 	if self.settlementEpochKnown {
 		if epoch < self.settlementEpoch {
 			return fmt.Errorf("settlement epoch regressed from %d to %d", self.settlementEpoch, epoch)
@@ -589,9 +600,8 @@ func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error 
 			self.settlementEpoch, self.settlementEpochKnown = priorEpoch, priorKnown
 			return errors.New("release statistics egress generation overflow")
 		}
-		nextSequence := self.attemptLedger.LastSequence() + 1
-		self.attemptSettlementFirstSequence = nextSequence
-		self.attemptEgressFirstSequence = nextSequence
+		self.attemptSettlementFirstSequence = nextAttemptSequence
+		self.attemptEgressFirstSequence = nextAttemptSequence
 		self.egress = map[connect.Id]map[[32]byte]bool{}
 		self.egressGeneration++
 	}

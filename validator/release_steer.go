@@ -214,6 +214,9 @@ func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch, nativeBlock uint64, nativ
 				if input.SettlementEpoch != snapshot.Epoch.Uint64() {
 					return nil, fmt.Errorf("native head window no_id %d crossed settlement epoch %d to %d", noID, input.SettlementEpoch, snapshot.Epoch.Uint64())
 				}
+				if !releaseBlockAtOrBefore(input.CutNativeBlock, input.CutNativeBlockHash, nativeBlock, strings.ToLower(nativeHash)) || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, snapshot.BlockNumber, releaseHex32(snapshot.BlockHash)) {
+					return nil, fmt.Errorf("native head window no_id %d is outside the active release decision", noID)
+				}
 			}
 			return s.headInputsByNO, nil
 		}
@@ -600,29 +603,22 @@ func (s *ReleaseSteerer) foldSettlementEpoch(ctx context.Context, snapshot *Rele
 	if snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
 		return errors.New("settlement snapshot is invalid")
 	}
-	epoch := snapshot.Epoch.Uint64()
 	noIDs := make([]uint64, 0, len(s.contexts))
 	for noID := range s.contexts {
 		noIDs = append(noIDs, noID)
 	}
 	sort.Slice(noIDs, func(i, j int) bool { return noIDs[i] < noIDs[j] })
 	participants := make([]AttemptSettlementParticipant, 0, len(noIDs))
-	var terminalBoundary AttemptBoundary
 	for _, noID := range noIDs {
 		stats := s.contexts[noID].Stats
 		if stats == nil {
 			return fmt.Errorf("no_id %d has no settlement statistics", noID)
 		}
 		participants = append(participants, AttemptSettlementParticipant{NoID: noID, StateDir: measurementStateDir(s.cfg, noID), Stats: stats})
-		if terminalBoundary == (AttemptBoundary{}) && stats.requiresSettlementAdvance(epoch) {
-			boundary, err := releasePriorSettlementBoundary(ctx, s.chain, snapshot)
-			if err != nil {
-				return err
-			}
-			terminalBoundary = boundary
-		}
 	}
-	return AdvanceAttemptSettlementEpoch(s.cfg.StateDir, epoch, terminalBoundary, participants)
+	return advanceReleaseSettlementSnapshot(ctx, s.cfg.StateDir, snapshot, participants, func(ctx context.Context, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
+		return releasePriorSettlementBoundary(ctx, s.chain, snapshot)
+	})
 }
 
 func measurementStateDir(cfg *ReleaseConfig, noID uint64) string {
@@ -1006,12 +1002,36 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
+	return runReleaseSteeringLoopWithWait(ctx, epoch, submit, func() bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+			return true
+		}
+	})
+}
+
+// Injects only the existing poll decision so tests can force a ready tick
+// alongside cancellation without depending on the select scheduler.
+func runReleaseSteeringLoopWithWait(ctx context.Context, epoch func() (uint64, error), submit func() error, wait func() bool) error {
+	if ctx == nil || epoch == nil || submit == nil || wait == nil {
+		return errors.New("release steering loop configuration is incomplete")
+	}
 	var targetEpoch uint64
 	targetKnown := false
 	completed := false
 	failures := 0
 	for {
+		// A ready poll may win alongside cancellation; never let that
+		// decision authorize another scheduler read or submission.
+		if ctx.Err() != nil {
+			return nil
+		}
 		currentEpoch, err := epoch()
+		if ctx.Err() != nil {
+			return nil
+		}
 		if err == nil {
 			if targetKnown && currentEpoch < targetEpoch {
 				return fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch)
@@ -1026,6 +1046,10 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 				err = submit()
 				if err == nil || errors.Is(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
+				} else if errors.Is(err, errAttemptCutPending) {
+					// Admitted trails drain under their existing contexts. Waiting
+					// neither spends nor resets the real native-failure budget;
+					// the next scheduler read still enforces exact epoch continuity.
 				} else {
 					failures++
 					fmt.Printf("release steer: subnet epoch %d attempt %d: %v\n", targetEpoch, failures, err)
@@ -1038,10 +1062,8 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 		if failures >= releaseSteeringFailureLimit {
 			return fmt.Errorf("release steering failed %d consecutive attempts: %w", failures, err)
 		}
-		select {
-		case <-ctx.Done():
+		if !wait() {
 			return nil
-		case <-ticker.C:
 		}
 	}
 }

@@ -36,11 +36,9 @@ import (
 )
 
 const (
-	// v8 makes the temporary fleet-refresh oracle interval independently
-	// public-chain-replayable at both operational and independent checkpoints.
-	// Earlier semantic objects retain only a source artifact and cannot prove
-	// the active oracle to a public archive observer.
-	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v8"
+	// v9 joins every accepted proof to a complete signed terminal settlement
+	// batch; prior objects cannot prove the absence of an omitted valid tail.
+	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v9"
 	finalReleaseArchiveMinimumSpanBlocks         = uint64(3_570)
 	finalReleaseArchiveMinimumSafetyMarginBlocks = uint64(7_200)
 	finalHeadCandidateCount                      = 202
@@ -498,14 +496,15 @@ type FinalNativeRewardDelta struct {
 }
 
 type FinalValidatorPathProofEvidence struct {
-	ValidatorID uint64               `json:"validator_id"`
-	NoID        uint64               `json:"no_id"`
-	FirstEpoch  uint64               `json:"first_epoch"`
-	LastEpoch   uint64               `json:"last_epoch"`
-	ProofCount  uint64               `json:"proof_count"`
-	TrailDepth  int                  `json:"trail_depth"`
-	ProofsHash  string               `json:"proofs_hash"`
-	Artifact    FinalArtifactLocator `json:"artifact"`
+	ValidatorID        uint64                            `json:"validator_id"`
+	NoID               uint64                            `json:"no_id"`
+	FirstEpoch         uint64                            `json:"first_epoch"`
+	LastEpoch          uint64                            `json:"last_epoch"`
+	ProofCount         uint64                            `json:"proof_count"`
+	TrailDepth         int                               `json:"trail_depth"`
+	ProofsHash         string                            `json:"proofs_hash"`
+	Artifact           FinalArtifactLocator              `json:"artifact"`
+	SettlementClosures []FinalCollectedSettlementClosure `json:"settlement_closures"`
 }
 
 type FinalMinerProcessEvidence struct {
@@ -2923,6 +2922,9 @@ func verifyFinalPathProofs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 		if proof.ProofsHash != proof.Artifact.ContentHash {
 			return fmt.Errorf("path proof %s locator hash mismatch", key)
 		}
+		if err := verifyFinalSettlementClosureLocators(proof.SettlementClosures, evidence.Window, true); err != nil {
+			return fmt.Errorf("path proof %s terminal authority: %w", key, err)
+		}
 	}
 	return nil
 }
@@ -3313,6 +3315,9 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 	for i := range evidence.PathProofs {
 		proof := &evidence.PathProofs[i]
 		uses = append(uses, finalSemanticArtifactUse{locator: proof.Artifact, pathProof: proof})
+		for _, closure := range proof.SettlementClosures {
+			add(closure.Artifact)
+		}
 	}
 	return uses, nil
 }
@@ -3389,6 +3394,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	}
 	if finalSemanticArtifactVerificationCacheHit(cacheKey) {
 		return nil
+	}
+	if err := verifyFinalSettlementClosureArtifacts(evidence, cache); err != nil {
+		return err
 	}
 	matrix, err := verifyFinalAdversarialMatrixArtifact(evidence.Adversaries, cache[evidence.Adversaries.MatrixArtifact.URI])
 	if err != nil {

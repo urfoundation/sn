@@ -9,6 +9,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -106,10 +107,15 @@ func TestAttemptBoundaryLifecycleAppendRejectsPendingDrift(t *testing.T) {
 	original, key, serverKeys := attemptBoundaryLifecycleFixture(t, 4)
 	for _, drift := range attemptBoundaryLifecycleDrifts() {
 		changed := attemptBoundaryLifecycleChangedCut(t, original, key, serverKeys, drift)
-		ledger, err := NewAttemptLedger(t.TempDir(), original.Identity, key)
+		ledger, err := NewAttemptLedger(filepath.Join(t.TempDir(), "state"), original.Identity, key)
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if err := ledger.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		if _, err := ledger.Append(original.Records[0]); err != nil {
 			t.Fatal(err)
 		}
@@ -155,9 +161,12 @@ func TestAttemptBoundaryLifecycleReopenRejectsPendingDrift(t *testing.T) {
 	original, key, serverKeys := attemptBoundaryLifecycleFixture(t, 4)
 	for _, drift := range attemptBoundaryLifecycleDrifts() {
 		changed := attemptBoundaryLifecycleChangedCut(t, original, key, serverKeys, drift)
-		stateDir := t.TempDir()
+		stateDir := filepath.Join(t.TempDir(), "state")
 		empty, err := NewAttemptLedger(stateDir, original.Identity, key)
 		if err != nil {
+			t.Fatal(err)
+		}
+		if err := empty.Close(); err != nil {
 			t.Fatal(err)
 		}
 		var encoded []byte
@@ -173,6 +182,13 @@ func TestAttemptBoundaryLifecycleReopenRejectsPendingDrift(t *testing.T) {
 			t.Fatal(err)
 		}
 		reopened, reopenErr := NewAttemptLedger(stateDir, original.Identity, key)
+		if reopened != nil {
+			t.Cleanup(func() {
+				if err := reopened.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+		}
 		if reopenErr == nil {
 			t.Errorf("pending boundary drift survived durable reopen: %s", drift.name)
 		} else if reopened != nil {
@@ -202,7 +218,7 @@ func TestAttemptBoundaryLifecyclePublicCutRejectsPendingDrift(t *testing.T) {
 func TestAttemptBoundaryLifecycleUnchangedViewSurvivesRecovery(t *testing.T) {
 	for _, depth := range []int{4, 5} {
 		original, key, serverKeys := attemptBoundaryLifecycleFixture(t, depth)
-		stateDir := t.TempDir()
+		stateDir := filepath.Join(t.TempDir(), "state")
 		ledger, err := NewAttemptLedger(stateDir, original.Identity, key)
 		if err != nil {
 			t.Fatal(err)
@@ -212,10 +228,18 @@ func TestAttemptBoundaryLifecycleUnchangedViewSurvivesRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if err := ledger.Close(); err != nil {
+			t.Fatal(err)
+		}
 		ledger, err = NewAttemptLedger(stateDir, original.Identity, key)
 		if err != nil || ledger.LastSequence() != uint64(depth) {
 			t.Fatalf("M%d unchanged complete reopen: %v", depth, err)
 		}
+		t.Cleanup(func() {
+			if err := ledger.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		if recovered, err := ledger.RecoverPending(); err != nil || len(recovered) != 0 {
 			t.Fatalf("M%d completed trail was recovered again: %v", depth, err)
 		}
@@ -226,7 +250,7 @@ func TestAttemptBoundaryLifecycleUnchangedViewSurvivesRecovery(t *testing.T) {
 		if err := VerifyAttemptLedgerCut(cut, key.Public().(ed25519.PublicKey), serverKeys); err != nil {
 			t.Fatal(err)
 		}
-		partialDir := t.TempDir()
+		partialDir := filepath.Join(t.TempDir(), "state")
 		partial, err := NewAttemptLedger(partialDir, original.Identity, key)
 		if err != nil {
 			t.Fatal(err)
@@ -236,10 +260,18 @@ func TestAttemptBoundaryLifecycleUnchangedViewSurvivesRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if err := partial.Close(); err != nil {
+			t.Fatal(err)
+		}
 		partial, err = NewAttemptLedger(partialDir, original.Identity, key)
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if err := partial.Close(); err != nil {
+				t.Error(err)
+			}
+		})
 		recovered, err := partial.RecoverPending()
 		if err != nil || len(recovered) != 1 || partial.LastSequence() != 3 {
 			t.Fatalf("M%d partial recovery: %v, count=%d", depth, err, len(recovered))

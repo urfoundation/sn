@@ -22,6 +22,10 @@ import (
 
 const attemptSettlementTransactionSchema = "urnetwork-validator-settlement-transaction-v1"
 
+// A competing finalized refresh may advance before an older native snapshot
+// reaches the fold. The caller must retry its snapshot, never gather old stats.
+var errAttemptSettlementSnapshotStale = errors.New("settlement snapshot is older than current attempt ownership")
+
 // AttemptSettlementParticipant identifies one isolated operator state. Stats
 // is required for advancement and may be nil for startup recovery.
 type AttemptSettlementParticipant struct {
@@ -135,6 +139,9 @@ func decodeAttemptSettlementTransaction(encoded []byte, participants []AttemptSe
 			}
 		}
 	}
+	if _, err := attemptSettlementClosureFromTransaction(&transaction); err != nil {
+		return nil, err
+	}
 	return &transaction, nil
 }
 
@@ -156,7 +163,15 @@ func finishCurrentAttemptSettlementTransaction(path string, epoch uint64, partic
 	}
 	encoded, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		transaction := &attemptSettlementTransaction{Schema: attemptSettlementTransactionSchema, Epoch: epoch}
+		for _, participant := range participants {
+			statsJSON, err := encodeStatsSnapshot(participant.Stats.snapshotWithLock())
+			if err != nil {
+				return err
+			}
+			transaction.Snapshots = append(transaction.Snapshots, attemptSettlementSnapshot{NoID: participant.NoID, StatsJSON: statsJSON})
+		}
+		return publishAttemptSettlementClosure(filepath.Dir(path), transaction)
 	}
 	if err != nil {
 		return err
@@ -170,6 +185,9 @@ func finishCurrentAttemptSettlementTransaction(path string, epoch uint64, partic
 		if err != nil || !bytes.Equal(current, transaction.Snapshots[index].StatsJSON) {
 			return fmt.Errorf("no_id %d current statistics differ from the pending settlement transaction", participant.NoID)
 		}
+	}
+	if err := publishAttemptSettlementClosure(filepath.Dir(path), transaction); err != nil {
+		return err
 	}
 	return removeTransaction(path)
 }
@@ -210,6 +228,9 @@ func recoverAttemptSettlementEpochWithRemove(coordinatorStateDir string, partici
 			return err
 		}
 	}
+	if err := publishAttemptSettlementClosure(coordinatorStateDir, transaction); err != nil {
+		return err
+	}
 	return removeTransaction(path)
 }
 
@@ -218,6 +239,12 @@ func advanceAttemptSettlementEpochWithWrite(coordinatorStateDir string, epoch ui
 }
 
 func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error) error {
+	return advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir, epoch, terminalBoundary, participants, writeSnapshot, removeTransaction, true)
+}
+
+// Unchanged refreshes are no-ops under the same locks used by native retries;
+// a race after resolving a boundary cannot clear another owner's detach gate.
+func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error, finishCurrent bool) error {
 	ordered, err := validateAttemptSettlementParticipants(participants, true)
 	if err != nil {
 		return err
@@ -236,14 +263,38 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 			ordered[index].Stats.mu.Unlock()
 		}
 	}()
+	// Reject stale snapshots before changing any admission barrier. Both the
+	// native submitter and independent EVM refresh use these same sorted locks.
+	for _, participant := range ordered {
+		if participant.Stats.settlementEpochKnown && participant.Stats.settlementEpoch > epoch {
+			return errAttemptSettlementSnapshotStale
+		}
+	}
+	if !finishCurrent {
+		allCurrent := true
+		for _, participant := range ordered {
+			allCurrent = allCurrent && participant.Stats.settlementEpochKnown && participant.Stats.settlementEpoch == epoch
+		}
+		if allCurrent {
+			return nil
+		}
+	}
 	allCurrent := true
 	initializing := false
 	transitioning := false
 	var priorEpoch uint64
+	ledgerHeads := make(map[uint64]AttemptLedgerHead, len(ordered))
 	for _, participant := range ordered {
 		stats := participant.Stats
+		if stats.attemptLedger != nil {
+			head, err := stats.attemptLedger.checkedHead()
+			if err != nil || head.LastSequence == ^uint64(0) {
+				return errors.Join(errors.New("settlement cannot establish its durable attempt head"), err)
+			}
+			ledgerHeads[participant.NoID] = head
+		}
 		if !stats.settlementEpochKnown {
-			if len(stats.window) != 0 || len(stats.ema) != 0 || len(stats.emaPPM) != 0 || len(stats.egress) != 0 || stats.attemptLedger == nil || stats.attemptLedger.LastSequence() != 0 {
+			if len(stats.window) != 0 || len(stats.ema) != 0 || len(stats.emaPPM) != 0 || len(stats.egress) != 0 || stats.attemptLedger == nil || ledgerHeads[participant.NoID].LastSequence != 0 {
 				return fmt.Errorf("no_id %d has non-pristine statistics without settlement ownership", participant.NoID)
 			}
 			initializing = true
@@ -263,19 +314,38 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 			transitioning = true
 			allCurrent = false
 		}
-		stats.attemptCutPending = true
 	}
 	if initializing && transitioning {
 		return errors.New("settlement participants mix pristine and prior-epoch state")
 	}
 	if allCurrent {
+		priorPending := make([]bool, len(ordered))
+		for index, participant := range ordered {
+			if participant.Stats.attemptSettlementCutPending && participant.Stats.attemptSettlementCutEpoch != epoch {
+				return errAttemptCutPending
+			}
+			priorPending[index] = participant.Stats.attemptCutPending
+		}
+		for _, participant := range ordered {
+			participant.Stats.attemptCutPending = true
+		}
 		if err := finishCurrentAttemptSettlementTransaction(attemptSettlementTransactionPath(coordinatorStateDir), epoch, ordered, removeTransaction); err != nil {
 			return err
 		}
-		for _, participant := range ordered {
-			participant.Stats.attemptCutPending = false
+		for index, participant := range ordered {
+			if participant.Stats.attemptSettlementCutPending {
+				participant.Stats.attemptSettlementCutPending = false
+				participant.Stats.attemptCutPending = false
+			} else {
+				participant.Stats.attemptCutPending = priorPending[index]
+			}
 		}
 		return nil
+	}
+	for _, participant := range ordered {
+		participant.Stats.attemptCutPending = true
+		participant.Stats.attemptSettlementCutPending = true
+		participant.Stats.attemptSettlementCutEpoch = epoch
 	}
 	for _, participant := range ordered {
 		if participant.Stats.activeAttemptCount != 0 {
@@ -338,7 +408,7 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 				stats.window, stats.ema, stats.emaPPM = priorWindow, priorEMA, priorEMAPPM
 				return errors.New("release statistics egress generation overflow")
 			}
-			nextSequence := stats.attemptLedger.LastSequence() + 1
+			nextSequence := ledgerHeads[participant.NoID].LastSequence + 1
 			candidate.settlementFirstSequence, candidate.egressFirstSequence = nextSequence, nextSequence
 			candidate.egress = map[connect.Id]map[[32]byte]bool{}
 			candidate.egressGeneration++
@@ -411,6 +481,9 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 			return err
 		}
 	}
+	if err := publishAttemptSettlementClosure(coordinatorStateDir, transaction); err != nil {
+		return err
+	}
 	for index, participant := range ordered {
 		stats, candidate := participant.Stats, candidates[index]
 		stats.window, stats.ema, stats.emaPPM = candidate.window, candidate.ema, candidate.emaPPM
@@ -424,6 +497,7 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 	}
 	for _, participant := range ordered {
 		participant.Stats.attemptCutPending = false
+		participant.Stats.attemptSettlementCutPending = false
 	}
 	return nil
 }

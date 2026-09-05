@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -164,15 +165,33 @@ type attemptCutSignaturePayload struct {
 // AttemptLedger owns one append-only operator journal. Methods are safe for
 // concurrent use; callers serialize it after StatsEngine when both are held.
 type AttemptLedger struct {
-	stateLock sync.Mutex
-	path      string
-	identity  AttemptLedgerIdentity
-	vsk       ed25519.PrivateKey
-	vpk       ed25519.PublicKey
-	records   []AttemptRecord
-	pending   map[connect.Id]AttemptRecord
-	terminal  map[connect.Id]bool
-	appendFn  func(string, []byte) error
+	stateLock              sync.Mutex
+	path                   string
+	identity               AttemptLedgerIdentity
+	vsk                    ed25519.PrivateKey
+	vpk                    ed25519.PublicKey
+	records                []AttemptRecord
+	pending                map[connect.Id]AttemptRecord
+	terminal               map[connect.Id]bool
+	appendFn               func(string, []byte) error
+	disk                   attemptLedgerDiskBackend
+	diskLimits             AttemptLedgerDiskLimits
+	directory              *attemptLedgerDirectory
+	appendGate             chan struct{}
+	active                 sync.WaitGroup
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	closing                bool
+	closeDone              chan struct{}
+	closeError             error
+	fault                  error
+	durableSequence        uint64
+	legacyAnchor           os.FileInfo
+	legacyFileInfo         os.FileInfo
+	legacyBytes            int64
+	legacyLastRecordOffset int64
+	legacyWriteDirectory   *attemptLedgerDirectory
+	legacyDirectoryStep    func(string, string) error
 }
 
 func canonicalAttemptHex32(name, encoded string, zeroAllowed bool) ([32]byte, error) {
@@ -222,6 +241,13 @@ func validateAttemptBoundary(boundary AttemptBoundary) error {
 	}
 	_, err := canonicalAttemptHex32("attempt EVM boundary hash", boundary.EVMBlockHash, false)
 	return err
+}
+
+// Orders canonical snapshots within one chain. Callers separately bind the
+// chain and epoch; different heights do not prove ancestry, but equal heights
+// must name the same hash. Earlier records retain their original block view.
+func releaseBlockAtOrBefore(number uint64, hash string, boundaryNumber uint64, boundaryHash string) bool {
+	return number < boundaryNumber || number == boundaryNumber && hash == boundaryHash
 }
 
 func validateAttemptBinding(binding AttemptBinding, clientID connect.Id) error {
@@ -283,7 +309,14 @@ func attemptRecordSignatureMessage(recordHash [32]byte) []byte {
 	return append(message, recordHash[:]...)
 }
 
+// Keeps single-record verification independent of a cut's repeated prefixes.
 func verifyAttemptRecord(record *AttemptRecord, expectedIdentity AttemptLedgerIdentity, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool) error {
+	return verifyAttemptRecordWithAssignVerifier(record, expectedIdentity, expectedVPK, serverKeys, requireServerKeys, connect.VerifyVerifyMessageSignature)
+}
+
+// The cut-owned assignment verifier retains the complete key/message/signature
+// boundary; all record, binding, proof and lifecycle checks remain independent.
+func verifyAttemptRecordWithAssignVerifier(record *AttemptRecord, expectedIdentity AttemptLedgerIdentity, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool, verifyAssign func([]byte, []byte, []byte) bool) error {
 	if record == nil || record.Schema != attemptLedgerRecordSchema || record.Sequence == 0 || record.TrailID == (connect.Id{}) || len(record.ServerNonce) != connect.VerifyNonceSize || record.M < connect.VerifyMMin || record.M > connect.VerifyMMax {
 		return errors.New("attempt record identity is incomplete")
 	}
@@ -323,7 +356,7 @@ func verifyAttemptRecord(record *AttemptRecord, expectedIdentity AttemptLedgerId
 		}
 		if requireServerKeys {
 			serverKey, ok := serverKeys[assignment.ServerKeyID]
-			if !ok || len(serverKey) != ed25519.PublicKeySize || !connect.VerifyVerifyMessageSignature(serverKey, assignment.AssignMessage, assignment.AssignSignature) {
+			if !ok || len(serverKey) != ed25519.PublicKeySize || !verifyAssign(serverKey, assignment.AssignMessage, assignment.AssignSignature) {
 				return fmt.Errorf("attempt assignment %d server signature is invalid", index)
 			}
 		}
@@ -456,8 +489,8 @@ func appendAttemptLedgerFile(path string, payload []byte) error {
 
 // NewAttemptLedger loads and verifies one private operator ledger. A torn or
 // malformed line fails closed; measurement history is never silently skipped.
-func NewAttemptLedger(stateDir string, identity AttemptLedgerIdentity, vsk ed25519.PrivateKey) (*AttemptLedger, error) {
-	if len(vsk) != ed25519.PrivateKeySize {
+func NewAttemptLedger(stateDir string, identity AttemptLedgerIdentity, vsk ed25519.PrivateKey) (result *AttemptLedger, resultErr error) {
+	if len(vsk) != ed25519.PrivateKeySize || !bytes.Equal(vsk, ed25519.NewKeyFromSeed(vsk[:ed25519.SeedSize])) {
 		return nil, errors.New("attempt ledger validator private key is invalid")
 	}
 	vpk := vsk.Public().(ed25519.PublicKey)
@@ -465,30 +498,58 @@ func NewAttemptLedger(stateDir string, identity AttemptLedgerIdentity, vsk ed255
 	if err := validateAttemptLedgerIdentity(identity, vpk); err != nil {
 		return nil, err
 	}
-	if err := ensurePrivateStateDir(stateDir); err != nil {
+	directory, err := openAttemptLedgerDirectory(stateDir, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		resultErr = errors.Join(resultErr, directory.Close())
+		if resultErr != nil {
+			result = nil
+		}
+	}()
+	if err := directory.enter(context.Background()); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := directory.leave(); err != nil {
+			result, resultErr = nil, errors.Join(resultErr, err)
+		}
+	}()
+	if err := directory.requireLegacy(); err != nil {
 		return nil, err
 	}
 	ledger := &AttemptLedger{
-		path: filepath.Join(stateDir, "attempt-ledger.jsonl"), identity: identity,
+		path: filepath.Join(directory.path, "attempt-ledger.jsonl"), identity: identity, legacyAnchor: directory.anchor,
 		vsk: append(ed25519.PrivateKey(nil), vsk...), vpk: append(ed25519.PublicKey(nil), vpk...),
-		pending: map[connect.Id]AttemptRecord{}, terminal: map[connect.Id]bool{}, appendFn: appendAttemptLedgerFile,
+		pending: map[connect.Id]AttemptRecord{}, terminal: map[connect.Id]bool{},
 	}
-	encoded, err := os.ReadFile(ledger.path)
+	// This private fault seam is called only under the append gate, without
+	// stateLock held; its writer uses the operation's retained directory root.
+	ledger.appendFn = func(_ string, payload []byte) error { return ledger.legacyWriteDirectory.appendLegacy(payload) }
+	ledger.initLifetime()
+	file, err := directory.openFile("attempt-ledger.jsonl", os.O_RDONLY, false)
 	if errors.Is(err, os.ErrNotExist) {
 		return ledger, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Lstat(ledger.path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("attempt ledger is not a private regular file")
+	encoded, err := io.ReadAll(file)
+	ledger.legacyFileInfo, resultErr = file.Stat()
+	err = errors.Join(err, resultErr)
+	err = errors.Join(err, file.Close())
+	if err != nil {
+		return nil, err
 	}
 	if len(encoded) != 0 && encoded[len(encoded)-1] != '\n' {
 		return nil, errors.New("attempt ledger has a torn final line")
 	}
 	previousHash := zeroAttemptHash()
+	var offset int64
 	for lineIndex, line := range bytes.Split(encoded, []byte{'\n'}) {
+		lineOffset := offset
+		offset += int64(len(line)) + 1
 		if len(line) == 0 {
 			continue
 		}
@@ -513,6 +574,7 @@ func NewAttemptLedger(stateDir string, identity AttemptLedgerIdentity, vsk ed255
 			return nil, fmt.Errorf("attempt ledger line %d: %w", lineIndex+1, err)
 		}
 		ledger.records = append(ledger.records, record)
+		ledger.legacyLastRecordOffset = lineOffset
 		previousHash = record.RecordHash
 	}
 	pending, terminal, err := attemptLifecycle(ledger.records)
@@ -520,6 +582,7 @@ func NewAttemptLedger(stateDir string, identity AttemptLedgerIdentity, vsk ed255
 		return nil, fmt.Errorf("attempt ledger lifecycle: %w", err)
 	}
 	ledger.pending, ledger.terminal = pending, terminal
+	ledger.legacyBytes = int64(len(encoded))
 	return ledger, nil
 }
 
@@ -534,11 +597,17 @@ func (self *AttemptLedger) lastRootWithLock() string {
 func (self *AttemptLedger) LastSequence() uint64 {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
+	if self.disk != nil {
+		return self.durableSequence
+	}
 	return uint64(len(self.records))
 }
 
 // RecordsAfter returns independent copies after the supplied sequence.
 func (self *AttemptLedger) RecordsAfter(sequence uint64) ([]AttemptRecord, error) {
+	if self.disk != nil {
+		return nil, ErrAttemptLedgerStreamingRequired
+	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	if sequence > uint64(len(self.records)) {
@@ -557,8 +626,13 @@ func (self *AttemptLedger) RecordsAfter(sequence uint64) ([]AttemptRecord, error
 
 // Append signs and durably appends one already validated trail outcome.
 func (self *AttemptLedger) Append(record AttemptRecord) (*AttemptRecord, error) {
+	return self.AppendContext(context.Background(), record)
+}
+
+// The caller owns the append gate and the directory migration gate. Legacy
+// signatures and JSONL bytes are unchanged; disk mode supplies its own path.
+func (self *AttemptLedger) appendLegacyWithLock(record AttemptRecord) (*AttemptRecord, error) {
 	self.stateLock.Lock()
-	defer self.stateLock.Unlock()
 	record.Schema = attemptLedgerRecordSchema
 	record.Identity = self.identity
 	record.Sequence = uint64(len(self.records)) + 1
@@ -566,6 +640,7 @@ func (self *AttemptLedger) Append(record AttemptRecord) (*AttemptRecord, error) 
 	record.VPK = append([]byte(nil), self.vpk...)
 	record.RecordHash = ""
 	record.Signature = nil
+	self.stateLock.Unlock()
 	hash, err := attemptRecordHash(&record)
 	if err != nil {
 		return nil, err
@@ -575,7 +650,12 @@ func (self *AttemptLedger) Append(record AttemptRecord) (*AttemptRecord, error) 
 	if err := verifyAttemptRecord(&record, self.identity, self.vpk, nil, false); err != nil {
 		return nil, err
 	}
-	if err := validateAttemptLifecycleRecord(self.pending, self.terminal, record, len(self.records)); err != nil {
+	err = func() error {
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
+		return validateAttemptLifecycleRecord(self.pending, self.terminal, record, len(self.records))
+	}()
+	if err != nil {
 		return nil, err
 	}
 	encoded, err := json.Marshal(&record)
@@ -583,17 +663,66 @@ func (self *AttemptLedger) Append(record AttemptRecord) (*AttemptRecord, error) 
 		return nil, err
 	}
 	encoded = append(encoded, '\n')
-	if err := self.appendFn(self.path, encoded); err != nil {
-		return nil, err
-	}
 	stored, err := cloneAttemptRecord(record)
 	if err != nil {
 		return nil, err
 	}
+	if err := self.checkLegacyPrefixWithLock(); err != nil {
+		return nil, err
+	}
+	if err := self.appendFn(self.path, encoded); err != nil {
+		self.stateLock.Lock()
+		self.fault = err
+		self.stateLock.Unlock()
+		return nil, err
+	}
+	info, err := self.legacyWriteDirectory.root.Lstat(attemptLedgerLegacyName)
+	if err != nil || !attemptLedgerPrivateFile(info) || info.Size() != self.legacyBytes+int64(len(encoded)) {
+		err = errors.Join(errors.New("attempt ledger acknowledged bytes differ from its file"), err)
+		self.stateLock.Lock()
+		self.fault = err
+		self.stateLock.Unlock()
+		return nil, err
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	self.legacyLastRecordOffset = self.legacyBytes
+	self.legacyBytes += int64(len(encoded))
+	self.legacyFileInfo = info
 	self.records = append(self.records, stored)
 	applyAttemptLifecycleRecord(self.pending, self.terminal, stored)
 	copy, err := cloneAttemptRecord(stored)
 	return &copy, err
+}
+
+// A second upgraded JSONL object may have cached the old head before this
+// owner appended. The shared gate checks the exact last signed record, source
+// inode and complete byte length before any new signature reaches that file.
+func (self *AttemptLedger) checkLegacyPrefixWithLock() (resultErr error) {
+	file, err := self.legacyWriteDirectory.openFile(attemptLedgerLegacyName, os.O_RDONLY, false)
+	if errors.Is(err, os.ErrNotExist) && self.legacyBytes == 0 && self.legacyFileInfo == nil {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
+	info, err := file.Stat()
+	if err != nil || info.Size() != self.legacyBytes || self.legacyFileInfo != nil && !os.SameFile(info, self.legacyFileInfo) {
+		return errors.Join(errors.New("attempt ledger JSONL owner has a stale or replaced durable prefix"), err)
+	}
+	if len(self.records) != 0 {
+		expected, err := json.Marshal(self.records[len(self.records)-1])
+		if err != nil {
+			return err
+		}
+		expected = append(expected, '\n')
+		actual := make([]byte, len(expected))
+		if _, err := file.ReadAt(actual, self.legacyLastRecordOffset); err != nil || !bytes.Equal(actual, expected) {
+			return errors.Join(errors.New("attempt ledger JSONL owner has a different signed terminal record"), err)
+		}
+	}
+	return nil
 }
 
 func attemptAssignmentsEqual(left, right []AttemptAssignment) bool {
@@ -678,6 +807,9 @@ func pendingAttemptRecords(records []AttemptRecord) (map[connect.Id]AttemptRecor
 // that were fsynced before an abrupt process exit. The final assigned hop stays
 // unconfirmed, so a crash cannot erase a denominator or manufacture success.
 func (self *AttemptLedger) RecoverPending() ([]AttemptRecord, error) {
+	if self.disk != nil {
+		return nil, ErrAttemptLedgerStreamingRequired
+	}
 	self.stateLock.Lock()
 	records := append([]AttemptRecord(nil), self.records...)
 	self.stateLock.Unlock()
@@ -730,6 +862,9 @@ func attemptCutSignatureMessage(cut *AttemptLedgerCut) ([]byte, error) {
 // BuildCut signs the complete current-settlement replay through the current
 // chain root. firstSequence and egressFirstSequence are one-based cursors.
 func (self *AttemptLedger) BuildCut(boundary AttemptBoundary, firstSequence, egressFirstSequence uint64) (*AttemptLedgerCut, error) {
+	if self.disk != nil {
+		return nil, ErrAttemptLedgerStreamingRequired
+	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	if err := validateAttemptBoundary(boundary); err != nil {
@@ -754,7 +889,7 @@ func (self *AttemptLedger) BuildCut(boundary AttemptBoundary, firstSequence, egr
 		priorRoot = self.records[firstSequence-2].RecordHash
 	}
 	for index := range records {
-		if records[index].Boundary.SettlementEpoch != boundary.SettlementEpoch || records[index].Boundary.EVMBlock > boundary.EVMBlock {
+		if records[index].Boundary.SettlementEpoch != boundary.SettlementEpoch || !releaseBlockAtOrBefore(records[index].Boundary.EVMBlock, records[index].Boundary.EVMBlockHash, boundary.EVMBlock, boundary.EVMBlockHash) {
 			return nil, fmt.Errorf("attempt record %d is outside the cut boundary", records[index].Sequence)
 		}
 	}
@@ -772,7 +907,14 @@ func (self *AttemptLedger) BuildCut(boundary AttemptBoundary, firstSequence, egr
 	return cut, nil
 }
 
+// Uses a private verification scope for one cut and every retained checkpoint.
 func verifyAttemptLedgerCut(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool) error {
+	return verifyAttemptLedgerCutWithAssignVerifier(cut, expectedVPK, serverKeys, requireServerKeys, connect.VerifyVerifyMessageSignature)
+}
+
+// The injected primitive lets regressions count real assignment verifications
+// through the complete cut validator without a global hook.
+func verifyAttemptLedgerCutWithAssignVerifier(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool, verifyAssign func([]byte, []byte, []byte) bool) error {
 	if cut == nil || cut.Schema != attemptLedgerCutSchema || cut.FirstSequence == 0 || cut.EgressFirstSequence < cut.FirstSequence {
 		return errors.New("attempt ledger cut identity is incomplete")
 	}
@@ -791,14 +933,18 @@ func verifyAttemptLedgerCut(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey
 	if _, err := canonicalAttemptHex32("attempt cut root", cut.Root, true); err != nil {
 		return err
 	}
+	if requireServerKeys && len(cut.Records) != 0 {
+		assignments := &attemptAssignVerificationCache{verifySignature: verifyAssign}
+		verifyAssign = assignments.verify
+	}
 	previousHash := cut.PriorRoot
 	cutRecords := make([]AttemptRecord, 0, len(cut.Records))
 	for index := range cut.Records {
 		record := &cut.Records[index]
-		if record.Sequence != cut.FirstSequence+uint64(index) || record.PreviousHash != previousHash || record.Boundary.SettlementEpoch != cut.Boundary.SettlementEpoch || record.Boundary.EVMBlock > cut.Boundary.EVMBlock {
+		if record.Sequence != cut.FirstSequence+uint64(index) || record.PreviousHash != previousHash || record.Boundary.SettlementEpoch != cut.Boundary.SettlementEpoch || !releaseBlockAtOrBefore(record.Boundary.EVMBlock, record.Boundary.EVMBlockHash, cut.Boundary.EVMBlock, cut.Boundary.EVMBlockHash) {
 			return fmt.Errorf("attempt cut record %d breaks its range or boundary", index)
 		}
-		if err := verifyAttemptRecord(record, cut.Identity, expectedVPK, serverKeys, requireServerKeys); err != nil {
+		if err := verifyAttemptRecordWithAssignVerifier(record, cut.Identity, expectedVPK, serverKeys, requireServerKeys, verifyAssign); err != nil {
 			return fmt.Errorf("attempt cut record %d: %w", index, err)
 		}
 		previousHash = record.RecordHash
@@ -909,11 +1055,22 @@ func AttemptCutEgressClaims(cut *AttemptLedgerCut) ([]AttemptEgressClaim, error)
 
 var errAttemptCutPending = errors.New("attempt ledger cut is waiting for active trails")
 
+// Before SEED is sent, a stale lookup or the immediately next finalized epoch
+// is retryable work, not durable evidence corruption. Skipped epochs are not.
+var errAttemptBoundaryPending = errors.New("attempt boundary is waiting for matching settlement ownership")
+
 // AttachAttemptLedger binds durable statistics to one journal and replays any
 // records fsynced after the last stats snapshot. Attaching legacy nonempty
 // statistics to a new empty ledger would make completeness unprovable and is
 // therefore rejected.
 func (self *StatsEngine) AttachAttemptLedger(ledger *AttemptLedger, stateDir string) error {
+	return self.AttachAttemptLedgerContext(context.Background(), ledger, stateDir)
+}
+
+// Replay modifies an exclusively owned candidate. The public statistics and
+// ledger binding are installed only after every record and the snapshot write
+// succeeds; a late invalid record or cancellation cannot expose partial stats.
+func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger *AttemptLedger, stateDir string) error {
 	if ledger == nil {
 		return errors.New("attempt ledger is nil")
 	}
@@ -922,39 +1079,64 @@ func (self *StatsEngine) AttachAttemptLedger(ledger *AttemptLedger, stateDir str
 	if self.attemptLedger != nil && self.attemptLedger != ledger {
 		return errors.New("statistics engine already has a different attempt ledger")
 	}
-	if _, err := ledger.RecoverPending(); err != nil {
+	if self.activeAttemptCount != 0 {
+		return errors.New("cannot replay attempt startup with active trails")
+	}
+	if err := ledger.RecoverPendingContext(ctx, func(AttemptRecord) error { return nil }); err != nil {
 		return fmt.Errorf("recover pending attempt: %w", err)
 	}
-	lastSequence := ledger.LastSequence()
-	if self.attemptSettlementFirstSequence == 0 {
-		if lastSequence != 0 || len(self.window) != 0 || len(self.egress) != 0 {
+	head, err := ledger.checkedHead()
+	if err != nil || head.LastSequence == ^uint64(0) {
+		return errors.Join(errors.New("statistics cannot establish the durable attempt head"), err)
+	}
+	candidate := &StatsEngine{cfg: self.cfg, window: cloneProviderWindows(self.window), ema: maps.Clone(self.ema), emaPPM: maps.Clone(self.emaPPM),
+		egress: make(map[connect.Id]map[[32]byte]bool, len(self.egress)), settlementEpoch: self.settlementEpoch, settlementEpochKnown: self.settlementEpochKnown,
+		egressGeneration: self.egressGeneration, attemptLedger: ledger, attemptLastAppliedSequence: self.attemptLastAppliedSequence,
+		attemptSettlementFirstSequence: self.attemptSettlementFirstSequence, attemptEgressFirstSequence: self.attemptEgressFirstSequence,
+		settlementTransition: self.settlementTransition}
+	for clientID, hashes := range self.egress {
+		candidate.egress[clientID] = maps.Clone(hashes)
+	}
+	lastSequence := head.LastSequence
+	if candidate.attemptSettlementFirstSequence == 0 {
+		if lastSequence != 0 || len(candidate.window) != 0 || len(candidate.egress) != 0 {
 			return errors.New("existing measurement state requires an authoritative attempt ledger migration")
 		}
-		self.attemptSettlementFirstSequence = 1
-		self.attemptEgressFirstSequence = 1
+		candidate.attemptSettlementFirstSequence = 1
+		candidate.attemptEgressFirstSequence = 1
 	}
-	if self.attemptLastAppliedSequence > lastSequence || self.attemptSettlementFirstSequence > lastSequence+1 || self.attemptEgressFirstSequence > lastSequence+1 {
+	if candidate.attemptLastAppliedSequence > lastSequence || candidate.attemptSettlementFirstSequence > lastSequence+1 || candidate.attemptEgressFirstSequence > lastSequence+1 {
 		return errors.New("statistics attempt cursor exceeds the durable ledger")
 	}
-	self.attemptLedger = ledger
-	records, err := ledger.RecordsAfter(self.attemptLastAppliedSequence)
-	if err != nil {
+	if candidate.attemptLastAppliedSequence < lastSequence {
+		if err := ledger.Walk(ctx, candidate.attemptLastAppliedSequence+1, lastSequence, func(record AttemptRecord) error {
+			if !candidate.settlementEpochKnown || record.Boundary.SettlementEpoch != candidate.settlementEpoch {
+				return fmt.Errorf("unapplied attempt sequence %d belongs to settlement epoch %d, active %d", record.Sequence, record.Boundary.SettlementEpoch, candidate.settlementEpoch)
+			}
+			if record.Disposition != AttemptDispositionPending {
+				if err := candidate.validateAttemptStatsWithLock(&record); err != nil {
+					return err
+				}
+				candidate.applyAttemptStatsWithLock(&record)
+			}
+			candidate.attemptLastAppliedSequence = record.Sequence
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for index := range records {
-		record := &records[index]
-		if !self.settlementEpochKnown || record.Boundary.SettlementEpoch != self.settlementEpoch {
-			return fmt.Errorf("unapplied attempt sequence %d belongs to settlement epoch %d, active %d", record.Sequence, record.Boundary.SettlementEpoch, self.settlementEpoch)
-		}
-		if record.Disposition != AttemptDispositionPending {
-			if err := self.validateAttemptStatsWithLock(record); err != nil {
-				return err
-			}
-			self.applyAttemptStatsWithLock(record)
-		}
-		self.attemptLastAppliedSequence = record.Sequence
+	if err := candidate.saveWithLock(stateDir); err != nil {
+		return err
 	}
-	return self.saveWithLock(stateDir)
+	self.window, self.egress = candidate.window, candidate.egress
+	self.attemptLedger = ledger
+	self.attemptLastAppliedSequence = candidate.attemptLastAppliedSequence
+	self.attemptSettlementFirstSequence = candidate.attemptSettlementFirstSequence
+	self.attemptEgressFirstSequence = candidate.attemptEgressFirstSequence
+	return nil
 }
 
 func (self *StatsEngine) checkpointAttempt(ledger *AttemptLedger, record AttemptRecord) error {
@@ -981,6 +1163,9 @@ func (self *StatsEngine) beginAttempt(settlementEpoch uint64, ledger *AttemptLed
 	defer self.mu.Unlock()
 	if ledger == nil || self.attemptLedger != ledger {
 		return errors.New("trail attempt ledger is not attached to statistics")
+	}
+	if self.settlementEpochKnown && (settlementEpoch < self.settlementEpoch || self.settlementEpoch != ^uint64(0) && settlementEpoch == self.settlementEpoch+1) {
+		return fmt.Errorf("%w: requested %d, active %d", errAttemptBoundaryPending, settlementEpoch, self.settlementEpoch)
 	}
 	if !self.settlementEpochKnown || settlementEpoch != self.settlementEpoch {
 		return fmt.Errorf("trail attempt settlement epoch %d, active %d", settlementEpoch, self.settlementEpoch)

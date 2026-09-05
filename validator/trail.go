@@ -216,9 +216,17 @@ func VerifyProofRecord(record *ProofRecord, expectedVPK ed25519.PublicKey, serve
 
 // ProofStore is an append-only JSONL store of completed proofs.
 type ProofStore struct {
-	mu              sync.Mutex
-	path            string
-	projectionDirty bool
+	mu                   sync.Mutex
+	operationGate        chan struct{}
+	path                 string
+	projectionDirty      bool
+	projectionFault      error
+	projectionLedger     *AttemptLedger
+	projectionSequence   uint64
+	projectionBytes      uint64
+	projectionProofCount uint64
+	projectionFileInfo   os.FileInfo
+	projectionStep       func(string, string) error
 }
 
 // validatePathWithLock rejects links, special files, and group/world access
@@ -244,21 +252,36 @@ func NewProofStore(dir string) (*ProofStore, error) {
 	return &ProofStore{path: filepath.Join(dir, "proofs.jsonl")}, nil
 }
 
-func (self *ProofStore) Append(record *ProofRecord) error {
-	self.mu.Lock()
-	defer self.mu.Unlock()
-	if _, err := self.validatePathWithLock(); err != nil {
+func (self *ProofStore) Append(record *ProofRecord) (resultErr error) {
+	release, err := self.acquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
+	directory, err := openAttemptLedgerDirectory(filepath.Dir(self.path), nil)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, directory.Close()) }()
+	if err := directory.enter(context.Background()); err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, directory.leave()) }()
+	if err := directory.requireLegacy(); err != nil {
 		return err
 	}
 	b, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(self.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
+	f, err := directory.openFile(filepath.Base(self.path), os.O_RDWR|os.O_APPEND, false)
+	if errors.Is(err, os.ErrNotExist) {
+		f, err = directory.openFile(filepath.Base(self.path), os.O_CREATE|os.O_EXCL|os.O_RDWR|os.O_APPEND, true)
+	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { resultErr = errors.Join(resultErr, f.Close()) }()
 	if info, err := f.Stat(); err != nil {
 		return err
 	} else if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
@@ -287,14 +310,20 @@ func (self *ProofStore) Append(record *ProofRecord) error {
 	} else if written != len(payload) {
 		return fmt.Errorf("proof append wrote %d of %d bytes", written, len(payload))
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	return directory.sync("legacy-proof")
 }
 
 // Load reads every parseable record. Unparseable lines (torn writes) are
 // skipped with a count.
 func (self *ProofStore) Load() ([]*ProofRecord, int, error) {
-	self.mu.Lock()
-	defer self.mu.Unlock()
+	release, err := self.acquireOperation(context.Background())
+	if err != nil {
+		return nil, 0, err
+	}
+	defer release()
 	exists, err := self.validatePathWithLock()
 	if err != nil {
 		return nil, 0, err
@@ -349,7 +378,7 @@ func attemptProofProjection(ledger *AttemptLedger) ([]byte, error) {
 	return projection, nil
 }
 
-func (self *ProofStore) reconcileAttemptProofsWithWrite(ledger *AttemptLedger, write func(string, []byte) error) error {
+func (self *ProofStore) reconcileAttemptProofsWithWrite(ledger *AttemptLedger, write func(string, []byte) error) (resultErr error) {
 	if write == nil {
 		return errors.New("attempt proof projection writer is nil")
 	}
@@ -357,8 +386,23 @@ func (self *ProofStore) reconcileAttemptProofsWithWrite(ledger *AttemptLedger, w
 	if err != nil {
 		return err
 	}
-	self.mu.Lock()
-	defer self.mu.Unlock()
+	release, err := self.acquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
+	directory, err := openAttemptLedgerDirectory(filepath.Dir(self.path), nil)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, directory.Close()) }()
+	if err := directory.enter(context.Background()); err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, directory.leave()) }()
+	if err := directory.requireLegacy(); err != nil {
+		return err
+	}
 	actual, err := os.ReadFile(self.path)
 	if errors.Is(err, os.ErrNotExist) {
 		actual = nil
@@ -391,24 +435,36 @@ func (self *ProofStore) reconcileAttemptProofsWithWrite(ledger *AttemptLedger, w
 // ReconcileAttemptProofs repairs a missing or torn suffix from the signed
 // ledger while rejecting any conflicting, duplicate, or orphan proof.
 func (self *ProofStore) ReconcileAttemptProofs(ledger *AttemptLedger) error {
+	if ledger != nil && ledger.disk != nil {
+		return self.ReconcileAttemptProofsContext(context.Background(), ledger)
+	}
 	return self.reconcileAttemptProofsWithWrite(ledger, func(path string, payload []byte) error {
 		return atomicStateWrite(path, payload, 0o600)
 	})
 }
 
 func (self *ProofStore) projectAttemptProof(ledger *AttemptLedger, proof *ProofRecord) error {
-	self.mu.Lock()
+	if ledger != nil && ledger.disk != nil {
+		return self.projectDiskAttemptProofs(context.Background(), ledger)
+	}
+	release, err := self.acquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
 	dirty := self.projectionDirty
-	self.mu.Unlock()
+	release()
 	if dirty {
 		return self.ReconcileAttemptProofs(ledger)
 	}
 	if err := self.Append(proof); err == nil {
 		return nil
 	}
-	self.mu.Lock()
+	release, err = self.acquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
 	self.projectionDirty = true
-	self.mu.Unlock()
+	release()
 	return self.ReconcileAttemptProofs(ledger)
 }
 
@@ -481,7 +537,9 @@ func fatalTrailState(operation string, err error) error {
 
 // TrailEngineConfig tunes the engine. Zero values take defaults.
 type TrailEngineConfig struct {
-	// M is the requested trail depth (server clamps to [MMin, MMax]).
+	// M is the byte-representable requested trail depth; negative or >255
+	// values are invalid. The first authenticated assignment must echo its
+	// server-clamped effective value in [MMin, MMax].
 	M int
 	// StepTimeout bounds one hop step end to end (VALIDATOR.md §5.5 T);
 	// within it the same EXTEND body is retried idempotently (§4.3).
@@ -636,7 +694,7 @@ func (self *TrailEngine) captureAttemptAssignment(ctx context.Context, record *A
 		return errors.New("attempt assignment capture is not configured")
 	}
 	var pinned *AttemptBoundary
-	if len(record.Assignments) != 0 {
+	if record.Boundary != (AttemptBoundary{}) {
 		pinned = &record.Boundary
 	}
 	boundary, bindings, err := self.resolve(ctx, pinned, []connect.Id{assign.NextHop})
@@ -768,6 +826,11 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 	if ledgerEnabled && (self.ledger == nil || self.resolve == nil || self.stats == nil) {
 		return nil, errors.New("attempt ledger and boundary resolver must be configured together")
 	}
+	requestedDepth := self.cfg.M
+	if requestedDepth < 0 || 255 < requestedDepth {
+		return nil, &TrailError{Kind: TrailErrorProtocol, Err: fmt.Errorf("configured requested depth %d is not byte-representable", requestedDepth)}
+	}
+	m := min(max(requestedDepth, connect.VerifyMMin), connect.VerifyMMax)
 	if err := self.waitForSeedDiscovery(ctx); err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: fmt.Errorf("seed discovery pace: %w", err)}
 	}
@@ -775,13 +838,51 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 	if err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: fmt.Errorf("seed pick: %w", err)}
 	}
+	var attemptRecord AttemptRecord
+	attemptActive := false
+	defer func() {
+		if attemptActive {
+			self.stats.abortAttempt()
+		}
+	}()
+	beforeSeed := self.waitForSeedAttempt
+	if ledgerEnabled {
+		// Reserve only after pacing, but before sending SEED: an authenticated
+		// first ASSIGN must already belong to a drainable settlement owner.
+		beforeSeed = func(ctx context.Context) error {
+			if err := self.waitForSeedAttempt(ctx); err != nil {
+				return err
+			}
+			if attemptActive {
+				return nil
+			}
+			boundary, bindings, err := self.resolve(ctx, nil, nil)
+			if err != nil {
+				return fmt.Errorf("reserve attempt boundary: %w", err)
+			}
+			if len(bindings) != 0 {
+				return errors.New("empty attempt boundary reservation returned bindings")
+			}
+			if err := validateAttemptBoundary(boundary); err != nil {
+				return err
+			}
+			if err := self.stats.beginAttempt(boundary.SettlementEpoch, self.ledger); err != nil {
+				if errors.Is(err, errAttemptCutPending) || errors.Is(err, errAttemptBoundaryPending) {
+					return err
+				}
+				return fatalTrailState("reserve attempt evidence", err)
+			}
+			attemptRecord.Boundary, attemptActive = boundary, true
+			return nil
+		}
+	}
 
 	// --- SEED (§4.1) ---
 	clientNonce := make([]byte, connect.VerifyNonceSize)
 	if _, err := rand.Read(clientNonce); err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: err}
 	}
-	seedMessage, err := connect.BuildVerifySeedMessage(self.vpk, clientNonce, byte(self.cfg.M))
+	seedMessage, err := connect.BuildVerifySeedMessage(self.vpk, clientNonce, byte(requestedDepth))
 	if err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: err}
 	}
@@ -790,12 +891,12 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 		Vpk:         self.vpk,
 		ClientNonce: clientNonce,
 		SeedSig:     connect.SignVerifyMessage(self.vsk, seedMessage),
-		M:           self.cfg.M,
+		M:           requestedDepth,
 	})
 	if err != nil {
 		return nil, &TrailError{Kind: TrailErrorSeed, Err: err}
 	}
-	responseBody, err := self.postStep(ctx, seedHop, seedBody, self.waitForSeedAttempt)
+	responseBody, err := self.postStep(ctx, seedHop, seedBody, beforeSeed)
 	if err != nil {
 		// Seed failures are the validator's own pick — not attributable.
 		return nil, &TrailError{Kind: TrailErrorSeed, Hop: seedHop, Err: err}
@@ -815,23 +916,18 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 	if err := self.verifyAssign(&assign, confirmed); err != nil {
 		return nil, &TrailError{Kind: TrailErrorProtocol, Err: err}
 	}
+	// Bind the authenticated response before assigned-hop evidence. Any
+	// pre-SEED settlement reservation is released by the owner defer on error.
+	if assign.M != m {
+		return nil, &TrailError{Kind: TrailErrorProtocol, Err: fmt.Errorf("first assign M=%d differs from requested effective depth %d", assign.M, m)}
+	}
 	trailId := assign.TrailId
 	serverNonce := assign.ServerNonce
-	m := assign.M
 
-	var attemptRecord AttemptRecord
-	attemptActive := false
 	if ledgerEnabled {
 		if err := self.captureAttemptAssignment(ctx, &attemptRecord, &assign); err != nil {
-			return nil, fmt.Errorf("capture first server assignment: %w", err)
+			return nil, fatalTrailState("capture first server assignment after reservation", err)
 		}
-		if err := self.stats.beginAttempt(attemptRecord.Boundary.SettlementEpoch, self.ledger); err != nil {
-			if !errors.Is(err, errAttemptCutPending) {
-				return nil, fatalTrailState("begin attempt evidence", err)
-			}
-			return nil, err
-		}
-		attemptActive = true
 		if err := self.stats.checkpointAttempt(self.ledger, attemptRecord); err != nil {
 			self.stats.abortAttempt()
 			attemptActive = false
@@ -842,11 +938,6 @@ func (self *TrailEngine) RunTrail(ctx context.Context) (*ProofRecord, error) {
 		// recorded (§7.6).
 		self.stats.RecordAssignment(assign.NextHop)
 	}
-	defer func() {
-		if attemptActive {
-			self.stats.abortAttempt()
-		}
-	}()
 	commitFailure := func(disposition string) error {
 		if !ledgerEnabled {
 			return nil

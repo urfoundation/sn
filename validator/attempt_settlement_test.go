@@ -82,7 +82,7 @@ func TestAttemptSettlementAdvanceBlocksEveryOperatorBeforeFold(t *testing.T) {
 }
 
 func TestAttemptSettlementInitializesPristineOperatorsAtomically(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := filepath.Join(t.TempDir(), "state")
 	stats := NewStatsEngine(StatsConfig{AMin: 1})
 	_, validatorKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestAttemptSettlementRejectsUnsignedLegacyStateAndAcceptsFreshNamespace(t *
 		t.Fatal("unsigned legacy statistics were blessed by an empty attempt ledger")
 	}
 
-	freshDir := t.TempDir()
+	freshDir := filepath.Join(t.TempDir(), "state")
 	fresh := NewStatsEngine(StatsConfig{AMin: 1})
 	freshLedger, err := NewAttemptLedger(freshDir, identity, validatorKey)
 	if err != nil {

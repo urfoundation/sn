@@ -360,13 +360,22 @@ func (e *Executor) verifyDishonestDepositPostState(ctx context.Context, action A
 }
 
 func readValidatorIntentFile(stateDir string, validatorID int) ([]validatorpkg.SteeringIntent, error) {
+	path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "steering-intents.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return decodeValidatorIntentBytes(data, validatorID)
+}
+
+// Authenticates the same owned bytes that collection hashes and persists.
+func decodeValidatorIntentBytes(data []byte, validatorID int) ([]validatorpkg.SteeringIntent, error) {
 	var store struct {
 		Schema  string                        `json:"schema"`
 		Current *validatorpkg.SteeringIntent  `json:"current"`
 		History []validatorpkg.SteeringIntent `json:"history"`
 	}
-	path := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID), "state", "steering-intents.json")
-	if err := decodeStrictJSONFile(path, &store); err != nil {
+	if err := decodeStrictJSONBytes(data, &store); err != nil {
 		return nil, err
 	}
 	if store.Schema != validatorpkg.SteeringIntentSchema {

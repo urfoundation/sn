@@ -112,7 +112,7 @@ const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContex
 
 const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
 
-const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemanticFixture|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifact|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
+const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemantic(CampaignArtifactReferences|ReplicatedEnvelope)|FinalSemanticFixture|FinalAttemptFixtureLedgerMatchesDurableProductionWire|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifact|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|FinalCollectorIncludesCompletedSettlementTail|FinalSettlementClosure|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
 
 // Extracts the exact sorted top-level test declarations selected from source.
 func releaseSelectedTestDeclarations(selector string, sources []string) ([]string, error) {
@@ -414,6 +414,33 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	allTestSourceText := allTestSource.String()
 	for _, required := range []string{
 		"TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent",
+		"TestFinalSemanticCampaignArtifactReferencesDecodeEachByteOnce",
+		"TestFinalSemanticCampaignArtifactReferencesOwnDecodedInput",
+		"TestFinalSemanticCampaignArtifactReferencesPreserveJSONValues",
+		"TestFinalSemanticCampaignArtifactReferencesKeepDocumentAndDepthBounds",
+		"TestFinalSemanticCampaignArtifactReferencesJoinEveryRecord",
+		"TestFinalSemanticReplicatedEnvelopeVerifiesOwnedBytesOnce",
+		"TestFinalSemanticReplicatedEnvelopePreservesEveryRejection",
+		"TestFinalSemanticReplicatedEnvelopeRechecksCurrentIdentity",
+		"TestFinalSemanticReplicatedEnvelopeHonorsCancellationAfterRead",
+		"TestFinalNativeSourceDecodesEachPlanOnce",
+		"TestFinalNativeSourcePlanReuseAuthenticatesChangedValidBytes",
+		"TestFinalNativeSourcePlanReuseDoesNotCacheFailure",
+		"TestFinalNativeSourcePlanReuseIsArchiveLocal",
+		"TestFinalNativeSourcePlanReuseRejectsChangedBytes",
+		"TestFinalNativeSourcePlanReuseRejectsRehashedBudget",
+		"TestFinalCollectorIncludesCompletedSettlementTail",
+		"TestFinalSettlementClosureLastWindowNeedsNoNextIntent",
+		"TestFinalSettlementClosureRejectsRehashedProofOmission",
+		"TestFinalSettlementClosureRejectsConflictingSuccessorTransition",
+		"TestFinalSettlementClosureRejectsDomainCensusAndBoundaryChanges",
+		"TestFinalSettlementClosureProofProjectionUsesExactEpochBounds",
+		"TestFinalSettlementClosureWaitHonorsPublicationAndCancellation",
+		"TestFinalSettlementClosureWaitAuthenticatesLastWindow",
+		"TestFinalSettlementClosureCollectedGraphRejectsAttemptOmission",
+		"TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement",
+		"TestFinalAttemptFixtureLedgerMatchesDurableProductionWire",
+		"TestReleaseSemanticCensusPinsSettlementClosureRegressions",
 		"TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles",
 		"TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary",
 		"TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency",
@@ -937,9 +964,14 @@ func TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups(t *testing.T) {
 		{pattern: "final_semantic_native*_test.go", required: "^Test"},
 		{pattern: "final_semantic_registration_test.go", required: "^Test"},
 		{pattern: "final_semantic_source_builder_test.go", required: "^TestFinalSemanticBuilder"},
-		{pattern: "final_semantic_evidence_test.go", required: "^TestFinalSemanticArtifactVerificationCache"},
+		{pattern: "final_semantic_evidence_test.go", required: "^TestFinal(SemanticArtifactVerificationCache|AttemptFixtureLedger)"},
 		{pattern: "final_semantic_chain_fixture_test.go", required: "^Test"},
 		{pattern: "final_semantic_path_proof_test.go", required: "^Test"},
+		{pattern: "final_semantic_settlement_tail_test.go", required: "^Test"},
+		{pattern: "final_semantic_settlement_closure_test.go", required: "^Test"},
+		{pattern: "final_semantic_settlement_fixture_test.go", required: "^Test"},
+		{pattern: "campaign_artifact_references_test.go", required: "^Test"},
+		{pattern: "campaign_replica_verification_test.go", required: "^Test"},
 	} {
 		paths, err := filepath.Glob(group.pattern)
 		if err != nil || len(paths) == 0 {

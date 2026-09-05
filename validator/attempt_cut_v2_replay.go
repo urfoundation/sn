@@ -23,6 +23,7 @@ import (
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urnetwork/connect"
 )
 
@@ -195,22 +196,36 @@ type attemptCutV2ReplayScratch struct {
 // The fresh-directory requirement prevents reuse of partially accepted input
 // or confusion with a durable producer ledger, even when the cut is replayed.
 func newAttemptCutV2ReplayScratch(ctx context.Context, path string, bounds AttemptCutV2ReplayBounds, hooks attemptCutV2ReplayHooks) (result *attemptCutV2ReplayScratch, resultErr error) {
+	return newAttemptCutV2ReplayScratchWithParent(ctx, path, bounds, hooks, nil)
+}
+
+// A sealer lends its already anchored private scratch root. Public replay
+// opens and owns its parent normally; neither path can follow a replacement
+// parent into an unrelated directory before creating the backend child.
+func newAttemptCutV2ReplayScratchWithParent(ctx context.Context, path string, bounds AttemptCutV2ReplayBounds, hooks attemptCutV2ReplayHooks, retainedParent *os.Root) (result *attemptCutV2ReplayScratch, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == path {
 		return nil, errors.New("compact attempt scratch path is not a clean absolute directory")
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
-	root, err := os.OpenRoot(parent)
-	if err != nil {
-		return nil, err
+	parent, root := filepath.Dir(path), retainedParent
+	var err error
+	if root == nil {
+		parent, err = filepath.EvalSymlinks(parent)
+		if err != nil {
+			return nil, err
+		}
+		root, err = os.OpenRoot(parent)
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer func() {
-		resultErr = errors.Join(resultErr, root.Close(), ctx.Err())
+		if retainedParent == nil {
+			resultErr = errors.Join(resultErr, root.Close())
+		}
+		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil && result != nil {
 			resultErr = errors.Join(resultErr, result.close())
 			result = nil
@@ -409,21 +424,77 @@ func (self *attemptCutV2ReplayScratch) proof(ctx context.Context, ordinal uint64
 
 // Replays the complete authenticated record and proof streams. No successful
 // result survives a late digest/census failure, cancellation or close error.
-// This is a read-only public-data verifier apart from its new scratch index;
-// it neither activates producers nor writes an on-chain acceptance decision.
+// This generic verifier checks protocol validity, not an authenticated policy's
+// trail depth. Release admission must use ReplayAttemptCutV2WithPolicy. Neither
+// entry point activates producers or writes an on-chain acceptance decision.
 func ReplayAttemptCutV2(ctx context.Context, cut AttemptCutV2, expected AttemptCutV2Context, bounds AttemptCutV2Bounds, options AttemptCutV2ReplayOptions) (result AttemptCutV2ReplayResult, resultErr error) {
 	return replayAttemptCutV2WithHooks(ctx, cut, expected, bounds, options, attemptCutV2ReplayHooks{})
 }
 
+// The decoded policy is authority only after its canonical hash matches the
+// caller-authenticated activation domain. Every record, including failures and
+// pending checkpoints, must use that depth before indexing or caller visits.
+func ReplayAttemptCutV2WithPolicy(ctx context.Context, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2ReplayOptions) (AttemptCutV2ReplayResult, error) {
+	if ctx == nil {
+		return AttemptCutV2ReplayResult{}, errors.New("compact attempt replay context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return AttemptCutV2ReplayResult{}, err
+	}
+	depth, err := attemptCutV2PolicyDepth(expected, policy)
+	if err != nil {
+		return AttemptCutV2ReplayResult{}, err
+	}
+	if err := cut.VerifyHeader(expected, bounds); err != nil {
+		return AttemptCutV2ReplayResult{}, err
+	}
+	return replayAttemptCutV2Contents(ctx, cut, expected, bounds, options, depth, attemptCutV2ReplayHooks{}, nil)
+}
+
+// Hash binding precedes scratch or data access; generic legal depths remain
+// supported without inferring semantic policy from a record-byte allowance.
+func attemptCutV2PolicyDepth(expected AttemptCutV2Context, policy protocol.Policy) (int, error) {
+	if err := expected.Validate(); err != nil {
+		return 0, err
+	}
+	hash, err := policy.Hash()
+	if err != nil || hash != expected.Activation.Domain.PolicyHash {
+		return 0, errors.Join(errors.New("compact attempt decoded policy differs from authenticated activation"), err)
+	}
+	if policy.Verify.TrailDepth < connect.VerifyMMin || policy.Verify.TrailDepth > connect.VerifyMMax {
+		return 0, errors.New("compact attempt policy depth is outside the supported protocol range")
+	}
+	return policy.Verify.TrailDepth, nil
+}
+
 // Runs the same public replay with deterministic operation-owned boundaries.
 func replayAttemptCutV2WithHooks(ctx context.Context, cut AttemptCutV2, expected AttemptCutV2Context, bounds AttemptCutV2Bounds, options AttemptCutV2ReplayOptions, hooks attemptCutV2ReplayHooks) (result AttemptCutV2ReplayResult, resultErr error) {
+	if ctx == nil {
+		return result, errors.New("compact attempt replay context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if err := cut.VerifyHeader(expected, bounds); err != nil {
+		return result, err
+	}
+	return replayAttemptCutV2Contents(ctx, cut, expected, bounds, options, 0, hooks, nil)
+}
+
+// Both signed public replay and an unpublished sealer candidate share this
+// entire content verifier. The sealer binds the candidate root to checked
+// durable history and signs only after this verifier and resource closes pass.
+func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected AttemptCutV2Context, bounds AttemptCutV2Bounds, options AttemptCutV2ReplayOptions, depth int, hooks attemptCutV2ReplayHooks, scratchParent *os.Root) (result AttemptCutV2ReplayResult, resultErr error) {
 	if ctx == nil || options.ReadMetadata == nil || options.OpenData == nil {
 		return result, errors.New("compact attempt replay authority is incomplete")
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	if err := cut.VerifyHeader(expected, bounds); err != nil {
+	if cut.Context != expected {
+		return result, errors.New("compact attempt contents differ from expected context")
+	}
+	if err := cut.Validate(bounds); err != nil {
 		return result, err
 	}
 	if err := options.Bounds.validate(bounds); err != nil {
@@ -442,7 +513,7 @@ func replayAttemptCutV2WithHooks(ctx context.Context, cut AttemptCutV2, expected
 		result.ProofProjectionHash = attemptHex32(sha256.Sum256(nil))
 		return result, ctx.Err()
 	}
-	scratch, err := newAttemptCutV2ReplayScratch(ctx, options.ScratchDirectory, options.Bounds, hooks)
+	scratch, err := newAttemptCutV2ReplayScratchWithParent(ctx, options.ScratchDirectory, options.Bounds, hooks, scratchParent)
 	if err != nil {
 		return result, err
 	}
@@ -468,6 +539,9 @@ func replayAttemptCutV2WithHooks(ctx context.Context, cut AttemptCutV2, expected
 			}
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if depth != 0 && record.M != depth {
+				return errors.New("compact attempt record depth differs from authenticated policy")
 			}
 			if recordCount >= cut.RecordCount || record.Sequence != expected.FirstSequence+recordCount || record.Sequence != chunk.FirstSequence+index || record.PreviousHash != previousHash || record.Boundary.SettlementEpoch != expected.Boundary.SettlementEpoch || record.Boundary.EVMBlock > expected.Boundary.EVMBlock || record.Boundary.EVMBlock == expected.Boundary.EVMBlock && record.Boundary.EVMBlockHash != expected.Boundary.EVMBlockHash {
 				return errors.New("compact attempt record breaks its chain, descriptor range or boundary")

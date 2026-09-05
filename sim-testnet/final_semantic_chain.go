@@ -1272,6 +1272,11 @@ func finalSemanticHeads(evidence *FinalSemanticEvidence) ([]ChainHead, []ChainHe
 		native = append(native, reward.Before, reward.After)
 		evm = append(evm, reward.OwnerStakeBeforeEVM, reward.OwnerStakeAfterEVM)
 	}
+	for _, proof := range evidence.PathProofs {
+		for _, closure := range proof.SettlementClosures {
+			evm = append(evm, closure.Boundary)
+		}
+	}
 	native, err := finalUniqueHeads(native)
 	if err != nil {
 		return nil, nil, fmt.Errorf("native checkpoints: %w", err)

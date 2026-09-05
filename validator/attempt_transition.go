@@ -92,8 +92,9 @@ func attemptSettlementTransitionMessage(transition *AttemptSettlementTransition)
 	return append(message, encoded...), nil
 }
 
-func sortedAttemptSettlementQualities(measurement ReleaseStatsMeasurement) ([]AttemptSettlementQuality, error) {
-	verified, err := VerifyReleaseStatsMeasurement(measurement)
+// Derives the complete post-fold quality set through the supplied cut boundary.
+func sortedAttemptSettlementQualities(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier) ([]AttemptSettlementQuality, error) {
+	verified, err := verifyReleaseStatsMeasurementWithCutVerifier(measurement, verifyCut)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +137,12 @@ func (self *AttemptLedger) signSettlementTransition(transition *AttemptSettlemen
 // VerifyAttemptSettlementTransition reconstructs the post-fold EMA and checks
 // the validator signature and complete cross-operator transaction membership.
 func VerifyAttemptSettlementTransition(transition *AttemptSettlementTransition) error {
+	return verifyAttemptSettlementTransitionWithCutVerifier(transition, verifyAttemptLedgerCut)
+}
+
+// Carries the containing verifier through terminal statistics without changing
+// the transition's digest, signature, participant or epoch checks.
+func verifyAttemptSettlementTransitionWithCutVerifier(transition *AttemptSettlementTransition, verifyCut attemptLedgerCutVerifier) error {
 	if transition == nil || transition.Schema != attemptSettlementTransitionSchema || transition.ToEpoch == 0 || transition.ToEpoch != transition.FromBoundary.SettlementEpoch+1 {
 		return errors.New("settlement transition identity is incomplete")
 	}
@@ -156,7 +163,7 @@ func VerifyAttemptSettlementTransition(transition *AttemptSettlementTransition) 
 	if cut.Identity != transition.Identity || cut.Boundary != transition.FromBoundary {
 		return errors.New("settlement transition attempt cut identity differs")
 	}
-	expectedPostFold, err := sortedAttemptSettlementQualities(transition.PreFold)
+	expectedPostFold, err := sortedAttemptSettlementQualities(transition.PreFold, verifyCut)
 	if err != nil {
 		return fmt.Errorf("settlement transition pre-fold statistics: %w", err)
 	}
@@ -199,6 +206,12 @@ func VerifyAttemptSettlementTransition(transition *AttemptSettlementTransition) 
 // VerifyAttemptSettlementBatch requires complete, same-boundary coverage of
 // every transition named by the shared validator-wide transaction manifest.
 func VerifyAttemptSettlementBatch(transitions []*AttemptSettlementTransition) error {
+	return verifyAttemptSettlementBatchWithCutVerifier(transitions, verifyAttemptLedgerCut)
+}
+
+// Every participant reaches the same cut primitive before its batch identity
+// can be accepted; the caller owns that primitive for this operation.
+func verifyAttemptSettlementBatchWithCutVerifier(transitions []*AttemptSettlementTransition, verifyCut attemptLedgerCutVerifier) error {
 	if len(transitions) == 0 {
 		return errors.New("settlement transition batch is empty")
 	}
@@ -218,7 +231,7 @@ func VerifyAttemptSettlementBatch(transitions []*AttemptSettlementTransition) er
 		return errors.New("settlement transition batch coverage differs")
 	}
 	for index, transition := range ordered {
-		if err := VerifyAttemptSettlementTransition(transition); err != nil {
+		if err := verifyAttemptSettlementTransitionWithCutVerifier(transition, verifyCut); err != nil {
 			return fmt.Errorf("settlement transition no_id %d: %w", transition.Identity.NoID, err)
 		}
 		if !equalAttemptSettlementIdentity(wantIdentity, transition.Identity) || transition.FromBoundary != wantBoundary || transition.ToEpoch != wantEpoch || !equalAttemptSettlementBatch(wantBatch, transition.Batch) {
@@ -232,7 +245,13 @@ func VerifyAttemptSettlementBatch(transitions []*AttemptSettlementTransition) er
 }
 
 func verifyAttemptSettlementTransitionForMeasurement(transition *AttemptSettlementTransition, measurement ReleaseStatsMeasurement) error {
-	if err := VerifyAttemptSettlementTransition(transition); err != nil {
+	return verifyAttemptSettlementTransitionForMeasurementWithCutVerifier(transition, measurement, verifyAttemptLedgerCut)
+}
+
+// Nested measurements preserve the same verifier and their independent score
+// configuration, exact prior-quality census and successor identity checks.
+func verifyAttemptSettlementTransitionForMeasurementWithCutVerifier(transition *AttemptSettlementTransition, measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier) error {
+	if err := verifyAttemptSettlementTransitionWithCutVerifier(transition, verifyCut); err != nil {
 		return err
 	}
 	if measurement.Config != transition.PreFold.Config {

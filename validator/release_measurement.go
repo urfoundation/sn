@@ -230,13 +230,13 @@ func releaseMeasurementStats(artifact *ReleaseMeasurementArtifact) (map[uint64]V
 		if input.NoID == 0 || (index > 0 && input.NoID <= priorNOID) {
 			return nil, errors.New("release measurement inputs are not strictly ordered")
 		}
-		if input.CutNativeBlock == 0 || input.CutNativeBlock > artifact.NativeSnapshotBlock {
+		if input.CutNativeBlock == 0 || !releaseBlockAtOrBefore(input.CutNativeBlock, input.CutNativeBlockHash, artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash) {
 			return nil, fmt.Errorf("operator %d native cut is outside the decision snapshot", input.NoID)
 		}
 		if _, err := parseReleaseHex32("native cut hash", input.CutNativeBlockHash, false); err != nil {
 			return nil, fmt.Errorf("operator %d: %w", input.NoID, err)
 		}
-		if input.SettlementEpoch != artifact.SettlementEpoch || input.CutEVMSnapshotBlock == 0 || input.CutEVMSnapshotBlock > artifact.EVMSnapshotBlock {
+		if input.SettlementEpoch != artifact.SettlementEpoch || input.CutEVMSnapshotBlock == 0 || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
 			return nil, fmt.Errorf("operator %d EVM cut is outside the decision settlement snapshot", input.NoID)
 		}
 		if _, err := parseReleaseHex32("EVM cut hash", input.CutEVMSnapshotHash, false); err != nil {
@@ -839,8 +839,10 @@ func releasePriorQualityState(stats ReleaseStatsMeasurement) map[string]uint32 {
 	return state
 }
 
+// Cumulative cuts retain one settlement range and a nonregressing finalized
+// view. A same-native-epoch retry may keep the exact records and block hash.
 func releaseAttemptCutExtends(earlier, later *AttemptLedgerCut) error {
-	if earlier == nil || later == nil || earlier.Identity != later.Identity || earlier.FirstSequence != later.FirstSequence || earlier.PriorRoot != later.PriorRoot || later.LastSequence < earlier.LastSequence || len(later.Records) < len(earlier.Records) {
+	if earlier == nil || later == nil || earlier.Identity != later.Identity || earlier.FirstSequence != later.FirstSequence || earlier.PriorRoot != later.PriorRoot || later.LastSequence < earlier.LastSequence || len(later.Records) < len(earlier.Records) || earlier.Boundary.SettlementEpoch != later.Boundary.SettlementEpoch || !releaseBlockAtOrBefore(earlier.Boundary.EVMBlock, earlier.Boundary.EVMBlockHash, later.Boundary.EVMBlock, later.Boundary.EVMBlockHash) {
 		return errors.New("attempt cut does not extend its prior signed range")
 	}
 	for index := range earlier.Records {
@@ -1026,7 +1028,7 @@ func (s *ReleaseSteerer) loadOrDetachReleaseMeasurementInput(noID, subnetEpoch, 
 			return ReleaseMeasurementInput{}, fmt.Errorf("decode measurement input journal %s: %w", path, decodeErr)
 		}
 		input := journal.MeasurementInput
-		if journal.DeploymentID != s.cfg.DeploymentID || journal.ChainID != s.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, s.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, s.cfg.Coordinator) || journal.ValidatorID != s.cfg.ValidatorID || journal.Netuid != s.cfg.Netuid || journal.SubnetEpoch != subnetEpoch || !strings.EqualFold(journal.PolicyHash, s.cfg.PolicyHash) || input.NoID != noID || input.SettlementEpoch != snapshot.Epoch.Uint64() || input.CutNativeBlock > nativeBlock || input.CutEVMSnapshotBlock > snapshot.BlockNumber {
+		if journal.DeploymentID != s.cfg.DeploymentID || journal.ChainID != s.cfg.ChainID || !strings.EqualFold(journal.GenesisHash, s.cfg.GenesisHash) || !strings.EqualFold(journal.Coordinator, s.cfg.Coordinator) || journal.ValidatorID != s.cfg.ValidatorID || journal.Netuid != s.cfg.Netuid || journal.SubnetEpoch != subnetEpoch || !strings.EqualFold(journal.PolicyHash, s.cfg.PolicyHash) || input.NoID != noID || input.SettlementEpoch != snapshot.Epoch.Uint64() || !releaseBlockAtOrBefore(input.CutNativeBlock, input.CutNativeBlockHash, nativeBlock, strings.ToLower(nativeHash)) || !releaseBlockAtOrBefore(input.CutEVMSnapshotBlock, input.CutEVMSnapshotHash, snapshot.BlockNumber, releaseHex32(snapshot.BlockHash)) {
 			return ReleaseMeasurementInput{}, errors.New("measurement input journal does not match the active release decision")
 		}
 		if err := measurement.Stats.reconcileReleaseStatsCut(measurementStateDir(s.cfg, noID), input.EgressGeneration, input.Stats.AttemptCut); err != nil {

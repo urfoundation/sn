@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -337,32 +338,27 @@ func finalAttemptFixtureID(value uint64) connect.Id {
 
 // The release-scale semantic fixture keeps all 1,000 clients, 202 fleets,
 // validators, operators, epochs, signatures, and pending-to-complete ledger
-// transitions, but groups trails just above the protocol minimum. Maximum-depth trail
-// construction and verification are covered exhaustively in validator's
-// release-measurement suite. Using M=16 here repeats every growing pending
-// prefix for 593 signed output objects and inflates four publication tests by
-// hundreds of megabytes without exercising a different semantic branch. M=5
-// also partitions each exact 500-client operator population without a short
-// terminal trail.
-const finalSemanticFixtureMaximumAttemptM = connect.VerifyMMin + 2
+// transitions, but uses one policy depth at the protocol minimum. Maximum-depth
+// trail construction and verification remain in validator's measurement suite.
+// Growing pending prefixes stay complete; only the final partial group repeats
+// distinct already observed providers, with every extra exposure accounted for.
+const finalSemanticFixtureMaximumAttemptM = connect.VerifyMMin
 
-// Select a near-minimum valid trail without leaving an invalid final group.
+// Select each provider once before padding only a final partial fixed-depth
+// trail with distinct previously measured providers. Their extra exposure is
+// counted explicitly; public proofs and measurement records use one policy M.
 func finalSemanticFixtureAttemptGroupSize(remaining int) int {
-	const minimumProviders = connect.VerifyMMin - 1
-	if remaining < minimumProviders {
+	if remaining <= 0 {
 		return 0
 	}
-	if remaining <= finalSemanticFixtureMaximumAttemptM-1 {
-		return remaining
-	}
-	if remaining%minimumProviders == 0 {
-		return minimumProviders
-	}
-	return minimumProviders + 1
+	return min(remaining, finalSemanticFixtureMaximumAttemptM-1)
 }
 
 // Count the complete records required to exhaust one provider population.
 func finalSemanticFixtureAttemptGroupCount(providers int) int {
+	if providers < connect.VerifyMMin-1 {
+		return 0
+	}
 	groups := 0
 	for providers != 0 {
 		size := finalSemanticFixtureAttemptGroupSize(providers)
@@ -402,12 +398,27 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 		bindingByNO[binding.NoID][clientID] = attemptBinding
 	}
 	previousByNO := map[uint64]validatorpkg.ReleaseMeasurementInput{}
+	transitionsByNO := map[uint64]*validatorpkg.AttemptSettlementTransition{}
 	if previous != nil {
 		for _, input := range previous.Inputs {
 			previousByNO[input.NoID] = input
 		}
+		if artifact.SettlementEpoch != previous.SettlementEpoch {
+			if artifact.SettlementEpoch != previous.SettlementEpoch+1 {
+				t.Fatalf("fixture settlement epoch jumped from %d to %d", previous.SettlementEpoch, artifact.SettlementEpoch)
+			}
+			transitions := finalSemanticFixtureTerminalTransitions(t, previous, validatorKey)
+			if len(transitions) != len(artifact.Inputs) {
+				t.Fatal("fixture settlement transition operator census changed")
+			}
+			if err := validatorpkg.VerifyAttemptSettlementBatch(transitions); err != nil {
+				t.Fatalf("fixture settlement transition batch: %v", err)
+			}
+			for _, transition := range transitions {
+				transitionsByNO[transition.Identity.NoID] = transition
+			}
+		}
 	}
-	transitions := make([]*validatorpkg.AttemptSettlementTransition, 0, len(artifact.Inputs))
 	for inputIndex := range artifact.Inputs {
 		input := &artifact.Inputs[inputIndex]
 		if input.NoID == 0 || input.NoID > uint64(len(serverKeys)) {
@@ -431,6 +442,7 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 		}
 		boundary := validatorpkg.AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
 		tokens := make([]finalAttemptFixtureToken, 0)
+		providerIndexByID := map[connect.Id]int{}
 		for providerIndex := range input.Stats.Providers {
 			provider := &input.Stats.Providers[providerIndex]
 			if len(provider.EgressIPHashHexes) == 0 {
@@ -449,15 +461,34 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 			provider.Assignments, provider.Confirmations = 1, 1
 			provider.LatencyBuckets[0] = 1
 			tokens = append(tokens, finalAttemptFixtureToken{clientID: clientID, binding: bindingByNO[input.NoID][clientID], egress: egress})
+			providerIndexByID[clientID] = providerIndex
 		}
+		allTokens := append([]finalAttemptFixtureToken(nil), tokens...)
 		sequence := uint64(0)
 		for len(tokens) != 0 {
 			groupSize := finalSemanticFixtureAttemptGroupSize(len(tokens))
-			if groupSize < connect.VerifyMMin-1 {
-				t.Fatalf("fixture attempt group has only %d providers", groupSize)
-			}
-			group := tokens[:groupSize]
+			group := append([]finalAttemptFixtureToken(nil), tokens[:groupSize]...)
 			tokens = tokens[groupSize:]
+			for _, token := range allTokens {
+				if len(group) == finalSemanticFixtureMaximumAttemptM-1 {
+					break
+				}
+				present := false
+				for _, member := range group {
+					present = present || member.clientID == token.clientID
+				}
+				if present {
+					continue
+				}
+				group = append(group, token)
+				provider := &input.Stats.Providers[providerIndexByID[token.clientID]]
+				provider.Assignments++
+				provider.Confirmations++
+				provider.LatencyBuckets[0]++
+			}
+			if len(group) != finalSemanticFixtureMaximumAttemptM-1 {
+				t.Fatal("fixture population cannot fill one policy-depth trail")
+			}
 			sequence++
 			trailID := finalAttemptFixtureID(artifact.ValidatorID*100_000_000 + artifact.SettlementEpoch*1_000_000 + input.NoID*10_000 + sequence)
 			seedID := finalAttemptFixtureID(9_000_000_000 + artifact.ValidatorID*100_000_000 + artifact.SettlementEpoch*1_000_000 + input.NoID*10_000 + sequence)
@@ -522,58 +553,24 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 			t.Fatal(err)
 		}
 		input.Stats.AttemptCut = cut
-		prior, hasPrior := previousByNO[input.NoID]
-		if !hasPrior || artifact.SettlementEpoch == previous.SettlementEpoch {
+		if len(transitionsByNO) == 0 {
 			continue
 		}
-		if artifact.SettlementEpoch != previous.SettlementEpoch+1 {
-			t.Fatalf("fixture settlement epoch jumped from %d to %d", previous.SettlementEpoch, artifact.SettlementEpoch)
+		transition := transitionsByNO[input.NoID]
+		if transition == nil || transition.Identity != cut.Identity {
+			t.Fatalf("fixture settlement transition operator %d identity changed", input.NoID)
 		}
-		preFold := prior.Stats
-		preFold.SettlementTransition = nil
-		verified, err := validatorpkg.VerifyReleaseStatsMeasurement(preFold)
-		if err != nil {
-			t.Fatalf("prior fixture operator %d statistics: %v", input.NoID, err)
-		}
-		postFold := make([]validatorpkg.AttemptSettlementQuality, 0, len(verified.Providers))
-		priorQuality := make(map[string]validatorpkg.AttemptSettlementQuality, len(verified.Providers))
-		for clientID, provider := range verified.Providers {
-			if !provider.HasQuality {
-				continue
-			}
-			quality := validatorpkg.AttemptSettlementQuality{ClientID: clientID.String(), HasQuality: true, QualityPPM: provider.QualityPPM}
-			postFold = append(postFold, quality)
+		priorQuality := make(map[string]validatorpkg.AttemptSettlementQuality, len(transition.PostFold))
+		for _, quality := range transition.PostFold {
 			priorQuality[quality.ClientID] = quality
 		}
-		sort.Slice(postFold, func(i, j int) bool { return postFold[i].ClientID < postFold[j].ClientID })
 		for providerIndex := range input.Stats.Providers {
 			provider := &input.Stats.Providers[providerIndex]
 			quality, exists := priorQuality[provider.ClientID]
 			provider.HasPriorQuality = exists
 			provider.PriorQualityPPM = quality.QualityPPM
 		}
-		transition := &validatorpkg.AttemptSettlementTransition{
-			Schema: finalAttemptSettlementSchema, Identity: cut.Identity,
-			FromBoundary: prior.Stats.AttemptCut.Boundary, ToEpoch: artifact.SettlementEpoch,
-			PreFold: preFold, PostFold: postFold,
-		}
 		input.Stats.SettlementTransition = transition
-		transitions = append(transitions, transition)
-	}
-	if len(transitions) == 0 {
-		return
-	}
-	sort.Slice(transitions, func(i, j int) bool { return transitions[i].Identity.NoID < transitions[j].Identity.NoID })
-	batch := make([]validatorpkg.AttemptSettlementMember, len(transitions))
-	for index, transition := range transitions {
-		batch[index] = validatorpkg.AttemptSettlementMember{NoID: transition.Identity.NoID, Digest: finalAttemptSettlementDigest(t, transition)}
-	}
-	for _, transition := range transitions {
-		transition.Batch = append([]validatorpkg.AttemptSettlementMember(nil), batch...)
-		transition.Signature = ed25519.Sign(validatorKey, finalAttemptSettlementMessage(t, transition))
-	}
-	if err := validatorpkg.VerifyAttemptSettlementBatch(transitions); err != nil {
-		t.Fatalf("fixture settlement transition batch: %v", err)
 	}
 }
 
@@ -1505,15 +1502,15 @@ func TestFinalSemanticFixtureSnapshotsAreDetached(t *testing.T) {
 	}
 }
 
-// TestFinalAttemptFixtureLedgerMatchesDurableProductionWire proves the
-// accelerated builder is byte-identical for the same signed trail.
+// Exhausts every valid provider population without losing a provider or
+// varying the policy depth, and accounts for only the final group's padding.
 func TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation(t *testing.T) {
 	for providers := connect.VerifyMMin - 1; providers <= 1_000; providers++ {
 		remaining := providers
 		groups := 0
 		for remaining != 0 {
 			size := finalSemanticFixtureAttemptGroupSize(remaining)
-			if size < connect.VerifyMMin-1 || size > finalSemanticFixtureMaximumAttemptM-1 || size > remaining {
+			if size < 1 || size > finalSemanticFixtureMaximumAttemptM-1 || size > remaining {
 				t.Fatalf("providers=%d remaining=%d produced invalid group size %d", providers, remaining, size)
 			}
 			remaining -= size
@@ -1522,14 +1519,25 @@ func TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation(t *tes
 		if got := finalSemanticFixtureAttemptGroupCount(providers); got != groups || got == 0 {
 			t.Fatalf("providers=%d group count=%d, want %d", providers, got, groups)
 		}
+		width := finalSemanticFixtureMaximumAttemptM - 1
+		if groups != (providers+width-1)/width || groups*width-providers >= width {
+			t.Fatalf("providers=%d groups=%d add more than one final group's padding", providers, groups)
+		}
 	}
-	for _, providers := range []int{-1, 0, 1, connect.VerifyMMin - 2} {
+	for _, providers := range []int{-1, 0} {
 		if got := finalSemanticFixtureAttemptGroupSize(providers); got != 0 {
 			t.Fatalf("invalid provider population %d produced group size %d", providers, got)
 		}
 	}
+	for _, providers := range []int{1, connect.VerifyMMin - 2} {
+		if got := finalSemanticFixtureAttemptGroupCount(providers); got != 0 {
+			t.Fatalf("unfillable initial population %d has %d groups", providers, got)
+		}
+	}
 }
 
+// The accelerated builder retains the exact durable signed wire and every
+// original provider, with padding reflected in all raw exposure counters.
 func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
@@ -1543,6 +1551,9 @@ func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 	}
 	if len(measurement.Inputs) != 2 {
 		t.Fatalf("release-scale fixture inputs=%d, want two operator populations", len(measurement.Inputs))
+	}
+	if measurement.Policy.Verify.TrailDepth != finalSemanticFixtureMaximumAttemptM {
+		t.Fatalf("fixture measurement policy depth=%d, want %d", measurement.Policy.Verify.TrailDepth, finalSemanticFixtureMaximumAttemptM)
 	}
 	providerTotal := 0
 	for _, input := range measurement.Inputs {
@@ -1571,8 +1582,39 @@ func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 			}
 		}
 		wantComplete := finalSemanticFixtureAttemptGroupCount(eligibleProviders)
-		if pending != eligibleProviders || complete != wantComplete || wantComplete == 0 {
-			t.Fatalf("operator %d fixture pending/complete=%d/%d, want %d/%d", input.NoID, pending, complete, eligibleProviders, wantComplete)
+		wantAssignments := (finalSemanticFixtureMaximumAttemptM - 1) * wantComplete
+		if pending != wantAssignments || complete != wantComplete || wantComplete == 0 {
+			t.Fatalf("operator %d fixture pending/complete=%d/%d, want %d/%d", input.NoID, pending, complete, wantAssignments, wantComplete)
+		}
+		assigned := map[connect.Id]uint64{}
+		for _, record := range input.Stats.AttemptCut.Records {
+			if record.Disposition == validatorpkg.AttemptDispositionComplete {
+				for _, assignment := range record.Assignments {
+					assigned[assignment.NextHop]++
+				}
+			}
+		}
+		if len(assigned) != eligibleProviders {
+			t.Fatalf("operator %d exact provider census=%d, want %d", input.NoID, len(assigned), eligibleProviders)
+		}
+		padding := wantAssignments - eligibleProviders
+		eligibleIndex := 0
+		for _, provider := range input.Stats.Providers {
+			clientID, err := connect.ParseId(provider.ClientID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want uint64
+			if len(provider.EgressIPHashHexes) != 0 {
+				want = 1
+				if eligibleIndex < padding {
+					want++
+				}
+				eligibleIndex++
+			}
+			if assigned[clientID] != want || provider.Assignments != want || provider.Confirmations != want || provider.LatencyBuckets[0] != want {
+				t.Fatalf("operator %d provider %s record/assignment/confirmation/latency counts=%d/%d/%d/%d, want %d including exact padding", input.NoID, clientID, assigned[clientID], provider.Assignments, provider.Confirmations, provider.LatencyBuckets[0], want)
+			}
 		}
 	}
 	if providerTotal != 1_000 {
@@ -1581,10 +1623,15 @@ func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 	wantCut := measurement.Inputs[0].Stats.AttemptCut
 	validatorKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x41}, ed25519.SeedSize))
 	serverKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x51}, ed25519.SeedSize))
-	durable, err := validatorpkg.NewAttemptLedger(t.TempDir(), wantCut.Identity, validatorKey)
+	durable, err := validatorpkg.NewAttemptLedger(filepath.Join(t.TempDir(), "state"), wantCut.Identity, validatorKey)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := durable.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	fixture, err := newFinalAttemptFixtureLedger(wantCut.Identity, validatorKey)
 	if err != nil {
 		t.Fatal(err)
@@ -1780,7 +1827,7 @@ func finalSemanticFixtureReleasePolicy(cfg *ResolvedConfig) (protocol.Policy, er
 	policy.Settlement.CloseGraceBlocks = 1
 	policy.Steering.MaxWeightLimitU16 = crv4.U16Max
 	policy.Deposit.Tiers = append([]protocol.DepositTier(nil), cfg.Policy.Deposit.Tiers...)
-	policy.Verify.TrailDepth = 2
+	policy.Verify.TrailDepth = finalSemanticFixtureMaximumAttemptM
 	resolved := *cfg
 	resolved.Policy = &policy
 	requiredRao, err := releaseCampaignDepositRequirement(&resolved)
@@ -3139,48 +3186,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			rewards[index].SnapshotArtifact = locator
 		}
 	}
-	pathProofs := make([]FinalValidatorPathProofEvidence, 0, 4)
-	for validatorID := 1; validatorID <= 2; validatorID++ {
-		for noID := 1; noID <= 2; noID++ {
-			var data []byte
-			for epoch := uint64(10); epoch <= 14; epoch++ {
-				var trailID connect.Id
-				trailID[0], trailID[1], trailID[14], trailID[15] = byte(validatorID), byte(noID), byte(epoch>>8), byte(epoch)
-				nonce := bytes.Repeat([]byte{byte(0x60 + validatorID + noID + int(epoch-10))}, connect.VerifyNonceSize)
-				vpk := validatorPathKeys[validatorID-1].Public().(ed25519.PublicKey)
-				hops := make([]connect.VerifyProofHop, policy.Verify.TrailDepth)
-				trail := make([]connect.Id, len(hops))
-				for hopIndex := range hops {
-					trail[hopIndex][0], trail[hopIndex][1], trail[hopIndex][2], trail[hopIndex][15] = byte(validatorID), byte(noID), byte(epoch), byte(hopIndex+1)
-					hops[hopIndex].ClientId = trail[hopIndex]
-					hops[hopIndex].TimeMs = uint64(1_000 + validatorID*100 + noID*10 + hopIndex)
-				}
-				finalMessage, messageErr := connect.BuildVerifyFinalMessage(1, trailID, nonce, vpk, byte(len(hops)), hops)
-				if messageErr != nil {
-					t.Fatal(messageErr)
-				}
-				extendMessage, messageErr := connect.BuildVerifyExtendMessage(trailID, nonce, vpk, byte(len(hops)), trail)
-				if messageErr != nil {
-					t.Fatal(messageErr)
-				}
-				digest := connect.VerifyFinalDigest(finalMessage)
-				pathID := validatorpkg.TrailPathId(trailID, vpk, 1)
-				record := validatorpkg.ProofRecord{
-					Version: 1, Epoch: epoch, TrailId: trailID, ServerNonce: nonce, Vpk: vpk, M: len(hops), Hops: hops, ServerKeyId: 1,
-					FinalSig: ed25519.Sign(operatorServerKeys[noID-1], finalMessage), VerifierSig: ed25519.Sign(validatorPathKeys[validatorID-1], extendMessage),
-					FinalDigest: digest[:], VpkSig: ed25519.Sign(validatorPathKeys[validatorID-1], finalMessage), Coverage: uint64(len(hops) - 1), PathId: pathID[:], CompleteTimeMs: hops[len(hops)-1].TimeMs,
-				}
-				line, marshalErr := json.Marshal(FinalCollectedProofRecord{Schema: finalCollectedProofRecordSchema, Record: record})
-				if marshalErr != nil {
-					t.Fatal(marshalErr)
-				}
-				data = append(data, line...)
-				data = append(data, '\n')
-			}
-			locator := artifact("validator-path-proofs", fmt.Sprintf("path-proofs-%d-%d.jsonl", validatorID, noID), data)
-			pathProofs = append(pathProofs, FinalValidatorPathProofEvidence{ValidatorID: uint64(validatorID), NoID: uint64(noID), FirstEpoch: 10, LastEpoch: 14, ProofCount: 5, TrailDepth: policy.Verify.TrailDepth, ProofsHash: locator.ContentHash, Artifact: locator})
-		}
-	}
+	pathProofs := finalSemanticFixtureClosedProofs(t, validators, validatorPathKeys, policy.Verify.TrailDepth, artifacts, artifact)
 	cleanupCutoff := time.Unix(1_700_000_000, 456).UTC()
 	cleanupCutoffText := cleanupCutoff.Format(time.RFC3339Nano)
 	cleanupManifestHash := finalTestHex(90)

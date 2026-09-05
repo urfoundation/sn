@@ -316,6 +316,7 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 		"envelope":                  fixtureLocator("validator-release-measurement-envelope", "envelope.json", jsonFixture),
 		"attempts":                  fixtureLocator("validator-attempt-records", "attempts.json", jsonFixture),
 		"proofs":                    fixtureLocator("validator-path-proofs", "proofs.json", jsonFixture),
+		"closure":                   fixtureLocator("validator-settlement-closure", "closure.json", jsonFixture),
 		"prior-chain":               fixtureLocator("prior-live-chain-bundle", "prior-live-chain.json", bundleBytes),
 		"prior-semantic-supplement": fixtureLocator("prior-semantic-supplement-envelope", "prior-semantic-verified.json.bin", jsonFixture),
 		"prior-semantic-file-1":     fixtureLocator("prior-semantic-file-envelope", "prior-semantic-file-1.json.bin", jsonFixture),
@@ -392,6 +393,7 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 			t.Fatalf("release fixture validator %d unexpectedly has a dishonest-deposit intent", validatorID)
 		}
 		for epoch := collected.Window.FirstEpoch; epoch <= lastEpoch; epoch++ {
+			validator.SettlementClosures = append(validator.SettlementClosures, FinalCollectedSettlementClosure{Epoch: epoch, Boundary: ChainHead{Number: collected.Window.StartBlock + (epoch-collected.Window.FirstEpoch+1)*collected.Window.EpochBlocks - 1, Hash: finalTestHex(byte(epoch))}, Artifact: common["closure"]})
 			validator.Intents = append(validator.Intents, FinalCollectedValidatorIntent{
 				Sequence: epoch - collected.Window.FirstEpoch + 1, SettlementEpoch: epoch, SubnetEpoch: 900 + epoch - collected.Window.FirstEpoch,
 				Status: "applied", VectorHash: "0x" + strings.Repeat("ab", 32), Artifact: common["intent"], Measurement: common["measurement"], Envelope: common["envelope"],
