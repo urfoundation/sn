@@ -4,7 +4,8 @@ package main
 // migrated honestly: their raw assignment, failure, latency and path inputs no
 // longer exist. Runtime rendering therefore quarantines the entire legacy
 // validator state and starts a fresh namespace before any release process can
-// consume it. Signed namespaces are never reset or rewritten.
+// consume it. Signed namespaces are never reset or rewritten. Possible disk
+// authority is refused until a separate disk-aware activation can verify it.
 
 import (
 	"bytes"
@@ -59,9 +60,26 @@ type validatorAttemptStateResetJournal struct {
 
 type validatorStateResetHook func(stage string) error
 
-func prepareSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string) error {
+// Checks every configured namespace without creating or changing artifacts.
+// Callers retain writer exclusion; mutation paths repeat this preflight.
+func preflightSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string) error {
 	if cfg == nil || cfg.Config == nil || stateDir == "" || cfg.Config.Topology.Validators < 1 || cfg.Config.Topology.Operators < 1 {
 		return errors.New("validator attempt-state namespace inputs are incomplete")
+	}
+	// Find protected current or archived authority in every configured validator
+	// before the first reset. Writers must already be stopped; this is not a lock.
+	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
+		if err := preflightSignedAttemptStateNamespace(cfg.Config.Deployment.DeploymentID, stateDir, validatorID, cfg.Config.Topology.Operators); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Archives unsigned state only at the original namespace preparation stage.
+func prepareSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string) error {
+	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
+		return err
 	}
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
 		if err := prepareSignedAttemptStateNamespace(cfg.Config.Deployment.DeploymentID, stateDir, validatorID, cfg.Config.Topology.Operators); err != nil {
@@ -76,8 +94,8 @@ func prepareSignedAttemptStateNamespace(deploymentID, stateDir string, validator
 }
 
 func prepareSignedAttemptStateNamespaceWithHook(deploymentID, stateDir string, validatorID, operators int, hook validatorStateResetHook) error {
-	if deploymentID == "" || stateDir == "" || validatorID < 1 || operators < 1 {
-		return errors.New("validator attempt-state reset identity is incomplete")
+	if err := preflightSignedAttemptStateNamespace(deploymentID, stateDir, validatorID, operators); err != nil {
+		return err
 	}
 	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID))
 	state := filepath.Join(root, "state")
@@ -124,30 +142,44 @@ func prepareSignedAttemptStateNamespaceWithHook(deploymentID, stateDir string, v
 	return reconcileValidatorAttemptStateReset(deploymentID, stateDir, root, state, journalPath, validatorID, operators, hook)
 }
 
-func reconcileValidatorAttemptStateReset(deploymentID, stateDir, root, state, journalPath string, validatorID, operators int, hook validatorStateResetHook) error {
-	var journal validatorAttemptStateResetJournal
-	if err := decodeStrictJSONFile(journalPath, &journal); err != nil {
-		return fmt.Errorf("decode validator %d state reset journal: %w", validatorID, err)
+// Inspect current state and any old recovery archive without creating a
+// journal, receipt or fresh directory. Per-namespace mutation rechecks it.
+func preflightSignedAttemptStateNamespace(deploymentID, stateDir string, validatorID, operators int) error {
+	if deploymentID == "" || stateDir == "" || validatorID < 1 || operators < 1 {
+		return errors.New("validator attempt-state reset identity is incomplete")
 	}
-	if err := validateValidatorAttemptStateResetJournal(&journal, deploymentID, validatorID, operators); err != nil {
+	root := filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", validatorID))
+	state := filepath.Join(root, "state")
+	legacy, signed, err := classifyValidatorAttemptState(state, operators)
+	if err != nil {
+		return fmt.Errorf("validator %d attempt-state classification: %w", validatorID, err)
+	}
+	if legacy && signed {
+		return fmt.Errorf("validator %d mixes signed and legacy unsigned measurement state", validatorID)
+	}
+	journalPath := filepath.Join(root, validatorAttemptStateResetJournalName)
+	if _, err := os.Lstat(journalPath); err == nil {
+		if err := requireValidatorStateStopped(stateDir, validatorID); err != nil {
+			return err
+		}
+		_, _, err := inspectValidatorAttemptStateReset(deploymentID, root, state, journalPath, validatorID, operators)
+		return err
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if legacy {
+		return requireValidatorStateStopped(stateDir, validatorID)
+	}
+	return nil
+}
+
+func reconcileValidatorAttemptStateReset(deploymentID, stateDir, root, state, journalPath string, validatorID, operators int, hook validatorStateResetHook) error {
+	journal, archiveExists, err := inspectValidatorAttemptStateReset(deploymentID, root, state, journalPath, validatorID, operators)
+	if err != nil {
 		return err
 	}
 	archive := filepath.Join(root, journal.ArchiveName)
-	if !pathWithinRoot(root, archive) {
-		return fmt.Errorf("validator %d state reset archive escapes runtime root", validatorID)
-	}
-	archiveExists, err := regularDirectoryExists(archive)
-	if err != nil {
-		return fmt.Errorf("validator %d state reset archive: %w", validatorID, err)
-	}
 	if !archiveExists {
-		if journal.Status == "complete" {
-			return fmt.Errorf("validator %d completed state reset archive is missing", validatorID)
-		}
-		hash, count, hashErr := hashValidatorStateTree(state)
-		if hashErr != nil || hash != journal.SourceHash || count != journal.FileCount {
-			return fmt.Errorf("validator %d pending state reset source differs from journal", validatorID)
-		}
 		if err := os.Rename(state, archive); err != nil {
 			return fmt.Errorf("quarantine validator %d legacy unsigned state: %w", validatorID, err)
 		}
@@ -189,11 +221,75 @@ func reconcileValidatorAttemptStateReset(deploymentID, stateDir, root, state, jo
 			return err
 		}
 		journal.Status = "complete"
-		if err := persistValidatorAttemptStateResetJournal(journalPath, &journal); err != nil {
+		if err := persistValidatorAttemptStateResetJournal(journalPath, journal); err != nil {
 			return fmt.Errorf("complete validator %d state reset journal: %w", validatorID, err)
 		}
 	}
 	return nil
+}
+
+// An old exact hash is not reset authority. Both pending sources and existing
+// archives must still be exclusively unsigned before recovery changes state.
+func inspectValidatorAttemptStateReset(deploymentID, root, state, journalPath string, validatorID, operators int) (*validatorAttemptStateResetJournal, bool, error) {
+	var journal validatorAttemptStateResetJournal
+	if err := decodeStrictJSONFile(journalPath, &journal); err != nil {
+		return nil, false, fmt.Errorf("decode validator %d state reset journal: %w", validatorID, err)
+	}
+	if err := validateValidatorAttemptStateResetJournal(&journal, deploymentID, validatorID, operators); err != nil {
+		return nil, false, err
+	}
+	archive := filepath.Join(root, journal.ArchiveName)
+	if !pathWithinRoot(root, archive) {
+		return nil, false, fmt.Errorf("validator %d state reset archive escapes runtime root", validatorID)
+	}
+	legacy, signed, err := classifyValidatorAttemptState(state, operators)
+	if err != nil {
+		return nil, false, fmt.Errorf("validator %d state reset source: %w", validatorID, err)
+	}
+	if legacy && signed {
+		return nil, false, fmt.Errorf("validator %d mixes signed and legacy unsigned measurement state", validatorID)
+	}
+	archiveExists, err := regularDirectoryExists(archive)
+	if err != nil {
+		return nil, false, fmt.Errorf("validator %d state reset archive: %w", validatorID, err)
+	}
+	if !archiveExists {
+		if journal.Status == "complete" {
+			return nil, false, fmt.Errorf("validator %d completed state reset archive is missing", validatorID)
+		}
+		if !legacy || signed {
+			return nil, false, fmt.Errorf("validator %d pending state reset source is not exclusively legacy unsigned state", validatorID)
+		}
+		hash, count, hashErr := hashValidatorStateTree(state)
+		if hashErr != nil || hash != journal.SourceHash || count != journal.FileCount {
+			return nil, false, fmt.Errorf("validator %d pending state reset source differs from journal", validatorID)
+		}
+		return &journal, false, nil
+	}
+	archiveLegacy, archiveSigned, err := classifyValidatorAttemptState(archive, operators)
+	if err != nil {
+		return nil, false, fmt.Errorf("validator %d state reset archive: %w", validatorID, err)
+	}
+	if !archiveLegacy || archiveSigned {
+		return nil, false, fmt.Errorf("validator %d state reset archive is not exclusively legacy unsigned state", validatorID)
+	}
+	if err := verifyValidatorLegacyArchive(archive, journal.SourceHash, journal.FileCount); err != nil {
+		return nil, false, fmt.Errorf("validator %d state reset archive: %w", validatorID, err)
+	}
+	if journal.Status == "pending" {
+		if exists, err := regularDirectoryExists(state); err != nil {
+			return nil, false, fmt.Errorf("validator %d fresh state namespace: %w", validatorID, err)
+		} else if exists {
+			empty, err := directoryTreeEmpty(state)
+			if err != nil {
+				return nil, false, fmt.Errorf("validator %d fresh state namespace: %w", validatorID, err)
+			}
+			if !empty {
+				return nil, false, fmt.Errorf("validator %d pending state reset has nonempty fresh namespace", validatorID)
+			}
+		}
+	}
+	return &journal, true, nil
 }
 
 func validateValidatorAttemptStateResetJournal(journal *validatorAttemptStateResetJournal, deploymentID string, validatorID, operators int) error {
@@ -309,6 +405,13 @@ func classifyValidatorAttemptState(state string, operators int) (legacy, signed 
 		if walkErr != nil {
 			return walkErr
 		}
+		// These are the disk ledger's store and durable import/ready markers.
+		// Presence protects even malformed, empty, misplaced or aliased state;
+		// do not descend into a database or infer unsigned history from JSONL.
+		switch entry.Name() {
+		case "attempt-ledger.records", "attempt-ledger-import.json", "attempt-ledger-import.json.tmp", "attempt-ledger-ready.json", "attempt-ledger-ready.json.tmp":
+			return fmt.Errorf("%s is protected disk attempt-ledger state; explicit disk-aware activation is required", path)
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%s is a symlink", path)
 		}
@@ -328,7 +431,11 @@ func classifyValidatorAttemptState(state string, operators int) (legacy, signed 
 		}
 		dynamicFiles++
 		parts := strings.Split(relative, "/")
-		if len(parts) == 3 && parts[0] == "operators" && parts[2] == "attempt-ledger.jsonl" {
+		if entry.Name() == "attempt-ledger.jsonl" {
+			if len(parts) != 3 || parts[0] != "operators" {
+				unexpectedLedger = true
+				return nil
+			}
 			noID, parseErr := strconv.Atoi(strings.TrimPrefix(parts[1], "no-"))
 			if parseErr == nil && parts[1] == fmt.Sprintf("no-%d", noID) && noID >= 1 && noID <= operators {
 				info, infoErr := entry.Info()
@@ -348,10 +455,11 @@ func classifyValidatorAttemptState(state string, operators int) (legacy, signed 
 		return false, false, err
 	}
 	ledgerCount := len(ledgerPresent)
-	signed = ledgerCount != 0
+	signed = ledgerCount != 0 || unexpectedLedger
 	// A measurement namespace is accepted only when every configured operator
 	// has a nonempty signed ledger. Any other dynamic/unknown file tree is
-	// legacy or incomplete and can never be silently blessed.
+	// legacy or incomplete and can never be silently blessed. Out-of-census
+	// ledgers are possible signed authority too, never a reset permission.
 	legacy = dynamicFiles != 0 && (ledgerCount != operators || unexpectedLedger)
 	return legacy, signed, nil
 }

@@ -4207,6 +4207,9 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 	if err != nil {
 		return err
 	}
+	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
+		return err
+	}
 	if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
 		return err
 	}
