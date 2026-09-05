@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/url"
 	"path"
@@ -4627,7 +4628,7 @@ func verifyFinalPathProofArtifactBound(proof *FinalValidatorPathProofEvidence, d
 		}
 		record := envelope.Record
 		var trailing any
-		if err := decoder.Decode(&trailing); err == nil {
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 			return fmt.Errorf("line %d contains trailing JSON", count+1)
 		}
 		if record.Epoch < proof.FirstEpoch || record.Epoch > proof.LastEpoch {

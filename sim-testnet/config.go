@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/url"
 	"os"
@@ -386,7 +387,10 @@ func strictYAML(path string, out any) error {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	var extra any
-	if err := dec.Decode(&extra); err == nil {
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return fmt.Errorf("%s: trailing YAML: %w", path, err)
+		}
 		return fmt.Errorf("%s: multiple YAML documents", path)
 	}
 	return nil

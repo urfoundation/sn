@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -186,7 +187,10 @@ func readRenderedValidatorPolicy(path string) (*protocol.Policy, string, error) 
 		return nil, "", err
 	}
 	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, "", fmt.Errorf("rendered validator config has trailing YAML: %w", err)
+		}
 		return nil, "", errors.New("rendered validator config has multiple YAML documents")
 	}
 	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {

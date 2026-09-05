@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -87,7 +88,10 @@ func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
 		return nil, fmt.Errorf("decode validator config %s: %w", abs, err)
 	}
 	var trailing any
-	if err := dec.Decode(&trailing); err == nil {
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, fmt.Errorf("decode validator config %s: trailing YAML: %w", abs, err)
+		}
 		return nil, fmt.Errorf("decode validator config %s: multiple YAML documents", abs)
 	}
 	if err := cfg.normalize(filepath.Dir(abs)); err != nil {

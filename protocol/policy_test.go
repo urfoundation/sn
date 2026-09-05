@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,49 @@ func TestLoadPolicyCanonicalHash(t *testing.T) {
 	h2, _ := p2.HashHex()
 	if h1 != h2 {
 		t.Fatalf("non-deterministic policy hash: %s != %s", h1, h2)
+	}
+}
+
+// A complete first document does not make a malformed second one EOF.
+func TestPolicyRejectsMalformedTrailingYAML(t *testing.T) {
+	fixture, err := os.ReadFile(testPolicyPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := ParsePolicy(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHash, err := policy.HashHex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		name, suffix, wantError string
+	}{
+		{name: "valid"},
+		{name: "comment", suffix: "\n# permitted trailing comment\n"},
+		{name: "explicit document end", suffix: "\n...\n"},
+		{name: "second document", suffix: "\n---\n{}\n", wantError: "multiple YAML documents"},
+		{name: "incomplete mapping", suffix: "\n---\n{\n", wantError: "trailing YAML"},
+		{name: "incomplete sequence", suffix: "\n---\n[unterminated\n", wantError: "trailing YAML"},
+		{name: "invalid escape", suffix: "\n---\n\"\\q\"\n", wantError: "unknown escape"},
+	} {
+		wire := append(append([]byte(nil), fixture...), testCase.suffix...)
+		got, err := ParsePolicy(wire)
+		if testCase.wantError != "" {
+			if err == nil || !strings.Contains(err.Error(), testCase.wantError) || got != nil {
+				t.Errorf("%s: policy present=%t error=%v, want %q", testCase.name, got != nil, err, testCase.wantError)
+			}
+			continue
+		}
+		if err != nil || got == nil {
+			t.Fatalf("%s: valid policy rejected: %v", testCase.name, err)
+		}
+		gotHash, err := got.HashHex()
+		if err != nil || gotHash != wantHash {
+			t.Errorf("%s: policy changed: hash=%s error=%v", testCase.name, gotHash, err)
+		}
 	}
 }
 

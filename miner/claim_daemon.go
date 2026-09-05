@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"os/exec"
@@ -58,7 +59,10 @@ func LoadClaimDaemonConfig(path string) (*ClaimDaemonConfig, error) {
 		return nil, err
 	}
 	var extra any
-	if err := dec.Decode(&extra); err == nil {
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, fmt.Errorf("claim daemon config contains trailing YAML: %w", err)
+		}
 		return nil, errors.New("claim daemon config contains multiple YAML documents")
 	}
 	base := filepath.Dir(abs)

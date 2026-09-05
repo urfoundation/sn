@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 09:06 UTC. The complete fleet/history fixture and miner/validator
+2026-09-05 09:53 UTC. The complete fleet/history fixture and miner/validator
 ordinary/race checks pass; the full simulator run exposed repaired evidence and
 deposit-validation gaps whose focused reruns are being completed. Source
 integration and core per-client payout attribution passed focused ordinary/race
@@ -24,11 +24,29 @@ pulled and pushed as SN `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`.
 The isolated pre-fix work-count regression fails deterministically as required;
 focused ordinary and 14-root race qualification pass. Full 237-root ordinary
 passed at 09:04:06 UTC in 266.65 seconds with all 18 public cases complete.
-The same immutable capture's full race run started at 09:04:58 UTC; it is not
-yet qualified. Local capture-metadata newline/scoping failures were
+The same immutable capture's full race run failed at 09:30:00 UTC at its
+unchanged 25-minute deadline: 236/237 roots and all 18 public cases passed;
+`TestFinalSemanticEvidenceBuildRenderAndArtifacts` was still executing. The
+remaining root is being profiled from the exact captured binary before a
+root-cause repair; no unchanged rerun or deadline waiver is allowed.
+Local capture-metadata newline/scoping failures were
 repaired and regression-tested without altering sealed failures or recompiling
 those binaries; deterministic permission/hash failure controls also pass.
 Complete current-source race qualification remains pending.
+The exact-current Connect default ordinary and race package runs also passed
+in 530.545 and 1,169.652 seconds; its fixed-shuffle race certificate is running
+in parallel with the simulator qualification. A signed-proof framing
+regression reproduced acceptance of malformed trailing JSON; five adjacent
+YAML loaders also ignored non-EOF second-decode errors. The six EOF guards now
+pass the isolated 12-root ordinary/race cut (race ended 09:38:43 UTC). Their
+completed primary integration adds explicit framing gate coverage and widens
+the semantic census from 237 to 238, retaining every prior root. The integrated
+nineteen-root framing/semantic-pin cut also passes ordinary and race with actual
+exit 0 and unchanged source hashes. The first ordinary run lost exit metadata
+and is explicitly nonqualifying; its corrected capture and fresh rerun are
+recorded in the handoff. Full release qualification remains mandatory; these
+focused results do not resolve
+the separate replay timeout.
 All coverage and the 15/25-minute deadlines remain required. Both Terra-max
 agents recovered from their earlier usage-limit errors; there was no model
 substitution or restart based on an observer error. The 08:57 UTC fetch-only

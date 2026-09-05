@@ -94,6 +94,13 @@ func TestParseFleetManifestStrictCanonicalRoundTrip(t *testing.T) {
 	if _, err := ParseFleetManifest(noncanonical); err == nil {
 		t.Fatal("non-canonical leading whitespace accepted")
 	}
+	// Whole-input canonical equality already protects this adjacent decoder.
+	for _, suffix := range []string{" {", " [", " garbage", " \""} {
+		wire := append(append([]byte(nil), b...), suffix...)
+		if _, err := ParseFleetManifest(wire); err == nil {
+			t.Errorf("malformed trailing JSON %q accepted", suffix)
+		}
+	}
 }
 
 func mustFleetHash(t *testing.T, m FleetManifest) [32]byte {

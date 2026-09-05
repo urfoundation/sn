@@ -91,6 +91,45 @@ func TestLoadReleaseConfigStrictAndNormalizesOperatorSecrets(t *testing.T) {
 	}
 }
 
+// Keep valid normalized configuration while rejecting every non-EOF suffix.
+func TestReleaseConfigRejectsMalformedTrailingYAML(t *testing.T) {
+	config := validReleaseConfig(t)
+	fixture, err := yaml.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		name, suffix, wantError string
+	}{
+		{name: "valid"},
+		{name: "comment", suffix: "\n# permitted trailing comment\n"},
+		{name: "explicit document end", suffix: "\n...\n"},
+		{name: "second document", suffix: "\n---\n{}\n", wantError: "multiple YAML documents"},
+		{name: "incomplete mapping", suffix: "\n---\n{\n", wantError: "trailing YAML"},
+		{name: "incomplete sequence", suffix: "\n---\n[unterminated\n", wantError: "trailing YAML"},
+		{name: "invalid escape", suffix: "\n---\n\"\\q\"\n", wantError: "unknown escape"},
+	} {
+		path := filepath.Join(t.TempDir(), "validator.yml")
+		wire := append(append([]byte(nil), fixture...), testCase.suffix...)
+		if err := os.WriteFile(path, wire, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := LoadReleaseConfig(path)
+		if testCase.wantError != "" {
+			if err == nil || !strings.Contains(err.Error(), testCase.wantError) || got != nil {
+				t.Errorf("%s: config present=%t error=%v, want %q", testCase.name, got != nil, err, testCase.wantError)
+			}
+			continue
+		}
+		if err != nil || got == nil {
+			t.Fatalf("%s: valid validator config rejected: %v", testCase.name, err)
+		}
+		if got.PolicyHash != config.PolicyHash || got.ValidatorID != config.ValidatorID || !filepath.IsAbs(got.Operators[0].ClientJWTFile) {
+			t.Errorf("%s: valid validator identity or normalized paths changed", testCase.name)
+		}
+	}
+}
+
 func TestReleaseConfigFailsClosedOnSharedOperatorStateAndPolicyDrift(t *testing.T) {
 	cfg := validReleaseConfig(t)
 	cfg.Operators[1].StateDir = cfg.Operators[0].StateDir

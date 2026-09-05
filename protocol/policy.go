@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"sort"
@@ -216,7 +217,10 @@ func ParsePolicy(b []byte) (*Policy, error) {
 		return nil, fmt.Errorf("decode policy: %w", err)
 	}
 	var trailing any
-	if err := dec.Decode(&trailing); err == nil {
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, fmt.Errorf("decode policy trailing YAML: %w", err)
+		}
 		return nil, errors.New("decode policy: multiple YAML documents")
 	}
 	if err := wrapper.Policy.Validate(); err != nil {

@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 09:06 UTC before the final source freeze. Refresh every item marked
+2026-09-05 09:53 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -29,13 +29,26 @@ Launch blockers at this checkpoint:
   `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`. Its deterministic pre-fix RED
   and focused ordinary/race GREEN results are now recorded in section 12.
   The exact 237-root ordinary run passed at 09:04:06 UTC, including all 18
-  public cases, in 266.65 seconds. The same capture's complete race run began
-  at 09:04:58 UTC with its unchanged 25-minute deadline. All 237 roots and all
-  18 public cases remain mandatory. Current-source race qualification, final
-  lock/freeze and release gates remain outstanding.
+  public cases, in 266.65 seconds. The same capture's complete race run failed
+  at 09:30:00 UTC at its unchanged 25-minute deadline: 236/237 roots and all
+  18 public cases passed, but `TestFinalSemanticEvidenceBuildRenderAndArtifacts`
+  was still executing. This is an actual failed qualification, not a stalled
+  observer. Its root-cause profile/repair is in progress; do not rerun the
+  unchanged suite or waive the remaining root. Parser integration also requires
+  a fresh expanded census. Final lock/freeze and release gates remain outstanding.
 - Both Terra-max agents recovered from their earlier usage-limit errors.
   Test execution remains Terra max and diagnosis/repair remains Astra max;
   no assignment change or duplicate simulator test process was needed.
+- The proof-parser defect is now reproduced: a valid signed record with a
+  malformed suffix was accepted even after the artifact's exact size/hash were
+  recomputed. Five adjacent YAML loaders made the same mistake of ignoring a
+  non-EOF second-decode error. Six EOF guards and deterministic regressions
+  passed the bounded 12-root ordinary/race selection in isolation; race ended
+  09:38:43 UTC. Astra integrated the patch and explicit gate coverage,
+  including census 237 to 238 with no prior root removed. Terra also verified
+  the integrated 19-root framing/semantic-pin cut ordinarily and under race.
+  Those focused results
+  do not qualify the integrated release source or resolve the separate timeout.
 - The user's request for "validator evidence stored in the contract pool"
   needs a launch-scope decision. WHITEPAPER.md section 11.1 explicitly stores
   completed-trail/statistics artifacts in the server API and MinIO. The active
@@ -181,7 +194,7 @@ the present documentation-only handoff update; it is not a final source fence.
 
 | Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | 140b7ca3ffdb513ea489031e51b8f1b27e7b6e04 | clean/equal at the 08:57 fetch; digest/fleet repair has deterministic pre-fix RED, focused ordinary/race GREEN and complete 237-root ordinary PASS; race started at 09:04:58 UTC, final gates pending; later documentation-only commits do not change captured Go/test/census bytes |
+| sn | main | 140b7ca3ffdb513ea489031e51b8f1b27e7b6e04 | clean/equal at the 08:57 fetch; digest/fleet repair has deterministic pre-fix RED, focused ordinary/race GREEN and complete 237-root ordinary PASS; race FAILED at 09:30:00 UTC with 236/237 roots; later documentation-only checkpoint 9fa5109 preserves captured code, parser integration is subsequent and unqualified |
 | server | main | b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc | clean/equal after the 06:47 checkpoint; allocation, adjacent provider-reporting/query-plan, retention and strict-test repairs pass focused ordinary/race; frozen gate pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
@@ -893,6 +906,78 @@ The current validator-proof boundary can be independently checked in
 envelope referencing the prepared extrinsic). The off-chain back-reference
 does not create an on-chain commitment in the opposite direction.
 
+### 10.1 Conditional validator-proof commitment work
+
+This is a read-only implementation proposal prepared on 2026-09-05 UTC while
+the user decision remains pending. It is not implemented, approved, or a claim
+that current validator proofs are anchored. Do not start it merely because an
+automatic goal continuation arrives.
+
+For a precisely frozen proof census available before a real payout-root commit,
+the smallest identified route is a versioned payout-artifact extension:
+
+1. Export immutable validator-signed attempt cuts containing completed proof
+   records. Pin deployment/genesis/netuid/coordinator, operator, closed window,
+   validator VPK and its authenticated native identity; verify the existing
+   `VerifyAttemptLedgerCut` and `VerifyProofRecord` signatures/key histories.
+   Reject omitted, duplicate, cross-operator, incomplete or late cuts against
+   the exact required census, not merely a positive proof count.
+2. Publish those bytes and a canonical manifest through an operator-owned
+   ingestion/relay path before signing the payout artifact. The operator must
+   not manufacture the validator's FINAL co-signature or give its artifact key
+   to validators. `StPublishEvidence` currently authorizes only the configured
+   operator artifact signer. The public proof-history API uses creation time
+   and a 10,000-row cap; it is not an exhaustive closed-window collection API.
+   Define signed completion/cutoff semantics and complete snapshot/cursor rules.
+3. Put the manifest hash, size and exact census inside a new required artifact
+   schema's canonical unsigned body. `payoutartifact.Sign` hashes that body
+   with signer/signature/content-hash fields cleared, not the final signed
+   blob. `StCommitPayoutRoot` sends that content hash to the existing
+   `commitOperatorRoot`; coordinator state/events and finalized vault
+   entitlement retain it. The resulting binding is chain artifact hash ->
+   canonical payout body -> manifest -> signed cuts/proof bytes. A field added
+   only to an outer publication envelope or FINAL.md does not create that link.
+4. Preserve exact legacy-v1 decoding/hashes for carried history and pin an
+   activation epoch/profile; a historical v1 artifact cannot satisfy the new
+   requirement. Update server construction/readers, validator deposit-audit
+   decoding, collection/publication, and FINAL/public replay together. Final
+   verification must join every required proof/cut to the authenticated
+   on-chain artifact hash and fetch/verify all referenced bytes.
+
+Timing and coverage are hard constraints. Payout computation caches its first
+published artifact; retries cannot add later proofs. Freeze the census before
+sign/publication and the unchanged root-commit deadline. A later deposit audit
+already references an earlier payout artifact: do not make that earlier
+artifact commit the later audit or the final public supplement, creating a
+hash/timing cycle. Raw completed proofs/cuts must exist independently first.
+No-leaf or missed-root epochs have no new payout commitment, and contracts
+reject a zero root. Never manufacture payout leaves, change carry economics,
+or falsely backdate a later anchor to solve this. If the requirement includes
+late/no-payout windows independently of a subsequent genuine payout root,
+use a separately authorized write-once evidence commitment instead. That
+alternative needs a coordinator upgrade/new anchored contract, ABI/bindings,
+release-lock/runtime identity, history/activation handling and contract tests;
+it does not require a validator bounty or registry.
+
+Required tests for either approved design include:
+
+- exact v1 golden history plus v2 canonical/domain/census and wrong-key/hash
+  rejection, with unchanged provider rows, shares, payout roots and economics;
+- real signed-cut/proof corruption, forged co-signatures, server-key rotation,
+  identity/epoch/operator substitution, omission, duplication and truncation;
+- immutable publication/colliding writers, complete cutoff pagination,
+  late-arrival and restart/idempotency controls, missing proofs rejected before
+  commit, and explicit no-payout/missed-root behavior;
+- FINAL/capture/public-replay cross-links, fake/wrong-domain on-chain anchors,
+  missing replicas, omitted validators and post-activation legacy downgrade;
+- if contract storage changes: unauthorized, duplicate and wrong-window
+  commits, upgrade/history replay, custody invariants and unchanged payouts.
+
+Preserve all current semantic roots and all 18 public replay cases; add the
+new deterministic coverage, then regenerate the exact census and release
+gates. Hash anchoring proves an immutable byte commitment, not proof truth or
+availability: signature replay and actual public byte retrieval remain required.
+
 ## 11. Independent peer-review procedure
 
 From a clean compatible checkout with no simulator state or wallet secrets:
@@ -1598,13 +1683,15 @@ above; all results are prequalification until committed and release-locked:
   2. Completed: repaired cache, bounded-worker, historical-census and semantic
      pin/census checks passed normally and under race. The corrected quick
      race selection has 14 roots; preserve the canceled broader attempt too.
-  3. Ordinary passed; race in progress: run the complete exact compiled
-     237-root census normally and under race
-     from `/home/by/urnetwork/sn/sim-testnet`, GOMAXPROCS=24, `-parallel=4`,
-     `-count=1`, unchanged 15/25-minute deadlines. Require all 18 public-case
-     completions. The full selector includes the repaired fleet-projection
+  3. Ordinary passed; race failed at the 25-minute deadline. The complete
+     compiled 237-root census ran normally and under race from
+     `/home/by/urnetwork/sn/sim-testnet`, GOMAXPROCS=24, `-parallel=4`,
+     `-count=1`, with unchanged 15/25-minute deadlines. All 18 public-case
+     completions remain required. The full selector includes the repaired fleet-projection
      root; do not insert another redundant long fleet/public-root run before
-     it. A small focused pass cannot substitute for this complete rerun.
+     it. A small focused pass cannot substitute for complete qualification.
+     Diagnose the remaining root before a fresh repaired-source rerun; the
+     parser additions must also be included in that candidate's census.
   4. Only after all of those pass and the evidence-scope question is resolved,
      continue the fresh clean-build lock/freeze/producer/aggregate workflow.
 - SN `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04` was committed, pulled and
@@ -1691,14 +1778,20 @@ above; all results are prequalification until committed and release-locked:
   all other records mode 0444. Full ordinary ran from 08:59:39 to 09:04:06 UTC
   and exited 0: 237/237 exact canonical roots and 18/18 unique public cases
   passed, elapsed 266.65 seconds, peak RSS 2,333,244 KiB, no failure or race
-  marker. Its sealed raw record is listed below. Full race started at
-  09:04:58 UTC, PID 3994661, raw
+  marker. Its sealed raw record is listed below. Full race ran from
+  09:04:58 to 09:30:00 UTC, former PID 3994661, raw
   `/tmp/urnetwork-sn-postdigest-semantic-full237-race-zugmmG.log`.
-  That PID was independently live at 09:05 UTC; recheck it rather than treating
-  this document as liveness evidence. The inner deadline is 09:29:58 UTC and
-  outer timeout one minute later. This race log is not sealed or qualifying
-  until terminal completion. The only concurrent primary-source edits are the
-  explicitly recorded handoff documents, not Go, test, selector or census bytes.
+  The internal timer fired, exit 2, elapsed 1,500.59 seconds, peak RSS
+  6,849,084 KiB; the outer timeout did not fire. Exactly 236/237 roots and all
+  18 public cases passed. The sole unfinished root was
+  `TestFinalSemanticEvidenceBuildRenderAndArtifacts`, running for 10m14s.
+  Its sampled stack was actively hashing chain-replay exchanges, not waiting
+  on a dead worker. The test itself performs ten serial complete on-chain
+  verifier calls; it was in the eighth at timeout. A sampled stack does not
+  establish the dominant cost, so Astra's performance lane awaits Terra's
+  exact captured-binary CPU profile before choosing a repair. Primary edits
+  during the failed run were only the recorded handoff documents, not Go,
+  tests, selector or census bytes. All terminal records are now sealed.
 - The post-seal fetch-only inventory at 08:57:20 UTC confirms all twelve
   repositories were clean and exactly equal to their freshly fetched
   upstreams, with no pull, merge or checkout. Its immutable log is
@@ -1737,6 +1830,161 @@ above; all results are prequalification until committed and release-locked:
   This archive preserves original logs, not a public publication or test pass.
   Later metadata/full-237 records are not in that earlier snapshot; retain
   them separately without editing the sealed archive or original failures.
+- The nine subsequently closed `/tmp` records (three metadata records and
+  six complete-ordinary result/index files) were separately byte/hash-verified
+  and copied by basename into
+  `/home/by/urnetwork/temp/sn-qualified-ordinary-records-09Opz2`.
+  Its `SHA256SUMS` SHA-256 is
+  `3a28a8b7f56a153e93e01104905394052b7a18e216c7016a380b9a72e4389b45`.
+  The directory is owner-only mode 0500; all records/index are 0444. The race
+  log was still running when that archive closed and is not part of it.
+- The eleven closed full-237 race records are independently hash-verified and
+  copied by basename into
+  `/home/by/urnetwork/temp/sn-full237-race-records-HAU7zp`, directory 0500.
+  Its `SHA256SUMS` SHA-256 is
+  `a599c4513bdc167e5b1389d5c1714c57d5621a16551d30c709b5393d78f47d5b`.
+  The first missing-root derivative used the wrong diff direction and reported
+  zero missing roots. It is preserved alongside the correction; the raw log
+  and root list never changed. Use `summary-corrected.txt` (SHA-256
+  `622a4811a3c33de23b4744bf7ba16ef0d8fb21763e82aa8e2265947e895b2019`)
+  and `missing-expected-roots.txt`: exactly one unfinished expected root.
+- The exact final local helper and its sealing RED/GREEN, expected indexes
+  and post-capture source-freshness refusal are separately archived at
+  `/home/by/urnetwork/temp/sn-capture-helper-evidence-20260905T090825Z`.
+  `ARCHIVE-MANIFEST.txt` SHA-256 is
+  `24deb699b0c2c1a78da568e484872b5e818af6fa637d35d1d201ed297f0329b2`;
+  the archived helper SHA-256 remains
+  `d1f5c57fa502e66e463d0d8653a2708f6beb400b7a874a81ee1045a6b1af866f`.
+- The documentation-only handoff checkpoint was committed, pulled and pushed
+  as `9fa5109119b97e77a7e514d58e3e9bca3dbfa1ca` at 09:08 UTC. It changes only
+  FINALIZE-COMPLETE.md and FINALIZE.md relative to runtime candidate `140b7ca`;
+  the sealed qualification binaries and their Go/test/census inputs remain
+  unchanged. This is not the final runtime freeze or a new release-lock apply.
+- The other Terra lane found no saved exact-current-source certificates for
+  Connect's three unsharded aggregate selections. The clean source is still
+  `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; inventory at
+  `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/inventory.log` has
+  SHA-256 `5295555f2c05ff5f53a3c31c536eda3ac4111e51623aa2a675f79cd196b11b22`.
+  Ordinary `WARP_TEST_ENV_FAIL_FAST=1 go test -count=1 -timeout=30m .` began
+  around 09:10 UTC, parent PID 4003586, child 4003727, log
+  `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/01-ordinary.log`.
+  Ordinary passed at 09:18:55 UTC in 530.545 package seconds, exit 0. Its
+  sealed mode-0400 raw log has SHA-256
+  `ca268cada530f96cc349a9eede20f55b1225d31a53279e7b8ba36db0ee064c2e`.
+  Default race passed at 09:38:50 UTC, 1,169.652 package seconds, exit 0;
+  `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/02-race-default.log`
+  is sealed mode 0400, SHA-256
+  `9fc4fb1e5faa1abb5fb6d997b557ae3e9f74eafff5da0c506cc3c3bc45d6dfe5`.
+  Fixed-order `-shuffle=4535211000` race is now running as PID 4055806, raw
+  `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/03-race-shuffle-4535211000.log`.
+  Both race modes use GOMAXPROCS=4 and 30-minute deadlines. These are parallel prequalification,
+  not a frozen aggregate pass; preserve every actual terminal result.
+- The parser reproduction and repair are preserved under
+  `/home/by/urnetwork/temp/sn-proof-suffix-repro-jK6XWR`. A deterministic
+  signed-proof RED accepted four malformed suffixes after real size/hash and
+  signature validation. The corrected combined RED also confirmed both
+  incomplete mapping/sequence suffixes in all five YAML loaders. Preserve the
+  intervening compile failure (missing `io` import), rather than calling it a
+  proof test result. `protocol.ParseFleetManifest` was already protected by
+  whole-input canonical equality; its regression now covers the same suffixes
+  without changing production behavior. The six EOF guards preserve valid
+  signatures, whitespace/comments/document ends, legacy-policy extraction,
+  normalization, unknown-field and complete second-document rejection.
+  The stable pre-integration 12-file patch has SHA-256
+  `6a0ed0fb13a49e7328a7020075c253dd4767bdcc3b973c3682728e22c22902ac`.
+  Terra's identical 12-root/four-package ordinary and race cuts passed with
+  GOMAXPROCS=4, offline modules, per-package two-minute/outer five-minute bounds;
+  race ended 09:38:43 UTC. Their raw records are below. Primary integration is
+  now complete in sixteen code/test/gate files; the twelve parser files match
+  their isolated qualified hashes. Both gates explicitly run the thirteen-root
+  framing selector (twelve parser controls plus its existing gate reachability
+  root) ordinarily and under race. The semantic census is exactly 238,
+  SHA-256 `abb8ef76b5c091d55513bd5a4174a79badf57e4a48b7a231a0b0b5cec51dc36a`,
+  retaining all previous 237 roots plus the new signed-proof framing root.
+  An independent source-group pin prevents that proof file from escaping
+  selection. Primary framing and semantic-pin qualification now passes all
+  nineteen roots ordinarily and under race: thirteen framing roots plus the
+  six exact semantic selector/census controls. Actual exits were 0; race ended
+  09:49:50 UTC and fresh ordinary ended 09:51:25 UTC. The relevant sixteen-file
+  Go/test/script/census manifest stayed identical before and after, SHA-256
+  `bce21a06499ec75761bfd2a4f49d1c67ee6b4c02df4640659300f4cc88c2e006`.
+  `bash -n` also passed for both gates. The primary source hold is released;
+  performance edits still remain isolated. This parser repair and the handoff
+  are ready for their next checkpoint, not final source freeze or full gates.
+  Authenticate the actual pushed HEAD rather than applying either old binary.
+- Primary integration evidence is sealed under
+  `/home/by/urnetwork/temp/sn-parser-integration-RuCjIW`.
+  Ordinary `parser-gate-ordinary-rerun.raw.log` has SHA-256
+  `961d4ca2f927a55fd8b8a6b9bff3b09e4ed0f2f4702c406b65b93d357d7abe32`;
+  its actual-exit terminal record has SHA-256
+  `16fff664687dca05ce84e13c2191f9a9b2ea326151b7331ebcb815d28060df86`.
+  Race `parser-gate-race.raw.log` has SHA-256
+  `aa13c92d426d1c6a0542063e24742ec9337b4785ff86929651d375553f042e5c`;
+  its actual-exit terminal record has SHA-256
+  `db18e86f4071b0633eedb006cd9c95f217a40a1ae309d0137989b1068736c0b4`.
+  The first ordinary invocation printed nineteen passing roots but its runner
+  discarded the structured session/exit result. Preserve that raw record
+  (`parser-gate-ordinary.raw.log`, SHA-256
+  `1adb0a808d61de59136883fbd4087cf6357fa8cd9257b7c0c77a5802cb627b0d`)
+  as `TEST_OUTPUT_PASS_EXIT_UNVERIFIED`, not a qualifying result. The repaired
+  wrapper preserves actual completion independently of stdout; a synthetic
+  command printing PASS and exiting 17 recorded both actual exit codes as 17
+  before the authorized fresh ordinary rerun. Synthetic terminal SHA-256 is
+  `62a0f78a55d491cac900480b30fe7746a6dab34e6e6ce9cf0098e9b638185aee`.
+  All four owned test/control PIDs are terminal. No live process was restarted.
+- Terra profiled only `TestFinalSemanticEvidenceBuildRenderAndArtifacts`
+  in the unchanged captured ordinary binary, in the package working directory,
+  GOMAXPROCS=24, parallel 4, count 1, inner 15/outer 16-minute bounds.
+  It passed from 09:39:41 to 09:41:44 UTC, elapsed 123.30 seconds, exit 0.
+  Raw log and CPU/memory profiles are sealed under
+  `/home/by/urnetwork/temp/sn-cZwYhy-evidence-profile-86FD8P`;
+  `PROFILE-MANIFEST.txt` SHA-256 is
+  `a2d9d623a8aa9c215fbebddab250f081b73320c952f26eef4162ca3d4e1b5027`.
+  Raw SHA-256 is
+  `fb16a8dacbb3d15fc5ebee2689103b13caa437cab8d97b1473a403d8677643fa`,
+  CPU profile SHA-256
+  `91cc810dd65c23957d8eead4c67a8226c35d10c432ec555e32f2e1ab13b0bd8e`,
+  memory profile SHA-256
+  `4dccd7dfab33b426bbf02085147833578a943616c4d51277a37cd59de75c028e`.
+  This is a diagnostic, not a release pass. The profile confirms repeated
+  SS58 decoding in the synthetic reader (about 14% of sampled CPU) and
+  repeated generation-list construction (1,874 MiB of flat allocations).
+  `finalRPCExchangeHashes` is only 2.67% of sampled CPU, so the timeout stack
+  alone would have misidentified the dominant work. The same profile exposes
+  repeated whole-plan copies in the production `recordPlan`/`record` path
+  (15,670 MiB cumulative allocations, not resident memory). Astra is preparing
+  exact-byte ownership/work-count regressions and repairs for these related
+  paths. Cumulative CPU/allocation totals overlap and are not additive elapsed
+  time or proof of future wall-clock savings.
+- The CPU's portable SHA-256 path is expected, not an identified service or
+  crypto configuration defect: the host reports Intel Xeon E5-2697 v2 with
+  24 logical cores, AVX but no AVX2/BMI2/SHA flags. The installed Go 1.26.6
+  `crypto/internal/fips140/sha256/sha256block_amd64.go` selects accelerated
+  blocks only with the corresponding runtime CPU capabilities. Read-only Go
+  settings show amd64/v1, no `purego` flag or experiment, and GOFIPS140=off.
+  Do not force unsupported instructions, weaken verification or change crypto
+  libraries to hide the cost. The profiled duplicate-work repair and bounded
+  independent-case scheduling retain portability on this host.
+- Real pre-fix performance regressions are preserved under
+  `/home/by/urnetwork/temp/sn-chain-replay-perf-1gOqvC`.
+  `hotkey-decode-red-ordinary.log` (SHA-256
+  `c1d79b9e108865e4b8a7f73eaf5bd1170321e809e82e7560450b5f79628c9766`)
+  fails because each of the three fixture surfaces decodes the same address
+  eight times instead of once; changed-byte/state/ownership controls pass.
+  `fleet-generation-copy-red-ordinary.log` (SHA-256
+  `8836e3d1c3e45c096c1cf4bd39eb9ecfdc35209188df0f1ac07187d7b549982d`)
+  also reproduces concurrent duplicate decoding, four generation-lookup
+  allocations where only three owned transcript buffers are required, and two
+  indexed-plan copies where no allocation is needed. In-place/replacement,
+  disappearance, path and caller-ownership controls pass. Two provenance
+  fields in that invocation used shortened filenames and were blank; retain
+  its sealed correction, `fleet-generation-copy-red-provenance-correction.log`
+  (SHA-256 `c2e5932987753ebe5f7a43bbf7bdc6379607c5c97ab6133d63989b57b16d3968`),
+  recording the exact unchanged source hashes. These are diagnostic REDs,
+  not release qualification. Astra's isolated repair and Terra GREEN follow-up
+  remain pending. All ten success/negative chain cases must remain when moved
+  through the existing four-worker join-all helper, with private readers and
+  unchanged rejection reasons.
 
 Current repair's closed raw records (all mode 0444):
 
@@ -1752,6 +2000,18 @@ Current repair's closed raw records (all mode 0444):
 | Corrected metadata-only repackage, exit 0 | `/tmp/urnetwork-sn-capture-metadata-repackage-NlUvck.log` | `4105b088b4b12441f61b8ebf2ac37837e420b9235c910664da77f7f84b55dd1a` |
 | Independent complete index/mode audit, exit 0 | `/tmp/urnetwork-sn-capture-metadata-final-audit-sepfeP.log` | `75a0ed15f34e069dcb830a24de3aabd97ab0a1be60b44110e8b881abadbebd8a` |
 | Complete 237-root ordinary, all 18 public cases pass | `/tmp/urnetwork-sn-postdigest-semantic-full237-ordinary-BBWB0k.log` | `2710e4745aeae16716f9c67c216ee4c6a0436171c658220dc9977fa28ee10232` |
+| Complete 237-root race, internal timeout after 236 roots/all 18 public cases | `/tmp/urnetwork-sn-postdigest-semantic-full237-race-zugmmG.log` | `c889980a679081eea74659db95830ab4b26a417d49aea97f37c4fc8700845600` |
+
+Parser records are owner-only, mode 0400, under
+`/home/by/urnetwork/temp/sn-proof-suffix-repro-jK6XWR`:
+
+| Record | Basename | SHA-256 |
+|---|---|---|
+| Signed-proof malformed-suffix pre-fix RED | `proof-suffix-red-ordinary.log` | `94449ca93e65497b8edaa82b7dd0e15a1a622a0404cb4c5bef1ce79a5e0710eb` |
+| First combined cut, partial compile failure, not a proof pass | `proof-yaml-combined-red-ordinary.log` | `f41ed3161d5baa6e7fbfc425f53c9e647945e4f716d9894637e44024ad307151` |
+| Corrected combined cut: proof GREEN, five YAML loaders RED | `proof-yaml-combined-red-corrected-ordinary.log` | `31aaf0560b73f81f98c8067cfc27d1897557297d70b50b2948f68a02645f67c6` |
+| Six-guard fixed ordinary, all 12 roots pass | `proof-yaml-fixed-green-ordinary.log` | `a00bc85e87c4848e64c9facd89ac38cdf2874bac321231039738de03606dec00` |
+| Six-guard fixed race, all 12 roots pass | `proof-yaml-fixed-green-race.log` | `02170a5f5305df08faf1a51e41720d25caed124b3200b59ff1442f9843ff4c01` |
 
 The helper's owner-only sealing regression records are
 `/home/by/urnetwork/temp/sn-capture-metadata-seal-regress-red-0PPNbo.log`
@@ -1869,7 +2129,8 @@ producer pass are separately recorded above.
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
 | Canonical semantic/replay selection, ordinary | current 237-root prequalification PASS, including all 18 public cases | ended 09:04:06 UTC, elapsed 266.65s; raw SHA-256 `2710e4745aeae16716f9c67c216ee4c6a0436171c658220dc9977fa28ee10232` |
-| Canonical semantic/replay selection, race | current 237-root run started at 09:04:58 UTC; not yet qualified | PID 3994661, raw `/tmp/urnetwork-sn-postdigest-semantic-full237-race-zugmmG.log`, inner deadline 09:29:58 UTC; prior 236-root timeout remains preserved, not waived |
+| Canonical semantic/replay selection, race | 237-root run FAILED at the internal 25-minute deadline; 236/237 roots and all 18 public cases passed | ended 09:30:00 UTC, exit 2, raw SHA-256 `c889980a679081eea74659db95830ab4b26a417d49aea97f37c4fc8700845600`; remaining BuildRenderAndArtifacts root under diagnosis; full repaired candidate pending |
+| JSON proof/five YAML EOF guards | deterministic RED, isolated 12-root and integrated 19-root ordinary/race GREEN | primary race ended 09:49:50 UTC, verified fresh ordinary 09:51:25 UTC; exact census 238 and explicit framing gates retained; full candidate gate remains separate |
 | Bounded worker, non-return and detached-cache regressions | focused ordinary/race pass | exact three roots, 0.59/8.51s; immutable records above |
 | Post-guard semantic static pin | repaired, focused ordinary/race pass | six roots in 0.64/7.39s; prior 07:37 UTC failure and exact corrective results preserved above |
 | Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
@@ -1881,14 +2142,14 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | digest/fleet repair committed; deterministic pre-fix RED and focused ordinary/race GREEN, complete qualification in progress | pushed `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`; exact census 237; later handoff-only edits do not qualify a different runtime source |
+| SN runtime candidate | digest/fleet repair committed; complete ordinary PASS, race FAILED; parser integration and remaining replay performance repair in progress | pushed runtime `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`, documentation checkpoint `9fa5109`; captured census 237; all subsequent source must qualify separately |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
-| Connect candidate commit | affected auth/TCP and generated-policy ordinary/race pass; frozen unsharded certificates pending | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; aggregate still requires default ordinary/race plus fixed-order race with 30-minute deadlines |
+| Connect candidate commit | affected focused suites and complete default-order ordinary/race pass; fixed-shuffle race in progress | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s (ended 09:38:50 UTC); fixed-shuffle PID 4055806, frozen aggregate pending |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
 | Other candidate repository commits | all twelve clean/equal at the post-seal fetch; frozen gates pending | 08:57:20 UTC inventory SHA-256 `ddb9dd16cf0ada99a8772ad5733c5c6d9591145113fc2489b30b35079a7df8d2`; this handoff edit is later; fresh lock/source fence still required |
 | Release-lock hash | source-stale tracked lock; current clean-build preview unapplied | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; clean `140b7ca` preview `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`; eventual apply requires a fresh executable of exact clean pushed HEAD |
 | Preliminary doctor | 61/64 pass; expected source-lock hard failure and two shared-RPC soft failures | clean `140b7ca` report generated 08:37:23 UTC, SHA-256 `dfba859be85a25c9a928fd4e5f77b105d86581160b28f3a85410760257377cf8`; fresh post-gate Ready doctor pending |
-| Test execution capacity | both Terra-max agents recovered | original test/repair model policy retained; full237 and independent helper controls executing in parallel |
+| Test execution capacity | Terra max executes tests; Astra max diagnoses and repairs | primary parser lane complete, isolated performance repair and independent Connect fixed-shuffle race proceed in parallel; all former full237 PIDs are terminal |
 | Validator evidence commitment scope | pending user choice; launch handoff paused | current section 11.1 proofs are off-chain and not transitively anchored by the payout-artifact hash or native weights |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
 | Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |

@@ -22,8 +22,11 @@ const releaseConnectPolicySelector = "^Test(BlockerGeneratedTables|BlockerDefaul
 
 const releaseConnectP2PSignalSelector = "^Test(WebRtc|WebRtcMessageRoundTrip|P2pTransportAutoSelectsFastPathForCapablePeer|SignalPipeDropsBeforeDestinationRegistration|DelayedSignalPipe(ResolvesDestinationAtDispatch|DropsMissingDestinationAtDispatch|CancellationReturnsOwnedFrames|FullQueueDoesNotBlockDispatch|CancellationUnblocksCapacitySender)|MatchExpectedUnorderedP2pMessages(AcceptsPermutation|RejectsInvalidContent))$"
 
+const releaseParserFramingSelector = "^Test((Policy|ReleaseConfig|ClaimDaemonConfig|StrictYAML|RenderedValidatorPolicy)RejectsMalformedTrailingYAML|FinalSemanticPathProofArtifact(Count|RejectsMalformedTrailingJSON)|ParseFleetManifestStrictCanonicalRoundTrip|PolicyStrictAndFailClosed|LoadReleaseConfigStrictAndNormalizesOperatorSecrets|ClaimDaemonConfigStrictAndPortable|StrictYAMLRejectsUnknownAndMultipleDocuments|ReleaseGatesPinProviderAndTransportRegressions)$"
+
 // Both gates certify the real modules whose upstream changes affect traffic,
-// token lifetime, and per-provider accounting before an operator can publish.
+// token lifetime, per-provider accounting, and strict input framing before an
+// operator can publish.
 func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 	groups := []struct {
 		variable string
@@ -36,6 +39,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 		{variable: "token_transport_tests", selector: "^Test(ApiTokenManager|DeviceRemoteRpcPublicationWakesOnlyOutstandingRefresh|ApiCloseAndWaitJoinsRefreshWorker|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout)", pkg: "."},
 		{variable: "provider_input_tests", selector: "^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)", pkg: "./controller"},
 		{variable: "test_env_fail_fast_tests", selector: "^Test(DefaultTestEnvReleaseFailFast|RunRetriesUntilPass|RunFailsAfterExhaustion|RunReportsPanicOriginAfterExhaustion)", pkg: "."},
+		{variable: "parser_framing_tests", selector: releaseParserFramingSelector, pkg: "./protocol ./miner ./validator ./sim-testnet"},
 	}
 	for _, path := range []string{"../scripts/test-release-1.0-producer-gate.sh", "../scripts/test-release-1.0-local.sh"} {
 		value, err := os.ReadFile(path)
@@ -82,6 +86,24 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 			t.Fatalf("%s: %v", source.path, err)
 		}
 	}
+	// Require each affected decoder's regression independently of the gate's
+	// selectable names; the dedicated harness source includes both entry points.
+	for _, source := range []struct {
+		path, required string
+	}{
+		{path: "../protocol/policy_test.go", required: "^TestPolicyRejectsMalformedTrailingYAML$"},
+		{path: "../validator/config_test.go", required: "^TestReleaseConfigRejectsMalformedTrailingYAML$"},
+		{path: "../miner/claim_daemon_test.go", required: "^TestClaimDaemonConfigRejectsMalformedTrailingYAML$"},
+		{path: "trailing_yaml_test.go", required: "^Test"},
+	} {
+		value, err := os.ReadFile(source.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyReleaseSourceTestCoverage(releaseParserFramingSelector, source.required, []string{string(value)}); err != nil {
+			t.Fatalf("%s: %v", source.path, err)
+		}
+	}
 }
 
 const releaseAdversarialSelector = "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison|Runtime454)"
@@ -90,7 +112,7 @@ const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContex
 
 const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
 
-const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemanticFixture|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifactCount|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
+const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemanticFixture|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifact|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
 
 // Extracts the exact sorted top-level test declarations selected from source.
 func releaseSelectedTestDeclarations(selector string, sources []string) ([]string, error) {
@@ -402,6 +424,7 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 		"TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution",
 		"TestFinalSemanticEvidenceFailsClosed",
 		"TestFinalSemanticPathProofArtifactCount",
+		"TestFinalSemanticPathProofArtifactRejectsMalformedTrailingJSON",
 		"TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery",
 		"TestFinalSemanticDishonestDepositDecisionsAndPublicReplay",
 		"TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas",
@@ -760,6 +783,7 @@ func TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups(t *testing.T) {
 		{pattern: "final_semantic_registration_test.go", required: "^Test"},
 		{pattern: "final_semantic_source_builder_test.go", required: "^TestFinalSemanticBuilder"},
 		{pattern: "final_semantic_evidence_test.go", required: "^TestFinalSemanticArtifactVerificationCache"},
+		{pattern: "final_semantic_path_proof_test.go", required: "^Test"},
 	} {
 		paths, err := filepath.Glob(group.pattern)
 		if err != nil || len(paths) == 0 {

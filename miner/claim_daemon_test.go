@@ -48,6 +48,50 @@ func TestClaimDaemonConfigStrictAndPortable(t *testing.T) {
 	}
 }
 
+// The local parser must consume all input before returning a runnable config.
+func TestClaimDaemonConfigRejectsMalformedTrailingYAML(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "synthetic.key")
+	if err := os.WriteFile(keyPath, []byte("synthetic parser fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := ClaimDaemonConfig{SchemaVersion: 1, Release: "1.0", APIURL: "http://operator.example", RPC: []string{"http://rpc.example"}, KeyFile: keyPath, StateDir: filepath.Join(dir, "state"), PollSeconds: 5, LookbackEpochs: 3}
+	fixture, err := yaml.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		name, suffix, wantError string
+	}{
+		{name: "valid"},
+		{name: "comment", suffix: "\n# permitted trailing comment\n"},
+		{name: "explicit document end", suffix: "\n...\n"},
+		{name: "second document", suffix: "\n---\n{}\n", wantError: "multiple YAML documents"},
+		{name: "incomplete mapping", suffix: "\n---\n{\n", wantError: "trailing YAML"},
+		{name: "incomplete sequence", suffix: "\n---\n[unterminated\n", wantError: "trailing YAML"},
+		{name: "invalid escape", suffix: "\n---\n\"\\q\"\n", wantError: "unknown escape"},
+	} {
+		path := filepath.Join(t.TempDir(), "claim.yml")
+		wire := append(append([]byte(nil), fixture...), testCase.suffix...)
+		if err := os.WriteFile(path, wire, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := LoadClaimDaemonConfig(path)
+		if testCase.wantError != "" {
+			if err == nil || !strings.Contains(err.Error(), testCase.wantError) || got != nil {
+				t.Errorf("%s: config present=%t error=%v, want %q", testCase.name, got != nil, err, testCase.wantError)
+			}
+			continue
+		}
+		if err != nil || got == nil {
+			t.Fatalf("%s: valid claim config rejected: %v", testCase.name, err)
+		}
+		if got.KeyFile != config.KeyFile || got.StateDir != config.StateDir || got.PollSeconds != config.PollSeconds {
+			t.Errorf("%s: valid claim config paths or polling changed", testCase.name)
+		}
+	}
+}
+
 func TestClaimQueueDiscoveryAndCrashRecoveryBoundary(t *testing.T) {
 	store, err := newClaimQueueStore(filepath.Join(t.TempDir(), "state"))
 	if err != nil {
