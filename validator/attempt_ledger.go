@@ -623,6 +623,11 @@ func validateAttemptLifecycleRecord(pending map[connect.Id]AttemptRecord, termin
 			return fmt.Errorf("attempt record %d skips its first pending checkpoint", index)
 		}
 		if exists {
+			// Every checkpoint retains the first admission view, not merely
+			// the view of the last pending record before the terminal.
+			if record.Boundary != prior.Boundary || record.M != prior.M || !bytes.Equal(record.ServerNonce, prior.ServerNonce) {
+				return fmt.Errorf("attempt record %d changes its pending attempt context", index)
+			}
 			if len(record.Assignments) != len(prior.Assignments)+1 {
 				return fmt.Errorf("attempt record %d does not extend its pending checkpoint", index)
 			}
