@@ -1,35 +1,43 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 16:22 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 16:39 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
-Latest progress: metadata/header candidate passes all24 normal/race roots and
-is integrated locally as c9f066a, after pushed checkpoint a7be184. All138
+Latest progress: metadata/header candidate passes all24 normal/race roots;
+bounded writer passes all46 and full replay passes all55 in both modes. These
+slices are integrated as c9f066a, 8e9d0fc and 2d179bd, following pushed docs
+checkpoint 8fb4fa7. All138
 disk-ledger validator compatibility roots now pass normally and under race.
 The simulator parity root passes normally but times out at its unchanged
 three-minute race cap during full-fixture construction, before durable parity
-work; diagnosis/profile and a byte/population-preserving repair are required.
+work. Its bounded profile is complete; a new composition combines the existing
+verification-reuse repairs and disk API before a changed-source rerun.
 The shared block-boundary repair reproduces eight causal failures and then
-passes all22 normal/race roots. Wider validator143 and semantic281 are now
-running, retaining all274 mandatory semantic roots, seven adjacent collector
-controls, and original deadlines. Earlier launcher/selector observer failures
+passes all22 normal/race roots. Wider validator143 passes both modes;
+semantic281 passes normally and race is still running, retaining all274
+mandatory semantic roots, seven adjacent collector controls, and original
+deadlines. Earlier launcher/selector observer failures
 remain recorded separately from product results.
 
-Compact header/descriptor code is qualified but not activated. Full bounded
-replay has three reproduced/repaired ownership/cancellation defects and eight
-adjacent controls; corrected exact55 qualification is authorized after a
-harness-only two-name selector omission. The bounded stream writer is written,
-independently reviewed, and authorized for exact46 normal/race (24 existing plus
-22 new deterministic roots). Full real-ledger sealer integration, bounded aggregates, public
+Compact header/descriptor, writer and replay code is qualified in focused
+slices but not activated. Replay's three causal ownership/cancellation tests
+and eight adjacent controls pass unchanged after repair. Full real-ledger
+sealer integration, bounded aggregates, public
 collector integration, authenticated activation, on-chain evidence publication
 and aggregate capacity remain launch requirements. Namespace review also found
 that rendering can mistake a disk ledger without legacy JSONL for unsigned
 state or mutate operator artifacts before refusal; classifier protection and
-renderer/outer-entry preflight qualification remain mandatory. A separate
+the actual renderer mutation is now reproduced and its repair is in exact18
+normal/race qualification. Outer-entry regressions remain mandatory. A separate
 policy-depth admission gap requires real-signed engine regressions plus checks
 on every ordinary/failed/terminal record against authenticated policy depth.
+Six genuine-signed engine regressions are staged for causal testing. The
+adjacent key-custody audit also found unsafe seed/VPK read-miss creation paths;
+two deterministic temporary-file regressions plus seven unchanged controls
+are staged. Concurrent creation and private-file acquisition checks remain
+required; no real wallet is a test fixture.
 These safety repairs must precede activation. Section 12 of the handoff
 records exact sources, current holds and qualification artifacts.
 
