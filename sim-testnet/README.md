@@ -33,6 +33,17 @@ record and wait for the assigned model to become available or an explicit
 user-approved reassignment; an agent error does not authorize a silent model
 substitution, duplicate test process, or bypassed gate.
 
+For local qualification captures, freeze the runner before launch and invoke
+`bash scripts/run-qualification-capture.sh SOURCE_ROOT SOURCE_MANIFEST FROZEN_RUNNER`
+with three absolute paths. The wrapper checks relative source inventory entries
+from the declared source root and explicitly runs the frozen body with Bash;
+it does not rely on the execute bit of a newly written capture script. The body
+still owns separate compile/list/execute budgets, exact selector/census checks,
+immediate source/runtime/external fences, and raw exit/index capture. Include
+the wrapper's bytes in the execution provenance. Never edit a live runner or
+change a running capture to this wrapper. Preserve failed prelaunch records as
+observer failures, not product test failures or qualifying passes.
+
 Both release gates export `WARP_TEST_ENV_FAIL_FAST=1` before running tests.
 This makes the server's default test environment fail on its first assertion,
 fatal error, or panic instead of accepting a later successful retry. Abandoned
