@@ -9,6 +9,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/quic-go/quic-go v0.61.0
+	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/urnetwork/connect v0.0.0
 	github.com/urnetwork/sdk v0.0.0
 	github.com/urnetwork/server v0.0.0
@@ -52,6 +53,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
