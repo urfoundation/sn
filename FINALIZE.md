@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 08:29 UTC. The complete fleet/history fixture and miner/validator
+2026-09-05 09:06 UTC. The complete fleet/history fixture and miner/validator
 ordinary/race checks pass; the full simulator run exposed repaired evidence and
 deposit-validation gaps whose focused reruns are being completed. Source
 integration and core per-client payout attribution passed focused ordinary/race
@@ -19,14 +19,26 @@ URI bytes and runs the five independent fleet-projection mutations through the
 existing four-worker helper. Each reference retains its own size/hash checks,
 and every real replay remains. Deterministic ownership/work-count/error-order
 controls extend the existing cache regression; its newly pinned inclusion
-widens the census to 237 with all prior 236 retained. This follow-up has only
-formatting/diff checks and read-only review, not a compile or test pass.
+widens the census to 237 with all prior 236 retained. This repair is committed,
+pulled and pushed as SN `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`.
+The isolated pre-fix work-count regression fails deterministically as required;
+focused ordinary and 14-root race qualification pass. Full 237-root ordinary
+passed at 09:04:06 UTC in 266.65 seconds with all 18 public cases complete.
+The same immutable capture's full race run started at 09:04:58 UTC; it is not
+yet qualified. Local capture-metadata newline/scoping failures were
+repaired and regression-tested without altering sealed failures or recompiling
+those binaries; deterministic permission/hash failure controls also pass.
+Complete current-source race qualification remains pending.
 All coverage and the 15/25-minute deadlines remain required. Both Terra-max
-test agents also reported a usage-limit error; their existing host process was
-observed to its actual terminal result, not restarted or silently reassigned.
-The clean checkpoint's non-applying doctor passed 61/64 checks: only the
+agents recovered from their earlier usage-limit errors; there was no model
+substitution or restart based on an observer error. The 08:57 UTC fetch-only
+inventory found all twelve repositories clean and equal to upstream before
+this documentation update. The clean checkpoint's non-applying doctor passed
+61/64 checks: only the
 expected source-stale lock is a hard failure; shared RPC/provider independence
-accounts for the two soft failures. The candidate lock has not been applied.
+accounts for the two soft failures. The clean `140b7ca` candidate-lock preview
+is `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`;
+it has not been applied, and eventual apply requires a fresh exact-HEAD build.
 Source freeze, both final gates, both live acceptance phases and FINAL.md remain.
 Historical results below are not approval for the current candidate.
 

@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 08:29 UTC before the final source freeze. Refresh every item marked
+2026-09-05 09:06 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -22,21 +22,20 @@ model assignment never weakens a gate or expands testnet write authority.
 
 Launch blockers at this checkpoint:
 
-- The full 236-root ordinary qualification passed, including all 18 public
-  replay cases. The corresponding race run actually terminated at its
-  25-minute deadline at 08:16:53 UTC with 235/236 roots passed and 16/18 public
-  replay cases completed. It is a failed qualification, not a live process or
-  an observation timeout. Astra is investigating the remaining public replay
-  critical path. The resulting owned-byte digest/fleet-mutation repair is
-  implemented but unqualified; its widened census contains all prior 236
-  roots plus one existing cache regression, for 237. Section 12 preserves
-  the failed run, diagnosis and exact remaining test sequence.
-- Both Terra-max test agents reported a usage-limit error around 08:14 UTC.
-  Their already-running host process continued independently to the terminal
-  failure above. Restore Terra-max execution capacity, or obtain an explicit
-  user-approved assignment change, before launching new tests or gates. Do
-  not silently substitute a different test model or restart the failed run
-  unchanged. Source inspection, failure diagnosis and handoff work may proceed.
+- The pre-repair 236-root ordinary qualification passed, including all 18
+  public replay cases; its race counterpart failed at the 25-minute deadline
+  at 08:16:53 UTC with 235/236 roots and 16/18 public cases completed. The
+  owned-byte digest/fleet-mutation repair is committed and pushed as
+  `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`. Its deterministic pre-fix RED
+  and focused ordinary/race GREEN results are now recorded in section 12.
+  The exact 237-root ordinary run passed at 09:04:06 UTC, including all 18
+  public cases, in 266.65 seconds. The same capture's complete race run began
+  at 09:04:58 UTC with its unchanged 25-minute deadline. All 237 roots and all
+  18 public cases remain mandatory. Current-source race qualification, final
+  lock/freeze and release gates remain outstanding.
+- Both Terra-max agents recovered from their earlier usage-limit errors.
+  Test execution remains Terra max and diagnosis/repair remains Astra max;
+  no assignment change or duplicate simulator test process was needed.
 - The user's request for "validator evidence stored in the contract pool"
   needs a launch-scope decision. WHITEPAPER.md section 11.1 explicitly stores
   completed-trail/statistics artifacts in the server API and MinIO. The active
@@ -175,14 +174,14 @@ These facts are safe to use for continuation. Re-read them before mutation.
 
 FREEZE-UPDATE repository revisions:
 
-The first-draft table is retained below as historical provenance. The current
-source candidate and dependency snapshot was fetched again on 2026-09-05
-07:46 UTC, with no additional upstream changes since 05:52. Clean/equal status
-applies only to the rows explicitly marked so:
+The first-draft table is retained below as historical provenance. A fresh
+fetch-only inventory at 2026-09-05 08:57 UTC found all twelve repositories
+clean, with every HEAD equal to its fetched upstream. This snapshot precedes
+the present documentation-only handoff update; it is not a final source fence.
 
 | Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | 5696537320ad7c16bd13210b93ed62ee56820349 | recorded pushed checkpoint: complete 236-root ordinary/all 18 public cases pass, race timed out with 235/236 roots and 16/18 cases completed; subsequent 237-root digest/fleet repair is implemented but unqualified; inspect HEAD for the later work checkpoint |
+| sn | main | 140b7ca3ffdb513ea489031e51b8f1b27e7b6e04 | clean/equal at the 08:57 fetch; digest/fleet repair has deterministic pre-fix RED, focused ordinary/race GREEN and complete 237-root ordinary PASS; race started at 09:04:58 UTC, final gates pending; later documentation-only commits do not change captured Go/test/census bytes |
 | server | main | b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc | clean/equal after the 06:47 checkpoint; allocation, adjacent provider-reporting/query-plan, retention and strict-test repairs pass focused ordinary/race; frozen gate pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
@@ -1545,10 +1544,10 @@ above; all results are prequalification until committed and release-locked:
   observed terminal process disappearance and the complete exit footer. A
   cross-agent tool-session lookup returned "Unknown process id" before the
   host process finished; that observer error was not used to restart it.
-  The raw race log is now read-only (0444). No replacement test, producer gate
-  or live campaign was launched. Astra owns the bounded timeout diagnosis;
-  Terra execution capacity and the separate evidence-scope decision remain
-  unresolved.
+  The raw race log is read-only (0444). No replacement test or live campaign
+  was launched while execution capacity was unavailable. Both Terra agents
+  subsequently recovered and ran the follow-up qualification recorded below;
+  the separate evidence-scope decision remains unresolved.
 - The timeout stack's active goroutine 4794 was decoding the 23.6 MB semantic
   JSON in `validateFinalSemanticOutputFiles`; the callback workers were
   correctly joined, not deadlocked. The public root began 15m23s into the
@@ -1567,8 +1566,9 @@ above; all results are prequalification until committed and release-locked:
   cache key is unchanged. Deterministic counters require two loads/two hashes
   for references A,A,B,B, and controls cover changed same-URI claims,
   distinct-URI aliases, reused loader buffers and cancellation/error order.
-  No new compile, RED, GREEN or race run has executed for this repair. Formatting,
-  diff checks and read-only code review are not qualification.
+  The deterministic RED and focused ordinary/race GREEN results for the
+  committed repair are recorded below. Its complete 237-root qualification
+  remains separate; formatting and static review are not test passes.
 - The affected existing cache regression predates the hand-written semantic
   selector and was omitted from it. The selector, its exact constant, required
   name, independent source-group pin and canonical census now include
@@ -1578,9 +1578,8 @@ above; all results are prequalification until committed and release-locked:
   Nearby fleet-cache and historical loader/alias/tamper roots are already
   selected; unrelated role/campaign filesystem caches remain covered by the
   complete aggregate ordinary/race package gate.
-- Once Terra-max capacity is available (or the user explicitly reassigns test
-  execution), the exact remaining prequalification sequence is:
-  1. Capture the repaired source and use an isolated temporary checkout under
+- The repair's prequalification sequence and current boundary are:
+  1. Completed: use an isolated temporary checkout under
      `/home/by/urnetwork/temp/` to reproduce the cache root's ordinary-only
      pre-fix RED. The inverse template at
      `/tmp/urnetwork-final-semantic-digest-prememoization.patch` restores only
@@ -1596,9 +1595,11 @@ above; all results are prequalification until committed and release-locked:
      the pre-memoization source must hash to
      `2d82bdbeede2d0b4e0f7ec96a9bb8677a75248e627241ee606861f0575816ced`.
      Expected deterministic failure: four digest calls, not two, for A,A,B,B.
-  2. Run the repaired cache, bounded-worker, historical-census and semantic
-     pin/census checks normally and under race; preserve every actual result.
-  3. Run the complete exact compiled 237-root census normally and under race
+  2. Completed: repaired cache, bounded-worker, historical-census and semantic
+     pin/census checks passed normally and under race. The corrected quick
+     race selection has 14 roots; preserve the canceled broader attempt too.
+  3. Ordinary passed; race in progress: run the complete exact compiled
+     237-root census normally and under race
      from `/home/by/urnetwork/sn/sim-testnet`, GOMAXPROCS=24, `-parallel=4`,
      `-count=1`, unchanged 15/25-minute deadlines. Require all 18 public-case
      completions. The full selector includes the repaired fleet-projection
@@ -1606,6 +1607,162 @@ above; all results are prequalification until committed and release-locked:
      it. A small focused pass cannot substitute for this complete rerun.
   4. Only after all of those pass and the evidence-scope question is resolved,
      continue the fresh clean-build lock/freeze/producer/aggregate workflow.
+- SN `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04` was committed, pulled and
+  pushed at 08:31 UTC. The ordinary-only RED ran in
+  `/home/by/urnetwork/temp/sn-red-digest-DRiUdv`, leaving the primary tree
+  untouched. It exited 1 at 08:36:11 UTC with the exact counter mismatch
+  `loads=2 hashes=4 owned=2`, where the regression requires `2/2/2`.
+  The repaired quick ordinary selection passed 11 roots in 40.107 package
+  seconds (76.41 elapsed). It inadvertently included the expensive historical
+  upgrade-reader fixture; that successful result is retained. Before any test
+  executed in the matching broad quick race process, root authorized stopping
+  its verified process group to replace that redundant fixture with the four
+  tiny historical-artifact-census controls. The canceled run exited 143 after
+  signal 15; it is neither a pass nor a test failure. GNU time misleadingly
+  printed `exit_status=0` for that signal termination: use the actual runner
+  exit and signal marker, never that metric alone. The four historical census
+  controls passed ordinary in 8.82 elapsed seconds, and the resulting exact
+  14-root quick race selection passed in 15.745 package seconds (25.81 elapsed)
+  at 08:44:16 UTC with no race report. The historical upgrade-reader remains
+  mandatory in the full 237-root selector; no release coverage was removed.
+- The two newly compiled binaries were correct, but local capture packaging
+  initially failed independently of the simulator. The first sealed capture,
+  `/home/by/urnetwork/temp/sn-postdigest-public-capture-9hTdWl`, concatenated
+  `semantic_census_lines=237` with the selector because the count source lacked
+  a final newline. Its `capture_ok=1` did not validate the malformed metadata.
+  A first metadata-only repackage at
+  `/home/by/urnetwork/temp/sn-postdigest-public-capture-parseable-HRqsoV`
+  correctly recorded `capture_ok=0`: an inline Bash helper overwrote the
+  caller's loop label, corrupting comparison paths. Both captures are preserved
+  unchanged and are nonqualifying; neither defect justifies reusing an
+  unverified manifest or rewriting sealed historical records.
+- Astra replaced the inline wrapper with the persistent local helper
+  `/home/by/urnetwork/temp/sn-capture-metadata.sh`. Scalar writers own their
+  newlines, function variables are local, and a strict key schema rejects
+  missing, duplicate, unknown, unterminated, concatenated or failed-status
+  metadata. Terra's deterministic regression rejected the original manifest,
+  accepted the corrected one, and passed the malformed-input and caller-label
+  controls. Its sealed regression directory is
+  `/home/by/urnetwork/temp/sn-capture-metadata-regression-UIuECf`, index SHA-256
+  `6a32915a96144e18f64ff56802b9d96ac2d97082371dec5a4865356af8c69d07`.
+  The successful repackage reused the exact compiled binaries without a
+  recompile. Astra's final adjacent audit added explicit propagation of chmod
+  and per-file hash errors; helper SHA-256 after that change was
+  `c6720cc09b438a196d99aef13b93f63eda91e190e1d208f392c85bf82f292fee`.
+  No such sealing error occurred in the accepted capture. Separate deterministic
+  fault injection then found that both final index and manifest digest reports
+  ignored a failing command substitution and could return success with an empty
+  digest. Terra reproduced both failures before Astra added one shared explicit
+  digest-status guard. All record/binary/index/directory chmod, mid-index hash,
+  final index/manifest hash failures and the successful exact-index/mode control
+  now pass in 0.41 seconds. This final helper SHA-256 is
+  `d1f5c57fa502e66e463d0d8653a2708f6beb400b7a874a81ee1045a6b1af866f`.
+  These tiny local-helper tests did not alter, repackage or restart the accepted
+  capture or the running simulator qualification.
+- A later request to rerun the original `regress` mode after these documentation
+  edits used the wrong validation scope: that mode also revalidates the live
+  checkout against the capture-time source snapshot. It correctly exited 1
+  because only `FINALIZE-COMPLETE.md` and `FINALIZE.md` had changed, reporting
+  current-status, unstaged-diff and source-hash mismatches. Its manifest schema,
+  original binary/census checks and final sealing all passed. The printed
+  `caller_*_expected_failure=FAIL` lines are intentional negative controls,
+  not the cause. Preserve this freshness refusal; do not weaken the fence,
+  reset documentation, recapture, or restart qualification to make it green.
+  The clean-source schema PASS and final isolated sealing PASS above remain
+  valid for their respective scopes. The owner-only raw record is
+  `/home/by/urnetwork/temp/sn-capture-metadata-regress-final-h4ECOo.log`, SHA-256
+  `58111dc936109f2aa0ebb142049c306df73b3a1dea0eeb9aaeba296b159208a4`;
+  its detailed failed acceptance is preserved under
+  `/home/by/urnetwork/temp/sn-capture-metadata-regression-QEyPaC`.
+- The accepted immutable capture is
+  `/home/by/urnetwork/temp/sn-postdigest-public-capture-verified-cZwYhy`:
+  manifest SHA-256
+  `add00e89d6029ec65faf734b18d94581d192c5b9e87241e390508ed071c1bc7a`,
+  complete relative file-index SHA-256
+  `d676aa98478de055e6da45c1c8c8480d1b7c40c051f7b19c709ec6636f207142`.
+  The ordinary/race binary SHA-256 values are
+  `755121013f358976f599ab0a5eb0800519f30fd8ca08ef59aaedb55782223bb6`
+  and `ddef0a881c6122ec7f7d895d7c1234b149885d64d913ffe67d5441ce27d1a429`.
+  Each enumerates the same exact 237-root census, SHA-256
+  `fa80f354972c8a462004e09e1e942f6cca69cad2f3b0dc8a9b5c1c128b185fbc`.
+  Source snapshots matched clean SN `140b7ca` and server `b12af6b3` before and
+  after capture. Terra independently checked the complete index against all
+  actual files (no missing or extra file), directory/binaries mode 0555 and
+  all other records mode 0444. Full ordinary ran from 08:59:39 to 09:04:06 UTC
+  and exited 0: 237/237 exact canonical roots and 18/18 unique public cases
+  passed, elapsed 266.65 seconds, peak RSS 2,333,244 KiB, no failure or race
+  marker. Its sealed raw record is listed below. Full race started at
+  09:04:58 UTC, PID 3994661, raw
+  `/tmp/urnetwork-sn-postdigest-semantic-full237-race-zugmmG.log`.
+  That PID was independently live at 09:05 UTC; recheck it rather than treating
+  this document as liveness evidence. The inner deadline is 09:29:58 UTC and
+  outer timeout one minute later. This race log is not sealed or qualifying
+  until terminal completion. The only concurrent primary-source edits are the
+  explicitly recorded handoff documents, not Go, test, selector or census bytes.
+- The post-seal fetch-only inventory at 08:57:20 UTC confirms all twelve
+  repositories were clean and exactly equal to their freshly fetched
+  upstreams, with no pull, merge or checkout. Its immutable log is
+  `/home/by/urnetwork/temp/sn-postseal-origin-inventory-20260905T085720Z-wOVr0I.log`,
+  SHA-256 `ddb9dd16cf0ada99a8772ad5733c5c6d9591145113fc2489b30b35079a7df8d2`.
+  This inventory is not the later source/lock fence or permission to apply.
+- A clean trimpath/buildvcs executable of `140b7ca`, with
+  `vcs.modified=false`, is preserved at
+  `/home/by/urnetwork/temp/sn-release-lock-checkpoint-F6uq5F/sim-testnet`,
+  SHA-256 `10765a6f957e38fbf9d0707870997b5d56c4cc6de0653d226c88e10f7a2955e5`.
+  Its unapplied `candidate.lock.yml` has SHA-256
+  `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`.
+  Only the expected SN, server, Connect, SDK and protocol source hashes differ
+  from the tracked lock; runtime/EVM artifacts are unchanged. Unlike the older
+  `0ab39293...` preview, this preview includes the production digest change.
+  It is not applied. A later documentation-only commit still requires a fresh
+  clean executable of the exact pushed HEAD before eventual lock application.
+- The clean `140b7ca` non-applying doctor, generated at 08:37:23 UTC,
+  again passed 61/64 checks. The sole hard failure was the expected stale,
+  unapplied source lock (server source mismatch in this run); the two soft
+  failures identify shared provider and physical Subtensor-peer independence.
+  Every independent host, MinIO, RPC/runtime, wallet/budget and attempt-state
+  check passed. The owner-only report is
+  `/home/by/urnetwork/temp/sn-checkpoint-doctor-140b7ca-q4X1hl/doctor-report.json`,
+  SHA-256 `dfba859be85a25c9a928fd4e5f77b105d86581160b28f3a85410760257377cf8`.
+  It is not a Ready verdict; repeat doctor and both approval-identical plans
+  after the final gates. No new shared-service outage is evidenced by this run.
+- To retain closed local evidence beyond temporary-directory cleanup, root
+  copied and independently byte/hash-verified 49 exact `/tmp` records into
+  `/home/by/urnetwork/temp/sn-qualification-records-zq3xbq` at 08:53:05 UTC.
+  A source `/tmp/name` maps to `tmp/name` inside this owner-only sealed archive.
+  Its `SHA256SUMS` SHA-256 is
+  `a18b922911b6a012deeb934ae3457688df796f2bb18c66cd610a6541eefb999a`;
+  `sources.txt` SHA-256 is
+  `2a565dbe6e2af7764b7f66974f2a6d6dbde8bdfa8cda5cb57d8dd882c6d68c10`.
+  This archive preserves original logs, not a public publication or test pass.
+  Later metadata/full-237 records are not in that earlier snapshot; retain
+  them separately without editing the sealed archive or original failures.
+
+Current repair's closed raw records (all mode 0444):
+
+| Record | Path | SHA-256 |
+|---|---|---|
+| Isolated pre-memoization RED, expected exit 1 | `/tmp/urnetwork-sn-isolated-digest-red-93DdxQ.log` | `a6dbe9fb39b38dd4e32597d0dba7c24b3bd14d4e0b275244e858546bed8ac63b` |
+| Quick ordinary, 11 roots pass | `/tmp/urnetwork-sn-postdigest-quick-ordinary-8cUlya.log` | `c54665c9ceec10d2ee5cfcf65a95479aaaddbb5ba39f056bedb91926b340cdf5` |
+| Broad quick race canceled before tests, exit 143 | `/tmp/urnetwork-sn-postdigest-quick-race-Ly0SoU.log` | `0d153e9f1ca99d285c72bf82113358eba792101cdf08e72c45a6fd731c32491e` |
+| Explicit cancellation record | `/tmp/urnetwork-sn-postdigest-quick-race-canceled-Dj94Nt.txt` | `9003332b6064904a1b4419f4e4785b7fbd919ff3df4b7f11e214f557c46421ca` |
+| Historical census ordinary, four roots pass | `/tmp/urnetwork-sn-postdigest-historical-census-ordinary-SzH5NI.log` | `abc7156d4572897730980e1121e5bd8415f533af97666efc24a0f5fb47ca9025` |
+| Adjusted quick race, 14 roots pass | `/tmp/urnetwork-sn-postdigest-quick-adjusted-race-wBXxdJ.log` | `ce417c036a05a8255aaf6644845b63a430bdb0874de681997b60af164785bb4f` |
+| Metadata schema/scoping regressions pass | `/tmp/urnetwork-sn-capture-metadata-regress-DOnAHH.log` | `2fd2e16b5501780453bd2f435d905003947ba4fef9b6658e3b1ce4162d772306` |
+| Corrected metadata-only repackage, exit 0 | `/tmp/urnetwork-sn-capture-metadata-repackage-NlUvck.log` | `4105b088b4b12441f61b8ebf2ac37837e420b9235c910664da77f7f84b55dd1a` |
+| Independent complete index/mode audit, exit 0 | `/tmp/urnetwork-sn-capture-metadata-final-audit-sepfeP.log` | `75a0ed15f34e069dcb830a24de3aabd97ab0a1be60b44110e8b881abadbebd8a` |
+| Complete 237-root ordinary, all 18 public cases pass | `/tmp/urnetwork-sn-postdigest-semantic-full237-ordinary-BBWB0k.log` | `2710e4745aeae16716f9c67c216ee4c6a0436171c658220dc9977fa28ee10232` |
+
+The helper's owner-only sealing regression records are
+`/home/by/urnetwork/temp/sn-capture-metadata-seal-regress-red-0PPNbo.log`
+(expected RED exit 1, SHA-256
+`0c7b0815741b027a9ed7c5bb100803abe36577d3cb7510bb717f020b02490398`)
+and `/home/by/urnetwork/temp/sn-capture-metadata-seal-regress-green-xMuhC6.log`
+(GREEN exit 0, SHA-256
+`c412b27b9e57893b2275b77d2920099d828a7167905fbb0ce61da6792097972d`).
+
+- Historical pre-repair clean executable/doctor observations follow. They do
+  not represent the digest repair and must not be applied or called current.
 - A clean trimpath/buildvcs executable of checkpoint `5696537`, with
   `vcs.modified=false`, is preserved at
   `/home/by/urnetwork/temp/sn-release-lock-checkpoint-ejN9owMT/sim-testnet`,
@@ -1711,8 +1868,8 @@ producer pass are separately recorded above.
 | Item | Result | UTC / immutable reference |
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
-| Canonical semantic/replay selection, ordinary | checkpoint 236-root prequalification pass; repaired 237-root run pending | all 236 roots and 18 public cases pass in 239.34s; raw SHA-256 `1d5ad0a88ea8df2ccdc148e5308149a5d9db3ce70bb0fe0513fa4b2c3c49f40a` |
-| Canonical semantic/replay selection, race | failed at 08:16:53 UTC; follow-up repair implemented but unqualified | 235/236 roots and 16/18 public cases completed at the internal 25m timeout; raw SHA-256 `6b312bc45137f1daf5af576f85d1bc4ace67e6de02adb04e08357d9bb50aac08`; complete 237-root rerun required |
+| Canonical semantic/replay selection, ordinary | current 237-root prequalification PASS, including all 18 public cases | ended 09:04:06 UTC, elapsed 266.65s; raw SHA-256 `2710e4745aeae16716f9c67c216ee4c6a0436171c658220dc9977fa28ee10232` |
+| Canonical semantic/replay selection, race | current 237-root run started at 09:04:58 UTC; not yet qualified | PID 3994661, raw `/tmp/urnetwork-sn-postdigest-semantic-full237-race-zugmmG.log`, inner deadline 09:29:58 UTC; prior 236-root timeout remains preserved, not waived |
 | Bounded worker, non-return and detached-cache regressions | focused ordinary/race pass | exact three roots, 0.59/8.51s; immutable records above |
 | Post-guard semantic static pin | repaired, focused ordinary/race pass | six roots in 0.64/7.39s; prior 07:37 UTC failure and exact corrective results preserved above |
 | Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
@@ -1724,14 +1881,14 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | follow-up digest/fleet repair implemented, no new tests run | based on pushed checkpoint `5696537320ad7c16bd13210b93ed62ee56820349`; current census 237; inspect subsequent work checkpoint and qualify exact source |
+| SN runtime candidate | digest/fleet repair committed; deterministic pre-fix RED and focused ordinary/race GREEN, complete qualification in progress | pushed `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`; exact census 237; later handoff-only edits do not qualify a different runtime source |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
 | Connect candidate commit | affected auth/TCP and generated-policy ordinary/race pass; frozen unsharded certificates pending | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; aggregate still requires default ordinary/race plus fixed-order race with 30-minute deadlines |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
-| Other candidate repository commits | clean/equal at latest fetch; frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed at 06:54 UTC and fetch-only inventory passed at 07:46 UTC, fresh post-repair freeze still required |
-| Release-lock hash | source-stale tracked lock; fresh clean-build refresh pending | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; clean 5696537 preview `0ab39293...` is unapplied and cannot be applied by an executable predating a later handoff/repair commit |
-| Preliminary doctor | 61/64 pass; expected source-lock hard failure and two shared-RPC soft failures | clean checkpoint report generated 07:54:59 UTC, SHA-256 `580401b4e900e199dc0b1541560f67304a78b554b62023ffa937e3121f4a43d2`; fresh post-gate Ready doctor pending |
-| Test execution capacity | both Terra-max agents errored with service usage limit | existing host run observed to terminal; no silent model substitution or new test launch |
+| Other candidate repository commits | all twelve clean/equal at the post-seal fetch; frozen gates pending | 08:57:20 UTC inventory SHA-256 `ddb9dd16cf0ada99a8772ad5733c5c6d9591145113fc2489b30b35079a7df8d2`; this handoff edit is later; fresh lock/source fence still required |
+| Release-lock hash | source-stale tracked lock; current clean-build preview unapplied | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; clean `140b7ca` preview `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`; eventual apply requires a fresh executable of exact clean pushed HEAD |
+| Preliminary doctor | 61/64 pass; expected source-lock hard failure and two shared-RPC soft failures | clean `140b7ca` report generated 08:37:23 UTC, SHA-256 `dfba859be85a25c9a928fd4e5f77b105d86581160b28f3a85410760257377cf8`; fresh post-gate Ready doctor pending |
+| Test execution capacity | both Terra-max agents recovered | original test/repair model policy retained; full237 and independent helper controls executing in parallel |
 | Validator evidence commitment scope | pending user choice; launch handoff paused | current section 11.1 proofs are off-chain and not transitively anchored by the payout-artifact hash or native weights |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
 | Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |
