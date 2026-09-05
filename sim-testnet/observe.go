@@ -421,20 +421,44 @@ func validatePublicCampaignOperatorOrigins(public *PublicDeploymentManifest) err
 	return nil
 }
 
+// Fetch every operator's independently served replica under one expected
+// campaign identity. No authentication state survives this call.
 func (self *liveScenarioProbe) fetchReplicatedCampaignEnvelope(ctx context.Context, public *PublicDeploymentManifest, hash, kind, runID, ownerSigner string, maximumBytes int64) (*ReleaseEvidenceEnvelope, error) {
+	return self.fetchReplicatedCampaignEnvelopeWithVerify(ctx, public, hash, kind, runID, ownerSigner, maximumBytes, func(envelope *ReleaseEvidenceEnvelope) error {
+		return verifyEvidence(envelope, nil)
+	})
+}
+
+// Keep verification accounting local to the request; the verifier always
+// authenticates signed content and never grants trust to declared hashes.
+func (self *liveScenarioProbe) fetchReplicatedCampaignEnvelopeWithVerify(ctx context.Context, public *PublicDeploymentManifest, hash, kind, runID, ownerSigner string, maximumBytes int64, verify func(*ReleaseEvidenceEnvelope) error) (*ReleaseEvidenceEnvelope, error) {
 	if public == nil || !validSHA256ContentHash(hash) || kind == "" || runID == "" || !common.IsHexAddress(ownerSigner) || maximumBytes <= 0 || maximumBytes > maximumCampaignEvidenceEnvelopeBytes {
 		return nil, errors.New("campaign evidence fetch identity is invalid")
+	}
+	matchesIdentity := func(envelope *ReleaseEvidenceEnvelope) bool {
+		return strings.EqualFold(envelope.ContentHash, hash) && envelope.Kind == kind && envelope.RunID == runID && envelope.DeploymentID == public.DeploymentID && envelope.ChainID == public.ChainID && envelope.Netuid == public.Netuid && strings.EqualFold(envelope.GenesisHash, public.GenesisHash) && strings.EqualFold(envelope.Signer.Hex(), ownerSigner)
 	}
 	var firstBytes []byte
 	var first *ReleaseEvidenceEnvelope
 	for _, operator := range public.Operators {
 		evidenceURL := strings.TrimSuffix(operator.APIURL, "/") + "/sn/evidence?hash=" + strings.ToLower(hash)
 		encoded, _, err := self.get(ctx, evidenceURL, maximumBytes)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			return nil, fmt.Errorf("operator %d campaign evidence %s: %w", operator.NoID, hash, err)
 		}
+		// Every replica is fetched and bounded independently. Exact equality
+		// proves the owned first copy's completed signature verification applies.
+		if first != nil && bytes.Equal(firstBytes, encoded) {
+			if !matchesIdentity(first) {
+				return nil, fmt.Errorf("operator %d returned invalid campaign evidence %s", operator.NoID, hash)
+			}
+			continue
+		}
 		var envelope ReleaseEvidenceEnvelope
-		if decodeStrictJSONBytes(encoded, &envelope) != nil || verifyEvidence(&envelope, nil) != nil || !strings.EqualFold(envelope.ContentHash, hash) || envelope.Kind != kind || envelope.RunID != runID || envelope.DeploymentID != public.DeploymentID || envelope.ChainID != public.ChainID || envelope.Netuid != public.Netuid || !strings.EqualFold(envelope.GenesisHash, public.GenesisHash) || !strings.EqualFold(envelope.Signer.Hex(), ownerSigner) {
+		if decodeStrictJSONBytes(encoded, &envelope) != nil || verify(&envelope) != nil || !matchesIdentity(&envelope) {
 			return nil, fmt.Errorf("operator %d returned invalid campaign evidence %s", operator.NoID, hash)
 		}
 		if first == nil {

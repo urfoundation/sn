@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -429,17 +430,41 @@ type campaignArtifactReference struct {
 	Size        uint64
 }
 
+// Parse each document once, then inspect every retained object and array value.
+// No parsed or authenticated state survives separately supplied documents.
 func collectCampaignArtifactReferences(raw json.RawMessage, references map[string]campaignArtifactReference, depth int) error {
+	return collectCampaignArtifactReferencesWithDecode(raw, references, depth, decodeCampaignArtifactReferenceJSON)
+}
+
+// Keep the decoder injectable so regression tests can count all parsing work.
+func collectCampaignArtifactReferencesWithDecode(raw json.RawMessage, references map[string]campaignArtifactReference, depth int, decode func([]byte, any) error) error {
 	if depth > maximumCampaignEvidenceJSONDepth {
 		return fmt.Errorf("campaign artifact JSON exceeds maximum depth %d", maximumCampaignEvidenceJSONDepth)
 	}
-	var object map[string]json.RawMessage
-	if json.Unmarshal(raw, &object) == nil {
+	var value any
+	if err := decode(raw, &value); err != nil {
+		return nil
+	}
+	return collectCampaignArtifactReferenceValues(value, references, depth)
+}
+
+// Walk the owned decoded tree without copying and reparsing each subtree.
+// Discovery keeps the original depth fence and last duplicate-key semantics.
+func collectCampaignArtifactReferenceValues(value any, references map[string]campaignArtifactReference, depth int) error {
+	if depth > maximumCampaignEvidenceJSONDepth {
+		return fmt.Errorf("campaign artifact JSON exceeds maximum depth %d", maximumCampaignEvidenceJSONDepth)
+	}
+	switch object := value.(type) {
+	case map[string]any:
 		var reference campaignArtifactReference
-		_ = json.Unmarshal(object["kind"], &reference.Kind)
-		_ = json.Unmarshal(object["uri"], &reference.URI)
-		_ = json.Unmarshal(object["content_sha256"], &reference.ContentHash)
-		_ = json.Unmarshal(object["size_bytes"], &reference.Size)
+		reference.Kind, _ = object["kind"].(string)
+		reference.URI, _ = object["uri"].(string)
+		reference.ContentHash, _ = object["content_sha256"].(string)
+		if number, ok := object["size_bytes"].(json.Number); ok {
+			if size, err := strconv.ParseUint(string(number), 10, 64); err == nil {
+				reference.Size = size
+			}
+		}
 		if reference.URI != "" || reference.ContentHash != "" || reference.Size != 0 {
 			if reference.Kind == "" || reference.URI == "" || !validSHA256ContentHash(reference.ContentHash) || reference.Size == 0 || reference.Size > maximumCampaignEvidenceRawFileBytes {
 				return errors.New("campaign artifact locator is incomplete")
@@ -476,19 +501,34 @@ func collectCampaignArtifactReferences(raw json.RawMessage, references map[strin
 			references[reference.URI] = reference
 		}
 		for _, child := range object {
-			if err := collectCampaignArtifactReferences(child, references, depth+1); err != nil {
+			if err := collectCampaignArtifactReferenceValues(child, references, depth+1); err != nil {
 				return err
 			}
 		}
-		return nil
+	case []any:
+		for _, child := range object {
+			if err := collectCampaignArtifactReferenceValues(child, references, depth+1); err != nil {
+				return err
+			}
+		}
 	}
-	var array []json.RawMessage
-	if json.Unmarshal(raw, &array) == nil {
-		for _, child := range array {
-			if err := collectCampaignArtifactReferences(child, references, depth+1); err != nil {
-				return err
-			}
+	return nil
+}
+
+// Preserve integer spelling without float rounding, and require the complete
+// document so trailing or malformed bytes cannot contribute partial locators.
+func decodeCampaignArtifactReferenceJSON(raw []byte, value any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("JSON has a trailing value")
 		}
+		return err
 	}
 	return nil
 }
