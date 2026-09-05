@@ -1185,19 +1185,35 @@ func TestFinalSemanticEvidenceFailsClosed(t *testing.T) {
 		{name: "typed exit assertion", edit: func(e *FinalSemanticEvidence) { e.ExitCriteria[0].Assertions[0].Observed-- }, want: "typed expectation"},
 		{name: "unsafe artifact", edit: func(e *FinalSemanticEvidence) { e.PathProofs[0].Artifact.URI = "https://secret@example.test/proofs" }, want: "credential-free"},
 	}
+	if len(tests) != 38 {
+		t.Fatalf("semantic rejection case census = %d, want all 38 mutations", len(tests))
+	}
+	cases := make([]finalSemanticTestCase, 0, len(tests))
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			candidate := finalSemanticClone(t, valid)
+		cases = append(cases, finalSemanticTestCase{name: test.name, verify: func(context.Context) error {
+			candidate, err := finalSemanticEvidenceDetachedCopy(valid)
+			if err != nil {
+				return err
+			}
 			test.edit(candidate)
-			resignFinalSemantic(t, candidate)
+			candidate.EvidenceHash, err = finalSemanticEvidenceHash(candidate)
+			if err != nil {
+				return err
+			}
 			verifyErr := VerifyFinalSemanticEvidence(candidate)
 			if verifyErr == nil || !strings.Contains(verifyErr.Error(), test.want) {
-				t.Fatalf("got %v, want error containing %q", verifyErr, test.want)
+				return fmt.Errorf("got %v, want error containing %q", verifyErr, test.want)
 			}
 			if markdown, err := RenderFinalSemanticEvidenceMarkdown(candidate); err == nil || len(markdown) != 0 {
-				t.Fatalf("partial FINAL.md was emitted: bytes=%d err=%v", len(markdown), err)
+				return fmt.Errorf("partial FINAL.md was emitted: bytes=%d err=%v", len(markdown), err)
 			}
-		})
+			return nil
+		}})
+	}
+	for index, err := range runFinalSemanticTestCases(context.Background(), cases) {
+		if err != nil {
+			t.Errorf("%s: %v", cases[index].name, err)
+		}
 	}
 
 	hashTamper := finalSemanticClone(t, valid)
@@ -1901,7 +1917,9 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixtureSecrets, err := buildRoleSecretsUncached(cfg)
+	// buildPlan has already derived this exact deployment's identities. Reuse
+	// its detached cache view rather than repeat the full miner key derivation.
+	fixtureSecrets, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

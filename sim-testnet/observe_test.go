@@ -1564,8 +1564,17 @@ func TestDecodeHashRejectsZeroLengthAndMalformedValues(t *testing.T) {
 
 func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.T) {
 	t.Parallel()
+	setupStarted := time.Now()
+	setupPhaseStarted := setupStarted
+	// Keep setup costs distinct from the independently timed replay views.
+	logSetupPhase := func(phase string) {
+		now := time.Now()
+		t.Logf("public replay setup %q completed in %s (elapsed %s)", phase, now.Sub(setupPhaseStarted).Round(time.Millisecond), now.Sub(setupStarted).Round(time.Millisecond))
+		setupPhaseStarted = now
+	}
 	cfg := testResolvedConfig(t)
 	semanticSource, semanticArtifacts := finalSemanticFixture(t)
+	logSetupPhase("detached release-scale fixture")
 	cfg.Config.Deployment.DeploymentID = semanticSource.DeploymentID
 	cfg.Config.Scenarios.ShortEpochs = int(semanticSource.Window.EpochCount)
 	cfg.Config.Topology.Operators = semanticSource.ExpectedOperators
@@ -1593,16 +1602,19 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	logSetupPhase("detached identities")
 	semanticSource.Deployment.GovernanceOwner = strings.ToLower(roles.EVM["testnet-owner"].Address)
 	result, lifecycleHandoffBytes, campaignStartBytes := finalSemanticCampaignResultFixture(t, cfg, roles, &semanticSource, semanticArtifacts)
 	lifecycleHandoff := result.LifecycleHandoff
 	if semanticSource.RunID != result.RunID || semanticSource.FleetLifecycle == nil || semanticSource.FleetLifecycle.State.RunID != result.RunID {
 		t.Fatal("rebound semantic source does not consistently use the committed run")
 	}
+	logSetupPhase("committed campaign graph")
 	semanticDraft, err := BuildFinalSemanticEvidence(semanticSource)
 	if err != nil {
 		t.Fatal(err)
 	}
+	logSetupPhase("semantic evidence build")
 	semantic, err := SealFinalSemanticEvidenceOnChain(context.Background(), semanticDraft, &finalTestChainReader{evidence: semanticDraft})
 	if err != nil {
 		t.Fatal(err)
@@ -1610,6 +1622,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if semantic.FleetLifecycle == nil || semantic.FleetLifecycle.State.RunID != result.RunID || semantic.FleetLifecycle.ReleaseHandoffHash != lifecycleHandoff.ContentHash || semantic.FleetLifecycle.ReleaseHandoffSize != lifecycleHandoff.SizeBytes {
 		t.Fatal("sealed semantic evidence detached from the committed lifecycle handoff")
 	}
+	logSetupPhase("public transcript seal")
 	reserveBytes, ok := semanticArtifacts[semantic.Reserve.Artifact.URI]
 	if !ok {
 		t.Fatalf("sealed semantic reserve artifact %q is unavailable", semantic.Reserve.Artifact.URI)
@@ -1626,6 +1639,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}); err != nil {
 		t.Fatalf("sealed semantic artifact fixture is internally inconsistent: %v", err)
 	}
+	logSetupPhase("complete signed artifact verification")
 	observation := &ScenarioObservation{Schema: "urnetwork-sim-scenario-observation-v1", ObservationHash: "observation"}
 	analysis := &AnalysisReport{Schema: "urnetwork-sim-analysis-v1", Release: "1.0", DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash, Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, ObservationHash: observation.ObservationHash}
 	bundle := ScenarioEvidenceBundle{Schema: "urnetwork-sim-scenario-evidence-v1", Result: result, Observation: observation, Analysis: analysis}
@@ -1711,7 +1725,9 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 			t.Fatal(err)
 		}
 	}
+	logSetupPhase("semantic file publication")
 	collected, capture := writePublicFinalSemanticClosureFixture(t, cfg, stateDir, runDir, *semantic, result, semanticArtifacts)
+	logSetupPhase("closed input capture")
 	receiptPath := "receipts/external-receipt.json"
 	nestedProofPath := "public/nested-proof.json"
 	nestedProofBytes := []byte(`{"schema":"urnetwork-test-proof-v1","value":"verified"}` + "\n")
@@ -1756,6 +1772,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		}
 		objects[envelope.ContentHash] = encoded
 	}
+	logSetupPhase("signed campaign archive")
 	complete, err := signEvidence(cfg, "scenario-complete", result.RunID, scenarioCompletePayload{
 		ResultHash: result.EvidenceHash, BundlePayloadHash: bytesSHA256(bundlePayload), Files: fileHashes, EvidenceManifestHash: archive.Manifest.ContentHash,
 		LifecycleHandoff: lifecycleHandoff,
@@ -1772,10 +1789,42 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	semanticFileEnvelopes, semanticFileEntries, err := prepareFinalSemanticSupplementFiles(cfg, stateDir, result.RunID, roles.EVM["testnet-owner"], rawSemanticFiles)
-	if err != nil {
-		t.Fatal(err)
+	if len(rawSemanticFiles) != len(semanticArtifacts)+2 {
+		t.Fatalf("semantic file census = %d, want every %d derived artifacts and both final outputs", len(rawSemanticFiles), len(semanticArtifacts))
 	}
+	// Each canonical path owns a distinct production staging file. Prepare and
+	// encode all of them with bounded workers, then join before signing their
+	// common supplement so the causal fence and complete file order stay exact.
+	semanticFileEnvelopes := make([]*ReleaseEvidenceEnvelope, len(rawSemanticFiles))
+	semanticFileEntries := make([]FinalSemanticSupplementFile, len(rawSemanticFiles))
+	semanticFileBytes := make([][]byte, len(rawSemanticFiles))
+	fileCases := make([]finalSemanticTestCase, 0, len(rawSemanticFiles))
+	for index, raw := range rawSemanticFiles {
+		if index > 0 && rawSemanticFiles[index-1].Path >= raw.Path {
+			t.Fatalf("semantic staging paths are not strictly ordered and unique at %s", raw.Path)
+		}
+		fileCases = append(fileCases, finalSemanticTestCase{name: raw.Path, verify: func(context.Context) error {
+			envelopes, entries, err := prepareFinalSemanticSupplementFiles(cfg, stateDir, result.RunID, roles.EVM["testnet-owner"], rawSemanticFiles[index:index+1])
+			if err != nil {
+				return err
+			}
+			if len(envelopes) != 1 || len(entries) != 1 || entries[0].Path != raw.Path {
+				return fmt.Errorf("production supplement preparation changed the single-file census for %s", raw.Path)
+			}
+			encoded, err := json.Marshal(envelopes[0])
+			if err != nil {
+				return err
+			}
+			semanticFileEnvelopes[index], semanticFileEntries[index], semanticFileBytes[index] = envelopes[0], entries[0], encoded
+			return nil
+		}})
+	}
+	for index, err := range runFinalSemanticTestCases(context.Background(), fileCases) {
+		if err != nil {
+			t.Fatalf("prepare complete signed supplement file %s: %v", fileCases[index].name, err)
+		}
+	}
+	logSetupPhase("signed and encoded semantic supplement files")
 	supplementPayload := FinalSemanticSupplementPayload{
 		Schema: finalSemanticSupplementSchema, Status: finalSemanticSupplementStatus,
 		Phase: result.Name, RunID: result.RunID, ResultHash: result.EvidenceHash,
@@ -1784,17 +1833,21 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		SemanticEvidenceHash: semantic.EvidenceHash, PublicTranscriptHash: semantic.PublicVerification.TranscriptHash,
 		Files: semanticFileEntries,
 	}
+	if err := validateFinalSemanticSupplementFileManifest(&supplementPayload); err != nil {
+		t.Fatalf("complete prepared semantic supplement census: %v", err)
+	}
 	supplement, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, supplementPayload, roles.EVM["testnet-owner"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, envelope := range append(semanticFileEnvelopes, supplement) {
-		encoded, err := json.Marshal(envelope)
-		if err != nil {
-			t.Fatal(err)
-		}
-		objects[envelope.ContentHash] = encoded
+	for index, envelope := range semanticFileEnvelopes {
+		objects[envelope.ContentHash] = semanticFileBytes[index]
 	}
+	supplementBytes, err := json.Marshal(supplement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects[supplement.ContentHash] = supplementBytes
 	commitHashes := make([]string, cfg.Config.Topology.Operators)
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		commit, err := signEvidence(cfg, "scenario-complete-commit", result.RunID, complete, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
@@ -1805,6 +1858,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		objects[commit.ContentHash] = encoded
 		commitHashes[operator-1] = commit.ContentHash
 	}
+	logSetupPhase("signed semantic supplement and completion replicas")
 	commitVisible := map[int]bool{}
 	supplementHistory := map[int][]string{}
 	objectOverrides := map[int]map[string][]byte{1: {}, 2: {}}
@@ -1948,7 +2002,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	supplementHistory[1] = []string{supplement.ContentHash}
 	queueCase("semantic supplement visible at only one operator was accepted", "no semantic supplement is discoverable at every operator", "")
 	supplementHistory[2] = []string{supplement.ContentHash}
-	supplementBytes := objects[supplement.ContentHash]
+	supplementBytes = objects[supplement.ContentHash]
 	tamperedSupplement := append([]byte(nil), supplementBytes...)
 	tamperedSupplement[len(tamperedSupplement)/2] ^= 1
 	objectOverrides[2][supplement.ContentHash] = tamperedSupplement
@@ -2016,6 +2070,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	if len(cases) != 18 {
 		t.Fatalf("public replay case census = %d, want every 17 rejection cases and the accepted graph", len(cases))
 	}
+	logSetupPhase("all eighteen detached replay views")
 	for index, err := range runFinalSemanticTestCases(context.Background(), cases) {
 		if err != nil {
 			t.Errorf("%s: %v", cases[index].name, err)

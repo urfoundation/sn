@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 06:52 UTC. The complete fleet/history fixture and miner/validator
+2026-09-05 07:47 UTC. The complete fleet/history fixture and miner/validator
 ordinary/race checks pass; the full simulator run exposed repaired evidence and
 deposit-validation gaps whose focused reruns are being completed. Source
 integration and core per-client payout attribution passed focused ordinary/race
@@ -9,10 +9,18 @@ checks. Strict failure handling and corrected gate selections pass both ways;
 the adjacent provider-reporting repair, query-plan guards and retention tests
 pass ordinary/race and are pushed as server `b12af6b3`. All 234 corrected
 semantic/replay roots and 18 public cases pass ordinary qualification in
-264.39 seconds; the complete race run is active. Infrastructure, wallet and
-budget checks pass a preliminary non-applying doctor, but source lock and final
-gates remain mandatory. SN checkpoint `74e8612` is pushed but is not a release
-approval.
+264.39 seconds. The complete race run hit its enforced 25-minute deadline with
+233/234 roots passed and public-bundle setup unfinished; no assertion or data
+race was reported. The profile-supported test-only repair retains all work,
+parallelizes 38 mutation cases and supplement preparation, and reuses detached
+cached role identities. An adjacent callback false-green was reproduced and
+fixed; its bounded-worker/cache tests pass ordinary/race. The census now has
+236 roots, preserving all original 234. The next static pin check failed
+because it still inspected the old worker layout; its corrected bounds/join
+checks and deterministic negative controls now pass ordinary/race. Full 236-root ordinary/race
+reruns remain pending with unchanged 15/25-minute deadlines. Infrastructure, wallet and budget
+checks pass a preliminary non-applying doctor, but source lock and final gates
+remain mandatory. SN checkpoint `d450fe5` is pushed but is not a release approval.
 Both live acceptance phases and FINAL.md remain.
 Historical results below are not approval for the current candidate.
 

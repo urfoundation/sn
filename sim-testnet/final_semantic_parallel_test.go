@@ -10,8 +10,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
+	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -28,17 +30,31 @@ type finalSemanticTestCase struct {
 // Join every case and retain source order, including failures. A failed
 // adversarial case must neither cancel nor conceal its independent neighbors.
 func runFinalSemanticTestCases(ctx context.Context, cases []finalSemanticTestCase) []error {
+	return runFinalSemanticTestCasesWithSpawn(ctx, cases, func(work func()) { go work() })
+}
+
+// Keep worker creation synchronously observable to the bound regression;
+// execution and join behavior are identical for every production test caller.
+func runFinalSemanticTestCasesWithSpawn(ctx context.Context, cases []finalSemanticTestCase, spawn func(func())) []error {
 	results := make([]error, len(cases))
 	indices := make(chan int)
 	var workers sync.WaitGroup
 	for range min(finalSemanticTestCaseWorkers, len(cases)) {
 		workers.Add(1)
-		go func() {
+		spawn(func() {
 			defer workers.Done()
 			for index := range indices {
-				results[index] = cases[index].verify(ctx)
+				// Goexit must not erase a result or consume pool capacity.
+				// Join one callback per worker and never recover its panics.
+				completed := make(chan struct{})
+				results[index] = fmt.Errorf("fixture case %q did not return", cases[index].name)
+				go func() {
+					defer close(completed)
+					results[index] = cases[index].verify(ctx)
+				}()
+				<-completed
 			}
-		}()
+		})
 	}
 	for index := range cases {
 		indices <- index
@@ -46,6 +62,108 @@ func runFinalSemanticTestCases(ctx context.Context, cases []finalSemanticTestCas
 	close(indices)
 	workers.Wait()
 	return results
+}
+
+// Count worker creation synchronously; barriers separately prove concurrent
+// entry, join-all behavior after errors, and source-ordered results.
+func TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency(t *testing.T) {
+	const caseCount = 2*finalSemanticTestCaseWorkers + 1
+	started := make(chan int, finalSemanticTestCaseWorkers)
+	release := make(chan struct{})
+	done := make(chan []error, 1)
+	var stateLock sync.Mutex
+	active, peak, created := 0, 0, 0
+	completed := make([]int, caseCount)
+	want := make([]error, caseCount)
+	cases := make([]finalSemanticTestCase, caseCount)
+	for index := range cases {
+		if index%2 != 0 {
+			want[index] = fmt.Errorf("fixture case %d", index)
+		}
+		cases[index] = finalSemanticTestCase{name: fmt.Sprint(index), verify: func(context.Context) error {
+			stateLock.Lock()
+			active++
+			peak = max(peak, active)
+			stateLock.Unlock()
+			if index < finalSemanticTestCaseWorkers {
+				started <- index
+				<-release
+			}
+			stateLock.Lock()
+			completed[index]++
+			active--
+			stateLock.Unlock()
+			return want[index]
+		}}
+	}
+	go func() {
+		done <- runFinalSemanticTestCasesWithSpawn(context.Background(), cases, func(work func()) {
+			created++
+			go work()
+		})
+	}()
+	for range finalSemanticTestCaseWorkers {
+		<-started
+	}
+	close(release)
+	results := <-done
+	if len(results) != caseCount || active != 0 || peak != finalSemanticTestCaseWorkers || created != finalSemanticTestCaseWorkers {
+		t.Fatalf("joined results=%d active=%d peak=%d created=%d, want %d/0/%d/%d", len(results), active, peak, created, caseCount, finalSemanticTestCaseWorkers, finalSemanticTestCaseWorkers)
+	}
+	for index, err := range results {
+		if completed[index] != 1 || err != want[index] {
+			t.Fatalf("case %d completed %d times with %v, want once with %v", index, completed[index], err, want[index])
+		}
+	}
+}
+
+// A non-returning callback must fail its own case without consuming pool
+// capacity or hiding later cases; deferred completion makes the proof explicit.
+func TestFinalSemanticFixtureWorkersRejectNonReturningCases(t *testing.T) {
+	exited := false
+	results := runFinalSemanticTestCases(context.Background(), []finalSemanticTestCase{{
+		name: "non-returning",
+		verify: func(context.Context) error {
+			defer func() { exited = true }()
+			runtime.Goexit()
+			return nil
+		},
+	}})
+	if !exited || len(results) != 1 || results[0] == nil || results[0].Error() != `fixture case "non-returning" did not return` {
+		t.Fatalf("non-returning callback exited=%t results=%v, want its explicit completion error", exited, results)
+	}
+	const caseCount = 2*finalSemanticTestCaseWorkers + 1
+	cases := make([]finalSemanticTestCase, caseCount)
+	completed := make([]int, caseCount)
+	want := make([]error, caseCount)
+	for index := range cases {
+		if index >= finalSemanticTestCaseWorkers && index%2 != 0 {
+			want[index] = fmt.Errorf("returned case %d", index)
+		}
+		cases[index] = finalSemanticTestCase{name: fmt.Sprint(index), verify: func(context.Context) error {
+			defer func() { completed[index]++ }()
+			if index < finalSemanticTestCaseWorkers {
+				runtime.Goexit()
+			}
+			return want[index]
+		}}
+	}
+	results = runFinalSemanticTestCases(context.Background(), cases)
+	if len(results) != caseCount {
+		t.Fatalf("joined %d results, want all %d", len(results), caseCount)
+	}
+	for index, err := range results {
+		if completed[index] != 1 {
+			t.Fatalf("case %d completed %d times, want once", index, completed[index])
+		}
+		if index < finalSemanticTestCaseWorkers {
+			if err == nil || err.Error() != fmt.Sprintf("fixture case %q did not return", cases[index].name) {
+				t.Fatalf("case %d rejection = %v, want its explicit completion error", index, err)
+			}
+		} else if err != want[index] {
+			t.Fatalf("case %d error = %v, want %v", index, err, want[index])
+		}
+	}
 }
 
 // Raw signed byte slices are immutable after publication. Only this view's

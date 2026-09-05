@@ -61,6 +61,17 @@ canonical case order; neither the test census nor the gate deadlines are
 reduced to obtain a pass. This test-only scheduling does not alter live
 transaction ordering or production verification limits.
 
+The same four-worker, ordered join-all helper bounds the 38 independent
+tampered-graph cases and test-fixture supplement-file preparation. Each file
+still uses the production preparation/signing path; the complete supplement
+is signed only after every file worker joins. Shared identity derivation uses
+the exact-key cache's detached copies. The semantic census contains 236 roots:
+all previous 234 plus deterministic worker-bound/join and callback-nonreturn
+regressions. A callback that exits without returning must produce an explicit
+failure and cannot exhaust the worker pool or hide a later case. All 18 public
+replay cases remain mandatory; setup timing lines are not case completion
+evidence.
+
 ## Pre-launch approval
 
 The testnet inputs are stored under testnet-prefixed keys in

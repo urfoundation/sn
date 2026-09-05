@@ -393,6 +393,8 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	for _, required := range []string{
 		"TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles",
 		"TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary",
+		"TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency",
+		"TestFinalSemanticFixtureWorkersRejectNonReturningCases",
 		"TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions",
 		"TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity",
 		"TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership",
@@ -506,38 +508,42 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 			})
 		}
 	}
-	scheduler := declarations["runFinalSemanticTestCases"]
-	if scheduler == nil {
-		t.Fatal("bounded semantic test scheduler is missing")
+	wrapper := declarations["runFinalSemanticTestCases"]
+	scheduler := declarations["runFinalSemanticTestCasesWithSpawn"]
+	if err := verifyReleaseSemanticTestScheduler(wrapper, scheduler); err != nil {
+		t.Fatal(err)
 	}
-	boundedLoops, workerStarts := 0, 0
+	// Mutate only this parsed copy: losing either the worker bound or the
+	// per-callback join must still be rejected by the structural gate itself.
+	var workerLoop, callbackLoop *ast.RangeStmt
 	ast.Inspect(scheduler.Body, func(node ast.Node) bool {
-		if _, ok := node.(*ast.GoStmt); ok {
-			workerStarts++
-		}
 		loop, ok := node.(*ast.RangeStmt)
 		if !ok {
 			return true
 		}
-		call, ok := loop.X.(*ast.CallExpr)
-		if !ok || len(call.Args) != 2 {
-			return true
-		}
-		function, ok := call.Fun.(*ast.Ident)
-		cap, capOK := call.Args[0].(*ast.Ident)
-		length, lengthOK := call.Args[1].(*ast.CallExpr)
-		if !ok || function.Name != "min" || !capOK || cap.Name != "finalSemanticTestCaseWorkers" || !lengthOK || len(length.Args) != 1 {
-			return true
-		}
-		lengthFunction, functionOK := length.Fun.(*ast.Ident)
-		cases, casesOK := length.Args[0].(*ast.Ident)
-		if functionOK && lengthFunction.Name == "len" && casesOK && cases.Name == "cases" {
-			boundedLoops++
+		if _, ok := loop.X.(*ast.CallExpr); ok {
+			workerLoop = loop
+		} else if source, ok := loop.X.(*ast.Ident); ok && source.Name == "indices" {
+			callbackLoop = loop
 		}
 		return true
 	})
-	if boundedLoops != 1 || workerStarts != 1 {
-		t.Fatalf("semantic scheduler lost its sole bounded worker loop: bounded=%d starts=%d", boundedLoops, workerStarts)
+	if workerLoop == nil || callbackLoop == nil {
+		t.Fatal("semantic scheduler structural controls lost their loop targets")
+	}
+	bound := workerLoop.X
+	workerLoop.X = ast.NewIdent("unboundedWorkers")
+	boundErr := verifyReleaseSemanticTestScheduler(wrapper, scheduler)
+	workerLoop.X = bound
+	if boundErr == nil || !strings.Contains(boundErr.Error(), "bounded worker loop") {
+		t.Fatalf("semantic scheduler accepted a lost worker bound: %v", boundErr)
+	}
+	statements := callbackLoop.Body.List
+	callbackLoop.Body.List = statements[:len(statements)-1]
+	joinErr := verifyReleaseSemanticTestScheduler(wrapper, scheduler)
+	callbackLoop.Body.List = statements
+	if joinErr == nil || !strings.Contains(joinErr.Error(), "joined callback") {
+		t.Fatalf("semantic scheduler accepted a lost callback join: %v", joinErr)
 	}
 	fixtureUsers := map[string]bool{"finalSemanticFixture": true}
 	for changed := true; changed; {
@@ -628,6 +634,110 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	if string(view.objects["object"]) != "immutable" || !view.commitVisible[1] || view.supplementHistory[1][0] != "original" || string(view.objectOverrides[1]["override"]) != "immutable" {
 		t.Fatal("parallel public-replay view poisoned another snapshot's mutable state")
 	}
+}
+
+// Distinguish the synchronous pool-creation seam from its joined callback
+// children; a callback Goexit must not require unbounded replacement workers.
+func verifyReleaseSemanticTestScheduler(wrapper, scheduler *ast.FuncDecl) error {
+	isName := func(node ast.Node, want string) bool {
+		name, ok := node.(*ast.Ident)
+		return ok && name.Name == want
+	}
+	if wrapper == nil || wrapper.Body == nil || len(wrapper.Body.List) != 1 || scheduler == nil || scheduler.Body == nil {
+		return errors.New("bounded semantic test scheduler or its sole wrapper is missing")
+	}
+	returned, ok := wrapper.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(returned.Results) != 1 {
+		return errors.New("semantic scheduler wrapper does not return its sole delegate")
+	}
+	delegate, ok := returned.Results[0].(*ast.CallExpr)
+	if !ok || !isName(delegate.Fun, scheduler.Name.Name) || len(delegate.Args) != 3 || !isName(delegate.Args[0], "ctx") || !isName(delegate.Args[1], "cases") {
+		return errors.New("semantic scheduler wrapper lost its exact context, cases, or spawn delegate")
+	}
+	launcher, ok := delegate.Args[2].(*ast.FuncLit)
+	if !ok || len(launcher.Type.Params.List) != 1 || len(launcher.Type.Params.List[0].Names) != 1 || len(launcher.Body.List) != 1 {
+		return errors.New("semantic scheduler wrapper lost its sole worker launcher")
+	}
+	launch, ok := launcher.Body.List[0].(*ast.GoStmt)
+	if !ok || !isName(launch.Call.Fun, launcher.Type.Params.List[0].Names[0].Name) || len(launch.Call.Args) != 0 {
+		return errors.New("semantic scheduler wrapper must launch exactly its supplied worker")
+	}
+	boundedLoops, workerStarts, callbackStarts := 0, 0, 0
+	var boundedLoop *ast.RangeStmt
+	ast.Inspect(scheduler.Body, func(node ast.Node) bool {
+		if _, ok := node.(*ast.GoStmt); ok {
+			callbackStarts++
+		}
+		if call, ok := node.(*ast.CallExpr); ok && isName(call.Fun, "spawn") {
+			workerStarts++
+		}
+		loop, ok := node.(*ast.RangeStmt)
+		if !ok {
+			return true
+		}
+		call, ok := loop.X.(*ast.CallExpr)
+		if !ok || !isName(call.Fun, "min") || len(call.Args) != 2 || !isName(call.Args[0], "finalSemanticTestCaseWorkers") {
+			return true
+		}
+		length, ok := call.Args[1].(*ast.CallExpr)
+		if ok && isName(length.Fun, "len") && len(length.Args) == 1 && isName(length.Args[0], "cases") {
+			boundedLoops++
+			boundedLoop = loop
+		}
+		return true
+	})
+	if boundedLoops != 1 || workerStarts != 1 || callbackStarts != 1 {
+		return fmt.Errorf("semantic scheduler lost its sole bounded worker loop: bounded=%d starts=%d callbacks=%d", boundedLoops, workerStarts, callbackStarts)
+	}
+	var worker *ast.FuncLit
+	for _, statement := range boundedLoop.Body.List {
+		expression, ok := statement.(*ast.ExprStmt)
+		if !ok {
+			continue
+		}
+		call, ok := expression.X.(*ast.CallExpr)
+		if ok && isName(call.Fun, "spawn") && len(call.Args) == 1 {
+			worker, _ = call.Args[0].(*ast.FuncLit)
+		}
+	}
+	if worker == nil {
+		return errors.New("semantic scheduler moved worker creation outside its bounded worker loop")
+	}
+	joinedCallbacks := 0
+	ast.Inspect(worker.Body, func(node ast.Node) bool {
+		loop, ok := node.(*ast.RangeStmt)
+		if !ok || !isName(loop.X, "indices") {
+			return true
+		}
+		for index, statement := range loop.Body.List {
+			launch, ok := statement.(*ast.GoStmt)
+			if !ok || index+1 != len(loop.Body.List)-1 {
+				continue
+			}
+			callback, ok := launch.Call.Fun.(*ast.FuncLit)
+			if !ok || len(launch.Call.Args) != 0 || len(callback.Body.List) != 2 {
+				continue
+			}
+			completion, ok := callback.Body.List[0].(*ast.DeferStmt)
+			if !ok || !isName(completion.Call.Fun, "close") || len(completion.Call.Args) != 1 {
+				continue
+			}
+			completionChannel, ok := completion.Call.Args[0].(*ast.Ident)
+			join, joinOK := loop.Body.List[index+1].(*ast.ExprStmt)
+			if !ok || !joinOK {
+				continue
+			}
+			receive, ok := join.X.(*ast.UnaryExpr)
+			if ok && receive.Op == token.ARROW && isName(receive.X, completionChannel.Name) {
+				joinedCallbacks++
+			}
+		}
+		return true
+	})
+	if joinedCallbacks != 1 {
+		return fmt.Errorf("semantic scheduler must retain exactly one joined callback per worker: got %d", joinedCallbacks)
+	}
+	return nil
 }
 
 // Review the complete deployment, chronology, fleet, registration, and builder

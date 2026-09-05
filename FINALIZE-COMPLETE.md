@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 06:52 UTC before the final source freeze. Refresh every item marked
+2026-09-05 07:47 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -145,12 +145,12 @@ FREEZE-UPDATE repository revisions:
 
 The first-draft table is retained below as historical provenance. The current
 source candidate and dependency snapshot was fetched again on 2026-09-05
-06:46 UTC, with no additional upstream changes since 05:52. Clean/equal status
+07:46 UTC, with no additional upstream changes since 05:52. Clean/equal status
 applies only to the rows explicitly marked so:
 
 | Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | 74e86127a4fa4bf19df97f19a45520049c9496cb | implementation checkpoint committed, rebased over `46eae44` and pushed; later gate-selection and public-case fixture fixes, release-lock refresh and handoff pending |
+| sn | main | d450fe5e741440afa4361f8f49b4c5b506f915cf | checkpoint committed, pulled and pushed; prior 234-root ordinary passes and race timed out; 236-root test-only performance/worker repair is dirty, focused worker and repaired pin ordinary/race pass, complete reruns pending |
 | server | main | b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc | clean/equal after the 06:47 checkpoint; allocation, adjacent provider-reporting/query-plan, retention and strict-test repairs pass focused ordinary/race; frozen gate pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
@@ -192,6 +192,12 @@ Relative to the prior lock it updates only `connect_go_source_hash` and
 the widened release selectors. The later full-race failures supersede this
 pre-fix render; refresh it after both repairs rather than committing or using
 it for launch.
+
+The tracked lock at the 07:42 UTC checkpoint instead has SHA-256
+`009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`;
+it already includes the runtime-454 artifact update. It is still not current
+for the subsequent source changes. Section 12 records a newer, unapplied
+clean-source preview; neither historical lock nor preview authorizes launch.
 
 ## 3. Current implementation/gate continuation point
 
@@ -1365,12 +1371,113 @@ above; all results are prequalification until committed and release-locked:
   234-test ordinary run finished in 271.37 seconds with only this same fixture
   failure; it is diagnostic, not a pass. The corrected immutable full ordinary
   run passed all 234 roots and 18 public cases in 264.39 seconds, with peak RSS
-  1,991,188 KiB. Its complete race run began at 06:51:25 UTC with the unchanged
-  25-minute test deadline; corrected-source race and final frozen gates are
-  still required. The capture is closed at
+  1,991,188 KiB. Its complete race run began at 06:51:25 UTC and hit the
+  unchanged 25-minute test deadline at 07:16 UTC. All 234 roots were selected
+  and started, 233 passed, and only
+  `TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit` remained
+  running after 7m33s. No assertion failure, race report or public per-case
+  completion line was emitted. The internal timeout, not the outer watchdog,
+  ended the process with exit 2 after 1,500.60 seconds and peak RSS
+  4,721,032 KiB. This is a real failed qualification and blocks lock refresh
+  and launch. The capture is closed at
   `/home/by/urnetwork/temp/sn-postrepair-public-capture-OfHWG8`, so commits do
-  not disturb the running immutable binary. Its exact 234-root census is
+  not alter its preserved binaries. Its exact 234-root census is
   `7bf4cfc9865d3976d70fed8f05318d326d22d1702c456850a67ecdbb1e6ad66f`.
+- The 07:18 UTC performance investigation preserves that failed run rather
+  than retrying it unchanged. The remaining public root had not dispatched its
+  18 case workers at timeout. Astra owns the three affected test files and is
+  examining its setup work, adding bounded phase timing, and removing a proven
+  duplicate uncached derivation of the complete role set after `buildPlan`
+  already populated the exact-key detached-copy cache. Terra is profiling the
+  original immutable ordinary binary's complete public root in parallel. The
+  duplicate alone is not yet proved sufficient to meet the deadline. Require
+  all existing 234 roots and 18 public cases, real validator calls and intended errors,
+  full cardinalities, detachment/concurrency checks, and a new complete
+  ordinary/race qualification. Neither a focused profile nor 233 passed roots
+  is a substitute for that pass.
+- The resulting original-binary CPU profile completed the public root and all
+  18 real case validations in 219.13 seconds. It measures 116.82 cumulative CPU
+  seconds in public verification, 86.34 in replicated supplement processing,
+  39.30 in fixture construction, and 14.31 in serial supplement preparation;
+  these overlapping CPU totals must not be added as elapsed-time estimates.
+  The failed race run was still preparing 1,897 supplement files (107,354,306
+  bytes) seven seconds before its deadline. The repair uses the existing
+  exact-key, detached-map role cache; runs the same 38 isolated mutation cases
+  through four workers; and prepares/encodes supplement files with four workers
+  calling the unchanged production single-file preparation path. Strict global
+  path ordering, uniqueness, exact artifact/output counts, aggregate manifest
+  validation, full signing and real public verification remain mandatory.
+  Setup phase timings use `public replay setup`; only the distinct
+  `public replay "..." completed` lines count the 18 public cases.
+- The first performance-cut compile failed before any test executed because
+  `supplementBytes` was redeclared with `:=` at observe_test.go:2005. The
+  assignment and adjacent declarations were corrected, and the failed ordinary
+  and race compile records were sealed separately. A subsequent adjacent
+  review reproduced a real false-green in the worker helper: a callback using
+  `runtime.Goexit()` left its default nil result and could exhaust the worker
+  pool. The preserved pre-fix regression fails with
+  `non-returning callback exited=true results=[<nil>]`. The corrected helper
+  initializes an explicit error and joins one callback child per worker; a
+  non-returning callback cannot kill the pool worker or silently pass. Panics
+  are not recovered. Deterministic barriers and a synchronous spawn seam prove
+  the exact four-worker bound, all-case completion, and ordered results.
+- The canonical census now preserves the original 234 roots plus
+  `TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency` and
+  `TestFinalSemanticFixtureWorkersRejectNonReturningCases`: 236 roots, SHA-256
+  `4cea46078feda93564385b28b4ce888eaee1df76b71a8da24beebbb89af6cef5`.
+  The sealed capture at
+  `/home/by/urnetwork/temp/sn-postguard-public-capture-mh7nBu` compiled both
+  ordinary and race binaries with matching pre/post source snapshots and exact
+  236-root listings. Its manifest SHA-256 is
+  `9039bc88200978111c1f9411147c0d848b762ab09c20334728545b90fcd9e4b3`.
+  Three worker/cache roots passed ordinary in 0.59 seconds and race in 8.51
+  seconds, without a race report. This does not yet qualify the complete
+  performance repair.
+- At 07:37 UTC the next ordinary pin check failed with
+  `semantic scheduler lost its sole bounded worker loop: bounded=0 starts=1`.
+  The static check inspected the wrapper, but the bounded loop now belongs to
+  `runFinalSemanticTestCasesWithSpawn`; the wrapper delegates worker creation
+  and the helper separately launches and joins one callback child. All five
+  census checks passed, but this actual gate failure blocks the full rerun.
+  Astra owns only the static-pin repair at this boundary, preserving separate
+  worker-bound, delegate and callback-join assertions plus deterministic
+  missing-bound/missing-join rejection controls. The other test files and
+  census stay unchanged. Terra must recapture the corrected source, run the
+  pin ordinary/race, then run the full exact 236 roots ordinary/race from the
+  package directory with GOMAXPROCS=24, `-parallel=4`, `-count=1`, and unchanged
+  15/25-minute deadlines. No redundant long three-root focus precedes that
+  complete run. The following focused result supersedes only the pin blocker,
+  not the incomplete full performance qualification.
+- The repaired six-root pin/census selection passed ordinary in 0.64 seconds
+  and race in 7.39 seconds with no race report. The new sealed capture is
+  `/home/by/urnetwork/temp/sn-postpin-public-capture-EFj5jw`, with manifest
+  SHA-256 `e90e36d85014c024949c2b480a70101b4e64cd5df6a05b7f46f3073870be9210`.
+  Its ordinary/race binaries are respectively
+  `720a73ef5589a7cbc320e417d658dfda288677e4a1ad5db60ca9450d650d3ecc`
+  and `191e028a3511c136e1de8a1d8e5fb0de240b8922b0ac15d68a8f3cd905566ff2`;
+  both enumerate the exact 236-root census and the source snapshots match.
+  Terra now proceeds directly to full ordinary/race prequalification. The
+  07:46 UTC fetch-only inventory separately confirmed all twelve repository
+  HEADs equal their fetched upstreams, with exactly eight dirty SN paths and
+  no other dirty repository. Its immutable record is
+  `/home/by/urnetwork/temp/sn-pre-freeze-origin-inventory-20260905T074650Z-y5VJnh.log`,
+  SHA-256 `24a2a2b4333094d21ed4ba802abfdc1e7a57ba8a1d1478eac3891e00839623eb`.
+  A source checkpoint while these immutable binaries run is not a final freeze
+  or permission to apply a stale lock.
+- The clean `d450fe5` pre-lock source check passed all twelve freshly fetched
+  repositories, all fifteen live module tidy checks and the authenticated
+  archive exception in 18.06 seconds. Its immutable record is
+  `/tmp/urnetwork-sn-prelock-source-freeze-6GMclQ.log`, SHA-256
+  `2ad158581b9700590463bd6fa4bd5a7815cae24ae4fa789179a4045179a654d8`.
+  The clean trimpath binary at
+  `/home/by/urnetwork/temp/sn-release-lock-build-n3lQUa/sim-testnet` (SHA-256
+  `0954ed233b1a8c030d8f2e2c79aa00d310a95ffe360c1472ef79527de058885c`)
+  rendered an unapplied candidate lock, SHA-256
+  `0ab39293d8b7136c4d08b9d9b5a45c1393692e5bc8b6e2ffa6b271bae1a9a2a8`.
+  Only the expected SN, server, Connect, SDK and protocol source hashes changed;
+  runtime and EVM artifacts did not. This remains a preview, not approval.
+  After the performance repair, build from its new clean pushed revision and
+  repeat observation; do not apply using this now-obsolete executable.
 - Prequalification uses two Terra-max test lanes: one owns all PostgreSQL/Redis
   suites and source-pin checks, while the other owns complete semantic replay
   timing. Astra-max owns reproduced-failure repairs. An independent read-only
@@ -1411,6 +1518,18 @@ not a frozen gate or live-chain certificate):
 | Parallel public replay with uninjected negative fixture, failure | `/tmp/urnetwork-sn-immutable-edge-public-ordinary-5T6Dhr.log` | `810efcd849c118c81f64554a0ffecbbdf717437ba8652f4dc7f1d146e35e9211` |
 | Complete 234-root ordinary before fixture repair, same sole failure | `/tmp/urnetwork-sn-immutable-semantic-full-ordinary-Vr3gKp.log` | `e27f2d3d7703e038d5d4aaac1db3afe559e5f5b5e0b21ccbb0342d147dbddb38` |
 | Complete corrected 234-root ordinary, pass | `/tmp/urnetwork-sn-postrepair-semantic-full-ordinary-FzHJmq.log` | `b200c2c3c51dc3c919d90408c293aae98b8f5b98e3ba33448c5b445469474734` |
+| Complete corrected 234-root race, internal 25-minute timeout | `/tmp/urnetwork-sn-postrepair-semantic-full-race-TpqJCU.log` | `92e8a2381f7d9e5424e22db3b68cb4010f177a3f5f2e1c82c4ea0fd536e5d295` |
+| Race timeout and root-count extract | `/tmp/urnetwork-sn-postrepair-semantic-full-race-timeout-extract-DiCEwc.log` | `0b8dd76b5d729031f7bc7a67f63a21294ae41d1879378f6deffb354aba9d87e9` |
+| Original public root ordinary CPU-profile run, diagnostic pass | `/tmp/urnetwork-sn-postrepair-public-root-ordinary-profile-gNsNae.log` | `943ce6f9e37edae01e49e7421492cf413b261ffd24702938db3585687d7194c9` |
+| Original public root CPU profile | `/tmp/urnetwork-sn-postrepair-public-root-ordinary-cpu-nQroOu.pprof` | `ec4203e2fb818c690545845e161e53d7895cd41a2dbd2882097eecf95cf35208` |
+| First performance cut ordinary compile failure, no tests ran | `/home/by/urnetwork/temp/sn-postperf-public-capture-dyqet2/ordinary-compile.log` | `309f2a784d7029cc0fdd70e70468557e7bca027a524181dc8e3eb4c2a7865a7a` |
+| First performance cut race compile failure, no tests ran | `/home/by/urnetwork/temp/sn-postperf-public-capture-dyqet2/race-compile.log` | `c8aae1e39170945d9bbb432a9c012628bdcf7d445455dae6ed16dda4f351e463` |
+| Non-returning callback pre-fix false-green regression, red | `/tmp/urnetwork-sn-pre-guard-nonreturn-red-PdqiEn.log` | `bd5d815e2d947ed4c6e6dff4227f9295c71ad8466dae21a90d66f9d0c0200a17` |
+| Guarded worker/cache ordinary, three roots pass | `/tmp/urnetwork-sn-postguard-helper-cache-ordinary-IXcQM8.log` | `6225f3816655c20b3cb81dd0278cbae0eaf16a71bff9921c4df4fbf7825b8f41` |
+| Guarded worker/cache race, three roots pass | `/tmp/urnetwork-sn-postguard-helper-cache-race-tbFgCH.log` | `7884e514d03a519b8e48996aa2f3143f8ce84cf134ca2688e6b044c1e87b0193` |
+| Post-guard static pin failure; five census roots pass | `/tmp/urnetwork-sn-postguard-semantic-pin-ordinary-g1MC2l.log` | `27f760ed773b89e08581a05534ec795bcb32442711e33e2f48869b3a0316cd6b` |
+| Corrected static pin/census ordinary, six roots pass | `/tmp/urnetwork-sn-postpin-semantic-pin-ordinary-ZragfL.log` | `0264aea70f78e8270813c9a1cec39404e839352ba11d7d5f2c44fb73c6119630` |
+| Corrected static pin/census race, six roots pass | `/tmp/urnetwork-sn-postpin-semantic-pin-race-JLqeE8.log` | `d3b700575c3ab7214e69729de7cd4c9027c5fe562c4ab9bdb0a2b21d2f55b6e9` |
 | Old serial edge/public-bundle race timeout | `/home/by/urnetwork/temp/terra-gates.sqQPsP/sim-edge-fix-race.log` | `93ce17308caa0d043d3f116abb6737cf3af89f2e31ad39dae109b3c74fbe02c0` |
 
 - No final live campaign is running. The exact remaining chain-clock range is
@@ -1426,8 +1545,10 @@ producer pass are separately recorded above.
 | Item | Result | UTC / immutable reference |
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
-| All final semantic ordinary tests | prequalified; frozen rerun pending | `7d634c4`; 204 selected test/subtest names, 416.901s package / 447.81s wall |
-| All final semantic race tests | prequalified in shards; frozen aggregate pending | `7d634c4`; affected heavy selection 524.891s; latest worker/cache/stdio selection 222.138s |
+| Canonical semantic/replay selection, ordinary | current 236-root prequalification pending after repaired pin passed | prior 234 roots and 18 public cases pass in 264.39s; raw SHA-256 `b200c2c3c51dc3c919d90408c293aae98b8f5b98e3ba33448c5b445469474734` |
+| Canonical semantic/replay selection, race | failed; current 236-root rerun pending | prior 233/234 roots pass, public-bundle root unfinished at the internal 25m timeout; raw SHA-256 `92e8a2381f7d9e5424e22db3b68cb4010f177a3f5f2e1c82c4ea0fd536e5d295` |
+| Bounded worker, non-return and detached-cache regressions | focused ordinary/race pass | exact three roots, 0.59/8.51s; immutable records above |
+| Post-guard semantic static pin | repaired, focused ordinary/race pass | six roots in 0.64/7.39s; prior 07:37 UTC failure and exact corrective results preserved above |
 | Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
 | Full sim-testnet race | pending | |
 | Producer gate | prior candidate passed; current rerun pending | `5d779cd`; 2026-09-04 UTC |
@@ -1437,12 +1558,12 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | generated-policy and abigen qualification pass; frozen gate pending | pushed source `20431dd`; exact selector/static normal/race, stabi, shell syntax, and v1.17 generated-byte checks pass |
-| Server candidate commit | affected qualification pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
-| Connect candidate commit | focused fix qualification pass; frozen unsharded certificates pending | pushed `b22ab0704f6dc3ecf80e91b31b5c7fafca097223`, tree `000160e9679bb1636621d3b6d990f920866ca582`; deterministic adjacent helpers and actual fast-path/WebRTC paths passed 20x normal/race, canonical 10x replay and two independent reviews pass; aggregate now requires default ordinary/race plus fixed-order race with 30-minute deadlines |
-| SDK candidate commit | affected qualification pass; frozen aggregate pending | `2f3e7058873498099a88aee3e158caa11aefbda1`; full root normal 443.170s, changed focus 243.280/245.255s, nested build/cgo normal/race/vet, all Go files formatted |
-| Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed at 18:12 UTC |
-| Release-lock hash | superseded pre-fix render; refresh pending | `sha256:998a86a4c3806e63f7c1c056401b0cb3cefb7601d6579b96f6bfddcbf2135cb5`; only Connect Go and protocol-source hashes changed before the full-race blockers were found |
+| SN runtime candidate | current test-only repair is dirty; commit and frozen gates pending | pushed checkpoint `d450fe5e741440afa4361f8f49b4c5b506f915cf`; current 236-root qualification is not yet complete |
+| Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
+| Connect candidate commit | affected auth/TCP and generated-policy ordinary/race pass; frozen unsharded certificates pending | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; aggregate still requires default ordinary/race plus fixed-order race with 30-minute deadlines |
+| SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
+| Other candidate repository commits | clean/equal at latest fetch; frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed at 06:54 UTC and fetch-only inventory passed at 07:46 UTC, fresh post-repair freeze still required |
+| Release-lock hash | source-stale tracked lock; fresh clean-build refresh pending | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; unapplied `0ab39293...` preview is also obsolete after test-source edits, see section 12 |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
 | Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |
 | Resume/launch | pending | |
