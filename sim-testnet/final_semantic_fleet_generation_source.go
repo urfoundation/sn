@@ -141,20 +141,35 @@ func newFinalFleetGenerationSource(archive *finalSemanticArchive, evidence *Fina
 	return result, nil
 }
 
-// records one exact immutable input in the eventual lineage artifact.
+// Returns a detached copy while retaining one immutable copy in the lineage
+// index. Repeated indexing still compares the archive's current exact bytes.
 func (self *finalFleetGenerationSource) record(path string) ([]byte, error) {
-	if self == nil || self.archive == nil || path == "" {
-		return nil, errors.New("ordinary fleet generation source file is unavailable")
-	}
-	data, _, err := self.archive.file(path)
+	data, err := self.recordBytes(path)
 	if err != nil {
 		return nil, err
 	}
-	if prior, found := self.raw[path]; found && !bytes.Equal(prior, data) {
-		return nil, fmt.Errorf("ordinary fleet generation source %s changed while being indexed", path)
+	return append([]byte(nil), data...), nil
+}
+
+// Borrows the source index's owned bytes only for internal plan checks or
+// immediate detachment by record. Callers must never mutate this byte view.
+func (self *finalFleetGenerationSource) recordBytes(path string) ([]byte, error) {
+	if self == nil || self.archive == nil || path == "" {
+		return nil, errors.New("ordinary fleet generation source file is unavailable")
 	}
-	self.raw[path] = append([]byte(nil), data...)
-	return data, nil
+	data, found := self.archive.files[filepath.ToSlash(path)]
+	if !found {
+		return nil, fmt.Errorf("closed semantic graph is missing %s", path)
+	}
+	if prior, found := self.raw[path]; found {
+		if !bytes.Equal(prior, data) {
+			return nil, fmt.Errorf("ordinary fleet generation source %s changed while being indexed", path)
+		}
+		return prior, nil
+	}
+	owned := append([]byte(nil), data...)
+	self.raw[path] = owned
+	return owned, nil
 }
 
 // records the exact approved plan that authorized a selected journal entry.
@@ -167,7 +182,7 @@ func (self *finalFleetGenerationSource) recordPlan(planHash string) (*SetupPlan,
 	if plan == nil || path == "" {
 		return nil, fmt.Errorf("ordinary fleet generation source plan %s is absent", planHash)
 	}
-	if _, err := self.record(path); err != nil {
+	if _, err := self.recordBytes(path); err != nil {
 		return nil, err
 	}
 	return plan, nil

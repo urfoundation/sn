@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 09:53 UTC before the final source freeze. Refresh every item marked
+2026-09-05 10:17 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -33,9 +33,12 @@ Launch blockers at this checkpoint:
   at 09:30:00 UTC at its unchanged 25-minute deadline: 236/237 roots and all
   18 public cases passed, but `TestFinalSemanticEvidenceBuildRenderAndArtifacts`
   was still executing. This is an actual failed qualification, not a stalled
-  observer. Its root-cause profile/repair is in progress; do not rerun the
-  unchanged suite or waive the remaining root. Parser integration also requires
-  a fresh expanded census. Final lock/freeze and release gates remain outstanding.
+  observer. The profiled decode/copy/scheduling repair now passes fifteen
+  focused roots ordinarily and under race, plus the copy-lock check. Primary
+  integration now passes its exact 34-root ordinary/race selection and static
+  checks. The expanded 247-root complete qualification is next;
+  do not rerun the unchanged suite or waive the remaining root. Final
+  lock/freeze and release gates remain outstanding.
 - Both Terra-max agents recovered from their earlier usage-limit errors.
   Test execution remains Terra max and diagnosis/repair remains Astra max;
   no assignment change or duplicate simulator test process was needed.
@@ -1875,10 +1878,15 @@ above; all results are prequalification until committed and release-locked:
   `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/02-race-default.log`
   is sealed mode 0400, SHA-256
   `9fc4fb1e5faa1abb5fb6d997b557ae3e9f74eafff5da0c506cc3c3bc45d6dfe5`.
-  Fixed-order `-shuffle=4535211000` race is now running as PID 4055806, raw
+  Fixed-order `-shuffle=4535211000` race also passed, former PID 4055806, raw
   `/home/by/urnetwork/temp/connect-aggregate-cert-VmGolf/03-race-shuffle-4535211000.log`.
-  Both race modes use GOMAXPROCS=4 and 30-minute deadlines. These are parallel prequalification,
-  not a frozen aggregate pass; preserve every actual terminal result.
+  It completed in 1,191.339 package seconds, raw SHA-256
+  `3129ee27f5f542160c9a542f753faa0245be29ded433b8616759003751d3935d`.
+  Both race modes used GOMAXPROCS=4 and 30-minute deadlines. All three exact
+  current-HEAD selections passed; their sealed `CERTIFICATE-MANIFEST.txt` has
+  SHA-256 `e3d635d93cb17dfc5e011a209e9464321c2531d32fb17a0e03bf487552bbf4d1`.
+  These remain prequalification, not a frozen aggregate pass; every actual
+  terminal result is preserved and the former Connect PIDs have exited.
 - The parser reproduction and repair are preserved under
   `/home/by/urnetwork/temp/sn-proof-suffix-repro-jK6XWR`. A deterministic
   signed-proof RED accepted four malformed suffixes after real size/hash and
@@ -1932,6 +1940,11 @@ above; all results are prequalification until committed and release-locked:
   before the authorized fresh ordinary rerun. Synthetic terminal SHA-256 is
   `62a0f78a55d491cac900480b30fe7746a6dab34e6e6ce9cf0098e9b638185aee`.
   All four owned test/control PIDs are terminal. No live process was restarted.
+- The parser/gate repair and handoff were committed at 09:54:30 UTC, pulled
+  and pushed as `f1fffc626df4760568f6b275660f7ae92060b44b`; primary was clean
+  and exactly equal to upstream. This is a checkpoint, not final release
+  freeze. The subsequent performance integration must be qualified and
+  checkpointed separately before any final lock/capture workflow.
 - Terra profiled only `TestFinalSemanticEvidenceBuildRenderAndArtifacts`
   in the unchanged captured ordinary binary, in the package working directory,
   GOMAXPROCS=24, parallel 4, count 1, inner 15/outer 16-minute bounds.
@@ -1952,10 +1965,10 @@ above; all results are prequalification until committed and release-locked:
   `finalRPCExchangeHashes` is only 2.67% of sampled CPU, so the timeout stack
   alone would have misidentified the dominant work. The same profile exposes
   repeated whole-plan copies in the production `recordPlan`/`record` path
-  (15,670 MiB cumulative allocations, not resident memory). Astra is preparing
+  (15,670 MiB cumulative allocations, not resident memory). Astra added
   exact-byte ownership/work-count regressions and repairs for these related
-  paths. Cumulative CPU/allocation totals overlap and are not additive elapsed
-  time or proof of future wall-clock savings.
+  paths, qualified below. Cumulative CPU/allocation totals overlap and are not
+  additive elapsed time or proof of future wall-clock savings.
 - The CPU's portable SHA-256 path is expected, not an identified service or
   crypto configuration defect: the host reports Intel Xeon E5-2697 v2 with
   24 logical cores, AVX but no AVX2/BMI2/SHA flags. The installed Go 1.26.6
@@ -1981,10 +1994,93 @@ above; all results are prequalification until committed and release-locked:
   its sealed correction, `fleet-generation-copy-red-provenance-correction.log`
   (SHA-256 `c2e5932987753ebe5f7a43bbf7bdc6379607c5c97ab6133d63989b57b16d3968`),
   recording the exact unchanged source hashes. These are diagnostic REDs,
-  not release qualification. Astra's isolated repair and Terra GREEN follow-up
-  remain pending. All ten success/negative chain cases must remain when moved
-  through the existing four-worker join-all helper, with private readers and
-  unchanged rejection reasons.
+  not release qualification. The five-file repair now passes all fifteen
+  focused roots normally and under race; `go vet -copylocks ./sim-testnet`
+  also passes. Their source hashes stayed identical before/after. The isolated
+  provenance commit is `7a6a7215a122e8c56ea32e767d614188de993e33`; primary
+  integration uses its reviewed patch while retaining all parser coverage.
+  `fleet-generation-fixed-qualification/QUALIFICATION-MANIFEST.txt` has
+  SHA-256 `54e334021c7e3e56d3b6375bacc8fb73b143b4233c804d7d2b3b53e05b6ea07d`.
+  Ordinary, race and copy-lock raw SHA-256 values are respectively
+  `33ae6230462026cc3cddcda2609855d7ff33464543136834223f8217765eba2d`,
+  `04e581e2e087228f42258a3445259795fa61222355ab57403500f84aab272f07`,
+  `34627e26474d0051ee53a8e76d533468b073ae4039e14b88c48030a71b054bfb`.
+  The synthetic reader shares only exact-string decoding through a guarded
+  map/per-entry once; every head/state lookup remains, and no used mutex is
+  copied. Generation lookup no longer constructs the entire 402-version
+  list. The production source index compares current archive bytes on every
+  access, owns one indexed copy, and still returns detached bytes to callers;
+  only an internal plan check borrows the index view. All ten original
+  success/negative chain cases use the existing four-worker join-all helper,
+  with private readers, unchanged rejection reasons and read-only shared
+  evidence. Their census, reader ownership, cancellation and joins are tested.
+  Nine new roots expand 238 to 247, with no old root removed. The next complete
+  ordinary/race run includes the original timed-out root, all eighteen public
+  cases and all ten main-root chain cases; do not add a redundant heavy
+  standalone replay before that same complete qualification.
+- Primary integration passes the exact 34-root combined selection: the prior
+  nineteen parser/gate/census roots plus the fifteen focused performance
+  roots. Ordinary ended at 10:13:45 UTC and race at 10:16:04 UTC; both saved
+  actual subprocess exit 0, and both actual executed root sets match the
+  independent selection. Relevant Go, test, module, script and census bytes
+  stayed unchanged. Copy-lock vet and both release-script syntax checks pass.
+  Records are under `/home/by/urnetwork/temp/sn-perf-integration-AKZFok`.
+  Its sealed `manifest-index.txt` SHA-256 is
+  `6e4300f6723589c656a17721f6a96361c71ee1d08a7e07da0c28de4d1ca404f9`;
+  the thirty-file relevant-source manifest is identical before/after,
+  SHA-256 `a714699caea8f011257f43315e0e0f328f14883c4ec86400f19af640832e3be8`.
+  Ordinary/race raw SHA-256 values are respectively
+  `8d620049a2270aaaa2eb9dea1238384cac7de0a47263a2e277df1afe7686d902`
+  and `c188c0de9ddc8c98895151d628ecece4d3818fb2377b8bfa604dd773ebc4fc3b`;
+  their terminal-record SHA-256 values are
+  `bfa8351cb0bb86fd9ce597cb18778bafdb8d3c86573bc115a60495c200c772cc`
+  and `8db3a04d0ed4629e893f468afa54963c78015bb0818278e934bdbf32d89fe9dd`.
+  The seven-file integration patch is
+  `/home/by/urnetwork/temp/sn-chain-replay-perf-1gOqvC/primary-integration.patch`,
+  SHA-256 `2911d2dc1fd6b9c974d5a971eba4ca2ba19dcaf40005a55342b8ce5db2990355`.
+  Gate SHA-256 is `92b421e7c79a5500cf8f2636b9dfaa09c992a3c474084ec49b0bd72f6cc10ed9`;
+  census SHA-256 is `3f41006253472bc857e1322d0c88e3f158bee9b2e2e11fad8922c2f8feabc5a5`.
+  Parsed-source controls reject replacing the full verifier, replacing its
+  bounded scheduler, and omitting the tenth chain case. All 238 prior roots
+  remain. These focused passes do not replace complete 247-root qualification
+  or the frozen producer/aggregate gates.
+- The next complete qualification must use fresh ordinary/race binaries from
+  the clean pushed integration checkpoint, with source held unchanged through
+  capture. Pre-execution review of the new temporary capture script found
+  self-inclusion of its checksum index, dependent same-command local-variable
+  expansion, and incomplete actual-result census checks. The original script
+  is preserved as `/home/by/urnetwork/temp/sn-semantic-247-capture.original-d2b3f0ee.sh`,
+  SHA-256 `d2b3f0ee78584d40e7b1e8f2f13cc63df0927ef562e3b5dc7ca6af87035f6b0c`.
+  Astra is repairing the temporary helper and adjacent hidden-file/environment
+  handling; Terra is preparing deterministic synthetic RED/GREEN checks.
+  No complete run has used this helper. Require exact actual 247-root
+  start/pass census, all eighteen public views, all ten named chain cases,
+  real terminal exits, unchanged source manifests and a verified sealed index;
+  retain the existing 15/25-minute test deadlines. Do not reuse the earlier
+  237-root helper unchanged or treat its old binary as this new candidate.
+- A bounded eight-call read-only public RPC refresh ended at 09:58:12 UTC,
+  actual exit 0, with all requests answered. Native finalized block 7,938,334
+  was `0xfd80afeea872182e4374ed070aadc5f513d8078947f9b9c34eccd96154c20616`;
+  runtime queried at that exact hash was spec 454/transaction 1. Health reported
+  synchronized with 23 peers. EVM chain ID was 945 and coordinator-proxy code
+  was present at pinned EVM block 7,938,336 (`0x792120`). The 130-byte proxy
+  code had SHA-256 `bd65bf2fc79a460d4e23a2ea4c231986900610d387d32b88c8ef0679843d0014`;
+  this presence check does not authenticate its implementation slot or replace
+  the final doctor. No configuration, service, wallet or chain state changed.
+  Owner-only evidence is under
+  `/home/by/urnetwork/temp/sn-public-rpc-readiness-pGOuzN`; raw SHA-256 is
+  `422bd51c9a175d202f7c17fbdefb6ab3c39ff42fcbbbec36eba6f8567a3cc4b6`,
+  terminal SHA-256 `09b48e32eb87a70585e0c4758bacf6f03cadec275db710a8c5ea3add51e1608a`.
+  This is current-state evidence only, not full readiness or independent RPC
+  observation; no shared-service outage or runtime drift was found.
+- A fetch-only refresh at 10:02 UTC found all twelve repositories clean and
+  equal to their current upstream branch heads, including SN `f1fffc6`; some
+  ancillary tags were fetched, but no checkout, pull or merge changed source.
+  Raw terminal results and branch identities are retained in
+  `/home/by/urnetwork/temp/sn-postparser-fetch-inventory-wc5oJD/inventory.json`,
+  SHA-256 `d242b01677f147fc533c395a3665bd14e386fcee22c9dd593beb8ec16aa4234d`.
+  Performance integration happened afterwards. Final lock/source attestation
+  still requires its own fresh exact-candidate check.
 
 Current repair's closed raw records (all mode 0444):
 
@@ -2142,14 +2238,14 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | digest/fleet repair committed; complete ordinary PASS, race FAILED; parser integration and remaining replay performance repair in progress | pushed runtime `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`, documentation checkpoint `9fa5109`; captured census 237; all subsequent source must qualify separately |
+| SN runtime candidate | parser checkpoint pushed; profiled replay repair integrated with exact 34-root ordinary/race and copy-lock GREEN | parser checkpoint `f1fffc626df4760568f6b275660f7ae92060b44b`; integration patch SHA-256 `2911d2dc1fd6b9c974d5a971eba4ca2ba19dcaf40005a55342b8ce5db2990355`; original full237 race remains FAILED; expanded full247 qualification pending |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
-| Connect candidate commit | affected focused suites and complete default-order ordinary/race pass; fixed-shuffle race in progress | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s (ended 09:38:50 UTC); fixed-shuffle PID 4055806, frozen aggregate pending |
+| Connect candidate commit | all three exact current-HEAD unsharded prequalifications pass | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s, fixed-shuffle race 1,191.339s; frozen aggregate remains pending |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
-| Other candidate repository commits | all twelve clean/equal at the post-seal fetch; frozen gates pending | 08:57:20 UTC inventory SHA-256 `ddb9dd16cf0ada99a8772ad5733c5c6d9591145113fc2489b30b35079a7df8d2`; this handoff edit is later; fresh lock/source fence still required |
+| Other candidate repository commits | all twelve clean/equal at the 10:02 fetch; subsequent SN repair is later | inventory SHA-256 `d242b01677f147fc533c395a3665bd14e386fcee22c9dd593beb8ec16aa4234d`; fresh lock/source fence still required |
 | Release-lock hash | source-stale tracked lock; current clean-build preview unapplied | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; clean `140b7ca` preview `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`; eventual apply requires a fresh executable of exact clean pushed HEAD |
 | Preliminary doctor | 61/64 pass; expected source-lock hard failure and two shared-RPC soft failures | clean `140b7ca` report generated 08:37:23 UTC, SHA-256 `dfba859be85a25c9a928fd4e5f77b105d86581160b28f3a85410760257377cf8`; fresh post-gate Ready doctor pending |
-| Test execution capacity | Terra max executes tests; Astra max diagnoses and repairs | primary parser lane complete, isolated performance repair and independent Connect fixed-shuffle race proceed in parallel; all former full237 PIDs are terminal |
+| Test execution capacity | Terra max executes tests; Astra max diagnoses and repairs | parser, integrated performance and Connect lanes passed; full247 next after temporary capture-helper checks; owned integration test PIDs are terminal |
 | Validator evidence commitment scope | pending user choice; launch handoff paused | current section 11.1 proofs are off-chain and not transitively anchored by the payout-artifact hash or native weights |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
 | Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |

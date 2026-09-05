@@ -64,6 +64,42 @@ func runFinalSemanticTestCasesWithSpawn(ctx context.Context, cases []finalSemant
 	return results
 }
 
+// Each complete replay owns its reader while sharing only sealed evidence.
+// The success case and every original rejection still run the supplied full
+// verifier; the fixture scheduler only bounds their independent execution.
+func finalSemanticChainVerificationTestCases(evidence *FinalSemanticEvidence, verify func(context.Context, *FinalSemanticEvidence, FinalSemanticChainReader) error) []finalSemanticTestCase {
+	inputs := []struct {
+		name      string
+		reader    *finalTestChainReader
+		wantError string
+	}{
+		{name: "valid", reader: &finalTestChainReader{evidence: evidence}},
+		{name: "archive-unavailable", reader: &finalTestChainReader{evidence: evidence, failCanonical: true}, wantError: "archive unavailable"},
+		{name: "applied-weight", reader: &finalTestChainReader{evidence: evidence, corruptWeights: true}, wantError: "applied vector"},
+		{name: "custody", reader: &finalTestChainReader{evidence: evidence, corruptCustody: true}, wantError: "custody/policy state mismatch"},
+		{name: "settlement-accounting", reader: &finalTestChainReader{evidence: evidence, corruptSettlement: true}, wantError: "settlement-vault accounting mismatch"},
+		{name: "owner-stake", reader: &finalTestChainReader{evidence: evidence, corruptOwnerStake: true}, wantError: "owner-pair stake mismatch"},
+		{name: "reserve-receipt", reader: &finalTestChainReader{evidence: evidence, corruptReserveReceipt: true}, wantError: "ReservePrincipalAdded receipt"},
+		{name: "epoch-deposit", reader: &finalTestChainReader{evidence: evidence, corruptEpochDeposit: true}, wantError: "cumulative deposit differs from signed audit"},
+		{name: "operator-version", reader: &finalTestChainReader{evidence: evidence, corruptOperatorVersion: true}, wantError: "terminal pool evidence"},
+		{name: "pool-expiry", reader: &finalTestChainReader{evidence: evidence, corruptPoolExpiry: true}, wantError: "pool epoch"},
+	}
+	cases := make([]finalSemanticTestCase, len(inputs))
+	for index, input := range inputs {
+		cases[index] = finalSemanticTestCase{name: input.name, verify: func(ctx context.Context) error {
+			err := verify(ctx, evidence, input.reader)
+			if input.wantError == "" {
+				return err
+			}
+			if err == nil || !strings.Contains(err.Error(), input.wantError) {
+				return fmt.Errorf("public %s replay = %v, want rejection containing %q", input.name, err, input.wantError)
+			}
+			return nil
+		}}
+	}
+	return cases
+}
+
 // Count worker creation synchronously; barriers separately prove concurrent
 // entry, join-all behavior after errors, and source-ordered results.
 func TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency(t *testing.T) {

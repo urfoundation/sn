@@ -418,6 +418,15 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 		"TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary",
 		"TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency",
 		"TestFinalSemanticFixtureWorkersRejectNonReturningCases",
+		"TestFinalSemanticFixtureHotkeyDecodeWorkIsBounded",
+		"TestFinalSemanticFixtureHotkeyDecodeTracksExactBytes",
+		"TestFinalSemanticFixtureHotkeyDecodeJoinsConcurrentReaders",
+		"TestFinalSemanticFixtureGenerationLookupDoesNotAllocateCensus",
+		"TestFinalSemanticFixtureChainCasesKeepExactCensusAndPrivateReaders",
+		"TestFinalSemanticFixtureChainCasesJoinAllFailuresAndCancellation",
+		"TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes",
+		"TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges",
+		"TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors",
 		"TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions",
 		"TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity",
 		"TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership",
@@ -568,6 +577,66 @@ func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
 	callbackLoop.Body.List = statements
 	if joinErr == nil || !strings.Contains(joinErr.Error(), "joined callback") {
 		t.Fatalf("semantic scheduler accepted a lost callback join: %v", joinErr)
+	}
+	chainReplay := declarations["TestFinalSemanticEvidenceBuildRenderAndArtifacts"]
+	chainFactory := declarations["finalSemanticChainVerificationTestCases"]
+	if err := verifyReleaseSemanticChainReplayCases(chainReplay, chainFactory); err != nil {
+		t.Fatal(err)
+	}
+	// These parsed-source mutations must not evade the pin by leaving the
+	// independent scheduler and callback-census regression tests intact.
+	var factoryCall, schedulerCall *ast.CallExpr
+	ast.Inspect(chainReplay.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if name, ok := call.Fun.(*ast.Ident); ok {
+			switch name.Name {
+			case "finalSemanticChainVerificationTestCases":
+				factoryCall = call
+			case "runFinalSemanticTestCases":
+				schedulerCall = call
+			}
+		}
+		return true
+	})
+	if factoryCall == nil || schedulerCall == nil {
+		t.Fatal("main semantic replay structural controls lost their call targets")
+	}
+	fullVerifier := factoryCall.Args[1]
+	factoryCall.Args[1] = ast.NewIdent("bypassFullChainVerification")
+	verifierErr := verifyReleaseSemanticChainReplayCases(chainReplay, chainFactory)
+	factoryCall.Args[1] = fullVerifier
+	if verifierErr == nil {
+		t.Fatal("main semantic replay accepted a bypassed full verifier")
+	}
+	boundedScheduler := schedulerCall.Fun
+	schedulerCall.Fun = ast.NewIdent("runSerialSemanticTestCases")
+	schedulerErr := verifyReleaseSemanticChainReplayCases(chainReplay, chainFactory)
+	schedulerCall.Fun = boundedScheduler
+	if schedulerErr == nil {
+		t.Fatal("main semantic replay accepted a replaced bounded scheduler")
+	}
+	var chainInputs *ast.CompositeLit
+	ast.Inspect(chainFactory.Body, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
+			if name, ok := assignment.Lhs[0].(*ast.Ident); ok && name.Name == "inputs" {
+				chainInputs, _ = assignment.Rhs[0].(*ast.CompositeLit)
+			}
+		}
+		return true
+	})
+	if chainInputs == nil {
+		t.Fatal("main semantic replay structural control lost its case census")
+	}
+	allChainInputs := chainInputs.Elts
+	chainInputs.Elts = allChainInputs[:len(allChainInputs)-1]
+	censusErr := verifyReleaseSemanticChainReplayCases(chainReplay, chainFactory)
+	chainInputs.Elts = allChainInputs
+	if censusErr == nil {
+		t.Fatal("main semantic replay accepted an omitted chain case")
 	}
 	fixtureUsers := map[string]bool{"finalSemanticFixture": true}
 	for changed := true; changed; {
@@ -764,6 +833,92 @@ func verifyReleaseSemanticTestScheduler(wrapper, scheduler *ast.FuncDecl) error 
 	return nil
 }
 
+// Pin the actual release-scale caller, not just its independently tested
+// helper: all ten private-reader cases must reach the full verifier through
+// the bounded, joined scheduler whose implementation is checked above.
+func verifyReleaseSemanticChainReplayCases(replay, factory *ast.FuncDecl) error {
+	if replay == nil || replay.Body == nil || factory == nil || factory.Body == nil {
+		return errors.New("main semantic chain replay or its ten-case factory is missing")
+	}
+	isName := func(node ast.Node, want string) bool {
+		name, ok := node.(*ast.Ident)
+		return ok && name.Name == want
+	}
+	factoryCalls, schedulerCalls, directReplays := 0, 0, 0
+	ast.Inspect(replay.Body, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			switch {
+			case isName(call.Fun, factory.Name.Name):
+				factoryCalls++
+			case isName(call.Fun, "runFinalSemanticTestCases"):
+				schedulerCalls++
+			case isName(call.Fun, "VerifyFinalSemanticEvidenceOnChain"):
+				directReplays++
+			}
+		}
+		return true
+	})
+	if factoryCalls != 1 || schedulerCalls != 1 || directReplays != 0 {
+		return fmt.Errorf("main semantic replay lost its sole bounded full-verifier dispatch: factories=%d schedulers=%d direct=%d", factoryCalls, schedulerCalls, directReplays)
+	}
+	caseName, joined := "", false
+	for _, statement := range replay.Body.List {
+		if assignment, ok := statement.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
+			call, ok := assignment.Rhs[0].(*ast.CallExpr)
+			name, named := assignment.Lhs[0].(*ast.Ident)
+			if ok && named && isName(call.Fun, factory.Name.Name) && len(call.Args) == 2 && isName(call.Args[0], "first") && isName(call.Args[1], "VerifyFinalSemanticEvidenceOnChain") {
+				caseName = name.Name
+			}
+		}
+		if loop, ok := statement.(*ast.RangeStmt); ok && caseName != "" {
+			call, ok := loop.X.(*ast.CallExpr)
+			if ok && isName(call.Fun, "runFinalSemanticTestCases") && len(call.Args) == 2 && isName(call.Args[1], caseName) && isName(loop.Key, "index") && isName(loop.Value, "err") {
+				joined = true
+			}
+		}
+	}
+	if !joined {
+		return errors.New("main semantic replay must report its full-verifier case results from the bounded scheduler in order")
+	}
+	wantNames := []string{"valid", "archive-unavailable", "applied-weight", "custody", "settlement-accounting", "owner-stake", "reserve-receipt", "epoch-deposit", "operator-version", "pool-expiry"}
+	var inputs *ast.CompositeLit
+	verifierCalls, validVerifierCalls := 0, 0
+	ast.Inspect(factory.Body, func(node ast.Node) bool {
+		if assignment, ok := node.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 && isName(assignment.Lhs[0], "inputs") {
+			inputs, _ = assignment.Rhs[0].(*ast.CompositeLit)
+		}
+		if call, ok := node.(*ast.CallExpr); ok && isName(call.Fun, "verify") {
+			verifierCalls++
+			if len(call.Args) == 3 && isName(call.Args[0], "ctx") && isName(call.Args[1], "evidence") {
+				if reader, ok := call.Args[2].(*ast.SelectorExpr); ok && isName(reader.X, "input") && reader.Sel.Name == "reader" {
+					validVerifierCalls++
+				}
+			}
+		}
+		return true
+	})
+	if inputs == nil || len(inputs.Elts) != len(wantNames) || verifierCalls != 1 || validVerifierCalls != 1 {
+		return errors.New("semantic chain case factory must retain exactly ten cases and its sole full-verifier callback")
+	}
+	for index, element := range inputs.Elts {
+		input, ok := element.(*ast.CompositeLit)
+		found := false
+		if ok {
+			for _, field := range input.Elts {
+				entry, ok := field.(*ast.KeyValueExpr)
+				if ok && isName(entry.Key, "name") {
+					name, ok := entry.Value.(*ast.BasicLit)
+					found = ok && name.Kind == token.STRING && name.Value == fmt.Sprintf("%q", wantNames[index])
+				}
+			}
+		}
+		if !found {
+			return fmt.Errorf("semantic chain case %d must remain %q", index, wantNames[index])
+		}
+	}
+	return nil
+}
+
 // Review the complete deployment, chronology, fleet, registration, and builder
 // source groups independently of the checked-in list. A list regenerated from
 // a weakened selector must still fail when it drops one of these regressions
@@ -783,6 +938,7 @@ func TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups(t *testing.T) {
 		{pattern: "final_semantic_registration_test.go", required: "^Test"},
 		{pattern: "final_semantic_source_builder_test.go", required: "^TestFinalSemanticBuilder"},
 		{pattern: "final_semantic_evidence_test.go", required: "^TestFinalSemanticArtifactVerificationCache"},
+		{pattern: "final_semantic_chain_fixture_test.go", required: "^Test"},
 		{pattern: "final_semantic_path_proof_test.go", required: "^Test"},
 	} {
 		paths, err := filepath.Glob(group.pattern)

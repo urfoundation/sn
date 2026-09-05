@@ -668,35 +668,13 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 			t.Fatalf("tampered %s was accepted: %v", locator.Kind, err)
 		}
 	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first}); err != nil {
-		t.Fatal(err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, failCanonical: true}); err == nil || !strings.Contains(err.Error(), "archive unavailable") {
-		t.Fatalf("public archive absence was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptWeights: true}); err == nil || !strings.Contains(err.Error(), "applied vector") {
-		t.Fatalf("public applied-weight mismatch was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptCustody: true}); err == nil || !strings.Contains(err.Error(), "custody/policy state mismatch") {
-		t.Fatalf("public custody substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptSettlement: true}); err == nil || !strings.Contains(err.Error(), "settlement-vault accounting mismatch") {
-		t.Fatalf("public settlement-vault substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptOwnerStake: true}); err == nil || !strings.Contains(err.Error(), "owner-pair stake mismatch") {
-		t.Fatalf("public owner-pair stake substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptReserveReceipt: true}); err == nil || !strings.Contains(err.Error(), "ReservePrincipalAdded receipt") {
-		t.Fatalf("public ReservePrincipalAdded receipt substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptEpochDeposit: true}); err == nil || !strings.Contains(err.Error(), "cumulative deposit differs from signed audit") {
-		t.Fatalf("public historical epoch-deposit substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptOperatorVersion: true}); err == nil || !strings.Contains(err.Error(), "terminal pool evidence") {
-		t.Fatalf("public terminal operator authority substitution was not fatal: %v", err)
-	}
-	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptPoolExpiry: true}); err == nil || !strings.Contains(err.Error(), "pool epoch") {
-		t.Fatalf("public entitlement expiry substitution was not fatal: %v", err)
+	chainCases := finalSemanticChainVerificationTestCases(first, VerifyFinalSemanticEvidenceOnChain)
+	for index, err := range runFinalSemanticTestCases(context.Background(), chainCases) {
+		if err != nil {
+			t.Errorf("public chain case %s: %v", chainCases[index].name, err)
+		} else {
+			t.Logf("public chain case %s passed", chainCases[index].name)
+		}
 	}
 
 	// Reusing one URI with a different declared hash must not exploit the
@@ -3404,8 +3382,13 @@ func mustFinalSemanticJSON(t *testing.T, value any) []byte {
 	return encoded
 }
 
+// Queries may run concurrently while evidence and corruption flags stay fixed.
+// Only pure address decoding is cached; every query reads its current evidence.
 type finalTestChainReader struct {
 	evidence                    *FinalSemanticEvidence
+	decodeHotkey                func(string) ([32]byte, uint16, error)
+	stateLock                   sync.Mutex
+	hotkeyDecodings             map[string]*finalTestHotkeyDecoding
 	publicManifestHash          string
 	failCanonical               bool
 	corruptWeights              bool
@@ -3434,6 +3417,41 @@ type finalTestChainReader struct {
 	nativeTip                   uint64
 	evmTip                      uint64
 	forkTarget                  bool
+}
+
+// Publishes one immutable conversion per exact input string. The once joins
+// concurrent readers without holding the index lock across address decoding.
+type finalTestHotkeyDecoding struct {
+	once   sync.Once
+	key    [32]byte
+	prefix uint16
+	err    error
+}
+
+// Shares only the deterministic string-to-key conversion across repeated
+// scans. Returned keys are values; changed input bytes select another entry.
+func (self *finalTestChainReader) fleetHotkey(encoded string) ([32]byte, uint16, error) {
+	decoding := func() *finalTestHotkeyDecoding {
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
+		if decoding := self.hotkeyDecodings[encoded]; decoding != nil {
+			return decoding
+		}
+		if self.hotkeyDecodings == nil {
+			self.hotkeyDecodings = make(map[string]*finalTestHotkeyDecoding)
+		}
+		decoding := &finalTestHotkeyDecoding{}
+		self.hotkeyDecodings[encoded] = decoding
+		return decoding
+	}()
+	decoding.once.Do(func() {
+		decode := self.decodeHotkey
+		if decode == nil {
+			decode = ss58.Decode
+		}
+		decoding.key, decoding.prefix, decoding.err = decode(encoded)
+	})
+	return decoding.key, decoding.prefix, decoding.err
 }
 
 func (self *finalTestChainReader) Endpoints() (string, string, string) {
@@ -3566,30 +3584,36 @@ func (self *finalTestChainReader) NativePruneSnapshot(_ context.Context, _ uint1
 
 func (self *finalTestChainReader) NativeFleetCommitment(_ context.Context, _ uint16, hotkey string, head ChainHead) (FinalNativeFleetCommitmentState, []FinalRPCExchange, error) {
 	if self.evidence.FleetGeneration != nil {
-		versions := make([]FinalFleetGenerationVersionEvidence, 0, len(self.evidence.FleetGeneration.SetupFleets)*2+len(self.evidence.FleetGeneration.ChallengerFleets))
-		for _, fleet := range self.evidence.FleetGeneration.SetupFleets {
-			versions = append(versions, fleet.Initial, fleet.Refresh)
-		}
-		for _, fleet := range self.evidence.FleetGeneration.ChallengerFleets {
-			versions = append(versions, fleet.Initial)
-		}
-		for _, version := range versions {
+		match := func(version *FinalFleetGenerationVersionEvidence) (FinalNativeFleetCommitmentState, bool) {
 			if !strings.EqualFold(version.Hotkey, hotkey) || version.NativeHead != head {
-				continue
+				return FinalNativeFleetCommitmentState{}, false
 			}
 			return FinalNativeFleetCommitmentState{
 				Hotkey:          strings.ToLower(version.Hotkey),
 				CommitmentHash:  strings.ToLower(version.CommitmentHash),
 				CommitmentBlock: version.NativeHead.Number,
 				Block:           head,
-			}, self.exchange("substrate", "state_queryStorageAt", head), nil
+			}, true
+		}
+		for index := range self.evidence.FleetGeneration.SetupFleets {
+			fleet := &self.evidence.FleetGeneration.SetupFleets[index]
+			for _, version := range []*FinalFleetGenerationVersionEvidence{&fleet.Initial, &fleet.Refresh} {
+				if state, matched := match(version); matched {
+					return state, self.exchange("substrate", "state_queryStorageAt", head), nil
+				}
+			}
+		}
+		for index := range self.evidence.FleetGeneration.ChallengerFleets {
+			if state, matched := match(&self.evidence.FleetGeneration.ChallengerFleets[index].Initial); matched {
+				return state, self.exchange("substrate", "state_queryStorageAt", head), nil
+			}
 		}
 	}
 	for _, fleet := range self.evidence.HeadFleets {
 		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
 			continue
 		}
-		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		hotkeyBytes, prefix, err := self.fleetHotkey(fleet.Hotkey)
 		if err != nil || prefix != ss58.BittensorPrefix {
 			continue
 		}
@@ -3658,7 +3682,7 @@ func (self *finalTestChainReader) FleetMirror(_ context.Context, hotkey string, 
 		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
 			continue
 		}
-		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		hotkeyBytes, prefix, err := self.fleetHotkey(fleet.Hotkey)
 		if err != nil || prefix != ss58.BittensorPrefix {
 			continue
 		}
@@ -3690,7 +3714,7 @@ func (self *finalTestChainReader) FleetBinding(_ context.Context, clientID strin
 		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
 			continue
 		}
-		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		hotkeyBytes, prefix, err := self.fleetHotkey(fleet.Hotkey)
 		if err != nil || prefix != ss58.BittensorPrefix {
 			continue
 		}

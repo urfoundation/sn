@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 09:53 UTC. The complete fleet/history fixture and miner/validator
+2026-09-05 10:17 UTC. The complete fleet/history fixture and miner/validator
 ordinary/race checks pass; the full simulator run exposed repaired evidence and
 deposit-validation gaps whose focused reruns are being completed. Source
 integration and core per-client payout attribution passed focused ordinary/race
@@ -27,15 +27,17 @@ passed at 09:04:06 UTC in 266.65 seconds with all 18 public cases complete.
 The same immutable capture's full race run failed at 09:30:00 UTC at its
 unchanged 25-minute deadline: 236/237 roots and all 18 public cases passed;
 `TestFinalSemanticEvidenceBuildRenderAndArtifacts` was still executing. The
-remaining root is being profiled from the exact captured binary before a
-root-cause repair; no unchanged rerun or deadline waiver is allowed.
+remaining root was profiled from the exact captured binary. The resulting
+decode/copy/scheduling repair now passes fifteen focused ordinary/race roots
+and the copy-lock check. Primary integration also passes the exact 34-root
+ordinary/race selection, with unchanged source hashes; complete qualification follows.
+No unchanged rerun or deadline waiver is allowed.
 Local capture-metadata newline/scoping failures were
 repaired and regression-tested without altering sealed failures or recompiling
 those binaries; deterministic permission/hash failure controls also pass.
 Complete current-source race qualification remains pending.
-The exact-current Connect default ordinary and race package runs also passed
-in 530.545 and 1,169.652 seconds; its fixed-shuffle race certificate is running
-in parallel with the simulator qualification. A signed-proof framing
+All three exact-current Connect package runs also passed: ordinary 530.545s,
+default race 1,169.652s, and fixed-shuffle race 1,191.339s. A signed-proof framing
 regression reproduced acceptance of malformed trailing JSON; five adjacent
 YAML loaders also ignored non-EOF second-decode errors. The six EOF guards now
 pass the isolated 12-root ordinary/race cut (race ended 09:38:43 UTC). Their
@@ -45,8 +47,17 @@ nineteen-root framing/semantic-pin cut also passes ordinary and race with actual
 exit 0 and unchanged source hashes. The first ordinary run lost exit metadata
 and is explicitly nonqualifying; its corrected capture and fresh rerun are
 recorded in the handoff. Full release qualification remains mandatory; these
-focused results do not resolve
-the separate replay timeout.
+focused results do not resolve the separate complete replay timeout gate.
+The parser/gate checkpoint is committed, pulled and pushed as `f1fffc6`.
+The performance repair retains the ten full chain cases while running them
+through the existing bounded worker helper; its nine new regressions expand
+the next complete semantic census to 247. Pre-execution review caught temporary
+capture-script checksum-index/scoping and result-census defects; their synthetic
+regressions and repair must pass before the fresh complete run. The helper has
+not yet been used for a complete run; no existing failure record is altered.
+A current-state public RPC refresh
+also passed at 09:58 UTC (exact-finalized runtime 454, EVM chain 945); it is not
+a substitute for the final Ready doctor or live acceptance.
 All coverage and the 15/25-minute deadlines remain required. Both Terra-max
 agents recovered from their earlier usage-limit errors; there was no model
 substitution or restart based on an observer error. The 08:57 UTC fetch-only
