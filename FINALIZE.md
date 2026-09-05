@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 11:36 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 12:05 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
@@ -36,9 +36,18 @@ reproduced a fatal epoch-admission race and is repairing pre-SEED ownership,
 cut-barrier ownership and closed-proof fixture consistency. Review also found
 that normal active-trail draining can exhaust the generic retry limit; its
 bounded repair must preserve real-error limits and existing deadlines. No
-repaired settlement pass is claimed yet. Settlement integration and the full
-union of old and new regression coverage remain mandatory. A separate capacity
-audit is checking the actual M8 evidence volume against the existing artifact
+repaired settlement pass is claimed yet. Its full test selection now has 268
+mandatory semantic roots, retaining the prior 247 and all public/chain cases.
+After rejecting a wrong-checkout invocation, the real validator ordinary run
+passed 65/67: directory-fixture setup and cancellation ordering need correction.
+The cancellation failure now has a deterministic pre-fix reproduction covering
+canceled entry, scheduler return and a ready poll; the unchanged real-error
+budget and missed-epoch checks remain mandatory in the repair.
+The new exporter also broke an existing macOS validator build. Corrections to
+all three issues are now held under a fresh 40-file source manifest, preserving
+the same test census and file-integrity requirements. Their qualification and
+settlement integration remain mandatory. A separate capacity audit is checking
+the actual M8 evidence volume against the existing artifact
 limits; no measured capacity result or cap waiver is claimed.
 
 The user's requested on-chain validator evidence is not implemented yet.

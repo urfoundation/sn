@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 11:36 UTC before the final source freeze. Refresh every item marked
+2026-09-05 12:05 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -43,8 +43,14 @@ Launch blockers at this checkpoint:
   ordinary-cut-only collector, and the last accepted closure is not guaranteed
   by a later selected native intent. Section 10.2 describes the independent
   settlement driver, durable closure export and complete public-replay repair.
-  Work is isolated under `/home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn`;
-  it is not integrated or qualified yet.
+  Work is isolated under `/home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn`.
+  The complete repair has a 268-root semantic census and is not integrated or
+  qualified yet. After rejecting an initial wrong-checkout invocation, the
+  real 67-root ordinary run passed 65 and failed two. Corrections to private
+  test-directory setup, cancellation ordering and the existing macOS build
+  are now held under the new 40-file source manifest for qualification.
+  No repaired ordinary/race/semantic pass is claimed. Section 12 preserves
+  every failed record and the exact source fences.
 - Adjacent review found that expected active-trail draining counts against
   the steering loop's ten-error limit and can terminate valid M8 work. Its
   bounded repair and deterministic regression are part of the settlement
@@ -1097,9 +1103,12 @@ Required repair and review checkpoints:
 - Classify only `errAttemptCutPending` as expected draining rather than a
   generic steering failure. Keep the real-error count, original polling and
   cancellation, native-gap rejection and ten-real-error failure limit. At the
-  accelerated 15-second poll, ten failures allow only nine intervals (135s),
-  while M8 with a 30-second step timeout can need 240s including SEED. Force
-  eleven pending polls deterministically, then prove recovery, cancellation,
+  private-node 15-second poll, ten failures allow only nine intervals (135s),
+  while M8 with a 30-second step timeout can need 240s including SEED. The
+  current public override actually polls every 60 seconds (540s for nine
+  intervals); do not claim that this M8 bound exceeds its current limit.
+  The deterministic bug applies to the supported faster poll configurations.
+  Force eleven pending polls deterministically, then prove recovery, cancellation,
   preserved earlier genuine failures and permanent-error termination. Do not
   enlarge deadlines or suppress other errors to hide this liveness defect.
 - Require the live terminal path to observe authenticated closed batches for
@@ -1190,7 +1199,7 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 11:36 UTC)
+### Latest qualification and repair handoff (2026-09-05 12:05 UTC)
 
 - SN checkpoint 0def712d91ffd1429c2b677fcce775138b6c78ec was committed,
   pulled and pushed at 10:18 UTC. Primary source/tests/modules/gates/census
@@ -1386,6 +1395,158 @@ supplies the exact signed campaign run ID explicitly.
   1ebc11f19657a6d4734d88e44a6d41521ebc7e0ec42e31bfd2f78f208cdc8a12.
   The repair must also preserve every authenticated assignment as described
   in section 10.2; this RED alone does not establish that stronger property.
+- Generic steering-drain deterministic RED:
+  /home/by/urnetwork/temp/sn-settlement-liveness-red-R44Att.
+  Actual exit 1, validation exit 0, four exact roots: three expected assertion
+  failures and the native-epoch-gap control PASS, unchanged source, 0.053s.
+  Root read the raw assertions and independently verified the sealed index.
+  Raw SHA:
+  0a31f45eff467fd5b84c664227d55705ccde34797a0b8539abcabdce9cbc40d0;
+  index SHA:
+  525de5fa9cf8157282929eaad4c6841567b5e11b93c0400e0b97d909e7273703.
+  This already-launched capture used 15m/16m inner/outer bounds; a later
+  instruction to use focused 3m/4m bounds did not rewrite or restart it.
+  Its failures are assertions, not timeouts. Repaired qualification is pending.
+- The complete correctness source is held at
+  /home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn.
+  All 38 relevant changed source/test/module/census files are recorded in
+  the sibling repair-source.SHA256SUMS, SHA:
+  bba7070cb30031d9a0ec15f0c4ffa124dc8d2c9ccf0f193f960adde15d10910e.
+  Root verified every listed file. Its semantic census is 268 roots, SHA:
+  7951ad0626ddf271016ae9c9d3cc6530c856acfb390e86c93132de773b071077.
+  This preserves all 247 prior roots, adds nine performance and eleven new
+  correctness/fixture/gate roots, and selects the previously unselected but
+  strengthened TestFinalAttemptFixtureLedgerMatchesDurableProductionWire.
+  All eighteen public views and ten main-root chain cases remain required.
+  Focused qualification is 67 validator roots and 27 semantic roots; the
+  original real collector-tail RED also needs its exact repaired GREEN.
+  This held cut was subsequently released after the genuine 65/67 result
+  below; do not reuse its hashes for later repairs without a new source fence.
+- The first 67-root qualifier is a preserved harness failure, not a product
+  pass: /home/by/urnetwork/temp/sn-settlement-tail-green-ordinary-race-WT2w7L.
+  The wrapper hashed the isolated source but ran go test from the inherited
+  primary checkout. Actual exit 0 executed only 42 old roots; all 25 new
+  regressions were missing, so validation exited 1 and race did not run.
+  Raw SHA:
+  c0cae3c6eb44e643d085cc9d0fead04b0f60ab9fe2d14a218eb2ff6cbc1b5764;
+  index SHA:
+  f44f9ef3ef44b02b0efb9905bcb6c631ed302654a6581b098c91fdc5f9491a34.
+  Root verified the index and exact missing-root list. The concurrent M8
+  diagnostic used the same wrong working directory and executed zero tests:
+  /home/by/urnetwork/temp/sn-attempt-capacity-m8-spi1hN, actual 0 / validation 1,
+  zero wire files; raw SHA:
+  b29554ea4e3b8cf4458ea132e12cc1a3df60e8ce9d935042a6b94896398f0e2c;
+  index SHA:
+  452bb31453de3150bbbc01870e697933b494d5ce61a52a3e088c5bd4daba5b4e.
+  Neither is evidence that the repaired code or size diagnostic ran.
+  The corrected harness must bind actual entry pwd, git root, GOMOD,
+  go-list package directory and required test files to the held checkout,
+  compare an exact canonical nonempty unique compiled test census before
+  execution, and run the test in the same directory scope. Negative controls
+  must prove wrong-directory, missing-file, omitted-root and duplicate-census
+  refusal with exact reasons; declaring an intended directory is insufficient.
+  Hash actual imported runtime sources, not merely sibling module manifests.
+- The corrected working-directory helper passed five deterministic controls
+  in /home/by/urnetwork/temp/sn-held-worktree-preflight-regress-yEWDzL:
+  actual/validation 0; exact 67-root positive plus wrong actual entry directory,
+  missing required test file, omitted listed root and duplicate census refusal
+  with their expected reasons. Root independently checked all results/index.
+  Cases-summary SHA:
+  76cd2dec77c8b60dfac9d49d25c397c208c6a5146aedcb65e8e8cc66ddb599e2;
+  index SHA:
+  5b6c0bdde07ef948edcac52ec9ec0a3c3d4cb2396c4268573e1e5fc3b83d3921.
+  A subsequent observer-only attempt, sn-settlement-tail-green-corrected-qGTURP,
+  failed before product execution because its runtime-source parser joined
+  the package directory onto an already absolute generated Go filename.
+  The reviewed correction preserves absolute paths, joins only relative
+  paths, hashes actual non-derived imported Go sources and labels generated
+  cache entries separately. No product pass or failure came from qGTURP.
+- Genuine repaired-source validator ordinary failure:
+  /home/by/urnetwork/temp/sn-settlement-tail-green-final-vbFMDM.
+  Actual/validation 1, all 67 roots started, 65 passed, exactly two failed,
+  correct held checkout/GOMOD/test-file identity and unchanged source/runtime
+  manifest. Race and copylocks were not run. Root checked raw failures and
+  the complete sealed index. Raw SHA:
+  71ab6aaaa72c192af3552aa657b6668708426d99abb393ab6d77e2dbac23b0cd;
+  index SHA:
+  7b64a53cfe17c0baac436cb21f28795ca97c4e1b477e2b267ce92b1ffd795310.
+  TestAttemptSettlementRunTrailReservesBeforeFirstAssignment received
+  "settlement closure state directory is not private" when checking for an
+  unpublished archive; investigate the fixture's pre-publication directory
+  setup without weakening production permissions. The cancellation root
+  observed twelve attempts after cancellation at eleven: a ready timer can
+  win a select against cancellation. Force that ordering with a neutral wait
+  seam, test cancellation before new epoch/submission work, and preserve the
+  genuine-error limit and missed-epoch rejection. No unchanged retry is valid.
+- Deterministic cancellation RED is now sealed in
+  /home/by/urnetwork/temp/sn-settlement-cancel-red-tz5DUl. Actual exit 1,
+  expected-failure validation 0, one root started/failed, source pre/post
+  identical, and the corrected checkout helper passed. A neutral extraction
+  of the existing ticker wait forces cancellation at entry, during the
+  scheduler read, and alongside a ready poll. All three assertions report
+  extra steering work; the ready-poll case makes twelve submissions after
+  cancellation at eleven. Root read the raw failures and verified the index.
+  Raw SHA:
+  5517efdd4566b12fe2a7fa3e5025602e085191ab78ecacb3ae0e033482065ed1;
+  index SHA:
+  c060215fdf773aa68db37a0b9fa68706848c4e5977379ff0080dce1fe521b98d.
+  The source was released for context checks before a new scheduler read and
+  after it returns, plus the directory-fixture and OS-wrapper corrections.
+  Require a new held-source manifest before the repaired qualification.
+- The corrective delta is now held in the same HHX checkout under the new
+  sibling repair-source-v2.SHA256SUMS, SHA:
+  29caa84f1c59991b540cf84b0e8fa4c14d99f7da35d1113a972b532523c055e0.
+  Root independently verified all 40 source/test/module/census files and read
+  the cancellation and Linux/Darwin wrapper changes. The previous manifest is
+  preserved. Validator 67-root, semantic 27-root and complete 268-root censuses
+  are unchanged. Qualify focused ordinary/race, copylocks and the four existing
+  validator build targets; run semantic checks independently against an
+  actual sim-testnet package preflight, not the validator-only helper.
+- Existing supported-platform regression is independently demonstrated:
+  validator/Makefile lists darwin/arm64, darwin/amd64, linux/amd64 and linux/arm64.
+  The new closure exporter directly used Linux Stat_t timestamp fields and
+  renameat2. Correct-HHX darwin/arm64 compile-only capture
+  /home/by/urnetwork/temp/sn-settlement-tail-darwin-red-sWFWO0 exited 1 with
+  Ctim/Mtim and Renameat2/RENAME_NOREPLACE compiler errors; validation 0,
+  unchanged source, no target execution or output binary. Root verified its
+  raw errors and sealed index. Raw SHA:
+  a3513313993c30d207f1781012e0032f9614b13ce7799d1084b6917cdb6f50ef;
+  index SHA:
+  81fd286f13b505d9882e321aa5204969a49b2472ee71d18bfcab85001d5f9730.
+  Add minimal OS-specific no-replace rename and exact file-version wrappers,
+  preserving atomic publication, link rejection and durability. Requalify
+  Linux behavior and all four already supported builds. Do not conflate the
+  validator's supported builds with sim-testnet's documented Linux-amd64 host.
+- Correct-CWD M8 diagnostic sn-attempt-capacity-m8-corrected-XzrzNh reached its
+  one real test PASS in 0.98s, but the observer incorrectly expected one wire
+  output rather than the source-derived 63. Preserve that validation-1 record.
+  Reconcile the exact immutable inventory in a separate sealed addendum, with
+  no product rerun: four operator/trail-count groups produce fifteen files
+  each, plus two terminal transitions and one closure projection. Do not call
+  the diagnostic qualified until this reconciliation passes.
+  Astra independently reviewed the source-derived 63-file inventory, including
+  55 JSON and eight JSONL objects, against the raw capture. Original raw SHA:
+  597ca7a72b42a176150245fe7e332d1566910e22439d6534c4dd64fc4c29876d;
+  original index SHA:
+  0ce3b8a48441252264e2056eaf72fc723e44002572efbce5caa7a6e6c843c867.
+  The addendum must join exact byte lengths/hashes, all four record/cut/proof
+  groups and both actual transitions to the closure projection. It does not
+  establish integrated closure publication or independent cryptographic replay.
+- Source-derived capacity caveat: the 40-request/minute public HTTP budget is
+  shared by harness and workloads. Each validator shares one boundary resolver
+  between its two operators, but not with the other validator. With a two-minute
+  snapshot refresh, N native UIDs and U distinct uncached assigned clients, a
+  validator requires 3 + ceil(N/50) + U HTTP requests per fresh boundary:
+  two snapshot calls, one hotkey count, batched hotkeys, then individual binding
+  calls. At N=256, the two validators use 9 requests/minute before new bindings;
+  their separate 60-second release snapshot polls add 6 requests/minute.
+  Operators, miners, steering, harness requests and retries also consume the
+  remaining budget. Thus 30 configured SEED starts/minute/operator is an upper
+  traffic envelope, not an observed or feasible sustained completed-proof rate.
+  Measure cache hits, RPC queue time and minimum sampling/promotion coverage;
+  do not infer a throughput failure solely from a worst-case no-reuse bound.
+  Preserve freshness, RPC limits and all required miners/evidence when resolving
+  any measured bottleneck.
 - A fresh fetch of all twelve primary repositories completed at 11:18:35 UTC:
   all were clean and exactly equal to upstream; no source checkout changed.
   SN then was docs-only checkpoint 555dc82cb8dc0ebbaeff470aaeb0eea180eaf2a8;
@@ -2608,8 +2769,9 @@ producer pass remain pending; earlier passing records are historical.
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
 | SN runtime candidate | performance repair integrated as a83e6ba; full merged ordinary/race qualification pending; settlement repair isolated | a83e6baff174a0506ccdececd96ed60e6a1f0107; source freeze and current lock still pending |
-| Signed settlement-tail collection | deterministic pre-fix RED; repair in progress, no GREEN yet | exact collector-gap assertion; raw SHA-256 019ace474634bfc26d77edfe53cc21a212a76b33f16f97f358cde011167727d9; section 10.2 |
-| Settlement admission/draining/durability | real admission RED; pre-SEED ownership, separate barriers and directory durability repairs pending qualification; steering wait regression pending | admission raw SHA-256 bc412e0d00d678a896f918ffbfef36c950da819769720de90a43e10f5c5c7b29; section 10.2 |
+| Signed settlement-tail collection | deterministic pre-fix RED; repair remains unqualified and is being corrected after 65/67 ordinary result | prior held 38-file manifest bba7070c; semantic census 268; fresh post-repair fence required |
+| Settlement admission/draining/durability | real admission and steering-drain REDs; correct-source ordinary 65/67, race not run | vbFMDM raw 71ab6aaa; directory-fixture and cancellation ordering under repair |
+| Validator supported-platform build | new exporter fails existing darwin/arm64 build; minimal OS wrappers pending | sWFWO0 compiler RED; retain all four validator/Makefile targets |
 | Real M8 evidence capacity | read-only sizing audit pending | raw 32 MiB / graph 256 MiB; no load reduction, dropped census or cap waiver |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
 | Connect candidate commit | all three exact current-HEAD unsharded prequalifications pass | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s, fixed-shuffle race 1,191.339s; frozen aggregate remains pending |
