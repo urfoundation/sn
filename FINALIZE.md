@@ -1,33 +1,36 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 14:48 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 16:22 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
-Latest progress: checkpoint 09a0dfad15b6428099735145cf75ac955d63e313 is clean
-and pushed. The isolated disk-ledger integration now passes all 27 focused
-roots normally and under race, plus Linux/Darwin amd64/arm64 builds; its wider
-139-root compatibility selection is authorized but not yet complete. The
-performance repair's twenty focused tests execute successfully normally and
-under race. Its launcher was edited while Bash was running, interrupting final
-packaging; immediate source/runtime checks and an explicitly later independent
-source/external/binary audit match, but the original complete capture is not
-claimed. A fresh 121-validator/281-semantic qualification is authorized, with
-all 274 mandatory semantic roots and seven adjacent collector controls included.
-That wider run has not launched: source was released to first repair a newly
-confirmed same-height block-hash contradiction in legacy cut construction and
-verification, including adjacent decision/successor boundary relations.
+Latest progress: metadata/header candidate passes all24 normal/race roots and
+is integrated locally as c9f066a, after pushed checkpoint a7be184. All138
+disk-ledger validator compatibility roots now pass normally and under race.
+The simulator parity root passes normally but times out at its unchanged
+three-minute race cap during full-fixture construction, before durable parity
+work; diagnosis/profile and a byte/population-preserving repair are required.
+The shared block-boundary repair reproduces eight causal failures and then
+passes all22 normal/race roots. Wider validator143 and semantic281 are now
+running, retaining all274 mandatory semantic roots, seven adjacent collector
+controls, and original deadlines. Earlier launcher/selector observer failures
+remain recorded separately from product results.
 
-Compact header/descriptor code is an isolated candidate, not activated. Its
-two decoder/cancellation bugs have deterministic REDs; repaired 24-root
-qualification is pending. Full bounded record/proof replay is now written and
-has 21 new tests queued, including three deterministic resource-ownership and
-cancellation REDs. The compact writer/sealer, bounded aggregates, public
+Compact header/descriptor code is qualified but not activated. Full bounded
+replay has three reproduced/repaired ownership/cancellation defects and eight
+adjacent controls; corrected exact55 qualification is authorized after a
+harness-only two-name selector omission. The bounded stream writer is written,
+independently reviewed, and authorized for exact46 normal/race (24 existing plus
+22 new deterministic roots). Full real-ledger sealer integration, bounded aggregates, public
 collector integration, authenticated activation, on-chain evidence publication
 and aggregate capacity remain launch requirements. Namespace review also found
 that rendering can mistake a disk ledger without legacy JSONL for unsigned
-state; that safety repair must precede activation. Section 12 of the handoff
+state or mutate operator artifacts before refusal; classifier protection and
+renderer/outer-entry preflight qualification remain mandatory. A separate
+policy-depth admission gap requires real-signed engine regressions plus checks
+on every ordinary/failed/terminal record against authenticated policy depth.
+These safety repairs must precede activation. Section 12 of the handoff
 records exact sources, current holds and qualification artifacts.
 
 The chronology below preserves earlier qualifications and failures; it is not

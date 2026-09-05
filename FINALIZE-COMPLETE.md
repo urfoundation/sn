@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 14:48 UTC before the final source freeze. Refresh every item marked
+2026-09-05 16:22 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -27,36 +27,52 @@ binary exits and immediate source/runtime fences independently of final report
 packaging. A supplemental audit must carry its real later timestamp and cannot
 be represented as a missing original fence or successful original wrapper.
 
-Current launch blockers (14:48 UTC; details and hashes in section 12):
+Current launch blockers (16:22 UTC; details and hashes in section 12):
 
-- Main checkpoint 09a0dfa is clean and pushed, but source is not frozen. The
+- Main checkpoint a7be184 was clean and pushed; qualified metadata c9f066a is
+  now integrated locally, but source is not frozen. The
   settlement/performance candidate has twenty successful focused normal/race
   executions with a separately preserved launcher failure. Its authorized
-  wider run is validator 121 plus semantic 281 (all mandatory 274 plus seven
+  wider run is validator 143 plus semantic 281 (all mandatory 274 plus seven
   adjacent collector controls), not a repeated 53 followed by the same 274.
-  It has not launched: the source is released for a newly confirmed legacy
-  boundary-order/hash consistency repair before that long run.
+  The boundary-order/hash repair passes its 22 normal/race roots. Both wider
+  lanes have now launched on the held repaired source, with unchanged caps.
 - Disk-ledger integration passes focused 27 normal/race and four platform
-  builds. Exact 139 affected compatibility qualification remains pending;
-  neither these checks nor the integrated store foundation prove capacity.
-- Compact header/descriptor candidate b8249cb has two reproduced and repaired
-  defects; exact 24 qualification is pending. Full disk-backed record/proof
-  replay is written with 21 tests queued, including three causal REDs. Writer,
-  sealer, bounded aggregates, collector/public adapters and complete-census
+  builds. All 138 affected validator roots now pass normal/race. The simulator
+  parity root passes normally but times out at its unchanged three-minute race
+  limit while building the full fixture, before durable parity work. Diagnose
+  and repair that cost; do not waive it or infer a ledger deadlock from it.
+  Neither these checks nor the integrated store foundation prove capacity.
+- Compact header/descriptor candidate b8249cb passes exact 24 normal/race and
+  is integrated as c9f066a. Full disk-backed replay's three causal failures are
+  reproduced and repaired, with eight adjacent controls; corrected exact55
+  qualification is authorized after a harness-only selector omission. Bounded
+  stream production is written with 22 new deterministic tests, and exact46
+  normal/race is authorized. Full sealer integration is next/in progress;
+  bounded aggregates, collector/public adapters and complete-census
   activation/downgrade checks remain unfinished. Existing artifact/control
   graph limits must stay enforced; no cap increase or workload reduction is
   an approved shortcut.
 - Preserve attempt-4's 162 legacy proof lines and nonempty statistics. The
   existing approved resume path archives unsigned local state before a fresh
   start; it does not prove a fully observed, authenticated v2 activation.
-  Rendering currently recognizes only legacy JSONL as signed authority and
-  can misclassify a populated disk ledger. Fix namespace and reset-journal
-  recovery protection before disk activation. Never invent missing historical
+  Namespace/reset-recovery protection is implemented in an isolated candidate;
+  full rendering can still mutate operator files before refusing protected
+  state. Its first exact18 run failed on a missing test-only MinIO fixture,
+  not the intended assertion; a fixture-corrected causal run is authorized.
+  Audit outer launch/render
+  entries before migrations/payload replacement, while retaining legitimate
+  locking and truthful refusal journaling. Never invent missing historical
   assignments, failure denominators or latency samples.
 - On-chain validator evidence publication is still unimplemented. The open
   hash-commitment/public-bytes versus full-on-chain-bytes choice remains as
   documented in section 10.1. Common stateless authentication is qualified,
   not an on-chain storage or transaction result.
+- First-ASSIGN policy-depth admission has a newly confirmed gap. Generic legal
+  M4..16 is not proof of configured M8. Bind every record, including failed
+  attempts and terminal cuts, to a decoded policy matching the authenticated
+  policy hash. A six-root real-signed engine RED draft exists but has not run;
+  broader policy-consumer regressions and the repair remain required.
 - Final source lock, both release gates, fresh Ready doctor, two matching
   bounded plans, live phases, FINAL.md and independent replay remain. After
   launch preparation, the unchanged scheduler requires 3,004--4,380 blocks;
@@ -1375,7 +1391,118 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 14:48 UTC)
+### Latest qualification and repair handoff (2026-09-05 16:22 UTC)
+
+- Primary metadata commit c9f066a1d72f2235d526dd2968087633ac79d67e is integrated
+  after root's strict index/source verification and raw-result review. It is
+  source-equivalent to isolated b8249cb except for handoff documents. Capture
+  sn-compact-metadata-v2-exact24-19451X passes all24 normally and under race;
+  actual/validation exits and fences are zero, index SHA
+  553034bee2553ef1449938b023b445e38c66528644e14b582fa3727ab4a31c56.
+  Preserve the earlier path/selector observer failures. No live campaign is
+  running: the unit still has MainPID0, inactive/dead and Restart=no. No new
+  on-chain transaction was made by this continuation.
+- Disk-ledger v3 corrects only the two documented fixtures: real durable append
+  replaces a no-op test append, and the sim fixture imports filepath/closes its
+  owner. Production remains v2-identical. All138 validator compatibility roots
+  pass normally and under race in sn-attempt-ledger-v3-compat-validator138-7elFJ8,
+  index SHA 679451b8a0e275eb2a4b9beeffa0675bea742e3720a57d2a0384bd4190812355.
+  The sim root in sn-attempt-ledger-v3-compat-sim1-P8KTOj passes normally in
+  32.92 seconds, but race reaches the fixed three-minute inner deadline with
+  actual2/validation1 and no root completion. Its index SHA is
+  4ee7dcb2b99f3841001fb100eabbdc7b8693126d26ffdbc5af9988f3674446a0.
+  Root strictly verified both indices and reviewed the timeout trace: execution
+  remains in buildFinalSemanticFixture/attachFinalSemanticFixtureGeneration,
+  before the durable-wire assertions. Astra owns root-cause/adjacency diagnosis.
+  One bounded ordinary CPU/allocation profile is authorized as diagnosis, not
+  a qualifying retry or permission to extend any gate deadline. Preserve full
+  miner/provider/signature population. No disk integration approval is inferred.
+- W0i boundary RED22 is sealed at sn-boundary-neutral-v4-red22-Zk3k8F:
+  exact8 intended failures/14 controls, actual1/causal-validation0, all fences0;
+  index SHA ba7af605b122626888a7e9f37f1c6e8baa3578532fdae383a27d610e34653c98.
+  The shared earlier-or-equal-hash helper now covers producer/public record
+  cuts, native/EVM input decisions, cumulative lineage, recovered journals and
+  cached input returns. The unchanged22 roots pass normally and under race in
+  sn-boundary-repair-v4-green22-SAUxNW, index SHA
+  a2a74f0dcbeb5ee129042a9c2e70b1972bd0e8ea16a7444fda5ed9c3af3f38b0.
+  Root verified both indices and reviewed the raw outcomes and repair.
+  Source43 manifest boundary-repair-v4-source.SHA256SUMS SHA
+  8fae3750504ce4b2b6978dc9858bf110fb8add384f98806e38c5248bcc1eda31 remains held.
+  Wider validator143 is live in sn-boundary-repair-v4-wide-validator143-4hUDqk,
+  session35992, with normal5m/race10m inner caps (outer6m/11m). Semantic281
+  is live in sn-boundary-repair-v4-semantic281-e8JhDa, session67517, with
+  normal15m/race25m inner caps (outer16m/26m). Compilation is separately4m.
+  These handles must be revalidated, not assumed live by a later agent.
+- Replay RED21 in sn-attempt-replay-red-v1-capture-m3Yhby has exact3 causal
+  failures/18 controls, index SHA
+  1fd17a08187c2b7f4e2caaf232846fa480bbd9fe8f55e7b0b4b5410e569b0193.
+  Astra repaired acquired-reader close ownership, retained fresh-directory
+  descriptor identity before any backend mutation, and cancellation after
+  authentication/lifecycle/indexing. The original21 test file is unchanged;
+  eight new adjacent roots are additive. Source20 manifest in nqeKeI has SHA
+  0e1e4bddfe03f670fe6bd4445fb9902619a6e9b715000ecb25b6bfa2890d4c03;
+  REPLAY-HANDOFF-green-v1.md records the exact55 census (29 replay+26 store).
+  First qualification sn-attempt-replay-green-v1-exact55-2V6loZ compiled but
+  listed53 because its manually transcribed runner selector omitted two real
+  source/expected roots. No test ran. Preserve index
+  a481ed0ae1ef6ac7decb4f39ef730c4eebd83fd25438687f7895a8235bb3f583.
+  Fresh corrected55 is authorized with unchanged source/budgets. Mechanically
+  derive selectors from literal root files and independently compare the actual
+  selector's complete set/count BEFORE compilation; never transcribe names.
+- Namespace candidate brOXtW retains the earlier real-store fixture and
+  exact10-failure/1-control baseline. The new full-renderer regression is
+  byte-identical to root-reviewed draft SHA
+  66161686f179cea0ece391e52a64a70ffc6e979338c06f423c5db6accac70590.
+  Its source16 manifest SHA is
+  639742e6008b3ac2e010357b0d42e1c77e8f61cc786a8669d0adf7da52b1531f.
+  sn-namespace-render-red-v1-exact18-kYPKcU is terminal:17 controls pass, but
+  the renderer root fails before the intended assertion because its test-owned
+  vault/main/minio.yml is missing. This is NOT causal RED, even though the
+  name-only runner validator reports0. Index SHA
+  4439ee31c95760acbc927f3f42b5d7f312dff5a79c98eb6292edb2ce2d2683d5 is
+  preserved. Astra adds only the missing test fixture; source16 v2 manifest SHA
+  db5644d228e90879019e643402f034e1fea36979392270d7039057eb2caa914b.
+  A fresh18 ordinary run is authorized and must match both the exact census
+  and literal mutation-after-protected-refusal assertion, not just a failed
+  test name. This is not a shared MinIO service failure. No renderer production
+  fix precedes that causal evidence. Root authorized the subsequent shared read-only
+  preflight before operator writes, with two additional outer-entry causal
+  regressions before migrations and config.render ensurePayloads. Preserve
+  supervisor ownership checks and truthful intent/failure journaling; those
+  housekeeping writes alone are not defects. Do not alter a live source.
+- Root's new stream writer is held in
+  /home/by/urnetwork/temp/sn-attempt-stream-writer-gDCWx3/sn at b8249cb plus
+  two new files. Source9 manifest SHA
+  ed8ceb99520b50a915f55e8f0d17f622bb921b8d58a47532c92066f1e69e6b74;
+  WRITER-HANDOFF-v1.md SHA
+  f073e8923cc448e4a999c37a644e116ec03f66e36f8c1f8a3aed6fe6930f1acb.
+  Exact46 normal/race is authorized: prior24 plus22 deterministic writer roots,
+  three-minute inner/four-minute outer per mode, separate4m compile/30s list.
+  One bounded chunk/page plus a fixed104-byte-per-descriptor disk hash-chain
+  spool replaces any whole-history descriptor array. The manifest is last;
+  errors/cancellation return zero results even after staged immutable writes.
+  Astra's independent source review found no functional blocker within its
+  synchronous exclusive-owner contract. WRITER-REVIEW-v1.md corrects the
+  handoff's overly precise allocator ratio: memory is bounded by chunk/page
+  sizes plus allocator slack; no hard RSS or capacity result is claimed.
+  This codec's small JSONL fixtures are not full signed-trail evidence. Astra
+  now owns a separate real-disk-ledger/writer/full-replay sealer integration,
+  including decoded-policy hash/depth authority and deterministic tests.
+- Read-only policy-depth audit found that first ASSIGN may override requested
+  configured M8 with a genuinely signed M4/M16. Later engine checks use the
+  adopted depth. Honest server behavior remains M8; the validator must enforce
+  its own policy against a dishonest signer. Generic cut verification alone
+  permits legal depths; later completed-proof collection rejects M mismatch,
+  but failed attempts have no completed proof at that boundary. Draft at
+  sn-policy-depth-draft-WvolLM has audit SHA
+  3a2838f4f9ce8c8a476c8c656da8c34a06292ce4c5be9881fda9f70bfd6aae3e
+  and six-root neutral engine test SHA
+  e94976e7f6db3abb8646db60c466ce2880bd2e656251da529e76cdf4041b56bd.
+  It is unexecuted and incomplete as a full policy-consumer matrix. Require
+  early engine admission plus all-record measurement/terminal/v2 checks tied
+  to the authenticated decoded policy, not hardcoded M8 or inferred byte caps.
+
+### Earlier qualification and repair handoff (2026-09-05 14:48 UTC)
 
 - Primary 09a0dfad15b6428099735145cf75ac955d63e313 was committed, pulled and
   pushed; main was clean on recheck. The simulator unit was inactive with
