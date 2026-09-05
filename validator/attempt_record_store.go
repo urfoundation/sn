@@ -818,9 +818,25 @@ func openAttemptRecordStoreStorage(path string, bounds attemptRecordStoreBounds,
 		return nil, err
 	}
 	defer parentRoot.Close()
+	return openAttemptRecordStoreStorageAt(parentRoot, filepath.Join(parent, filepath.Base(path)), bounds, hooks, fault)
+}
+
+// A retained parent root can be supplied by a migration or scratch owner.
+func openAttemptRecordStoreStorageAt(parentRoot *os.Root, path string, bounds attemptRecordStoreBounds, hooks attemptRecordStoreHooks, fault func(error)) (*attemptRecordStoreStorage, error) {
+	return openAttemptRecordStoreStorageAtWithAnchor(parentRoot, path, nil, bounds, hooks, fault)
+}
+
+// A fresh-directory owner binds its earlier inode observation to the actual
+// storage descriptor before parent fsync, owner locking or backend mutation.
+func openAttemptRecordStoreStorageAtWithAnchor(parentRoot *os.Root, path string, expected os.FileInfo, bounds attemptRecordStoreBounds, hooks attemptRecordStoreHooks, fault func(error)) (*attemptRecordStoreStorage, error) {
+	if parentRoot == nil || expected != nil && !attemptStorePrivateDirectory(expected) {
+		return nil, errors.New("attempt record store directory authority is incomplete")
+	}
 	name := filepath.Base(path)
-	path = filepath.Join(parent, name)
 	if info, err := parentRoot.Lstat(name); errors.Is(err, os.ErrNotExist) {
+		if expected != nil {
+			return nil, errors.New("attempt record store owned directory is missing")
+		}
 		if err := parentRoot.Mkdir(name, 0o700); err != nil {
 			return nil, err
 		}
@@ -831,7 +847,13 @@ func openAttemptRecordStoreStorage(path string, bounds attemptRecordStoreBounds,
 	if err != nil {
 		return nil, err
 	}
+	if !attemptStorePrivateDirectory(anchor) || expected != nil && !os.SameFile(expected, anchor) {
+		return nil, errors.New("attempt record store owned directory changed before open")
+	}
 	self := &attemptRecordStoreStorage{path: path, anchor: anchor, bounds: bounds, hooks: hooks, fault: fault, sizes: map[string]uint64{}, used: attemptStoreMetadataReserve}
+	if err := self.step("after-directory-check", ""); err != nil {
+		return nil, err
+	}
 	self.root, err = parentRoot.OpenRoot(name)
 	if err != nil {
 		return nil, err
@@ -847,7 +869,7 @@ func openAttemptRecordStoreStorage(path string, bounds attemptRecordStoreBounds,
 		return nil, err
 	}
 	opened, err := self.directory.Stat()
-	if err != nil || !attemptStorePrivateDirectory(opened) || !os.SameFile(anchor, opened) {
+	if err != nil || !attemptStorePrivateDirectory(opened) || !os.SameFile(anchor, opened) || expected != nil && !os.SameFile(expected, opened) {
 		return nil, errors.New("attempt record store directory changed during open")
 	}
 	parentFile, err := parentRoot.Open(".")
