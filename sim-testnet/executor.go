@@ -1513,6 +1513,9 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 	case a.Kind == "budget-reserve":
 		return nil
 	case a.ID == "config.render":
+		if err := preflightSignedAttemptStateNamespaces(e.cfg, e.stateDir); err != nil {
+			return err
+		}
 		if err := e.ensurePayloads(ctx); err != nil {
 			return err
 		}

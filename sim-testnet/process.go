@@ -725,6 +725,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := ensureNoLiveSupervisorForLaunch(stateDir); err != nil {
 		return err
 	}
+	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
+		return err
+	}
 	if err := runDatabaseMigrations(ctx, cfg, stateDir, bins["server-ctl"]); err != nil {
 		return err
 	}
