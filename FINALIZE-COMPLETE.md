@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 16:39 UTC before the final source freeze. Refresh every item marked
+2026-09-05 18:02 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -27,72 +27,63 @@ binary exits and immediate source/runtime fences independently of final report
 packaging. A supplemental audit must carry its real later timestamp and cannot
 be represented as a missing original fence or successful original wrapper.
 
-Current launch blockers (16:39 UTC; details and hashes in section 12):
+Current launch blockers (18:02 UTC; details and hashes in section 12):
 
-- Main includes qualified metadata c9f066a, bounded writer 8e9d0fc and full
-  bounded replay 2d179bd; the preceding 8fb4fa7 checkpoint was pushed. Source
-  is not frozen. The
-  settlement/performance candidate has twenty successful focused normal/race
-  executions with a separately preserved launcher failure. Its authorized
-  wider run is validator 143 plus semantic 281 (all mandatory 274 plus seven
-  adjacent collector controls), not a repeated 53 followed by the same 274.
-  The boundary-order/hash repair passes its 22 normal/race roots, and wider
-  validator143 now passes both modes. Semantic281 passes normally; its race
-  run is still live on the held source with the unchanged 25-minute cap.
-- Disk-ledger integration passes focused 27 normal/race and four platform
-  builds. All 138 affected validator roots now pass normal/race. The simulator
-  parity root passes normally but times out at its unchanged three-minute race
-  limit while building the full fixture, before durable parity work. Diagnose
-  and repair that cost; do not waive it or infer a ledger deadlock from it.
-  A bounded profile attributes most work to full-fixture construction, with
-  repeated cut/signature and persisted-plan validation among the costs. The
-  next isolated composition combines existing verification-reuse fixes with
-  the disk API before a changed-source rerun at the original deadlines.
-  Neither these checks nor the integrated store foundation prove capacity.
-- Compact header/descriptor candidate b8249cb passes exact 24 normal/race and
-  is integrated as c9f066a. Full disk-backed replay's three causal failures are
-  reproduced and repaired, with eight adjacent controls; corrected exact55
-  now passes normal/race after a preserved harness-only selector omission.
-  Bounded stream production passes exact46 normal/race, including 22 new
-  deterministic writer tests. Both slices are integrated, not activated.
-  Full real-ledger sealer integration is in progress;
-  bounded aggregates, collector/public adapters and complete-census
-  activation/downgrade checks remain unfinished. Existing artifact/control
-  graph limits must stay enforced; no cap increase or workload reduction is
-  an approved shortcut.
-- Preserve attempt-4's 162 legacy proof lines and nonempty statistics. The
-  existing approved resume path archives unsigned local state before a fresh
-  start; it does not prove a fully observed, authenticated v2 activation.
-  Namespace/reset-recovery protection is implemented in an isolated candidate;
-  full rendering was proven to mutate operator files before refusing protected
-  state. Its first exact18 run failed on a missing test-only MinIO fixture,
-  not the intended assertion; the corrected run now reproduces the actual
-  mutation with all17 controls passing. The unchanged regression and minimal
-  early read-only preflight repair are in normal/race qualification.
-  Audit outer launch/render
-  entries before migrations/payload replacement, while retaining legitimate
-  locking and truthful refusal journaling. Never invent missing historical
-  assignments, failure denominators or latency samples.
+- Main contains qualified metadata c9f066a, bounded writer 8e9d0fc, full
+  bounded replay 2d179bd, inner namespace protection 5cddac6 and outer
+  launch/render protection 64a6e32. The first three and checkpoint c5a1745
+  were pushed; the two namespace commits are local pending this checkpoint.
+  These are committed edits in sn. Active unmerged fixes are isolated under
+  temp/sn-* so tests use stable source. This is not a final source freeze.
+- Namespace protection now passes inner18 and outer22 normal/race checks.
+  The actual renderer and outer migration/payload-recovery mutations were
+  reproduced causally before repair. Preserve attempt-4's162 legacy proof
+  lines and nonempty statistics; these guards do not establish a complete,
+  authenticated v2 activation or invent missing historical evidence.
+- Disk/settlement/verification-reuse composition Bti passes all285 affected
+  validator roots and all6 simulator plan-reuse roots normally and under race.
+  Its cold simulator durable-parity root passes normally but still times out
+  at the unchanged3m race cap during fixture construction. W0i semantic281
+  passes normally; its race run is terminal FAILED at25m with280 roots passing
+  and BuildRender unfinished. No unchanged retry or deadline waiver is allowed.
+  Separate current-binary CPU/allocation diagnostics and deterministic work-count
+  tests are authorized; fixes must preserve every real fixture and public check.
+- Real disk-ledger sealer composition is held at
+  /home/by/urnetwork/temp/sn-cut-sealer-compose-3ynkzN/sn. It includes the
+  reviewed policy-aware full replay and real staged fetch-back, all42 new
+  sealer tests and the14 depth controls. Terra is authorized to run the direct
+  validator341 union (prior285 +42 +14), not duplicate focused/wide runs.
+  This is not yet qualified or integrated. Bounded aggregates, typed public
+  adapters/replication, complete-census activation and global cross-cut
+  terminal-ID history remain unfinished.
+- First-ASSIGN depth substitution is now causally reproduced: four genuine
+  signed M4/M16 trails were accepted under requested M8; two full M8 controls
+  pass. The repaired engine passes all51 focused/adjacent/legacy roots in both
+  modes. Two additional adjacent pre-fix failures (wrong clamp and invalid
+  request encoding) are authorized on unchanged tests. The server's separate
+  JSON integer >255 to signed-byte alias remains open; the client guard does
+  not repair that public request boundary.
+- Seed/VPK creation has two causal alias failures, with all7 legacy controls
+  passing. Astra is implementing descriptor-anchored, non-replacing key
+  publication and deterministic concurrent-creator/parent/private-file tests.
+  Never use real wallet material as fixtures or change generic snapshot
+  replacement semantics to fix identity custody.
+- A new deterministic Stats startup test reproduces a real lock inversion:
+  AttachAttemptLedger holds Stats.mu while entering Pending's disk walk gate,
+  while an already admitted public Walk visitor needs Stats.mu. Its2 controls
+  pass. Repair startup and audit adjacent commitAttempt/proof projection and
+  every other disk callback under state locks; a startup-only patch is not
+  class closure. This is distinct from the cold-fixture CPU timeout.
 - On-chain validator evidence publication is still unimplemented. The open
-  hash-commitment/public-bytes versus full-on-chain-bytes choice remains as
-  documented in section 10.1. Common stateless authentication is qualified,
-  not an on-chain storage or transaction result.
-- First-ASSIGN policy-depth admission has a newly confirmed gap. Generic legal
-  M4..16 is not proof of configured M8. Bind every record, including failed
-  attempts and terminal cuts, to a decoded policy matching the authenticated
-  policy hash. A six-root real-signed engine RED is staged and authorized;
-  broader policy-consumer regressions and the repair remain required.
-- Key-creation custody has an unresolved adjacent audit: the seed read-miss
-  path can follow a dangling alias, and the validator path-key writer can
-  replace an occupied alias or a concurrent creator's identity. Two neutral
-  deterministic tests plus seven unchanged controls are staged for causal
-  execution. Force creator concurrency and audit private-file acquisition,
-  parent identity and every caller before closing this issue. Never use a
-  real wallet as a fixture or replace generic state-snapshot write semantics.
-- Final source lock, both release gates, fresh Ready doctor, two matching
-  bounded plans, live phases, FINAL.md and independent replay remain. After
-  launch preparation, the unchanged scheduler requires 3,004--4,380 blocks;
-  reporting/review adds time. No reliable from-now finish time is claimed.
+  hash-commitment/public-bytes versus full-on-chain-bytes choice remains in
+  section10.1. Common stateless authentication is qualified, not a publication
+  transaction, historical eligibility check or storage result.
+- Whole-run storage/capacity, both release gates, source lock, Ready doctor,
+  two matching bounded plans, both real live phases, FINAL.md and independent
+  on-chain replay remain. The last observed643GiB free does not provide safe
+  headroom above four160GiB database ceilings plus spools/replicas/history.
+  No live campaign was launched by these local changes; no reliable from-now
+  finish time is claimed.
 
 Earlier blocker context (retained chronology; current status is above):
 
@@ -1406,6 +1397,114 @@ not the final discovery pointer; they remain analyzable only when the reviewer
 supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
+
+### Latest integration and root-cause handoff (2026-09-05 18:02 UTC)
+
+The following supersedes older live handles/statuses below; those entries remain
+chronology, not current release certification. Root independently strict-checked
+the listed completed indices and read their actual outcomes before this entry.
+All capture directories below are under /home/by/urnetwork/temp/.
+
+- Inner namespace18 GREEN: sn-namespace-render-green-v1-exact18-Ekzj0P,
+  index77b9862ccf72ccbd323ab284e75487542264e4c001928db54d84af956d1d8e05.
+  Integrated5cddac6. Outer22 GREEN: sn-namespace-outer-green-v1-exact22-IaZbJf,
+  index362b47a0316c882989b94b4a50c461549274d90323e1c591472cda6987a9cf9e.
+  Integrated64a6e32, with all21 qualified source paths matching in main.
+  The outer causal capture sn-namespace-outer-red-v1-exact22-XXTx95
+  preserves20 passing controls and2 actual preflight-ordering failures,
+  indexf9c2182999116341c68c8ec90432a63f8d6cff6f609c4f4a008cb0676518339d.
+  Launch now refuses protected state before real database migration admission;
+  config.render refuses before payload recovery. Generic recovery and legitimate
+  supervisor ownership/refusal journal behavior are retained.
+- W0i semantic281 is terminal FAILED, not running. Capture
+  sn-boundary-repair-v4-semantic281-e8JhDa has index
+  84f917d0bc4653d72f47decb80d770fdade9d90103009fda23e44ca41e6dcfe8.
+  Ordinary281 pass; race281 start/280 pass, actual2/validation1 at25m.
+  TestFinalSemanticEvidenceBuildRenderAndArtifacts is unfinished at its first
+  missing-artifact branch; the stack samples full transcript canonicalization.
+  That stack location does not establish the sole dominant cost. All immediate
+  fences pass; no unchanged retry or timeout extension is authorized.
+- Composition sn-attempt-disk-compose-BtiCSb/sn remains exact85 source
+  0856cafe10599f98a7df14acca3a0ef3b2ceb2f1b741de3b8cd336191f793583.
+  Validator285 GREEN capture sn-attempt-compose-v1-validator285-gC18em,
+  indexfcad8c0ba0c16737abd1c13b9068b075729a6b2900614c383960109e803e1157.
+  Simulator reuse6 GREEN capture sn-attempt-compose-v1-sim-reuse6-2CLjqo,
+  index954ba544cdccf12dc50fb6c4d40a7366dfc86c44f0bab0fbf5a2c5925e9c8b55.
+  Cold durable1 capture sn-attempt-compose-v1-sim-durable1-uLqMIJ,
+  index4b7bdf841670f6000b4172605187f868b29f47f833edb5103e5dfec4e02905b4:
+  ordinary passes34.40s; race actual2/validation1 at3m, during full fixture
+  SetupPlan.hash before durable assertions. All fences pass. Composition
+  fixes alone did not close that timeout; neither green lane proves otherwise.
+- Two fresh-process diagnostic profiles are authorized, serialized with each
+  other, using the honest captured normal binaries without recompilation:
+  W0i BuildRender binary3c9f5262ec28f476466893064c99503538b84cf80f738f228655bdf0cab4584d,
+  then Bti durable1 binary8c918606a37127c2c9a79dbc0a46ad45260611995ebdb1fe71230199580d5a5d.
+  Each gets CPU/default-rate allocation/time evidence at3m/4m and exact fences.
+  Profiles are diagnostic, not fresh race qualifications.
+- Timeout neutral candidate sn-semantic-timeout-repair-sHRbWn/sn is exactBti
+  plus four neutral instrumentation/test changes, source87
+  bf5cee174319471286698e9830362aef56a62d4337d66d3596f78ee7fa2dcd2a.
+  Handoff TIMEOUT-RED-HANDOFF-v1.md hash
+  4dd149aa360e323cc5b93b8428394564b59e0953f64e87eb6467c7ed6b4c9ae7.
+  Authorized ordinary10 expects two exact work-count failures (whole transcript
+  marshals2 rather than1; complete plans3 rather than2) plus8 controls.
+  Preserve the complete JSON round-trip semantics: whitespace, raw number
+  spelling, null, escaping, malformed data, caller ownership and typed invalid
+  UTF-8 normalization. A naive shallow copy or first-wire reuse changes valid
+  transcript behavior. Preserve two independent complete plan builds and their
+  parity assertion. These small counts are not sufficient timeout closure.
+- Policy-depth causal6 capture sn-policy-depth-red-v1-exact6-c8gc1x,
+  index4a4f8492d669475086b691df5554d129b3e7f968548492f1e6a82bd8d669d4cc,
+  has4 genuine signed wrong-depth failures and2 complete M8 passing controls.
+  Repaired wider51 capture sn-policy-depth-green-v1-wider51-UNHBUw,
+  indexe8f2725b703c910f84af1b8119e1cf06cd1ac6ae372196297609b6aba52556a9,
+  passes every root normally/race with all stages/fences0.
+  Original6 file e94976e7f6db3abb8646db60c466ce2880bd2e656251da529e76cdf4041b56bd
+  and new8 file2e2385f300be3c63c2a15918339cd597669346bfd64f6dcdde335ca1a278c21b
+  remain unchanged. Additional adjacent pre-fix8 are authorized separately at
+  sn-policy-depth-adjacent-red-ymtykT/sn (source15
+  051dabe20ba9c0c10be06ebf15537f3cd3c6b44736c6bebe35871fae73cbd721):
+  expected wrong-clamp/invalid-encoding failures plus6 controls. A loop that
+  fails first at negative M does not prove the later M260 variation executed.
+  Server verifySeed still accepts JSON M>255 into the signed-byte conversion;
+  genuine M4 signature bytes also encode260 while its effective clamp differs.
+  Add separate pre-state server admission and legal-clamp controls; client
+  rejection alone is not server-side repair.
+- Sealer composition sn-cut-sealer-compose-3ynkzN/sn is exactBti85 plus the
+  eight reviewed sealer feature paths and a method-level depth guard, retaining
+  pre-SEED reservation and its abort defer. Both depth test files and all five
+  sealer test files are byte-identical to reviewed originals. Source99
+  bfcd4377b62c2650f19cad6a8febf1f849e8dfbd5738a924505a7643b4f52c92.
+  Handoff SEALER-COMPOSE-HANDOFF-v1.md hash
+  f5bcad951e3e1d45efad85c01b53710c53fae9b30f68529f28b89f19bf8e10e6.
+  Authorized direct validator341 (prior285 +42 new sealer +14 depth), roots
+  483eff3dcaf4c2dfc3022820ed69311cbb7ae42067a56f7c5cbd43e0ec5792bc,
+  normal5m/6m and race10m/11m, compile4m/list30s. No product result yet.
+  Full staging, typed fetch-back, signatures, policy, lifecycle, bounded scratch,
+  actual close failures and cancellation are mandatory. Do not replace generic
+  replay validity with hardcoded M8 or count this as collector/activation work.
+- Key custody causal captures sn-key-custody-red-v1-crv4-cBiScR
+  (indexd9d848be902882727475a9202c2b8322ad259dd3245cb0f9d49ff7b293baa48c)
+  and sn-key-custody-red-v1-validator-Ovh9sR
+  (index157bad8c263e599af8a06456b15365e28a23612d96d001f7dfd64d72a5f0d255)
+  each fail the intended alias-mutation assertion; all7 old controls pass.
+  Astra owns shared descriptor-anchored non-replacing identity publication and
+  private/concurrent-creator tests. Existing raw-only VPK and raw/hex hotkey
+  formats remain compatible. Generic atomicStateWrite replacement is separate.
+- Stats startup causal capture sn-stats-replay-red-v1-exact3-BdG9xr,
+  indexce7943aee768f984e3677a90b05bedabb89ee4ff5984174bb4a3d1f4ae735f31,
+  has2 controls passing and the explicit state-lock/disk-Pending inversion
+  assertion failing. Source sn-attempt-stats-replay-L4jFum/sn is released.
+  The test forces actual public Walk/Pending ordering with channels, observes
+  the held Stats lock, and joins before failure; no sleep or alarm proves it.
+  Review all17 mutation entrypoints and adjacent commitAttempt projection,
+  including callbacks entered through disk recovery/native/settlement paths.
+  A repair must avoid state locks across external backend calls without stale
+  clone/save overwrites, preserve cancellation/atomicity and retain every test.
+- Every candidate above is local implementation/qualification work. No final
+  campaign launch, new chain transaction, production capacity claim or FINAL.md
+  acceptance follows. Both mandatory release gates, full source freeze and the
+  complete whitepaper/live evidence matrix remain required.
 
 ### Latest qualification and repair handoff (2026-09-05 16:39 UTC)
 

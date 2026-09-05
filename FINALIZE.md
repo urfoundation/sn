@@ -1,45 +1,37 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 16:39 UTC. The final live campaign has not started. Existing attempt-4
-testnet deployments and custody are preserved; no new on-chain action is
-authorized by a partial qualification result.
+2026-09-05 18:02 UTC. The final live campaign has not started. Existing attempt-4
+testnet deployments and custody are preserved; no partial local qualification
+authorizes activation or proves final acceptance.
 
-Latest progress: metadata/header candidate passes all24 normal/race roots;
-bounded writer passes all46 and full replay passes all55 in both modes. These
-slices are integrated as c9f066a, 8e9d0fc and 2d179bd, following pushed docs
-checkpoint 8fb4fa7. All138
-disk-ledger validator compatibility roots now pass normally and under race.
-The simulator parity root passes normally but times out at its unchanged
-three-minute race cap during full-fixture construction, before durable parity
-work. Its bounded profile is complete; a new composition combines the existing
-verification-reuse repairs and disk API before a changed-source rerun.
-The shared block-boundary repair reproduces eight causal failures and then
-passes all22 normal/race roots. Wider validator143 passes both modes;
-semantic281 passes normally and race is still running, retaining all274
-mandatory semantic roots, seven adjacent collector controls, and original
-deadlines. Earlier launcher/selector observer failures
-remain recorded separately from product results.
+Landed in sn: metadata c9f066a, bounded writer8e9d0fc, full replay2d179bd,
+inner namespace protection5cddac6 and outer launch/render protection64a6e32.
+Writer46, replay55, namespace18 and outer22 all pass normally and under race.
+The remaining edits are in stable isolated temp/sn-* checkouts, not hidden
+uncommitted edits in the main sn working tree.
 
-Compact header/descriptor, writer and replay code is qualified in focused
-slices but not activated. Replay's three causal ownership/cancellation tests
-and eight adjacent controls pass unchanged after repair. Full real-ledger
-sealer integration, bounded aggregates, public
-collector integration, authenticated activation, on-chain evidence publication
-and aggregate capacity remain launch requirements. Namespace review also found
-that rendering can mistake a disk ledger without legacy JSONL for unsigned
-state or mutate operator artifacts before refusal; classifier protection and
-the actual renderer mutation is now reproduced and its repair is in exact18
-normal/race qualification. Outer-entry regressions remain mandatory. A separate
-policy-depth admission gap requires real-signed engine regressions plus checks
-on every ordinary/failed/terminal record against authenticated policy depth.
-Six genuine-signed engine regressions are staged for causal testing. The
-adjacent key-custody audit also found unsafe seed/VPK read-miss creation paths;
-two deterministic temporary-file regressions plus seven unchanged controls
-are staged. Concurrent creation and private-file acquisition checks remain
-required; no real wallet is a test fixture.
-These safety repairs must precede activation. Section 12 of the handoff
-records exact sources, current holds and qualification artifacts.
+The composed disk/settlement candidate passes validator285 and simulator6
+normally/race. Cold durable-parity still fails its3m race deadline; broader
+semantic281 still fails its25m race deadline with280 roots passing. Both
+failures are preserved. Current-binary profiles and causal work-count tests
+are authorized before another changed-source qualification; no coverage or
+deadline is waived.
+
+The engine policy-depth repair passes all51 normal/race roots after genuine
+signed M4/M16-under-M8 causal reproductions. Its server-side signed-byte alias
+adjacency remains open. Key creation has two causal alias failures; Stats
+startup has a deterministically reproduced state-lock/disk-walk inversion.
+Those repairs and adjacent audits are required before activation.
+
+Real-ledger sealer integration is assembled, with the complete validator341
+union authorized (prior285 +42 sealer +14 depth), not yet qualified.
+Bounded aggregates, collector/public typed replication, authenticated activation,
+global cross-cut terminal history, aggregate capacity and on-chain validator
+evidence publication remain mandatory. Both release gates, final source lock,
+Ready doctor, matching plans, real live phases, FINAL.md and independent
+on-chain verification are still outstanding. Section12 of the handoff records
+the exact sources, failed captures, qualified scopes and current work locations.
 
 The chronology below preserves earlier qualifications and failures; it is not
 a claim that those historical candidate states remain current.
