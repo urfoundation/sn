@@ -1280,7 +1280,7 @@ func validateOperationalRPCRouting(cfg *ResolvedConfig) error {
 
 func checkEVM(parent context.Context, r *DoctorReport, cfg *ResolvedConfig) {
 	start := len(r.Checks)
-	checkEVMEndpoint(parent, r, cfg, "operational", cfg.OperationalEVM)
+	checkEVMEndpoint(parent, r, cfg, "operational", cfg.OperationalEVM, evmEventLogCheckRequired(cfg, "operational"))
 	if sameRPCEndpoint(cfg.OperationalEVM, cfg.Public.Chain.EVMPublicReadEndpoint) {
 		aliasSameEndpointChecks(r, start, map[string]string{
 			"rpc/evm-operational":                 "rpc/evm-public",
@@ -1293,10 +1293,19 @@ func checkEVM(parent context.Context, r *DoctorReport, cfg *ResolvedConfig) {
 		})
 		return
 	}
-	checkEVMEndpoint(parent, r, cfg, "public", cfg.Public.Chain.EVMPublicReadEndpoint)
+	checkEVMEndpoint(parent, r, cfg, "public", cfg.Public.Chain.EVMPublicReadEndpoint, evmEventLogCheckRequired(cfg, "public"))
 }
 
-func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConfig, name, httpURL string) {
+// Keeps the operational index source hard while an independent public reader
+// follows the capability explicitly declared in its signed manifest.
+func evmEventLogCheckRequired(cfg *ResolvedConfig, endpointRole string) bool {
+	if endpointRole == "operational" {
+		return true
+	}
+	return endpointRole == "public" && cfg != nil && cfg.Public != nil && cfg.Public.Chain.PublicFallbackAllowsEventIndexing
+}
+
+func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConfig, name, httpURL string, requireEventLogs bool) {
 	timeout := 20 * time.Second
 	if configuredEVMRequestsPerMinute(cfg, httpURL) > 0 {
 		// A public provider can legitimately direct a source-wide 60-second
@@ -1333,7 +1342,7 @@ func checkEVMEndpoint(parent context.Context, r *DoctorReport, cfg *ResolvedConf
 	logs, logsErr := client.FilterLogs(ctx, logProbe)
 	r.add(
 		"rpc/evm-"+name+"-eth_getLogs",
-		true,
+		requireEventLogs,
 		logsErr,
 		fmt.Sprintf("from=%d to=%d inclusive_blocks=%d addresses=3 logs=%d", logProbe.FromBlock.Uint64(), head.Number, serverst.EventLogBlockRange, len(logs)),
 	)

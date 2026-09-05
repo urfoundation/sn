@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-04 UTC before the final source freeze. Refresh every item marked
+2026-09-05 06:20 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -15,7 +15,7 @@ mainnet-readiness claim.
 
 Execution-agent policy: use `gpt-5.6-terra` at reasoning effort `max` to run
 tests and release gates. On any failure, preserve the exact output and use
-`gpt-5.6-sol` at reasoning effort `max` to diagnose the root cause, audit
+`gpt-6-astra` at reasoning effort `max` to diagnose the root cause, audit
 similar/adjacent paths, implement the fix, and add its deterministic regression.
 Return the resulting tree to Terra for the focused and widened reruns. This
 model assignment never weakens a gate or expands testnet write authority.
@@ -126,9 +126,17 @@ These facts are safe to use for continuation. Re-read them before mutation.
     0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e
   - reserve sink:
     0x376f98bd7c6b334f7f1cb2685e0970a18bfe7d28
-  - current recorded coordinator implementation:
+  - deployment-manifest base coordinator implementation (not the current
+    ERC-1967 slot after upgrade history):
     0x8c033865c1cd387a0fa5a8f3369908a20c5a54e4
-  - deployment block: 7,900,646
+  - live ERC-1967 implementation slot observed through the public testnet RPC
+    at 2026-09-05 01:00 UTC:
+    0xe732c2e6dbced5dcc44d1a5524a8af1343c1e2ef
+  - the current public manifest's generic `deploy_block` marker is 7,900,646;
+    this is the later fleet-batcher deployment and must not be used as the
+    coordinator proxy's creation boundary
+  - the current coordinator proxy's exact deployment/initial `Upgraded` block
+    is 7,895,374; the carried predecessor proxy's is 7,889,308
 - The current source must create a plan revision which preserves authenticated
   carried history and upgrades only what the new release lock requires. Never
   redeploy immutable custody simply because the implementation changed.
@@ -136,23 +144,24 @@ These facts are safe to use for continuation. Re-read them before mutation.
 FREEZE-UPDATE repository revisions:
 
 The first-draft table is retained below as historical provenance. The current
-source candidate and dependency snapshot, fetched and verified clean/equal to
-upstream on 2026-09-04 UTC, is:
+source candidate and dependency snapshot was fetched again on 2026-09-05
+06:22 UTC, with no additional upstream changes since 05:52. Clean/equal status
+applies only to the rows explicitly marked so:
 
-| Repository | Branch | Current pre-integration revision | State |
+| Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | 2519581 (source commit; release-lock/handoff commit pending) | local source candidate; exact upstream equality must be restored before the gate |
-| server | main | d184121d6b33ecf0253be92167f74e672ff7229f | clean/equal; affected normal/race/vet and managed-DB qualification pass |
+| sn | main | 20431dd39f5a81b7ff85c18e11042d5e99e1f9d5 | dirty source candidate; upstream documentation commit `46eae44` and release-lock/handoff commits pending |
+| server | main | df90d425b9b5aa589db2926d8f32006b2aaa9591 | core allocation repair and initial strict-test checkpoint pushed; ordinary/race pass; adjacent provider-reporting and remaining strict-test fixes dirty, qualification pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
-| connect | main | fb888dc8883efb12dd570e5514e866dba14d987e | clean/equal; sender-role and blocker/CFAA focused ordinary/race plus consumer compile pass; aggregate qualification pending |
-| sdk | main | 2f3e7058873498099a88aee3e158caa11aefbda1 | clean/equal; canonical-format repair plus full normal, affected race, nested-module and vet qualification pass |
+| connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
+| sdk | main | e1d8dc8d9682daefd86878fea911b7b643634406 | clean/equal; incoming JWT transport and points-display focused ordinary/race pass |
 | glog | master | 2bdcce5f8be023947f26a247eb5665c56b69b2e3 | clean/equal |
 | goidenticons | main | 325750b38314313dc5f44c880ab6f12f6c1ecb3c | clean/equal |
-| proxy | main | 1c72dfd66f8c7fbe72120b6657c8a445f7f25499 | clean/equal |
+| proxy | main | 3c2b79c56024268efb45133dbcfcb961e865892d | clean/equal; incoming change only affects filtered test output |
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/equal |
-| vault | main | 8b41923ba3c65aec3bc416a5c5365b4f457b5dc5 | clean/equal; encrypted monitor update |
-| xops | main | 7ca1e15d0d8084e3ad500593b1a80e3a4c4289f4 | clean/equal; post-candidate upstream integration under qualification |
-| config | main | 205eae72d13527e71bb895923a1782fffe0d9ed2 | clean/equal |
+| vault | main | f2ac60e3764e845b973ebf7c87a37ab6eb038dff | clean/equal; unrelated encrypted competition credentials integrated |
+| xops | main | 252301938040b39e195e69200b66ee650c5dbf44 | clean/equal; documented Ansible suite passes 88 tests |
+| config | main | c2837951daa557f4d9ae8fb2d482db0b84fe4add | clean/equal; unrelated competition profile integrated |
 
 Reverify all twelve rows immediately before each exact gate. Any later
 documentation-only handoff commit must be recorded separately from the frozen
@@ -175,20 +184,22 @@ Historical first-draft snapshot:
 | userwireguard | master | 85fb1ca4086fa5dbfcda526bec7a17a894e691b9 | clean/current |
 | xops | main | fbd291a1849d5769e67efe278c2f4e5da65275aa | clean/current |
 
-The release lock was refreshed from clean source commit `2519581` at 2026-09-04
-16:57 UTC as
-`sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`.
-It adds the exact `abigen` 1.17.0 identity and updates only the expected SN Go
-and protocol-source hashes. It is not launch approval until committed/pushed
-and accepted by the frozen producer gate.
+The release lock was refreshed from clean pushed source at 2026-09-04 18:14
+UTC as
+`sha256:998a86a4c3806e63f7c1c056401b0cb3cefb7601d6579b96f6bfddcbf2135cb5`.
+Relative to the prior lock it updates only `connect_go_source_hash` and
+`protocol_source_hash`, binding the generated-policy implementation/data and
+the widened release selectors. The later full-race failures supersede this
+pre-fix render; refresh it after both repairs rather than committing or using
+it for launch.
 
 ## 3. Current implementation/gate continuation point
 
 The 2026-09-04 16:21 UTC producer attempt passed source/runtime attestation,
-the exact v451/v452/v453 metadata gate, graph compilation, validator
+the then-exact v451/v452/v453 metadata gate, graph compilation, validator
 ordinary/race, lossless-capture ordinary/race, and all 156 Foundry tests before
-failing generated-binding freshness with `abigen: command not found`. Its log is
-`/home/by/urnetwork/temp/producer-gate-20260904T1621Z.log`, SHA-256
+failing generated-binding freshness with `abigen: command not found`. Its log
+is `/home/by/urnetwork/temp/producer-gate-20260904T1621Z.log`, SHA-256
 `f4fe1b9a440d6cf257bff1626e85e51b4fcfb6a59fbaabc2e6a7e02fa95591ae`.
 The executable existed in GOPATH; the launch PATH omitted GOPATH/bin, the
 generator documentation still named go-ethereum 1.16.7 while `go.mod` requires
@@ -202,16 +213,75 @@ resolution path, precedence, wrong/missing tools, and no-JQ preflight behavior
 normally and under the race detector. The release lock now observes the same
 shared preflight and binds the generator script into `protocol_source_hash`.
 The canonical v1.17.0 generator produces byte-identical checked-in bindings.
-The corrected producer gate has not yet run; do not infer a pass from the
-focused qualification.
+
+The corrected 17:00 UTC producer run then passed every substantive phase:
+runtime/metadata attestation, compiled graph, validator and lossless-capture
+normal/race suites, 156/0/0 Foundry tests with 4,608 invariant calls, generated
+contracts and bindings, operator APIs, operator-proxy ordinary/race suites,
+isolated PostgreSQL/Redis paths, and the release-lock test. The final fetched
+source fence correctly stopped because Connect advanced during the run from
+`fb888dc` to `0dd6ee2`. No testnet transaction was sent. The complete log is
+`/home/by/urnetwork/temp/producer-gate-20260904T1700Z.log`, SHA-256
+`efcd4fdeeacbb7dbbd6dff3b6d530a26d950ff0877dd09ed663c9ed6e8901db5`.
+
+Reviewing that drift exposed a release-input provenance class, not a reason to
+waive the fence: generated blocker/CFAA tables lacked per-feed content hashes
+and deterministic dispositions; checked-in tests tolerated empty placeholder
+data; blocker documentation claimed the wrong packed record width; diagnostic
+stale generation could retain below-floor data; deprecated fetch failure was
+tolerated; and IPv6/global/feed-family floors were incomplete. Connect
+`d65a05e036ba575bc6055fc0343fc91baed60a8a` fixes the class with ordered
+decoded-body SHA-256/byte/count provenance, fail-closed fetch and floor rules,
+a dedicated Spamhaus IPv6 floor, explicit deprecated-empty semantics, runtime
+minimums, opaque generated payloads, and deterministic adjacent regressions.
+SN `20431dd` makes both producer and aggregate gates run one exact 24-test
+generated-policy consumer selector plus both generator packages normally and
+under race; the selector includes Telegram reflector/fallback collisions and
+its static parser rejects duplicate or missing assignments.
+
+Two independent audits matched the earlier Connect tree
+`a942fe337a387e15900b2e2155dd662acc2754b2`; its exact generated-policy suites,
+vet, format, decoders and full 523.615-second ordinary run passed. The isolated
+20-minute full race then failed
+`TestP2pTransportAutoSelectsFastPathForCapablePeer` after its 10-second connect
+deadline and eventually timed out with `TestWeightedShuffle` active after
+roughly 2,000 prior tests. The latter passes alone in 13.381 test seconds, and
+the full run contained no race marker. Pre-fix logs are
+`/home/by/urnetwork/temp/connect-fast-path-prefixed-main-race-count20-20260904.log`
+(SHA-256 `c5fa04780a2f82e86c962e87fbd70b1b927d3dcdca075c5e09c1fccda434e5a2`),
+`/home/by/urnetwork/temp/connect-signal-prereg-focused-normal-20260904.log`
+(SHA-256 `bfe6feb8359d0f728f5022a33d8650bf9ace96eeb0b271a0bd5a20cd750a24b3`)
+and `/home/by/urnetwork/temp/connect-root-full-race-isolated-20260904.log`
+(SHA-256 `f220729ac7e1a256f3917701d05349cec4a253b81aee0986fb292e5f795805f8`).
+
+Connect `b22ab0704f6dc3ecf80e91b31b5c7fafca097223` (tree
+`000160e9679bb1636621d3b6d990f920866ca582`) fixes the complete observed class.
+The direct test carrier now drops an arrival before registration like the
+production receiver; the delayed carrier resolves at dispatch, enforces one
+257-frame combined ownership bound, prevents Add-after-Wait, joins all admitted
+senders and returns all pooled copies before completion. The raw byte-stream
+smoke opts into ordered SCTP while the default reliable-unordered message test
+accepts only an exact, duplicate-free message multiset. Barrier regressions
+cover direct and delayed drops, registration during delay, capacity progress,
+send/cancel races and pool witnesses. Helper tests passed 20 times normally
+(0.073s) and under race (2.289s); actual fast-path/WebRTC tests passed 20 times
+normally (24.041s) and under race (32.606s). Canonical 10-run replays, vet,
+format and patch checks pass, and an independent lock/ownership audit found no
+blocker. Both release gates pin this affected selector. The aggregate gate also
+runs one unsharded default ordinary certificate, one unsharded default race
+certificate and fixed alternate race order `4535211000`, each with a 30-minute
+package deadline and race runs capped at four execution cores. Those exact
+frozen aggregate certificates remain pending.
 
 The two approval-identical plans built immediately before this source change
-had plan hash
-`0xcef66045f86d23d64991f94458482ec318565525491e459e467f2caabe14bbc6`
+had 2,298 actions, plan hash
+`0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`,
 and approval-projection SHA-256
-`62850f696035015e53abc07e2377cf73e71d44db2d86626859706a2e1fe4d1fd`.
-They are now superseded and must never be applied. Build two new plans after
-the corrected frozen producer gate.
+`c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff`.
+Their maximum spend was 165,748,236,000 TAO rao, 24,748,499,999,949 alpha
+rao, 147,549,500,000,000,000,000 EVM gas wei, and 259 registrations. They are
+now superseded and must never be applied. Build two new plans after the
+corrected frozen producer gate.
 
 The final frozen gates remain pending. Runtime-evidence candidate
 `5f882b20790aba1333664323f3bf748933f62273` and the release-gate selector
@@ -311,7 +381,12 @@ Perform these steps in order.
 2. Run all TestFinalSemantic tests ordinary.
 3. Run focused race coverage for every modified lifecycle, capture, replay,
    settlement, attempt-ledger, and publication path.
-4. Run the full sim-testnet package ordinary and race.
+4. Require the full sim-testnet package ordinary and race on the frozen
+   candidate in the aggregate gate (section 4.4). Repaired failures first need
+   focused ordinary/race confirmation; do not add a duplicate complete run
+   before freezing solely to repeat the same certificate. The aggregate gate
+   remains mandatory and may overlap live acceptance only after the producer
+   gate passes, as already authorized below.
 5. Run validator attempt/measurement/steering suites ordinary and race.
 6. Run gofmt on changed Go files, forge fmt on Solidity, generated ABI/binding
    checks, go vet, and git diff --check.
@@ -338,12 +413,17 @@ correctness is green:
 2. Fetch and pull/rebase each changed repository, resolve semantically, rerun
    conflict-adjacent tests, and push.
 3. Verify all twelve release roots are clean and `HEAD == @{upstream}`.
-4. From SN, run `go run ./sim-testnet release-lock --apply`. Review every
-   changed runtime, source, artifact, interface, infrastructure, and config
-   digest; never bless an unexplained mismatch.
+4. From SN, build a fresh `-trimpath -buildvcs=true` executable into a unique
+   sibling `temp/` directory, record `sha256sum` and `go version -m`, and invoke
+   that exact absolute nonsymlink path for `release-lock --apply`. The driver
+   independently requires its build revision, clean checkout, fetched
+   `origin/main`, and a bounded live GitHub `main` observation to agree before
+   it can replace the lock. Review every changed runtime, source, artifact,
+   interface, infrastructure, and config digest; never bless an unexplained
+   mismatch.
 5. Commit and push the release lock plus the reconciled handoff documents.
-6. Fetch again and run `scripts/check-release-source-freeze.sh
-   /home/by/urnetwork`. Record its exact twelve-repository output.
+6. Fetch again and run `scripts/check-release-source-freeze.sh "$WORKSPACE"`.
+   Record its exact twelve-repository output.
 
 Any later source edit creates a new candidate: regenerate the lock, commit,
 push, and restart both gates. A passing test from the dirty staging worktree is
@@ -404,31 +484,53 @@ fences, regenerate the lock if necessary, and issue a new plan.
 Use the authoritative state explicitly in every command:
 
     cd /home/by/urnetwork/sn
-    go build -trimpath -o build/sim-testnet ./sim-testnet
+    SIM_TESTNET_SOURCE_REV="$(git rev-parse --short=12 HEAD)"
+    SIM_TESTNET_BUILD_UTC="$(date -u +%Y%m%dT%H%M%SZ)"
+    SIM_TESTNET_CANDIDATE_DIR="/home/by/urnetwork/temp/postgate-${SIM_TESTNET_SOURCE_REV}-${SIM_TESTNET_BUILD_UTC}"
+    mkdir -p "$SIM_TESTNET_CANDIDATE_DIR"
+    go build -trimpath -buildvcs=true \
+      -o "$SIM_TESTNET_CANDIDATE_DIR/sim-testnet" ./sim-testnet
+    SIM_TESTNET_BINARY="$SIM_TESTNET_CANDIDATE_DIR/sim-testnet"
+    sha256sum "$SIM_TESTNET_BINARY" > "$SIM_TESTNET_CANDIDATE_DIR/sim-testnet.sha256"
+    go version -m "$SIM_TESTNET_BINARY" > "$SIM_TESTNET_CANDIDATE_DIR/sim-testnet.buildinfo"
 
-    ./build/sim-testnet doctor \
+    "$SIM_TESTNET_BINARY" doctor \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json \
       > /tmp/ur-subnet-testnet-doctor.json
 
+Keep `SIM_TESTNET_BINARY` set to this exact hashed post-gate binary for every
+remaining command in this document. Never resume with the obsolete binary under
+the attempt-4 state directory or an untracked repository-root build product.
+
 Doctor must be ready. The public operational/comparison backend distinction may
 be reported as the documented non-hard public-testnet limitation; every other
 check must pass. Specifically verify wallet identity, netuid ownership, runtime
-453 spec/transaction/state versions plus exact Wasm and metadata hashes at one
+454 spec/transaction/state versions plus exact Wasm and metadata hashes at one
 finalized checkpoint, chain/genesis identity, activation flags,
 hyperparameters, budget and balance, MinIO, local Docker, systemd, port
 availability, source lock, and authoritative carried history.
 
+The current server candidate adds migration 631 for exact per-client provider
+allocations on each network payment sweep. Launch already runs the real
+server `db migrate` command for both isolated operator databases before starting
+their APIs/workers. Verify both `operator-*-db-migrate.log` files show successful
+completion at this candidate's migration head; the migration monitor must also
+find the nullable JSONB column and shape constraint. Do not start the operator
+against schema 630 or reinterpret ambiguous legacy multi-provider rows as one
+provider's usage. Preserve historical rows; this migration does not backfill or
+rewrite them.
+
 Build the plan twice without any intervening write:
 
-    ./build/sim-testnet plan \
+    "$SIM_TESTNET_BINARY" plan \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json \
       > /tmp/ur-subnet-testnet-plan-a.json
 
-    ./build/sim-testnet plan \
+    "$SIM_TESTNET_BINARY" plan \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json \
@@ -485,29 +587,39 @@ The user has already authorized executing the ready testnet plan; no additional
 spend confirmation pause is required. The hash must still be mechanically exact
 and recorded here before apply.
 
-Current approved plan candidate, independently rebuilt twice on 2026-09-04 UTC:
+Most recent verified but now superseded plan candidate, independently rebuilt
+twice on 2026-09-04 UTC:
 
-- plan hash: `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`
-- canonical approval-projection SHA-256: `5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360`
-- raw plan A SHA-256: `df2d5fb11430b47f450c7b404c150f901b103b2ff4321a2597fc82431bc595db`
-- raw plan B SHA-256: `056e528e358ee71226cfb9f08e351193056a4279c7490834b70182148ff78ee6`
+- plan hash: `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`
+- canonical approval-projection SHA-256:
+  `c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff`
+- raw plan A SHA-256:
+  `0b18055e947f23c0adda65cf9a54efb4e64f774336a3a15b5fd9714289d4af5b`
+- raw plan B SHA-256:
+  `02f26eb9aadd4e0a1b6786555d521525f3bf3494bbc0a63c7c98061cc87e7ef4`
+- plan A/B log SHA-256:
+  `f8b3cbeeb45b7fb165274574419ff7db3dd3f100fb190de8d4fbb98572e39f47` /
+  `4cdf0eb7b32d9a86492d8adb14a2548d655524edb718f1acc69bbc54f061bf93`
 - action count: 2,298
 - maximum cumulative TAO rao: 165,748,236,000
 - maximum cumulative alpha rao: 24,748,499,999,949
 - maximum EVM gas wei: 147,549,500,000,000,000,000
 - maximum registrations: 259
 - subnet creations: 0
-- plan A native/EVM checkpoints: 7,931,639 / 7,931,639; coordinator
-  baseline 7,931,640
-- plan B native/EVM checkpoints: 7,931,655 / 7,931,655; coordinator
-  baseline 7,931,656
-- the raw diff contains only the seven explicitly allowed generated/checkpoint
-  fields above; plan hash, approval projection, all 2,298 actions, cumulative
-  spend, limits, roles, code identities, and lineage are identical
-- the revision adds exactly 58 fleet-lifecycle actions, three bounded
-  registrations, 27,004,000 TAO rao, zero alpha, and
-  1,140,000,000,000,000,000 EVM gas wei relative to the persisted action set;
-  no subnet creation or immutable-custody redeployment is introduced
+- plan A was generated at 17:06:07 UTC with native/EVM checkpoints
+  7,933,271 / 7,933,272 and coordinator baseline 7,931,698
+- plan B was generated at 17:09:41 UTC with native/EVM checkpoints
+  7,933,289 / 7,933,289 and coordinator baseline 7,931,698
+- the raw diff contains only `generated_at` and the four finalized native/EVM
+  checkpoint fields; plan hash, approval projection, all 2,298 actions,
+  cumulative spend, limits, roles, code identities, and lineage are identical
+- the retained projections are
+  `/home/by/urnetwork/temp/plan-a-7a4d97e.approval.json` and
+  `/home/by/urnetwork/temp/plan-b-7a4d97e.approval.json`
+
+This candidate predates the generated-policy fixes and refreshed release lock.
+It must never be applied. Build, compare, review, and record two new plans only
+after the frozen producer gate passes.
 
 ## 6. Exact launch/resume
 
@@ -517,7 +629,7 @@ Set the reviewed hash only after section 5 succeeds:
 
 Resume the existing attempt rather than creating a new state root:
 
-    ./build/sim-testnet resume \
+    "$SIM_TESTNET_BINARY" resume \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --apply --plan-hash $SIM_TESTNET_APPROVED_PLAN_HASH \
@@ -527,7 +639,7 @@ If the revision requires setup before topology readiness, resume is still the
 preferred journal-aware entry point. Use launch with the same arguments only if
 the current CLI explicitly reports that launch is the required operation:
 
-    ./build/sim-testnet launch \
+    "$SIM_TESTNET_BINARY" launch \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --apply --plan-hash $SIM_TESTNET_APPROVED_PLAN_HASH \
@@ -556,12 +668,12 @@ Launch must prove:
 
 Immediately save read-only status and inspect output. Do not edit evidence:
 
-    ./build/sim-testnet status \
+    "$SIM_TESTNET_BINARY" status \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json
 
-    ./build/sim-testnet inspect \
+    "$SIM_TESTNET_BINARY" inspect \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json
@@ -571,7 +683,7 @@ Immediately save read-only status and inspect output. Do not edit evidence:
 Run the composite orchestration so it adopts only authenticated clean phase
 markers and resumes the first incomplete phase:
 
-    ./build/sim-testnet scenario \
+    "$SIM_TESTNET_BINARY" scenario \
       --name release-candidate \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
@@ -600,7 +712,7 @@ preparation:
 
 The release phase must not be marked complete merely because five settlement
 epochs elapsed. Its first three causal native milestones and terminal binding
-must also satisfy the runtime-453 schedule. Production must obtain the later
+must also satisfy the runtime-454 schedule. Production must obtain the later
 terminal-active native decision by its fixed acceptance terminal. The inclusive
 EVM evidence deadline is the later of the acceptance terminal and native
 application deadline; the two domains are checked independently. Under the
@@ -615,12 +727,12 @@ ignore a stalled process.
 
 Monitor without bypassing the shared public-provider egress gate:
 
-    ./build/sim-testnet status \
+    "$SIM_TESTNET_BINARY" status \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4 \
       --format json
 
-    ./build/sim-testnet tail \
+    "$SIM_TESTNET_BINARY" tail \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4
 
@@ -682,7 +794,7 @@ commands for a separate agent to validate each claim on chain.
 
 | Whitepaper mechanism | Minimum independently verifiable evidence |
 |---|---|
-| Chain/deployment identity | chain ID 945, genesis/runtime 453 identity, netuid 521, deployment block, proxy/implementation/vault/reserve/probe addresses, runtime code hashes, ERC-1967 implementation slot, policy version/hash/effective block |
+| Chain/deployment identity | chain ID 945, genesis/runtime 454 identity, netuid 521, deployment block, proxy/implementation/vault/reserve/probe addresses, runtime code hashes, ERC-1967 implementation slot, policy version/hash/effective block |
 | Governance/custody | testnet single-owner and guardian identities, successful governance upgrade drill, unchanged immutable vault/reserve custody, owner/value caps; explicit mainnet 2-of-3 delta |
 | Operator pools | both NO registrations and UIDs, ownership, pool status, API origin, public history, independent assignment and traffic/quality evidence |
 | Demand deposits | tier/rate inputs, required versus observed conviction for both pools in every covered epoch, deposit transaction/event, dishonest underpayment, zero pool weight/penalty, corrected deposit, and positive-weight recovery |
@@ -725,12 +837,12 @@ From a clean compatible checkout with no simulator state or wallet secrets:
 2. Build sim-testnet from the exact frozen SN commit.
 3. Run:
 
-       ./build/sim-testnet inspect \
+       "$SIM_TESTNET_BINARY" inspect \
          --config sim-testnet/testnet.yml \
          --manifest 'https://OPERATOR/sn/evidence?hash=sha256:...' \
          --format json
 
-       ./build/sim-testnet analyze \
+       "$SIM_TESTNET_BINARY" analyze \
          --config sim-testnet/testnet.yml \
          --manifest 'https://OPERATOR/sn/evidence?hash=sha256:...' \
          --run-id 'SIGNED_CAMPAIGN_RUN_ID' \
@@ -842,13 +954,13 @@ freeze approval:
   `System.Code` at every historical block but singleflights exact metadata per
   independently dialed provider and complete `(version, code, metadata)` tuple.
   Successful bytes alone are cached; cancellation and failures cannot poison
-  the cache; it is bounded to the exact v451/v452/v453 identities and cannot
-  satisfy the strict v453 signing boundary. Carried audits now run in ordered
+  the cache; it is bounded to the active v454 plus exact v451/v452/v453
+  identities and cannot satisfy the strict v454 signing boundary. Carried audits now run in ordered
   eight-item batches and stop before dispatching the next batch after failure;
   exact verified ancestor intent selects its own transaction. All affected RPC
   reads carry the five-minute per-audit cancellation boundary. Deterministic
   tests cover singleflight, provider isolation, drift, failure/cancellation,
-  the fourth-identity bound, exact historical throttling/retry, strict-current
+  the fifth-identity rejection bound, exact historical throttling/retry, strict-current
   isolation, both serial and concurrent fail-fast barriers, and ancestor-intent
   lookup. The broad affected selection passed normally in 55.380 seconds and
   under the race detector in 205.110 seconds with `GOMAXPROCS=24`; simulator
@@ -876,9 +988,375 @@ freeze approval:
   passed `runtime/tests/metadata.rs` 1/1 at each exact v451/v452/v453 commit.
   Those builds emitted raw, not compact deployed, Wasm and are correctly used
   only as source-test corroboration. The exact compressed artifact gate passed
-  all three versions against the public testnet endpoint at 2026-09-04 15:36
+  all three then-active versions against the public testnet endpoint at 2026-09-04 15:36
   UTC; the frozen producer and aggregate gates must repeat it after the source
   and release lock are committed.
+- the 17:00 UTC producer attempt on SN `7a4d97e` passed every substantive
+  launch-critical phase and stopped only at its final fetched source fence when
+  Connect advanced to `0dd6ee2`; it made no testnet write. The resulting
+  generated-policy audit produced Connect `d65a05e` (tree `a942fe337a38...`)
+  and SN `20431dd`. Two independent audits verified all 9 blocker and 10 CFAA
+  source records, fail-closed dispositions/floors, decoded packed-table
+  invariants, reserved exclusions and plausible base deltas. Exact 24-test
+  runtime plus generator ordinary/race qualification, vet, format and patch
+  checks pass; full root ordinary passed in 523.615 seconds. The later isolated
+  full race exposed a 10-second fast-path peer-connect failure and a package
+  timeout after roughly 2,000 tests; isolated `TestWeightedShuffle` race passed
+  in 13.381 test seconds. Connect `b22ab0704f6dc3ecf80e91b31b5c7fafca097223`
+  fixes the production-parity, unordered-carrier, bounded ownership and
+  cancellation classes with deterministic adjacent regressions. Repeated
+  actual-path normal/race tests and two independent reviews pass. The frozen
+  aggregate must still run its new 30-minute unsharded default and fixed-order
+  certificates.
+  The twelve-root pre-lock freeze passed at 18:12 UTC with log SHA-256
+  `106381197cc2441055ab86361b2d9956c76d793017ccd3a1be5f7f3dafd83c2f`.
+  The refreshed lock is
+  `sha256:998a86a4c3806e63f7c1c056401b0cb3cefb7601d6579b96f6bfddcbf2135cb5`;
+  it is superseded by the completed Connect and final-evidence source changes
+  and must be refreshed. The SN source commit, lock commit, frozen gates and
+  live execution remain pending.
+- the dirty post-`20431dd` evidence candidate closes three final-review gaps
+  before source freeze. Native proof replay now binds each call/extrinsic/event
+  identity, CRv4 lineage and exact parent-to-reveal stake/reward transition;
+  historical EVM replay binds the coordinator implementation/runtime, operator
+  version, epoch deposits, reserve principal, vault carry/credit/claim state
+  and exact `ClaimPaid` receipt payload at their recorded blocks; and the
+  ordinary terminal fleet audit reconstructs every signed validator cycle,
+  lifecycle generation and selected/rejected top-200 boundary. The heavy
+  native fixture passed normally in 53.763 seconds and under race in 477.193
+  seconds. Historical EVM/receipt qualification passed normally in about 29
+  seconds and under race in 175.890 seconds. Full fleet artifact qualification
+  passed normally in 82.628 seconds; its isolated projection passed under race
+  in 326.00 seconds. A combined ad hoc fleet race shard reached its final
+  projection after every preceding test passed, then hit that command's
+  undersized ten-minute package deadline while CPU-active in authenticated
+  artifact hashing; the checked-in producer/aggregate deadlines are 25/90
+  minutes and a static regression pins them. No product assertion, deadlock or
+  race report occurred.
+- a selector audit found that the first producer semantic selector omitted 15
+  direct lifecycle/top-200/payout-membership regressions even though its broad
+  evidence builder exercised the same code indirectly. Those 15 tests passed
+  normally in 23.517 seconds. The selector now includes the exact
+  `FinalSemanticFixture`, `FinalFleetLifecycle`, `FinalSemanticFleetByUIDAt`
+  and `FinalPayoutAssignmentsAt` families, and a static test proves six
+  critical declarations both exist and match it. The resulting complete
+  selector passed normally in 87.692 seconds; its exact 25-minute race run and
+  the frozen producer rerun remain pending.
+- two unsafe local formatting attempts were detected before they could become
+  a source commit. One broad identifier rewrite changed package and unrelated
+  identifiers in four semantic-evidence files; the files were reconstructed
+  from the complete edit transcript, and independent symbol/function/test
+  inventories plus focused normal/race qualifications proved the recovery.
+  A later comment-only automation collapsed eight native files; they were
+  restored byte-for-byte in executable content from the independently verified
+  snapshot and then documented manually. Both incidents share the root cause
+  of applying an unscoped source rewrite to reviewed Go files. The new
+  `sim-testnet/sourceguard` package parses every simulator Go file before
+  simulator compilation in both release gates, requires package `main`, and
+  rejects top-level function/type/value declarations named `self`. Its
+  deterministic tests cover complete and partial package/function/type/value
+  corruption plus the adjacent valid `self` receiver case. The recovered
+  native files have no executable diff from the proven snapshot; compile, vet,
+  normal and race qualifications pass. No generated rewrite is permitted in
+  the remaining freeze work.
+- the subsequent independent adversarial review rejected this still-dirty
+  candidate before freeze for four evidence-domain gaps. First, a canonical
+  payout root could be re-signed after crossing an operator/provider identity,
+  changing a provider payout coldkey, changing the signed measurement window
+  or reliability floor, or omitting a row from the independently audited
+  provider snapshot. Second, mutually consistent semantic evidence and public
+  state could authenticate unreviewed proxy/vault/reserve bytecode because the
+  deployment verifier did not join its runtime hash map to the decoded plan and
+  canonical release lock. Third, the terminal ordinary-fleet projection did
+  not prove setup generation history: the real plan requires generation 1 to 2
+  for all 200 setup head fleets, later lifecycle lineage for fleets 5/6, and
+  generation-1 plus tournament evidence for challengers 201/202. Fourth, the
+  producer selector omitted several direct fail-closed tests and did not pin
+  the exact test census it executed. The old prelaunch estimate and both active
+  long qualifications were invalidated; no chain write occurred. Three
+  parallel fix lanes now add plan/release-lock bytecode anchoring, exact payout
+  domain joins, and complete 200+2 generation partition/lineage. The producer
+  gate now carries a reviewed sorted census and fails on zero, added, missing
+  or renamed selected tests. Do not source-freeze until all four lanes and
+  their adjacent normal/race regressions pass.
+- public testnet upgraded at block 7,934,387 to runtime 454 after the preceding
+  candidate was assembled. The release was repinned to tag `v454`, commit
+  `14cde6410fe8ec81a940e290c56f94a632a0988d`, exact code hash
+  `0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef`
+  and metadata hash
+  `0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702`.
+  The exact-Wasm/metadata gate passed all four versions at 22:18 UTC, passed a
+  fresh rerun after the client repair at 22:52 UTC, and the 24-file v454 source
+  manifest passed against a clean tagged checkout. The selected upstream
+  share-pool, pallet-subtensor claim-root/migration, runtime claim-root, and
+  runtime metadata compatibility regressions (implemented by upstream in Rust)
+  all pass against that exact commit. The
+  adjacent four-entry cache regression and seven continuous v454 custody
+  decision cases pass. The refreshed frozen producer/aggregate gates remain
+  mandatory before launch.
+- the current historical-EVM evidence review found a separate P0 chronology
+  defect before live capture. `finalSemanticHeads` combines current campaign
+  checkpoints with carried setup receipts, while the first v6 runtime audit
+  required the terminal eight-executable census at every such head. That
+  assertion is impossible: authoritative attempt-4 fleet generation-one and
+  operator-registration receipts predate later coordinator upgrades, the
+  fleet batcher, and the still-unexecuted current implementation. The repair
+  must preserve canonical-head replay for every receipt, apply the complete
+  current release-root census only from the signed campaign boundary onward,
+  and bind each carried mutation to its archived predecessor plan's exact
+  proxy/implementation identity. It must also range-audit ERC1967 `Upgraded`
+  events across the acceptance window so an upgrade/restore between sampled
+  heads cannot be hidden. Deterministic old-receipt/current-runtime,
+  current-refresh/batcher, and transient-upgrade-between-heads regressions are
+  mandatory before the semantic census is frozen.
+- the follow-on production-shaped chronology review found additional P0
+  omissions before any new testnet write. The exact allowed plan/journal
+  lineage contains seven completed coordinator upgrades, two bootstrap policy
+  schedules, and the fleet-oracle activation/restore pair that were not all
+  reachable from the original receipt-family selector. The target-derived
+  census now requires every finalized pre-campaign coordinator call; its
+  artifact replay must prove the exact plan, intent, sender, value, canonical
+  ABI calldata, complete event graph, postcondition and runtime identity. The
+  temporary fleet oracle proof must additionally seal activation,
+  await-active, every one of the twenty generation-two batch positions,
+  restoration and await-restored, with one batcher target and strict journal,
+  finalized-head and transaction ordering. Historical receipt blocks belong
+  in the canonical EVM-head census. Implementation identity must be derived
+  per proxy from ordered upgrade history: the deployment-manifest base address
+  is stale after an upgrade and cannot authenticate later calls. A combined
+  immutable-snapshot artifact-plus-public-RPC verifier is required so a peer
+  reviewer cannot accidentally run only the RPC half. These repairs and their
+  omission, substitution, ordering, same-block ambiguity and target-mismatch
+  regressions remain pre-freeze blockers.
+- a live read-only capability probe at 2026-09-05 01:22 UTC established the
+  official EVM provider's exact log-range boundary: `eth_getLogs` succeeds for
+  an inclusive 1,000-block range and rejects 1,001 or more blocks with its
+  `rpc_shape`/`shape_denylist` policy. The complete coordinator-upgrade census
+  must therefore issue contiguous, non-overlapping ranges of at most 1,000
+  blocks, include every inclusive endpoint exactly once, and bind every chunk
+  into the public transcript. Deterministic regressions must reject a missing,
+  duplicated, overlapping, reordered or oversized chunk. A single full-history
+  range is not compatible with the configured public RPC.
+- the resulting chronology v8 candidate now distinguishes execution and
+  post-transaction implementation/runtime identities, transaction-index order,
+  proxy initialization baselines, every historical upgrade, and the temporary
+  fleet-oracle activation/restoration window. It binds the historical proxy
+  plus await-active/await-restored operational and observer checkpoints through
+  EIP-1898 public calls. Focused normal passed in 22.902 seconds and focused
+  race passed in 238.049 seconds; vet, format and patch checks are clean. An
+  independent source audit found no remaining production/public fail-open in
+  this v8 path. This is prequalification, not the frozen producer gate.
+- the same public-provider probe exposed two adjacent release blockers: the
+  final live collector still used 2,000-block ranges and the validator deposit
+  scanner used 10,000-block ranges. Both exceed the provider's exact 1,000-block
+  ceiling. The collector is being unified with the chronology splitter; the
+  validator scanner requires the same inclusive ceiling and contiguous-range
+  regressions before launch.
+- the public `ContractDeployment.deploy_block` currently records 7,900,646,
+  the later fleet-batcher deployment, while the active coordinator proxy was
+  created at 7,895,374. Server event sync documents this input as the first
+  coordinator event block, whereas semantic capture also used it as a
+  current-release-complete boundary. These meanings must be separated and the
+  event-sync boundary reconstructed from the authenticated
+  `evm.coordinator-proxy` journal/receipt; otherwise a clean operator database
+  can skip earlier registrations and deposits.
+- the chronology hardening deliberately made the release-scale semantic fixture
+  fail rather than exempting it: the fixture did not contain the mandatory
+  production-shaped 200-fleet generation, historical timeline and oracle-window
+  source graph. Closing that fixture already exposed two production defects:
+  fleet-generation mutation lookup returned a finalized row without the
+  verified postcondition path, and the historical capture census misclassified
+  finalized native actions as EVM actions. Both fixes require the complete
+  production-shaped fixture and widened gate to pass.
+- the producer gate now includes a canonical 234-test semantic census,
+  `sim-testnet/semantic-integrity-tests.txt`, SHA-256
+  `7bf4cfc9865d3976d70fed8f05318d326d22d1702c456850a67ecdbb1e6ad66f`.
+  The source declarations and compiled test listing match. The audit also
+  closed omissions for builder/deposit recovery, UID zero, public completion,
+  historical chronology, runtime identity and nil-wrapping diagnostics.
+  Independent source-group checks prevent regenerating the census from a
+  weakened selector. Terra independently matched the exact 234 source and
+  compiled declarations to that digest; pinning passed in 8.946 seconds
+  normally and 13.720 seconds under race. Evidence is preserved under
+  `/home/by/urnetwork/temp/terra-census-gate.U6pYjR/`.
+- the read-only doctor at 2026-09-05 00:55 UTC reached MinIO and both official
+  public testnet RPCs, authenticated runtime 454 and netuid 521, and passed the
+  wallet, budget, subnet-owner, UID-capacity and historical-RPC checks. Its
+  only hard failure was the intended release-lock dirty-tree fence. The two
+  independence checks were soft failures because the configured public
+  override deliberately uses the same official provider for operational and
+  comparison reads until the private node is synchronized.
+- a 2026-09-05 read-only live probe proved that Subtensor's EVM RPC block hash
+  cannot be reconstructed with go-ethereum's `types.Header.Hash()`: finalized
+  block 7,936,619 reported
+  `0xaad46c25ee81b4f9f636677c1b9197a146733e8f16d57114269030ddf26790e2`,
+  while the decoded header recomputed to
+  `0x5003547fb9327ffdcaca8b57bf0cea6db9e08efbcabaae898635e22e778fd52d`.
+  The server and simulator's primary EVM readers already preserve the explicit
+  JSON-RPC hash. The validator exact-block reader, miner transaction finality,
+  claim-daemon receipt recovery, reward-stake/final-log capture and fleet
+  lifecycle parent checks contained adjacent local-hash uses. Replace every
+  identity check with explicit `eth_getBlockByNumber`/`eth_getBlockByHash`
+  number-and-hash decoding and deterministic synthetic-hash regressions before
+  source freeze; no `Header.Hash()` result may authenticate a Subtensor block.
+
+The following 2026-09-05 05:40 UTC checkpoint supersedes the open-fix wording
+above; all results are prequalification until committed and release-locked:
+
+- Explicit RPC block identity is implemented across validator, miner finality,
+  claim recovery, reward/log/baseline capture and fleet cleanup. Terra passed
+  the complete miner/onchain and miner suites normally and under race, and
+  the complete validator suite in 34.480/291.464 seconds. CRv4 and the remaining
+  SN packages also passed ordinary/race/build/vet.
+- The production-shaped 200+2 fleet fixture now retains both challenger
+  registration postconditions, all 402 commitment proofs, and every carried
+  write proof. Historical address comparison preserves checksummed immutable
+  plan targets while enforcing canonical published evidence. The verifier
+  loads nested historical receipt proofs and withdrawal-only claim-payment
+  proofs. An independent recursive census checks every locator occurrence;
+  fixture replay uses only the production-loaded cache. Terra's combined
+  fixture passed in 135.311 seconds normally and 1,152.135 seconds under race.
+- Full ordinary simulator qualification ended with failures after 2,036.909
+  seconds, log
+  `/home/by/urnetwork/temp/terra-sim-full-20260905T044358Z.log`. These were
+  investigated rather than waived: runtime/UID-zero/public-bundle and archive
+  boundary/emitter fixtures were stale; empty bytecode diagnostics wrapped a
+  nil cause; the semantic census was absent; the dirty release-lock fence
+  correctly rejected the staging tree. Source-builder review additionally
+  reproduced real acceptance flaws for stale cumulative deposit prefixes,
+  missing recovery validators and unchecked per-validator observation heads.
+  Those fixes now require the complete deposit sum through each signed head,
+  exact configured validator membership and canonical positive event amounts.
+  Terra's builder ordinary/race runs passed in 1.034/6.017 seconds. Its
+  remaining public-bundle/edge race confirmation is running.
+- The full server controller suite passed in 1,718.134 seconds normally and
+  1,987.628 seconds under race with the matching vault-backed local profile.
+  These results cover the pre-integration `d184121d` base plus local fixes. The failed
+  portable-profile invocation used a password different from the healthy
+  existing local PostgreSQL container. No service, volume or credential was
+  changed. The launcher now checks application authentication over the Docker
+  bridge route, avoiding PostgreSQL's trusted localhost shortcut, and checks
+  CREATEDB capability. Deterministic launcher ordinary/race tests pass. Three
+  Brevo protocol tests now isolate dummy credentials as well as HTTP endpoints.
+- Foundry passed 156 tests with zero failures/skips and 4,608 invariant calls;
+  all four deployable roots passed Slither with zero high/medium findings.
+  Exact v451-v454 Wasm/metadata, v454 source and the documented upstream Rust
+  compatibility tests passed. Operator-proxy ordinary/race/build/vet passed.
+  Detailed Terra logs are under
+  `/home/by/urnetwork/temp/terra-gates.sqQPsP/` and
+  `/home/by/urnetwork/temp/terra-server-gate2.OzFSaY/`.
+- A fresh fetch before source freeze found additional upstream work. SN is
+  one documentation commit behind; server is 17 commits behind
+  `b61797b5617e1e754bc016327fa6588f881f1835`; Connect is eight behind
+  `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; SDK is three behind
+  `e1d8dc8d9682daefd86878fea911b7b643634406`; proxy and xops are each one
+  behind. The server fixes were checkpointed and rebased cleanly as `987c7756`
+  on `b61797b5`; Connect, SDK, proxy and xops were fast-forwarded to those
+  fetched heads. SN's documentation-only upstream commit is still pending.
+  Terra is checking affected client/infrastructure tests. Do not treat the
+  old-revision results as a certificate for these new inputs.
+- Reviewing the incoming server multi-hop payout allocator found a blocking
+  cross-module attribution defect: it combines same-network participants into
+  one network sweep row under the lowest client ID, while
+  `GetStEpochProviderUsage` groups by that client ID. Two service clients can
+  therefore lose individual usage, wallet/reliability assignment and head-tier
+  exclusion semantics despite conserving the network payment total. Astra owns
+  the repair on canonical server: preserve exact per-client allocations in the
+  same atomic sweep, distinguish legacy rows, reject ambiguous legacy
+  attribution, and add mixed-history/head-exclusion/conservation/idempotence
+  tests. Incoming allocator, Connect auth/TCP and SDK JWT tests also need to be
+  included in the release selectors. This repair and its independent Terra
+  qualification remain blockers before the release-lock refresh.
+  Terra reproduced the pre-fix error through real PostgreSQL settlement:
+  `TestContractPayoutPreservesSharedNetworkProviderUsage` returned one client
+  with 121 bytes instead of two clients with 61/60 bytes. Exact red record:
+  `/tmp/urnetwork-server-contract-payout-prefix-red-20260905T054341Z.log`,
+  SHA-256 `7c0d983b37a9857d79c9398cc7a0132c292142a155dcdb1e7bdd0de385f0a42b`.
+- The 06:20 UTC continuation checkpoint narrows the remaining pre-freeze work:
+  Connect's 22 auth/TCP tests, 24 canonical policy tests and both generator
+  packages passed ordinary/race; SDK's 22 token/points tests passed both ways;
+  Connect/SDK root build/vet and xops's documented 88-test Ansible suite pass.
+  The provider repair is implemented as migration 631 plus an atomic per-client
+  byte/revenue snapshot. Expanded model ordinary/race passed in 98.807/111.130
+  seconds; controller provider-input ordinary/race and migration-monitor
+  ordinary/race also passed. This repair and the initial strict-test fix were
+  committed, rebased and pushed as server `df90d425`. The first
+  expanded run caught a new test incorrectly expecting duplicate `CloseContract`
+  success; it now asserts the existing terminal rejection and verifies unchanged
+  allocations after the idempotent `SettleEscrow` boundary. Its preserved red log
+  is `/tmp/urnetwork-server-expanded-model-ordinary-330tHa.log`, SHA-256
+  `a51ee31e720d37efd8d58545680ac1fe6b6015067fe02a316f12354e5016986f`.
+  Adjacent review also proved that republishing mutable stream membership after
+  a client changes network could launder an ambiguous legacy sweep into apparent
+  sole-provider credit. The reader now refuses NULL-allocation stream sweeps;
+  only immutable endpoint-backed non-stream legacy rows can use the fallback.
+  The deterministic pre-fix red log is
+  `/tmp/urnetwork-server-legacy-membership-prefix-red-rMQgeF.log`, SHA-256
+  `a930c866a4fcb14eb7ad87f8f4d124ea28c37b81b56e2088d0d671f7a5bb8fa5`.
+- The adjacent provider-reporting audit reproduced the same representative-ID
+  error in all three provider statistics APIs, historical revenue leaking when
+  clients change networks, a missing upper time-window boundary, and malformed
+  allocations being accepted. The repair shares the exact settlement
+  allocation/legacy validation CTE with subnet usage and reads all client/day
+  totals in one network-scoped query. It preserves the existing active,
+  top-level-provider API selection: the account ledger retains historical
+  network revenue even when a moved provider no longer appears in that view.
+  Invalid scoped allocations return an error without partial totals. Six new
+  regressions, the existing three provider roots and the real-query
+  `TestStatsQueryPlans` are pinned in both release gates; qualification is
+  pending. The first red run's empty-array fixture was rejected by the schema,
+  not the reader; the corrected seven-malformed-array run independently proves
+  reader acceptance and must be retained with that distinction. The first
+  postfix ordinary run passed the reader regressions but failed the exact-query
+  plan guard: modern snapshots still performed unnecessary legacy contract
+  lookups, including full-table scans. Astra owns the measured query repair;
+  Terra must rerun the unchanged plan guard and full affected ordinary/race
+  selection. Do not treat a correct total as sufficient evidence of a bounded
+  production read path or drop the plan check to obtain a pass.
+- Release gates now set `WARP_TEST_ENV_FAIL_FAST=1`; normal developer retries
+  remain available. Independent subprocess tests also reproduced abandoned
+  teardown, failure followed by skip, invalid/overflowed attempt counts,
+  callback/setup/teardown `Goexit`, compatibility `panic(nil)`, and late/cleanup
+  assertions incorrectly yielding success. One bounded patch closes these
+  demonstrated paths; an independent Astra review found no remaining concrete
+  correctness/race issue in that patch. The complete ordinary/race strict-test
+  matrix passed in 2.278/7.269 seconds; the frozen gates must still rerun it.
+- The old edge/public-bundle race command has terminated with a real 30-minute
+  timeout, not an observation timeout. Its stack was CPU-active in complete
+  artifact hashing/replay; no race was reported. The corrected test scheduler
+  retains all 234 canonical semantic roots, all 18 public-bundle cases, and the
+  full 1,000-miner/202-candidate graph, with four simultaneous heavy roots and
+  four independent views inside the public-bundle root. Each adversarial view
+  must reach its intended owner/replication/hash rejection and cannot count
+  transport/body failures as success. Quick ordinary/race pin checks passed;
+  final expanded pins and immutable-binary ordinary/race replay measurements
+  remain pending. No coverage or 15/25-minute producer deadline was waived.
+
+Immutable focused records for this checkpoint (all local prequalification,
+not a frozen gate or live-chain certificate):
+
+| Scope | Raw record | SHA-256 |
+|---|---|---|
+| Core allocation ordinary, pass | `/tmp/urnetwork-server-expanded-model-ordinary-postfix-hBzP6t.log` | `4a710f646c42e9ff254a3916f725b6ea1c2262b8327b9adc2cefecc83d3cca8e` |
+| Core allocation race, pass | `/tmp/urnetwork-server-expanded-model-race-postfix-91GnxN.log` | `abc76b77bd87ed738cd57c29a9653c21e90bdcb14c9aab77c8697c1449e6bf99` |
+| Controller provider inputs ordinary, pass | `/tmp/urnetwork-server-controller-provider-inputs-ordinary-HTCedY.log` | `5903ea225e87dd0c65dc6d0d0506090844f53ad170e68a26fc946919c2982894` |
+| Controller provider inputs race, pass | `/tmp/urnetwork-server-controller-provider-inputs-race-XkgSKv.log` | `cdab49d2c7603d2db0194a65abaa9894600feafa1784e3c2dc18ca87e681c89f` |
+| Migration monitor ordinary, pass | `/tmp/urnetwork-server-monitor-migrations-ordinary-yUaxvB.log` | `ff4d6bee05e1d293e09ac36edc4d77162e18fbaf8566770583b85cde67d2d9c5` |
+| Migration monitor race, pass | `/tmp/urnetwork-server-monitor-migrations-race-x1x0Ra.log` | `8adf5005303db4a3600260df257c0f156884c5b8b5be1277726e5ba8533bb32d` |
+| Abandoned-teardown pre-fix red | `/tmp/urnetwork-server-teardown-prefix-red-d2eP9A.log` | `221c520a0176c40574cba5be483e91b83551e8ac9db41f1df1ffdcd4dd40bd5c` |
+| Nine false-green pre-fix classes | `/tmp/urnetwork-server-falsegreen-prefix-red-ZDsMXO.log` | `336f1ae309b23c18cc8e61ca1fabf26d8aa02d2cc1c3eb049f37e9996e0a2c17` |
+| Complete strict-test matrix ordinary, pass | `/tmp/urnetwork-server-strict-meta-ordinary-final-Hr3oNj.log` | `4b762dee0688de7651e393e048b0cdf5126d766f3d289cae0fcee0326c83a11b` |
+| Complete strict-test matrix race, pass | `/tmp/urnetwork-server-strict-meta-race-final-vHyItH.log` | `b0a503acce226690330087751c5e5acad6e8ff4077bde190f2b651e68103ee9b` |
+| Provider reporting pre-fix red, including one fixture error | `/tmp/urnetwork-server-provider-stats-prefix-red-XZM9yq.log` | `dc73d6cfa32d92e35554d02f1691dd640e516e60d308f84b023ed52909407d02` |
+| Corrected malformed-allocation reader pre-fix red | `/tmp/urnetwork-server-provider-invalid-prefix-red-Wap1M8.log` | `d8076b2553445912d2d4685111d4409cb82d17fb77bfd513c85fdac2391fdee3` |
+| Provider postfix ordinary, query-plan failure | `/tmp/urnetwork-server-provider-stats-ordinary-postfix-qYgAdA.log` | `465d2d30b7a7cb0663ee9375dfa82151d2ddf5b474aa0dc6f2924351a90d4873` |
+| Old serial edge/public-bundle race timeout | `/home/by/urnetwork/temp/terra-gates.sqQPsP/sim-edge-fix-race.log` | `93ce17308caa0d043d3f116abb6737cf3af89f2e31ad39dae109b3c74fbe02c0` |
+
+- No final live campaign is running. The exact remaining chain-clock range is
+  still 10:00:48--14:36:00 after preparation. A conversational claim that the
+  complete campaign takes only 4h36 was incorrect: that is the production
+  phase's upper bound and omits release qualification. FINAL.md and final
+  public-chain replay remain required after both live phases.
 
 Do not infer an unselected full Server model/repository pass, aggregate pass,
 or live campaign result from the focused records. The source freeze and
@@ -886,26 +1364,26 @@ producer pass are separately recorded above.
 
 | Item | Result | UTC / immutable reference |
 |---|---|---|
-| Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3 |
+| Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
 | All final semantic ordinary tests | prequalified; frozen rerun pending | `7d634c4`; 204 selected test/subtest names, 416.901s package / 447.81s wall |
 | All final semantic race tests | prequalified in shards; frozen aggregate pending | `7d634c4`; affected heavy selection 524.891s; latest worker/cache/stdio selection 222.138s |
 | Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
 | Full sim-testnet race | pending | |
 | Producer gate | prior candidate passed; current rerun pending | `5d779cd`; 2026-09-04 UTC |
 | Aggregate gate with DB tests | current rerun pending | `5257b2f` attempt reached ordinary simulator tests and timed out at exactly 600.146s with no assertion failure |
-| Foundry | pass in producer; aggregate rerun pending | 156/0/0; 4,608 invariant calls |
-| Slither | prior 0 high/medium; final pending | |
-| Exact v451/v452/v453 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all three versions at 2026-09-04 15:36 UTC; static source and three upstream metadata tests also pass |
+| Foundry | pre-freeze pass; frozen aggregate rerun pending | Foundry 1.7.1; format/build clean; 156/0/0; 4,608 invariant calls at 2026-09-04 22:52 UTC |
+| Slither | pre-freeze pass; frozen rerun pending | Slither 0.11.6 analyzed all four deployable roots with 0 high/medium findings at 2026-09-04 22:54 UTC |
+| Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | abigen regression qualification pass; frozen gate pending | source `2519581`; stabi and focused release-lock/gate normal/race, shell syntax, and v1.17 generated-byte checks pass |
+| SN runtime candidate | generated-policy and abigen qualification pass; frozen gate pending | pushed source `20431dd`; exact selector/static normal/race, stabi, shell syntax, and v1.17 generated-byte checks pass |
 | Server candidate commit | affected qualification pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f` |
-| Connect candidate commit | affected qualification pass; frozen aggregate pending | `fb888dc8883efb12dd570e5514e866dba14d987e`; full compile, sender-role/blocker/CFAA/contract normal 12.552s, race 70.272s, vet 5.596s |
+| Connect candidate commit | focused fix qualification pass; frozen unsharded certificates pending | pushed `b22ab0704f6dc3ecf80e91b31b5c7fafca097223`, tree `000160e9679bb1636621d3b6d990f920866ca582`; deterministic adjacent helpers and actual fast-path/WebRTC paths passed 20x normal/race, canonical 10x replay and two independent reviews pass; aggregate now requires default ordinary/race plus fixed-order race with 30-minute deadlines |
 | SDK candidate commit | affected qualification pass; frozen aggregate pending | `2f3e7058873498099a88aee3e158caa11aefbda1`; full root normal 443.170s, changed focus 243.280/245.255s, nested build/cgo normal/race/vet, all Go files formatted |
-| Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed |
-| Release-lock hash | refreshed; commit/frozen gate pending | `sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`; abigen 1.17.0 plus expected SN Go/protocol source changes |
-| Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:5d2a8fb79c15df0447d539e330c0ca7289423d55db8fe699dac324d2e981d360` |
-| Approved plan hash/spend | superseded; current rerun pending | prior plan `0x5ee0419569841bb99fe1f63343f2e74b583415df5f0f8e1ff2079a2ce4d7cb27`; never use it with the current lock |
+| Other candidate repository commits | clean/equal; affected qualification and frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed at 18:12 UTC |
+| Release-lock hash | superseded pre-fix render; refresh pending | `sha256:998a86a4c3806e63f7c1c056401b0cb3cefb7601d6579b96f6bfddcbf2135cb5`; only Connect Go and protocol-source hashes changed before the full-race blockers were found |
+| Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
+| Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |
 | Resume/launch | pending | |
 | release-1.0 capture_closed | pending | |
 | release-1.0 semantic_verified | pending | |
@@ -921,7 +1399,7 @@ producer pass are separately recorded above.
 After evidence and peer review complete, preserve public history and chain state.
 Stop local processes only if they are no longer needed:
 
-    ./build/sim-testnet stop \
+    "$SIM_TESTNET_BINARY" stop \
       --config sim-testnet/testnet.yml \
       --state-dir sim-testnet/runs/ur-subnet-testnet-v1-attempt-4
 

@@ -198,6 +198,37 @@ func TestHarnessConfigBoundsPublicEVMRequestCeiling(t *testing.T) {
 	}
 }
 
+// A public operational route must explicitly promise the bounded, scoped log
+// surface needed to capture every release receipt. A receipt-only fallback is
+// still valid when the operational node is private.
+func TestPublicRPCOverrideRequiresBoundedEventIndexingCapability(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	cfg.OperationalRPCMode = rpcModePublicOverride
+	cfg.OperationalSubstrate = "wss://test.finney.opentensor.ai:443"
+	cfg.OperationalEVM = "https://test.chain.opentensor.ai"
+	cfg.Public.Chain.SubstratePublicReadEndpoint = cfg.OperationalSubstrate
+	cfg.Public.Chain.EVMPublicReadEndpoint = cfg.OperationalEVM
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "requires bounded event indexing") {
+		t.Fatalf("public override accepted a receipt-only endpoint: %v", err)
+	}
+	cfg.Public.Chain.PublicFallbackAllowsEventIndexing = true
+	if err := cfg.Validate(); err != nil && strings.Contains(err.Error(), "bounded event indexing") {
+		t.Fatalf("bounded event-indexing public override rejected at its capability gate: %v", err)
+	}
+	cfg.OperationalRPCMode = rpcModePrivateAuthority
+	cfg.Public.Chain.PublicFallbackAllowsEventIndexing = false
+	if err := cfg.Validate(); err != nil && strings.Contains(err.Error(), "bounded event indexing") {
+		t.Fatalf("private operational route rejected a receipt-only public fallback at the capability gate: %v", err)
+	}
+	var public PublicManifest
+	if err := strictYAML("../deploy/testnet/public.yml", &public); err != nil {
+		t.Fatal(err)
+	}
+	if !public.Chain.PublicFallbackAllowsEventIndexing {
+		t.Fatal("release public manifest does not declare its bounded event-indexing capability")
+	}
+}
+
 func TestOperationalRPCOverrideRequiresAProtocolTypedPair(t *testing.T) {
 	if _, _, _, err := resolveOperationalRPCs("private.example:9944", "wss://test.finney.opentensor.ai:443", ""); err == nil {
 		t.Fatal("half-configured public RPC override was accepted")
@@ -705,7 +736,7 @@ func TestResolvedConfigPinsReviewedRuntimeArtifactIdentity(t *testing.T) {
 			cfg := testResolvedConfig(t)
 			cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
 			test.mutate(&cfg.Release.Runtime)
-			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 453") {
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 454") {
 				t.Fatalf("runtime artifact drift was accepted: %v", err)
 			}
 		})

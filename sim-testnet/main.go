@@ -131,6 +131,12 @@ func configPathForExecutable(executable string) string {
 }
 
 func runMain(args []string) error {
+	return runMainWithReleaseDependencies(args, LoadResolved, authenticateRunningReleaseExecutable)
+}
+
+// Inject the two pre-dispatch release authorities so tests can prove that
+// public apply commands authenticate before any command-specific operation.
+func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLoader, authenticate releaseExecutableAuthenticator) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "help", "-h", "--help":
@@ -286,8 +292,14 @@ func runMain(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire"
-	resolved, err := LoadResolved(LoadOptions{ConfigPath: o.Config, SNRepo: o.SNRepo, ServerRepo: o.ServerRepo, OperatorProxyRepo: o.OperatorProxyRepo, VaultRepo: o.VaultRepo, PlatformConfigRepo: o.PlatformConfigRepo, RequireSecrets: requireSecrets})
+	if loadResolved == nil {
+		return errors.New("resolved configuration loader is unavailable")
+	}
+	resolved, err := loadResolved(LoadOptions{ConfigPath: o.Config, SNRepo: o.SNRepo, ServerRepo: o.ServerRepo, OperatorProxyRepo: o.OperatorProxyRepo, VaultRepo: o.VaultRepo, PlatformConfigRepo: o.PlatformConfigRepo, RequireSecrets: requireSecrets})
 	if err != nil {
+		return err
+	}
+	if err := authenticateCommandExecutable(ctx, resolved, cmd, o, authenticate); err != nil {
 		return err
 	}
 	if cmd == "release-lock" {

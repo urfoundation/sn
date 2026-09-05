@@ -1,3 +1,5 @@
+// Live lifecycle qualification binds the release's deterministic prune model
+// to one authenticated finalized public-testnet state without making writes.
 package main
 
 import (
@@ -5,7 +7,7 @@ import (
 	"testing"
 )
 
-// This opt-in probe performs no mutation. It recomputes runtime 453's next
+// This opt-in probe performs no mutation. It recomputes runtime 454's next
 // victim from one finalized public testnet state root and binds it to the exact
 // deterministic lifecycle roles before any approved plan can launch.
 func TestLiveFleetLifecyclePruneSnapshot(t *testing.T) {

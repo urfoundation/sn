@@ -207,7 +207,7 @@ func SubmitWeightsCRv4(ctx context.Context, chain *Chain, kp *Keypair, netuid ui
 
 // PrepareWeightsCRv4 constructs but does not broadcast a signed submission.
 func PrepareWeightsCRv4(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, uids []uint16, scores []float64, opts SubmitOptions) (*PreparedSubmission, error) {
-	version, maxWeightLimit, err := resolveSubmitParameters(chain, netuid, opts)
+	state, preparedHash, version, maxWeightLimit, err := prepareWeightsSnapshotContext(ctx, chain, netuid, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func PrepareWeightsCRv4(ctx context.Context, chain *Chain, kp *Keypair, netuid u
 	if len(u16uids) == 0 {
 		return nil, fmt.Errorf("crv4: all weights are zero; nothing to commit")
 	}
-	return prepareWeightsU16(ctx, chain, kp, netuid, u16uids, u16vals, version, opts)
+	return prepareWeightsU16(ctx, chain, kp, netuid, u16uids, u16vals, version, opts, state, preparedHash)
 }
 
 // SubmitWeightsCRv4Exact is the release-1.0 production entry point. It applies
@@ -242,10 +242,35 @@ func SubmitWeightsCRv4Exact(ctx context.Context, chain *Chain, kp *Keypair, netu
 // PrepareWeightsCRv4Exact is the write-ahead half of the release path. The
 // caller must durably persist its result before calling SubmitPrepared.
 func PrepareWeightsCRv4Exact(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, uids []uint16, scores []*big.Rat, opts SubmitOptions) (*PreparedSubmission, error) {
-	version, maxWeightLimit, err := resolveSubmitParameters(chain, netuid, opts)
+	state, preparedHash, version, maxWeightLimit, err := prepareWeightsSnapshotContext(ctx, chain, netuid, opts)
 	if err != nil {
 		return nil, err
 	}
+	return prepareWeightsCRv4ExactAtSnapshot(ctx, chain, kp, netuid, uids, scores, opts, state, preparedHash, version, maxWeightLimit)
+}
+
+// PrepareWeightsCRv4ExactAtContext constructs a write-ahead record from one
+// caller-authenticated finalized state root. Release steering uses this after
+// binding the exact runtime artifact, so no post-auth head transition can
+// influence metadata-derived storage keys or signed bytes.
+func PrepareWeightsCRv4ExactAtContext(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, uids []uint16, scores []*big.Rat, opts SubmitOptions, preparedHash types.Hash) (*PreparedSubmission, error) {
+	if preparedHash == (types.Hash{}) {
+		return nil, fmt.Errorf("crv4: preparation block hash is zero")
+	}
+	state, err := chain.EpochScheduleStateAtContext(ctx, netuid, preparedHash)
+	if err != nil {
+		return nil, err
+	}
+	version, maxWeightLimit, err := resolveSubmitParametersAtContext(ctx, chain, netuid, preparedHash, opts)
+	if err != nil {
+		return nil, err
+	}
+	return prepareWeightsCRv4ExactAtSnapshot(ctx, chain, kp, netuid, uids, scores, opts, state, preparedHash, version, maxWeightLimit)
+}
+
+// prepareWeightsCRv4ExactAtSnapshot keeps exact-score normalization separate
+// from the caller-selected chain snapshot used for its immutable CRv4 record.
+func prepareWeightsCRv4ExactAtSnapshot(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, uids []uint16, scores []*big.Rat, opts SubmitOptions, state *EpochScheduleState, preparedHash types.Hash, version, maxWeightLimit uint16) (*PreparedSubmission, error) {
 	capped, err := ApplyMaxWeightLimitRational(scores, maxWeightLimit)
 	if err != nil {
 		return nil, err
@@ -260,11 +285,28 @@ func PrepareWeightsCRv4Exact(ctx context.Context, chain *Chain, kp *Keypair, net
 	if len(u16uids) == 0 {
 		return nil, fmt.Errorf("crv4: all weights are zero; nothing to commit")
 	}
-	return prepareWeightsU16(ctx, chain, kp, netuid, u16uids, u16vals, version, opts)
+	return prepareWeightsU16(ctx, chain, kp, netuid, u16uids, u16vals, version, opts, state, preparedHash)
 }
 
-func resolveSubmitParameters(chain *Chain, netuid uint16, opts SubmitOptions) (uint16, uint16, error) {
-	enabled, err := chain.CommitRevealEnabled(netuid)
+// prepareWeightsSnapshotContext reads every parameter and epoch input at one
+// finalized state root through ctx. A CRv4 write must never combine a latest
+// hyperparameter read with a separately selected scheduler block.
+func prepareWeightsSnapshotContext(ctx context.Context, chain *Chain, netuid uint16, opts SubmitOptions) (*EpochScheduleState, types.Hash, uint16, uint16, error) {
+	state, preparedHash, err := chain.EpochScheduleStateFinalizedContext(ctx, netuid)
+	if err != nil {
+		return nil, types.Hash{}, 0, 0, err
+	}
+	version, maxWeightLimit, err := resolveSubmitParametersAtContext(ctx, chain, netuid, preparedHash, opts)
+	if err != nil {
+		return nil, types.Hash{}, 0, 0, err
+	}
+	return state, preparedHash, version, maxWeightLimit, nil
+}
+
+// resolveSubmitParametersAtContext reads all live CRv4 controls at one exact
+// block. Explicit caller overrides retain their existing offline behavior.
+func resolveSubmitParametersAtContext(ctx context.Context, chain *Chain, netuid uint16, blockHash types.Hash, opts SubmitOptions) (uint16, uint16, error) {
+	enabled, err := chain.CommitRevealEnabledAtContext(ctx, netuid, blockHash)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -274,21 +316,24 @@ func resolveSubmitParameters(chain *Chain, netuid uint16, opts SubmitOptions) (u
 	version := CommitRevealVersion4
 	if opts.CommitRevealVersion != nil {
 		version = *opts.CommitRevealVersion
-	} else if version, err = chain.CommitRevealVersion(); err != nil {
+	} else if version, err = chain.CommitRevealVersionAtContext(ctx, blockHash); err != nil {
 		return 0, 0, err
 	}
 	maxWeightLimit := uint16(U16Max)
 	if opts.MaxWeightLimit != nil {
 		maxWeightLimit = *opts.MaxWeightLimit
-	} else if maxWeightLimit, err = chain.MaxWeightsLimit(netuid); err != nil {
+	} else if maxWeightLimit, err = chain.MaxWeightsLimitAtContext(ctx, netuid, blockHash); err != nil {
 		return 0, 0, err
 	}
 	return version, maxWeightLimit, nil
 }
 
-func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, u16uids, u16vals []uint16, version uint16, opts SubmitOptions) (*PreparedSubmission, error) {
+func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid uint16, u16uids, u16vals []uint16, version uint16, opts SubmitOptions, state *EpochScheduleState, preparedHash types.Hash) (*PreparedSubmission, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if state == nil || preparedHash == (types.Hash{}) {
+		return nil, fmt.Errorf("crv4: preparation schedule is incomplete")
 	}
 	now := time.Now
 	if opts.Now != nil {
@@ -300,14 +345,10 @@ func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid ui
 	}
 
 	// --- reveal round from one finalized epoch schedule ---
-	state, preparedHash, err := chain.EpochScheduleStateFinalized(netuid)
-	if err != nil {
-		return nil, err
-	}
 	revealPeriodEpochs := uint64(1)
 	if opts.RevealPeriodEpochs != nil {
 		revealPeriodEpochs = *opts.RevealPeriodEpochs
-	} else if rpe, err := chain.RevealPeriodEpochsAt(netuid, preparedHash); err == nil {
+	} else if rpe, err := chain.RevealPeriodEpochsAtContext(ctx, netuid, preparedHash); err == nil {
 		revealPeriodEpochs = rpe
 	} else {
 		return nil, err
@@ -334,7 +375,7 @@ func prepareWeightsU16(ctx context.Context, chain *Chain, kp *Keypair, netuid ui
 	}
 
 	// --- exact signed commit extrinsic ---
-	nonce, err := chain.AccountNonce(kp.Address())
+	nonce, err := chain.AccountNonceContext(ctx, kp.Address())
 	if err != nil {
 		return nil, err
 	}

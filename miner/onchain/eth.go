@@ -245,27 +245,26 @@ func waitMined(ctx context.Context, client *ethclient.Client, txHash common.Hash
 	}
 }
 
-type finalityReader interface {
-	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
-}
-
 // waitFinalized waits for the standard finalized tag to cover the receipt and
 // then re-reads the inclusion height to prove the receipt's block is canonical.
 // A timeout is deliberately ambiguous and callers must not blindly retry the
 // same intent/nonce.
-func waitFinalized(ctx context.Context, client finalityReader, receipt *types.Receipt) error {
-	if receipt == nil || receipt.BlockNumber == nil || receipt.BlockHash == (common.Hash{}) {
+func waitFinalized(ctx context.Context, client *ethclient.Client, receipt *types.Receipt) error {
+	if receipt == nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Sign() <= 0 || receipt.BlockHash == (common.Hash{}) {
 		return errors.New("cannot finalize an incomplete receipt")
 	}
+	if client == nil {
+		return errors.New("EVM finality reader is unavailable")
+	}
 	for {
-		head, err := client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
-		if err == nil && head != nil && head.Number != nil && head.Number.Cmp(receipt.BlockNumber) >= 0 {
-			canonical, canonicalErr := client.HeaderByNumber(ctx, receipt.BlockNumber)
+		head, err := ReadEVMBlockIdentity(ctx, client, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+		if err == nil && head.Number >= receipt.BlockNumber.Uint64() {
+			canonical, canonicalErr := ReadEVMBlockIdentity(ctx, client, receipt.BlockNumber)
 			if canonicalErr != nil {
 				return fmt.Errorf("read canonical inclusion block %s: %w", receipt.BlockNumber, canonicalErr)
 			}
-			if canonical.Hash() != receipt.BlockHash {
-				return fmt.Errorf("tx inclusion block %s was reorged: receipt %s canonical %s", receipt.BlockNumber, receipt.BlockHash, canonical.Hash())
+			if canonical.Hash != receipt.BlockHash {
+				return fmt.Errorf("tx inclusion block %s was reorged: receipt %s canonical %s", receipt.BlockNumber, receipt.BlockHash, canonical.Hash)
 			}
 			return nil
 		}

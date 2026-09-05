@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,42 +199,42 @@ func finalManifestContractsMatch(public *PublicDeploymentManifest, evidence *Fin
 		strings.EqualFold(manifest.ReserveSink.Hex(), evidence.ReserveSink)
 }
 
-func (r *PublicFinalSemanticChainReader) Close() error {
-	if r == nil {
+func (self *PublicFinalSemanticChainReader) Close() error {
+	if self == nil {
 		return nil
 	}
-	if r.native != nil && r.native.Client != nil {
-		r.native.Client.Close()
+	if self.native != nil && self.native.Client != nil {
+		self.native.Client.Close()
 	}
-	if r.evm != nil {
-		r.evm.Close()
+	if self.evm != nil {
+		self.evm.Close()
 	}
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) Endpoints() (string, string, string) {
-	if r == nil {
+func (self *PublicFinalSemanticChainReader) Endpoints() (string, string, string) {
+	if self == nil {
 		return "", "", ""
 	}
-	return r.canonicalSubstrateRPC, r.canonicalEVMRPC, r.evidenceURI
+	return self.canonicalSubstrateRPC, self.canonicalEVMRPC, self.evidenceURI
 }
 
-func (r *PublicFinalSemanticChainReader) PublicManifestHash() string {
-	if r == nil {
+func (self *PublicFinalSemanticChainReader) PublicManifestHash() string {
+	if self == nil {
 		return ""
 	}
-	return r.manifestHash
+	return self.manifestHash
 }
 
-func (r *PublicFinalSemanticChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
-	if r == nil {
+func (self *PublicFinalSemanticChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
+	if self == nil {
 		return nil
 	}
-	return append([]FinalOperatorEvidenceOrigin(nil), r.operatorOrigins...)
+	return append([]FinalOperatorEvidenceOrigin(nil), self.operatorOrigins...)
 }
 
-func (r *PublicFinalSemanticChainReader) substrateRaw(ctx context.Context, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {
-	if r == nil || r.native == nil || r.native.Client == nil {
+func (self *PublicFinalSemanticChainReader) substrateRaw(ctx context.Context, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {
+	if self == nil || self.native == nil || self.native.Client == nil {
 		return nil, FinalRPCExchange{}, errors.New("public Substrate reader is closed")
 	}
 	params, err := json.Marshal(args)
@@ -241,7 +242,7 @@ func (r *PublicFinalSemanticChainReader) substrateRaw(ctx context.Context, head 
 		return nil, FinalRPCExchange{}, err
 	}
 	var result json.RawMessage
-	if err := r.native.Client.CallContext(ctx, &result, method, args...); err != nil {
+	if err := self.native.Client.CallContext(ctx, &result, method, args...); err != nil {
 		return nil, FinalRPCExchange{}, fmt.Errorf("%s: %w", method, err)
 	}
 	if len(result) == 0 || !json.Valid(result) {
@@ -251,8 +252,8 @@ func (r *PublicFinalSemanticChainReader) substrateRaw(ctx context.Context, head 
 	return result, exchange, nil
 }
 
-func (r *PublicFinalSemanticChainReader) evmRaw(ctx context.Context, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {
-	if r == nil || r.evm == nil {
+func (self *PublicFinalSemanticChainReader) evmRaw(ctx context.Context, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {
+	if self == nil || self.evm == nil {
 		return nil, FinalRPCExchange{}, errors.New("public EVM reader is closed")
 	}
 	params, err := json.Marshal(args)
@@ -260,9 +261,9 @@ func (r *PublicFinalSemanticChainReader) evmRaw(ctx context.Context, head ChainH
 		return nil, FinalRPCExchange{}, err
 	}
 	var result json.RawMessage
-	if err := retryFinalSemanticRPCCall(ctx, nil, r.evmRetry, func(attemptCtx context.Context) error {
+	if err := retryFinalSemanticRPCCall(ctx, nil, self.evmRetry, func(attemptCtx context.Context) error {
 		result = nil
-		return r.evm.CallContext(attemptCtx, &result, method, args...)
+		return self.evm.CallContext(attemptCtx, &result, method, args...)
 	}); err != nil {
 		return nil, FinalRPCExchange{}, fmt.Errorf("%s: %w", method, err)
 	}
@@ -289,7 +290,7 @@ func finalDecodeBlockNumber(label, encoded string) (uint64, error) {
 	return value, nil
 }
 
-func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Context, head ChainHead) ([]FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Context, head ChainHead) ([]FinalRPCExchange, error) {
 	if err := verifyFinalHead("Substrate checkpoint", head); err != nil {
 		return nil, err
 	}
@@ -297,7 +298,7 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 	// would make an otherwise valid historical replay differ as the chain
 	// advances. The immutable transcript below contains only target-pinned
 	// calls (plus the immutable genesis identity).
-	finalizedRaw, _, err := r.substrateRaw(ctx, head, "chain_getFinalizedHead")
+	finalizedRaw, _, err := self.substrateRaw(ctx, head, "chain_getFinalizedHead")
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +306,7 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	finalizedHeaderRaw, _, err := r.substrateRaw(ctx, head, "chain_getHeader", finalizedHash)
+	finalizedHeaderRaw, _, err := self.substrateRaw(ctx, head, "chain_getHeader", finalizedHash)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +318,7 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 		return nil, fmt.Errorf("Substrate checkpoint %d is ahead of finalized head %d", head.Number, finalizedNumber)
 	}
 	exchanges := make([]FinalRPCExchange, 0, 3)
-	blockHashRaw, exchange, err := r.substrateRaw(ctx, head, "chain_getBlockHash", head.Number)
+	blockHashRaw, exchange, err := self.substrateRaw(ctx, head, "chain_getBlockHash", head.Number)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +330,7 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 	if !strings.EqualFold(blockHash, head.Hash) {
 		return nil, fmt.Errorf("Substrate canonical block %d hash %s, want %s", head.Number, blockHash, head.Hash)
 	}
-	headerRaw, exchange, err := r.substrateRaw(ctx, head, "chain_getHeader", head.Hash)
+	headerRaw, exchange, err := self.substrateRaw(ctx, head, "chain_getHeader", head.Hash)
 	if err != nil {
 		return nil, err
 	}
@@ -341,8 +342,8 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 	if number != head.Number || (hash != "" && !strings.EqualFold(hash, head.Hash)) {
 		return nil, fmt.Errorf("Substrate header does not match checkpoint %d/%s", head.Number, head.Hash)
 	}
-	if head == r.evidence.NativeStartHead {
-		genesisRaw, genesisExchange, genesisErr := r.substrateRaw(ctx, head, "chain_getBlockHash", uint64(0))
+	if head == self.evidence.NativeStartHead {
+		genesisRaw, genesisExchange, genesisErr := self.substrateRaw(ctx, head, "chain_getBlockHash", uint64(0))
 		if genesisErr != nil {
 			return nil, genesisErr
 		}
@@ -351,8 +352,8 @@ func (r *PublicFinalSemanticChainReader) CanonicalSubstrateHead(ctx context.Cont
 		if decodeErr != nil {
 			return nil, decodeErr
 		}
-		if !strings.EqualFold(genesis, r.evidence.GenesisHash) {
-			return nil, fmt.Errorf("Substrate genesis %s, want %s", genesis, r.evidence.GenesisHash)
+		if !strings.EqualFold(genesis, self.evidence.GenesisHash) {
+			return nil, fmt.Errorf("Substrate genesis %s, want %s", genesis, self.evidence.GenesisHash)
 		}
 	}
 	return exchanges, nil
@@ -370,13 +371,13 @@ func finalSubstrateHeader(raw json.RawMessage) (uint64, string, error) {
 	return number, header.Hash, err
 }
 
-func (r *PublicFinalSemanticChainReader) CanonicalEVMHead(ctx context.Context, head ChainHead) ([]FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) CanonicalEVMHead(ctx context.Context, head ChainHead) ([]FinalRPCExchange, error) {
 	if err := verifyFinalHead("EVM checkpoint", head); err != nil {
 		return nil, err
 	}
 	exchanges := make([]FinalRPCExchange, 0, 3)
-	if head == r.evidence.Window.BaselineHead {
-		chainRaw, exchange, err := r.evmRaw(ctx, head, "eth_chainId")
+	if head == self.evidence.Window.BaselineHead {
+		chainRaw, exchange, err := self.evmRaw(ctx, head, "eth_chainId")
 		if err != nil {
 			return nil, err
 		}
@@ -386,13 +387,13 @@ func (r *PublicFinalSemanticChainReader) CanonicalEVMHead(ctx context.Context, h
 			return nil, err
 		}
 		chainID, err := hexutil.DecodeUint64(encoded)
-		if err != nil || chainID != r.evidence.ChainID {
-			return nil, fmt.Errorf("EVM chain id %q, want %d", encoded, r.evidence.ChainID)
+		if err != nil || chainID != self.evidence.ChainID {
+			return nil, fmt.Errorf("EVM chain id %q, want %d", encoded, self.evidence.ChainID)
 		}
 	}
 	// As on Substrate, the moving finalized tip is checked but deliberately
 	// excluded from the immutable target transcript.
-	finalizedRaw, _, err := r.evmRaw(ctx, head, "eth_getBlockByNumber", "finalized", false)
+	finalizedRaw, _, err := self.evmRaw(ctx, head, "eth_getBlockByNumber", "finalized", false)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +404,7 @@ func (r *PublicFinalSemanticChainReader) CanonicalEVMHead(ctx context.Context, h
 	if finalized.Number < head.Number {
 		return nil, fmt.Errorf("EVM checkpoint %d is ahead of finalized head %d", head.Number, finalized.Number)
 	}
-	targetRaw, exchange, err := r.evmRaw(ctx, head, "eth_getBlockByNumber", hexutil.EncodeUint64(head.Number), false)
+	targetRaw, exchange, err := self.evmRaw(ctx, head, "eth_getBlockByNumber", hexutil.EncodeUint64(head.Number), false)
 	if err != nil {
 		return nil, err
 	}
@@ -433,8 +434,8 @@ func finalEVMBlock(raw json.RawMessage) (ChainHead, error) {
 	return ChainHead{Number: number, Hash: strings.ToLower(block.Hash)}, nil
 }
 
-func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, head ChainHead) (*gsrpctypes.Metadata, []FinalRPCExchange, error) {
-	versionRaw, versionExchange, err := r.substrateRaw(ctx, head, "state_getRuntimeVersion", head.Hash)
+func (self *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, head ChainHead) (*gsrpctypes.Metadata, []FinalRPCExchange, error) {
+	versionRaw, versionExchange, err := self.substrateRaw(ctx, head, "state_getRuntimeVersion", head.Hash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -442,7 +443,7 @@ func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("decode public runtime identity at %s: %w", head.Hash, err)
 	}
-	codeRaw, codeExchange, err := r.substrateRaw(ctx, head, "state_getStorageHash", "0x3a636f6465", head.Hash)
+	codeRaw, codeExchange, err := self.substrateRaw(ctx, head, "state_getStorageHash", "0x3a636f6465", head.Hash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -450,7 +451,7 @@ func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, 
 	if err := json.Unmarshal(codeRaw, &codeHash); err != nil {
 		return nil, nil, fmt.Errorf("decode public runtime code hash at %s: %w", head.Hash, err)
 	}
-	metadataRaw, metadataExchange, err := r.substrateRaw(ctx, head, "state_getMetadata", head.Hash)
+	metadataRaw, metadataExchange, err := self.substrateRaw(ctx, head, "state_getMetadata", head.Hash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -462,11 +463,11 @@ func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("decode public runtime metadata at %s: %w", head.Hash, err)
 	}
-	if currentErr := validateRuntimeVersionIdentity(version, r.runtimeVersion.SpecVersion, r.runtimeVersion.TransactionVersion, r.runtimeVersion.StateVersion); currentErr == nil {
-		if err := validateRuntimeCodeHash(codeHash, r.runtimeCodeHash); err != nil {
+	if currentErr := validateRuntimeVersionIdentity(version, self.runtimeVersion.SpecVersion, self.runtimeVersion.TransactionVersion, self.runtimeVersion.StateVersion); currentErr == nil {
+		if err := validateRuntimeCodeHash(codeHash, self.runtimeCodeHash); err != nil {
 			return nil, nil, fmt.Errorf("authenticate public runtime code at %s: %w", head.Hash, err)
 		}
-		if err := validateRuntimeMetadataHash(metadataHash, r.runtimeMetadataHash); err != nil {
+		if err := validateRuntimeMetadataHash(metadataHash, self.runtimeMetadataHash); err != nil {
 			return nil, nil, fmt.Errorf("authenticate public runtime metadata at %s: %w", head.Hash, err)
 		}
 		return metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
@@ -476,7 +477,7 @@ func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, 
 	// their exact v451/v452 code and metadata identities, but never admit those
 	// compatibility runtimes at or after the signed campaign boundary. A v453
 	// setup receipt takes the current branch above even when it predates start.
-	if r.evidence == nil || head.Number >= r.evidence.NativeStartHead.Number {
+	if self.evidence == nil || head.Number >= self.evidence.NativeStartHead.Number {
 		return nil, nil, fmt.Errorf(
 			"public runtime at %s is unreviewed %s/%d/%d/%d",
 			head.Hash, version.SpecName, version.SpecVersion,
@@ -500,12 +501,12 @@ func (r *PublicFinalSemanticChainReader) substrateMetadata(ctx context.Context, 
 	return metadata, []FinalRPCExchange{versionExchange, codeExchange, metadataExchange}, nil
 }
 
-func (r *PublicFinalSemanticChainReader) substrateStorage(ctx context.Context, head ChainHead, metadata *gsrpctypes.Metadata, pallet, item string, out any, required bool, args ...[]byte) (bool, FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) substrateStorage(ctx context.Context, head ChainHead, metadata *gsrpctypes.Metadata, pallet, item string, out any, required bool, args ...[]byte) (bool, FinalRPCExchange, error) {
 	key, err := gsrpctypes.CreateStorageKey(metadata, pallet, item, args...)
 	if err != nil {
 		return false, FinalRPCExchange{}, fmt.Errorf("create %s.%s key: %w", pallet, item, err)
 	}
-	raw, exchange, err := r.substrateRaw(ctx, head, "state_getStorage", key.Hex(), head.Hash)
+	raw, exchange, err := self.substrateRaw(ctx, head, "state_getStorage", key.Hex(), head.Hash)
 	if err != nil {
 		return false, FinalRPCExchange{}, err
 	}
@@ -542,12 +543,12 @@ func (r *PublicFinalSemanticChainReader) substrateStorage(ctx context.Context, h
 // relevant. FINAL reward evidence must prove that the exact hotkey's stake was
 // returned by the pinned archive node; metadata fallback is therefore not an
 // acceptable substitute for a state_getStorage result.
-func (r *PublicFinalSemanticChainReader) substrateStorageExact(ctx context.Context, head ChainHead, metadata *gsrpctypes.Metadata, pallet, item string, out any, args ...[]byte) (FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) substrateStorageExact(ctx context.Context, head ChainHead, metadata *gsrpctypes.Metadata, pallet, item string, out any, args ...[]byte) (FinalRPCExchange, error) {
 	key, err := gsrpctypes.CreateStorageKey(metadata, pallet, item, args...)
 	if err != nil {
 		return FinalRPCExchange{}, fmt.Errorf("create %s.%s key: %w", pallet, item, err)
 	}
-	raw, exchange, err := r.substrateRaw(ctx, head, "state_getStorage", key.Hex(), head.Hash)
+	raw, exchange, err := self.substrateRaw(ctx, head, "state_getStorage", key.Hex(), head.Hash)
 	if err != nil {
 		return FinalRPCExchange{}, err
 	}
@@ -575,7 +576,7 @@ func decodeFinalRequiredSubstrateStorage(pallet, item string, raw json.RawMessag
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) substrateQueryStorageExact(ctx context.Context, head ChainHead, keys []gsrpctypes.StorageKey) (map[string][]byte, FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) substrateQueryStorageExact(ctx context.Context, head ChainHead, keys []gsrpctypes.StorageKey) (map[string][]byte, FinalRPCExchange, error) {
 	if len(keys) == 0 {
 		return nil, FinalRPCExchange{}, errors.New("historical Substrate storage query has no keys")
 	}
@@ -588,7 +589,7 @@ func (r *PublicFinalSemanticChainReader) substrateQueryStorageExact(ctx context.
 		}
 		want[encodedKeys[index]] = true
 	}
-	raw, exchange, err := r.substrateRaw(ctx, head, "state_queryStorageAt", encodedKeys, head.Hash)
+	raw, exchange, err := self.substrateRaw(ctx, head, "state_queryStorageAt", encodedKeys, head.Hash)
 	if err != nil {
 		return nil, FinalRPCExchange{}, err
 	}
@@ -636,17 +637,17 @@ func decodeFinalSubstrateQueryValue(values map[string][]byte, key gsrpctypes.Sto
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context, netuid uint16, head ChainHead) (FleetLifecyclePruneSnapshot, []FinalRPCExchange, error) {
-	if r == nil || r.evidence == nil || netuid != r.evidence.Netuid {
+func (self *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context, netuid uint16, head ChainHead) (FleetLifecyclePruneSnapshot, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil || netuid != self.evidence.Netuid {
 		return FleetLifecyclePruneSnapshot{}, nil, errors.New("public lifecycle prune reader has another netuid")
 	}
-	metadata, exchanges, err := r.substrateMetadata(ctx, head)
+	metadata, exchanges, err := self.substrateMetadata(ctx, head)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
 	readU16 := func(item string) (uint16, error) {
 		var value gsrpctypes.U16
-		exchange, readErr := r.substrateStorageExact(ctx, head, metadata, crv4.PalletName, item, &value, netuidArg(netuid))
+		exchange, readErr := self.substrateStorageExact(ctx, head, metadata, crv4.PalletName, item, &value, netuidArg(netuid))
 		if readErr == nil {
 			exchanges = append(exchanges, exchange)
 		}
@@ -669,13 +670,13 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
 	var owner gsrpctypes.AccountID
-	exchange, err := r.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "SubnetOwnerHotkey", &owner, netuidArg(netuid))
+	exchange, err := self.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "SubnetOwnerHotkey", &owner, netuidArg(netuid))
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var emissions []gsrpctypes.U64
-	exchange, err = r.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "Emission", &emissions, netuidArg(netuid))
+	exchange, err = self.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "Emission", &emissions, netuidArg(netuid))
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
@@ -688,7 +689,7 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 			return FleetLifecyclePruneSnapshot{}, nil, err
 		}
 	}
-	hotkeyValues, batchExchange, err := r.substrateQueryStorageExact(ctx, head, hotkeyKeys)
+	hotkeyValues, batchExchange, err := self.substrateQueryStorageExact(ctx, head, hotkeyKeys)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
@@ -710,7 +711,7 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 		}
 		secondary = append(secondary, ownerKeys[uid], registrationKeys[uid])
 	}
-	secondaryValues, batchExchange, err := r.substrateQueryStorageExact(ctx, head, secondary)
+	secondaryValues, batchExchange, err := self.substrateQueryStorageExact(ctx, head, secondary)
 	if err != nil {
 		return FleetLifecyclePruneSnapshot{}, nil, err
 	}
@@ -752,15 +753,15 @@ func (r *PublicFinalSemanticChainReader) NativePruneSnapshot(ctx context.Context
 	return result, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeFleetCommitment(ctx context.Context, netuid uint16, hotkeyEncoded string, head ChainHead) (FinalNativeFleetCommitmentState, []FinalRPCExchange, error) {
-	if r == nil || r.evidence == nil || netuid != r.evidence.Netuid {
+func (self *PublicFinalSemanticChainReader) NativeFleetCommitment(ctx context.Context, netuid uint16, hotkeyEncoded string, head ChainHead) (FinalNativeFleetCommitmentState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil || netuid != self.evidence.Netuid {
 		return FinalNativeFleetCommitmentState{}, nil, errors.New("public fleet commitment reader has another netuid")
 	}
 	hotkey, err := decodeHex32("public fleet commitment hotkey", strings.ToLower(hotkeyEncoded))
 	if err != nil {
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}
-	metadata, exchanges, err := r.substrateMetadata(ctx, head)
+	metadata, exchanges, err := self.substrateMetadata(ctx, head)
 	if err != nil {
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}
@@ -772,7 +773,7 @@ func (r *PublicFinalSemanticChainReader) NativeFleetCommitment(ctx context.Conte
 	if err != nil {
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}
-	values, exchange, err := r.substrateQueryStorageExact(ctx, head, []gsrpctypes.StorageKey{commitmentKey, lastKey})
+	values, exchange, err := self.substrateQueryStorageExact(ctx, head, []gsrpctypes.StorageKey{commitmentKey, lastKey})
 	if err != nil {
 		return FinalNativeFleetCommitmentState{}, nil, err
 	}
@@ -807,18 +808,18 @@ func finalAccountMatches(expected string, actual []byte) error {
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) expectedUID(uid uint16) (string, string, error) {
-	for _, pool := range r.evidence.Pools {
+func (self *PublicFinalSemanticChainReader) expectedUID(uid uint16) (string, string, error) {
+	for _, pool := range self.evidence.Pools {
 		if pool.UID == uid {
 			return pool.Hotkey, pool.Coldkey, nil
 		}
 	}
-	for _, validator := range r.evidence.Validators {
+	for _, validator := range self.evidence.Validators {
 		if validator.UID == uid {
 			return validator.Hotkey, validator.Coldkey, nil
 		}
 	}
-	for _, fleet := range r.evidence.HeadFleets {
+	for _, fleet := range self.evidence.HeadFleets {
 		if fleet.UID == uid {
 			return fleet.Hotkey, fleet.Coldkey, nil
 		}
@@ -826,12 +827,12 @@ func (r *PublicFinalSemanticChainReader) expectedUID(uid uint16) (string, string
 	return "", "", fmt.Errorf("UID %d is absent from final semantic evidence", uid)
 }
 
-func (r *PublicFinalSemanticChainReader) expectedRewardHotkey(uid uint16, head ChainHead) (string, error) {
-	if r == nil || r.evidence == nil {
+func (self *PublicFinalSemanticChainReader) expectedRewardHotkey(uid uint16, head ChainHead) (string, error) {
+	if self == nil || self.evidence == nil {
 		return "", errors.New("native reward identity evidence is unavailable")
 	}
 	var expected string
-	for _, reward := range r.evidence.NativeRewards {
+	for _, reward := range self.evidence.NativeRewards {
 		if reward.UID != uid || (reward.Before != head && reward.After != head) {
 			continue
 		}
@@ -846,16 +847,16 @@ func (r *PublicFinalSemanticChainReader) expectedRewardHotkey(uid uint16, head C
 	return expected, nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeUID(ctx context.Context, netuid, uid uint16, head ChainHead) (FinalNativeUIDState, []FinalRPCExchange, error) {
-	if netuid != r.evidence.Netuid {
-		return FinalNativeUIDState{}, nil, fmt.Errorf("netuid %d, want %d", netuid, r.evidence.Netuid)
+func (self *PublicFinalSemanticChainReader) NativeUID(ctx context.Context, netuid, uid uint16, head ChainHead) (FinalNativeUIDState, []FinalRPCExchange, error) {
+	if netuid != self.evidence.Netuid {
+		return FinalNativeUIDState{}, nil, fmt.Errorf("netuid %d, want %d", netuid, self.evidence.Netuid)
 	}
-	metadata, exchanges, err := r.substrateMetadata(ctx, head)
+	metadata, exchanges, err := self.substrateMetadata(ctx, head)
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
 	var hotkey, coldkey gsrpctypes.AccountID
-	present, exchange, err := r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Keys", &hotkey, true, netuidArg(netuid), netuidArg(uid))
+	present, exchange, err := self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Keys", &hotkey, true, netuidArg(netuid), netuidArg(uid))
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
@@ -863,30 +864,30 @@ func (r *PublicFinalSemanticChainReader) NativeUID(ctx context.Context, netuid, 
 	if !present {
 		return FinalNativeUIDState{}, nil, fmt.Errorf("UID %d is not registered", uid)
 	}
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Owner", &coldkey, true, hotkey[:])
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Owner", &coldkey, true, hotkey[:])
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var stake gsrpctypes.U64
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "TotalHotkeyAlpha", &stake, false, hotkey[:], netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "TotalHotkeyAlpha", &stake, false, hotkey[:], netuidArg(netuid))
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var permits []bool
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "ValidatorPermit", &permits, false, netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "ValidatorPermit", &permits, false, netuidArg(netuid))
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var trusts []gsrpctypes.U16
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "ValidatorTrust", &trusts, false, netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "ValidatorTrust", &trusts, false, netuidArg(netuid))
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
-	expectedHotkey, expectedColdkey, err := r.expectedUID(uid)
+	expectedHotkey, expectedColdkey, err := self.expectedUID(uid)
 	if err != nil {
 		return FinalNativeUIDState{}, nil, err
 	}
@@ -906,11 +907,22 @@ func (r *PublicFinalSemanticChainReader) NativeUID(ctx context.Context, netuid, 
 	return state, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receipt FinalNativeReceipt, event string) (FinalNativeEventState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receipt FinalNativeReceipt, event string) (FinalNativeEventState, []FinalRPCExchange, error) {
 	if event == "" {
 		return FinalNativeEventState{}, nil, errors.New("native event kind is empty")
 	}
-	raw, exchange, err := r.substrateRaw(ctx, receipt.Block, "chain_getBlock", receipt.Block.Hash)
+	operation := map[string]string{
+		"registration": finalNativeOperationRegistration,
+		"commit":       finalNativeOperationCommit,
+		"reveal":       finalNativeOperationReveal,
+		"application":  finalNativeOperationApplication,
+	}[event]
+	if operation != "" {
+		if err := verifyFinalNativeReceiptCall(receipt, operation); err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
+	}
+	raw, exchange, err := self.substrateRaw(ctx, receipt.Block, "chain_getBlock", receipt.Block.Hash)
 	if err != nil {
 		return FinalNativeEventState{}, nil, err
 	}
@@ -925,6 +937,7 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 	}
 	if receipt.ExtrinsicHash != "" {
 		var extrinsicIndex uint32
+		var extrinsicBytes []byte
 		found := false
 		for index, encoded := range block.Block.Extrinsics {
 			decoded, decodeErr := gsrpccodec.HexDecodeString(encoded)
@@ -934,6 +947,7 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 			digest := blake2b.Sum256(decoded)
 			if strings.EqualFold("0x"+fmt.Sprintf("%x", digest[:]), receipt.ExtrinsicHash) {
 				extrinsicIndex = uint32(index)
+				extrinsicBytes = decoded
 				found = true
 				break
 			}
@@ -941,7 +955,7 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 		if !found {
 			return FinalNativeEventState{}, nil, fmt.Errorf("extrinsic %s is absent from finalized block %s", receipt.ExtrinsicHash, receipt.Block.Hash)
 		}
-		metadata, metadataExchanges, err := r.substrateMetadata(ctx, receipt.Block)
+		metadata, metadataExchanges, err := self.substrateMetadata(ctx, receipt.Block)
 		if err != nil {
 			return FinalNativeEventState{}, nil, err
 		}
@@ -950,7 +964,7 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 		if err != nil {
 			return FinalNativeEventState{}, nil, err
 		}
-		eventsRaw, eventsExchange, err := r.substrateRaw(ctx, receipt.Block, "state_getStorage", key.Hex(), receipt.Block.Hash)
+		eventsRaw, eventsExchange, err := self.substrateRaw(ctx, receipt.Block, "state_getStorage", key.Hex(), receipt.Block.Hash)
 		if err != nil {
 			return FinalNativeEventState{}, nil, err
 		}
@@ -961,8 +975,46 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 		if err := verifyFinalSemanticSubstrateDispatch(metadata, eventsRaw, extrinsicIndex, receipt); err != nil {
 			return FinalNativeEventState{}, nil, err
 		}
+		if operation == finalNativeOperationRegistration || operation == finalNativeOperationCommit {
+			decoded, err := finalDecodeNativeExtrinsic(metadata, extrinsicBytes)
+			if err != nil {
+				return FinalNativeEventState{}, nil, fmt.Errorf("decode exact native %s extrinsic: %w", event, err)
+			}
+			if err := verifyFinalNativeExtrinsicIdentity(decoded, *receipt.Call); err != nil {
+				return FinalNativeEventState{}, nil, fmt.Errorf("verify exact native %s extrinsic: %w", event, err)
+			}
+			events, err := finalDecodeSemanticSubstrateEvents(metadata, eventsRaw, receipt)
+			if err != nil {
+				return FinalNativeEventState{}, nil, err
+			}
+			if err := verifyFinalNativeOperationEvents(events, &extrinsicIndex, *receipt.Call); err != nil {
+				return FinalNativeEventState{}, nil, err
+			}
+		}
 	} else if event != "reveal" && event != "application" {
 		return FinalNativeEventState{}, nil, fmt.Errorf("native %s evidence has no extrinsic", event)
+	} else if event == "reveal" {
+		metadata, metadataExchanges, err := self.substrateMetadata(ctx, receipt.Block)
+		if err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
+		exchanges = append(exchanges, metadataExchanges...)
+		key, err := gsrpctypes.CreateStorageKey(metadata, "System", "Events")
+		if err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
+		eventsRaw, eventsExchange, err := self.substrateRaw(ctx, receipt.Block, "state_getStorage", key.Hex(), receipt.Block.Hash)
+		if err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
+		exchanges = append(exchanges, eventsExchange)
+		events, err := finalDecodeSemanticSubstrateEvents(metadata, eventsRaw, receipt)
+		if err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
+		if err := verifyFinalNativeOperationEvents(events, nil, *receipt.Call); err != nil {
+			return FinalNativeEventState{}, nil, err
+		}
 	}
 	return FinalNativeEventState{ExtrinsicHash: receipt.ExtrinsicHash, Block: receipt.Block, Success: true, Event: event}, exchanges, nil
 }
@@ -972,25 +1024,9 @@ func (r *PublicFinalSemanticChainReader) NativeEvent(ctx context.Context, receip
 // the contextless duplicate reads performed by crv4.VerifyFinalizedExtrinsic
 // while retaining its fail-closed success/failure rule.
 func verifyFinalSemanticSubstrateDispatch(metadata *gsrpctypes.Metadata, eventsRaw json.RawMessage, extrinsicIndex uint32, receipt FinalNativeReceipt) error {
-	if metadata == nil {
-		return errors.New("finalized Substrate metadata is missing")
-	}
-	encoded, err := finalDecodeRPCString("System.Events", eventsRaw)
+	events, err := finalDecodeSemanticSubstrateEvents(metadata, eventsRaw, receipt)
 	if err != nil {
 		return err
-	}
-	decoded, err := gsrpccodec.HexDecodeString(encoded)
-	if err != nil {
-		return fmt.Errorf("decode finalized System.Events hex: %w", err)
-	}
-	eventRegistry, err := gsrpcregistry.NewFactory().CreateEventRegistry(metadata)
-	if err != nil {
-		return fmt.Errorf("initialize finalized event decoder: %w", err)
-	}
-	storage := gsrpctypes.StorageDataRaw(decoded)
-	events, err := gsrpcparser.NewEventParser().ParseEvents(eventRegistry, &storage)
-	if err != nil {
-		return fmt.Errorf("decode finalized events at %s: %w", receipt.Block.Hash, err)
 	}
 	success := false
 	for _, record := range events {
@@ -1010,39 +1046,86 @@ func verifyFinalSemanticSubstrateDispatch(metadata *gsrpctypes.Metadata, eventsR
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeWeights(ctx context.Context, netuid, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
-	metadata, exchanges, err := r.substrateMetadata(ctx, head)
+// Decodes the exact already-transcripted event bytes with authenticated
+// historical metadata and rejects malformed or trailing parser input.
+func finalDecodeSemanticSubstrateEvents(metadata *gsrpctypes.Metadata, eventsRaw json.RawMessage, receipt FinalNativeReceipt) ([]*gsrpcparser.Event, error) {
+	if metadata == nil {
+		return nil, errors.New("finalized Substrate metadata is missing")
+	}
+	encoded, err := finalDecodeRPCString("System.Events", eventsRaw)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := gsrpccodec.HexDecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode finalized System.Events hex: %w", err)
+	}
+	eventRegistry, err := gsrpcregistry.NewFactory().CreateEventRegistry(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("initialize finalized event decoder: %w", err)
+	}
+	storage := gsrpctypes.StorageDataRaw(decoded)
+	events, err := gsrpcparser.NewEventParser().ParseEvents(eventRegistry, &storage)
+	if err != nil {
+		return nil, fmt.Errorf("decode finalized events at %s: %w", receipt.Block.Hash, err)
+	}
+	return events, nil
+}
+
+func (self *PublicFinalSemanticChainReader) NativeWeights(ctx context.Context, netuid, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil || netuid != self.evidence.Netuid {
+		return FinalNativeWeightState{}, nil, fmt.Errorf("native applied weights netuid %d differs from semantic evidence", netuid)
+	}
+	metadata, exchanges, err := self.substrateMetadata(ctx, head)
 	if err != nil {
 		return FinalNativeWeightState{}, nil, err
 	}
-	var row []crv4.WeightPair
-	_, exchange, err := r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Weights", &row, false, netuidArg(netuid), netuidArg(validatorUID))
+	var hotkey gsrpctypes.AccountID
+	present, exchange, err := self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Keys", &hotkey, true, netuidArg(netuid), netuidArg(validatorUID))
 	if err != nil {
 		return FinalNativeWeightState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
-	state := FinalNativeWeightState{ValidatorUID: validatorUID, Block: head, UIDs: make([]uint16, len(row)), Values: make([]uint16, len(row))}
+	if !present {
+		return FinalNativeWeightState{}, nil, fmt.Errorf("validator UID %d has no Keys owner at applied head", validatorUID)
+	}
+	var lastUpdates []gsrpctypes.U64
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "LastUpdate", &lastUpdates, false, netuidArg(netuid))
+	if err != nil {
+		return FinalNativeWeightState{}, nil, err
+	}
+	exchanges = append(exchanges, exchange)
+	if int(validatorUID) >= len(lastUpdates) || lastUpdates[validatorUID] == 0 {
+		return FinalNativeWeightState{}, nil, fmt.Errorf("validator UID %d has no fresh LastUpdate at applied head", validatorUID)
+	}
+	var row []crv4.WeightPair
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Weights", &row, false, netuidArg(netuid), netuidArg(validatorUID))
+	if err != nil {
+		return FinalNativeWeightState{}, nil, err
+	}
+	exchanges = append(exchanges, exchange)
+	state := FinalNativeWeightState{ValidatorUID: validatorUID, ValidatorHotkey: "0x" + hex.EncodeToString(hotkey[:]), LastUpdate: uint64(lastUpdates[validatorUID]), Block: head, UIDs: make([]uint16, len(row)), Values: make([]uint16, len(row))}
 	for i, pair := range row {
 		state.UIDs[i], state.Values[i] = uint16(pair.UID), uint16(pair.Value)
 	}
 	return state, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeReward(ctx context.Context, netuid, uid uint16, head ChainHead) (FinalNativeRewardState, []FinalRPCExchange, error) {
-	if netuid != r.evidence.Netuid {
-		return FinalNativeRewardState{}, nil, fmt.Errorf("netuid %d, want %d", netuid, r.evidence.Netuid)
+func (self *PublicFinalSemanticChainReader) NativeReward(ctx context.Context, netuid, uid uint16, head ChainHead) (FinalNativeRewardState, []FinalRPCExchange, error) {
+	if netuid != self.evidence.Netuid {
+		return FinalNativeRewardState{}, nil, fmt.Errorf("netuid %d, want %d", netuid, self.evidence.Netuid)
 	}
-	metadata, exchanges, err := r.substrateMetadata(ctx, head)
+	metadata, exchanges, err := self.substrateMetadata(ctx, head)
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
 	var hotkey gsrpctypes.AccountID
-	_, exchange, err := r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Keys", &hotkey, true, netuidArg(netuid), netuidArg(uid))
+	_, exchange, err := self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Keys", &hotkey, true, netuidArg(netuid), netuidArg(uid))
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
-	expectedHotkey, err := r.expectedRewardHotkey(uid, head)
+	expectedHotkey, err := self.expectedRewardHotkey(uid, head)
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
@@ -1050,24 +1133,24 @@ func (r *PublicFinalSemanticChainReader) NativeReward(ctx context.Context, netui
 		return FinalNativeRewardState{}, nil, err
 	}
 	var stake gsrpctypes.U64
-	exchange, err = r.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "TotalHotkeyAlpha", &stake, hotkey[:], netuidArg(netuid))
+	exchange, err = self.substrateStorageExact(ctx, head, metadata, crv4.PalletName, "TotalHotkeyAlpha", &stake, hotkey[:], netuidArg(netuid))
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var emissions []gsrpctypes.U64
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Emission", &emissions, false, netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Emission", &emissions, false, netuidArg(netuid))
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
 	var incentives, dividends []gsrpctypes.U16
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Incentive", &incentives, false, netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Incentive", &incentives, false, netuidArg(netuid))
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
 	exchanges = append(exchanges, exchange)
-	_, exchange, err = r.substrateStorage(ctx, head, metadata, crv4.PalletName, "Dividends", &dividends, false, netuidArg(netuid))
+	_, exchange, err = self.substrateStorage(ctx, head, metadata, crv4.PalletName, "Dividends", &dividends, false, netuidArg(netuid))
 	if err != nil {
 		return FinalNativeRewardState{}, nil, err
 	}
@@ -1081,8 +1164,8 @@ func (r *PublicFinalSemanticChainReader) NativeReward(ctx context.Context, netui
 	}, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) NativeOwnerStake(ctx context.Context, hotkeyEncoded, coldkeyEncoded string, head ChainHead) (FinalNativeOwnerStakeState, []FinalRPCExchange, error) {
-	if r == nil || r.evidence == nil {
+func (self *PublicFinalSemanticChainReader) NativeOwnerStake(ctx context.Context, hotkeyEncoded, coldkeyEncoded string, head ChainHead) (FinalNativeOwnerStakeState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
 		return FinalNativeOwnerStakeState{}, nil, errors.New("public native owner-stake reader is unavailable")
 	}
 	hotkey, err := decodeHex32("native owner stake hotkey", strings.ToLower(hotkeyEncoded))
@@ -1097,11 +1180,11 @@ func (r *PublicFinalSemanticChainReader) NativeOwnerStake(ctx context.Context, h
 	if err != nil {
 		return FinalNativeOwnerStakeState{}, nil, err
 	}
-	data, err := parsed.Pack("getStake", hotkey, coldkey, new(big.Int).SetUint64(uint64(r.evidence.Netuid)))
+	data, err := parsed.Pack("getStake", hotkey, coldkey, new(big.Int).SetUint64(uint64(self.evidence.Netuid)))
 	if err != nil {
 		return FinalNativeOwnerStakeState{}, nil, err
 	}
-	out, exchanges, err := r.evmCall(ctx, head, stakingPrecompileAddress.Hex(), data)
+	out, exchanges, err := self.evmCall(ctx, head, stakingPrecompileAddress.Hex(), data)
 	if err != nil {
 		return FinalNativeOwnerStakeState{}, nil, err
 	}
@@ -1126,8 +1209,8 @@ func validateFinalNativeRewardHotkey(uid uint16, expected string, actual []byte)
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) EVMReceipt(ctx context.Context, receipt FinalEVMReceipt) (FinalEVMReceiptState, []FinalRPCExchange, error) {
-	raw, exchange, err := r.evmRaw(ctx, receipt.Block, "eth_getTransactionReceipt", receipt.TransactionHash)
+func (self *PublicFinalSemanticChainReader) EVMReceipt(ctx context.Context, receipt FinalEVMReceipt) (FinalEVMReceiptState, []FinalRPCExchange, error) {
+	raw, exchange, err := self.evmRaw(ctx, receipt.Block, "eth_getTransactionReceipt", receipt.TransactionHash)
 	if err != nil {
 		return FinalEVMReceiptState{}, nil, err
 	}
@@ -1151,16 +1234,193 @@ func (r *PublicFinalSemanticChainReader) EVMReceipt(ctx context.Context, receipt
 	} else if wire.Status != "0x0" {
 		return FinalEVMReceiptState{}, nil, fmt.Errorf("receipt %s has invalid status %q", receipt.TransactionHash, wire.Status)
 	}
-	allowed := map[common.Address]bool{
-		common.HexToAddress(r.evidence.Deployment.CoordinatorProxy): true,
-		common.HexToAddress(r.evidence.Deployment.SettlementVault):  true,
-		common.HexToAddress(r.evidence.Deployment.ReserveSink):      true,
-	}
-	logsHash, err := finalCanonicalRPCReceiptLogsHash(wire.Logs, allowed)
+	allowed, err := finalSemanticReleaseContractAddresses(self.evidence)
 	if err != nil {
 		return FinalEVMReceiptState{}, nil, err
 	}
-	return FinalEVMReceiptState{TransactionHash: strings.ToLower(wire.TransactionHash), Block: ChainHead{Number: number, Hash: strings.ToLower(wire.BlockHash)}, Status: status, LogsHash: logsHash}, []FinalRPCExchange{exchange}, nil
+	logs, err := finalCanonicalLogsFromRPC(wire.Logs, allowed)
+	if err != nil {
+		return FinalEVMReceiptState{}, nil, err
+	}
+	logsHash, err := finalCanonicalReceiptLogsHash(logs)
+	if err != nil {
+		return FinalEVMReceiptState{}, nil, err
+	}
+	payload, err := verifyFinalSemanticReceiptPayload(self.evidence, receipt, logs)
+	if err != nil {
+		return FinalEVMReceiptState{}, nil, fmt.Errorf("decode release receipt %s: %w", receipt.TransactionHash, err)
+	}
+	return FinalEVMReceiptState{TransactionHash: strings.ToLower(wire.TransactionHash), Block: ChainHead{Number: number, Hash: strings.ToLower(wire.BlockHash)}, Status: status, LogsHash: logsHash, receiptPayload: payload}, []FinalRPCExchange{exchange}, nil
+}
+
+// Returns the exact immutable release-contract address census used to filter
+// receipts. The batcher belongs here because a generation-two replacement is
+// a release-contract mutation even though generic economic receipt decoding
+// intentionally does not assign it deposit or payout semantics.
+func finalSemanticReleaseContractAddresses(evidence *FinalSemanticEvidence) (map[common.Address]bool, error) {
+	if evidence == nil {
+		return nil, errors.New("semantic evidence is unavailable for release-contract addresses")
+	}
+	batcher, err := finalReleaseRuntimeRootByName(evidence, "fleet_batcher")
+	if err != nil || !common.IsHexAddress(batcher.Address) || common.HexToAddress(batcher.Address) == (common.Address{}) {
+		return nil, stateMismatchError(err, "release fleet batcher address is unavailable")
+	}
+	addresses := map[common.Address]bool{}
+	for _, address := range []string{evidence.Deployment.CoordinatorProxy, evidence.Deployment.SettlementVault, evidence.Deployment.ReserveSink, batcher.Address} {
+		if !common.IsHexAddress(address) || common.HexToAddress(address) == (common.Address{}) {
+			return nil, fmt.Errorf("release contract address %q is invalid", address)
+		}
+		addresses[common.HexToAddress(address)] = true
+	}
+	return addresses, nil
+}
+
+// Reads a fleet write without routing its coordinator/batcher logs through
+// the generic economic event decoder. Both receipt and transaction are bound
+// to the same immutable block before the caller compares exact calldata and
+// canonical receipt logs to the sealed lineage.
+func (self *PublicFinalSemanticChainReader) FleetGenerationEVMWrite(ctx context.Context, write FinalFleetGenerationWriteEvidence) (FinalFleetGenerationEVMWriteState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, errors.New("public fleet generation reader is unavailable")
+	}
+	receipt := write.Receipt
+	if err := verifyFinalEVMReceipt("public fleet generation receipt", receipt, 1, self.evidence.EVMTerminalHead.Number); err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	allowed, err := finalFleetGenerationWriteReleaseContractAddresses(write)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	target, err := finalFleetGenerationWriteTarget(self.evidence, write)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	receiptRaw, receiptExchange, err := self.evmRaw(ctx, receipt.Block, "eth_getTransactionReceipt", receipt.TransactionHash)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	var receiptWire struct {
+		TransactionHash string          `json:"transactionHash"`
+		BlockHash       string          `json:"blockHash"`
+		BlockNumber     string          `json:"blockNumber"`
+		Status          string          `json:"status"`
+		Logs            json.RawMessage `json:"logs"`
+	}
+	if bytes.Equal(bytes.TrimSpace(receiptRaw), []byte("null")) || json.Unmarshal(receiptRaw, &receiptWire) != nil || receiptWire.TransactionHash == "" || receiptWire.BlockHash == "" || receiptWire.BlockNumber == "" || len(receiptWire.Logs) == 0 {
+		return FinalFleetGenerationEVMWriteState{}, nil, errors.New("fleet generation receipt is incomplete")
+	}
+	blockNumber, err := finalDecodeBlockNumber("fleet generation receipt", receiptWire.BlockNumber)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	status := ""
+	switch receiptWire.Status {
+	case "0x1":
+		status = "success"
+	case "0x0":
+		status = "failed"
+	default:
+		return FinalFleetGenerationEVMWriteState{}, nil, fmt.Errorf("fleet generation receipt %s has invalid status %q", receipt.TransactionHash, receiptWire.Status)
+	}
+	logs, err := finalCanonicalLogsFromRPC(receiptWire.Logs, allowed)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	logsHash, err := finalCanonicalReceiptLogsHash(logs)
+	if err != nil || !strings.EqualFold(logsHash, receipt.LogsHash) || !strings.EqualFold(receiptWire.TransactionHash, receipt.TransactionHash) || blockNumber != receipt.Block.Number || !strings.EqualFold(receiptWire.BlockHash, receipt.Block.Hash) || status != receipt.Status {
+		return FinalFleetGenerationEVMWriteState{}, nil, stateMismatchError(err, "fleet generation receipt differs from sealed coordinates")
+	}
+	transactionRaw, transactionExchange, err := self.evmRaw(ctx, receipt.Block, "eth_getTransactionByHash", receipt.TransactionHash)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	var transactionWire struct {
+		Hash        string `json:"hash"`
+		BlockHash   string `json:"blockHash"`
+		BlockNumber string `json:"blockNumber"`
+		To          string `json:"to"`
+		Input       string `json:"input"`
+	}
+	if bytes.Equal(bytes.TrimSpace(transactionRaw), []byte("null")) || json.Unmarshal(transactionRaw, &transactionWire) != nil || transactionWire.Hash == "" || transactionWire.BlockHash == "" || transactionWire.BlockNumber == "" || transactionWire.To == "" || transactionWire.Input == "" {
+		return FinalFleetGenerationEVMWriteState{}, nil, errors.New("fleet generation transaction is incomplete")
+	}
+	transactionBlock, err := finalDecodeBlockNumber("fleet generation transaction", transactionWire.BlockNumber)
+	if err != nil || !strings.EqualFold(transactionWire.Hash, receipt.TransactionHash) || transactionBlock != receipt.Block.Number || !strings.EqualFold(transactionWire.BlockHash, receipt.Block.Hash) || !common.IsHexAddress(transactionWire.To) || !allowed[common.HexToAddress(transactionWire.To)] || !strings.EqualFold(transactionWire.To, target) {
+		return FinalFleetGenerationEVMWriteState{}, nil, stateMismatchError(err, "fleet generation transaction differs from sealed receipt")
+	}
+	calldata, err := hexutil.Decode(transactionWire.Input)
+	if err != nil || len(calldata) < 4 || hexutil.Encode(calldata) != strings.ToLower(transactionWire.Input) {
+		return FinalFleetGenerationEVMWriteState{}, nil, stateMismatchError(err, "fleet generation transaction calldata is malformed")
+	}
+	return FinalFleetGenerationEVMWriteState{
+		TransactionHash: strings.ToLower(transactionWire.Hash), To: strings.ToLower(common.HexToAddress(transactionWire.To).Hex()), Calldata: hexutil.Encode(calldata),
+		Block: ChainHead{Number: transactionBlock, Hash: strings.ToLower(transactionWire.BlockHash)}, Status: status, Logs: append([]finalCanonicalEVMLog(nil), logs...),
+	}, []FinalRPCExchange{receiptExchange, transactionExchange}, nil
+}
+
+// Reads the coordinator's complete historical deposit prefix at one validator
+// audit checkpoint. The block-hash selector in evmCall prevents
+// a public provider from answering with current state instead of that exact
+// immutable snapshot.
+func (self *PublicFinalSemanticChainReader) EpochDeposit(ctx context.Context, epoch, noID uint64, head ChainHead) (FinalEpochDepositChainState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil || noID == 0 {
+		return FinalEpochDepositChainState{}, nil, errors.New("historical epoch deposit query is incomplete")
+	}
+	coordinator := stabi.NewSTCoordinator()
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackEpochDeposits(new(big.Int).SetUint64(epoch), new(big.Int).SetUint64(noID)))
+	if err != nil {
+		return FinalEpochDepositChainState{}, nil, err
+	}
+	amount, err := coordinator.UnpackEpochDeposits(out)
+	if err != nil || amount == nil || amount.Sign() < 0 {
+		return FinalEpochDepositChainState{}, nil, stateMismatchError(err, "decode historical epoch deposit")
+	}
+	return FinalEpochDepositChainState{Epoch: epoch, NoID: noID, AmountRao: amount.String(), Block: head}, exchanges, nil
+}
+
+// Reads both immutable operator-version cardinality and the version selected
+// by the evidence's effective epoch. Keeping both calls at
+// the terminal block detects a substituted active signer as well as omitted
+// schedule history.
+func (self *PublicFinalSemanticChainReader) OperatorVersion(ctx context.Context, noID, epoch uint64, head ChainHead) (FinalOperatorVersionChainState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil || noID == 0 {
+		return FinalOperatorVersionChainState{}, nil, errors.New("operator version query is incomplete")
+	}
+	coordinator := stabi.NewSTCoordinator()
+	operatorID := new(big.Int).SetUint64(noID)
+	countOut, countExchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackOperatorVersionCount(operatorID))
+	if err != nil {
+		return FinalOperatorVersionChainState{}, nil, err
+	}
+	count, err := coordinator.UnpackOperatorVersionCount(countOut)
+	if err != nil || count == nil || !count.IsUint64() || count.Sign() <= 0 {
+		return FinalOperatorVersionChainState{}, nil, stateMismatchError(err, "decode operator version count")
+	}
+	versionOut, versionExchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackOperatorAt(operatorID, new(big.Int).SetUint64(epoch)))
+	if err != nil {
+		return FinalOperatorVersionChainState{}, nil, err
+	}
+	version, err := coordinator.UnpackOperatorAt(versionOut)
+	if err != nil || version.EffectiveEpoch > epoch || version.Coldkey == ([32]byte{}) || version.PoolHotkey == ([32]byte{}) || version.DepositHotkey == ([32]byte{}) || version.DepositSigner == (common.Address{}) || version.RootSigner == (common.Address{}) {
+		return FinalOperatorVersionChainState{}, nil, stateMismatchError(err, "decode operator version")
+	}
+	coldkey, err := ss58.Encode(version.Coldkey, ss58.BittensorPrefix)
+	if err != nil {
+		return FinalOperatorVersionChainState{}, nil, fmt.Errorf("encode operator coldkey: %w", err)
+	}
+	poolHotkey, err := ss58.Encode(version.PoolHotkey, ss58.BittensorPrefix)
+	if err != nil {
+		return FinalOperatorVersionChainState{}, nil, fmt.Errorf("encode operator pool hotkey: %w", err)
+	}
+	depositHotkey, err := ss58.Encode(version.DepositHotkey, ss58.BittensorPrefix)
+	if err != nil {
+		return FinalOperatorVersionChainState{}, nil, fmt.Errorf("encode operator deposit hotkey: %w", err)
+	}
+	return FinalOperatorVersionChainState{
+		NoID: noID, VersionCount: count.Uint64(), Coldkey: coldkey, PoolHotkey: poolHotkey, DepositHotkey: depositHotkey,
+		DepositSigner: strings.ToLower(version.DepositSigner.Hex()), RootSigner: strings.ToLower(version.RootSigner.Hex()), EffectiveEpoch: version.EffectiveEpoch,
+		Active: version.Active, Block: head,
+	}, append(countExchanges, versionExchanges...), nil
 }
 
 type finalEVMBlockSelector struct {
@@ -1168,9 +1428,9 @@ type finalEVMBlockSelector struct {
 	RequireCanonical bool   `json:"requireCanonical"`
 }
 
-func (r *PublicFinalSemanticChainReader) evmCall(ctx context.Context, head ChainHead, address string, data []byte) ([]byte, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) evmCall(ctx context.Context, head ChainHead, address string, data []byte) ([]byte, []FinalRPCExchange, error) {
 	selector := finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true}
-	raw, exchange, err := r.evmRaw(ctx, head, "eth_call", map[string]string{"to": address, "data": hexutil.Encode(data)}, selector)
+	raw, exchange, err := self.evmRaw(ctx, head, "eth_call", map[string]string{"to": address, "data": hexutil.Encode(data)}, selector)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1206,13 +1466,13 @@ func finalFleetBindingChainState(clientID [16]byte, active bool, record stabi.ST
 	}
 }
 
-func (r *PublicFinalSemanticChainReader) FleetMirror(ctx context.Context, hotkeyEncoded string, head ChainHead) (FinalFleetMirrorChainState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) FleetMirror(ctx context.Context, hotkeyEncoded string, head ChainHead) (FinalFleetMirrorChainState, []FinalRPCExchange, error) {
 	hotkey, err := decodeHex32("fleet mirror hotkey", strings.ToLower(hotkeyEncoded))
 	if err != nil {
 		return FinalFleetMirrorChainState{}, nil, err
 	}
 	coordinator := stabi.NewSTCoordinator()
-	out, exchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.CoordinatorProxy, coordinator.PackMirroredCommitments(hotkey))
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackMirroredCommitments(hotkey))
 	if err != nil {
 		return FinalFleetMirrorChainState{}, nil, err
 	}
@@ -1223,13 +1483,13 @@ func (r *PublicFinalSemanticChainReader) FleetMirror(ctx context.Context, hotkey
 	return FinalFleetMirrorChainState{Hotkey: strings.ToLower(hotkeyEncoded), CommitmentHash: fleetLifecycleHex(mirror.CommitmentHash), FinalizedBlock: mirror.FinalizedBlock, FinalizedBlockHash: fleetLifecycleHex(mirror.FinalizedBlockHash), Block: head}, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) FleetBinding(ctx context.Context, clientEncoded string, epoch uint64, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) FleetBinding(ctx context.Context, clientEncoded string, epoch uint64, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
 	clientID, err := finalLifecycleClientID(clientEncoded)
 	if err != nil || epoch == 0 {
 		return FinalFleetBindingChainState{}, nil, stateMismatchError(err, "fleet binding lookup epoch is zero or client is invalid")
 	}
 	coordinator := stabi.NewSTCoordinator()
-	out, exchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.CoordinatorProxy, coordinator.PackBindingAt(clientID, new(big.Int).SetUint64(epoch)))
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackBindingAt(clientID, new(big.Int).SetUint64(epoch)))
 	if err != nil {
 		return FinalFleetBindingChainState{}, nil, err
 	}
@@ -1240,13 +1500,13 @@ func (r *PublicFinalSemanticChainReader) FleetBinding(ctx context.Context, clien
 	return finalFleetBindingChainState(clientID, binding.Active, binding.Record, head), exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) FleetBindingRecord(ctx context.Context, clientEncoded string, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) FleetBindingRecord(ctx context.Context, clientEncoded string, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
 	clientID, err := finalLifecycleClientID(clientEncoded)
 	if err != nil {
 		return FinalFleetBindingChainState{}, nil, err
 	}
 	coordinator := stabi.NewSTCoordinator()
-	out, exchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.CoordinatorProxy, coordinator.PackGetFleetBinding(clientID))
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackGetFleetBinding(clientID))
 	if err != nil {
 		return FinalFleetBindingChainState{}, nil, err
 	}
@@ -1257,13 +1517,13 @@ func (r *PublicFinalSemanticChainReader) FleetBindingRecord(ctx context.Context,
 	return finalFleetBindingChainState(clientID, !record.Cleaned, record, head), exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) FleetMemberCount(ctx context.Context, fleetEncoded string, head ChainHead) (uint64, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) FleetMemberCount(ctx context.Context, fleetEncoded string, head ChainHead) (uint64, []FinalRPCExchange, error) {
 	fleetID, err := decodeHex32("fleet member-count id", strings.ToLower(fleetEncoded))
 	if err != nil {
 		return 0, nil, err
 	}
 	coordinator := stabi.NewSTCoordinator()
-	out, exchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.CoordinatorProxy, coordinator.PackFleetMemberCount(fleetID))
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.CoordinatorProxy, coordinator.PackFleetMemberCount(fleetID))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1276,11 +1536,11 @@ func (r *PublicFinalSemanticChainReader) FleetMemberCount(ctx context.Context, f
 
 var _ FinalSemanticLifecycleChainReader = (*PublicFinalSemanticChainReader)(nil)
 
-func (r *PublicFinalSemanticChainReader) FleetLifecycleEvents(ctx context.Context, transactionHash string, head ChainHead) ([]FinalFleetLifecycleEventState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) FleetLifecycleEvents(ctx context.Context, transactionHash string, head ChainHead) ([]FinalFleetLifecycleEventState, []FinalRPCExchange, error) {
 	if _, err := decodeHex32("fleet lifecycle transaction", strings.ToLower(transactionHash)); err != nil {
 		return nil, nil, err
 	}
-	raw, exchange, err := r.evmRaw(ctx, head, "eth_getTransactionReceipt", transactionHash)
+	raw, exchange, err := self.evmRaw(ctx, head, "eth_getTransactionReceipt", transactionHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1298,7 +1558,7 @@ func (r *PublicFinalSemanticChainReader) FleetLifecycleEvents(ctx context.Contex
 	if err != nil || number != head.Number {
 		return nil, nil, stateMismatchError(err, "fleet lifecycle receipt block=%d, want %d", number, head.Number)
 	}
-	coordinatorAddress := common.HexToAddress(r.evidence.Deployment.CoordinatorProxy)
+	coordinatorAddress := common.HexToAddress(self.evidence.Deployment.CoordinatorProxy)
 	coordinator := stabi.NewSTCoordinator()
 	result := make([]FinalFleetLifecycleEventState, 0, len(receipt.Logs))
 	for _, log := range receipt.Logs {
@@ -1329,10 +1589,10 @@ func (r *PublicFinalSemanticChainReader) FleetLifecycleEvents(ctx context.Contex
 	return result, []FinalRPCExchange{exchange}, nil
 }
 
-func (r *PublicFinalSemanticChainReader) PoolEpoch(ctx context.Context, epoch, noID uint64, head ChainHead) (FinalPoolEpochChainState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) PoolEpoch(ctx context.Context, epoch, noID uint64, head ChainHead) (FinalPoolEpochChainState, []FinalRPCExchange, error) {
 	vault := stabi.NewSTSettlementVault()
 	data := vault.PackEntitlement(new(big.Int).SetUint64(epoch), new(big.Int).SetUint64(noID))
-	out, exchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.SettlementVault, data)
+	out, exchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.SettlementVault, data)
 	if err != nil {
 		return FinalPoolEpochChainState{}, nil, err
 	}
@@ -1342,12 +1602,12 @@ func (r *PublicFinalSemanticChainReader) PoolEpoch(ctx context.Context, epoch, n
 	}
 	return FinalPoolEpochChainState{
 		Epoch: epoch, NoID: noID, PayoutRoot: "0x" + fmt.Sprintf("%x", entitlement.PayoutRoot[:]), ArtifactHash: "0x" + fmt.Sprintf("%x", entitlement.ArtifactHash[:]),
-		FundedRao: entitlement.Funded.String(), TotalRao: entitlement.Total.String(), ClaimedRao: entitlement.Claimed.String(), Status: entitlement.Status, Block: head,
+		FundedRao: entitlement.Funded.String(), TotalRao: entitlement.Total.String(), ClaimedRao: entitlement.Claimed.String(), ExpiryBlock: entitlement.ExpiryBlock, Status: entitlement.Status, Block: head,
 	}, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) evmCode(ctx context.Context, head ChainHead, address string) ([]byte, []FinalRPCExchange, error) {
-	raw, exchange, err := r.evmRaw(ctx, head, "eth_getCode", address, finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true})
+func (self *PublicFinalSemanticChainReader) evmCode(ctx context.Context, head ChainHead, address string) ([]byte, []FinalRPCExchange, error) {
+	raw, exchange, err := self.evmRaw(ctx, head, "eth_getCode", address, finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1362,20 +1622,20 @@ func (r *PublicFinalSemanticChainReader) evmCode(ctx context.Context, head Chain
 	return code, []FinalRPCExchange{exchange}, nil
 }
 
-func (r *PublicFinalSemanticChainReader) ContractDeployment(ctx context.Context, head ChainHead) (FinalContractDeploymentState, []FinalRPCExchange, error) {
-	deployment := r.evidence.Deployment
+func (self *PublicFinalSemanticChainReader) ContractDeployment(ctx context.Context, head ChainHead) (FinalContractDeploymentState, []FinalRPCExchange, error) {
+	deployment := self.evidence.Deployment
 	addresses := []string{deployment.CoordinatorProxy, deployment.CoordinatorImplementation, deployment.SettlementVault, deployment.ReserveSink}
 	hashes := make([]string, len(addresses))
 	exchanges := make([]FinalRPCExchange, 0, 28)
 	for i, address := range addresses {
-		code, codeExchanges, err := r.evmCode(ctx, head, address)
+		code, codeExchanges, err := self.evmCode(ctx, head, address)
 		if err != nil {
 			return FinalContractDeploymentState{}, nil, err
 		}
 		exchanges = append(exchanges, codeExchanges...)
 		hashes[i] = strings.ToLower(crypto.Keccak256Hash(code).Hex())
 	}
-	slotRaw, exchange, err := r.evmRaw(ctx, head, "eth_getStorageAt", deployment.CoordinatorProxy, deployment.ERC1967ImplementationSlot, finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true})
+	slotRaw, exchange, err := self.evmRaw(ctx, head, "eth_getStorageAt", deployment.CoordinatorProxy, deployment.ERC1967ImplementationSlot, finalEVMBlockSelector{BlockHash: head.Hash, RequireCanonical: true})
 	if err != nil {
 		return FinalContractDeploymentState{}, nil, err
 	}
@@ -1395,7 +1655,7 @@ func (r *PublicFinalSemanticChainReader) ContractDeployment(ctx context.Context,
 		ObservedImplementationSlot: strings.ToLower(slot), Block: head,
 	}
 	call := func(label, address string, data []byte, decode func([]byte) error) error {
-		out, callExchanges, callErr := r.evmCall(ctx, head, address, data)
+		out, callExchanges, callErr := self.evmCall(ctx, head, address, data)
 		if callErr != nil {
 			return fmt.Errorf("read %s: %w", label, callErr)
 		}
@@ -1569,7 +1829,7 @@ func (r *PublicFinalSemanticChainReader) ContractDeployment(ctx context.Context,
 	if policyCount == nil || !policyCount.IsUint64() || policyCount.Sign() == 0 {
 		return FinalContractDeploymentState{}, nil, errors.New("coordinator policy count is invalid")
 	}
-	lastEpoch := r.evidence.Window.FirstEpoch + r.evidence.Window.EpochCount - 1
+	lastEpoch := self.evidence.Window.FirstEpoch + self.evidence.Window.EpochCount - 1
 	var policy stabi.STCoordinatorPolicySnapshot
 	if err := call("coordinator active policy", deployment.CoordinatorProxy, coordinator.PackPolicyAt(new(big.Int).SetUint64(lastEpoch)), func(out []byte) error {
 		value, unpackErr := coordinator.UnpackPolicyAt(out)
@@ -1582,7 +1842,7 @@ func (r *PublicFinalSemanticChainReader) ContractDeployment(ctx context.Context,
 	state.PolicyVersion = policyCount.Uint64()
 	state.PolicyEffectiveEpoch = policy.EffectiveEpoch
 	state.PolicyEffectiveBlock = policy.EffectiveBlock
-	if err := validateFinalContractCustodyState(state, r.evidence.Netuid); err != nil {
+	if err := validateFinalContractCustodyState(state, self.evidence.Netuid); err != nil {
 		return FinalContractDeploymentState{}, nil, err
 	}
 	return state, exchanges, nil
@@ -1630,15 +1890,15 @@ func validateFinalContractCustodyState(state FinalContractDeploymentState, netui
 	return nil
 }
 
-func (r *PublicFinalSemanticChainReader) SettlementVaultState(ctx context.Context, head ChainHead) (FinalSettlementVaultChainState, []FinalRPCExchange, error) {
-	if r == nil || r.evidence == nil {
+func (self *PublicFinalSemanticChainReader) SettlementVaultState(ctx context.Context, head ChainHead) (FinalSettlementVaultChainState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
 		return FinalSettlementVaultChainState{}, nil, errors.New("public settlement-vault reader is unavailable")
 	}
 	vault := stabi.NewSTSettlementVault()
 	state := FinalSettlementVaultChainState{Block: head}
 	exchanges := make([]FinalRPCExchange, 0, 6)
 	call := func(label string, data []byte, decode func([]byte) (*big.Int, error), destination *string) error {
-		out, callExchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.SettlementVault, data)
+		out, callExchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.SettlementVault, data)
 		if err != nil {
 			return fmt.Errorf("read settlement-vault %s: %w", label, err)
 		}
@@ -1671,9 +1931,9 @@ func (r *PublicFinalSemanticChainReader) SettlementVaultState(ctx context.Contex
 	return state, exchanges, nil
 }
 
-func (r *PublicFinalSemanticChainReader) ReserveState(ctx context.Context, head ChainHead) (FinalReserveState, []FinalRPCExchange, error) {
+func (self *PublicFinalSemanticChainReader) ReserveState(ctx context.Context, head ChainHead) (FinalReserveState, []FinalRPCExchange, error) {
 	sink := stabi.NewSTReserveSink()
-	principalOut, principalExchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.ReserveSink, sink.PackPrincipal())
+	principalOut, principalExchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.ReserveSink, sink.PackPrincipal())
 	if err != nil {
 		return FinalReserveState{}, nil, err
 	}
@@ -1681,7 +1941,7 @@ func (r *PublicFinalSemanticChainReader) ReserveState(ctx context.Context, head 
 	if err != nil {
 		return FinalReserveState{}, nil, err
 	}
-	liveOut, liveExchanges, err := r.evmCall(ctx, head, r.evidence.Deployment.ReserveSink, sink.PackLiveStake())
+	liveOut, liveExchanges, err := self.evmCall(ctx, head, self.evidence.Deployment.ReserveSink, sink.PackLiveStake())
 	if err != nil {
 		return FinalReserveState{}, nil, err
 	}

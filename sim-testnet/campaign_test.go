@@ -56,7 +56,7 @@ func writeScenarioCampaignFixture(t *testing.T, cfg *ResolvedConfig, stateDir, n
 		t.Fatalf("campaign fixture attempt: %v", err)
 	}
 	completed := started.Add(20 * time.Hour)
-	adversaries := healthyAdversaryEvidence()
+	adversaries, _, _ := finalSemanticAdversarialTestCampaignForConfig(t, cfg)
 	adversaryConfig := cfg.Config.Scenarios.Adversaries
 	adversaries.MatrixHash = definition.AdversarialMatrixHash
 	adversaries.Seed = adversaryConfig.Seed
@@ -285,6 +285,17 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 		return locator
 	}
 	jsonFixture := []byte("{\"schema\":\"urnetwork-sim-final-capture-test-fixture-v1\"}\n")
+	matrix, matrixBytes, err := loadCanonicalAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Adversaries == nil || !strings.EqualFold(matrix.Hash, result.AdversarialMatrix) || !strings.EqualFold(matrix.Hash, result.Adversaries.MatrixHash) {
+		t.Fatal("capture fixture adversarial matrix does not match its scenario result")
+	}
+	adversariesBytes, err := json.Marshal(result.Adversaries)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bundleEntry := FinalCollectedFileBundleEntry{Path: "fixture.json", ContentHash: bytesSHA256(jsonFixture), SizeBytes: uint64(len(jsonFixture)), Data: jsonFixture}
 	bundleBytes, err := json.Marshal(&FinalCollectedFileBundle{Schema: finalCollectedFileBundleSchema, Name: "fixture", Files: []FinalCollectedFileBundleEntry{bundleEntry}})
 	if err != nil {
@@ -293,6 +304,8 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 	common := map[string]FinalArtifactLocator{
 		"policy":                    fixtureLocator("policy", "policy.json", jsonFixture),
 		"result":                    fixtureLocator("scenario-result-candidate", "scenario-result.json", jsonFixture),
+		"matrix":                    fixtureLocator("adversarial-matrix", "adversarial-matrix.json", matrixBytes),
+		"adversaries":               fixtureLocator("scenario-adversaries", "adversaries.json", adversariesBytes),
 		"terminal":                  fixtureLocator("scenario-terminal-observation", "terminal-observation.json", jsonFixture),
 		"history":                   fixtureLocator("scenario-observation-history", "observation-history.json", jsonFixture),
 		"bundle":                    fixtureLocator("closed-input-bundle", "bundle.json", bundleBytes),
@@ -310,7 +323,7 @@ func writeFinalSemanticCaptureCampaignFixture(t *testing.T, cfg *ResolvedConfig,
 	}
 	collected := &FinalSemanticCollectedInputs{
 		Schema: finalSemanticCollectedInputsSchema, Phase: result.Name, RunID: result.RunID, ResultHash: result.EvidenceHash,
-		Window: *result.AcceptanceWindow, Policy: common["policy"], ScenarioResult: common["result"], TerminalObservation: common["terminal"],
+		Window: *result.AcceptanceWindow, Policy: common["policy"], ScenarioResult: common["result"], AdversarialMatrix: common["matrix"], Adversaries: common["adversaries"], TerminalObservation: common["terminal"],
 		ObservationHistory: common["history"], ClosedInputBundles: []FinalArtifactLocator{common["bundle"]},
 	}
 	if result.Name == "production-soak" {

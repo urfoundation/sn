@@ -491,6 +491,9 @@ func queryClaimedFinalized(ctx context.Context, cfg *ClaimDaemonConfig, claim *s
 // a canonical, finalized failure receipt. A missing or pending transaction is
 // intentionally left uncertain; leafClaimed is checked first on every pass.
 func uncertainClaimRetryable(ctx context.Context, cfg *ClaimDaemonConfig, txHash string) (bool, error) {
+	if cfg == nil {
+		return false, errors.New("claim receipt configuration is unavailable")
+	}
 	raw, err := hex.DecodeString(strings.TrimPrefix(txHash, "0x"))
 	if err != nil || len(raw) != common.HashLength {
 		return false, fmt.Errorf("invalid uncertain transaction hash %q", txHash)
@@ -513,21 +516,26 @@ func uncertainClaimRetryable(ctx context.Context, cfg *ClaimDaemonConfig, txHash
 			failures = append(failures, receiptErr)
 			continue
 		}
+		if receipt == nil || receipt.TxHash != hash || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Sign() <= 0 || receipt.BlockHash == (common.Hash{}) {
+			client.Close()
+			failures = append(failures, errors.New("uncertain claim receipt has an incomplete or mismatched identity"))
+			continue
+		}
 		finalized, finalErr := finalizedNumber(ctx, client)
-		if finalErr != nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || finalized < receipt.BlockNumber.Uint64() {
+		if finalErr != nil || finalized < receipt.BlockNumber.Uint64() {
 			client.Close()
 			if finalErr != nil {
 				failures = append(failures, finalErr)
 			}
 			continue
 		}
-		header, headerErr := client.HeaderByNumber(ctx, receipt.BlockNumber)
+		block, blockErr := onchain.ReadEVMBlockIdentity(ctx, client, receipt.BlockNumber)
 		client.Close()
-		if headerErr != nil {
-			failures = append(failures, headerErr)
+		if blockErr != nil {
+			failures = append(failures, blockErr)
 			continue
 		}
-		if header.Hash() != receipt.BlockHash {
+		if block.Hash != receipt.BlockHash {
 			return false, fmt.Errorf("transaction %s receipt is not canonical", txHash)
 		}
 		if receipt.Status == types.ReceiptStatusFailed {
@@ -764,8 +772,8 @@ func recordFinalizedClaimReceipt(entry *ClaimQueueEntry, receipt *types.Receipt)
 }
 
 // finalizedClaimReceipt recovers inclusion evidence after a crash between
-// chain finality and the queue fsync. Every endpoint must agree with a
-// canonical finalized block before the recovered receipt is accepted.
+// chain finality and the queue fsync. An endpoint must provide a canonical
+// finalized block before its recovered receipt is accepted.
 func finalizedClaimReceipt(ctx context.Context, cfg *ClaimDaemonConfig, txHash string) (*types.Receipt, error) {
 	if cfg == nil {
 		return nil, errors.New("claim receipt configuration is unavailable")
@@ -788,8 +796,13 @@ func finalizedClaimReceipt(ctx context.Context, cfg *ClaimDaemonConfig, txHash s
 			failures = append(failures, receiptErr)
 			continue
 		}
+		if receipt == nil || receipt.TxHash != hash || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Sign() <= 0 || receipt.BlockHash == (common.Hash{}) {
+			client.Close()
+			failures = append(failures, errors.New("claim receipt has an incomplete or mismatched identity"))
+			continue
+		}
 		finalized, finalErr := finalizedNumber(ctx, client)
-		if finalErr != nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || finalized < receipt.BlockNumber.Uint64() {
+		if finalErr != nil || finalized < receipt.BlockNumber.Uint64() {
 			client.Close()
 			if finalErr != nil {
 				failures = append(failures, finalErr)
@@ -798,13 +811,13 @@ func finalizedClaimReceipt(ctx context.Context, cfg *ClaimDaemonConfig, txHash s
 			}
 			continue
 		}
-		header, headerErr := client.HeaderByNumber(ctx, receipt.BlockNumber)
+		block, blockErr := onchain.ReadEVMBlockIdentity(ctx, client, receipt.BlockNumber)
 		client.Close()
-		if headerErr != nil {
-			failures = append(failures, headerErr)
+		if blockErr != nil {
+			failures = append(failures, blockErr)
 			continue
 		}
-		if header.Hash() != receipt.BlockHash {
+		if block.Hash != receipt.BlockHash {
 			return nil, fmt.Errorf("claim transaction %s receipt is not canonical", txHash)
 		}
 		return receipt, nil

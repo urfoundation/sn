@@ -140,6 +140,10 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 	}
 	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits}
 	if !independentRPCRequired(runtimeCfg) {
+		if err := e.ensurePayloads(ctx); err != nil {
+			e.Close()
+			return nil, fmt.Errorf("contract deployment preflight: %w", err)
+		}
 		return e, nil
 	}
 	e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
@@ -160,6 +164,10 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 	if independentChainID.Uint64() != testnetChainID {
 		e.Close()
 		return nil, fmt.Errorf("independent EVM RPC chain id=%d, want %d", independentChainID.Uint64(), testnetChainID)
+	}
+	if err := e.ensurePayloads(ctx); err != nil {
+		e.Close()
+		return nil, fmt.Errorf("contract deployment preflight: %w", err)
 	}
 	return e, nil
 }
@@ -299,7 +307,7 @@ func (e *Executor) boundedRegistrationBurn(action Action) (uint64, uint64, error
 	return burn, limit, nil
 }
 
-// Contract registration receives the full approved ceiling. Runtime 453 burns
+// Contract registration receives the full approved ceiling. Runtime 454 burns
 // the current rao price and the release contracts return any surplus.
 func registrationFundingWei(limitRao uint64) *big.Int {
 	return new(big.Int).Mul(new(big.Int).SetUint64(limitRao), big.NewInt(1_000_000_000))
@@ -1505,6 +1513,9 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 	case a.Kind == "budget-reserve":
 		return nil
 	case a.ID == "config.render":
+		if err := e.ensurePayloads(ctx); err != nil {
+			return err
+		}
 		return RenderRuntimeConfigs(e.cfg, e.stateDir, e.roles)
 	case a.ID == "topology.launch":
 		return nil
@@ -2457,6 +2468,35 @@ func waitForFinalizedEVMBlock(ctx context.Context, client *ethclient.Client, tar
 }
 func ss58Mirror(addr common.Address) [32]byte { return ss58.EvmMirrorPubkey(addr) }
 
+// Migrates the active legacy manifest only after its proxy CREATE receipt and
+// both observation checkpoints remain canonical. Signed public chronology is
+// never rewritten; a later approved publication retains it as a predecessor.
+func (self *Executor) reconcileContractDeploymentEventBoundary(ctx context.Context, manifest *ContractDeployment) (bool, error) {
+	if self == nil || self.plan == nil || self.journal == nil || self.deployer == nil || self.deployer.client == nil || manifest == nil {
+		return false, errors.New("active contract deployment event-boundary reconciliation is unavailable")
+	}
+	reconciled := *manifest
+	changed, err := reconcileContractDeploymentEventBoundary(ctx, ethEVMReceiptFinalityReader{client: self.deployer.client}, &reconciled, self.journal.Entries(), self.plan)
+	if err != nil {
+		return false, err
+	}
+	if self.independentEVM != nil {
+		if _, err := reconcileContractDeploymentEventBoundary(ctx, ethEVMReceiptFinalityReader{client: self.independentEVM}, &reconciled, self.journal.Entries(), self.plan); err != nil {
+			return false, fmt.Errorf("independent coordinator event-boundary reconciliation: %w", err)
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	if err := saveContractDeployment(self.stateDir, reconciled); err != nil {
+		return false, err
+	}
+	*manifest = reconciled
+	return true, nil
+}
+
+// Builds or authenticates the deterministic deployment payloads retained by
+// one execution run, migrating an active legacy event boundary when needed.
 func (e *Executor) ensurePayloads(ctx context.Context) error {
 	if e.payloads != nil {
 		return nil
@@ -2529,8 +2569,13 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 				activeCompatible = validateRegistrationRoleGenerationPromotion(e.cfg, e.plan, *existing, planned, nonce, e.journal.Entries()) == nil
 			}
 			if activeCompatible {
+				if _, err := e.reconcileContractDeploymentEventBoundary(ctx, existing); err != nil {
+					return fmt.Errorf("active contract deployment event boundary: %w", err)
+				}
 				p.Manifest.DeployBlock = existing.DeployBlock
 				p.Manifest.DeployBlockHash = existing.DeployBlockHash
+				p.Manifest.CoordinatorEventStartBlock = existing.CoordinatorEventStartBlock
+				p.Manifest.CoordinatorEventStartBlockHash = existing.CoordinatorEventStartBlockHash
 				p.Manifest.RuntimeHashes = planned.RuntimeHashes
 				e.payloads = p
 				return nil
@@ -2564,8 +2609,14 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 		} else if !errors.Is(loadErr, os.ErrNotExist) {
 			return loadErr
 		}
+		if _, err := e.reconcileContractDeploymentEventBoundary(ctx, &p.Manifest); err != nil {
+			return fmt.Errorf("new contract deployment event boundary: %w", err)
+		}
+		if err := saveContractDeployment(e.stateDir, p.Manifest); err != nil {
+			return err
+		}
 		e.payloads = p
-		return saveContractDeployment(e.stateDir, p.Manifest)
+		return nil
 	}
 	if existing, err := loadContractDeployment(e.stateDir); err == nil {
 		p, err := buildDeploymentPayloadsWithRegistrationGeneration(e.cfg, e.roles, existing.InitialNonce, existing.RegistrationRoleGeneration)
@@ -2575,8 +2626,13 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 		if p.Manifest.ReserveSink != existing.ReserveSink || p.Manifest.CoordinatorProxy != existing.CoordinatorProxy || p.Manifest.GovernanceDrillImplementation != existing.GovernanceDrillImplementation || p.Manifest.PrecompileProbe != existing.PrecompileProbe {
 			return fmt.Errorf("contract deployment manifest/address mismatch")
 		}
+		if _, err := e.reconcileContractDeploymentEventBoundary(ctx, existing); err != nil {
+			return fmt.Errorf("active contract deployment event boundary: %w", err)
+		}
 		p.Manifest.DeployBlock = existing.DeployBlock
 		p.Manifest.DeployBlockHash = existing.DeployBlockHash
+		p.Manifest.CoordinatorEventStartBlock = existing.CoordinatorEventStartBlock
+		p.Manifest.CoordinatorEventStartBlockHash = existing.CoordinatorEventStartBlockHash
 		p.Manifest.RuntimeHashes = existing.RuntimeHashes
 		e.payloads = p
 		return nil
@@ -2589,8 +2645,14 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := e.reconcileContractDeploymentEventBoundary(ctx, &p.Manifest); err != nil {
+		return fmt.Errorf("new contract deployment event boundary: %w", err)
+	}
+	if err := saveContractDeployment(e.stateDir, p.Manifest); err != nil {
+		return err
+	}
 	e.payloads = p
-	return saveContractDeployment(e.stateDir, p.Manifest)
+	return nil
 }
 func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 	if err := e.ensurePayloads(ctx); err != nil {
@@ -2647,13 +2709,17 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 		to = &addr
 		data = p.FixSink
 	}
+	replacementProbe := a.ID == "precompile.probe-deploy" && p.PrecompileProbeAddress != p.Manifest.PrecompileProbe
 	if to == nil {
 		head, headErr := finalizedEVMHead(ctx, e.deployer.client)
 		if headErr != nil {
 			return headErr
 		}
 		code, err := e.deployer.client.CodeAt(ctx, addr, new(big.Int).SetUint64(head.Number))
-		if err == nil && len(code) > 0 {
+		if err != nil {
+			return fmt.Errorf("observe existing code at %s: %w", addr, err)
+		}
+		if len(code) > 0 {
 			expected := p.ExpectedRuntime[addr]
 			if a.ID == "fleet.refresh.deploy-batcher" {
 				expected = p.FleetBatcherRuntime
@@ -2667,20 +2733,40 @@ func (e *Executor) executeDeployment(ctx context.Context, a Action) error {
 					return fmt.Errorf("unexpected existing runtime hash at %s", addr)
 				}
 			}
-			return nil
+			receipt, err := finalizedContractCreationReceipt(ctx, ethEVMReceiptFinalityReader{client: e.deployer.client}, head, p.Manifest.DeploymentID, a, addr, e.journal.Entries(), e.plan.allowedPlanHashes())
+			if err != nil {
+				return err
+			}
+			if receipt == nil {
+				return fmt.Errorf("existing code at %s has no matching finalized CREATE receipt", addr)
+			}
+			if e.independentEVM != nil {
+				independentHead, err := finalizedEVMHead(ctx, e.independentEVM)
+				if err != nil {
+					return err
+				}
+				if _, err := finalizedContractCreationReceipt(ctx, ethEVMReceiptFinalityReader{client: e.independentEVM}, independentHead, p.Manifest.DeploymentID, a, addr, e.journal.Entries(), e.plan.allowedPlanHashes()); err != nil {
+					return fmt.Errorf("independent CREATE receipt: %w", err)
+				}
+			}
+			if err := recordContractDeploymentReceipt(&p.Manifest, a.ID, receipt, replacementProbe); err != nil {
+				return err
+			}
+			return saveContractDeployment(e.stateDir, p.Manifest)
 		}
 	}
 	receipt, err := e.deployer.Send(ctx, e.plan.PlanHash, a, to, value, data)
 	if err != nil {
 		return err
 	}
+	if receipt == nil {
+		return errors.New("deployment transaction returned no receipt")
+	}
 	if to == nil && receipt.ContractAddress != addr {
 		return fmt.Errorf("deployed %s, predicted %s", receipt.ContractAddress, addr)
 	}
-	replacementProbe := a.ID == "precompile.probe-deploy" && p.PrecompileProbeAddress != p.Manifest.PrecompileProbe
-	if !replacementProbe && receipt.BlockNumber.Uint64() > p.Manifest.DeployBlock {
-		p.Manifest.DeployBlock = receipt.BlockNumber.Uint64()
-		p.Manifest.DeployBlockHash = receipt.BlockHash.Hex()
+	if err := recordContractDeploymentReceipt(&p.Manifest, a.ID, receipt, replacementProbe); err != nil {
+		return err
 	}
 	if a.ID == "evm.governance-drill-implementation" {
 		deployed := make(map[common.Address][]byte, len(p.ExpectedRuntime)-2)
@@ -3620,7 +3706,7 @@ func validateRegistrationReplacementPreState(state registrationReplacementState)
 		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
 	}
 	if state.RuntimePruneUID != state.ExpectedUID {
-		return fmt.Errorf("runtime-453 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+		return fmt.Errorf("runtime-454 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
 	}
 	return nil
 }
@@ -3649,7 +3735,7 @@ func validateChallengerChurnPreState(state challengerChurnState) error {
 		return fmt.Errorf("expected churn-floor UID %d is not live at that UID", state.ExpectedUID)
 	}
 	if state.RuntimePruneUID != state.ExpectedUID {
-		return fmt.Errorf("runtime-453 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
+		return fmt.Errorf("runtime-454 would prune UID %d, not approved churn-floor UID %d", state.RuntimePruneUID, state.ExpectedUID)
 	}
 	return nil
 }
@@ -4117,6 +4203,10 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 	if err != nil {
 		return err
 	}
+	eventSyncBlock, err := contractDeploymentEventSyncBlock(contracts)
+	if err != nil {
+		return err
+	}
 	if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
 		return err
 	}
@@ -4153,7 +4243,7 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 			"testnet-coordinator-address":                contracts.CoordinatorProxy.Hex(),
 			"testnet-settlement-vault-address":           contracts.SettlementVault.Hex(),
 			"testnet-reserve-sink-address":               contracts.ReserveSink.Hex(),
-			"testnet-deploy-block":                       contracts.DeployBlock,
+			"testnet-deploy-block":                       eventSyncBlock,
 			"testnet-netuid":                             cfg.Netuid,
 			"testnet-no-id":                              i,
 			"testnet-treasury-hotkey":                    "0x" + roles.Substrate[operatorPoolHotkeyLabelForGeneration(i, contracts.RegistrationRoleGeneration)].PublicKeyHex,
@@ -4350,7 +4440,11 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	if err := prepareSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
 		return err
 	}
-	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "transaction_version": cfg.Public.Chain.ExpectedTransactionVersion, "state_version": cfg.Public.Chain.ExpectedStateVersion, "runtime_code_hash": cfg.Release.Runtime.CodeHash, "runtime_metadata_hash": cfg.Release.Runtime.MetadataHash, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": c.DeployBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
+	eventSyncBlock, err := contractDeploymentEventSyncBlock(c)
+	if err != nil {
+		return err
+	}
+	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "transaction_version": cfg.Public.Chain.ExpectedTransactionVersion, "state_version": cfg.Public.Chain.ExpectedStateVersion, "runtime_code_hash": cfg.Release.Runtime.CodeHash, "runtime_metadata_hash": cfg.Release.Runtime.MetadataHash, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": eventSyncBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
 		v := cloneMap(base)
 		v["validator_id"] = i

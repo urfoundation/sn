@@ -27,20 +27,25 @@ import (
 	"github.com/urfoundation/sn/stabi"
 )
 
+// Persists the immutable contract identities plus two distinct finalized
+// observations: DeployBlock is when the current release graph was complete,
+// while CoordinatorEventStartBlock is the proxy's first event-sync block.
 type ContractDeployment struct {
-	Schema                        string            `json:"schema"`
-	DeploymentID                  string            `json:"deployment_id"`
-	InitialNonce                  uint64            `json:"initial_nonce"`
-	RegistrationRoleGeneration    uint64            `json:"registration_role_generation,omitempty"`
-	ReserveSink                   common.Address    `json:"reserve_sink"`
-	SettlementVault               common.Address    `json:"settlement_vault"`
-	CoordinatorImplementation     common.Address    `json:"coordinator_implementation"`
-	CoordinatorProxy              common.Address    `json:"coordinator_proxy"`
-	GovernanceDrillImplementation common.Address    `json:"governance_drill_implementation"`
-	PrecompileProbe               common.Address    `json:"precompile_probe"`
-	DeployBlock                   uint64            `json:"deploy_block,omitempty"`
-	DeployBlockHash               string            `json:"deploy_block_hash,omitempty"`
-	RuntimeHashes                 map[string]string `json:"runtime_hashes,omitempty"`
+	Schema                         string            `json:"schema"`
+	DeploymentID                   string            `json:"deployment_id"`
+	InitialNonce                   uint64            `json:"initial_nonce"`
+	RegistrationRoleGeneration     uint64            `json:"registration_role_generation,omitempty"`
+	ReserveSink                    common.Address    `json:"reserve_sink"`
+	SettlementVault                common.Address    `json:"settlement_vault"`
+	CoordinatorImplementation      common.Address    `json:"coordinator_implementation"`
+	CoordinatorProxy               common.Address    `json:"coordinator_proxy"`
+	GovernanceDrillImplementation  common.Address    `json:"governance_drill_implementation"`
+	PrecompileProbe                common.Address    `json:"precompile_probe"`
+	DeployBlock                    uint64            `json:"deploy_block,omitempty"`
+	DeployBlockHash                string            `json:"deploy_block_hash,omitempty"`
+	CoordinatorEventStartBlock     uint64            `json:"coordinator_event_start_block,omitempty"`
+	CoordinatorEventStartBlockHash string            `json:"coordinator_event_start_block_hash,omitempty"`
+	RuntimeHashes                  map[string]string `json:"runtime_hashes,omitempty"`
 }
 
 // CoordinatorUpgrade is deliberately separate from the immutable deployment
@@ -212,11 +217,242 @@ func validatePrecompileProbeReplacement(baseline CoordinatorUpgradeBaseline, dep
 	return nil
 }
 
+// Accepts either an absent observation or one complete canonical hash-shaped
+// checkpoint. Chain canonicality and finality are authenticated by callers.
+func validateContractDeploymentCheckpoint(name string, block uint64, blockHash string) error {
+	if (block == 0) != (blockHash == "") {
+		return fmt.Errorf("%s checkpoint is incomplete", name)
+	}
+	if blockHash != "" {
+		decoded, err := decodeHex32(name+" block hash", blockHash)
+		if err != nil {
+			return err
+		}
+		if decoded == ([32]byte{}) {
+			return fmt.Errorf("%s checkpoint has a zero block hash", name)
+		}
+	}
+	return nil
+}
+
+// Returns the inclusive coordinator log boundary rendered to servers and
+// validators. It must never be replaced by the later full-release boundary.
+func contractDeploymentEventSyncBlock(manifest *ContractDeployment) (uint64, error) {
+	if manifest == nil {
+		return 0, errors.New("contract deployment event-sync boundary is unavailable")
+	}
+	if err := validateContractDeploymentCheckpoint("current release", manifest.DeployBlock, manifest.DeployBlockHash); err != nil {
+		return 0, err
+	}
+	if err := validateContractDeploymentCheckpoint("coordinator event start", manifest.CoordinatorEventStartBlock, manifest.CoordinatorEventStartBlockHash); err != nil {
+		return 0, err
+	}
+	if manifest.CoordinatorEventStartBlock == 0 {
+		return 0, errors.New("contract deployment has no coordinator event-sync boundary")
+	}
+	if manifest.DeployBlock == 0 {
+		return 0, errors.New("contract deployment has no current release boundary")
+	}
+	if manifest.DeployBlock != 0 && manifest.CoordinatorEventStartBlock > manifest.DeployBlock {
+		return 0, errors.New("coordinator event-sync boundary follows the current release boundary")
+	}
+	return manifest.CoordinatorEventStartBlock, nil
+}
+
+// Folds one finalized deployment receipt into the two observation domains.
+// Only the proxy receipt fixes event replay; later release CREATEs may advance
+// the full-graph boundary without changing where coordinator history begins.
+func recordContractDeploymentReceipt(manifest *ContractDeployment, actionID string, receipt *types.Receipt, replacementProbe bool) error {
+	if manifest == nil || actionID == "" || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() || receipt.BlockNumber.Sign() <= 0 || receipt.BlockHash == (common.Hash{}) || receipt.TxHash == (common.Hash{}) {
+		return errors.New("contract deployment receipt observation is incomplete")
+	}
+	updated := *manifest
+	if err := validateContractDeploymentCheckpoint("current release", updated.DeployBlock, updated.DeployBlockHash); err != nil {
+		return err
+	}
+	if err := validateContractDeploymentCheckpoint("coordinator event start", updated.CoordinatorEventStartBlock, updated.CoordinatorEventStartBlockHash); err != nil {
+		return err
+	}
+	block := receipt.BlockNumber.Uint64()
+	blockHash := receipt.BlockHash.Hex()
+	if receipt.ContractAddress != (common.Address{}) && !replacementProbe {
+		switch {
+		case updated.DeployBlock < block:
+			updated.DeployBlock = block
+			updated.DeployBlockHash = blockHash
+		case updated.DeployBlock == block && !strings.EqualFold(updated.DeployBlockHash, blockHash):
+			return errors.New("current release receipts disagree on one block hash")
+		}
+	}
+	if actionID != "evm.coordinator-proxy" {
+		if updated.CoordinatorEventStartBlock != 0 {
+			if _, err := contractDeploymentEventSyncBlock(&updated); err != nil {
+				return err
+			}
+		}
+		*manifest = updated
+		return nil
+	}
+	if replacementProbe || receipt.ContractAddress != updated.CoordinatorProxy {
+		return errors.New("coordinator proxy receipt created another contract")
+	}
+	switch {
+	case updated.CoordinatorEventStartBlock == 0:
+		updated.CoordinatorEventStartBlock = block
+		updated.CoordinatorEventStartBlockHash = blockHash
+	case updated.CoordinatorEventStartBlock != block || !strings.EqualFold(updated.CoordinatorEventStartBlockHash, blockHash):
+		return errors.New("coordinator proxy receipt conflicts with its event-sync boundary")
+	}
+	if _, err := contractDeploymentEventSyncBlock(&updated); err != nil {
+		return err
+	}
+	*manifest = updated
+	return nil
+}
+
+// Resolves one exact approved CREATE from the authenticated journal. Repeated
+// finalization, a foreign receipt, or conflicting coordinates are ambiguous
+// evidence and must fail before another deployment transaction is attempted.
+func finalizedContractCreationReceipt(ctx context.Context, reader contractCreationReader, finalized ChainHead, deploymentID string, action Action, address common.Address, entries []JournalEntry, allowedPlanHashes map[string]bool) (*types.Receipt, error) {
+	if ctx == nil || reader == nil || deploymentID == "" || action.ID == "" || action.IntentHash == "" || address == (common.Address{}) || len(allowedPlanHashes) == 0 {
+		return nil, errors.New("contract CREATE receipt context is incomplete")
+	}
+	if action.Parameters["expected_transaction_to"] != "create" || !common.IsHexAddress(action.Parameters["expected_created_address"]) || common.HexToAddress(action.Parameters["expected_created_address"]) != address {
+		return nil, fmt.Errorf("action %s does not approve CREATE at %s", action.ID, address)
+	}
+	var matched *JournalEntry
+	for _, entry := range entries {
+		if entry.DeploymentID != deploymentID || !allowedPlanHashes[entry.PlanHash] || entry.ActionID != action.ID || !actionAcceptsIntent(action, entry.IntentHash) || entry.Stage != StageFinalized {
+			continue
+		}
+		if matched != nil {
+			return nil, fmt.Errorf("action %s has duplicate or conflicting finalized CREATE evidence", action.ID)
+		}
+		transactionHash, err := decodeHex32("contract CREATE transaction hash", entry.TransactionHash)
+		if err != nil || transactionHash == ([32]byte{}) {
+			return nil, stateMismatchError(err, "action %s has an invalid finalized CREATE transaction hash", action.ID)
+		}
+		if entry.BlockNumber == 0 {
+			return nil, fmt.Errorf("action %s has no finalized CREATE block", action.ID)
+		}
+		if err := validateContractDeploymentCheckpoint("contract CREATE", entry.BlockNumber, entry.BlockHash); err != nil {
+			return nil, err
+		}
+		matched = &entry
+	}
+	if matched == nil {
+		return nil, nil
+	}
+	checkpoint := ChainHead{Number: matched.BlockNumber, Hash: matched.BlockHash}
+	if err := verifyEVMCheckpointFromReader(ctx, reader, finalized, checkpoint); err != nil {
+		return nil, fmt.Errorf("action %s finalized CREATE checkpoint: %w", action.ID, err)
+	}
+	receipt, err := reader.TransactionReceipt(ctx, common.HexToHash(matched.TransactionHash))
+	if err != nil {
+		return nil, fmt.Errorf("action %s finalized CREATE receipt: %w", action.ID, err)
+	}
+	if !receiptMatchesEvidence(finalized, receipt, matched.TransactionHash, matched.BlockNumber, matched.BlockHash) || receipt.ContractAddress != address {
+		return nil, fmt.Errorf("action %s CREATE receipt differs from its approved address or finalized journal evidence", action.ID)
+	}
+	transaction, pending, err := reader.TransactionByHash(ctx, receipt.TxHash)
+	if err != nil {
+		return nil, fmt.Errorf("action %s finalized CREATE transaction: %w", action.ID, err)
+	}
+	chainID := new(big.Int).SetUint64(testnetChainID)
+	if transaction == nil || pending || transaction.Hash() != receipt.TxHash || !transaction.Protected() || transaction.ChainId().Cmp(chainID) != 0 {
+		return nil, fmt.Errorf("action %s CREATE transaction has another hash, chain, or inclusion state", action.ID)
+	}
+	signer, err := types.Sender(types.LatestSignerForChainID(chainID), transaction)
+	if err != nil {
+		return nil, fmt.Errorf("action %s CREATE transaction signer: %w", action.ID, err)
+	}
+	if err := validateApprovedEVMTransactionFields(action, signer, transaction.Nonce(), transaction.To(), transaction.Value(), transaction.Data()); err != nil {
+		return nil, fmt.Errorf("action %s CREATE transaction approval: %w", action.ID, err)
+	}
+	return receipt, nil
+}
+
+// The receipt binds inclusion while signed transaction bytes authenticate the
+// original initializer, sender, nonce, target, and value against the approval.
+type contractCreationReader interface {
+	evmReceiptFinalityReader
+	TransactionByHash(context.Context, common.Hash) (*types.Transaction, bool, error)
+}
+
+// Adds finalized code observation so an empty manifest is distinguishable
+// from a process crash after CREATE but before the manifest was saved.
+type contractDeploymentBoundaryReader interface {
+	contractCreationReader
+	CodeAt(context.Context, common.Address, *big.Int) ([]byte, error)
+}
+
+// Authenticates the original proxy boundary using canonical finalized state
+// and one approved journal CREATE. A partial deployment without proxy code
+// remains resumable; deployed code without matching evidence fails closed.
+func reconcileContractDeploymentEventBoundary(ctx context.Context, reader contractDeploymentBoundaryReader, manifest *ContractDeployment, entries []JournalEntry, plan *SetupPlan) (bool, error) {
+	if ctx == nil || reader == nil || manifest == nil || manifest.DeploymentID == "" || manifest.CoordinatorProxy == (common.Address{}) || plan == nil {
+		return false, errors.New("contract deployment event-boundary reconciliation is unavailable")
+	}
+	if err := validateContractDeploymentCheckpoint("current release", manifest.DeployBlock, manifest.DeployBlockHash); err != nil {
+		return false, err
+	}
+	if err := validateContractDeploymentCheckpoint("coordinator event start", manifest.CoordinatorEventStartBlock, manifest.CoordinatorEventStartBlockHash); err != nil {
+		return false, err
+	}
+	finalized, err := finalizedEVMHeadFromReader(ctx, reader)
+	if err != nil {
+		return false, fmt.Errorf("coordinator event-boundary finalized head: %w", err)
+	}
+	if manifest.DeployBlock != 0 {
+		checkpoint := ChainHead{Number: manifest.DeployBlock, Hash: manifest.DeployBlockHash}
+		if err := verifyEVMCheckpointFromReader(ctx, reader, finalized, checkpoint); err != nil {
+			return false, fmt.Errorf("current release checkpoint: %w", err)
+		}
+	}
+	code, err := reader.CodeAt(ctx, manifest.CoordinatorProxy, new(big.Int).SetUint64(finalized.Number))
+	if err != nil {
+		return false, fmt.Errorf("coordinator event-boundary proxy code: %w", err)
+	}
+	var coordinatorReceipt *types.Receipt
+	if len(code) > 0 || len(entries) > 0 {
+		action, err := exactPlanActionByID(plan, "evm.coordinator-proxy")
+		if err != nil {
+			return false, err
+		}
+		coordinatorReceipt, err = finalizedContractCreationReceipt(ctx, reader, finalized, manifest.DeploymentID, action, manifest.CoordinatorProxy, entries, plan.allowedPlanHashes())
+		if err != nil {
+			return false, err
+		}
+	}
+	if len(code) == 0 {
+		if coordinatorReceipt != nil || manifest.CoordinatorEventStartBlock != 0 {
+			return false, errors.New("observed coordinator proxy has no finalized runtime code")
+		}
+		return false, nil
+	}
+	if coordinatorReceipt == nil {
+		return false, errors.New("observed contract deployment has no matching finalized coordinator proxy CREATE receipt")
+	}
+	runtimeHashes, err := normalizedDeploymentRuntimeHashes(plan.Deployment)
+	if err != nil || !strings.EqualFold(runtimeHashes[manifest.CoordinatorProxy], crypto.Keccak256Hash(code).Hex()) {
+		return false, stateMismatchError(err, "coordinator event-boundary proxy runtime differs from the approved deployment")
+	}
+	beforeBlock, beforeHash := manifest.CoordinatorEventStartBlock, manifest.CoordinatorEventStartBlockHash
+	beforeReleaseBlock, beforeReleaseHash := manifest.DeployBlock, manifest.DeployBlockHash
+	if err := recordContractDeploymentReceipt(manifest, "evm.coordinator-proxy", coordinatorReceipt, false); err != nil {
+		return false, err
+	}
+	changed := beforeBlock != manifest.CoordinatorEventStartBlock || !strings.EqualFold(beforeHash, manifest.CoordinatorEventStartBlockHash) || beforeReleaseBlock != manifest.DeployBlock || !strings.EqualFold(beforeReleaseHash, manifest.DeployBlockHash)
+	return changed, nil
+}
+
 // Remove observation fields which advance after deployment while retaining
 // every address, nonce, and expected runtime hash approved before execution.
 func contractDeploymentIdentity(manifest ContractDeployment) ContractDeployment {
 	manifest.DeployBlock = 0
 	manifest.DeployBlockHash = ""
+	manifest.CoordinatorEventStartBlock = 0
+	manifest.CoordinatorEventStartBlockHash = ""
 	return manifest
 }
 
@@ -1135,6 +1371,16 @@ func (self ethEVMReceiptFinalityReader) EVMBlockByNumber(ctx context.Context, nu
 
 func (self ethEVMReceiptFinalityReader) TransactionReceipt(ctx context.Context, hash common.Hash) (*types.Receipt, error) {
 	return self.client.TransactionReceipt(ctx, hash)
+}
+
+// Fetches signed bytes by their receipt-bound transaction identity.
+func (self ethEVMReceiptFinalityReader) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
+	return self.client.TransactionByHash(ctx, hash)
+}
+
+// Reads code at the same finalized height used to authenticate CREATE receipts.
+func (self ethEVMReceiptFinalityReader) CodeAt(ctx context.Context, address common.Address, block *big.Int) ([]byte, error) {
+	return self.client.CodeAt(ctx, address, block)
 }
 
 // Read one receipt, the EVM finalized head, and the canonical EVM RPC

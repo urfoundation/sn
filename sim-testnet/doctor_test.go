@@ -52,6 +52,19 @@ func TestFinalizedEVMEventLogProbeMatchesProductionWindow(t *testing.T) {
 	}
 }
 
+// The operational capture path is always hard; only an independent public
+// fallback may truthfully declare itself receipt-only.
+func TestEVMEventLogCheckRequirementFollowsEndpointRoleAndManifest(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	if !evmEventLogCheckRequired(cfg, "operational") || evmEventLogCheckRequired(cfg, "public") || evmEventLogCheckRequired(cfg, "unknown") {
+		t.Fatal("receipt-only public manifest produced the wrong event-log requirements")
+	}
+	cfg.Public.Chain.PublicFallbackAllowsEventIndexing = true
+	if !evmEventLogCheckRequired(cfg, "operational") || !evmEventLogCheckRequired(cfg, "public") || evmEventLogCheckRequired(nil, "public") {
+		t.Fatal("bounded event-indexing manifest produced the wrong event-log requirements")
+	}
+}
+
 func TestReleaseRequiredToolsIncludeCapabilityInstallerAndNoninteractivePrivilegeBoundary(t *testing.T) {
 	root := strings.Join(releaseRequiredTools(0), ",")
 	if root != "go,git,docker,setcap,getcap" {
@@ -222,18 +235,18 @@ func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *te
 }
 
 func TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding(t *testing.T) {
-	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":453,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
+	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":454,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
 	version, err := decodeRuntimeVersionIdentity(raw)
 	if err != nil {
 		t.Fatalf("authoritative runtime version was not decoded: %v", err)
 	}
-	if err := validateRuntimeVersionIdentity(version, 453, 1, 1); err != nil {
+	if err := validateRuntimeVersionIdentity(version, reviewedRuntimeSpecVersion, reviewedRuntimeTransactionVersion, reviewedRuntimeStateVersion); err != nil {
 		t.Fatalf("reviewed runtime identity was rejected: %v", err)
 	}
 }
 
 func TestRuntimeVersionIdentityRejectsAdjacentDrift(t *testing.T) {
-	valid := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}
+	valid := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: reviewedRuntimeSpecVersion, TransactionVersion: reviewedRuntimeTransactionVersion, StateVersion: reviewedRuntimeStateVersion}
 	tests := []struct {
 		name   string
 		mutate func(*runtimeVersionIdentity)
@@ -247,7 +260,7 @@ func TestRuntimeVersionIdentityRejectsAdjacentDrift(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			drifted := valid
 			test.mutate(&drifted)
-			if err := validateRuntimeVersionIdentity(drifted, 453, 1, 1); err == nil {
+			if err := validateRuntimeVersionIdentity(drifted, reviewedRuntimeSpecVersion, reviewedRuntimeTransactionVersion, reviewedRuntimeStateVersion); err == nil {
 				t.Fatal("runtime identity drift was accepted")
 			}
 		})
@@ -621,6 +634,7 @@ func TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly(t *testing.T) {
 	}{
 		{451, "0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08", "0xeecd7e7c00377caec23c3dc754fd621963cc456fa5d02a4f66ff267b0494bd9d"},
 		{452, "0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc", "0x2e1d4f992a978fdd58652c8cf434c26bb8f89170e6a0fdbc9362b29e8fe8a835"},
+		{453, "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4", "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"},
 	} {
 		version := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: test.spec, TransactionVersion: 1, StateVersion: 1}
 		artifact, ok := reviewedHistoricalRuntimeArtifact(version)
@@ -633,11 +647,46 @@ func TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly(t *testing.T) {
 		{SpecName: "other", SpecVersion: 451, TransactionVersion: 1, StateVersion: 1},
 		{SpecName: "node-subtensor", SpecVersion: 451, TransactionVersion: 2, StateVersion: 1},
 		{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1, StateVersion: 2},
-		{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1},
+		{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1},
 	} {
 		if _, ok := reviewedHistoricalRuntimeArtifact(version); ok {
 			t.Errorf("unreviewed historical identity was accepted: %+v", version)
 		}
+	}
+}
+
+// The release-history reader needs one bounded provider cache entry for the
+// active runtime and each exact predecessor carried by the attempt journal.
+func TestReleaseHistoryRuntimeArtifactsCoverExactFourVersionDomain(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	artifacts, err := releaseHistoryRuntimeArtifacts(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSpecs := []uint32{454, 451, 452, 453}
+	if len(artifacts) != len(wantSpecs) {
+		t.Fatalf("history artifacts=%d, want %d", len(artifacts), len(wantSpecs))
+	}
+	seenSpecBools := map[uint32]bool{}
+	for index, artifact := range artifacts {
+		if artifact.Version.SpecName != "node-subtensor" ||
+			artifact.Version.SpecVersion != wantSpecs[index] ||
+			artifact.Version.TransactionVersion != 1 || artifact.Version.StateVersion != 1 {
+			t.Errorf("history artifact %d identity=%+v, want node-subtensor/%d/1/1", index, artifact.Version, wantSpecs[index])
+		}
+		if seenSpecBools[artifact.Version.SpecVersion] {
+			t.Errorf("history artifact repeats runtime %d", artifact.Version.SpecVersion)
+		}
+		seenSpecBools[artifact.Version.SpecVersion] = true
+		if err := validateRuntimeCodeHash(artifact.CodeHash, artifact.CodeHash); err != nil {
+			t.Errorf("history artifact %d code hash: %v", index, err)
+		}
+		if err := validateRuntimeMetadataHash(artifact.MetadataHash, artifact.MetadataHash); err != nil {
+			t.Errorf("history artifact %d metadata hash: %v", index, err)
+		}
+	}
+	if artifacts[0].CodeHash != reviewedRuntimeCodeHash || artifacts[0].MetadataHash != reviewedRuntimeMetadataHash {
+		t.Fatalf("active history artifact does not match reviewed v454: %+v", artifacts[0])
 	}
 }
 

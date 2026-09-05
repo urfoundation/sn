@@ -26,9 +26,28 @@ import (
 )
 
 const (
-	releaseSnapshotStartupAttempts   = 5
-	releaseSnapshotStartupRetryDelay = 2 * time.Second
+	releaseSnapshotStartupAttempts    = 5
+	releaseSnapshotStartupRetryDelay  = 2 * time.Second
+	releaseExpectedBlockSeconds       = 12
+	releaseNativeAuthenticationBlocks = 10
+	releaseNativePollingWindows       = 4
 )
+
+// releaseNativeEndpointTimeout leaves room for a complete WebSocket dial,
+// metadata download, and exact runtime authentication. The public profile
+// supplies a 12-second block target; config polling may request a longer
+// recovery window, while a caller's own deadline still clamps this bound.
+func releaseNativeEndpointTimeout(cfg *ReleaseConfig) time.Duration {
+	blockBudget := time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks) * time.Second
+	if cfg == nil || cfg.PollSeconds <= 0 {
+		return blockBudget
+	}
+	pollBudget := time.Duration(cfg.PollSeconds*releaseNativePollingWindows) * time.Second
+	if pollBudget > blockBudget {
+		return pollBudget
+	}
+	return blockBudget
+}
 
 // Injectable coherent snapshot read used by deterministic retry tests.
 type releaseSnapshotLoader func(context.Context) (*ReleaseSnapshot, error)
@@ -218,20 +237,20 @@ func loadReleaseAttemptState(cfg *ReleaseConfig, op OperatorConfig, validatorUID
 	return &releaseAttemptState{stats: stats, ledger: ledger, store: store}, nil
 }
 
-func releasePriorSettlementBoundary(chain *ChainClient, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
-	if chain == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() || snapshot.Epoch.Sign() == 0 {
+func releasePriorSettlementBoundary(ctx context.Context, chain *ChainClient, snapshot *ReleaseSnapshot) (AttemptBoundary, error) {
+	if ctx == nil || chain == nil || snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() || snapshot.Epoch.Sign() == 0 {
 		return AttemptBoundary{}, errors.New("cannot resolve the prior settlement boundary")
 	}
-	startBlock, err := chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, snapshot.Epoch)
+	startBlock, err := chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
 	if err != nil || startBlock == 0 {
 		return AttemptBoundary{}, fmt.Errorf("current settlement start block: %w", err)
 	}
 	block := startBlock - 1
-	hash, err := chain.BlockHash(block)
+	hash, err := chain.BlockHashContext(ctx, block)
 	if err != nil {
 		return AttemptBoundary{}, fmt.Errorf("prior settlement terminal block: %w", err)
 	}
-	epoch, err := chainViewAtContext(context.Background(), chain, block, chain.coordinator.PackCurrentEpoch(), chain.coordinator.UnpackCurrentEpoch)
+	epoch, err := chainViewAtHashContext(ctx, chain, block, hash, chain.coordinator.PackCurrentEpoch(), chain.coordinator.UnpackCurrentEpoch)
 	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64()+1 != snapshot.Epoch.Uint64() {
 		return AttemptBoundary{}, errors.New("prior settlement terminal block has the wrong epoch")
 	}
@@ -343,25 +362,38 @@ func startReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op OperatorCo
 	}, nil
 }
 
-func dialPinnedNative(cfg *ReleaseConfig) (*crv4.Chain, error) {
+// dialPinnedNative tries ordered release endpoints with an independent bound
+// for each context-aware dial and immutable runtime authentication attempt.
+func dialPinnedNative(ctx context.Context, cfg *ReleaseConfig) (*crv4.Chain, error) {
+	if ctx == nil || cfg == nil {
+		return nil, errors.New("pinned native dial context is incomplete")
+	}
 	var errs []error
 	wantGenesis, _ := parseHash32("genesis_hash", cfg.GenesisHash)
 	for _, endpoint := range cfg.Substrate {
-		chain, err := crv4.DialChain(endpoint)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		endpointCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(cfg))
+		chain, err := crv4.DialChainContext(endpointCtx, endpoint)
 		if err != nil {
+			cancel()
 			errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
 			continue
 		}
 		if chain.GenesisHash != typesHash(wantGenesis) {
+			cancel()
 			chain.API.Client.Close()
 			errs = append(errs, fmt.Errorf("%s: genesis does not match release pin", endpoint))
 			continue
 		}
-		if _, err := authenticatePinnedNativeRuntime(chain, cfg); err != nil {
+		if _, err := authenticatePinnedNativeRuntimeContext(endpointCtx, chain, cfg); err != nil {
+			cancel()
 			chain.API.Client.Close()
 			errs = append(errs, fmt.Errorf("%s: runtime identity does not match release pin: %w", endpoint, err))
 			continue
 		}
+		cancel()
 		return chain, nil
 	}
 	return nil, fmt.Errorf("no pinned Substrate endpoint answered: %w", errors.Join(errs...))
@@ -387,12 +419,12 @@ func RunRelease(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	chain, err := DialReleaseChain(cfg.RPC, common.HexToAddress(cfg.Coordinator))
+	chain, err := DialReleaseChainContext(ctx, cfg.RPC, common.HexToAddress(cfg.Coordinator))
 	if err != nil {
 		return err
 	}
 	defer chain.Close()
-	native, err := dialPinnedNative(cfg)
+	native, err := dialPinnedNative(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -404,7 +436,7 @@ func RunRelease(ctx context.Context, configPath string) error {
 		return err
 	}
 	settlementEpoch.Store(snapshot.Epoch.Uint64())
-	validatorUID, found, err := chain.FindUidByHotkeyAt(snapshot.BlockNumber, cfg.Netuid, hotkey.PublicKey())
+	validatorUID, found, err := chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
 	if err != nil || !found {
 		return fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d: %w", snapshot.BlockNumber, err)
 	}
@@ -427,7 +459,7 @@ func RunRelease(ctx context.Context, configPath string) error {
 	var terminalBoundary AttemptBoundary
 	for _, participant := range settlementParticipants {
 		if participant.Stats.requiresSettlementAdvance(snapshot.Epoch.Uint64()) && participant.Stats.settlementEpochKnown {
-			terminalBoundary, err = releasePriorSettlementBoundary(chain, snapshot)
+			terminalBoundary, err = releasePriorSettlementBoundary(ctx, chain, snapshot)
 			if err != nil {
 				return err
 			}

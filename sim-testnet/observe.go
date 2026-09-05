@@ -873,12 +873,21 @@ func mergeAuthenticatedCampaignFiles(sources ...map[string][]byte) (map[string][
 	return result, nil
 }
 
-func verifyPublicFinalSemanticEvidence(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string) error {
-	reader, err := NewPublicFinalSemanticChainReader(ctx, public, evidence, evidenceURI)
-	if err != nil {
-		return err
+// Replays public state only after authenticated artifact closure has sealed
+// the exact evidence snapshot selected from the campaign graph.
+func verifyPublicFinalSemanticEvidenceWithArtifacts(ctx context.Context, public *PublicDeploymentManifest, evidence *FinalSemanticEvidence, evidenceURI string, loader FinalArtifactLoader) error {
+	var reader *PublicFinalSemanticChainReader
+	verifyErr := VerifyFinalSemanticEvidenceWithArtifactsOnChain(ctx, evidence, loader, func(factoryContext context.Context, snapshot *FinalSemanticEvidence) (FinalSemanticChainReader, error) {
+		constructed, err := NewPublicFinalSemanticChainReader(factoryContext, public, snapshot, evidenceURI)
+		if err != nil {
+			return nil, err
+		}
+		reader = constructed
+		return constructed, nil
+	})
+	if reader == nil {
+		return verifyErr
 	}
-	verifyErr := VerifyFinalSemanticEvidenceOnChain(ctx, evidence, reader)
 	return errors.Join(verifyErr, reader.Close())
 }
 
@@ -1026,11 +1035,14 @@ func (self *liveScenarioProbe) verifyCampaignFinalSemanticEvidence(ctx context.C
 			return nil, err
 		}
 	}
-	verify := self.finalSemanticVerify
-	if verify == nil {
-		verify = verifyPublicFinalSemanticEvidence
+	var verifyErr error
+	if self.finalSemanticVerify == nil {
+		verifyErr = verifyPublicFinalSemanticEvidenceWithArtifacts(ctx, public, &semantic, semantic.PublicVerification.EvidenceURI, loader)
+	} else {
+		verifyErr = self.finalSemanticVerify(ctx, public, &semantic, semantic.PublicVerification.EvidenceURI)
 	}
-	if err := verify(ctx, public, &semantic, semantic.PublicVerification.EvidenceURI); err != nil {
+	if verifyErr != nil {
+		err := verifyErr
 		return nil, fmt.Errorf("final semantic public archive replay: %w", err)
 	}
 	markdown, err := RenderFinalSemanticEvidenceMarkdown(&semantic)
@@ -1927,10 +1939,25 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 	if upgrade.Implementation != (common.Address{}) {
 		addresses = append(addresses, upgrade.Implementation)
 	}
+	var fleetBatcher common.Address
+	var fleetBatcherRuntimeHash string
+	if plan, planErr := readPersistedPlan(stateDir); planErr == nil {
+		if plan.DeploymentID != deployment.DeploymentID {
+			return nil, errors.New("persisted plan deployment differs from observed contract deployment")
+		}
+		fleetBatcher, fleetBatcherRuntimeHash, planErr = finalPlanFleetBatcher(plan)
+		if planErr != nil {
+			return nil, fmt.Errorf("persisted plan fleet batcher runtime: %w", planErr)
+		}
+		addresses = append(addresses, fleetBatcher)
+	}
 	runtimeDeployment := *deployment
+	runtimeDeployment.RuntimeHashes = cloneStrings(deployment.RuntimeHashes)
 	if probe != deployment.PrecompileProbe {
-		runtimeDeployment.RuntimeHashes = cloneStrings(deployment.RuntimeHashes)
 		runtimeDeployment.RuntimeHashes[probe.Hex()] = baseline.ReplacementPrecompileProbeHash
+	}
+	if fleetBatcher != (common.Address{}) {
+		runtimeDeployment.RuntimeHashes[fleetBatcher.Hex()] = fleetBatcherRuntimeHash
 	}
 	hashes, matches, err := inspectRuntimeCodeAt(ctx, client, &runtimeDeployment, upgrade, addresses, head.Number)
 	if err != nil {
@@ -2460,17 +2487,18 @@ func decodeEVMRPCBlock(block *evmRPCBlock, requested *big.Int) (ChainHead, error
 	if block == nil {
 		return ChainHead{}, ethereum.NotFound
 	}
-	parsed, ok := new(big.Int).SetString(strings.TrimPrefix(block.Number, "0x"), 16)
-	if !ok || !parsed.IsUint64() {
+	number, err := hexutil.DecodeUint64(block.Number)
+	if err != nil {
 		return ChainHead{}, fmt.Errorf("invalid EVM block number %q", block.Number)
 	}
-	if _, err := decodeHex32("EVM block hash", block.Hash); err != nil {
-		return ChainHead{}, err
+	var hash common.Hash
+	if err := hash.UnmarshalText([]byte(block.Hash)); err != nil || hash == (common.Hash{}) {
+		return ChainHead{}, fmt.Errorf("invalid EVM block hash %q", block.Hash)
 	}
-	if requested != nil && requested.Sign() >= 0 && parsed.Cmp(requested) != 0 {
-		return ChainHead{}, fmt.Errorf("EVM block response number %d does not match request %s", parsed.Uint64(), requested)
+	if requested != nil && requested.Sign() >= 0 && (!requested.IsUint64() || number != requested.Uint64()) {
+		return ChainHead{}, fmt.Errorf("EVM block response number %d does not match request %s", number, requested)
 	}
-	return ChainHead{Number: parsed.Uint64(), Hash: strings.ToLower(block.Hash)}, nil
+	return ChainHead{Number: number, Hash: strings.ToLower(hash.Hex())}, nil
 }
 
 // Read the explicit number and hash returned by eth_getBlockByNumber.

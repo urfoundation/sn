@@ -1,5 +1,15 @@
 # UR Subnet release 1.0 finalization plan
 
+Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
+2026-09-05 06:20 UTC. The complete fleet/history fixture and miner/validator
+ordinary/race checks pass; the full simulator run exposed repaired evidence and
+deposit-validation gaps whose focused reruns are being completed. Source
+integration and core per-client payout attribution passed focused ordinary/race
+checks. Adjacent provider-reporting, strict failure handling and bounded
+evidence-test parallelism are being qualified before the frozen gates.
+Both live acceptance phases and FINAL.md remain.
+Historical results below are not approval for the current candidate.
+
 **Historical status (2026-09-02 UTC; superseded as a release approval):** release-1.0 implementation and the continuous
 61-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
 on netuid 521 installed and verified all 200 production fleets plus both
@@ -42,22 +52,59 @@ for both operators. The clean M0A replay, M0B/M1/M2/M3, and MR remain. After
 clean M0A, the scheduler-controlled public-chain evidence window is exactly
 3,004--4,380 blocks (10:00:48--14:36:00 at 12 seconds per block).
 
-**Current pre-freeze status (2026-09-04 UTC):** source commit `2519581` closes
-the launch-critical gate's late `abigen` discovery/version failure with one
-shared exact-v1.17.0 resolver, an early no-artifact preflight in both release
-gates, hermetic normal/race regression coverage, release-lock tool identity,
-and protocol-digest coverage of the generator. The canonical v1.17.0 tool
-produces byte-identical bindings. The clean source render produced release lock
-`sha256:811d3761a875674684b4b4af00853810684095b89a916528c6e49f9caec7449a`;
-its commit/push, producer rerun, complete aggregate gate, two-plan review and
-live campaign remain pending. The failed 16:21 UTC producer attempt had already
-passed runtime artifacts, validator/capture normal and race suites, and all 156
-Foundry tests before reaching the old late tool lookup. The 2026-09-02 records
-below are historical diagnosis and provenance, not approval for the current
-candidate. The exact continuation record is maintained in
-`FINALIZE-COMPLETE.md`; it becomes an immutable approval record only after the
-source freeze and both required gates, and `FINAL.md` must then supersede it
-with live evidence.
+**Current pre-freeze status (2026-09-04 UTC):** source commit `2519581` closed
+the launch-critical gate's late `abigen` discovery/version failure. Candidate
+`7a4d97e` then passed the runtime/metadata attestations, validator and lossless
+capture normal/race suites, all 156 Foundry tests, operator APIs,
+operator-proxy ordinary/race suites, and isolated PostgreSQL/Redis paths in the
+17:00 UTC producer run. Its final fence correctly rejected Connect moving from
+`fb888dc` to `0dd6ee2`; no testnet write occurred. Review of that generated
+policy update found and repaired missing per-feed content provenance, weak
+empty/skip tests, an inaccurate packed-record description, stale-feed
+inclusion, deprecated-feed fetch tolerance, and missing IPv6/feed-family
+floors. It also widened both release gates to the exact same 24 generated-data
+consumer tests, including Telegram reflector/fallback collision paths.
+
+Connect `b22ab0704f6dc3ecf80e91b31b5c7fafca097223` (tree
+`000160e9679bb1636621d3b6d990f920866ca582`) is pushed. The isolated full
+Connect race had exposed a deterministic test-carrier mismatch: an early
+`WaitingForSdpOffer` reached the in-memory receiver before stream registration,
+where the helper panicked although production drops that arrival. An adjacent
+raw `net.Conn` smoke also assumed byte-stream ordering while production SCTP is
+reliable-unordered; one observed 1 MiB transfer contained four intact 64 KiB
+segments in a valid different order. The repair drops direct missing
+registrations, resolves delayed registrations at dispatch, bounds delayed
+ownership at 257 frames, joins racing senders on cancellation, drains every
+pooled frame, and confines ordered SCTP to the raw-stream smoke while the
+default-carrier test validates an exact message multiset. Deterministic
+registration, missing-drop, full-capacity, cancellation and pooled-witness
+regressions passed 20 times normally and under race; the three actual
+fast-path/WebRTC tests passed 20 times normally (24.041s) and under race
+(32.606s). Independent canonical 10-run ordinary/race replays, vet and patch
+checks pass, and a second read-only concurrency/ownership audit found no
+blocker. The aggregate gate now requires unsharded default-order ordinary/race
+Connect certificates plus fixed alternate race order `4535211000`; both gates
+also pin the complete affected P2P selector. These frozen certificates remain
+pending. The earlier package timeout is not attributed to
+`TestWeightedShuffle`, which passes alone; the corrected unsharded deadline is
+30 minutes.
+
+The final semantic candidate also captures the exact stopped
+`adversaries.json` as an authenticated closed-graph artifact and renders its
+hash, matrix hash, concurrency interval, exact 61-vector census and 33/12/10/6
+execution-mode breakdown directly in `FINAL.md`. Missing, truncated,
+mismatched or tampered raw campaign data now fails collection, source replay or
+artifact verification. Focused ordinary/race, closed-publication, full render,
+vet and patch checks pass. The twelve-root pre-lock freeze passed at 18:12 UTC.
+The prior clean source render produced release lock
+`sha256:998a86a4c3806e63f7c1c056401b0cb3cefb7601d6579b96f6bfddcbf2135cb5`;
+it is now a superseded pre-fix observation and must be refreshed after these
+source changes. The SN candidate commit/push, refreshed lock, frozen producer
+and aggregate gates, two-plan review
+and live campaign remain pending. The 2026-09-02 records below are historical
+diagnosis and provenance, not approval for the current candidate. The exact
+continuation record is maintained in `FINALIZE-COMPLETE.md`; `FINAL.md` must
+supersede it with independently replayable live evidence.
 
 **Normative product specification:** `WHITEPAPER.md` v1.0 and the non-parked parts of `VALIDATOR.md`
 **Target:** `sim-testnet` reproducibly validates and configures the supplied existing Bittensor testnet subnet, deploys the release contracts, and leaves a value-capped, fully working topology running—operator(s), miners, validators, traffic, settlement, and claims—followed by a multi-epoch validation campaign and an evidence-backed release 1.0 go/no-go decision
@@ -151,7 +198,7 @@ source-current live-chain evidence is still pending the corrected M0A/M2 run.
 
 The public override is intentionally a lower assurance level. It selects a typed
 Substrate/EVM pair for all simulator managers and loopback workload proxies, pins
-runtime 453 by spec, transaction/state version and finalized Wasm code hash, and records
+runtime 454 by spec, transaction/state version and finalized Wasm code hash, and records
 `independent_rpc=false` in postconditions and public manifests. It is suitable for
 current-state acceptance, bounded event reads and testnet writes. It does not close
 the archive, sustained-load or physically independent observation gates; the complete
@@ -174,7 +221,7 @@ subnet/deployment rather than silently weakening the netuid-521 evidence.
 
 The release-1.0 implementation passed its original testnet preflight and bounded chain setup
 against the official public operational RPC pair at runtime 452. Its resume is now pinned
-to the subsequently deployed runtime 453. M0A is resumable but
+to the subsequently deployed runtime 454. M0A is resumable but
 not complete. Attempt 4 launched the complete live topology and challenger tournament,
 then correctly rejected its validator restart and zero verified trails. The campaign
 has not begun. It is not yet a testnet-validated release:
@@ -193,7 +240,7 @@ All 17 blockers found by the initial audit are addressed:
 |---|---|
 | Global validator quality | Versioned operator registry, isolated per-NO samples/statistics and exact `implied_usage × Q` vectors. |
 | One-client head binding | Canonical multi-client fleet manifests, Ed25519 client signatures, sr25519 hotkey signatures, finalized native commitments and live UID checks. |
-| EVM-mirror binding authorization | Runtime-453 sr25519 verifier plus commitment-oracle mirroring; normal Substrate hotkeys authorize fleets without owning an H160 mirror. |
+| EVM-mirror binding authorization | Runtime-454 sr25519 verifier plus commitment-oracle mirroring; normal Substrate hotkeys authorize fleets without owning an H160 mirror. |
 | Cross-NO deposit theft | Atomic signer/nonce/policy-bound deposit and conviction calls; exact received-funds accounting and adversarial tests. |
 | Late-roll emission attribution | One boundary capture per pool/epoch with explicit defer/carry transitions and conservation invariants. |
 | Upgradeable custody | Non-upgradeable `STReserveSink` and `STSettlementVault`; only the coordination layer is UUPS. Finalized claims remain outside upgrade/pause/admin reach. |
@@ -202,7 +249,7 @@ All 17 blockers found by the initial audit are addressed:
 | Single-operator validator | Multi-NO authenticated endpoints, per-NO trail stores, finality-bound inputs, independent intent journal and per-NO quality output. |
 | Unsafe event ingestion | Block-hash checkpoints, confirmation/finality gates, rewind/replay, explicit deployment origin and durable transaction intent/recovery. |
 | Unexercised CRv4 lifecycle | Exact rational normalization, policy/hash gates, commit/reveal/finality intent states, restart recovery and live-campaign assertions. Funded live proof remains M0B. |
-| Obsolete Subtensor image | `xops` independently pins the reviewed node image and expected on-chain runtime 453, with archive retention, required safe RPC gateway methods and Ansible regression tests. |
+| Obsolete Subtensor image | `xops` independently pins the reviewed node image while the public acceptance path pins on-chain runtime 454, with archive retention, required safe RPC gateway methods and Ansible regression tests. |
 | Zero/disabled testnet config | Strict `testnet-` launch schema and materializer. Wallet/password references, netuid, local origins and three spend ceilings are populated; generated deployment values are written to an isolated runtime profile. |
 | Missing verify key | Harness-derived, versioned per-operator verify keys with rotation/overlap and signed evidence; no secret enters the public manifest. |
 | Distinguishable poisoning | Full-depth routable shadow/padding paths with uniform response surface and constant-envelope failure handling, covered by operator tests. |
@@ -214,13 +261,13 @@ All 17 blockers found by the initial audit are addressed:
 | Gate | State | Principal evidence |
 |---|---|---|
 | F0 specification | Implemented | Whitepaper v1.0, `docs/spec/`, canonical Go/Solidity encodings and golden-vector tests. |
-| F1 infrastructure | Implemented locally | Digest-pinned node binary, runtime-453 identity/archive/RPC Ansible configuration, public operational override, capability doctor and regression tests. Private finalized catch-up/canonical-head proof remains a mainnet-promotion gate. |
+| F1 infrastructure | Implemented locally | Digest-pinned node binary, runtime-454 identity/archive/RPC configuration, public operational override, capability doctor and regression tests. Private finalized catch-up/canonical-head proof remains a mainnet-promotion gate. |
 | F2 contracts | Implemented and locally verified | Split reserve/vault/coordinator deployment, generated ABIs/bytecode, and a passing Foundry suite including fuzz and stateful invariants. |
 | F3 operator | Implemented and locally verified | Finality-safe index, exact artifacts, public history, multi-NO verification, key rotation, poisoning and proxy attribution/release cleanup. DB-backed launch proof is M1. |
 | F4 validator | Implemented and locally verified | Multi-NO sampling, failure attribution, exact CRv4, EMA head scoring, masks and durable finalized intent lifecycle. |
 | F5 miner | Implemented and locally verified | Fleet binding/commitment lifecycle, payout verification, finality-safe claims and persistent claim daemon. |
 | F6 harness/operations | Implemented and locally verified | Source/artifact lock, bounded plans, wallet proof, setup convergence, persistent supervision, evidence publication, fault scenarios, production soak and retirement. |
-| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | The historical runtime-451/452 doctor and bounded setup completed, but resume is authorized only after the runtime-453 doctor authenticates spec/transaction/state versions, Wasm and metadata at one finalized hash. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 33 managed child processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic and cryptographically verified fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. The adjusted aggregate gate, focused normal/race tests and full 1,000-miner renderer pass; implementation checkpoints SN `69259be` and Connect `d73d7f9` are pushed for exact replay. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 360-block M3 epochs and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
+| M0A-M3/MR | Public-RPC M0A chain setup complete; clean semantic topology replay pending | The historical runtime-451/452 setup completed and carried receipts are restricted to exact v451/v452/v453 identities, but resume is authorized only after the runtime-454 doctor authenticates spec/transaction/state versions, Wasm and metadata at one finalized hash. Attempt 4 used plan `0x4ea536…15c5a`, proved 1,000/1,000 historical receipts and all 2,204 carried actions, started all 33 managed child processes, finalized both challenger fleets and published evidence through both APIs. It was rejected because validator 2 restarted after a public-RPC deadline and neither validator produced a trail; 8,927 unknown-location classifications identified the provider-discovery root cause. The fixes cover complete loopback metadata, fair/cancellation-safe RPC pacing, coherent and retryable snapshots, lower public-mode polling load, bounded claim reconciliation, semantic and cryptographically verified fresh proofs, supervisor kernel-generation continuity, and reachable production Connect ingress. Each operator now owns a distinct loopback IP, UDP/443 and public UDP/53 (forwarded to service 4053), while only an owner-private byte-identical Connect copy receives `cap_net_bind_service`. Deterministic IP-SAN certificates use key/serial-separated derivation, the no-SNI IP path has an explicit server fallback, and real clients strictly append the simulator CA without replacing public pins. The adjusted aggregate gate, focused normal/race tests and full 1,000-miner renderer pass; the v454 exact-Wasm gate passes and current evidence-integrity/lineage qualification is active. The unit remains static/disabled with no install target, preserving the no-restart-across-host-reboot requirement. Phase 2 remains unstarted. PostgreSQL, Redis and MinIO health checks pass; the public Substrate/EVM RPCs are live. M0B/M1/M2, three complete 360-block M3 epochs and the mainnet-readiness audit remain pending. Final mainnet promotion additionally requires the overlay archive at head, peers, `isSyncing=false`, at most three finalized blocks of lag and canonical checkpoint agreement with an independent observer. |
 
 The original audit and acceptance plan follows. Statements in its
 “initial/current state” columns record the pre-implementation baseline. Dated
@@ -326,13 +373,15 @@ Later that day the official finalized endpoint advanced to spec 452 at block
 `0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc`.
 Exact bounded finalized-block `eth_getLogs` is available, but this does not imply
 archive retention or capacity for unbounded indexing. The active review is pinned
-to the [runtime-453 source commit](https://github.com/RaoFoundation/subtensor/tree/823bdcbc58a29f60b243be4737a7c72b34ac7d93),
-finalized Wasm code hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4`,
-and metadata hash `0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce`.
-The v453 source manifest and focused upstream Rust tests are mandatory; Terra's
-clean, source-pinned run passed all ten named regressions with none failed or
-ignored. Go decision models document release policy but do not execute FRAME
-dispatch or migration code.
+to the [runtime-454 source commit](https://github.com/RaoFoundation/subtensor/tree/14cde6410fe8ec81a940e290c56f94a632a0988d),
+finalized Wasm code hash `0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef`,
+and metadata hash `0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702`.
+The v454 source manifest, selected upstream Subtensor compatibility tests and live
+contract-filter conformance are mandatory. Those upstream checks happen to be
+implemented in Rust; no UR service or simulator component is written in Rust.
+Go decision models document release policy but do not execute FRAME dispatch
+or migration code. The exact v453 qualification is retained as historical
+compatibility evidence.
 The older v452 audit remains compatibility evidence for unchanged behavior, including
 the [call-frame change](https://github.com/RaoFoundation/subtensor/commit/4c5950391955dce7d6c905dfe4864da95cd93eed),
 the [v451 release merge](https://github.com/RaoFoundation/subtensor/pull/3126), and
@@ -350,7 +399,7 @@ checks before any further write.
 
 The release threat catalogue is the checked-in, canonically hashed
 [`docs/spec/adversarial-matrix-v1.json`](docs/spec/adversarial-matrix-v1.json).
-It has 55 mandatory rows: 12 live-safe exercises, 27 bounded emulations, ten
+It has 61 mandatory rows: 12 live-safe exercises, 33 bounded emulations, ten
 local-runtime-only attacks with continuous live sentinels, and six
 observation-only risks. A matrix row is incomplete unless it names sources,
 preconditions, execution mode, concurrent actors, oracle, metrics, stop
@@ -389,7 +438,7 @@ currently publishes eight advisories. All eight are explicit matrix inputs:
 | [GHSA-h98r-p37h-h4mv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-h98r-p37h-h4mv) | Fee-free weight block fill; reproduce only on the pinned local runtime, monitor live inclusion/RPC latency. |
 | [GHSA-m759-m8mv-q3m5](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-m759-m8mv-q3m5), [GHSA-qh57-vpv2-3fvp](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-qh57-vpv2-3fvp), [GHSA-xm63-2wwx-pm6w](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-xm63-2wwx-pm6w) | Restricted-proxy coldkey/identity/owner alias bypasses; exact local-runtime authorization tests plus live identity/runtime sentinels. No testnet actor touches a third-party proxy. |
 | [GHSA-vpjj-mhgr-cphg](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-vpjj-mhgr-cphg), [GHSA-wc2g-rc74-vgw3](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-wc2g-rc74-vgw3) | Hotkey cooldown and ChildkeyTake migration; local-runtime reproduction plus continuous generation/binding checks. |
-| [GHSA-rhmm-mqf8-v6gv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-rhmm-mqf8-v6gv) | Root coldkey-index bloat; retained v452 source review plus a bounded Go policy model and complete runtime-453 deployment identity pin. |
+| [GHSA-rhmm-mqf8-v6gv](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-rhmm-mqf8-v6gv) | Root coldkey-index bloat; retained v452 source review plus bounded Go policy models and complete runtime-454 deployment identity pin. |
 | [GHSA-6c95-q3r3-rgwq](https://github.com/RaoFoundation/subtensor/security/advisories/GHSA-6c95-q3r3-rgwq) | RootClaimed hotkey-swap watermark inflation; all root-destination cleanliness fields and future owed amount are modeled. |
 
 The archived Python SDK/transport repository has separate, recent
@@ -403,11 +452,12 @@ mistaken for Subtensor-runtime advisories:
 | [Plaintext unauthenticated Dendrite transport #3406](https://github.com/RaoFoundation/bittensor/issues/3406) | Release miners reject non-loopback `http://`/`ws://` operator origins, including one-shot flag overrides. Real loopback FINALs are signed and every canonical/signature mutation must fail. |
 | [Constant empty-field Synapse body hash #3407](https://github.com/RaoFoundation/bittensor/issues/3407) | Every field of a real valid FINAL is mutated independently; canonical validation plus validator/server signatures reject all mutations and the accepted constant-hash count remains zero. |
 
-Runtime v453 postdates the advisories' patched mainnet spec 419, but version
+Runtime v454 postdates the advisories' patched mainnet spec 419, but version
 ordering alone is not accepted as proof: source commit
-`823bdcbc58a29f60b243be4737a7c72b34ac7d93`, finalized Wasm code hash, runtime spec,
-transaction version, state version, exact metadata bytes, precompile behavior and
-focused upstream Rust regressions are release-locked together.
+`14cde6410fe8ec81a940e290c56f94a632a0988d`, finalized Wasm code hash
+`0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef`,
+runtime spec, transaction version, state version, exact metadata bytes, precompile behavior and
+selected upstream Subtensor compatibility regressions are release-locked together.
 
 Relevant open upstream issues were also reviewed, rather than silently treating
 an advisory-only search as exhaustive:
@@ -418,7 +468,7 @@ an advisory-only search as exhaustive:
 | [Depressed-reserve flow #2737](https://github.com/RaoFoundation/subtensor/issues/2737) and [partial coinbase swap accounting #2740](https://github.com/RaoFoundation/subtensor/issues/2740) | Live reserve/price minima plus a signed-flow model run continuously. Mainnet is no-go until the pinned runtime fixes these paths or an exact-runtime proof establishes that the deployed mechanism cannot reach them. |
 | [Invisible root-basket entitlement after unstake #3008](https://github.com/RaoFoundation/subtensor/issues/3008) | A continuous exact proportional-claim/remainder model now covers partial and complete exits, including uint64 boundaries. The release does not root-stake, and MR must independently prove every release coldkey has zero hidden root-basket entitlement; any future root path must atomically inventory and claim it. |
 | [Subnet eviction/first refusal #3024](https://github.com/RaoFoundation/subtensor/issues/3024) | Continuous UID and moving/spot-price sentinel. Mainnet requires a nonzero moving price, immunity/pruning-rank review and an alert/runbook before value launch. |
-| [Metagraph commitment field type confusion #3064](https://github.com/RaoFoundation/subtensor/issues/3064) | Continuous full-registration parser mutations cover `ResetBondsFlag`, multi-field values ending in SHA-256, truncation, trailing bytes and zero hashes. Runtime 453 retains the persisted v452 wire identifier and one-field SHA-256 SCALE shape; the release accepts only that exact compatibility encoding and never relies on a generic metagraph shape. |
+| [Metagraph commitment field type confusion #3064](https://github.com/RaoFoundation/subtensor/issues/3064) | Continuous full-registration parser mutations cover `ResetBondsFlag`, multi-field values ending in SHA-256, truncation, trailing bytes and zero hashes. Runtime 454 retains the persisted v452 wire identifier and one-field SHA-256 SCALE shape; the release accepts only that exact compatibility encoding and never relies on a generic metagraph shape. |
 | [Proxy staking without MEV shield #3066](https://github.com/RaoFoundation/subtensor/issues/3066) | A constant-product same-direction front-run model continuously records victim loss and proves a minimum-output bound rejects the hostile ordering. Testnet and mainnet release flows refuse unshielded proxy staking; direct 2-of-3 governance does not waive execution-price limits on any value-bearing swap. |
 
 Closed issues are regression evidence, not erased from the threat model. The
@@ -626,7 +676,12 @@ History design is now chosen for testnet:
 - The server API is the public history surface for every release artifact and receipt. Immutable bytes are stored through the existing `server/blob` abstraction in the already deployed MinIO bucket; the API exposes content-addressed retrieval and indexes artifacts by deployment, run, netuid, epoch, operator, validator, and finalized transaction.
 - The server's ST indexer and the independent `sim-testnet` journal both begin before the first contract deployment/registration action. They persist finalized block number/hash, relevant events/logs, transaction/extrinsic receipts, post-state, and artifact hashes. PostgreSQL is the query index; MinIO is the append-only evidence store. A detected gap or block-hash mismatch halts writers until reconciliation succeeds.
 - The selected operational Subtensor pair is the source for finality and current state, while a second endpoint verifies finalized heads and postconditions when an independent backend is available. Public override mode must record that it lacks this independence. The API/MinIO history does not replace live on-chain verification; it makes all evidence since the deployment boundary durable even when the node is pruned.
-- Public endpoints may be read-only fallbacks for head/runtime comparisons and receipt verification. They are not an event-indexing source: the public EVM endpoint denied `eth_getLogs` during this audit.
+- Public endpoints may be read-only fallbacks for head/runtime comparisons and
+  receipt verification. The official testnet EVM gateway also accepts the
+  harness's bounded explicit-block, address-scoped `eth_getLogs` shape, so
+  public-override acceptance may capture the campaign through its single
+  rate-limited egress. Broad or symbolic log filters remain denied, and this
+  capability is not archive-retention evidence.
 
 Add a deployment preflight and continuous probes for:
 
@@ -667,7 +722,7 @@ The reserve should be owned by a non-upgradeable one-way sink contract/coldkey d
 
 #### F2.2 Atomic deposits and conviction
 
-Eliminate shared unattributed treasury deltas. Before choosing the exact interface, execute a runtime-453 dust spike covering all available staking/precompile call directions from an EVM contract. Then select one of these, in order:
+Eliminate shared unattributed treasury deltas. Before choosing the exact interface, execute a runtime-454 dust spike covering all available staking/precompile call directions from an EVM contract. Then select one of these, in order:
 
 1. a single transaction in which the coordinator authenticates `noId` and pulls/moves exactly `amount` from that operator's scoped source; or
 2. a per-operator escrow/coldkey/hotkey whose delta cannot be claimed by another `noId` and whose intent includes amount, epoch, nonce, deadline, and funder; or
@@ -728,7 +783,7 @@ commitment_hash = 32 bytes
 Each client signs the payload with Ed25519; the registered hotkey signs it with sr25519. A relayer may submit it, so no EVM-mirror coldkey assumption is required. The coordinator verifies:
 
 - client signature via `0x402`;
-- hotkey signature via the runtime-453 sr25519 precompile (`0x403`);
+- hotkey signature via the runtime-454 sr25519 precompile (`0x403`);
 - live `(netuid, hotkey) -> UID` via Neuron `getUid` (`0x804`);
 - commitment hash equality with a commitment written by that hotkey through the Substrate commitments pallet; and
 - generation, effective epoch, expiry, and non-replay rules.
@@ -762,7 +817,7 @@ Required local test layers:
 - gas snapshots at maximum supported operators/fleet members/proof depth;
 - storage-layout checks for the coordinator;
 - cross-language Merkle/signature fixtures; and
-- a runtime-453 local fork/localnet suite using real precompile code, not `vm.etch` mocks alone.
+- a runtime-454 local fork/localnet suite using real precompile code, not `vm.etch` mocks alone.
 
 Run Slither/static analysis, dependency/license checks, bytecode/source verification, and an independent security review before the value cap exceeds dust.
 
@@ -878,7 +933,7 @@ Permissionless validators still need a legitimate UR network identity to perform
 
 #### F4.3 Chain-driven CRv4 lifecycle
 
-- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, the effective native `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state. For v453, compatibility-gate the retained hard-coded native no-cap value and persist/audit the signed policy cap separately.
+- Discover tempo, epoch schedule, reveal period, commit-reveal version, `WeightsVersionKey`, the effective native `MaxWeightsLimit`, permits, stake, validator trust, and live UID from finalized chain state. For the reviewed v454 runtime, compatibility-gate the retained hard-coded native no-cap value and persist/audit the signed policy cap separately.
 - Schedule from native epoch/boundary state, not a process-start wall-clock ticker.
 - Before commit, store the complete input artifact, uids/weights, payload bytes, timelock ciphertext, drand round, runtime versions, account nonce, and expected reveal window.
 - Submit, then track transaction pool, inclusion block/hash, finality, `TimelockedWeightsCommitted`/equivalent event/state, reveal, application, and resulting metagraph weights. A returned `author_submitExtrinsic` hash is not success.
@@ -943,7 +998,7 @@ Acceptance:
 
 Deliverables:
 
-- CI matrix for Go, Solidity format/build/test/fuzz/invariants, schemas/vectors, server integration, runtime-453 localnet, containers, Ansible lint/check mode, dependency review, secret scanning, and reproducible artifacts.
+- CI matrix for Go, Solidity format/build/test/fuzz/invariants, schemas/vectors, server integration, runtime-454 localnet, containers, Ansible lint/check mode, dependency review, secret scanning, and reproducible artifacts.
 - The complete `sim-testnet` Go program in section 8.1, including native subnet/contract setup, persistent process supervision, crash-resume journaling, release scenario, independent inspection, and analysis output.
 - Release manifest tying all repository commits, container digests, bytecode hashes, ABI/schema/policy hashes, runtime identity, and generated config.
 - Threat-model review covering owner/guardian/operator/validator/provider compromise, RPC equivocation, reorgs, MEV/front-running, nonce races, precompile/runtime upgrades, malicious artifacts, Sybil/shared IP, direct ingress spoof, poison distinguishability, and availability.
@@ -1005,14 +1060,14 @@ chain:
 
 runtime:
   spec_name: node-subtensor
-  spec_version: 453
+  spec_version: 454
   transaction_version: 1
   state_version: 1
   commit_reveal_version: 4
-  source_tag: v453
-  source_commit: "823bdcbc58a29f60b243be4737a7c72b34ac7d93"
-  code_hash: "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4"
-  metadata_hash: "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"
+  source_tag: v454
+  source_commit: "14cde6410fe8ec81a940e290c56f94a632a0988d"
+  code_hash: "0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef"
+  metadata_hash: "0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702"
   node_image: "ghcr.io/raofoundation/subtensor@sha256:3e37b8d9a4f3c60ba66652cae79fe54d81d868558fb0159842ff952eee5115de"
 
 rpc:
@@ -1021,7 +1076,7 @@ rpc:
   operational_mode: public-override
   public_substrate_override: "wss://test.finney.opentensor.ai:443"
   public_evm_override: "https://test.chain.opentensor.ai"
-  public_fallback_allows_event_indexing: false
+  public_fallback_allows_event_indexing: true
   finality_method: chain_getFinalizedHead
 
 evm_build:
@@ -1083,7 +1138,7 @@ policy:
 
   deposit:
     unit: rao_per_gib
-    # Runtime 453 retains rejection of reserve movements near 0.1 alpha on the live subnet;
+    # Runtime 454 retains rejection of reserve movements near 0.1 alpha on the live subnet;
     # ten alpha is the locked runtime-valid per-operator test envelope.
     epoch_cap_rao_per_operator: 10000000000
     total_test_campaign_cap_rao: 196000000000
@@ -1163,11 +1218,11 @@ Populate `hyperparams.yml` with intended values before changing the existing sub
 | `max_allowed_uids` | 256 | Verify hard/live maximum and registration capacity. |
 | `max_allowed_validators` | ≤56 desired capacity budget | Query whether owner/root controls it; never assume 128. |
 | `mechanism_count` | 1 | Hard gate. |
-| native `max_weight_limit` / signed policy cap | native 65535 on v453; signed 32768 for the two-NO bootstrap | v453 retains the effective hard-coded no-cap getter. Enforce the signed cap in every release validator and finalized-vector audit; lower it toward a low single-digit percentage only when positive-recipient breadth makes that cap feasible. |
+| native `max_weight_limit` / signed policy cap | native 65535 on v454; signed 32768 for the two-NO bootstrap | v454 retains the effective hard-coded no-cap getter. Enforce the signed cap in every release validator and finalized-vector audit; lower it toward a low single-digit percentage only when positive-recipient breadth makes that cap feasible. |
 | `commit_reveal_weights_enabled` | true | Hard gate. |
 | `commit_reveal_period` | query then explicitly set/record | Immunity must exceed the full reveal interval. |
 | `liquid_alpha_enabled` | true | Verify live. |
-| `immunity_period` | 50,000-block bounded bootstrap/recovery window; schedule 360 for the shortened testnet soak | Keeps the simulator churn floor immune while netuid 521's older external bootstrap UID remains non-immune, so runtime 453's retained minimum-free rule selects only approved controlled churn. Must also cover the measurement ramp. Mainnet chooses its value with the separate 50,400-block cadence review. |
+| `immunity_period` | 50,000-block bounded bootstrap/recovery window; schedule 360 for the shortened testnet soak | Keeps the simulator churn floor immune while netuid 521's older external bootstrap UID remains non-immune, so runtime 454's retained minimum-free rule selects only approved controlled churn. Must also cover the measurement ramp. Mainnet chooses its value with the separate 50,400-block cadence review. |
 | `min_allowed_weights` | 1 | Hard gate. |
 | `weights_version_key` | 1 for first release | Validator must read it from chain; bump on scoring changes. |
 | `serving_rate_limit` | 50 unless live semantics differ | Verify; axon remains optional. |
@@ -1410,8 +1465,13 @@ Its release profile runs against the **real Bittensor testnet** identified by ch
 This command is the target experience:
 
 ```bash
-go build -o build/sim-testnet ./sim-testnet
-./build/sim-testnet launch \
+release_head="$(git rev-parse HEAD)"
+build_utc="$(date -u +%Y%m%dT%H%M%SZ)"
+SIM_TESTNET_RELEASE_DIR="$(dirname "$(pwd -P)")/temp/sim-testnet-${release_head}-${build_utc}"
+SIM_TESTNET_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet"
+mkdir -p "$SIM_TESTNET_RELEASE_DIR"
+go build -trimpath -buildvcs=true -o "$SIM_TESTNET_BINARY" ./sim-testnet
+"$SIM_TESTNET_BINARY" launch \
   --config sim-testnet/testnet.yml \
   --apply \
   --plan-hash <approved-plan-hash> \
@@ -1542,7 +1602,7 @@ Use metadata-driven Substrate calls rather than shelling out to `btcli` for corr
 - fund the EVM deployer and scoped online signers within configured limits;
 - fund the EVM caller/contract mirror where registration and gas semantics require it;
 - limit-register contract-owned pool hotkeys and provider-owned head hotkeys with the exact approved
-  rao ceiling, passing zero value to the neuron precompile because runtime 453 burns from the funded
+  rao ceiling, passing zero value to the neuron precompile because runtime 454 burns from the funded
   caller mirror; contract calls supply the full ceiling and return the unburned surplus atomically;
 - publish commitments from the correct sr25519 hotkeys;
 - register operators, signer roles, fleet members, policy, and effective epochs in the coordinator; and
@@ -1752,7 +1812,7 @@ Acceptance for the harness:
 1. **Protocol fixtures:** Go/Solidity/fixture generator agree on all encodings and deterministic math.
 2. **Go:** all `sn` packages; all relevant server packages under a hermetic `WARP_ENV`; race tests for chain/transaction/indexer paths; fuzz tests for decoders and proof inputs.
 3. **Solidity:** `forge fmt --check`, build warnings as errors where supported, 100% of existing tests adapted to the new architecture, fuzz/stateful invariants, gas snapshots, storage layout, and static analysis.
-4. **Runtime-453 localnet:** use the same source/Wasm/metadata identity lock as testnet with fast blocks; real precompiles and Substrate metadata, not just mocks.
+4. **Runtime-454 localnet:** use the same source/Wasm/metadata identity lock as testnet with fast blocks; real precompiles and Substrate metadata, not just mocks.
 5. **System harness:** PostgreSQL, Redis, the server/blob MinIO backend/API (or its interface-compatible local CI fixture), two NO servers, two validators with distinct state/keys, long-tail providers, one multi-client head fleet, coordinator/vault, and a canonical indexer.
 6. **Fault injection:** RPC loss/equivocation, reorg/checkpoint mismatch, process kill at each transaction state, server restart, missed root, precompile failure, nonce replacement, runtime version change, malformed operator, and clock skew.
 
@@ -1890,7 +1950,7 @@ than per client. The workload fault proxy remains a separate downstream hop.
 A live supervisor with a missing or unhealthy central gate fails closed; only
 a stopped or never-launched deployment reads the canonical endpoint directly.
 
-### M0A — Runtime-453 local rehearsal
+### M0A — Runtime-454 local rehearsal
 
 Run a fast-block local network built from the exact locked Subtensor source/image and exercise the complete production topology. Do not use Anvil as the only chain because it cannot establish Subtensor precompile, staking, registration, finality, commitment, or CRv4 semantics.
 
@@ -1952,7 +2012,7 @@ Exit gate: every precompile/custody assumption in `WHITEPAPER.md` section 16.4 h
 M1 is driven by one resumable command, not a manual runbook:
 
 ```bash
-./build/sim-testnet launch \
+"$SIM_TESTNET_BINARY" launch \
   --config sim-testnet/testnet.yml \
   --apply \
   --plan-hash <approved-plan-hash> \
@@ -1960,7 +2020,7 @@ M1 is driven by one resumable command, not a manual runbook:
 ```
 
 M1 begins with an audited configuration/deployment window with a precomputed balance/burn/value cap and
-a stop condition after every finalized action. Runtime 453 raises the burn after successful
+a stop condition after every finalized action. Runtime 454 raises the burn after successful
 registrations, so approval binds one per-registration maximum and every native/EVM action uses the
 runtime-enforced limit call; it never assumes later burns equal the first observation. Internally,
 `sim-testnet` must:
@@ -2256,11 +2316,11 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
 
 | Decision/proof | Recommended disposition | Must close by |
 |---|---|---|
-| Can runtime 453 support a truly atomic contract-side deposit pull? | Run the F2 dust spike; otherwise use isolated per-NO escrow plus signed nonce intent. Never shared delta. | Before F2 interface freeze |
+| Can runtime 454 support a truly atomic contract-side deposit pull? | Run the F2 dust spike; otherwise use isolated per-NO escrow plus signed nonce intent. Never shared delta. | Before F2 interface freeze |
 | How is exact per-pool emission observed at boundaries? | Use finalized per-hotkey stake/emission snapshots and a boundary keeper SLO; validate dividend/take effects and late-call math live. | M0B |
 | Can the non-upgradeable vault own/register/rotate pool hotkeys safely? | Prove burned registration/coldkey semantics and rotation on localnet/dust; prefer a new future-epoch pool over mutable historical identity. | M0B |
 | Is testnet history durable without an archive node? | The server ST indexer plus independent harness journal starts before the first write; PostgreSQL indexes finalized evidence, existing MinIO stores immutable bytes, and the server API serves all artifacts/receipts. Any gap halts writes. | F1 |
-| What exact commitment payload/size API exists at spec 453? | Generate from live metadata authenticated at the same finalized runtime-453 block and execute wallet-signed write/read/replace. | M0B |
+| What exact commitment payload/size API exists at spec 454? | Generate from live metadata authenticated at the same finalized runtime-454 block and execute wallet-signed write/read/replace. | M0B |
 | How is a permissionless validator admitted to UR routing APIs? | Public documented validator enrollment tied to live chain hotkey/permit and scoped credentials, with neutral rate policy. | F4/M0A |
 | Can poison traffic be made indistinguishable end-to-end? | Build real shadow routes and measure distinguishability; otherwise narrow the claim and threat model. | F3/M0A |
 | How are egress hashes both private and cross-NO comparable? | Versioned subnet keyed hash with protected key distribution and a public key ID/commitment; review enumeration/leakage. If rejected, constrain fleet comparison scope honestly. | F0 |
@@ -4099,6 +4159,49 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    pagination/cursor/scope drift, duplicates, restart retention and revised-plan
    migration.
 
+   The final pre-freeze proof audit also removed three ways a plausible report
+   could outrun its chain evidence. Native replay now binds the exact signed
+   call, extrinsic index/hash, event phase, CRv4 lineage and parent-to-reveal
+   stake/reward transition. Historical EVM replay reads coordinator
+   implementation/runtime, operator version, epoch deposit, reserve principal,
+   vault carry/credit/claim state and exact `ClaimPaid` payload at each recorded
+   block. A terminal fleet census reconstructs every ordinary validator cycle,
+   generation and selected/rejected top-200 membership instead of sampling only
+   adversarial transitions. Deterministic fixtures cover successful selected
+   rewards, zero-weight rejected claimants, lifecycle membership at payout time,
+   dishonest deposit penalties, receipt/event substitution, backdating and
+   ambiguous UID ownership. The complete launch selector explicitly names the
+   lifecycle fixture families and a static regression prevents another
+   coverage omission.
+
+   During that audit, two over-broad local source-formatting operations damaged
+   reviewed Go files and were detected before commit. All executable bytes were
+   recovered from independently checked snapshots/edit history and requalified
+   normally and under the race detector. Both release gates now run the new
+   AST-based `sim-testnet/sourceguard` before compiling the simulator: every Go
+   file must remain package `main`, and the characteristic top-level
+   function/type/value rewrite to `self` is rejected while legitimate `self`
+   receivers remain valid. This is a deterministic guard for the root cause,
+   not a waiver for source review; remaining declaration cleanup is manual and
+   the final freeze must be rebuilt from the clean pushed tree.
+
+   A later independent adversarial pass rejected that dirty candidate before
+   freeze. It found that payout artifacts were not yet one-to-one joined to the
+   operator, canonical payout coldkey, signed provider snapshot, measurement
+   window and reliability floor; runtime hashes were compared only with the
+   evidence that declared them rather than the decoded plan and release lock;
+   terminal ordinary-fleet state omitted the setup generation history; and the
+   bounded producer selector did not pin its complete executed-test census.
+   These are release blockers, not report caveats. The corrected design keeps
+   the operator's whitepaper authority to choose its payout split, but binds
+   every row and leaf to the complete independently audited provider snapshot.
+   It anchors all deployed roots and upgrade identities to a content-addressed
+   canonical release lock plus approved plan, proves generation 1 to 2 for all
+   200 setup fleets and the separate challenger/lifecycle branches totaling
+   202, and makes the producer fail on any added, missing, renamed or zero
+   selected semantic test. No live mutation may precede those fixes and frozen
+   reruns.
+
    A read-only public-testnet lifecycle preflight on 2026-09-03 found and
    failed closed on a stale role assumption before any mutation: churn
    identities 1--5 had already been consumed by setup replacements, while the
@@ -4148,7 +4251,7 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    never a fixed synthetic offset. `release-1.0` may close only after its five
    complete settlement epochs and terminal finalization. Reaching the release
    handoff additionally requires the first three causal native milestones and
-   a finalized terminal binding. Their conservative runtime-453 bound from the
+   a finalized terminal binding. Their conservative runtime-454 bound from the
    release acceptance start is
    `3 * (reveal_period_epochs + 1) * tempo + 3 * 100 = 2,460` blocks. If that
    work is not complete at the fixed 1,650-block terminal, `release-1.0`

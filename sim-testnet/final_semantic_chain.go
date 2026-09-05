@@ -17,7 +17,10 @@ import (
 	"strings"
 )
 
-const finalPublicChainVerificationSchema = "urnetwork-final-public-chain-verification-v2"
+// v8 adds direct archive reads of the temporary fleet-refresh oracle at both
+// observer checkpoints. Earlier transcripts can replay scheduling receipts
+// without proving that the batcher was ever the active oracle.
+const finalPublicChainVerificationSchema = "urnetwork-final-public-chain-verification-v8"
 
 type FinalOperatorEvidenceOrigin struct {
 	OperatorNoID int    `json:"operator_no_id"`
@@ -44,11 +47,16 @@ type FinalPublicChainVerification struct {
 	// URI. It is not the semantic object's own URI, which is assigned only by
 	// the outer completion/archive and therefore cannot be embedded without a
 	// content-hash cycle.
-	EvidenceURI             string                        `json:"evidence_uri"`
-	OperatorEvidenceOrigins []FinalOperatorEvidenceOrigin `json:"operator_evidence_origins"`
-	PublicManifestHash      string                        `json:"public_manifest_hash"`
-	Exchanges               []FinalRPCExchange            `json:"exchanges"`
-	TranscriptHash          string                        `json:"transcript_hash"`
+	EvidenceURI             string                          `json:"evidence_uri"`
+	OperatorEvidenceOrigins []FinalOperatorEvidenceOrigin   `json:"operator_evidence_origins"`
+	PublicManifestHash      string                          `json:"public_manifest_hash"`
+	FleetAudit              FinalPublicFleetAudit           `json:"ordinary_fleet_audit"`
+	FleetGenerationAudit    FinalPublicFleetGenerationAudit `json:"ordinary_fleet_generation_audit"`
+	ChronologyAudit         FinalPublicChronologyAudit      `json:"coordinator_chronology_audit"`
+	NativePayoutAudit       FinalPublicNativePayoutAudit    `json:"native_payout_audit"`
+	NativePayouts           []FinalNativeEpochPayoutState   `json:"native_payouts"`
+	Exchanges               []FinalRPCExchange              `json:"exchanges"`
+	TranscriptHash          string                          `json:"transcript_hash"`
 }
 
 type FinalNativeUIDState struct {
@@ -69,10 +77,12 @@ type FinalNativeEventState struct {
 }
 
 type FinalNativeWeightState struct {
-	ValidatorUID uint16    `json:"validator_uid"`
-	UIDs         []uint16  `json:"uids"`
-	Values       []uint16  `json:"values"`
-	Block        ChainHead `json:"block"`
+	ValidatorUID    uint16    `json:"validator_uid"`
+	ValidatorHotkey string    `json:"validator_hotkey"`
+	LastUpdate      uint64    `json:"last_update"`
+	UIDs            []uint16  `json:"uids"`
+	Values          []uint16  `json:"values"`
+	Block           ChainHead `json:"block"`
 }
 
 type FinalNativeRewardState struct {
@@ -144,6 +154,126 @@ type FinalEVMReceiptState struct {
 	Block           ChainHead `json:"block"`
 	Status          string    `json:"status"`
 	LogsHash        string    `json:"logs_hash"`
+	receiptPayload  *finalSemanticReceiptPayload
+}
+
+// Carries one historical transaction's target, exact input bytes, and every
+// release-contract log retained by its receipt. It is deliberately separate
+// from generic economic receipt decoding because fleet setup emits coordinator
+// and batcher events whose semantics belong to the generation lineage.
+type FinalFleetGenerationEVMWriteState struct {
+	TransactionHash string                 `json:"transaction_hash"`
+	To              string                 `json:"to"`
+	Calldata        string                 `json:"calldata"`
+	Block           ChainHead              `json:"block"`
+	Status          string                 `json:"status"`
+	Logs            []finalCanonicalEVMLog `json:"logs"`
+}
+
+// Carries the immutable coordinator ledger value at a validator's pinned EVM
+// snapshot. It proves the complete prefix of deposits
+// that the validator used for its demand-audit decision; a receipt alone can
+// prove only the last transaction in that prefix.
+type FinalEpochDepositChainState struct {
+	Epoch     uint64    `json:"epoch"`
+	NoID      uint64    `json:"no_id"`
+	AmountRao string    `json:"amount_rao"`
+	Block     ChainHead `json:"block"`
+}
+
+// Carries the terminal immutable coordinator version selected by the
+// evidence's effective epoch. It binds the operator
+// pool's active deposit/root authorities as well as its retained version
+// count, rather than relying on a receipt hash alone.
+type FinalOperatorVersionChainState struct {
+	NoID           uint64    `json:"no_id"`
+	VersionCount   uint64    `json:"version_count"`
+	Coldkey        string    `json:"coldkey"`
+	PoolHotkey     string    `json:"pool_hotkey"`
+	DepositHotkey  string    `json:"deposit_hotkey"`
+	DepositSigner  string    `json:"deposit_signer"`
+	RootSigner     string    `json:"root_signer"`
+	EffectiveEpoch uint64    `json:"effective_epoch"`
+	Active         bool      `json:"active"`
+	Block          ChainHead `json:"block"`
+}
+
+// Carries the exact cumulative coordinator conviction at one validator
+// decision snapshot. It is intentionally separate
+// from a Deposit receipt because a receipt cannot establish the complete
+// prefix selected by a validator.
+type FinalCoordinatorConvictionChainState struct {
+	NoID          uint64    `json:"no_id"`
+	ConvictionRao string    `json:"conviction_rao"`
+	Block         ChainHead `json:"block"`
+}
+
+// Carries the amount added to the cumulative conviction ledger during one
+// settlement epoch. The validator's
+// ConvictionBeforeRao intentionally excludes both this value and the epoch's
+// demand deposits, so all three values are necessary to independently replay
+// its signed tier selection. Epoch zero is a valid contract epoch.
+type FinalEpochConvictionAddedChainState struct {
+	Epoch     uint64    `json:"epoch"`
+	NoID      uint64    `json:"no_id"`
+	AmountRao string    `json:"amount_rao"`
+	Block     ChainHead `json:"block"`
+}
+
+// Carries the reserve's independently recorded principal for one operator at
+// the same immutable decision
+// snapshot. Matching it to coordinator conviction prevents a substituted NO
+// or invented conviction tier from receiving weight.
+type FinalReserveOperatorPrincipalChainState struct {
+	NoID         uint64    `json:"no_id"`
+	PrincipalRao string    `json:"principal_rao"`
+	Block        ChainHead `json:"block"`
+}
+
+// Carries one operator's carry ledger at a transition boundary. Per-operator
+// reads avoid accepting a valid total from another
+// pool.
+type FinalVaultCarryChainState struct {
+	NoID     uint64    `json:"no_id"`
+	CarryRao string    `json:"carry_rao"`
+	Block    ChainHead `json:"block"`
+}
+
+// Binds one represented Merkle leaf and its claim-once key. The payout leaf is
+// keyed by coldkey/shareBPS, whereas the
+// claim-once key is keccak256(abi.encode(noID,coldkey)); they intentionally
+// differ and both must be checked.
+type FinalVaultClaimChainState struct {
+	Epoch       uint64    `json:"epoch"`
+	NoID        uint64    `json:"no_id"`
+	Coldkey     string    `json:"coldkey"`
+	ShareBPS    uint64    `json:"share_bps"`
+	PayoutLeaf  string    `json:"payout_leaf"`
+	ClaimKey    string    `json:"claim_key"`
+	LeafClaimed bool      `json:"leaf_claimed"`
+	Block       ChainHead `json:"block"`
+}
+
+// Carries a coldkey's cumulative claim credit at an immutable boundary. It is
+// kept separate from a per-leaf read because a
+// later claim or withdrawal can settle credit created by an earlier leaf.
+type FinalVaultClaimCreditChainState struct {
+	Coldkey   string    `json:"coldkey"`
+	CreditRao string    `json:"credit_rao"`
+	Block     ChainHead `json:"block"`
+}
+
+// Authenticates the proxy dispatch target and both executable byte streams at
+// one historical head. The slot is kept
+// as its complete 32-byte value so a non-address prefix cannot be discarded.
+type FinalCoordinatorRuntimeChainState struct {
+	CoordinatorProxy           string                    `json:"coordinator_proxy"`
+	CoordinatorImplementation  string                    `json:"coordinator_implementation"`
+	ObservedImplementationSlot string                    `json:"observed_implementation_slot"`
+	ProxyCodeHash              string                    `json:"proxy_code_hash"`
+	ImplementationCodeHash     string                    `json:"implementation_code_hash"`
+	RuntimeRoots               []FinalReleaseRuntimeRoot `json:"runtime_roots"`
+	Block                      ChainHead                 `json:"block"`
 }
 
 type FinalPoolEpochChainState struct {
@@ -154,6 +284,7 @@ type FinalPoolEpochChainState struct {
 	FundedRao    string    `json:"funded_rao"`
 	TotalRao     string    `json:"total_rao"`
 	ClaimedRao   string    `json:"claimed_rao"`
+	ExpiryBlock  uint64    `json:"expiry_block"`
 	Status       uint8     `json:"status"`
 	Block        ChainHead `json:"block"`
 }
@@ -227,6 +358,15 @@ type FinalSemanticChainReader interface {
 	NativeReward(context.Context, uint16, uint16, ChainHead) (FinalNativeRewardState, []FinalRPCExchange, error)
 	NativeOwnerStake(context.Context, string, string, ChainHead) (FinalNativeOwnerStakeState, []FinalRPCExchange, error)
 	EVMReceipt(context.Context, FinalEVMReceipt) (FinalEVMReceiptState, []FinalRPCExchange, error)
+	EpochDeposit(context.Context, uint64, uint64, ChainHead) (FinalEpochDepositChainState, []FinalRPCExchange, error)
+	EpochConvictionAdded(context.Context, uint64, uint64, ChainHead) (FinalEpochConvictionAddedChainState, []FinalRPCExchange, error)
+	OperatorVersion(context.Context, uint64, uint64, ChainHead) (FinalOperatorVersionChainState, []FinalRPCExchange, error)
+	CoordinatorConviction(context.Context, uint64, ChainHead) (FinalCoordinatorConvictionChainState, []FinalRPCExchange, error)
+	ReserveOperatorPrincipal(context.Context, uint64, ChainHead) (FinalReserveOperatorPrincipalChainState, []FinalRPCExchange, error)
+	VaultCarry(context.Context, uint64, ChainHead) (FinalVaultCarryChainState, []FinalRPCExchange, error)
+	VaultClaim(context.Context, uint64, uint64, string, uint64, ChainHead) (FinalVaultClaimChainState, []FinalRPCExchange, error)
+	VaultClaimCredit(context.Context, string, ChainHead) (FinalVaultClaimCreditChainState, []FinalRPCExchange, error)
+	CoordinatorRuntime(context.Context, ChainHead) (FinalCoordinatorRuntimeChainState, []FinalRPCExchange, error)
 	PoolEpoch(context.Context, uint64, uint64, ChainHead) (FinalPoolEpochChainState, []FinalRPCExchange, error)
 	ContractDeployment(context.Context, ChainHead) (FinalContractDeploymentState, []FinalRPCExchange, error)
 	SettlementVaultState(context.Context, ChainHead) (FinalSettlementVaultChainState, []FinalRPCExchange, error)
@@ -252,6 +392,13 @@ type FinalSemanticLifecycleChainReader interface {
 	FleetBindingRecord(context.Context, string, ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error)
 	FleetMemberCount(context.Context, string, ChainHead) (uint64, []FinalRPCExchange, error)
 	FleetLifecycleEvents(context.Context, string, ChainHead) ([]FinalFleetLifecycleEventState, []FinalRPCExchange, error)
+}
+
+// Provides exact historical transaction payloads for the fixed ordinary-fleet
+// lineage. The separate capability prevents a reader that only knows generic
+// deposit/payout receipts from silently skipping coordinator/batcher writes.
+type FinalSemanticFleetGenerationChainReader interface {
+	FleetGenerationEVMWrite(context.Context, FinalFleetGenerationWriteEvidence) (FinalFleetGenerationEVMWriteState, []FinalRPCExchange, error)
 }
 
 // SealFinalSemanticEvidenceOnChain is the only path that makes evidence
@@ -302,9 +449,58 @@ func SealFinalSemanticEvidenceOnChain(ctx context.Context, draft *FinalSemanticE
 	return &copy, nil
 }
 
-// VerifyFinalSemanticEvidenceOnChain replays the embedded transcript through
-// a public archive reader and fails if any request, response, or semantic state
-// differs. This is the reusable entry point for the standalone verifier CLI.
+// Makes one strict detached copy before an extension point receives evidence.
+// Reader factories may retain their argument, so the caller's verification
+// snapshot must never share maps, slices, or nested pointers with that input.
+func finalSemanticEvidenceDetachedCopy(evidence *FinalSemanticEvidence) (*FinalSemanticEvidence, error) {
+	if evidence == nil {
+		return nil, errors.New("final semantic evidence snapshot is unavailable")
+	}
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		return nil, err
+	}
+	var result FinalSemanticEvidence
+	if err := decodeStrictJSONBytes(raw, &result); err != nil {
+		return nil, fmt.Errorf("strict-decode final semantic verification snapshot: %w", err)
+	}
+	return &result, nil
+}
+
+// VerifyFinalSemanticEvidenceWithArtifactsOnChain seals one strict snapshot
+// before constructing its public reader and replaying it. Artifact closure
+// therefore happens before any public RPC work, and every reader method sees
+// a detached factory copy while comparison remains against the artifact-
+// verified snapshot.
+func VerifyFinalSemanticEvidenceWithArtifactsOnChain(ctx context.Context, evidence *FinalSemanticEvidence, loader FinalArtifactLoader, newReader FinalSemanticChainReaderFactory) error {
+	if ctx == nil || evidence == nil || loader == nil || newReader == nil {
+		return errors.New("final semantic combined verification inputs are incomplete")
+	}
+	snapshot, err := finalSemanticEvidenceDetachedCopy(evidence)
+	if err != nil {
+		return err
+	}
+	if err := VerifyFinalSemanticArtifacts(ctx, snapshot, loader); err != nil {
+		return err
+	}
+	factoryEvidence, err := finalSemanticEvidenceDetachedCopy(snapshot)
+	if err != nil {
+		return err
+	}
+	reader, err := newReader(ctx, factoryEvidence)
+	if err != nil {
+		return err
+	}
+	if reader == nil {
+		return errors.New("final semantic combined verifier constructed no public reader")
+	}
+	return VerifyFinalSemanticEvidenceOnChain(ctx, snapshot, reader)
+}
+
+// VerifyFinalSemanticEvidenceOnChain replays an already artifact-verified
+// evidence object through a public archive reader. Callers that have access
+// to artifacts must use the combined verifier above so sealed source bytes
+// and public RPC state are checked against one immutable snapshot.
 func VerifyFinalSemanticEvidenceOnChain(ctx context.Context, evidence *FinalSemanticEvidence, reader FinalSemanticChainReader) error {
 	if err := VerifyFinalSemanticEvidence(evidence); err != nil {
 		return err
@@ -345,7 +541,30 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 		return nil, errors.New("public semantic reader does not expose two authenticated operator evidence origins")
 	}
 	origins := originReader.OperatorEvidenceOrigins()
-	verification := &FinalPublicChainVerification{Schema: finalPublicChainVerificationSchema, SubstrateRPC: substrateRPC, EVMRPC: evmRPC, EvidenceTransportProfile: transportProfile, EvidenceURI: manifestURI, OperatorEvidenceOrigins: origins, PublicManifestHash: reader.PublicManifestHash()}
+	fleetAudit, err := finalPublicFleetAuditForEvidence(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("public ordinary fleet audit projection: %w", err)
+	}
+	var fleetGenerationAudit FinalPublicFleetGenerationAudit
+	if evidence.FleetGeneration != nil {
+		fleetGenerationAudit, err = finalPublicFleetGenerationAuditForEvidence(evidence)
+		if err != nil {
+			return nil, fmt.Errorf("public ordinary fleet generation audit projection: %w", err)
+		}
+	}
+	nativePayoutAudit, err := finalPublicNativePayoutAuditForEvidence(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("public native payout audit projection: %w", err)
+	}
+	currentRuntimeHeads, err := finalSemanticCurrentRuntimeHeads(evidence)
+	if err != nil {
+		return nil, fmt.Errorf("public coordinator runtime head projection: %w", err)
+	}
+	chronologyAudit, err := finalPublicChronologyAuditForEvidence(evidence, currentRuntimeHeads)
+	if err != nil {
+		return nil, fmt.Errorf("public coordinator chronology projection: %w", err)
+	}
+	verification := &FinalPublicChainVerification{Schema: finalPublicChainVerificationSchema, SubstrateRPC: substrateRPC, EVMRPC: evmRPC, EvidenceTransportProfile: transportProfile, EvidenceURI: manifestURI, OperatorEvidenceOrigins: origins, PublicManifestHash: reader.PublicManifestHash(), FleetAudit: fleetAudit, FleetGenerationAudit: fleetGenerationAudit, ChronologyAudit: chronologyAudit, NativePayoutAudit: nativePayoutAudit}
 	appendExchanges := func(chain string, head ChainHead, exchanges []FinalRPCExchange) error {
 		if len(exchanges) == 0 {
 			return fmt.Errorf("%s public RPC verification at %d returned no transcript", chain, head.Number)
@@ -388,6 +607,15 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 		if err := appendExchanges("evm", head, exchanges); err != nil {
 			return nil, err
 		}
+	}
+	if err := verifyFinalSemanticCoordinatorRuntimes(ctx, evidence, reader, currentRuntimeHeads, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public historical coordinator runtime audit: %w", err)
+	}
+	if err := verifyFinalSemanticChronologyOnChain(ctx, evidence, reader, chronologyAudit, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public coordinator chronology replay: %w", err)
+	}
+	if err := verifyFinalSemanticFleetGenerationOnChain(ctx, evidence, reader, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public ordinary fleet generation replay: %w", err)
 	}
 	if err := executeFinalSemanticLifecycleOnChain(ctx, evidence, reader, appendExchanges); err != nil {
 		return nil, fmt.Errorf("public fleet lifecycle replay: %w", err)
@@ -458,6 +686,16 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 		if receiptState.TransactionHash != pool.ConvictionReceipt.TransactionHash || receiptState.Block != pool.ConvictionReceipt.Block || receiptState.Status != pool.ConvictionReceipt.Status || receiptState.LogsHash != pool.ConvictionReceipt.LogsHash {
 			return nil, fmt.Errorf("public pool conviction receipt no=%d does not match evidence", pool.NoID)
 		}
+		version, versionExchanges, err := reader.OperatorVersion(ctx, pool.NoID, pool.EffectiveEpoch, evidence.EVMTerminalHead)
+		if err != nil {
+			return nil, fmt.Errorf("public operator version no=%d: %w", pool.NoID, err)
+		}
+		if err := appendExchanges("evm", evidence.EVMTerminalHead, versionExchanges); err != nil {
+			return nil, err
+		}
+		if err := verifyFinalSemanticPoolOperatorVersion(pool, version, evidence.EVMTerminalHead); err != nil {
+			return nil, err
+		}
 	}
 	for _, fleet := range evidence.HeadFleets {
 		state, exchanges, err := reader.NativeUID(ctx, evidence.Netuid, fleet.UID, fleet.Snapshot)
@@ -473,6 +711,9 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 		if err := verifyFinalNativeEventOnChain(ctx, reader, fleet.Registration, "registration", appendExchanges); err != nil {
 			return nil, fmt.Errorf("public head fleet registration fleet=%d: %w", fleet.FleetID, err)
 		}
+	}
+	if err := verifyFinalSemanticFleetAudit(ctx, evidence, reader, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public ordinary head-fleet replay: %w", err)
 	}
 	for _, transition := range evidence.HeadTransitions {
 		if err := verifyFinalNativeEventOnChain(ctx, reader, transition.Registration, "registration", appendExchanges); err != nil {
@@ -529,8 +770,17 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 				return nil, err
 			}
 			uids, values := finalSubmittedValues(cycle.Submitted)
-			if weights.ValidatorUID != validator.UID || weights.Block != cycle.Application.Block || !slices.Equal(weights.UIDs, uids) || !slices.Equal(weights.Values, values) {
-				return nil, fmt.Errorf("public validator %d applied vector does not match intent", validator.ValidatorID)
+			if cycle.Application.Call == nil {
+				return nil, fmt.Errorf("public validator %d application has no exact native call identity", validator.ValidatorID)
+			}
+			if err := verifyFinalNativeApplicationState(weights, *cycle.Application.Call, cycle.Application.Block, validator.UID, validator.Hotkey, uids, values); err != nil {
+				return nil, fmt.Errorf("public validator %d applied vector does not match fresh intent lineage: %w", validator.ValidatorID, err)
+			}
+			if err := verifyFinalSemanticCycleEpochDeposits(ctx, reader, *cycle, appendExchanges); err != nil {
+				return nil, fmt.Errorf("public validator %d deposit-ledger audit: %w", validator.ValidatorID, err)
+			}
+			if err := verifyFinalSemanticCycleConvictionPrincipals(ctx, reader, *cycle, appendExchanges); err != nil {
+				return nil, fmt.Errorf("public validator %d conviction/principal audit: %w", validator.ValidatorID, err)
 			}
 			for _, pool := range cycle.Pools {
 				receipt := pool.DepositReceipt
@@ -547,6 +797,11 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 			}
 		}
 	}
+	nativePayouts, err := verifyFinalSemanticNativeEpochPayouts(ctx, evidence, reader, appendExchanges)
+	if err != nil {
+		return nil, fmt.Errorf("public exact native epoch payouts: %w", err)
+	}
+	verification.NativePayouts = nativePayouts
 	if evidence.DishonestDeposit != nil {
 		for _, stage := range []struct {
 			name      string
@@ -570,10 +825,31 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 					return nil, err
 				}
 				uids, values := finalSubmittedValues(decision.Cycle.Submitted)
-				if weights.ValidatorUID != decision.ValidatorUID || weights.Block != decision.Cycle.Application.Block || !slices.Equal(weights.UIDs, uids) || !slices.Equal(weights.Values, values) {
-					return nil, fmt.Errorf("public dishonest-deposit %s validator %d vector differs from signed intent", stage.name, decision.ValidatorID)
+				if decision.Cycle.Application.Call == nil {
+					return nil, fmt.Errorf("public dishonest-deposit %s validator %d application has no exact native call identity", stage.name, decision.ValidatorID)
+				}
+				validatorHotkey := ""
+				for index := range evidence.Validators {
+					if evidence.Validators[index].ValidatorID == decision.ValidatorID {
+						validatorHotkey = evidence.Validators[index].Hotkey
+					}
+				}
+				if validatorHotkey == "" {
+					return nil, fmt.Errorf("public dishonest-deposit %s validator %d identity is absent", stage.name, decision.ValidatorID)
+				}
+				if err := verifyFinalNativeApplicationState(weights, *decision.Cycle.Application.Call, decision.Cycle.Application.Block, decision.ValidatorUID, validatorHotkey, uids, values); err != nil {
+					return nil, fmt.Errorf("public dishonest-deposit %s validator %d vector differs from fresh signed intent lineage: %w", stage.name, decision.ValidatorID, err)
+				}
+				if err := verifyFinalSemanticCycleEpochDeposits(ctx, reader, decision.Cycle, appendExchanges); err != nil {
+					return nil, fmt.Errorf("public dishonest-deposit %s validator %d deposit-ledger audit: %w", stage.name, decision.ValidatorID, err)
+				}
+				if err := verifyFinalSemanticCycleConvictionPrincipals(ctx, reader, decision.Cycle, appendExchanges); err != nil {
+					return nil, fmt.Errorf("public dishonest-deposit %s validator %d conviction/principal audit: %w", stage.name, decision.ValidatorID, err)
 				}
 			}
+		}
+		if err := verifyFinalSemanticDishonestDepositReceiptsOnChain(ctx, reader, evidence.DishonestDeposit, appendExchanges); err != nil {
+			return nil, fmt.Errorf("public dishonest-deposit receipts: %w", err)
 		}
 	}
 	deployment, exchanges, err := reader.ContractDeployment(ctx, evidence.EVMTerminalHead)
@@ -679,10 +955,28 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 		if err := appendExchanges("evm", evidence.EVMTerminalHead, exchanges); err != nil {
 			return nil, err
 		}
-		want := FinalPoolEpochChainState{Epoch: row.Epoch, NoID: row.NoID, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, FundedRao: row.FundedRao, TotalRao: row.TotalRao, ClaimedRao: row.ClaimedRao, Status: row.Status, Block: evidence.EVMTerminalHead}
+		want := FinalPoolEpochChainState{Epoch: row.Epoch, NoID: row.NoID, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, FundedRao: row.FundedRao, TotalRao: row.TotalRao, ClaimedRao: row.ClaimedRao, ExpiryBlock: row.ExpiryBlock, Status: row.Status, Block: evidence.EVMTerminalHead}
 		if state != want {
 			return nil, fmt.Errorf("public pool epoch %d/%d state mismatch", row.Epoch, row.NoID)
 		}
+	}
+	for index, payment := range evidence.ClaimPayments {
+		state, exchanges, err := reader.EVMReceipt(ctx, payment.Receipt)
+		if err != nil {
+			return nil, fmt.Errorf("public ClaimPaid receipt %d: %w", index, err)
+		}
+		if err := appendExchanges("evm", payment.Receipt.Block, exchanges); err != nil {
+			return nil, err
+		}
+		if state.TransactionHash != payment.Receipt.TransactionHash || state.Block != payment.Receipt.Block || state.Status != payment.Receipt.Status || state.LogsHash != payment.Receipt.LogsHash {
+			return nil, fmt.Errorf("public ClaimPaid receipt %d does not match evidence", index)
+		}
+	}
+	if err := verifyFinalSemanticVaultCarries(ctx, evidence, reader, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public vault carry audit: %w", err)
+	}
+	if err := verifyFinalSemanticVaultClaims(ctx, evidence, reader, appendExchanges); err != nil {
+		return nil, fmt.Errorf("public vault claim audit: %w", err)
 	}
 	for _, criterion := range evidence.ExitCriteria {
 		for _, receipt := range criterion.EVMReceipts {
@@ -763,6 +1057,22 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 	return verification, nil
 }
 
+// Makes every mutable operator authority an exact terminal public-chain
+// assertion. It is separate from the
+// receipt decoder because a registration's initial OperatorScheduled event can
+// predate an allowed authority rotation.
+func verifyFinalSemanticPoolOperatorVersion(pool FinalPoolUIDEvidence, state FinalOperatorVersionChainState, head ChainHead) error {
+	want := FinalOperatorVersionChainState{
+		NoID: pool.NoID, VersionCount: pool.VersionCount, Coldkey: pool.OperatorColdkey, PoolHotkey: pool.Hotkey,
+		DepositHotkey: pool.DepositHotkey, DepositSigner: pool.DepositSigner, RootSigner: pool.PayoutRootSigner,
+		EffectiveEpoch: pool.EffectiveEpoch, Active: pool.Active, Block: head,
+	}
+	if state != want {
+		return fmt.Errorf("public operator version no=%d differs from terminal pool evidence", pool.NoID)
+	}
+	return nil
+}
+
 func verifyFinalNativeEventOnChain(ctx context.Context, reader FinalSemanticChainReader, receipt FinalNativeReceipt, kind string, appendExchanges func(string, ChainHead, []FinalRPCExchange) error) error {
 	state, exchanges, err := reader.NativeEvent(ctx, receipt, kind)
 	if err != nil {
@@ -773,6 +1083,61 @@ func verifyFinalNativeEventOnChain(ctx context.Context, reader FinalSemanticChai
 	}
 	if !state.Success || state.Block != receipt.Block || state.ExtrinsicHash != receipt.ExtrinsicHash || state.Event != kind {
 		return errors.New("native event does not match receipt evidence")
+	}
+	return nil
+}
+
+// Binds each signed validator audit to the coordinator's historical cumulative
+// ledger at the audit's exact EVM
+// snapshot. A Deposit receipt may terminate a multi-transaction prefix, so
+// comparing its final event amount alone would not prove ObservedDepositRao.
+func verifyFinalSemanticCycleEpochDeposits(ctx context.Context, reader FinalSemanticChainReader, cycle FinalCRv4Cycle, appendExchanges func(string, ChainHead, []FinalRPCExchange) error) error {
+	for _, pool := range cycle.Pools {
+		state, exchanges, err := reader.EpochDeposit(ctx, cycle.SettlementEpoch, pool.NoID, cycle.EVMSnapshot)
+		if err != nil {
+			return fmt.Errorf("operator %d epoch %d: %w", pool.NoID, cycle.SettlementEpoch, err)
+		}
+		if err := appendExchanges("evm", cycle.EVMSnapshot, exchanges); err != nil {
+			return err
+		}
+		if state.Epoch != cycle.SettlementEpoch || state.NoID != pool.NoID || state.AmountRao != pool.ObservedDepositRao || state.Block != cycle.EVMSnapshot {
+			return fmt.Errorf("operator %d epoch %d cumulative deposit differs from signed audit", pool.NoID, cycle.SettlementEpoch)
+		}
+	}
+	return nil
+}
+
+// Independently reads the two successful demand-deposit transactions. Public
+// receipt payload replay
+// already checks their amount/policy/signer fields; this cross-receipt check
+// additionally proves the recovery consumed a later nonce.
+func verifyFinalSemanticDishonestDepositReceiptsOnChain(ctx context.Context, reader FinalSemanticChainReader, dishonest *FinalDishonestDepositEvidence, appendExchanges func(string, ChainHead, []FinalRPCExchange) error) error {
+	if dishonest == nil {
+		return errors.New("dishonest-deposit evidence is nil")
+	}
+	states := make([]FinalEVMReceiptState, 2)
+	for index, item := range []struct {
+		label   string
+		receipt FinalEVMReceipt
+	}{{label: "underpayment", receipt: dishonest.UnderpaymentReceipt}, {label: "recovery", receipt: dishonest.RecoveryDepositReceipt}} {
+		state, exchanges, err := reader.EVMReceipt(ctx, item.receipt)
+		if err != nil {
+			return fmt.Errorf("%s: %w", item.label, err)
+		}
+		if err := appendExchanges("evm", item.receipt.Block, exchanges); err != nil {
+			return err
+		}
+		if state.TransactionHash != item.receipt.TransactionHash || state.Block != item.receipt.Block || state.Status != item.receipt.Status || state.LogsHash != item.receipt.LogsHash {
+			return fmt.Errorf("%s receipt differs from semantic evidence", item.label)
+		}
+		states[index] = state
+	}
+	if states[0].receiptPayload == nil || states[1].receiptPayload == nil || len(states[0].receiptPayload.deposits) != 1 || len(states[1].receiptPayload.deposits) != 1 {
+		return errors.New("dishonest-deposit receipt payload projection is incomplete")
+	}
+	underpayment, recovery := states[0].receiptPayload.deposits[0], states[1].receiptPayload.deposits[0]
+	if underpayment.NoID != dishonest.NoID || recovery.NoID != dishonest.NoID || underpayment.Nonce == nil || recovery.Nonce == nil || recovery.Nonce.Cmp(underpayment.Nonce) <= 0 {
+		return errors.New("dishonest-deposit recovery nonce does not follow the underpayment nonce")
 	}
 	return nil
 }
@@ -817,6 +1182,38 @@ func finalSemanticHeads(evidence *FinalSemanticEvidence) ([]ChainHead, []ChainHe
 		}
 		for _, payout := range lifecycle.PayoutArtifacts {
 			evm = append(evm, payout.Root.Block)
+		}
+	}
+	if lineage := evidence.FleetGeneration; lineage != nil {
+		for _, fleet := range lineage.SetupFleets {
+			for _, version := range []FinalFleetGenerationVersionEvidence{fleet.Initial, fleet.Refresh} {
+				native = append(native, version.NativeHead)
+			}
+		}
+		for _, challenger := range lineage.ChallengerFleets {
+			native = append(native, challenger.Initial.NativeHead, challenger.Registration.Block)
+		}
+		for _, batch := range lineage.Batches {
+			for _, write := range batch.CarriedHistory {
+				evm = append(evm, write.Receipt.Block, write.EVMHead)
+				native = append(native, write.NativeHead)
+			}
+			if batch.BatchWrite != nil {
+				evm = append(evm, batch.BatchWrite.Receipt.Block, batch.BatchWrite.EVMHead)
+				native = append(native, batch.BatchWrite.NativeHead)
+			}
+		}
+	}
+	for _, checkpoint := range finalFleetRefreshOracleCheckpointRows(evidence.FleetRefreshOracleWindow.Checkpoints) {
+		evm = append(evm, checkpoint.value.Head)
+	}
+	for _, receipt := range evidence.HistoricalCoordinatorReceipts {
+		evm = append(evm, receipt.Receipt.Block, receipt.ExecutionHead)
+	}
+	for _, timeline := range evidence.HistoricalCoordinatorTimeline {
+		evm = append(evm, timeline.Baseline)
+		for _, upgrade := range timeline.Upgrades {
+			evm = append(evm, upgrade.Block)
 		}
 	}
 	for _, pool := range evidence.Pools {
@@ -957,6 +1354,18 @@ func finalizePublicChainVerification(verification *FinalPublicChainVerification,
 	if err := requireFinalHex32("public deployment manifest hash", verification.PublicManifestHash); err != nil {
 		return err
 	}
+	if err := verifyFinalPublicFleetAuditShape(verification.FleetAudit); err != nil {
+		return err
+	}
+	if err := verifyFinalPublicChronologyAuditShape(verification.ChronologyAudit); err != nil {
+		return err
+	}
+	if err := verifyFinalPublicNativePayoutAuditShape(verification.NativePayoutAudit); err != nil {
+		return err
+	}
+	if err := verifyFinalPublicNativePayoutObservationShape(verification.NativePayoutAudit, verification.NativePayouts); err != nil {
+		return err
+	}
 	for i := range verification.Exchanges {
 		exchange := &verification.Exchanges[i]
 		if exchange.Sequence != uint64(i+1) || (exchange.Chain != "substrate" && exchange.Chain != "evm") {
@@ -972,6 +1381,9 @@ func finalizePublicChainVerification(verification *FinalPublicChainVerification,
 		if exchange.RequestHash != requestHash || exchange.ResponseHash != responseHash {
 			return errors.New("public RPC transcript request/result hash mismatch")
 		}
+	}
+	if err := verifyFinalPublicChronologyTranscript(verification); err != nil {
+		return err
 	}
 	copy := *verification
 	copy.TranscriptHash = ""

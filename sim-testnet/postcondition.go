@@ -910,6 +910,24 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["policy_count"] = count
 		state["policy_hash"] = e.cfg.PolicyHash
 		state["active"] = bootstrapPolicyMatches(e.cfg, active)
+		if a.ID == "policy.schedule-bootstrap" && count >= 2 {
+			parsed, parseErr := abi.JSON(strings.NewReader(CoordinatorABI))
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			values, readErr := contractCallAt(ctx, e.owner.client, e.payloads.Manifest.CoordinatorProxy, parsed, "policyByIndex", evmHead.Number, new(big.Int).SetUint64(count-1))
+			if readErr != nil {
+				return nil, readErr
+			}
+			scheduled, convertErr := coordinatorPolicy(values)
+			if convertErr != nil || !bootstrapPolicyMatches(e.cfg, scheduled) || scheduled.EffectiveEpoch <= current || scheduled.EffectiveBlock == 0 {
+				return nil, stateMismatchError(convertErr, "scheduled bootstrap policy post-state is invalid")
+			}
+			state["scheduled_policy_index"] = count - 1
+			state["scheduled_policy_hash"] = strings.ToLower(fmt.Sprintf("0x%x", scheduled.PolicyHash[:]))
+			state["scheduled_policy_effective_epoch"] = scheduled.EffectiveEpoch
+			state["scheduled_policy_effective_block"] = scheduled.EffectiveBlock
+		}
 		return state, nil
 	case strings.HasPrefix(a.ID, "precompile."):
 		return e.verifyPrecompileConformancePostState(ctx, a, evmHead, state)

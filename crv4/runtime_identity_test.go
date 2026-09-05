@@ -375,8 +375,8 @@ func TestRuntimeArtifactMetadataCacheIsHardBounded(t *testing.T) {
 }
 
 // Repeated one-item allowlists cannot evade the per-provider cache bound after
-// three independently authenticated artifacts have been admitted.
-func TestRuntimeArtifactMetadataCacheRejectsFourthSequentialIdentity(t *testing.T) {
+// four independently authenticated artifacts have been admitted.
+func TestRuntimeArtifactMetadataCacheRejectsFifthSequentialIdentity(t *testing.T) {
 	metadataHex, metadataHash := runtimeIdentityTestMetadata(t)
 	var metadataCalls atomic.Int64
 	client := &runtimeIdentityTestClient{callContext: func(_ context.Context, result any, method string, args ...any) error {
@@ -413,7 +413,7 @@ func TestRuntimeArtifactMetadataCacheRejectsFourthSequentialIdentity(t *testing.
 			t.Fatalf("artifact %d was rejected before the cache bound: %v", offset, err)
 		}
 		if offset > maximumRuntimeMetadataArtifactsPerChain && err == nil {
-			t.Fatal("fourth sequential runtime artifact bypassed the cache bound")
+			t.Fatal("fifth sequential runtime artifact bypassed the cache bound")
 		}
 	}
 	if metadataCalls.Load() != maximumRuntimeMetadataArtifactsPerChain {

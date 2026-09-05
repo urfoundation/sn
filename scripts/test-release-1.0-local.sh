@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Release qualification cannot hide an assertion or panic behind a retry.
+export WARP_TEST_ENV_FAIL_FAST=1
+
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(dirname "$sn_repo")"
 release_repos=(sn server operator-proxy connect sdk glog goidenticons proxy userwireguard vault xops config)
@@ -9,11 +12,18 @@ echo "[release-1.0] source-freeze preflight"
 release_source_snapshot="$("$sn_repo/scripts/check-release-source-freeze.sh" "$workspace")"
 printf '%s\n' "$release_source_snapshot"
 
+echo "[release-1.0] simulator source-integrity preflight"
+(
+  cd "$sn_repo"
+  go test ./sim-testnet/sourceguard -count=1
+  go run ./sim-testnet/sourceguard ./sim-testnet
+)
+
 echo "[release-1.0] generated binding toolchain preflight"
 "$sn_repo/stabi/generate.sh" --preflight
 
-echo "[release-1.0] runtime 453 source attestation"
-"$sn_repo/scripts/check-runtime-v453-source.sh"
+echo "[release-1.0] runtime 454 source attestation"
+"$sn_repo/scripts/check-runtime-v454-source.sh"
 
 echo "[release-1.0] exact runtime metadata artifact attestation"
 "$sn_repo/scripts/check-runtime-metadata-artifacts.sh"
@@ -25,11 +35,16 @@ fi
 echo "[release-1.0] sn Go tests"
 (
   cd "$sn_repo"
+  # Pin the launch-critical synthetic EVM identity boundary explicitly in
+  # addition to the aggregate suites, including the onchain transaction tool.
+  synthetic_evm_identity_tests='^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)'
+  go test ./miner/onchain ./miner ./sim-testnet -run "$synthetic_evm_identity_tests" -count=1 -timeout 5m
+  go test -race ./miner/onchain ./miner ./sim-testnet -run "$synthetic_evm_identity_tests" -count=1 -timeout 10m
   # sim-testnet contains launch-scale 1,000-miner fixtures. The package has an
   # isolated 90-minute race deadline below; do not let Go's implicit 10-minute
   # package deadline terminate the faster ordinary pass while its independent
   # durability tests are still running.
-  go test -timeout 90m ./...
+  go test -parallel=4 -timeout 90m ./...
   go test -race ./crv4 ./miner/... ./protocol ./validator
   validator_lifecycle_tests='^Test(TunnelAttemptCloseJoinsPumpBeforeGenerator|TunnelAttemptCloseReleasesPartialConstruction)$'
   go test ./validator -run "$validator_lifecycle_tests" -count=1
@@ -40,7 +55,7 @@ echo "[release-1.0] sn Go tests"
   # before the rest of the package and concurrent live-campaign load. Keep
   # deterministic headroom for the complete package and slower CI hosts; this
   # changes only the harness deadline, never the test selection.
-  go test -race -timeout 90m ./sim-testnet
+  go test -race -parallel=4 -timeout 90m ./sim-testnet
 )
 
 echo "[release-1.0] deployable Solidity static analysis"
@@ -71,9 +86,18 @@ echo "[release-1.0] generated ABI and Go binding freshness"
 echo "[release-1.0] operator pure/unit suites"
 (
   cd "$workspace/server"
+  test_env_fail_fast_tests='^Test(DefaultTestEnvReleaseFailFast|RunRetriesUntilPass|RunFailsAfterExhaustion|RunReportsPanicOriginAfterExhaustion)'
+  go test . -run "$test_env_fail_fast_tests" -count=1
+  go test -race . -run "$test_env_fail_fast_tests" -count=1
   go test . -run '^Test(PgResourcesRedirectMaintenancePoolAndRestore|DatabaseTimeMatchesPostgresPrecision)$'
   go test ./st ./startifact
   go test ./controller -run '^Test(CoreStClient(BlockHashes|FinalizedHead|Epoch)|CoreStClientBindingsAt|DecodeStRPCBlockIdentity|StatsAlphaPriceURLIsMainnetOnly|StatsGaugeVecReplaceDeletesStaleSeries|StConfig|StCompute|StBuild|StDeposit|StEstimate|StReplacement|StDecode|StEvent|StBroadcast|StClientStub|StTransactionCancellation|VerifyEvidenceRange|VerifyKeyRotation|VerifySyntheticSeedId|VerifyUsesUrForwardedAddress|VerifyIgnoresLegacyForwardedAddress|VerifyClampM|VerifyCachedResponseRoundTrip|VerifySeedRejectsMissingSignature|StripeReconcileCredentialsRequireNonblankAPIToken|AppleReconcileCredentialsRequireCompleteServerAPIIdentity|PlayReconcileCredentialsRequireOAuthPackageAndSKUs|SolanaReconcileCredentialsRequireNonblankHeliusAPIKey)'
+  provider_input_tests='^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)'
+  go test ./controller -run "$provider_input_tests" -count=1
+  go test -race ./controller -run "$provider_input_tests" -count=1
+  payout_allocation_tests='^Test(EvenContractPayoutShare|AllocateContractParticipantPayouts|AllocateContractParticipantPayoutEligibilityMatrix)$'
+  go test ./model -run "$payout_allocation_tests" -count=1
+  go test -race ./model -run "$payout_allocation_tests" -count=1
   # Keep every file-backed validator filter regression in the aggregate gate,
   # while excluding the two stateful cases until the isolated DB profile below.
   filter_pure_tests='^TestVerifySimulationAssignmentFilter(IsValidatorLocalAndFailClosed|RejectsAmbiguousFiles|V[12].*|Rejects(Leaf|Parent)Symlink|AtomicReplacementPinsOpenedDescriptor)$'
@@ -102,6 +126,10 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test ./... -run '^$'
   go test . -run '^Test(Verify|Sn)'
 
+  transport_identity_tests='^Test(PlatformTransportAuthSnapshotsAreAtomicAndOwned|PlatformTransportH[13]ReconnectUsesUpdatedAuthSnapshot|TunTcpInboundFlowUsesStableBoundedShards|TunTcpInboundShardHandoffCadenceIsBounded|TunWriteCompletesFiniteTcpInboundHandoffBeforeReturn|TunWriteRetainsTcpInboundYieldCadence|TunWriteBatchFinishesEveryTcpInboundHandoff)$'
+  go test . -run "$transport_identity_tests" -count=1
+  go test -race . -run "$transport_identity_tests" -count=1
+
   contract_sender_diagnostic_tests='^TestCreateContractReportsSenderSequenceRole$'
   go test . -run "$contract_sender_diagnostic_tests" -count=1
   go test -race . -run "$contract_sender_diagnostic_tests" -count=1
@@ -121,16 +149,35 @@ echo "[release-1.0] shared verify wire and public SDK suites"
   go test ./blocker ./security -count=1
   go test -race ./blocker ./security -count=1
 
+  # The release simulator depends on the real unordered P2P carrier and its
+  # in-memory signaling counterpart. Keep the original fast-path failure and
+  # every adjacent registration, capacity, cancellation, and ownership
+  # regression in both frozen gates.
+  p2p_signal_tests='^Test(WebRtc|WebRtcMessageRoundTrip|P2pTransportAutoSelectsFastPathForCapablePeer|SignalPipeDropsBeforeDestinationRegistration|DelayedSignalPipe(ResolvesDestinationAtDispatch|DropsMissingDestinationAtDispatch|CancellationReturnsOwnedFrames|FullQueueDoesNotBlockDispatch|CancellationUnblocksCapacitySender)|MatchExpectedUnorderedP2pMessages(AcceptsPermutation|RejectsInvalidContent))$'
+  go test . -run "$p2p_signal_tests" -count=1
+  go test -race . -run "$p2p_signal_tests" -count=1
+
   # Cancellation is only a stop request: every admitted strategy/dial/stream
   # worker must be joined before its owner publishes lifecycle completion.
-  lifecycle_tests='^Test(ClientStrategyParentCancellationClosesIdleConnections|ClientStrategyCloseClosesIdleConnections|SerialEvalReservesRequestBudgetFromStalePreferredDialer|ParallelEvalReservesRequestBudgetFromStalePreferredDialer|ParallelEvalCancellationJoinsAttemptWorker|PlatformTransportCloseAndWaitJoinsPendingDial|PlatformTransportCloseAndWaitJoinsRouteWriterAndReceiveCleanup|StreamReplacementReceiveDoesNotJoinAndPublishesAfterOldExit|AddrGeneratorCloseJoinsBlockedProducer|ClientCancelClosesContractManagerAdmission|PeerConnectionResolveNetCancelsStunAndTurnLookups|WebRtcPeerTeardownCancelsBlockedStunResolution|PeerConnPionStartupAndTeardownAreSerialized|WebRtc|WebRtcManagerCloseAndWaitReleasesOwnedResources|WebRtcTestManagersHaveJoiningOwners|P2pStreamProbeStreamSequenceCancelSynchronouslyWithdrawsReadiness|ZZZNoPerInstanceLifecycleResidue)$'
+  lifecycle_tests='^Test(ClientStrategyParentCancellationClosesIdleConnections|ClientStrategyCloseClosesIdleConnections|SerialEvalReservesRequestBudgetFromStalePreferredDialer|ParallelEvalReservesRequestBudgetFromStalePreferredDialer|ParallelEvalCancellationJoinsAttemptWorker|PlatformTransportCloseAndWaitJoinsPendingDial|PlatformTransportCloseAndWaitJoinsRouteWriterAndReceiveCleanup|StreamReplacementReceiveDoesNotJoinAndPublishesAfterOldExit|AddrGeneratorCloseJoinsBlockedProducer|ClientCancelClosesContractManagerAdmission|PeerConnectionResolveNetCancelsStunAndTurnLookups|WebRtcPeerTeardownCancelsBlockedStunResolution|PeerConnPionStartupAndTeardownAreSerialized|WebRtcManagerCloseAndWaitReleasesOwnedResources|WebRtcTestManagersHaveJoiningOwners|P2pStreamProbeStreamSequenceCancelSynchronouslyWithdrawsReadiness|ZZZNoPerInstanceLifecycleResidue)$'
   go test . -run "$lifecycle_tests" -count=1
   go test -race . -run "$lifecycle_tests" -count=1
+
+  # Shards cannot expose package-global residue carried between otherwise
+  # unrelated root tests. Certify one unsharded default-order process and one
+  # reproducible alternate order, with bounded CPU so race/WebRTC timings are
+  # not distorted by host-wide saturation.
+  go test -count=1 -timeout 30m .
+  GOMAXPROCS=4 go test -race -count=1 -timeout 30m .
+  GOMAXPROCS=4 go test -race -count=1 -timeout 30m -shuffle=4535211000 .
 )
 (
   cd "$workspace/sdk"
   go test ./... -run '^$'
   go test . -run '^Test(ApiSubnet|ProviderLocalUserNatSettings)'
+  token_transport_tests='^Test(ApiTokenManager|DeviceRemoteRpcPublicationWakesOnlyOutstandingRefresh|ApiCloseAndWaitJoinsRefreshWorker|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout)'
+  go test . -run "$token_transport_tests" -count=1
+  go test -race . -run "$token_transport_tests" -count=1
   sdk_lifecycle_tests='^Test(ApiCloseAndWaitJoinsRefreshWorker|NetworkSpaceCloseJoinsClientStrategyRelease|NetworkSpaceManagerReplacementDoesNotHoldStateLockDuringClose|NetworkSpaceManagerStaleRemovePreservesReplacement|NetworkSpaceManagerStaleActiveSelectionPreservesReplacement|NetworkSpaceCloseJoinsAsyncLocalStateAndRejectsLateJob|NetworkSpaceManagerCloseRejectsRacingUpdate|SimProviderDisconnectJoinsPendingTransportDial|SimProviderCloseJoinsPendingTransportDial|DeviceLocalProviderCloseAndWaitJoinsAdmittedMigration|DeviceLocalCloseAndWaitJoinsOwnedApiRefresh|DeviceLocalCloseAndWaitJoinsDestinationGeneration|SecurityPolicyMonitorCloseAndWaitJoinsRun|DeviceLocalRpcManagerCloseAndWaitJoinsAccept|DeviceRemoteRpcCloseAndWaitJoinsAdmittedCallback|DeviceRemoteCloseAndWaitJoinsBlockedDial|DeviceRemoteSetRpcServerRejectsAfterClose|RpcClientCallParentCancellationClosesTransport|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout|ApiSubnetHeadlessBindings|ApiHeadlessAuthAndProviderBindings|ApiSubnetPoolClaimEscapesNoUserInputIntoQuery|SubscriptionBalanceDecode|CheckBalanceCode|CheckBalanceCodeUnknownCode|RedeemBalanceCodeDecodeAndClassify|Stripe.*|VerifyPlayPurchase|VerifyAppleTransaction)$'
   go test . -run "$sdk_lifecycle_tests" -count=1
   go test -race . -run "$sdk_lifecycle_tests" -count=1
@@ -193,6 +240,9 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     model_db_tests='Test(FindActiveClientNetwork|StreamHopListenerPrunesInactiveAdjacentClients|ActiveStreamHopsBoundsConcurrentStaleReAdd|ForceCloseRequiresPositiveParallelism|ForceCloseDisputedContract|ForceCloseDirectSettlementRemovesStream|ForceCloseMalformedContractRemovesStreamAndReturnsError|SweepOrphanClearsProxyConfigRedis|SweepOrphanReapsProxyClients|VerifyEgressIndexStoresNoRawIp|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|SweepExpiredVerifyTrails|VerifyTrailMutationLockTtlCoversLoadedTrail|StDeploymentStateIsIsolatedAcrossCoordinatorReplacements|StTransactionIntentReservationUsesChainAccountNonceScope|StTransactionRevertRetryCreatesOneImmutableSuccessor|StTransactionAttemptCandidatesConvergeOnOneWinner|StTransactionCancellationCannotRegress|StTransactionFinalizedAttemptCannotRegress)'
     go test ./controller -run "$controller_db_tests"
     go test ./model -run "$model_db_tests"
+    provider_attribution_tests='^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans)'
+    go test ./model -run "$provider_attribution_tests" -count=1
+    go test -race ./model -run "$provider_attribution_tests" -count=1
     # Task registration is part of the operator startup boundary. Keep its
     # database-backed stale-chain cleanup regressions in the managed profile;
     # running them without this profile only exercises TestEnv's retry path.

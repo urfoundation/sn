@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,6 +68,7 @@ type FinalFleetLifecycleVariantEvidence struct {
 	Bindings                []FleetBindingEvidence                      `json:"bindings"`
 	RegistrationPreparation *FinalFleetLifecycleRegistrationPreparation `json:"registration_preparation,omitempty"`
 	Registration            *FleetLifecycleRegistrationEvidence         `json:"registration,omitempty"`
+	RegistrationCall        *FinalNativeCallEvidence                    `json:"registration_call_evidence,omitempty"`
 	Cleanups                []FleetLifecycleCleanupEvidence             `json:"cleanups,omitempty"`
 }
 
@@ -95,14 +97,19 @@ type FinalFleetLifecyclePayoutArtifact struct {
 // index into State.CandidateCensuses; it deliberately does not collapse the
 // independent settlement and native epoch domains into one synthetic epoch.
 type FinalFleetLifecycleAppliedDecision struct {
-	CensusIndex     uint64               `json:"census_index"`
-	ValidatorID     uint64               `json:"validator_id"`
-	SettlementEpoch uint64               `json:"settlement_epoch"`
-	SubnetEpoch     uint64               `json:"subnet_epoch"`
-	VectorHash      string               `json:"vector_hash"`
-	Intent          FinalArtifactLocator `json:"intent"`
-	Measurement     FinalArtifactLocator `json:"measurement"`
-	Envelope        FinalArtifactLocator `json:"measurement_envelope"`
+	CensusIndex     uint64                  `json:"census_index"`
+	ValidatorID     uint64                  `json:"validator_id"`
+	SettlementEpoch uint64                  `json:"settlement_epoch"`
+	SubnetEpoch     uint64                  `json:"subnet_epoch"`
+	VectorHash      string                  `json:"vector_hash"`
+	AppliedUIDs     []uint16                `json:"applied_uids"`
+	AppliedValues   []uint16                `json:"applied_values"`
+	CommitCall      FinalNativeCallEvidence `json:"commit_call_evidence"`
+	RevealCall      FinalNativeCallEvidence `json:"reveal_call_evidence"`
+	ApplicationCall FinalNativeCallEvidence `json:"application_call_evidence"`
+	Intent          FinalArtifactLocator    `json:"intent"`
+	Measurement     FinalArtifactLocator    `json:"measurement"`
+	Envelope        FinalArtifactLocator    `json:"measurement_envelope"`
 }
 
 type finalFleetLifecycleLineageFile struct {
@@ -581,6 +588,24 @@ func (a *finalSemanticArchive) buildFleetLifecycleAppliedDecisions(source *Final
 			if err != nil {
 				return err
 			}
+			var intent validatorpkg.SteeringIntent
+			if err := decodeStrictJSONBytes(intentData, &intent); err != nil {
+				return fmt.Errorf("decode lifecycle validator %d applied intent: %w", row.ValidatorID, err)
+			}
+			decision.AppliedUIDs = append([]uint16(nil), intent.UIDs...)
+			decision.AppliedValues = append([]uint16(nil), intent.Values...)
+			decision.CommitCall, err = finalNativeIntentCallEvidence(&intent, finalNativeOperationCommit)
+			if err != nil {
+				return fmt.Errorf("derive lifecycle validator %d commit call: %w", row.ValidatorID, err)
+			}
+			decision.RevealCall, err = finalNativeIntentCallEvidence(&intent, finalNativeOperationReveal)
+			if err != nil {
+				return fmt.Errorf("derive lifecycle validator %d reveal call: %w", row.ValidatorID, err)
+			}
+			decision.ApplicationCall, err = finalNativeIntentCallEvidence(&intent, finalNativeOperationApplication)
+			if err != nil {
+				return fmt.Errorf("derive lifecycle validator %d application call: %w", row.ValidatorID, err)
+			}
 			measurementData, _, err := a.file(decision.Measurement.URI)
 			if err != nil {
 				return err
@@ -618,6 +643,40 @@ func finalFleetLifecycleVerifiedUIDs(values []validatorpkg.ExactWeightInput) []u
 		result[index] = values[index].UID
 	}
 	return result
+}
+
+// Requires every eligible UID to have the exact signed selected or rejected value.
+func verifyFinalFleetLifecycleCandidateVector(weights map[uint16]uint16, census *FleetLifecycleValidatorCensus) error {
+	if census == nil || len(census.AppliedWeights) != len(census.EligibleUIDs) {
+		return errors.New("fleet lifecycle public applied-weight census is incomplete")
+	}
+	eligible := make(map[uint16]bool, len(census.EligibleUIDs))
+	for _, uid := range census.EligibleUIDs {
+		if eligible[uid] {
+			return fmt.Errorf("fleet lifecycle eligible census duplicates UID %d", uid)
+		}
+		eligible[uid] = true
+	}
+	for _, expected := range census.AppliedWeights {
+		got, ok := weights[expected.UID]
+		if !eligible[expected.UID] {
+			return fmt.Errorf("fleet lifecycle applied weight UID %d is outside or duplicated in its eligible census", expected.UID)
+		}
+		delete(eligible, expected.UID)
+		if expected.Value == 0 {
+			if ok && got != 0 {
+				return fmt.Errorf("fleet lifecycle signed rejected UID %d has positive weight %d", expected.UID, got)
+			}
+			continue
+		}
+		if !ok || got != expected.Value {
+			return fmt.Errorf("fleet lifecycle signed applied weight UID %d differs from public census", expected.UID)
+		}
+	}
+	if len(eligible) != 0 {
+		return errors.New("fleet lifecycle applied-weight census omits an eligible UID")
+	}
+	return nil
 }
 
 func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEvidence, decision *FinalFleetLifecycleAppliedDecision, census *FleetLifecycleValidatorCensus, validator *FinalValidatorIdentityEvidence, intentData, measurementData, envelopeData []byte) error {
@@ -670,14 +729,26 @@ func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEv
 	if err != nil {
 		return err
 	}
-	if len(census.AppliedWeights) != len(census.EligibleUIDs) {
-		return errors.New("fleet lifecycle public applied-weight census is incomplete")
+	if len(decision.AppliedUIDs) == 0 || len(decision.AppliedUIDs) != len(decision.AppliedValues) || !slices.Equal(decision.AppliedUIDs, intent.UIDs) || !slices.Equal(decision.AppliedValues, intent.Values) {
+		return errors.New("fleet lifecycle indexed applied vector differs from its signed intent")
 	}
-	for _, expected := range census.AppliedWeights {
-		got, ok := weights[expected.UID]
-		if got != expected.Value || !ok && expected.Value != 0 {
-			return fmt.Errorf("fleet lifecycle signed applied weight UID %d differs from public census", expected.UID)
-		}
+	commitCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationCommit)
+	if err != nil || !finalJSONEqual(commitCall, decision.CommitCall) {
+		return stateMismatchError(err, "fleet lifecycle commit call differs from its signed intent")
+	}
+	revealCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationReveal)
+	if err != nil || !finalJSONEqual(revealCall, decision.RevealCall) {
+		return stateMismatchError(err, "fleet lifecycle reveal call differs from its signed intent")
+	}
+	applicationCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationApplication)
+	if err != nil || !finalJSONEqual(applicationCall, decision.ApplicationCall) {
+		return stateMismatchError(err, "fleet lifecycle application call differs from its signed intent")
+	}
+	if err := verifyFinalNativeCRv4Lineage(decision.CommitCall, decision.RevealCall, decision.ApplicationCall); err != nil {
+		return err
+	}
+	if err := verifyFinalFleetLifecycleCandidateVector(weights, census); err != nil {
+		return err
 	}
 	if decision.Envelope.ContentHash != intent.MeasurementEnvelopeHash || decision.Envelope.SizeBytes != intent.MeasurementEnvelopeSize || validatorpkg.ReleaseMeasurementEnvelopeContentHash(envelopeData) != intent.MeasurementEnvelopeHash || uint64(len(envelopeData)) != intent.MeasurementEnvelopeSize {
 		return errors.New("fleet lifecycle measurement envelope content address differs from its signed intent")
@@ -838,8 +909,12 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 		if err := validateFleetLifecycleRegistrationRecoverySnapshot(registration.PrePrune, name, roles); err != nil {
 			return nil, fmt.Errorf("fleet lifecycle %s registration recovery state: %w", name, err)
 		}
+		call, err := finalNativeLifecycleRegistrationEvidence(plan, entries, &registration)
+		if err != nil {
+			return nil, fmt.Errorf("fleet lifecycle %s registration call identity: %w", name, err)
+		}
 		indexed := byName[name]
-		indexed.RegistrationPreparation, indexed.Registration = &pre, &registration
+		indexed.RegistrationPreparation, indexed.Registration, indexed.RegistrationCall = &pre, &registration, &call
 	}
 	for _, item := range []struct {
 		name     string
@@ -1061,6 +1136,17 @@ func verifyFinalFleetLifecycle(evidence *FinalSemanticEvidence) error {
 		}
 		if err := requireFinalSHA256("fleet lifecycle manifest hash", variant.ManifestHash); err != nil {
 			return err
+		}
+		if variant.Registration != nil {
+			if variant.RegistrationCall == nil {
+				return fmt.Errorf("fleet lifecycle semantic variant %s has no registration call identity", variant.Name)
+			}
+			receipt := finalFleetLifecycleNativeReceipt(variant.Registration.TransactionHash, variant.Registration.PostRegistration.Head, variant.RegistrationCall)
+			if err := verifyFinalNativeReceiptCall(receipt, finalNativeOperationRegistration); err != nil {
+				return fmt.Errorf("fleet lifecycle semantic variant %s registration call: %w", variant.Name, err)
+			}
+		} else if variant.RegistrationCall != nil {
+			return fmt.Errorf("fleet lifecycle semantic variant %s has a registration call without a registration", variant.Name)
 		}
 	}
 	for _, name := range finalFleetLifecycleVariantNames() {
@@ -1289,8 +1375,12 @@ func verifyFinalFleetLifecycleArtifacts(evidence *FinalSemanticEvidence, data []
 	return nil
 }
 
-func finalFleetLifecycleNativeReceipt(transactionHash string, head ChainHead) FinalNativeReceipt {
-	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(transactionHash), Block: ChainHead{Number: head.Number, Hash: strings.ToLower(head.Hash)}}
+func finalFleetLifecycleNativeReceipt(transactionHash string, head ChainHead, calls ...*FinalNativeCallEvidence) FinalNativeReceipt {
+	var call *FinalNativeCallEvidence
+	if len(calls) == 1 {
+		call = calls[0]
+	}
+	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(transactionHash), Block: ChainHead{Number: head.Number, Hash: strings.ToLower(head.Hash)}, Call: call}
 }
 
 func finalFleetLifecycleEvent(events []FinalFleetLifecycleEventState, kind, transactionHash string, head ChainHead) (FinalFleetLifecycleEventState, error) {
@@ -1358,25 +1448,18 @@ func finalFleetLifecycleCandidateHotkeys(snapshot FleetLifecyclePruneSnapshot, c
 	return nil
 }
 
-func finalFleetLifecycleAppliedWeights(got FinalNativeWeightState, validator FleetLifecycleValidatorCensus) error {
-	if got.Block != validator.Application || len(got.UIDs) != len(got.Values) {
+func finalFleetLifecycleAppliedWeights(got FinalNativeWeightState, application ChainHead, decision FinalFleetLifecycleAppliedDecision) error {
+	if got.Block != application || len(got.UIDs) != len(got.Values) {
 		return errors.New("public lifecycle applied vector has an invalid block or vector shape")
 	}
-	public := make(map[uint16]uint16, len(got.UIDs))
-	for index, uid := range got.UIDs {
-		if _, exists := public[uid]; exists {
-			return fmt.Errorf("public lifecycle applied vector duplicates UID %d", uid)
-		}
-		public[uid] = got.Values[index]
+	if _, err := finalFleetLifecycleWeightMap(got.UIDs, got.Values); err != nil {
+		return err
 	}
-	if len(validator.AppliedWeights) != len(validator.EligibleUIDs) {
-		return errors.New("fleet lifecycle candidate weight census is incomplete")
+	if _, err := finalFleetLifecycleWeightMap(decision.AppliedUIDs, decision.AppliedValues); err != nil {
+		return fmt.Errorf("indexed lifecycle vector: %w", err)
 	}
-	for _, expected := range validator.AppliedWeights {
-		value, exists := public[expected.UID]
-		if value != expected.Value || !exists && expected.Value != 0 {
-			return fmt.Errorf("public lifecycle applied weight for UID %d=%d, want %d", expected.UID, value, expected.Value)
-		}
+	if !slices.Equal(got.UIDs, decision.AppliedUIDs) || !slices.Equal(got.Values, decision.AppliedValues) {
+		return fmt.Errorf("public lifecycle applied vector differs from exact signed vector (cardinality %d/%d)", len(got.UIDs), len(decision.AppliedUIDs))
 	}
 	return nil
 }
@@ -1426,7 +1509,16 @@ func executeFinalSemanticLifecycleOnChain(ctx context.Context, evidence *FinalSe
 		if !finalJSONEqual(pre, registration.PrePrune) || !finalJSONEqual(post, registration.PostRegistration) {
 			return fmt.Errorf("public fleet lifecycle registration %s has another exact pre/post UID census", registration.ActionID)
 		}
-		receipt := finalFleetLifecycleNativeReceipt(registration.TransactionHash, registration.PostRegistration.Head)
+		var registrationCall *FinalNativeCallEvidence
+		for _, variant := range variants {
+			if variant.Registration != nil && variant.Registration.ActionID == registration.ActionID {
+				registrationCall = variant.RegistrationCall
+			}
+		}
+		if registrationCall == nil {
+			return fmt.Errorf("public fleet lifecycle registration %s has no exact call identity", registration.ActionID)
+		}
+		receipt := finalFleetLifecycleNativeReceipt(registration.TransactionHash, registration.PostRegistration.Head, registrationCall)
 		if err := verifyFinalNativeEventOnChain(ctx, reader, receipt, "registration", appendExchanges); err != nil {
 			return fmt.Errorf("public fleet lifecycle registration %s: %w", registration.ActionID, err)
 		}
@@ -1573,10 +1665,28 @@ func executeFinalSemanticLifecycleOnChain(ctx context.Context, evidence *FinalSe
 	for _, validator := range evidence.Validators {
 		validatorUID[int(validator.ValidatorID)] = validator.UID
 	}
+	type decisionKey struct {
+		censusIndex uint64
+		validatorID uint64
+	}
+	decisions := make(map[decisionKey]FinalFleetLifecycleAppliedDecision, len(lifecycle.AppliedDecisions))
+	for _, decision := range lifecycle.AppliedDecisions {
+		key := decisionKey{censusIndex: decision.CensusIndex, validatorID: decision.ValidatorID}
+		if _, duplicate := decisions[key]; duplicate {
+			return fmt.Errorf("fleet lifecycle applied decisions duplicate census %d validator %d", decision.CensusIndex, decision.ValidatorID)
+		}
+		decisions[key] = decision
+	}
+	usedDecisions := 0
 	for censusIndex := range state.CandidateCensuses {
 		census := state.CandidateCensuses[censusIndex]
 		for validatorIndex := range census.Validators {
 			validator := census.Validators[validatorIndex]
+			decision, exists := decisions[decisionKey{censusIndex: uint64(censusIndex), validatorID: uint64(validator.ValidatorID)}]
+			if !exists {
+				return fmt.Errorf("fleet lifecycle census %d validator %d has no exact signed applied-vector index", censusIndex+1, validator.ValidatorID)
+			}
+			usedDecisions++
 			uid, exists := validatorUID[validator.ValidatorID]
 			if !exists {
 				return fmt.Errorf("fleet lifecycle census names unknown validator %d", validator.ValidatorID)
@@ -1596,13 +1706,13 @@ func executeFinalSemanticLifecycleOnChain(ctx context.Context, evidence *FinalSe
 			if err := finalFleetLifecycleCandidateHotkeys(snapshot, census); err != nil {
 				return fmt.Errorf("fleet lifecycle census %d validator %d: %w", censusIndex+1, validator.ValidatorID, err)
 			}
-			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt(validator.ExtrinsicHash, validator.Commit), "commit", appendExchanges); err != nil {
+			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt(validator.ExtrinsicHash, validator.Commit, &decision.CommitCall), "commit", appendExchanges); err != nil {
 				return fmt.Errorf("public fleet lifecycle census %d validator %d commit: %w", censusIndex+1, validator.ValidatorID, err)
 			}
-			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt("", ChainHead{Number: validator.RevealBlock, Hash: validator.RevealBlockHash}), "reveal", appendExchanges); err != nil {
+			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt("", ChainHead{Number: validator.RevealBlock, Hash: validator.RevealBlockHash}, &decision.RevealCall), "reveal", appendExchanges); err != nil {
 				return fmt.Errorf("public fleet lifecycle census %d validator %d reveal: %w", censusIndex+1, validator.ValidatorID, err)
 			}
-			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt("", validator.Application), "application", appendExchanges); err != nil {
+			if err := verifyFinalNativeEventOnChain(ctx, reader, finalFleetLifecycleNativeReceipt("", validator.Application, &decision.ApplicationCall), "application", appendExchanges); err != nil {
 				return fmt.Errorf("public fleet lifecycle census %d validator %d application: %w", censusIndex+1, validator.ValidatorID, err)
 			}
 			weights, exchanges, err := reader.NativeWeights(ctx, evidence.Netuid, uid, validator.Application)
@@ -1615,10 +1725,20 @@ func executeFinalSemanticLifecycleOnChain(ctx context.Context, evidence *FinalSe
 			if weights.ValidatorUID != uid {
 				return fmt.Errorf("public fleet lifecycle census %d resolves validator %d to UID %d, want %d", censusIndex+1, validator.ValidatorID, weights.ValidatorUID, uid)
 			}
-			if err := finalFleetLifecycleAppliedWeights(weights, validator); err != nil {
+			identity := finalFleetLifecycleValidator(evidence, decision.ValidatorID)
+			if identity == nil {
+				return fmt.Errorf("public fleet lifecycle census %d has no validator %d identity", censusIndex+1, decision.ValidatorID)
+			}
+			if err := verifyFinalNativeApplicationState(weights, decision.ApplicationCall, validator.Application, uid, identity.Hotkey, decision.AppliedUIDs, decision.AppliedValues); err != nil {
+				return fmt.Errorf("public fleet lifecycle census %d validator %d application lineage: %w", censusIndex+1, validator.ValidatorID, err)
+			}
+			if err := finalFleetLifecycleAppliedWeights(weights, validator.Application, decision); err != nil {
 				return fmt.Errorf("public fleet lifecycle census %d validator %d: %w", censusIndex+1, validator.ValidatorID, err)
 			}
 		}
+	}
+	if usedDecisions != len(decisions) {
+		return fmt.Errorf("public fleet lifecycle replay used %d/%d indexed applied decisions", usedDecisions, len(decisions))
 	}
 	return nil
 }

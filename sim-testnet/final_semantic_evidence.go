@@ -35,7 +35,11 @@ import (
 )
 
 const (
-	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v2"
+	// v8 makes the temporary fleet-refresh oracle interval independently
+	// public-chain-replayable at both operational and independent checkpoints.
+	// Earlier semantic objects retain only a source artifact and cannot prove
+	// the active oracle to a public archive observer.
+	finalSemanticEvidenceSchema                  = "urnetwork-final-semantic-evidence-v8"
 	finalReleaseArchiveMinimumSpanBlocks         = uint64(3_570)
 	finalReleaseArchiveMinimumSafetyMarginBlocks = uint64(7_200)
 	finalHeadCandidateCount                      = 202
@@ -47,6 +51,7 @@ const (
 	finalProductionEpochCount                    = uint64(3)
 	finalProductionEpochBlocks                   = uint64(360)
 	finalProductionFinalizeOffsetBlocks          = uint64(180)
+	finalAdversarialVectorCount                  = uint64(61)
 	finalDepositFormula                          = "floor(usage_bytes*rate_numerator/(2^30*rate_denominator)); implied_usage=deposit/rate; raw_score=implied_usage*q"
 	finalWeightFormula                           = "(1-theta)*pool/sum(pool)+theta*head/sum(head); mask; max_weight_limit; u16"
 )
@@ -77,6 +82,13 @@ const finalSemanticArtifactVerificationCacheLimit = 32
 
 var finalProductionRequiredExitCriterionIDs = []string{"dishonest-deposit-recovery"}
 
+var finalAdversarialExecutionModeCounts = []FinalAdversarialExecutionModeEvidence{
+	{ExecutionMode: "bounded-emulation", VectorCount: 33},
+	{ExecutionMode: "live-safe", VectorCount: 12},
+	{ExecutionMode: "local-runtime-only", VectorCount: 10},
+	{ExecutionMode: "observation-only", VectorCount: 6},
+}
+
 // FinalArtifactLocator is safe to hand to an external verifier. URI is either
 // a canonical run-relative path or an immutable https/s3/minio locator. Query
 // parameters and userinfo are rejected so credentials cannot enter FINAL.md.
@@ -93,9 +105,10 @@ type FinalRational struct {
 }
 
 type FinalNativeReceipt struct {
-	ExtrinsicHash string               `json:"extrinsic_hash,omitempty"`
-	Block         ChainHead            `json:"block"`
-	Proof         FinalArtifactLocator `json:"proof"`
+	ExtrinsicHash string                   `json:"extrinsic_hash,omitempty"`
+	Block         ChainHead                `json:"block"`
+	Proof         FinalArtifactLocator     `json:"proof"`
+	Call          *FinalNativeCallEvidence `json:"call_evidence"`
 }
 
 type FinalEVMReceipt struct {
@@ -104,6 +117,70 @@ type FinalEVMReceipt struct {
 	Status          string               `json:"status"`
 	LogsHash        string               `json:"logs_hash"`
 	Proof           FinalArtifactLocator `json:"proof"`
+}
+
+// Identifies one proxy executable at a canonical historical checkpoint. The
+// address and runtime hash always travel together so an implementation cannot
+// be renamed after capture.
+type FinalHistoricalCoordinatorRuntimeIdentity struct {
+	Implementation string `json:"implementation"`
+	RuntimeHash    string `json:"runtime_hash"`
+}
+
+// Anchors a proxy's first observable post-construction state and every
+// approved UUPS transition before the signed campaign. Its coordinates use
+// EVM transaction order rather than transaction-hash lexical order.
+type FinalHistoricalCoordinatorUpgradeEvidence struct {
+	PlanHash         string                                    `json:"plan_hash"`
+	ActionID         string                                    `json:"action_id"`
+	IntentHash       string                                    `json:"intent_hash"`
+	TransactionHash  string                                    `json:"transaction_hash"`
+	TransactionIndex uint64                                    `json:"transaction_index"`
+	LogIndex         uint64                                    `json:"log_index"`
+	Block            ChainHead                                 `json:"block"`
+	Execution        FinalHistoricalCoordinatorRuntimeIdentity `json:"execution"`
+	Post             FinalHistoricalCoordinatorRuntimeIdentity `json:"post"`
+}
+
+// Carries one proxy's complete pre-campaign executable timeline. Baseline is
+// an observed canonical post-construction head, not an inferred plan field;
+// later revisions must chain their declared active baseline to the preceding
+// approved transition.
+type FinalHistoricalCoordinatorProxyTimelineEvidence struct {
+	Proxy            string                                      `json:"proxy"`
+	Baseline         ChainHead                                   `json:"baseline"`
+	ProxyRuntimeHash string                                      `json:"proxy_runtime_hash"`
+	Initialization   FinalHistoricalCoordinatorUpgradeEvidence   `json:"initialization"`
+	Upgrades         []FinalHistoricalCoordinatorUpgradeEvidence `json:"upgrades"`
+}
+
+// Binds a receipt that predates the signed campaign window to the exact
+// archived plan and executable transition that processed it. Execution and
+// post-state are distinct for UUPS upgrades, whose call runs old code before
+// the proxy slot becomes the new implementation.
+type FinalHistoricalCoordinatorReceiptEvidence struct {
+	Receipt                              FinalEVMReceipt      `json:"receipt"`
+	ReceiptArtifact                      FinalArtifactLocator `json:"receipt_artifact"`
+	PlanHash                             string               `json:"plan_hash"`
+	PlanArtifact                         FinalArtifactLocator `json:"plan_artifact"`
+	JournalArtifact                      FinalArtifactLocator `json:"journal_artifact"`
+	PostconditionArtifact                FinalArtifactLocator `json:"postcondition_artifact"`
+	ActionID                             string               `json:"action_id"`
+	IntentHash                           string               `json:"intent_hash"`
+	TransactionFrom                      string               `json:"transaction_from"`
+	TransactionTo                        string               `json:"transaction_to"`
+	TransactionInput                     string               `json:"transaction_input"`
+	TransactionValueWei                  string               `json:"transaction_value_wei"`
+	TransactionIndex                     uint64               `json:"transaction_index"`
+	Emitters                             []string             `json:"emitters"`
+	CoordinatorProxy                     string               `json:"coordinator_proxy"`
+	ExecutionHead                        ChainHead            `json:"execution_head"`
+	ExecutionImplementation              string               `json:"execution_implementation"`
+	ExecutionImplementationRuntimeHash   string               `json:"execution_implementation_runtime_hash"`
+	CoordinatorImplementation            string               `json:"coordinator_implementation"`
+	CoordinatorImplementationSlot        string               `json:"coordinator_implementation_slot"`
+	CoordinatorProxyRuntimeHash          string               `json:"coordinator_proxy_runtime_hash"`
+	CoordinatorImplementationRuntimeHash string               `json:"coordinator_implementation_runtime_hash"`
 }
 
 // Binds the EVM registration transaction to terminal native UID ownership.
@@ -159,16 +236,32 @@ type FinalHeadCandidateEvidence struct {
 }
 
 type FinalHeadFleetEvidence struct {
-	FleetID         uint64               `json:"fleet_id"`
-	UID             uint16               `json:"uid"`
-	Hotkey          string               `json:"hotkey"`
-	Coldkey         string               `json:"coldkey"`
-	Generation      uint64               `json:"generation"`
-	MemberCount     int                  `json:"member_count"`
-	Registered      bool                 `json:"registered"`
-	Registration    FinalNativeReceipt   `json:"registration"`
-	Snapshot        ChainHead            `json:"snapshot"`
-	BindingArtifact FinalArtifactLocator `json:"binding_artifact"`
+	FleetID uint64 `json:"fleet_id"`
+	UID     uint16 `json:"uid"`
+	Hotkey  string `json:"hotkey"`
+	Coldkey string `json:"coldkey"`
+	// FleetKey and CommitmentHash duplicate the canonical values inside the
+	// binding artifact. They make the exact public-chain replay target part of
+	// the signed semantic object rather than a value inferred after sealing.
+	FleetKey        string                         `json:"fleet_key"`
+	CommitmentHash  string                         `json:"commitment_hash"`
+	Members         []FinalHeadFleetMemberEvidence `json:"members"`
+	Generation      uint64                         `json:"generation"`
+	MemberCount     int                            `json:"member_count"`
+	Registered      bool                           `json:"registered"`
+	Registration    FinalNativeReceipt             `json:"registration"`
+	Snapshot        ChainHead                      `json:"snapshot"`
+	BindingArtifact FinalArtifactLocator           `json:"binding_artifact"`
+}
+
+// Carries the canonical per-client projection used by the historical
+// public-chain fleet audit. The binding artifact remains the
+// source of truth; this projection is exact-bound to it before RPC replay.
+type FinalHeadFleetMemberEvidence struct {
+	ClientID       string `json:"client_id"`
+	ClientKey      string `json:"client_key"`
+	ValidFromEpoch uint64 `json:"valid_from_epoch"`
+	ValidToEpoch   uint64 `json:"valid_to_epoch"`
 }
 
 type FinalHeadTournamentTransition struct {
@@ -326,6 +419,16 @@ type FinalClaimEvidence struct {
 	Receipt     FinalEVMReceipt `json:"receipt"`
 }
 
+// Carries one ClaimPaid event in the acceptance interval, including a
+// withdrawal-only transaction. ClaimPaid settles the
+// coldkey's cumulative credit, so it cannot safely be inferred from the
+// immediately preceding Claimed event.
+type FinalClaimPaymentEvidence struct {
+	Coldkey   string          `json:"coldkey"`
+	AmountRao string          `json:"amount_rao"`
+	Receipt   FinalEVMReceipt `json:"receipt"`
+}
+
 type FinalEpochOperatorEvidence struct {
 	Epoch             uint64                `json:"epoch"`
 	NoID              uint64                `json:"no_id"`
@@ -345,6 +448,7 @@ type FinalEpochOperatorEvidence struct {
 	DeferredCreditRao string                `json:"deferred_credit_rao"`
 	OutstandingRao    string                `json:"outstanding_rao"`
 	CarryOutRao       string                `json:"carry_out_rao"`
+	ExpiryBlock       uint64                `json:"expiry_block"`
 	Status            uint8                 `json:"status"`
 	Claims            []FinalClaimEvidence  `json:"claims"`
 }
@@ -414,15 +518,17 @@ type FinalMinerProcessEvidence struct {
 }
 
 type FinalFleetMemberBindingEvidence struct {
-	MinerID       uint64 `json:"miner_id"`
-	FleetID       uint64 `json:"fleet_id"`
-	NoID          uint64 `json:"no_id"`
-	HeadUID       uint16 `json:"head_uid"`
-	ClientID      string `json:"client_id"`
-	ProviderID    string `json:"provider_id"`
-	Tier          string `json:"tier"`
-	Generation    uint64 `json:"generation"`
-	BindingActive bool   `json:"binding_active_through_terminal"`
+	MinerID        uint64 `json:"miner_id"`
+	FleetID        uint64 `json:"fleet_id"`
+	NoID           uint64 `json:"no_id"`
+	HeadUID        uint16 `json:"head_uid"`
+	ClientID       string `json:"client_id"`
+	ProviderID     string `json:"provider_id"`
+	Tier           string `json:"tier"`
+	Generation     uint64 `json:"generation"`
+	ValidFromEpoch uint64 `json:"valid_from_epoch"`
+	ValidToEpoch   uint64 `json:"valid_to_epoch"`
+	BindingActive  bool   `json:"binding_active_through_terminal"`
 }
 
 // FinalProcessRestartEvidence distinguishes release-locked, successfully
@@ -473,43 +579,44 @@ type FinalContractCleanupEvidence struct {
 }
 
 type FinalContractDeploymentEvidence struct {
-	CoordinatorProxy                  string               `json:"coordinator_proxy"`
-	CoordinatorImplementation         string               `json:"coordinator_implementation"`
-	SettlementVault                   string               `json:"settlement_vault"`
-	ReserveSink                       string               `json:"reserve_sink"`
-	GovernanceOwner                   string               `json:"governance_owner"`
-	CoordinatorNetuid                 uint16               `json:"coordinator_netuid"`
-	CoordinatorSelfColdkey            string               `json:"coordinator_self_coldkey"`
-	CoordinatorSettlementVault        string               `json:"coordinator_settlement_vault"`
-	CoordinatorReserveSink            string               `json:"coordinator_reserve_sink"`
-	CoordinatorGuardian               string               `json:"coordinator_guardian"`
-	CoordinatorActiveGuardian         string               `json:"coordinator_active_guardian"`
-	CoordinatorPaused                 bool                 `json:"coordinator_paused"`
-	CoordinatorCommitmentOracle       string               `json:"coordinator_commitment_oracle"`
-	CoordinatorActiveCommitmentOracle string               `json:"coordinator_active_commitment_oracle"`
-	VaultCoordinator                  string               `json:"vault_coordinator"`
-	VaultNetuid                       uint16               `json:"vault_netuid"`
-	VaultSelfColdkey                  string               `json:"vault_self_coldkey"`
-	VaultEscrowHotkey                 string               `json:"vault_escrow_hotkey"`
-	VaultEscrowRegistered             bool                 `json:"vault_escrow_registered"`
-	VaultMinimumClaimTTLBlocks        uint64               `json:"vault_minimum_claim_ttl_blocks"`
-	VaultMinimumTransferTaoRao        uint64               `json:"vault_minimum_transfer_tao_rao"`
-	PlanDefaultMinTransferTaoRao      uint64               `json:"plan_default_min_transfer_tao_rao"`
-	ReserveRecorder                   string               `json:"reserve_recorder"`
-	ReserveNetuid                     uint16               `json:"reserve_netuid"`
-	ReserveSelfColdkey                string               `json:"reserve_self_coldkey"`
-	ReserveHotkey                     string               `json:"reserve_hotkey"`
-	CoordinatorProxyCodeHash          string               `json:"coordinator_proxy_code_hash"`
-	ImplementationCodeHash            string               `json:"implementation_code_hash"`
-	SettlementVaultCodeHash           string               `json:"settlement_vault_code_hash"`
-	ReserveSinkCodeHash               string               `json:"reserve_sink_code_hash"`
-	ERC1967ImplementationSlot         string               `json:"erc1967_implementation_slot"`
-	ObservedImplementationSlot        string               `json:"observed_implementation_slot"`
-	PolicyVersion                     uint64               `json:"policy_version"`
-	PolicyEffectiveEpoch              uint64               `json:"policy_effective_epoch"`
-	PolicyEffectiveBlock              uint64               `json:"policy_effective_block"`
-	Snapshot                          ChainHead            `json:"snapshot"`
-	Artifact                          FinalArtifactLocator `json:"artifact"`
+	CoordinatorProxy                  string                    `json:"coordinator_proxy"`
+	CoordinatorImplementation         string                    `json:"coordinator_implementation"`
+	SettlementVault                   string                    `json:"settlement_vault"`
+	ReserveSink                       string                    `json:"reserve_sink"`
+	GovernanceOwner                   string                    `json:"governance_owner"`
+	CoordinatorNetuid                 uint16                    `json:"coordinator_netuid"`
+	CoordinatorSelfColdkey            string                    `json:"coordinator_self_coldkey"`
+	CoordinatorSettlementVault        string                    `json:"coordinator_settlement_vault"`
+	CoordinatorReserveSink            string                    `json:"coordinator_reserve_sink"`
+	CoordinatorGuardian               string                    `json:"coordinator_guardian"`
+	CoordinatorActiveGuardian         string                    `json:"coordinator_active_guardian"`
+	CoordinatorPaused                 bool                      `json:"coordinator_paused"`
+	CoordinatorCommitmentOracle       string                    `json:"coordinator_commitment_oracle"`
+	CoordinatorActiveCommitmentOracle string                    `json:"coordinator_active_commitment_oracle"`
+	VaultCoordinator                  string                    `json:"vault_coordinator"`
+	VaultNetuid                       uint16                    `json:"vault_netuid"`
+	VaultSelfColdkey                  string                    `json:"vault_self_coldkey"`
+	VaultEscrowHotkey                 string                    `json:"vault_escrow_hotkey"`
+	VaultEscrowRegistered             bool                      `json:"vault_escrow_registered"`
+	VaultMinimumClaimTTLBlocks        uint64                    `json:"vault_minimum_claim_ttl_blocks"`
+	VaultMinimumTransferTaoRao        uint64                    `json:"vault_minimum_transfer_tao_rao"`
+	PlanDefaultMinTransferTaoRao      uint64                    `json:"plan_default_min_transfer_tao_rao"`
+	ReserveRecorder                   string                    `json:"reserve_recorder"`
+	ReserveNetuid                     uint16                    `json:"reserve_netuid"`
+	ReserveSelfColdkey                string                    `json:"reserve_self_coldkey"`
+	ReserveHotkey                     string                    `json:"reserve_hotkey"`
+	CoordinatorProxyCodeHash          string                    `json:"coordinator_proxy_code_hash"`
+	ImplementationCodeHash            string                    `json:"implementation_code_hash"`
+	SettlementVaultCodeHash           string                    `json:"settlement_vault_code_hash"`
+	ReserveSinkCodeHash               string                    `json:"reserve_sink_code_hash"`
+	RuntimeRoots                      []FinalReleaseRuntimeRoot `json:"runtime_roots"`
+	ERC1967ImplementationSlot         string                    `json:"erc1967_implementation_slot"`
+	ObservedImplementationSlot        string                    `json:"observed_implementation_slot"`
+	PolicyVersion                     uint64                    `json:"policy_version"`
+	PolicyEffectiveEpoch              uint64                    `json:"policy_effective_epoch"`
+	PolicyEffectiveBlock              uint64                    `json:"policy_effective_block"`
+	Snapshot                          ChainHead                 `json:"snapshot"`
+	Artifact                          FinalArtifactLocator      `json:"artifact"`
 }
 
 // FinalSettlementVaultState is one immutable global accounting snapshot. The
@@ -593,53 +700,108 @@ type FinalMetricAssertion struct {
 	Observed uint64 `json:"observed"`
 }
 
+// Carries the reviewed count for one execution mode in the authenticated
+// adversarial campaign matrix.
+type FinalAdversarialExecutionModeEvidence struct {
+	ExecutionMode string `json:"execution_mode"`
+	VectorCount   uint64 `json:"vector_count"`
+}
+
+// Binds FINAL.md to the raw, stopped adversaries.json campaign artifact. The
+// compact summary makes the complete
+// 61-vector coverage directly visible without hiding the full per-vector
+// evidence behind the scenario result.
+type FinalAdversarialCampaignEvidence struct {
+	MatrixHash             string                                  `json:"matrix_hash"`
+	MatrixArtifact         FinalArtifactLocator                    `json:"matrix_artifact"`
+	VectorCount            uint64                                  `json:"vector_count"`
+	ExecutionModes         []FinalAdversarialExecutionModeEvidence `json:"execution_modes"`
+	StartedBeforeHappyPath bool                                    `json:"started_before_happy_path"`
+	StoppedAfterHappyPath  bool                                    `json:"stopped_after_happy_path"`
+	Artifact               FinalArtifactLocator                    `json:"artifact"`
+}
+
 type FinalSemanticEvidence struct {
-	Schema               string                            `json:"schema"`
-	Phase                string                            `json:"phase"`
-	RunID                string                            `json:"run_id"`
-	ResultHash           string                            `json:"result_hash"`
-	CampaignStartedAt    string                            `json:"campaign_started_at"`
-	CampaignCompletedAt  string                            `json:"campaign_completed_at"`
-	DeploymentID         string                            `json:"deployment_id"`
-	PlanHash             string                            `json:"plan_hash"`
-	ConfigHash           string                            `json:"config_hash"`
-	PolicyHash           string                            `json:"policy_hash"`
-	GenesisHash          string                            `json:"native_genesis_hash"`
-	ChainID              uint64                            `json:"evm_chain_id"`
-	Netuid               uint16                            `json:"netuid"`
-	PlanArtifact         FinalArtifactLocator              `json:"plan_artifact"`
-	PolicyArtifact       FinalArtifactLocator              `json:"policy_artifact"`
-	PriorPhase           *FinalPriorPhaseBinding           `json:"prior_phase,omitempty"`
-	Window               ScenarioAcceptanceWindow          `json:"acceptance_window"`
-	EVMCampaignStartHead ChainHead                         `json:"evm_campaign_start_head"`
-	NativeStartHead      ChainHead                         `json:"native_start_head"`
-	NativeTerminalHead   ChainHead                         `json:"native_terminal_head"`
-	EVMTerminalHead      ChainHead                         `json:"evm_terminal_head"`
-	ExpectedOperators    int                               `json:"expected_operators"`
-	ExpectedValidators   int                               `json:"expected_validators"`
-	ExpectedMiners       int                               `json:"expected_miners"`
-	ExpectedCandidates   int                               `json:"expected_candidates"`
-	ExpectedHeadSlots    int                               `json:"expected_head_slots"`
-	Topology             FinalTopologyEvidence             `json:"topology"`
-	FleetLifecycle       *FinalFleetLifecycleEvidence      `json:"fleet_lifecycle,omitempty"`
-	HeadFleets           []FinalHeadFleetEvidence          `json:"head_fleet_identities"`
-	HeadTransitions      []FinalHeadTournamentTransition   `json:"head_tournament_transitions"`
-	ValidatorView        FinalValidatorViewTransition      `json:"validator_local_view_transition"`
-	ContractCleanup      FinalContractCleanupEvidence      `json:"pre_start_contract_cleanup"`
-	ArchiveRetention     FinalArchiveRetentionEvidence     `json:"archive_retention_preflight"`
-	Deployment           FinalContractDeploymentEvidence   `json:"contract_deployment"`
-	SettlementAccounting FinalSettlementVaultAccounting    `json:"settlement_vault_accounting"`
-	Reserve              FinalReserveEvidence              `json:"reserve"`
-	Pools                []FinalPoolUIDEvidence            `json:"pool_uid_ownership"`
-	Validators           []FinalValidatorIdentityEvidence  `json:"validators"`
-	DishonestDeposit     *FinalDishonestDepositEvidence    `json:"dishonest_deposit,omitempty"`
-	Epochs               []FinalEpochOperatorEvidence      `json:"pool_epochs"`
-	Conservation         FinalPoolConservation             `json:"pool_conservation"`
-	NativeRewards        []FinalNativeRewardDelta          `json:"native_reward_deltas"`
-	PathProofs           []FinalValidatorPathProofEvidence `json:"validator_path_proofs"`
-	ExitCriteria         []FinalExitCriterionEvidence      `json:"exit_criteria"`
-	PublicVerification   *FinalPublicChainVerification     `json:"public_chain_verification,omitempty"`
-	EvidenceHash         string                            `json:"evidence_hash"`
+	Schema                                string                                            `json:"schema"`
+	Phase                                 string                                            `json:"phase"`
+	RunID                                 string                                            `json:"run_id"`
+	ResultHash                            string                                            `json:"result_hash"`
+	CampaignStartedAt                     string                                            `json:"campaign_started_at"`
+	CampaignCompletedAt                   string                                            `json:"campaign_completed_at"`
+	DeploymentID                          string                                            `json:"deployment_id"`
+	PlanHash                              string                                            `json:"plan_hash"`
+	ConfigHash                            string                                            `json:"config_hash"`
+	PolicyHash                            string                                            `json:"policy_hash"`
+	GenesisHash                           string                                            `json:"native_genesis_hash"`
+	ChainID                               uint64                                            `json:"evm_chain_id"`
+	Netuid                                uint16                                            `json:"netuid"`
+	PlanArtifact                          FinalArtifactLocator                              `json:"plan_artifact"`
+	ReleaseLockArtifact                   FinalArtifactLocator                              `json:"release_lock_artifact"`
+	PolicyArtifact                        FinalArtifactLocator                              `json:"policy_artifact"`
+	PriorPhase                            *FinalPriorPhaseBinding                           `json:"prior_phase,omitempty"`
+	Window                                ScenarioAcceptanceWindow                          `json:"acceptance_window"`
+	EVMCampaignStartHead                  ChainHead                                         `json:"evm_campaign_start_head"`
+	NativeStartHead                       ChainHead                                         `json:"native_start_head"`
+	NativeTerminalHead                    ChainHead                                         `json:"native_terminal_head"`
+	EVMTerminalHead                       ChainHead                                         `json:"evm_terminal_head"`
+	ExpectedOperators                     int                                               `json:"expected_operators"`
+	ExpectedValidators                    int                                               `json:"expected_validators"`
+	ExpectedMiners                        int                                               `json:"expected_miners"`
+	ExpectedCandidates                    int                                               `json:"expected_candidates"`
+	ExpectedHeadSlots                     int                                               `json:"expected_head_slots"`
+	Topology                              FinalTopologyEvidence                             `json:"topology"`
+	FleetLifecycle                        *FinalFleetLifecycleEvidence                      `json:"fleet_lifecycle,omitempty"`
+	FleetGeneration                       *FinalFleetGenerationLineageEvidence              `json:"fleet_generation_lineage,omitempty"`
+	HeadFleets                            []FinalHeadFleetEvidence                          `json:"head_fleet_identities"`
+	HeadTransitions                       []FinalHeadTournamentTransition                   `json:"head_tournament_transitions"`
+	ValidatorView                         FinalValidatorViewTransition                      `json:"validator_local_view_transition"`
+	ContractCleanup                       FinalContractCleanupEvidence                      `json:"pre_start_contract_cleanup"`
+	ArchiveRetention                      FinalArchiveRetentionEvidence                     `json:"archive_retention_preflight"`
+	Deployment                            FinalContractDeploymentEvidence                   `json:"contract_deployment"`
+	HistoricalCoordinatorReceipts         []FinalHistoricalCoordinatorReceiptEvidence       `json:"historical_coordinator_receipts"`
+	HistoricalCoordinatorTimeline         []FinalHistoricalCoordinatorProxyTimelineEvidence `json:"historical_coordinator_timeline"`
+	HistoricalCoordinatorTimelineArtifact FinalArtifactLocator                              `json:"historical_coordinator_timeline_artifact"`
+	FleetRefreshOracleWindow              FinalFleetRefreshOracleWindowEvidence             `json:"fleet_refresh_oracle_window"`
+	SettlementAccounting                  FinalSettlementVaultAccounting                    `json:"settlement_vault_accounting"`
+	Reserve                               FinalReserveEvidence                              `json:"reserve"`
+	Pools                                 []FinalPoolUIDEvidence                            `json:"pool_uid_ownership"`
+	Validators                            []FinalValidatorIdentityEvidence                  `json:"validators"`
+	DishonestDeposit                      *FinalDishonestDepositEvidence                    `json:"dishonest_deposit,omitempty"`
+	Epochs                                []FinalEpochOperatorEvidence                      `json:"pool_epochs"`
+	ClaimPayments                         []FinalClaimPaymentEvidence                       `json:"claim_paid_events"`
+	Conservation                          FinalPoolConservation                             `json:"pool_conservation"`
+	NativeRewards                         []FinalNativeRewardDelta                          `json:"native_reward_deltas"`
+	PathProofs                            []FinalValidatorPathProofEvidence                 `json:"validator_path_proofs"`
+	Adversaries                           FinalAdversarialCampaignEvidence                  `json:"adversarial_campaign"`
+	ExitCriteria                          []FinalExitCriterionEvidence                      `json:"exit_criteria"`
+	PublicVerification                    *FinalPublicChainVerification                     `json:"public_chain_verification,omitempty"`
+	EvidenceHash                          string                                            `json:"evidence_hash"`
+}
+
+// Points at the closed, content-addressed proof that a temporary fleet
+// batcher oracle was activated for every generation-two write and restored
+// afterward. It is mandatory for v8 rather than inferred from terminal state.
+type FinalFleetRefreshOracleWindowEvidence struct {
+	Artifact    FinalArtifactLocator                     `json:"artifact"`
+	Checkpoints FinalFleetRefreshOracleWindowCheckpoints `json:"checkpoints"`
+}
+
+// Captures one immutable active-oracle query target. The reader independently
+// replays it at Head rather than trusting the source observer's decoded map.
+type FinalFleetRefreshOracleCheckpointEvidence struct {
+	Head   ChainHead `json:"head"`
+	Oracle string    `json:"oracle"`
+}
+
+// Keeps both observer checkpoints for the temporary batcher and the later
+// restored oracle. Equal operational/independent heads are permitted only
+// when they demand the same oracle identity.
+type FinalFleetRefreshOracleWindowCheckpoints struct {
+	CoordinatorProxy         string                                    `json:"coordinator_proxy"`
+	AwaitActiveOperational   FinalFleetRefreshOracleCheckpointEvidence `json:"await_active_operational"`
+	AwaitActiveIndependent   FinalFleetRefreshOracleCheckpointEvidence `json:"await_active_independent"`
+	AwaitRestoredOperational FinalFleetRefreshOracleCheckpointEvidence `json:"await_restored_operational"`
+	AwaitRestoredIndependent FinalFleetRefreshOracleCheckpointEvidence `json:"await_restored_independent"`
 }
 
 // FinalPriorPhaseBinding makes the terminal production report a continuation
@@ -744,6 +906,9 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	if err := verifyFinalArtifact("approved setup plan", evidence.PlanArtifact, "setup-plan"); err != nil {
 		return err
 	}
+	if err := verifyFinalArtifact("approved release lock", evidence.ReleaseLockArtifact, "release-lock"); err != nil {
+		return err
+	}
 	if evidence.ExpectedOperators != 2 || evidence.ExpectedValidators != 2 || evidence.ExpectedMiners != 1000 {
 		return fmt.Errorf("release topology is miners/operators/validators=%d/%d/%d, want 1000/2/2", evidence.ExpectedMiners, evidence.ExpectedOperators, evidence.ExpectedValidators)
 	}
@@ -765,10 +930,24 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	if err := verifyFinalFleetLifecycle(evidence); err != nil {
 		return err
 	}
+	if evidence.FleetGeneration != nil {
+		if err := verifyFinalFleetGenerationLineage(evidence, evidence.FleetGeneration); err != nil {
+			return err
+		}
+		if err := verifyFinalFleetGenerationEventTopology(evidence, evidence.FleetGeneration); err != nil {
+			return err
+		}
+	}
 	if err := verifyFinalContractCleanup(evidence); err != nil {
 		return err
 	}
 	if err := verifyFinalDeployment(evidence); err != nil {
+		return err
+	}
+	if err := verifyFinalHistoricalCoordinatorReceipts(evidence); err != nil {
+		return err
+	}
+	if err := verifyFinalFleetRefreshOracleWindowEvidence(evidence); err != nil {
 		return err
 	}
 	if err := verifyFinalSettlementAccounting(evidence); err != nil {
@@ -788,7 +967,13 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	if err := verifyFinalDishonestDeposit(evidence, poolByNO, validatorByID); err != nil {
 		return err
 	}
+	if err := verifyFinalNativeEvidenceCycleUniqueness(evidence); err != nil {
+		return err
+	}
 	if err := verifyFinalPoolEpochs(evidence, poolByNO); err != nil {
+		return err
+	}
+	if err := verifyFinalClaimPayments(evidence); err != nil {
 		return err
 	}
 	if err := verifyFinalRewards(evidence, poolByNO, validatorByID); err != nil {
@@ -797,8 +982,32 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	if err := verifyFinalPathProofs(evidence, poolByNO, validatorByID); err != nil {
 		return err
 	}
+	if err := verifyFinalAdversarialCampaign(evidence.Adversaries); err != nil {
+		return err
+	}
 	if evidence.PublicVerification != nil {
 		if err := verifyFinalPublicChainVerification(evidence.PublicVerification, evidence.ChainID, evidence.GenesisHash); err != nil {
+			return err
+		}
+		currentRuntimeHeads, err := finalSemanticCurrentRuntimeHeads(evidence)
+		if err != nil {
+			return err
+		}
+		if err := verifyFinalPublicChronologyAudit(evidence, evidence.PublicVerification.ChronologyAudit, currentRuntimeHeads); err != nil {
+			return err
+		}
+		if err := verifyFinalPublicFleetAudit(evidence, evidence.PublicVerification.FleetAudit); err != nil {
+			return err
+		}
+		if evidence.FleetGeneration != nil {
+			if err := verifyFinalPublicFleetGenerationAudit(evidence, evidence.PublicVerification.FleetGenerationAudit); err != nil {
+				return err
+			}
+		}
+		if err := verifyFinalPublicNativePayoutAudit(evidence, evidence.PublicVerification.NativePayoutAudit); err != nil {
+			return err
+		}
+		if err := verifyFinalPublicNativePayoutStates(evidence, evidence.PublicVerification.NativePayoutAudit, evidence.PublicVerification.NativePayouts); err != nil {
 			return err
 		}
 	}
@@ -1046,8 +1255,11 @@ func verifyFinalTopology(evidence *FinalSemanticEvidence) error {
 			return fmt.Errorf("head fleet identity %d is incomplete, duplicated, or non-canonical", i+1)
 		}
 		seenUIDs[fleet.UID] = true
-		if err := verifyFinalNativeReceipt("head fleet registration", fleet.Registration, 0, evidence.NativeTerminalHead.Number, true); err != nil {
-			return err
+		if err := verifyFinalNativeReceipt("head fleet registration", fleet.Registration, 0, evidence.NativeTerminalHead.Number, true, finalNativeOperationRegistration); err != nil {
+			return fmt.Errorf("head fleet %d: %w", fleet.FleetID, err)
+		}
+		if err := verifyFinalNativeRegistrationProjection(fleet.Registration, evidence.Netuid, fleet.UID, fleet.Hotkey, fleet.Coldkey); err != nil {
+			return fmt.Errorf("head fleet %d registration: %w", fleet.FleetID, err)
 		}
 		if err := verifyFinalArtifact("head fleet binding", fleet.BindingArtifact, "head-fleet-binding"); err != nil {
 			return err
@@ -1060,7 +1272,7 @@ func verifyFinalTopology(evidence *FinalSemanticEvidence) error {
 	for i, transition := range evidence.HeadTransitions {
 		wantFleet := uint64(finalHeadSlotCount + i + 1)
 		fleet := evidence.HeadFleets[wantFleet-1]
-		if transition.ChallengerFleetID != wantFleet || transition.PromotedUID != fleet.UID || transition.PromotedHotkey != fleet.Hotkey || transition.Registration != fleet.Registration || transition.PrunedUID != transition.PromotedUID || transition.PrunedChurn == 0 || seenPrunedChurn[transition.PrunedChurn] || transition.PrunedHotkey == "" || transition.PrunedHotkey == transition.PromotedHotkey || transition.Snapshot.Number < transition.Registration.Block.Number || transition.Snapshot.Number > evidence.NativeTerminalHead.Number || transition.IndependentSnapshot.Number < transition.Snapshot.Number || transition.IndependentSnapshot.Number > evidence.NativeTerminalHead.Number || transition.EVMSnapshot.Number > evidence.EVMTerminalHead.Number || transition.IndependentEVMSnapshot.Number < transition.EVMSnapshot.Number || transition.IndependentEVMSnapshot.Number > evidence.EVMTerminalHead.Number {
+		if transition.ChallengerFleetID != wantFleet || transition.PromotedUID != fleet.UID || transition.PromotedHotkey != fleet.Hotkey || !finalJSONEqual(transition.Registration, fleet.Registration) || transition.PrunedUID != transition.PromotedUID || transition.PrunedChurn == 0 || seenPrunedChurn[transition.PrunedChurn] || transition.PrunedHotkey == "" || transition.PrunedHotkey == transition.PromotedHotkey || transition.Snapshot.Number < transition.Registration.Block.Number || transition.Snapshot.Number > evidence.NativeTerminalHead.Number || transition.IndependentSnapshot.Number < transition.Snapshot.Number || transition.IndependentSnapshot.Number > evidence.NativeTerminalHead.Number || transition.EVMSnapshot.Number > evidence.EVMTerminalHead.Number || transition.IndependentEVMSnapshot.Number < transition.EVMSnapshot.Number || transition.IndependentEVMSnapshot.Number > evidence.EVMTerminalHead.Number {
 			return fmt.Errorf("head tournament transition %d is incomplete", i+1)
 		}
 		seenPrunedChurn[transition.PrunedChurn] = true
@@ -1089,7 +1301,7 @@ func verifyFinalTopology(evidence *FinalSemanticEvidence) error {
 				return err
 			}
 		}
-		if err := verifyFinalNativeReceipt("challenger registration", transition.Registration, 0, evidence.NativeTerminalHead.Number, true); err != nil {
+		if err := verifyFinalNativeReceipt("challenger registration", transition.Registration, 0, evidence.NativeTerminalHead.Number, true, finalNativeOperationRegistration); err != nil {
 			return err
 		}
 		if err := verifyFinalArtifact("head tournament transition", transition.Artifact, "head-tournament-transition"); err != nil {
@@ -1196,6 +1408,9 @@ func finalExpectedRestartCounts(evidence *FinalSemanticEvidence) (map[string]uin
 
 func verifyFinalDeployment(evidence *FinalSemanticEvidence) error {
 	deployment := evidence.Deployment
+	if err := verifyFinalReleaseRuntimeRootsShape(deployment); err != nil {
+		return err
+	}
 	addresses := map[string]string{
 		"coordinator proxy": deployment.CoordinatorProxy, "coordinator implementation": deployment.CoordinatorImplementation,
 		"settlement vault": deployment.SettlementVault, "reserve sink": deployment.ReserveSink, "governance owner": deployment.GovernanceOwner,
@@ -1761,8 +1976,11 @@ func verifyFinalValidatorIdentity(evidence *FinalSemanticEvidence, validator *Fi
 	if err != nil || seenVPKs[string(vpk)] {
 		return fmt.Errorf("validator %d path VPK is invalid or reused", validator.ValidatorID)
 	}
-	if err := verifyFinalNativeReceipt("validator registration", validator.Registration, 0, evidence.NativeTerminalHead.Number, true); err != nil {
+	if err := verifyFinalNativeReceipt("validator registration", validator.Registration, 0, evidence.NativeTerminalHead.Number, true, finalNativeOperationRegistration); err != nil {
 		return fmt.Errorf("validator %d: %w", validator.ValidatorID, err)
+	}
+	if err := verifyFinalNativeRegistrationProjection(validator.Registration, evidence.Netuid, validator.UID, validator.Hotkey, validator.Coldkey); err != nil {
+		return fmt.Errorf("validator %d registration: %w", validator.ValidatorID, err)
 	}
 	if validator.Snapshot != evidence.NativeTerminalHead {
 		return fmt.Errorf("validator %d state is not terminal-window bound", validator.ValidatorID)
@@ -1957,17 +2175,31 @@ func verifyFinalCRv4CycleFrom(evidence *FinalSemanticEvidence, validatorID uint6
 	if err := verifyFinalArtifact("validator release measurement envelope", cycle.MeasurementEnvelope, "validator-release-measurement-envelope"); err != nil {
 		return err
 	}
-	if err := verifyFinalNativeReceipt("CRv4 commit", cycle.Commit, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, true); err != nil {
-		return err
-	}
-	if err := verifyFinalNativeReceipt("CRv4 reveal", cycle.Reveal, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, false); err != nil {
-		return err
-	}
-	if err := verifyFinalNativeReceipt("CRv4 application", cycle.Application, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, false); err != nil {
-		return err
-	}
 	if cycle.Commit.Block.Number > cycle.Reveal.Block.Number || cycle.Reveal.Block.Number > cycle.Application.Block.Number {
 		return errors.New("CRv4 commit/reveal/application receipt order is invalid")
+	}
+	if err := verifyFinalNativeReceipt("CRv4 commit", cycle.Commit, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, true, finalNativeOperationCommit); err != nil {
+		return err
+	}
+	if err := verifyFinalNativeReceipt("CRv4 reveal", cycle.Reveal, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, false, finalNativeOperationReveal); err != nil {
+		return err
+	}
+	if err := verifyFinalNativeReceipt("CRv4 application", cycle.Application, evidence.NativeStartHead.Number, evidence.NativeTerminalHead.Number, false, finalNativeOperationApplication); err != nil {
+		return err
+	}
+	if err := verifyFinalNativeCRv4Lineage(*cycle.Commit.Call, *cycle.Reveal.Call, *cycle.Application.Call); err != nil {
+		return err
+	}
+	validator := finalValidatorByID(evidence, validatorID)
+	if validator == nil {
+		return fmt.Errorf("CRv4 validator %d identity is absent", validatorID)
+	}
+	wantSigner, err := finalNativeAccountHex(validator.Hotkey)
+	if err != nil {
+		return fmt.Errorf("CRv4 validator %d hotkey: %w", validatorID, err)
+	}
+	if cycle.Commit.Call.Netuid != evidence.Netuid || cycle.Commit.Call.UID != validatorUID || cycle.Commit.Call.Signer != wantSigner {
+		return fmt.Errorf("CRv4 validator %d call differs from its netuid, UID, or hotkey identity", validatorID)
 	}
 	return nil
 }
@@ -2134,8 +2366,11 @@ func verifyFinalPoolEpochs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 			if err := verifyFinalArtifact("payout artifact", *row.PayoutArtifact, "payout-artifact"); err != nil {
 				return err
 			}
+			if row.ExpiryBlock <= row.Finalize.Block.Number {
+				return fmt.Errorf("epoch %s committed entitlement expiry is not after finalization", key)
+			}
 		case "missed":
-			if row.Root != nil || row.PayoutArtifact != nil || row.PayoutRoot != "" || row.ArtifactHash != "" || len(row.Claims) != 0 {
+			if row.Root != nil || row.PayoutArtifact != nil || row.PayoutRoot != "" || row.ArtifactHash != "" || row.ExpiryBlock != 0 || len(row.Claims) != 0 {
 				return fmt.Errorf("epoch %s missed root has contradictory root/claim evidence", key)
 			}
 		default:
@@ -2150,10 +2385,6 @@ func verifyFinalPoolEpochs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 		}
 		if row.Status == 0 || (row.RootDisposition == "committed" && row.Status != 2) || (row.RootDisposition == "missed" && row.Status != 3) {
 			return fmt.Errorf("epoch %s entitlement status does not match root disposition", key)
-		}
-		claimOutputs := new(big.Int).Add(amounts["paid"], amounts["deferred"])
-		if amounts["claimed"].Cmp(claimOutputs) != 0 {
-			return fmt.Errorf("epoch %s claimed != paid + deferred credit", key)
 		}
 		if previous, ok := lastCarry[row.NoID]; ok && amounts["carry_in"].Cmp(previous) != 0 {
 			return fmt.Errorf("epoch %s carry-in does not equal prior carry-out", key)
@@ -2179,6 +2410,12 @@ func verifyFinalPoolEpochs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 			if claim.Payee == "" || (claimIndex > 0 && claim.LeafIndex <= row.Claims[claimIndex-1].LeafIndex) {
 				return fmt.Errorf("epoch %s claims are incomplete or not canonical", key)
 			}
+			if err := requireFinalHex32("claim payee", claim.Payee); err != nil {
+				return err
+			}
+			if common.HexToHash(claim.Payee) == (common.Hash{}) {
+				return fmt.Errorf("epoch %s claim %d payee is invalid", key, claim.LeafIndex)
+			}
 			if err := verifyFinalEVMReceipt("pool claim", claim.Receipt, row.Finalize.Block.Number, evidence.Window.TerminalBlock); err != nil {
 				return fmt.Errorf("epoch %s claim %d: %w", key, claim.LeafIndex, err)
 			}
@@ -2199,8 +2436,8 @@ func verifyFinalPoolEpochs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 			if claim.ShareBPS == 0 || claim.ShareBPS > 10_000 || claimed.Cmp(entitlement) != 0 {
 				return fmt.Errorf("epoch %s claim %d amount does not equal floor(share_bps*total/10000)", key, claim.LeafIndex)
 			}
-			if claimed.Cmp(new(big.Int).Add(paid, deferred)) != 0 {
-				return fmt.Errorf("epoch %s claim %d payment plus deferred credit mismatch", key, claim.LeafIndex)
+			if (paid.Sign() == 0) == (deferred.Sign() == 0) {
+				return fmt.Errorf("epoch %s claim %d has no unique payment disposition", key, claim.LeafIndex)
 			}
 			claimClaimed.Add(claimClaimed, claimed)
 			claimPaid.Add(claimPaid, paid)
@@ -2236,6 +2473,74 @@ func verifyFinalPoolEpochs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 		}
 		if value.Cmp(totals[name]) != 0 {
 			return fmt.Errorf("pool conservation %s=%s, reconstructed %s", name, encoded, totals[name])
+		}
+	}
+	return nil
+}
+
+// Makes every ClaimPaid in the captured window a first-class, canonical
+// receipt record. A ClaimPaid can arise from a claim
+// that settles older credit or from withdrawClaimCredit, so it cannot be
+// reconstructed by pairing it one-to-one with a current leaf.
+func verifyFinalClaimPayments(evidence *FinalSemanticEvidence) error {
+	if evidence == nil {
+		return errors.New("claim payment evidence is nil")
+	}
+	minimumBlock, ok := checkedAdd(evidence.Window.BaselineHead.Number, 1)
+	if !ok {
+		return errors.New("ClaimPaid baseline block overflows")
+	}
+	seenReceipts := map[string]bool{}
+	paymentsByReceipt := map[string]FinalClaimPaymentEvidence{}
+	total := new(big.Int)
+	for index, payment := range evidence.ClaimPayments {
+		if index > 0 {
+			previous := evidence.ClaimPayments[index-1]
+			if payment.Receipt.Block.Number < previous.Receipt.Block.Number || (payment.Receipt.Block.Number == previous.Receipt.Block.Number && payment.Receipt.TransactionHash <= previous.Receipt.TransactionHash) {
+				return errors.New("ClaimPaid receipts are not canonical")
+			}
+		}
+		coldkey := strings.ToLower(payment.Coldkey)
+		if err := requireFinalHex32("ClaimPaid coldkey", coldkey); err != nil {
+			return err
+		}
+		if common.HexToHash(coldkey) == (common.Hash{}) {
+			return errors.New("ClaimPaid coldkey is zero")
+		}
+		amount, err := finalPositiveInteger("ClaimPaid amount", payment.AmountRao)
+		if err != nil {
+			return err
+		}
+		if err := verifyFinalEVMReceipt("ClaimPaid", payment.Receipt, minimumBlock, evidence.Window.TerminalBlock); err != nil {
+			return err
+		}
+		if payment.Receipt.Block.Number <= evidence.Window.BaselineHead.Number {
+			return errors.New("ClaimPaid receipt precedes the acceptance baseline")
+		}
+		key := strings.ToLower(payment.Receipt.TransactionHash)
+		if seenReceipts[key] {
+			return errors.New("duplicate ClaimPaid receipt")
+		}
+		seenReceipts[key] = true
+		paymentsByReceipt[key] = payment
+		total.Add(total, amount)
+	}
+	if total.String() != evidence.SettlementAccounting.ClaimPaidEventRao || total.String() != evidence.SettlementAccounting.TotalPaidDeltaRao {
+		return errors.New("ClaimPaid receipt ledger does not equal the settlement-vault payment delta")
+	}
+	for _, row := range evidence.Epochs {
+		for _, claim := range row.Claims {
+			paid, err := finalNonnegativeInteger("claim payment", claim.PaidRao)
+			if err != nil {
+				return err
+			}
+			if paid.Sign() == 0 {
+				continue
+			}
+			payment, found := paymentsByReceipt[strings.ToLower(claim.Receipt.TransactionHash)]
+			if !found || !strings.EqualFold(payment.Coldkey, claim.Payee) || payment.AmountRao != paid.String() {
+				return fmt.Errorf("claim epoch=%d no=%d leaf=%d lacks its exact ClaimPaid record", row.Epoch, row.NoID, claim.LeafIndex)
+			}
 		}
 	}
 	return nil
@@ -2621,6 +2926,133 @@ func verifyFinalPathProofs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 	return nil
 }
 
+// Reduces the authenticated raw campaign to the fixed release summary rendered
+// in FINAL.md. It deliberately checks the
+// exact required vector set rather than treating an arbitrary count of passing
+// rows as equivalent coverage.
+func summarizeFinalAdversarialCampaign(campaign *AdversaryCampaignEvidence, matrix *AdversarialMatrix) (FinalAdversarialCampaignEvidence, error) {
+	if campaign == nil || campaign.Schema != "urnetwork-adversary-campaign-v1" || campaign.Release != "1.0" || campaign.Status != "stopped" || !campaign.StartedBeforeHappyPath || !campaign.StoppedAfterHappyPath {
+		return FinalAdversarialCampaignEvidence{}, errors.New("adversarial campaign is incomplete or did not overlap the happy path")
+	}
+	if err := requireFinalHex32("adversarial campaign matrix hash", campaign.MatrixHash); err != nil {
+		return FinalAdversarialCampaignEvidence{}, err
+	}
+	if uint64(len(campaign.Vectors)) != finalAdversarialVectorCount || len(campaign.Vectors) != len(requiredAdversarialVectors) {
+		return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial campaign vectors=%d, want %d", len(campaign.Vectors), finalAdversarialVectorCount)
+	}
+	expectedVectors := make(map[string]bool, len(requiredAdversarialVectors))
+	for _, id := range requiredAdversarialVectors {
+		expectedVectors[id] = true
+	}
+	expectedModes := make(map[string]uint64, len(finalAdversarialExecutionModeCounts))
+	for _, expected := range finalAdversarialExecutionModeCounts {
+		expectedModes[expected.ExecutionMode] = expected.VectorCount
+	}
+	seenVectors := make(map[string]bool, len(campaign.Vectors))
+	observedModes := make(map[string]uint64, len(finalAdversarialExecutionModeCounts))
+	for _, vector := range campaign.Vectors {
+		if vector.ID == "" || !expectedVectors[vector.ID] || seenVectors[vector.ID] {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial campaign has an unknown or duplicate vector %q", vector.ID)
+		}
+		if vector.Status != "pass" || len(vector.ActorIDs) == 0 || len(vector.LocalTests) == 0 || len(vector.RequiredMetrics) == 0 || len(vector.MeasuredMetrics) == 0 {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial vector %s is not a complete passing record", vector.ID)
+		}
+		if vector.ConcurrentCoverage != adversaryCoverageForMode(vector.ExecutionMode) || vector.ConcurrentCoverage == "invalid" {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial vector %s has invalid execution coverage", vector.ID)
+		}
+		if _, ok := expectedModes[vector.ExecutionMode]; !ok {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial vector %s has unsupported execution mode %q", vector.ID, vector.ExecutionMode)
+		}
+		seenVectors[vector.ID] = true
+		observedModes[vector.ExecutionMode]++
+	}
+	for _, id := range requiredAdversarialVectors {
+		if !seenVectors[id] {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial campaign is missing required vector %s", id)
+		}
+	}
+	for _, expected := range finalAdversarialExecutionModeCounts {
+		if observedModes[expected.ExecutionMode] != expected.VectorCount {
+			return FinalAdversarialCampaignEvidence{}, fmt.Errorf("adversarial execution mode %s vectors=%d, want %d", expected.ExecutionMode, observedModes[expected.ExecutionMode], expected.VectorCount)
+		}
+	}
+	if err := verifyAdversarialCampaignMatrixProjection(campaign, matrix); err != nil {
+		return FinalAdversarialCampaignEvidence{}, err
+	}
+	return FinalAdversarialCampaignEvidence{
+		MatrixHash:             strings.ToLower(campaign.MatrixHash),
+		VectorCount:            uint64(len(campaign.Vectors)),
+		ExecutionModes:         append([]FinalAdversarialExecutionModeEvidence(nil), finalAdversarialExecutionModeCounts...),
+		StartedBeforeHappyPath: campaign.StartedBeforeHappyPath,
+		StoppedAfterHappyPath:  campaign.StoppedAfterHappyPath,
+	}, nil
+}
+
+// Verifies the summary and locator held by the final semantic object. The raw
+// artifact is decoded and compared during
+// VerifyFinalSemanticArtifacts.
+func verifyFinalAdversarialCampaign(value FinalAdversarialCampaignEvidence) error {
+	if err := requireFinalHex32("adversarial campaign matrix hash", value.MatrixHash); err != nil {
+		return err
+	}
+	if value.VectorCount != finalAdversarialVectorCount || !value.StartedBeforeHappyPath || !value.StoppedAfterHappyPath || len(value.ExecutionModes) != len(finalAdversarialExecutionModeCounts) {
+		return errors.New("adversarial campaign summary is incomplete")
+	}
+	for index, expected := range finalAdversarialExecutionModeCounts {
+		if value.ExecutionModes[index] != expected {
+			return fmt.Errorf("adversarial execution-mode summary %d differs from the reviewed matrix", index)
+		}
+	}
+	if err := verifyFinalArtifact("adversarial campaign", value.Artifact, "scenario-adversaries"); err != nil {
+		return err
+	}
+	if path.Base(value.Artifact.URI) != "adversaries.json" {
+		return errors.New("adversarial campaign artifact is not named adversaries.json")
+	}
+	if err := verifyFinalArtifact("adversarial matrix", value.MatrixArtifact, "adversarial-matrix"); err != nil {
+		return err
+	}
+	if path.Base(value.MatrixArtifact.URI) != "adversarial-matrix.json" {
+		return errors.New("adversarial matrix artifact is not named adversarial-matrix.json")
+	}
+	return nil
+}
+
+// Proves that the linked raw adversaries.json is the exact campaign summarized
+// by the final evidence.
+func verifyFinalAdversarialCampaignArtifact(summary FinalAdversarialCampaignEvidence, data []byte, matrix *AdversarialMatrix) error {
+	var campaign AdversaryCampaignEvidence
+	if err := decodeStrictJSONBytes(data, &campaign); err != nil {
+		return fmt.Errorf("decode adversarial campaign artifact: %w", err)
+	}
+	observed, err := summarizeFinalAdversarialCampaign(&campaign, matrix)
+	if err != nil {
+		return err
+	}
+	observed.MatrixArtifact = summary.MatrixArtifact
+	observed.Artifact = summary.Artifact
+	if !finalJSONEqual(observed, summary) {
+		return errors.New("adversarial campaign artifact differs from its final summary")
+	}
+	return nil
+}
+
+// Proves that the retained artifact is precisely the canonical reviewed matrix
+// named by the campaign summary.
+func verifyFinalAdversarialMatrixArtifact(summary FinalAdversarialCampaignEvidence, data []byte) (*AdversarialMatrix, error) {
+	matrix, canonical, err := decodeCanonicalAdversarialMatrix(data)
+	if err != nil {
+		return nil, fmt.Errorf("decode adversarial matrix artifact: %w", err)
+	}
+	if !bytes.Equal(canonical, data) {
+		return nil, errors.New("adversarial matrix artifact is not canonical JSON")
+	}
+	if !strings.EqualFold(matrix.Hash, summary.MatrixHash) {
+		return nil, errors.New("adversarial matrix artifact hash differs from campaign summary")
+	}
+	return matrix, nil
+}
+
 type finalSemanticArtifactVerificationTask func() (*validatorpkg.ReleaseMeasurementArtifact, error)
 
 type finalSemanticArtifactVerificationResult struct {
@@ -2679,27 +3111,37 @@ func runFinalSemanticArtifactVerificationTasks(ctx context.Context, tasks []fina
 	return results
 }
 
-// VerifyFinalSemanticArtifacts proves every referenced immutable object by
-// content and performs an additional semantic check of steering-intent and
-// JSONL path-proof artifacts.
-func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEvidence, load FinalArtifactLoader) error {
-	if err := VerifyFinalSemanticEvidence(evidence); err != nil {
-		return err
+// Keeps each semantic use even when several references share one immutable
+// object. Every reference's digest and any domain-specific expectation must
+// still be checked against the one owned byte stream.
+type finalSemanticArtifactUse struct {
+	locator   FinalArtifactLocator
+	pathProof *FinalValidatorPathProofEvidence
+	payout    *finalPayoutArtifactExpectation
+}
+
+// Selects the complete source graph before loading. Keeping this boundary
+// separate lets release tests independently census all nested locator fields,
+// including proofs which have no duplicate reference in ordinary epoch rows.
+func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemanticArtifactUse, error) {
+	if evidence == nil {
+		return nil, errors.New("final semantic artifact evidence is unavailable")
 	}
-	if ctx == nil || load == nil {
-		return errors.New("final semantic artifact loader is unavailable")
-	}
-	type use struct {
-		locator   FinalArtifactLocator
-		pathProof *FinalValidatorPathProofEvidence
-		payout    *finalPayoutArtifactExpectation
-	}
-	uses := make([]use, 0)
+	uses := make([]finalSemanticArtifactUse, 0)
 	var lifecyclePayoutExpectations []finalPayoutArtifactExpectation
-	add := func(locator FinalArtifactLocator) { uses = append(uses, use{locator: locator}) }
+	add := func(locator FinalArtifactLocator) { uses = append(uses, finalSemanticArtifactUse{locator: locator}) }
 	add(evidence.PlanArtifact)
+	add(evidence.ReleaseLockArtifact)
 	add(evidence.PolicyArtifact)
+	add(evidence.Adversaries.MatrixArtifact)
+	add(evidence.Adversaries.Artifact)
 	add(evidence.ArchiveRetention.Artifact)
+	// A release without any retained predecessor coordinator receipt has no
+	// timeline artifact. Keep its absence aligned with the structural verifier
+	// instead of asking loaders to resolve an empty, unused locator.
+	if finalHistoricalCoordinatorTimelineRequired(evidence) {
+		add(evidence.HistoricalCoordinatorTimelineArtifact)
+	}
 	if evidence.PriorPhase != nil {
 		add(evidence.PriorPhase.Completion)
 		add(evidence.PriorPhase.EvidenceManifest)
@@ -2727,11 +3169,39 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				}
 			}
 			if stateRecord == nil {
-				return fmt.Errorf("fleet lifecycle payout artifact epoch %d operator %d has no terminal state record", item.Epoch, item.NoID)
+				return nil, fmt.Errorf("fleet lifecycle payout artifact epoch %d operator %d has no terminal state record", item.Epoch, item.NoID)
 			}
 			lifecyclePayoutExpectations[index] = finalPayoutArtifactExpectation{Epoch: item.Epoch, NoID: item.NoID, ArtifactHash: "0x" + strings.TrimPrefix(stateRecord.ContentHash, "sha256:"), PayoutRoot: stateRecord.PayoutRoot}
-			uses = append(uses, use{locator: item.Artifact, payout: &lifecyclePayoutExpectations[index]})
+			uses = append(uses, finalSemanticArtifactUse{locator: item.Artifact, payout: &lifecyclePayoutExpectations[index]})
 			add(item.Root.Proof)
+		}
+	}
+	if lineage := evidence.FleetGeneration; lineage != nil {
+		add(lineage.Artifact)
+		for _, batch := range lineage.Batches {
+			if batch.BatchWrite != nil {
+				add(batch.Postcondition)
+				add(batch.BatchWrite.Receipt.Proof)
+				add(batch.BatchWrite.Postcondition)
+			}
+			for _, write := range batch.CarriedHistory {
+				add(write.Receipt.Proof)
+				add(write.Postcondition)
+			}
+		}
+		for _, fleet := range lineage.SetupFleets {
+			for _, version := range []FinalFleetGenerationVersionEvidence{fleet.Initial, fleet.Refresh} {
+				add(version.Manifest)
+				add(version.Commitment)
+				add(version.CommitmentPostcondition)
+			}
+		}
+		for _, challenger := range lineage.ChallengerFleets {
+			add(challenger.Initial.Manifest)
+			add(challenger.Initial.Commitment)
+			add(challenger.Initial.CommitmentPostcondition)
+			add(challenger.Registration.Proof)
+			add(challenger.Transition)
 		}
 	}
 	add(evidence.ContractCleanup.SupervisorStateArtifact)
@@ -2744,6 +3214,14 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	for _, addition := range evidence.Reserve.PrincipalAdditions {
 		add(addition.Receipt.Proof)
 	}
+	for _, receipt := range evidence.HistoricalCoordinatorReceipts {
+		add(receipt.Receipt.Proof)
+		add(receipt.ReceiptArtifact)
+		add(receipt.PlanArtifact)
+		add(receipt.JournalArtifact)
+		add(receipt.PostconditionArtifact)
+	}
+	add(evidence.FleetRefreshOracleWindow.Artifact)
 	for _, criterion := range evidence.ExitCriteria {
 		for _, locator := range criterion.Artifacts {
 			add(locator)
@@ -2777,7 +3255,12 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				add(locator)
 			}
 			for _, pool := range cycle.Pools {
-				uses = append(uses, use{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes, PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash}})
+				uses = append(uses, finalSemanticArtifactUse{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{
+					NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes,
+					PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash,
+					SourceStartBlock: pool.SourceStartBlock, SourceStartHash: pool.SourceStartHash,
+					SourceEndBlock: pool.SourceEndBlock, SourceEndHash: pool.SourceEndHash,
+				}})
 				add(pool.DepositReceipt.Proof)
 			}
 			add(cycle.IntentArtifact)
@@ -2795,7 +3278,12 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 					add(locator)
 				}
 				for _, pool := range cycle.Pools {
-					uses = append(uses, use{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes, PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash}})
+					uses = append(uses, finalSemanticArtifactUse{locator: pool.PayoutArtifact, payout: &finalPayoutArtifactExpectation{
+						NoID: pool.NoID, Epoch: pool.SourceEpoch, UsageBytes: pool.UsageBytes,
+						PayoutRoot: pool.PayoutRoot, ArtifactHash: pool.ArtifactHash,
+						SourceStartBlock: pool.SourceStartBlock, SourceStartHash: pool.SourceStartHash,
+						SourceEndBlock: pool.SourceEndBlock, SourceEndHash: pool.SourceEndHash,
+					}})
 					add(pool.DepositReceipt.Proof)
 				}
 			}
@@ -2809,30 +3297,42 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 			add(row.Root.Proof)
 		}
 		if row.PayoutArtifact != nil {
-			uses = append(uses, use{locator: *row.PayoutArtifact, payout: &finalPayoutArtifactExpectation{NoID: row.NoID, Epoch: row.Epoch, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, Claims: append([]FinalClaimEvidence(nil), row.Claims...)}})
+			uses = append(uses, finalSemanticArtifactUse{locator: *row.PayoutArtifact, payout: &finalPayoutArtifactExpectation{NoID: row.NoID, Epoch: row.Epoch, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, Claims: append([]FinalClaimEvidence(nil), row.Claims...)}})
 		}
 		for _, claim := range row.Claims {
 			add(claim.Receipt.Proof)
 		}
+	}
+	for _, payment := range evidence.ClaimPayments {
+		add(payment.Receipt.Proof)
 	}
 	for _, reward := range evidence.NativeRewards {
 		add(reward.SnapshotArtifact)
 	}
 	for i := range evidence.PathProofs {
 		proof := &evidence.PathProofs[i]
-		uses = append(uses, use{locator: proof.Artifact, pathProof: proof})
+		uses = append(uses, finalSemanticArtifactUse{locator: proof.Artifact, pathProof: proof})
+	}
+	return uses, nil
+}
+
+// Owns and hashes the complete selected graph before deep replay or cache
+// lookup. A repeated URI saves I/O but never bypasses another use's digest.
+func loadFinalSemanticArtifactUses(ctx context.Context, uses []finalSemanticArtifactUse, load FinalArtifactLoader) (map[string][]byte, error) {
+	if ctx == nil || load == nil {
+		return nil, errors.New("final semantic artifact loader is unavailable")
 	}
 	cache := map[string][]byte{}
 	for _, item := range uses {
 		data, ok := cache[item.locator.URI]
 		if !ok {
 			if err := ctx.Err(); err != nil {
-				return err
+				return nil, err
 			}
 			var err error
 			data, err = load(ctx, item.locator)
 			if err != nil {
-				return fmt.Errorf("load final artifact %s: %w", item.locator.URI, err)
+				return nil, fmt.Errorf("load final artifact %s: %w", item.locator.URI, err)
 			}
 			// Own the exact byte stream used for both the content-address check
 			// and deep replay. A loader-backed mutable buffer cannot race the
@@ -2841,8 +3341,28 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 			cache[item.locator.URI] = data
 		}
 		if uint64(len(data)) != item.locator.SizeBytes || bytesSHA256(data) != item.locator.ContentHash {
-			return fmt.Errorf("final artifact %s size or content hash mismatch", item.locator.URI)
+			return nil, fmt.Errorf("final artifact %s size or content hash mismatch", item.locator.URI)
 		}
+	}
+	return cache, nil
+}
+
+// Proves every referenced immutable object by content, then performs the
+// semantic and cross-artifact replay over exactly those authenticated bytes.
+func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEvidence, load FinalArtifactLoader) error {
+	if err := VerifyFinalSemanticEvidence(evidence); err != nil {
+		return err
+	}
+	if ctx == nil || load == nil {
+		return errors.New("final semantic artifact loader is unavailable")
+	}
+	uses, err := finalSemanticArtifactUses(evidence)
+	if err != nil {
+		return err
+	}
+	cache, err := loadFinalSemanticArtifactUses(ctx, uses, load)
+	if err != nil {
+		return err
 	}
 	cacheKey, err := finalSemanticArtifactVerificationCacheKey(evidence, cache)
 	if err != nil {
@@ -2853,6 +3373,17 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	}
 	if finalSemanticArtifactVerificationCacheHit(cacheKey) {
 		return nil
+	}
+	matrix, err := verifyFinalAdversarialMatrixArtifact(evidence.Adversaries, cache[evidence.Adversaries.MatrixArtifact.URI])
+	if err != nil {
+		return err
+	}
+	if err := verifyFinalAdversarialCampaignArtifact(evidence.Adversaries, cache[evidence.Adversaries.Artifact.URI], matrix); err != nil {
+		return err
+	}
+	policy, err := verifyFinalPolicyArtifact(evidence, cache[evidence.PolicyArtifact.URI])
+	if err != nil {
+		return err
 	}
 	bindingData := cache[evidence.Topology.BindingManifest.URI]
 	tiers, err := finalMinerTierByClient(bindingData)
@@ -2872,17 +3403,23 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		}
 		if item.payout != nil {
 			pool := finalPoolByNO(evidence, item.payout.NoID)
-			if err := verifyFinalPayoutArtifact(evidence, pool, item.payout, tiers, data); err != nil {
+			if err := verifyFinalPayoutArtifact(evidence, pool, item.payout, tiers, policy.Verify.ReliabilityAMin, data); err != nil {
 				return fmt.Errorf("payout artifact %s: %w", item.locator.URI, err)
 			}
 		}
 	}
-	policy, err := verifyFinalPolicyArtifact(evidence, cache[evidence.PolicyArtifact.URI])
+	plan, err := verifyFinalSetupPlanArtifact(evidence, cache[evidence.PlanArtifact.URI])
 	if err != nil {
 		return err
 	}
-	if _, err := verifyFinalSetupPlanArtifact(evidence, cache[evidence.PlanArtifact.URI]); err != nil {
+	lock, err := verifyFinalReleaseLockArtifact(evidence, plan, cache[evidence.ReleaseLockArtifact.URI])
+	if err != nil {
 		return err
+	}
+	if evidence.FleetGeneration != nil {
+		if err := verifyFinalFleetGenerationArtifacts(evidence, cache); err != nil {
+			return err
+		}
 	}
 	if err := verifyFinalPolicyInputs(evidence, policy); err != nil {
 		return err
@@ -2926,7 +3463,10 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err := verifyFinalContractCleanupArtifacts(evidence, cache); err != nil {
 		return err
 	}
-	if err := verifyFinalDeploymentArtifact(evidence, cache[evidence.Deployment.Artifact.URI]); err != nil {
+	if err := verifyFinalDeploymentArtifact(evidence, plan, lock, cache[evidence.Deployment.Artifact.URI]); err != nil {
+		return err
+	}
+	if err := verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence, plan, cache); err != nil {
 		return err
 	}
 	if err := verifyFinalReserveArtifact(evidence, cache[evidence.Reserve.Artifact.URI]); err != nil {
@@ -3109,22 +3649,11 @@ func finalSemanticArtifactVerificationCacheStore(key string) {
 	finalSemanticArtifactVerificationCache.entries[key] = struct{}{}
 }
 
-func verifyFinalDeploymentArtifact(evidence *FinalSemanticEvidence, data []byte) error {
+func verifyFinalDeploymentArtifact(evidence *FinalSemanticEvidence, plan *SetupPlan, lock *ReleaseLock, data []byte) error {
 	if evidence == nil {
 		return errors.New("contract deployment artifact evidence is unavailable")
 	}
-	var artifact struct {
-		Deployment                   ContractDeployment  `json:"deployment"`
-		Upgrade                      CoordinatorUpgrade  `json:"upgrade"`
-		Terminal                     ChainHead           `json:"terminal"`
-		RuntimeCodeHashes            map[string]string   `json:"runtime_code_hashes"`
-		Policy                       PolicyView          `json:"policy"`
-		Custody                      ContractCustodyView `json:"custody"`
-		PlanHash                     string              `json:"plan_hash"`
-		PlanDefaultMinTransferTaoRao uint64              `json:"plan_default_min_transfer_rao"`
-		ExpectedGuardian             string              `json:"expected_guardian"`
-		ExpectedCommitmentOracle     string              `json:"expected_commitment_oracle"`
-	}
+	var artifact finalContractDeploymentArtifact
 	if err := decodeStrictJSONBytes(data, &artifact); err != nil {
 		return fmt.Errorf("decode contract deployment artifact: %w", err)
 	}
@@ -3152,7 +3681,7 @@ func verifyFinalDeploymentArtifact(evidence *FinalSemanticEvidence, data []byte)
 		!strings.EqualFold(c.ReserveRecorder, d.ReserveRecorder) || c.ReserveNetuid != d.ReserveNetuid || !strings.EqualFold(c.ReserveSelfColdkey, d.ReserveSelfColdkey) || !strings.EqualFold(c.ReserveHotkey, d.ReserveHotkey) {
 		return errors.New("contract deployment artifact custody differs from signed semantic evidence")
 	}
-	return nil
+	return verifyFinalDeploymentRuntimeAnchors(evidence, plan, lock, artifact)
 }
 
 func verifyFinalReserveArtifact(evidence *FinalSemanticEvidence, data []byte) error {
@@ -3499,7 +4028,7 @@ func verifyFinalTopologyArtifacts(evidence *FinalSemanticEvidence, minerData, bi
 		}
 		switch binding.Tier {
 		case "head-candidate":
-			if binding.FleetID == 0 || binding.FleetID > finalHeadCandidateCount || binding.HeadUID != evidence.HeadFleets[binding.FleetID-1].UID || binding.Generation == 0 || !binding.BindingActive {
+			if binding.FleetID == 0 || binding.FleetID > finalHeadCandidateCount || binding.HeadUID != evidence.HeadFleets[binding.FleetID-1].UID || binding.Generation == 0 || binding.ValidFromEpoch == 0 || binding.ValidToEpoch < binding.ValidFromEpoch || !binding.BindingActive {
 				return fmt.Errorf("head-candidate assignment %d has an invalid fleet/UID", i+1)
 			}
 			for _, validator := range evidence.Validators {
@@ -3523,7 +4052,7 @@ func verifyFinalTopologyArtifacts(evidence *FinalSemanticEvidence, minerData, bi
 			fleetMembers[binding.FleetID]++
 			headMembers++
 		case "pool-tail":
-			if binding.FleetID != 0 || binding.HeadUID != 0 || binding.Generation != 0 || binding.BindingActive {
+			if binding.FleetID != 0 || binding.HeadUID != 0 || binding.Generation != 0 || binding.ValidFromEpoch != 0 || binding.ValidToEpoch != 0 || binding.BindingActive {
 				return fmt.Errorf("pool-tail assignment %d falsely claims a head fleet", i+1)
 			}
 			poolTailMembers++
@@ -3600,7 +4129,11 @@ func verifyFinalHeadFleetBindingArtifacts(evidence *FinalSemanticEvidence, cache
 	if err := decodeStrictJSONBytes(bindingData, &bindings); err != nil {
 		return fmt.Errorf("decode fleet binding manifest for head artifacts: %w", err)
 	}
-	clientsByFleet := make(map[uint64]map[string]bool, len(evidence.HeadFleets))
+	type boundMember struct {
+		validFromEpoch uint64
+		validToEpoch   uint64
+	}
+	clientsByFleet := make(map[uint64]map[string]boundMember, len(evidence.HeadFleets))
 	for _, binding := range bindings {
 		if binding.Tier != "head-candidate" {
 			continue
@@ -3609,10 +4142,16 @@ func verifyFinalHeadFleetBindingArtifacts(evidence *FinalSemanticEvidence, cache
 		if err != nil {
 			return err
 		}
-		if clientsByFleet[binding.FleetID] == nil {
-			clientsByFleet[binding.FleetID] = map[string]bool{}
+		if binding.ValidFromEpoch == 0 || binding.ValidToEpoch < binding.ValidFromEpoch {
+			return fmt.Errorf("head fleet %d client %s has an invalid terminal validity interval", binding.FleetID, key)
 		}
-		clientsByFleet[binding.FleetID][key] = true
+		if clientsByFleet[binding.FleetID] == nil {
+			clientsByFleet[binding.FleetID] = map[string]boundMember{}
+		}
+		if _, duplicate := clientsByFleet[binding.FleetID][key]; duplicate {
+			return fmt.Errorf("head fleet %d repeats terminal client %s", binding.FleetID, key)
+		}
+		clientsByFleet[binding.FleetID][key] = boundMember{validFromEpoch: binding.ValidFromEpoch, validToEpoch: binding.ValidToEpoch}
 	}
 	seenFleetKeys := map[string]bool{}
 	seenClientKeys := map[string]bool{}
@@ -3630,6 +4169,9 @@ func verifyFinalHeadFleetBindingArtifacts(evidence *FinalSemanticEvidence, cache
 		if len(wantClients) != len(identity.Members) {
 			return fmt.Errorf("head fleet %d binding artifact member census differs", fleet.FleetID)
 		}
+		if fleet.FleetKey != identity.FleetKey || fleet.CommitmentHash != identity.CommitmentHash || len(fleet.Members) != len(identity.Members) {
+			return fmt.Errorf("head fleet %d sealed replay projection differs from its binding artifact", fleet.FleetID)
+		}
 		clients := make([]string, 0, len(identity.Members))
 		for client := range identity.Members {
 			clients = append(clients, client)
@@ -3637,13 +4179,25 @@ func verifyFinalHeadFleetBindingArtifacts(evidence *FinalSemanticEvidence, cache
 		sort.Strings(clients)
 		for _, client := range clients {
 			clientKey := identity.Members[client]
-			if !wantClients[client] {
+			_, exists := wantClients[client]
+			if !exists {
 				return fmt.Errorf("head fleet %d binding artifact contains an unauthenticated client", fleet.FleetID)
 			}
 			if seenClientKeys[clientKey] {
 				return fmt.Errorf("head fleet %d binding artifact reuses a client verification key", fleet.FleetID)
 			}
 			seenClientKeys[clientKey] = true
+		}
+		for memberIndex, member := range fleet.Members {
+			clientRaw, ok := evidenceFixedHex(member.ClientID, 16)
+			if !ok || memberIndex > 0 && fleet.Members[memberIndex-1].ClientID >= member.ClientID {
+				return fmt.Errorf("head fleet %d sealed replay member projection is non-canonical", fleet.FleetID)
+			}
+			client := hex.EncodeToString(clientRaw)
+			memberBinding, exists := wantClients[client]
+			if !exists || identity.Members[client] != member.ClientKey || member.ValidFromEpoch != memberBinding.validFromEpoch || member.ValidToEpoch != memberBinding.validToEpoch {
+				return fmt.Errorf("head fleet %d sealed replay member %s differs from its artifact/binding projection", fleet.FleetID, member.ClientID)
+			}
 		}
 	}
 	return nil
@@ -3870,6 +4424,19 @@ func verifyFinalIntentArtifact(evidence *FinalSemanticEvidence, validatorID uint
 	}
 	if intent.Prepared.Netuid != evidence.Netuid || intent.Prepared.SubnetEpoch != cycle.SubnetEpoch || !slices.Equal(intent.Prepared.UIDs, uids) || !slices.Equal(intent.Prepared.Values, values) || intent.Prepared.ExtrinsicHash != cycle.Commit.ExtrinsicHash || intent.Prepared.RevealBlock != cycle.Reveal.Block.Number {
 		return errors.New("prepared CRv4 submission does not match semantic evidence")
+	}
+	for _, item := range []struct {
+		operation string
+		receipt   FinalNativeReceipt
+	}{
+		{operation: finalNativeOperationCommit, receipt: cycle.Commit},
+		{operation: finalNativeOperationReveal, receipt: cycle.Reveal},
+		{operation: finalNativeOperationApplication, receipt: cycle.Application},
+	} {
+		want, err := finalNativeIntentCallEvidence(&intent, item.operation)
+		if err != nil || item.receipt.Call == nil || !finalJSONEqual(want, *item.receipt.Call) {
+			return stateMismatchError(err, "native %s call evidence differs from the exact signed intent", item.operation)
+		}
 	}
 	audits := make([]validatorpkg.DepositAudit, len(cycle.Pools))
 	for i, pool := range cycle.Pools {
@@ -4104,18 +4671,46 @@ func verifyFinalPathProofArtifact(proof *FinalValidatorPathProofEvidence, data [
 	return nil
 }
 
+// Carries the independently authenticated commitment and, when a validator
+// audited demand, the exact source interval signed into that decision.
 type finalPayoutArtifactExpectation struct {
-	NoID         uint64
-	Epoch        uint64
-	UsageBytes   uint64
-	PayoutRoot   string
-	ArtifactHash string
-	Claims       []FinalClaimEvidence
+	NoID             uint64
+	Epoch            uint64
+	UsageBytes       uint64
+	PayoutRoot       string
+	ArtifactHash     string
+	SourceStartBlock uint64
+	SourceStartHash  string
+	SourceEndBlock   uint64
+	SourceEndHash    string
+	Claims           []FinalClaimEvidence
 }
 
+// Joins a logical client to its configured operator, tier, and unique payout
+// identity from the independently captured topology manifest.
 type finalMinerAssignment struct {
-	NoID uint64
-	Tier string
+	NoID          uint64
+	Tier          string
+	ProviderID    string
+	PayoutColdkey [32]byte
+}
+
+// Reconstructs the server's exact operator-domain snapshot commitment.
+func finalPayoutOperatorSnapshotHash(noID, epoch uint64, policyHash string) string {
+	return payoutartifact.SnapshotHash(map[string]any{"no_id": noID, "epoch": epoch, "policy_hash": policyHash})
+}
+
+// Reconstructs the ordered provider census commitment emitted by the server.
+func finalPayoutFleetSnapshotHash(providers []payoutartifact.ProviderInput) string {
+	rows := make([]map[string]any, 0, len(providers))
+	for _, provider := range providers {
+		rows = append(rows, map[string]any{
+			"client_id":  fmt.Sprintf("%x", provider.ClientID),
+			"head":       provider.HeadExcluded,
+			"generation": provider.BindingGeneration,
+		})
+	}
+	return payoutartifact.SnapshotHash(rows)
 }
 
 func finalPayoutClientID(value string) (connect.Id, error) {
@@ -4354,8 +4949,8 @@ func finalPayoutAssignmentsAt(evidence *FinalSemanticEvidence, expected *finalPa
 	return result, records, nil
 }
 
-func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolUIDEvidence, expected *finalPayoutArtifactExpectation, assignments map[connect.Id]finalMinerAssignment, data []byte) error {
-	if evidence == nil || pool == nil || expected == nil {
+func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolUIDEvidence, expected *finalPayoutArtifactExpectation, assignments map[connect.Id]finalMinerAssignment, reliabilityAMin uint64, data []byte) error {
+	if evidence == nil || pool == nil || expected == nil || reliabilityAMin == 0 {
 		return errors.New("payout artifact identity is incomplete")
 	}
 	artifact, err := payoutartifact.Decode(data)
@@ -4368,6 +4963,15 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 	if strings.ToLower(artifact.Signer.Hex()) != pool.PayoutRootSigner {
 		return errors.New("payout artifact signer is not the authorized operator root signer")
 	}
+	if artifact.ReliabilityAMin != reliabilityAMin {
+		return fmt.Errorf("payout artifact reliability a_min=%d, want signed policy value %d", artifact.ReliabilityAMin, reliabilityAMin)
+	}
+	if artifact.OperatorSnapshotHash != finalPayoutOperatorSnapshotHash(expected.NoID, expected.Epoch, evidence.PolicyHash) {
+		return errors.New("payout artifact operator snapshot is outside its exact operator/epoch/policy domain")
+	}
+	if artifact.FleetSnapshotHash != finalPayoutFleetSnapshotHash(artifact.Providers) {
+		return errors.New("payout artifact fleet snapshot does not commit its exact provider census")
+	}
 	if !strings.EqualFold("0x"+strings.TrimPrefix(artifact.ContentHash, "sha256:"), expected.ArtifactHash) {
 		return fmt.Errorf("payout artifact content hash %s is not the committed artifact hash %s for epoch %d operator %d", artifact.ContentHash, expected.ArtifactHash, expected.Epoch, expected.NoID)
 	}
@@ -4377,22 +4981,42 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 	if expected.PayoutRoot != "" && !strings.EqualFold("0x"+hex.EncodeToString(artifact.PayoutRoot[:]), expected.PayoutRoot) {
 		return errors.New("payout artifact Merkle root does not match committed root")
 	}
+	hasSourceBoundary := expected.SourceStartBlock != 0 || expected.SourceStartHash != "" || expected.SourceEndBlock != 0 || expected.SourceEndHash != ""
+	if hasSourceBoundary {
+		if expected.SourceStartBlock == 0 || expected.SourceStartHash == "" || expected.SourceEndBlock == 0 || expected.SourceEndHash == "" {
+			return errors.New("validator-signed payout source boundary is partial")
+		}
+		if artifact.Start.Number != expected.SourceStartBlock || !strings.EqualFold(artifact.Start.Hash, expected.SourceStartHash) || artifact.End.Number != expected.SourceEndBlock || !strings.EqualFold(artifact.End.Hash, expected.SourceEndHash) {
+			return errors.New("payout artifact source boundary differs from the validator-signed deposit audit")
+		}
+	}
 	epochAssignments, lifecyclePayouts, err := finalPayoutAssignmentsAt(evidence, expected, assignments)
 	if err != nil {
 		return err
 	}
 	tailLeaves := 0
 	providerByClient := make(map[connect.Id]payoutartifact.ProviderInput, len(artifact.Providers))
+	providerByColdkey := make(map[[32]byte]connect.Id, len(artifact.Providers))
 	for _, provider := range artifact.Providers {
 		clientID := connect.Id(provider.ClientID)
 		assignment, ok := epochAssignments[clientID]
 		if !ok {
 			return fmt.Errorf("payout provider %s is absent from miner tier assignments", clientID.String())
 		}
+		if assignment.NoID != expected.NoID {
+			return fmt.Errorf("payout provider %s belongs to operator %d, not operator %d", clientID.String(), assignment.NoID, expected.NoID)
+		}
+		if provider.Coldkey != assignment.PayoutColdkey {
+			return fmt.Errorf("payout provider %s coldkey differs from canonical identity %s", clientID.String(), assignment.ProviderID)
+		}
 		if _, duplicate := providerByClient[clientID]; duplicate {
 			return fmt.Errorf("payout artifact duplicates provider %s", clientID.String())
 		}
+		if prior, duplicate := providerByColdkey[provider.Coldkey]; duplicate {
+			return fmt.Errorf("payout providers %s and %s duplicate one payout coldkey", prior.String(), clientID.String())
+		}
 		providerByClient[clientID] = provider
+		providerByColdkey[provider.Coldkey] = clientID
 		switch assignment.Tier {
 		case "head-candidate":
 			if !provider.HeadExcluded {
@@ -4406,17 +5030,40 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 			return fmt.Errorf("provider %s has unknown tier %q", clientID.String(), assignment.Tier)
 		}
 	}
-	leafByClient := make(map[connect.Id]bool, len(artifact.Leaves))
+	leafByClient := make(map[connect.Id]payoutartifact.Leaf, len(artifact.Leaves))
+	leafByColdkey := make(map[[32]byte]connect.Id, len(artifact.Leaves))
 	for _, leaf := range artifact.Leaves {
 		id := connect.Id(leaf.ClientID)
-		if leafByClient[id] {
+		if _, duplicate := leafByClient[id]; duplicate {
 			return fmt.Errorf("payout artifact duplicates leaf client %s", id.String())
 		}
-		leafByClient[id] = true
-		if epochAssignments[id].Tier != "pool-tail" {
+		provider, present := providerByClient[id]
+		assignment, assigned := epochAssignments[id]
+		if !present || !assigned || assignment.NoID != expected.NoID {
+			return fmt.Errorf("payout leaf client %s is outside the authenticated operator provider census", id.String())
+		}
+		if leaf.Coldkey != provider.Coldkey || leaf.Coldkey != assignment.PayoutColdkey {
+			return fmt.Errorf("payout leaf client %s has a substituted payee", id.String())
+		}
+		if prior, duplicate := leafByColdkey[leaf.Coldkey]; duplicate {
+			return fmt.Errorf("payout leaves %s and %s duplicate one payout coldkey", prior.String(), id.String())
+		}
+		if assignment.Tier != "pool-tail" {
 			return errors.New("payout leaf belongs to a head candidate")
 		}
+		if !provider.Eligible || provider.HeadExcluded || provider.UsageBytes == 0 || provider.ReliabilityPPM == 0 {
+			return fmt.Errorf("payout leaf client %s is not an eligible positive-weight provider", id.String())
+		}
+		leafByClient[id] = leaf
+		leafByColdkey[leaf.Coldkey] = id
 		tailLeaves++
+	}
+	for id, provider := range providerByClient {
+		_, hasLeaf := leafByClient[id]
+		shouldHaveLeaf := provider.Eligible && !provider.HeadExcluded && provider.UsageBytes != 0 && provider.ReliabilityPPM != 0
+		if hasLeaf != shouldHaveLeaf {
+			return fmt.Errorf("payout provider %s leaf membership differs from the exact authenticated provider census", id.String())
+		}
 	}
 	if tailLeaves == 0 {
 		return errors.New("payout artifact has no pool-tail leaves")
@@ -4426,16 +5073,17 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 		for _, encoded := range payout.ClientIDs {
 			id, _ := finalPayoutClientID(encoded)
 			provider, ok := providerByClient[id]
+			_, leaf := leafByClient[id]
 			if !ok {
 				return fmt.Errorf("fleet lifecycle payout %s client %s is absent from the decoded payout providers", payout.Disposition, id.String())
 			}
 			switch tier {
 			case "head-candidate":
-				if !provider.HeadExcluded || leafByClient[id] {
+				if !provider.HeadExcluded || leaf {
 					return fmt.Errorf("fleet lifecycle payout %s client %s is not exactly head-excluded", payout.Disposition, id.String())
 				}
 			case "pool-tail":
-				if provider.HeadExcluded || !provider.Eligible || provider.UsageBytes == 0 || !leafByClient[id] {
+				if provider.HeadExcluded || !provider.Eligible || provider.UsageBytes == 0 || !leaf {
 					return fmt.Errorf("fleet lifecycle payout %s client %s is not an eligible included pool leaf", payout.Disposition, id.String())
 				}
 			}
@@ -4458,13 +5106,14 @@ func verifyFinalPayoutArtifact(evidence *FinalSemanticEvidence, pool *FinalPoolU
 				if !present {
 					return fmt.Errorf("fleet lifecycle tracked client %s is absent from operator %d epoch %d payout", id.String(), expected.NoID, expected.Epoch)
 				}
+				_, leaf := leafByClient[id]
 				switch assignment.Tier {
 				case "head-candidate":
-					if !provider.HeadExcluded || leafByClient[id] {
+					if !provider.HeadExcluded || leaf {
 						return fmt.Errorf("fleet lifecycle tracked head client %s is not exclusively excluded", id.String())
 					}
 				case "pool-tail":
-					if provider.HeadExcluded || !provider.Eligible || provider.UsageBytes == 0 || !leafByClient[id] {
+					if provider.HeadExcluded || !provider.Eligible || provider.UsageBytes == 0 || !leaf {
 						return fmt.Errorf("fleet lifecycle tracked pool client %s is not exclusively included", id.String())
 					}
 				default:
@@ -4491,12 +5140,30 @@ func finalMinerTierByClient(data []byte) (map[connect.Id]finalMinerAssignment, e
 		return nil, fmt.Errorf("decode fleet binding manifest: %w", err)
 	}
 	result := make(map[connect.Id]finalMinerAssignment, len(bindings))
+	coldkeyOwners := make(map[uint64]map[[32]byte]connect.Id)
 	for _, binding := range bindings {
 		clientID, err := finalPayoutClientID(binding.ClientID)
 		if err != nil || clientID == (connect.Id{}) || result[clientID].Tier != "" || binding.NoID == 0 {
 			return nil, errors.New("miner tier assignments contain an invalid or duplicate client id")
 		}
-		result[clientID] = finalMinerAssignment{NoID: binding.NoID, Tier: binding.Tier}
+		payoutColdkey, prefix, decodeErr := ss58.Decode(binding.ProviderID)
+		if decodeErr != nil || prefix != ss58.BittensorPrefix || payoutColdkey == ([32]byte{}) {
+			return nil, fmt.Errorf("miner %s payout identity is not a nonzero Bittensor SS58 address", clientID.String())
+		}
+		canonicalProviderID, encodeErr := ss58.Encode(payoutColdkey, prefix)
+		if encodeErr != nil || canonicalProviderID != binding.ProviderID {
+			return nil, fmt.Errorf("miner %s payout identity is not canonical", clientID.String())
+		}
+		if coldkeyOwners[binding.NoID] == nil {
+			coldkeyOwners[binding.NoID] = make(map[[32]byte]connect.Id)
+		}
+		if owner, duplicate := coldkeyOwners[binding.NoID][payoutColdkey]; duplicate {
+			return nil, fmt.Errorf("miner tier assignments map clients %s and %s to one payout identity", owner.String(), clientID.String())
+		}
+		coldkeyOwners[binding.NoID][payoutColdkey] = clientID
+		result[clientID] = finalMinerAssignment{
+			NoID: binding.NoID, Tier: binding.Tier, ProviderID: binding.ProviderID, PayoutColdkey: payoutColdkey,
+		}
 	}
 	return result, nil
 }
@@ -4677,8 +5344,9 @@ func finalFleetLifecyclePhaseEvidenceHeads(lifecycle *FinalFleetLifecycleEvidenc
 	return evm, native
 }
 
-// RenderFinalSemanticEvidenceMarkdown emits no output until the complete
-// semantic object verifies, preventing a partial FINAL.md from looking final.
+// RenderFinalSemanticEvidenceMarkdown emits no output until structural and
+// public-transcript state verify. Artifact loading remains the caller's
+// separate finalization obligation because this formatter accepts no loader.
 func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byte, error) {
 	if err := VerifyFinalSemanticEvidence(evidence); err != nil {
 		return nil, fmt.Errorf("refuse FINAL.md semantic section: %w", err)
@@ -4702,6 +5370,26 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 		fmt.Fprintf(&out, "Operator %d manifest `%s`:\n\n```sh\ngo run ./sim-testnet inspect --config sim-testnet/testnet.yml --manifest %s --format json\ngo run ./sim-testnet analyze --config sim-testnet/testnet.yml --manifest %s --run-id %s --format json\n```\n\n", origin.OperatorNoID, finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(origin.ManifestURI), finalMarkdown(evidence.RunID))
 	}
 	fmt.Fprintf(&out, "Topology is exactly %d SDK miner instances hosted by %d swarm processes in %d candidate fleets competing for %d slots, with %d validator processes and %d operator pools. Full process and member censuses: [%s](%s), [%s](%s).\n\n", evidence.Topology.MinerSDKInstances, evidence.Topology.MinerSwarmProcesses, evidence.Topology.HeadCandidateFleets, evidence.Topology.HeadSlots, evidence.Topology.ValidatorProcesses, evidence.Topology.OperatorPools, evidence.Topology.MinerManifestHash, finalMarkdown(evidence.Topology.MinerManifest.URI), evidence.Topology.BindingManifestHash, finalMarkdown(evidence.Topology.BindingManifest.URI))
+	ordinaryFleets, fleetAuditErr := finalFleetAuditFleets(evidence)
+	if fleetAuditErr != nil {
+		return nil, fmt.Errorf("refuse FINAL.md ordinary fleet replay summary: %w", fleetAuditErr)
+	}
+	fleetAuditCycles, fleetAuditCycleErr := finalFleetAuditCycles(evidence)
+	if fleetAuditCycleErr != nil {
+		return nil, fmt.Errorf("refuse FINAL.md ordinary fleet replay snapshots: %w", fleetAuditCycleErr)
+	}
+	fmt.Fprintf(&out, "The pinned public transcript independently replays %d ordinary terminal fleet generations across every %d distinct signed cycle snapshots (%d fleet/snapshot jobs; sealed scope `%s`): exact native commitment, coordinator mirror and canonical native mirror block, every member's `bindingAt`, and native UID ownership. Each sealed fleet projection is exact-bound to its canonical binding artifact, including fleet/client keys, hotkey, commitment, generation, validity interval, and UID.\n\n", len(ordinaryFleets), len(fleetAuditCycles), len(ordinaryFleets)*len(fleetAuditCycles), evidence.PublicVerification.FleetAudit.ProjectionHash)
+	if lineage := evidence.FleetGeneration; lineage != nil {
+		audit := evidence.PublicVerification.FleetGenerationAudit
+		fmt.Fprintf(&out, "The separate ordinary-fleet generation lineage proves all %d setup fleets moved exactly generation 1 → 2: %d predecessor mirror/member writes and %d approved atomic refresh batches, with exact signed manifests and commitments, action/intent/postcondition joins, ordered ABI-decoded receipt events, native/EVM boundary heads, and head-local proxy/runtime identities. Every installed generation-one fleet has exactly ten ordered raw logs: coordinator `CommitmentMirrored`, four coordinator `FleetBound` / batcher `FleetMemberBound` pairs, then batcher `FleetInstalled`; missing, duplicate, reordered, or wrong-emitter logs fail verification. The two challengers remain generation-one-only and are joined to their native registrations and tournament transitions. The complete replayable source graph is [%s](%s); public archive scope `%s` has %d setup fleets, %d generations, and %d carried writes.\n\n", len(lineage.SetupFleets), audit.CarriedWrites, audit.Batches/2, lineage.Artifact.ContentHash, finalMarkdown(lineage.Artifact.URI), audit.ProjectionHash, audit.SetupFleets, audit.Generations, audit.CarriedWrites)
+	}
+	nativePayoutAudit := evidence.PublicVerification.NativePayoutAudit
+	fmt.Fprintf(&out, "The pinned public transcript also replays %d exact native payout boundaries covering %d managed UID rows and %d immediate parent-to-reveal transitions. Projection `%s` binds each runtime-453 `IncentiveAlphaEmittedToMiners` event to the matching Emission, Incentive, Dividends, Keys, and aggregate-stake storage at the CRv4 reveal/coinbase block, rejects relevant manual stake mutations in that block, and retains rejected miners as explicit zero-emission rows.\n\n", nativePayoutAudit.Epochs, nativePayoutAudit.UIDRows, nativePayoutAudit.ParentTransitions, nativePayoutAudit.ProjectionHash)
+	modeSummary := make([]string, 0, len(evidence.Adversaries.ExecutionModes))
+	for _, mode := range evidence.Adversaries.ExecutionModes {
+		modeSummary = append(modeSummary, fmt.Sprintf("`%s`: %d", finalMarkdown(mode.ExecutionMode), mode.VectorCount))
+	}
+	fmt.Fprintf(&out, "### Concurrent adversarial campaign\n\nAuthenticated [`adversaries.json`](%s) (`%s`) is exact-bound to canonical reviewed [`adversarial-matrix.json`](%s) (`%s`, matrix `%s`) across every vector's class, execution/concurrency mode, actor mapping, local release test, required/measured metrics, oracle, sample floor, and pass/fail result. The campaign covers %d vectors: %s. It started before and stopped after the happy path, so this evidence was collected concurrently with the accepted window rather than as a separate after-the-fact test.\n\n", finalMarkdown(evidence.Adversaries.Artifact.URI), evidence.Adversaries.Artifact.ContentHash, finalMarkdown(evidence.Adversaries.MatrixArtifact.URI), evidence.Adversaries.MatrixArtifact.ContentHash, evidence.Adversaries.MatrixHash, evidence.Adversaries.VectorCount, strings.Join(modeSummary, "; "))
 	if lifecycle := evidence.FleetLifecycle; lifecycle != nil {
 		state := &lifecycle.State
 		settlementFirst, settlementLast, subnetFirst, subnetLast := ^uint64(0), uint64(0), ^uint64(0), uint64(0)
@@ -4728,6 +5416,8 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 	fmt.Fprintf(&out, "The terminal supervisor census contains %d managed processes and exactly %d release-scheduled, successfully restored restarts; observed counts equal the fault-attributed counts for every process.\n\n", len(evidence.Topology.ProcessRestarts), expectedRestarts)
 	fmt.Fprintf(&out, "Accepted supervisor generation `%s` / start ticks %d completed %d/%d pre-start operator contract cleanups at exact cutoff `%s`, with zero failed invocations.\n\n", evidence.ContractCleanup.SupervisorManifestHash, evidence.ContractCleanup.SupervisorStartTimeTicks, evidence.ContractCleanup.SuccessfulInvocations, evidence.ExpectedOperators, evidence.ContractCleanup.Cutoff)
 	fmt.Fprintf(&out, "Contracts at EVM block %d: coordinator proxy `%s` → implementation `%s`, settlement vault `%s`, immutable reserve sink `%s`, governance owner `%s`, policy version %d. Runtime hashes proxy/implementation/vault/sink are `%s` / `%s` / `%s` / `%s`; ERC1967 slot `%s` contains `%s`.\n\n", evidence.Deployment.Snapshot.Number, evidence.Deployment.CoordinatorProxy, evidence.Deployment.CoordinatorImplementation, evidence.Deployment.SettlementVault, evidence.Deployment.ReserveSink, evidence.Deployment.GovernanceOwner, evidence.Deployment.PolicyVersion, evidence.Deployment.CoordinatorProxyCodeHash, evidence.Deployment.ImplementationCodeHash, evidence.Deployment.SettlementVaultCodeHash, evidence.Deployment.ReserveSinkCodeHash, evidence.Deployment.ERC1967ImplementationSlot, evidence.Deployment.ObservedImplementationSlot)
+	fmt.Fprintf(&out, "The canonical approved release lock is content-addressed at [%s](%s). Its plan-bound executable census has %d roots (including the coordinator upgrade and fleet batcher), each replayed at every pinned public EVM head.\n\n", evidence.ReleaseLockArtifact.ContentHash, finalMarkdown(evidence.ReleaseLockArtifact.URI), len(evidence.Deployment.RuntimeRoots))
+	fmt.Fprintf(&out, "The content-addressed temporary commitment-oracle record is [%s](%s); its activation, batch-position, restoration, and observer-checkpoint graph is digest-bound into public chronology. The pinned public transcript independently replays active-oracle reads at all sealed observer heads. This renderer reports structural and transcript evidence only; finalization performs the separate artifact-byte replay before publication.\n\n", evidence.FleetRefreshOracleWindow.Artifact.ContentHash, finalMarkdown(evidence.FleetRefreshOracleWindow.Artifact.URI))
 	fmt.Fprintf(&out, "Terminal custody is netuid %d throughout: coordinator/vault/reserve self-coldkeys `%s` / `%s` / `%s`; guardian `%s` is active, commitment oracle `%s` is active, and the coordinator is unpaused. Vault linkage/escrow is `%s` / `%s` (registered), claim TTL %d blocks, and minimum transfer %d rao equals the signed-plan DefaultMinTransfer. Reserve recorder/hotkey is `%s` / `%s`.\n\n", evidence.Netuid, evidence.Deployment.CoordinatorSelfColdkey, evidence.Deployment.VaultSelfColdkey, evidence.Deployment.ReserveSelfColdkey, evidence.Deployment.CoordinatorActiveGuardian, evidence.Deployment.CoordinatorActiveCommitmentOracle, evidence.Deployment.VaultCoordinator, evidence.Deployment.VaultEscrowHotkey, evidence.Deployment.VaultMinimumClaimTTLBlocks, evidence.Deployment.VaultMinimumTransferTaoRao, evidence.Deployment.ReserveRecorder, evidence.Deployment.ReserveHotkey)
 	fmt.Fprintf(&out, "Settlement-vault global accounting at baseline/terminal: totalCaptured %s/%s, totalPaid %s/%s, escrowAccounted %s/%s, pendingFunding %s/%s, outstandingLiability %s/%s, liveEscrowStake %s/%s rao. Exact interval deltas are captured %s (= EmissionCaptured events %s), paid %s (= ClaimPaid events %s), escrow %s, pending %s, liability %s, and live stake %s. Both heads satisfy totalCaptured = totalPaid + escrowAccounted, escrowAccounted = pendingFunding + outstandingLiability, and liveEscrowStake >= escrowAccounted.\n\n", evidence.SettlementAccounting.Before.TotalCapturedRao, evidence.SettlementAccounting.After.TotalCapturedRao, evidence.SettlementAccounting.Before.TotalPaidRao, evidence.SettlementAccounting.After.TotalPaidRao, evidence.SettlementAccounting.Before.EscrowAccountedRao, evidence.SettlementAccounting.After.EscrowAccountedRao, evidence.SettlementAccounting.Before.PendingFundingRao, evidence.SettlementAccounting.After.PendingFundingRao, evidence.SettlementAccounting.Before.OutstandingLiabilityRao, evidence.SettlementAccounting.After.OutstandingLiabilityRao, evidence.SettlementAccounting.Before.LiveEscrowStakeRao, evidence.SettlementAccounting.After.LiveEscrowStakeRao, evidence.SettlementAccounting.TotalCapturedDeltaRao, evidence.SettlementAccounting.EmissionCapturedEventRao, evidence.SettlementAccounting.TotalPaidDeltaRao, evidence.SettlementAccounting.ClaimPaidEventRao, evidence.SettlementAccounting.EscrowAccountedDeltaRao, evidence.SettlementAccounting.PendingFundingDeltaRao, evidence.SettlementAccounting.OutstandingLiabilityDeltaRao, evidence.SettlementAccounting.LiveEscrowStakeDeltaRao)
 	fmt.Fprintf(&out, "Reserve principal/live stake moved one-way from %s/%s to %s/%s rao across EVM blocks %d–%d; principal delta %s exactly equals %s across %d publicly replayed ReservePrincipalAdded receipts.\n\n", evidence.Reserve.PrincipalBeforeRao, evidence.Reserve.LiveStakeBeforeRao, evidence.Reserve.PrincipalAfterRao, evidence.Reserve.LiveStakeAfterRao, evidence.Reserve.Before.Number, evidence.Reserve.After.Number, evidence.Reserve.PrincipalDeltaRao, evidence.Reserve.PrincipalAddedRao, len(evidence.Reserve.PrincipalAdditions))
@@ -4766,7 +5456,8 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 		fmt.Fprintln(&out)
 	}
 	fmt.Fprintf(&out, "### Deposit, payout, and carry conservation\n\n")
-	fmt.Fprintf(&out, "| Epoch | NO | Captured | Carry in | Funded | Entitlement total | Claimed | Paid | Deferred | Outstanding | Carry out | Root |\n|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
+	fmt.Fprintf(&out, "Every linked payout artifact is canonical and signed by that NO's authorized root signer. Its operator/epoch/policy snapshot, exact provider-census hashes, policy `A_min`, and (where the artifact supplies the next demand audit) source start/end heads are independently replayed; every provider and Merkle leaf joins one exact topology NO and canonical SS58 payout coldkey, with no omitted/extra authenticated rows or duplicate payees. The NO retains the whitepaper's authority over its within-pool allocation; these checks bind the identities and source data to which that choice applies.\n\n")
+	fmt.Fprintf(&out, "| Epoch | NO | Captured | Carry in | Funded | Entitlement total | Claimed | Claim-tx paid | Deferred-credit snapshot | Outstanding | Carry out | Root |\n|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
 	for _, row := range evidence.Epochs {
 		root := row.RootDisposition
 		if row.PayoutArtifact != nil {
@@ -4774,8 +5465,16 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 		}
 		fmt.Fprintf(&out, "| %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", row.Epoch, row.NoID, row.CapturedRao, row.CarryInRao, row.FundedRao, row.TotalRao, row.ClaimedRao, row.PaidRao, row.DeferredCreditRao, row.OutstandingRao, row.CarryOutRao, root)
 	}
-	fmt.Fprintf(&out, "\nReconstructed totals: boundary-captured %s = entitlement-funded %s; committed rows consume their exact carry-in, while missed rows preserve cumulative carry. Claimed %s = paid %s + deferred %s; aggregate carry-in observations %s, remaining outstanding %s, and carry-out observations %s.\n\n", evidence.Conservation.CapturedRao, evidence.Conservation.FundedRao, evidence.Conservation.ClaimedRao, evidence.Conservation.PaidRao, evidence.Conservation.DeferredCreditRao, evidence.Conservation.CarryInRao, evidence.Conservation.OutstandingRao, evidence.Conservation.CarryOutRao)
+	fmt.Fprintf(&out, "\nReconstructed totals: boundary-captured %s = entitlement-funded %s; committed rows consume their exact carry-in, while missed rows preserve cumulative carry. The paid/deferred columns are exact events observed in the claim transaction, not a per-leaf conservation equation: ClaimPaid can settle older credit. The public verifier replays all %d canonical ClaimPaid receipts (including withdrawal-only calls) and, for every affected coldkey, checks terminal credit = baseline credit + all Claimed amounts - all ClaimPaid amounts. Aggregate carry-in observations %s, remaining outstanding %s, and carry-out observations %s.\n\n", evidence.Conservation.CapturedRao, evidence.Conservation.FundedRao, len(evidence.ClaimPayments), evidence.Conservation.CarryInRao, evidence.Conservation.OutstandingRao, evidence.Conservation.CarryOutRao)
 	fmt.Fprintf(&out, "### Native rewards and validator path proofs\n\n")
+	fmt.Fprintf(&out, "Every reward below is causally verified at its exact automatic runtime payout boundary, not inferred from a wider before/after interval. The event emission, storage emission, score channels, and immediate parent-to-reveal stake transition must agree for the complete managed UID set.\n\n")
+	fmt.Fprintf(&out, "| Settlement / subnet epoch | Parent → reveal | UID | Hotkey | Server event / combined emission (rao) | Aggregate alpha stake before → after | Incentive / dividends u16 | Relevant manual mutations |\n|---|---|---:|---|---:|---:|---:|---:|\n")
+	for _, payout := range evidence.PublicVerification.NativePayouts {
+		for _, uid := range payout.UIDs {
+			fmt.Fprintf(&out, "| %d / %d | %d/`%s` → %d/`%s` | %d | `%s` | %s / %s | %s → %s | %d / %d | %d |\n", payout.SettlementEpoch, payout.SubnetEpoch, payout.Parent.Number, payout.Parent.Hash, payout.Block.Number, payout.Block.Hash, uid.UID, finalMarkdown(uid.Hotkey), uid.ServerEmissionRao, uid.CombinedEmissionRao, uid.StakeBeforeRao, uid.StakeAfterRao, uid.IncentiveU16, uid.DividendsU16, payout.ManualStakeMutations)
+		}
+	}
+	fmt.Fprintln(&out)
 	for _, reward := range evidence.NativeRewards {
 		reserve := ""
 		if reward.ReserveColdkey != "" {
@@ -4794,6 +5493,14 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 }
 
 func canonicalizeFinalSemanticEvidence(evidence *FinalSemanticEvidence) {
+	canonicalizeFinalFleetGenerationLineage(evidence.FleetGeneration)
+	canonicalizeFinalHistoricalCoordinatorReceipts(evidence.HistoricalCoordinatorReceipts)
+	sort.Slice(evidence.Deployment.RuntimeRoots, func(i, j int) bool {
+		return evidence.Deployment.RuntimeRoots[i].Name < evidence.Deployment.RuntimeRoots[j].Name
+	})
+	sort.Slice(evidence.Adversaries.ExecutionModes, func(i, j int) bool {
+		return evidence.Adversaries.ExecutionModes[i].ExecutionMode < evidence.Adversaries.ExecutionModes[j].ExecutionMode
+	})
 	if evidence.FleetLifecycle != nil {
 		lifecycle := evidence.FleetLifecycle
 		sort.Slice(lifecycle.Roles, func(i, j int) bool { return lifecycle.Roles[i].Label < lifecycle.Roles[j].Label })
@@ -4832,6 +5539,12 @@ func canonicalizeFinalSemanticEvidence(evidence *FinalSemanticEvidence) {
 		return evidence.ContractCleanup.Operators[i].NoID < evidence.ContractCleanup.Operators[j].NoID
 	})
 	sort.Slice(evidence.Pools, func(i, j int) bool { return evidence.Pools[i].NoID < evidence.Pools[j].NoID })
+	sort.Slice(evidence.HeadFleets, func(i, j int) bool { return evidence.HeadFleets[i].FleetID < evidence.HeadFleets[j].FleetID })
+	for index := range evidence.HeadFleets {
+		sort.Slice(evidence.HeadFleets[index].Members, func(i, j int) bool {
+			return evidence.HeadFleets[index].Members[i].ClientID < evidence.HeadFleets[index].Members[j].ClientID
+		})
+	}
 	sort.Slice(evidence.Validators, func(i, j int) bool { return evidence.Validators[i].ValidatorID < evidence.Validators[j].ValidatorID })
 	for validatorIndex := range evidence.Validators {
 		validator := &evidence.Validators[validatorIndex]
@@ -4853,6 +5566,12 @@ func canonicalizeFinalSemanticEvidence(evidence *FinalSemanticEvidence) {
 			return evidence.Epochs[i].Claims[a].LeafIndex < evidence.Epochs[i].Claims[b].LeafIndex
 		})
 	}
+	sort.Slice(evidence.ClaimPayments, func(i, j int) bool {
+		if evidence.ClaimPayments[i].Receipt.Block.Number != evidence.ClaimPayments[j].Receipt.Block.Number {
+			return evidence.ClaimPayments[i].Receipt.Block.Number < evidence.ClaimPayments[j].Receipt.Block.Number
+		}
+		return evidence.ClaimPayments[i].Receipt.TransactionHash < evidence.ClaimPayments[j].Receipt.TransactionHash
+	})
 	sort.Slice(evidence.NativeRewards, func(i, j int) bool {
 		if evidence.NativeRewards[i].Epoch != evidence.NativeRewards[j].Epoch {
 			return evidence.NativeRewards[i].Epoch < evidence.NativeRewards[j].Epoch
@@ -4907,7 +5626,7 @@ func finalEd25519PublicKey(label, value string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(decoded), nil
 }
 
-func verifyFinalNativeReceipt(label string, receipt FinalNativeReceipt, minimum, maximum uint64, requireExtrinsic bool) error {
+func verifyFinalNativeReceipt(label string, receipt FinalNativeReceipt, minimum, maximum uint64, requireExtrinsic bool, operation string) error {
 	if requireExtrinsic {
 		if err := requireFinalHex32(label+" extrinsic", receipt.ExtrinsicHash); err != nil {
 			return err
@@ -4922,6 +5641,9 @@ func verifyFinalNativeReceipt(label string, receipt FinalNativeReceipt, minimum,
 	}
 	if receipt.Block.Number < minimum || receipt.Block.Number > maximum {
 		return fmt.Errorf("%s block %d is outside [%d,%d]", label, receipt.Block.Number, minimum, maximum)
+	}
+	if err := verifyFinalNativeReceiptCall(receipt, operation); err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
 	return verifyFinalArtifact(label+" proof", receipt.Proof, "native-receipt")
 }

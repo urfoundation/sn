@@ -54,7 +54,7 @@ const (
 	precompileProbeRuntimeParameter = "precompile_probe_runtime_hash"
 	fleetRefreshBatcherParameter    = "activated_fleet_batcher"
 	fleetCommitmentStorageParameter = "commitment_storage_schema"
-	// Persisted compatibility identifier: runtime 453 retains this exact v452
+	// Persisted compatibility identifier: runtime 454 retains this exact v452
 	// SCALE shape, and changing the string would orphan authenticated plans.
 	fleetCommitmentStorageV2              = "runtime-452-fixed-u32-exact-block-attestation-v2"
 	fleetCommitmentParallelGroupParameter = "parallel_commitment_group"
@@ -1246,7 +1246,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		}
 	}
 	// Churn-floor identities must be the oldest non-owner registrations. Runtime
-	// 453 breaks equal-emission prune ties by registration block and UID, even
+	// Runtime 454 breaks equal-emission prune ties by registration block and UID, even
 	// inside immunity. Registering custody or pool identities first would let a
 	// challenger evict a load-bearing role instead of the intended floor.
 	lastChurn := hyperparameterBarrier
@@ -1287,7 +1287,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		add(action)
 		prev = id
 	}
-	add(Action{ID: "precompile.probe-deploy", Kind: "evm-transaction", Target: "disposable-precompile-probe", Description: "deploy the locked, owner-gated runtime-453 conformance probe at its precomputed nonce", Spend: Spend{EVMGasWei: gasCaps["precompile.probe-deploy"]}, DependsOn: []string{prev}})
+	add(Action{ID: "precompile.probe-deploy", Kind: "evm-transaction", Target: "disposable-precompile-probe", Description: "deploy the locked, owner-gated runtime-454 conformance probe at its precomputed nonce", Spend: Spend{EVMGasWei: gasCaps["precompile.probe-deploy"]}, DependsOn: []string{prev}})
 	add(Action{ID: "evm.coordinator-upgrade-implementation", Kind: "evm-transaction", Target: payloads.CoordinatorUpgrade.Implementation.Hex(), Description: "deploy the exact release-1.0 coordinator implementation at the approval-bound deployer nonce", Parameters: map[string]string{"runtime_code_hash": payloads.CoordinatorUpgrade.RuntimeCodeHash}, Spend: Spend{EVMGasWei: gasCaps["evm.coordinator-upgrade-implementation"]}, DependsOn: []string{"precompile.probe-deploy"}})
 	add(Action{ID: "evm.coordinator-upgrade-activate", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "atomically activate the reviewed coordinator repair through its UUPS owner gate", Parameters: map[string]string{"implementation": payloads.CoordinatorUpgrade.Implementation.Hex(), "runtime_code_hash": payloads.CoordinatorUpgrade.RuntimeCodeHash}, Spend: Spend{EVMGasWei: gasCaps["evm.coordinator-upgrade-activate"]}, DependsOn: []string{"evm.coordinator-upgrade-implementation", "evm.fund-owner"}})
 	add(Action{ID: "policy.schedule-bootstrap", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "schedule the locked accelerated test policy for the next epoch when the live proxy still carries an earlier release policy", Parameters: map[string]string{"policy_hash": cfg.PolicyHash, "epoch_cap_rao_per_operator": fmt.Sprint(cfg.Policy.Deposit.EpochCapRaoPerOperator), "campaign_cap_rao": fmt.Sprint(cfg.Policy.Deposit.TotalTestCampaignCapRao)}, Spend: Spend{EVMGasWei: gasCaps["policy.schedule-bootstrap"]}, DependsOn: []string{"evm.coordinator-upgrade-activate", "evm.fund-owner"}})
@@ -1597,7 +1597,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
 			id := fmt.Sprintf("%s.bind.%d", prefix, member)
 			miner := fleetMemberMinerIndex(cfg, preparation.fleet, member)
-			add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "move one existing provider client to its exact live runtime-453 prune candidate at generation 3", Parameters: map[string]string{"expected_uid": strconv.Itoa(int(preparation.uid))}, Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecyclePrepareBarrier, "evm.fund-keeper"}})
+			add(Action{ID: id, Kind: "evm-transaction", Target: fmt.Sprintf("miner:%d", miner), Description: "move one existing provider client to its exact live runtime-454 prune candidate at generation 3", Parameters: map[string]string{"expected_uid": strconv.Itoa(int(preparation.uid))}, Spend: Spend{EVMGasWei: gasCaps[id]}, DependsOn: []string{lifecyclePrepareBarrier, "evm.fund-keeper"}})
 			lifecyclePrepareBarrier = id
 		}
 		installedID := prefix + ".installed"
@@ -1609,8 +1609,8 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	lifecycleRegistrationParameters["expected_pruned_hotkey"] = fleetProviderHotkeyLabel(fleetLifecycleTargetFleet)
 	lifecycleRegistrationParameters["expected_pruned_uid"] = strconv.Itoa(fleetLifecycleTargetExpectedUID)
 	lifecycleRegistrationParameters["expected_replacement_hotkey"] = churnHotkeyLabel(fleetLifecycleFallbackChurn)
-	add(Action{ID: "lifecycle.fallback.fund", Kind: "substrate-extrinsic", Target: churnColdkeyLabel(fleetLifecycleFallbackChurn), Description: "fund the previously pruned fallback provider coldkey for one exact bounded runtime-453 registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecyclePrepareBarrier}})
-	add(Action{ID: "lifecycle.fallback.register", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "replace the exact zero-emission fleet-5 provider selected by runtime-453 with the approved fallback identity", Parameters: lifecycleRegistrationParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.fallback.fund"}})
+	add(Action{ID: "lifecycle.fallback.fund", Kind: "substrate-extrinsic", Target: churnColdkeyLabel(fleetLifecycleFallbackChurn), Description: "fund the previously pruned fallback provider coldkey for one exact bounded runtime-454 registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecyclePrepareBarrier}})
+	add(Action{ID: "lifecycle.fallback.register", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "replace the exact zero-emission fleet-5 provider selected by runtime-454 with the approved fallback identity", Parameters: lifecycleRegistrationParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.fallback.fund"}})
 	add(Action{ID: "lifecycle.fallback.fund-hotkey", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "fund the fallback hotkey for its exact bounded commitment write", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{"lifecycle.fallback.register"}})
 	add(Action{ID: "lifecycle.fallback.commitment", Kind: "substrate-extrinsic", Target: churnHotkeyLabel(fleetLifecycleFallbackChurn), Description: "publish the fallback provider's fresh finalized fleet commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": "1"}, DependsOn: []string{"lifecycle.fallback.fund-hotkey"}})
 	add(Action{ID: "lifecycle.fallback.mirror", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the fallback provider commitment at its exact finalized native block", Spend: Spend{EVMGasWei: gasCaps["lifecycle.fallback.mirror"]}, DependsOn: []string{"lifecycle.fallback.commitment", "evm.fund-commitment-oracle"}})
@@ -1638,7 +1638,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	lifecycleProviderParameters["expected_pruned_uid"] = strconv.Itoa(fleetLifecycleCompanionExpectedUID)
 	lifecycleProviderParameters["expected_replacement_hotkey"] = fleetProviderHotkeyLabel(fleetLifecycleTargetFleet)
 	add(Action{ID: "lifecycle.provider.fund", Kind: "substrate-extrinsic", Target: fleetProviderColdkeyLabel(fleetLifecycleTargetFleet), Description: "fund the original provider coldkey for one exact bounded re-registration", Parameters: registrationFundingParameters(), Spend: Spend{TAORao: roleFunding}, DependsOn: []string{lifecycleProviderBarrier}})
-	add(Action{ID: "lifecycle.provider.register", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "re-register the same provider identity into the exact runtime-453 UID vacated by fleet 6", Parameters: lifecycleProviderParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.provider.fund"}})
+	add(Action{ID: "lifecycle.provider.register", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "re-register the same provider identity into the exact runtime-454 UID vacated by fleet 6", Parameters: lifecycleProviderParameters, Spend: Spend{Registrations: 1}, DependsOn: []string{"lifecycle.provider.fund"}})
 	add(Action{ID: "lifecycle.provider.fund-hotkey", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "fund the re-registered provider hotkey for its fresh generation-4 commitment", Parameters: map[string]string{"maximum_fee_rao": fmt.Sprint(nativeFeeLimit), "keep_alive_reserve_rao": fmt.Sprint(facts.ExistentialDepositRao)}, Spend: Spend{TAORao: lifecycleCommitmentFunding}, DependsOn: []string{"lifecycle.provider.register"}})
 	add(Action{ID: "lifecycle.provider.commitment", Kind: "substrate-extrinsic", Target: fleetProviderHotkeyLabel(fleetLifecycleTargetFleet), Description: "publish the re-registered provider's fresh generation-4 finalized commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "generation": strconv.FormatUint(fleetLifecycleGeneration, 10)}, DependsOn: []string{"lifecycle.provider.fund-hotkey"}})
 	add(Action{ID: "lifecycle.provider.mirror", Kind: "evm-transaction", Target: payloads.Manifest.CoordinatorProxy.Hex(), Description: "mirror the re-registered provider generation-4 commitment before rebinding clients", Spend: Spend{EVMGasWei: gasCaps["lifecycle.provider.mirror"]}, DependsOn: []string{"lifecycle.provider.commitment", "evm.fund-commitment-oracle"}})
@@ -1684,7 +1684,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	add(Action{ID: "lifecycle.terminal.installed", Kind: "local", Target: fmt.Sprintf("fleet:%d", fleetLifecycleCompanionFleet), Description: "prove all canonical companion clients are rebound for terminal live topology", DependsOn: []string{lifecycleTerminalBarrier}})
 	add(Action{ID: "precompile.commitment-write", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "replace the exact generation-2 fleet commitment with a finalized one-field SHA-256 conformance commitment", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"churn.tournament-complete"}})
 	add(Action{ID: "precompile.commitment-restore", Kind: "substrate-extrinsic", Target: "head-fleet:1", Description: "restore the exact generation-2 fleet hash and prove the restored finalized bytes", Parameters: map[string]string{fleetCommitmentStorageParameter: fleetCommitmentStorageV2, "canonical_generation": strconv.FormatUint(precompileCanonicalFleetGeneration, 10)}, DependsOn: []string{"precompile.commitment-write"}})
-	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-453-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.commitment-restore", "precompile.probe-deploy"}})
+	add(Action{ID: "precompile.read-battery", Kind: "evm-read", Target: "runtime-454-precompiles", Description: "prove Blake2, Ed25519, sr25519, metagraph, neuron, staking, live UID, absent UID, mirror custody, and minimum stake at one finalized head", DependsOn: []string{"precompile.commitment-restore", "precompile.probe-deploy"}})
 	add(Action{ID: "precompile.seed", Kind: "evm-transaction", Target: "validator:1", Description: "convert the approved TAO dust ceiling into probe-coldkey alpha and record exact live units", Parameters: map[string]string{"maximum_tao_rao": fmt.Sprint(facts.ProbeTAORao), "nominator_minimum_rao": fmt.Sprint(facts.NominatorMinimumRao)}, Spend: Spend{EVMGasWei: probeGasCaps["precompile.seed"]}, DependsOn: []string{"precompile.read-battery"}})
 	add(Action{ID: "precompile.move-forward", Kind: "evm-transaction", Target: "validator:2", Description: "move half the observed probe alpha from validator 1 to validator 2 and prove exact slippage-free deltas", Spend: Spend{EVMGasWei: probeGasCaps["precompile.move-forward"]}, DependsOn: []string{"precompile.seed"}})
 	add(Action{ID: "precompile.move-back", Kind: "evm-transaction", Target: "validator:1", Description: "move the same alpha back and prove exact round-trip custody", Spend: Spend{EVMGasWei: probeGasCaps["precompile.move-back"]}, DependsOn: []string{"precompile.move-forward"}})
@@ -1798,7 +1798,7 @@ func maximumActionSpend(actions []Action) (Spend, error) {
 	return maximum, nil
 }
 
-// Runtime 453 bumps burn immediately after a registration and decays it on
+// Runtime 454 bumps burn immediately after a registration and decays it on
 // every following block. The bootstrap sets a one-block half-life, so an
 // observed multiplier no greater than two guarantees every sequential
 // registration returns to at most the same approved ceiling by the next block.
@@ -1896,7 +1896,7 @@ func (p SetupPlan) hash() (string, error) {
 	p.CoordinatorUpgradeBaseline.FinalizedBlock = 0
 	p.CoordinatorUpgradeBaseline.FinalizedBlockHash = ""
 	if planUsesRegistrationEnvelope(p.Schema) {
-		// Runtime 453 decays Burn on every block. V2 binds MinBurn, MaxBurn,
+		// Runtime 454 decays Burn on every block. V2 binds MinBurn, MaxBurn,
 		// BurnIncreaseMult, the approved half-life lifecycle, and the hard
 		// registration limit instead; apply rechecks the moving spot value.
 		p.LiveFacts.BurnRao = 0
@@ -1976,7 +1976,7 @@ func validatePlanBudget(p *SetupPlan) error {
 	}
 	deploymentHash := ""
 	if planUsesContractDeploymentEnvelope(p.Schema) {
-		if p.Deployment.Schema != "urnetwork-contract-deployment-v1" || p.Deployment.DeploymentID != p.DeploymentID || p.Deployment.DeployBlock != 0 || p.Deployment.DeployBlockHash != "" {
+		if p.Deployment.Schema != "urnetwork-contract-deployment-v1" || p.Deployment.DeploymentID != p.DeploymentID || p.Deployment.DeployBlock != 0 || p.Deployment.DeployBlockHash != "" || p.Deployment.CoordinatorEventStartBlock != 0 || p.Deployment.CoordinatorEventStartBlockHash != "" {
 			return errors.New("v4 plan has an invalid mutable or foreign contract deployment")
 		}
 		if !common.IsHexAddress(p.Roles.Deployer) {
@@ -2019,13 +2019,14 @@ func validatePlanBudget(p *SetupPlan) error {
 			if err := validateContractDeploymentIdentity(superseded, deployer); err != nil {
 				return fmt.Errorf("validate v4 superseded deployment %d: %w", index, err)
 			}
-			if (superseded.DeployBlock == 0) != (superseded.DeployBlockHash == "") {
-				return fmt.Errorf("v4 superseded deployment %d has an incomplete deployment checkpoint", index)
+			if err := validateContractDeploymentCheckpoint(fmt.Sprintf("v4 superseded deployment %d current release", index), superseded.DeployBlock, superseded.DeployBlockHash); err != nil {
+				return err
 			}
-			if superseded.DeployBlockHash != "" {
-				if _, err := decodeHex32("superseded deployment block hash", superseded.DeployBlockHash); err != nil {
-					return err
-				}
+			if err := validateContractDeploymentCheckpoint(fmt.Sprintf("v4 superseded deployment %d coordinator event start", index), superseded.CoordinatorEventStartBlock, superseded.CoordinatorEventStartBlockHash); err != nil {
+				return err
+			}
+			if superseded.CoordinatorEventStartBlock != 0 && superseded.DeployBlock != 0 && superseded.CoordinatorEventStartBlock > superseded.DeployBlock {
+				return fmt.Errorf("v4 superseded deployment %d coordinator event start follows its current release boundary", index)
 			}
 			identityHash, hashErr := contractDeploymentIdentityHash(superseded)
 			if hashErr != nil {

@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/ss58"
+	validatorpkg "github.com/urfoundation/sn/validator"
 	"github.com/urnetwork/connect"
 )
 
@@ -900,10 +902,82 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	if persisted, decodeErr := decodePersistedPlanBytes(planBytes); decodeErr != nil || persisted.PlanHash != plan.PlanHash {
 		t.Fatalf("lifecycle fixture persisted plan=%v: %v", persisted, decodeErr)
 	}
+	configureFinalSemanticFixtureDeploymentAnchors(t, cfg, source, artifacts, &plan)
+	// The broad release fixture must exercise the same closed predecessor-plan
+	// lineage as a real release.  The initial semantic scaffold deliberately
+	// starts with a synthetic hash, so replace it after deployment anchoring
+	// with a persisted, self-hashed direct predecessor rather than letting
+	// later fleet reconstruction accept a placeholder it cannot load.
+	priorPlan := plan
+	priorPlan.PriorPlanHashes = nil
+	priorPlan.PlanHash = ""
+	priorHash, priorHashErr := priorPlan.hash()
+	if priorHashErr != nil {
+		t.Fatal(priorHashErr)
+	}
+	priorPlan.PlanHash = priorHash
+	plan.PriorPlanHashes = []string{priorPlan.PlanHash}
+	plan.PlanHash = ""
+	planHash, planHashErr := plan.hash()
+	if planHashErr != nil {
+		t.Fatal(planHashErr)
+	}
+	plan.PlanHash = planHash
+	// The two challenger registrations are intentionally carried from the
+	// direct predecessor.  Rebind their retained postconditions and tournament
+	// artifacts to the real predecessor hash before the journal is built; the
+	// original placeholder cannot be loaded by the closed fleet archive.
+	for transitionIndex := range source.HeadTransitions {
+		transition := &source.HeadTransitions[transitionIndex]
+		actionID := fmt.Sprintf("fleet.register.%d", transition.ChallengerFleetID)
+		carried, exists := carriedActions[actionID]
+		if !exists || carried.postcondition == nil {
+			t.Fatalf("fixture carried action %s is unavailable", actionID)
+		}
+		postcondition := *carried.postcondition
+		postcondition.PlanHash = priorPlan.PlanHash
+		carried.postcondition = &postcondition
+		carriedActions[actionID] = carried
+		postconditionBytes, marshalErr := json.Marshal(&postcondition)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Registration.Proof, postconditionBytes)
+		source.HeadFleets[transition.ChallengerFleetID-1].Registration.Proof = transition.Registration.Proof
+		var transitionArtifact finalHeadTournamentTransitionArtifact
+		if err := json.Unmarshal(artifacts[transition.Artifact.URI], &transitionArtifact); err != nil || transitionArtifact.Postcondition == nil {
+			t.Fatalf("decode carried tournament artifact %s: %v", actionID, err)
+		}
+		transitionArtifact.Postcondition = &postcondition
+		transitionBytes, marshalErr := json.Marshal(transitionArtifact)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		setArtifact(&transition.Artifact, transitionBytes)
+	}
+	updatedActions := make(map[string]Action, len(plan.Actions))
+	for _, action := range plan.Actions {
+		updatedActions[action.ID] = action
+	}
+	for index := range actions {
+		action, exists := updatedActions[actions[index].ID]
+		if !exists {
+			t.Fatalf("deployment anchor fixture plan lost selected action %s", actions[index].ID)
+		}
+		actions[index] = action
+	}
+	// Later lifecycle fixtures construct signed sidecars from this lookup, so
+	// it must describe the same rehashed approved actions as the journal.
+	actionByID = updatedActions
+	planBytes, err = json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	source.PlanHash = plan.PlanHash
 	planURI := "final-derived/setup-plan.json"
 	artifacts[planURI] = append([]byte(nil), planBytes...)
 	source.PlanArtifact = FinalArtifactLocator{Kind: "setup-plan", URI: planURI, ContentHash: bytesSHA256(planBytes), SizeBytes: uint64(len(planBytes))}
+	finalizeFinalSemanticFixtureDeploymentAnchorArtifact(t, source, artifacts, plan)
 
 	blockForVariant := map[string]struct{ commitment, mirror, binding uint64 }{
 		fleetLifecycleVariantTargetTakeover:    {20, 30, 40},
@@ -946,17 +1020,10 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	}
 
 	journalEntries := make([]JournalEntry, 0, len(actions))
-	appendJournal := func(action Action, binding finalSemanticFixtureJournalBinding) {
-		transactionHash := binding.transactionHash
-		if transactionHash == "" {
-			transactionHash = finalTestHex(byte(60 + len(journalEntries)))
-		}
-		entry := JournalEntry{
-			Schema: "urnetwork-sim-journal-v1", Sequence: uint64(len(journalEntries) + 1), Time: time.Unix(1_700_000_000+int64(len(journalEntries)), 0).UTC().Format(time.RFC3339Nano),
-			DeploymentID: source.DeploymentID, PlanHash: binding.planHash, ActionID: action.ID, IntentHash: binding.intentHash, Stage: StageFinalized,
-			TransactionHash: transactionHash, BlockNumber: binding.block, BlockHash: binding.blockHash,
-			RecoveryBlock: binding.recovery, RecoveryBlockHash: binding.recoveryHash,
-		}
+	appendEntry := func(entry JournalEntry) {
+		entry.Schema = "urnetwork-sim-journal-v1"
+		entry.Sequence = uint64(len(journalEntries) + 1)
+		entry.Time = time.Unix(1_700_000_000+int64(len(journalEntries)), 0).UTC().Format(time.RFC3339Nano)
 		if len(journalEntries) != 0 {
 			entry.PreviousHash = journalEntries[len(journalEntries)-1].EntryHash
 		}
@@ -967,6 +1034,47 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		}
 		entry.EntryHash = hash
 		journalEntries = append(journalEntries, entry)
+	}
+	appendJournal := func(action Action, binding finalSemanticFixtureJournalBinding) {
+		transactionHash := binding.transactionHash
+		if transactionHash == "" {
+			transactionHash = finalTestHex(byte(60 + len(journalEntries)))
+		}
+		coldkeyLabel, signer := "", ""
+		switch {
+		case strings.HasPrefix(action.ID, "lifecycle.") && strings.HasSuffix(action.ID, ".register"):
+			coldkeyLabel = strings.Replace(action.Target, "-hotkey", "-coldkey", 1)
+		case strings.HasPrefix(action.ID, "fleet.register."):
+			carried, found := carriedActions[action.ID]
+			if !found || carried.postcondition == nil {
+				t.Fatalf("lifecycle fixture challenger registration %s has no retained postcondition", action.ID)
+			}
+			var signerOK bool
+			signer, signerOK = carried.postcondition.Observed["coldkey"].(string)
+			if !signerOK || signer == "" {
+				t.Fatalf("lifecycle fixture challenger registration %s has no observed coldkey", action.ID)
+			}
+		}
+		if coldkeyLabel != "" {
+			coldkey, ok := roles.Substrate[coldkeyLabel]
+			if !ok || coldkey.SS58 == "" {
+				t.Fatalf("lifecycle fixture registration %s has no coldkey role %s", action.ID, coldkeyLabel)
+			}
+			signer = coldkey.SS58
+		}
+		if signer != "" {
+			appendEntry(JournalEntry{
+				DeploymentID: source.DeploymentID, PlanHash: binding.planHash, ActionID: action.ID, IntentHash: binding.intentHash, Stage: StageBroadcast,
+				Signer: signer, Nonce: strconv.FormatUint(uint64(len(journalEntries)+1), 10), TransactionHash: transactionHash,
+				RecoveryBlock: binding.recovery, RecoveryBlockHash: binding.recoveryHash,
+			})
+		}
+		appendEntry(JournalEntry{
+			Schema: "urnetwork-sim-journal-v1", Sequence: uint64(len(journalEntries) + 1), Time: time.Unix(1_700_000_000+int64(len(journalEntries)), 0).UTC().Format(time.RFC3339Nano),
+			DeploymentID: source.DeploymentID, PlanHash: binding.planHash, ActionID: action.ID, IntentHash: binding.intentHash, Stage: StageFinalized,
+			TransactionHash: transactionHash, BlockNumber: binding.block, BlockHash: binding.blockHash,
+			RecoveryBlock: binding.recovery, RecoveryBlockHash: binding.recoveryHash,
+		})
 	}
 	for _, action := range actions {
 		current := currentActionBlocks[action.ID]
@@ -1328,9 +1436,27 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 			if cycle == nil {
 				t.Fatalf("missing lifecycle applied-decision cycle %d/%d", row.ValidatorID, row.SettlementEpoch)
 			}
+			var intent validatorpkg.SteeringIntent
+			if err := json.Unmarshal(artifacts[cycle.IntentArtifact.URI], &intent); err != nil {
+				t.Fatalf("decode lifecycle applied-decision intent %d/%d: %v", row.ValidatorID, row.SettlementEpoch, err)
+			}
+			commitCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationCommit)
+			if err != nil {
+				t.Fatalf("derive lifecycle applied-decision commit call %d/%d: %v", row.ValidatorID, row.SettlementEpoch, err)
+			}
+			revealCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationReveal)
+			if err != nil {
+				t.Fatalf("derive lifecycle applied-decision reveal call %d/%d: %v", row.ValidatorID, row.SettlementEpoch, err)
+			}
+			applicationCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationApplication)
+			if err != nil {
+				t.Fatalf("derive lifecycle applied-decision application call %d/%d: %v", row.ValidatorID, row.SettlementEpoch, err)
+			}
 			semantic.AppliedDecisions = append(semantic.AppliedDecisions, FinalFleetLifecycleAppliedDecision{
 				CensusIndex: uint64(censusIndex), ValidatorID: uint64(row.ValidatorID), SettlementEpoch: row.SettlementEpoch,
 				SubnetEpoch: row.SubnetEpoch, VectorHash: row.VectorHash, Intent: cycle.IntentArtifact,
+				AppliedUIDs: append([]uint16(nil), intent.UIDs...), AppliedValues: append([]uint16(nil), intent.Values...),
+				CommitCall: commitCall, RevealCall: revealCall, ApplicationCall: applicationCall,
 				Measurement: cycle.MeasurementArtifact, Envelope: cycle.MeasurementEnvelope,
 			})
 		}
@@ -1383,11 +1509,22 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		fleet.Hotkey = mustFinalSS58(t, hotkeyBytes)
 		fleet.Coldkey = mustFinalSS58(t, coldkeyBytes)
 		registration := state.ProviderRegistration
+		variantName := fleetLifecycleVariantProvider
 		if fleetID == fleetLifecycleCompanionFleet {
 			registration = state.TerminalRegistration
+			variantName = fleetLifecycleVariantTerminal
+		}
+		var registrationCall *FinalNativeCallEvidence
+		for index := range semantic.Variants {
+			if semantic.Variants[index].Name == variantName {
+				registrationCall = semantic.Variants[index].RegistrationCall
+			}
+		}
+		if registrationCall == nil {
+			t.Fatalf("fleet %d lifecycle registration call is absent", fleetID)
 		}
 		proof := addArtifact("native-receipt", fmt.Sprintf("fleet-%d-lifecycle-registration.json", fleetID), []byte(fmt.Sprintf("fleet-%d lifecycle registration", fleetID)))
-		fleet.Registration = FinalNativeReceipt{ExtrinsicHash: registration.TransactionHash, Block: ChainHead{Number: registration.BlockNumber, Hash: registration.BlockHash}, Proof: proof}
+		fleet.Registration = FinalNativeReceipt{ExtrinsicHash: registration.TransactionHash, Block: ChainHead{Number: registration.BlockNumber, Hash: registration.BlockHash}, Proof: proof, Call: registrationCall}
 	}
 
 	var topologyBindings []FinalFleetMemberBindingEvidence
@@ -1409,6 +1546,14 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 	source.Topology.BindingManifest.ContentHash = bytesSHA256(topologyBytes)
 	source.Topology.BindingManifest.SizeBytes = uint64(len(topologyBytes))
 	source.Topology.BindingManifestHash = source.Topology.BindingManifest.ContentHash
+	bindingByClient := make(map[string]FinalFleetMemberBindingEvidence, len(topologyBindings))
+	for _, binding := range topologyBindings {
+		clientID, clientErr := finalSemanticClientKey(binding.ClientID)
+		if clientErr != nil {
+			t.Fatal(clientErr)
+		}
+		bindingByClient[clientID] = binding
+	}
 
 	// Rebind every reward row and its full snapshot artifact to the historical
 	// lifecycle owner/UID at that settlement epoch. The provider-active interval begins at the exact
@@ -1518,6 +1663,27 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 			t.Fatal(marshalErr)
 		}
 		setArtifact(&fleet.BindingArtifact, encoded)
+		manifest, manifestErr := protocol.ParseFleetManifest(wrapper.Manifest)
+		if manifestErr != nil {
+			t.Fatal(manifestErr)
+		}
+		commitment, commitmentErr := manifest.CommitmentHash()
+		if commitmentErr != nil {
+			t.Fatal(commitmentErr)
+		}
+		members := make([]FinalHeadFleetMemberEvidence, 0, len(manifest.Members))
+		for _, member := range manifest.Members {
+			clientID := hex.EncodeToString(member.ClientID[:])
+			binding, exists := bindingByClient[clientID]
+			if !exists || binding.ValidFromEpoch == 0 || binding.ValidToEpoch < binding.ValidFromEpoch {
+				t.Fatalf("fixture head fleet %d member %s has no terminal binding interval", fleet.FleetID, clientID)
+			}
+			members = append(members, FinalHeadFleetMemberEvidence{ClientID: "0x" + clientID, ClientKey: "0x" + hex.EncodeToString(member.ClientKey[:]), ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch})
+		}
+		sort.Slice(members, func(i, j int) bool { return members[i].ClientID < members[j].ClientID })
+		fleet.FleetKey = "0x" + hex.EncodeToString(manifest.FleetID[:])
+		fleet.CommitmentHash = "0x" + hex.EncodeToString(commitment[:])
+		fleet.Members = members
 	}
 	for index := range source.Pools {
 		pool := &source.Pools[index]
@@ -1880,29 +2046,45 @@ func TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution(t *tes
 		EligibleUIDs:   []uint16{7, 8},
 		AppliedWeights: []IntentWeightObservation{{UID: 7, Value: 100}, {UID: 8, Value: 0}},
 	}
-	public := FinalNativeWeightState{ValidatorUID: 1, UIDs: []uint16{7, 8}, Values: []uint16{100, 0}, Block: head}
-	if err := finalFleetLifecycleAppliedWeights(public, validator); err != nil {
+	decision := FinalFleetLifecycleAppliedDecision{AppliedUIDs: []uint16{7}, AppliedValues: []uint16{100}}
+	if err := verifyFinalFleetLifecycleCandidateVector(map[uint16]uint16{7: 100}, &validator); err != nil {
+		t.Fatalf("explicit rejected-zero lifecycle census rejected: %v", err)
+	}
+	missingZero := validator
+	missingZero.AppliedWeights = missingZero.AppliedWeights[:1]
+	if err := verifyFinalFleetLifecycleCandidateVector(map[uint16]uint16{7: 100}, &missingZero); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("lifecycle census absent expected zero accepted: %v", err)
+	}
+	if err := verifyFinalFleetLifecycleCandidateVector(map[uint16]uint16{7: 100, 8: 1}, &validator); err == nil || !strings.Contains(err.Error(), "positive") {
+		t.Fatalf("positive rejected lifecycle UID accepted: %v", err)
+	}
+	public := FinalNativeWeightState{ValidatorUID: 1, UIDs: []uint16{7}, Values: []uint16{100}, Block: head}
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err != nil {
 		t.Fatalf("exact public lifecycle vector rejected: %v", err)
 	}
-	public.UIDs = public.UIDs[:1]
-	public.Values = public.Values[:1]
-	if err := finalFleetLifecycleAppliedWeights(public, validator); err != nil {
-		t.Fatalf("implicit public zero lifecycle weight rejected: %v", err)
+	public.UIDs = nil
+	public.Values = nil
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err == nil || !strings.Contains(err.Error(), "cardinality") {
+		t.Fatalf("missing positive lifecycle weight accepted: %v", err)
 	}
 	public.UIDs = []uint16{8}
 	public.Values = []uint16{0}
-	if err := finalFleetLifecycleAppliedWeights(public, validator); err == nil || !strings.Contains(err.Error(), "UID 7") {
-		t.Fatalf("missing positive lifecycle UID accepted: %v", err)
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err == nil || !strings.Contains(err.Error(), "exact signed") {
+		t.Fatalf("substituted lifecycle UID accepted: %v", err)
 	}
-	public.UIDs = []uint16{7, 8}
-	public.Values = []uint16{100, 0}
-	public.Values[1] = 1
-	if err := finalFleetLifecycleAppliedWeights(public, validator); err == nil || !strings.Contains(err.Error(), "UID 8") {
+	public.UIDs = []uint16{7}
+	public.Values = []uint16{101}
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err == nil || !strings.Contains(err.Error(), "exact signed") {
 		t.Fatalf("substituted lifecycle vector accepted: %v", err)
 	}
-	public.Values[1] = 0
-	public.UIDs[1] = 7
-	if err := finalFleetLifecycleAppliedWeights(public, validator); err == nil || !strings.Contains(err.Error(), "duplicates UID") {
+	public.UIDs = []uint16{7, 7}
+	public.Values = []uint16{100, 100}
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err == nil || !strings.Contains(err.Error(), "duplicates UID") {
 		t.Fatalf("duplicate lifecycle UID accepted: %v", err)
+	}
+	public.UIDs = []uint16{7, 9}
+	public.Values = []uint16{100, 1}
+	if err := finalFleetLifecycleAppliedWeights(public, head, decision); err == nil || !strings.Contains(err.Error(), "cardinality") {
+		t.Fatalf("unexpected positive lifecycle UID accepted: %v", err)
 	}
 }

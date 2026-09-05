@@ -10,7 +10,7 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 )
 
-func TestFleetCommitmentInfoRuntime453RetainsExactV452Scale(t *testing.T) {
+func TestFleetCommitmentInfoRuntime454RetainsExactV452Scale(t *testing.T) {
 	var hash [32]byte
 	for i := range hash {
 		hash[i] = byte(i + 1)
@@ -72,9 +72,13 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 	if err != nil || legacy != hash {
 		t.Fatalf("persisted v452 compatibility decoder hash=%x error=%v", legacy, err)
 	}
+	current, err := DecodeFleetCommitmentRegistrationV454(canonical)
+	if err != nil || current != hash {
+		t.Fatalf("current v454 decoder hash=%x error=%v", current, err)
+	}
 
 	// Each input is a valid-looking or near-valid alternative that a generic
-	// metagraph parser can encounter. In particular, 0x87 is the v452/v453
+	// metagraph parser can encounter. In particular, 0x87 is the v452-v454
 	// ResetBondsFlag variant and the first mutation is a two-field vector that
 	// deliberately ends in the otherwise canonical Sha256 bytes.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -88,7 +92,7 @@ func TestDecodeFleetCommitmentRegistrationRejectsAmbiguousFields(t *testing.T) {
 		"trailing byte":               trailing,
 		"truncated registration":      canonical[:len(canonical)-1],
 	} {
-		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV453(encoded); decodeErr == nil {
+		if decoded, decodeErr := DecodeFleetCommitmentRegistrationV454(encoded); decodeErr == nil {
 			t.Errorf("%s decoded as %x", name, decoded)
 		}
 	}

@@ -86,7 +86,7 @@ func NewReleaseSteerer(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chai
 	return &ReleaseSteerer{cfg: cfg, chain: chain, native: native, hotkey: hotkey, contexts: byNO, operators: operators, intents: intents, headEMA: headEMA}, nil
 }
 
-func (s *ReleaseSteerer) validatePinnedChains(snapshot *ReleaseSnapshot, nativeState *crv4.EpochScheduleState, nativeHash types.Hash) error {
+func (s *ReleaseSteerer) validatePinnedChains(ctx context.Context, snapshot *ReleaseSnapshot, nativeState *crv4.EpochScheduleState, nativeHash types.Hash) error {
 	if snapshot == nil || nativeState == nil || nativeHash == (types.Hash{}) {
 		return errors.New("finalized snapshot is incomplete")
 	}
@@ -101,7 +101,7 @@ func (s *ReleaseSteerer) validatePinnedChains(snapshot *ReleaseSnapshot, nativeS
 		uint32(s.native.Runtime.TransactionVersion) != s.cfg.TransactionVersion {
 		return errors.New("native signing runtime is not bound to the configured spec and transaction versions")
 	}
-	netuid, err := s.chain.ReleaseNetuidAt(snapshot.BlockNumber)
+	netuid, err := s.chain.ReleaseNetuidAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func commonHashBytes(value string) []byte {
 	return h[:]
 }
 
-// Pin the policy cap explicitly because runtime 453 retains the u16::MAX
+// Pin the policy cap explicitly because runtime 454 retains the u16::MAX
 // native getter even though legacy storage metadata still exists.
 func releaseSubmitOptions(cfg *ReleaseConfig) crv4.SubmitOptions {
 	maxWeightLimit := cfg.Policy.Steering.MaxWeightLimitU16
@@ -236,7 +236,10 @@ func (s *ReleaseSteerer) takeHeadEvidence(subnetEpoch, nativeBlock uint64, nativ
 	return inputsByNO, nil
 }
 
-func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string) (releaseHeadResult, error) {
+func (s *ReleaseSteerer) gatherHead(ctx context.Context, snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string, hotkeyUIDs map[[32]byte]uint16) (releaseHeadResult, error) {
+	if hotkeyUIDs == nil {
+		return releaseHeadResult{}, errors.New("release metagraph snapshot is unavailable")
+	}
 	bound := map[uint64]map[connect.Id]bool{}
 	controlledNO := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
@@ -284,11 +287,16 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch, nati
 			providerIDs = append(providerIDs, clientID)
 		}
 		sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i].LessThan(providerIDs[j]) })
-		for _, clientID := range providerIDs {
-			binding, err := s.chain.ReleaseBindingAt(snapshot.BlockNumber, [16]byte(clientID), snapshot.Epoch)
-			if err != nil {
-				return releaseHeadResult{}, fmt.Errorf("bindingAt no_id %d client %s: %w", noID, clientID, err)
-			}
+		bindingClientIDs := make([][16]byte, len(providerIDs))
+		for index, clientID := range providerIDs {
+			bindingClientIDs[index] = [16]byte(clientID)
+		}
+		providerBindings, err := s.chain.ReleaseBindingsAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, bindingClientIDs, snapshot.Epoch)
+		if err != nil {
+			return releaseHeadResult{}, fmt.Errorf("binding census no_id %d: %w", noID, err)
+		}
+		for index, clientID := range providerIDs {
+			binding := providerBindings[index]
 			observation := ReleaseBindingMeasurement{
 				NoID: noID, ClientID: clientID.String(), Active: binding.Active,
 				FleetID: releaseHex32(binding.Record.FleetId), Hotkey: releaseHex32(binding.Record.Hotkey),
@@ -312,10 +320,7 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch, nati
 				return releaseHeadResult{}, fmt.Errorf("active binding client key mismatch for no_id %d client %s", noID, clientID)
 			}
 			observation.LocalClientKey = releaseHex32(clientKey)
-			uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, binding.Record.Hotkey)
-			if err != nil {
-				return releaseHeadResult{}, fmt.Errorf("live head UID for client %s: %w", clientID, err)
-			}
+			uid, found := hotkeyUIDs[binding.Record.Hotkey]
 			observation.LiveUIDFound = found
 			observation.LiveUID = uid
 			bindings = append(bindings, observation)
@@ -395,22 +400,22 @@ func (s *ReleaseSteerer) gatherHead(snapshot *ReleaseSnapshot, subnetEpoch, nati
 	}, nil
 }
 
-func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, poolObservations *[]ReleasePoolMeasurement) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {
-	if poolObservations == nil {
-		return nil, nil, nil, errors.New("pool observation destination is nil")
+func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, hotkeyUIDs map[[32]byte]uint16, poolObservations *[]ReleasePoolMeasurement) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {
+	if hotkeyUIDs == nil || poolObservations == nil {
+		return nil, nil, nil, errors.New("pool metagraph snapshot or observation destination is nil")
 	}
-	count, err := s.chain.ReleaseOperatorCountAt(snapshot.BlockNumber)
+	count, err := s.chain.ReleaseOperatorCountAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if !count.IsInt64() || count.Sign() < 0 {
+	if count == nil || !count.IsInt64() || count.Sign() < 0 {
 		return nil, nil, nil, errors.New("operator count is out of range")
 	}
 	if snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
 		return nil, nil, nil, errors.New("settlement epoch is out of range")
 	}
 	currentEpoch := snapshot.Epoch.Uint64()
-	currentStartBlock, err := s.chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, snapshot.Epoch)
+	currentStartBlock, err := s.chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("current epoch start block: %w", err)
 	}
@@ -418,6 +423,37 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		return nil, nil, nil, errors.New("artifact deadline overflows uint64")
 	}
 	artifactDeadline := currentStartBlock + snapshot.Policy.RootCommitWindowBlocks
+	var sourceEpoch uint64
+	var sourceEpochBig *big.Int
+	var sourceStartBlock uint64
+	var sourceEndBlock uint64
+	var sourceStartHash [32]byte
+	var sourceEndHash [32]byte
+	// Epoch boundaries are global, so resolve them once before the operator
+	// census instead of consuming four public-RPC calls for every pool.
+	if currentEpoch >= s.cfg.Policy.Deposit.UsageLagEpochs {
+		sourceEpoch = currentEpoch - s.cfg.Policy.Deposit.UsageLagEpochs
+		sourceEpochBig = new(big.Int).SetUint64(sourceEpoch)
+		sourceStartBlock, err = s.chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceEpochBig)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("source epoch %d start: %w", sourceEpoch, err)
+		}
+		sourceEndBlock, err = s.chain.ReleaseEpochEndBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceEpochBig)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("source epoch %d end: %w", sourceEpoch, err)
+		}
+		if sourceStartBlock == 0 || sourceEndBlock <= sourceStartBlock || sourceEndBlock != currentStartBlock || sourceEndBlock > snapshot.BlockNumber {
+			return nil, nil, nil, fmt.Errorf("source epoch %d has inconsistent finalized boundaries [%d,%d], current start %d, snapshot %d", sourceEpoch, sourceStartBlock, sourceEndBlock, currentStartBlock, snapshot.BlockNumber)
+		}
+		sourceStartHash, err = s.chain.BlockHashContext(ctx, sourceStartBlock)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("source epoch %d start hash: %w", sourceEpoch, err)
+		}
+		sourceEndHash, err = s.chain.BlockHashContext(ctx, sourceEndBlock)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("source epoch %d end hash: %w", sourceEpoch, err)
+		}
+	}
 	controlled := map[uint64]bool{}
 	for _, noID := range s.cfg.ControlledNOIDs {
 		controlled[noID] = true
@@ -427,12 +463,12 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 	var pools []ExactWeightInput
 	var audits []DepositAudit
 	for index := int64(0); index < count.Int64(); index++ {
-		noIDBig, err := s.chain.ReleaseOperatorIDAt(snapshot.BlockNumber, big.NewInt(index))
+		noIDBig, err := s.chain.ReleaseOperatorIDAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, big.NewInt(index))
 		if err != nil || !noIDBig.IsUint64() {
 			return nil, nil, nil, fmt.Errorf("operator id at %d: %w", index, err)
 		}
 		noID := noIDBig.Uint64()
-		op, err := s.chain.ReleaseOperatorAt(snapshot.BlockNumber, noIDBig, snapshot.Epoch)
+		op, err := s.chain.ReleaseOperatorAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, noIDBig, snapshot.Epoch)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -444,20 +480,20 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		if measurement == nil {
 			return nil, nil, nil, fmt.Errorf("active no_id %d has no isolated measurement context", noID)
 		}
-		uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, op.PoolHotkey)
-		if err != nil || !found {
-			return nil, nil, nil, fmt.Errorf("active no_id %d pool hotkey has no live UID: %w", noID, err)
+		uid, found := hotkeyUIDs[op.PoolHotkey]
+		if !found {
+			return nil, nil, nil, fmt.Errorf("active no_id %d pool hotkey has no live UID", noID)
 		}
 		*poolObservations = append(*poolObservations, ReleasePoolMeasurement{NoID: noID, UID: uid, PoolHotkey: releaseHex32(op.PoolHotkey)})
-		deposit, err := s.chain.ReleaseEpochDepositAt(snapshot.BlockNumber, snapshot.Epoch, noIDBig)
+		deposit, err := s.chain.ReleaseEpochDepositAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch, noIDBig)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		conviction, err := s.chain.ReleaseConvictionAt(snapshot.BlockNumber, noIDBig)
+		conviction, err := s.chain.ReleaseConvictionAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, noIDBig)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		convictionAdded, err := s.chain.ReleaseEpochConvictionAddedAt(snapshot.BlockNumber, snapshot.Epoch, noIDBig)
+		convictionAdded, err := s.chain.ReleaseEpochConvictionAddedAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch, noIDBig)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -480,28 +516,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 				audit.Error = "bootstrap epoch deposit must be zero without a prior usage artifact"
 			}
 		} else {
-			sourceEpoch := currentEpoch - s.cfg.Policy.Deposit.UsageLagEpochs
-			sourceEpochBig := new(big.Int).SetUint64(sourceEpoch)
-			startBlock, startErr := s.chain.ReleaseEpochStartBlockAt(snapshot.BlockNumber, sourceEpochBig)
-			if startErr != nil {
-				return nil, nil, nil, fmt.Errorf("no_id %d source epoch start: %w", noID, startErr)
-			}
-			endBlock, endErr := s.chain.ReleaseEpochEndBlockAt(snapshot.BlockNumber, sourceEpochBig)
-			if endErr != nil {
-				return nil, nil, nil, fmt.Errorf("no_id %d source epoch end: %w", noID, endErr)
-			}
-			if startBlock == 0 || endBlock <= startBlock || endBlock != currentStartBlock || endBlock > snapshot.BlockNumber {
-				return nil, nil, nil, fmt.Errorf("source epoch %d has inconsistent finalized boundaries [%d,%d], current start %d, snapshot %d", sourceEpoch, startBlock, endBlock, currentStartBlock, snapshot.BlockNumber)
-			}
-			startHash, hashErr := s.chain.BlockHash(startBlock)
-			if hashErr != nil {
-				return nil, nil, nil, fmt.Errorf("source epoch %d start hash: %w", sourceEpoch, hashErr)
-			}
-			endHash, hashErr := s.chain.BlockHash(endBlock)
-			if hashErr != nil {
-				return nil, nil, nil, fmt.Errorf("source epoch %d end hash: %w", sourceEpoch, hashErr)
-			}
-			commitment, commitmentErr := s.chain.ReleaseRootCommitmentAt(snapshot.BlockNumber, sourceEpochBig, noIDBig)
+			commitment, commitmentErr := s.chain.ReleaseRootCommitmentAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceEpochBig, noIDBig)
 			if commitmentErr != nil {
 				return nil, nil, nil, fmt.Errorf("no_id %d source root commitment: %w", noID, commitmentErr)
 			}
@@ -525,7 +540,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 					}
 					audit = FailedDepositAudit(currentEpoch, sourceEpoch, noID, deposit, convictionBefore, status, artifactErr)
 				} else {
-					sourceOperator, sourceOperatorErr := s.chain.ReleaseOperatorAt(snapshot.BlockNumber, noIDBig, sourceEpochBig)
+					sourceOperator, sourceOperatorErr := s.chain.ReleaseOperatorAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, noIDBig, sourceEpochBig)
 					if sourceOperatorErr != nil {
 						return nil, nil, nil, fmt.Errorf("no_id %d source operator version: %w", noID, sourceOperatorErr)
 					}
@@ -537,8 +552,8 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 						DeploymentID: s.cfg.DeploymentID, ChainID: s.cfg.ChainID, GenesisHash: s.cfg.GenesisHash,
 						Netuid: s.cfg.Netuid, Coordinator: common.HexToAddress(s.cfg.Coordinator), SettlementVault: common.HexToAddress(s.cfg.SettlementVault), PolicyHash: s.cfg.PolicyHash,
 						Epoch: sourceEpoch, NoID: noID, Signer: common.HexToAddress(operatorCfg.ArtifactSigner),
-						Start:      payoutartifact.Boundary{Number: startBlock, Hash: fmt.Sprintf("0x%x", startHash)},
-						End:        payoutartifact.Boundary{Number: endBlock, Hash: fmt.Sprintf("0x%x", endHash)},
+						Start:      payoutartifact.Boundary{Number: sourceStartBlock, Hash: fmt.Sprintf("0x%x", sourceStartHash)},
+						End:        payoutartifact.Boundary{Number: sourceEndBlock, Hash: fmt.Sprintf("0x%x", sourceEndHash)},
 						PayoutRoot: commitment.PayoutRoot, ArtifactHash: commitment.ArtifactHash,
 						Committer: commitment.Committer, RootSigner: sourceOperator.RootSigner, CommitBlock: commitment.CommitBlock,
 					}, currentEpoch, deposit, convictionBefore, s.cfg.Policy.Deposit)
@@ -581,7 +596,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 	return pools, masked, audits, nil
 }
 
-func (s *ReleaseSteerer) foldSettlementEpoch(snapshot *ReleaseSnapshot) error {
+func (s *ReleaseSteerer) foldSettlementEpoch(ctx context.Context, snapshot *ReleaseSnapshot) error {
 	if snapshot == nil || snapshot.Epoch == nil || !snapshot.Epoch.IsUint64() {
 		return errors.New("settlement snapshot is invalid")
 	}
@@ -600,7 +615,7 @@ func (s *ReleaseSteerer) foldSettlementEpoch(snapshot *ReleaseSnapshot) error {
 		}
 		participants = append(participants, AttemptSettlementParticipant{NoID: noID, StateDir: measurementStateDir(s.cfg, noID), Stats: stats})
 		if terminalBoundary == (AttemptBoundary{}) && stats.requiresSettlementAdvance(epoch) {
-			boundary, err := releasePriorSettlementBoundary(s.chain, snapshot)
+			boundary, err := releasePriorSettlementBoundary(ctx, s.chain, snapshot)
 			if err != nil {
 				return err
 			}
@@ -619,27 +634,30 @@ func measurementStateDir(cfg *ReleaseConfig, noID uint64) string {
 	return cfg.StateDir
 }
 
-func (s *ReleaseSteerer) checkApplication(snapshot *ReleaseSnapshot) error {
+func (s *ReleaseSteerer) checkApplication(ctx context.Context, snapshot *ReleaseSnapshot, hotkeyUIDs map[[32]byte]uint16) error {
 	current, err := s.intents.Current()
 	if err != nil || current == nil || current.Status != "finalized" {
 		return err
 	}
-	uid, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, s.hotkey.PublicKey())
-	if err != nil || !found {
-		return fmt.Errorf("cannot track applied weights without live validator UID: %w", err)
+	if hotkeyUIDs == nil {
+		return errors.New("cannot track applied weights without a metagraph snapshot")
 	}
-	hash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+	uid, found := hotkeyUIDs[s.hotkey.PublicKey()]
+	if !found {
+		return errors.New("cannot track applied weights without live validator UID")
+	}
+	hash, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
 	if err != nil {
 		return err
 	}
-	header, err := s.native.API.RPC.Chain.GetHeader(hash)
+	header, err := s.native.HeaderAtContext(ctx, hash)
 	if err != nil {
 		return fmt.Errorf("read applied-weight finalized header at %s: %w", hash.Hex(), err)
 	}
 	if header == nil {
 		return fmt.Errorf("applied-weight finalized header at %s is unavailable", hash.Hex())
 	}
-	row, err := s.native.WeightsAt(s.cfg.Netuid, uid, hash)
+	row, err := s.native.WeightsAtContext(ctx, s.cfg.Netuid, uid, hash)
 	if err != nil {
 		return err
 	}
@@ -704,7 +722,7 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if err != nil {
 		return false, fmt.Errorf("pending steering preparation hash: %w", err)
 	}
-	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, preparedRuntimeHash); err != nil {
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, preparedRuntimeHash); err != nil {
 		return false, fmt.Errorf("authenticate pending steering preparation runtime at %s: %w", preparedRuntimeHash.Hex(), err)
 	}
 	hash, err := types.NewHashFromHexString(current.Prepared.ExtrinsicHash)
@@ -716,7 +734,7 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 		return false, fmt.Errorf("reconcile pending steering finality: %w", err)
 	}
 	if found {
-		if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, receipt.BlockHash); err != nil {
+		if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, receipt.BlockHash); err != nil {
 			return false, fmt.Errorf("authenticate recovered steering finality at %s: %w", receipt.BlockHash.Hex(), err)
 		}
 		if err := s.intents.MarkFinalized(current.VectorHash, receipt.ExtrinsicHash.Hex(), receipt.BlockNumber, receipt.BlockHash.Hex(), current.Prepared.RevealBlock, current.Prepared.Values); err != nil {
@@ -734,11 +752,11 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if current.SubnetEpoch > nativeState.SubnetEpochIndex {
 		return false, fmt.Errorf("pending steering epoch %d is ahead of finalized epoch %d", current.SubnetEpoch, nativeState.SubnetEpochIndex)
 	}
-	nonceHash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+	nonceHash, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
 	if err != nil {
 		return false, fmt.Errorf("authenticate steering nonce runtime: %w", err)
 	}
-	finalizedNonce, err := s.native.AccountNonceAt(s.hotkey.PublicKey(), nonceHash)
+	finalizedNonce, err := s.native.AccountNonceAtContext(ctx, s.hotkey.PublicKey(), nonceHash)
 	if err != nil {
 		return false, err
 	}
@@ -752,7 +770,7 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 	if finalizedNonce < current.Prepared.AccountNonce {
 		return false, fmt.Errorf("steering nonce gap: finalized %d, prepared %d", finalizedNonce, current.Prepared.AccountNonce)
 	}
-	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+	if _, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg); err != nil {
 		return false, fmt.Errorf("authenticate native runtime before pending replay: %w", err)
 	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, current.Prepared)
@@ -760,7 +778,7 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 		_ = s.intents.update(current.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return false, err
 	}
-	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, result.FinalizedBlockHash); err != nil {
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, result.FinalizedBlockHash); err != nil {
 		_ = s.intents.update(current.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return false, fmt.Errorf("authenticate replayed steering finality at %s: %w", result.FinalizedBlockHash.Hex(), err)
 	}
@@ -771,11 +789,11 @@ func (s *ReleaseSteerer) reconcilePending(ctx context.Context, current *Steering
 }
 
 func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
-	nativeHash, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+	nativeHash, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
 	if err != nil {
 		return fmt.Errorf("authenticate native runtime before steering snapshot: %w", err)
 	}
-	nativeState, err := s.native.EpochScheduleStateAt(s.cfg.Netuid, nativeHash)
+	nativeState, err := s.native.EpochScheduleStateAtContext(ctx, s.cfg.Netuid, nativeHash)
 	if err != nil {
 		return err
 	}
@@ -783,8 +801,20 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.validatePinnedChains(snapshot, nativeState, nativeHash); err != nil {
+	if err := s.validatePinnedChains(ctx, snapshot, nativeState, nativeHash); err != nil {
 		return err
+	}
+	var hotkeyUIDs map[[32]byte]uint16
+	loadHotkeyUIDs := func() error {
+		if hotkeyUIDs != nil {
+			return nil
+		}
+		var err error
+		hotkeyUIDs, err = s.chain.MetagraphHotkeysAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, s.cfg.Netuid)
+		if err != nil {
+			return fmt.Errorf("snapshot release metagraph: %w", err)
+		}
+		return nil
 	}
 	current, err := s.intents.Current()
 	if err != nil {
@@ -793,8 +823,13 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.restoreHeadEMA(current); err != nil {
 		return err
 	}
-	if err := s.checkApplication(snapshot); err != nil {
-		return err
+	if current != nil && current.Status == "finalized" {
+		if err := loadHotkeyUIDs(); err != nil {
+			return err
+		}
+		if err := s.checkApplication(ctx, snapshot, hotkeyUIDs); err != nil {
+			return err
+		}
 	}
 	if current, err = s.intents.Current(); err != nil {
 		return err
@@ -821,22 +856,22 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 			return fmt.Errorf("prior subnet epoch %d intent is %s; refusing a new commit", current.SubnetEpoch, current.Status)
 		}
 	}
-	if err := s.foldSettlementEpoch(snapshot); err != nil {
+	if err := s.foldSettlementEpoch(ctx, snapshot); err != nil {
 		return err
 	}
-	head, err := s.gatherHead(snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex())
+	if err := loadHotkeyUIDs(); err != nil {
+		return err
+	}
+	head, err := s.gatherHead(ctx, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUIDs)
 	if err != nil {
 		return err
 	}
 	var poolObservations []ReleasePoolMeasurement
-	_, _, depositAudits, err := s.gatherPools(ctx, snapshot, head.Bound, &poolObservations)
+	_, _, depositAudits, err := s.gatherPools(ctx, snapshot, head.Bound, hotkeyUIDs, &poolObservations)
 	if err != nil {
 		return err
 	}
-	selfUID, found, err := s.chain.FindUidByHotkeyAt(snapshot.BlockNumber, s.cfg.Netuid, s.hotkey.PublicKey())
-	if err != nil {
-		return fmt.Errorf("self-mask: %w", err)
-	}
+	selfUID, found := hotkeyUIDs[s.hotkey.PublicKey()]
 	if !found {
 		return fmt.Errorf("self-mask: validator hotkey has no live UID on netuid %d", s.cfg.Netuid)
 	}
@@ -882,10 +917,11 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+	preparedRuntimeHash, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
+	if err != nil {
 		return fmt.Errorf("authenticate native runtime before preparing steering: %w", err)
 	}
-	prepared, err := crv4.PrepareWeightsCRv4Exact(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, releaseSubmitOptions(s.cfg))
+	prepared, err := crv4.PrepareWeightsCRv4ExactAtContext(ctx, s.native, s.hotkey, s.cfg.Netuid, uids, scores, releaseSubmitOptions(s.cfg), preparedRuntimeHash)
 	if err != nil {
 		return err
 	}
@@ -893,7 +929,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decode prepared steering runtime hash: %w", err)
 	}
-	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, preparedHash); err != nil {
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, preparedHash); err != nil {
 		return fmt.Errorf("authenticate prepared steering runtime at %s: %w", preparedHash.Hex(), err)
 	}
 	if prepared.SubnetEpoch != nativeState.SubnetEpochIndex {
@@ -941,7 +977,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 	if err := s.headEMA.CommitForEpoch(measurementArtifact.SubnetEpoch, measurementArtifact.HeadEMA, measurementArtifact.Policy.Steering.HeadScoreEMA); err != nil {
 		return fmt.Errorf("commit head EMA after steering intent: %w", err)
 	}
-	if _, err := authenticatePinnedNativeRuntime(s.native, s.cfg); err != nil {
+	if _, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg); err != nil {
 		return fmt.Errorf("authenticate native runtime before steering broadcast: %w", err)
 	}
 	result, err := crv4.SubmitPrepared(ctx, s.native, prepared)
@@ -951,7 +987,7 @@ func (s *ReleaseSteerer) SubmitOnce(ctx context.Context) error {
 		_ = s.intents.update(intent.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return err
 	}
-	if err := authenticatePinnedNativeRuntimeAt(s.native, s.cfg, result.FinalizedBlockHash); err != nil {
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, s.native, s.cfg, result.FinalizedBlockHash); err != nil {
 		_ = s.intents.update(intent.VectorHash, "pending", func(i *SteeringIntent) error { i.Error = err.Error(); return nil })
 		return fmt.Errorf("authenticate steering finality at %s: %w", result.FinalizedBlockHash.Hex(), err)
 	}
@@ -1015,11 +1051,11 @@ func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func(
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
 	return runReleaseSteeringLoop(ctx, poll, func() (uint64, error) {
-		finalized, err := authenticatePinnedNativeRuntime(s.native, s.cfg)
+		finalized, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
 		if err != nil {
 			return 0, err
 		}
-		state, err := s.native.EpochScheduleStateAt(s.cfg.Netuid, finalized)
+		state, err := s.native.EpochScheduleStateAtContext(ctx, s.cfg.Netuid, finalized)
 		if err != nil {
 			return 0, err
 		}

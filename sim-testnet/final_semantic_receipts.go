@@ -48,7 +48,9 @@ func finalCanonicalLogFromGeth(value ethTypes.Log) (finalCanonicalEVMLog, error)
 	}
 	topics := make([]string, len(value.Topics))
 	for index, topic := range value.Topics {
-		if topic == (common.Hash{}) {
+		// The first topic is always an event signature. Indexed event values
+		// may legitimately be zero, so do not reject their all-zero topics.
+		if index == 0 && topic == (common.Hash{}) {
 			return finalCanonicalEVMLog{}, errors.New("canonical receipt log has an empty topic")
 		}
 		topics[index] = strings.ToLower(topic.Hex())
@@ -80,7 +82,16 @@ func finalCanonicalLogsFromRPC(raw json.RawMessage, allowed map[common.Address]b
 		}
 		result = append(result, log)
 	}
-	return finalCanonicalizeLogs(result)
+	canonical, err := finalCanonicalizeLogs(result)
+	if err != nil {
+		return nil, err
+	}
+	for index := range result {
+		if !finalSemanticCanonicalLogEqual(result[index], canonical[index]) {
+			return nil, errors.New("receipt logs are not in canonical order")
+		}
+	}
+	return canonical, nil
 }
 
 func finalCanonicalizeLogs(values []finalCanonicalEVMLog) ([]finalCanonicalEVMLog, error) {
@@ -95,8 +106,16 @@ func finalCanonicalizeLogs(values []finalCanonicalEVMLog) ([]finalCanonicalEVMLo
 		return result[i].LogIndex < result[j].LogIndex
 	})
 	for index, value := range result {
-		if !common.IsHexAddress(value.Address) || common.HexToAddress(value.Address) == (common.Address{}) || len(value.TransactionHash) != 66 || len(value.BlockHash) != 66 || !strings.HasPrefix(value.Data, "0x") {
+		if !common.IsHexAddress(value.Address) || common.HexToAddress(value.Address) == (common.Address{}) || !finalCanonicalHex(value.TransactionHash, common.HashLength) || !finalCanonicalHex(value.BlockHash, common.HashLength) || !strings.HasPrefix(value.Data, "0x") {
 			return nil, errors.New("canonical receipt log is malformed")
+		}
+		if _, err := hexutil.Decode(value.Data); err != nil || len(value.Topics) == 0 || !finalCanonicalHex(value.Topics[0], common.HashLength) || common.HexToHash(value.Topics[0]) == (common.Hash{}) {
+			return nil, errors.New("canonical receipt log event payload is malformed")
+		}
+		for _, topic := range value.Topics[1:] {
+			if !finalCanonicalHex(topic, common.HashLength) {
+				return nil, errors.New("canonical receipt log topic is malformed")
+			}
 		}
 		if index > 0 {
 			prior := result[index-1]
@@ -106,6 +125,28 @@ func finalCanonicalizeLogs(values []finalCanonicalEVMLog) ([]finalCanonicalEVMLo
 		}
 	}
 	return result, nil
+}
+
+// Accepts only a fixed-width lowercase-prefix hexadecimal wire value.
+func finalCanonicalHex(value string, size int) bool {
+	if len(value) != 2+size*2 || !strings.HasPrefix(value, "0x") {
+		return false
+	}
+	_, err := hexutil.Decode(value)
+	return err == nil
+}
+
+// Compares every canonical receipt-log field without normalizing substitutions.
+func finalSemanticCanonicalLogEqual(left, right finalCanonicalEVMLog) bool {
+	if left.Address != right.Address || left.Data != right.Data || left.BlockNumber != right.BlockNumber || left.BlockHash != right.BlockHash || left.TransactionHash != right.TransactionHash || left.TransactionIndex != right.TransactionIndex || left.LogIndex != right.LogIndex || len(left.Topics) != len(right.Topics) {
+		return false
+	}
+	for index := range left.Topics {
+		if left.Topics[index] != right.Topics[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func finalCanonicalReceiptLogsHash(values []finalCanonicalEVMLog) (string, error) {

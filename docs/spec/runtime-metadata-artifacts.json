@@ -57,6 +57,22 @@
       "metadata_size": 334667,
       "metadata_sha256": "99380e7d01eccc41ffa1304e782658c86b38ba9986acefa371e79ad367f76658",
       "metadata_blake2b_256": "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"
+    },
+    {
+      "spec_version": 454,
+      "source_ref_kind": "tag",
+      "source_ref_name": "v454",
+      "source_commit": "14cde6410fe8ec81a940e290c56f94a632a0988d",
+      "observation_block": 7934387,
+      "observation_block_hash": "0x5b3f3455125d78812299002a1926792a6876b03ac636ae53e93e4115f15a392b",
+      "code_source": "github-release",
+      "code_url": "https://github.com/RaoFoundation/subtensor/releases/download/v454/subtensor.wasm",
+      "code_size": 2515968,
+      "code_sha256": "a55e76b4f4620bcdb4c787e499c87a35abb9913ba4cde001b08a00d1945ac4db",
+      "code_blake2b_256": "0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef",
+      "metadata_size": 334642,
+      "metadata_sha256": "b592bafacd0f3cce1340a91f237f82a531968bd833cbd27339328c80ce92b1cf",
+      "metadata_blake2b_256": "0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702"
     }
   ]
 }

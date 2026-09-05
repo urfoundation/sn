@@ -92,7 +92,7 @@ func finalSemanticCampaignResultFixture(t *testing.T, cfg *ResolvedConfig, roles
 		faults[index].RestoredProcesses = restored
 		faults[index].Status = "restored"
 	}
-	adversaries := healthyAdversaryEvidence()
+	adversaries, _, _ := finalSemanticAdversarialTestCampaignForConfig(t, cfg)
 	adversaryConfig := cfg.Config.Scenarios.Adversaries
 	adversaries.MatrixHash = definition.AdversarialMatrixHash
 	adversaries.Seed = adversaryConfig.Seed
@@ -985,6 +985,13 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 		t.Fatal(err)
 	}
 	collected := finalSemanticSupplementCollectedFixture(t, cfg, source, result, resultWire)
+	matrixBytes, adversariesBytes := finalSemanticSupplementAdversarialArtifacts(t, cfg, result)
+	if err := atomicWrite(filepath.Join(runDir, filepath.FromSlash(collected.AdversarialMatrix.URI)), matrixBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(runDir, filepath.FromSlash(collected.Adversaries.URI)), adversariesBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	collectedWire := finalSemanticSupplementJSON(t, collected)
 	if err := atomicWrite(filepath.Join(runDir, "final-inputs", "manifest.json"), collectedWire, 0o644); err != nil {
 		t.Fatal(err)
@@ -1001,6 +1008,7 @@ func newFinalSemanticSupplementTestFixture(t *testing.T) *finalSemanticSupplemen
 	}
 	rawFiles := map[string][]byte{
 		"result.json": resultWire, "final-inputs/manifest.json": collectedWire,
+		collected.AdversarialMatrix.URI: matrixBytes, collected.Adversaries.URI: adversariesBytes,
 		finalSemanticCaptureStatusFilename: captureWire, scenarioCampaignStartFilename: campaignStartBytes,
 		result.LifecycleHandoff.File: lifecycleBytes,
 	}
@@ -1154,13 +1162,20 @@ func finalSemanticSupplementCollectedFixture(t *testing.T, cfg *ResolvedConfig, 
 		data := finalSemanticSupplementFixtureArtifactBytes(t, kind, name)
 		return FinalArtifactLocator{Kind: kind, URI: name, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
+	matrixBytes, adversariesBytes := finalSemanticSupplementAdversarialArtifacts(t, cfg, result)
+	artifact := func(kind, name string, data []byte) FinalArtifactLocator {
+		return FinalArtifactLocator{Kind: kind, URI: name, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
+	}
+	closedBundleBytes := finalSemanticSupplementFixtureClosedBundleBytes(t)
 	collected := &FinalSemanticCollectedInputs{
 		Schema: finalSemanticCollectedInputsSchema, Phase: result.Name, RunID: result.RunID,
 		ResultHash: result.EvidenceHash, Window: source.Window, Policy: source.PolicyArtifact,
 		ScenarioResult:      FinalArtifactLocator{Kind: "scenario-result-candidate", URI: "result.json", ContentHash: bytesSHA256(resultWire), SizeBytes: uint64(len(resultWire))},
+		AdversarialMatrix:   artifact("adversarial-matrix", "final-inputs/adversarial-matrix.json", matrixBytes),
+		Adversaries:         artifact("scenario-adversaries", "final-inputs/adversaries.json", adversariesBytes),
 		TerminalObservation: locator("scenario-terminal-observation", "final-inputs/terminal-observation.json"),
 		ObservationHistory:  locator("scenario-observation-history", "final-inputs/observation-history.json"),
-		ClosedInputBundles:  []FinalArtifactLocator{locator("closed-input-bundle", "final-inputs/bundles/closed.json")},
+		ClosedInputBundles:  []FinalArtifactLocator{artifact("closed-input-bundle", "final-inputs/bundles/closed.json", closedBundleBytes)},
 	}
 	lastEpoch := source.Window.FirstEpoch + source.Window.EpochCount - 1
 	for epoch := source.Window.FirstEpoch - 1; epoch <= lastEpoch; epoch++ {
@@ -1194,6 +1209,43 @@ func finalSemanticSupplementCollectedFixture(t *testing.T, cfg *ResolvedConfig, 
 		t.Fatal(err)
 	}
 	return collected
+}
+
+// Constructs one canonical closed bundle for release-scale supplement tests.
+func finalSemanticSupplementFixtureClosedBundleBytes(t testing.TB) []byte {
+	t.Helper()
+	entryData := []byte("{\"schema\":\"urnetwork-final-semantic-fixture-bundle-entry-v1\"}\n")
+	bundle := FinalCollectedFileBundle{
+		Schema: finalCollectedFileBundleSchema,
+		Name:   "fixture",
+		Files: []FinalCollectedFileBundleEntry{{
+			Path: "fixture.json", ContentHash: bytesSHA256(entryData), SizeBytes: uint64(len(entryData)), Data: entryData,
+		}},
+	}
+	data, err := json.Marshal(&bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// Produces the same two raw input bytes that production capture retains.
+// Release-scale tests must not
+// make a final summary look authentic by substituting generic fixture JSON for
+// the matrix or stopped campaign it claims to bind.
+func finalSemanticSupplementAdversarialArtifacts(t *testing.T, cfg *ResolvedConfig, result *ScenarioResult) ([]byte, []byte) {
+	t.Helper()
+	matrix, matrixBytes, err := loadCanonicalAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Adversaries == nil || !strings.EqualFold(matrix.Hash, result.AdversarialMatrix) || !strings.EqualFold(matrix.Hash, result.Adversaries.MatrixHash) {
+		t.Fatal("final semantic supplement adversarial matrix does not match result")
+	}
+	if _, err := summarizeFinalAdversarialCampaign(result.Adversaries, matrix); err != nil {
+		t.Fatalf("final semantic supplement adversarial campaign: %v", err)
+	}
+	return matrixBytes, finalSemanticSupplementJSON(t, result.Adversaries)
 }
 
 // finalSemanticSupplementFixtureArtifactBytes returns the canonical JSON used

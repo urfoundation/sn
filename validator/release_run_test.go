@@ -131,6 +131,28 @@ func TestReleaseSeedAttemptIntervalReservesHardLimitHeadroom(t *testing.T) {
 	}
 }
 
+// Native startup allows a full ten public block intervals for the metadata
+// handshake, while a deliberately slower configured polling window can widen
+// that bounded budget. It never relies on the former 15-second constant.
+func TestReleaseNativeEndpointTimeoutReservesMetadataHeadroom(t *testing.T) {
+	blockBudget := time.Duration(releaseExpectedBlockSeconds*releaseNativeAuthenticationBlocks) * time.Second
+	for _, test := range []struct {
+		name        string
+		cfg         *ReleaseConfig
+		wantTimeout time.Duration
+	}{
+		{name: "nil config", wantTimeout: blockBudget},
+		{name: "default polling", cfg: &ReleaseConfig{PollSeconds: 3}, wantTimeout: blockBudget},
+		{name: "slow configured polling", cfg: &ReleaseConfig{PollSeconds: 60}, wantTimeout: 4 * time.Minute},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := releaseNativeEndpointTimeout(test.cfg); got != test.wantTimeout {
+				t.Fatalf("native endpoint timeout=%s, want %s", got, test.wantTimeout)
+			}
+		})
+	}
+}
+
 type failingReleaseTrailRunner struct{ err error }
 
 func (runner failingReleaseTrailRunner) Run(context.Context, int) error { return runner.err }

@@ -22,7 +22,7 @@ workloads, historical/archive proof and the final independent-backend campaign
 after it finishes syncing. Public mode records the shared observation backend as
 non-independent in doctor, postconditions and manifests; that assurance gap is
 non-blocking for bounded testnet acceptance but blocking for mainnet promotion.
-Runtime spec 453 and its exact finalized Wasm code hash remain hard gates in both
+Runtime spec 454 and its exact finalized Wasm code hash remain hard gates in both
 modes.
 
 Filling configuration is not approval to spend. Every mutating command is a dry
@@ -33,15 +33,27 @@ run unless it receives both `--apply` and the exact hash of the reviewed plan.
 From the `sn` repository:
 
 ```bash
-go build -trimpath -o build/sim-testnet ./sim-testnet
+SN_REPO="$(pwd -P)"
+WORKSPACE="$(dirname "$SN_REPO")"
+release_head="$(git rev-parse HEAD)"
+build_utc="$(date -u +%Y%m%dT%H%M%SZ)"
+SIM_TESTNET_RELEASE_DIR="$WORKSPACE/temp/sim-testnet-${release_head}-${build_utc}"
+SIM_TESTNET_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet"
+SIM_TESTNET_STATE_DIR="$SN_REPO/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4"
+mkdir -p "$SIM_TESTNET_RELEASE_DIR"
+go build -trimpath -buildvcs=true -o "$SIM_TESTNET_BINARY" ./sim-testnet
+go version -m "$SIM_TESTNET_BINARY"
+sha256sum "$SIM_TESTNET_BINARY"
 
-./build/sim-testnet doctor \
+"$SIM_TESTNET_BINARY" doctor \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --format json
 
-./build/sim-testnet plan \
+"$SIM_TESTNET_BINARY" plan \
   --config sim-testnet/testnet.yml \
-  --format json > /tmp/ur-subnet-testnet-plan.json
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
+  --format json > /home/by/urnetwork/temp/ur-subnet-testnet-plan.json
 ```
 
 Both commands are read-only. Review every action, dependency and maximum spend in
@@ -79,8 +91,9 @@ logical `Claimed`, `ClaimPaymentDeferred`, and measured `ClaimPaid` events.
 Only after explicit approval of the generated hash:
 
 ```bash
-./build/sim-testnet launch \
+"$SIM_TESTNET_BINARY" launch \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH \
   --detach
 ```
@@ -98,7 +111,7 @@ recovers all probe-attributable alpha to a controlled provider coldkey.
 Every registration uses runtime `register_limit`/`registerLimit` with the reviewed
 `100000000` rao ceiling. EVM registrations fund the caller mirror and send zero
 value to the neuron precompile, matching the deduction semantics retained by
-runtime 453.
+runtime 454.
 Contract registrations supply that full ceiling and atomically refund the
 unburned difference.
 Transactions are journaled through intent, signed bytes and nonce,
@@ -108,16 +121,18 @@ continued with `resume` and the same approval hash.
 ## Release evidence
 
 ```bash
-./build/sim-testnet scenario --name release-1.0 \
+"$SIM_TESTNET_BINARY" scenario --name release-1.0 \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
-./build/sim-testnet scenario --name production-soak \
+"$SIM_TESTNET_BINARY" scenario --name production-soak \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
-./build/sim-testnet inspect --config sim-testnet/testnet.yml --format json
-./build/sim-testnet analyze --config sim-testnet/testnet.yml --format json
+"$SIM_TESTNET_BINARY" inspect --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
+"$SIM_TESTNET_BINARY" analyze --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
 ```
 
 The first campaign proves five consecutive 300-block accelerated epochs while the full

@@ -48,12 +48,15 @@ func adversaryMetricSet(names ...string) map[string]bool {
 var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 	"operator-api-pressure": adversaryMetricSet(
 		"scheduled_fault_rejections", "request_rate", "response_bytes", "5xx_count", "error_rate_ppm", "process_restarts",
+		"p99_latency_ms", "request_p99_ms", "recovery_seconds", "restart_count", "retry_rate", "state_hash_before_after",
 	),
 	"rpc-consistency-pressure": adversaryMetricSet(
 		"finalized_head_lag_blocks", "finalized_lag_blocks", "head_lag_blocks", "hash_disagreement_count", "archive_error_rate_ppm", "rpc_latency_ms", "runtime_spec",
 		"transaction_version", "state_version", "runtime_code_hash_match",
 		"best_finalized_lag_blocks", "sdk_mev_shield_expired_observations", "subnet_spot_alpha_price", "subnet_moving_alpha_price", "subnet_uid_count",
 		"subnet_tao_reserve_rao", "subnet_alpha_reserve_rao", "spot_price", "moving_price", "tao_reserve_rao", "alpha_reserve_rao",
+		"commit_reveal_enabled", "commit_reject_count", "reveal_reject_count", "normal_class_saturation_ppm", "honest_inclusion_blocks",
+		"finalized_block_latency_ms", "pruning_margin_rank", "p99_latency_ms", "reveal_delay_blocks",
 	),
 	"artifact-integrity-pressure": adversaryMetricSet(
 		"scheduled_fault_rejections", "missing_artifacts", "hash_mismatches", "origin_equivocations", "tamper_rejects", "artifact_tamper_rejections", "root_reproduction_mismatches",
@@ -61,6 +64,7 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 	"identity-churn-emulation": adversaryMetricSet(
 		"commitment_parser_rejections", "canonical_commitment_accepts", "observer_panics", "stale_binding_rejects", "generation_monotonicity", "uid_rebind_rejects",
 		"binding_generation", "prefix_claim_count", "duplicate_binding_rejects", "unresolved_affiliations", "burn_delta_rao", "uid_capacity", "registration_limit_rejects",
+		"take_before_after", "cooldown_enforced", "denied_alias_count", "proxy_filter_surface_hash",
 	),
 	"custody-boundary-emulation": adversaryMetricSet(
 		"allocation_sum_delta_rao", "domain_mutations_rejected", "domain_mismatch_rejects", "nonce_replays_rejected", "expired_signatures_rejected", "unit_boundary_cases", "budget_delta",
@@ -76,6 +80,8 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 		"pending_basket_deposit_rao", "root_stake_change_rao", "pending_basket_stake_change_blocked",
 		"settlement_transfer_floor_cases", "captured_subfloor_emission_rao", "premature_claim_payments", "lost_claim_credit_rao",
 		"live_invalid_merkle_proof_rejections", "live_merkle_state_mutations",
+		"duplicate_leaf_rejects", "reentrancy_rejects", "received_funds_delta", "implementation_code_hash", "worst_case_gas", "runtime_code_bytes",
+		"runtime_454_boundary_cases",
 	),
 	"consensus-cabal-emulation": adversaryMetricSet(
 		"consensus_delta_ppm", "honest_consensus_delta_ppm", "honest_incentive_delta_ppm", "follower_consensus_delta_ppm", "active_stake_ppm", "validator_permit_count",
@@ -83,12 +89,14 @@ var releaseAdversaryMetricCatalog = map[string]map[string]bool{
 		"validator_live_count", "intent_recovery_seconds", "vector_hash_divergence", "pending_intents", "last_applied_epoch", "finalized_intents", "mask_coverage_ppm",
 		"independent_validator_coverage", "unresolved_affiliations", "exact_split_error", "stake_sweep_ppm", "clipped_self_weight_ppm", "validator_trust_ppm",
 		"adversary_validator_trust_ppm", "cabal_incentive_ppm",
+		"validator_local_boundary_disagreement", "validator_local_boundary_restoration",
 	),
 	"verify-replay-poison": adversaryMetricSet(
 		"scheduled_fault_rejections", "signed_response_tamper_rejections", "canonical_body_mutation_rejections", "verified_final_responses", "constant_hash_collisions_accepted",
 		"duplicate_hop_rejects", "source_mismatch_rejects", "path_id_collisions", "busy_responses", "replay_hash_mismatch", "assignment_confirmation_delta",
 		"response_size_delta_bytes", "route_distinguishability_ppm", "poison_durable_rows", "stats_delta", "missing_signature_rejections", "invalid_signature_rejections",
 		"unauthorized_trails_created", "requests_to_429", "vpk_count", "active_trails", "5xx_count",
+		"external_plaintext_endpoint_rejections", "real_poison_p95_ratio_ppm", "quality_delta_by_no", "abandonment_rate_ppm", "p99_latency_ms",
 	),
 }
 
@@ -97,19 +105,43 @@ func validateAdversarialMetricCoverage(matrix *AdversarialMatrix, catalog map[st
 		return errors.New("adversarial matrix is absent")
 	}
 	for _, row := range matrix.Rows {
-		measurable := false
-		for _, actorID := range row.ActorIDs {
-			for _, metric := range row.Metrics {
+		for _, metric := range row.Metrics {
+			measurable := false
+			for _, actorID := range row.ActorIDs {
 				if catalog[actorID][metric] {
 					measurable = true
+					break
 				}
 			}
-		}
-		if !measurable {
-			return fmt.Errorf("adversarial matrix row %s has no metric emitted by its mapped actors", row.ID)
+			if !measurable {
+				return fmt.Errorf("adversarial matrix row %s required metric %s is not emitted by a mapped actor", row.ID, metric)
+			}
 		}
 	}
 	return nil
+}
+
+// Require an exact set rather than accepting one sampled member of a larger
+// required set. Duplicate or undeclared names are incomplete evidence too.
+func adversaryMeasuredEveryRequiredMetric(requiredMetrics, measuredMetrics []string) bool {
+	if len(requiredMetrics) == 0 || len(measuredMetrics) != len(requiredMetrics) {
+		return false
+	}
+	required := make(map[string]bool, len(requiredMetrics))
+	for _, metric := range requiredMetrics {
+		if metric == "" || required[metric] {
+			return false
+		}
+		required[metric] = true
+	}
+	measured := make(map[string]bool, len(measuredMetrics))
+	for _, metric := range measuredMetrics {
+		if !required[metric] || measured[metric] {
+			return false
+		}
+		measured[metric] = true
+	}
+	return len(measured) == len(required)
 }
 
 type adversarySamplePhase string
@@ -633,7 +665,7 @@ func (self *liveAdversaryCampaign) vectorEvidenceLocked(actors map[string]Advers
 			vector.MeasuredMetrics = append(vector.MeasuredMetrics, metricName)
 		}
 		sort.Strings(vector.MeasuredMetrics)
-		if len(vector.MeasuredMetrics) == 0 {
+		if !adversaryMeasuredEveryRequiredMetric(vector.RequiredMetrics, vector.MeasuredMetrics) {
 			healthy = false
 		}
 		if self.stopped {
@@ -726,7 +758,7 @@ func adversaryAssertions(evidence *AdversaryCampaignEvidence, started time.Time,
 	seenVectors := map[string]bool{}
 	for _, vector := range evidence.Vectors {
 		seenVectors[vector.ID] = true
-		passed := vector.Status == "pass" && vector.SampleFloor >= uint64(evidence.MinimumSamplesPerActor) && vector.ConcurrentCoverage != "invalid" && len(vector.ActorIDs) != 0 && len(vector.LocalTests) != 0 && len(vector.RequiredMetrics) != 0 && len(vector.MeasuredMetrics) != 0
+		passed := vector.Status == "pass" && vector.SampleFloor >= uint64(evidence.MinimumSamplesPerActor) && vector.ConcurrentCoverage != "invalid" && len(vector.ActorIDs) != 0 && len(vector.LocalTests) != 0 && adversaryMeasuredEveryRequiredMetric(vector.RequiredMetrics, vector.MeasuredMetrics)
 		assertions = append(assertions, build("adversary_vector_"+vector.ID, passed, fmt.Sprintf("mode=%s coverage=%s status=%s sample_floor=%d errors=%d max_p99_ms=%d measured_metrics=%v", vector.ExecutionMode, vector.ConcurrentCoverage, vector.Status, vector.SampleFloor, vector.Errors, vector.MaximumP99LatencyMilliseconds, vector.MeasuredMetrics)))
 	}
 	liveMerklePassed := false

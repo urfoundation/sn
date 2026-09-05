@@ -18,8 +18,12 @@ func finalSemanticIdentityFixture(t *testing.T) FinalSemanticEvidence {
 	artifact := func(kind, name string) FinalArtifactLocator {
 		return FinalArtifactLocator{Kind: kind, URI: "artifacts/" + name + ".json", ContentHash: bytesSHA256([]byte(name)), SizeBytes: uint64(len(name))}
 	}
-	nativeReceipt := func(name string, block uint64) FinalNativeReceipt {
-		return FinalNativeReceipt{ExtrinsicHash: finalTestHex(byte(block)), Block: ChainHead{Number: block, Hash: finalTestHex(byte(block + 1))}, Proof: artifact("native-receipt", name)}
+	nativeReceipt := func(name string, block uint64, uid uint16, hotkey, coldkey string) FinalNativeReceipt {
+		call, err := finalNativeRegistrationCallEvidence(coldkey, uint32(block), 521, hotkey, uid, 1_000_000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return FinalNativeReceipt{ExtrinsicHash: finalTestHex(byte(block)), Block: ChainHead{Number: block, Hash: finalTestHex(byte(block + 1))}, Call: &call, Proof: artifact("native-receipt", name)}
 	}
 	evmReceipt := func(name string, block uint64) FinalEVMReceipt {
 		return FinalEVMReceipt{TransactionHash: finalTestHex(byte(block)), Block: ChainHead{Number: block, Hash: finalTestHex(byte(block + 1))}, Status: "success", LogsHash: finalTestHex(byte(block + 2)), Proof: artifact("evm-receipt", name)}
@@ -33,6 +37,7 @@ func finalSemanticIdentityFixture(t *testing.T) FinalSemanticEvidence {
 	minerManifest := artifact("miner-process-manifest", "miners")
 	bindingManifest := artifact("fleet-binding-manifest", "bindings")
 	source := FinalSemanticEvidence{
+		Netuid: 521,
 		Window: ScenarioAcceptanceWindow{FirstEpoch: 10, EpochCount: 3, TerminalBlock: 122}, NativeTerminalHead: nativeTerminal, EVMTerminalHead: ChainHead{Number: 122, Hash: finalTestHex(122)},
 		Deployment:        FinalContractDeploymentEvidence{SettlementVault: settlementVault.Hex()},
 		ExpectedOperators: 2, ExpectedValidators: 2, ExpectedMiners: 1000, ExpectedCandidates: finalHeadCandidateCount, ExpectedHeadSlots: finalHeadSlotCount,
@@ -60,9 +65,11 @@ func finalSemanticIdentityFixture(t *testing.T) FinalSemanticEvidence {
 	}
 	for i := 0; i < finalHeadCandidateCount; i++ {
 		fleetID := uint64(i + 1)
+		uid := uint16(1000 + i)
+		hotkey, coldkey := fmt.Sprintf("0x%064x", 1000+i), fmt.Sprintf("0x%064x", 2000+i)
 		source.HeadFleets = append(source.HeadFleets, FinalHeadFleetEvidence{
-			FleetID: fleetID, UID: uint16(1000 + i), Hotkey: fmt.Sprintf("5HeadHotkey%d", fleetID), Coldkey: fmt.Sprintf("5HeadColdkey%d", fleetID),
-			Generation: 1, MemberCount: 4, Registered: true, Registration: nativeReceipt(fmt.Sprintf("head-registration-%d", fleetID), uint64(1+i%40)),
+			FleetID: fleetID, UID: uid, Hotkey: hotkey, Coldkey: coldkey,
+			Generation: 1, MemberCount: 4, Registered: true, Registration: nativeReceipt(fmt.Sprintf("head-registration-%d", fleetID), uint64(1+i%40), uid, hotkey, coldkey),
 			Snapshot: nativeTerminal, BindingArtifact: artifact("head-fleet-binding", fmt.Sprintf("head-fleet-%d", fleetID)),
 		})
 	}
@@ -98,24 +105,46 @@ func TestFinalSemanticPoolUIDZeroIsValidAndStillUnique(t *testing.T) {
 func TestFinalSemanticHeadUIDZeroIsValidAndStillUnique(t *testing.T) {
 	source := finalSemanticIdentityFixture(t)
 	source.HeadFleets[0].UID = 0
+	source.HeadFleets[0].Registration.Call.UID = 0
 	if err := verifyFinalTopology(&source); err != nil {
 		t.Fatalf("head UID zero was rejected: %v", err)
 	}
 	source.HeadFleets[1].UID = 0
+	source.HeadFleets[1].Registration.Call.UID = 0
 	if err := verifyFinalTopology(&source); err == nil || !strings.Contains(err.Error(), "duplicated") {
 		t.Fatalf("duplicate head UID zero was not rejected: %v", err)
+	}
+}
+
+// A projected zero UID must still match the exact registered ownership.
+func TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration(t *testing.T) {
+	source := finalSemanticIdentityFixture(t)
+	source.HeadFleets[0].UID = 0
+	if err := verifyFinalTopology(&source); err == nil || !strings.Contains(err.Error(), "differs from its projected UID ownership") {
+		t.Fatalf("head UID zero detached from registration was accepted: %v", err)
+	}
+}
+
+// Builds a valid zero-UID validator with exact native registration evidence.
+func finalSemanticValidatorUIDZeroFixture(t *testing.T, source *FinalSemanticEvidence) FinalValidatorIdentityEvidence {
+	t.Helper()
+	hotkey, coldkey := fmt.Sprintf("0x%064x", 3001), fmt.Sprintf("0x%064x", 4001)
+	call, err := finalNativeRegistrationCallEvidence(coldkey, 6, source.Netuid, hotkey, 0, 1_000_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return FinalValidatorIdentityEvidence{
+		ValidatorID: 1, UID: 0, Hotkey: hotkey, Coldkey: coldkey, Registered: true,
+		Registration: FinalNativeReceipt{ExtrinsicHash: finalTestHex(6), Block: ChainHead{Number: 6, Hash: finalTestHex(7)}, Call: &call, Proof: FinalArtifactLocator{Kind: "native-receipt", URI: "artifacts/validator-registration-1.json", ContentHash: bytesSHA256([]byte("registration")), SizeBytes: 12}},
+		StakeRao:     "1000000", ValidatorPermit: true, ValidatorTrustU16: 42, PathVPK: "0x" + hex.EncodeToString(bytes.Repeat([]byte{3}, 32)), Snapshot: source.NativeTerminalHead,
+		SnapshotArtifact: FinalArtifactLocator{Kind: "native-validator-state", URI: "artifacts/validator-1.json", ContentHash: bytesSHA256([]byte("validator")), SizeBytes: 9},
 	}
 }
 
 // Proves that UID zero remains a valid validator identity while reuse fails.
 func TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique(t *testing.T) {
 	source := finalSemanticIdentityFixture(t)
-	validator := FinalValidatorIdentityEvidence{
-		ValidatorID: 1, UID: 0, Hotkey: "5ValidatorHotkey1", Coldkey: "5ValidatorColdkey1", Registered: true,
-		Registration: FinalNativeReceipt{ExtrinsicHash: finalTestHex(6), Block: ChainHead{Number: 6, Hash: finalTestHex(7)}, Proof: FinalArtifactLocator{Kind: "native-receipt", URI: "artifacts/validator-registration-1.json", ContentHash: bytesSHA256([]byte("registration")), SizeBytes: 12}},
-		StakeRao:     "1000000", ValidatorPermit: true, ValidatorTrustU16: 42, PathVPK: "0x" + hex.EncodeToString(bytes.Repeat([]byte{3}, 32)), Snapshot: source.NativeTerminalHead,
-		SnapshotArtifact: FinalArtifactLocator{Kind: "native-validator-state", URI: "artifacts/validator-1.json", ContentHash: bytesSHA256([]byte("validator")), SizeBytes: 9},
-	}
+	validator := finalSemanticValidatorUIDZeroFixture(t, &source)
 	seenUIDs := map[uint16]bool{}
 	seenVPKs := map[string]bool{}
 	if err := verifyFinalValidatorIdentity(&source, &validator, seenUIDs, seenVPKs); err != nil {
@@ -129,9 +158,20 @@ func TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique(t *testing.T) {
 	}
 }
 
+// A zero-UID validator cannot substitute another registration's UID.
+func TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration(t *testing.T) {
+	source := finalSemanticIdentityFixture(t)
+	validator := finalSemanticValidatorUIDZeroFixture(t, &source)
+	validator.Registration.Call.UID = 1
+	if err := verifyFinalValidatorIdentity(&source, &validator, map[uint16]bool{}, map[string]bool{}); err == nil || !strings.Contains(err.Error(), "differs from its projected UID ownership") {
+		t.Fatalf("validator UID zero detached from registration was accepted: %v", err)
+	}
+}
+
 // Proves that pool registration is sealed and replayed as an EVM receipt while
 // terminal native ownership is independently queried at the native snapshot.
 func TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {

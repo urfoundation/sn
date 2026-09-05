@@ -21,6 +21,8 @@ const (
 	finalSemanticStagePrefix      = ".final-semantic-stage-"
 )
 
+// FinalSemanticChainReaderFactory creates an archive reader only after the
+// caller supplies the exact sealed evidence object it must replay.
 type FinalSemanticChainReaderFactory func(context.Context, *FinalSemanticEvidence) (FinalSemanticChainReader, error)
 type FinalSemanticOutputScanner func(name string, content []byte) error
 
@@ -55,7 +57,11 @@ func ProduceFinalSemanticOutputs(ctx context.Context, runDir string, source Fina
 	if err := VerifyFinalSemanticArtifacts(ctx, draft, load); err != nil {
 		return nil, fmt.Errorf("verify final semantic artifacts before public replay: %w", err)
 	}
-	reader, err := newReader(ctx, draft)
+	factoryEvidence, err := finalSemanticEvidenceDetachedCopy(draft)
+	if err != nil {
+		return nil, fmt.Errorf("detach final semantic reader evidence: %w", err)
+	}
+	reader, err := newReader(ctx, factoryEvidence)
 	if err != nil {
 		return nil, fmt.Errorf("construct public final semantic reader: %w", err)
 	}

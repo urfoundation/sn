@@ -167,6 +167,7 @@ func newFinalSemanticContractFixture(t *testing.T) *finalSemanticContractFixture
 	t.Helper()
 	addresses := struct {
 		proxy, implementation, vault, reserve common.Address
+		bootstrap, drill, probe, batcher      common.Address
 		owner, guardian, activeGuardian       common.Address
 		oracle, activeOracle                  common.Address
 	}{
@@ -174,6 +175,10 @@ func newFinalSemanticContractFixture(t *testing.T) *finalSemanticContractFixture
 		implementation: common.HexToAddress("0x2000000000000000000000000000000000000002"),
 		vault:          common.HexToAddress("0x3000000000000000000000000000000000000003"),
 		reserve:        common.HexToAddress("0x4000000000000000000000000000000000000004"),
+		bootstrap:      common.HexToAddress("0xa00000000000000000000000000000000000000a"),
+		drill:          common.HexToAddress("0xb00000000000000000000000000000000000000b"),
+		probe:          common.HexToAddress("0xc00000000000000000000000000000000000000c"),
+		batcher:        common.HexToAddress("0xd00000000000000000000000000000000000000d"),
 		owner:          common.HexToAddress("0x5000000000000000000000000000000000000005"),
 		guardian:       common.HexToAddress("0x6000000000000000000000000000000000000006"),
 		activeGuardian: common.HexToAddress("0x7000000000000000000000000000000000000007"),
@@ -187,6 +192,10 @@ func newFinalSemanticContractFixture(t *testing.T) *finalSemanticContractFixture
 		strings.ToLower(addresses.implementation.Hex()): {0x60, 0x02},
 		strings.ToLower(addresses.vault.Hex()):          {0x60, 0x03},
 		strings.ToLower(addresses.reserve.Hex()):        {0x60, 0x04},
+		strings.ToLower(addresses.bootstrap.Hex()):      {0x60, 0x05},
+		strings.ToLower(addresses.drill.Hex()):          {0x60, 0x06},
+		strings.ToLower(addresses.probe.Hex()):          {0x60, 0x07},
+		strings.ToLower(addresses.batcher.Hex()):        {0x60, 0x08},
 	}
 	fixture := &finalSemanticPinnedEVMFixture{
 		t: t, head: head, proxy: addresses.proxy.Hex(), slot: slot,
@@ -254,12 +263,27 @@ func newFinalSemanticContractFixture(t *testing.T) *finalSemanticContractFixture
 	fixture.setCallResult(t, coordABI, "policyCount", addresses.proxy.Hex(), coordinator.PackPolicyCount(), big.NewInt(2))
 	fixture.setCallResult(t, coordABI, "policyAt", addresses.proxy.Hex(), coordinator.PackPolicyAt(big.NewInt(10)), policy)
 
+	runtimeHash := func(address common.Address) string {
+		return strings.ToLower(crypto.Keccak256Hash(codeBytes[strings.ToLower(address.Hex())]).Hex())
+	}
+	runtimeRoots := []FinalReleaseRuntimeRoot{
+		{Name: "coordinator_bootstrap_implementation", Address: strings.ToLower(addresses.bootstrap.Hex()), RuntimeCodeHash: runtimeHash(addresses.bootstrap), ReleaseRuntimeHash: finalTestHex(0x61)},
+		{Name: "coordinator_proxy", Address: strings.ToLower(addresses.proxy.Hex()), RuntimeCodeHash: runtimeHash(addresses.proxy), ReleaseRuntimeHash: finalTestHex(0x62)},
+		{Name: "coordinator_upgrade_implementation", Address: strings.ToLower(addresses.implementation.Hex()), RuntimeCodeHash: runtimeHash(addresses.implementation), ReleaseRuntimeHash: finalTestHex(0x63)},
+		{Name: "fleet_batcher", Address: strings.ToLower(addresses.batcher.Hex()), RuntimeCodeHash: runtimeHash(addresses.batcher), ReleaseRuntimeHash: finalTestHex(0x64)},
+		{Name: "governance_drill_implementation", Address: strings.ToLower(addresses.drill.Hex()), RuntimeCodeHash: runtimeHash(addresses.drill), ReleaseRuntimeHash: finalTestHex(0x65)},
+		{Name: "precompile_probe", Address: strings.ToLower(addresses.probe.Hex()), RuntimeCodeHash: runtimeHash(addresses.probe), ReleaseRuntimeHash: finalTestHex(0x66)},
+		{Name: "reserve_sink", Address: strings.ToLower(addresses.reserve.Hex()), RuntimeCodeHash: runtimeHash(addresses.reserve), ReleaseRuntimeHash: finalTestHex(0x67)},
+		{Name: "settlement_vault", Address: strings.ToLower(addresses.vault.Hex()), RuntimeCodeHash: runtimeHash(addresses.vault), ReleaseRuntimeHash: finalTestHex(0x68)},
+	}
 	evidence := &FinalSemanticEvidence{
 		Netuid: netuid,
 		Window: ScenarioAcceptanceWindow{FirstEpoch: 10, EpochCount: 1},
 		Deployment: FinalContractDeploymentEvidence{
 			CoordinatorProxy: addresses.proxy.Hex(), CoordinatorImplementation: addresses.implementation.Hex(),
 			SettlementVault: addresses.vault.Hex(), ReserveSink: addresses.reserve.Hex(), ERC1967ImplementationSlot: slot,
+			CoordinatorProxyCodeHash: runtimeHash(addresses.proxy), ImplementationCodeHash: runtimeHash(addresses.implementation),
+			SettlementVaultCodeHash: runtimeHash(addresses.vault), ReserveSinkCodeHash: runtimeHash(addresses.reserve), RuntimeRoots: runtimeRoots,
 		},
 	}
 	server := httptest.NewServer(fixture)
@@ -408,6 +432,157 @@ func TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter(t *testin
 	f.fixture.setRawCallResult(f.want.SettlementVault, f.vault.PackOutstandingLiability(), "0x01")
 	if _, _, err := f.reader.SettlementVaultState(context.Background(), f.want.Block); err == nil || !strings.Contains(err.Error(), "decode settlement-vault outstanding liability") {
 		t.Fatalf("malformed settlement-vault getter error=%v", err)
+	}
+}
+
+// Contract epoch zero remains a valid block-pinned deposit and authority query.
+func TestPublicFinalSemanticEpochZeroCoordinatorReadersArePinned(t *testing.T) {
+	f := newFinalSemanticContractFixture(t)
+	defer f.close()
+	operatorID := uint64(1)
+	coldkey := [32]byte{0xa1, 0x01}
+	poolHotkey := [32]byte{0xa2, 0x02}
+	depositHotkey := [32]byte{0xa3, 0x03}
+	operator := stabi.STCoordinatorOperatorVersion{
+		Coldkey: coldkey, PoolHotkey: poolHotkey, DepositHotkey: depositHotkey,
+		DepositSigner: common.HexToAddress("0x5000000000000000000000000000000000000005"), RootSigner: common.HexToAddress("0x6000000000000000000000000000000000000006"),
+		EffectiveEpoch: 0, Active: true,
+	}
+	f.fixture.setCallResult(t, f.coordABI, "epochDeposits", f.want.CoordinatorProxy, f.coordinator.PackEpochDeposits(big.NewInt(0), new(big.Int).SetUint64(operatorID)), big.NewInt(17))
+	f.fixture.setCallResult(t, f.coordABI, "epochConvictionAdded", f.want.CoordinatorProxy, f.coordinator.PackEpochConvictionAdded(big.NewInt(0), new(big.Int).SetUint64(operatorID)), big.NewInt(19))
+	f.fixture.setCallResult(t, f.coordABI, "operatorVersionCount", f.want.CoordinatorProxy, f.coordinator.PackOperatorVersionCount(new(big.Int).SetUint64(operatorID)), big.NewInt(2))
+	f.fixture.setCallResult(t, f.coordABI, "operatorAt", f.want.CoordinatorProxy, f.coordinator.PackOperatorAt(new(big.Int).SetUint64(operatorID), big.NewInt(0)), operator)
+
+	deposit, depositExchanges, err := f.reader.EpochDeposit(context.Background(), 0, operatorID, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deposit != (FinalEpochDepositChainState{Epoch: 0, NoID: operatorID, AmountRao: "17", Block: f.want.Block}) || len(depositExchanges) != 1 || depositExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("epoch-zero deposit=%+v exchanges=%+v", deposit, depositExchanges)
+	}
+	added, addedExchanges, err := f.reader.EpochConvictionAdded(context.Background(), 0, operatorID, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != (FinalEpochConvictionAddedChainState{Epoch: 0, NoID: operatorID, AmountRao: "19", Block: f.want.Block}) || len(addedExchanges) != 1 || addedExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("epoch-zero conviction increment=%+v exchanges=%+v", added, addedExchanges)
+	}
+	coldkeySS58, err := ss58.Encode(coldkey, ss58.BittensorPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolHotkeySS58, err := ss58.Encode(poolHotkey, ss58.BittensorPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depositHotkeySS58, err := ss58.Encode(depositHotkey, ss58.BittensorPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, versionExchanges, err := f.reader.OperatorVersion(context.Background(), operatorID, 0, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := FinalOperatorVersionChainState{
+		NoID: operatorID, VersionCount: 2, Coldkey: coldkeySS58, PoolHotkey: poolHotkeySS58, DepositHotkey: depositHotkeySS58,
+		DepositSigner: strings.ToLower(operator.DepositSigner.Hex()), RootSigner: strings.ToLower(operator.RootSigner.Hex()), EffectiveEpoch: 0, Active: true, Block: f.want.Block,
+	}
+	if version != want || len(versionExchanges) != 2 || versionExchanges[0].PinnedHead != f.want.Block || versionExchanges[1].PinnedHead != f.want.Block {
+		t.Fatalf("epoch-zero operator version=%+v exchanges=%+v want=%+v", version, versionExchanges, want)
+	}
+}
+
+// Merkle entitlements, claim-once keys, and accumulated credit share one head.
+func TestPublicFinalSemanticVaultClaimAndCreditArePinned(t *testing.T) {
+	f := newFinalSemanticContractFixture(t)
+	defer f.close()
+	coldkey := [32]byte{0xb1, 0x01}
+	coldkeyText := "0x" + common.Bytes2Hex(coldkey[:])
+	payoutLeafText, err := finalSemanticVaultPayoutLeaf(coldkeyText, 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimKeyText, err := finalSemanticVaultClaimKey(1, coldkeyText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payoutLeafHash := common.HexToHash(payoutLeafText)
+	claimKeyHash := common.HexToHash(claimKeyText)
+	var payoutLeaf, claimKey [32]byte
+	copy(payoutLeaf[:], payoutLeafHash[:])
+	copy(claimKey[:], claimKeyHash[:])
+	f.fixture.setCallResult(t, f.vaultABI, "payoutLeaf", f.want.SettlementVault, f.vault.PackPayoutLeaf(coldkey, big.NewInt(10_000)), payoutLeaf)
+	f.fixture.setCallResult(t, f.vaultABI, "leafClaimed", f.want.SettlementVault, f.vault.PackLeafClaimed(big.NewInt(0), claimKey), true)
+	f.fixture.setCallResult(t, f.vaultABI, "claimCredit", f.want.SettlementVault, f.vault.PackClaimCredit(coldkey), big.NewInt(23))
+	claim, claimExchanges, err := f.reader.VaultClaim(context.Background(), 0, 1, coldkeyText, 10_000, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantClaim := FinalVaultClaimChainState{Epoch: 0, NoID: 1, Coldkey: strings.ToLower(coldkeyText), ShareBPS: 10_000, PayoutLeaf: strings.ToLower(payoutLeafText), ClaimKey: strings.ToLower(claimKeyText), LeafClaimed: true, Block: f.want.Block}
+	if claim != wantClaim || len(claimExchanges) != 2 || claimExchanges[0].PinnedHead != f.want.Block || claimExchanges[1].PinnedHead != f.want.Block {
+		t.Fatalf("vault claim=%+v exchanges=%+v want=%+v", claim, claimExchanges, wantClaim)
+	}
+	credit, creditExchanges, err := f.reader.VaultClaimCredit(context.Background(), coldkeyText, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCredit := FinalVaultClaimCreditChainState{Coldkey: strings.ToLower(coldkeyText), CreditRao: "23", Block: f.want.Block}
+	if credit != wantCredit || len(creditExchanges) != 1 || creditExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("vault claim credit=%+v exchanges=%+v want=%+v", credit, creditExchanges, wantCredit)
+	}
+}
+
+// Conviction, reserve principal, carry, and proxy runtime cannot mix snapshots.
+func TestPublicFinalSemanticPerOperatorEVMAuditsArePinned(t *testing.T) {
+	f := newFinalSemanticContractFixture(t)
+	defer f.close()
+	operatorID := uint64(1)
+	f.fixture.setCallResult(t, f.coordABI, "cumulativeConviction", f.want.CoordinatorProxy, f.coordinator.PackCumulativeConviction(new(big.Int).SetUint64(operatorID)), big.NewInt(31))
+	f.fixture.setCallResult(t, f.reserveABI, "operatorPrincipal", f.want.ReserveSink, f.reserve.PackOperatorPrincipal(new(big.Int).SetUint64(operatorID)), big.NewInt(31))
+	f.fixture.setCallResult(t, f.vaultABI, "carry", f.want.SettlementVault, f.vault.PackCarry(new(big.Int).SetUint64(operatorID)), big.NewInt(7))
+	conviction, convictionExchanges, err := f.reader.CoordinatorConviction(context.Background(), operatorID, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conviction != (FinalCoordinatorConvictionChainState{NoID: operatorID, ConvictionRao: "31", Block: f.want.Block}) || len(convictionExchanges) != 1 || convictionExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("coordinator conviction=%+v exchanges=%+v", conviction, convictionExchanges)
+	}
+	principal, principalExchanges, err := f.reader.ReserveOperatorPrincipal(context.Background(), operatorID, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if principal != (FinalReserveOperatorPrincipalChainState{NoID: operatorID, PrincipalRao: "31", Block: f.want.Block}) || len(principalExchanges) != 1 || principalExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("reserve principal=%+v exchanges=%+v", principal, principalExchanges)
+	}
+	carry, carryExchanges, err := f.reader.VaultCarry(context.Background(), operatorID, f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if carry != (FinalVaultCarryChainState{NoID: operatorID, CarryRao: "7", Block: f.want.Block}) || len(carryExchanges) != 1 || carryExchanges[0].PinnedHead != f.want.Block {
+		t.Fatalf("vault carry=%+v exchanges=%+v", carry, carryExchanges)
+	}
+	runtime, runtimeExchanges, err := f.reader.CoordinatorRuntime(context.Background(), f.want.Block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRuntime := FinalCoordinatorRuntimeChainState{
+		CoordinatorProxy: f.want.CoordinatorProxy, CoordinatorImplementation: strings.ToLower(f.want.CoordinatorImplementation),
+		ObservedImplementationSlot: strings.ToLower(f.want.ObservedImplementationSlot), ProxyCodeHash: f.want.CoordinatorProxyCodeHash,
+		ImplementationCodeHash: f.want.ImplementationCodeHash, RuntimeRoots: append([]FinalReleaseRuntimeRoot(nil), f.reader.evidence.Deployment.RuntimeRoots...), Block: f.want.Block,
+	}
+	if !finalJSONEqual(runtime, wantRuntime) || len(runtimeExchanges) != 1+len(f.reader.evidence.Deployment.RuntimeRoots) || runtimeExchanges[0].PinnedHead != f.want.Block || runtimeExchanges[1].PinnedHead != f.want.Block || runtimeExchanges[len(runtimeExchanges)-1].PinnedHead != f.want.Block {
+		t.Fatalf("coordinator runtime=%+v exchanges=%+v want=%+v", runtime, runtimeExchanges, wantRuntime)
+	}
+}
+
+// A malformed historical authority cardinality fails closed before selection.
+func TestPublicFinalSemanticOperatorVersionRejectsMalformedHistoricalState(t *testing.T) {
+	f := newFinalSemanticContractFixture(t)
+	defer f.close()
+	operatorID := uint64(1)
+	f.fixture.setRawCallResult(f.want.CoordinatorProxy, f.coordinator.PackOperatorVersionCount(new(big.Int).SetUint64(operatorID)), "0x01")
+	if _, _, err := f.reader.OperatorVersion(context.Background(), operatorID, 0, f.want.Block); err == nil || !strings.Contains(err.Error(), "decode operator version count") {
+		t.Fatalf("malformed operator count error=%v", err)
 	}
 }
 

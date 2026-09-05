@@ -568,7 +568,7 @@ func TestReplacementProbeUsesFirstUnusedPostUpgradeNonceAcrossResumeAndRevision(
 	if err := saveContractDeployment(stateDir, retained); err != nil {
 		t.Fatal(err)
 	}
-	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: prior, roles: secrets}
+	executor := undeployedBoundaryTestExecutor(t, cfg, stateDir, prior, secrets)
 	if err := executor.ensurePayloads(context.Background()); err != nil {
 		t.Fatalf("first-unused replacement resume was rejected: %v", err)
 	}
@@ -647,7 +647,7 @@ func TestReplacementPrecompileProbePayloadResumesWithImmutableDeployment(t *test
 		t.Fatal(err)
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		executor := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, roles: roles}
+		executor := undeployedBoundaryTestExecutor(t, cfg, stateDir, plan, roles)
 		if err := executor.ensurePayloads(context.Background()); err != nil {
 			t.Fatalf("resume %d: %v", attempt, err)
 		}
@@ -754,7 +754,7 @@ func TestEnsurePayloadsAuthenticatesRepeatedBaselineWhenCoreDeploymentIsEqual(t 
 	if err := saveContractDeployment(validDir, payloads.Manifest); err != nil {
 		t.Fatal(err)
 	}
-	valid := &Executor{cfg: cfg, stateDir: validDir, plan: &base, roles: roles}
+	valid := undeployedBoundaryTestExecutor(t, cfg, validDir, &base, roles)
 	if err := valid.ensurePayloads(context.Background()); err != nil {
 		t.Fatalf("valid equal-core repeated baseline was rejected: %v", err)
 	}
@@ -1244,7 +1244,7 @@ func TestEnsurePayloadsArchivesOnlyTheExactlyApprovedSupersededDeployment(t *tes
 	if err := saveContractDeployment(stateDir, obsolete.Manifest); err != nil {
 		t.Fatal(err)
 	}
-	executor := &Executor{cfg: cfg, stateDir: stateDir, plan: plan, roles: roles}
+	executor := undeployedBoundaryTestExecutor(t, cfg, stateDir, plan, roles)
 	if err := executor.ensurePayloads(context.Background()); err != nil {
 		t.Fatal(err)
 	}

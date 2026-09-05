@@ -2392,7 +2392,7 @@ func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads)
 			if payloads.PrecompileProbeAddress == payloads.Manifest.PrecompileProbe {
 				continue
 			}
-			action.Description = "deploy the locked, owner-gated runtime-453 conformance probe at its approval-bound nonce"
+			action.Description = "deploy the locked, owner-gated runtime-454 conformance probe at its approval-bound nonce"
 			action.Parameters = cloneStrings(action.Parameters)
 			envelope, ok := deploymentActionEnvelope(payloads, action.ID, plan.RegistrationBurnLimitRao)
 			if !ok {
@@ -3533,7 +3533,7 @@ func reconcileFinalizedAlphaTransfers(revised, prior *SetupPlan, entries []Journ
 		}
 		repair := Action{
 			ID: repairID, Kind: "substrate-extrinsic", Target: planned.Target,
-			Description: "repair a bounded runtime-453 destination-share rounding deficit without repeating the campaign allocation",
+			Description: "repair a bounded runtime-454 destination-share rounding deficit without repeating the campaign allocation",
 			Parameters:  repairParameters, Spend: Spend{AlphaRao: minimumTransfer}, DependsOn: []string{reconciliation.ID},
 		}
 		revised.Actions[index] = reconciliation

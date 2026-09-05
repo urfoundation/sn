@@ -1,16 +1,161 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const releaseConnectPolicySelector = "^Test(BlockerGeneratedTables|BlockerDefaultDataSmoke|BlockerDataGuards|BlockerHashVectors|BlockerZeroAlloc|BlockerFalsePositiveProbe|BlockerIp4|BlockerIp6|BlockerToggleRace|CfaaPortClassification|CfaaBlockedIps|CfaaDisabled|CfaaIngressMirrorsSourceDrops|CfaaBlockedPrefixInvariant|CfaaBlockedIp4BruteForce|CfaaBlockedIp4ZeroAlloc|CfaaSearch6|CfaaInspectV6|CfaaBlockedPrefix6Invariant|CfaaInspectIcmp|TelegramCallReflectorRanges|TelegramCallV12TcpFallback|CfaaTelegramCallException|SecurityPolicyAllowsTelegramCallReflectors)$"
+
+const releaseConnectP2PSignalSelector = "^Test(WebRtc|WebRtcMessageRoundTrip|P2pTransportAutoSelectsFastPathForCapablePeer|SignalPipeDropsBeforeDestinationRegistration|DelayedSignalPipe(ResolvesDestinationAtDispatch|DropsMissingDestinationAtDispatch|CancellationReturnsOwnedFrames|FullQueueDoesNotBlockDispatch|CancellationUnblocksCapacitySender)|MatchExpectedUnorderedP2pMessages(AcceptsPermutation|RejectsInvalidContent))$"
+
+// Both gates certify the real modules whose upstream changes affect traffic,
+// token lifetime, and per-provider accounting before an operator can publish.
+func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
+	groups := []struct {
+		variable string
+		selector string
+		pkg      string
+	}{
+		{variable: "payout_allocation_tests", selector: "^Test(EvenContractPayoutShare|AllocateContractParticipantPayouts|AllocateContractParticipantPayoutEligibilityMatrix)$", pkg: "./model"},
+		{variable: "provider_attribution_tests", selector: "^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans)", pkg: "./model"},
+		{variable: "transport_identity_tests", selector: "^Test(PlatformTransportAuthSnapshotsAreAtomicAndOwned|PlatformTransportH[13]ReconnectUsesUpdatedAuthSnapshot|TunTcpInboundFlowUsesStableBoundedShards|TunTcpInboundShardHandoffCadenceIsBounded|TunWriteCompletesFiniteTcpInboundHandoffBeforeReturn|TunWriteRetainsTcpInboundYieldCadence|TunWriteBatchFinishesEveryTcpInboundHandoff)$", pkg: "."},
+		{variable: "token_transport_tests", selector: "^Test(ApiTokenManager|DeviceRemoteRpcPublicationWakesOnlyOutstandingRefresh|ApiCloseAndWaitJoinsRefreshWorker|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout)", pkg: "."},
+		{variable: "provider_input_tests", selector: "^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)", pkg: "./controller"},
+		{variable: "test_env_fail_fast_tests", selector: "^Test(DefaultTestEnvReleaseFailFast|RunRetriesUntilPass|RunFailsAfterExhaustion|RunReportsPanicOriginAfterExhaustion)", pkg: "."},
+	}
+	for _, path := range []string{"../scripts/test-release-1.0-producer-gate.sh", "../scripts/test-release-1.0-local.sh"} {
+		value, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(value)
+		strictExport := "export WARP_TEST_ENV_FAIL_FAST=1"
+		if strings.Count(script, strictExport) != 1 || strings.Index(script, strictExport) > strings.Index(script, "go test ") {
+			t.Fatalf("%s must export strict default TestEnv behavior before its first test", path)
+		}
+		for _, group := range groups {
+			selector, err := releaseConnectPolicySelectorAssignment(script, group.variable)
+			if err != nil || selector != group.selector {
+				t.Fatalf("%s %s selector = %q, error %v; want %q", path, group.variable, selector, err, group.selector)
+			}
+			for _, mode := range []string{"", "-race "} {
+				command := fmt.Sprintf("go test %s%s -run \"$%s\" -count=1", mode, group.pkg, group.variable)
+				if strings.Count(script, command) != 1 {
+					t.Fatalf("%s does not execute exactly one %s", path, command)
+				}
+			}
+		}
+	}
+	// These complete source groups prevent a future test rename from silently
+	// escaping the launch selection while its underlying behavior still ships.
+	for _, source := range []struct {
+		path     string
+		selector string
+	}{
+		{path: "../../server/model/contract_provider_attribution_test.go", selector: groups[1].selector},
+		{path: "../../server/model/provider_payout_attribution_test.go", selector: groups[1].selector},
+		{path: "../../server/model/provider_model_test.go", selector: groups[1].selector},
+		{path: "../../server/model/provider_stats_plan_test.go", selector: groups[1].selector},
+		{path: "../../connect/transport_auth_test.go", selector: groups[2].selector},
+		{path: "../../sdk/device_token_manager_transport_test.go", selector: groups[3].selector},
+		{path: "../../server/controller/st_payout_canonical_test.go", selector: groups[4].selector},
+	} {
+		value, err := os.ReadFile(source.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyReleaseSourceTestCoverage(source.selector, "^Test", []string{string(value)}); err != nil {
+			t.Fatalf("%s: %v", source.path, err)
+		}
+	}
+}
+
+const releaseAdversarialSelector = "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison|Runtime454)"
+
+const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout)"
+
+const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
+
+const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticFixture|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifactCount|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
+
+// Extracts the exact sorted top-level test declarations selected from source.
+func releaseSelectedTestDeclarations(selector string, sources []string) ([]string, error) {
+	compiled, err := regexp.Compile(selector)
+	if err != nil {
+		return nil, err
+	}
+	testDeclaration := regexp.MustCompile(`(?m)^func (Test[[:alnum:]_]+)\(`)
+	seen := map[string]bool{}
+	selected := []string{}
+	for _, source := range sources {
+		for _, match := range testDeclaration.FindAllStringSubmatch(source, -1) {
+			name := match[1]
+			if !compiled.MatchString(name) {
+				continue
+			}
+			if seen[name] {
+				return nil, fmt.Errorf("selected test declaration %s is duplicated", name)
+			}
+			seen[name] = true
+			selected = append(selected, name)
+		}
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("semantic-integrity selector matched no test declarations")
+	}
+	sort.Strings(selected)
+	return selected, nil
+}
+
+// Requires the reviewed census to be exact, sorted, unique, and nonempty.
+func verifyReleaseSemanticCensus(recorded, selected []string) error {
+	if len(recorded) == 0 || len(recorded) != len(selected) {
+		return fmt.Errorf("semantic-integrity census count %d differs from selected count %d", len(recorded), len(selected))
+	}
+	for index := range selected {
+		if recorded[index] != selected[index] {
+			return fmt.Errorf("semantic-integrity census entry %d is %q, want %q", index, recorded[index], selected[index])
+		}
+		if index > 0 && recorded[index] <= recorded[index-1] {
+			return fmt.Errorf("semantic-integrity census entry %d is not sorted and unique", index)
+		}
+	}
+	return nil
+}
+
+// Every declaration in a reviewed source group must remain in its gate even
+// when a renamed test no longer matches the original selection prefix.
+func verifyReleaseSourceTestCoverage(selector, requiredSelector string, sources []string) error {
+	required, err := releaseSelectedTestDeclarations(requiredSelector, sources)
+	if err != nil {
+		return err
+	}
+	selected, err := releaseSelectedTestDeclarations(selector, sources)
+	if err != nil {
+		return err
+	}
+	for _, name := range required {
+		index := sort.SearchStrings(selected, name)
+		if index == len(selected) || selected[index] != name {
+			return fmt.Errorf("release selector omits source regression %s", name)
+		}
+	}
+	return nil
+}
 
 // Extracts one unambiguous shell selector assignment.
 func releaseConnectPolicySelectorAssignment(script string, variable string) (string, error) {
@@ -34,6 +179,26 @@ func assertReleaseConnectPolicySelector(t *testing.T, script string, variable st
 	}
 }
 
+// Both release gates pin the exact P2P failure and adjacent signaling tests.
+func assertReleaseConnectP2PSignalSelector(t *testing.T, script string) {
+	t.Helper()
+	selector, err := releaseConnectPolicySelectorAssignment(script, "p2p_signal_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selector != releaseConnectP2PSignalSelector {
+		t.Errorf("p2p_signal_tests = %q, want exact P2P signaling selector %q", selector, releaseConnectP2PSignalSelector)
+	}
+	for _, command := range []string{
+		`go test . -run "$p2p_signal_tests" -count=1`,
+		`go test -race . -run "$p2p_signal_tests" -count=1`,
+	} {
+		if !strings.Contains(script, command) {
+			t.Errorf("release gate omits %s", command)
+		}
+	}
+}
+
 // Rejects a later shell assignment that could replace the reviewed selector.
 func TestReleaseConnectPolicySelectorRejectsDuplicateAssignments(t *testing.T) {
 	script := "policy_tests='" + releaseConnectPolicySelector + "'\npolicy_tests='^TestWeakened$'\n"
@@ -46,6 +211,574 @@ func TestReleaseConnectPolicySelectorRejectsDuplicateAssignments(t *testing.T) {
 func TestReleaseConnectPolicySelectorRejectsMissingAssignment(t *testing.T) {
 	if _, err := releaseConnectPolicySelectorAssignment("echo no-policy-selector\n", "policy_tests"); err == nil {
 		t.Fatal("missing policy selector assignment accepted")
+	}
+}
+
+// The launch-critical and aggregate gates must execute the same exact P2P
+// signaling regression set in ordinary and race modes.
+func TestReleaseGatesPinConnectP2PSignalRegressions(t *testing.T) {
+	for _, scriptPath := range []string{
+		"../scripts/test-release-1.0-producer-gate.sh",
+		"../scripts/test-release-1.0-local.sh",
+	} {
+		scriptBytes, err := os.ReadFile(scriptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertReleaseConnectP2PSignalSelector(t, string(scriptBytes))
+	}
+}
+
+// The producer gate must exercise every simulator adversarial implementation
+// before any release campaign can mutate the shared testnet.
+func TestProducerGatePinsCompleteAdversarialRegressions(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	selector, err := releaseConnectPolicySelectorAssignment(script, "adversarial_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selector != releaseAdversarialSelector {
+		t.Errorf("adversarial_tests = %q, want exact adversarial selector %q", selector, releaseAdversarialSelector)
+	}
+	source, err := os.ReadFile("adversary_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyReleaseSourceTestCoverage(selector, "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison)", []string{string(source)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"TestRPCAdversaryRejectsObservedRuntimeCodeHashDrift",
+		"TestAdversaryReleaseBytecodeMetricsRejectMalformedAndEmptyRuntime",
+		"TestAdversaryAdditionalMetricModelsMeasureMultiMetricRows",
+		"TestConsensusWeightComparisonIncludesUIDZero",
+	} {
+		if !strings.Contains(string(source), "func "+required+"(") || !regexp.MustCompile(selector).MatchString(required) {
+			t.Errorf("adversarial source regression %s is absent or unselected", required)
+		}
+	}
+	for _, command := range []string{
+		`go test ./sim-testnet -run "$adversarial_tests" -count=1 -timeout 5m`,
+		`go test -race ./sim-testnet -run "$adversarial_tests" -count=1 -timeout 10m`,
+	} {
+		if strings.Count(script, command) != 1 {
+			t.Errorf("producer gate has %d copies of %q, want exactly 1", strings.Count(script, command), command)
+		}
+	}
+}
+
+// The first testnet write is gated by the exact EVM number/hash identity,
+// canonical-hash reads, bounded batches, cancellation, and the real release
+// steering consumer. Keeping the selector exact prevents a later harness edit
+// from silently dropping the reorg or 1,000-provider regressions.
+func TestProducerGatePinsExactBlockRuntimeClientRegressions(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	selector, err := releaseConnectPolicySelectorAssignment(script, "runtime_client_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selector != releaseRuntimeClientSelector {
+		t.Errorf("runtime_client_tests = %q, want exact runtime-client selector %q", selector, releaseRuntimeClientSelector)
+	}
+	for _, command := range []string{
+		`go test ./crv4 ./miner ./validator -run "$runtime_client_tests" -count=1`,
+		`go test -race ./crv4 ./miner ./validator -run "$runtime_client_tests" -count=1`,
+	} {
+		if strings.Count(script, command) != 1 {
+			t.Errorf("producer gate has %d copies of %q, want exactly 1", strings.Count(script, command), command)
+		}
+	}
+}
+
+// Both gates explicitly execute the RPC identity regressions at each live
+// consumer, including the separately compiled onchain transaction package.
+func TestProducerGatePinsSyntheticEVMIdentityRegressions(t *testing.T) {
+	for _, path := range []string{"../scripts/test-release-1.0-producer-gate.sh", "../scripts/test-release-1.0-local.sh"} {
+		scriptBytes, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(scriptBytes)
+		selector, err := releaseConnectPolicySelectorAssignment(script, "synthetic_evm_identity_tests")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selector != releaseSyntheticEVMIdentitySelector {
+			t.Errorf("%s: synthetic identity selector = %q, want %q", path, selector, releaseSyntheticEVMIdentitySelector)
+		}
+		for _, command := range []string{
+			`go test ./miner/onchain ./miner ./sim-testnet -run "$synthetic_evm_identity_tests" -count=1 -timeout 5m`,
+			`go test -race ./miner/onchain ./miner ./sim-testnet -run "$synthetic_evm_identity_tests" -count=1 -timeout 10m`,
+		} {
+			if strings.Count(script, command) != 1 {
+				t.Errorf("%s has %d copies of %q, want exactly 1", path, strings.Count(script, command), command)
+			}
+		}
+	}
+	for _, sourcePath := range []string{"../miner/onchain/finality_test.go", "../miner/claim_receipt_identity_test.go", "synthetic_evm_identity_test.go", "synthetic_evm_fleet_identity_test.go"} {
+		source, err := os.ReadFile(sourcePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all, err := releaseSelectedTestDeclarations("^Test", []string{string(source)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		selected, err := releaseSelectedTestDeclarations(releaseSyntheticEVMIdentitySelector, []string{string(source)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyReleaseSemanticCensus(all, selected); err != nil {
+			t.Errorf("%s: synthetic identity regressions escaped the gate: %v", sourcePath, err)
+		}
+	}
+}
+
+// The producer gate must prove exact native payout causality, every ordinary
+// fleet generation, and historical EVM state/receipt identity before it can
+// issue the first shared-testnet mutation.
+func TestProducerGatePinsSemanticIntegrityRegressions(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	selector, err := releaseConnectPolicySelectorAssignment(script, "semantic_integrity_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selector != releaseSemanticIntegritySelector {
+		t.Errorf("semantic_integrity_tests = %q, want exact semantic-integrity selector %q", selector, releaseSemanticIntegritySelector)
+	}
+	testFiles, err := filepath.Glob("*_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testSources := make([]string, 0, len(testFiles))
+	allTestSource := strings.Builder{}
+	for _, testFile := range testFiles {
+		source, readErr := os.ReadFile(testFile)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		testSource := string(source)
+		testSources = append(testSources, testSource)
+		allTestSource.WriteString(testSource)
+	}
+	selectedDeclarations, err := releaseSelectedTestDeclarations(selector, testSources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	censusBytes, err := os.ReadFile("semantic-integrity-tests.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	census := strings.Fields(string(censusBytes))
+	if string(censusBytes) != strings.Join(census, "\n")+"\n" {
+		t.Error("semantic-integrity census must contain one test name per line and a final newline")
+	}
+	if err := verifyReleaseSemanticCensus(census, selectedDeclarations); err != nil {
+		t.Error(err)
+		t.Errorf("semantic-integrity census differs from the exact selected declarations\nrecorded:\n%s\nselected:\n%s", strings.Join(census, "\n"), strings.Join(selectedDeclarations, "\n"))
+	}
+	allTestSourceText := allTestSource.String()
+	for _, required := range []string{
+		"TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles",
+		"TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary",
+		"TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions",
+		"TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity",
+		"TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership",
+		"TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution",
+		"TestFinalSemanticEvidenceFailsClosed",
+		"TestFinalSemanticPathProofArtifactCount",
+		"TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery",
+		"TestFinalSemanticDishonestDepositDecisionsAndPublicReplay",
+		"TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas",
+		"TestFinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors",
+		"TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins",
+		"TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock",
+		"TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions",
+		"TestFinalSemanticHistoricalCommitmentOracleScheduleBindsCalldataEventAndPostcondition",
+		"TestFinalSemanticHistoricalReceiptArtifactRejectsEnvelopeAndLogMutations",
+		"TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization",
+		"TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead",
+		"TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions",
+		"TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState",
+		"TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges",
+		"TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade",
+		"TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain",
+		"TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock",
+		"TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline",
+		"TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations",
+		"TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection",
+		"TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations",
+		"TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy",
+		"TestFinalSemanticHistoricalReaderFactorySnapshotCannotMutateVerifiedCopy",
+		"TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace",
+		"TestFinalSemanticDeploymentBoundarySeparatesProxyHistoryFromReleaseGraph",
+		"TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders",
+		"TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs",
+		"TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay",
+		"TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix",
+		"TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts",
+		"TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent",
+		"TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead",
+		"TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration",
+		"TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery",
+		"TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus",
+		"TestFinalSemanticBuilderChecksEveryRecoveryObservationHead",
+		"TestFinalSemanticHeadUIDZeroIsValidAndStillUnique",
+		"TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration",
+		"TestFinalSemanticPoolUIDZeroIsValidAndStillUnique",
+		"TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique",
+		"TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration",
+		"TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit",
+		"TestStateMismatchErrorPreservesCausesWithoutFormattingNilWraps",
+		"TestSemanticMismatchBranchesNeverWrapPotentiallyNilErrors",
+		"TestFinalEVMLogQueryRangesRespectOfficialInclusiveLimit",
+		"TestFinalCollectedCoordinatorBaselinesRequireInitializerLog",
+		"TestReleaseHistoryRuntimeArtifactsCoverExactFourVersionDomain",
+		"TestProducerGatePinsCompleteAdversarialRegressions",
+		"TestProducerGatePinsSyntheticEVMIdentityRegressions",
+		"TestProducerGatePinsSemanticIntegrityRegressions",
+		"TestProducerGatePinsExactBlockRuntimeClientRegressions",
+		"TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups",
+	} {
+		selected, selectErr := releaseSelectedTestDeclarations(selector, []string{"func " + required + "(t *testing.T) {}\n"})
+		if selectErr != nil || len(selected) != 1 || selected[0] != required {
+			t.Errorf("semantic-integrity selector omits lifecycle proof %s", required)
+		}
+		if !strings.Contains(allTestSourceText, "func "+required+"(") {
+			t.Errorf("semantic-integrity proof %s is absent from source", required)
+		}
+	}
+	for _, censusCommand := range []string{
+		`semantic_integrity_census="$sn_repo/sim-testnet/semantic-integrity-tests.txt"`,
+		`semantic_integrity_actual="$(go test ./sim-testnet -list "$semantic_integrity_tests" | sed -n '/^Test/p' | LC_ALL=C sort)"`,
+		`diff -u "$semantic_integrity_census" <(printf '%s\n' "$semantic_integrity_actual")`,
+		`semantic-integrity selector matched no tests`,
+	} {
+		if strings.Count(script, censusCommand) != 1 {
+			t.Errorf("producer gate has %d copies of %q, want exactly 1", strings.Count(script, censusCommand), censusCommand)
+		}
+	}
+	for _, command := range []string{
+		`go test ./sim-testnet -run "$semantic_integrity_tests" -count=1 -parallel=4 -timeout 15m`,
+		`go test -race ./sim-testnet -run "$semantic_integrity_tests" -count=1 -parallel=4 -timeout 25m`,
+	} {
+		if strings.Count(script, command) != 1 {
+			t.Errorf("producer gate has %d copies of %q, want exactly 1", strings.Count(script, command), command)
+		}
+	}
+	// Trace helpers too: a new indirect full-fixture user must not restore a
+	// long serial prefix before Go releases the parallel roots.
+	declarations := map[string]*ast.FuncDecl{}
+	callees := map[string]map[string]bool{}
+	for _, source := range testSources {
+		parsed, err := parser.ParseFile(token.NewFileSet(), "fixture_test.go", source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Recv != nil || function.Body == nil {
+				continue
+			}
+			name := function.Name.Name
+			declarations[name] = function
+			callees[name] = map[string]bool{}
+			ast.Inspect(function.Body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if ok {
+					if identifier, ok := call.Fun.(*ast.Ident); ok {
+						callees[name][identifier.Name] = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	scheduler := declarations["runFinalSemanticTestCases"]
+	if scheduler == nil {
+		t.Fatal("bounded semantic test scheduler is missing")
+	}
+	boundedLoops, workerStarts := 0, 0
+	ast.Inspect(scheduler.Body, func(node ast.Node) bool {
+		if _, ok := node.(*ast.GoStmt); ok {
+			workerStarts++
+		}
+		loop, ok := node.(*ast.RangeStmt)
+		if !ok {
+			return true
+		}
+		call, ok := loop.X.(*ast.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		function, ok := call.Fun.(*ast.Ident)
+		cap, capOK := call.Args[0].(*ast.Ident)
+		length, lengthOK := call.Args[1].(*ast.CallExpr)
+		if !ok || function.Name != "min" || !capOK || cap.Name != "finalSemanticTestCaseWorkers" || !lengthOK || len(length.Args) != 1 {
+			return true
+		}
+		lengthFunction, functionOK := length.Fun.(*ast.Ident)
+		cases, casesOK := length.Args[0].(*ast.Ident)
+		if functionOK && lengthFunction.Name == "len" && casesOK && cases.Name == "cases" {
+			boundedLoops++
+		}
+		return true
+	})
+	if boundedLoops != 1 || workerStarts != 1 {
+		t.Fatalf("semantic scheduler lost its sole bounded worker loop: bounded=%d starts=%d", boundedLoops, workerStarts)
+	}
+	fixtureUsers := map[string]bool{"finalSemanticFixture": true}
+	for changed := true; changed; {
+		changed = false
+		for caller, calls := range callees {
+			if fixtureUsers[caller] {
+				continue
+			}
+			for callee := range calls {
+				if fixtureUsers[callee] {
+					fixtureUsers[caller], changed = true, true
+					break
+				}
+			}
+		}
+	}
+	for name := range fixtureUsers {
+		if !strings.HasPrefix(name, "Test") {
+			continue
+		}
+		function := declarations[name]
+		parallel := false
+		if function != nil && len(function.Body.List) != 0 {
+			if statement, ok := function.Body.List[0].(*ast.ExprStmt); ok {
+				if call, ok := statement.X.(*ast.CallExpr); ok && len(call.Args) == 0 {
+					if selector, ok := call.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "Parallel" {
+						identifier, ok := selector.X.(*ast.Ident)
+						parallel = ok && identifier.Name == "t"
+					}
+				}
+			}
+		}
+		if !parallel {
+			t.Errorf("release-scale fixture consumer %s must start with t.Parallel under the bounded gate", name)
+		}
+	}
+	if finalSemanticTestCaseWorkers != 4 {
+		t.Fatalf("independent semantic view workers=%d, want exactly 4", finalSemanticTestCaseWorkers)
+	}
+	// Barriers prove useful concurrency, independent mutable snapshots, full
+	// completion despite errors, and canonical reporting without sleep races.
+	view := finalPublicScenarioTestView{
+		objects: map[string][]byte{"object": []byte("immutable")}, commitVisible: map[int]bool{1: true},
+		supplementHistory: map[int][]string{1: {"original"}}, objectOverrides: map[int]map[string][]byte{1: {"override": []byte("immutable")}},
+	}
+	started := make(chan struct{}, finalSemanticTestCaseWorkers)
+	release := make(chan struct{})
+	var completed atomic.Uint64
+	cases := make([]finalSemanticTestCase, 2*finalSemanticTestCaseWorkers)
+	caseErrs := make([]error, len(cases))
+	for index := range cases {
+		copy := view.snapshot()
+		caseErrs[index] = fmt.Errorf("case%d", index)
+		cases[index] = finalSemanticTestCase{name: fmt.Sprint(index), verify: func(context.Context) error {
+			if index < finalSemanticTestCaseWorkers {
+				started <- struct{}{}
+				<-release
+			}
+			copy.objects["object"] = []byte("replaced")
+			copy.commitVisible[1] = false
+			copy.supplementHistory[1][0] = "replaced"
+			copy.objectOverrides[1]["override"] = nil
+			completed.Or(uint64(1) << index)
+			return caseErrs[index]
+		}}
+	}
+	done := make(chan []error, 1)
+	go func() { done <- runFinalSemanticTestCases(context.Background(), cases) }()
+	for range finalSemanticTestCaseWorkers {
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			close(release)
+			<-done
+			t.Fatal("independent semantic views did not reach the explicit concurrency barrier")
+		}
+	}
+	close(release)
+	results := <-done
+	if completed.Load() != uint64(1)<<len(cases)-1 || len(results) != len(cases) {
+		t.Fatalf("semantic cases were skipped after a failure: completed=%b results=%d", completed.Load(), len(results))
+	}
+	for index, err := range results {
+		if !errors.Is(err, caseErrs[index]) {
+			t.Errorf("semantic result%d lost canonical failure order: %v", index, err)
+		}
+	}
+	if string(view.objects["object"]) != "immutable" || !view.commitVisible[1] || view.supplementHistory[1][0] != "original" || string(view.objectOverrides[1]["override"]) != "immutable" {
+		t.Fatal("parallel public-replay view poisoned another snapshot's mutable state")
+	}
+}
+
+// Review the complete deployment, chronology, fleet, registration, and builder
+// source groups independently of the checked-in list. A list regenerated from
+// a weakened selector must still fail when it drops one of these regressions.
+func TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups(t *testing.T) {
+	for _, group := range []struct {
+		pattern  string
+		required string
+	}{
+		{pattern: "final_semantic_deployment_anchor_test.go", required: "^Test"},
+		{pattern: "final_semantic_deployment_boundary_test.go", required: "^Test"},
+		{pattern: "final_semantic_chronology*_test.go", required: "^Test"},
+		{pattern: "final_semantic_public_chronology_test.go", required: "^Test"},
+		{pattern: "final_semantic_historical_capture_test.go", required: "^Test"},
+		{pattern: "final_semantic_fleet_generation*_test.go", required: "^Test"},
+		{pattern: "final_semantic_native*_test.go", required: "^Test"},
+		{pattern: "final_semantic_registration_test.go", required: "^Test"},
+		{pattern: "final_semantic_source_builder_test.go", required: "^TestFinalSemanticBuilder"},
+	} {
+		paths, err := filepath.Glob(group.pattern)
+		if err != nil || len(paths) == 0 {
+			t.Fatalf("regression source group %s is absent: %v", group.pattern, err)
+		}
+		for _, path := range paths {
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyReleaseSourceTestCoverage(releaseSemanticIntegritySelector, group.required, []string{string(source)}); err != nil {
+				t.Errorf("%s: %v", path, err)
+			}
+		}
+	}
+}
+
+// A syntactically valid selector and exact recorded subset are insufficient
+// when an adjacent declaration has escaped its independently reviewed group.
+func TestReleaseSemanticCensusRejectsSourceSelectorOmissions(t *testing.T) {
+	source := "func TestFinalNativeAlpha(t *testing.T) {}\nfunc TestRenamedAdjacent(t *testing.T) {}\n"
+	if err := verifyReleaseSourceTestCoverage("^Test", "^Test", []string{source}); err != nil {
+		t.Fatal(err)
+	}
+	for _, selector := range []string{"^TestFinalNative", "^TestMissing$"} {
+		if err := verifyReleaseSourceTestCoverage(selector, "^Test", []string{source}); err == nil {
+			t.Errorf("source selector %q accepted an omitted regression", selector)
+		}
+	}
+}
+
+// An exact reviewed list is accepted only when source selection and persisted
+// ordering agree byte-for-entry.
+func TestReleaseSemanticCensusAcceptsExactSortedSelection(t *testing.T) {
+	sources := []string{
+		"func TestFinalNativeZulu(t *testing.T) {}\nfunc TestUnselected(t *testing.T) {}\n",
+		"func TestFinalNativeAlpha(t *testing.T) {}\n",
+	}
+	selected, err := releaseSelectedTestDeclarations(`^TestFinalNative`, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"TestFinalNativeAlpha", "TestFinalNativeZulu"}
+	if err := verifyReleaseSemanticCensus(want, selected); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An empty or nonmatching selector must fail before the producer can mistake
+// a vacuous Go test invocation for evidence.
+func TestReleaseSemanticCensusRejectsZeroSelection(t *testing.T) {
+	for _, selector := range []string{"^TestMissing$", "^$"} {
+		if _, err := releaseSelectedTestDeclarations(selector, []string{"func TestFinalNativeAlpha(t *testing.T) {}\n"}); err == nil {
+			t.Errorf("selector %q accepted zero declarations", selector)
+		}
+	}
+}
+
+// Every addition, deletion, rename, duplicate, and ordering change is release
+// fatal until the checked-in list receives explicit review.
+func TestReleaseSemanticCensusRejectsDeclarationDrift(t *testing.T) {
+	selected := []string{"TestFinalNativeAlpha", "TestFinalNativeBeta"}
+	cases := []struct {
+		label    string
+		recorded []string
+	}{
+		{label: "missing", recorded: []string{"TestFinalNativeAlpha"}},
+		{label: "added", recorded: []string{"TestFinalNativeAlpha", "TestFinalNativeBeta", "TestFinalNativeGamma"}},
+		{label: "renamed", recorded: []string{"TestFinalNativeAlpha", "TestFinalNativeDelta"}},
+		{label: "duplicate", recorded: []string{"TestFinalNativeAlpha", "TestFinalNativeAlpha"}},
+		{label: "out of order", recorded: []string{"TestFinalNativeBeta", "TestFinalNativeAlpha"}},
+	}
+	for _, testCase := range cases {
+		if err := verifyReleaseSemanticCensus(testCase.recorded, selected); err == nil {
+			t.Errorf("%s census drift accepted", testCase.label)
+		}
+	}
+	if _, err := releaseSelectedTestDeclarations(`^TestFinalNative`, []string{
+		"func TestFinalNativeAlpha(t *testing.T) {}\n",
+		"func TestFinalNativeAlpha(t *testing.T) {}\n",
+	}); err == nil {
+		t.Error("duplicate selected source declaration accepted")
+	}
+}
+
+// Both release gates must detect whole-file and adjacent identifier rewrites
+// before trying to compile the simulator package they can corrupt.
+func TestReleaseGatesRunSourceIntegrityBeforeSimulatorCompile(t *testing.T) {
+	for _, scriptPath := range []string{
+		"../scripts/test-release-1.0-producer-gate.sh",
+		"../scripts/test-release-1.0-local.sh",
+	} {
+		scriptBytes, err := os.ReadFile(scriptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(scriptBytes)
+		for _, command := range []string{
+			"go test ./sim-testnet/sourceguard -count=1",
+			"go run ./sim-testnet/sourceguard ./sim-testnet",
+		} {
+			if strings.Count(script, command) != 1 {
+				t.Errorf("%s has %d copies of %q, want exactly 1", scriptPath, strings.Count(script, command), command)
+			}
+		}
+		integrityIndex := strings.Index(script, "go run ./sim-testnet/sourceguard ./sim-testnet")
+		compileIndex := strings.Index(script, "Go tests")
+		if strings.Contains(scriptPath, "producer") {
+			compileIndex = strings.Index(script, "compile complete simulator and validator graph")
+		}
+		if integrityIndex < 0 || compileIndex < 0 || integrityIndex >= compileIndex {
+			t.Errorf("%s does not run source-integrity validation before simulator compilation", scriptPath)
+		}
+	}
+}
+
+// The aggregate certificate retains process-global ordering and residue that
+// exact-name shards erase, including one reproducible alternate ordering.
+func TestAggregateGateRunsUnshardedConnectRaceCertificates(t *testing.T) {
+	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-local.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBytes)
+	for _, command := range []string{
+		"go test -count=1 -timeout 30m .",
+		"GOMAXPROCS=4 go test -race -count=1 -timeout 30m .",
+		"GOMAXPROCS=4 go test -race -count=1 -timeout 30m -shuffle=4535211000 .",
+	} {
+		if strings.Count(script, command) != 1 {
+			t.Errorf("aggregate gate has %d copies of %q, want exactly 1", strings.Count(script, command), command)
+		}
 	}
 }
 
@@ -206,13 +939,13 @@ func TestReleaseGatesPreflightBindingToolBeforeLongWork(t *testing.T) {
 		{
 			path:          "../scripts/test-release-1.0-local.sh",
 			sourceMarker:  "source-freeze preflight",
-			runtimeMarker: "runtime 453 source attestation",
+			runtimeMarker: "runtime 454 source attestation",
 			longMarker:    "sn Go tests",
 		},
 		{
 			path:          "../scripts/test-release-1.0-producer-gate.sh",
 			sourceMarker:  "source-freeze preflight",
-			runtimeMarker: "runtime 453 source attestation",
+			runtimeMarker: "runtime 454 source attestation",
 			longMarker:    "compile complete simulator and validator graph",
 		},
 	}
@@ -246,7 +979,7 @@ func TestLocalReleaseGateAllowsCompleteSimulatorRaceSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(scriptBytes), "go test -race -timeout 90m ./sim-testnet") {
+	if !strings.Contains(string(scriptBytes), "go test -race -parallel=4 -timeout 90m ./sim-testnet") {
 		t.Fatal("local release gate lacks the reviewed 90-minute full simulator race deadline")
 	}
 }
@@ -694,42 +1427,54 @@ type releaseRuntimeMetadataArtifact struct {
 // deployed FRAME runtime contains. Require both release entry points to hash
 // the exact reviewed upstream Rust sources and execute the exact observed Wasm
 // under a storage-free host boundary before any local gate work begins.
-func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
-	manifestBytes, err := os.ReadFile("../docs/spec/runtime-v453-source.sha256")
+func TestReleaseGatesAttestPinnedRuntime454RustSource(t *testing.T) {
+	manifestBytes, err := os.ReadFile("../docs/spec/runtime-v454-source.sha256")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rows := strings.Split(strings.TrimSpace(string(manifestBytes)), "\n")
-	if len(rows) != 12 {
-		t.Fatalf("runtime 453 source manifest has %d rows, want 12", len(rows))
+	if len(rows) != 24 {
+		t.Fatalf("runtime 454 source manifest has %d rows, want 24", len(rows))
 	}
 	requiredPaths := map[string]bool{
-		"pallets/drand/src/tests.rs":                   false,
-		"pallets/drand/src/verifier.rs":                false,
-		"pallets/proxy/src/lib.rs":                     false,
-		"pallets/proxy/src/tests.rs":                   false,
-		"pallets/subtensor/src/macros/dispatches.rs":   false,
-		"pallets/subtensor/src/staking/stake_utils.rs": false,
-		"pallets/subtensor/src/subnets/subnet.rs":      false,
-		"pallets/subtensor/src/tests/move_stake.rs":    false,
-		"pallets/subtensor/src/tests/networks.rs":      false,
-		"precompiles/src/balance_transfer.rs":          false,
-		"runtime/src/lib.rs":                           false,
-		"runtime/tests/precompiles.rs":                 false,
+		"pallets/drand/src/tests.rs":                                          false,
+		"pallets/drand/src/verifier.rs":                                       false,
+		"pallets/proxy/src/lib.rs":                                            false,
+		"pallets/proxy/src/tests.rs":                                          false,
+		"pallets/subtensor/src/benchmarks/benchmarks.rs":                      false,
+		"pallets/subtensor/src/lib.rs":                                        false,
+		"pallets/subtensor/src/macros/dispatches.rs":                          false,
+		"pallets/subtensor/src/macros/errors.rs":                              false,
+		"pallets/subtensor/src/macros/hooks.rs":                               false,
+		"pallets/subtensor/src/migrations/migrate_cleanup_staking_hotkeys.rs": false,
+		"pallets/subtensor/src/migrations/migrate_storage_bloat_v2.rs":        false,
+		"pallets/subtensor/src/staking/claim_root.rs":                         false,
+		"pallets/subtensor/src/staking/stake_utils.rs":                        false,
+		"pallets/subtensor/src/subnets/subnet.rs":                             false,
+		"pallets/subtensor/src/tests/claim_root.rs":                           false,
+		"pallets/subtensor/src/tests/migration.rs":                            false,
+		"pallets/subtensor/src/tests/move_stake.rs":                           false,
+		"pallets/subtensor/src/tests/networks.rs":                             false,
+		"pallets/subtensor/src/tests/swap_hotkey_with_subnet.rs":              false,
+		"precompiles/src/balance_transfer.rs":                                 false,
+		"primitives/share-pool/src/lib.rs":                                    false,
+		"runtime/src/lib.rs":                                                  false,
+		"runtime/tests/claim_root_weight.rs":                                  false,
+		"runtime/tests/precompiles.rs":                                        false,
 	}
 	for _, row := range rows {
 		fields := strings.Fields(row)
 		if len(fields) != 2 || !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(fields[0]) {
-			t.Fatalf("non-canonical runtime 453 source row %q", row)
+			t.Fatalf("non-canonical runtime 454 source row %q", row)
 		}
 		if _, ok := requiredPaths[fields[1]]; !ok {
-			t.Fatalf("unexpected runtime 453 source path %q", fields[1])
+			t.Fatalf("unexpected runtime 454 source path %q", fields[1])
 		}
 		requiredPaths[fields[1]] = true
 	}
 	for path, present := range requiredPaths {
 		if !present {
-			t.Errorf("runtime 453 source manifest omits %s", path)
+			t.Errorf("runtime 454 source manifest omits %s", path)
 		}
 	}
 	metadataManifestBytes, err := os.ReadFile("../docs/spec/runtime-metadata-static-source.sha256")
@@ -737,13 +1482,14 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadataRows := strings.Split(strings.TrimSpace(string(metadataManifestBytes)), "\n")
-	if len(metadataRows) != 9 {
-		t.Fatalf("runtime metadata source manifest has %d rows, want 9", len(metadataRows))
+	if len(metadataRows) != 12 {
+		t.Fatalf("runtime metadata source manifest has %d rows, want 12", len(metadataRows))
 	}
 	wantMetadataCommits := map[string]string{
 		"head:release-v451": "d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
 		"tag:v452":          "da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
 		"tag:v453":          "823bdcbc58a29f60b243be4737a7c72b34ac7d93",
+		"tag:v454":          "14cde6410fe8ec81a940e290c56f94a632a0988d",
 	}
 	seenMetadataPaths := map[string]bool{}
 	for _, row := range metadataRows {
@@ -780,8 +1526,8 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 		artifactManifest.PolkadotSDKRevision != "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" {
 		t.Fatalf("runtime metadata artifact manifest identity=%+v", artifactManifest)
 	}
-	if len(artifactManifest.Artifacts) != 3 {
-		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 3", len(artifactManifest.Artifacts))
+	if len(artifactManifest.Artifacts) != 4 {
+		t.Fatalf("runtime metadata artifact manifest has %d artifacts, want 4", len(artifactManifest.Artifacts))
 	}
 	wantArtifacts := map[uint32]releaseRuntimeMetadataArtifact{
 		451: {
@@ -808,6 +1554,14 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 			MetadataSize:   334667, MetadataSHA256: "99380e7d01eccc41ffa1304e782658c86b38ba9986acefa371e79ad367f76658",
 			MetadataBlake2b256: "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce",
 		},
+		454: {
+			SpecVersion: 454, SourceRefKind: "tag", SourceRefName: "v454", SourceCommit: "14cde6410fe8ec81a940e290c56f94a632a0988d",
+			ObservationBlock: 7934387, ObservationBlockHash: "0x5b3f3455125d78812299002a1926792a6876b03ac636ae53e93e4115f15a392b",
+			CodeSource: "github-release", CodeSize: 2515968, CodeSHA256: "a55e76b4f4620bcdb4c787e499c87a35abb9913ba4cde001b08a00d1945ac4db",
+			CodeBlake2b256: "0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef",
+			MetadataSize:   334642, MetadataSHA256: "b592bafacd0f3cce1340a91f237f82a531968bd833cbd27339328c80ce92b1cf",
+			MetadataBlake2b256: "0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702",
+		},
 	}
 	for index, artifact := range artifactManifest.Artifacts {
 		want, ok := wantArtifacts[artifact.SpecVersion]
@@ -828,7 +1582,7 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 		}
 	}
 
-	checkerBytes, err := os.ReadFile("../scripts/check-runtime-v453-source.sh")
+	checkerBytes, err := os.ReadFile("../scripts/check-runtime-v454-source.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,9 +1590,9 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 	for _, required := range []string{
 		"https://github.com/RaoFoundation/subtensor",
 		"https://raw.githubusercontent.com/RaoFoundation/subtensor",
-		"v453",
-		"823bdcbc58a29f60b243be4737a7c72b34ac7d93",
-		"runtime-v453-source.sha256",
+		"v454",
+		"14cde6410fe8ec81a940e290c56f94a632a0988d",
+		"runtime-v454-source.sha256",
 		"runtime-metadata-static-source.sha256",
 		"d78d9cc6a6ee4d805f74a35414baaef8be025a5f",
 		"da06f033663896ef2fdbbfc3ecc68ca908fba0f5",
@@ -884,10 +1638,10 @@ func TestReleaseGatesAttestPinnedRuntime453RustSource(t *testing.T) {
 			t.Fatal(err)
 		}
 		script := string(scriptBytes)
-		attestation := strings.Index(script, "check-runtime-v453-source.sh")
+		attestation := strings.Index(script, "check-runtime-v454-source.sh")
 		artifactAttestation := strings.Index(script, "check-runtime-metadata-artifacts.sh")
 		preflight := strings.Index(script, "check-release-source-freeze.sh")
-		if strings.Count(script, "check-runtime-v453-source.sh") != 1 || strings.Count(script, "check-runtime-metadata-artifacts.sh") != 1 ||
+		if strings.Count(script, "check-runtime-v454-source.sh") != 1 || strings.Count(script, "check-runtime-metadata-artifacts.sh") != 1 ||
 			attestation <= preflight || artifactAttestation <= attestation {
 			t.Errorf("%s does not attest runtime source and exact artifacts immediately after source-freeze preflight", scriptPath)
 		}
@@ -941,11 +1695,10 @@ func TestSolidityStaticGateCoversEveryDeployedRoot(t *testing.T) {
 	}
 }
 
-// Keep the live launch path bounded without weakening acceptance. This gate
-// exercises every mutable evidence producer and the closed-capture boundary;
-// expensive semantic reconstruction and broad suites belong to the concurrent
-// offline gate in test-release-1.0-local.sh.
-func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
+// Keep the live launch path bounded without weakening acceptance. Deterministic
+// semantic fixtures qualify the evidence schema here, while production capture
+// reconstruction and broad suites remain in the concurrent offline phase.
+func TestProducerGateSeparatesCaptureFromProductionAnalysis(t *testing.T) {
 	scriptBytes, err := os.ReadFile("../scripts/test-release-1.0-producer-gate.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -954,6 +1707,10 @@ func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
 	assertReleaseConnectPolicySelector(t, script, "policy_tests")
 	for _, required := range []string{
 		"go test ./validator ./sim-testnet -run '^$'",
+		"authenticated release driver",
+		"ExecutableAttestation|StopExecutableAttestation|ReleaseExecutable|AuthenticateCommandExecutable|RunMain|ParseReleaseExecutableBuildInfo|PushedSNRevision|ParseCurrentSNRevision|ReleaseGitNetworkEnvironment",
+		"go test ./sim-testnet -run \"$executable_attestation_tests\"",
+		"go test -race ./sim-testnet -run \"$executable_attestation_tests\"",
 		"Attempt|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop",
 		"FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)",
 		"ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion",
@@ -986,8 +1743,7 @@ func TestProducerGateSeparatesCaptureFromOfflineAnalysis(t *testing.T) {
 	for _, deferred := range []string{
 		"go test ./...",
 		"ProduceFinalSemanticOutputs",
-		"FinalSemanticEvidenceBuild",
-		"go test -race -timeout 90m ./sim-testnet",
+		"go test -race -parallel=4 -timeout 90m ./sim-testnet",
 		"test-solidity-static.sh",
 	} {
 		if strings.Contains(script, deferred) {

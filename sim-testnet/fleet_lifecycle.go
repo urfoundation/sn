@@ -1671,11 +1671,11 @@ func (self *Executor) validateFleetLifecycleCleanupAction(ctx context.Context, a
 	if err != nil {
 		return err
 	}
-	parent, err := self.keeper.client.HeaderByNumber(ctx, new(big.Int).SetUint64(evidence.BeforeBlock.Number))
+	parent, err := (ethEVMBlockReader{client: self.keeper.client}).EVMBlockByNumber(ctx, new(big.Int).SetUint64(evidence.BeforeBlock.Number))
 	if err != nil {
 		return err
 	}
-	if !strings.EqualFold(parent.Hash().Hex(), evidence.BeforeBlock.Hash) {
+	if !strings.EqualFold(parent.Hash, evidence.BeforeBlock.Hash) {
 		return errors.New("fleet lifecycle cleanup parent block differs from the canonical chain")
 	}
 	member := manifest.Members[memberIndex-1]
@@ -1712,6 +1712,12 @@ func (self *Executor) validateFleetLifecycleCleanupAction(ctx context.Context, a
 	}
 	if events != 1 {
 		return fmt.Errorf("fleet lifecycle cleanup receipt has %d exact events, want 1", events)
+	}
+	if err := verifyEVMCheckpoint(ctx, self.keeper.client, finalized, parent); err != nil {
+		return fmt.Errorf("fleet lifecycle cleanup parent changed during capture: %w", err)
+	}
+	if err := verifyEVMCheckpoint(ctx, self.keeper.client, finalized, ChainHead{Number: evidence.BlockNumber, Hash: evidence.BlockHash}); err != nil {
+		return fmt.Errorf("fleet lifecycle cleanup inclusion changed during capture: %w", err)
 	}
 	return nil
 }
@@ -1767,7 +1773,7 @@ func (self *Executor) cleanupFleetLifecycleMember(ctx context.Context, action Ac
 	if block < 2 {
 		return errors.New("fleet lifecycle cleanup receipt has no historical pre-state")
 	}
-	parent, err := self.keeper.client.HeaderByNumber(ctx, new(big.Int).SetUint64(block-1))
+	parent, err := (ethEVMBlockReader{client: self.keeper.client}).EVMBlockByNumber(ctx, new(big.Int).SetUint64(block-1))
 	if err != nil {
 		return err
 	}
@@ -1810,7 +1816,7 @@ func (self *Executor) cleanupFleetLifecycleMember(ctx context.Context, action Ac
 		Schema: "urnetwork-sim-fleet-binding-cleanup-v2", DeploymentID: self.cfg.Config.Deployment.DeploymentID, PlanHash: self.plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash,
 		ClientID: fleetLifecycleHex16(member.ClientID), FleetID: fleetLifecycleHex(manifest.FleetID), Generation: manifest.Generation,
 		CleanedAtEpoch: afterRecord.CleanedAtEpoch, MemberCountBefore: beforeCount.Uint64(), MemberCountAfter: afterCount.Uint64(),
-		TransactionHash: receipt.TxHash.Hex(), BeforeBlock: ChainHead{Number: block - 1, Hash: parent.Hash().Hex()}, BlockNumber: block, BlockHash: receipt.BlockHash.Hex(),
+		TransactionHash: receipt.TxHash.Hex(), BeforeBlock: parent, BlockNumber: block, BlockHash: receipt.BlockHash.Hex(),
 	}
 	if err := self.validateFleetLifecycleCleanupAction(ctx, action, variantName, memberIndex, evidence); err != nil {
 		return err

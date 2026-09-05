@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	finalSemanticCollectedInputsSchema = "urnetwork-final-semantic-collected-inputs-v1"
+	finalSemanticCollectedInputsSchema = "urnetwork-final-semantic-collected-inputs-v2"
 	finalCollectedProofRecordSchema    = "urnetwork-final-validator-path-proof-record-v1"
 	finalCollectedAttemptRecordsSchema = "urnetwork-final-validator-attempt-records-v1"
 	finalSemanticCaptureStatusSchema   = "urnetwork-final-semantic-capture-status-v1"
@@ -43,6 +43,7 @@ const (
 var finalSemanticCaptureRequiredClasses = []string{
 	"claim-routing-topology",
 	"contract-and-chain-receipts",
+	"authenticated-adversarial-campaign-and-matrix",
 	"scenario-result-and-observation-history",
 	"signed-attempt-records-and-path-proofs",
 	"signed-validator-intents-measurements-and-envelopes",
@@ -138,6 +139,8 @@ type FinalSemanticCollectedInputs struct {
 	Window              ScenarioAcceptanceWindow        `json:"acceptance_window"`
 	Policy              FinalArtifactLocator            `json:"policy"`
 	ScenarioResult      FinalArtifactLocator            `json:"scenario_result"`
+	AdversarialMatrix   FinalArtifactLocator            `json:"adversarial_matrix"`
+	Adversaries         FinalArtifactLocator            `json:"adversaries"`
 	TerminalObservation FinalArtifactLocator            `json:"terminal_observation"`
 	ObservationHistory  FinalArtifactLocator            `json:"observation_history"`
 	PriorPhase          *FinalCollectedPriorPhaseInputs `json:"prior_phase,omitempty"`
@@ -221,6 +224,15 @@ func CollectFinalSemanticInputs(ctx context.Context, cfg *ResolvedConfig, stateD
 		return nil, err
 	}
 	collected.ClosedInputBundles, collected.ScenarioResult, collected.TerminalObservation, collected.ObservationHistory, err = captureFinalSemanticClosedInputs(stateRoot, runRoot, result, terminal, history, cfg.Config.Topology.Miners, cfg.Config.Topology.MinerSwarmProcesses, cfg.Config.Topology.Operators)
+	if err != nil {
+		return nil, err
+	}
+	var adversarialMatrix *AdversarialMatrix
+	collected.AdversarialMatrix, adversarialMatrix, err = captureFinalSemanticAdversarialMatrix(cfg, runRoot, result)
+	if err != nil {
+		return nil, err
+	}
+	collected.Adversaries, err = captureFinalSemanticAdversaries(runRoot, result, adversarialMatrix)
 	if err != nil {
 		return nil, err
 	}
@@ -1565,8 +1577,60 @@ func persistFinalCollectedArtifact(runRoot, kind, relative string, data []byte) 
 	return FinalArtifactLocator{Kind: kind, URI: filepath.ToSlash(relative), ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}, nil
 }
 
+// Freezes the canonical source matrix named by the accepted campaign. A later
+// source edit cannot alter what the
+// final report claims was exercised.
+func captureFinalSemanticAdversarialMatrix(cfg *ResolvedConfig, runRoot string, result *ScenarioResult) (FinalArtifactLocator, *AdversarialMatrix, error) {
+	if cfg == nil || cfg.Config == nil || result == nil || result.Adversaries == nil || result.AdversarialMatrix == "" {
+		return FinalArtifactLocator{}, nil, errors.New("final semantic adversarial matrix context is incomplete")
+	}
+	matrix, canonical, err := loadCanonicalAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		return FinalArtifactLocator{}, nil, fmt.Errorf("load final semantic adversarial matrix: %w", err)
+	}
+	if !strings.EqualFold(matrix.Hash, result.AdversarialMatrix) || !strings.EqualFold(matrix.Hash, result.Adversaries.MatrixHash) {
+		return FinalArtifactLocator{}, nil, errors.New("frozen adversarial matrix differs from the signed scenario result")
+	}
+	locator, err := persistFinalCollectedArtifact(runRoot, "adversarial-matrix", "final-inputs/adversarial-matrix.json", canonical)
+	if err != nil {
+		return FinalArtifactLocator{}, nil, err
+	}
+	return locator, matrix, nil
+}
+
+// Freezes the exact adversaries.json emitted while the happy path was running.
+// The scenario result embeds the same
+// campaign, but retaining its standalone artifact gives FINAL.md a direct,
+// content-addressed review link.
+func captureFinalSemanticAdversaries(runRoot string, result *ScenarioResult, matrix *AdversarialMatrix) (FinalArtifactLocator, error) {
+	if result == nil || result.Adversaries == nil || result.AdversarialMatrix == "" || matrix == nil {
+		return FinalArtifactLocator{}, errors.New("final semantic adversarial campaign is absent")
+	}
+	entry, err := finalCollectedFileEntry(runRoot, "adversaries.json")
+	if err != nil {
+		return FinalArtifactLocator{}, fmt.Errorf("capture adversaries.json: %w", err)
+	}
+	var campaign AdversaryCampaignEvidence
+	if err := decodeStrictJSONBytes(entry.Data, &campaign); err != nil {
+		return FinalArtifactLocator{}, fmt.Errorf("decode adversaries.json: %w", err)
+	}
+	if !finalJSONEqual(campaign, *result.Adversaries) || !strings.EqualFold(campaign.MatrixHash, result.AdversarialMatrix) {
+		return FinalArtifactLocator{}, errors.New("adversaries.json differs from the signed scenario result")
+	}
+	if _, err := summarizeFinalAdversarialCampaign(&campaign, matrix); err != nil {
+		return FinalArtifactLocator{}, fmt.Errorf("verify adversaries.json: %w", err)
+	}
+	return persistFinalCollectedArtifact(runRoot, "scenario-adversaries", "final-inputs/adversaries.json", entry.Data)
+}
+
 func verifyFinalSemanticCollectedInputs(cfg *ResolvedConfig, value *FinalSemanticCollectedInputs) error {
-	if cfg == nil || cfg.Config == nil || value == nil || value.Schema != finalSemanticCollectedInputsSchema || value.RunID == "" || value.ResultHash == "" || value.Window.Schema != "urnetwork-sim-acceptance-window-v1" || value.Window.FirstEpoch == 0 || value.Window.EpochCount == 0 || len(value.Validators) != cfg.Config.Topology.Validators || len(value.ClosedInputBundles) == 0 {
+	if cfg == nil || cfg.Config == nil || value == nil {
+		return errors.New("collected final semantic inputs are incomplete")
+	}
+	if value.Schema != finalSemanticCollectedInputsSchema {
+		return fmt.Errorf("unsupported final semantic collected-inputs schema %q", value.Schema)
+	}
+	if value.RunID == "" || value.ResultHash == "" || value.Window.Schema != "urnetwork-sim-acceptance-window-v1" || value.Window.FirstEpoch == 0 || value.Window.EpochCount == 0 || len(value.Validators) != cfg.Config.Topology.Validators || len(value.ClosedInputBundles) == 0 {
 		return errors.New("collected final semantic inputs are incomplete")
 	}
 	if value.Phase != "release-1.0" && value.Phase != "production-soak" {
@@ -1611,6 +1675,8 @@ func verifyFinalSemanticCollectedInputs(cfg *ResolvedConfig, value *FinalSemanti
 		kind    string
 	}{
 		"scenario result":      {locator: value.ScenarioResult, kind: "scenario-result-candidate"},
+		"adversarial matrix":   {locator: value.AdversarialMatrix, kind: "adversarial-matrix"},
+		"adversarial campaign": {locator: value.Adversaries, kind: "scenario-adversaries"},
 		"terminal observation": {locator: value.TerminalObservation, kind: "scenario-terminal-observation"},
 		"observation history":  {locator: value.ObservationHistory, kind: "scenario-observation-history"},
 	} {
@@ -1705,7 +1771,7 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 	if err != nil {
 		return err
 	}
-	locators := []FinalArtifactLocator{value.Policy, value.ScenarioResult, value.TerminalObservation, value.ObservationHistory}
+	locators := []FinalArtifactLocator{value.Policy, value.ScenarioResult, value.AdversarialMatrix, value.Adversaries, value.TerminalObservation, value.ObservationHistory}
 	if value.PriorPhase != nil {
 		locators = append(locators, value.PriorPhase.ScenarioResult, value.PriorPhase.OwnerCompletion, value.PriorPhase.EvidenceManifest, value.PriorPhase.LifecycleHandoff, value.PriorPhase.CaptureStatus, value.PriorPhase.CollectedInputsManifest, value.PriorPhase.SemanticSupplement)
 		locators = append(locators, value.PriorPhase.LiveChainBundles...)
@@ -1789,6 +1855,9 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 			return err
 		}
 	}
+	if err := verifyFinalCollectedAdversaries(value, loaded); err != nil {
+		return err
+	}
 	var terminal ScenarioObservation
 	if err := decodeStrictJSONBytes(loaded[value.TerminalObservation.URI], &terminal); err != nil {
 		return fmt.Errorf("decode collected terminal observation for lifecycle payout replay: %w", err)
@@ -1808,6 +1877,37 @@ func verifyFinalCollectedClosedGraph(ctx context.Context, cfg *ResolvedConfig, s
 		return errors.New("read back collected semantic manifest differs")
 	}
 	return verifyFinalSemanticCollectedInputs(cfg, &manifest)
+}
+
+// Makes the closed input graph reject a raw adversaries.json replacement even
+// when the replacement has a valid shape.
+func verifyFinalCollectedAdversaries(value *FinalSemanticCollectedInputs, loaded map[string][]byte) error {
+	if value == nil {
+		return errors.New("collected adversarial campaign context is incomplete")
+	}
+	var result ScenarioResult
+	if err := decodeStrictJSONBytes(loaded[value.ScenarioResult.URI], &result); err != nil {
+		return fmt.Errorf("decode collected scenario result for adversarial campaign: %w", err)
+	}
+	var campaign AdversaryCampaignEvidence
+	if err := decodeStrictJSONBytes(loaded[value.Adversaries.URI], &campaign); err != nil {
+		return fmt.Errorf("decode collected adversaries.json: %w", err)
+	}
+	matrixData := loaded[value.AdversarialMatrix.URI]
+	matrix, canonical, err := decodeCanonicalAdversarialMatrix(matrixData)
+	if err != nil {
+		return fmt.Errorf("decode collected adversarial matrix: %w", err)
+	}
+	if !bytes.Equal(canonical, matrixData) {
+		return errors.New("collected adversarial matrix is not canonical JSON")
+	}
+	if result.Adversaries == nil || !finalJSONEqual(campaign, *result.Adversaries) || !strings.EqualFold(campaign.MatrixHash, result.AdversarialMatrix) {
+		return errors.New("collected adversaries.json differs from its scenario result")
+	}
+	if _, err := summarizeFinalAdversarialCampaign(&campaign, matrix); err != nil {
+		return fmt.Errorf("verify collected adversaries.json: %w", err)
+	}
+	return nil
 }
 
 func verifyFinalCollectedLifecyclePayouts(value *FinalSemanticCollectedInputs, terminal *ScenarioObservation, loaded map[string][]byte) error {

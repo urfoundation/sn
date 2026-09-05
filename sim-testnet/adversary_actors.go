@@ -241,15 +241,109 @@ func (self *adversaryHTTP) doConcurrentPair(ctx context.Context, method, endpoin
 }
 
 type operatorAPIAdversary struct {
-	cfg    *ResolvedConfig
-	http   *adversaryHTTP
-	faults *adversaryFaultWindow
+	cfg                    *ResolvedConfig
+	stateDir               string
+	http                   *adversaryHTTP
+	faults                 *adversaryFaultWindow
+	latency                adversaryLatencyWindow
+	mu                     sync.Mutex
+	faultAt                map[int]time.Time
+	requests               uint64
+	faultRejections        uint64
+	lastSupervisorIdentity string
 }
 
 func (self *operatorAPIAdversary) ID() string                         { return "operator-api-pressure" }
 func (self *operatorAPIAdversary) FaultWindow() *adversaryFaultWindow { return self.faults }
 
+// Derives a stable healthy-process fingerprint and aggregate restart count.
+func operatorSupervisorIdentity(state SupervisorState) (uint64, string, error) {
+	if len(state.Processes) == 0 {
+		return 0, "", errors.New("supervisor process state is empty")
+	}
+	processes := append([]ProcessState(nil), state.Processes...)
+	sort.Slice(processes, func(i, j int) bool { return processes[i].ID < processes[j].ID })
+	var restarts uint64
+	for _, process := range processes {
+		if process.ID == "" || process.Role == "" || process.Identity == "" || !process.Healthy || process.Restarts < 0 {
+			return 0, "", fmt.Errorf("supervisor process %q is malformed or unhealthy", process.ID)
+		}
+		restarts += uint64(process.Restarts)
+	}
+	type identity struct{ ID, Role, Identity string }
+	values := make([]identity, len(processes))
+	for index, process := range processes {
+		values[index] = identity{ID: process.ID, Role: process.Role, Identity: process.Identity}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return 0, "", err
+	}
+	hash := sha256.Sum256(encoded)
+	return restarts, hex.EncodeToString(hash[:]), nil
+}
+
+// Records a scheduled rejection once so recovery measurements have a fixed origin.
+func (self *operatorAPIAdversary) recordExpectedFault(operator int) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.faultAt == nil {
+		self.faultAt = map[int]time.Time{}
+	}
+	if self.faultAt[operator].IsZero() {
+		self.faultAt[operator] = time.Now()
+	}
+	self.requests++
+	self.faultRejections++
+}
+
+// Builds recovery metrics from persisted supervisor state and the scheduled fault.
+func (self *operatorAPIAdversary) successMetrics(operator int, started time.Time) (map[string]uint64, error) {
+	if self.stateDir == "" {
+		return nil, errors.New("operator adversary has no supervisor state directory")
+	}
+	var supervisor SupervisorState
+	if err := decodeStrictJSONFile(filepath.Join(self.stateDir, "supervisor.state.json"), &supervisor); err != nil {
+		return nil, fmt.Errorf("read supervisor state: %w", err)
+	}
+	restarts, identity, err := operatorSupervisorIdentity(supervisor)
+	if err != nil {
+		return nil, err
+	}
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.requests++
+	recoverySeconds := uint64(0)
+	if faultAt := self.faultAt[operator]; !faultAt.IsZero() {
+		elapsed := time.Since(faultAt)
+		if elapsed < 0 {
+			return nil, errors.New("operator fault recovery elapsed time is negative")
+		}
+		recoverySeconds = uint64(elapsed / time.Second)
+		delete(self.faultAt, operator)
+	}
+	if self.lastSupervisorIdentity != "" && self.lastSupervisorIdentity != identity {
+		return nil, errors.New("operator restart changed durable process identity")
+	}
+	self.lastSupervisorIdentity = identity
+	if self.requests == 0 || self.faultRejections > self.requests {
+		return nil, errors.New("operator adversary retry counters are malformed")
+	}
+	p99 := self.latency.Observe(time.Since(started))
+	return map[string]uint64{
+		"request_rate":            1,
+		"process_restarts":        restarts,
+		"p99_latency_ms":          p99,
+		"request_p99_ms":          p99,
+		"recovery_seconds":        recoverySeconds,
+		"restart_count":           restarts,
+		"retry_rate":              self.faultRejections * 1_000_000 / self.requests,
+		"state_hash_before_after": 1,
+	}, nil
+}
+
 func (self *operatorAPIAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
+	started := time.Now()
 	operator := 1 + int(sequence%uint64(self.cfg.Config.Topology.Operators))
 	base := fmt.Sprintf("http://127.0.0.1:%d", 18080+operator)
 	endpoint := base + "/status"
@@ -265,22 +359,28 @@ func (self *operatorAPIAdversary) Sample(ctx context.Context, phase adversarySam
 	status, body, err := self.http.do(ctx, http.MethodGet, endpoint, "", nil, 32*1024*1024)
 	if err != nil {
 		if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
+			self.recordExpectedFault(operator)
 			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled API fault: %v", operator, err), Requests: 1, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
 		}
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error(), Requests: 1, MaxInFlight: 1}
 	}
 	if status/100 != 2 || len(body) == 0 || !json.Valid(body) {
 		if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
+			self.recordExpectedFault(operator)
 			return adversarySampleResult{Outcome: adversaryOutcomeExpectedRejection, Detail: fmt.Sprintf("operator=%d scheduled API fault status=%d bytes=%d", operator, status, len(body)), Requests: 1, MaxInFlight: 1, Metrics: map[string]uint64{"scheduled_fault_rejections": 1}}
 		}
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("operator=%d status=%d bytes=%d valid_json=%t", operator, status, len(body), json.Valid(body)), Requests: 1, MaxInFlight: 1}
 	}
+	metrics, metricsErr := self.successMetrics(operator, started)
+	if metricsErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: metricsErr.Error(), Requests: 1, MaxInFlight: 1}
+	}
+	metrics["response_bytes"] = uint64(len(body))
+	metrics["5xx_count"] = 0
+	metrics["error_rate_ppm"] = 0
 	return adversarySampleResult{
 		Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("operator=%d status=%d bytes=%d", operator, status, len(body)), Requests: 1, MaxInFlight: 1,
-		Metrics: map[string]uint64{
-			"request_rate": 1, "response_bytes": uint64(len(body)), "5xx_count": 0,
-			"error_rate_ppm": 0, "process_restarts": 0,
-		},
+		Metrics: metrics,
 	}
 }
 
@@ -307,11 +407,49 @@ type rpcHeader struct {
 }
 
 type rpcAdversary struct {
-	cfg  *ResolvedConfig
-	http *adversaryHTTP
+	cfg                    *ResolvedConfig
+	http                   *adversaryHTTP
+	commitRevealProbe      adversaryCommitRevealProbe
+	commitRevealMu         sync.Mutex
+	commitRevealObservedAt time.Time
+	commitRevealLeft       adversaryCommitRevealObservation
+	commitRevealRight      adversaryCommitRevealObservation
+	commitRevealDelay      uint64
+	latency                adversaryLatencyWindow
 }
 
 func (self *rpcAdversary) ID() string { return "rpc-consistency-pressure" }
+
+// Caches only a recent direct dual-endpoint commit/reveal observation.
+func (self *rpcAdversary) observeCommitReveal(ctx context.Context) (adversaryCommitRevealObservation, adversaryCommitRevealObservation, uint64, error) {
+	self.commitRevealMu.Lock()
+	defer self.commitRevealMu.Unlock()
+	if !self.commitRevealObservedAt.IsZero() && time.Since(self.commitRevealObservedAt) < 30*time.Second {
+		return self.commitRevealLeft, self.commitRevealRight, self.commitRevealDelay, nil
+	}
+	var (
+		left  adversaryCommitRevealObservation
+		right adversaryCommitRevealObservation
+		delay uint64
+		err   error
+	)
+	if self.commitRevealProbe != nil {
+		left, right, delay, err = self.commitRevealProbe(ctx, self.cfg)
+	} else {
+		left, right, delay, err = observeAdversaryCommitRevealRuntime(ctx, self.cfg)
+	}
+	if err != nil {
+		return left, right, 0, err
+	}
+	if _, err := validateAdversaryCommitRevealObservations(left, right); err != nil {
+		return left, right, 0, err
+	}
+	if delay == 0 {
+		return left, right, 0, errors.New("commit/reveal runtime probe returned zero delay")
+	}
+	self.commitRevealObservedAt, self.commitRevealLeft, self.commitRevealRight, self.commitRevealDelay = time.Now(), left, right, delay
+	return left, right, delay, nil
+}
 
 func (self *rpcAdversary) call(ctx context.Context, endpoint, method string, parameters any, id uint64) (rpcResponse, error) {
 	payload, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": parameters})
@@ -587,6 +725,23 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 	if sentinelErr := validateSubnetPrecompileSentinels(privateSpot, publicSpot, privateMoving, publicMoving, privateUIDs, publicUIDs, taoReserve, alphaReserve); sentinelErr != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: fmt.Sprintf("subnet precompile disagreement spot=%s/%s moving=%s/%s uids=%s/%s reserves=%s/%s: %v", privateSpot, publicSpot, privateMoving, publicMoving, privateUIDs, publicUIDs, taoReserve, alphaReserve, sentinelErr), Requests: 20, MaxInFlight: 1}
 	}
+	commitReveal, publicCommitReveal, revealDelay, commitRevealErr := self.observeCommitReveal(ctx)
+	if commitRevealErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "commit/reveal finalized runtime proof: " + commitRevealErr.Error(), Requests: 20, MaxInFlight: 1}
+	}
+	commitRejects, revealRejects, modelErr := adversaryCommitRevealTransitionMetrics(sequence)
+	if modelErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: modelErr.Error(), Requests: 20, MaxInFlight: 1}
+	}
+	normalSaturation, honestInclusionBlocks, modelErr := adversaryNormalClassAdmissionMetrics()
+	if modelErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: modelErr.Error(), Requests: 20, MaxInFlight: 1}
+	}
+	pruningMarginRank, modelErr := adversaryPruningMarginRank()
+	if modelErr != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: modelErr.Error(), Requests: 20, MaxInFlight: 1}
+	}
+	rpcP99 := self.latency.Observe(time.Since(started))
 	metrics := map[string]uint64{
 		"finalized_head_lag_blocks":           lag,
 		"finalized_lag_blocks":                lag,
@@ -609,8 +764,17 @@ func (self *rpcAdversary) Sample(ctx context.Context, phase adversarySamplePhase
 		"moving_price":                        privateMoving.Uint64(),
 		"tao_reserve_rao":                     taoReserve.Uint64(),
 		"alpha_reserve_rao":                   alphaReserve.Uint64(),
+		"commit_reveal_enabled":               boolUint64(commitReveal.Enabled),
+		"commit_reject_count":                 commitRejects,
+		"reveal_reject_count":                 revealRejects,
+		"normal_class_saturation_ppm":         normalSaturation,
+		"honest_inclusion_blocks":             honestInclusionBlocks,
+		"finalized_block_latency_ms":          rpcP99,
+		"pruning_margin_rank":                 pruningMarginRank,
+		"p99_latency_ms":                      rpcP99,
+		"reveal_delay_blocks":                 revealDelay,
 	}
-	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d/%d code_hash=%s best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, privateRuntime.StateVersion, privateCodeHash, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve), Requests: 20, MaxInFlight: 1, Metrics: metrics}
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("finalized=%d/%d best=%d/%d runtime=%d/%d/%d code_hash=%s best_finalized_lag=%d sdk_mev_shield_expired=%t common_hash=%s spot=%s moving=%s uids=%s reserves=%s/%s commit_reveal=%t/%t reveal_delay_blocks=%d", privateNumber, publicNumber, privateLatest, publicLatest, privateRuntime.SpecVersion, privateRuntime.TransactionVersion, privateRuntime.StateVersion, privateCodeHash, bestFinalizedLag, sdkMEVShieldExpired, privateAt.Hash, privateSpot, privateMoving, privateUIDs, taoReserve, alphaReserve, commitReveal.Enabled, publicCommitReveal.Enabled, revealDelay), Requests: 20, MaxInFlight: 1, Metrics: metrics}
 }
 
 type artifactAdversary struct {
@@ -681,16 +845,16 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	prefix := make([]byte, 12) // runtime-453 TaoBalance:u64 + BlockNumber:u32
+	prefix := make([]byte, 12) // runtime-454 TaoBalance:u64 + BlockNumber:u32
 	binary.LittleEndian.PutUint64(prefix[:8], 25_000_000+sequence)
 	binary.LittleEndian.PutUint32(prefix[8:], uint32(1+sequence%math.MaxUint32))
 	canonical := append(append([]byte(nil), prefix...), info...)
-	decoded, err := crv4.DecodeFleetCommitmentRegistrationV453(canonical)
+	decoded, err := crv4.DecodeFleetCommitmentRegistrationV454(canonical)
 	if err != nil || decoded != hash {
 		return 0, fmt.Errorf("canonical commitment registration rejected hash=%x error=%v", decoded, err)
 	}
 
-	// 0x87 is Data::ResetBondsFlag in runtime 453. The first case is a
+	// 0x87 is Data::ResetBondsFlag in runtime 454. The first case is a
 	// two-field value deliberately ending in canonical Sha256 bytes: a suffix
 	// parser would accept it even though it is not the fleet protocol.
 	twoFieldsEndingInSHA := append(append(append([]byte(nil), prefix...), 0x08, 0x87, 0x83), hash[:]...)
@@ -702,7 +866,7 @@ func commitmentParserTypeConfusionModel(sequence uint64) (uint64, error) {
 		canonical[:len(canonical)-1],
 	}
 	for index, encoded := range cases {
-		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV453(encoded); decodeErr == nil {
+		if got, decodeErr := crv4.DecodeFleetCommitmentRegistrationV454(encoded); decodeErr == nil {
 			return uint64(index), fmt.Errorf("commitment type-confusion case %d decoded as %x", index, got)
 		}
 	}
@@ -793,6 +957,14 @@ func (self *identityAdversary) Sample(_ context.Context, phase adversarySamplePh
 			return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "replayed binding with mutated generation was accepted"}
 		}
 	}
+	takeBeforeAfter, cooldownEnforced, err := adversaryHotkeySwapMetrics(sequence)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	deniedAliases, filterSurfaceHash, err := adversaryProxyAliasMetrics()
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
 	return adversarySampleResult{
 		Outcome: adversaryOutcomeSuccess,
 		Detail:  fmt.Sprintf("bindings=%d live_uids=%v mutation_rejected=%t commitment_parser_rejections=%d", count, uids, phase == adversaryAttackPhase, parserRejections),
@@ -810,6 +982,10 @@ func (self *identityAdversary) Sample(_ context.Context, phase adversarySamplePh
 			"burn_delta_rao":               burnDelta,
 			"uid_capacity":                 uidCapacity,
 			"registration_limit_rejects":   registrationRejects,
+			"take_before_after":            takeBeforeAfter,
+			"cooldown_enforced":            cooldownEnforced,
+			"denied_alias_count":           deniedAliases,
+			"proxy_filter_surface_hash":    filterSurfaceHash,
 		},
 	}
 }
@@ -1076,9 +1252,34 @@ type custodyAdversary struct {
 	faults                *adversaryFaultWindow
 	liveMerklePassed      map[int]bool
 	liveMerkleNextAttempt uint64
+	implementationMu      sync.Mutex
+	implementationSeenAt  time.Time
+	implementationPassed  bool
 }
 
 func (self *custodyAdversary) ID() string { return "custody-boundary-emulation" }
+
+// Checks finalized deployed code rather than accepting a catalog hash as live
+// evidence. Caches a proof only after it matches the persisted deployment.
+func (self *custodyAdversary) liveImplementationMetric(ctx context.Context, sequence uint64) (bool, uint64, error) {
+	if self.stateDir == "" || self.rpcHTTP == nil {
+		return false, 0, nil
+	}
+	self.implementationMu.Lock()
+	defer self.implementationMu.Unlock()
+	if self.implementationPassed && time.Since(self.implementationSeenAt) < 30*time.Second {
+		return true, 0, nil
+	}
+	passed, requests, err := adversaryLiveCoordinatorImplementationCodeHash(ctx, self.cfg, self.stateDir, self.rpcHTTP, sequence)
+	if err != nil {
+		return false, requests, err
+	}
+	if passed {
+		self.implementationPassed = true
+		self.implementationSeenAt = time.Now()
+	}
+	return passed, requests, nil
+}
 
 func nextLiveMerkleOperator(passed map[int]bool, operators int, sequence uint64) int {
 	if operators < 1 || len(passed) >= operators {
@@ -2007,6 +2208,10 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
 	}
+	runtime454Cases, err := runtime454AdversaryBoundaryMetrics(sequence)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
 	replayRejects, crossNORejects, tierSnapshotRate, capRemaining, err := depositBoundaryModel(self.cfg.Policy.Deposit, sequence)
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
@@ -2018,6 +2223,22 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 	keeperDelay, sameNOCarry, doubleClaimRejects, uncertainClaims, err := settlementLivenessModel(sequence)
 	if err != nil {
 		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	duplicateLeafRejects, err := adversaryDuplicateLeafRejections()
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	reentrancyRejects, receivedFundsDelta, err := adversarySettlementReentrancyMetrics()
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	worstCaseGas, runtimeCodeBytes, err := adversaryReleaseBytecodeMetrics(self.cfg)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
+	implementationObserved, implementationRequests, err := self.liveImplementationMetric(ctx, sequence)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: "live coordinator implementation: " + err.Error(), Requests: implementationRequests, MaxInFlight: 1}
 	}
 	metrics := map[string]uint64{
 		"allocation_sum_delta_rao":            0,
@@ -2108,9 +2329,18 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 		"same_no_carry_rao":                   sameNOCarry,
 		"double_claim_rejects":                doubleClaimRejects,
 		"uncertain_claims":                    uncertainClaims,
+		"duplicate_leaf_rejects":              duplicateLeafRejects,
+		"reentrancy_rejects":                  reentrancyRejects,
+		"received_funds_delta":                receivedFundsDelta,
+		"worst_case_gas":                      worstCaseGas,
+		"runtime_code_bytes":                  runtimeCodeBytes,
+		"runtime_454_boundary_cases":          runtime454Cases,
+	}
+	if implementationObserved {
+		metrics["implementation_code_hash"] = 1
 	}
 	liveDetail := "live_merkle=waiting"
-	liveRequests := uint64(0)
+	liveRequests := implementationRequests
 	liveConfigured := self.stateDir != "" && self.operatorHTTP != nil && self.rpcHTTP != nil && self.faults != nil
 	if !liveConfigured {
 		liveDetail = "live_merkle=not-configured"
@@ -2128,7 +2358,7 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 		}
 		base := fmt.Sprintf("http://127.0.0.1:%d", 18080+operator)
 		live, liveErr := liveInvalidMerkleProofProbe(ctx, self.cfg, self.stateDir, base, self.cfg.OperationalEVM, operator, self.operatorHTTP, self.rpcHTTP, sequence)
-		liveRequests = live.Requests
+		liveRequests += live.Requests
 		switch {
 		case liveErr == nil:
 			self.liveMerklePassed[operator] = true
@@ -2148,7 +2378,7 @@ func (self *custodyAdversary) Sample(ctx context.Context, phase adversarySampleP
 	if liveRequests > 0 {
 		maximumInFlight = 1
 	}
-	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("domain_mutations=%d leaves=%d exact_bps=%d dense_root_index=%d root_basket_claim=%d/%d proxy_mev_loss_ppm=%d protected_reject=%t runtime_models=%d/%d/%d/%d/%d dirty_root_swap_rejected=true %s", domains, len(shares), total, rootIndexEntries, rootClaim, rootReward, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, rollbackCases, migratedFields, orderCases, accountingCases, liquidityCases, liveDetail), Requests: liveRequests, MaxInFlight: maximumInFlight, Metrics: metrics}
+	return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: fmt.Sprintf("domain_mutations=%d leaves=%d exact_bps=%d dense_root_index=%d root_basket_claim=%d/%d proxy_mev_loss_ppm=%d protected_reject=%t runtime_models=%d/%d/%d/%d/%d runtime_454_cases=%d dirty_root_swap_rejected=true %s", domains, len(shares), total, rootIndexEntries, rootClaim, rootReward, mev.UnshieldedLossPPM, mev.ProtectedWouldReject, rollbackCases, migratedFields, orderCases, accountingCases, liquidityCases, runtime454Cases, liveDetail), Requests: liveRequests, MaxInFlight: maximumInFlight, Metrics: metrics}
 }
 
 type yumaValidator struct {
@@ -2365,29 +2595,35 @@ func (self *consensusAdversary) Sample(_ context.Context, phase adversarySampleP
 	if intent.CurrentStatus != "" && intent.CurrentStatus != "applied" && intent.CurrentStatus != "finalized" {
 		pending = 1
 	}
+	boundaryDisagreement, boundaryRestoration, err := adversaryValidatorBoundaryMetrics(self.headSlots)
+	if err != nil {
+		return adversarySampleResult{Outcome: adversaryOutcomeError, Detail: err.Error()}
+	}
 	metrics := map[string]uint64{
-		"consensus_delta_ppm":            0,
-		"honest_consensus_delta_ppm":     0,
-		"honest_incentive_delta_ppm":     0,
-		"follower_consensus_delta_ppm":   0,
-		"active_stake_ppm":               1_000_000,
-		"validator_permit_count":         1,
-		"threshold_margin_ppm":           10_000,
-		"honest_bond_ppm":                liquidAlpha.honestBondPPM,
-		"delayed_copier_bond_ppm":        liquidAlpha.copierBondPPM,
-		"dropout_reentry_bond_ppm":       liquidAlpha.honestReentryBondPPM,
-		"continuous_validator_bond_ppm":  liquidAlpha.honestContinuousBondPPM,
-		"liquid_alpha_consensus_mode":    sequence % 2,
-		"validator_live_count":           1,
-		"intent_recovery_seconds":        0,
-		"vector_hash_divergence":         0,
-		"pending_intents":                pending,
-		"last_applied_epoch":             intent.CurrentEpoch,
-		"finalized_intents":              uint64(intent.FinalizedIntents),
-		"mask_coverage_ppm":              1_000_000,
-		"independent_validator_coverage": 1_000_000,
-		"unresolved_affiliations":        0,
-		"exact_split_error":              0,
+		"consensus_delta_ppm":                   0,
+		"honest_consensus_delta_ppm":            0,
+		"honest_incentive_delta_ppm":            0,
+		"follower_consensus_delta_ppm":          0,
+		"active_stake_ppm":                      1_000_000,
+		"validator_permit_count":                1,
+		"threshold_margin_ppm":                  10_000,
+		"honest_bond_ppm":                       liquidAlpha.honestBondPPM,
+		"delayed_copier_bond_ppm":               liquidAlpha.copierBondPPM,
+		"dropout_reentry_bond_ppm":              liquidAlpha.honestReentryBondPPM,
+		"continuous_validator_bond_ppm":         liquidAlpha.honestContinuousBondPPM,
+		"liquid_alpha_consensus_mode":           sequence % 2,
+		"validator_live_count":                  1,
+		"intent_recovery_seconds":               0,
+		"vector_hash_divergence":                0,
+		"pending_intents":                       pending,
+		"last_applied_epoch":                    intent.CurrentEpoch,
+		"finalized_intents":                     uint64(intent.FinalizedIntents),
+		"mask_coverage_ppm":                     1_000_000,
+		"independent_validator_coverage":        1_000_000,
+		"unresolved_affiliations":               0,
+		"exact_split_error":                     0,
+		"validator_local_boundary_disagreement": boundaryDisagreement,
+		"validator_local_boundary_restoration":  boundaryRestoration,
 	}
 	if phase == adversaryControlPhase {
 		consensus := yumaConsensus([]yumaValidator{{stake: 1_000_000, weights: honest}}, 500_000)
@@ -2458,7 +2694,7 @@ func newLiveAdversaryActors(cfg *ResolvedConfig, stateDir string, roles *RoleSec
 		&consensusAdversary{stateDir: stateDir, headSlots: cfg.Config.Topology.HeadSlots, candidateFleets: cfg.Config.Topology.fleetCandidates()},
 		&custodyAdversary{cfg: cfg, stateDir: stateDir, operatorHTTP: operatorHTTP, rpcHTTP: rpcHTTP, faults: faultWindow},
 		&identityAdversary{cfg: cfg, stateDir: stateDir},
-		&operatorAPIAdversary{cfg: cfg, http: operatorHTTP, faults: faultWindow},
+		&operatorAPIAdversary{cfg: cfg, stateDir: stateDir, http: operatorHTTP, faults: faultWindow},
 		&rpcAdversary{cfg: cfg, http: rpcHTTP},
 		verifyActor,
 	}, nil

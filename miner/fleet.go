@@ -86,22 +86,83 @@ func loadEd25519Seed(path string) (ed25519.PrivateKey, error) {
 	return ed25519.NewKeyFromSeed(raw), nil
 }
 
+// dialFleetNative preserves the internal compatibility surface for callers
+// without an operation context. Each endpoint remains hard-bounded.
 func dialFleetNative(urls []string) (*crv4.Chain, string, error) {
+	return dialFleetNativeContext(context.Background(), urls)
+}
+
+// dialFleetNativeContext tries ordered endpoints under one caller-owned
+// operation context and one ten-block, independent deadline for each dial
+// and runtime-artifact authentication attempt.
+func dialFleetNativeContext(ctx context.Context, urls []string) (*crv4.Chain, string, error) {
+	return dialFleetNativeWithContext(ctx, urls, fleetNativeEndpointTimeout, crv4.DialChainContext)
+}
+
+// fleetNativeDialContext keeps the endpoint deadline boundary deterministic
+// under test while production binds it to CRv4's context-aware dialer.
+type fleetNativeDialContext func(context.Context, string) (*crv4.Chain, error)
+
+// fleetNativeEndpointContext creates one bounded context for one ordered
+// endpoint. It is injected below only to make timeout/failover behavior
+// deterministic without mutating process-global time in tests.
+type fleetNativeEndpointContext func(context.Context, time.Duration) (context.Context, context.CancelFunc)
+
+// fleetNativeRuntimeAuthenticator retains the release identity gate while
+// allowing the endpoint-boundary test to isolate failover from metadata bytes.
+type fleetNativeRuntimeAuthenticator func(context.Context, *crv4.Chain) error
+
+// dialFleetNativeWithContext performs one bounded dial plus exact runtime
+// authentication per endpoint. A failed endpoint never leaves its transport
+// open while failover advances to the next ordered address.
+func dialFleetNativeWithContext(ctx context.Context, urls []string, endpointTimeout time.Duration, dial fleetNativeDialContext) (*crv4.Chain, string, error) {
+	return dialFleetNativeWithEndpointContext(ctx, urls, endpointTimeout, context.WithTimeout, dial, func(endpointCtx context.Context, chain *crv4.Chain) error {
+		_, err := authenticateAndBindFleetRuntimeFinalizedContext(endpointCtx, chain)
+		return err
+	})
+}
+
+// dialFleetNativeWithEndpointContext owns endpoint cleanup on both dial and
+// identity failures. The default production path above supplies WithTimeout
+// and the exact-v454 authenticator; the injected parameters exist solely for
+// deterministic cancellation and failover tests.
+func dialFleetNativeWithEndpointContext(ctx context.Context, urls []string, endpointTimeout time.Duration, endpointContext fleetNativeEndpointContext, dial fleetNativeDialContext, authenticate fleetNativeRuntimeAuthenticator) (*crv4.Chain, string, error) {
+	if ctx == nil || endpointTimeout <= 0 || endpointContext == nil || dial == nil || authenticate == nil {
+		return nil, "", errors.New("fleet native dial context is incomplete")
+	}
 	var errs []error
 	for _, endpoint := range urls {
-		chain, err := crv4.DialChain(endpoint)
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
+		}
+		endpointCtx, cancel := endpointContext(ctx, endpointTimeout)
+		if endpointCtx == nil || cancel == nil {
+			return nil, "", errors.New("fleet native endpoint context is incomplete")
+		}
+		chain, err := dial(endpointCtx, endpoint)
 		if err != nil {
+			cancel()
 			errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
 			continue
 		}
-		if uint32(chain.Runtime.SpecVersion) != 447 {
-			chain.API.Client.Close()
-			errs = append(errs, fmt.Errorf("%s: runtime spec %d, release requires 447", endpoint, chain.Runtime.SpecVersion))
+		if err := authenticate(endpointCtx, chain); err != nil {
+			cancel()
+			closeFleetNative(chain)
+			errs = append(errs, fmt.Errorf("%s: runtime identity does not match the release pin: %w", endpoint, err))
 			continue
 		}
+		cancel()
 		return chain, endpoint, nil
 	}
 	return nil, "", fmt.Errorf("no release Substrate endpoint answered: %w", errors.Join(errs...))
+}
+
+// closeFleetNative is deliberately nil-safe because dial/auth failure paths
+// must not turn an incomplete provider object into a process panic.
+func closeFleetNative(chain *crv4.Chain) {
+	if chain != nil && chain.API != nil && chain.API.Client != nil {
+		chain.API.Client.Close()
+	}
 }
 
 func fleetCommand(opts docopt.Opts) error {
@@ -134,7 +195,9 @@ func mustBoolOpt(opts docopt.Opts, name string) bool {
 }
 
 func fleetPublish(opts docopt.Opts, manifest *protocol.FleetManifest) error {
-	chain, endpoint, err := dialFleetNative(fleetOpts(opts, "--substrate"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	chain, endpoint, err := dialFleetNativeContext(ctx, fleetOpts(opts, "--substrate"))
 	if err != nil {
 		return err
 	}
@@ -151,13 +214,18 @@ func fleetPublish(opts docopt.Opts, manifest *protocol.FleetManifest) error {
 		return errors.New("hotkey seed does not match manifest hotkey")
 	}
 	hash, _ := manifest.CommitmentHash()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
+	if _, err := authenticateAndBindFleetRuntimeFinalizedContext(ctx, chain); err != nil {
+		return fmt.Errorf("authenticate fleet runtime before publish: %w", err)
+	}
 	receipt, err := chain.SetFleetCommitment(ctx, hotkey, manifest.Netuid, hash)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("fleet commitment finalized\n  endpoint: %s\n  netuid: %d\n  hotkey: 0x%x\n  commitment: 0x%x\n  extrinsic: %s\n  finalized_block: %d\n  finalized_hash: %s\n", endpoint, manifest.Netuid, manifest.Hotkey, hash, receipt.ExtrinsicHash.Hex(), receipt.FinalizedAt, receipt.FinalizedHash.Hex())
+	verified, err := verifyPinnedFleetCommitmentWriteContext(ctx, chain, manifest.Netuid, manifest.Hotkey, hash, receipt)
+	if err != nil {
+		return fmt.Errorf("verify pinned fleet commitment write: %w", err)
+	}
+	fmt.Printf("fleet commitment finalized\n  endpoint: %s\n  netuid: %d\n  hotkey: 0x%x\n  commitment: 0x%x\n  extrinsic: %s\n  finalized_block: %d\n  finalized_hash: %s\n", endpoint, manifest.Netuid, manifest.Hotkey, hash, verified.ExtrinsicHash.Hex(), verified.FinalizedAt, verified.FinalizedHash.Hex())
 	return nil
 }
 
@@ -259,21 +327,23 @@ func finalizedCoordinatorCall(ctx context.Context, manifest *protocol.FleetManif
 }
 
 func fleetStatus(opts docopt.Opts, manifest *protocol.FleetManifest) error {
+	ctx, cancel := context.WithTimeout(context.Background(), fleetStatusTimeout)
+	defer cancel()
 	clientID, err := parseClientID16(fleetOpt(opts, "--client_id"))
 	if err != nil {
 		return err
 	}
 	want, _ := manifest.CommitmentHash()
-	chain, endpoint, err := dialFleetNative(fleetOpts(opts, "--substrate"))
+	chain, endpoint, err := dialFleetNativeContext(ctx, fleetOpts(opts, "--substrate"))
 	if err != nil {
 		return err
 	}
-	native, nativeErr := chain.FleetCommitmentFinalized(manifest.Netuid, manifest.Hotkey)
+	native, nativeErr := pinnedFleetCommitmentFinalizedContext(ctx, chain, manifest.Netuid, manifest.Hotkey)
 	chain.API.Client.Close()
 	if nativeErr != nil {
 		return nativeErr
 	}
-	ret, rpc, err := finalizedCoordinatorCall(context.Background(), manifest, fleetOpts(opts, "--rpc"), stCoordinator.PackGetFleetBinding(clientID))
+	ret, rpc, err := finalizedCoordinatorCall(ctx, manifest, fleetOpts(opts, "--rpc"), stCoordinator.PackGetFleetBinding(clientID))
 	if err != nil {
 		return err
 	}

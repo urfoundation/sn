@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -717,6 +716,7 @@ func finalSemanticPublicManifestFixture(t *testing.T, cfg *ResolvedConfig, evide
 }
 
 func TestCampaignFinalSemanticEvidenceRequiresExactlyOneClosedObject(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	source, artifacts := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
@@ -1493,6 +1493,7 @@ func writePublicFinalSemanticClosureFixture(t *testing.T, cfg *ResolvedConfig, s
 	collectedSource := semantic
 	collectedSource.PolicyArtifact = FinalArtifactLocator{Kind: "policy", URI: collectedPolicyPath, ContentHash: bytesSHA256(policyBytes), SizeBytes: uint64(len(policyBytes))}
 	collected := finalSemanticSupplementCollectedFixture(t, cfg, collectedSource, result, resultWire)
+	matrixBytes, adversariesBytes := finalSemanticSupplementAdversarialArtifacts(t, cfg, result)
 	collectedWire := finalSemanticSupplementJSON(t, collected)
 	if err := atomicWrite(filepath.Join(runDir, "final-inputs", "manifest.json"), collectedWire, 0o644); err != nil {
 		t.Fatal(err)
@@ -1514,6 +1515,15 @@ func writePublicFinalSemanticClosureFixture(t *testing.T, cfg *ResolvedConfig, s
 		raw, ok := artifacts[name]
 		if name == collectedPolicyPath {
 			raw, ok = policyBytes, true
+		}
+		if name == collected.AdversarialMatrix.URI {
+			raw, ok = matrixBytes, true
+		}
+		if name == collected.Adversaries.URI {
+			raw, ok = adversariesBytes, true
+		}
+		if reference.Kind == "closed-input-bundle" {
+			raw, ok = finalSemanticSupplementFixtureClosedBundleBytes(t), true
 		}
 		if !ok {
 			raw = finalSemanticSupplementFixtureArtifactBytes(t, reference.Kind, name)
@@ -1553,6 +1563,7 @@ func TestDecodeHashRejectsZeroLengthAndMalformedValues(t *testing.T) {
 }
 
 func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	semanticSource, semanticArtifacts := finalSemanticFixture(t)
 	cfg.Config.Deployment.DeploymentID = semanticSource.DeploymentID
@@ -1798,63 +1809,6 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	supplementHistory := map[int][]string{}
 	objectOverrides := map[int]map[string][]byte{1: {}, 2: {}}
 	directOwnerVisible := true
-	historyKey := func(kind, hash string) string {
-		return "fixture/st/v1/evidence/history/" + cfg.Config.Deployment.DeploymentID + "/" + fmt.Sprint(cfg.Netuid) + "/" + kind + "/" + result.RunID + "/" + strings.TrimPrefix(hash, "sha256:") + ".json"
-	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		operator := 0
-		if strings.HasPrefix(r.URL.Path, "/operator-1/") {
-			operator = 1
-		} else if strings.HasPrefix(r.URL.Path, "/operator-2/") {
-			operator = 2
-		}
-		switch {
-		case operator != 0 && strings.HasSuffix(r.URL.Path, "/sn/evidence/history"):
-			var keys []map[string]string
-			switch r.URL.Query().Get("kind") {
-			case "scenario-bundle":
-				keys = append(keys, map[string]string{"key": historyKey("scenario-bundle", bundleHashes[operator-1])})
-			case "scenario-complete-commit":
-				if directOwnerVisible {
-					keys = append(keys, map[string]string{"key": historyKey("scenario-complete-commit", complete.ContentHash)})
-				}
-				if commitVisible[operator] {
-					keys = append(keys, map[string]string{"key": historyKey("scenario-complete-commit", commitHashes[operator-1])})
-				}
-			case finalSemanticSupplementKind:
-				for _, hash := range supplementHistory[operator] {
-					keys = append(keys, map[string]string{"key": historyKey(finalSemanticSupplementKind, hash)})
-				}
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"schema": "urnetwork-release-evidence-history-v1", "objects": keys})
-		case operator != 0 && strings.HasSuffix(r.URL.Path, "/sn/evidence"):
-			hash := r.URL.Query().Get("hash")
-			encoded, overridden := objectOverrides[operator][hash]
-			if !overridden {
-				encoded = objects[hash]
-			}
-			if len(encoded) == 0 {
-				http.NotFound(w, r)
-				return
-			}
-			_, _ = w.Write(encoded)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	_, serverPort, err := net.SplitHostPort(server.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	testTransport := server.Client().Transport.(*http.Transport).Clone()
-	testTransport.TLSClientConfig = testTransport.TLSClientConfig.Clone()
-	testTransport.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // isolated httptest listener
-	testTransport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
-	}
-	testClient := &http.Client{Transport: testTransport}
-	t.Cleanup(testClient.CloseIdleConnections)
 	public := &PublicDeploymentManifest{
 		DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID, GenesisHash: cfg.Public.Chain.GenesisHash,
 		Schema: "urnetwork-sim-public-deployment-v1", Netuid: cfg.Netuid, ConfigHash: cfg.ConfigHash, PolicyHash: cfg.PolicyHash, PlanHash: semantic.PlanHash,
@@ -1868,48 +1822,40 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 			SettlementVault: common.HexToAddress(semantic.Deployment.SettlementVault), ReserveSink: common.HexToAddress(semantic.Deployment.ReserveSink),
 		},
 	}
-	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
-		base := fmt.Sprintf("https://example.com:%s/operator-%d", serverPort, operator)
-		public.Operators = append(public.Operators, PublicOperator{NoID: operator, APIURL: base, HistoryURL: base + "/sn/evidence/history"})
+	trustedOwner := common.HexToAddress(roles.EVM["testnet-owner"].Address)
+	acceptFixtureResult := func(*ResolvedConfig, *ScenarioResult, string) error { return nil }
+	verifyResult := acceptFixtureResult
+	var cases []finalSemanticTestCase
+	queueCase := func(name, wantError, missingHash string) {
+		view := (finalPublicScenarioTestView{
+			objects: objects, commitVisible: commitVisible, supplementHistory: supplementHistory,
+			objectOverrides: objectOverrides, directOwnerVisible: directOwnerVisible,
+			trustedEvidenceOwner: trustedOwner, campaignResultVerify: verifyResult,
+			wantError: wantError, missingHash: missingHash,
+		}).snapshot()
+		cases = append(cases, finalSemanticTestCase{name: name, verify: func(ctx context.Context) error {
+			started := time.Now()
+			err := verifyFinalPublicScenarioTestView(ctx, cfg, public, result.RunID, result.Name, semantic.PublicVerification.EvidenceURI, complete.ContentHash, bundleHashes, commitHashes, view)
+			t.Logf("public replay %q completed in %s: %v", name, time.Since(started).Round(time.Millisecond), err)
+			return err
+		}})
 	}
-	probe := &liveScenarioProbe{
-		cfg: cfg, client: testClient, trustedEvidenceOwner: common.HexToAddress(roles.EVM["testnet-owner"].Address),
-		publicManifestURI: semantic.PublicVerification.EvidenceURI,
-		finalSemanticVerify: func(ctx context.Context, _ *PublicDeploymentManifest, evidence *FinalSemanticEvidence, _ string) error {
-			return VerifyFinalSemanticEvidenceOnChain(ctx, evidence, &finalTestChainReader{evidence: evidence})
-		},
-	}
-	fetchBundle := func() (*ScenarioEvidenceBundle, error) {
-		authenticated, err := probe.fetchAuthenticatedScenarioCampaign(context.Background(), public, result.RunID, result.Name)
-		if err != nil {
-			return nil, err
-		}
-		return authenticated.candidate.bundle, nil
-	}
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("direct owner envelope bypassed the per-operator completion commit")
-	}
+	const missingCompletion = "no scenario bundle has byte-identical operator signatures and a replicated owner completion commit"
+	queueCase("direct owner envelope bypassed the per-operator completion commit", missingCompletion, "")
 	directOwnerVisible = false
 	commitVisible[1] = true
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("completion commit present at only one operator was accepted")
-	}
+	queueCase("completion commit present at only one operator was accepted", missingCompletion, "")
 	commitVisible[2] = true
-	wantOwner := probe.trustedEvidenceOwner
-	probe.trustedEvidenceOwner = common.HexToAddress(roles.EVM["operator-1-artifact"].Address)
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("self-declared owner signer bypassed the finalized coordinator owner")
-	}
-	probe.trustedEvidenceOwner = wantOwner
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("syntactic pass without the approved scenario assertions was accepted")
-	}
-	probe.campaignResultVerify = func(*ResolvedConfig, *ScenarioResult, string) error { return nil }
+	wantOwner := trustedOwner
+	trustedOwner = common.HexToAddress(roles.EVM["operator-1-artifact"].Address)
+	queueCase("self-declared owner signer bypassed the finalized coordinator owner", "scenario completion owner does not match the coordinator owner at the campaign terminal block", "")
+	trustedOwner = wantOwner
+	verifyResult = nil
+	queueCase("syntactic pass without the approved scenario assertions was accepted", missingCompletion, "")
+	verifyResult = acceptFixtureResult
 	manifestBytes := objects[archive.Manifest.ContentHash]
 	delete(objects, archive.Manifest.ContentHash)
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("completion with a missing campaign manifest was accepted")
-	}
+	queueCase("completion with a missing campaign manifest was accepted", "operator 1 campaign evidence "+archive.Manifest.ContentHash+": HTTP 404", archive.Manifest.ContentHash)
 	objects[archive.Manifest.ContentHash] = manifestBytes
 	resultEnvelopeHash := ""
 	for _, entry := range mustCampaignManifest(t, archive.Manifest).Files {
@@ -1922,15 +1868,11 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	resultEnvelopeBytes := objects[resultEnvelopeHash]
 	delete(objects, resultEnvelopeHash)
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("syntactic hash for a nonexistent result object was accepted")
-	}
+	queueCase("syntactic hash for a nonexistent result object was accepted", "operator 1 campaign evidence "+resultEnvelopeHash+": HTTP 404", resultEnvelopeHash)
 	tamperedResultEnvelope := append([]byte(nil), resultEnvelopeBytes...)
 	tamperedResultEnvelope[len(tamperedResultEnvelope)/2] ^= 1
 	objects[resultEnvelopeHash] = tamperedResultEnvelope
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("tampered campaign evidence object was accepted")
-	}
+	queueCase("tampered campaign evidence object was accepted", "operator 1 returned invalid campaign evidence "+resultEnvelopeHash, "")
 	objects[resultEnvelopeHash] = resultEnvelopeBytes
 	referenceEnvelopeHash := ""
 	referenceEntries := mustCampaignManifest(t, archive.Manifest).References
@@ -1951,43 +1893,29 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	}
 	referenceEnvelopeBytes := objects[referenceEnvelopeHash]
 	delete(objects, referenceEnvelopeHash)
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("completion with an unavailable referenced external receipt was accepted")
-	}
+	queueCase("completion with an unavailable referenced external receipt was accepted", "operator 1 campaign evidence "+referenceEnvelopeHash+": HTTP 404", referenceEnvelopeHash)
 	tamperedReferenceEnvelope := append([]byte(nil), referenceEnvelopeBytes...)
 	tamperedReferenceEnvelope[len(tamperedReferenceEnvelope)/2] ^= 1
 	objects[referenceEnvelopeHash] = tamperedReferenceEnvelope
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("completion with a tampered referenced external receipt was accepted")
-	}
+	queueCase("completion with a tampered referenced external receipt was accepted", "operator 1 returned invalid campaign evidence "+referenceEnvelopeHash, "")
 	objects[referenceEnvelopeHash] = referenceEnvelopeBytes
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("closed campaign without a semantic supplement was accepted")
-	}
+	queueCase("closed campaign without a semantic supplement was accepted", "no semantic supplement is discoverable at every operator", "")
 	supplementHistory[1] = []string{supplement.ContentHash}
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement visible at only one operator was accepted")
-	}
+	queueCase("semantic supplement visible at only one operator was accepted", "no semantic supplement is discoverable at every operator", "")
 	supplementHistory[2] = []string{supplement.ContentHash}
 	supplementBytes := objects[supplement.ContentHash]
 	tamperedSupplement := append([]byte(nil), supplementBytes...)
 	tamperedSupplement[len(tamperedSupplement)/2] ^= 1
 	objectOverrides[2][supplement.ContentHash] = tamperedSupplement
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement differing between operator replicas was accepted")
-	}
+	queueCase("semantic supplement differing between operator replicas was accepted", "operator 2 returned invalid campaign evidence "+supplement.ContentHash, "")
 	delete(objectOverrides[2], supplement.ContentHash)
 	semanticFileHash := semanticFileEntries[0].EnvelopeHash
 	objectOverrides[2][semanticFileHash] = nil
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement with a file missing at one operator was accepted")
-	}
+	queueCase("semantic supplement with a file missing at one operator was accepted", "operator 2 campaign evidence "+semanticFileHash+": HTTP 404", semanticFileHash)
 	tamperedSemanticFile := append([]byte(nil), objects[semanticFileHash]...)
 	tamperedSemanticFile[len(tamperedSemanticFile)/2] ^= 1
 	objectOverrides[2][semanticFileHash] = tamperedSemanticFile
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement with a tampered file replica was accepted")
-	}
+	queueCase("semantic supplement with a tampered file replica was accepted", "operator 2 returned invalid campaign evidence "+semanticFileHash, "")
 	delete(objectOverrides[2], semanticFileHash)
 	uppercaseEntryPayload := supplementPayload
 	uppercaseEntryPayload.Files = append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...)
@@ -2004,9 +1932,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		supplementHistory[operator] = []string{uppercaseEntrySupplement.ContentHash}
 	}
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement with non-exact file content hash casing was accepted")
-	}
+	queueCase("semantic supplement with non-exact file content hash casing was accepted", fmt.Sprintf("semantic supplement file %q payload differs from its manifest", supplementPayload.Files[0].Path), "")
 	ambiguousFilePayload := supplementPayload
 	ambiguousFilePayload.Files = append(append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...), supplementPayload.Files[0])
 	ambiguousFileSupplement, err := signEvidence(cfg, finalSemanticSupplementKind, result.RunID, ambiguousFilePayload, roles.EVM["testnet-owner"])
@@ -2021,9 +1947,7 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		supplementHistory[operator] = []string{ambiguousFileSupplement.ContentHash}
 	}
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("semantic supplement with an ambiguous file census was accepted")
-	}
+	queueCase("semantic supplement with an ambiguous file census was accepted", "semantic supplement file manifest is invalid", "")
 	alternatePayload := supplementPayload
 	alternatePayload.Files = append([]FinalSemanticSupplementFile(nil), supplementPayload.Files...)
 	alternatePayload.ScenarioCompleteHash = strings.ToUpper(alternatePayload.ScenarioCompleteHash)
@@ -2039,15 +1963,18 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		supplementHistory[operator] = []string{supplement.ContentHash, alternate.ContentHash}
 	}
-	if _, err := fetchBundle(); err == nil {
-		t.Fatal("multiple fully replicated semantic supplements were accepted")
-	}
+	queueCase("multiple fully replicated semantic supplements were accepted", "public campaign has multiple fully replicated semantic supplements for one owner completion", "")
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		supplementHistory[operator] = []string{supplement.ContentHash}
 	}
-	got, err := fetchBundle()
-	if err != nil || got.Result == nil || got.Result.RunID != result.RunID {
-		t.Fatalf("replicated committed scenario bundle = %+v, %v", got, err)
+	queueCase("replicated committed scenario bundle", "", "")
+	if len(cases) != 18 {
+		t.Fatalf("public replay case census = %d, want every 17 rejection cases and the accepted graph", len(cases))
+	}
+	for index, err := range runFinalSemanticTestCases(context.Background(), cases) {
+		if err != nil {
+			t.Errorf("%s: %v", cases[index].name, err)
+		}
 	}
 }
 

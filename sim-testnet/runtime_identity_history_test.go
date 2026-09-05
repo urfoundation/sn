@@ -238,7 +238,7 @@ func TestReleaseRuntimeRPCRetryCancellationDoesNotPoisonCache(t *testing.T) {
 func TestCurrentRuntimeAuthenticationCannotUseHistoricalCache(t *testing.T) {
 	metadataHex, metadataHash := releaseRuntimeTestMetadata(t)
 	historicalVersion := crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 452, TransactionVersion: 1, StateVersion: 1}
-	currentVersion := crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}
+	currentVersion := crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: reviewedRuntimeSpecVersion, TransactionVersion: reviewedRuntimeTransactionVersion, StateVersion: reviewedRuntimeStateVersion}
 	historicalCodeHash := "0x" + fmt.Sprintf("%064x", 452)
 	currentMode := atomic.Bool{}
 	var metadataCalls atomic.Int64

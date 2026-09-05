@@ -50,14 +50,14 @@ func (self *attemptBoundaryBlockingRPC) Validate(context.Context, AttemptBoundar
 	return nil
 }
 
-func (self *attemptBoundaryBlockingRPC) Hotkeys(context.Context, uint64) (map[[32]byte]uint16, error) {
+func (self *attemptBoundaryBlockingRPC) Hotkeys(context.Context, AttemptBoundary) (map[[32]byte]uint16, error) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	self.scans++
 	return self.hotkeys, nil
 }
 
-func (self *attemptBoundaryBlockingRPC) Binding(_ context.Context, _, _ uint64, clientID connect.Id) (stabi.BindingAtOutput, error) {
+func (self *attemptBoundaryBlockingRPC) Binding(_ context.Context, _ AttemptBoundary, clientID connect.Id) (stabi.BindingAtOutput, error) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	return self.bindings[clientID], nil
@@ -77,14 +77,14 @@ func (self *attemptBoundaryRPCCounters) Validate(context.Context, AttemptBoundar
 	return nil
 }
 
-func (self *attemptBoundaryRPCCounters) Hotkeys(context.Context, uint64) (map[[32]byte]uint16, error) {
+func (self *attemptBoundaryRPCCounters) Hotkeys(context.Context, AttemptBoundary) (map[[32]byte]uint16, error) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	self.scans++
 	return self.hotkeys, nil
 }
 
-func (self *attemptBoundaryRPCCounters) Binding(_ context.Context, _, _ uint64, clientID connect.Id) (stabi.BindingAtOutput, error) {
+func (self *attemptBoundaryRPCCounters) Binding(_ context.Context, _ AttemptBoundary, clientID connect.Id) (stabi.BindingAtOutput, error) {
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	self.reads[clientID]++

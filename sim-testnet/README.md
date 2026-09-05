@@ -21,10 +21,20 @@ and the exact `--plan-hash` are supplied.
 Release qualification assigns test and gate execution to `gpt-5.6-terra` with
 reasoning effort `max`. If a test or gate fails, retain its exact output and
 assign root-cause diagnosis, adjacent-path review, implementation, and the
-deterministic regression to `gpt-5.6-sol` with reasoning effort `max`. Terra
+deterministic regression to `gpt-6-astra` with reasoning effort `max`. Terra
 then reruns the affected test matrix. This division does not relax any gate or
 authorize a simulator write; the normal plan-hash and `--apply` boundaries
 still control all testnet mutations.
+
+Both release gates export `WARP_TEST_ENV_FAIL_FAST=1` before running tests.
+This makes the server's default test environment fail on its first assertion,
+fatal error, or panic instead of accepting a later successful retry. Abandoned
+environment teardown is also a release failure, even if its callback passed.
+Invalid attempt counts, failure followed by skip, nonreturning lifecycle
+callbacks, and late or cleanup assertions cannot turn a failure into a pass. Unset or
+`0` keeps development defaults; malformed settings fail closed. Explicit retry
+state-machine meta-tests retain their deliberately selected retry policy. Keep
+the complete first-failure log even when a later independent run passes.
 
 ## Host concurrency
 
@@ -39,6 +49,17 @@ swarms, and the operator services concurrently. An individual process may show
 the complete supervisor process group to measure campaign-wide CPU use. Chain
 mutations sharing a signer and causally ordered lineage transitions remain
 serial by design.
+
+The offline release tests separately cap Go's parallel test roots with
+`-parallel=4`. Every test using the cached full 1,000-miner/202-candidate fixture
+receives a detached graph and joins that bounded parallel group. Public replay
+uses at most four independent TLS views at a time, retaining all 17 rejection
+cases and the accepted graph. Signed bytes are immutable; maps, histories,
+probes, and HTTP clients are isolated per view. A transport failure or a
+different rejection reason fails the case. All workers join and report in
+canonical case order; neither the test census nor the gate deadlines are
+reduced to obtain a pass. This test-only scheduling does not alter live
+transaction ordering or production verification limits.
 
 ## Pre-launch approval
 
@@ -83,16 +104,16 @@ node plus a physically independent observer. Evidence uses the existing shared
 `server/blob` MinIO configuration and bucket; no second object store is started.
 MinIO and Subtensor are the only external shared services.
 
-The active release pin is Subtensor runtime 453, transaction version 1, source
-tag `v453`, commit `823bdcbc58a29f60b243be4737a7c72b34ac7d93`, and finalized
-Wasm storage hash `0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4`.
-The mandatory release gate also executes the exact v451/v452/v453 on-chain
+The active release pin is Subtensor runtime 454, transaction version 1, source
+tag `v454`, commit `14cde6410fe8ec81a940e290c56f94a632a0988d`, and finalized
+Wasm storage hash `0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef`.
+The mandatory release gate also executes the exact v451/v452/v453/v454 on-chain
 artifacts under a storage-free host boundary and reproduces the complete
 version, code and metadata identities in
 `docs/spec/runtime-metadata-artifacts.json`. The source-to-chain identity and five-delta compatibility review are recorded in
-[`docs/spec/runtime-v453-audit.md`](../docs/spec/runtime-v453-audit.md).
+[`docs/spec/runtime-v454-audit.md`](../docs/spec/runtime-v454-audit.md).
 
-Runtime 453 retains the distinction between atomic alpha transfers (`TransferToggle`, managed by
+Runtime 454 retains the distinction between atomic alpha transfers (`TransferToggle`, managed by
 `sudo_set_toggle_transfer`) from the one-time trading/emission activation
 (`SubtokenEnabled`, managed by the subnet owner's `start_call`). The harness
 checks these as distinct storage postconditions.
@@ -107,7 +128,7 @@ validator, requires the reserve to remain above 60%, and retains at least 2,000
 alpha at the source. The exact amounts are approval-bound and rechecked against
 live price, registration, lock, collateral, majority, and remainder immediately
 before signing. A changed or unavailable constraint stops without broadcasting.
-Runtime 453 retains each coldkey's entitlement as a `SafeFloat` share even though
+Runtime 454 retains each coldkey's entitlement as a `SafeFloat` share even though
 `transfer_stake_and_hotkey` conserves the exact integer amount in the hotkey
 aggregate. `getStake` may consequently floor the destination entitlement by one
 rao. Plan schema v8 binds that maximum shortfall explicitly, adds one rao to
@@ -155,7 +176,8 @@ the recorded block. Partial metadata or differing observer formats fail closed.
 
 Demand custody crosses two runtime share pools: a same-coldkey `moveStake` to
 the reserve hotkey and a `transferStake` to the immutable sink coldkey. Runtime
-453 retains v452's one-rao floor for each destination entitlement, so every
+454 retains the one-rao floor present in v452/v453 for each destination
+entitlement, so every
 reserve call stages exactly two allowance rao and requires the final sink delta
 to remain in `[principal, principal+2]`. The plan binds the number of reserve
 calls and this per-call allowance in schema v9. Schema v8 remains byte-for-byte
@@ -182,7 +204,7 @@ immutables and Solidity metadata; any executable custody drift fails closed.
 The new implementation is additive, while the reserve/vault/proxy addresses and
 their historical evidence remain unchanged.
 
-Runtime 453 also raises a subnet's burn after successful registration. The
+Runtime 454 also raises a subnet's burn after successful registration. The
 release plan therefore reserves at most `100000000` rao per registration and
 binds that same ceiling into every native `register_limit` and EVM
 `registerLimit` action. EVM callers are funded at their SS58 mirrors and pass
@@ -233,9 +255,14 @@ shortfall without persisting or broadcasting transaction bytes.
 - Network reachability to the selected operational Substrate/EVM pair, public
   comparison endpoints, and existing MinIO service. Private fallback additionally
   requires the overlay gateway.
-- Rust 1.89 with Cargo, plus `curl`, `jq`, `sha256sum` and `xxd`. The first
-  exact-runtime gate builds its pinned restricted Wasm executor in the sibling
-  `temp/runtime-metadata-probe-target` cache; later gates reuse that target.
+- Rust 1.89 with Cargo, plus `curl`, `jq`, `sha256sum` and `xxd`, solely for
+  release-time compatibility checks against the upstream Subtensor runtime.
+  No miner, validator, operator, contract, or simulator service is implemented
+  in or launches Rust. The first exact-runtime gate builds the audit-only,
+  pinned restricted Wasm executor from `tools/runtime-metadata-probe` into the
+  sibling `temp/runtime-metadata-probe-target` cache; later gates reuse that
+  target. Selected `cargo test` commands also run in a clean temporary checkout
+  of upstream Subtensor v454 and do not add a runtime dependency to this stack.
 - Foundry 1.7.1 build commit
   `4072e48705af9d93e3c0f6e29e93b5e9a40caed8` only for developer
   rebuild/review. The release gate also requires the exact clean, commit-pinned
@@ -262,7 +289,17 @@ go run ./sim-testnet release-lock --config sim-testnet/testnet.yml
 Then install those exact bytes with one atomic replacement:
 
 ```bash
-go run ./sim-testnet release-lock --config sim-testnet/testnet.yml --apply
+SN_REPO="$(pwd -P)"
+WORKSPACE="$(dirname "$SN_REPO")"
+release_head="$(git rev-parse HEAD)"
+build_utc="$(date -u +%Y%m%dT%H%M%SZ)"
+SIM_TESTNET_RELEASE_DIR="$WORKSPACE/temp/sim-testnet-lock-${release_head}-${build_utc}"
+SIM_TESTNET_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet"
+mkdir -p "$SIM_TESTNET_RELEASE_DIR"
+go build -trimpath -buildvcs=true -o "$SIM_TESTNET_BINARY" ./sim-testnet
+go version -m "$SIM_TESTNET_BINARY"
+sha256sum "$SIM_TESTNET_BINARY"
+"$SIM_TESTNET_BINARY" release-lock --config sim-testnet/testnet.yml --apply
 ```
 
 The apply form refuses a missing or dirty checkout, a checkout that advances
@@ -270,26 +307,43 @@ during observation, an incomplete observation, a symlinked or escaping lock
 path, or lock bytes changed since configuration load. It intentionally leaves
 the `sn` worktree dirty only by the updated `deploy/testnet/release.lock.yml`;
 review and commit that file before running `doctor` or refreshing again.
+The temporary executable must be built from a clean commit already equal to
+`origin/main` and invoked by that exact absolute, nonsymlink path. A relative,
+PATH-resolved, dirty, unstamped, non-`-trimpath`, stale, or unpushed executable
+cannot write even when it is given `--apply`.
 
 ## Build and read-only preflight
 
 From the `sn` repository:
 
 ```bash
-go build -trimpath -o build/sim-testnet ./sim-testnet
-go build -trimpath -o build/sim-testnet-light ./sim-testnet
+SN_REPO="$(pwd -P)"
+WORKSPACE="$(dirname "$SN_REPO")"
+release_head="$(git rev-parse HEAD)"
+build_utc="$(date -u +%Y%m%dT%H%M%SZ)"
+SIM_TESTNET_RELEASE_DIR="$WORKSPACE/temp/sim-testnet-${release_head}-${build_utc}"
+SIM_TESTNET_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet"
+SIM_TESTNET_LIGHT_BINARY="$SIM_TESTNET_RELEASE_DIR/sim-testnet-light"
+SIM_TESTNET_STATE_DIR="$SN_REPO/sim-testnet/runs/ur-subnet-testnet-v1-attempt-4"
+mkdir -p "$SIM_TESTNET_RELEASE_DIR"
+go build -trimpath -buildvcs=true -o "$SIM_TESTNET_BINARY" ./sim-testnet
+go build -trimpath -buildvcs=true -o "$SIM_TESTNET_LIGHT_BINARY" ./sim-testnet
+go version -m "$SIM_TESTNET_BINARY"
+sha256sum "$SIM_TESTNET_BINARY" "$SIM_TESTNET_LIGHT_BINARY"
 
-./build/sim-testnet doctor \
+"$SIM_TESTNET_BINARY" doctor \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --format json
 
 # Same release checks and topology, isolated state/artifact names, and the
 # side-by-side warp-synced lightnode RPC selected by the executable name.
-./build/sim-testnet-light doctor --format json
+"$SIM_TESTNET_LIGHT_BINARY" doctor --format json
 
-./build/sim-testnet plan \
+"$SIM_TESTNET_BINARY" plan \
   --config sim-testnet/testnet.yml \
-  --format json > /tmp/ur-subnet-testnet-plan.json
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
+  --format json > /home/by/urnetwork/temp/ur-subnet-testnet-plan.json
 ```
 
 `doctor` checks the release lock, repository source hashes, wallet proof,
@@ -307,7 +361,7 @@ all non-secret values resolved from the vault, not only their YAML references. T
 signed policy has its own canonical hash. Neither command submits a transaction or
 extrinsic.
 
-Runtime-453 transfer economics are approval-bound explicitly: the exact
+Runtime-454 transfer economics are approval-bound explicitly: the exact
 finalized Wasm hash must match the release lock, and that block's
 `SubtensorModule.InitialMinTransfer` metadata constant—the value used by the
 runtime's internal `DefaultMinTransfer` function—must equal
@@ -338,14 +392,16 @@ all release binaries are preflighted before a transaction-capable executor opens
 
 ```bash
 # Optional: converge chain/contracts/config without starting services.
-./build/sim-testnet setup \
+"$SIM_TESTNET_BINARY" setup \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
 # Converge setup, start the persistent topology, run the mandatory M0B
 # precompile-conformance gate, prove readiness, and run smoke.
-./build/sim-testnet launch \
+"$SIM_TESTNET_BINARY" launch \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH \
   --detach
 ```
@@ -354,8 +410,9 @@ The journal records intent, signed bytes/nonce, broadcast, inclusion, finality a
 postcondition. If the command is interrupted, use the same approval:
 
 ```bash
-./build/sim-testnet resume \
+"$SIM_TESTNET_BINARY" resume \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH \
   --detach
 ```
@@ -445,27 +502,31 @@ intent, ceiling, finalized receipt, postcondition and signed evidence record.
 ## Observe and run release campaigns
 
 ```bash
-./build/sim-testnet status  --config sim-testnet/testnet.yml --format json
-./build/sim-testnet inspect --config sim-testnet/testnet.yml --format json
-./build/sim-testnet analyze --config sim-testnet/testnet.yml --format json
-./build/sim-testnet tail    --config sim-testnet/testnet.yml
+"$SIM_TESTNET_BINARY" status  --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
+"$SIM_TESTNET_BINARY" inspect --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
+"$SIM_TESTNET_BINARY" analyze --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
+"$SIM_TESTNET_BINARY" tail    --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR"
 
-./build/sim-testnet scenario --name precompile-conformance \
+"$SIM_TESTNET_BINARY" scenario --name precompile-conformance \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
-./build/sim-testnet scenario --name release-1.0 \
+"$SIM_TESTNET_BINARY" scenario --name release-1.0 \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
-./build/sim-testnet scenario --name production-soak \
+"$SIM_TESTNET_BINARY" scenario --name production-soak \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 
 # Recommended uninterrupted M2 -> M3 release-candidate campaign. It adopts
 # only exact signed clean phase markers and runs the first missing phase.
-./build/sim-testnet scenario --name release-candidate \
+"$SIM_TESTNET_BINARY" scenario --name release-candidate \
   --config sim-testnet/testnet.yml \
+  --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_PLAN_HASH
 ```
 
@@ -644,15 +705,19 @@ secrets, evidence and all chain state. Retirement is a separate future-effective
 hash-approved on-chain plan and is dry-run by default:
 
 ```bash
-./build/sim-testnet stop --config sim-testnet/testnet.yml
-./build/sim-testnet retire --config sim-testnet/testnet.yml --format json
-./build/sim-testnet retire --config sim-testnet/testnet.yml \
+"$SIM_TESTNET_BINARY" stop --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR"
+"$SIM_TESTNET_BINARY" retire --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" --format json
+"$SIM_TESTNET_BINARY" retire --config sim-testnet/testnet.yml --state-dir "$SIM_TESTNET_STATE_DIR" \
   --apply --plan-hash 0xREVIEWED_RETIREMENT_PLAN_HASH
 ```
 
 Retirement deactivates operator versions at the next epoch. It never deletes the
 immutable vault, reserve, prior entitlements, claims, MinIO history, role store, or
 local run evidence.
+`stop` remains available during source repair or release-lock drift. It does
+not make chain writes and retains its independent exact PID, process start-time,
+executable, and argv ownership checks so a failed campaign cannot linger merely
+because its checkout is being repaired.
 
 ## Local verification
 

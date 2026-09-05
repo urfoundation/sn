@@ -9,6 +9,7 @@ import (
 )
 
 func TestFinalSemanticOutputsRemainOutsideClosedCampaignFileSet(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	stateDir := t.TempDir()
 	runDir := filepath.Join(stateDir, "runs", "release-run")

@@ -36,14 +36,14 @@ policy:
       numerator: 1
       denominator: 4
     maximum_head_fleets: 200
-    # Runtime 453 retains the native getter at 65535. Release validators pin
+    # Runtime 454 retains the native getter at 65535. Release validators pin
     # this feasible two-NO bootstrap cap in the signed policy instead.
     max_weight_limit_u16: 32768
     empty_channel: cede_to_nonempty
     arithmetic: integer_rational_v1
   deposit:
     unit: rao_per_gib
-    # Runtime 453 retains the reserve movement floor observed on the live subnet.
+    # Runtime 454 retains the reserve movement floor observed on the live subnet.
     # Ten alpha leaves a wide margin above that dynamic minimum.
     epoch_cap_rao_per_operator: 10000000000
     # Funds both NOs through five accelerated epochs, one deliberately dishonest

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/urnetwork/connect"
 )
@@ -66,6 +67,14 @@ type verifyAdversary struct {
 	lastRealAssignSize map[int]int
 	rateBoundDone      map[int]bool
 	rateBoundAttempts  map[int]uint64
+	latency            adversaryLatencyWindow
+	plaintextOnce      sync.Once
+	plaintextRejects   uint64
+	plaintextErr       error
+	controlLatencies   []int64
+	poisonLatencies    []int64
+	completedByNo      map[int]uint64
+	attemptedByNo      map[int]uint64
 }
 
 func newVerifyAdversary(cfg *ResolvedConfig, roles *RoleSecrets, client *adversaryHTTP, faults *adversaryFaultWindow) (*verifyAdversary, error) {
@@ -73,6 +82,7 @@ func newVerifyAdversary(cfg *ResolvedConfig, roles *RoleSecrets, client *adversa
 		cfg: cfg, http: client, faults: faults, validators: map[int]verifyAdversaryIdentity{},
 		providerSources: map[int]map[connect.Id]string{}, seedProviders: map[int][]connect.Id{},
 		lastRealAssignSize: map[int]int{}, rateBoundDone: map[int]bool{}, rateBoundAttempts: map[int]uint64{},
+		completedByNo: map[int]uint64{}, attemptedByNo: map[int]uint64{},
 	}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		label := fmt.Sprintf("validator-2-no-%d", operator)
@@ -127,6 +137,65 @@ func newVerifyAdversary(cfg *ResolvedConfig, roles *RoleSecrets, client *adversa
 
 func (self *verifyAdversary) ID() string                         { return "verify-replay-poison" }
 func (self *verifyAdversary) FaultWindow() *adversaryFaultWindow { return self.faults }
+
+// Derives phase-specific auxiliary values from sampled control and poison work.
+func (self *verifyAdversary) supplementalMetrics(operator int, phase adversarySamplePhase, poison bool, duration time.Duration) (map[string]uint64, error) {
+	self.plaintextOnce.Do(func() {
+		self.plaintextRejects, self.plaintextErr = adversaryExternalPlaintextEndpointRejections()
+	})
+	if self.plaintextErr != nil {
+		return nil, self.plaintextErr
+	}
+	value := duration.Milliseconds()
+	if value < 0 {
+		return nil, errors.New("verify adversary elapsed time is negative")
+	}
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if phase == adversaryControlPhase {
+		self.controlLatencies = append(self.controlLatencies, value)
+	} else if poison {
+		self.poisonLatencies = append(self.poisonLatencies, value)
+	}
+	self.attemptedByNo[operator]++
+	self.completedByNo[operator]++
+	var maximum, minimum uint64
+	first := true
+	var attempts, completed uint64
+	for noID, noAttempts := range self.attemptedByNo {
+		if noAttempts == 0 {
+			continue
+		}
+		rate := self.completedByNo[noID] * 1_000_000 / noAttempts
+		if first || rate > maximum {
+			maximum = rate
+		}
+		if first || rate < minimum {
+			minimum = rate
+		}
+		first = false
+		attempts += noAttempts
+		completed += self.completedByNo[noID]
+	}
+	if first || attempts == 0 || completed > attempts {
+		return nil, errors.New("verify adversary quality counters are malformed")
+	}
+	result := map[string]uint64{
+		"external_plaintext_endpoint_rejections": self.plaintextRejects,
+		"p99_latency_ms":                         self.latency.Observe(duration),
+		"quality_delta_by_no":                    maximum - minimum,
+		"abandonment_rate_ppm":                   (attempts - completed) * 1_000_000 / attempts,
+	}
+	if len(self.controlLatencies) != 0 && len(self.poisonLatencies) != 0 {
+		control := latencyQuantile(self.controlLatencies, 95, 100)
+		attack := latencyQuantile(self.poisonLatencies, 95, 100)
+		if control < 0 || attack < 0 {
+			return nil, errors.New("verify adversary latency evidence is negative")
+		}
+		result["real_poison_p95_ratio_ppm"] = uint64(attack) * 1_000_000 / max64(1, uint64(control))
+	}
+	return result, nil
+}
 
 func (self *verifyAdversary) sampleError(operator int, err error, requests, maximumInFlight uint64) adversarySampleResult {
 	if self.faults.Expected(fmt.Sprintf("operator-%d-api", operator)) {
@@ -622,11 +691,29 @@ func (self *verifyAdversary) rateBound(ctx context.Context, operator int, sequen
 	return fmt.Sprintf("operator=%d source_bound_after=%d", operator, limit), uint64(limit + 1), true, nil
 }
 
-func (self *verifyAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) adversarySampleResult {
+func (self *verifyAdversary) Sample(ctx context.Context, phase adversarySamplePhase, sequence uint64) (result adversarySampleResult) {
+	started := time.Now()
 	// Five-sample blocks begin with a real control walk for the same operator
 	// that receives the following four attacks. This prevents a poison-size
 	// comparison from relying on another operator's response shape.
 	operator := 1 + int((sequence/5)%uint64(self.cfg.Config.Topology.Operators))
+	poisonSample := false
+	defer func() {
+		if result.Outcome != adversaryOutcomeSuccess && result.Outcome != adversaryOutcomeExpectedRejection {
+			return
+		}
+		metrics, err := self.supplementalMetrics(operator, phase, poisonSample, time.Since(started))
+		if err != nil {
+			result = self.sampleError(operator, err, result.Requests, result.MaxInFlight)
+			return
+		}
+		if result.Metrics == nil {
+			result.Metrics = map[string]uint64{}
+		}
+		for name, value := range metrics {
+			result.Metrics[name] = value
+		}
+	}()
 	if phase == adversaryControlPhase {
 		detail, requests, integrity, err := self.walk(ctx, operator, sequence, false)
 		if err != nil {
@@ -642,6 +729,7 @@ func (self *verifyAdversary) Sample(ctx context.Context, phase adversarySamplePh
 		}
 		return adversarySampleResult{Outcome: adversaryOutcomeSuccess, Detail: detail, Requests: requests, MaxInFlight: 2, Metrics: integrity.metrics()}
 	case 1:
+		poisonSample = true
 		detail, requests, err := self.poison(ctx, operator, sequence)
 		if err != nil {
 			return self.sampleError(operator, err, requests, 1)

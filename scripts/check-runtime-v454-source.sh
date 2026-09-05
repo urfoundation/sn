@@ -2,17 +2,17 @@
 set -euo pipefail
 
 sn_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-manifest="$sn_repo/docs/spec/runtime-v453-source.sha256"
+manifest="$sn_repo/docs/spec/runtime-v454-source.sha256"
 metadata_manifest="$sn_repo/docs/spec/runtime-metadata-static-source.sha256"
 repository="https://github.com/RaoFoundation/subtensor"
 raw_repository="https://raw.githubusercontent.com/RaoFoundation/subtensor"
-tag="v453"
-commit="823bdcbc58a29f60b243be4737a7c72b34ac7d93"
-expected_files=12
-expected_metadata_files=9
+tag="v454"
+commit="14cde6410fe8ec81a940e290c56f94a632a0988d"
+expected_files=24
+expected_metadata_files=12
 
 [[ -f "$manifest" ]] || {
-  echo "runtime 453 source manifest is missing: $manifest" >&2
+  echo "runtime 454 source manifest is missing: $manifest" >&2
   exit 1
 }
 [[ -f "$metadata_manifest" ]] || {
@@ -85,7 +85,7 @@ if [[ "$count" -ne "$expected_files" ]]; then
   exit 1
 fi
 
-# Pin corroborating source and upstream integration tests for the three
+# Pin corroborating source and upstream integration tests for the four
 # reviewed artifacts. The separate exact-Wasm checker is the authoritative
 # state-independence and byte-identity gate for metadata reuse.
 declare -A resolved_metadata_refs=()
@@ -98,7 +98,7 @@ while read -r metadata_ref_kind metadata_ref_name metadata_commit expected path 
   }
   metadata_ref="$metadata_ref_kind:$metadata_ref_name"
   case "$metadata_ref:$metadata_commit" in
-    head:release-v451:d78d9cc6a6ee4d805f74a35414baaef8be025a5f|tag:v452:da06f033663896ef2fdbbfc3ecc68ca908fba0f5|tag:v453:823bdcbc58a29f60b243be4737a7c72b34ac7d93) ;;
+    head:release-v451:d78d9cc6a6ee4d805f74a35414baaef8be025a5f|tag:v452:da06f033663896ef2fdbbfc3ecc68ca908fba0f5|tag:v453:823bdcbc58a29f60b243be4737a7c72b34ac7d93|tag:v454:14cde6410fe8ec81a940e290c56f94a632a0988d) ;;
     *)
       echo "unreviewed runtime metadata source identity: $metadata_ref_kind $metadata_ref_name $metadata_commit" >&2
       exit 1

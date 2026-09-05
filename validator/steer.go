@@ -376,6 +376,7 @@ type Steerer struct {
 type depositLedger struct {
 	conviction     DepositSums // noId → cumulative all-time α (rao)
 	scannedThrough uint64      // highest block folded into conviction (0 = none)
+	scannedHash    [32]byte    // canonical finalized identity retained with the cursor
 	started        bool
 }
 
@@ -597,48 +598,60 @@ func (self *Steerer) cachedClientKey(id connect.Id) ([32]byte, bool, error) {
 // incrementally cached cumulant — only blocks past the last scan are read, so
 // the genesis-to-tip walk happens once). Returns the epoch and conviction sums.
 func (self *Steerer) gatherDeposits(epoch *big.Int) (epochDeposits DepositSums, conviction DepositSums, err error) {
-	tip, err := self.chain.BlockNumber()
+	ctx := context.Background()
+	tip, tipHash, err := self.chain.FinalizedBlockContext(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("block number: %w", err)
+		return nil, nil, fmt.Errorf("finalized deposit checkpoint: %w", err)
 	}
-
-	// All-time conviction (§7.2 — cumulative locked α across every epoch sets the
-	// tier). Extend the cache to the tip; the first tempo scans from genesis.
-	if self.deposits.conviction == nil {
-		self.deposits.conviction = DepositSums{}
+	if epoch == nil || epoch.Sign() < 0 || epoch.BitLen() > 256 {
+		return nil, nil, errors.New("deposit epoch is invalid")
 	}
-	from := uint64(0)
+	finalizedEpoch, err := chainViewAtHashContext(ctx, self.chain, tip, tipHash, self.chain.st.PackEpoch(), self.chain.st.UnpackEpoch)
+	if err != nil || finalizedEpoch == nil || finalizedEpoch.Cmp(epoch) != 0 {
+		return nil, nil, fmt.Errorf("deposit epoch differs from the finalized contract epoch: %v", err)
+	}
+	start, err := chainViewAtHashContext(ctx, self.chain, tip, tipHash, self.chain.st.PackEpochStartBlock(), self.chain.st.UnpackEpochStartBlock)
+	if err != nil || start > tip {
+		return nil, nil, fmt.Errorf("finalized epoch deposit start is invalid: %v", err)
+	}
+	// Retain both the previous finalized hash and cursor. A fork, head
+	// regression, or failed second scan leaves the entire ledger untouched.
 	if self.deposits.started {
-		from = self.deposits.scannedThrough + 1
+		if self.deposits.scannedThrough > tip || self.deposits.scannedHash == ([32]byte{}) {
+			return nil, nil, errors.New("cached deposit checkpoint is ahead of finalized state or has no hash")
+		}
+		cachedHash, err := self.chain.BlockHashContext(ctx, self.deposits.scannedThrough)
+		if err != nil || cachedHash != self.deposits.scannedHash {
+			return nil, nil, fmt.Errorf("cached deposit checkpoint is no longer canonical: %v", err)
+		}
 	}
-	if from <= tip {
-		delta, err := self.chain.DepositedSums(from, tip, nil)
+	delta := DepositSums{}
+	if !self.deposits.started || self.deposits.scannedThrough < tip {
+		from := uint64(0)
+		if self.deposits.started {
+			// scannedThrough < tip proves that this increment cannot wrap.
+			from = self.deposits.scannedThrough + 1
+		}
+		delta, err = self.chain.depositedSumsAtFinalizedContext(ctx, from, tip, nil, tip, tipHash)
 		if err != nil {
 			return nil, nil, fmt.Errorf("conviction scan [%d,%d]: %w", from, tip, err)
 		}
-		for noId, amount := range delta {
-			if self.deposits.conviction[noId] == nil {
-				self.deposits.conviction[noId] = new(big.Int)
-			}
-			self.deposits.conviction[noId].Add(self.deposits.conviction[noId], amount)
-		}
 	}
-	self.deposits.scannedThrough = tip
-	self.deposits.started = true
-
-	// Open epoch's deposits (§8.1 the demand signal): a fresh scan bounded by the
-	// epoch's block window and filtered to this epoch (topic1) — a bounded window,
-	// not a cumulant, so it is re-read each tempo rather than cached.
-	start := uint64(0)
-	if s, err := self.chain.EpochStartBlock(); err != nil {
-		fmt.Printf("steer: epochStartBlock read failed (%v) — scanning the open epoch from genesis (epoch topic filter keeps it exact)\n", err)
-	} else {
-		start = s
-	}
-	epochDeposits, err = self.chain.DepositedSums(start, tip, epoch)
+	epochDeposits, err = self.chain.depositedSumsAtFinalizedContext(ctx, start, tip, epoch, tip, tipHash)
 	if err != nil {
 		return nil, nil, fmt.Errorf("epoch deposit scan [%d,%d]: %w", start, tip, err)
 	}
+	conviction = DepositSums{}
+	for noID, amount := range self.deposits.conviction {
+		conviction[noID] = new(big.Int).Set(amount)
+	}
+	for noID, amount := range delta {
+		if conviction[noID] == nil {
+			conviction[noID] = new(big.Int)
+		}
+		conviction[noID].Add(conviction[noID], amount)
+	}
+	self.deposits = depositLedger{conviction: conviction, scannedThrough: tip, scannedHash: tipHash, started: true}
 	return epochDeposits, self.deposits.conviction, nil
 }
 

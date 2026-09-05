@@ -21,8 +21,8 @@ const (
 type attemptBoundaryRPC interface {
 	Snapshot(context.Context) (AttemptBoundary, error)
 	Validate(context.Context, AttemptBoundary) error
-	Hotkeys(context.Context, uint64) (map[[32]byte]uint16, error)
-	Binding(context.Context, uint64, uint64, connect.Id) (stabi.BindingAtOutput, error)
+	Hotkeys(context.Context, AttemptBoundary) (map[[32]byte]uint16, error)
+	Binding(context.Context, AttemptBoundary, connect.Id) (stabi.BindingAtOutput, error)
 }
 
 type attemptBoundaryBlock struct {
@@ -106,7 +106,7 @@ func (self *cachedAttemptBoundaryResolver) block(ctx context.Context, boundary A
 		}
 		var hotkeys map[[32]byte]uint16
 		if err == nil {
-			hotkeys, err = self.rpc.Hotkeys(ctx, boundary.EVMBlock)
+			hotkeys, err = self.rpc.Hotkeys(ctx, boundary)
 		}
 		self.stateLock.Lock()
 		delete(self.blockLoads, boundary.EVMBlock)
@@ -196,7 +196,7 @@ func (self *cachedAttemptBoundaryResolver) binding(ctx context.Context, block *a
 		self.bindingLoads[key] = load
 		self.stateLock.Unlock()
 
-		chainBinding, err := self.rpc.Binding(ctx, block.boundary.EVMBlock, block.boundary.SettlementEpoch, clientID)
+		chainBinding, err := self.rpc.Binding(ctx, block.boundary, clientID)
 		observation := AttemptBinding{ClientID: clientID, FleetID: zeroAttemptHash(), Hotkey: zeroAttemptHash()}
 		if err == nil && chainBinding.Active {
 			if chainBinding.Record.Cleaned || chainBinding.Record.Generation == 0 || chainBinding.Record.ValidFromEpoch > block.boundary.SettlementEpoch || chainBinding.Record.ValidToEpoch < block.boundary.SettlementEpoch {
@@ -268,7 +268,7 @@ func (self *chainAttemptBoundaryRPC) Snapshot(ctx context.Context) (AttemptBound
 	if err != nil {
 		return AttemptBoundary{}, fmt.Errorf("attempt finalized EVM head: %w", err)
 	}
-	epoch, err := chainViewAtContext(ctx, self.chain, block, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
+	epoch, err := chainViewAtHashContext(ctx, self.chain, block, hash, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
 	if err != nil || epoch == nil || !epoch.IsUint64() {
 		return AttemptBoundary{}, fmt.Errorf("attempt finalized EVM epoch: %w", err)
 	}
@@ -276,21 +276,33 @@ func (self *chainAttemptBoundaryRPC) Snapshot(ctx context.Context) (AttemptBound
 }
 
 func (self *chainAttemptBoundaryRPC) Validate(ctx context.Context, boundary AttemptBoundary) error {
+	expectedHash, hashErr := canonicalAttemptHex32("attempt EVM boundary hash", boundary.EVMBlockHash, false)
+	if hashErr != nil {
+		return hashErr
+	}
 	blockHash, err := self.chain.BlockHashContext(ctx, boundary.EVMBlock)
-	if err != nil || attemptHex32(blockHash) != boundary.EVMBlockHash {
+	if err != nil || blockHash != expectedHash {
 		return errors.New("attempt pinned EVM block hash is no longer canonical")
 	}
-	epoch, err := chainViewAtContext(ctx, self.chain, boundary.EVMBlock, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
+	epoch, err := chainViewAtHashContext(ctx, self.chain, boundary.EVMBlock, expectedHash, self.chain.coordinator.PackCurrentEpoch(), self.chain.coordinator.UnpackCurrentEpoch)
 	if err != nil || epoch == nil || !epoch.IsUint64() || epoch.Uint64() != boundary.SettlementEpoch {
 		return errors.New("attempt pinned EVM settlement epoch differs")
 	}
 	return nil
 }
 
-func (self *chainAttemptBoundaryRPC) Hotkeys(ctx context.Context, block uint64) (map[[32]byte]uint16, error) {
-	return self.chain.MetagraphHotkeysAtContext(ctx, block, self.netuid)
+func (self *chainAttemptBoundaryRPC) Hotkeys(ctx context.Context, boundary AttemptBoundary) (map[[32]byte]uint16, error) {
+	blockHash, err := canonicalAttemptHex32("attempt EVM boundary hash", boundary.EVMBlockHash, false)
+	if err != nil {
+		return nil, err
+	}
+	return self.chain.MetagraphHotkeysAtHashContext(ctx, boundary.EVMBlock, blockHash, self.netuid)
 }
 
-func (self *chainAttemptBoundaryRPC) Binding(ctx context.Context, block, epoch uint64, clientID connect.Id) (stabi.BindingAtOutput, error) {
-	return chainViewAtContext(ctx, self.chain, block, self.chain.coordinator.PackBindingAt([16]byte(clientID), new(big.Int).SetUint64(epoch)), self.chain.coordinator.UnpackBindingAt)
+func (self *chainAttemptBoundaryRPC) Binding(ctx context.Context, boundary AttemptBoundary, clientID connect.Id) (stabi.BindingAtOutput, error) {
+	blockHash, err := canonicalAttemptHex32("attempt EVM boundary hash", boundary.EVMBlockHash, false)
+	if err != nil {
+		return stabi.BindingAtOutput{}, err
+	}
+	return chainViewAtHashContext(ctx, self.chain, boundary.EVMBlock, blockHash, self.chain.coordinator.PackBindingAt([16]byte(clientID), new(big.Int).SetUint64(boundary.SettlementEpoch)), self.chain.coordinator.UnpackBindingAt)
 }

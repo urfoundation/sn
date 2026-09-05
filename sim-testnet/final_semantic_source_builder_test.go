@@ -236,19 +236,23 @@ func TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas(t *testin
 }
 
 func TestFinalSemanticBuilderBindsCompleteClosedCallInputs(t *testing.T) {
-	result := ScenarioResult{RunID: "run-1", Name: "release-1.0", EvidenceHash: finalTestHex(1), ConfigHash: finalTestHex(2)}
+	adversaries, _, matrixData := finalSemanticAdversarialTestCampaign(t)
+	result := ScenarioResult{RunID: "run-1", Name: "release-1.0", EvidenceHash: finalTestHex(1), ConfigHash: finalTestHex(2), AdversarialMatrix: adversaries.MatrixHash, Adversaries: adversaries}
 	terminal := ScenarioObservation{ObservationHash: finalTestHex(3), PublicIdentityCount: 1004}
 	history := []*ScenarioObservation{{ObservationHash: finalTestHex(4)}, &terminal}
 	resultData, _ := json.Marshal(result)
+	adversariesData, _ := json.Marshal(adversaries)
 	terminalData, _ := json.Marshal(terminal)
 	historyData, _ := json.Marshal(history)
 	archive := &finalSemanticArchive{
 		collected: &FinalSemanticCollectedInputs{
 			ScenarioResult:      FinalArtifactLocator{URI: "result"},
+			AdversarialMatrix:   FinalArtifactLocator{URI: "adversarial-matrix"},
+			Adversaries:         FinalArtifactLocator{URI: "adversaries"},
 			TerminalObservation: FinalArtifactLocator{URI: "terminal"},
 			ObservationHistory:  FinalArtifactLocator{URI: "history"},
 		},
-		files: map[string][]byte{"result": resultData, "terminal": terminalData, "history": historyData},
+		files: map[string][]byte{"result": resultData, "adversarial-matrix": matrixData, "adversaries": adversariesData, "terminal": terminalData, "history": historyData},
 	}
 	if err := archive.bindCallInputs(&result, &terminal, history); err != nil {
 		t.Fatalf("exact closed inputs rejected: %v", err)
@@ -492,7 +496,7 @@ func finalSemanticBuilderArchiveFixture(t *testing.T) (*finalSemanticArchive, *F
 		GenesisHash: public.GenesisHash, ChainID: public.ChainID, Netuid: public.Netuid,
 		Deployment: FinalContractDeploymentEvidence{CoordinatorProxy: proxy.Hex(), CoordinatorImplementation: implementation.Hex(), SettlementVault: vault.Hex(), ReserveSink: reserve.Hex()},
 	}
-	chain := &FinalCollectedChainSnapshot{EVMFromBlock: public.Contracts.DeployBlock}
+	chain := &FinalCollectedChainSnapshot{EVMFromBlock: public.Contracts.DeployBlock - 1_000, CurrentReleaseFromBlock: public.Contracts.DeployBlock}
 	return archive, source, chain, receipt, receiptPath
 }
 
@@ -515,6 +519,9 @@ func finalSemanticBuilderPutArchiveReceipt(t *testing.T, archive *finalSemanticA
 
 func TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt(t *testing.T) {
 	archive, source, chain, selected, selectedPath := finalSemanticBuilderArchiveFixture(t)
+	if chain.EVMFromBlock >= chain.CurrentReleaseFromBlock {
+		t.Fatal("fixture must distinguish the historical capture floor from the current release")
+	}
 	older := selected
 	older.GeneratedAt = time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	olderPath := finalSemanticBuilderPutArchiveReceipt(t, archive, older)
@@ -536,8 +543,9 @@ func TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt(t *testin
 
 func TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*finalSemanticArchive, *FinalSemanticEvidence, *FinalCollectedChainSnapshot, *FinalArchiveRetentionPreflight, string)
+		name      string
+		wantError string
+		mutate    func(*finalSemanticArchive, *FinalSemanticEvidence, *FinalCollectedChainSnapshot, *FinalArchiveRetentionPreflight, string)
 	}{
 		{name: "missing", mutate: func(archive *finalSemanticArchive, _ *FinalSemanticEvidence, _ *FinalCollectedChainSnapshot, _ *FinalArchiveRetentionPreflight, path string) {
 			delete(archive.files, path)
@@ -557,7 +565,7 @@ func TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt(t *tes
 			receipt.EVM.Endpoint = "https://other.example.test"
 			finalSemanticBuilderPutArchiveReceipt(t, archive, *receipt)
 		}},
-		{name: "insufficient configured span", mutate: func(archive *finalSemanticArchive, _ *FinalSemanticEvidence, _ *FinalCollectedChainSnapshot, receipt *FinalArchiveRetentionPreflight, path string) {
+		{name: "insufficient configured span", wantError: "archive-retention depth is insufficient", mutate: func(archive *finalSemanticArchive, _ *FinalSemanticEvidence, _ *FinalCollectedChainSnapshot, receipt *FinalArchiveRetentionPreflight, path string) {
 			delete(archive.files, path)
 			receipt.PlannedSpanBlocks--
 			finalSemanticBuilderPutArchiveReceipt(t, archive, *receipt)
@@ -572,13 +580,25 @@ func TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt(t *tes
 		}},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			archive, source, chain, receipt, path := finalSemanticBuilderArchiveFixture(t)
-			test.mutate(archive, source, chain, &receipt, path)
-			if err := archive.buildArchiveRetention(source, chain); err == nil {
-				t.Fatal("unbound archive-retention receipt was accepted")
-			}
-		})
+		archive, source, chain, receipt, path := finalSemanticBuilderArchiveFixture(t)
+		test.mutate(archive, source, chain, &receipt, path)
+		wantError := test.wantError
+		if wantError == "" {
+			wantError = "no fresh archive-retention receipt"
+		}
+		if err := archive.buildArchiveRetention(source, chain); err == nil || !strings.Contains(err.Error(), wantError) {
+			t.Fatalf("%s: unbound archive-retention receipt was accepted or failed at the wrong validation boundary: %v", test.name, err)
+		}
+	}
+}
+
+// Historical queries can begin before the active deployment, but a receipt
+// for that earlier generation cannot identify the current release.
+func TestFinalSemanticBuilderArchiveRetentionRejectsHistoricalFloorAsCurrentRelease(t *testing.T) {
+	archive, source, chain, _, _ := finalSemanticBuilderArchiveFixture(t)
+	chain.CurrentReleaseFromBlock = chain.EVMFromBlock
+	if err := archive.buildArchiveRetention(source, chain); err == nil || !strings.Contains(err.Error(), "contract identity differs") {
+		t.Fatalf("historical deployment boundary was accepted as the current release: %v", err)
 	}
 }
 
@@ -588,7 +608,7 @@ func TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix(t *testi
 		finalSemanticBuilderDepositLog(t, 1, 10, 60, 21, 0, 0x12),
 		finalSemanticBuilderDepositLog(t, 1, 10, 25, 22, 0, 0x13),
 	}
-	index, err := indexFinalSemanticEvents(&FinalCollectedChainSnapshot{EVMLogs: logs})
+	index, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot(logs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,6 +625,110 @@ func TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix(t *testi
 	}
 }
 
+// Decimal aliases cannot create a second wire identity for the same signed
+// deposit observation.
+func TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts(t *testing.T) {
+	index, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot([]finalCanonicalEVMLog{finalSemanticBuilderDepositLog(t, 1, 10, 100, 20, 0, 0x11)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := &finalSemanticArchive{runRoot: t.TempDir()}
+	for _, amount := range []string{"0100", "+100", " 100", "100.0", "0", "-1", ""} {
+		if _, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: amount, ObservedAtBlock: 20}, "noncanonical-amount"); err == nil || !strings.Contains(err.Error(), "canonical decimal") {
+			t.Fatalf("noncanonical observed amount %q was accepted: %v", amount, err)
+		}
+	}
+}
+
+// Even a zero-amount event after a matching prefix must be inspected and
+// rejected instead of being hidden by an early successful return.
+func TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent(t *testing.T) {
+	logs := []finalCanonicalEVMLog{
+		finalSemanticBuilderDepositLog(t, 1, 10, 100, 20, 0, 0x11),
+		finalSemanticBuilderDepositLog(t, 1, 10, 0, 21, 0, 0x12),
+	}
+	index, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot(logs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := &finalSemanticArchive{runRoot: t.TempDir()}
+	if _, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: "100", ObservedAtBlock: 21}, "nonpositive-event"); err == nil || !strings.Contains(err.Error(), "event amount is invalid") {
+		t.Fatalf("nonpositive Deposit event after a matching prefix was accepted: %v", err)
+	}
+}
+
+// A signed observation is the full deposit sum at its finalized block, not
+// any earlier prefix that happened to equal the reported amount.
+func TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		block    uint64
+		txIndex  uint64
+		logIndex uint64
+		sameTx   bool
+	}{
+		{name: "later log in same transaction", block: 21, logIndex: 1, sameTx: true},
+		{name: "later transaction in same block", block: 21, txIndex: 1, logIndex: 1},
+		{name: "later block", block: 22},
+	} {
+		logs := []finalCanonicalEVMLog{
+			finalSemanticBuilderDepositLog(t, 1, 10, 40, 20, 0, 0x11),
+			finalSemanticBuilderDepositLog(t, 1, 10, 60, 21, 0, 0x12),
+			finalSemanticBuilderDepositLog(t, 1, 10, 25, test.block, test.txIndex, 0x13),
+		}
+		logs[2].LogIndex = test.logIndex
+		if test.sameTx {
+			logs[2].TransactionHash = logs[1].TransactionHash
+		}
+		index, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot(logs))
+		if err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		archive := &finalSemanticArchive{runRoot: t.TempDir()}
+		if _, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: "100", ObservedAtBlock: test.block}, "stale-prefix"); err == nil || !strings.Contains(err.Error(), "does not equal") {
+			t.Fatalf("%s: stale signed deposit sum was accepted: %v", test.name, err)
+		}
+		receipt, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: "125", ObservedAtBlock: test.block}, "complete-prefix")
+		if err != nil || receipt.TransactionHash != logs[2].TransactionHash || receipt.Block.Number != test.block {
+			t.Fatalf("%s: full observed prefix was not selected: %+v, %v", test.name, receipt, err)
+		}
+	}
+}
+
+// Historical emitter events remain replayable by transaction without
+// contributing to a current release's same-operator, same-epoch deposit sum.
+func TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration(t *testing.T) {
+	historical := finalSemanticBuilderDepositLog(t, 1, 10, 200, 19, 0, 0x10)
+	retired := finalSemanticBuilderDepositLog(t, 1, 10, 300, 20, 1, 0x14)
+	retired.Address = "0x0000000000000000000000000000000000000005"
+	retired.LogIndex = 1
+	logs := []finalCanonicalEVMLog{
+		historical,
+		finalSemanticBuilderDepositLog(t, 1, 10, 40, 20, 0, 0x11),
+		retired,
+		finalSemanticBuilderDepositLog(t, 1, 10, 60, 21, 0, 0x12),
+	}
+	snapshot := finalSemanticBuilderDepositSnapshot(logs)
+	snapshot.ReleaseContractAddresses = append(snapshot.ReleaseContractAddresses, retired.Address)
+	index, err := indexFinalSemanticEvents(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.byName["Deposit"]) != 2 || len(index.byTx[historical.TransactionHash]) != 1 || len(index.byTx[retired.TransactionHash]) != 1 {
+		t.Fatal("historical deposit events were lost or entered the current deposit projection")
+	}
+	archive := &finalSemanticArchive{runRoot: t.TempDir()}
+	receipt, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: "100", ObservedAtBlock: 21}, "current-release-prefix")
+	if err != nil || receipt.TransactionHash != logs[3].TransactionHash {
+		t.Fatalf("current release deposit prefix differs: %+v, %v", receipt, err)
+	}
+	for _, amount := range []string{"200", "300", "600"} {
+		if _, err := archive.depositReceipt(index, validatorpkg.DepositAudit{NoID: 1, Epoch: 10, ObservedDepositRao: amount, ObservedAtBlock: 21}, "historical-prefix"); err == nil {
+			t.Fatalf("historical deposit amount %s entered the current release prefix", amount)
+		}
+	}
+}
+
 func finalSemanticBuilderDishonestDepositFixture(t *testing.T) (*finalSemanticArchive, *FinalSemanticEvidence, *ScenarioObservation, *finalSemanticEventIndex, finalCanonicalEVMLog) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
@@ -612,7 +736,7 @@ func finalSemanticBuilderDishonestDepositFixture(t *testing.T) (*finalSemanticAr
 	recoveryAmount := underAmount * 4
 	under := finalSemanticBuilderDepositLog(t, 2, 10, underAmount, 20, 0, 0x61)
 	recovery := finalSemanticBuilderDepositLog(t, 2, 11, recoveryAmount, 30, 0, 0x62)
-	index, err := indexFinalSemanticEvents(&FinalCollectedChainSnapshot{EVMLogs: []finalCanonicalEVMLog{under, recovery}})
+	index, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot([]finalCanonicalEVMLog{under, recovery}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,6 +801,40 @@ func TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery(t *te
 	}
 }
 
+// Every configured validator must contribute one distinct recovery decision;
+// terminal penalty evidence cannot substitute for a missing recovery audit.
+func TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*FinalSemanticEvidence)
+	}{
+		{name: "missing validator", mutate: func(source *FinalSemanticEvidence) { source.Validators = source.Validators[:1] }},
+		{name: "duplicate validator", mutate: func(source *FinalSemanticEvidence) { source.Validators[1] = source.Validators[0] }},
+		{name: "foreign validator", mutate: func(source *FinalSemanticEvidence) { source.Validators[1].ValidatorID = 3 }},
+	} {
+		archive, source, terminal, events, _ := finalSemanticBuilderDishonestDepositFixture(t)
+		test.mutate(source)
+		if _, err := archive.dishonestDepositReceipts(source, terminal, events); err == nil || !strings.Contains(err.Error(), "recovery validator census") {
+			t.Fatalf("%s: incomplete recovery validator census was accepted: %v", test.name, err)
+		}
+	}
+}
+
+// Validators can observe different finalized blocks, so each signed sum must
+// be checked at its own head even when both name the same recovery receipt.
+func TestFinalSemanticBuilderChecksEveryRecoveryObservationHead(t *testing.T) {
+	archive, source, terminal, events, recovery := finalSemanticBuilderDishonestDepositFixture(t)
+	later := finalSemanticBuilderDepositLog(t, 2, 11, 1, 31, 0, 0x63)
+	mutatedEvents, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot([]finalCanonicalEVMLog{events.byName["Deposit"][0].Log, recovery, later}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Validators[1].Cycles[0].Pools[0].ObservedAtBlock = later.BlockNumber
+	if _, err := archive.dishonestDepositReceipts(source, terminal, mutatedEvents); err == nil || !strings.Contains(err.Error(), "exact compliant deposit prefix") {
+		t.Fatalf("a validator's stale recovery sum at its later observed head was accepted: %v", err)
+	}
+}
+
 func TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions(t *testing.T) {
 	t.Run("arbitrary later deposit", func(t *testing.T) {
 		archive, source, terminal, events, _ := finalSemanticBuilderDishonestDepositFixture(t)
@@ -692,7 +850,7 @@ func TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions(t *tes
 			}
 			return logs[i].TransactionHash < logs[j].TransactionHash
 		})
-		mutatedEvents, err := indexFinalSemanticEvents(&FinalCollectedChainSnapshot{EVMLogs: logs})
+		mutatedEvents, err := indexFinalSemanticEvents(finalSemanticBuilderDepositSnapshot(logs))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -851,6 +1009,19 @@ func finalSemanticBuilderDishonestDecisionEvidence(t *testing.T) (*FinalSemantic
 		penaltyCycle.Commit.Block = ChainHead{Number: 11, Hash: finalTestHex(11)}
 		penaltyCycle.Reveal.Block = ChainHead{Number: 12, Hash: finalTestHex(12)}
 		penaltyCycle.Application.Block = ChainHead{Number: 13, Hash: finalTestHex(13)}
+		commitCall := *penaltyCycle.Commit.Call
+		commitCall.CommitExtrinsicHash = finalTestHex(byte(0xc0 + validatorIndex))
+		commitCall.RawCallSHA256 = finalTestHex(byte(0xc4 + validatorIndex))
+		commitCall.CiphertextSHA256 = finalTestHex(byte(0xc8 + validatorIndex))
+		commitCall.CiphertextBlake2 = finalTestHex(byte(0xcc + validatorIndex))
+		commitCall.CommitBlock, commitCall.RevealBlock, commitCall.ApplicationBlock = penaltyCycle.Commit.Block.Number, penaltyCycle.Reveal.Block.Number, 0
+		revealCall := commitCall
+		revealCall.Operation = finalNativeOperationReveal
+		applicationCall := commitCall
+		applicationCall.Operation = finalNativeOperationApplication
+		applicationCall.ApplicationBlock = penaltyCycle.Application.Block.Number
+		penaltyCycle.Commit.ExtrinsicHash = commitCall.CommitExtrinsicHash
+		penaltyCycle.Commit.Call, penaltyCycle.Reveal.Call, penaltyCycle.Application.Call = &commitCall, &revealCall, &applicationCall
 		penaltyCycle.EVMSnapshot = ChainHead{Number: 90, Hash: finalTestHex(90)}
 		for poolIndex := range penaltyCycle.Pools {
 			pool := &penaltyCycle.Pools[poolIndex]
@@ -879,22 +1050,33 @@ type finalSemanticDishonestChainReader struct {
 	corruptPenalty bool
 }
 
-func (r *finalSemanticDishonestChainReader) NativeWeights(ctx context.Context, netuid uint16, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
-	if r.evidence.DishonestDeposit != nil {
-		for _, decision := range r.evidence.DishonestDeposit.Penalties {
+func (self *finalSemanticDishonestChainReader) NativeWeights(ctx context.Context, netuid uint16, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
+	if self.evidence.DishonestDeposit != nil {
+		for _, decision := range self.evidence.DishonestDeposit.Penalties {
 			if decision.ValidatorUID == validatorUID && decision.Cycle.Application.Block == head {
 				uids, values := finalSubmittedValues(decision.Cycle.Submitted)
-				if r.corruptPenalty && len(values) != 0 {
+				if self.corruptPenalty && len(values) != 0 {
 					values[0]++
 				}
-				return FinalNativeWeightState{ValidatorUID: validatorUID, UIDs: uids, Values: values, Block: head}, r.exchange("substrate", "state_getStorage", head), nil
+				validatorHotkey := ""
+				for _, validator := range self.evidence.Validators {
+					if validator.ValidatorID == decision.ValidatorID {
+						validatorHotkey = validator.Hotkey
+					}
+				}
+				hotkey, err := finalNativeAccountHex(validatorHotkey)
+				if err != nil {
+					return FinalNativeWeightState{}, nil, err
+				}
+				return FinalNativeWeightState{ValidatorUID: validatorUID, ValidatorHotkey: hotkey, LastUpdate: decision.Cycle.Commit.Block.Number, UIDs: uids, Values: values, Block: head}, self.exchange("substrate", "state_getStorage", head), nil
 			}
 		}
 	}
-	return r.finalTestChainReader.NativeWeights(ctx, netuid, validatorUID, head)
+	return self.finalTestChainReader.NativeWeights(ctx, netuid, validatorUID, head)
 }
 
 func TestFinalSemanticDishonestDepositDecisionsAndPublicReplay(t *testing.T) {
+	t.Parallel()
 	evidence, pools, validators := finalSemanticBuilderDishonestDecisionEvidence(t)
 	if err := verifyFinalDishonestDeposit(evidence, pools, validators); err != nil {
 		t.Fatal(err)
@@ -904,7 +1086,7 @@ func TestFinalSemanticDishonestDepositDecisionsAndPublicReplay(t *testing.T) {
 		t.Fatalf("exact penalty/recovery public replay failed: %v", err)
 	}
 	reader.corruptPenalty = true
-	if _, err := executeFinalSemanticOnChain(context.Background(), evidence, reader); err == nil || !strings.Contains(err.Error(), "vector differs from signed intent") {
+	if _, err := executeFinalSemanticOnChain(context.Background(), evidence, reader); err == nil || !strings.Contains(err.Error(), "native applied vector differs from its exact signed vector") {
 		t.Fatalf("tampered public penalty vector was accepted: %v", err)
 	}
 
@@ -1124,6 +1306,22 @@ func finalSemanticBuilderNativeArchive(t *testing.T) (*finalSemanticArchive, *Fi
 	return &finalSemanticArchive{collected: collected, files: files}, chain
 }
 
+// Keeps focused deposit fixtures on the same explicit historical/current
+// boundary and complete emitter census required by live capture.
+func finalSemanticBuilderDepositSnapshot(logs []finalCanonicalEVMLog) *FinalCollectedChainSnapshot {
+	addresses := []string{
+		"0x0000000000000000000000000000000000000001",
+		"0x0000000000000000000000000000000000000002",
+		"0x0000000000000000000000000000000000000003",
+		"0x0000000000000000000000000000000000000004",
+	}
+	return &FinalCollectedChainSnapshot{
+		EVMFromBlock: 10, CurrentReleaseFromBlock: 20,
+		CurrentReleaseAddresses: addresses, ReleaseContractAddresses: append([]string(nil), addresses...),
+		FleetBatcher: addresses[3], EVMHead: ChainHead{Number: 100, Hash: finalTestHex(100)}, EVMLogs: logs,
+	}
+}
+
 func finalSemanticBuilderDepositLog(t *testing.T, noID, epoch, amount, block, txIndex uint64, seed byte) finalCanonicalEVMLog {
 	t.Helper()
 	contract, err := abi.JSON(strings.NewReader(CoordinatorABI))
@@ -1222,7 +1420,7 @@ func finalSemanticBuilderCollectedManifest(cfg *ResolvedConfig, runID, resultHas
 	}
 	collected := &FinalSemanticCollectedInputs{
 		Schema: finalSemanticCollectedInputsSchema, Phase: "release-1.0", RunID: runID, ResultHash: resultHash, Window: window,
-		Policy: dummy("policy", "policy"), ScenarioResult: dummy("scenario-result-candidate", "result"), TerminalObservation: dummy("scenario-terminal-observation", "terminal"), ObservationHistory: dummy("scenario-observation-history", "history"),
+		Policy: dummy("policy", "policy"), ScenarioResult: dummy("scenario-result-candidate", "result"), AdversarialMatrix: dummy("adversarial-matrix", "adversarial-matrix.json"), Adversaries: dummy("scenario-adversaries", "adversaries.json"), TerminalObservation: dummy("scenario-terminal-observation", "terminal"), ObservationHistory: dummy("scenario-observation-history", "history"),
 		ClosedInputBundles: []FinalArtifactLocator{dummy("closed-input-bundle", "placeholder")},
 	}
 	for epoch := window.FirstEpoch - 1; epoch < window.FirstEpoch+window.EpochCount; epoch++ {
@@ -1294,6 +1492,7 @@ func finalSemanticBuilderCarryEvidence(t *testing.T, rows []finalSemanticCarryRo
 			total := new(big.Int).Add(new(big.Int).Set(funded), carryIn)
 			rootReceipt := receipt("root-"+strconv.Itoa(index), block+1)
 			row.RootDisposition, row.Root, row.Status = "committed", &rootReceipt, 2
+			row.ExpiryBlock = block + 3
 			row.PayoutRoot, row.ArtifactHash = finalTestHex(byte(0x20+index)), finalTestHex(byte(0x40+index))
 			payout := artifact("payout-artifact", "payout-"+strconv.Itoa(index)+".json")
 			row.PayoutArtifact = &payout

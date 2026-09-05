@@ -5,6 +5,7 @@ package validator
 // bind state encoding, signed transactions, Wasm, or metadata.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,11 +16,11 @@ import (
 )
 
 const (
-	releaseRuntimeSpecVersion        = uint32(453)
+	releaseRuntimeSpecVersion        = uint32(454)
 	releaseRuntimeTransactionVersion = uint32(1)
 	releaseRuntimeStateVersion       = uint8(1)
-	releaseRuntimeCodeHash           = "0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4"
-	releaseRuntimeMetadataHash       = "0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce"
+	releaseRuntimeCodeHash           = "0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef"
+	releaseRuntimeMetadataHash       = "0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702"
 )
 
 func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
@@ -29,79 +30,54 @@ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
 		cfg.StateVersion != releaseRuntimeStateVersion ||
 		!strings.EqualFold(cfg.RuntimeCodeHash, releaseRuntimeCodeHash) ||
 		!strings.EqualFold(cfg.RuntimeMetadataHash, releaseRuntimeMetadataHash) {
-		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/453/1/1 artifact")
+		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/454/1/1 artifact")
 	}
 	return nil
 }
 
-func validatePinnedRuntimeHash(name, observed, expected string) error {
-	observedHash, err := parseHash32("observed "+name, observed)
-	if err != nil {
-		return err
-	}
-	expectedHash, err := parseHash32("configured "+name, expected)
-	if err != nil {
-		return err
-	}
-	if observedHash != expectedHash {
-		return fmt.Errorf("native %s %s, configured %s", name, observed, expected)
-	}
-	return nil
-}
-
-func authenticatePinnedNativeRuntimeAt(chain *crv4.Chain, cfg *ReleaseConfig, finalized types.Hash) error {
-	if chain == nil || cfg == nil || finalized == (types.Hash{}) {
+// authenticatePinnedNativeRuntimeAtContext binds a caller-selected finalized
+// block only while its public-RPC reads remain cancellable by that caller.
+func authenticatePinnedNativeRuntimeAtContext(ctx context.Context, chain *crv4.Chain, cfg *ReleaseConfig, finalized types.Hash) error {
+	if ctx == nil || chain == nil || cfg == nil || finalized == (types.Hash{}) {
 		return errors.New("native runtime identity context is incomplete")
 	}
 	if err := validateReleaseNativeRuntimeConfig(cfg); err != nil {
 		return err
 	}
-	version, err := crv4.RuntimeVersionAt(chain, finalized)
+	expected := crv4.RuntimeArtifactIdentity{
+		Version: crv4.RuntimeVersionIdentity{
+			SpecName:           "node-subtensor",
+			SpecVersion:        cfg.RuntimeSpec,
+			TransactionVersion: cfg.TransactionVersion,
+			StateVersion:       cfg.StateVersion,
+		},
+		CodeHash:     cfg.RuntimeCodeHash,
+		MetadataHash: cfg.RuntimeMetadataHash,
+	}
+	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, chain, finalized, expected)
 	if err != nil {
-		return err
+		return fmt.Errorf("native runtime at %s is not the configured node-subtensor/%d/%d/%d artifact: %w", finalized.Hex(), cfg.RuntimeSpec, cfg.TransactionVersion, cfg.StateVersion, err)
 	}
-	if version.SpecName != "node-subtensor" ||
-		version.SpecVersion != cfg.RuntimeSpec ||
-		version.TransactionVersion != cfg.TransactionVersion ||
-		version.StateVersion != cfg.StateVersion {
-		return fmt.Errorf(
-			"native runtime at %s is %s/%d/%d/%d, configured node-subtensor/%d/%d/%d",
-			finalized.Hex(), version.SpecName, version.SpecVersion, version.TransactionVersion, version.StateVersion,
-			cfg.RuntimeSpec, cfg.TransactionVersion, cfg.StateVersion,
-		)
-	}
-	codeHash, err := crv4.RuntimeCodeHashAt(chain, finalized)
-	if err != nil {
-		return fmt.Errorf("native runtime code hash at %s: %w", finalized.Hex(), err)
-	}
-	if err := validatePinnedRuntimeHash("code hash", codeHash, cfg.RuntimeCodeHash); err != nil {
-		return err
-	}
-	metadata, metadataHash, err := crv4.RuntimeMetadataAt(chain, finalized)
-	if err != nil {
-		return fmt.Errorf("native runtime metadata at %s: %w", finalized.Hex(), err)
-	}
-	if err := validatePinnedRuntimeHash("metadata hash", metadataHash, cfg.RuntimeMetadataHash); err != nil {
-		return err
-	}
-	chain.Meta = metadata
+	chain.Meta = artifact.Metadata
 	chain.Runtime = &types.RuntimeVersion{
-		SpecName:           version.SpecName,
-		SpecVersion:        types.U32(version.SpecVersion),
-		TransactionVersion: types.U32(version.TransactionVersion),
+		SpecName:           artifact.Version.SpecName,
+		SpecVersion:        types.U32(artifact.Version.SpecVersion),
+		TransactionVersion: types.U32(artifact.Version.TransactionVersion),
 	}
 	return nil
 }
 
-func authenticatePinnedNativeRuntime(chain *crv4.Chain, cfg *ReleaseConfig) (types.Hash, error) {
-	if chain == nil || chain.API == nil || chain.API.RPC == nil || chain.API.RPC.Chain == nil {
+// authenticatePinnedNativeRuntimeContext selects the canonical finalized head
+// and binds its complete reviewed artifact through caller-cancellable RPCs.
+func authenticatePinnedNativeRuntimeContext(ctx context.Context, chain *crv4.Chain, cfg *ReleaseConfig) (types.Hash, error) {
+	if ctx == nil || chain == nil || chain.API == nil || chain.API.Client == nil {
 		return types.Hash{}, errors.New("native runtime chain is unavailable")
 	}
-	finalized, err := chain.API.RPC.Chain.GetFinalizedHead()
+	finalized, err := crv4.FinalizedHeadContext(ctx, chain)
 	if err != nil {
 		return types.Hash{}, err
 	}
-	if err := authenticatePinnedNativeRuntimeAt(chain, cfg, finalized); err != nil {
+	if err := authenticatePinnedNativeRuntimeAtContext(ctx, chain, cfg, finalized); err != nil {
 		return types.Hash{}, err
 	}
 	return finalized, nil

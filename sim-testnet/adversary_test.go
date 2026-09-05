@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfoundation/sn/payoutartifact"
@@ -167,8 +168,280 @@ func TestAdversarialMetricCoverageRejectsUnmeasuredRow(t *testing.T) {
 	matrix := &AdversarialMatrix{Rows: []AdversarialMatrixRow{{
 		ID: "unmeasured", ActorIDs: []string{"operator-api-pressure"}, Metrics: []string{"never_emitted"},
 	}}}
-	if err := validateAdversarialMetricCoverage(matrix, releaseAdversaryMetricCatalog); err == nil || !strings.Contains(err.Error(), "no metric emitted") {
+	if err := validateAdversarialMetricCoverage(matrix, releaseAdversaryMetricCatalog); err == nil || !strings.Contains(err.Error(), "required metric never_emitted") {
 		t.Fatalf("unmeasured matrix row error=%v", err)
+	}
+}
+
+// Rejects a row whose mapped actor omits one required metric.
+func TestAdversarialMetricCoverageRejectsPartiallyMeasurableRow(t *testing.T) {
+	matrix := &AdversarialMatrix{Rows: []AdversarialMatrixRow{{
+		ID: "partially-measurable", ActorIDs: []string{"operator-api-pressure"}, Metrics: []string{"request_rate", "never_emitted"},
+	}}}
+	if err := validateAdversarialMetricCoverage(matrix, releaseAdversaryMetricCatalog); err == nil || !strings.Contains(err.Error(), "required metric never_emitted") {
+		t.Fatalf("partially measurable matrix row error=%v", err)
+	}
+}
+
+// Confirms every reviewed requirement maps to an actor that emits it.
+func TestAdversarialMatrixEveryRequiredMetricHasAnExactMappedActor(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	matrix, err := loadAdversarialMatrix(cfg.Repos.SN, cfg.Config.Scenarios.Adversaries.Matrix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range matrix.Rows {
+		for _, metric := range row.Metrics {
+			var owners []string
+			for _, actorID := range row.ActorIDs {
+				if releaseAdversaryMetricCatalog[actorID][metric] {
+					owners = append(owners, actorID)
+				}
+			}
+			if len(owners) == 0 {
+				t.Fatalf("row=%s metric=%s has no exact mapped actor", row.ID, metric)
+			}
+		}
+	}
+}
+
+// Rejects absent, false, diverging, or unfounded direct runtime state.
+func TestAdversaryCommitRevealRuntimeObservationFailsClosed(t *testing.T) {
+	hash := types.Hash{1}
+	left := adversaryCommitRevealObservation{Endpoint: "wss://operational.example", Finalized: 101, FinalizedHash: hash, Enabled: true, Tempo: 360, RevealPeriods: 2}
+	right := left
+	right.Endpoint = "wss://public.example"
+	delay, err := validateAdversaryCommitRevealObservations(left, right)
+	if err != nil || delay != 720 {
+		t.Fatalf("valid direct commit/reveal observation delay=%d error=%v", delay, err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*adversaryCommitRevealObservation, *adversaryCommitRevealObservation)
+	}{
+		{name: "malformed endpoint", mutate: func(left, _ *adversaryCommitRevealObservation) { left.Endpoint = "" }},
+		{name: "false agreement", mutate: func(left, right *adversaryCommitRevealObservation) { left.Enabled, right.Enabled = false, false }},
+		{name: "enabled disagreement", mutate: func(_, right *adversaryCommitRevealObservation) { right.Enabled = false }},
+		{name: "finalized disagreement", mutate: func(_, right *adversaryCommitRevealObservation) { right.Finalized++ }},
+		{name: "hash disagreement", mutate: func(_, right *adversaryCommitRevealObservation) { right.FinalizedHash[0]++ }},
+		{name: "zero tempo", mutate: func(left, _ *adversaryCommitRevealObservation) { left.Tempo = 0 }},
+		{name: "schedule disagreement", mutate: func(_, right *adversaryCommitRevealObservation) { right.RevealPeriods++ }},
+	} {
+		candidateLeft, candidateRight := left, right
+		test.mutate(&candidateLeft, &candidateRight)
+		if value, validationErr := validateAdversaryCommitRevealObservations(candidateLeft, candidateRight); validationErr == nil || value != 0 {
+			t.Errorf("%s value=%d error=%v", test.name, value, validationErr)
+		}
+	}
+}
+
+// Exercises auxiliary models that emit every metric of multi-metric rows.
+func TestAdversaryAdditionalMetricModelsMeasureMultiMetricRows(t *testing.T) {
+	commitRejects, revealRejects, err := adversaryCommitRevealTransitionMetrics(7)
+	if err != nil || commitRejects != 1 || revealRejects != 1 {
+		t.Fatalf("commit/reveal transition metrics=%d/%d error=%v", commitRejects, revealRejects, err)
+	}
+	saturation, honestBlocks, err := adversaryNormalClassAdmissionMetrics()
+	if err != nil || saturation != 1_000_000 || honestBlocks != 1 {
+		t.Fatalf("normal-class metrics=%d/%d error=%v", saturation, honestBlocks, err)
+	}
+	take, cooldown, err := adversaryHotkeySwapMetrics(7)
+	if err != nil || take != 1 || cooldown != 1 {
+		t.Fatalf("hotkey metrics=%d/%d error=%v", take, cooldown, err)
+	}
+	denied, surface, err := adversaryProxyAliasMetrics()
+	if err != nil || denied != 4 || surface == 0 {
+		t.Fatalf("proxy alias metrics=%d/%d error=%v", denied, surface, err)
+	}
+	diverged, restored, err := adversaryValidatorBoundaryMetrics(200)
+	if err != nil || diverged != 1 || restored != 1 {
+		t.Fatalf("validator boundary metrics=%d/%d error=%v", diverged, restored, err)
+	}
+	if _, _, err := adversaryValidatorBoundaryMetrics(199); err == nil {
+		t.Fatal("non-release top-200 boundary was accepted")
+	}
+	duplicateRejects, err := adversaryDuplicateLeafRejections()
+	if err != nil || duplicateRejects != 1 {
+		t.Fatalf("duplicate leaf metrics=%d error=%v", duplicateRejects, err)
+	}
+	reentrancyRejects, receivedDelta, err := adversarySettlementReentrancyMetrics()
+	if err != nil || reentrancyRejects != 1 || receivedDelta != 0 {
+		t.Fatalf("settlement reentrancy metrics=%d/%d error=%v", reentrancyRejects, receivedDelta, err)
+	}
+	worstGas, runtimeBytes, err := adversaryReleaseBytecodeMetrics(testResolvedConfig(t))
+	if err != nil || worstGas == 0 || runtimeBytes == 0 {
+		t.Fatalf("release bytecode metrics=%d/%d error=%v", worstGas, runtimeBytes, err)
+	}
+	plaintextRejects, err := adversaryExternalPlaintextEndpointRejections()
+	if err != nil || plaintextRejects != 2 {
+		t.Fatalf("plaintext endpoint metrics=%d error=%v", plaintextRejects, err)
+	}
+}
+
+// Empty decoded bytes have no decode error; diagnostics must still reject
+// them without wrapping a nil cause. Each case uses an isolated artifact list.
+func TestAdversaryReleaseBytecodeMetricsRejectMalformedAndEmptyRuntime(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	originalArtifacts := ReleaseContractArtifacts
+	t.Cleanup(func() { ReleaseContractArtifacts = originalArtifacts })
+	for _, test := range []struct {
+		name string
+		code string
+		want string
+	}{
+		{name: "empty", code: "", want: "malformed"},
+		{name: "prefix-only", code: "0x", want: "malformed"},
+		{name: "invalid-hex", code: "0xzz", want: "malformed"},
+		{name: "odd-hex", code: "0x1", want: "malformed"},
+		{name: "hash-drift", code: "0x01", want: "hash drifted"},
+	} {
+		ReleaseContractArtifacts = []ContractArtifact{{Name: test.name, RuntimeBytecode: test.code, RuntimeBytecodeHash: originalArtifacts[0].RuntimeBytecodeHash}}
+		gas, size, err := adversaryReleaseBytecodeMetrics(cfg)
+		if err == nil || gas != 0 || size != 0 || !strings.Contains(err.Error(), test.want) || strings.Contains(err.Error(), "%!") {
+			t.Fatalf("%s runtime metrics=%d/%d error=%v", test.name, gas, size, err)
+		}
+		if test.name == "invalid-hex" && !errors.As(err, new(hex.InvalidByteError)) {
+			t.Fatalf("invalid runtime hex lost its decode cause: %v", err)
+		}
+		if test.name == "odd-hex" && !errors.Is(err, hex.ErrLength) {
+			t.Fatalf("odd runtime hex lost its decode cause: %v", err)
+		}
+	}
+}
+
+// Requires finalized implementation code and rejects stale or tampered cache state.
+func TestAdversaryLiveCoordinatorImplementationUsesFinalizedCode(t *testing.T) {
+	cfg := testResolvedConfig(t)
+	stateDir := t.TempDir()
+	gate, err := newAdversaryRequestGate(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &adversaryHTTP{gate: gate, timeout: time.Second}
+	if observed, requests, err := adversaryLiveCoordinatorImplementationCodeHash(context.Background(), cfg, stateDir, client, 1); err != nil || observed || requests != 0 {
+		t.Fatalf("missing deployment observed=%t requests=%d error=%v", observed, requests, err)
+	}
+	implementation := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	code := []byte{0x60, 0x00, 0x60, 0x00, 0xf3}
+	if err := saveContractDeployment(stateDir, ContractDeployment{
+		Schema:                    "urnetwork-contract-deployment-v1",
+		DeploymentID:              cfg.Config.Deployment.DeploymentID,
+		CoordinatorImplementation: implementation,
+		RuntimeHashes:             map[string]string{implementation.Hex(): ethcrypto.Keccak256Hash(code).Hex()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	badCode := false
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		defer request.Body.Close()
+		var call struct {
+			JSONRPC string            `json:"jsonrpc"`
+			ID      uint64            `json:"id"`
+			Method  string            `json:"method"`
+			Params  []json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&call); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		requests++
+		response := map[string]any{"jsonrpc": "2.0", "id": call.ID}
+		switch call.Method {
+		case "eth_getBlockByNumber":
+			if len(call.Params) != 2 || string(call.Params[0]) != `"finalized"` || string(call.Params[1]) != "false" {
+				t.Errorf("finalized block params=%s", call.Params)
+			}
+			response["result"] = map[string]string{"number": "0x64", "hash": "0x" + strings.Repeat("ab", 32)}
+		case "eth_getCode":
+			var address, block string
+			if len(call.Params) != 2 || json.Unmarshal(call.Params[0], &address) != nil || json.Unmarshal(call.Params[1], &block) != nil || !strings.EqualFold(address, implementation.Hex()) || block != "0x64" {
+				t.Errorf("implementation code params=%s", call.Params)
+			}
+			observedCode := code
+			if badCode {
+				observedCode = []byte{0x60, 0x01}
+			}
+			response["result"] = "0x" + hex.EncodeToString(observedCode)
+		default:
+			response["error"] = map[string]any{"code": -32601, "message": "unknown method"}
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(writer).Encode(response); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+	cfg.OperationalEVM = server.URL
+	actor := &custodyAdversary{cfg: cfg, stateDir: stateDir, rpcHTTP: client}
+	if observed, calls, err := actor.liveImplementationMetric(context.Background(), 7); err != nil || !observed || calls != 2 || requests != 2 {
+		t.Fatalf("finalized implementation observed=%t calls=%d requests=%d error=%v", observed, calls, requests, err)
+	}
+	if observed, calls, err := actor.liveImplementationMetric(context.Background(), 8); err != nil || !observed || calls != 0 || requests != 2 {
+		t.Fatalf("cached implementation observed=%t calls=%d requests=%d error=%v", observed, calls, requests, err)
+	}
+	actor.implementationPassed = false
+	badCode = true
+	if observed, calls, err := actor.liveImplementationMetric(context.Background(), 9); err == nil || observed || calls != 2 || requests != 4 {
+		t.Fatalf("tampered finalized implementation observed=%t calls=%d requests=%d error=%v", observed, calls, requests, err)
+	}
+}
+
+// Caches direct state only after both endpoints agree at a finalized head.
+func TestAdversaryCommitRevealProbeCachesOnlyValidatedDirectState(t *testing.T) {
+	hash := types.Hash{7}
+	left := adversaryCommitRevealObservation{Endpoint: "wss://operational.example", Finalized: 19, FinalizedHash: hash, Enabled: true, Tempo: 360, RevealPeriods: 1}
+	right := left
+	right.Endpoint = "wss://public.example"
+	calls := 0
+	actor := &rpcAdversary{commitRevealProbe: func(context.Context, *ResolvedConfig) (adversaryCommitRevealObservation, adversaryCommitRevealObservation, uint64, error) {
+		calls++
+		return left, right, 360, nil
+	}}
+	for index := 0; index < 2; index++ {
+		observedLeft, observedRight, delay, err := actor.observeCommitReveal(context.Background())
+		if err != nil || observedLeft != left || observedRight != right || delay != 360 {
+			t.Fatalf("call=%d left=%+v right=%+v delay=%d error=%v", index, observedLeft, observedRight, delay, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("validated commit/reveal probe calls=%d, want one cached observation", calls)
+	}
+	actor = &rpcAdversary{commitRevealProbe: func(context.Context, *ResolvedConfig) (adversaryCommitRevealObservation, adversaryCommitRevealObservation, uint64, error) {
+		left.Enabled = false
+		return left, right, 360, nil
+	}}
+	if _, _, delay, err := actor.observeCommitReveal(context.Background()); err == nil || delay != 0 {
+		t.Fatalf("false direct commit/reveal state delay=%d error=%v", delay, err)
+	}
+}
+
+// Separates control and poison values derived from live verifier samples.
+func TestVerifyAdversarySupplementalMetricsUseRealControlAndPoisonSamples(t *testing.T) {
+	actor := &verifyAdversary{completedByNo: map[int]uint64{}, attemptedByNo: map[int]uint64{}}
+	control, err := actor.supplementalMetrics(1, adversaryControlPhase, false, 10*time.Millisecond)
+	if err != nil || control["external_plaintext_endpoint_rejections"] != 2 || control["quality_delta_by_no"] != 0 || control["abandonment_rate_ppm"] != 0 {
+		t.Fatalf("control supplemental metrics=%v error=%v", control, err)
+	}
+	poison, err := actor.supplementalMetrics(1, adversaryAttackPhase, true, 20*time.Millisecond)
+	if err != nil || poison["real_poison_p95_ratio_ppm"] != 2_000_000 || poison["p99_latency_ms"] == 0 {
+		t.Fatalf("poison supplemental metrics=%v error=%v", poison, err)
+	}
+}
+
+// Binds healthy durable process identities and aggregate restart observations.
+func TestOperatorSupervisorIdentityBindsDurableIdentityAndRestartCount(t *testing.T) {
+	state := SupervisorState{Processes: []ProcessState{
+		{ID: "operator-1-api", Role: "operator-api", Identity: "no:1", Restarts: 2, Healthy: true},
+		{ID: "operator-2-api", Role: "operator-api", Identity: "no:2", Restarts: 3, Healthy: true},
+	}}
+	restarts, fingerprint, err := operatorSupervisorIdentity(state)
+	if err != nil || restarts != 5 || fingerprint == "" {
+		t.Fatalf("supervisor identity restarts=%d fingerprint=%q error=%v", restarts, fingerprint, err)
+	}
+	state.Processes[0].Healthy = false
+	if _, _, err := operatorSupervisorIdentity(state); err == nil {
+		t.Fatal("unhealthy supervisor process was accepted")
 	}
 }
 
@@ -462,6 +735,47 @@ func TestAdversaryVectorRequiresNamedMeasuredMetric(t *testing.T) {
 	if vectors[0].Status != "pass" || len(vectors[0].MeasuredMetrics) != 1 || vectors[0].MeasuredMetrics[0] != "required_metric" {
 		t.Fatalf("measured vector evidence=%+v", vectors)
 	}
+}
+
+// Requires every declared metric rather than one representative sample.
+func TestAdversaryVectorRequiresEveryNamedMeasuredMetric(t *testing.T) {
+	campaign := &liveAdversaryCampaign{
+		cfg: AdversaryConfig{MinimumSamplesPerActor: 1, MaximumP99LatencyMilliseconds: 100, MaximumAttackControlP95Ratio: 2_000_000},
+		matrix: &AdversarialMatrix{Rows: []AdversarialMatrixRow{{
+			ID: "vector", Class: "test", ExecutionMode: "bounded-emulation", ActorIDs: []string{"actor"},
+			Metrics: []string{"first_required_metric", "second_required_metric"}, LocalTests: []string{"test"}, Oracle: "sampled",
+		}}},
+		stopped: true,
+	}
+	actor := AdversaryActorEvidence{
+		ID: "actor", Status: "stopped", Samples: 1, ControlSamples: 1, AttackSamples: 1,
+		Metrics: map[string]AdversaryMetricEvidence{"first_required_metric": {Samples: 1, Last: 7}},
+	}
+	vectors := campaign.vectorEvidenceLocked(map[string]AdversaryActorEvidence{"actor": actor})
+	if len(vectors) != 1 || vectors[0].Status != "fail" || len(vectors[0].MeasuredMetrics) != 1 {
+		t.Fatalf("partially measured vector evidence=%+v", vectors)
+	}
+	actor.Metrics["second_required_metric"] = AdversaryMetricEvidence{Samples: 1, Last: 8}
+	vectors = campaign.vectorEvidenceLocked(map[string]AdversaryActorEvidence{"actor": actor})
+	if vectors[0].Status != "pass" || !adversaryMeasuredEveryRequiredMetric(vectors[0].RequiredMetrics, vectors[0].MeasuredMetrics) {
+		t.Fatalf("completely measured vector evidence=%+v", vectors)
+	}
+}
+
+// Rejects assertions that omit any declared measured metric.
+func TestAdversaryAssertionsRequireEveryNamedMeasuredMetric(t *testing.T) {
+	evidence := healthyAdversaryEvidence()
+	evidence.Vectors[0].RequiredMetrics = append(evidence.Vectors[0].RequiredMetrics, "missing_required_metric")
+	wantID := "adversary_vector_" + evidence.Vectors[0].ID
+	for _, assertion := range adversaryAssertions(evidence, time.Now().Add(-time.Second), "observation") {
+		if assertion.ID == wantID {
+			if assertion.Passed {
+				t.Fatalf("partially measured vector passed assertion: %+v", assertion)
+			}
+			return
+		}
+	}
+	t.Fatalf("adversarial vector assertion %s is absent", wantID)
 }
 
 func TestScenarioRunnerPersistsContinuousAdversariesAcrossHappyPath(t *testing.T) {
@@ -917,7 +1231,7 @@ func TestConcentratedLiquidityFailureIsAtomicAndRetryable(t *testing.T) {
 	}
 }
 
-// The v453 supplements model reviewed decisions and run under live sentinels;
+// The retained v453 supplements model reviewed decisions in v454 and run under live sentinels;
 // they must not be mislabeled as executing the pinned FRAME runtime locally.
 func TestRuntime453DecisionModelsUseBoundedEmulationMode(t *testing.T) {
 	cfg := testResolvedConfig(t)
@@ -940,8 +1254,8 @@ func TestRuntime453DecisionModelsUseBoundedEmulationMode(t *testing.T) {
 		if row.ExecutionMode != "bounded-emulation" {
 			t.Errorf("runtime 453 decision model %s uses execution mode %s", row.ID, row.ExecutionMode)
 		}
-		if !slices.Contains(row.LocalTests, "scripts/check-runtime-v453-source.sh") {
-			t.Errorf("runtime 453 decision model %s is not backed by the pinned Rust source gate", row.ID)
+		if !slices.Contains(row.LocalTests, "scripts/check-runtime-v454-source.sh") {
+			t.Errorf("retained runtime decision model %s is not backed by the pinned v454 Rust source gate", row.ID)
 		}
 	}
 	for id := range want {
@@ -1414,7 +1728,7 @@ func TestRPCAdversaryRejectsObservedRuntimeCodeHashDrift(t *testing.T) {
 				if len(call.Params) != 1 || string(call.Params[0]) != `"0x`+strings.Repeat("cd", 32)+`"` {
 					t.Errorf("runtime version was not pinned to native finalized hash: %s", call.Params)
 				}
-				result = runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 453, TransactionVersion: 1, StateVersion: 1}
+				result = runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.Release.Runtime.SpecVersion, TransactionVersion: cfg.Release.Runtime.TransactionVersion, StateVersion: cfg.Release.Runtime.StateVersion}
 			case "state_getStorageHash":
 				if len(call.Params) != 2 || string(call.Params[1]) != `"0x`+strings.Repeat("cd", 32)+`"` {
 					t.Errorf("runtime code hash was not pinned to native finalized hash: %s", call.Params)

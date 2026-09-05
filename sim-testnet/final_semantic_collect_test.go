@@ -403,6 +403,7 @@ func finalCollectedPriorPhaseByteFixture(t *testing.T) (*ResolvedConfig, *FinalC
 }
 
 func TestVerifyFinalCollectedPriorPhaseBytesRejectsReopenedHandoffSubstitution(t *testing.T) {
+	t.Parallel()
 	cfg, prior, loaded := finalCollectedPriorPhaseByteFixture(t)
 	if err := verifyFinalCollectedPriorPhaseBytes(cfg, prior, loaded); err != nil {
 		t.Fatalf("exact reopened prior release graph rejected: %v", err)

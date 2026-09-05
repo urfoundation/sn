@@ -78,6 +78,7 @@ func TestProducerGateCaptureSelectionExcludesOfflineSemanticAnalysis(t *testing.
 }
 
 func TestProduceFinalSemanticOutputsWritesOneSealedPair(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	load := func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
 		data, ok := artifacts[locator.URI]
@@ -115,6 +116,7 @@ func TestProduceFinalSemanticOutputsWritesOneSealedPair(t *testing.T) {
 }
 
 func TestProduceFinalSemanticOutputsScansBeforeCreatingFiles(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	load := func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
 		return artifacts[locator.URI], nil
@@ -140,6 +142,7 @@ func TestProduceFinalSemanticOutputsScansBeforeCreatingFiles(t *testing.T) {
 }
 
 func TestProduceFinalSemanticOutputsScannerCannotMutateVerifiedBytes(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	load := func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
 		return append([]byte(nil), artifacts[locator.URI]...), nil

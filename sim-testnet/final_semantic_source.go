@@ -137,7 +137,16 @@ type finalSemanticArchive struct {
 	// semantic file carried by a production collection. It is never populated
 	// from mutable state and lets later builders enforce exact phase continuity.
 	priorSemantic *FinalSemanticEvidence
+	// artifactDeriver substitutes durable writes during offline replay. It is
+	// used only with an immutable locator/data map, so reconstruction can prove
+	// a captured source graph without creating a second artifact tree.
+	artifactDeriver finalSemanticArtifactDeriver
 }
+
+// Supplies a content-addressed output to a closed-archive reconstruction.
+// Production leaves this unset and persists under the run-owned final-derived
+// directory; offline verification supplies an immutable exact-byte resolver.
+type finalSemanticArtifactDeriver func(string, string, []byte) (FinalArtifactLocator, error)
 
 type finalSemanticEvent struct {
 	Name string
@@ -205,6 +214,14 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 	if err != nil {
 		return nil, fmt.Errorf("persist approved setup plan artifact: %w", err)
 	}
+	releaseLockBytes, err := canonicalReleaseLockBytes(cfg.Release)
+	if err != nil {
+		return nil, fmt.Errorf("canonical approved release lock: %w", err)
+	}
+	releaseLockArtifact, err := archive.derivedBytes("release-lock", "release-lock.yml", releaseLockBytes)
+	if err != nil {
+		return nil, fmt.Errorf("persist approved release lock artifact: %w", err)
+	}
 	nativeStart, err := archive.nativeStartHead(chain)
 	if err != nil {
 		return nil, err
@@ -214,7 +231,7 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 		CampaignStartedAt: result.StartedAt, CampaignCompletedAt: result.CompletedAt,
 		DeploymentID: result.DeploymentID, PlanHash: planHash, ConfigHash: result.ConfigHash,
 		PolicyHash: result.PolicyHash, GenesisHash: result.GenesisHash, ChainID: result.ChainID, Netuid: result.Netuid,
-		PlanArtifact: planArtifact, PolicyArtifact: archive.collected.Policy, Window: *result.AcceptanceWindow,
+		PlanArtifact: planArtifact, ReleaseLockArtifact: releaseLockArtifact, PolicyArtifact: archive.collected.Policy, Window: *result.AcceptanceWindow,
 		EVMCampaignStartHead: result.CampaignStartHead, NativeStartHead: nativeStart, NativeTerminalHead: chain.NativeHead, EVMTerminalHead: chain.EVMHead,
 		ExpectedOperators: cfg.Config.Topology.Operators, ExpectedValidators: cfg.Config.Topology.Validators,
 		ExpectedMiners: cfg.Config.Topology.Miners, ExpectedCandidates: cfg.Config.Topology.HeadFleets + cfg.Config.Topology.ChallengerFleets,
@@ -248,6 +265,9 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 	if err := archive.buildTopology(&source, result, terminal, identities, chain); err != nil {
 		return nil, err
 	}
+	if err := archive.buildFleetGeneration(&source, chain, events); err != nil {
+		return nil, err
+	}
 	if err := archive.buildValidators(&source, identities, chain, events); err != nil {
 		return nil, err
 	}
@@ -260,13 +280,22 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 	if err := archive.buildEpochs(&source, terminal, events); err != nil {
 		return nil, err
 	}
+	if err := archive.buildClaimPayments(&source, events); err != nil {
+		return nil, err
+	}
 	if err := archive.buildRewards(&source, history, chain); err != nil {
 		return nil, err
 	}
 	if err := archive.buildPathProofs(&source); err != nil {
 		return nil, err
 	}
+	if err := archive.buildAdversarialCampaign(&source, result); err != nil {
+		return nil, err
+	}
 	if err := archive.buildExitCriteria(&source, result, terminal, events); err != nil {
+		return nil, err
+	}
+	if err := archive.buildHistoricalCoordinatorReceipts(&source, chain, events); err != nil {
 		return nil, err
 	}
 	return BuildFinalSemanticEvidence(source)
@@ -316,7 +345,7 @@ func openFinalSemanticArchive(ctx context.Context, cfg *ResolvedConfig, stateDir
 		archive.locators[locator.URI] = locator
 		return nil
 	}
-	for _, locator := range []FinalArtifactLocator{collected.Policy, collected.ScenarioResult, collected.TerminalObservation, collected.ObservationHistory} {
+	for _, locator := range []FinalArtifactLocator{collected.Policy, collected.ScenarioResult, collected.AdversarialMatrix, collected.Adversaries, collected.TerminalObservation, collected.ObservationHistory} {
 		if err := addDirect(locator); err != nil {
 			return nil, err
 		}
@@ -438,7 +467,10 @@ func (a *finalSemanticArchive) decode(path string, out any) error {
 	return nil
 }
 
-func (a *finalSemanticArchive) derived(kind, name string, value any) (FinalArtifactLocator, error) {
+func (self *finalSemanticArchive) derived(kind, name string, value any) (FinalArtifactLocator, error) {
+	if self == nil {
+		return FinalArtifactLocator{}, errors.New("final semantic archive is unavailable")
+	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return FinalArtifactLocator{}, err
@@ -446,20 +478,44 @@ func (a *finalSemanticArchive) derived(kind, name string, value any) (FinalArtif
 	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
 		return FinalArtifactLocator{}, errors.New("derived final semantic artifact is empty")
 	}
-	return persistFinalCollectedArtifact(a.runRoot, kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
+	if self.artifactDeriver != nil {
+		return self.artifactDeriver(kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
+	}
+	return persistFinalCollectedArtifact(self.runRoot, kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
 }
 
-func (a *finalSemanticArchive) derivedBytes(kind, name string, data []byte) (FinalArtifactLocator, error) {
+func (self *finalSemanticArchive) derivedBytes(kind, name string, data []byte) (FinalArtifactLocator, error) {
+	if self == nil {
+		return FinalArtifactLocator{}, errors.New("final semantic archive is unavailable")
+	}
 	if len(data) == 0 {
 		return FinalArtifactLocator{}, errors.New("derived final semantic artifact is empty")
 	}
-	return persistFinalCollectedArtifact(a.runRoot, kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
+	if self.artifactDeriver != nil {
+		return self.artifactDeriver(kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
+	}
+	return persistFinalCollectedArtifact(self.runRoot, kind, filepath.ToSlash(filepath.Join("final-derived", name)), data)
 }
 
 func (a *finalSemanticArchive) bindCallInputs(result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation) error {
 	var capturedResult ScenarioResult
 	if err := a.decode(a.collected.ScenarioResult.URI, &capturedResult); err != nil {
 		return err
+	}
+	var capturedAdversaries AdversaryCampaignEvidence
+	if err := a.decode(a.collected.Adversaries.URI, &capturedAdversaries); err != nil {
+		return err
+	}
+	matrixData, _, err := a.file(a.collected.AdversarialMatrix.URI)
+	if err != nil {
+		return err
+	}
+	capturedMatrix, canonicalMatrix, err := decodeCanonicalAdversarialMatrix(matrixData)
+	if err != nil {
+		return fmt.Errorf("decode closed adversarial matrix: %w", err)
+	}
+	if !bytes.Equal(matrixData, canonicalMatrix) {
+		return errors.New("closed adversarial matrix is not canonical JSON")
 	}
 	var capturedTerminal ScenarioObservation
 	if err := a.decode(a.collected.TerminalObservation.URI, &capturedTerminal); err != nil {
@@ -469,8 +525,11 @@ func (a *finalSemanticArchive) bindCallInputs(result *ScenarioResult, terminal *
 	if err := a.decode(a.collected.ObservationHistory.URI, &capturedHistory); err != nil {
 		return err
 	}
-	if result == nil || terminal == nil || len(history) == 0 || !finalJSONEqual(capturedResult, *result) || !finalJSONEqual(capturedTerminal, *terminal) || !finalJSONEqual(capturedHistory, history) {
+	if result == nil || terminal == nil || len(history) == 0 || result.Adversaries == nil || capturedResult.Adversaries == nil || !finalJSONEqual(capturedResult, *result) || !finalJSONEqual(capturedAdversaries, *result.Adversaries) || !finalJSONEqual(capturedAdversaries, *capturedResult.Adversaries) || !strings.EqualFold(capturedAdversaries.MatrixHash, result.AdversarialMatrix) || !strings.EqualFold(capturedMatrix.Hash, result.AdversarialMatrix) || !finalJSONEqual(capturedTerminal, *terminal) || !finalJSONEqual(capturedHistory, history) {
 		return errors.New("final semantic call inputs differ from the closed collection graph")
+	}
+	if _, err := summarizeFinalAdversarialCampaign(&capturedAdversaries, capturedMatrix); err != nil {
+		return fmt.Errorf("verify closed adversarial campaign: %w", err)
 	}
 	return nil
 }
@@ -593,8 +652,16 @@ func indexFinalSemanticEvents(snapshot *FinalCollectedChainSnapshot) (*finalSema
 	if snapshot == nil {
 		return nil, errors.New("final chain snapshot is nil")
 	}
-	contracts := make([]abi.ABI, 0, 3)
-	for _, encoded := range []string{CoordinatorABI, SettlementVaultABI, ReserveSinkABI} {
+	currentAddresses, err := finalCanonicalCollectedReleaseAddresses(snapshot.CurrentReleaseAddresses)
+	if err != nil {
+		return nil, err
+	}
+	current := make(map[string]bool, len(currentAddresses))
+	for _, address := range currentAddresses {
+		current[address] = true
+	}
+	contracts := make([]abi.ABI, 0, 4)
+	for _, encoded := range []string{CoordinatorABI, SettlementVaultABI, ReserveSinkABI, FleetBatcherABI} {
 		parsed, err := abi.JSON(strings.NewReader(encoded))
 		if err != nil {
 			return nil, err
@@ -642,7 +709,9 @@ func indexFinalSemanticEvents(snapshot *FinalCollectedChainSnapshot) (*finalSema
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode captured event %s: %w", log.Topics[0], decodeErr)
 		}
-		index.byName[decoded.Name] = append(index.byName[decoded.Name], decoded)
+		if current[log.Address] && log.BlockNumber >= snapshot.CurrentReleaseFromBlock {
+			index.byName[decoded.Name] = append(index.byName[decoded.Name], decoded)
+		}
 		index.byTx[log.TransactionHash] = append(index.byTx[log.TransactionHash], log)
 	}
 	return index, nil
@@ -850,11 +919,61 @@ func (a *finalSemanticArchive) nativeActionReceipt(actionID, name string) (Final
 	if postcondition.SubstrateFinalized.Number < entry.BlockNumber {
 		return FinalNativeReceipt{}, nil, fmt.Errorf("%s postcondition precedes transaction inclusion", actionID)
 	}
+	plan, current, err := a.nativeActionPlan(entry.PlanHash, actionID, entry.IntentHash)
+	if err != nil {
+		return FinalNativeReceipt{}, nil, err
+	}
+	currentAction, err := exactPlanActionByID(current, actionID)
+	if err != nil || !actionAcceptsIntent(currentAction, entry.IntentHash) {
+		return FinalNativeReceipt{}, nil, stateMismatchError(err, "native registration %s is not accepted by the current approved plan", actionID)
+	}
+	entries, err := a.journalEntries()
+	if err != nil {
+		return FinalNativeReceipt{}, nil, err
+	}
+	call, err := finalNativeRegistrationEvidenceFromSource(plan, entries, entry, postcondition)
+	if err != nil {
+		return FinalNativeReceipt{}, nil, fmt.Errorf("derive native registration call evidence: %w", err)
+	}
 	proof, err := a.derivedBytes("native-receipt", filepath.ToSlash(filepath.Join("native-receipts", name+".json")), data)
 	if err != nil {
 		return FinalNativeReceipt{}, nil, err
 	}
-	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(entry.TransactionHash), Block: ChainHead{Number: entry.BlockNumber, Hash: strings.ToLower(entry.BlockHash)}, Proof: proof}, postcondition, nil
+	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(entry.TransactionHash), Block: ChainHead{Number: entry.BlockNumber, Hash: strings.ToLower(entry.BlockHash)}, Proof: proof, Call: &call}, postcondition, nil
+}
+
+// Resolves the exact current or direct-predecessor plan that authorized one
+// carried native action.  A journal entry cannot nominate an arbitrary
+// archived plan: its hash must be in the current plan's approved lineage and
+// its canonical archive path must contain the self-authenticating bytes.
+func (a *finalSemanticArchive) nativeActionPlan(planHash, actionID, intentHash string) (*SetupPlan, *SetupPlan, error) {
+	if a == nil || planHash == "" || actionID == "" || intentHash == "" {
+		return nil, nil, errors.New("native registration plan identity is incomplete")
+	}
+	currentData, _, err := a.file("launch-foundation/plan.json")
+	if err != nil {
+		return nil, nil, err
+	}
+	current, err := decodePersistedPlanBytes(currentData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("authenticate current native registration plan: %w", err)
+	}
+	if !current.allowedPlanHashes()[planHash] {
+		return nil, nil, fmt.Errorf("native registration plan %s is outside the current approved lineage", planHash)
+	}
+	if planHash == current.PlanHash {
+		return current, current, nil
+	}
+	path := filepath.ToSlash(filepath.Join("plan-history", stringsTrim0x(planHash)+".json"))
+	planData, _, err := a.file(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("authenticate carried native registration plan %s: %w", planHash, err)
+	}
+	plan, err := decodePersistedPlanBytes(planData)
+	if err != nil || plan.PlanHash != planHash {
+		return nil, nil, stateMismatchError(err, "carried native registration plan %s differs from its canonical archive path", planHash)
+	}
+	return plan, current, nil
 }
 
 // The remaining construction methods are kept independent so every evidence
@@ -1185,6 +1304,22 @@ func (a *finalSemanticArchive) buildDeploymentAndReserve(source *FinalSemanticEv
 	if err != nil || !strings.EqualFold(planHash, source.PlanHash) || plan.DeploymentID != source.DeploymentID || plan.Netuid != source.Netuid || plan.LiveFacts.DefaultMinTransferRao == 0 {
 		return stateMismatchError(err, "closed setup plan does not bind the contract custody inputs")
 	}
+	runtimeRoots, err := finalReleaseRuntimeRootsForPlan(&plan, a.cfg.Release)
+	if err != nil {
+		return fmt.Errorf("closed setup plan runtime roots: %w", err)
+	}
+	observedRuntimeHashes, err := finalNormalizedRuntimeCodeHashes(view.RuntimeCodeHashes)
+	if err != nil {
+		return fmt.Errorf("closed terminal runtime observation: %w", err)
+	}
+	expectedRuntimeHashes, err := finalReleaseRuntimeHashMap(runtimeRoots)
+	if err != nil || !finalRuntimeHashMapsEqual(observedRuntimeHashes, expectedRuntimeHashes) {
+		return stateMismatchError(err, "closed terminal runtime observation omits, adds, or substitutes a reviewed executable")
+	}
+	runtimeHashStrings, err := finalReleaseRuntimeHashStrings(runtimeRoots)
+	if err != nil {
+		return err
+	}
 	activeImplementation := view.CoordinatorUpgrade.Implementation
 	if activeImplementation == (common.Address{}) {
 		activeImplementation = deployment.CoordinatorImplementation
@@ -1255,7 +1390,7 @@ func (a *finalSemanticArchive) buildDeploymentAndReserve(source *FinalSemanticEv
 	}
 	artifact, err := a.derived("contract-deployment", "contract-deployment.json", map[string]any{
 		"deployment": deployment, "upgrade": view.CoordinatorUpgrade, "terminal": view.FinalizedHead,
-		"runtime_code_hashes": view.RuntimeCodeHashes, "policy": view.Policy, "custody": custody,
+		"runtime_code_hashes": runtimeHashStrings, "policy": view.Policy, "custody": custody,
 		"plan_hash": source.PlanHash, "plan_default_min_transfer_rao": plan.LiveFacts.DefaultMinTransferRao,
 		"expected_guardian": guardian, "expected_commitment_oracle": oracle,
 	})
@@ -1275,7 +1410,7 @@ func (a *finalSemanticArchive) buildDeploymentAndReserve(source *FinalSemanticEv
 		PlanDefaultMinTransferTaoRao: plan.LiveFacts.DefaultMinTransferRao,
 		ReserveRecorder:              strings.ToLower(custody.ReserveRecorder), ReserveNetuid: custody.ReserveNetuid,
 		ReserveSelfColdkey: strings.ToLower(custody.ReserveSelfColdkey), ReserveHotkey: strings.ToLower(custody.ReserveHotkey),
-		CoordinatorProxyCodeHash: proxyHash, ImplementationCodeHash: implementationHash, SettlementVaultCodeHash: vaultHash, ReserveSinkCodeHash: reserveHash,
+		CoordinatorProxyCodeHash: proxyHash, ImplementationCodeHash: implementationHash, SettlementVaultCodeHash: vaultHash, ReserveSinkCodeHash: reserveHash, RuntimeRoots: runtimeRoots,
 		ERC1967ImplementationSlot:  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
 		ObservedImplementationSlot: "0x" + strings.Repeat("0", 24) + strings.TrimPrefix(strings.ToLower(activeImplementation.Hex()), "0x"),
 		PolicyVersion:              policyVersions, PolicyEffectiveEpoch: view.Policy.EffectiveEpoch, PolicyEffectiveBlock: view.Policy.EffectiveBlock,
@@ -1483,7 +1618,7 @@ func (a *finalSemanticArchive) buildArchiveRetention(source *FinalSemanticEviden
 	if public.CoordinatorUpgrade.Implementation != (common.Address{}) {
 		publicImplementation = public.CoordinatorUpgrade.Implementation
 	}
-	if public.Contracts.DeployBlock == 0 || public.Contracts.DeployBlock != chain.EVMFromBlock || !strings.EqualFold(public.Contracts.CoordinatorProxy.Hex(), source.Deployment.CoordinatorProxy) || !strings.EqualFold(publicImplementation.Hex(), source.Deployment.CoordinatorImplementation) || !strings.EqualFold(public.Contracts.SettlementVault.Hex(), source.Deployment.SettlementVault) || !strings.EqualFold(public.Contracts.ReserveSink.Hex(), source.Deployment.ReserveSink) {
+	if public.Contracts.DeployBlock == 0 || public.Contracts.DeployBlock != chain.CurrentReleaseFromBlock || !strings.EqualFold(public.Contracts.CoordinatorProxy.Hex(), source.Deployment.CoordinatorProxy) || !strings.EqualFold(publicImplementation.Hex(), source.Deployment.CoordinatorImplementation) || !strings.EqualFold(public.Contracts.SettlementVault.Hex(), source.Deployment.SettlementVault) || !strings.EqualFold(public.Contracts.ReserveSink.Hex(), source.Deployment.ReserveSink) {
 		return errors.New("closed public deployment manifest contract identity differs from captured chain evidence")
 	}
 	publicHash, err := canonicalHashHex(&public)
@@ -2154,7 +2289,7 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 			if binding.NoID != uint64(config.OperatorNoID) {
 				return fmt.Errorf("miner-%d active binding operator differs from its runtime config", minerID)
 			}
-			row.Tier, row.HeadUID, row.Generation, row.BindingActive = "head-candidate", binding.LiveUID, binding.Generation, binding.LiveUIDFound
+			row.Tier, row.HeadUID, row.Generation, row.ValidFromEpoch, row.ValidToEpoch, row.BindingActive = "head-candidate", binding.LiveUID, binding.Generation, binding.ValidFromEpoch, binding.ValidToEpoch, binding.LiveUIDFound
 			row.FleetID = uint64(fleetByClient[configClientKey])
 			if row.FleetID == 0 {
 				return fmt.Errorf("miner-%d active binding does not map to a captured fleet manifest", minerID)
@@ -2232,7 +2367,22 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 		if err != nil {
 			return err
 		}
-		source.HeadFleets = append(source.HeadFleets, FinalHeadFleetEvidence{FleetID: uint64(fleetID), UID: uid, Hotkey: hotkey.SS58, Coldkey: coldkey.SS58, Generation: manifest.Generation, MemberCount: len(manifest.Members), Registered: true, Registration: registration, Snapshot: chain.NativeHead, BindingArtifact: bindingArtifact})
+		commitment, commitmentErr := manifest.CommitmentHash()
+		if commitmentErr != nil {
+			return commitmentErr
+		}
+		members := make([]FinalHeadFleetMemberEvidence, 0, len(manifest.Members))
+		for _, member := range manifest.Members {
+			clientID := hex.EncodeToString(member.ClientID[:])
+			binding, found := bindingByClient[clientID]
+			clientKey := "0x" + hex.EncodeToString(member.ClientKey[:])
+			if !found || !binding.Active || binding.FleetID != "0x"+hex.EncodeToString(manifest.FleetID[:]) || binding.Generation != manifest.Generation || !strings.EqualFold(binding.Hotkey, "0x"+hex.EncodeToString(manifest.Hotkey[:])) || !strings.EqualFold(binding.ClientKey, clientKey) || binding.ValidFromEpoch == 0 || binding.ValidToEpoch < binding.ValidFromEpoch || binding.RecordUID != uid || !binding.LiveUIDFound || binding.LiveUID != uid {
+				return fmt.Errorf("fleet-%d member %s terminal binding projection is incomplete", fleetID, clientID)
+			}
+			members = append(members, FinalHeadFleetMemberEvidence{ClientID: "0x" + clientID, ClientKey: clientKey, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch})
+		}
+		sort.Slice(members, func(i, j int) bool { return members[i].ClientID < members[j].ClientID })
+		source.HeadFleets = append(source.HeadFleets, FinalHeadFleetEvidence{FleetID: uint64(fleetID), UID: uid, Hotkey: hotkey.SS58, Coldkey: coldkey.SS58, FleetKey: "0x" + hex.EncodeToString(manifest.FleetID[:]), CommitmentHash: "0x" + hex.EncodeToString(commitment[:]), Members: members, Generation: manifest.Generation, MemberCount: len(manifest.Members), Registered: true, Registration: registration, Snapshot: chain.NativeHead, BindingArtifact: bindingArtifact})
 		if fleetID > source.ExpectedHeadSlots {
 			replacedUID, uidOK := finalSemanticObservedUint(postcondition.Observed, "replaced_uid")
 			replacedChurn, churnOK := finalSemanticObservedUint(postcondition.Observed, "replaced_churn")
@@ -2351,20 +2501,24 @@ func (a *finalSemanticArchive) nativeIntentReceipt(intent *validatorpkg.Steering
 	if err != nil {
 		return FinalNativeReceipt{}, err
 	}
-	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(extrinsicHash), Block: head, Proof: proof}, nil
+	operation := map[string]string{"commit": finalNativeOperationCommit, "reveal": finalNativeOperationReveal, "application": finalNativeOperationApplication}[kind]
+	call, err := finalNativeIntentCallEvidence(intent, operation)
+	if err != nil {
+		return FinalNativeReceipt{}, fmt.Errorf("derive native %s call evidence: %w", kind, err)
+	}
+	return FinalNativeReceipt{ExtrinsicHash: strings.ToLower(extrinsicHash), Block: head, Proof: proof, Call: &call}, nil
 }
 
-// depositReceipt proves the particular prefix of same-epoch deposits observed
-// by the signed validator audit. This matters for the production underpayment:
-// the first receipt proves the dishonest prefix and a later receipt proves the
-// recovery prefix without consulting mutable coordinator state.
-func (a *finalSemanticArchive) depositReceipt(events *finalSemanticEventIndex, audit validatorpkg.DepositAudit, name string) (FinalEVMReceipt, error) {
+// Proves the complete same-epoch deposit prefix through the signed audit's
+// finalized observation block. A matching earlier sum cannot hide a later
+// deposit already visible at that checkpoint.
+func (self *finalSemanticArchive) depositReceipt(events *finalSemanticEventIndex, audit validatorpkg.DepositAudit, name string) (FinalEVMReceipt, error) {
 	if events == nil {
 		return FinalEVMReceipt{}, errors.New("captured EVM event index is unavailable")
 	}
-	want, ok := new(big.Int).SetString(audit.ObservedDepositRao, 10)
-	if !ok || want.Sign() <= 0 {
-		return FinalEVMReceipt{}, fmt.Errorf("operator %d epoch %d observed deposit is not positive", audit.NoID, audit.Epoch)
+	want, err := finalSemanticCanonicalDecimal("observed deposit", audit.ObservedDepositRao, true)
+	if err != nil {
+		return FinalEVMReceipt{}, fmt.Errorf("operator %d epoch %d: %w", audit.NoID, audit.Epoch, err)
 	}
 	candidates := make([]finalSemanticEvent, 0)
 	for _, event := range events.byName["Deposit"] {
@@ -2386,18 +2540,15 @@ func (a *finalSemanticArchive) depositReceipt(events *finalSemanticEventIndex, a
 	running := new(big.Int)
 	for _, event := range candidates {
 		amount, amountOK := finalSemanticInteger(event.Args, "amount")
-		if !amountOK {
+		if !amountOK || amount.Sign() <= 0 {
 			return FinalEVMReceipt{}, errors.New("captured Deposit event amount is invalid")
 		}
 		running.Add(running, amount)
-		if running.Cmp(want) == 0 {
-			return a.receiptFromIndex(events, event, name)
-		}
-		if running.Cmp(want) > 0 {
-			break
-		}
 	}
-	return FinalEVMReceipt{}, fmt.Errorf("operator %d epoch %d captured Deposit prefix does not equal signed observed amount %s", audit.NoID, audit.Epoch, audit.ObservedDepositRao)
+	if len(candidates) == 0 || running.Cmp(want) != 0 {
+		return FinalEVMReceipt{}, fmt.Errorf("operator %d epoch %d captured Deposit prefix does not equal signed observed amount %s at block %d", audit.NoID, audit.Epoch, audit.ObservedDepositRao, audit.ObservedAtBlock)
+	}
+	return self.receiptFromIndex(events, candidates[len(candidates)-1], name)
 }
 
 func (a *finalSemanticArchive) buildPoolWeight(cycle *FinalCRv4Cycle, epochDepositCap uint64, pool validatorpkg.VerifiedReleasePool, intent *validatorpkg.SteeringIntent, events *finalSemanticEventIndex) (FinalPoolWeightEvidence, error) {
@@ -3043,7 +3194,7 @@ func (a *finalSemanticArchive) buildEpochs(source *FinalSemanticEvidence, termin
 			if err != nil {
 				return err
 			}
-			row := FinalEpochOperatorEvidence{Epoch: epoch, NoID: noID, Capture: captureReceipt, Finalize: finalizeReceipt, Status: view.Status, Claims: []FinalClaimEvidence{}}
+			row := FinalEpochOperatorEvidence{Epoch: epoch, NoID: noID, Capture: captureReceipt, Finalize: finalizeReceipt, ExpiryBlock: view.ExpiryBlock, Status: view.Status, Claims: []FinalClaimEvidence{}}
 			carryIn := new(big.Int)
 			if previous := lastCarry[noID]; previous != nil {
 				carryIn.Set(previous)
@@ -3119,9 +3270,6 @@ func (a *finalSemanticArchive) buildEpochs(source *FinalSemanticEvidence, termin
 					if err != nil {
 						return fmt.Errorf("epoch %d operator %d claim payment mismatch: %w", epoch, noID, err)
 					}
-					if new(big.Int).Add(new(big.Int).Set(claimPaid), claimDeferred).Cmp(amount) != 0 {
-						return fmt.Errorf("epoch %d operator %d claim payment does not equal the claimed amount", epoch, noID)
-					}
 					receipt, err := a.receiptFromIndex(events, claimEvent, fmt.Sprintf("epoch-%d-pool-%d-claim-%d", epoch, noID, leafIndex))
 					if err != nil {
 						return err
@@ -3151,9 +3299,6 @@ func (a *finalSemanticArchive) buildEpochs(source *FinalSemanticEvidence, termin
 			}
 			row.CapturedRao, row.CarryInRao, row.FundedRao, row.TotalRao = captured.String(), carryIn.String(), funded.String(), total.String()
 			row.ClaimedRao, row.PaidRao, row.DeferredCreditRao = claimed.String(), paid.String(), deferred.String()
-			if new(big.Int).Add(new(big.Int).Set(paid), deferred).Cmp(claimed) != 0 {
-				return fmt.Errorf("epoch %d operator %d claim event totals differ from terminal claimed amount", epoch, noID)
-			}
 			for name, encoded := range map[string]string{"captured": row.CapturedRao, "carry_in": row.CarryInRao, "funded": row.FundedRao, "claimed": row.ClaimedRao, "paid": row.PaidRao, "deferred": row.DeferredCreditRao, "outstanding": row.OutstandingRao, "carry_out": row.CarryOutRao} {
 				if err := finalSemanticAddAmount(totals[name], encoded, fmt.Sprintf("epoch %d operator %d %s", epoch, noID, name)); err != nil {
 					return err
@@ -3167,6 +3312,49 @@ func (a *finalSemanticArchive) buildEpochs(source *FinalSemanticEvidence, termin
 		ClaimedRao: totals["claimed"].String(), PaidRao: totals["paid"].String(), DeferredCreditRao: totals["deferred"].String(),
 		OutstandingRao: totals["outstanding"].String(), CarryOutRao: totals["carry_out"].String(),
 	}
+	return nil
+}
+
+// Retains every ClaimPaid log in the acceptance interval, including
+// withdrawClaimCredit calls that have no Claimed sibling event. The
+// terminal public verifier reconciles these exact receipts against each
+// coldkey's baseline and terminal credit rather than assuming a claim pays
+// only its own amount.
+func (self *finalSemanticArchive) buildClaimPayments(source *FinalSemanticEvidence, events *finalSemanticEventIndex) error {
+	if self == nil || source == nil || events == nil {
+		return errors.New("claim payment construction context is incomplete")
+	}
+	if source.Window.BaselineHead.Number >= source.EVMTerminalHead.Number || !common.IsHexAddress(source.Deployment.SettlementVault) {
+		return errors.New("claim payment construction window or vault is invalid")
+	}
+	source.ClaimPayments = nil
+	for _, event := range events.byName["ClaimPaid"] {
+		if event.Log.BlockNumber <= source.Window.BaselineHead.Number {
+			continue
+		}
+		if event.Log.BlockNumber > source.EVMTerminalHead.Number || !strings.EqualFold(event.Log.Address, source.Deployment.SettlementVault) {
+			return errors.New("ClaimPaid event is outside the acceptance interval or settlement vault")
+		}
+		coldkey, ok := finalSemanticHex32(event.Args, "coldkey")
+		if !ok || common.HexToHash(coldkey) == (common.Hash{}) {
+			return errors.New("ClaimPaid coldkey is invalid")
+		}
+		amount, ok := finalSemanticInteger(event.Args, "amount")
+		if !ok || amount.Sign() <= 0 {
+			return errors.New("ClaimPaid amount is invalid")
+		}
+		receipt, err := self.receiptFromIndex(events, event, fmt.Sprintf("claim-paid-%d", event.Log.LogIndex))
+		if err != nil {
+			return err
+		}
+		source.ClaimPayments = append(source.ClaimPayments, FinalClaimPaymentEvidence{Coldkey: strings.ToLower(coldkey), AmountRao: amount.String(), Receipt: receipt})
+	}
+	sort.Slice(source.ClaimPayments, func(i, j int) bool {
+		if source.ClaimPayments[i].Receipt.Block.Number != source.ClaimPayments[j].Receipt.Block.Number {
+			return source.ClaimPayments[i].Receipt.Block.Number < source.ClaimPayments[j].Receipt.Block.Number
+		}
+		return source.ClaimPayments[i].Receipt.TransactionHash < source.ClaimPayments[j].Receipt.TransactionHash
+	})
 	return nil
 }
 func finalSemanticRewardExpectation(source *FinalSemanticEvidence, epoch uint64) (map[uint64]string, map[uint64]string) {
@@ -3618,6 +3806,42 @@ func (a *finalSemanticArchive) buildPathProofs(source *FinalSemanticEvidence) er
 	})
 	return nil
 }
+
+// Binds the report summary to the separately captured adversaries.json rather
+// than relying only on the nested result
+// copy used by scenario acceptance.
+func (self *finalSemanticArchive) buildAdversarialCampaign(source *FinalSemanticEvidence, result *ScenarioResult) error {
+	if self == nil || self.collected == nil || source == nil || result == nil || result.Adversaries == nil {
+		return errors.New("adversarial campaign construction context is incomplete")
+	}
+	var campaign AdversaryCampaignEvidence
+	if err := self.decode(self.collected.Adversaries.URI, &campaign); err != nil {
+		return err
+	}
+	matrixData, _, err := self.file(self.collected.AdversarialMatrix.URI)
+	if err != nil {
+		return err
+	}
+	matrix, canonicalMatrix, err := decodeCanonicalAdversarialMatrix(matrixData)
+	if err != nil {
+		return fmt.Errorf("decode closed adversarial matrix: %w", err)
+	}
+	if !bytes.Equal(matrixData, canonicalMatrix) {
+		return errors.New("closed adversarial matrix is not canonical JSON")
+	}
+	if !finalJSONEqual(campaign, *result.Adversaries) || !strings.EqualFold(campaign.MatrixHash, result.AdversarialMatrix) {
+		return errors.New("closed adversaries.json differs from the accepted scenario result")
+	}
+	summary, err := summarizeFinalAdversarialCampaign(&campaign, matrix)
+	if err != nil {
+		return err
+	}
+	summary.MatrixArtifact = self.collected.AdversarialMatrix
+	summary.Artifact = self.collected.Adversaries
+	source.Adversaries = summary
+	return nil
+}
+
 func finalSemanticAdversaryMetric(result *ScenarioResult, name string) (AdversaryMetricEvidence, bool) {
 	if result == nil || result.Adversaries == nil {
 		return AdversaryMetricEvidence{}, false
@@ -3731,14 +3955,26 @@ func finalSemanticCanonicalDecimal(label, value string, positive bool) (*big.Int
 	return parsed, nil
 }
 
-func (a *finalSemanticArchive) dishonestDepositReceipts(source *FinalSemanticEvidence, terminal *ScenarioObservation, events *finalSemanticEventIndex) ([]FinalEVMReceipt, error) {
-	if a == nil || a.cfg == nil || a.cfg.Config == nil || source == nil || terminal == nil || terminal.DishonestDeposit == nil || !terminal.DishonestDepositValid || events == nil {
+// Binds the deliberate underpayment and every validator's later recovery
+// audit to exact finalized deposit receipts and observation checkpoints.
+func (self *finalSemanticArchive) dishonestDepositReceipts(source *FinalSemanticEvidence, terminal *ScenarioObservation, events *finalSemanticEventIndex) ([]FinalEVMReceipt, error) {
+	if self == nil || self.cfg == nil || self.cfg.Config == nil || source == nil || terminal == nil || terminal.DishonestDeposit == nil || !terminal.DishonestDepositValid || events == nil {
 		return nil, errors.New("terminal dishonest-deposit evidence is unavailable")
 	}
 	dishonest := terminal.DishonestDeposit
 	transaction := dishonest.Transaction
-	if dishonest.Schema != dishonestDepositEvidenceV1 || dishonest.DeploymentID != source.DeploymentID || dishonest.Netuid != source.Netuid || transaction.Schema != dishonestDepositTransactionV1 || transaction.DeploymentID != source.DeploymentID || transaction.NoID == 0 || transaction.AmountRao != strconv.FormatUint(a.cfg.Config.Scenarios.DishonestDepositRao, 10) || !strings.EqualFold(transaction.PolicyHash, source.PolicyHash) || len(dishonest.Validators) != source.ExpectedValidators {
+	if dishonest.Schema != dishonestDepositEvidenceV1 || dishonest.DeploymentID != source.DeploymentID || dishonest.Netuid != source.Netuid || transaction.Schema != dishonestDepositTransactionV1 || transaction.DeploymentID != source.DeploymentID || transaction.NoID == 0 || transaction.AmountRao != strconv.FormatUint(self.cfg.Config.Scenarios.DishonestDepositRao, 10) || !strings.EqualFold(transaction.PolicyHash, source.PolicyHash) || len(dishonest.Validators) != source.ExpectedValidators {
 		return nil, errors.New("terminal dishonest-deposit identity differs from the semantic campaign")
+	}
+	if source.ExpectedValidators <= 0 || len(source.Validators) != source.ExpectedValidators {
+		return nil, errors.New("recovery validator census is incomplete")
+	}
+	recoveryValidatorIDs := make(map[uint64]bool, source.ExpectedValidators)
+	for _, validator := range source.Validators {
+		if validator.ValidatorID == 0 || validator.ValidatorID > uint64(source.ExpectedValidators) || recoveryValidatorIDs[validator.ValidatorID] {
+			return nil, errors.New("recovery validator census has a duplicate or foreign identity")
+		}
+		recoveryValidatorIDs[validator.ValidatorID] = true
 	}
 	amount, err := finalSemanticCanonicalDecimal("dishonest deposit amount", transaction.AmountRao, true)
 	if err != nil {
@@ -3794,11 +4030,11 @@ func (a *finalSemanticArchive) dishonestDepositReceipts(source *FinalSemanticEvi
 	if underpayment == nil || underpayment.Log.BlockNumber != transaction.FinalizedBlock || !strings.EqualFold(underpayment.Log.BlockHash, transaction.FinalizedBlockHash) || finalSemanticDepositEventIdentity(underpayment, source.Deployment.CoordinatorProxy, transaction.NoID, transaction.Epoch, amount, nonce, source.PolicyHash, transaction.Funder) != nil {
 		return nil, errors.New("captured logs do not prove the exact dishonest underpayment")
 	}
-	underReceipt, err := a.receiptFromIndex(events, *underpayment, "dishonest-deposit-underpayment")
+	underReceipt, err := self.receiptFromIndex(events, *underpayment, "dishonest-deposit-underpayment")
 	if err != nil {
 		return nil, err
 	}
-	var recoveryEpoch, recoveryObservedAt uint64
+	var recoveryEpoch uint64
 	var recoveryAmount string
 	var recoveryReceipt FinalEVMReceipt
 	positiveRecoveryWeight := false
@@ -3830,20 +4066,20 @@ func (a *finalSemanticArchive) dishonestDepositReceipts(source *FinalSemanticEvi
 			return nil, fmt.Errorf("validator %d recovery audit predates its deposit receipt", validator.ValidatorID)
 		}
 		if recoveryEpoch == 0 {
-			recoveryEpoch, recoveryObservedAt, recoveryAmount, recoveryReceipt = candidateEpoch, candidate.ObservedAtBlock, candidate.ObservedDepositRao, candidate.DepositReceipt
+			recoveryEpoch, recoveryAmount, recoveryReceipt = candidateEpoch, candidate.ObservedDepositRao, candidate.DepositReceipt
 		} else if candidateEpoch != recoveryEpoch || candidate.ObservedDepositRao != recoveryAmount || candidate.DepositReceipt.TransactionHash != recoveryReceipt.TransactionHash || candidate.DepositReceipt.Block != recoveryReceipt.Block || candidate.DepositReceipt.LogsHash != recoveryReceipt.LogsHash {
 			return nil, errors.New("validators disagree on the operator recovery deposit")
 		}
+		reconstructed, err := self.depositReceipt(events, validatorpkg.DepositAudit{NoID: transaction.NoID, Epoch: candidateEpoch, ObservedDepositRao: candidate.ObservedDepositRao, ObservedAtBlock: candidate.ObservedAtBlock}, "dishonest-deposit-recovery")
+		if err != nil || reconstructed.TransactionHash != candidate.DepositReceipt.TransactionHash || reconstructed.Block != candidate.DepositReceipt.Block || reconstructed.LogsHash != candidate.DepositReceipt.LogsHash {
+			return nil, stateMismatchError(err, "validator %d recovery receipt does not prove the exact compliant deposit prefix", validator.ValidatorID)
+		}
+		recoveryReceipt = reconstructed
 		positiveRecoveryWeight = positiveRecoveryWeight || candidate.AppliedWeight != 0
 	}
 	if recoveryEpoch <= transaction.Epoch || recoveryReceipt.TransactionHash == "" || strings.EqualFold(recoveryReceipt.TransactionHash, transaction.TransactionHash) || recoveryReceipt.Block.Number <= transaction.FinalizedBlock || !positiveRecoveryWeight {
 		return nil, errors.New("operator recovery did not restore a later positive validator weight")
 	}
-	reconstructedRecovery, err := a.depositReceipt(events, validatorpkg.DepositAudit{NoID: transaction.NoID, Epoch: recoveryEpoch, ObservedDepositRao: recoveryAmount, ObservedAtBlock: recoveryObservedAt}, "dishonest-deposit-recovery")
-	if err != nil || reconstructedRecovery.TransactionHash != recoveryReceipt.TransactionHash || reconstructedRecovery.Block != recoveryReceipt.Block || reconstructedRecovery.LogsHash != recoveryReceipt.LogsHash {
-		return nil, stateMismatchError(err, "validator recovery receipt does not prove the exact compliant deposit prefix")
-	}
-	recoveryReceipt = reconstructedRecovery
 	var recoveryEvent *finalSemanticEvent
 	for index := range events.byName["Deposit"] {
 		event := &events.byName["Deposit"][index]

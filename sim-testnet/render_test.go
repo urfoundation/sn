@@ -119,7 +119,7 @@ func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {
 	}
 }
 
-func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
+func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	cfg.Authority = "http://127.0.0.1:9944"
 	cfg.OperationalRPCMode = rpcModePublicOverride
@@ -157,6 +157,7 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		CoordinatorImplementation: common.HexToAddress("0x3000000000000000000000000000000000000003"),
 		CoordinatorProxy:          common.HexToAddress("0x4000000000000000000000000000000000000004"),
 		DeployBlock:               123, DeployBlockHash: "0x" + strings.Repeat("ab", 32), RuntimeHashes: map[string]string{},
+		CoordinatorEventStartBlock: 100, CoordinatorEventStartBlockHash: "0x" + strings.Repeat("cd", 32),
 	}
 	if err := saveContractDeployment(stateDir, deployment); err != nil {
 		t.Fatal(err)
@@ -169,6 +170,19 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 	}
 	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
 		root := filepath.Join(stateDir, "runtime", "operator-"+strconv.Itoa(operator))
+		var coordinatorSettings struct {
+			DeployBlock uint64 `yaml:"testnet-deploy-block"`
+		}
+		encoded, err := os.ReadFile(filepath.Join(root, "vault", "st.yml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := yaml.Unmarshal(encoded, &coordinatorSettings); err != nil {
+			t.Fatalf("operator %d coordinator config: %v", operator, err)
+		}
+		if coordinatorSettings.DeployBlock != deployment.CoordinatorEventStartBlock {
+			t.Fatalf("operator %d event start=%d, want %d", operator, coordinatorSettings.DeployBlock, deployment.CoordinatorEventStartBlock)
+		}
 		path := filepath.Join(root, "config", "provider_egress_probe.yml")
 		var settings struct {
 			Enabled bool `yaml:"enabled"`
@@ -196,6 +210,9 @@ func TestRenderRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
 		}
 		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 360 || loaded.Policy.Settlement.CloseGraceBlocks != 5 || loaded.PollSeconds != validatorPollSeconds(cfg) {
 			t.Fatalf("validator %d config incomplete: %+v", i, loaded)
+		}
+		if loaded.DeployBlock != deployment.CoordinatorEventStartBlock {
+			t.Fatalf("validator %d event start=%d, want %d", i, loaded.DeployBlock, deployment.CoordinatorEventStartBlock)
 		}
 		if len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || len(loaded.Substrate) != 1 || loaded.Substrate[0] != "ws://"+workloadSubstrateRPCAuthority() {
 			t.Fatalf("validator %d bypasses the simulator-owned RPC proxy: rpc=%v substrate=%v", i, loaded.RPC, loaded.Substrate)

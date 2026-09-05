@@ -7,11 +7,14 @@ package main
 // from being mistaken for a live adversarial exercise.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -199,44 +202,65 @@ var requiredBittensorIssueVectors = map[string]string{
 	"3407": "empty-body-hash-integrity-bypass",
 }
 
+// Reads the reviewed source matrix while discarding source bytes after decoding.
 func loadAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, error) {
+	matrix, _, err := loadCanonicalAdversarialMatrix(snRepo, relative)
+	return matrix, err
+}
+
+// Retains canonical source bytes with the typed projection for content-addressed
+// final-input evidence.
+func loadCanonicalAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, []byte, error) {
 	if strings.TrimSpace(relative) == "" || filepath.IsAbs(relative) {
-		return nil, errors.New("adversarial matrix path must be repository-relative")
+		return nil, nil, errors.New("adversarial matrix path must be repository-relative")
 	}
 	root := filepath.Clean(snRepo)
 	path := filepath.Clean(filepath.Join(root, relative))
 	if !pathWithin(root, path) {
-		return nil, errors.New("adversarial matrix path escapes the sn repository")
+		return nil, nil, errors.New("adversarial matrix path escapes the sn repository")
 	}
-	b, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	return decodeCanonicalAdversarialMatrix(data)
+}
+
+// Rejects malformed or trailing source and emits deterministic bytes matching
+// the digest carried by scenario evidence.
+func decodeCanonicalAdversarialMatrix(data []byte) (*AdversarialMatrix, []byte, error) {
 	var matrix AdversarialMatrix
-	decoder := json.NewDecoder(strings.NewReader(string(b)))
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&matrix); err != nil {
-		return nil, fmt.Errorf("decode adversarial matrix: %w", err)
+		return nil, nil, fmt.Errorf("decode adversarial matrix: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, nil, errors.New("decode adversarial matrix: multiple JSON values")
+		}
+		return nil, nil, fmt.Errorf("decode adversarial matrix trailing data: %w", err)
 	}
 	if matrix.Schema != "urnetwork-adversarial-matrix-v1" || matrix.Release != "1.0" {
-		return nil, errors.New("adversarial matrix must use schema v1 and release 1.0")
+		return nil, nil, errors.New("adversarial matrix must use schema v1 and release 1.0")
 	}
 	if len(matrix.Rows) < len(requiredAdversarialVectors) || matrix.Safety.SharedTestnet == "" || matrix.Safety.LocalRuntime == "" || matrix.Safety.Lifecycle == "" {
-		return nil, errors.New("adversarial matrix is incomplete")
+		return nil, nil, errors.New("adversarial matrix is incomplete")
 	}
 	allowedModes := map[string]bool{"live-safe": true, "bounded-emulation": true, "observation-only": true, "local-runtime-only": true}
 	seen := map[string]bool{}
 	for index, row := range matrix.Rows {
 		if row.ID == "" || seen[row.ID] {
-			return nil, fmt.Errorf("adversarial matrix row %d has an empty or duplicate id %q", index, row.ID)
+			return nil, nil, fmt.Errorf("adversarial matrix row %d has an empty or duplicate id %q", index, row.ID)
 		}
 		seen[row.ID] = true
 		if row.Class == "" || row.Vector == "" || row.Preconditions == "" || row.Oracle == "" || !allowedModes[row.ExecutionMode] || len(row.Sources) == 0 || len(row.ActorIDs) == 0 || len(row.Metrics) == 0 || len(row.StopConditions) == 0 || len(row.LocalTests) == 0 {
-			return nil, fmt.Errorf("adversarial matrix row %s is incomplete", row.ID)
+			return nil, nil, fmt.Errorf("adversarial matrix row %s is incomplete", row.ID)
 		}
 		for _, source := range row.Sources {
 			if !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "repo://") {
-				return nil, fmt.Errorf("adversarial matrix row %s has unsupported source %q", row.ID, source)
+				return nil, nil, fmt.Errorf("adversarial matrix row %s has unsupported source %q", row.ID, source)
 			}
 			for prefix, issueMap := range map[string]map[string]string{
 				"https://github.com/RaoFoundation/subtensor/issues/": requiredSubtensorIssueVectors,
@@ -247,19 +271,19 @@ func loadAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, error) 
 				}
 				issue := strings.TrimPrefix(source, prefix)
 				if _, ok := issueMap[issue]; !ok {
-					return nil, fmt.Errorf("adversarial matrix row %s has unreviewed issue source %s", row.ID, source)
+					return nil, nil, fmt.Errorf("adversarial matrix row %s has unreviewed issue source %s", row.ID, source)
 				}
 			}
 		}
 		for _, value := range append(append(append([]string{}, row.ActorIDs...), row.Metrics...), row.StopConditions...) {
 			if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value {
-				return nil, fmt.Errorf("adversarial matrix row %s contains a malformed reference", row.ID)
+				return nil, nil, fmt.Errorf("adversarial matrix row %s contains a malformed reference", row.ID)
 			}
 		}
 	}
 	for _, id := range requiredAdversarialVectors {
 		if !seen[id] {
-			return nil, fmt.Errorf("adversarial matrix is missing required vector %s", id)
+			return nil, nil, fmt.Errorf("adversarial matrix is missing required vector %s", id)
 		}
 	}
 	for advisory, vectorID := range requiredSubtensorAdvisories {
@@ -275,7 +299,7 @@ func loadAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, error) 
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("adversarial matrix does not map published Subtensor advisory %s to %s", advisory, vectorID)
+			return nil, nil, fmt.Errorf("adversarial matrix does not map published Subtensor advisory %s to %s", advisory, vectorID)
 		}
 	}
 	for issue, vectorID := range requiredSubtensorIssueVectors {
@@ -291,7 +315,7 @@ func loadAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, error) 
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("adversarial matrix does not map reviewed Subtensor issue #%s to %s", issue, vectorID)
+			return nil, nil, fmt.Errorf("adversarial matrix does not map reviewed Subtensor issue #%s to %s", issue, vectorID)
 		}
 	}
 	for issue, vectorID := range requiredBittensorIssueVectors {
@@ -307,18 +331,243 @@ func loadAdversarialMatrix(snRepo, relative string) (*AdversarialMatrix, error) 
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("adversarial matrix does not map reviewed Bittensor issue #%s to %s", issue, vectorID)
+			return nil, nil, fmt.Errorf("adversarial matrix does not map reviewed Bittensor issue #%s to %s", issue, vectorID)
 		}
 	}
 	var canonical any
-	if err := json.Unmarshal(b, &canonical); err != nil {
-		return nil, err
+	canonicalDecoder := json.NewDecoder(bytes.NewReader(data))
+	canonicalDecoder.UseNumber()
+	if err := canonicalDecoder.Decode(&canonical); err != nil {
+		return nil, nil, err
+	}
+	if err := canonicalDecoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, nil, errors.New("decode canonical adversarial matrix: multiple JSON values")
+		}
+		return nil, nil, fmt.Errorf("decode canonical adversarial matrix trailing data: %w", err)
+	}
+	canonicalBytes, err := json.Marshal(canonical)
+	if err != nil {
+		return nil, nil, err
 	}
 	matrix.Hash, err = canonicalHashHex(canonical)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &matrix, nil
+	return &matrix, canonicalBytes, nil
+}
+
+// Compares every recorded vector row against captured content-addressed input,
+// preventing a digest-only claim from substituting favorable projections.
+func verifyAdversarialCampaignMatrixProjection(campaign *AdversaryCampaignEvidence, matrix *AdversarialMatrix) error {
+	if campaign == nil || matrix == nil || !strings.EqualFold(campaign.MatrixHash, matrix.Hash) {
+		return errors.New("adversarial campaign matrix identity differs")
+	}
+	if len(matrix.Rows) != len(requiredAdversarialVectors) {
+		return fmt.Errorf("adversarial matrix rows=%d, want %d", len(matrix.Rows), len(requiredAdversarialVectors))
+	}
+	if err := validateAdversarialActorCoverage(matrix, releaseAdversaryActorIDs); err != nil {
+		return err
+	}
+	rowsByID := make(map[string]AdversarialMatrixRow, len(matrix.Rows))
+	for _, row := range matrix.Rows {
+		if rowsByID[row.ID].ID != "" {
+			return fmt.Errorf("adversarial matrix has duplicate vector %s", row.ID)
+		}
+		rowsByID[row.ID] = row
+	}
+	for _, vector := range campaign.Vectors {
+		row, ok := rowsByID[vector.ID]
+		if !ok {
+			return fmt.Errorf("adversarial campaign vector %s is absent from the matrix", vector.ID)
+		}
+		if vector.Class != row.Class {
+			return fmt.Errorf("adversarial vector %s class differs from matrix", vector.ID)
+		}
+		if vector.ExecutionMode != row.ExecutionMode || vector.ConcurrentCoverage != adversaryCoverageForMode(row.ExecutionMode) {
+			return fmt.Errorf("adversarial vector %s execution mode differs from matrix", vector.ID)
+		}
+		if err := equalAdversarialMatrixReferences(vector.ID, "actor_ids", row.ActorIDs, vector.ActorIDs); err != nil {
+			return err
+		}
+		if err := equalAdversarialMatrixReferences(vector.ID, "local_tests", row.LocalTests, vector.LocalTests); err != nil {
+			return err
+		}
+		if err := equalAdversarialMatrixReferences(vector.ID, "required_metrics", row.Metrics, vector.RequiredMetrics); err != nil {
+			return err
+		}
+		if vector.Oracle != row.Oracle {
+			return fmt.Errorf("adversarial vector %s oracle differs from matrix", vector.ID)
+		}
+		if vector.SampleFloor == 0 {
+			return fmt.Errorf("adversarial vector %s has no measured samples", vector.ID)
+		}
+		if err := equalAdversarialMatrixReferences(vector.ID, "measured_metrics", row.Metrics, vector.MeasuredMetrics); err != nil {
+			return err
+		}
+	}
+	expectedVectorIDsByActor := vectorIDsByActor(matrix)
+	seenActors := make(map[string]bool, len(campaign.Actors))
+	if len(campaign.Actors) != len(releaseAdversaryActorIDs) {
+		return fmt.Errorf("adversarial campaign actors=%d, want %d", len(campaign.Actors), len(releaseAdversaryActorIDs))
+	}
+	for _, actor := range campaign.Actors {
+		if actor.ID == "" || seenActors[actor.ID] {
+			return fmt.Errorf("adversarial campaign has an empty or duplicate actor %q", actor.ID)
+		}
+		want, ok := expectedVectorIDsByActor[actor.ID]
+		if !ok {
+			return fmt.Errorf("adversarial campaign actor %s is absent from matrix", actor.ID)
+		}
+		if err := equalAdversarialMatrixReferences(actor.ID, "vector_ids", want, actor.VectorIDs); err != nil {
+			return err
+		}
+		seenActors[actor.ID] = true
+	}
+	for _, actorID := range releaseAdversaryActorIDs {
+		if !seenActors[actorID] {
+			return fmt.Errorf("adversarial campaign is missing matrix actor %s", actorID)
+		}
+	}
+	return verifyAdversarialCampaignDerivedMeasurements(campaign, matrix)
+}
+
+// Recomputes stopped-actor-derived values so raw campaign data cannot retain
+// row declarations while substituting favorable samples, errors, or latency.
+func verifyAdversarialCampaignDerivedMeasurements(campaign *AdversaryCampaignEvidence, matrix *AdversarialMatrix) error {
+	actorsByID := make(map[string]AdversaryActorEvidence, len(campaign.Actors))
+	for _, actor := range campaign.Actors {
+		if actor.Samples == 0 || actor.Errors > actor.Samples {
+			return fmt.Errorf("adversarial actor %s has invalid sample/error totals", actor.ID)
+		}
+		if actor.Errors > ^uint64(0)/1_000_000 {
+			return fmt.Errorf("adversarial actor %s error total overflows ppm calculation", actor.ID)
+		}
+		if actor.ErrorRatePPM != uint32(actor.Errors*1_000_000/actor.Samples) {
+			return fmt.Errorf("adversarial actor %s error_rate_ppm differs from samples", actor.ID)
+		}
+		if actor.P50LatencyMilliseconds < 0 || actor.P95LatencyMilliseconds < 0 || actor.P99LatencyMilliseconds < 0 || actor.ControlP95Milliseconds < 0 || actor.AttackP95Milliseconds < 0 {
+			return fmt.Errorf("adversarial actor %s has negative latency evidence", actor.ID)
+		}
+		attackP95 := uint64(actor.AttackP95Milliseconds)
+		if attackP95 > ^uint64(0)/1_000_000 {
+			return fmt.Errorf("adversarial actor %s attack p95 overflows ratio calculation", actor.ID)
+		}
+		controlP95 := uint64(actor.ControlP95Milliseconds)
+		if controlP95 == 0 {
+			controlP95 = 1
+		}
+		if actor.AttackControlP95RatioPPM != attackP95*1_000_000/controlP95 {
+			return fmt.Errorf("adversarial actor %s attack_control_p95_ratio_ppm differs from latency evidence", actor.ID)
+		}
+		healthy := actor.Status == "stopped" &&
+			actor.Samples >= uint64(campaign.MinimumSamplesPerActor) &&
+			actor.ControlSamples > 0 &&
+			actor.AttackSamples > 0 &&
+			actor.ErrorRatePPM <= campaign.MaximumActorErrorRatePPM &&
+			(campaign.MaximumActorErrorRatePPM != 0 || actor.Errors == 0) &&
+			actor.AttackControlP95RatioPPM <= campaign.MaximumAttackControlRatio &&
+			actor.P99LatencyMilliseconds <= int64(campaign.MaximumP99Milliseconds)
+		if !healthy {
+			return fmt.Errorf("adversarial actor %s is not a stopped healthy campaign record", actor.ID)
+		}
+		if covered, _ := adversaryActorGapCoverage(campaign, actor); !covered {
+			return fmt.Errorf("adversarial actor %s sampling gap does not cover the happy path", actor.ID)
+		}
+		actorsByID[actor.ID] = actor
+	}
+	rowsByID := make(map[string]AdversarialMatrixRow, len(matrix.Rows))
+	for _, row := range matrix.Rows {
+		rowsByID[row.ID] = row
+	}
+	for _, vector := range campaign.Vectors {
+		row := rowsByID[vector.ID]
+		minimumSet := false
+		var sampleFloor, errorsTotal uint64
+		var maximumP99 int64
+		measuredSet := make(map[string]bool, len(row.Metrics))
+		for _, actorID := range row.ActorIDs {
+			actor, ok := actorsByID[actorID]
+			if !ok {
+				return fmt.Errorf("adversarial vector %s references absent actor %s", vector.ID, actorID)
+			}
+			if !minimumSet || actor.Samples < sampleFloor {
+				sampleFloor = actor.Samples
+				minimumSet = true
+			}
+			if ^uint64(0)-errorsTotal < actor.Errors {
+				return fmt.Errorf("adversarial vector %s error total overflows", vector.ID)
+			}
+			errorsTotal += actor.Errors
+			if actor.P99LatencyMilliseconds > maximumP99 {
+				maximumP99 = actor.P99LatencyMilliseconds
+			}
+			for _, metricName := range row.Metrics {
+				if metric, ok := actor.Metrics[metricName]; ok {
+					if metric.Samples == 0 {
+						if metric.Minimum != 0 || metric.Maximum != 0 || metric.Last != 0 {
+							return fmt.Errorf("adversarial actor %s metric %s has values without samples", actor.ID, metricName)
+						}
+						continue
+					}
+					if metric.Minimum > metric.Last || metric.Last > metric.Maximum {
+						return fmt.Errorf("adversarial actor %s metric %s has invalid bounds", actor.ID, metricName)
+					}
+					measuredSet[metricName] = true
+				}
+			}
+		}
+		if !minimumSet || vector.SampleFloor != sampleFloor {
+			return fmt.Errorf("adversarial vector %s sample_floor differs from mapped actors", vector.ID)
+		}
+		if vector.Errors != errorsTotal {
+			return fmt.Errorf("adversarial vector %s errors differs from mapped actors", vector.ID)
+		}
+		if vector.MaximumP99LatencyMilliseconds != maximumP99 {
+			return fmt.Errorf("adversarial vector %s maximum_p99_latency_milliseconds differs from mapped actors", vector.ID)
+		}
+		measured := make([]string, 0, len(measuredSet))
+		for metricName := range measuredSet {
+			measured = append(measured, metricName)
+		}
+		if err := equalAdversarialMatrixReferences(vector.ID, "measured_metrics", measured, vector.MeasuredMetrics); err != nil {
+			return fmt.Errorf("adversarial vector %s measured metrics differ from mapped actors: %w", vector.ID, err)
+		}
+	}
+	return nil
+}
+
+// Requires two reference lists to have the same validated canonical members.
+func equalAdversarialMatrixReferences(id, field string, expected, observed []string) error {
+	want, err := canonicalAdversarialMatrixReferences(id, field, expected)
+	if err != nil {
+		return err
+	}
+	got, err := canonicalAdversarialMatrixReferences(id, field, observed)
+	if err != nil {
+		return err
+	}
+	if len(got) != len(want) {
+		return fmt.Errorf("adversarial vector %s %s differs from matrix", id, field)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			return fmt.Errorf("adversarial vector %s %s differs from matrix", id, field)
+		}
+	}
+	return nil
+}
+
+// Sorts validated references and rejects empty or duplicate members.
+func canonicalAdversarialMatrixReferences(id, field string, values []string) ([]string, error) {
+	canonical := append([]string(nil), values...)
+	sort.Strings(canonical)
+	for index, value := range canonical {
+		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) || index > 0 && value == canonical[index-1] {
+			return nil, fmt.Errorf("adversarial vector %s %s contains an empty or duplicate reference", id, field)
+		}
+	}
+	return canonical, nil
 }
 
 func validateAdversarialActorCoverage(matrix *AdversarialMatrix, actorIDs []string) error {

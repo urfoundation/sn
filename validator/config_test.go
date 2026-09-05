@@ -30,7 +30,7 @@ func validReleaseConfig(t *testing.T) ReleaseConfig {
 		ValidatorID:         1,
 		ChainID:             945,
 		GenesisHash:         "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
-		RuntimeSpec:         453,
+		RuntimeSpec:         releaseRuntimeSpecVersion,
 		TransactionVersion:  1,
 		StateVersion:        1,
 		RuntimeCodeHash:     releaseRuntimeCodeHash,

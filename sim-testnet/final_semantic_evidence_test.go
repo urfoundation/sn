@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	gsrpccodec "github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/blake2b"
@@ -576,6 +578,7 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 }
 
 func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	firstDraft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -611,9 +614,17 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{first.EvidenceHash, "202 positive candidates", "two zero-weight rejects", "funded 10000", "Validator 1 → NO 1"} {
+	firstNativePayout := first.PublicVerification.NativePayouts[0]
+	firstNativeUID := firstNativePayout.UIDs[0]
+	for _, want := range []string{first.EvidenceHash, "202 positive candidates", "two zero-weight rejects", "funded 10000", "Validator 1 → NO 1", "every member's `bindingAt`", first.PublicVerification.FleetAudit.ProjectionHash, "### Concurrent adversarial campaign", "Authenticated [`adversaries.json`](final-derived/adversaries.json)", first.Adversaries.Artifact.ContentHash, "[`adversarial-matrix.json`](final-derived/adversarial-matrix.json)", first.Adversaries.MatrixArtifact.ContentHash, "exact-bound to canonical reviewed", "The campaign covers 61 vectors", "`bounded-emulation`: 33", "`live-safe`: 12", "`local-runtime-only`: 10", "`observation-only`: 6", "exact native payout boundaries", first.PublicVerification.NativePayoutAudit.ProjectionHash, "immediate parent-to-reveal stake transition", "Server event / combined emission", fmt.Sprintf("%s → %s", firstNativeUID.StakeBeforeRao, firstNativeUID.StakeAfterRao)} {
 		if !bytes.Contains(markdown, []byte(want)) {
 			t.Fatalf("FINAL.md semantic section does not contain %q", want)
+		}
+	}
+	for _, validator := range first.Validators {
+		rowPrefix := fmt.Sprintf("| validator | %d |", validator.ValidatorID)
+		if count := bytes.Count(markdown, []byte(rowPrefix)); count != 1 {
+			t.Fatalf("FINAL.md contains %d rows with prefix %q, want exactly 1", count, rowPrefix)
 		}
 	}
 	for _, origin := range first.PublicVerification.OperatorEvidenceOrigins {
@@ -637,6 +648,26 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 	if err := VerifyFinalSemanticArtifacts(context.Background(), first, load); err != nil {
 		t.Fatal(err)
 	}
+	for _, locator := range []FinalArtifactLocator{first.Adversaries.MatrixArtifact, first.Adversaries.Artifact} {
+		if err := VerifyFinalSemanticArtifacts(context.Background(), first, func(_ context.Context, candidate FinalArtifactLocator) ([]byte, error) {
+			if candidate.URI == locator.URI {
+				return nil, errors.New("fixture artifact is intentionally missing")
+			}
+			return load(context.Background(), candidate)
+		}); err == nil || !strings.Contains(err.Error(), "load final artifact") {
+			t.Fatalf("missing %s was accepted: %v", locator.Kind, err)
+		}
+		tampered := make(map[string][]byte, len(artifacts))
+		for name, data := range artifacts {
+			tampered[name] = append([]byte(nil), data...)
+		}
+		tampered[locator.URI][0] ^= 0xff
+		if err := VerifyFinalSemanticArtifacts(context.Background(), first, func(_ context.Context, candidate FinalArtifactLocator) ([]byte, error) {
+			return tampered[candidate.URI], nil
+		}); err == nil || !strings.Contains(err.Error(), "size or content hash mismatch") {
+			t.Fatalf("tampered %s was accepted: %v", locator.Kind, err)
+		}
+	}
 	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first}); err != nil {
 		t.Fatal(err)
 	}
@@ -657,6 +688,15 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 	}
 	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptReserveReceipt: true}); err == nil || !strings.Contains(err.Error(), "ReservePrincipalAdded receipt") {
 		t.Fatalf("public ReservePrincipalAdded receipt substitution was not fatal: %v", err)
+	}
+	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptEpochDeposit: true}); err == nil || !strings.Contains(err.Error(), "cumulative deposit differs from signed audit") {
+		t.Fatalf("public historical epoch-deposit substitution was not fatal: %v", err)
+	}
+	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptOperatorVersion: true}); err == nil || !strings.Contains(err.Error(), "terminal pool evidence") {
+		t.Fatalf("public terminal operator authority substitution was not fatal: %v", err)
+	}
+	if err := VerifyFinalSemanticEvidenceOnChain(context.Background(), first, &finalTestChainReader{evidence: first, corruptPoolExpiry: true}); err == nil || !strings.Contains(err.Error(), "pool epoch") {
+		t.Fatalf("public entitlement expiry substitution was not fatal: %v", err)
 	}
 
 	// Reusing one URI with a different declared hash must not exploit the
@@ -680,7 +720,58 @@ func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
 	}
 }
 
+// Proves that the deterministic archive reader emits byte-valid raw log
+// responses for both the empty current range and every retained historical
+// constructor/upgrade range, then replays those exact exchanges through the
+// same transcript verifier used by public evidence.
+func TestFinalSemanticHistoricalCoordinatorUpgradeReaderReplaysSealedRanges(t *testing.T) {
+	t.Parallel()
+	source, _ := finalSemanticFixture(t)
+	evidence, err := BuildFinalSemanticEvidence(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentHeads, err := finalSemanticCurrentRuntimeHeads(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit, err := finalPublicChronologyAuditForEvidence(evidence, currentHeads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ranges := append([]FinalCoordinatorUpgradeRangeEvidence{audit.UpgradeRange}, audit.HistoricalUpgradeRanges...)
+	reader := &finalTestChainReader{evidence: evidence}
+	historicalEvents := 0
+	for _, rangeEvidence := range ranges {
+		expected := audit.AllowedUpgrades
+		if rangeEvidence != audit.UpgradeRange {
+			expected = finalCoordinatorUpgradeEventsForRange(audit.HistoricalUpgrades, rangeEvidence)
+			historicalEvents += len(expected)
+		}
+		states, exchanges, rangeErr := reader.CoordinatorUpgradeRange(context.Background(), rangeEvidence)
+		if rangeErr != nil {
+			t.Fatal(rangeErr)
+		}
+		if len(states) != len(expected) {
+			t.Fatalf("range %s states=%d, want %d", rangeEvidence.Proxy, len(states), len(expected))
+		}
+		for index := range states {
+			if states[index].Event != expected[index] {
+				t.Fatalf("range %s event %d=%+v, want %+v", rangeEvidence.Proxy, index, states[index].Event, expected[index])
+			}
+		}
+		verification := &FinalPublicChainVerification{Exchanges: exchanges}
+		if err := finalVerifyPublicCoordinatorUpgradeRangeTranscript(verification, rangeEvidence, expected); err != nil {
+			t.Fatalf("range %s transcript: %v", rangeEvidence.Proxy, err)
+		}
+	}
+	if historicalEvents == 0 {
+		t.Fatal("fixture historical coordinator ranges have no constructor or upgrade events")
+	}
+}
+
 func TestFinalSemanticDerivedTransitionsRejectIndependentMutations(t *testing.T) {
+	t.Parallel()
 	source, baselineArtifacts := finalSemanticFixture(t)
 	if err := verifyFinalHeadTournamentTransitionArtifacts(&source, baselineArtifacts); err != nil {
 		t.Fatalf("baseline tournament artifacts: %v", err)
@@ -784,6 +875,7 @@ func replaceFinalSemanticFixtureArtifact(t *testing.T, locator *FinalArtifactLoc
 }
 
 func TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -875,6 +967,7 @@ func TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent(t 
 }
 
 func TestFinalExitReceiptsUseAdversarialCampaignBoundary(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	for index := range source.ExitCriteria {
 		criterion := &source.ExitCriteria[index]
@@ -901,6 +994,7 @@ func TestFinalExitReceiptsUseAdversarialCampaignBoundary(t *testing.T) {
 }
 
 func TestFinalSemanticArtifactsRejectSupervisorRestartOutsideFaultCensus(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	locator := &source.ContractCleanup.SupervisorStateArtifact
 	var state SupervisorState
@@ -931,6 +1025,7 @@ func TestFinalSemanticArtifactsRejectSupervisorRestartOutsideFaultCensus(t *test
 }
 
 func TestFinalSemanticArtifactsRejectDifferentArchiveRetentionReceipt(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	locator := &source.ArchiveRetention.Artifact
 	var receipt FinalArchiveRetentionPreflight
@@ -971,6 +1066,7 @@ func TestFinalSemanticArtifactsRejectDifferentArchiveRetentionReceipt(t *testing
 }
 
 func TestFinalSemanticReplayIgnoresAdvancingFinalizedTipsButRejectsFork(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -994,6 +1090,7 @@ func TestFinalSemanticReplayIgnoresAdvancingFinalizedTipsButRejectsFork(t *testi
 }
 
 func TestFinalSemanticEvidenceFailsClosed(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	draft, err := BuildFinalSemanticEvidence(source)
 	if err != nil {
@@ -1046,7 +1143,10 @@ func TestFinalSemanticEvidenceFailsClosed(t *testing.T) {
 		{name: "reserve no auto-compounding", edit: func(e *FinalSemanticEvidence) { e.Reserve.LiveStakeAfterRao = e.Reserve.PrincipalAfterRao }, want: "does not prove native emission auto-compounding"},
 		{name: "reserve receipt sum", edit: func(e *FinalSemanticEvidence) { e.Reserve.PrincipalAdditions[0].AmountRao = "19" }, want: "operator/total/live"},
 		{name: "deposit receipt logs", edit: func(e *FinalSemanticEvidence) { e.Validators[0].Cycles[0].Pools[0].DepositReceipt.LogsHash = "" }, want: "logs hash"},
-		{name: "receipt order", edit: func(e *FinalSemanticEvidence) { e.Validators[0].Cycles[0].Application.Block.Number = 19 }, want: "receipt order"},
+		{name: "receipt order", edit: func(e *FinalSemanticEvidence) {
+			e.Validators[0].Cycles[0].Application.Block.Number = 19
+			e.Validators[0].Cycles[0].Application.Call.ApplicationBlock = 19
+		}, want: "receipt order"},
 		{name: "payout conservation", edit: func(e *FinalSemanticEvidence) { e.Epochs[0].OutstandingRao = "399" }, want: "committed total !="},
 		{name: "carry terminal", edit: func(e *FinalSemanticEvidence) { e.Pools[0].FinalCarryRao = "1" }, want: "terminal carry"},
 		{name: "reward emission change", edit: func(e *FinalSemanticEvidence) { e.NativeRewards[0].DeltaRao = "9" }, want: "emission change"},
@@ -1172,6 +1272,7 @@ func TestFinalSemanticEvidenceRaceTamperCoverage(t *testing.T) {
 }
 
 func TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	reward := &source.NativeRewards[0]
 	if reward.Expected != "positive" || reward.Role != "head" {
@@ -1201,6 +1302,7 @@ func TestFinalSemanticPathProofArtifactCount(t *testing.T) {
 }
 
 func TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery(t *testing.T) {
+	t.Parallel()
 	source, _ := finalSemanticFixture(t)
 	pool := source.Validators[0].Cycles[0].Pools[0]
 	requiredDepositRao, ok := new(big.Int).SetString(pool.RequiredDepositRao, 10)
@@ -1245,6 +1347,7 @@ func TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery(t *testing.
 // TestFinalSemanticFixtureSnapshotsAreDetached proves cached release-scale
 // snapshots cannot be poisoned by an earlier caller's adversarial mutation.
 func TestFinalSemanticFixtureSnapshotsAreDetached(t *testing.T) {
+	t.Parallel()
 	first, firstArtifacts := finalSemanticFixture(t)
 	second, secondArtifacts := finalSemanticFixture(t)
 	baselineEvidence := mustFinalSemanticJSON(t, &second)
@@ -1331,6 +1434,7 @@ func TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation(t *tes
 }
 
 func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
+	t.Parallel()
 	source, artifacts := finalSemanticFixture(t)
 	measurementLocator := source.Validators[0].Cycles[0].MeasurementArtifact
 	measurement, _, err := validatorpkg.DecodeReleaseMeasurementArtifact(artifacts[measurementLocator.URI])
@@ -1771,6 +1875,10 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		return FinalArtifactLocator{Kind: kind, URI: uri, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))}
 	}
 	cfg := testResolvedConfig(t)
+	cfg.Config.Deployment.DeploymentID = "ur-subnet-testnet-v1-attempt-4"
+	cfg.Netuid = 521
+	cfg.ChainID = 945
+	cfg.ConfigHash = finalTestHex(3)
 	policy, err := finalSemanticFixtureReleasePolicy(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -1783,7 +1891,41 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Policy = &policy
+	cfg.PolicyHash = policyHash
+	fixtureRoles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePlan, err := buildPlan(cfg, testSetupFacts(), fixtureRoles, time.Unix(1_700_000_000, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureSecrets, err := buildRoleSecretsUncached(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveHotkey, err := roleBytes32(fixtureSecrets, "reserve-hotkey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	escrowHotkey, err := roleBytes32(fixtureSecrets, escrowHotkeyLabelForGeneration(fixturePlan.Deployment.RegistrationRoleGeneration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtureRuntimeHash := func(address common.Address) string {
+		value := fixturePlan.Deployment.RuntimeHashes[address.Hex()]
+		if value == "" {
+			t.Fatalf("fixture deployment has no runtime hash for %s", address.Hex())
+		}
+		return strings.ToLower(value)
+	}
+	coordinatorAddress := fixturePlan.Deployment.CoordinatorProxy
+	vaultAddress := fixturePlan.Deployment.SettlementVault
+	reserveAddress := fixturePlan.Deployment.ReserveSink
+	implementation := strings.ToLower(fixturePlan.CoordinatorUpgrade.Implementation.Hex())
 	policyLocator := artifact("policy", "policy.json", policyBytes)
+	adversaries := finalSemanticFixtureAdversarialCampaign(t, cfg, artifact)
 	ss58Key := func(namespace byte, index int) string {
 		var key [32]byte
 		key[0], key[1], key[30], key[31] = namespace, byte(index>>8), byte(index), namespace^byte(index)
@@ -1860,6 +2002,11 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		clientID[0], clientID[14], clientID[15] = 1, byte(minerID>>8), byte(minerID)
 		return clientID
 	}
+	minerPayoutColdkey := func(minerID uint64) [32]byte {
+		var coldkey [32]byte
+		coldkey[0], coldkey[30], coldkey[31] = 5, byte(minerID>>8), byte(minerID)
+		return coldkey
+	}
 	key32 := func(kind string, id uint64) [32]byte {
 		return sha256.Sum256([]byte(fmt.Sprintf("%s-%d", kind, id)))
 	}
@@ -1867,7 +2014,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	fixtureFleetManifest := func(fleetID uint64) protocol.FleetManifest {
 		manifest := protocol.FleetManifest{
 			Schema: protocol.FleetManifestSchema, ChainID: 945, Netuid: 521,
-			Coordinator: [20]byte(common.HexToAddress("0x1111111111111111111111111111111111111111")),
+			Coordinator: [20]byte(coordinatorAddress),
 			FleetID:     key32("fleet", fleetID), Hotkey: key32("hotkey", fleetID), Generation: 1,
 		}
 		for member := uint64(1); member <= 4; member++ {
@@ -2008,7 +2155,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		}
 		measurement := &validatorpkg.ReleaseMeasurementArtifact{
 			Schema: validatorpkg.ReleaseMeasurementSchema, DeploymentID: "ur-subnet-testnet-v1-attempt-4", ChainID: 945,
-			GenesisHash: finalTestHex(5), Coordinator: "0x1111111111111111111111111111111111111111", SettlementVault: "0x3333333333333333333333333333333333333333",
+			GenesisHash: finalTestHex(5), Coordinator: strings.ToLower(coordinatorAddress.Hex()), SettlementVault: strings.ToLower(vaultAddress.Hex()),
 			ValidatorID: validatorID, Netuid: 521, SubnetEpoch: cycle.SubnetEpoch, NativeSnapshotBlock: cycle.NativeSnapshot.Number,
 			NativeSnapshotHash: cycle.NativeSnapshot.Hash, EVMSnapshotBlock: cycle.EVMSnapshot.Number, EVMSnapshotHash: cycle.EVMSnapshot.Hash,
 			SettlementEpoch: cycle.SettlementEpoch, PolicyHash: policyHash, Policy: policy, PreviousArtifactHash: previousHash,
@@ -2035,7 +2182,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		epochStart := uint64(100) + (cycle.SettlementEpoch-10)*finalReleaseEpochBlocks
 		cycle.NativeSnapshot = ChainHead{Number: epochStart + 5, Hash: finalTestHex(byte(epochStart + 5))}
 		cycle.Commit.Block = ChainHead{Number: epochStart + 10 + validatorID, Hash: finalTestHex(byte(epochStart + 10 + validatorID))}
-		cycle.Reveal.Block = ChainHead{Number: epochStart + 20 + validatorID, Hash: finalTestHex(byte(epochStart + 20 + validatorID))}
+		cycle.Reveal.Block = ChainHead{Number: epochStart + 20, Hash: finalTestHex(byte(epochStart + 20))}
 		cycle.Application.Block = ChainHead{Number: epochStart + 30 + validatorID, Hash: finalTestHex(byte(epochStart + 30 + validatorID))}
 		fleetByUID := make(map[uint16]uint64, len(cycle.Candidates))
 		for _, candidate := range cycle.Candidates {
@@ -2146,6 +2293,19 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		intent.VectorHash, intent.Status, intent.Values = vectorHash, "applied", values
 		intent.ExtrinsicHash, intent.FinalizedBlock, intent.FinalizedBlockHash = cycle.Commit.ExtrinsicHash, cycle.Commit.Block.Number, cycle.Commit.Block.Hash
 		intent.RevealBlock, intent.ApplicationBlock, intent.ApplicationBlockHash = cycle.Reveal.Block.Number, cycle.Application.Block.Number, cycle.Application.Block.Hash
+		commitCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationCommit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revealCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationReveal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		applicationCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationApplication)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cycle.Commit.Call, cycle.Reveal.Call, cycle.Application.Call = &commitCall, &revealCall, &applicationCall
 		intentBytes, err := json.Marshal(intent)
 		if err != nil {
 			t.Fatal(err)
@@ -2209,7 +2369,11 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	for i := range miners {
 		minerID := uint64(i + 1)
 		clientID := minerClientID(minerID)
-		miners[i] = FinalMinerProcessEvidence{MinerID: minerID, ProcessID: fmt.Sprintf("miner-swarm-%d", i%finalMinerSwarmProcessCount+1), ProcessGeneration: 77, ClientID: clientID.String(), ProviderID: fmt.Sprintf("provider-%d", minerID), SDKSourceHash: finalTestHex(81), Running: true}
+		providerID, encodeErr := ss58.Encode(minerPayoutColdkey(minerID), ss58.BittensorPrefix)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		miners[i] = FinalMinerProcessEvidence{MinerID: minerID, ProcessID: fmt.Sprintf("miner-swarm-%d", i%finalMinerSwarmProcessCount+1), ProcessGeneration: 77, ClientID: clientID.String(), ProviderID: providerID, SDKSourceHash: finalTestHex(81), Running: true}
 		binding := FinalFleetMemberBindingEvidence{MinerID: minerID, NoID: uint64(operatorForMiner(cfg, int(minerID))), ClientID: miners[i].ClientID, ProviderID: miners[i].ProviderID}
 		if i < finalHeadCandidateCount*4 {
 			binding.Tier = "head-candidate"
@@ -2221,6 +2385,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 				binding.HeadUID = fleetLifecycleTerminalVictimUID
 			}
 			binding.Generation = 1
+			binding.ValidFromEpoch, binding.ValidToEpoch = 1, 114
 			binding.BindingActive = true
 		} else {
 			binding.Tier = "pool-tail"
@@ -2238,8 +2403,6 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	minerLocator := artifact("miner-process-manifest", "miners.json", minerBytes)
 	bindingLocator := artifact("fleet-binding-manifest", "fleet-bindings.json", bindingBytes)
 	topology := FinalTopologyEvidence{MinerSDKInstances: 1000, MinerSwarmProcesses: finalMinerSwarmProcessCount, HeadCandidateFleets: 202, HeadSlots: 200, ValidatorProcesses: 2, OperatorPools: 2, MinerManifestHash: minerLocator.ContentHash, MinerManifest: minerLocator, BindingManifestHash: bindingLocator.ContentHash, BindingManifest: bindingLocator}
-	coordinatorAddress := common.HexToAddress("0x1111111111111111111111111111111111111111")
-	vaultAddress := common.HexToAddress("0x3333333333333333333333333333333333333333")
 	payoutKeys := make([]*ecdsa.PrivateKey, 0, 2)
 	for i := 0; i < 2; i++ {
 		key, keyErr := crypto.ToECDSA(bytes.Repeat([]byte{byte(i + 1)}, 32))
@@ -2334,9 +2497,8 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 					t.Fatal(parseErr)
 				}
 				var network [16]byte
-				var coldkey [32]byte
 				network[0], network[14], network[15] = 3, byte(miner>>8), byte(miner)
-				coldkey[0], coldkey[30], coldkey[31] = 5, byte(miner>>8), byte(miner)
+				coldkey := minerPayoutColdkey(uint64(miner))
 				headExcluded := tierAt(miner, epoch) == "head-candidate"
 				usage := uint64(0)
 				if !headExcluded {
@@ -2361,7 +2523,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 				Coordinator: coordinatorAddress, SettlementVault: vaultAddress, Epoch: epoch, NoID: uint64(noID),
 				Start:                payoutartifact.Boundary{Number: 70 + (epoch-9)*finalReleaseEpochBlocks, Hash: finalTestHex(byte(70 + (epoch-9)*finalReleaseEpochBlocks))},
 				End:                  payoutartifact.Boundary{Number: 79 + (epoch-9)*finalReleaseEpochBlocks, Hash: finalTestHex(byte(79 + (epoch-9)*finalReleaseEpochBlocks))},
-				OperatorSnapshotHash: bytesSHA256([]byte{byte(80 + noID)}), FleetSnapshotHash: bytesSHA256([]byte{byte(90 + noID)}), ReliabilityAMin: policy.Verify.ReliabilityAMin,
+				OperatorSnapshotHash: finalPayoutOperatorSnapshotHash(uint64(noID), epoch, policyHash), FleetSnapshotHash: finalPayoutFleetSnapshotHash(providers), ReliabilityAMin: policy.Verify.ReliabilityAMin,
 				Providers: providers,
 				CreatedAt: time.Unix(1_700_000_000+int64(epoch*10+uint64(noID)), 0).UTC(),
 			})
@@ -2486,13 +2648,35 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		if manifestErr != nil {
 			t.Fatal(manifestErr)
 		}
+		commitment, commitmentErr := manifest.CommitmentHash()
+		if commitmentErr != nil {
+			t.Fatal(commitmentErr)
+		}
+		members := make([]FinalHeadFleetMemberEvidence, 0, len(manifest.Members))
+		for _, member := range manifest.Members {
+			members = append(members, FinalHeadFleetMemberEvidence{
+				ClientID:       "0x" + hex.EncodeToString(member.ClientID[:]),
+				ClientKey:      "0x" + hex.EncodeToString(member.ClientKey[:]),
+				ValidFromEpoch: 1,
+				ValidToEpoch:   114,
+			})
+		}
+		sort.Slice(members, func(i, j int) bool { return members[i].ClientID < members[j].ClientID })
 		bindingArtifactBytes, marshalErr := json.Marshal(map[string]any{"manifest": json.RawMessage(manifestBytes), "uid": uid, "snapshot": ChainHead{Number: 100, Hash: finalTestHex(100)}})
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}
+		coldkey := ss58Key(0x32, i+1)
+		registrationCall, callErr := finalNativeRegistrationCallEvidence(coldkey, uint32(i+1), 521, hotkey, uid, cfg.Config.Budgets.MaximumRegistrationBurnRao)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		registration := nativeReceipt(fmt.Sprintf("head-registration-%d", fleetID), uint64(30+i%50), true)
+		registration.Call = &registrationCall
 		headFleets = append(headFleets, FinalHeadFleetEvidence{
-			FleetID: fleetID, UID: uid, Hotkey: hotkey, Coldkey: ss58Key(0x32, i+1),
-			Generation: 1, MemberCount: 4, Registered: true, Registration: nativeReceipt(fmt.Sprintf("head-registration-%d", fleetID), uint64(30+i%50), true),
+			FleetID: fleetID, UID: uid, Hotkey: hotkey, Coldkey: coldkey,
+			FleetKey: "0x" + hex.EncodeToString(manifest.FleetID[:]), CommitmentHash: "0x" + hex.EncodeToString(commitment[:]), Members: members,
+			Generation: 1, MemberCount: 4, Registered: true, Registration: registration,
 			Snapshot: ChainHead{Number: 100, Hash: finalTestHex(100)}, BindingArtifact: artifact("head-fleet-binding", fmt.Sprintf("head-fleet-%d.json", fleetID), bindingArtifactBytes),
 		})
 	}
@@ -2546,8 +2730,6 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			Artifact: artifact("head-tournament-transition", fmt.Sprintf("head-transition-%d.json", fleetID), transitionBytes),
 		})
 	}
-	implementation := "0x2222222222222222222222222222222222222222"
-	reserveAddress := common.HexToAddress("0x4444444444444444444444444444444444444444")
 	coordinatorMirror := ss58.EvmMirrorPubkey(coordinatorAddress)
 	contractVaultMirror := ss58.EvmMirrorPubkey(vaultAddress)
 	reserveMirror := ss58.EvmMirrorPubkey(reserveAddress)
@@ -2557,16 +2739,16 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	}
 	deployment := FinalContractDeploymentEvidence{
 		CoordinatorProxy: strings.ToLower(coordinatorAddress.Hex()), CoordinatorImplementation: implementation,
-		SettlementVault: strings.ToLower(vaultAddress.Hex()), ReserveSink: strings.ToLower(reserveAddress.Hex()), GovernanceOwner: "0x5555555555555555555555555555555555555555",
+		SettlementVault: strings.ToLower(vaultAddress.Hex()), ReserveSink: strings.ToLower(reserveAddress.Hex()), GovernanceOwner: strings.ToLower(fixturePlan.Roles.Owner),
 		CoordinatorNetuid: 521, CoordinatorSelfColdkey: strings.ToLower(fmt.Sprintf("0x%x", coordinatorMirror[:])),
 		CoordinatorSettlementVault: strings.ToLower(vaultAddress.Hex()), CoordinatorReserveSink: strings.ToLower(reserveAddress.Hex()),
-		CoordinatorGuardian: "0x6666666666666666666666666666666666666666", CoordinatorActiveGuardian: "0x6666666666666666666666666666666666666666",
-		CoordinatorCommitmentOracle: "0x7777777777777777777777777777777777777777", CoordinatorActiveCommitmentOracle: "0x7777777777777777777777777777777777777777",
+		CoordinatorGuardian: strings.ToLower(fixturePlan.Roles.Guardian), CoordinatorActiveGuardian: strings.ToLower(fixturePlan.Roles.Guardian),
+		CoordinatorCommitmentOracle: strings.ToLower(fixturePlan.Roles.CommitmentOracle), CoordinatorActiveCommitmentOracle: strings.ToLower(fixturePlan.Roles.CommitmentOracle),
 		VaultCoordinator: strings.ToLower(coordinatorAddress.Hex()), VaultNetuid: 521, VaultSelfColdkey: strings.ToLower(fmt.Sprintf("0x%x", contractVaultMirror[:])),
-		VaultEscrowHotkey: finalTestHex(0x81), VaultEscrowRegistered: true, VaultMinimumClaimTTLBlocks: minimumTTL,
-		VaultMinimumTransferTaoRao: 1_000, PlanDefaultMinTransferTaoRao: 1_000,
-		ReserveRecorder: strings.ToLower(coordinatorAddress.Hex()), ReserveNetuid: 521, ReserveSelfColdkey: strings.ToLower(fmt.Sprintf("0x%x", reserveMirror[:])), ReserveHotkey: finalTestHex(0x82),
-		CoordinatorProxyCodeHash: finalTestHex(51), ImplementationCodeHash: finalTestHex(52), SettlementVaultCodeHash: finalTestHex(53), ReserveSinkCodeHash: finalTestHex(54),
+		VaultEscrowHotkey: strings.ToLower("0x" + hex.EncodeToString(escrowHotkey[:])), VaultEscrowRegistered: true, VaultMinimumClaimTTLBlocks: minimumTTL,
+		VaultMinimumTransferTaoRao: fixturePlan.LiveFacts.DefaultMinTransferRao, PlanDefaultMinTransferTaoRao: fixturePlan.LiveFacts.DefaultMinTransferRao,
+		ReserveRecorder: strings.ToLower(coordinatorAddress.Hex()), ReserveNetuid: 521, ReserveSelfColdkey: strings.ToLower(fmt.Sprintf("0x%x", reserveMirror[:])), ReserveHotkey: strings.ToLower("0x" + hex.EncodeToString(reserveHotkey[:])),
+		CoordinatorProxyCodeHash: fixtureRuntimeHash(fixturePlan.Deployment.CoordinatorProxy), ImplementationCodeHash: strings.ToLower(fixturePlan.CoordinatorUpgrade.RuntimeCodeHash), SettlementVaultCodeHash: fixtureRuntimeHash(fixturePlan.Deployment.SettlementVault), ReserveSinkCodeHash: fixtureRuntimeHash(fixturePlan.Deployment.ReserveSink),
 		ERC1967ImplementationSlot: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc", ObservedImplementationSlot: "0x" + strings.Repeat("0", 24) + strings.TrimPrefix(implementation, "0x"),
 		PolicyVersion: 1, PolicyEffectiveEpoch: 10, PolicyEffectiveBlock: 100, Snapshot: ChainHead{Number: 1750, Hash: finalTestHex(214)}, Artifact: artifact("contract-deployment", "contract-deployment.json", []byte("contract deployment")),
 	}
@@ -2689,6 +2871,11 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	}
 	for index := range validators {
 		validator := &validators[index]
+		registrationCall, callErr := finalNativeRegistrationCallEvidence(validator.Coldkey, uint32(1000+index), 521, validator.Hotkey, validator.UID, cfg.Config.Budgets.MaximumRegistrationBurnRao)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		validator.Registration.Call = &registrationCall
 		hotkey, coldkey, identityErr := finalSemanticSS58Pair("fixture validator state", validator.Hotkey, validator.Coldkey)
 		if identityErr != nil {
 			t.Fatal(identityErr)
@@ -2730,7 +2917,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			if claimed.Cmp(big.NewInt(1_000)) != 0 {
 				t.Fatalf("fixture payout epoch %d operator %d claims total %s, want 1000", epoch, i+1, claimed)
 			}
-			epochs = append(epochs, FinalEpochOperatorEvidence{Epoch: epoch, NoID: uint64(i + 1), Capture: evmReceipt(fmt.Sprintf("capture-%d-%d", epoch, i+1), epochStart+uint64(i)), RootDisposition: "committed", Root: &root, Finalize: evmReceipt(fmt.Sprintf("finalize-%d-%d", epoch, i+1), finalizeBlock), PayoutRoot: "0x" + hex.EncodeToString(payout.artifact.PayoutRoot[:]), ArtifactHash: "0x" + strings.TrimPrefix(payout.artifact.ContentHash, "sha256:"), PayoutArtifact: &payoutLocator, CapturedRao: "1000", CarryInRao: "0", FundedRao: "1000", TotalRao: "1000", ClaimedRao: claimed.String(), PaidRao: claimed.String(), DeferredCreditRao: "0", OutstandingRao: "0", CarryOutRao: "0", Status: 2, Claims: claims})
+			epochs = append(epochs, FinalEpochOperatorEvidence{Epoch: epoch, NoID: uint64(i + 1), Capture: evmReceipt(fmt.Sprintf("capture-%d-%d", epoch, i+1), epochStart+uint64(i)), RootDisposition: "committed", Root: &root, Finalize: evmReceipt(fmt.Sprintf("finalize-%d-%d", epoch, i+1), finalizeBlock), PayoutRoot: "0x" + hex.EncodeToString(payout.artifact.PayoutRoot[:]), ArtifactHash: "0x" + strings.TrimPrefix(payout.artifact.ContentHash, "sha256:"), PayoutArtifact: &payoutLocator, CapturedRao: "1000", CarryInRao: "0", FundedRao: "1000", TotalRao: "1000", ClaimedRao: claimed.String(), PaidRao: claimed.String(), DeferredCreditRao: "0", OutstandingRao: "0", CarryOutRao: "0", ExpiryBlock: finalizeBlock + 1, Status: 2, Claims: claims})
 		}
 	}
 	rewards := make([]FinalNativeRewardDelta, 0, int(finalReleaseEpochCount)*(finalHeadCandidateCount+4))
@@ -2960,6 +3147,21 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		PlannedSpanBlocks: archiveReceipt.PlannedSpanBlocks, SafetyMarginBlocks: archiveReceipt.SafetyMarginBlocks, RequiredDepthBlocks: archiveReceipt.RequiredDepthBlocks,
 		EvidenceHash: archiveReceipt.EvidenceHash, Artifact: artifact("archive-retention-preflight", "archive-retention-preflight.json", archiveWire),
 	}
+	claimPayments := make([]FinalClaimPaymentEvidence, 0)
+	for _, row := range epochs {
+		for _, claim := range row.Claims {
+			if claim.PaidRao == "0" {
+				continue
+			}
+			claimPayments = append(claimPayments, FinalClaimPaymentEvidence{Coldkey: claim.Payee, AmountRao: claim.PaidRao, Receipt: claim.Receipt})
+		}
+	}
+	sort.Slice(claimPayments, func(i, j int) bool {
+		if claimPayments[i].Receipt.Block.Number != claimPayments[j].Receipt.Block.Number {
+			return claimPayments[i].Receipt.Block.Number < claimPayments[j].Receipt.Block.Number
+		}
+		return claimPayments[i].Receipt.TransactionHash < claimPayments[j].Receipt.TransactionHash
+	})
 	source := FinalSemanticEvidence{
 		Phase: "release-1.0", RunID: "release-run-1", ResultHash: finalTestHex(1), CampaignStartedAt: campaignStartedAt.Format(time.RFC3339Nano), CampaignCompletedAt: time.Unix(1_700_001_000, 0).UTC().Format(time.RFC3339Nano), DeploymentID: "ur-subnet-testnet-v1-attempt-4", PlanHash: finalTestHex(2), ConfigHash: finalTestHex(3), PolicyHash: policyHash, GenesisHash: finalTestHex(5), ChainID: 945, Netuid: 521, PolicyArtifact: policyLocator,
 		Window: ScenarioAcceptanceWindow{
@@ -2976,12 +3178,38 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 				FaultEpoch: finalSemanticFixtureViewFaultEpoch, RestoredEpoch: finalSemanticFixtureViewRestoredEpoch, AffectedValidatorID: 1, ControlValidatorID: 2, WithheldFleetID: finalSemanticFixtureViewWithheldFleetID, ReplacementFleetID: finalSemanticFixtureViewReplacementFleetID,
 			})),
 		},
-		ContractCleanup: cleanup, ArchiveRetention: archiveEvidence, Deployment: deployment, SettlementAccounting: settlementAccounting, Reserve: reserve, Pools: pools, Validators: validators, Epochs: epochs,
+		ContractCleanup: cleanup, ArchiveRetention: archiveEvidence, Deployment: deployment, SettlementAccounting: settlementAccounting, Reserve: reserve, Pools: pools, Validators: validators, Epochs: epochs, ClaimPayments: claimPayments,
 		Conservation:  FinalPoolConservation{CapturedRao: "10000", CarryInRao: "0", FundedRao: "10000", ClaimedRao: "10000", PaidRao: "10000", DeferredCreditRao: "0", OutstandingRao: "0", CarryOutRao: "0"},
-		NativeRewards: rewards, PathProofs: pathProofs, ExitCriteria: exitCriteria,
+		NativeRewards: rewards, PathProofs: pathProofs, Adversaries: adversaries, ExitCriteria: exitCriteria,
+	}
+	reconstructedPlan, reconstructErr := finalSemanticFixtureSetupPlan(cfg, &source)
+	if reconstructErr != nil {
+		t.Fatal(reconstructErr)
+	}
+	if !finalJSONEqual(fixturePlan.Deployment, reconstructedPlan.Deployment) || fixturePlan.CoordinatorUpgrade != reconstructedPlan.CoordinatorUpgrade {
+		t.Fatalf("fixture deployment changed before lifecycle reconstruction: early=%+v/%+v reconstructed=%+v/%+v", fixturePlan.Deployment, fixturePlan.CoordinatorUpgrade, reconstructedPlan.Deployment, reconstructedPlan.CoordinatorUpgrade)
 	}
 	attachFinalFleetLifecycleFixture(t, &source, artifacts)
+	attachFinalSemanticFixtureGeneration(t, &source, artifacts)
 	return source, artifacts
+}
+
+// Constructs complete attributed actor evidence for the release-scale semantic
+// artifact fixture.
+func finalSemanticFixtureAdversarialCampaign(t *testing.T, cfg *ResolvedConfig, artifact func(string, string, []byte) FinalArtifactLocator) FinalAdversarialCampaignEvidence {
+	t.Helper()
+	campaign, matrix, matrixData := finalSemanticAdversarialTestCampaignForConfig(t, cfg)
+	summary, err := summarizeFinalAdversarialCampaign(campaign, matrix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(campaign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary.MatrixArtifact = artifact("adversarial-matrix", "adversarial-matrix.json", matrixData)
+	summary.Artifact = artifact("scenario-adversaries", "adversaries.json", data)
+	return summary
 }
 
 func finalTestPreparedSubmission(t *testing.T, uids, values []uint16, cycle FinalCRv4Cycle, hotkey [32]byte) *crv4.PreparedSubmission {
@@ -2990,9 +3218,21 @@ func finalTestPreparedSubmission(t *testing.T, uids, values []uint16, cycle Fina
 	if err != nil {
 		t.Fatal(err)
 	}
-	ciphertext := []byte{0xaa, hotkey[0]}
-	body := append([]byte{0x84}, ciphertext...)
-	raw := append([]byte{byte(len(body) << 2)}, body...)
+	ciphertext := []byte{0xaa, hotkey[0], byte(cycle.SubnetEpoch), byte(cycle.Commit.Block.Number)}
+	rawCall, err := finalNativeEncodeCall(
+		gsrpctypes.CallIndex{SectionIndex: finalNativeSubtensorPalletIndex, MethodIndex: finalNativeCommitCallIndex},
+		gsrpctypes.NewU16(521), gsrpctypes.NewBytes(ciphertext), gsrpctypes.NewU64(1), gsrpctypes.NewU16(crv4.CommitRevealVersion4),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := append([]byte{finalNativeSignedExtrinsicVersion}, make([]byte, 96)...)
+	body = append(body, rawCall...)
+	prefix, err := gsrpccodec.Encode(gsrpctypes.NewUCompactFromUInt(uint64(len(body))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := append(prefix, body...)
 	cipherHash := sha256.Sum256(ciphertext)
 	extrinsicHash := blake2b.Sum256(raw)
 	prepared := &crv4.PreparedSubmission{
@@ -3044,128 +3284,148 @@ func mustFinalSemanticJSON(t *testing.T, value any) []byte {
 }
 
 type finalTestChainReader struct {
-	evidence              *FinalSemanticEvidence
-	publicManifestHash    string
-	failCanonical         bool
-	corruptWeights        bool
-	corruptPoolOwnership  bool
-	corruptRegistration   bool
-	corruptCustody        bool
-	corruptSettlement     bool
-	corruptOwnerStake     bool
-	corruptReserveReceipt bool
-	nativeTip             uint64
-	evmTip                uint64
-	forkTarget            bool
+	evidence                    *FinalSemanticEvidence
+	publicManifestHash          string
+	failCanonical               bool
+	corruptWeights              bool
+	corruptPoolOwnership        bool
+	corruptRegistration         bool
+	corruptCustody              bool
+	corruptSettlement           bool
+	corruptOwnerStake           bool
+	corruptReserveReceipt       bool
+	corruptEpochDeposit         bool
+	corruptEpochConvictionAdded bool
+	corruptOperatorVersion      bool
+	corruptConviction           bool
+	corruptPrincipal            bool
+	corruptCarry                bool
+	corruptVaultClaim           bool
+	corruptVaultClaimKey        bool
+	corruptVaultPayoutLeaf      bool
+	corruptClaimCredit          bool
+	corruptPoolExpiry           bool
+	corruptRuntime              bool
+	corruptOracleWindow         bool
+	epochConvictionAddedRao     string
+	claimCreditBaseline         map[string]string
+	claimCreditTerminal         map[string]string
+	nativeTip                   uint64
+	evmTip                      uint64
+	forkTarget                  bool
 }
 
-func (r *finalTestChainReader) Endpoints() (string, string, string) {
+func (self *finalTestChainReader) Endpoints() (string, string, string) {
 	return "wss://substrate.example/rpc", "https://evm.example/rpc", "https://evidence.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("11", 32)
 }
 
-func (r *finalTestChainReader) PublicManifestHash() string {
-	if r.publicManifestHash != "" {
-		return r.publicManifestHash
+func (self *finalTestChainReader) PublicManifestHash() string {
+	if self.publicManifestHash != "" {
+		return self.publicManifestHash
 	}
 	return finalTestHex(0x5a)
 }
 
-func (r *finalTestChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
+func (self *finalTestChainReader) OperatorEvidenceOrigins() []FinalOperatorEvidenceOrigin {
 	return []FinalOperatorEvidenceOrigin{
 		{OperatorNoID: 1, ManifestURI: "https://evidence.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("11", 32)},
 		{OperatorNoID: 2, ManifestURI: "https://evidence-2.example/deployment-manifest.json?hash=sha256:" + strings.Repeat("22", 32)},
 	}
 }
 
-func (r *finalTestChainReader) exchange(chain, method string, head ChainHead) []FinalRPCExchange {
+func (self *finalTestChainReader) exchange(chain, method string, head ChainHead) []FinalRPCExchange {
 	return []FinalRPCExchange{{Chain: chain, Method: method, Params: json.RawMessage("[]"), PinnedHead: head, Result: json.RawMessage("{\"ok\":true}")}}
 }
 
-func (r *finalTestChainReader) CanonicalSubstrateHead(_ context.Context, head ChainHead) ([]FinalRPCExchange, error) {
-	if r.failCanonical {
+func (self *finalTestChainReader) CanonicalSubstrateHead(_ context.Context, head ChainHead) ([]FinalRPCExchange, error) {
+	if self.failCanonical {
 		return nil, errors.New("archive unavailable")
 	}
-	if r.nativeTip != 0 && head.Number > r.nativeTip {
+	if self.nativeTip != 0 && head.Number > self.nativeTip {
 		return nil, errors.New("checkpoint is ahead of finalized tip")
 	}
-	if r.forkTarget {
+	if self.forkTarget {
 		return nil, errors.New("canonical target mismatch")
 	}
-	return r.exchange("substrate", "chain_getHeader", head), nil
+	return self.exchange("substrate", "chain_getHeader", head), nil
 }
 
-func (r *finalTestChainReader) CanonicalEVMHead(_ context.Context, head ChainHead) ([]FinalRPCExchange, error) {
-	if r.evmTip != 0 && head.Number > r.evmTip {
+func (self *finalTestChainReader) CanonicalEVMHead(_ context.Context, head ChainHead) ([]FinalRPCExchange, error) {
+	if self.evmTip != 0 && head.Number > self.evmTip {
 		return nil, errors.New("checkpoint is ahead of finalized tip")
 	}
-	if r.forkTarget {
+	if self.forkTarget {
 		return nil, errors.New("canonical target mismatch")
 	}
-	return r.exchange("evm", "eth_getBlockByNumber", head), nil
+	return self.exchange("evm", "eth_getBlockByNumber", head), nil
 }
 
-func (r *finalTestChainReader) NativeUID(_ context.Context, _ uint16, uid uint16, head ChainHead) (FinalNativeUIDState, []FinalRPCExchange, error) {
-	for _, pool := range r.evidence.Pools {
+func (self *finalTestChainReader) NativeUID(_ context.Context, _ uint16, uid uint16, head ChainHead) (FinalNativeUIDState, []FinalRPCExchange, error) {
+	for _, pool := range self.evidence.Pools {
 		if pool.UID == uid {
 			hotkey := pool.Hotkey
-			if r.corruptPoolOwnership {
+			if self.corruptPoolOwnership {
 				hotkey += "-wrong"
 			}
-			return FinalNativeUIDState{UID: uid, Hotkey: hotkey, Coldkey: pool.Coldkey, Registered: pool.Registered}, r.exchange("substrate", "state_getStorage", head), nil
+			return FinalNativeUIDState{UID: uid, Hotkey: hotkey, Coldkey: pool.Coldkey, Registered: pool.Registered}, self.exchange("substrate", "state_getStorage", head), nil
 		}
 	}
-	for _, validator := range r.evidence.Validators {
+	for _, validator := range self.evidence.Validators {
 		if validator.UID == uid {
-			return FinalNativeUIDState{UID: uid, Hotkey: validator.Hotkey, Coldkey: validator.Coldkey, Registered: validator.Registered, StakeRao: validator.StakeRao, ValidatorPermit: validator.ValidatorPermit, ValidatorTrustU16: validator.ValidatorTrustU16}, r.exchange("substrate", "state_getStorage", head), nil
+			return FinalNativeUIDState{UID: uid, Hotkey: validator.Hotkey, Coldkey: validator.Coldkey, Registered: validator.Registered, StakeRao: validator.StakeRao, ValidatorPermit: validator.ValidatorPermit, ValidatorTrustU16: validator.ValidatorTrustU16}, self.exchange("substrate", "state_getStorage", head), nil
 		}
 	}
-	for _, fleet := range r.evidence.HeadFleets {
+	for _, fleet := range self.evidence.HeadFleets {
 		if fleet.UID == uid {
-			return FinalNativeUIDState{UID: uid, Hotkey: fleet.Hotkey, Coldkey: fleet.Coldkey, Registered: fleet.Registered}, r.exchange("substrate", "state_getStorage", head), nil
+			return FinalNativeUIDState{UID: uid, Hotkey: fleet.Hotkey, Coldkey: fleet.Coldkey, Registered: fleet.Registered}, self.exchange("substrate", "state_getStorage", head), nil
 		}
 	}
 	return FinalNativeUIDState{}, nil, errors.New("unknown UID")
 }
 
-func (r *finalTestChainReader) NativeEvent(_ context.Context, receipt FinalNativeReceipt, event string) (FinalNativeEventState, []FinalRPCExchange, error) {
-	return FinalNativeEventState{ExtrinsicHash: receipt.ExtrinsicHash, Block: receipt.Block, Success: true, Event: event}, r.exchange("substrate", "chain_getBlock", receipt.Block), nil
+func (self *finalTestChainReader) NativeEvent(_ context.Context, receipt FinalNativeReceipt, event string) (FinalNativeEventState, []FinalRPCExchange, error) {
+	return FinalNativeEventState{ExtrinsicHash: receipt.ExtrinsicHash, Block: receipt.Block, Success: true, Event: event}, self.exchange("substrate", "chain_getBlock", receipt.Block), nil
 }
 
-func (r *finalTestChainReader) NativeWeights(_ context.Context, _ uint16, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
-	for _, validator := range r.evidence.Validators {
+func (self *finalTestChainReader) NativeWeights(_ context.Context, _ uint16, validatorUID uint16, head ChainHead) (FinalNativeWeightState, []FinalRPCExchange, error) {
+	for _, validator := range self.evidence.Validators {
 		if validator.UID != validatorUID {
 			continue
 		}
 		for _, cycle := range validator.Cycles {
 			if cycle.Application.Block == head {
 				uids, values := finalSubmittedValues(cycle.Submitted)
-				if r.corruptWeights && len(values) != 0 {
+				if self.corruptWeights && len(values) != 0 {
 					values[0]++
 				}
-				return FinalNativeWeightState{ValidatorUID: validatorUID, UIDs: uids, Values: values, Block: head}, r.exchange("substrate", "state_getStorage", head), nil
+				hotkey, err := finalNativeAccountHex(validator.Hotkey)
+				if err != nil {
+					return FinalNativeWeightState{}, nil, err
+				}
+				return FinalNativeWeightState{ValidatorUID: validatorUID, ValidatorHotkey: hotkey, LastUpdate: cycle.Commit.Block.Number, UIDs: uids, Values: values, Block: head}, self.exchange("substrate", "state_getStorage", head), nil
 			}
 		}
 	}
 	return FinalNativeWeightState{}, nil, errors.New("unknown weight checkpoint")
 }
 
-func (r *finalTestChainReader) NativePruneSnapshot(_ context.Context, _ uint16, head ChainHead) (FleetLifecyclePruneSnapshot, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle == nil {
+func (self *finalTestChainReader) NativePruneSnapshot(_ context.Context, _ uint16, head ChainHead) (FleetLifecyclePruneSnapshot, []FinalRPCExchange, error) {
+	if self.evidence.FleetLifecycle == nil {
 		return FleetLifecyclePruneSnapshot{}, nil, errors.New("no lifecycle fixture")
 	}
-	state := &r.evidence.FleetLifecycle.State
+	state := &self.evidence.FleetLifecycle.State
 	if state.LaunchPrune != nil && state.LaunchPrune.Head == head {
-		return *state.LaunchPrune, r.exchange("substrate", "state_queryStorageAt", head), nil
+		return *state.LaunchPrune, self.exchange("substrate", "state_queryStorageAt", head), nil
 	}
 	for _, registration := range []*FleetLifecycleRegistrationEvidence{state.FallbackRegistration, state.ProviderRegistration, state.TerminalRegistration} {
 		if registration == nil {
 			continue
 		}
 		if registration.PrePrune.Head == head {
-			return registration.PrePrune, r.exchange("substrate", "state_queryStorageAt", head), nil
+			return registration.PrePrune, self.exchange("substrate", "state_queryStorageAt", head), nil
 		}
 		if registration.PostRegistration.Head == head {
-			return registration.PostRegistration, r.exchange("substrate", "state_queryStorageAt", head), nil
+			return registration.PostRegistration, self.exchange("substrate", "state_queryStorageAt", head), nil
 		}
 	}
 	for _, census := range state.CandidateCensuses {
@@ -3177,30 +3437,119 @@ func (r *finalTestChainReader) NativePruneSnapshot(_ context.Context, _ uint16, 
 			for index, uid := range census.CandidateUIDs {
 				inputs[index] = FleetLifecyclePruneInput{UID: uid, Hotkey: census.CandidateHotkeys[index]}
 			}
-			return FleetLifecyclePruneSnapshot{Head: head, UIDCount: uint16(len(inputs)), Inputs: inputs}, r.exchange("substrate", "state_queryStorageAt", head), nil
+			return FleetLifecyclePruneSnapshot{Head: head, UIDCount: uint16(len(inputs)), Inputs: inputs}, self.exchange("substrate", "state_queryStorageAt", head), nil
 		}
 	}
 	return FleetLifecyclePruneSnapshot{}, nil, errors.New("unknown lifecycle prune checkpoint")
 }
 
-func (r *finalTestChainReader) NativeFleetCommitment(_ context.Context, _ uint16, hotkey string, head ChainHead) (FinalNativeFleetCommitmentState, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+func (self *finalTestChainReader) NativeFleetCommitment(_ context.Context, _ uint16, hotkey string, head ChainHead) (FinalNativeFleetCommitmentState, []FinalRPCExchange, error) {
+	if self.evidence.FleetGeneration != nil {
+		versions := make([]FinalFleetGenerationVersionEvidence, 0, len(self.evidence.FleetGeneration.SetupFleets)*2+len(self.evidence.FleetGeneration.ChallengerFleets))
+		for _, fleet := range self.evidence.FleetGeneration.SetupFleets {
+			versions = append(versions, fleet.Initial, fleet.Refresh)
+		}
+		for _, fleet := range self.evidence.FleetGeneration.ChallengerFleets {
+			versions = append(versions, fleet.Initial)
+		}
+		for _, version := range versions {
+			if !strings.EqualFold(version.Hotkey, hotkey) || version.NativeHead != head {
+				continue
+			}
+			return FinalNativeFleetCommitmentState{
+				Hotkey:          strings.ToLower(version.Hotkey),
+				CommitmentHash:  strings.ToLower(version.CommitmentHash),
+				CommitmentBlock: version.NativeHead.Number,
+				Block:           head,
+			}, self.exchange("substrate", "state_queryStorageAt", head), nil
+		}
+	}
+	for _, fleet := range self.evidence.HeadFleets {
+		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
+			continue
+		}
+		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		if err != nil || prefix != ss58.BittensorPrefix {
+			continue
+		}
+		if strings.EqualFold(hotkey, "0x"+hex.EncodeToString(hotkeyBytes[:])) {
+			return FinalNativeFleetCommitmentState{Hotkey: strings.ToLower(hotkey), CommitmentHash: fleet.CommitmentHash, CommitmentBlock: 1, Block: head}, self.exchange("substrate", "state_queryStorageAt", head), nil
+		}
+	}
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			commitmentHead := ChainHead{Number: variant.Commitment.FinalizedBlock, Hash: strings.ToLower(variant.Commitment.FinalizedBlockHash)}
 			if strings.EqualFold(variant.Hotkey, hotkey) && commitmentHead == head {
-				return FinalNativeFleetCommitmentState{Hotkey: strings.ToLower(hotkey), CommitmentHash: strings.ToLower(variant.Commitment.CommitmentHash), CommitmentBlock: variant.Commitment.CommitmentBlock, Block: head}, r.exchange("substrate", "state_queryStorageAt", head), nil
+				return FinalNativeFleetCommitmentState{Hotkey: strings.ToLower(hotkey), CommitmentHash: strings.ToLower(variant.Commitment.CommitmentHash), CommitmentBlock: variant.Commitment.CommitmentBlock, Block: head}, self.exchange("substrate", "state_queryStorageAt", head), nil
 			}
 		}
 	}
 	return FinalNativeFleetCommitmentState{}, nil, errors.New("unknown lifecycle commitment checkpoint")
 }
 
-func (r *finalTestChainReader) FleetMirror(_ context.Context, hotkey string, head ChainHead) (FinalFleetMirrorChainState, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+// Replays the sealed transaction and complete receipt-log sequence for one
+// ordinary-fleet mutation, rather than treating the fixture's terminal state
+// as proof of a prior generation write.
+func (self *finalTestChainReader) FleetGenerationEVMWrite(_ context.Context, write FinalFleetGenerationWriteEvidence) (FinalFleetGenerationEVMWriteState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, errors.New("fixture ordinary fleet generation reader is unavailable")
+	}
+	target, err := finalFleetGenerationWriteTarget(self.evidence, write)
+	if err != nil {
+		return FinalFleetGenerationEVMWriteState{}, nil, err
+	}
+	logs := make([]finalCanonicalEVMLog, 0, len(write.Events))
+	for _, event := range write.Events {
+		logs = append(logs, event.Log)
+	}
+	exchanges := self.exchange("evm", "eth_getTransactionReceipt", write.Receipt.Block)
+	exchanges = append(exchanges, self.exchange("evm", "eth_getTransactionByHash", write.Receipt.Block)...)
+	return FinalFleetGenerationEVMWriteState{
+		TransactionHash: strings.ToLower(write.Receipt.TransactionHash),
+		To:              target,
+		Calldata:        write.Calldata,
+		Block:           write.Receipt.Block,
+		Status:          write.Receipt.Status,
+		Logs:            logs,
+	}, exchanges, nil
+}
+
+// Returns the proxy-dispatch identity that was sealed beside an ordinary-fleet
+// write, including the historical batcher only when that write used one.
+func (self *finalTestChainReader) FleetGenerationRuntime(_ context.Context, write FinalFleetGenerationWriteEvidence) (FinalFleetGenerationRuntimeState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
+		return FinalFleetGenerationRuntimeState{}, nil, errors.New("fixture ordinary fleet runtime reader is unavailable")
+	}
+	return FinalFleetGenerationRuntimeState{
+		CoordinatorProxy:              write.CoordinatorProxy,
+		CoordinatorImplementation:     write.CoordinatorImplementation,
+		CoordinatorImplementationSlot: write.CoordinatorImplementationSlot,
+		CoordinatorProxyRuntimeHash:   write.CoordinatorProxyRuntimeHash,
+		CoordinatorRuntimeHash:        write.CoordinatorRuntimeHash,
+		BatcherAddress:                write.BatcherAddress,
+		BatcherRuntimeHash:            write.BatcherRuntimeHash,
+		Block:                         write.EVMHead,
+	}, self.exchange("evm", "eth_getStorageAt", write.EVMHead), nil
+}
+
+func (self *finalTestChainReader) FleetMirror(_ context.Context, hotkey string, head ChainHead) (FinalFleetMirrorChainState, []FinalRPCExchange, error) {
+	for _, fleet := range self.evidence.HeadFleets {
+		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
+			continue
+		}
+		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		if err != nil || prefix != ss58.BittensorPrefix {
+			continue
+		}
+		if strings.EqualFold(hotkey, "0x"+hex.EncodeToString(hotkeyBytes[:])) {
+			return FinalFleetMirrorChainState{Hotkey: strings.ToLower(hotkey), CommitmentHash: fleet.CommitmentHash, FinalizedBlock: 1, FinalizedBlockHash: finalTestHex(1), Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			mirrorHead := ChainHead{Number: variant.Mirror.BlockNumber, Hash: strings.ToLower(variant.Mirror.BlockHash)}
 			if strings.EqualFold(variant.Hotkey, hotkey) && mirrorHead == head {
-				return FinalFleetMirrorChainState{Hotkey: strings.ToLower(hotkey), CommitmentHash: strings.ToLower(variant.Mirror.CommitmentHash), FinalizedBlock: variant.Mirror.FinalizedBlock, FinalizedBlockHash: strings.ToLower(variant.Mirror.FinalizedBlockHash), Block: head}, r.exchange("evm", "eth_call", head), nil
+				return FinalFleetMirrorChainState{Hotkey: strings.ToLower(hotkey), CommitmentHash: strings.ToLower(variant.Mirror.CommitmentHash), FinalizedBlock: variant.Mirror.FinalizedBlock, FinalizedBlockHash: strings.ToLower(variant.Mirror.FinalizedBlockHash), Block: head}, self.exchange("evm", "eth_call", head), nil
 			}
 		}
 	}
@@ -3215,13 +3564,29 @@ func finalTestFleetBindingState(binding FleetBindingEvidence, head ChainHead, cl
 	}
 }
 
-func (r *finalTestChainReader) FleetBinding(_ context.Context, clientID string, epoch uint64, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+func (self *finalTestChainReader) FleetBinding(_ context.Context, clientID string, epoch uint64, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
+	for _, fleet := range self.evidence.HeadFleets {
+		if self.evidence.FleetLifecycle != nil && (fleet.FleetID == fleetLifecycleTargetFleet || fleet.FleetID == fleetLifecycleCompanionFleet) {
+			continue
+		}
+		hotkeyBytes, prefix, err := ss58.Decode(fleet.Hotkey)
+		if err != nil || prefix != ss58.BittensorPrefix {
+			continue
+		}
+		for _, member := range fleet.Members {
+			if !strings.EqualFold(clientID, member.ClientID) {
+				continue
+			}
+			active := epoch >= member.ValidFromEpoch && epoch <= member.ValidToEpoch
+			return FinalFleetBindingChainState{Active: active, ClientID: strings.ToLower(member.ClientID), FleetID: fleet.FleetKey, Hotkey: "0x" + hex.EncodeToString(hotkeyBytes[:]), ClientKey: member.ClientKey, CommitmentHash: fleet.CommitmentHash, Generation: fleet.Generation, ValidFromEpoch: member.ValidFromEpoch, ValidToEpoch: member.ValidToEpoch, UID: fleet.UID, Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			for _, binding := range variant.Bindings {
 				bindingHead := ChainHead{Number: binding.BlockNumber, Hash: strings.ToLower(binding.BlockHash)}
 				if strings.EqualFold(binding.ClientID, clientID) && binding.ValidFromEpoch == epoch && bindingHead == head {
-					return finalTestFleetBindingState(binding, head, false, 0), r.exchange("evm", "eth_call", head), nil
+					return finalTestFleetBindingState(binding, head, false, 0), self.exchange("evm", "eth_call", head), nil
 				}
 			}
 		}
@@ -3229,9 +3594,9 @@ func (r *finalTestChainReader) FleetBinding(_ context.Context, clientID string, 
 	return FinalFleetBindingChainState{}, nil, errors.New("unknown lifecycle binding checkpoint")
 }
 
-func (r *finalTestChainReader) FleetBindingRecord(_ context.Context, clientID string, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+func (self *finalTestChainReader) FleetBindingRecord(_ context.Context, clientID string, head ChainHead) (FinalFleetBindingChainState, []FinalRPCExchange, error) {
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			bindings := make(map[string]FleetBindingEvidence, len(variant.Bindings))
 			for _, binding := range variant.Bindings {
 				bindings[strings.ToLower(binding.ClientID)] = binding
@@ -3246,10 +3611,10 @@ func (r *finalTestChainReader) FleetBindingRecord(_ context.Context, clientID st
 				}
 				cleanupHead := ChainHead{Number: cleanup.BlockNumber, Hash: strings.ToLower(cleanup.BlockHash)}
 				if cleanup.BeforeBlock == head {
-					return finalTestFleetBindingState(binding, head, false, 0), r.exchange("evm", "eth_call", head), nil
+					return finalTestFleetBindingState(binding, head, false, 0), self.exchange("evm", "eth_call", head), nil
 				}
 				if cleanupHead == head {
-					return finalTestFleetBindingState(binding, head, true, cleanup.CleanedAtEpoch), r.exchange("evm", "eth_call", head), nil
+					return finalTestFleetBindingState(binding, head, true, cleanup.CleanedAtEpoch), self.exchange("evm", "eth_call", head), nil
 				}
 			}
 		}
@@ -3257,19 +3622,19 @@ func (r *finalTestChainReader) FleetBindingRecord(_ context.Context, clientID st
 	return FinalFleetBindingChainState{}, nil, errors.New("unknown lifecycle binding-record checkpoint")
 }
 
-func (r *finalTestChainReader) FleetMemberCount(_ context.Context, fleetID string, head ChainHead) (uint64, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+func (self *finalTestChainReader) FleetMemberCount(_ context.Context, fleetID string, head ChainHead) (uint64, []FinalRPCExchange, error) {
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			for _, cleanup := range variant.Cleanups {
 				if !strings.EqualFold(cleanup.FleetID, fleetID) {
 					continue
 				}
 				cleanupHead := ChainHead{Number: cleanup.BlockNumber, Hash: strings.ToLower(cleanup.BlockHash)}
 				if cleanup.BeforeBlock == head {
-					return cleanup.MemberCountBefore, r.exchange("evm", "eth_call", head), nil
+					return cleanup.MemberCountBefore, self.exchange("evm", "eth_call", head), nil
 				}
 				if cleanupHead == head {
-					return cleanup.MemberCountAfter, r.exchange("evm", "eth_call", head), nil
+					return cleanup.MemberCountAfter, self.exchange("evm", "eth_call", head), nil
 				}
 			}
 		}
@@ -3277,20 +3642,20 @@ func (r *finalTestChainReader) FleetMemberCount(_ context.Context, fleetID strin
 	return 0, nil, errors.New("unknown lifecycle member-count checkpoint")
 }
 
-func (r *finalTestChainReader) FleetLifecycleEvents(_ context.Context, transactionHash string, head ChainHead) ([]FinalFleetLifecycleEventState, []FinalRPCExchange, error) {
-	if r.evidence.FleetLifecycle != nil {
-		for _, variant := range r.evidence.FleetLifecycle.Variants {
+func (self *finalTestChainReader) FleetLifecycleEvents(_ context.Context, transactionHash string, head ChainHead) ([]FinalFleetLifecycleEventState, []FinalRPCExchange, error) {
+	if self.evidence.FleetLifecycle != nil {
+		for _, variant := range self.evidence.FleetLifecycle.Variants {
 			if strings.EqualFold(variant.Mirror.TransactionHash, transactionHash) {
-				return []FinalFleetLifecycleEventState{{Kind: "commitment-mirrored", TransactionHash: strings.ToLower(transactionHash), Block: head, Hotkey: strings.ToLower(variant.Mirror.Hotkey), CommitmentHash: strings.ToLower(variant.Mirror.CommitmentHash), FinalizedBlock: variant.Mirror.FinalizedBlock, FinalizedBlockHash: strings.ToLower(variant.Mirror.FinalizedBlockHash)}}, r.exchange("evm", "eth_getTransactionReceipt", head), nil
+				return []FinalFleetLifecycleEventState{{Kind: "commitment-mirrored", TransactionHash: strings.ToLower(transactionHash), Block: head, Hotkey: strings.ToLower(variant.Mirror.Hotkey), CommitmentHash: strings.ToLower(variant.Mirror.CommitmentHash), FinalizedBlock: variant.Mirror.FinalizedBlock, FinalizedBlockHash: strings.ToLower(variant.Mirror.FinalizedBlockHash)}}, self.exchange("evm", "eth_getTransactionReceipt", head), nil
 			}
 			for _, binding := range variant.Bindings {
 				if strings.EqualFold(binding.TransactionHash, transactionHash) {
-					return []FinalFleetLifecycleEventState{{Kind: "fleet-bound", TransactionHash: strings.ToLower(transactionHash), Block: head, ClientID: strings.ToLower(binding.ClientID), FleetID: strings.ToLower(binding.FleetID), Hotkey: strings.ToLower(binding.Hotkey), Generation: binding.Generation, UID: binding.UID, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch}}, r.exchange("evm", "eth_getTransactionReceipt", head), nil
+					return []FinalFleetLifecycleEventState{{Kind: "fleet-bound", TransactionHash: strings.ToLower(transactionHash), Block: head, ClientID: strings.ToLower(binding.ClientID), FleetID: strings.ToLower(binding.FleetID), Hotkey: strings.ToLower(binding.Hotkey), Generation: binding.Generation, UID: binding.UID, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch}}, self.exchange("evm", "eth_getTransactionReceipt", head), nil
 				}
 			}
 			for _, cleanup := range variant.Cleanups {
 				if strings.EqualFold(cleanup.TransactionHash, transactionHash) {
-					return []FinalFleetLifecycleEventState{{Kind: "fleet-binding-cleaned", TransactionHash: strings.ToLower(transactionHash), Block: head, ClientID: strings.ToLower(cleanup.ClientID), CleanedAtEpoch: cleanup.CleanedAtEpoch}}, r.exchange("evm", "eth_getTransactionReceipt", head), nil
+					return []FinalFleetLifecycleEventState{{Kind: "fleet-binding-cleaned", TransactionHash: strings.ToLower(transactionHash), Block: head, ClientID: strings.ToLower(cleanup.ClientID), CleanedAtEpoch: cleanup.CleanedAtEpoch}}, self.exchange("evm", "eth_getTransactionReceipt", head), nil
 				}
 			}
 		}
@@ -3299,34 +3664,36 @@ func (r *finalTestChainReader) FleetLifecycleEvents(_ context.Context, transacti
 }
 
 var _ FinalSemanticLifecycleChainReader = (*finalTestChainReader)(nil)
+var _ finalFleetGenerationChainReader = (*finalTestChainReader)(nil)
+var _ finalFleetGenerationRuntimeReader = (*finalTestChainReader)(nil)
 
-func (r *finalTestChainReader) NativeReward(_ context.Context, _ uint16, uid uint16, head ChainHead) (FinalNativeRewardState, []FinalRPCExchange, error) {
-	for _, reward := range r.evidence.NativeRewards {
+func (self *finalTestChainReader) NativeReward(_ context.Context, _ uint16, uid uint16, head ChainHead) (FinalNativeRewardState, []FinalRPCExchange, error) {
+	for _, reward := range self.evidence.NativeRewards {
 		if reward.UID != uid {
 			continue
 		}
 		if reward.Before == head {
-			return FinalNativeRewardState{UID: uid, EmissionRao: reward.BeforeRao, StakeRao: reward.StakeBeforeRao, IncentiveU16: reward.BeforeIncentiveU16, DividendsU16: reward.BeforeDividendsU16, Block: head}, r.exchange("substrate", "state_getStorage", head), nil
+			return FinalNativeRewardState{UID: uid, EmissionRao: reward.BeforeRao, StakeRao: reward.StakeBeforeRao, IncentiveU16: reward.BeforeIncentiveU16, DividendsU16: reward.BeforeDividendsU16, Block: head}, self.exchange("substrate", "state_getStorage", head), nil
 		}
 		if reward.After == head {
-			return FinalNativeRewardState{UID: uid, EmissionRao: reward.AfterRao, StakeRao: reward.StakeAfterRao, IncentiveU16: reward.AfterIncentiveU16, DividendsU16: reward.AfterDividendsU16, Block: head}, r.exchange("substrate", "state_getStorage", head), nil
+			return FinalNativeRewardState{UID: uid, EmissionRao: reward.AfterRao, StakeRao: reward.StakeAfterRao, IncentiveU16: reward.AfterIncentiveU16, DividendsU16: reward.AfterDividendsU16, Block: head}, self.exchange("substrate", "state_getStorage", head), nil
 		}
 	}
 	return FinalNativeRewardState{}, nil, errors.New("unknown reward checkpoint")
 }
 
-func (r *finalTestChainReader) NativeOwnerStake(_ context.Context, hotkey, coldkey string, head ChainHead) (FinalNativeOwnerStakeState, []FinalRPCExchange, error) {
+func (self *finalTestChainReader) NativeOwnerStake(_ context.Context, hotkey, coldkey string, head ChainHead) (FinalNativeOwnerStakeState, []FinalRPCExchange, error) {
 	result := func(stake string) (FinalNativeOwnerStakeState, []FinalRPCExchange, error) {
-		if r.corruptOwnerStake {
+		if self.corruptOwnerStake {
 			value, ok := new(big.Int).SetString(stake, 10)
 			if !ok {
 				return FinalNativeOwnerStakeState{}, nil, errors.New("fixture owner stake is invalid")
 			}
 			stake = value.Add(value, big.NewInt(1)).String()
 		}
-		return FinalNativeOwnerStakeState{HotkeyPublicKey: hotkey, ColdkeyPublicKey: coldkey, StakeRao: stake, Block: head}, r.exchange("evm", "eth_call", head), nil
+		return FinalNativeOwnerStakeState{HotkeyPublicKey: hotkey, ColdkeyPublicKey: coldkey, StakeRao: stake, Block: head}, self.exchange("evm", "eth_call", head), nil
 	}
-	for _, reward := range r.evidence.NativeRewards {
+	for _, reward := range self.evidence.NativeRewards {
 		if reward.Hotkey != hotkey {
 			continue
 		}
@@ -3346,10 +3713,30 @@ func (r *finalTestChainReader) NativeOwnerStake(_ context.Context, hotkey, coldk
 	return FinalNativeOwnerStakeState{}, nil, errors.New("unknown native owner stake checkpoint")
 }
 
-func (r *finalTestChainReader) EVMReceipt(_ context.Context, receipt FinalEVMReceipt) (FinalEVMReceiptState, []FinalRPCExchange, error) {
+func (self *finalTestChainReader) EVMReceipt(_ context.Context, receipt FinalEVMReceipt) (FinalEVMReceiptState, []FinalRPCExchange, error) {
 	state := FinalEVMReceiptState{TransactionHash: receipt.TransactionHash, Block: receipt.Block, Status: receipt.Status, LogsHash: receipt.LogsHash}
-	if r.corruptRegistration {
-		for _, pool := range r.evidence.Pools {
+	if dishonest := self.evidence.DishonestDeposit; dishonest != nil {
+		for index, expected := range []struct {
+			receipt FinalEVMReceipt
+			amount  string
+			epoch   uint64
+		}{
+			{receipt: dishonest.UnderpaymentReceipt, amount: dishonest.ObservedDepositRao, epoch: finalSemanticDishonestDepositEpoch(dishonest.Penalties)},
+			{receipt: dishonest.RecoveryDepositReceipt, amount: dishonest.RecoveryObservedDepositRao, epoch: finalSemanticDishonestDepositEpoch(dishonest.Recoveries)},
+		} {
+			if !finalSemanticReceiptMatches(receipt, expected.receipt) {
+				continue
+			}
+			amount, ok := new(big.Int).SetString(expected.amount, 10)
+			if !ok || expected.epoch == 0 {
+				return FinalEVMReceiptState{}, nil, errors.New("fixture dishonest deposit is invalid")
+			}
+			state.receiptPayload = &finalSemanticReceiptPayload{deposits: []finalSemanticReceiptDeposit{{NoID: dishonest.NoID, Epoch: expected.epoch, Amount: amount, Nonce: big.NewInt(int64(index + 1)), PolicyHash: self.evidence.PolicyHash}}}
+			break
+		}
+	}
+	if self.corruptRegistration {
+		for _, pool := range self.evidence.Pools {
 			if pool.Registration.TransactionHash == receipt.TransactionHash {
 				state.LogsHash = finalTestHex(0xfe)
 				if state.LogsHash == receipt.LogsHash {
@@ -3359,8 +3746,8 @@ func (r *finalTestChainReader) EVMReceipt(_ context.Context, receipt FinalEVMRec
 			}
 		}
 	}
-	if r.corruptReserveReceipt {
-		for _, addition := range r.evidence.Reserve.PrincipalAdditions {
+	if self.corruptReserveReceipt {
+		for _, addition := range self.evidence.Reserve.PrincipalAdditions {
 			if addition.Receipt.TransactionHash == receipt.TransactionHash {
 				state.LogsHash = finalTestHex(0xfc)
 				if state.LogsHash == receipt.LogsHash {
@@ -3370,20 +3757,469 @@ func (r *finalTestChainReader) EVMReceipt(_ context.Context, receipt FinalEVMRec
 			}
 		}
 	}
-	return state, r.exchange("evm", "eth_getTransactionReceipt", receipt.Block), nil
+	return state, self.exchange("evm", "eth_getTransactionReceipt", receipt.Block), nil
 }
 
-func (r *finalTestChainReader) PoolEpoch(_ context.Context, epoch, noID uint64, head ChainHead) (FinalPoolEpochChainState, []FinalRPCExchange, error) {
-	for _, row := range r.evidence.Epochs {
+// Replays one cumulative deposit at the fixture's exact decision checkpoint.
+func (self *finalTestChainReader) EpochDeposit(_ context.Context, epoch, noID uint64, head ChainHead) (FinalEpochDepositChainState, []FinalRPCExchange, error) {
+	for _, cycle := range finalSemanticReceiptCycles(self.evidence) {
+		if cycle.SettlementEpoch != epoch || cycle.EVMSnapshot != head {
+			continue
+		}
+		for _, pool := range cycle.Pools {
+			if pool.NoID != noID {
+				continue
+			}
+			amount := pool.ObservedDepositRao
+			if self.corruptEpochDeposit {
+				value, ok := new(big.Int).SetString(amount, 10)
+				if !ok {
+					return FinalEpochDepositChainState{}, nil, errors.New("fixture epoch deposit is invalid")
+				}
+				amount = value.Add(value, big.NewInt(1)).String()
+			}
+			return FinalEpochDepositChainState{Epoch: epoch, NoID: noID, AmountRao: amount, Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	return FinalEpochDepositChainState{}, nil, errors.New("unknown epoch deposit checkpoint")
+}
+
+// Replays one independently observed conviction increment at its pinned head.
+func (self *finalTestChainReader) EpochConvictionAdded(_ context.Context, epoch, noID uint64, head ChainHead) (FinalEpochConvictionAddedChainState, []FinalRPCExchange, error) {
+	for _, cycle := range finalSemanticReceiptCycles(self.evidence) {
+		if cycle.SettlementEpoch != epoch || cycle.EVMSnapshot != head {
+			continue
+		}
+		for _, pool := range cycle.Pools {
+			if pool.NoID != noID {
+				continue
+			}
+			amount := self.epochConvictionAddedRao
+			if amount == "" {
+				amount = "0"
+			}
+			if self.corruptEpochConvictionAdded {
+				amount = "1"
+			}
+			return FinalEpochConvictionAddedChainState{Epoch: epoch, NoID: noID, AmountRao: amount, Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	return FinalEpochConvictionAddedChainState{}, nil, errors.New("unknown epoch conviction increment checkpoint")
+}
+
+// Replays immutable authority history selected by the requested effective epoch.
+func (self *finalTestChainReader) OperatorVersion(_ context.Context, noID, epoch uint64, head ChainHead) (FinalOperatorVersionChainState, []FinalRPCExchange, error) {
+	for _, pool := range self.evidence.Pools {
+		if pool.NoID != noID || pool.EffectiveEpoch != epoch {
+			continue
+		}
+		state := FinalOperatorVersionChainState{
+			NoID: noID, VersionCount: pool.VersionCount, Coldkey: pool.OperatorColdkey, PoolHotkey: pool.Hotkey, DepositHotkey: pool.DepositHotkey,
+			DepositSigner: pool.DepositSigner, RootSigner: pool.PayoutRootSigner, EffectiveEpoch: pool.EffectiveEpoch, Active: pool.Active, Block: head,
+		}
+		if self.corruptOperatorVersion {
+			state.RootSigner = "0x5000000000000000000000000000000000000008"
+		}
+		return state, self.exchange("evm", "eth_call", head), nil
+	}
+	return FinalOperatorVersionChainState{}, nil, errors.New("unknown operator version checkpoint")
+}
+
+// Reconstructs cumulative coordinator conviction from the signed fixture inputs.
+func (self *finalTestChainReader) CoordinatorConviction(_ context.Context, noID uint64, head ChainHead) (FinalCoordinatorConvictionChainState, []FinalRPCExchange, error) {
+	for _, cycle := range finalSemanticReceiptCycles(self.evidence) {
+		if cycle.EVMSnapshot != head {
+			continue
+		}
+		for _, pool := range cycle.Pools {
+			if pool.NoID != noID {
+				continue
+			}
+			before, ok := new(big.Int).SetString(pool.ConvictionBeforeRao, 10)
+			if !ok {
+				return FinalCoordinatorConvictionChainState{}, nil, errors.New("fixture conviction before is invalid")
+			}
+			deposit, ok := new(big.Int).SetString(pool.ObservedDepositRao, 10)
+			if !ok {
+				return FinalCoordinatorConvictionChainState{}, nil, errors.New("fixture observed deposit is invalid")
+			}
+			added := new(big.Int)
+			if self.epochConvictionAddedRao != "" {
+				var ok bool
+				added, ok = new(big.Int).SetString(self.epochConvictionAddedRao, 10)
+				if !ok {
+					return FinalCoordinatorConvictionChainState{}, nil, errors.New("fixture epoch conviction increment is invalid")
+				}
+			}
+			amount := new(big.Int).Add(before, deposit)
+			amount.Add(amount, added)
+			if self.corruptConviction {
+				amount.SetUint64(1)
+			}
+			return FinalCoordinatorConvictionChainState{NoID: noID, ConvictionRao: amount.String(), Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	return FinalCoordinatorConvictionChainState{}, nil, errors.New("unknown coordinator conviction checkpoint")
+}
+
+// Reconstructs per-operator reserve principal at the same immutable checkpoint.
+func (self *finalTestChainReader) ReserveOperatorPrincipal(_ context.Context, noID uint64, head ChainHead) (FinalReserveOperatorPrincipalChainState, []FinalRPCExchange, error) {
+	for _, cycle := range finalSemanticReceiptCycles(self.evidence) {
+		if cycle.EVMSnapshot != head {
+			continue
+		}
+		for _, pool := range cycle.Pools {
+			if pool.NoID != noID {
+				continue
+			}
+			before, ok := new(big.Int).SetString(pool.ConvictionBeforeRao, 10)
+			if !ok {
+				return FinalReserveOperatorPrincipalChainState{}, nil, errors.New("fixture conviction before is invalid")
+			}
+			deposit, ok := new(big.Int).SetString(pool.ObservedDepositRao, 10)
+			if !ok {
+				return FinalReserveOperatorPrincipalChainState{}, nil, errors.New("fixture observed deposit is invalid")
+			}
+			added := new(big.Int)
+			if self.epochConvictionAddedRao != "" {
+				var ok bool
+				added, ok = new(big.Int).SetString(self.epochConvictionAddedRao, 10)
+				if !ok {
+					return FinalReserveOperatorPrincipalChainState{}, nil, errors.New("fixture epoch conviction increment is invalid")
+				}
+			}
+			amount := new(big.Int).Add(before, deposit)
+			amount.Add(amount, added)
+			if self.corruptPrincipal {
+				amount.SetUint64(1)
+			}
+			return FinalReserveOperatorPrincipalChainState{NoID: noID, PrincipalRao: amount.String(), Block: head}, self.exchange("evm", "eth_call", head), nil
+		}
+	}
+	return FinalReserveOperatorPrincipalChainState{}, nil, errors.New("unknown reserve principal checkpoint")
+}
+
+// Returns the exact per-operator carry value at baseline, transition, or terminal state.
+func (self *finalTestChainReader) VaultCarry(_ context.Context, noID uint64, head ChainHead) (FinalVaultCarryChainState, []FinalRPCExchange, error) {
+	amount := ""
+	if head == self.evidence.EVMTerminalHead {
+		for _, pool := range self.evidence.Pools {
+			if pool.NoID == noID {
+				amount = pool.FinalCarryRao
+				break
+			}
+		}
+	}
+	if amount == "" {
+		for _, row := range self.evidence.Epochs {
+			if row.NoID != noID {
+				continue
+			}
+			if head == self.evidence.Window.BaselineHead {
+				amount = row.CarryInRao
+				break
+			}
+			if head == row.Finalize.Block {
+				amount = row.CarryOutRao
+				break
+			}
+		}
+	}
+	if amount == "" {
+		return FinalVaultCarryChainState{}, nil, errors.New("unknown vault carry checkpoint")
+	}
+	if self.corruptCarry {
+		amount = "1"
+	}
+	return FinalVaultCarryChainState{NoID: noID, CarryRao: amount, Block: head}, self.exchange("evm", "eth_call", head), nil
+}
+
+// Reconstructs both Merkle leaf and claim-once keys for one terminal entitlement.
+func (self *finalTestChainReader) VaultClaim(_ context.Context, epoch, noID uint64, coldkey string, shareBPS uint64, head ChainHead) (FinalVaultClaimChainState, []FinalRPCExchange, error) {
+	matched := false
+	for _, row := range self.evidence.Epochs {
+		for _, claim := range row.Claims {
+			if row.Epoch == epoch && row.NoID == noID && strings.EqualFold(claim.Payee, coldkey) && claim.ShareBPS == shareBPS {
+				matched = true
+			}
+		}
+	}
+	if !matched || head != self.evidence.EVMTerminalHead {
+		return FinalVaultClaimChainState{}, nil, errors.New("unknown vault claim checkpoint")
+	}
+	coldkeyHash := common.HexToHash(coldkey)
+	var noIDWord, shareWord [32]byte
+	new(big.Int).SetUint64(noID).FillBytes(noIDWord[:])
+	new(big.Int).SetUint64(shareBPS).FillBytes(shareWord[:])
+	claimKey := crypto.Keccak256Hash(append(noIDWord[:], coldkeyHash[:]...)).Hex()
+	payoutInner := crypto.Keccak256Hash(append(coldkeyHash[:], shareWord[:]...))
+	payoutLeaf := crypto.Keccak256Hash(payoutInner[:]).Hex()
+	state := FinalVaultClaimChainState{Epoch: epoch, NoID: noID, Coldkey: strings.ToLower(coldkey), ShareBPS: shareBPS, PayoutLeaf: strings.ToLower(payoutLeaf), ClaimKey: strings.ToLower(claimKey), LeafClaimed: true, Block: head}
+	if self.corruptVaultClaim {
+		state.LeafClaimed = false
+	}
+	if self.corruptVaultClaimKey {
+		state.ClaimKey = finalTestHex(0xee)
+	}
+	if self.corruptVaultPayoutLeaf {
+		state.PayoutLeaf = finalTestHex(0xef)
+	}
+	return state, self.exchange("evm", "eth_call", head), nil
+}
+
+// Reconciles a coldkey's cumulative claim credit at baseline and terminal heads.
+func (self *finalTestChainReader) VaultClaimCredit(_ context.Context, coldkey string, head ChainHead) (FinalVaultClaimCreditChainState, []FinalRPCExchange, error) {
+	coldkey = strings.ToLower(coldkey)
+	value := ""
+	if head == self.evidence.Window.BaselineHead {
+		value = self.claimCreditBaseline[coldkey]
+		if value == "" {
+			value = "0"
+		}
+	}
+	if head == self.evidence.EVMTerminalHead {
+		value = self.claimCreditTerminal[coldkey]
+		if value == "" {
+			claimed, paid := new(big.Int), new(big.Int)
+			for _, row := range self.evidence.Epochs {
+				for _, claim := range row.Claims {
+					if strings.EqualFold(claim.Payee, coldkey) {
+						amount, ok := new(big.Int).SetString(claim.ClaimedRao, 10)
+						if !ok {
+							return FinalVaultClaimCreditChainState{}, nil, errors.New("fixture claim amount is invalid")
+						}
+						claimed.Add(claimed, amount)
+					}
+				}
+			}
+			for _, payment := range self.evidence.ClaimPayments {
+				if strings.EqualFold(payment.Coldkey, coldkey) {
+					amount, ok := new(big.Int).SetString(payment.AmountRao, 10)
+					if !ok {
+						return FinalVaultClaimCreditChainState{}, nil, errors.New("fixture claim payment is invalid")
+					}
+					paid.Add(paid, amount)
+				}
+			}
+			value = new(big.Int).Sub(claimed, paid).String()
+		}
+	}
+	if value == "" {
+		return FinalVaultClaimCreditChainState{}, nil, errors.New("unknown vault claim credit checkpoint")
+	}
+	if self.corruptClaimCredit {
+		value = "1"
+	}
+	return FinalVaultClaimCreditChainState{Coldkey: coldkey, CreditRao: value, Block: head}, self.exchange("evm", "eth_call", head), nil
+}
+
+// Returns proxy, implementation slot, and executable hashes at a historical head.
+func (self *finalTestChainReader) CoordinatorRuntime(_ context.Context, head ChainHead) (FinalCoordinatorRuntimeChainState, []FinalRPCExchange, error) {
+	deployment := self.evidence.Deployment
+	state := FinalCoordinatorRuntimeChainState{
+		CoordinatorProxy: deployment.CoordinatorProxy, CoordinatorImplementation: deployment.CoordinatorImplementation,
+		ObservedImplementationSlot: deployment.ObservedImplementationSlot, ProxyCodeHash: deployment.CoordinatorProxyCodeHash,
+		ImplementationCodeHash: deployment.ImplementationCodeHash, RuntimeRoots: append([]FinalReleaseRuntimeRoot(nil), deployment.RuntimeRoots...), Block: head,
+	}
+	if self.corruptRuntime && head != self.evidence.EVMTerminalHead {
+		state.ImplementationCodeHash = finalTestHex(0xee)
+	}
+	return state, self.exchange("evm", "eth_getStorageAt", head), nil
+}
+
+// Returns the sealed constructor identity for chronology replay without
+// borrowing the current-runtime audit's deployment-wide projection.
+func (self *finalTestChainReader) HistoricalCoordinatorBaseline(_ context.Context, timeline FinalHistoricalCoordinatorProxyTimelineEvidence) (FinalHistoricalCoordinatorBaselineState, []FinalRPCExchange, error) {
+	if timeline.Initialization.Post.Implementation == "" || timeline.ProxyRuntimeHash == "" {
+		return FinalHistoricalCoordinatorBaselineState{}, nil, errors.New("fixture historical coordinator baseline is incomplete")
+	}
+	implementation := timeline.Initialization.Post.Implementation
+	runtimeHash := timeline.Initialization.Post.RuntimeHash
+	if self.corruptRuntime {
+		runtimeHash = finalTestHex(0xec)
+	}
+	return FinalHistoricalCoordinatorBaselineState{
+		Proxy:                      timeline.Proxy,
+		Implementation:             implementation,
+		ObservedImplementationSlot: "0x" + strings.Repeat("0", 24) + strings.TrimPrefix(implementation, "0x"),
+		ProxyRuntimeHash:           timeline.ProxyRuntimeHash,
+		ImplementationRuntimeHash:  runtimeHash,
+		Block:                      timeline.Baseline,
+	}, self.exchange("evm", "eth_getStorageAt", timeline.Baseline), nil
+}
+
+// Returns the fixture's sealed temporary-oracle value while preserving the
+// exact historical proxy call shape expected by public transcript replay.
+func (self *finalTestChainReader) CoordinatorActiveCommitmentOracle(_ context.Context, proxy string, head ChainHead) (FinalCoordinatorActiveCommitmentOracleState, []FinalRPCExchange, error) {
+	if self == nil || self.evidence == nil {
+		return FinalCoordinatorActiveCommitmentOracleState{}, nil, errors.New("fixture oracle checkpoint is unavailable")
+	}
+	if proxy != self.evidence.FleetRefreshOracleWindow.Checkpoints.CoordinatorProxy {
+		return FinalCoordinatorActiveCommitmentOracleState{}, nil, errors.New("fixture oracle checkpoint used another coordinator proxy")
+	}
+	var oracle string
+	for _, row := range finalFleetRefreshOracleCheckpointRows(self.evidence.FleetRefreshOracleWindow.Checkpoints) {
+		if row.value.Head != head {
+			continue
+		}
+		if oracle != "" && oracle != row.value.Oracle {
+			return FinalCoordinatorActiveCommitmentOracleState{}, nil, errors.New("fixture oracle checkpoint has conflicting values")
+		}
+		oracle = row.value.Oracle
+	}
+	if oracle == "" {
+		return FinalCoordinatorActiveCommitmentOracleState{}, nil, errors.New("unknown fixture oracle checkpoint")
+	}
+	if self.corruptOracleWindow {
+		oracle = "0x9000000000000000000000000000000000000009"
+	}
+	params, paramsErr := finalCoordinatorActiveOracleCallParams(proxy, head)
+	result, resultErr := finalCoordinatorActiveOracleCallResult(oracle)
+	if paramsErr != nil || resultErr != nil {
+		return FinalCoordinatorActiveCommitmentOracleState{}, nil, errors.Join(paramsErr, resultErr)
+	}
+	return FinalCoordinatorActiveCommitmentOracleState{CoordinatorProxy: proxy, Oracle: oracle, Block: head}, []FinalRPCExchange{{Chain: "evm", Method: "eth_call", Params: params, PinnedHead: head, Result: result}}, nil
+}
+
+// Replays a carried receipt against the exact archived coordinator identity
+// embedded in the test fixture rather than projecting the current deployment.
+func (self *finalTestChainReader) HistoricalCoordinatorReceipt(_ context.Context, row FinalHistoricalCoordinatorReceiptEvidence) (FinalHistoricalCoordinatorReceiptState, []FinalRPCExchange, error) {
+	state := FinalHistoricalCoordinatorReceiptState{
+		Receipt:          FinalEVMReceiptState{TransactionHash: row.Receipt.TransactionHash, Block: row.Receipt.Block, Status: row.Receipt.Status, LogsHash: row.Receipt.LogsHash},
+		TransactionIndex: row.TransactionIndex,
+		From:             row.TransactionFrom, To: row.CoordinatorProxy, Input: row.TransactionInput, ValueWei: row.TransactionValueWei, Emitters: append([]string(nil), row.Emitters...),
+		CoordinatorProxy: row.CoordinatorProxy, CoordinatorImplementation: row.CoordinatorImplementation,
+		ObservedImplementationSlot:  "0x" + strings.Repeat("0", 24) + strings.TrimPrefix(row.CoordinatorImplementation, "0x"),
+		CoordinatorProxyRuntimeHash: row.CoordinatorProxyRuntimeHash, CoordinatorImplementationRuntimeHash: row.CoordinatorImplementationRuntimeHash,
+	}
+	if row.ActionID != "evm.coordinator-proxy" {
+		state.ExecutionImplementation = row.ExecutionImplementation
+		state.ExecutionObservedImplementationSlot = "0x" + strings.Repeat("0", 24) + strings.TrimPrefix(row.ExecutionImplementation, "0x")
+		state.ExecutionProxyRuntimeHash = row.CoordinatorProxyRuntimeHash
+		state.ExecutionImplementationRuntimeHash = row.ExecutionImplementationRuntimeHash
+	}
+	if self.corruptRuntime {
+		state.CoordinatorImplementationRuntimeHash = finalTestHex(0xed)
+	}
+	return state, self.exchange("evm", "eth_getTransactionReceipt", row.Receipt.Block), nil
+}
+
+// Replays the exact sealed upgrade stream for either the empty current range
+// or a historical proxy range.  Constructing the raw wire response before
+// decoding it exercises the same topic, block, transaction-index, and
+// transcript boundary as the public reader.
+func (self *finalTestChainReader) CoordinatorUpgradeRange(_ context.Context, value FinalCoordinatorUpgradeRangeEvidence) ([]FinalCoordinatorUpgradeRangeState, []FinalRPCExchange, error) {
+	expected, err := self.coordinatorUpgradeRangeEvents(value)
+	if err != nil {
+		return nil, nil, err
+	}
+	chunks, err := finalCoordinatorUpgradeRangeChunks(value)
+	if err != nil {
+		return nil, nil, err
+	}
+	states := make([]FinalCoordinatorUpgradeRangeState, 0, len(expected))
+	exchanges := make([]FinalRPCExchange, 0, len(chunks))
+	for _, chunk := range chunks {
+		filter, filterErr := finalCoordinatorUpgradeLogFilterForChunk(value, chunk)
+		if filterErr != nil {
+			return nil, nil, filterErr
+		}
+		params, paramsErr := json.Marshal([]any{filter})
+		if paramsErr != nil {
+			return nil, nil, paramsErr
+		}
+		raw, rawErr := finalTestCoordinatorUpgradeRangeWire(value, chunk, expected)
+		if rawErr != nil {
+			return nil, nil, rawErr
+		}
+		decoded, decodeErr := finalCoordinatorUpgradeRangeChunkStates(raw, value, chunk)
+		if decodeErr != nil {
+			return nil, nil, decodeErr
+		}
+		states = append(states, decoded...)
+		exchanges = append(exchanges, FinalRPCExchange{Chain: "evm", Method: "eth_getLogs", Params: params, PinnedHead: value.To, Result: raw})
+	}
+	return states, exchanges, nil
+}
+
+// Selects the sole sealed event projection belonging to one range. Current
+// campaign upgrades are forbidden and therefore return an explicit empty
+// stream; historical proxy ranges retain their constructor and approved
+// transition events.
+func (self *finalTestChainReader) coordinatorUpgradeRangeEvents(value FinalCoordinatorUpgradeRangeEvidence) ([]FinalCoordinatorUpgradeEventEvidence, error) {
+	if self == nil || self.evidence == nil {
+		return nil, errors.New("fixture coordinator upgrade evidence is unavailable")
+	}
+	historicalRanges, historicalEvents, err := finalHistoricalCoordinatorUpgradeRanges(self.evidence)
+	if err != nil {
+		return nil, err
+	}
+	for _, rangeEvidence := range historicalRanges {
+		if rangeEvidence != value {
+			continue
+		}
+		return finalCoordinatorUpgradeEventsForRange(historicalEvents, value), nil
+	}
+	proxy, proxyErr := finalCanonicalAddress(self.evidence.Deployment.CoordinatorProxy)
+	current := FinalCoordinatorUpgradeRangeEvidence{From: self.evidence.EVMCampaignStartHead, To: self.evidence.EVMTerminalHead, Proxy: proxy}
+	if proxyErr != nil || current != value {
+		return nil, stateMismatchError(proxyErr, "fixture coordinator upgrade range is not sealed")
+	}
+	return []FinalCoordinatorUpgradeEventEvidence{}, nil
+}
+
+// Encodes one provider response from sealed events for an exact inclusive
+// chunk. An event outside the requested chunk is a fixture construction bug,
+// not a value that may leak into a neighboring range response.
+func finalTestCoordinatorUpgradeRangeWire(value FinalCoordinatorUpgradeRangeEvidence, chunk finalCoordinatorUpgradeRangeChunk, expected []FinalCoordinatorUpgradeEventEvidence) (json.RawMessage, error) {
+	if err := verifyFinalCoordinatorUpgradeRange(value); err != nil {
+		return nil, err
+	}
+	filter, err := finalCoordinatorUpgradeLogFilterForChunk(value, chunk)
+	if err != nil {
+		return nil, err
+	}
+	topic := strings.ToLower(crypto.Keccak256Hash([]byte("Upgraded(address)")).Hex())
+	logs := make([]map[string]any, 0, len(expected))
+	for _, event := range expected {
+		if event.Proxy != filter.Address {
+			return nil, errors.New("fixture coordinator upgrade event belongs to another proxy")
+		}
+		if event.Block.Number < chunk.From || event.Block.Number > chunk.To {
+			continue
+		}
+		implementation, implementationErr := finalCanonicalAddress(event.Implementation)
+		if implementationErr != nil || implementation != event.Implementation {
+			return nil, stateMismatchError(implementationErr, "fixture coordinator upgrade implementation is not canonical")
+		}
+		logs = append(logs, map[string]any{
+			"address": value.Proxy, "topics": []string{topic, common.BytesToHash(common.HexToAddress(implementation).Bytes()).Hex()}, "data": "0x",
+			"blockNumber": fmt.Sprintf("0x%x", event.Block.Number), "blockHash": event.Block.Hash, "transactionHash": event.TransactionHash,
+			"transactionIndex": fmt.Sprintf("0x%x", event.TransactionIndex), "logIndex": fmt.Sprintf("0x%x", event.LogIndex),
+		})
+	}
+	raw, err := json.Marshal(logs)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (self *finalTestChainReader) PoolEpoch(_ context.Context, epoch, noID uint64, head ChainHead) (FinalPoolEpochChainState, []FinalRPCExchange, error) {
+	for _, row := range self.evidence.Epochs {
 		if row.Epoch == epoch && row.NoID == noID {
-			return FinalPoolEpochChainState{Epoch: epoch, NoID: noID, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, FundedRao: row.FundedRao, TotalRao: row.TotalRao, ClaimedRao: row.ClaimedRao, Status: row.Status, Block: head}, r.exchange("evm", "eth_call", head), nil
+			expiry := row.ExpiryBlock
+			if self.corruptPoolExpiry {
+				expiry++
+			}
+			return FinalPoolEpochChainState{Epoch: epoch, NoID: noID, PayoutRoot: row.PayoutRoot, ArtifactHash: row.ArtifactHash, FundedRao: row.FundedRao, TotalRao: row.TotalRao, ClaimedRao: row.ClaimedRao, ExpiryBlock: expiry, Status: row.Status, Block: head}, self.exchange("evm", "eth_call", head), nil
 		}
 	}
 	return FinalPoolEpochChainState{}, nil, errors.New("unknown pool epoch")
 }
 
-func (r *finalTestChainReader) ContractDeployment(_ context.Context, head ChainHead) (FinalContractDeploymentState, []FinalRPCExchange, error) {
-	deployment := r.evidence.Deployment
+func (self *finalTestChainReader) ContractDeployment(_ context.Context, head ChainHead) (FinalContractDeploymentState, []FinalRPCExchange, error) {
+	deployment := self.evidence.Deployment
 	state := FinalContractDeploymentState{
 		CoordinatorProxy: deployment.CoordinatorProxy, CoordinatorImplementation: deployment.CoordinatorImplementation,
 		SettlementVault: deployment.SettlementVault, ReserveSink: deployment.ReserveSink, GovernanceOwner: deployment.GovernanceOwner,
@@ -3400,24 +4236,24 @@ func (r *finalTestChainReader) ContractDeployment(_ context.Context, head ChainH
 		ReserveSelfColdkey: deployment.ReserveSelfColdkey, ReserveHotkey: deployment.ReserveHotkey,
 		CoordinatorProxyCodeHash: deployment.CoordinatorProxyCodeHash, ImplementationCodeHash: deployment.ImplementationCodeHash,
 		SettlementVaultCodeHash: deployment.SettlementVaultCodeHash, ReserveSinkCodeHash: deployment.ReserveSinkCodeHash,
-		ObservedImplementationSlot: deployment.ObservedImplementationSlot, PolicyHash: r.evidence.PolicyHash, PolicyVersion: deployment.PolicyVersion,
+		ObservedImplementationSlot: deployment.ObservedImplementationSlot, PolicyHash: self.evidence.PolicyHash, PolicyVersion: deployment.PolicyVersion,
 		PolicyEffectiveEpoch: deployment.PolicyEffectiveEpoch, PolicyEffectiveBlock: deployment.PolicyEffectiveBlock, Block: head,
 	}
-	if r.corruptCustody {
+	if self.corruptCustody {
 		state.CoordinatorActiveGuardian = "0x8888888888888888888888888888888888888888"
 	}
-	return state, r.exchange("evm", "eth_getCode", head), nil
+	return state, self.exchange("evm", "eth_getCode", head), nil
 }
 
-func (r *finalTestChainReader) SettlementVaultState(_ context.Context, head ChainHead) (FinalSettlementVaultChainState, []FinalRPCExchange, error) {
-	accounting := r.evidence.SettlementAccounting
+func (self *finalTestChainReader) SettlementVaultState(_ context.Context, head ChainHead) (FinalSettlementVaultChainState, []FinalRPCExchange, error) {
+	accounting := self.evidence.SettlementAccounting
 	if accounting.Before.Block == head {
 		return FinalSettlementVaultChainState{
 			TotalCapturedRao: accounting.Before.TotalCapturedRao, TotalPaidRao: accounting.Before.TotalPaidRao,
 			EscrowAccountedRao: accounting.Before.EscrowAccountedRao, PendingFundingRao: accounting.Before.PendingFundingRao,
 			OutstandingLiabilityRao: accounting.Before.OutstandingLiabilityRao, LiveEscrowStakeRao: accounting.Before.LiveEscrowStakeRao,
 			Block: head,
-		}, r.exchange("evm", "eth_call", head), nil
+		}, self.exchange("evm", "eth_call", head), nil
 	}
 	if accounting.After.Block == head {
 		state := FinalSettlementVaultChainState{
@@ -3426,31 +4262,31 @@ func (r *finalTestChainReader) SettlementVaultState(_ context.Context, head Chai
 			OutstandingLiabilityRao: accounting.After.OutstandingLiabilityRao, LiveEscrowStakeRao: accounting.After.LiveEscrowStakeRao,
 			Block: head,
 		}
-		if r.corruptSettlement {
+		if self.corruptSettlement {
 			state.TotalCapturedRao = "999"
 		}
-		return state, r.exchange("evm", "eth_call", head), nil
+		return state, self.exchange("evm", "eth_call", head), nil
 	}
 	return FinalSettlementVaultChainState{}, nil, errors.New("unknown settlement-vault checkpoint")
 }
 
-func (r *finalTestChainReader) ReserveState(_ context.Context, head ChainHead) (FinalReserveState, []FinalRPCExchange, error) {
-	reserve := r.evidence.Reserve
+func (self *finalTestChainReader) ReserveState(_ context.Context, head ChainHead) (FinalReserveState, []FinalRPCExchange, error) {
+	reserve := self.evidence.Reserve
 	if reserve.Before == head {
-		return FinalReserveState{PrincipalRao: reserve.PrincipalBeforeRao, LiveStakeRao: reserve.LiveStakeBeforeRao, Block: head}, r.exchange("evm", "eth_call", head), nil
+		return FinalReserveState{PrincipalRao: reserve.PrincipalBeforeRao, LiveStakeRao: reserve.LiveStakeBeforeRao, Block: head}, self.exchange("evm", "eth_call", head), nil
 	}
 	if reserve.After == head {
-		return FinalReserveState{PrincipalRao: reserve.PrincipalAfterRao, LiveStakeRao: reserve.LiveStakeAfterRao, Block: head}, r.exchange("evm", "eth_call", head), nil
+		return FinalReserveState{PrincipalRao: reserve.PrincipalAfterRao, LiveStakeRao: reserve.LiveStakeAfterRao, Block: head}, self.exchange("evm", "eth_call", head), nil
 	}
-	for _, reward := range r.evidence.NativeRewards {
+	for _, reward := range self.evidence.NativeRewards {
 		if reward.ReserveColdkey == "" {
 			continue
 		}
 		if reward.OwnerStakeBeforeEVM == head {
-			return FinalReserveState{PrincipalRao: "0", LiveStakeRao: reward.ReserveStakeBeforeRao, Block: head}, r.exchange("evm", "eth_call", head), nil
+			return FinalReserveState{PrincipalRao: "0", LiveStakeRao: reward.ReserveStakeBeforeRao, Block: head}, self.exchange("evm", "eth_call", head), nil
 		}
 		if reward.OwnerStakeAfterEVM == head {
-			return FinalReserveState{PrincipalRao: "0", LiveStakeRao: reward.ReserveStakeAfterRao, Block: head}, r.exchange("evm", "eth_call", head), nil
+			return FinalReserveState{PrincipalRao: "0", LiveStakeRao: reward.ReserveStakeAfterRao, Block: head}, self.exchange("evm", "eth_call", head), nil
 		}
 	}
 	return FinalReserveState{}, nil, errors.New("unknown reserve checkpoint")

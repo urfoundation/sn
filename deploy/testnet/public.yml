@@ -7,7 +7,7 @@ chain:
   ss58_format: 42
   token_symbol: testTAO
   token_decimals: 9
-  expected_runtime_spec: 453
+  expected_runtime_spec: 454
   expected_transaction_version: 1
   expected_state_version: 1
   expected_block_seconds: 12
@@ -16,7 +16,9 @@ chain:
   evm_public_read_endpoint: "https://test.chain.opentensor.ai"
   private_authority_from: "vault://main/st.yml#testnet-authority"
   finality_method: chain_getFinalizedHead
-  public_fallback_allows_event_indexing: false
+  # The official gateway accepts bounded explicit-block, address-scoped log
+  # filters. It is not an archive and broad/symbolic filter shapes are denied.
+  public_fallback_allows_event_indexing: true
 subnet:
   mode: existing
   netuid_from: "vault://main/st.yml#testnet-netuid"

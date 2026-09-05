@@ -1142,6 +1142,9 @@ func (r *ResolvedConfig) Validate() error {
 	if r.Public.Chain.ExpectedBlockSeconds == 0 || r.Public.Chain.ExpectedDefaultMinTransferRao == 0 {
 		return errors.New("public manifest must declare a nonzero block cadence and runtime transfer minimum")
 	}
+	if r.OperationalRPCMode == rpcModePublicOverride && !r.Public.Chain.PublicFallbackAllowsEventIndexing {
+		return errors.New("public RPC override requires bounded event indexing in the public manifest")
+	}
 	if err := validateSettlementVaultClaimWindows(r.Policy); err != nil {
 		return err
 	}
@@ -1155,7 +1158,7 @@ func (r *ResolvedConfig) Validate() error {
 		return errors.New("release/runtime manifest mismatch")
 	}
 	// Every command, including plan and read-only replay, must start from the
-	// reviewed v453 source/artifact identity. The doctor independently observes
+	// reviewed v454 source/artifact identity. The doctor independently observes
 	// the checkout and live chain, but it is not a prerequisite for parsing a
 	// release command.
 	if err := validateReviewedRuntimeIdentity(r.Release); err != nil {

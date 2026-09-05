@@ -210,14 +210,17 @@ func runRetirement(ctx context.Context, cfg *ResolvedConfig, stateDir string, op
 	if err != nil {
 		return err
 	}
-	executionPlan := *setup
-	executionPlan.PlanHash = plan.PlanHash
-	executionPlan.Actions = append([]Action(nil), plan.Actions...)
-	executor, err := NewExecutor(ctx, cfg, stateDir, &executionPlan, journal, roles)
+	// Authenticate original CREATEs against the setup approval before changing
+	// the executor's action namespace to the separately approved retirement.
+	executor, err := NewExecutor(ctx, cfg, stateDir, setup, journal, roles)
 	if err != nil {
 		return err
 	}
 	defer executor.Close()
+	executionPlan := *setup
+	executionPlan.PlanHash = plan.PlanHash
+	executionPlan.Actions = append([]Action(nil), plan.Actions...)
+	executor.plan = &executionPlan
 	for _, action := range plan.Actions {
 		if err := executor.Execute(ctx, action); err != nil {
 			return err
