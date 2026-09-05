@@ -1,11 +1,11 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 11:10 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 11:36 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
-The clean, pushed SN runtime checkpoint is
+The prior clean, pushed SN runtime checkpoint is
 `0def712d91ffd1429c2b677fcce775138b6c78ec`. Its full 247-root ordinary
 semantic qualification passed, including all eighteen public replay cases and
 all ten main-root chain cases. The matching race run failed at its unchanged
@@ -24,8 +24,22 @@ The exact pre-fix RED reaches the collector sequence-gap assertion after real
 ledger, signature, transition and measurement-lineage checks. Astra is repairing
 durable closure export, independent settlement advancement, collection and
 public replay in an isolated checkout; Terra runs its tests. A second Astra
-lane owns the public-replay timeout diagnosis, with Terra executing profiles
-and regressions. Both repairs must integrate and pass widened qualification.
+lane owns the public-replay timeout repair, with Terra executing profiles
+and regressions. Its thirteen focused ordinary and race roots and all eighteen
+public-root ordinary replay cases now pass. The measured public-root profile
+improved from 185.66s to 160.39s, without changing coverage or deadlines. The
+four-file repair is integrated as `a83e6baff174a0506ccdececd96ed60e6a1f0107`;
+the new complete-candidate qualification remains outstanding.
+The ordinary wrapper's original census-accounting error is preserved with a
+separately validated thirteen-root reconciliation. The settlement lane also
+reproduced a fatal epoch-admission race and is repairing pre-SEED ownership,
+cut-barrier ownership and closed-proof fixture consistency. Review also found
+that normal active-trail draining can exhaust the generic retry limit; its
+bounded repair must preserve real-error limits and existing deadlines. No
+repaired settlement pass is claimed yet. Settlement integration and the full
+union of old and new regression coverage remain mandatory. A separate capacity
+audit is checking the actual M8 evidence volume against the existing artifact
+limits; no measured capacity result or cap waiver is claimed.
 
 The user's requested on-chain validator evidence is not implemented yet.
 Current WHITEPAPER.md section 11.1 proof bytes live in the server API/MinIO;

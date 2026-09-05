@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 11:10 UTC before the final source freeze. Refresh every item marked
+2026-09-05 11:36 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -31,7 +31,11 @@ Launch blockers at this checkpoint:
   The formerly timed-out BuildRender root passed in 467.09s. Exact source
   pre/post digests match and all 154 indexed capture files verify; this seals
   a failed qualification, not a release pass. A separate Astra performance
-  lane and Terra-owned captured-binary profile investigate the remaining work.
+  lane has completed a profile-supported repair with thirteen focused ordinary
+  and race roots passing and all eighteen public ordinary views passing in
+  160.39s (185.66s in the prior equivalent profile). The four-file repair is
+  integrated as `a83e6baff174a0506ccdececd96ed60e6a1f0107`; neither its
+  diagnostic profile nor focused pass replaces full merged qualification.
 - A newly demonstrated settlement-tail collection defect is release-blocking
   independently of the on-chain storage choice. The exact pre-fix RED exits 1
   at the collector sequence-gap assertion after authenticating the real
@@ -41,6 +45,12 @@ Launch blockers at this checkpoint:
   settlement driver, durable closure export and complete public-replay repair.
   Work is isolated under `/home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn`;
   it is not integrated or qualified yet.
+- Adjacent review found that expected active-trail draining counts against
+  the steering loop's ten-error limit and can terminate valid M8 work. Its
+  bounded repair and deterministic regression are part of the settlement
+  lane. Separately, quantify actual M8 closed-epoch evidence volume against
+  the 32 MiB raw-artifact and 256 MiB graph limits before claiming scale
+  readiness; the audit is pending, not an observed capacity pass or failure.
 - The user requested validator evidence stored in the contract pool. Current
   section 11.1 proof bytes are off-chain API/MinIO objects, with no direct or
   transitive commitment from payout-artifact hashes or native CRv4 weights.
@@ -942,6 +952,35 @@ activation, generated bindings, release identity, publication, real transaction
 capture and public replay all require tests before launch. This is not a
 validator registry, trail-effort verifier or bounty.
 
+Concrete implementation dependencies, verified against current source:
+
+- The existing FINAL co-signature covers the variable-length canonical FINAL
+  message, not FinalDigest (connect/verify_wire.go). The coordinator's existing
+  Ed25519/sr25519 precompile calls verify a 32-byte message. An anchor must use
+  an explicitly signed domain-bound digest, or a compatible existing signed
+  envelope; passing FinalDigest with the raw-message signature is invalid.
+- Both storage choices first need the signed closed-epoch export in section
+  10.2, complete validator/operator/epoch membership, and separate evidence
+  kinds for later audits. Do not derive completeness from applied native
+  intents alone or create a payout/anchor self-reference.
+- Append any coordinator storage compatibly in evm/src/STCoordinator.sol;
+  preserve immutable vault/reserve custody. Update its ABI, stabi generation,
+  validator/server clients, simulator contract payload, activation/history
+  readers, release identity, canonical receipt capture and public replay as
+  one change. The neutral/validator relay must not borrow an operator's
+  artifact key or depend on the accused operator's root signer.
+- Public ingestion/readback must use immutable content-addressed publication
+  and complete signed cutoff semantics. StPublishEvidence currently admits
+  only the configured operator artifact signer; the capped /verify/proofs
+  endpoint cannot substitute for the validator's complete signed export.
+- Full on-chain bytes additionally require corpus-size/calldata/gas/storage
+  measurements and bounded chunking if needed, with an atomic immutable
+  completion record and missing/reordered/conflicting-chunk/restart tests.
+  A manifest pointing only to off-chain proof bytes is not that alternative.
+
+The current server entry points are StComputeEpochPayout, StCommitEpochRoot
+and CoreStClient.CommitPayoutRoot in server/controller/st_controller.go.
+
 The following payout-artifact extension is a limited alternative for evidence
 already frozen before a real root commit. It cannot alone satisfy every
 required terminal/no-payout window:
@@ -962,7 +1001,7 @@ required terminal/no-payout window:
 3. Put the manifest hash, size and exact census inside a new required artifact
    schema's canonical unsigned body. `payoutartifact.Sign` hashes that body
    with signer/signature/content-hash fields cleared, not the final signed
-   blob. `StCommitPayoutRoot` sends that content hash to the existing
+   blob. `StCommitEpochRoot` sends that content hash to the existing
    `commitOperatorRoot`; coordinator state/events and finalized vault
    entitlement retain it. The resulting binding is chain artifact hash ->
    canonical payout body -> manifest -> signed cuts/proof bytes. A field added
@@ -1034,12 +1073,35 @@ Required repair and review checkpoints:
   Recovery and same-epoch retry must finish the identical export from durable
   journal/snapshot bytes. Reject conflicting writers, incomplete operator
   membership, wrong identities/boundaries, and filesystem substitution.
+  Sync the newly created archive's parent before removing the recovery
+  journal, not only the export file and child directory. A retry that finds
+  the exact existing file must still complete interrupted child-directory
+  synchronization before discarding the journal.
 - Replace the existing independent finalized-EVM refresh with a supervised,
   joined closure-driving refresh; do not add a second RPC polling loop or
   serialize closure behind native submission. `SubmitPrepared` may wait for
   finality until caller cancellation, so steering-loop-only closure can starve.
   Prove concurrent/stale snapshots, active-trail draining and cancellation with
   explicit barriers, not timing luck or silently skipped accepted epochs.
+- Give ordinary detach and settlement transition barriers distinct ownership.
+  An unchanged-epoch refresh, native retry, old cut reconciliation or stale
+  snapshot must not reopen another owner's pending cut. Validate stale cut
+  epochs before mutating the admission barrier.
+- Reserve coherent epoch ownership before issuing SEED and release it on
+  pre-assignment failure; pin the first assignment to that reserved boundary.
+  The old resolve-then-admit ordering can become process-fatal if an epoch
+  changes in between. Merely relabeling that post-ASSIGN failure as retryable
+  would drop a server-assigned exposure required by VALIDATOR.md section 7.2.
+  Test both boundary orderings, closure waiting for an in-flight SEED/ASSIGN,
+  cancellation, no cross-epoch append, and genuinely corrupt/skipped state.
+- Classify only `errAttemptCutPending` as expected draining rather than a
+  generic steering failure. Keep the real-error count, original polling and
+  cancellation, native-gap rejection and ten-real-error failure limit. At the
+  accelerated 15-second poll, ten failures allow only nine intervals (135s),
+  while M8 with a 30-second step timeout can need 240s including SEED. Force
+  eleven pending polls deterministically, then prove recovery, cancellation,
+  preserved earlier genuine failures and permanent-error termination. Do not
+  enlarge deadlines or suppress other errors to hide this liveness defect.
 - Require the live terminal path to observe authenticated closed batches for
   every accepted epoch before freezing capture, within the existing scenario
   deadline. The last accepted epoch must not require a selected successor
@@ -1059,6 +1121,19 @@ Required repair and review checkpoints:
   journal recovery, conflicting/omitted/reordered cuts, truncation and forged
   domain/signature/record data. Preserve every prior semantic root and public
   case, and explicitly pin the new tests in producer and aggregate gates.
+- Align the release-scale fixture's signed measurement trails and public
+  proofs with the same required policy depth and complete proof census. The
+  old fixture used variable-depth measurement trails and a separate depth-2
+  public proof set; their individually valid signatures did not prove a join.
+  Keep every provider exposure, candidate, epoch and prior assertion while
+  repairing this fixture; never loosen the production policy-depth check.
+- Verify evidence capacity using the actual configured M8 rate and serialized
+  records, including repeated assignment prefixes, cumulative ordinary cuts,
+  terminal closures and public proof copies. The existing 32 MiB per raw
+  artifact / 256 MiB closed-graph limits are not evidence of adequate capacity.
+  A measured failure needs bounded complete-census storage/replay, not dropped
+  records, reduced traffic or an unreviewed cap increase. Keep a mainnet
+  seven-day capacity result separate from shortened testnet coverage.
 
 Repair ownership: `/home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn`
 (Astra max), with Terra max executing pre-fix and repaired qualifications.
@@ -1115,7 +1190,7 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 11:10 UTC)
+### Latest qualification and repair handoff (2026-09-05 11:36 UTC)
 
 - SN checkpoint 0def712d91ffd1429c2b677fcce775138b6c78ec was committed,
   pulled and pushed at 10:18 UTC. Primary source/tests/modules/gates/census
@@ -1198,9 +1273,75 @@ supplies the exact signed campaign run ID explicitly.
   changed bytes retain full validation and existing rejection classification.
   Preserve first-byte ownership, fresh validation across calls, all eighteen
   views, and deterministic decode/verification work-count plus mutation/error
-  controls. Neutral seams and pre-fix RED precede repair. No production fix or
-  repaired qualification is claimed yet. This diagnostic PASS does not replace
-  the failed full247 race result.
+  controls. Neutral seams and a verified pre-fix RED preceded the isolated
+  repair. The focused results below qualify only their exact thirteen roots;
+  a complete repaired candidate pass is still outstanding. This diagnostic
+  PASS does not replace the failed full247 race result.
+- Public-replay paired repair, exact pre-fix RED:
+  /home/by/urnetwork/temp/sn-public-replay-perf-red-corrected-W5VwUC.
+  Exactly three expected behavioral failures and six compatibility passes,
+  actual exit 1, unchanged source and no timeout. Raw SHA:
+  93c960f5c65e1a1233840ec90b912facedb119b6f22a88b1c1a7df46c20485b0;
+  index SHA:
+  9994998ebe870f947962fc983ef1bde20be14ffb18549bf6aee4c92069bec7f4.
+  The failures prove 271 decoder calls/438,361 parsed bytes for an 8,835-byte
+  input, four signature verifications across two two-replica calls instead of
+  two, and an accepted cancellation after the final response read. The earlier
+  bwFjzv capture stopped at an unused test import and remains non-RED evidence.
+- Isolated paired repair ordinary GREEN:
+  /home/by/urnetwork/temp/sn-public-replay-perf-green-ordinary-IHNc9P,
+  actual exit 0, thirteen raw root starts/passes, test time 0.463s. Raw SHA:
+  bd44cc01ebdb8b2d8869bf7e899b2f8685645ab8e905bc295b225e914eda6980.
+  Its original wrapper incorrectly derived only four expected roots because
+  its regex omitted a suffix wildcard; missing fail-fast handling let that
+  preflight failure continue. Preserve that original erroneous preflight and
+  summary. The separately sealed, fail-closed reconciliation is:
+  /home/by/urnetwork/temp/sn-public-replay-perf-ordinary-census-addendum-NaM6ix,
+  validation exit 0, exact thirteen expected/raw-started/raw-passed roots,
+  empty missing/unexpected sets and held source match; index SHA:
+  f588d53b7b7d983e415e0eea4d70f0b065e9f23babea71fe7db6ef4dc1febb3a.
+  This repairs accounting from the preserved raw result, not the old preflight
+  claim, and required no product-test rerun.
+- Isolated paired repair race GREEN:
+  /home/by/urnetwork/temp/sn-public-replay-perf-green-race-7MSHGy,
+  preflight/actual/validation exits all 0, exact thirteen roots, 9.961s,
+  unchanged source, no missing/unexpected roots or race report. Raw SHA:
+  ee5bb44cf75d2b460edd2742e71751bf7350fbd28bf52ec0af2c5c486a6f93b9;
+  index SHA:
+  8359c5f8030df9fb25769fe522c7977e54740df0e11f4cbad9f5fc9a0d20ed43.
+  Root independently checked raw results, census reconciliation and indexed
+  files. The unchanged thirteen-root selector includes the nine new decoder,
+  ownership, identity, replica and cancellation regressions plus four existing
+  archive/locator bounds. Full merged qualification is not implied by these
+  focused passes. Preserve all prior 247 roots and add all nine new performance
+  roots plus the complete settlement regression census to both release gates.
+- Full repaired public-root ordinary profile GREEN:
+  /home/by/urnetwork/temp/sn-public-replay-perf-green-profile-aOc3jm.
+  Fresh compile/list/preflight/actual/validation all exit 0; all eighteen
+  expected views, no missing/unexpected views, root PASS, source pre/post
+  identical. The 11:27:25--11:30:05 UTC run took 160.39s, compared with 185.66s
+  in the earlier equivalent nvoi5Z profile. Bounds remain 15m/16m inner/outer,
+  GOMAXPROCS=24, parallel=4, count=1 and memory-profile sampling 524288.
+  Raw SHA:
+  451fc041065830e5d77a6508ddf39f949b7c8d4a43fe3ca694639142e9404b22;
+  binary SHA:
+  81d2c98d926c35ccf019d6e4a11c5491f96b4b5f0923a5fc61be1c36fe284f96;
+  CPU profile SHA:
+  77924c6b140ee07dbd0702fdc5084521df2111cc1ba6f51bc0260c418244f2ca;
+  memory profile SHA:
+  67fa841fc2e48ae225be91ed462371e6b21954ca0edf07ce138cfcd69dcc323c;
+  index SHA:
+  810b8fca9d3e87d34edbbd1ed75760c9b1e6a0572d2782b329f1dd97dad71e79.
+  Root read the full raw case census and profile tables and verified the
+  sealed index. Total CPU changed 233.41s to 189.78s and allocated pprof MB
+  19594.97 to 16697.34. Scanner cumulative CPU changed 22.57s to 3.82s and
+  replicated-envelope CPU 50.72s to 26.78s; overlapping cumulative costs must
+  not be added as wall-time savings. Setup time was essentially unchanged.
+  Source commit 630b439396d8274c2ac853bc3b8cd76c78eed528 contains only
+  evidence.go, observe.go and the two new regression files. Its exact reviewed
+  repair was cherry-picked to primary as
+  a83e6baff174a0506ccdececd96ed60e6a1f0107 at 11:36 UTC. No complete widened
+  race pass, settlement pass, source freeze or new live transaction is implied.
 - Fresh clean-0def readiness records:
   /home/by/urnetwork/temp/sn-checkpoint-0def712-MNgA7L.
   Clean-VCS binary SHA:
@@ -1232,6 +1373,24 @@ supplies the exact signed campaign run ID explicitly.
   Root read the full regression and checked terminal/raw hashes. Astra is
   implementing section 10.2; no repaired pass or primary integration is
   claimed. Terra must receive held post-fix source before rerunning.
+- Separate real RunTrail boundary-admission RED:
+  /home/by/urnetwork/temp/sn-settlement-admission-red-D0pvdv.
+  Baseline-only source:
+  /home/by/urnetwork/temp/sn-settlement-admission-red-xYQKms/sn.
+  Actual exit 1 and evidence validation exit 0: both forced one-epoch
+  resolve/admission orderings fail with the expected process-fatal assertion;
+  the skipped-epoch/detached-ledger fatal control passes. Three roots, unchanged
+  source, 3m/4m inner/outer bounds. Raw SHA:
+  bc412e0d00d678a896f918ffbfef36c950da819769720de90a43e10f5c5c7b29;
+  index SHA:
+  1ebc11f19657a6d4734d88e44a6d41521ebc7e0ec42e31bfd2f78f208cdc8a12.
+  The repair must also preserve every authenticated assignment as described
+  in section 10.2; this RED alone does not establish that stronger property.
+- A fresh fetch of all twelve primary repositories completed at 11:18:35 UTC:
+  all were clean and exactly equal to upstream; no source checkout changed.
+  SN then was docs-only checkpoint 555dc82cb8dc0ebbaeff470aaeb0eea180eaf2a8;
+  the a83e6ba runtime integration happened afterwards. Final
+  release-lock refresh and source-freeze fencing remain mandatory.
 
 ### Earlier execution history (preserved, not current release approval)
 
@@ -2434,7 +2593,8 @@ producer pass remain pending; earlier passing records are historical.
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
 | Canonical semantic/replay selection, ordinary | clean-0def full247 PASS, all eighteen public views and ten chain cases | sealed ZeMxbv capture; raw SHA-256 2ec9af81022dbc293de6511c3f1b8f5cff838633c9ef6f4f32e1fd44ab8b99d8 |
-| Canonical semantic/replay selection, race | full 247 FAILED at unchanged 25m; 246/247 roots, sixteen/eighteen public views, ten/ten chain cases | 10:58:19 UTC exit 2; raw SHA-256 abdf6dd60040978757de9c469d8fca236c4ce7a40521d1f67f04fd5468f08a3d; profile complete, paired repair in progress |
+| Canonical semantic/replay selection, race | full 247 FAILED at unchanged 25m; 246/247 roots, sixteen/eighteen public views, ten/ten chain cases | 10:58:19 UTC exit 2; raw SHA-256 abdf6dd60040978757de9c469d8fca236c4ce7a40521d1f67f04fd5468f08a3d; performance repair integrated, full merged rerun pending |
+| Public replay performance repair | nine new regressions: deterministic RED, thirteen-root focused ordinary/race GREEN; all eighteen public ordinary views GREEN | a83e6ba; profile 160.39s, raw SHA-256 451fc041065830e5d77a6508ddf39f949b7c8d4a43fe3ca694639142e9404b22; isolated qualifications, not full release pass |
 | JSON proof/five YAML EOF guards | deterministic RED, isolated 12-root and integrated 19-root ordinary/race GREEN | primary race ended 09:49:50 UTC, verified fresh ordinary 09:51:25 UTC; exact census 238 and explicit framing gates retained; full candidate gate remains separate |
 | Bounded worker, non-return and detached-cache regressions | focused ordinary/race pass | exact three roots, 0.59/8.51s; immutable records above |
 | Post-guard semantic static pin | repaired, focused ordinary/race pass | six roots in 0.64/7.39s; prior 07:37 UTC failure and exact corrective results preserved above |
@@ -2447,12 +2607,14 @@ producer pass remain pending; earlier passing records are historical.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | clean/pushed 0def712; ordinary full247 PASS, race timeout remains; settlement-tail repair isolated | 0def712d91ffd1429c2b677fcce775138b6c78ec; both repair lanes must qualify before integration/freeze |
+| SN runtime candidate | performance repair integrated as a83e6ba; full merged ordinary/race qualification pending; settlement repair isolated | a83e6baff174a0506ccdececd96ed60e6a1f0107; source freeze and current lock still pending |
 | Signed settlement-tail collection | deterministic pre-fix RED; repair in progress, no GREEN yet | exact collector-gap assertion; raw SHA-256 019ace474634bfc26d77edfe53cc21a212a76b33f16f97f358cde011167727d9; section 10.2 |
+| Settlement admission/draining/durability | real admission RED; pre-SEED ownership, separate barriers and directory durability repairs pending qualification; steering wait regression pending | admission raw SHA-256 bc412e0d00d678a896f918ffbfef36c950da819769720de90a43e10f5c5c7b29; section 10.2 |
+| Real M8 evidence capacity | read-only sizing audit pending | raw 32 MiB / graph 256 MiB; no load reduction, dropped census or cap waiver |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
 | Connect candidate commit | all three exact current-HEAD unsharded prequalifications pass | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s, fixed-shuffle race 1,191.339s; frozen aggregate remains pending |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
-| Other candidate repository commits | all twelve clean/equal at the 10:02 fetch; subsequent SN repair is later | inventory SHA-256 `d242b01677f147fc533c395a3665bd14e386fcee22c9dd593beb8ec16aa4234d`; fresh lock/source fence still required |
+| Other candidate repository commits | all twelve clean/equal at the 11:18:35 fetch; subsequent SN repair is later | prior immutable inventory and section 12 refresh; fresh lock/source fence still required |
 | Release-lock hash | source-stale tracked lock; clean0def preview unapplied | tracked SHA-256 009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db; preview a1873abe16aca0e8b2b812b07ff4d888686c34e51630aa11df3a422f390372da; rebuild exact clean pushed HEAD before any apply |
 | Preliminary doctor | 61/64 PASS with exactly expected stale-lock hard failure and two shared-RPC soft failures | clean 0def, ended 10:24:51 UTC, actual exit 1 / Ready=false; report SHA-256 176162b4ccde93ae0c27cb3a38413ee4df1fe10645972a8462927ef45b6613b3; final Ready doctor pending |
 | Test execution capacity | Terra max runs profiles/tests; two independent Astra max repair lanes | settlement-tail producer/collector correctness and public-replay performance; primary runtime/test inputs held, docs-only update after sealed failure |
