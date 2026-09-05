@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 13:40 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 13:55 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
@@ -56,7 +56,12 @@ and the exact runtime-rendering regression now passes. The corrected complete
 the unchanged 25-minute deadline with 267/268 roots passing and no reported
 data race. All eighteen public cases and ten main-root chain cases pass; the
 remaining root is TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact.
-Repeated persisted-plan decoding/validation is being profiled; no timeout
+The targeted ordinary profile completes in 99.80s. Repeated persisted-plan
+decoding/validation accounts for only 6.28% of sampled CPU; fleet construction
+and settlement/cut verification are larger costs. Two deterministic plan-reuse
+regressions reproduce redundant decoding, with four mutation/isolation controls
+passing. A small plan repair and dominant-path duplicate-verification review
+are in progress; neither is yet a qualified full-suite timeout fix. No timeout
 waiver or unchanged full rerun is allowed. Settlement integration remains pending.
 Adjacent review also demonstrated that the common v1 lifecycle checker accepts
 authentically signed mid-trail block/hash changes at append, restart and public
@@ -70,6 +75,22 @@ rate ceiling, the projected objects exceed the existing artifact limits.
 Bounded complete-census storage/replay is required; live throughput and full
 capacity remain unqualified. Section 10.3 of the handoff records the exact
 measurements, assumptions and mandatory repair, without a cap waiver.
+
+The private bounded record-store foundation is integrated as
+9d1b5189f7c1aefbdbce87447667529ff5bb123e, after all 26 store roots pass normally
+and under race and all four existing Linux/Darwin amd64/arm64 compile targets
+succeed. The signed maximum-wire tests are integrated as
+cd06ee32b9f001b5491c0d81468433723ea097bf; their five roots pass normally and
+under race. The real signed M4/M8/M16 complete-record bases are
+5,263/10,417/23,628 JSON bytes plus escaped deployment content; standalone
+proof JSONL widths are 1,643/2,567/4,417 bytes. The proposed M8 16 KiB record /
+4 KiB proof ceilings do not cover M16. A merged 47-root check on exact primary
+9d1b5189 passes normally and under race (35 validator plus 12 protocol roots).
+This qualifies the foundation and common fixes, not disk-ledger activation,
+compact cuts, complete-census public replay or capacity. Disk-ledger import,
+migration fencing and streaming integration remain in an isolated repair lane.
+These two commits are locally committed at this checkpoint; the next docs
+checkpoint must pull and push them before a release freeze is considered.
 
 The common validator-evidence authentication layer passes twelve Go roots
 normally/under race, thirteen Solidity roots, and all eight saved-vector public

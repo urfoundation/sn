@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 13:40 UTC before the final source freeze. Refresh every item marked
+2026-09-05 13:55 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -58,8 +58,12 @@ Launch blockers at this checkpoint:
   complete 268-root ordinary run passes in 224.135s; race times out at its
   unchanged 25-minute deadline with 267/268 passing. All eighteen public cases
   and ten main-root chain cases pass. The sole unfinished root is
-  TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact; targeted
-  profiling of repeated persisted-plan decoding/validation is authorized.
+  TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact. Its targeted
+  ordinary profile completes in 99.80s; repeated persisted-plan decoding is
+  only 6.28% of sampled CPU. Fleet construction and repeated settlement/cut
+  verification are larger targets. Two deterministic plan-reuse regressions
+  are RED, with four mutation/isolation controls passing; the small plan fix
+  and dominant-path duplicate-verification investigation remain in progress.
   Complete merged qualification remains required. Section 12 preserves each
   failure, source fence and exact scope of the passing checks.
 - An adjacent common v1 lifecycle defect is independently reproduced: validly
@@ -76,6 +80,14 @@ Launch blockers at this checkpoint:
   projection exceeds the 32 MiB raw-artifact and 256 MiB graph limits. Actual
   live throughput is unmeasured. Section 10.3 requires bounded complete-census
   storage/replay; the current monolithic representation is not scale-qualified.
+  The private bounded record-store foundation and real signed maximum-wire
+  tests are now integrated as 9d1b5189 and cd06ee32. All 26 store and five wire
+  roots pass normally and under race; four store platform builds succeed.
+  The merged exact-primary check passes all 47 roots normally and under race.
+  None activates disk-ledger streaming or completes compact cuts/public census.
+  Current free space is about 643 GiB; four proposed 160 GiB per-pair database
+  ceilings alone leave insufficient import/spool/history/compaction headroom.
+  Aggregate capacity, not four independent per-pair checks, is required.
 - The user requested validator evidence stored in the contract pool. Current
   section 11.1 proof bytes are off-chain API/MinIO objects, with no direct or
   transitive commitment from payout-artifact hashes or native CRv4 weights.
@@ -1317,7 +1329,102 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 13:40 UTC)
+### Latest qualification and repair handoff (2026-09-05 13:55 UTC)
+
+- Primary is clean at 9d1b5189f7c1aefbdbce87447667529ff5bb123e, two commits
+  ahead of the last pushed documentation checkpoint b3c84b5de97cedf78357ae39237107bb05b4ba9c.
+  cd06ee32b9f001b5491c0d81468433723ea097bf adds the five signed maximum-wire
+  tests (source commit 3e7b0ce); 9d1b5189 adds the private store foundation
+  (source c8983578fca7d5fe9b95f1de0f3568635d7ce042). Common boundary/auth
+  fixes remain integrated. Settlement, disk-ledger activation, compact cuts,
+  complete public streaming replay and on-chain evidence publication remain
+  incomplete. Commit, pull and push this checkpoint; it is not a source freeze.
+- Merged qualification is sealed in
+  /home/by/urnetwork/temp/sn-primary-merged-focused-i6g3r3 at exact clean HEAD
+  9d1b5189. The selector covers 35 validator roots (26 store, four boundary,
+  five wire) and twelve protocol authentication roots. Both normal and race
+  runs start and pass every root with actual/validation exits zero. Normal
+  package times are 15.216s/0.037s; race times are 32.892s/1.269s. All source,
+  runtime and module pre/post fences match. Root read the results and strictly
+  verified the index, SHA:
+  ade24b13f1781026ed997289488595e84fd26e62aa5093eeedcec992b1cdb729.
+  Normal/race raw SHAs:
+  f112d7c33667804246fa2e84b7f48819770af798d6a1d3a6d7357320382435b7
+  and f572cff5a869ce3c9c1f29fb79004c3b08a81ebacf7a6b2c54859fab3488abd8.
+  The processes are terminal and the primary hold is released for checkpointing.
+- Store v3 qualification is sealed in
+  /home/by/urnetwork/temp/sn-attempt-store-v3-capture-51hXU1: exactly 26 roots
+  pass normally (13.828s) and under race (26.590s), actual/validation zero.
+  Index SHA:
+  9918780e9eb1ac11d34c250ebb0a47a2cdab90e3a874b517b548f9e5f35a36a6.
+  The separate compile-only matrix
+  /home/by/urnetwork/temp/sn-attempt-store-v3-matrix-0m7h6M passes Linux and
+  Darwin amd64/arm64, CGO disabled, offline readonly modules; index SHA:
+  3522bc25da0a2c060b4a60be2c459ca1beb3d59394c543f0154e41bed635831d.
+  This does not establish Darwin runtime behavior or full-window capacity.
+- Maximum-wire qualification is sealed in
+  /home/by/urnetwork/temp/sn-attempt-wire-max-v1-capture-ZdijSg: all five roots
+  pass normally (0.587s) and under race (5.232s), actual/validation zero;
+  index SHA:
+  da2be2a3106d4eb19711b16ab41f0bf9d8486b26a3f30ac3787e292ee577b5d1.
+  Real deterministic keys sign every ASSIGN, EXTEND, FINAL, record and cut.
+  M4/M8/M16 complete-record JSON bases are 5,263/10,417/23,628 bytes plus
+  escaped deployment content; standalone proof JSONL widths are
+  1,643/2,567/4,417 bytes. Whole-trail JSONL bases are
+  13,441/43,321/167,879 plus M times escaped deployment content, including
+  9/35/135 assignment copies. Sixty-four NUL deployment bytes expand to 384
+  JSON-content bytes and produce a 174,023-byte M16 trail. Widths include
+  maximum compatible numeric values; next-sequence representability is
+  preserved. They are now executed tests, not just earlier arithmetic.
+  No producer cap or schema changes follow automatically. The first-ASSIGN
+  policy-depth substitution adjacency still needs a signed deterministic RED
+  and an audited clamp-semantics fix; M8 bounds cannot be assumed for M16.
+- Targeted diagnostic profile
+  /home/by/urnetwork/temp/sn-semantic-fleet-audit-profile-xxi0Qy completes the
+  exact previously unfinished root ordinarily in 99.80s, actual zero, with
+  source/runtime/external fences unchanged. Index SHA:
+  9572f1c4459970cb14d5282a64ac277036a63d965d7c16393183619cac6e4941.
+  Sampled CPU totals 172.19s and pprof reports 13,351.69 MB sampled allocation
+  (allocation volume, not peak resident memory). Plan/journal focus is only
+  10.82s CPU / 1,388.68 MB allocation. Fleet construction is 40.11s cumulative
+  CPU and settlement-closure verification 39.10s; cumulative paths overlap
+  and must not be added as independent costs. Generic SHA-256 is expected
+  on this Xeon E5-2697 v2: AVX is present, AVX2/BMI2/SHA extensions are not.
+  Changing GOAMD64 flags is not a demonstrated repair. This profile is not
+  full ordinary/race qualification and does not supersede the full268 failure.
+- Neutral plan-reuse RED is sealed in
+  /home/by/urnetwork/temp/sn-semantic-plan-reuse-red-WQOLyD: actual one,
+  validation zero, two expected failures and four controls pass in 9.328s;
+  index SHA:
+  652f5bda06a06347dc7aa4111b6725894db400e297abac493551e1789613d827.
+  Repeated use decodes two unchanged plans fourteen times instead of twice;
+  valid changed bytes decode four times instead of three. Controls retain
+  archive isolation, exact-byte/path/lineage mutation detection, invalid
+  freshly rehashed budget rejection, and decode-error retry behavior. The
+  repair lane is /home/by/urnetwork/temp/sn-semantic-plan-reuse-W0iEqB/sn.
+  The small plan fix alone is not a claimed solution for the dominant timeout.
+  Duplicate cut verification and repeated exact ASSIGN signatures are now
+  being investigated with separate deterministic work-count reproductions.
+- Disk-ledger integration remains in
+  /home/by/urnetwork/temp/sn-attempt-ledger-stream-ZqQ20Q/sn. The constructor,
+  exact-byte import/provenance, upgraded-v1 migration fence/stale-owner check,
+  checked streaming append/walk/recovery, detached stats replay and bounded
+  proof projection are implemented but not yet qualified. Proof-prefix,
+  fault, cancellation and incremental-work tests plus source review precede
+  its first handoff. Compact cuts, complete public census and capacity are
+  later mandatory integration work, not optional follow-up after launch.
+- Read-only infrastructure observations at 13:49 UTC found MinIO health 200,
+  public EVM chain ID 0x3b1, both simulator PostgreSQL instances accepting
+  connections and both Redis instances replying PONG. All four dependency
+  containers have restart policy no; the simulator user unit is inactive
+  with MainPID zero and Restart=no. These are narrow health observations,
+  not a source-current doctor, authenticated service test or launch. At this
+  checkpoint host storage has about 643 GiB free; four proposed 160 GiB
+  database ceilings alone do not provision import/spool/history/compaction
+  headroom. Full aggregate capacity and public API/history reachability
+  remain independent acceptance requirements. No new chain write occurred.
+
+### Earlier qualification handoff (2026-09-05 13:40 UTC)
 
 - Primary integrated runtime commits are now
   90409b4d39452459effae66972345a59d12a0434 (common pending-boundary guard) and
