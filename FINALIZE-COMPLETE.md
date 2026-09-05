@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 06:20 UTC before the final source freeze. Refresh every item marked
+2026-09-05 06:52 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -145,13 +145,13 @@ FREEZE-UPDATE repository revisions:
 
 The first-draft table is retained below as historical provenance. The current
 source candidate and dependency snapshot was fetched again on 2026-09-05
-06:22 UTC, with no additional upstream changes since 05:52. Clean/equal status
+06:46 UTC, with no additional upstream changes since 05:52. Clean/equal status
 applies only to the rows explicitly marked so:
 
 | Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | 20431dd39f5a81b7ff85c18e11042d5e99e1f9d5 | dirty source candidate; upstream documentation commit `46eae44` and release-lock/handoff commits pending |
-| server | main | df90d425b9b5aa589db2926d8f32006b2aaa9591 | core allocation repair and initial strict-test checkpoint pushed; ordinary/race pass; adjacent provider-reporting and remaining strict-test fixes dirty, qualification pending |
+| sn | main | 74e86127a4fa4bf19df97f19a45520049c9496cb | implementation checkpoint committed, rebased over `46eae44` and pushed; later gate-selection and public-case fixture fixes, release-lock refresh and handoff pending |
+| server | main | b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc | clean/equal after the 06:47 checkpoint; allocation, adjacent provider-reporting/query-plan, retention and strict-test repairs pass focused ordinary/race; frozen gate pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
 | sdk | main | e1d8dc8d9682daefd86878fea911b7b643634406 | clean/equal; incoming JWT transport and points-display focused ordinary/race pass |
@@ -395,8 +395,8 @@ Perform these steps in order.
 
 Useful focused commands:
 
-    go test ./sim-testnet -run '^TestFinalSemantic' -count=1 -timeout=30m
-    go test -race ./sim-testnet -run '^TestFinalSemantic' -count=1 -timeout=45m
+    go test ./sim-testnet -run '^TestFinalSemantic' -count=1 -parallel=4 -timeout=30m
+    go test -race ./sim-testnet -run '^TestFinalSemantic' -count=1 -parallel=4 -timeout=45m
     go test ./validator -count=1
     go test -race ./validator -count=1
     go vet ./...
@@ -428,6 +428,19 @@ correctness is green:
 Any later source edit creates a new candidate: regenerate the lock, commit,
 push, and restart both gates. A passing test from the dirty staging worktree is
 prequalification only.
+
+A preliminary, strictly non-applying doctor may run while these local tests
+finish, to find independent infrastructure or wallet blockers early. The
+2026-09-05 06:51 check returned 61 passes and three failures: the expected dirty
+source/release-lock hard failure, plus advisory `config/independent-rpcs` and
+`rpc/substrate-physical-independence` warnings because the public override
+shares its provider and peer. Every independent hard host, tool, Docker,
+systemd, MinIO, RPC/runtime, wallet, budget and carried-state check passed.
+This is not a ready doctor or launch authority. Preserve its owner-only report
+at `/home/by/urnetwork/temp/sn-preflight-3e2Yfm/doctor-report.json` (SHA-256
+`7080f7a3dfbd3366becaba35efffcd26cd88ed3943922642c3367b32a5cb810f`).
+The fresh post-gate executable and ready doctor below remain mandatory; never
+apply using the preliminary dirty binary or claim physical RPC independence.
 
 ### 4.3 Run the launch-critical producer gate
 
@@ -1303,16 +1316,21 @@ above; all results are prequalification until committed and release-locked:
   network revenue even when a moved provider no longer appears in that view.
   Invalid scoped allocations return an error without partial totals. Six new
   regressions, the existing three provider roots and the real-query
-  `TestStatsQueryPlans` are pinned in both release gates; qualification is
-  pending. The first red run's empty-array fixture was rejected by the schema,
+  `TestStatsQueryPlans` are pinned in both release gates. Focused qualification
+  is green; the frozen gates remain pending. The first red run's empty-array fixture was rejected by the schema,
   not the reader; the corrected seven-malformed-array run independently proves
   reader acceptance and must be retained with that distinction. The first
   postfix ordinary run passed the reader regressions but failed the exact-query
   plan guard: modern snapshots still performed unnecessary legacy contract
-  lookups, including full-table scans. Astra owns the measured query repair;
-  Terra must rerun the unchanged plan guard and full affected ordinary/race
-  selection. Do not treat a correct total as sufficient evidence of a bounded
-  production read path or drop the plan check to obtain a pass.
+  lookups, including full-table scans. A guarded, primary-key-only lateral
+  lookup and materialized network/time scope fix the measured plans without
+  an index or schema change. All 16 exact plan assertions now pass. The full
+  15-test provider ordinary/race selections passed in 230.531/250.269 seconds.
+  The three newly selected rollup/retention roots passed ordinary/race in
+  32.607/38.048 seconds. These repairs and the complete strict-test repair were
+  committed, pulled and pushed as server `b12af6b3`. Do not
+  treat a correct total as sufficient evidence of a bounded production read
+  path or drop the plan check to obtain a pass.
 - Release gates now set `WARP_TEST_ENV_FAIL_FAST=1`; normal developer retries
   remain available. Independent subprocess tests also reproduced abandoned
   teardown, failure followed by skip, invalid/overflowed attempt counts,
@@ -1329,8 +1347,39 @@ above; all results are prequalification until committed and release-locked:
   four independent views inside the public-bundle root. Each adversarial view
   must reach its intended owner/replication/hash rejection and cannot count
   transport/body failures as success. Quick ordinary/race pin checks passed;
-  final expanded pins and immutable-binary ordinary/race replay measurements
-  remain pending. No coverage or 15/25-minute producer deadline was waived.
+  the final expanded pin initially failed because the whole-file provider
+  guard also covers three search-rollup/retention tests. Both selectors and
+  their exact expectation now include those tests; the corrected gate pin
+  passes ordinary/race. No coverage or 15/25-minute producer deadline was
+  waived.
+- The captured parallel public-bundle ordinary run exposed a distinct fixture
+  error after 217.11 seconds: the negative case for missing approved scenario
+  assertions did not remove an assertion, because the shared fixture now
+  supplies a valid, complete assertion set. It instead reached a later missing
+  supplement rejection. Astra repaired the signed per-view negative bundle by
+  removing exactly one approved assertion, recalculating its count/hash and
+  signing both operator views. Every case now uses the real campaign-result
+  validator, with the exact missing-assertion rejection required at both
+  operators in that negative case. Accepting an arbitrary rejection is not a
+  fix. All 18 cases and the positive control remain. The old-capture complete
+  234-test ordinary run finished in 271.37 seconds with only this same fixture
+  failure; it is diagnostic, not a pass. The corrected immutable full ordinary
+  run passed all 234 roots and 18 public cases in 264.39 seconds, with peak RSS
+  1,991,188 KiB. Its complete race run began at 06:51:25 UTC with the unchanged
+  25-minute test deadline; corrected-source race and final frozen gates are
+  still required. The capture is closed at
+  `/home/by/urnetwork/temp/sn-postrepair-public-capture-OfHWG8`, so commits do
+  not disturb the running immutable binary. Its exact 234-root census is
+  `7bf4cfc9865d3976d70fed8f05318d326d22d1702c456850a67ecdbb1e6ad66f`.
+- Prequalification uses two Terra-max test lanes: one owns all PostgreSQL/Redis
+  suites and source-pin checks, while the other owns complete semantic replay
+  timing. Astra-max owns reproduced-failure repairs. An independent read-only
+  test lane does not stop merely because another local selection fails, but
+  every failure still blocks freeze/launch. Never duplicate or restart a live
+  test because an observation expired. The first captured-binary pin invocation
+  also used the wrong working directory; the Go-test-equivalent directory is
+  `/home/by/urnetwork/sn/sim-testnet`, not the SN repository root. Retain that
+  failed invocation separately from the subsequent real selector failure.
 
 Immutable focused records for this checkpoint (all local prequalification,
 not a frozen gate or live-chain certificate):
@@ -1350,6 +1399,18 @@ not a frozen gate or live-chain certificate):
 | Provider reporting pre-fix red, including one fixture error | `/tmp/urnetwork-server-provider-stats-prefix-red-XZM9yq.log` | `dc73d6cfa32d92e35554d02f1691dd640e516e60d308f84b023ed52909407d02` |
 | Corrected malformed-allocation reader pre-fix red | `/tmp/urnetwork-server-provider-invalid-prefix-red-Wap1M8.log` | `d8076b2553445912d2d4685111d4409cb82d17fb77bfd513c85fdac2391fdee3` |
 | Provider postfix ordinary, query-plan failure | `/tmp/urnetwork-server-provider-stats-ordinary-postfix-qYgAdA.log` | `465d2d30b7a7cb0663ee9375dfa82151d2ddf5b474aa0dc6f2924351a90d4873` |
+| Exact provider query plans after repair, pass | `/tmp/urnetwork-server-provider-query-plan-postfix-l8LCtc.log` | `53f765df328571271f7fcd2d124262fd849fe4cc0662a743b3c275e5f61cf9d5` |
+| Full 15-test provider ordinary after repair, pass | `/tmp/urnetwork-server-provider-stats-full15-ordinary-postfix-odblnL.log` | `d88d71b16edadbe249dbc2f02134b581220ffa2fb23e382b1169eec5f2429c26` |
+| Full 15-test provider race after repair, pass | `/tmp/urnetwork-server-provider-stats-full15-race-postfix-Rp8aYv.log` | `a0e8a859e29e1c686fa1c97847e6ce393f3f9c4f9420545e51c717f4cd5f8a05` |
+| Provider rollup/retention ordinary, pass | `/tmp/urnetwork-server-provider-rollup-retention-ordinary-final-RGK0Bg.log` | `5c8af8575b668a85a48adafd05de666f9ef0f146081efa7728510ec5392cf67d` |
+| Provider rollup/retention race, pass | `/tmp/urnetwork-server-provider-rollup-retention-race-final-vzMej3.log` | `25ad41f82001eb307cfc29c52776208d020c09a204709b83656d97b943d26ccd` |
+| Captured pin invocation with wrong working directory | `/tmp/urnetwork-sn-immutable-scheduling-pins-ordinary-1xnfFp.log` | `9aaa523bee6274906fbefc7bde932466ce64a468922beb3ff72b69bab6b12f7d` |
+| Provider whole-file selector omission, pre-fix failure | `/tmp/urnetwork-sn-immutable-scheduling-pins-ordinary-packagecwd-83XmNt.log` | `088fd19f291f1b6531c37e01164c442b7a5e556af25a06ad1f7a8aa920ad4bd1` |
+| Corrected provider gate pin ordinary, pass | `/tmp/urnetwork-sn-release-gate-provider-pin-ordinary-y721kb.log` | `58f1d0dc4525c11aec0eb8260b94574a812f8a825ad93167350cfbcdb8cb72af` |
+| Corrected provider gate pin race, pass | `/tmp/urnetwork-sn-release-gate-provider-pin-race-xjYuke.log` | `73abe92fed4a399c5dd23922cdb254156daf64dc2cd97c549be8764c897773c1` |
+| Parallel public replay with uninjected negative fixture, failure | `/tmp/urnetwork-sn-immutable-edge-public-ordinary-5T6Dhr.log` | `810efcd849c118c81f64554a0ffecbbdf717437ba8652f4dc7f1d146e35e9211` |
+| Complete 234-root ordinary before fixture repair, same sole failure | `/tmp/urnetwork-sn-immutable-semantic-full-ordinary-Vr3gKp.log` | `e27f2d3d7703e038d5d4aaac1db3afe559e5f5b5e0b21ccbb0342d147dbddb38` |
+| Complete corrected 234-root ordinary, pass | `/tmp/urnetwork-sn-postrepair-semantic-full-ordinary-FzHJmq.log` | `b200c2c3c51dc3c919d90408c293aae98b8f5b98e3ba33448c5b445469474734` |
 | Old serial edge/public-bundle race timeout | `/home/by/urnetwork/temp/terra-gates.sqQPsP/sim-edge-fix-race.log` | `93ce17308caa0d043d3f116abb6737cf3af89f2e31ad39dae109b3c74fbe02c0` |
 
 - No final live campaign is running. The exact remaining chain-clock range is

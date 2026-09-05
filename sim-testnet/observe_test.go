@@ -1823,19 +1823,20 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 		},
 	}
 	trustedOwner := common.HexToAddress(roles.EVM["testnet-owner"].Address)
-	acceptFixtureResult := func(*ResolvedConfig, *ScenarioResult, string) error { return nil }
-	verifyResult := acceptFixtureResult
+	wantResultHash := result.EvidenceHash
+	wantResultError := ""
 	var cases []finalSemanticTestCase
 	queueCase := func(name, wantError, missingHash string) {
+		caseBundleHashes := append([]string(nil), bundleHashes...)
 		view := (finalPublicScenarioTestView{
 			objects: objects, commitVisible: commitVisible, supplementHistory: supplementHistory,
 			objectOverrides: objectOverrides, directOwnerVisible: directOwnerVisible,
-			trustedEvidenceOwner: trustedOwner, campaignResultVerify: verifyResult,
+			trustedEvidenceOwner: trustedOwner, wantResultHash: wantResultHash, wantResultError: wantResultError,
 			wantError: wantError, missingHash: missingHash,
 		}).snapshot()
 		cases = append(cases, finalSemanticTestCase{name: name, verify: func(ctx context.Context) error {
 			started := time.Now()
-			err := verifyFinalPublicScenarioTestView(ctx, cfg, public, result.RunID, result.Name, semantic.PublicVerification.EvidenceURI, complete.ContentHash, bundleHashes, commitHashes, view)
+			err := verifyFinalPublicScenarioTestView(ctx, cfg, public, result.RunID, result.Name, semantic.PublicVerification.EvidenceURI, complete.ContentHash, caseBundleHashes, commitHashes, view)
 			t.Logf("public replay %q completed in %s: %v", name, time.Since(started).Round(time.Millisecond), err)
 			return err
 		}})
@@ -1850,9 +1851,53 @@ func TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit(t *testing.
 	trustedOwner = common.HexToAddress(roles.EVM["operator-1-artifact"].Address)
 	queueCase("self-declared owner signer bypassed the finalized coordinator owner", "scenario completion owner does not match the coordinator owner at the campaign terminal block", "")
 	trustedOwner = wantOwner
-	verifyResult = nil
+	// The shared fixture is now a fully valid result. Remove one approved
+	// assertion and re-sign this view so it reaches the real assertion check,
+	// with all remaining assertions, counts and content hashes still valid.
+	definition, err := scenarioDefinitionFor(cfg, result.Name)
+	if err != nil || len(definition.Checks) == 0 {
+		t.Fatalf("approved scenario checks are unavailable: %v", err)
+	}
+	missingAssertionId := definition.Checks[0].ID
+	missingAssertionResult := *result
+	missingAssertionResult.Assertions = make([]AssertionRecord, 0, len(result.Assertions)-1)
+	for _, assertion := range result.Assertions {
+		if assertion.ID != missingAssertionId {
+			missingAssertionResult.Assertions = append(missingAssertionResult.Assertions, assertion)
+		}
+	}
+	if len(missingAssertionResult.Assertions) != len(result.Assertions)-1 {
+		t.Fatalf("approved assertion %q was not present exactly once", missingAssertionId)
+	}
+	missingAssertionResult.AssertionCount = len(missingAssertionResult.Assertions)
+	missingAssertionResult.EvidenceHash, err = canonicalScenarioResultHash(&missingAssertionResult)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingAssertionBundle := bundle
+	missingAssertionBundle.Result = &missingAssertionResult
+	validBundleHashes := bundleHashes
+	bundleHashes = make([]string, len(validBundleHashes))
+	for operator := 1; operator <= cfg.Config.Topology.Operators; operator++ {
+		envelope, err := signEvidence(cfg, "scenario-bundle", result.RunID, missingAssertionBundle, roles.EVM[fmt.Sprintf("operator-%d-artifact", operator)])
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects[envelope.ContentHash] = encoded
+		bundleHashes[operator-1] = envelope.ContentHash
+	}
+	wantResultHash = missingAssertionResult.EvidenceHash
+	wantResultError = "release campaign is missing approved assertion " + missingAssertionId
 	queueCase("syntactic pass without the approved scenario assertions was accepted", missingCompletion, "")
-	verifyResult = acceptFixtureResult
+	for _, hash := range bundleHashes {
+		delete(objects, hash)
+	}
+	bundleHashes = validBundleHashes
+	wantResultHash, wantResultError = result.EvidenceHash, ""
 	manifestBytes := objects[archive.Manifest.ContentHash]
 	delete(objects, archive.Manifest.ContentHash)
 	queueCase("completion with a missing campaign manifest was accepted", "operator 1 campaign evidence "+archive.Manifest.ContentHash+": HTTP 404", archive.Manifest.ContentHash)

@@ -31,7 +31,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 		pkg      string
 	}{
 		{variable: "payout_allocation_tests", selector: "^Test(EvenContractPayoutShare|AllocateContractParticipantPayouts|AllocateContractParticipantPayoutEligibilityMatrix)$", pkg: "./model"},
-		{variable: "provider_attribution_tests", selector: "^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans)", pkg: "./model"},
+		{variable: "provider_attribution_tests", selector: "^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans|SearchProviderStatsRollup|RemoveOldSearchProviderStats|RemoveOldVerifyProviderStats)", pkg: "./model"},
 		{variable: "transport_identity_tests", selector: "^Test(PlatformTransportAuthSnapshotsAreAtomicAndOwned|PlatformTransportH[13]ReconnectUsesUpdatedAuthSnapshot|TunTcpInboundFlowUsesStableBoundedShards|TunTcpInboundShardHandoffCadenceIsBounded|TunWriteCompletesFiniteTcpInboundHandoffBeforeReturn|TunWriteRetainsTcpInboundYieldCadence|TunWriteBatchFinishesEveryTcpInboundHandoff)$", pkg: "."},
 		{variable: "token_transport_tests", selector: "^Test(ApiTokenManager|DeviceRemoteRpcPublicationWakesOnlyOutstandingRefresh|ApiCloseAndWaitJoinsRefreshWorker|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout)", pkg: "."},
 		{variable: "provider_input_tests", selector: "^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)", pkg: "./controller"},

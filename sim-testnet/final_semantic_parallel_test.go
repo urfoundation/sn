@@ -57,7 +57,8 @@ type finalPublicScenarioTestView struct {
 	objectOverrides      map[int]map[string][]byte
 	directOwnerVisible   bool
 	trustedEvidenceOwner common.Address
-	campaignResultVerify func(*ResolvedConfig, *ScenarioResult, string) error
+	wantResultHash       string
+	wantResultError      string
 	missingHash          string
 	wantError            string
 }
@@ -154,6 +155,8 @@ func verifyFinalPublicScenarioTestView(ctx context.Context, cfg *ResolvedConfig,
 	defer transport.CloseIdleConnections()
 	var stateLock sync.Mutex
 	var transportErrs []error
+	var resultHashes []string
+	var resultErrs []error
 	record := func(err error) {
 		stateLock.Lock()
 		defer stateLock.Unlock()
@@ -179,7 +182,18 @@ func verifyFinalPublicScenarioTestView(ctx context.Context, cfg *ResolvedConfig,
 	}
 	probe := &liveScenarioProbe{
 		cfg: cfg, client: client, trustedEvidenceOwner: view.trustedEvidenceOwner,
-		publicManifestURI: manifestURI, campaignResultVerify: view.campaignResultVerify,
+		publicManifestURI: manifestURI,
+		campaignResultVerify: func(cfg *ResolvedConfig, result *ScenarioResult, phase string) error {
+			// Discovery intentionally suppresses individual result rejections.
+			// Observe the real verifier so another failed gate cannot stand in
+			// for the assertion boundary this view is meant to exercise.
+			err := validateScenarioCampaignResult(cfg, result, phase)
+			stateLock.Lock()
+			resultHashes = append(resultHashes, result.EvidenceHash)
+			resultErrs = append(resultErrs, err)
+			stateLock.Unlock()
+			return err
+		},
 		finalSemanticVerify: func(ctx context.Context, _ *PublicDeploymentManifest, evidence *FinalSemanticEvidence, _ string) error {
 			return VerifyFinalSemanticEvidenceOnChain(ctx, evidence, &finalTestChainReader{evidence: evidence})
 		},
@@ -190,6 +204,28 @@ func verifyFinalPublicScenarioTestView(ctx context.Context, cfg *ResolvedConfig,
 	stateLock.Unlock()
 	if transportErr != nil {
 		return fmt.Errorf("fixture transport failed: %w", transportErr)
+	}
+	if err := func() error {
+		stateLock.Lock()
+		defer stateLock.Unlock()
+		if len(resultErrs) != len(manifest.Operators) {
+			return fmt.Errorf("campaign result verifier reached %d operator bundles, want %d", len(resultErrs), len(manifest.Operators))
+		}
+		for index, err := range resultErrs {
+			if resultHashes[index] != view.wantResultHash {
+				return fmt.Errorf("operator %d campaign result hash = %q, want %q", index+1, resultHashes[index], view.wantResultHash)
+			}
+			if view.wantResultError == "" {
+				if err != nil {
+					return fmt.Errorf("operator %d rejected the valid campaign result: %w", index+1, err)
+				}
+			} else if err == nil || err.Error() != view.wantResultError {
+				return fmt.Errorf("operator %d campaign result rejection = %v, want %q", index+1, err, view.wantResultError)
+			}
+		}
+		return nil
+	}(); err != nil {
+		return err
 	}
 	if view.wantError != "" {
 		if verifyErr == nil || !strings.Contains(verifyErr.Error(), view.wantError) {

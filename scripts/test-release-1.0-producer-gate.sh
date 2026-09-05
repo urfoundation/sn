@@ -213,7 +213,7 @@ echo "[release-1.0 producer] isolated PostgreSQL/Redis evidence path"
   model_tests='^Test(VerifyEgressExactIndexAndPrefixScoreAreIndependent|VerifyTrailLockMutualExclusion|VerifyTrailLockStaleReleasePreservesSuccessor|StDeploymentStateIsIsolatedAcrossCoordinatorReplacements|StTransactionIntentReservationUsesChainAccountNonceScope|StTransactionAttemptCandidatesConvergeOnOneWinner|StTransactionFinalizedAttemptCannotRegress)'
   go test ./controller -run "$controller_tests" -count=1
   go test ./model -run "$model_tests" -count=1
-  provider_attribution_tests='^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans)'
+  provider_attribution_tests='^Test(ContractPayout|CompanionContractPayout|ContractParticipant|StEpochProviderUsage|StatsProviderPayouts|StatsProviders|StatsQueryPlans|SearchProviderStatsRollup|RemoveOldSearchProviderStats|RemoveOldVerifyProviderStats)'
   go test ./model -run "$provider_attribution_tests" -count=1
   go test -race ./model -run "$provider_attribution_tests" -count=1
   go test ./taskworker -count=1
