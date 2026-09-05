@@ -1,9 +1,37 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 13:55 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 14:48 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
+
+Latest progress: checkpoint 09a0dfad15b6428099735145cf75ac955d63e313 is clean
+and pushed. The isolated disk-ledger integration now passes all 27 focused
+roots normally and under race, plus Linux/Darwin amd64/arm64 builds; its wider
+139-root compatibility selection is authorized but not yet complete. The
+performance repair's twenty focused tests execute successfully normally and
+under race. Its launcher was edited while Bash was running, interrupting final
+packaging; immediate source/runtime checks and an explicitly later independent
+source/external/binary audit match, but the original complete capture is not
+claimed. A fresh 121-validator/281-semantic qualification is authorized, with
+all 274 mandatory semantic roots and seven adjacent collector controls included.
+That wider run has not launched: source was released to first repair a newly
+confirmed same-height block-hash contradiction in legacy cut construction and
+verification, including adjacent decision/successor boundary relations.
+
+Compact header/descriptor code is an isolated candidate, not activated. Its
+two decoder/cancellation bugs have deterministic REDs; repaired 24-root
+qualification is pending. Full bounded record/proof replay is now written and
+has 21 new tests queued, including three deterministic resource-ownership and
+cancellation REDs. The compact writer/sealer, bounded aggregates, public
+collector integration, authenticated activation, on-chain evidence publication
+and aggregate capacity remain launch requirements. Namespace review also found
+that rendering can mistake a disk ledger without legacy JSONL for unsigned
+state; that safety repair must precede activation. Section 12 of the handoff
+records exact sources, current holds and qualification artifacts.
+
+The chronology below preserves earlier qualifications and failures; it is not
+a claim that those historical candidate states remain current.
 
 The prior clean, pushed SN runtime checkpoint is
 `0def712d91ffd1429c2b677fcce775138b6c78ec`. Its full 247-root ordinary
@@ -89,8 +117,8 @@ proof JSONL widths are 1,643/2,567/4,417 bytes. The proposed M8 16 KiB record /
 This qualifies the foundation and common fixes, not disk-ledger activation,
 compact cuts, complete-census public replay or capacity. Disk-ledger import,
 migration fencing and streaming integration remain in an isolated repair lane.
-These two commits are locally committed at this checkpoint; the next docs
-checkpoint must pull and push them before a release freeze is considered.
+These commits and their documentation checkpoint 09a0dfa are committed,
+pulled and pushed. The subsequent isolated repairs are not a release freeze.
 
 The common validator-evidence authentication layer passes twelve Go roots
 normally/under race, thirteen Solidity roots, and all eight saved-vector public

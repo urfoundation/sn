@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 13:55 UTC before the final source freeze. Refresh every item marked
+2026-09-05 14:48 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -20,7 +20,49 @@ similar/adjacent paths, implement the fix, and add its deterministic regression.
 Return the resulting tree to Terra for focused and widened reruns. This
 model assignment never weakens a gate or expands testnet write authority.
 
-Launch blockers at this checkpoint:
+Capture launchers are also immutable execution inputs. Snapshot/hash the actual
+script into its capture directory and execute that frozen copy; never edit an
+active launcher or let it reread a mutable shared template. Preserve actual
+binary exits and immediate source/runtime fences independently of final report
+packaging. A supplemental audit must carry its real later timestamp and cannot
+be represented as a missing original fence or successful original wrapper.
+
+Current launch blockers (14:48 UTC; details and hashes in section 12):
+
+- Main checkpoint 09a0dfa is clean and pushed, but source is not frozen. The
+  settlement/performance candidate has twenty successful focused normal/race
+  executions with a separately preserved launcher failure. Its authorized
+  wider run is validator 121 plus semantic 281 (all mandatory 274 plus seven
+  adjacent collector controls), not a repeated 53 followed by the same 274.
+  It has not launched: the source is released for a newly confirmed legacy
+  boundary-order/hash consistency repair before that long run.
+- Disk-ledger integration passes focused 27 normal/race and four platform
+  builds. Exact 139 affected compatibility qualification remains pending;
+  neither these checks nor the integrated store foundation prove capacity.
+- Compact header/descriptor candidate b8249cb has two reproduced and repaired
+  defects; exact 24 qualification is pending. Full disk-backed record/proof
+  replay is written with 21 tests queued, including three causal REDs. Writer,
+  sealer, bounded aggregates, collector/public adapters and complete-census
+  activation/downgrade checks remain unfinished. Existing artifact/control
+  graph limits must stay enforced; no cap increase or workload reduction is
+  an approved shortcut.
+- Preserve attempt-4's 162 legacy proof lines and nonempty statistics. The
+  existing approved resume path archives unsigned local state before a fresh
+  start; it does not prove a fully observed, authenticated v2 activation.
+  Rendering currently recognizes only legacy JSONL as signed authority and
+  can misclassify a populated disk ledger. Fix namespace and reset-journal
+  recovery protection before disk activation. Never invent missing historical
+  assignments, failure denominators or latency samples.
+- On-chain validator evidence publication is still unimplemented. The open
+  hash-commitment/public-bytes versus full-on-chain-bytes choice remains as
+  documented in section 10.1. Common stateless authentication is qualified,
+  not an on-chain storage or transaction result.
+- Final source lock, both release gates, fresh Ready doctor, two matching
+  bounded plans, live phases, FINAL.md and independent replay remain. After
+  launch preparation, the unchanged scheduler requires 3,004--4,380 blocks;
+  reporting/review adds time. No reliable from-now finish time is claimed.
+
+Earlier blocker context (retained chronology; current status is above):
 
 - Clean/pushed runtime checkpoint `0def712d91ffd1429c2b677fcce775138b6c78ec`
   passed the complete 247-root ordinary qualification, all eighteen public
@@ -1259,23 +1301,27 @@ retention, per-object work and complete stream counts/bytes. Existing raw and
 control-graph limits remain enforced; any new stream budget needs an explicit
 reviewed protocol/config contract, not an unnoticed limit increase.
 
-Astra owns the bounded-storage work in
-/home/by/urnetwork/temp/sn-attempt-stream-v2-7emA9E/sn. Root reviewed its concrete
-proposal and authorized the first private disk-backed record-store slice and
-tests, using the exact goleveldb version already pinned in go.sum. It must
-atomically persist canonical v1 record bytes, exact pending/terminal trail-ID
-state and the head; use strict corruption checks, bounded memory, private
-ownership, directory durability and a fault latch after ambiguous I/O. It does
-not activate a producer/schema migration or change current artifact limits.
-Candidate global byte/disk/count limits require maximal-field and provisioning
-tests before approval. Review of the first draft found pathname check/use and
-existing-file overwrite exposure, plus a pending iterator that could observe a
-persisted batch before the cached head was published. Astra is replacing the
-pathname-backed adapter with descriptor-anchored, exclusive, single-link-owned
-storage and a consistently captured snapshot/head; deterministic interleaving
-and collision tests must qualify these new-code corrections. No implemented or
-qualified v2 result is claimed yet.
-Terra must exercise deterministic boundary,
+The private record-store foundation is now integrated as 9d1b5189, using the
+exact already-pinned goleveldb dependency. Its 26 ordinary/race roots and four
+platform builds qualify canonical record preservation, atomic index/head
+publication, bounded memory/storage, descriptor-relative private ownership,
+strict corruption handling and fault latching. The initial pathname/overwrite
+and pending snapshot defects have deterministic RED/GREEN evidence in section 12.
+
+The next disk integration is isolated in
+/home/by/urnetwork/temp/sn-attempt-ledger-stream-ZqQ20Q/sn; focused 27 normal/race
+and four platform builds pass, wider compatibility is pending. Compact
+header/descriptor candidate b8249cb is separately held in
+/home/by/urnetwork/temp/sn-compact-metadata-qualification-iQdy4V/sn. Root's full
+bounded replay draft and deterministic REDs are held in
+/home/by/urnetwork/temp/sn-attempt-cut-v2-nqeKeI/sn. The replay retains one
+bounded page/record in memory and uses a fresh private disk index for exact
+interleaved lifecycle and original-sequence proof projection. It is not yet
+qualified or wired into producers/public acceptance. Writer/sealer, bounded
+aggregate state, control-graph accounting, activation and capacity remain.
+These slices do not change production defaults or authorize any new cap.
+Candidate global byte/disk/count limits still need maximum-wire and aggregate
+provisioning tests before approval. Terra must exercise deterministic boundary,
 truncation, reorder, duplicate, conflict, restart and cancellation cases,
 source-derived full-envelope capacity tests, and the complete integration.
 Do not reduce workload, drop the proof census, or substitute shortened-testnet
@@ -1329,7 +1375,132 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 13:55 UTC)
+### Latest qualification and repair handoff (2026-09-05 14:48 UTC)
+
+- Primary 09a0dfad15b6428099735145cf75ac955d63e313 was committed, pulled and
+  pushed; main was clean on recheck. The simulator unit was inactive with
+  MainPID 0 and Restart=no at 14:27. No final live phase or new transaction ran.
+  Isolated candidate work below is neither a source freeze nor a full gate.
+- Disk v2 source remains held at
+  /home/by/urnetwork/temp/sn-attempt-ledger-stream-ZqQ20Q/sn under
+  LEDGER-SOURCE-v2.SHA256SUMS, SHA
+  bae6ed4a60be509e41f63aed3d245d575a02924cb42ee1acdcbd27a3ce854c86.
+  Capture sn-attempt-ledger-v2-compiled-exact27-y7IatI passes exactly 27 roots
+  normally and under race; all compile/list/execute actual and validation
+  exits, source/runtime and external fences are zero. Its index SHA is
+  291b405484b509270ba8e40a59a79a04ce0b6029403a11d81c65162b714130dc.
+  Matrix sn-attempt-ledger-v2-platform-matrix-7MCLlu passes all four existing
+  Linux/Darwin amd64/arm64 CGO-disabled build targets, index SHA
+  a7c1bf84f6c4fe5faa20e01f84f6385ffa43d6c2e26638a0f68eacf3e38825e1.
+  Root read summaries/raw stage results and independently strictly verified
+  both complete indices. Exact 139 compatibility is authorized: 138 validator
+  roots in 13 files plus TestFinalAttemptFixtureLedgerMatchesDurableProductionWire.
+  Validator execution caps are 5m ordinary / 10m race (outer 6m / 11m), based on
+  prior affected-area timing; the proposal's 3m race cap was not launched.
+  The one simulator root has 3m inner / 4m outer; compilation is separately 4m.
+  No matrix repetition is needed on unchanged source. Keep ordinary/race
+  compatibility, bounded aggregates, rollout and capacity as distinct claims.
+- Disk v1's first 26-root attempt failed 22 tests because its new private-
+  directory gate correctly rejected Go TempDir directories that were 0755.
+  V2 fixes fixtures to create owned 0700 child state; production checks and
+  bounds are unchanged. Updated exact baseline 2 RED remains causal under
+  sn-attempt-ledger-baseline2-red-capture-jF59hF: stateLock is held across the
+  old append hook, and late attachment failure publishes partial Stats/binding
+  state. Index SHA
+  bcbb33caff0b8946c39fcefe1e33dc01ea7feeebe8e935ef49945e57757a9468.
+  Preserve earlier baseline and failed v1 artifacts; never relabel them green.
+- Performance/settlement candidate W0iEqB remains source-held under the 41-file
+  verification-repair-v3-source.SHA256SUMS, SHA
+  edc1b71eae72260b19c685c9e1cd6d54f885b4fdbcc71a650c6b540ba369ea00.
+  It removes repeated native-plan decode, fuses full cut verification at the
+  existing settlement replay boundary, and caches at most 64 exact successful
+  ASSIGN signature tuples per cut. Key/message/signature bytes are owned;
+  changed keys, unknown shapes, failures, eviction and new cuts reverify.
+  The separate verification RED found 4 cut checks instead of 2 and 35 ASSIGN
+  checks instead of 7; its four cryptographic/rejection controls passed.
+  Exact 20 v3 executions in sn-semantic-v3-compiled-exact20-fzUv1u all pass
+  normally and under race (12 validator plus 8 simulator). Immediate per-stage
+  source/runtime fences match. A mutable launcher was edited while Bash was
+  still executing it, causing a later parser fault before the original global
+  final fence/summary/index. Supplemental observation at 14:30:09 verifies
+  source/runtime/external inputs and all four binary hashes, without claiming
+  the missing original fence. Partial index SHA
+  8b17edb07884db160d3bebf6dc31453870e1ea5abd9a1799c8c3bf441dd35b1b
+  was independently verified by root. Preserve this harness failure and use
+  only frozen capture-local scripts henceforth. Validator 121 and semantic 281
+  are authorized on reattested binaries in fresh processes; semantic 281 is the
+  exact union of mandatory 274 and seven adjacent collector/source controls.
+  Do not first rerun 53 overlapping roots. Original full semantic execution
+  caps remain 15m ordinary / 25m race; no timeout waiver or coverage reduction.
+- Compact RED 16 in sn-attempt-cut-v2-red-capture-6F37ee terminates with 14
+  controls passing and exactly 2 causal failures (typed decode beyond the
+  descriptor count; visitor invoked after post-decode cancellation). Actual 1,
+  validation 0, all fences unchanged; index SHA
+  47d5d4197810a734d50071add46a5721949eb8ad5797dea33d93da2b9297cbd8,
+  independently verified by root. The fixes plus eight adjacent controls are
+  isolated commit b8249cb6d9b4703ca8e9209f5a4d8f5a13aa0bf8, five files only,
+  held at sn-compact-metadata-qualification-iQdy4V/sn for exact 24 normal/race.
+  Source manifest SHA
+  b1da9b881f9110938cb91f5989829849e038d113fd8f0dfebba76dc9496a4d7f;
+  census SHA 0052b12ba9b16099f280141c4fbb9535b13808162341661332ff067793f30099.
+  This authenticates compact headers and descriptor censuses, not data replay.
+- Root wrote full bounded replay in nqeKeI/sn as two new files on b8249cb.
+  It checks canonical JSONL, exact chunk length/hash/EOF, every signed record
+  and server proof, original sequence/hash/boundary continuity, interleaved
+  lifecycle completion, terminal counts and exact ordinal proof projection.
+  A private bounded disk scratch index replaces history-sized lifecycle maps;
+  consumers must stage callbacks until the whole verdict succeeds. Source is
+  held for exact 21 ordinary RED/control execution. Expected 18 pass / 3 fail:
+  TestAttemptCutV2ReplayOpenErrorClosesReturnedReader,
+  TestAttemptCutV2ReplayRejectsFreshScratchReplacement,
+  TestAttemptCutV2ReplayPostDecodeCancellationPreventsVisitor. These expose
+  actual reader ownership, fresh-directory identity and post-authentication
+  cancellation gaps, with no fake verifier or I/O result. The 19-path source
+  manifest SHA is
+  a259c931576a40e1927e535116268e53f423887e3224e433eb27e104dc647e8c;
+  census SHA 6d8899b45878007d480f627c2da3818cd559f97b9247ef26f7bf5fa3becab37e;
+  REPLAY-HANDOFF-red-v1.md SHA
+  721cb32076db60cbc12c13f0bb3c069ce378ad98052f47cdfee7f580e6d23104.
+  No product test was run by root. Terra runs 3m inner / 4m outer after separate
+  bounded 4m compilation; no race or unchanged retry of the known RED draft.
+  Keep source held until terminal capture release, then fix and audit adjacent
+  paths. The reusable storage opener must bind the actually created directory
+  before any backend mutation; path rechecking alone is not sufficient.
+- Read-only rollout audit found 162 legacy proof lines (384,930 bytes) across
+  the four attempt-4 validator/operator state directories, nonempty statistics,
+  and no authoritative attempt-ledger.jsonl. Existing resume unconditionally
+  rerenders configs through prepareSignedAttemptStateNamespaces, archives the
+  entire unsigned state with byte hashes, and restores client seeds from
+  retained RoleSecrets. Both recorded validator PIDs are 0; no archive/reset
+  journal has been applied. Contracts, wallet custody and deployment journal
+  are outside the renamed subtree. This preserves history but cannot recover
+  missing assignments/failures or authenticate a complete v2 activation.
+  The classifier recognizes only mapped nonempty JSONL; it can reset disk or
+  unmapped signed authority. Astra owns the protected-state/reset-recovery
+  repair at sn-attempt-namespace-disk-brOXtW/sn. Its real-store fixture producer
+  passed exact ordinary provenance qualification in
+  sn-attempt-namespace-fixture-capture-gGENo6. The standalone fixture is
+  76,137 bytes, SHA
+  62c642eaa728a7c0fc3191c5b3273e1638d6fda87c6a7168a843bf76a4f1daba;
+  it contains no private keys. Eleven namespace roots are now held for RED
+  (ten causal failures plus one legacy/signed-state control), including
+  whole-config preflight before archiving any earlier validator namespace.
+  Fully observed activation must additionally bind exact chain/policy/vault,
+  hotkey/VPK, every operator, prior archives and finalized boundary. Preserve
+  all existing on-chain obligations and pending transaction reconciliation.
+- Further source review confirms a legacy cut-boundary contradiction: both
+  BuildCut and verifyAttemptLedgerCut permit a record at block B/hash H1
+  inside a cut at the same block B/hash H2. Outer measurement/transition and
+  chain-head authentication do not compare those record hashes. Astra must
+  reproduce both public verification and construction paths with real signed
+  trails, preserve valid earlier-height records, and fix the common relation.
+  Terra confirmed the W0i wider run never launched and released the source
+  for this known mandatory change and its focused tests. Batch the confirmed
+  adjacent cut-to-decision and predecessor-to-successor boundary relations
+  into the neutral regression handoff; do not edit a live consumer's input.
+  Regenerate manifests/censuses to retain every previously mandatory root.
+
+### Earlier qualification and repair handoff (2026-09-05 13:55 UTC)
 
 - Primary is clean at 9d1b5189f7c1aefbdbce87447667529ff5bb123e, two commits
   ahead of the last pushed documentation checkpoint b3c84b5de97cedf78357ae39237107bb05b4ba9c.
