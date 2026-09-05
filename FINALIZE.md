@@ -1,34 +1,41 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 18:02 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 18:33 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no partial local qualification
 authorizes activation or proves final acceptance.
 
 Landed in sn: metadata c9f066a, bounded writer8e9d0fc, full replay2d179bd,
-inner namespace protection5cddac6 and outer launch/render protection64a6e32.
-Writer46, replay55, namespace18 and outer22 all pass normally and under race.
-The remaining edits are in stable isolated temp/sn-* checkouts, not hidden
-uncommitted edits in the main sn working tree.
+namespace protection5cddac6/64a6e32, qualification launcher1db13f5 and the
+disk-ledger/settlement-closure/policy-aware sealer integration c86effa.
+The latter's complete99-path reviewed source manifest matches main; its
+validator341 suite passes normally and under race. Launcher4 also passes both
+modes. These are implementation checkpoints, not a final release qualification.
+Active Stats, custody and timeout repairs remain in isolated temp/sn-* trees.
 
 The composed disk/settlement candidate passes validator285 and simulator6
 normally/race. Cold durable-parity still fails its3m race deadline; broader
 semantic281 still fails its25m race deadline with280 roots passing. Both
-failures are preserved. Current-binary profiles and causal work-count tests
-are authorized before another changed-source qualification; no coverage or
-deadline is waived.
+failures are preserved. Current-binary profiles now confirm repeated full
+semantic/settlement verification is a larger cost than plan decoding. The
+two smaller transcript/plan work-count defects have exact causal reproductions;
+the dominant same-call verification repair is still being prepared. No coverage
+or deadline is waived.
 
 The engine policy-depth repair passes all51 normal/race roots after genuine
-signed M4/M16-under-M8 causal reproductions. Its server-side signed-byte alias
-adjacency remains open. Key creation has two causal alias failures; Stats
-startup has a deterministically reproduced state-lock/disk-walk inversion.
-Those repairs and adjacent audits are required before activation.
+signed M4/M16-under-M8 causal reproductions and is included in c86effa. Two
+adjacent wrong-clamp/invalid-encoding failures are also causally reproduced.
+The server-side signed-byte alias remains open. Key custody passes17 CRV4
+normal/race roots, but its full qualification is FAILED on three old validator
+fixtures with unsafe parent-directory setup; preserve and repair those fixtures
+without relaxing custody policy. Stats now has five deterministic callback
+lock-inversion reproductions, with both existing replay controls passing.
 
-Real-ledger sealer integration is assembled, with the complete validator341
-union authorized (prior285 +42 sealer +14 depth), not yet qualified.
 Bounded aggregates, collector/public typed replication, authenticated activation,
 global cross-cut terminal history, aggregate capacity and on-chain validator
-evidence publication remain mandatory. Both release gates, final source lock,
+evidence publication remain mandatory. Add explicit producer-gate coverage for
+the disk/depth and all namespace regressions, plus the eventual custody suite.
+Both release gates, final source lock,
 Ready doctor, matching plans, real live phases, FINAL.md and independent
 on-chain verification are still outstanding. Section12 of the handoff records
 the exact sources, failed captures, qualified scopes and current work locations.

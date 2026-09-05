@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 18:02 UTC before the final source freeze. Refresh every item marked
+2026-09-05 18:33 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -27,14 +27,15 @@ binary exits and immediate source/runtime fences independently of final report
 packaging. A supplemental audit must carry its real later timestamp and cannot
 be represented as a missing original fence or successful original wrapper.
 
-Current launch blockers (18:02 UTC; details and hashes in section 12):
+Current launch blockers (18:33 UTC; details and hashes in section 12):
 
-- Main contains qualified metadata c9f066a, bounded writer 8e9d0fc, full
-  bounded replay 2d179bd, inner namespace protection 5cddac6 and outer
-  launch/render protection 64a6e32. The first three and checkpoint c5a1745
-  were pushed; the two namespace commits are local pending this checkpoint.
-  These are committed edits in sn. Active unmerged fixes are isolated under
-  temp/sn-* so tests use stable source. This is not a final source freeze.
+- Main contains metadata c9f066a, bounded writer8e9d0fc, bounded replay2d179bd,
+  namespace protection5cddac6/64a6e32, launcher1db13f5 and full reviewed
+  disk/settlement/sealer composition c86effa. Through6d1b7c6 was pushed; the
+  latest two implementation commits await this documentation checkpoint's
+  pull/push. All99 composition paths match their reviewed source manifest.
+  Active Stats/custody/timeout repairs remain under temp/sn-*. This is not a
+  source freeze or a claim that both complete release gates pass.
 - Namespace protection now passes inner18 and outer22 normal/race checks.
   The actual renderer and outer migration/payload-recovery mutations were
   reproduced causally before repair. Preserve attempt-4's162 legacy proof
@@ -46,34 +47,41 @@ Current launch blockers (18:02 UTC; details and hashes in section 12):
   at the unchanged3m race cap during fixture construction. W0i semantic281
   passes normally; its race run is terminal FAILED at25m with280 roots passing
   and BuildRender unfinished. No unchanged retry or deadline waiver is allowed.
-  Separate current-binary CPU/allocation diagnostics and deterministic work-count
-  tests are authorized; fixes must preserve every real fixture and public check.
-- Real disk-ledger sealer composition is held at
-  /home/by/urnetwork/temp/sn-cut-sealer-compose-3ynkzN/sn. It includes the
-  reviewed policy-aware full replay and real staged fetch-back, all42 new
-  sealer tests and the14 depth controls. Terra is authorized to run the direct
-  validator341 union (prior285 +42 +14), not duplicate focused/wide runs.
-  This is not yet qualified or integrated. Bounded aggregates, typed public
-  adapters/replication, complete-census activation and global cross-cut
-  terminal-ID history remain unfinished.
+  Current-binary CPU/allocation profiles are sealed. Full semantic/settlement
+  verification dominates more than plan decoding; smaller redundant transcript
+  marshaling and complete-plan construction each have causal tests. Astra is
+  preparing the dominant same-call duplication reproductions and narrow repair.
+  Preserve full signature, lineage, member, context and cross-call checks.
+- Real disk-ledger sealer composition passes all341 normal/race roots
+  (prior285 +42 sealer +14 depth) and is integrated in c86effa. Its source
+  remains preserved at temp/sn-cut-sealer-compose-3ynkzN/sn. Full typed
+  staging/fetch-back and policy-aware replay are covered, but bounded Stats
+  aggregates, public adapters/replication, complete-census activation and
+  global cross-cut terminal-ID history remain unfinished.
 - First-ASSIGN depth substitution is now causally reproduced: four genuine
   signed M4/M16 trails were accepted under requested M8; two full M8 controls
   pass. The repaired engine passes all51 focused/adjacent/legacy roots in both
-  modes. Two additional adjacent pre-fix failures (wrong clamp and invalid
-  request encoding) are authorized on unchanged tests. The server's separate
+  modes and is integrated in c86effa. Two additional adjacent pre-fix failures
+  (wrong clamp and invalid request encoding) are causally sealed. The server's separate
   JSON integer >255 to signed-byte alias remains open; the client guard does
   not repair that public request boundary.
-- Seed/VPK creation has two causal alias failures, with all7 legacy controls
-  passing. Astra is implementing descriptor-anchored, non-replacing key
-  publication and deterministic concurrent-creator/parent/private-file tests.
-  Never use real wallet material as fixtures or change generic snapshot
-  replacement semantics to fix identity custody.
-- A new deterministic Stats startup test reproduces a real lock inversion:
-  AttachAttemptLedger holds Stats.mu while entering Pending's disk walk gate,
-  while an already admitted public Walk visitor needs Stats.mu. Its2 controls
-  pass. Repair startup and audit adjacent commitAttempt/proof projection and
-  every other disk callback under state locks; a startup-only patch is not
-  class closure. This is distinct from the cold-fixture CPU timeout.
+- Seed/VPK creation has two causal alias failures. The descriptor-anchored,
+  non-replacing repair passes all17 CRV4 normal/race roots in v2, but the full
+  capture FAILED on three old validator fixtures whose immediate parents were
+  not made private. V1 also preserves an old CRV4 format-fixture failure.
+  Astra owns setup-only migrations and a complete adjacent fixture audit;
+  preserve all original format/reload/mirror assertions and strict custody.
+  No validator race/platform result or deployment-path compatibility is implied.
+- Stats has five exact callback lock-inversion failures: startup Pending,
+  terminal proof projection, checkpoint Append, native persistence and the
+  validator-wide settlement writer. Both old replay failure/retry controls
+  pass. Astra owns the complete write-admission/short-state-lock repair with
+  cancellation, publication and stale-save protection. A startup-only patch
+  is insufficient; this is distinct from the cold-fixture CPU timeout.
+- Producer selection still omits DiskAttempt, TrailPolicyDepth and some
+  ValidatorStateNamespace roots. Add source-group coverage regressions and
+  the required normal/race invocations, including the eventual custody tests.
+  The aggregate suite's broad selection is not launch-critical gate coverage.
 - On-chain validator evidence publication is still unimplemented. The open
   hash-commitment/public-bytes versus full-on-chain-bytes choice remains in
   section10.1. Common stateless authentication is qualified, not a publication
@@ -1398,7 +1406,89 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest integration and root-cause handoff (2026-09-05 18:02 UTC)
+### Latest integrated checkpoint and causal results (2026-09-05 18:33 UTC)
+
+Root strictly verified each index below and read the actual result/census.
+All capture paths are under /home/by/urnetwork/temp/. Older entries are
+retained chronology, not current handles or release approval.
+
+- Main1db13f5 adds the frozen qualification wrapper, README contract and four
+  deterministic regressions for direct0644 execution, wrong-cwd manifests,
+  real source mismatches and ambiguous/missing inputs. Capture
+  sn-qualification-launcher-v1-exact4-dN3nXK passes all4 normal/race roots;
+  index0a3d41dd4e70a13a421cd4300a5754f312ced5eaa2a7c24eb4342139effb5da6.
+  Wrapper SHA b92b636f3bb39489c83d69cbe1ffdca57248b0eeea3b0de6e058702baa2e2917.
+  Future captures freeze these bytes and invoke through Bash; source manifests
+  are checked from their declared sn root, not the capture parent. The wrapper
+  does not replace body budgets, exact selectors, fences, raw logs or exits.
+- Mainc86effa integrates68 changed/new files from the complete reviewed
+  sealer composition. All99 manifest paths strictly match main, SHA
+  bfcd4377b62c2650f19cad6a8febf1f849e8dfbd5738a924505a7643b4f52c92.
+  Prior namespace/launcher files outside that inventory are preserved.
+  sn-sealer-compose-v1-validator341-APpokr passes exactly341 listed/started/
+  passed roots in EACH mode; every build/list/execute/fence exit is0, index
+  3647273ce5b51200aaa6a97eef01281fbb6f9c1352e2dfe9dc29c5e3b1f6d9b4.
+  This includes the original42 sealer and14 depth regressions unchanged,
+  and preserves Bti's pre-SEED reservation/abort ownership. It is not full
+  semantic qualification, authenticated activation or on-chain publication.
+- sn-policy-depth-adjacent-red-v1-exact8-Pqt5KC has exactly2 intended failures
+  and6 passing controls, index
+  984510fd18d8ee5c890737f1284290d935d92c01ca43e582ea4c98f5d5617511.
+  Actual literals establish requested0/assigned4 wrong-depth acceptance and
+  negative requestedM reaching picker/wire/evidence. The negative loop stops
+  at-1; do not claim its later260 case executed in that RED. Repaired51 and
+  composed341 supply the matching legal-clamp/invalid-encoding green controls.
+- sn-stats-callback-red-v1-exact7-N9kXbP, index
+  3675f7458dd3dc2bd56914eb86bf27abc0ff0a7951d691ae535e0e27dcd8d3fb,
+  has all7 listed/started, exactly5 root-bound lock failures and2 passing
+  legacy replay controls; actual1/validation0, other stages/fences0. No timeout,
+  panic or setup failure serves as causal evidence. Neutral source TGioxo/sn
+  stays preserved; Astra repairs L4jFum/sn. The settlement helper's TempDir
+  is prepared0700 by its existing Stats save BEFORE opening the ledger, so
+  no custody-style fixture migration is warranted in that neutral helper.
+- Custody v1 sn-key-custody-green-v1-exact22-eorKng is FAILED, index
+  04b821cd342528c04700c9078b7cc358c779f8029b9bb0f9a89ce3c8aa612e6e:
+  CRV4 normal15/16, old TestSeedFileFormats refuses its unprepared parent;
+  validator/race/platforms not attempted. V2 source XK0aaW/sn changes only
+  that test's private child setup plus an explicit shared-parent refusal test;
+  all production, original causal and other source bytes are unchanged.
+  V2 sn-key-custody-green-v2-exact23-Cg6hno is also FAILED, index
+  b522ff7ff6291f1594960889a79b3fee6d48947becf0987a760553ea783c8703:
+  CRV4 all17 normal/race pass; validator normal all6 start, three custody roots
+  pass but TestVpkSeedCreateAndReload, TestEvmKeyLoadingAndMirror and
+  TestHotkeyLoadOrCreate refuse their unprepared parents. No validator race
+  or platform compilation occurred. Both sources/captures are retained;
+  Astra must audit every key-loading fixture before a separate v3 handoff.
+  Go1.26.6 TempDir child permissions depend on umask; the deleted failing
+  directory modes were not captured. Never invent those modes, relax policy,
+  chmod real ancestry or suppress the original assertions to get a green gate.
+- Diagnostic W0i sn-timeout-profile-w0i-buildrender-v1-zdIOnt, index
+  beb69aa0c42813dc23e18bd6006956ae7891500e2d464c2a2d3e6dbe098c3bc1,
+  normal wall84.49s, CPU130.75s, allocation14394.47MiB. Full semantic
+  verification37.19s and settlement transition verification16.64s are sampled
+  cumulative CPU, not additive wall times. Bti
+  sn-timeout-profile-bti-durable-v1-JvBI5y, index
+  8f9cf6ee289a16ecd72e2b7611203eaf9751fde56743c41be49a5bc1380c8f14,
+  wall37.14s, CPU39.03s; cold fixture36.12s, buildPlan only1.03s CPU. Both use
+  honest captured normal binaries and pass all diagnostic fences; neither
+  replaces the failed3m/25m race qualifications. No unchanged retry authorized.
+- The smaller work-count neutral10 capture
+  sn-timeout-red-v1-exact10-BxmG9R, index
+  693d754a0dd910376a6599e6c594915c3d5c6c83d8fd06bb2897fcc04f5a63cb,
+  has2 exact failures plus8 controls. Reviewed small repair remains held in
+  sn-semantic-timeout-fixed-wNMYwo/sn; dominant same-call lineage and signed
+  measurement/transition duplication reproduction is being prepared in
+  sn-timeout-lineage-red-2wDVJk/sn. Preserve complete full-scale fixtures and
+  standalone/cross-call/mutation authentication; no broad cached authority.
+- No final live campaign or new testnet transaction occurred in this checkpoint.
+  Next: complete Stats/custody/timeout repairs; close producer selector gaps;
+  resolve server signed-byte admission; finish the bounded complete-census
+  production/collector/public adapter and activation paths, aggregate capacity,
+  and all-window on-chain validator evidence. Both full gates, source freeze,
+  Ready doctor, matching plans, real live phases, FINAL.md and peer replay
+  remain mandatory. Do not infer a from-now finish time from focused passes.
+
+### Earlier integration and root-cause handoff (2026-09-05 18:02 UTC)
 
 The following supersedes older live handles/statuses below; those entries remain
 chronology, not current release certification. Root independently strict-checked
