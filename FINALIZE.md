@@ -1,17 +1,20 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 18:33 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 19:18 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no partial local qualification
 authorizes activation or proves final acceptance.
 
 Landed in sn: metadata c9f066a, bounded writer8e9d0fc, full replay2d179bd,
 namespace protection5cddac6/64a6e32, qualification launcher1db13f5 and the
 disk-ledger/settlement-closure/policy-aware sealer integration c86effa.
-The latter's complete99-path reviewed source manifest matches main; its
+The latter's complete99-path reviewed source manifest matched that checkpoint; its
 validator341 suite passes normally and under race. Launcher4 also passes both
 modes. These are implementation checkpoints, not a final release qualification.
-Active Stats, custody and timeout repairs remain in isolated temp/sn-* trees.
+Source checkpointc878a13 now also commits the exact qualified13-file seed-custody
+repair and producer-selection fixes described below; the preceding pushed
+checkpoint was744c0f4. All8 composed gate checks pass normal/race. Active Stats
+and timeout repairs remain in isolated temp/sn-* trees.
 
 The composed disk/settlement candidate passes validator285 and simulator6
 normally/race. Cold durable-parity still fails its3m race deadline; broader
@@ -19,22 +22,36 @@ semantic281 still fails its25m race deadline with280 roots passing. Both
 failures are preserved. Current-binary profiles now confirm repeated full
 semantic/settlement verification is a larger cost than plan decoding. The
 two smaller transcript/plan work-count defects have exact causal reproductions;
-the dominant same-call verification repair is still being prepared. No coverage
-or deadline is waived.
+the dominant same-call duplicate-lineage/cut checks now have two additional
+causal failures and twelve passing controls. Their pure-projection/batch-join
+repair is reviewed and its focused29 qualification is authorized, followed by
+the original cold comparison only after focused GREEN. No coverage or deadline
+is waived; the full semantic rerun remains mandatory.
 
 The engine policy-depth repair passes all51 normal/race roots after genuine
 signed M4/M16-under-M8 causal reproductions and is included in c86effa. Two
 adjacent wrong-clamp/invalid-encoding failures are also causally reproduced.
-The server-side signed-byte alias remains open. Key custody passes17 CRV4
-normal/race roots, but its full qualification is FAILED on three old validator
-fixtures with unsafe parent-directory setup; preserve and repair those fixtures
-without relaxing custody policy. Stats now has five deterministic callback
-lock-inversion reproductions, with both existing replay controls passing.
+The server-side signed-byte alias remains open. Key custody v3 passes all24
+CRV4/validator roots normally and under race after explicit private-parent
+fixture preparation; both earlier failed captures remain preserved. All18
+reviewed source paths match the integrated main checkout. Both packages also
+compile for Linux/Darwin on amd64/arm64 (eight builds); actual deployment-path
+compatibility and platform runtime evidence remain separate obligations.
+Stats has five deterministic callback lock-inversion reproductions. Review of
+its first repair also found caller-controlled cross-batch lock ordering and
+wrong-operator admission mutation; both now have causal failures. A separate
+Load regression proves partial state survives a rejected snapshot. Their
+unchanged positive controls pass; held v2 focused27/structural1 is under
+qualification. A separate exact4 neutral candidate now targets state-directory
+misrouting and mixed-domain admission; the complete repair remains unqualified.
 
 Bounded aggregates, collector/public typed replication, authenticated activation,
 global cross-cut terminal history, aggregate capacity and on-chain validator
-evidence publication remain mandatory. Add explicit producer-gate coverage for
-the disk/depth and all namespace regressions, plus the eventual custody suite.
+evidence publication remain mandatory. Four producer-gate omissions were
+causally reproduced. The working gate now selects disk/depth, all namespace,
+launcher and its own guard tests, and explicitly runs both custody entry points
+normally and under race. All8 focused source/invocation guards now pass both
+modes; they do not stand in for execution of the complete selected suites.
 Both release gates, final source lock,
 Ready doctor, matching plans, real live phases, FINAL.md and independent
 on-chain verification are still outstanding. Section12 of the handoff records
