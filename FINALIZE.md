@@ -1,86 +1,49 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 10:17 UTC. The complete fleet/history fixture and miner/validator
-ordinary/race checks pass; the full simulator run exposed repaired evidence and
-deposit-validation gaps whose focused reruns are being completed. Source
-integration and core per-client payout attribution passed focused ordinary/race
-checks. Strict failure handling and corrected gate selections pass both ways;
-the adjacent provider-reporting repair, query-plan guards and retention tests
-pass ordinary/race and are pushed as server `b12af6b3`. The test-only bounded
-worker/fixture repair, its adjacent non-returning callback regression and
-corrected bounds/join static pin are pushed as SN `5696537`. Full ordinary
-qualification passes all 236 canonical roots and all 18 public replay cases
-in 239.34 seconds. The matching race run terminated at 08:16:53 UTC at its
-enforced 25-minute deadline with 235/236 roots and 16/18 public cases completed.
-There was no assertion failure or data-race marker, but the timeout itself
-blocks release. The follow-up now avoids repeated hashing of the same owned
-URI bytes and runs the five independent fleet-projection mutations through the
-existing four-worker helper. Each reference retains its own size/hash checks,
-and every real replay remains. Deterministic ownership/work-count/error-order
-controls extend the existing cache regression; its newly pinned inclusion
-widens the census to 237 with all prior 236 retained. This repair is committed,
-pulled and pushed as SN `140b7ca3ffdb513ea489031e51b8f1b27e7b6e04`.
-The isolated pre-fix work-count regression fails deterministically as required;
-focused ordinary and 14-root race qualification pass. Full 237-root ordinary
-passed at 09:04:06 UTC in 266.65 seconds with all 18 public cases complete.
-The same immutable capture's full race run failed at 09:30:00 UTC at its
-unchanged 25-minute deadline: 236/237 roots and all 18 public cases passed;
-`TestFinalSemanticEvidenceBuildRenderAndArtifacts` was still executing. The
-remaining root was profiled from the exact captured binary. The resulting
-decode/copy/scheduling repair now passes fifteen focused ordinary/race roots
-and the copy-lock check. Primary integration also passes the exact 34-root
-ordinary/race selection, with unchanged source hashes; complete qualification follows.
-No unchanged rerun or deadline waiver is allowed.
-Local capture-metadata newline/scoping failures were
-repaired and regression-tested without altering sealed failures or recompiling
-those binaries; deterministic permission/hash failure controls also pass.
-Complete current-source race qualification remains pending.
-All three exact-current Connect package runs also passed: ordinary 530.545s,
-default race 1,169.652s, and fixed-shuffle race 1,191.339s. A signed-proof framing
-regression reproduced acceptance of malformed trailing JSON; five adjacent
-YAML loaders also ignored non-EOF second-decode errors. The six EOF guards now
-pass the isolated 12-root ordinary/race cut (race ended 09:38:43 UTC). Their
-completed primary integration adds explicit framing gate coverage and widens
-the semantic census from 237 to 238, retaining every prior root. The integrated
-nineteen-root framing/semantic-pin cut also passes ordinary and race with actual
-exit 0 and unchanged source hashes. The first ordinary run lost exit metadata
-and is explicitly nonqualifying; its corrected capture and fresh rerun are
-recorded in the handoff. Full release qualification remains mandatory; these
-focused results do not resolve the separate complete replay timeout gate.
-The parser/gate checkpoint is committed, pulled and pushed as `f1fffc6`.
-The performance repair retains the ten full chain cases while running them
-through the existing bounded worker helper; its nine new regressions expand
-the next complete semantic census to 247. Pre-execution review caught temporary
-capture-script checksum-index/scoping and result-census defects; their synthetic
-regressions and repair must pass before the fresh complete run. The helper has
-not yet been used for a complete run; no existing failure record is altered.
-A current-state public RPC refresh
-also passed at 09:58 UTC (exact-finalized runtime 454, EVM chain 945); it is not
-a substitute for the final Ready doctor or live acceptance.
-All coverage and the 15/25-minute deadlines remain required. Both Terra-max
-agents recovered from their earlier usage-limit errors; there was no model
-substitution or restart based on an observer error. The 08:57 UTC fetch-only
-inventory found all twelve repositories clean and equal to upstream before
-this documentation update. The clean checkpoint's non-applying doctor passed
-61/64 checks: only the
-expected source-stale lock is a hard failure; shared RPC/provider independence
-accounts for the two soft failures. The clean `140b7ca` candidate-lock preview
-is `891bc31f7f641d3d10b5394dec1a643af5c5cfb4fb8314c6ea7a97bc7a02ce0f`;
-it has not been applied, and eventual apply requires a fresh exact-HEAD build.
-Source freeze, both final gates, both live acceptance phases and FINAL.md remain.
-Historical results below are not approval for the current candidate.
+2026-09-05 11:10 UTC. The final live campaign has not started. Existing attempt-4
+testnet deployments and custody are preserved; no new on-chain action is
+authorized by a partial qualification result.
 
-Launch-scope clarification is also pending: the user's request for validator
-evidence "stored in the contract pool" is stronger than the present
-WHITEPAPER.md section 11.1 design. Completed-trail/statistics proofs are signed
-off-chain API/MinIO artifacts; neither the payout-artifact hash nor native
-weight payload commits those proofs directly or transitively. The user has
-been asked whether to retain that whitepaper split or add an on-chain evidence
-commitment before launch. Do not claim either choice is resolved, infer a
-validator-effort bounty, or launch the final campaign before that clarification.
-FINAL.md must also distinguish the user-requested loopback-only operator
-origins from independently tested internet/public-miner reachability.
+The clean, pushed SN runtime checkpoint is
+`0def712d91ffd1429c2b677fcce775138b6c78ec`. Its full 247-root ordinary
+semantic qualification passed, including all eighteen public replay cases and
+all ten main-root chain cases. The matching race run failed at its unchanged
+25-minute deadline on 2026-09-05 at 10:58:19 UTC: 246/247 roots, sixteen of
+eighteen public cases, and all ten main-root chain cases completed. The
+previously timed-out BuildRender root now passes under race; the sole remaining
+root was `TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit`.
+The complete failure capture is sealed and its exact source pre/post digests
+match. No deadline waiver or unchanged complete-suite retry is allowed.
+A targeted captured-binary profile is diagnostic work, not a qualifying pass.
+
+A separate producer/collector defect is now deterministically reproduced:
+completed accepted-epoch trails after the last ordinary measurement cut are
+present in signed settlement-closing cuts but omitted by FINAL collection.
+The exact pre-fix RED reaches the collector sequence-gap assertion after real
+ledger, signature, transition and measurement-lineage checks. Astra is repairing
+durable closure export, independent settlement advancement, collection and
+public replay in an isolated checkout; Terra runs its tests. A second Astra
+lane owns the public-replay timeout diagnosis, with Terra executing profiles
+and regressions. Both repairs must integrate and pass widened qualification.
+
+The user's requested on-chain validator evidence is not implemented yet.
+Current WHITEPAPER.md section 11.1 proof bytes live in the server API/MinIO;
+neither payout-artifact hashes nor native weight payloads commit those proofs.
+The precise open choice is immutable on-chain evidence hashes with public
+proof bytes (recommended), or full proof bytes on-chain. The existing off-chain
+split must not silently substitute for the stronger request. Neither option
+implies a validator-effort bounty or altered payout economics. The handoff
+records why payout hashes alone cannot cover terminal/no-payout windows.
+
+The clean checkpoint's fresh non-applying doctor passed 61/64 checks, with
+only the expected source-stale lock hard failure and two shared-RPC independence
+soft failures. Its updated lock preview remains unapplied. Final lock/source
+freeze, both release gates, both live acceptance phases, FINAL.md and independent
+replay remain outstanding. After preparation, the unchanged live scheduler
+requires 3,004--4,380 chain blocks (about 10--15 hours at twelve seconds/block);
+reporting and final replay are additional. No reliable from-now ETA is claimed.
+Loopback operator origins do not establish off-host/public-miner reachability.
 
 **Historical status (2026-09-02 UTC; superseded as a release approval):** release-1.0 implementation and the continuous
 61-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4
