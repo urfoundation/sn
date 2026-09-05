@@ -1,28 +1,45 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 07:47 UTC. The complete fleet/history fixture and miner/validator
+2026-09-05 08:29 UTC. The complete fleet/history fixture and miner/validator
 ordinary/race checks pass; the full simulator run exposed repaired evidence and
 deposit-validation gaps whose focused reruns are being completed. Source
 integration and core per-client payout attribution passed focused ordinary/race
 checks. Strict failure handling and corrected gate selections pass both ways;
 the adjacent provider-reporting repair, query-plan guards and retention tests
-pass ordinary/race and are pushed as server `b12af6b3`. All 234 corrected
-semantic/replay roots and 18 public cases pass ordinary qualification in
-264.39 seconds. The complete race run hit its enforced 25-minute deadline with
-233/234 roots passed and public-bundle setup unfinished; no assertion or data
-race was reported. The profile-supported test-only repair retains all work,
-parallelizes 38 mutation cases and supplement preparation, and reuses detached
-cached role identities. An adjacent callback false-green was reproduced and
-fixed; its bounded-worker/cache tests pass ordinary/race. The census now has
-236 roots, preserving all original 234. The next static pin check failed
-because it still inspected the old worker layout; its corrected bounds/join
-checks and deterministic negative controls now pass ordinary/race. Full 236-root ordinary/race
-reruns remain pending with unchanged 15/25-minute deadlines. Infrastructure, wallet and budget
-checks pass a preliminary non-applying doctor, but source lock and final gates
-remain mandatory. SN checkpoint `d450fe5` is pushed but is not a release approval.
-Both live acceptance phases and FINAL.md remain.
+pass ordinary/race and are pushed as server `b12af6b3`. The test-only bounded
+worker/fixture repair, its adjacent non-returning callback regression and
+corrected bounds/join static pin are pushed as SN `5696537`. Full ordinary
+qualification passes all 236 canonical roots and all 18 public replay cases
+in 239.34 seconds. The matching race run terminated at 08:16:53 UTC at its
+enforced 25-minute deadline with 235/236 roots and 16/18 public cases completed.
+There was no assertion failure or data-race marker, but the timeout itself
+blocks release. The follow-up now avoids repeated hashing of the same owned
+URI bytes and runs the five independent fleet-projection mutations through the
+existing four-worker helper. Each reference retains its own size/hash checks,
+and every real replay remains. Deterministic ownership/work-count/error-order
+controls extend the existing cache regression; its newly pinned inclusion
+widens the census to 237 with all prior 236 retained. This follow-up has only
+formatting/diff checks and read-only review, not a compile or test pass.
+All coverage and the 15/25-minute deadlines remain required. Both Terra-max
+test agents also reported a usage-limit error; their existing host process was
+observed to its actual terminal result, not restarted or silently reassigned.
+The clean checkpoint's non-applying doctor passed 61/64 checks: only the
+expected source-stale lock is a hard failure; shared RPC/provider independence
+accounts for the two soft failures. The candidate lock has not been applied.
+Source freeze, both final gates, both live acceptance phases and FINAL.md remain.
 Historical results below are not approval for the current candidate.
+
+Launch-scope clarification is also pending: the user's request for validator
+evidence "stored in the contract pool" is stronger than the present
+WHITEPAPER.md section 11.1 design. Completed-trail/statistics proofs are signed
+off-chain API/MinIO artifacts; neither the payout-artifact hash nor native
+weight payload commits those proofs directly or transitively. The user has
+been asked whether to retain that whitepaper split or add an on-chain evidence
+commitment before launch. Do not claim either choice is resolved, infer a
+validator-effort bounty, or launch the final campaign before that clarification.
+FINAL.md must also distinguish the user-requested loopback-only operator
+origins from independently tested internet/public-miner reachability.
 
 **Historical status (2026-09-02 UTC; superseded as a release approval):** release-1.0 implementation and the continuous
 61-vector adversarial campaign are complete locally. Public-testnet M0A attempt 4

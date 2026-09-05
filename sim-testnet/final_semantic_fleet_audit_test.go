@@ -432,12 +432,33 @@ func TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact(t *testing.T)
 			evidence.HeadFleets[0].Members = evidence.HeadFleets[0].Members[:3]
 		}},
 	}
-	for _, mutation := range mutations {
-		tampered := finalSemanticClone(t, draft)
-		mutation.edit(tampered)
-		resignFinalSemantic(t, tampered)
-		if err := VerifyFinalSemanticArtifacts(context.Background(), tampered, load); err == nil || !strings.Contains(err.Error(), "projection") {
-			t.Errorf("artifact projection mutation %s was accepted or had wrong error: %v", mutation.name, err)
+	if len(mutations) != 5 {
+		t.Fatalf("fleet projection mutation census = %d, want all 5", len(mutations))
+	}
+	// Each mutation owns its complete graph. Keep every real artifact replay,
+	// but join bounded independent cases instead of serializing their cost.
+	cases := make([]finalSemanticTestCase, len(mutations))
+	for index, mutation := range mutations {
+		cases[index] = finalSemanticTestCase{name: mutation.name, verify: func(ctx context.Context) error {
+			tampered, err := finalSemanticEvidenceDetachedCopy(draft)
+			if err != nil {
+				return err
+			}
+			mutation.edit(tampered)
+			hash, err := finalSemanticEvidenceHash(tampered)
+			if err != nil {
+				return err
+			}
+			tampered.EvidenceHash = hash
+			if err := VerifyFinalSemanticArtifacts(ctx, tampered, load); err == nil || !strings.Contains(err.Error(), "projection") {
+				return fmt.Errorf("artifact projection mutation was accepted or had wrong error: %v", err)
+			}
+			return nil
+		}}
+	}
+	for index, err := range runFinalSemanticTestCases(context.Background(), cases) {
+		if err != nil {
+			t.Errorf("%s: %v", cases[index].name, err)
 		}
 	}
 }

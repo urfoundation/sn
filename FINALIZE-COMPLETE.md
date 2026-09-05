@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 07:47 UTC before the final source freeze. Refresh every item marked
+2026-09-05 08:29 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -19,6 +19,38 @@ tests and release gates. On any failure, preserve the exact output and use
 similar/adjacent paths, implement the fix, and add its deterministic regression.
 Return the resulting tree to Terra for the focused and widened reruns. This
 model assignment never weakens a gate or expands testnet write authority.
+
+Launch blockers at this checkpoint:
+
+- The full 236-root ordinary qualification passed, including all 18 public
+  replay cases. The corresponding race run actually terminated at its
+  25-minute deadline at 08:16:53 UTC with 235/236 roots passed and 16/18 public
+  replay cases completed. It is a failed qualification, not a live process or
+  an observation timeout. Astra is investigating the remaining public replay
+  critical path. The resulting owned-byte digest/fleet-mutation repair is
+  implemented but unqualified; its widened census contains all prior 236
+  roots plus one existing cache regression, for 237. Section 12 preserves
+  the failed run, diagnosis and exact remaining test sequence.
+- Both Terra-max test agents reported a usage-limit error around 08:14 UTC.
+  Their already-running host process continued independently to the terminal
+  failure above. Restore Terra-max execution capacity, or obtain an explicit
+  user-approved assignment change, before launching new tests or gates. Do
+  not silently substitute a different test model or restart the failed run
+  unchanged. Source inspection, failure diagnosis and handoff work may proceed.
+- The user's request for "validator evidence stored in the contract pool"
+  needs a launch-scope decision. WHITEPAPER.md section 11.1 explicitly stores
+  completed-trail/statistics artifacts in the server API and MinIO. The active
+  coordinator/vault stores a payout root and payout-artifact hash, but that
+  artifact's provider/operator/fleet snapshot preimages do not commit validator
+  trail proofs. Native CRv4 commits the weight payload, not the signed
+  measurement envelope which refers back to its extrinsic. Thus there is no
+  direct or transitive on-chain commitment to those validator proofs today.
+  A question has been sent: retain the current whitepaper on-chain/off-chain
+  split, or add an on-chain validator-evidence commitment before launch. No
+  answer is recorded. Do not silently treat off-chain proofs as satisfying
+  the stronger request, or implement a new contract commitment/validator bounty
+  without resolving that choice. Safe existing qualification may continue;
+  final freeze/producer/live handoff stays paused pending the decision.
 
 ## 1. Non-negotiable completion definition
 
@@ -150,7 +182,7 @@ applies only to the rows explicitly marked so:
 
 | Repository | Branch | Current checkout revision | State |
 |---|---|---|---|
-| sn | main | d450fe5e741440afa4361f8f49b4c5b506f915cf | checkpoint committed, pulled and pushed; prior 234-root ordinary passes and race timed out; 236-root test-only performance/worker repair is dirty, focused worker and repaired pin ordinary/race pass, complete reruns pending |
+| sn | main | 5696537320ad7c16bd13210b93ed62ee56820349 | recorded pushed checkpoint: complete 236-root ordinary/all 18 public cases pass, race timed out with 235/236 roots and 16/18 cases completed; subsequent 237-root digest/fleet repair is implemented but unqualified; inspect HEAD for the later work checkpoint |
 | server | main | b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc | clean/equal after the 06:47 checkpoint; allocation, adjacent provider-reporting/query-plan, retention and strict-test repairs pass focused ordinary/race; frozen gate pending |
 | operator-proxy | main | 0285a79d87b996bce50f2d18a824c750ad76233f | clean/equal; ordinary/race/vet qualification pass |
 | connect | main | 1b81da6668e6a3ec9536ac61a07b27a619738cc7 | clean/equal; incoming auth/TCP and generated-policy focused ordinary/race pass; frozen unsharded certificates pending |
@@ -193,7 +225,7 @@ the widened release selectors. The later full-race failures supersede this
 pre-fix render; refresh it after both repairs rather than committing or using
 it for launch.
 
-The tracked lock at the 07:42 UTC checkpoint instead has SHA-256
+The tracked lock reverified at the 08:19 UTC checkpoint has SHA-256
 `009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`;
 it already includes the runtime-454 artifact update. It is still not current
 for the subsequent source changes. Section 12 records a newer, unapplied
@@ -819,7 +851,7 @@ commands for a separate agent to validate each claim on chain.
 | Demand deposits | tier/rate inputs, required versus observed conviction for both pools in every covered epoch, deposit transaction/event, dishonest underpayment, zero pool weight/penalty, corrected deposit, and positive-weight recovery |
 | 1,000 miners and fleets | public topology/identity manifest, 1,000 unique clients, whole-fleet operator assignment, 202 candidate commitments/manifests/bindings, generation lineage, registration/prune ownership, and cleanup evidence |
 | Top-200 selection | each validator's independently signed 202-candidate ranking, exact rational/EMA inputs, 200 selected positive weights, 2 rejected zero weights, native applied vector at an immutable block, promotion/demotion and fallback/provider/terminal lifecycle |
-| Validator path proofs | both validator identities/stake/permit/trust, fresh signed proof for every validator/operator/epoch pair, measurement and envelope hashes, cut/checkpoint lineage, anti-replay and invalid/tampered rejection |
+| Validator path proofs | both validator identities/stake/permit/trust, fresh signed proof for every validator/operator/epoch pair, measurement and envelope hashes, cut/checkpoint lineage, anti-replay and invalid/tampered rejection; explicitly label these proofs off-chain under current section 11.1, and record the pending user decision before claiming on-chain anchoring |
 | CRv4 | commit, reveal, application extrinsics and finalized blocks for both validators, exact vector hashes and native state, max-weight cap, self-dealing mask, independent consensus behavior |
 | Head/tail split | policy theta, realized head/pool sums, selected/rejected rewards, active-head exclusion from pool leaves, pruned-provider return to pool eligibility |
 | Pool payout Merkle roots | canonical payout artifacts for each NO/epoch, content hash and on-chain root transaction/event/state, every tested leaf/proof, wrong-leaf/wrong-NO invalid-proof eth_call with unchanged state |
@@ -842,14 +874,36 @@ Also include:
 - plan hash and maximum/cumulative actual spend;
 - start/end UTC timestamps and native/EVM terminal checkpoints for both phases;
 - explicit limitations of shared public RPC and the remaining private-node,
-  archive, observability, operational, and multisig mainnet deltas.
+  archive, observability, operational, and multisig mainnet deltas;
+- the actual evidence trust boundary: which hashes and values are committed
+  on chain, which artifacts are signed off chain, and the recorded resolution
+  of the validator-evidence commitment question;
+- the configured loopback-only operator archive reachability. The current
+  signed origins are http://127.0.0.1:18081 and http://127.0.0.1:18082, as the
+  user requested for this simulator. Successful same-host replay does not
+  establish internet reachability or readiness to admit off-host miners.
 
 Do not infer success from a local summary. Every material statement must link to
 signed artifacts and, where applicable, immutable chain state.
 
+The current validator-proof boundary can be independently checked in
+`evm/src/STCoordinator.sol` (`RootCommitment`, `commitOperatorRoot`),
+`payoutartifact/artifact.go` (`Artifact`, `Build`),
+`../server/controller/st_controller.go` (operator/fleet snapshot preimages),
+`crv4/payload.go` (`Payload`), and `validator/release_steer.go` (measurement
+envelope referencing the prepared extrinsic). The off-chain back-reference
+does not create an on-chain commitment in the opposite direction.
+
 ## 11. Independent peer-review procedure
 
 From a clean compatible checkout with no simulator state or wallet secrets:
+
+The reviewer must also be able to reach the exact origins in the signed
+manifest. With the current loopback configuration this means the same host or
+explicitly arranged forwarding that preserves those origins. Never rewrite
+signed URLs to make an off-host replay appear to pass. Off-host/public service
+readiness requires separately configured public DNS/TLS/API/history readback
+and a newly authorized manifest; it is not established by this local profile.
 
 1. Obtain either signed deployment-manifest URL from
    public/deployment-manifest.locators.json or FINAL.md.
@@ -1464,6 +1518,116 @@ above; all results are prequalification until committed and release-locked:
   SHA-256 `24a2a2b4333094d21ed4ba802abfdc1e7a57ba8a1d1478eac3891e00839623eb`.
   A source checkpoint while these immutable binaries run is not a final freeze
   or permission to apply a stale lock.
+- The eight-path checkpoint was committed, pulled and pushed as SN
+  `5696537320ad7c16bd13210b93ed62ee56820349`. The sealed capture above retained
+  the exact Go/test/census bytes; the subsequent handoff wording is not part
+  of that captured source snapshot. Full ordinary qualification ended at
+  07:51:10 UTC with exit 0, all 236 canonical roots and all 18 distinct public
+  cases passed in 239.34 seconds, peak RSS 1,910,548 KiB. Root independently
+  compared the passed root names to the canonical census.
+- The same sealed race binary ran from 07:51:52 to 08:16:53 UTC. It exited 2
+  at its internal 25-minute deadline: elapsed 1,501.09 seconds, peak RSS
+  5,370,732 KiB, 235/236 roots passed, and 16/18 distinct public replay cases
+  completed. The sole unfinished root was
+  `TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit`, running
+  for 9m37s. There were no explicit assertion failures or race markers, but
+  this terminal timeout is itself a blocking failure. Its public setup took
+  6m22.104s before dispatch: signed artifact verification 160.686s, semantic
+  file publication 87.807s, supplement file preparation 56.691s, and transcript
+  sealing 49.465s. All 16 completed rejection cases returned within ten
+  seconds; the two full semantic replay cases did not finish. The same run's
+  fleet audit took 1,135.12s, BuildRender 727.19s and mutation matrix 268.57s.
+  Preserve the full timeout stack before diagnosing work duplication,
+  critical-path scheduling or publication cost; do not infer a race report,
+  public-service outage, or successful remaining cases from this result.
+- Both Terra test agents errored with their service usage limit while that
+  race binary was still running. Root rechecked its PID, then independently
+  observed terminal process disappearance and the complete exit footer. A
+  cross-agent tool-session lookup returned "Unknown process id" before the
+  host process finished; that observer error was not used to restart it.
+  The raw race log is now read-only (0444). No replacement test, producer gate
+  or live campaign was launched. Astra owns the bounded timeout diagnosis;
+  Terra execution capacity and the separate evidence-scope decision remain
+  unresolved.
+- The timeout stack's active goroutine 4794 was decoding the 23.6 MB semantic
+  JSON in `validateFinalSemanticOutputFiles`; the callback workers were
+  correctly joined, not deadlocked. The public root began 15m23s into the
+  package budget, leaving only 3m15s for full replay after its measured setup.
+  Adjacent inspection found five independent strict fleet-projection mutations
+  still serialized inside the 1,135.12-second fleet-audit root. The captured
+  ordinary profile also attributes 10.08 of 10.20 cumulative CPU seconds in
+  `loadFinalSemanticArtifactUses` to repeated SHA-256 work. Those are diagnostic
+  CPU totals, not a measured prediction of race-time savings.
+- The implemented follow-up preserves the positive fleet replay and runs all
+  five detached, re-hashed, real-verifier projection mutations through the
+  existing four-worker ordered join-all helper. The production artifact loader
+  owns each distinct URI's bytes and memoizes its digest only within that
+  invocation; every reference still checks its own size and hash, with the
+  prior source-order error/cancellation behavior. The exact-byte deep-verifier
+  cache key is unchanged. Deterministic counters require two loads/two hashes
+  for references A,A,B,B, and controls cover changed same-URI claims,
+  distinct-URI aliases, reused loader buffers and cancellation/error order.
+  No new compile, RED, GREEN or race run has executed for this repair. Formatting,
+  diff checks and read-only code review are not qualification.
+- The affected existing cache regression predates the hand-written semantic
+  selector and was omitted from it. The selector, its exact constant, required
+  name, independent source-group pin and canonical census now include
+  `TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent`:
+  exactly 237 roots, preserving all prior 236, with census SHA-256
+  `fa80f354972c8a462004e09e1e942f6cca69cad2f3b0dc8a9b5c1c128b185fbc`.
+  Nearby fleet-cache and historical loader/alias/tamper roots are already
+  selected; unrelated role/campaign filesystem caches remain covered by the
+  complete aggregate ordinary/race package gate.
+- Once Terra-max capacity is available (or the user explicitly reassigns test
+  execution), the exact remaining prequalification sequence is:
+  1. Capture the repaired source and use an isolated temporary checkout under
+     `/home/by/urnetwork/temp/` to reproduce the cache root's ordinary-only
+     pre-fix RED. The inverse template at
+     `/tmp/urnetwork-final-semantic-digest-prememoization.patch` restores only
+     repeated hashing while retaining the per-call hash seam and regression.
+     Template SHA-256 is
+     `991b83f7e6d096e5d206e89dfbdf4be9cf32666dd612348cbaa6b1a059cfcedd`.
+     It is explicitly non-executable documentation: extract the patch and
+     replace only `__ISOLATED_RED_SNAPSHOT__` with the validated temporary
+     checkout. Never apply the template verbatim or target the authoritative
+     tree to manufacture the RED. Preserve both source identities. The
+     repaired `final_semantic_evidence.go` SHA-256 is
+     `d54e72b556b536a5770393fdad15d7cca99409e034669d3fec03190d465cd4a6`;
+     the pre-memoization source must hash to
+     `2d82bdbeede2d0b4e0f7ec96a9bb8677a75248e627241ee606861f0575816ced`.
+     Expected deterministic failure: four digest calls, not two, for A,A,B,B.
+  2. Run the repaired cache, bounded-worker, historical-census and semantic
+     pin/census checks normally and under race; preserve every actual result.
+  3. Run the complete exact compiled 237-root census normally and under race
+     from `/home/by/urnetwork/sn/sim-testnet`, GOMAXPROCS=24, `-parallel=4`,
+     `-count=1`, unchanged 15/25-minute deadlines. Require all 18 public-case
+     completions. The full selector includes the repaired fleet-projection
+     root; do not insert another redundant long fleet/public-root run before
+     it. A small focused pass cannot substitute for this complete rerun.
+  4. Only after all of those pass and the evidence-scope question is resolved,
+     continue the fresh clean-build lock/freeze/producer/aggregate workflow.
+- A clean trimpath/buildvcs executable of checkpoint `5696537`, with
+  `vcs.modified=false`, is preserved at
+  `/home/by/urnetwork/temp/sn-release-lock-checkpoint-ejN9owMT/sim-testnet`,
+  SHA-256 `e8c110f41cf489409afb2592f8738593b76453ddd996945adfcc5ed8a34ca962`.
+  It rendered, but did not apply, `candidate.lock.yml` in the same directory,
+  SHA-256 `0ab39293d8b7136c4d08b9d9b5a45c1393692e5bc8b6e2ffa6b271bae1a9a2a8`.
+  Review found only the expected SN, server, Connect, SDK and protocol source
+  hash changes, with runtime/EVM artifacts unchanged. These candidate bytes
+  match the older preview because the intervening changes are test/docs-only;
+  this does not permit using an older or dirty executable for lock apply.
+  Any later commit, including this handoff update, requires a fresh clean
+  executable of the exact pushed HEAD before apply.
+- The same clean checkpoint's non-applying doctor, generated at 07:54:59 UTC,
+  reported 61 passed checks of 64. Its sole hard failure is the expected
+  unapplied release lock (protocol source hash mismatch). The two soft failures
+  explicitly report a shared operational/postcondition RPC provider and the
+  same physical Subtensor peer. All other hard infrastructure, wallet, budget,
+  chain/runtime and attempt-lineage checks passed. The owner-only report is
+  `/home/by/urnetwork/temp/sn-checkpoint-doctor-EWS0md/doctor-report.json`,
+  SHA-256 `580401b4e900e199dc0b1541560f67304a78b554b62023ffa937e3121f4a43d2`.
+  This diagnostic is not a Ready verdict or a replacement for the fresh
+  post-gate doctor and approval-identical plans.
 - The clean `d450fe5` pre-lock source check passed all twelve freshly fetched
   repositories, all fifteen live module tidy checks and the authenticated
   archive exception in 18.06 seconds. Its immutable record is
@@ -1530,6 +1694,8 @@ not a frozen gate or live-chain certificate):
 | Post-guard static pin failure; five census roots pass | `/tmp/urnetwork-sn-postguard-semantic-pin-ordinary-g1MC2l.log` | `27f760ed773b89e08581a05534ec795bcb32442711e33e2f48869b3a0316cd6b` |
 | Corrected static pin/census ordinary, six roots pass | `/tmp/urnetwork-sn-postpin-semantic-pin-ordinary-ZragfL.log` | `0264aea70f78e8270813c9a1cec39404e839352ba11d7d5f2c44fb73c6119630` |
 | Corrected static pin/census race, six roots pass | `/tmp/urnetwork-sn-postpin-semantic-pin-race-JLqeE8.log` | `d3b700575c3ab7214e69729de7cd4c9027c5fe562c4ab9bdb0a2b21d2f55b6e9` |
+| Complete current 236-root ordinary, all 18 public cases pass | `/tmp/urnetwork-sn-postpin-semantic-full-ordinary-iBvYY2.log` | `1d5ad0a88ea8df2ccdc148e5308149a5d9db3ce70bb0fe0513fa4b2c3c49f40a` |
+| Complete current 236-root race, internal 25-minute timeout | `/tmp/urnetwork-sn-postpin-semantic-full-race-AFWhVW.log` | `6b312bc45137f1daf5af576f85d1bc4ace67e6de02adb04e08357d9bb50aac08` |
 | Old serial edge/public-bundle race timeout | `/home/by/urnetwork/temp/terra-gates.sqQPsP/sim-edge-fix-race.log` | `93ce17308caa0d043d3f116abb6737cf3af89f2e31ad39dae109b3c74fbe02c0` |
 
 - No final live campaign is running. The exact remaining chain-clock range is
@@ -1545,8 +1711,8 @@ producer pass are separately recorded above.
 | Item | Result | UTC / immutable reference |
 |---|---|---|
 | Narrow 1,000-miner semantic supplement test | pass before freeze; frozen rerun pending | 226.948s mocked semantic replay; section 3; current exact widened producer selector normal pass 87.692s |
-| Canonical semantic/replay selection, ordinary | current 236-root prequalification pending after repaired pin passed | prior 234 roots and 18 public cases pass in 264.39s; raw SHA-256 `b200c2c3c51dc3c919d90408c293aae98b8f5b98e3ba33448c5b445469474734` |
-| Canonical semantic/replay selection, race | failed; current 236-root rerun pending | prior 233/234 roots pass, public-bundle root unfinished at the internal 25m timeout; raw SHA-256 `92e8a2381f7d9e5424e22db3b68cb4010f177a3f5f2e1c82c4ea0fd536e5d295` |
+| Canonical semantic/replay selection, ordinary | checkpoint 236-root prequalification pass; repaired 237-root run pending | all 236 roots and 18 public cases pass in 239.34s; raw SHA-256 `1d5ad0a88ea8df2ccdc148e5308149a5d9db3ce70bb0fe0513fa4b2c3c49f40a` |
+| Canonical semantic/replay selection, race | failed at 08:16:53 UTC; follow-up repair implemented but unqualified | 235/236 roots and 16/18 public cases completed at the internal 25m timeout; raw SHA-256 `6b312bc45137f1daf5af576f85d1bc4ace67e6de02adb04e08357d9bb50aac08`; complete 237-root rerun required |
 | Bounded worker, non-return and detached-cache regressions | focused ordinary/race pass | exact three roots, 0.59/8.51s; immutable records above |
 | Post-guard semantic static pin | repaired, focused ordinary/race pass | six roots in 0.64/7.39s; prior 07:37 UTC failure and exact corrective results preserved above |
 | Full sim-testnet ordinary | pending on current candidate | prior aggregate was killed only by the corrected implicit 10-minute package deadline |
@@ -1558,12 +1724,15 @@ producer pass are separately recorded above.
 | Exact v451/v452/v453/v454 metadata artifacts | prequalification pass; frozen gate pending | public-chain exact-Wasm and decoded-metadata gate passed all four versions at 2026-09-04 22:18 UTC and again at 22:52 UTC; v454 static source and all selected exact-upstream Subtensor qualifications pass (the upstream test suite is Rust; UR remains Go/Solidity) |
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
-| SN runtime candidate | current test-only repair is dirty; commit and frozen gates pending | pushed checkpoint `d450fe5e741440afa4361f8f49b4c5b506f915cf`; current 236-root qualification is not yet complete |
+| SN runtime candidate | follow-up digest/fleet repair implemented, no new tests run | based on pushed checkpoint `5696537320ad7c16bd13210b93ed62ee56820349`; current census 237; inspect subsequent work checkpoint and qualify exact source |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
 | Connect candidate commit | affected auth/TCP and generated-policy ordinary/race pass; frozen unsharded certificates pending | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; aggregate still requires default ordinary/race plus fixed-order race with 30-minute deadlines |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
 | Other candidate repository commits | clean/equal at latest fetch; frozen gates pending | exact eleven non-SN revisions in section 2; twelve-root pre-lock fence passed at 06:54 UTC and fetch-only inventory passed at 07:46 UTC, fresh post-repair freeze still required |
-| Release-lock hash | source-stale tracked lock; fresh clean-build refresh pending | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; unapplied `0ab39293...` preview is also obsolete after test-source edits, see section 12 |
+| Release-lock hash | source-stale tracked lock; fresh clean-build refresh pending | tracked `sha256:009566be02a32f77b5a5708432eee71c694668af7c5bded90e4b373c38f143db`; clean 5696537 preview `0ab39293...` is unapplied and cannot be applied by an executable predating a later handoff/repair commit |
+| Preliminary doctor | 61/64 pass; expected source-lock hard failure and two shared-RPC soft failures | clean checkpoint report generated 07:54:59 UTC, SHA-256 `580401b4e900e199dc0b1541560f67304a78b554b62023ffa937e3121f4a43d2`; fresh post-gate Ready doctor pending |
+| Test execution capacity | both Terra-max agents errored with service usage limit | existing host run observed to terminal; no silent model substitution or new test launch |
+| Validator evidence commitment scope | pending user choice; launch handoff paused | current section 11.1 proofs are off-chain and not transitively anchored by the payout-artifact hash or native weights |
 | Two approval-identical plan builds | superseded; current rerun pending | prior approval projection `sha256:c2611372cb02fb40bf6f7468ce09b6296a4eaefeedcf6f9575bbfa9291fb79ff` |
 | Approved plan hash/spend | superseded; current rerun pending | prior 2,298-action plan `0x39e2c74bfd93cf8a42f5f3172f3683f85b4a1e45d759096cbcafa4539352fc48`; never use it with the current lock |
 | Resume/launch | pending | |
@@ -1593,6 +1762,9 @@ mainnet:
 
 - repeat archive-depth, sustained-load, and independent-observer checks against
   the synced private Subtensor node;
+- configure public operator DNS/TLS/API/history and publish a new authorized
+  manifest before off-host miners or public peer-review access; loopback-only
+  simulator replay does not certify that deployment;
 - configure and prove Loki/Grafana/general-stats production observability;
 - replace testnet single-owner governance with the reviewed 2-of-3 multisig and
   complete signer/guardian operational drills;

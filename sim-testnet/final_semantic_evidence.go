@@ -3317,12 +3317,19 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 }
 
 // Owns and hashes the complete selected graph before deep replay or cache
-// lookup. A repeated URI saves I/O but never bypasses another use's digest.
+// lookup. A repeated URI saves I/O and hashing but rechecks every use's claim.
 func loadFinalSemanticArtifactUses(ctx context.Context, uses []finalSemanticArtifactUse, load FinalArtifactLoader) (map[string][]byte, error) {
-	if ctx == nil || load == nil {
+	return loadFinalSemanticArtifactUsesWithHash(ctx, uses, load, bytesSHA256)
+}
+
+// Keep digest accounting local to one call so tests can prove the work bound
+// and ownership without timing assumptions or shared mutable hash hooks.
+func loadFinalSemanticArtifactUsesWithHash(ctx context.Context, uses []finalSemanticArtifactUse, load FinalArtifactLoader, hash func([]byte) string) (map[string][]byte, error) {
+	if ctx == nil || load == nil || hash == nil {
 		return nil, errors.New("final semantic artifact loader is unavailable")
 	}
 	cache := map[string][]byte{}
+	artifactURIHashes := map[string]string{}
 	for _, item := range uses {
 		data, ok := cache[item.locator.URI]
 		if !ok {
@@ -3340,7 +3347,15 @@ func loadFinalSemanticArtifactUses(ctx context.Context, uses []finalSemanticArti
 			data = append([]byte(nil), data...)
 			cache[item.locator.URI] = data
 		}
-		if uint64(len(data)) != item.locator.SizeBytes || bytesSHA256(data) != item.locator.ContentHash {
+		if uint64(len(data)) != item.locator.SizeBytes {
+			return nil, fmt.Errorf("final artifact %s size or content hash mismatch", item.locator.URI)
+		}
+		digest, ok := artifactURIHashes[item.locator.URI]
+		if !ok {
+			digest = hash(data)
+			artifactURIHashes[item.locator.URI] = digest
+		}
+		if digest != item.locator.ContentHash {
 			return nil, fmt.Errorf("final artifact %s size or content hash mismatch", item.locator.URI)
 		}
 	}

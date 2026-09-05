@@ -923,6 +923,109 @@ func TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins(t *test
 }
 
 func TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent(t *testing.T) {
+	// A repeated locator must recheck its claim without rehashing the same
+	// owned bytes. Distinct paths remain independently loaded and owned even
+	// when a loader aliases or reuses its backing buffer.
+	raw := []byte("{\"value\":1}\n")
+	firstUse := finalSemanticArtifactUse{locator: FinalArtifactLocator{URI: "artifact/a.json", ContentHash: bytesSHA256(raw), SizeBytes: uint64(len(raw))}}
+	secondUse := firstUse
+	secondUse.locator.URI = "artifact/b.json"
+	loadCount, hashCount := 0, 0
+	owned, err := loadFinalSemanticArtifactUsesWithHash(context.Background(), []finalSemanticArtifactUse{firstUse, firstUse, secondUse, secondUse}, func(context.Context, FinalArtifactLocator) ([]byte, error) {
+		loadCount++
+		return raw, nil
+	}, func(data []byte) string {
+		hashCount++
+		return bytesSHA256(data)
+	})
+	if err != nil || loadCount != 2 || hashCount != 2 || len(owned) != 2 {
+		t.Fatalf("shared locator work: loads=%d hashes=%d owned=%d error=%v, want 2/2/2/nil", loadCount, hashCount, len(owned), err)
+	}
+	owned[firstUse.locator.URI][9] = '2'
+	if !bytes.Equal(owned[secondUse.locator.URI], raw) || raw[9] != '1' {
+		t.Fatal("distinct artifact URIs or the loader share mutable verification bytes")
+	}
+	for _, mismatch := range []string{"hash", "size"} {
+		wrong := firstUse
+		if mismatch == "hash" {
+			wrong.locator.ContentHash = bytesSHA256([]byte("different"))
+		} else {
+			wrong.locator.SizeBytes++
+		}
+		loadCount, hashCount = 0, 0
+		owned, err := loadFinalSemanticArtifactUsesWithHash(context.Background(), []finalSemanticArtifactUse{firstUse, wrong, secondUse}, func(context.Context, FinalArtifactLocator) ([]byte, error) {
+			loadCount++
+			return raw, nil
+		}, func(data []byte) string {
+			hashCount++
+			return bytesSHA256(data)
+		})
+		if owned != nil || err == nil || err.Error() != "final artifact artifact/a.json size or content hash mismatch" || loadCount != 1 || hashCount != 1 {
+			t.Fatalf("later same-URI %s mismatch: owned=%v error=%v loads=%d hashes=%d", mismatch, owned, err, loadCount, hashCount)
+		}
+	}
+	reused := append([]byte(nil), raw...)
+	replacement := append([]byte(nil), raw...)
+	replacement[9] = '2'
+	reusedSecond := secondUse
+	reusedSecond.locator.ContentHash = bytesSHA256(replacement)
+	loadCount, hashCount = 0, 0
+	owned, err = loadFinalSemanticArtifactUsesWithHash(context.Background(), []finalSemanticArtifactUse{firstUse, reusedSecond, firstUse}, func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
+		loadCount++
+		if locator.URI == secondUse.locator.URI {
+			copy(reused, replacement)
+		}
+		return reused, nil
+	}, func(data []byte) string {
+		hashCount++
+		return bytesSHA256(data)
+	})
+	if err != nil || loadCount != 2 || hashCount != 2 || !bytes.Equal(owned[firstUse.locator.URI], raw) || !bytes.Equal(owned[secondUse.locator.URI], replacement) {
+		t.Fatalf("reused loader buffer changed an owned artifact: error=%v loads=%d hashes=%d", err, loadCount, hashCount)
+	}
+	for _, stop := range []string{"before load", "next load", "changed cached claim", "loader error"} {
+		ctx, cancel := context.WithCancel(context.Background())
+		if stop == "before load" {
+			cancel()
+		}
+		uses := []finalSemanticArtifactUse{firstUse, secondUse}
+		if stop == "changed cached claim" {
+			wrong := firstUse
+			wrong.locator.ContentHash = bytesSHA256([]byte("different"))
+			uses = []finalSemanticArtifactUse{firstUse, wrong, secondUse}
+		}
+		loadErr := errors.New("fixture second artifact load failed")
+		loadCount, hashCount = 0, 0
+		owned, err := loadFinalSemanticArtifactUsesWithHash(ctx, uses, func(_ context.Context, locator FinalArtifactLocator) ([]byte, error) {
+			loadCount++
+			if stop == "loader error" && locator.URI == secondUse.locator.URI {
+				return nil, loadErr
+			}
+			if stop != "loader error" {
+				cancel()
+			}
+			return raw, nil
+		}, func(data []byte) string {
+			hashCount++
+			return bytesSHA256(data)
+		})
+		cancel()
+		wantLoads, wantHashes := 1, 1
+		wantError := errors.Is(err, context.Canceled)
+		switch stop {
+		case "before load":
+			wantLoads, wantHashes = 0, 0
+		case "changed cached claim":
+			wantError = err != nil && err.Error() == "final artifact artifact/a.json size or content hash mismatch"
+		case "loader error":
+			wantLoads = 2
+			wantError = errors.Is(err, loadErr)
+		}
+		if owned != nil || !wantError || loadCount != wantLoads || hashCount != wantHashes {
+			t.Fatalf("%s error ordering: owned=%v error=%v loads=%d/%d hashes=%d/%d", stop, owned, err, loadCount, wantLoads, hashCount, wantHashes)
+		}
+	}
+
 	evidence := &FinalSemanticEvidence{EvidenceHash: finalTestHex(0xa1)}
 	firstGraph := map[string][]byte{"artifact/a.json": []byte("{\"value\":1}\n")}
 	first, err := finalSemanticArtifactVerificationCacheKey(evidence, firstGraph)

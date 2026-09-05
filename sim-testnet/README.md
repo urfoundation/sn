@@ -26,6 +26,13 @@ then reruns the affected test matrix. This division does not relax any gate or
 authorize a simulator write; the normal plan-hash and `--apply` boundaries
 still control all testnet mutations.
 
+If an assigned agent loses execution capacity, inspect any already-started
+host process through its PID and output before deciding it stopped. A missing
+observer session is not a terminal test result. Preserve the real terminal
+record and wait for the assigned model to become available or an explicit
+user-approved reassignment; an agent error does not authorize a silent model
+substitution, duplicate test process, or bypassed gate.
+
 Both release gates export `WARP_TEST_ENV_FAIL_FAST=1` before running tests.
 This makes the server's default test environment fail on its first assertion,
 fatal error, or panic instead of accepting a later successful retry. Abandoned
@@ -62,15 +69,24 @@ reduced to obtain a pass. This test-only scheduling does not alter live
 transaction ordering or production verification limits.
 
 The same four-worker, ordered join-all helper bounds the 38 independent
-tampered-graph cases and test-fixture supplement-file preparation. Each file
+tampered-graph cases, five fleet-projection mutations, and test-fixture
+supplement-file preparation. Each file
 still uses the production preparation/signing path; the complete supplement
 is signed only after every file worker joins. Shared identity derivation uses
-the exact-key cache's detached copies. The semantic census contains 236 roots:
-all previous 234 plus deterministic worker-bound/join and callback-nonreturn
-regressions. A callback that exits without returning must produce an explicit
+the exact-key cache's detached copies. The semantic census contains 237 roots:
+all previous 236 plus the affected artifact-verification cache regression.
+Deterministic worker-bound/join and callback-nonreturn regressions remain
+selected. A callback that exits without returning must produce an explicit
 failure and cannot exhaust the worker pool or hide a later case. All 18 public
 replay cases remain mandatory; setup timing lines are not case completion
 evidence.
+
+The production artifact loader owns each distinct URI's byte stream and
+computes its digest once per load operation. Every repeated reference still
+checks its own claimed size and content hash, in source order. Different URIs
+remain independently owned even if a loader reuses its backing buffer. The
+deep-verification cache key continues to bind the exact evidence and graph
+bytes; cached digests never authorize an unread or mismatched artifact.
 
 ## Pre-launch approval
 
