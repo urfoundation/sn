@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 12:33 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 13:40 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
@@ -48,9 +48,21 @@ race, plus copylocks. The semantic run then found seven closure tests blocked
 by a shared fixture's noncanonical inactive-binding hashes; only those two
 fixture fields changed in the new held v3 snapshot. The corrected 27-root
 selection now passes normally (52.372s) and under race (460.811s), and all four
-existing platform targets compile. The exact original-tail regression and
-full 268-root qualification are next; broader replay and integration remain
-required.
+existing platform targets compile. The exact original-tail regression now
+passes. The wider run exposed missing sibling config/vault inputs in the
+isolated checkout; that failed run is preserved, the layout is corrected,
+and the exact runtime-rendering regression now passes. The corrected complete
+268-root ordinary run passes in 224.135s. Its matching race run times out at
+the unchanged 25-minute deadline with 267/268 roots passing and no reported
+data race. All eighteen public cases and ten main-root chain cases pass; the
+remaining root is TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact.
+Repeated persisted-plan decoding/validation is being profiled; no timeout
+waiver or unchanged full rerun is allowed. Settlement integration remains pending.
+Adjacent review also demonstrated that the common v1 lifecycle checker accepts
+authentically signed mid-trail block/hash changes at append, restart and public
+replay. The minimal shared guard and deterministic regressions pass four focused
+and 48 affected-area roots normally and under race. They are integrated as
+90409b4d39452459effae66972345a59d12a0434; a private-store-only guard is not sufficient.
 The M8 wire-size diagnostic and its 63-file inventory are now reconciled:
 complete records use about 40.4 KiB per
 trail before repeated measurement/closure copies. At the configured complete-
@@ -59,6 +71,13 @@ Bounded complete-census storage/replay is required; live throughput and full
 capacity remain unqualified. Section 10.3 of the handoff records the exact
 measurements, assumptions and mandatory repair, without a cap waiver.
 
+The common validator-evidence authentication layer passes twelve Go roots
+normally/under race, thirteen Solidity roots, and all eight saved-vector public
+testnet precompile calls at pinned block 7,939,251. Valid signatures return true
+and changed digests return false for both Ed25519 and sr25519; the block hash
+is unchanged on recheck. The six-file auth-only slice is integrated as
+c5003afc2b9c0c4518a83b6ab646deddbbcfcfac. No storage, publication, transaction or
+historical-validator-eligibility claim follows from these checks.
 The user's requested on-chain validator evidence is not implemented yet.
 Current WHITEPAPER.md section 11.1 proof bytes live in the server API/MinIO;
 neither payout-artifact hashes nor native weight payloads commit those proofs.

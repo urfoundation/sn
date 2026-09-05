@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 12:33 UTC before the final source freeze. Refresh every item marked
+2026-09-05 13:40 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -52,8 +52,22 @@ Launch blockers at this checkpoint:
   a shared noncanonical inactive-binding fixture. Its two zero-hash fields are
   corrected under the v3 40-file manifest. The 27-root ordinary and race reruns
   now pass, and all four existing validator build targets compile.
-  Broader replay and complete merged qualification remain required. Section 12
-  preserves each failure, source fence and exact scope of the passing checks.
+  The exact original-tail regression now passes. The first wider run exposed
+  missing sibling config/vault input links; that failure is preserved and the
+  corrected layout passes the exact runtime-rendering root. The corrected
+  complete 268-root ordinary run passes in 224.135s; race times out at its
+  unchanged 25-minute deadline with 267/268 passing. All eighteen public cases
+  and ten main-root chain cases pass. The sole unfinished root is
+  TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact; targeted
+  profiling of repeated persisted-plan decoding/validation is authorized.
+  Complete merged qualification remains required. Section 12 preserves each
+  failure, source fence and exact scope of the passing checks.
+- An adjacent common v1 lifecycle defect is independently reproduced: validly
+  signed pending checkpoints can change their pinned EVM block/hash within one
+  settlement epoch and survive append, reopen and public cut replay. A shared
+  five-line guard passes four focused and 48 affected-area ordinary/race checks
+  and is integrated as 90409b4d39452459effae66972345a59d12a0434. Do not leave this
+  protection only in the new private store or omit it from the settlement merge.
 - Adjacent review found that expected active-trail draining counts against
   the steering loop's ten-error limit and can terminate valid M8 work. Its
   bounded repair and deterministic regression are part of the settlement
@@ -948,6 +962,14 @@ check: existing current-state precompiles cannot prove a past permit or UID.
 No new role registry, history oracle or bridge is authorized. Future coordinator
 storage must consume its reserved gap compatibly; never enlarge existing
 PolicySnapshot/OperatorVersion array elements and corrupt their stored layout.
+The common-auth cut passes twelve Go roots normally and under race, thirteen
+targeted Solidity roots and eight pinned-block public precompile checks. It is
+integrated as c5003afc2b9c0c4518a83b6ab646deddbbcfcfac. The Solidity tests use exact
+mocked verifier tuples; the separate read-only probe checks the actual public
+testnet Ed25519/sr25519 precompiles against saved positive and changed-digest
+negative vectors at block 7,939,251, with an identical block-hash recheck.
+Neither these passes nor the probe prove historical eligibility, evidence
+storage/publication, complete census coverage or a live transaction.
 
 The proof path is operator FINAL persistence -> validator FINAL co-signature
 and attempt ledger -> signed measurement. Separately, operator payout
@@ -1295,7 +1317,173 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 12:33 UTC)
+### Latest qualification and repair handoff (2026-09-05 13:40 UTC)
+
+- Primary integrated runtime commits are now
+  90409b4d39452459effae66972345a59d12a0434 (common pending-boundary guard) and
+  c5003afc2b9c0c4518a83b6ab646deddbbcfcfac (six-file stateless evidence auth).
+  Their isolated source commits were respectively 53f2d25bfb00e1d2dbb84b69946a244518e357f0
+  and f8a821bae65a9eeaca3554b7b1d7e7da49913c5f. No settlement or disk-stream
+  activation is integrated, and these commits are not a final source freeze.
+- Boundary repair GREEN is sealed in
+  /home/by/urnetwork/temp/sn-attempt-boundary-fixed-capture-GwtOLP:
+  focused four roots ordinary 0.869s/race 3.666s; widened 48 roots ordinary
+  32.889s/race 263.128s; all actual/validation exits zero. The widened race
+  census is exactly 48 started/passed with no failures. Source/runtime pre/post
+  identities match, and root independently verified the complete index:
+  30ccc4bcccf8c6e22edb512c21dca9778a28ca4db7af5656f51bafef59afea86.
+  Exact-four raw SHAs are
+  59f43a20c6380aeb0a033006ee8746ff7f795b603db87d04c9c941d07d9ce30b
+  and c2d652beae98d6566087dc284fc67177d5f76b3c75239523ff7200db30e66b2b;
+  widened raw SHAs are
+  02af3d5e3738b7a53f76051faf25226aa7ef743933df099a138f820004a55e67
+  and ff1dabc902d3001a4adc6c6f25bae8d3a01b29baed36ae173cf877da96dbf751.
+- The public auth probe is sealed in
+  /home/by/urnetwork/temp/sn-auth-precompile-probe-v1-qqgobO, chain ID 945,
+  block 7,939,251 (0x7924b3), hash
+  0x6789f807d97b0ea5a82754115f5b11161ed88e398e3448d56b5c573a9f7c3f29.
+  Both closed-census and audit vectors return true under 0x402 Ed25519 and
+  0x403 sr25519; changing each digest returns false. Root read all eight raw
+  canonical ABI Boolean words and verified the unchanged block-hash recheck
+  and index SHA:
+  55dd61315d73617f0fa043f017e5c7aa5ecf70de3dac9f6174096f78a6b06b15.
+  Result-table SHA:
+  44f90b4f3470a2e1985e74a9bfb0d239ac89f22cbd0de3c973b66c0d542200fc.
+  Prior observer failures remain: jzKNrX stopped on jq precedence before any
+  RPC; nzxUr3 stopped after one valid 0x402 response because the local cast
+  output-decoder signature was malformed. Neither is a product failure or a
+  qualifying probe. No wallet signing, deployment or transaction occurred.
+- Corrected full268 capture
+  /home/by/urnetwork/temp/sn-settlement-tail-v3-full268-retry-bweJ4h is terminal.
+  Ordinary actual/validation 0, all 268 roots, 224.135s; raw SHA:
+  32211e993f72371f30c846c2afe2d32abf42d5ca4a433308af5e730fa1921563.
+  Race actual/validation 1, 267/268 pass, internal timeout at 25m0s, package
+  duration 1500.945s; raw SHA:
+  15036b8a872819f938a464fa94dd48008ce93424e4b32c2844fd123cbc9afd05.
+  All eighteen public cases passed (root 1090.46s); BuildRender and all ten
+  public chain cases passed (root 531.42s). The only unfinished root was
+  TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact, running 6m0s
+  when the package alarm fired. No data-race warning appears. Stacks show
+  repeated nativeActionPlan/decodePersistedPlanBytes/plan validation; this is
+  a profile hypothesis, not a completed diagnosis. Root verified index SHA:
+  bd10a780c9d0147bb944f2c4d0499ce547ef179a7731fa229945cbbe562aecf9.
+  Do not restart the full unchanged selection. One ordinary targeted CPU/
+  allocation profile is authorized on held HHX, the same root, GOMAXPROCS 24,
+  parallel 4, count 1, inner 15m/outer 16m. Add deterministic work-count
+  regressions and qualify the repair before another complete run.
+- Store v2 did not reach product tests. NhWAwb stopped on an observer-only
+  assumption that the 26 Markdown-listed root names were already sorted.
+  bUgwfa then stopped during readonly module resolution: introducing the
+  already-pinned direct goleveldb dependency exposed missing historical
+  transitive go.mod checksum metadata. The single official-proxy/sumdb
+  diagnostic UYTlFk completed actual 0 in isolated graph.mod/graph.sum copies:
+  one snappy v1.0.0 indirect requirement and 29 go.mod checksum lines, with no
+  existing dependency version or checksum changed. Those exact additions are
+  applied to the store and separate integration tree. The five store Go files
+  remain v2-identical. Dependency-only v3 manifest SHA:
+  723e9ac942f4517f4d00b8471f443ed37869b57450919d3ae6cf6281f09c0a08;
+  handoff STORE-HANDOFF-v3.md SHA:
+  8a15c6046b67d1a8086868d563753ad3f542f2bc9c89111bb69b47c17a2265f9.
+  Qualify its 26 ordinary/race roots and four compile-only targets at the
+  already-approved bounds. This is not a storage-feature or capacity pass.
+- Independent disk-ledger integration is in
+  /home/by/urnetwork/temp/sn-attempt-ledger-stream-ZqQ20Q/sn. The approved
+  explicit disk constructor, checked streaming APIs, byte-preserving import,
+  durable migration fence, staged stats replay and bounded proof spool are
+  implementation work, not an activated producer. Legacy materializing slice/
+  cut APIs must fail explicitly in disk mode until compact cuts are wired.
+  The shared migration gate covers upgraded v1 writers; rollout must stop and
+  join unpatched older binaries that cannot honor a new locking protocol.
+  Full compact cuts, complete-census collection and public streaming replay
+  remain required beyond this slice.
+- Maximum-wire tests are being prepared in
+  /home/by/urnetwork/temp/sn-attempt-wire-max-yiCFnj/sn. Independent width
+  arithmetic gives completed record bases 5,263/10,417/23,628 bytes for M4/M8/M16
+  plus JSON-escaped deployment content per record; standalone proof JSONL
+  maxima are 1,643/2,567/4,417 bytes. These are not executed Go-test results.
+  Do not apply the proposed M8 16 KiB/4 KiB per-record/proof limits to M16.
+  Adjacent source review found that first ASSIGN accepts any global M4--M16
+  although later canonical-policy replay requires the configured depth.
+  A signed depth-substitution reproduction and clamp-semantics review remain
+  necessary; no runtime fix or reduced workload is authorized by arithmetic.
+
+Earlier captures below retain their original scope and chronology:
+
+- Documentation checkpoint bbf428dd54ce4d02073921a491f78e5d952060dc was committed,
+  pulled and pushed at 12:34 UTC; the primary runtime remains a83e6ba plus no
+  integrated settlement/auth/store/boundary repair yet. Do not use this clean
+  checkpoint as a source freeze or launch approval.
+- The exact completed-tail collector RED now has a held-v3 ordinary GREEN in
+  /home/by/urnetwork/temp/sn-settlement-tail-v3-tail-full268-Zh7LUO:
+  TestFinalCollectorIncludesCompletedSettlementTail passed in 51.137s, actual/
+  validation 0. Raw SHA:
+  e9c9958446ced43ce2e9e6660c9cc5484971a1f1a715a303040851b00ff22909.
+  The following full ordinary run was stopped after the explicit missing
+  sibling config/local failure at render_test.go:166. Its owned process group
+  was verified and terminated; actual 143/validation 1, no race. Root counted
+  268 top-level starts, 247 passes, one failure and twenty unfinished roots.
+  The original observer additionally counted 44 slash-bearing subtest starts;
+  retain those raw records but count only top-level names for the 268 census.
+  Source/runtime fences remain identical. Failed full raw SHA:
+  17b543855f3e21b572f25bb34c7db2d9017939d5b7d69d4247508384105ea582;
+  complete capture index SHA:
+  5a1d4174034df0bdefacdd3a311c57186fe5b4b6894c9cc61398853b35f8c137.
+- The HHX checkout now has absent-only config/vault sibling links to the real
+  clean repositories, alongside its existing Go-repository links. The inputs
+  are config/local, config/all, vault/local and vault/main/minio.yml; only path,
+  revision and hash metadata is recorded, never secret contents. The topology
+  record IiQ0fw has index SHA:
+  2c2735117571165749cefa1e908f3c63c4f941f1aef99f6174c8f8a0c5ddca8b.
+  A first corrected preflight zUEz6x stopped before product execution because
+  its observer derived config/vault relative to HHX/sn instead of its parent.
+  The absolute-path capture
+  /home/by/urnetwork/temp/sn-settlement-tail-v3-runtime-config-focus-abs-XWkKIx
+  then passed the exact runtime-config root in 35.838s, actual/validation 0,
+  with source/runtime/consumed-data fences unchanged. Root verified its index:
+  5bb4037b318ec2671ea336d07202f9efa199a6382809cd4ec69002e019ca4843;
+  raw SHA:
+  346fc6814d4454813576b0e078b12770fb1cc1f618fb20409b80a684f6c1755d.
+  Retry the complete 268 roots with the corrected environment and top-level
+  census accounting; do not repeat the already passing standalone tail/config.
+- The common v1 boundary defect's test-only RED is sealed in
+  /home/by/urnetwork/temp/sn-attempt-boundary-red-capture-jV5Nfs:
+  actual 1/validation 0, four roots started, three expected failures and one
+  M4/M5 recovery control pass, 0.854s. Block-only, hash-only and combined drift
+  are accepted at each of append/reopen/public cut despite real server/FINAL
+  signatures and freshly re-signed record links/cut. Root read all nine causal
+  assertions and verified source identities and the sealed index. Raw SHA:
+  46287f562e4120a41338b2559048d14314eb5932ffa1eeed5b425b79e3000bde;
+  index SHA:
+  7a106bbf4547fa469a1eeacc7d89f83c652a4e578fa2f045d1859f207a3cb946.
+  q3Hp9M holds the five-line common pending-extension identity guard, leaving
+  regression bytes unchanged; runtime SHA:
+  145ceb281e795b5d888cd1a494afbb27a4eb0c188900e5dc7c7344bb575cfe9f.
+  Qualify four focused roots at 3m/4m ordinary/race, then the 48-root affected
+  selection at 3m/4m ordinary and predeclared 6m/7m race. Historical full-validator
+  race cost was 291.464s; this new selection does not extend a failed run or
+  change existing full268/release deadlines. Its census SHA is
+  9064a661775b34e531944a1e6365f6b7f55ec031359db9b67844370181c11aa7.
+- Auth-only Go qualification is GREEN in
+  /home/by/urnetwork/temp/sn-validator-evidence-auth-go-v1-14m6L8:
+  exact twelve roots ordinary 0.037s/race 1.344s, actual/validation 0 throughout;
+  root read the results and verified index SHA:
+  c87a33c3d34113598eb287ab662370f53036913dcc0adfa6a8a58ea7a5991368.
+  The first Forge observer AkQp5Z stopped before product tests because its list
+  parser expected parentheses, while Forge correctly returned thirteen bare
+  test names. Compilation succeeded; warning 2018 is a conservative view
+  annotation over declared-pure precompile interfaces, not a transaction or
+  authorization failure. The corrected direct capture FRuWOZ passes all thirteen
+  targeted tests, actual/validation 0. Root verified index SHA:
+  d49e35d9f060ec4348266f14759afa27f080329c1b563562724bed0146a5e8b7;
+  raw SHA:
+  8d9e2b4a6a6df0a3735cb99cb2f7f59ff0a35a49892e6e62b4ce7efc085aecf0.
+  Go/Solidity golden payloads use an independent literal-width reference
+  encoder. Fresh sr25519 signatures are randomized: the preserved candidate/
+  reference comparison differs only in valid nonce-dependent signature bytes,
+  so tests verify saved signatures instead of requiring fresh byte equality.
+  The planned public probe is read-only against 0x402/0x403 at one pinned block,
+  closed/audit positive and changed-digest negative controls, eight eth_calls
+  within the public HTTP budget. No wallet or transaction is involved.
 
 - SN checkpoint 0def712d91ffd1429c2b677fcce775138b6c78ec was committed,
   pulled and pushed at 10:18 UTC. Primary source/tests/modules/gates/census
