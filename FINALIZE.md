@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 12:05 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 12:33 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no new on-chain action is
 authorized by a partial qualification result.
 
@@ -35,20 +35,29 @@ separately validated thirteen-root reconciliation. The settlement lane also
 reproduced a fatal epoch-admission race and is repairing pre-SEED ownership,
 cut-barrier ownership and closed-proof fixture consistency. Review also found
 that normal active-trail draining can exhaust the generic retry limit; its
-bounded repair must preserve real-error limits and existing deadlines. No
-repaired settlement pass is claimed yet. Its full test selection now has 268
-mandatory semantic roots, retaining the prior 247 and all public/chain cases.
+bounded repair must preserve real-error limits and existing deadlines. Its
+full test selection now has 268 mandatory semantic roots, retaining the prior
+247 and all public/chain cases.
 After rejecting a wrong-checkout invocation, the real validator ordinary run
 passed 65/67: directory-fixture setup and cancellation ordering need correction.
 The cancellation failure now has a deterministic pre-fix reproduction covering
 canceled entry, scheduler return and a ready poll; the unchanged real-error
 budget and missed-epoch checks remain mandatory in the repair.
-The new exporter also broke an existing macOS validator build. Corrections to
-all three issues are now held under a fresh 40-file source manifest, preserving
-the same test census and file-integrity requirements. Their qualification and
-settlement integration remain mandatory. A separate capacity audit is checking
-the actual M8 evidence volume against the existing artifact
-limits; no measured capacity result or cap waiver is claimed.
+The corrected validator selection now passes all 67 roots normally and under
+race, plus copylocks. The semantic run then found seven closure tests blocked
+by a shared fixture's noncanonical inactive-binding hashes; only those two
+fixture fields changed in the new held v3 snapshot. The corrected 27-root
+selection now passes normally (52.372s) and under race (460.811s), and all four
+existing platform targets compile. The exact original-tail regression and
+full 268-root qualification are next; broader replay and integration remain
+required.
+The M8 wire-size diagnostic and its 63-file inventory are now reconciled:
+complete records use about 40.4 KiB per
+trail before repeated measurement/closure copies. At the configured complete-
+rate ceiling, the projected objects exceed the existing artifact limits.
+Bounded complete-census storage/replay is required; live throughput and full
+capacity remain unqualified. Section 10.3 of the handoff records the exact
+measurements, assumptions and mandatory repair, without a cap waiver.
 
 The user's requested on-chain validator evidence is not implemented yet.
 Current WHITEPAPER.md section 11.1 proof bytes live in the server API/MinIO;

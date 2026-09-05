@@ -1,7 +1,7 @@
 # Release 1.0 testnet completion handoff
 
 Status: live working document, first written 2026-09-03 UTC and last reconciled
-2026-09-05 12:05 UTC before the final source freeze. Refresh every item marked
+2026-09-05 12:33 UTC before the final source freeze. Refresh every item marked
 FREEZE-UPDATE after the final commits and gates. This document is the
 operational continuation point if another agent has to finish the testnet
 campaign. Historical green gates in FINALIZE.md are not approval for the
@@ -46,17 +46,22 @@ Launch blockers at this checkpoint:
   Work is isolated under `/home/by/urnetwork/temp/sn-settlement-tail-HHXjUy/sn`.
   The complete repair has a 268-root semantic census and is not integrated or
   qualified yet. After rejecting an initial wrong-checkout invocation, the
-  real 67-root ordinary run passed 65 and failed two. Corrections to private
-  test-directory setup, cancellation ordering and the existing macOS build
-  are now held under the new 40-file source manifest for qualification.
-  No repaired ordinary/race/semantic pass is claimed. Section 12 preserves
-  every failed record and the exact source fences.
+  real 67-root ordinary run initially passed 65 and failed two. The corrected
+  validator selection now passes all 67 roots normally and under race, plus
+  copylocks. Semantic qualification then found seven closure tests blocked by
+  a shared noncanonical inactive-binding fixture. Its two zero-hash fields are
+  corrected under the v3 40-file manifest. The 27-root ordinary and race reruns
+  now pass, and all four existing validator build targets compile.
+  Broader replay and complete merged qualification remain required. Section 12
+  preserves each failure, source fence and exact scope of the passing checks.
 - Adjacent review found that expected active-trail draining counts against
   the steering loop's ten-error limit and can terminate valid M8 work. Its
   bounded repair and deterministic regression are part of the settlement
-  lane. Separately, quantify actual M8 closed-epoch evidence volume against
-  the 32 MiB raw-artifact and 256 MiB graph limits before claiming scale
-  readiness; the audit is pending, not an observed capacity pass or failure.
+  lane. The actual M8 wire-size sample and its complete 63-file inventory are
+  now reconciled. At the configured complete-rate ceiling, the sample-linear
+  projection exceeds the 32 MiB raw-artifact and 256 MiB graph limits. Actual
+  live throughput is unmeasured. Section 10.3 requires bounded complete-census
+  storage/replay; the current monolithic representation is not scale-qualified.
 - The user requested validator evidence stored in the contract pool. Current
   section 11.1 proof bytes are off-chain API/MinIO objects, with no direct or
   transitive commitment from payout-artifact hashes or native CRv4 weights.
@@ -927,6 +932,23 @@ or store the full proof bytes on-chain. No answer is recorded. Neither route
 is implemented, and the existing off-chain-only design is not a substitute.
 An automatic continuation is not an answer to this concrete storage choice.
 
+Root authorized one implementation slice common to either choice: a new
+intent-independent, fixed-width per-operator evidence header and matching Go/
+Solidity digest/signature helpers, with deterministic golden-vector tests.
+Work is isolated in /home/by/urnetwork/temp/sn-validator-evidence-auth-Q92bnJ/sn.
+It has no commitment storage or transaction method yet and cannot satisfy the
+on-chain requirement by itself. Every header binds coordinator/vault, genesis,
+netuid, deployment, policy/earlier activation identity, hotkey, operator VPK,
+closed epoch, deterministic subject, terminal boundary and payload/census hashes.
+The census must hash unsigned member payloads, not headers/signatures that
+already include that census hash. Require one Ed25519 and one sr25519 consent
+check; storage ownership excludes content, VPK rotation, UID and relayer.
+Historical validator eligibility remains a separate pinned public-chain replay
+check: existing current-state precompiles cannot prove a past permit or UID.
+No new role registry, history oracle or bridge is authorized. Future coordinator
+storage must consume its reserved gap compatibly; never enlarge existing
+PolicySnapshot/OperatorVersion array elements and corrupt their stored layout.
+
 The proof path is operator FINAL persistence -> validator FINAL co-signature
 and attempt ledger -> signed measurement. Separately, operator payout
 computation commits a payout root/artifact hash to the immutable vault
@@ -1152,6 +1174,80 @@ source/evidence/gate files rather than overwriting either patch. Integrate only
 reviewed, qualified changes, checkpoint, then run the widened exact selection
 and final release gates. Neither isolated worktree is launch-authoritative.
 
+### 10.3 Evidence-volume result and required bounded storage
+
+The source-held M8 diagnostic produced two complete trails for each of two
+operators through the real trail engine, durable ledger, statistics and signed
+settlement transition path. Its canonical records and proofs are accepted as
+a wire-size sample after the separate no-rerun inventory reconciliation in
+section 12. The combined closure container is a wire projection over those
+actual signed transitions, not a test of the new closure exporter. No live
+throughput, independent crypto rerun or capacity pass is inferred.
+
+Each M8 success produces eight durable records: seven pending checkpoints plus
+completion, retaining 35 assignment copies for seven actual hop exposures.
+Measured record JSONL is 41,393--41,401 bytes per trail; standalone proof JSONL
+is 2,243--2,244 bytes. One operator's cumulative cut grows from 42,240--42,241
+bytes after one trail to 83,643--83,644 after two. Two terminal transitions
+occupy 87,264 and 87,024 bytes; their combined closure projection is 174,372.
+
+The following projection uses 41,401 record bytes and 2,244 proof bytes per
+complete trail, 30 starts/minute/operator/validator pair and nominal 12-second
+blocks. It assumes every start completes; this is a configured upper traffic
+envelope, not an observed or guaranteed completion rate. Real integer widths,
+metadata, failed attempts and repeated ordinary measurement copies are extra.
+
+| Interval and object | Sample-linear size |
+|---|---:|
+| Five 300-block release epochs: one pair's 9,000-trail union | 355.35 MiB |
+| One 300-block epoch: two-operator terminal closure records | 142.14 MiB |
+| Release four-pair record union plus closure copies | 2.776 GiB |
+| Release four-pair standalone proofs, additional | 77.04 MiB |
+| Seven-day epoch: one pair's 302,400-trail records | 11.66 GiB |
+| Seven-day two-operator terminal closure records | 23.32 GiB |
+
+The current single-object and closed-graph limits cannot represent that
+envelope. It also exceeds a transport-only problem: AttemptLedger retains the
+entire record history, cuts copy cumulative records, and signing reconstructs
+all record hashes. At the seven-day projection, the v1 signing message's
+2,419,200-element record-hash JSON array alone is 166,924,801 bytes. That array
+is reconstructed for signatures, not an additional published cut field.
+
+The required common repair, independent of the on-chain storage choice, is
+immutable bounded chunks with a versioned signed complete census and streaming
+verification. Preserve every record, signature, lifecycle transition, proof,
+quality counter, egress generation and exact terminal/successor relationship.
+Ordinary measurements should reference authenticated immutable cuts instead of
+copying full histories. Preserve old bytes/signature domains for carried v1
+history, and explicitly pin new-schema activation and downgrade rejection.
+Bound producer/replay memory, exact terminal trail-ID reuse detection, disk
+retention, per-object work and complete stream counts/bytes. Existing raw and
+control-graph limits remain enforced; any new stream budget needs an explicit
+reviewed protocol/config contract, not an unnoticed limit increase.
+
+Astra owns the bounded-storage work in
+/home/by/urnetwork/temp/sn-attempt-stream-v2-7emA9E/sn. Root reviewed its concrete
+proposal and authorized the first private disk-backed record-store slice and
+tests, using the exact goleveldb version already pinned in go.sum. It must
+atomically persist canonical v1 record bytes, exact pending/terminal trail-ID
+state and the head; use strict corruption checks, bounded memory, private
+ownership, directory durability and a fault latch after ambiguous I/O. It does
+not activate a producer/schema migration or change current artifact limits.
+Candidate global byte/disk/count limits require maximal-field and provisioning
+tests before approval. Review of the first draft found pathname check/use and
+existing-file overwrite exposure, plus a pending iterator that could observe a
+persisted batch before the cached head was published. Astra is replacing the
+pathname-backed adapter with descriptor-anchored, exclusive, single-link-owned
+storage and a consistently captured snapshot/head; deterministic interleaving
+and collision tests must qualify these new-code corrections. No implemented or
+qualified v2 result is claimed yet.
+Terra must exercise deterministic boundary,
+truncation, reorder, duplicate, conflict, restart and cancellation cases,
+source-derived full-envelope capacity tests, and the complete integration.
+Do not reduce workload, drop the proof census, or substitute shortened-testnet
+success for seven-day mainnet capacity. The shared public-RPC budget and actual
+sampling/head-coverage throughput remain a separate measurement requirement.
+
 ## 11. Independent peer-review procedure
 
 From a clean compatible checkout with no simulator state or wallet secrets:
@@ -1199,7 +1295,7 @@ supplies the exact signed campaign run ID explicitly.
 
 ## 12. Freeze and execution record
 
-### Latest qualification and repair handoff (2026-09-05 12:05 UTC)
+### Latest qualification and repair handoff (2026-09-05 12:33 UTC)
 
 - SN checkpoint 0def712d91ffd1429c2b677fcce775138b6c78ec was committed,
   pulled and pushed at 10:18 UTC. Primary source/tests/modules/gates/census
@@ -1502,6 +1598,81 @@ supplies the exact signed campaign run ID explicitly.
   are unchanged. Qualify focused ordinary/race, copylocks and the four existing
   validator build targets; run semantic checks independently against an
   actual sim-testnet package preflight, not the validator-only helper.
+- The v2 validator qualification is GREEN in
+  /home/by/urnetwork/temp/sn-settlement-tail-v2-validator67-retry-xuwZSt:
+  all 67 roots started/passed normally (5.371s) and under race (9.362s), each
+  actual/validation 0, and copylocks 0. Source and imported-runtime fences
+  remained identical. Root read results, checked exact counts and verified
+  every sealed entry. Ordinary raw SHA:
+  0c32e25ecd8da507b5b5c6719ec97922fe4d044a46c3b60a93f144e72329c86b;
+  race raw SHA:
+  404a95ef8e5ea4e9b19704a95f15e2be390919938c658cb45141e6154ed4138a;
+  index SHA:
+  6695773c192a2697116269b75ec3afacfad1b2978bdd33a0a3a2ebc08d55603a.
+  The preceding R5lMgP observer stopped before product execution: strict source
+  verification passed, but it compared relative and absolute manifest names
+  alongside their identical hashes. Astra approved comparing the pinned digest
+  independently of displayed path while retaining every strict entry check.
+- The separate sim-testnet preflight passed all five controls in
+  /home/by/urnetwork/temp/sn-held-sim-worktree-preflight-regress-tfGLjW:
+  exact 27-root positive plus wrong actual checkout, missing TestGoFile,
+  omitted-root and duplicate-census refusals. Root read controls and verified
+  the sealed index, SHA:
+  8422deb82ef13d1cb21c1ee88438c6a048494b426fa24651a45249a9e912f0cc.
+  Do not copy the small validator timing into semantic commands. The intended
+  semantic bounds are ordinary 15m inner/16m outer and race 25m/26m; only the
+  focused validator selector uses 3m/4m.
+- Semantic fixture failure is preserved in
+  /home/by/urnetwork/temp/sn-settlement-tail-v2-semantic27-3CCEBJ.
+  Its wrapper incorrectly recorded 3m/4m, then launched before the correction
+  reached it. It finished by itself in 42.154s, with all 27 roots started,
+  20 passed and seven closure roots failed; race did not run and no process
+  was killed. This was an assertion failure, not a timeout or a pass to waive.
+  Every failure came from setup omitting the inactive binding's required
+  canonical zero32-byte fleet/hotkey hashes. Production validation correctly
+  rejected the fixture before the intended closure behavior. Raw SHA:
+  923fcf4c65350f4d201b6275a4afdb4ca770a87d83382f2b1244eb409d22dbdc;
+  index SHA:
+  eb02e312b810429b2dcb8a5735677a0186957ae6dbec83d322dd21658a211099.
+  Root read all seven failures and verified the index. After every HHX command
+  was terminal, Astra added only the two canonical zero-hash fixture fields.
+  New held sibling repair-source-v3.SHA256SUMS SHA:
+  54919b8e62a395b76cb0db291fa28ef97a7349b7b30f1d210591a009add3b53f.
+  Root verified all 40 entries and that only this semantic test file differs
+  from v2; validator runtime/test bytes and all 67/27/268 censuses are unchanged.
+  Correct-bound semantic ordinary/race, four-target builds, original collector
+  tail GREEN and full merged qualification remain outstanding.
+- Correct-bound v3 semantic capture is GREEN and sealed in
+  /home/by/urnetwork/temp/sn-settlement-tail-v3-semantic27-oVl3QU,
+  former owner Terra session 97402. Both ordinary and race completed with
+  actual/validation 0 and exactly 27 started/passed, no missing or extra roots.
+  Ordinary took 52.372s and race 460.811s; the durable-production-wire fixture
+  passed in 40.99s/420.49s. All eight closure roots passed. The unchanged
+  bounds were ordinary 15m/16m and race 25m/26m. Root read results, checked
+  counts and verified every sealed entry; source/runtime fences remained
+  unchanged. Ordinary raw SHA:
+  aa6a051e497e583a7bc4c1e0f9d90264cc092df0718785c054b49853082f5d30;
+  race raw SHA:
+  7dabb3ee74be2efd0415b04a49c0ae88320e2889e9d511239e1067d7a92dc6ed;
+  index SHA:
+  3df3f345bf00479bdccf684547feca9874a54aa19639a316b1a05290e51f3402.
+  The next exact ordinary selector is
+  ^TestFinalCollectorIncludesCompletedSettlementTail$, followed by the complete
+  268-root census ordinary/race on the same held v3 source. The full census
+  includes the main BuildRender verifier, durable fixture and original tail;
+  do not duplicate standalone large-fixture/race runs already covered here.
+  Preserve the same bounds and all eighteen public/ten chain cases. Root's
+  adjacent audit found production and sibling fixture constructors already
+  emit canonical inactive zero hashes; only the corrected fixture omitted them.
+- The v3 four-platform compile matrix is GREEN and sealed in
+  /home/by/urnetwork/temp/sn-settlement-tail-v3-validator-matrix-srUgU4.
+  Every target exits 0 with unchanged manifest pre/post checks: darwin/arm64,
+  darwin/amd64, linux/amd64 and linux/arm64. Root checked the commands, sealed
+  index and actual Mach-O/ELF architecture formats; no target binary executed.
+  This closes the demonstrated Darwin compiler regression, not a Darwin
+  runtime qualification. Index SHA:
+  22f33557c5ef58e21e70412d7a6be1c5bcd3466afafc84cf2f9b38b671ef9ed7.
+  Binary hashes are recorded in the index and individual target SHA files.
 - Existing supported-platform regression is independently demonstrated:
   validator/Makefile lists darwin/arm64, darwin/amd64, linux/amd64 and linux/arm64.
   The new closure exporter directly used Linux Stat_t timestamp fields and
@@ -1532,6 +1703,20 @@ supplies the exact signed campaign run ID explicitly.
   The addendum must join exact byte lengths/hashes, all four record/cut/proof
   groups and both actual transitions to the closure projection. It does not
   establish integrated closure publication or independent cryptographic replay.
+  Final no-rerun reconciliation is now accepted in
+  /home/by/urnetwork/temp/sn-attempt-capacity-m8-inventory-reconciliation-final-e0ar8g:
+  validation 0, 63 canonical files/declarations/structural passes, with all four
+  referenced indexes verified. Root checked its summary/index, linked receipt
+  hashes, structural results and original raw sizes; Astra reviewed the complete
+  joins and accepted the measurement. Summary SHA:
+  4c144fbe1d55e2787eb5337385aab5ec28900068df0c97c5835edb1f4edb987b;
+  index SHA:
+  446fc5a9a52810d5bfc4c2ac42ac3a6f97af0935bead420e040e13ca731ee44a.
+  Preserve the original validation-1 record and subsequent observer errors:
+  b2HeCP used incorrect JSON projection paths; DkFhUp treated rg's empty
+  no-match count as a numeric value. The corrected structural addendum pddshO
+  and final receipt fix only that accounting. No product/source/wire rerun or
+  independent crypto/capacity pass occurred. Section 10.3 records the sizes.
 - Source-derived capacity caveat: the 40-request/minute public HTTP budget is
   shared by harness and workloads. Each validator shares one boundary resolver
   between its two operators, but not with the other validator. With a two-minute
@@ -2769,10 +2954,10 @@ producer pass remain pending; earlier passing records are historical.
 | Server release-selected DB/proxy qualification | pass; frozen gate pending | `d184121d6b33ecf0253be92167f74e672ff7229f`; affected normal/race/vet, managed controller 108.45/164.81s, and proxy lifecycle 19.97/43.19s |
 | Server unselected full model/repository suites | pending if required by final gate/diagnosis | no broad pass inferred from focused selection |
 | SN runtime candidate | performance repair integrated as a83e6ba; full merged ordinary/race qualification pending; settlement repair isolated | a83e6baff174a0506ccdececd96ed60e6a1f0107; source freeze and current lock still pending |
-| Signed settlement-tail collection | deterministic pre-fix RED; repair remains unqualified and is being corrected after 65/67 ordinary result | prior held 38-file manifest bba7070c; semantic census 268; fresh post-repair fence required |
-| Settlement admission/draining/durability | real admission and steering-drain REDs; correct-source ordinary 65/67, race not run | vbFMDM raw 71ab6aaa; directory-fixture and cancellation ordering under repair |
-| Validator supported-platform build | new exporter fails existing darwin/arm64 build; minimal OS wrappers pending | sWFWO0 compiler RED; retain all four validator/Makefile targets |
-| Real M8 evidence capacity | read-only sizing audit pending | raw 32 MiB / graph 256 MiB; no load reduction, dropped census or cap waiver |
+| Signed settlement-tail collection | deterministic pre-fix RED; corrected v3 semantic27 ordinary/race GREEN | oVl3QU index 3df3f345; v3 manifest 54919b8e; same268 census; original-tail/full qualification pending |
+| Settlement admission/draining/durability | validator67 ordinary/race and copylocks GREEN after deterministic admission/drain/cancellation REDs | xuwZSt index 6695773c; later v3 changes only a sim-testnet fixture |
+| Validator supported-platform build | all four existing targets compile; Linux focused runtime selection passes | srUgU4 index22f33557; Darwin compiler RED closed, no Darwin runtime claim |
+| Real M8 evidence capacity | accepted 63-file wire-size sample; sample-linear configured ceiling exceeds monolithic bounds; v2 storage preparation underway | final e0ar8g index 446fc5a9; no live-throughput or capacity pass; section 10.3 |
 | Server candidate commit | affected allocation, reporting/query-plan, retention and strict-test ordinary/race pass; frozen gate pending | clean/pushed `b12af6b3aa18adb7b4e84251b2b8ab15c35f7ddc` |
 | Connect candidate commit | all three exact current-HEAD unsharded prequalifications pass | clean/pushed `1b81da6668e6a3ec9536ac61a07b27a619738cc7`; ordinary 530.545s, default race 1,169.652s, fixed-shuffle race 1,191.339s; frozen aggregate remains pending |
 | SDK candidate commit | affected token/points ordinary/race and root build/vet pass; frozen aggregate pending | clean/pushed `e1d8dc8d9682daefd86878fea911b7b643634406` |
