@@ -56,6 +56,14 @@ echo "[release-1.0 producer] exact runtime client and cancellation boundaries"
   go test -race ./crv4 ./miner ./validator -run "$runtime_client_tests" -count=1
 )
 
+echo "[release-1.0 producer] non-replacing validator and hotkey seed custody"
+(
+  cd "$sn_repo"
+  seed_custody_tests='^Test(Keypair|LoadOrCreateSeedFile|SeedFileFormats|SeedCustody|VpkSeed|EvmKeyLoadingAndMirror|HotkeyLoadOrCreate|IdentityCustody)'
+  go test ./crv4 ./validator -run "$seed_custody_tests" -count=1
+  go test -race ./crv4 ./validator -run "$seed_custody_tests" -count=1
+)
+
 echo "[release-1.0 producer] synthetic EVM block identity and canonical recovery"
 (
   cd "$sn_repo"
@@ -86,7 +94,7 @@ echo "[release-1.0 producer] strict proof and configuration framing"
 echo "[release-1.0 producer] signed validator evidence and settlement"
 (
   cd "$sn_repo"
-  producer_tests='^Test(Attempt|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
+  producer_tests='^Test(Attempt|DiskAttempt|TrailPolicyDepth|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
   go test ./validator -run "$producer_tests" -count=1
   go test -race ./validator -run "$producer_tests" -count=1
 )
@@ -117,7 +125,7 @@ echo "[release-1.0 producer] exact native, EVM, and ordinary-fleet semantic repl
 echo "[release-1.0 producer] lossless capture, completion, and publication"
 (
   cd "$sn_repo"
-  capture_tests='^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ProducerGateCaptureSelection)'
+  capture_tests='^Test(FinalArchive|FinalCompositeArchive|ArchivePreflight|FinalClaimQueueCapture|FinalCollected(Bundle|File|Chain)|FinalSemantic(PublicCapture|LaunchFoundation)|FinalContractCleanupCapture|VerifyFinalCollected|FleetLifecycle|CanonicalRPCReceiptLogs|ScenarioProcessLogGate|ReleaseAndProductionScenariosRequireProcessLogGate|ScenarioCompletion|ScenarioRunner(WritesCompleteEvidenceOnlyOnPass|FailureHasNoCompleteMarker)|PublishedScenarioCandidateKeepsFrozenHashWhenClockAdvances|PublishedCompletionCommits|CampaignEvidence|DirectScenarioCompletion|EvidenceFileHashes|ArchiveCurrentDeploymentPublication|VerifyPublishedEvidenceOrigin|ReleaseCandidateCampaign|ProductionCampaignCompletion|ReleaseCampaignGate|ExactReleaseCampaignGate|ScenarioCampaignAttempt|ProductionHandoff|InitialScenarioFailure|ProductionPolicyEvidence|PrepareSignedAttemptStateNamespace|ClassifyValidatorAttemptState|ValidatorStateNamespace|QualificationLauncher|ProducerGateStateSelection|ProducerGateCustodySelection|ProducerGateCaptureSelection)'
   # This is deliberately capture-only: typed semantic reconstruction, public
   # replay, supplement publication and FINAL.md rendering run post-capture.
   go test ./sim-testnet -run "$capture_tests" -count=1 -timeout 5m

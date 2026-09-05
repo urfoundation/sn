@@ -12,8 +12,19 @@ import (
 	"github.com/urfoundation/sn/ss58"
 )
 
+// Identity custody requires a non-shared immediate parent. Do not depend on
+// TempDir's umask-dependent child mode or chmod its existing ancestry.
+func identityTestStateDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestVpkSeedCreateAndReload(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestStateDir(t)
 	identity1, err := LoadIdentity(IdentityOptions{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +64,7 @@ func TestVpkSeedCreateAndReload(t *testing.T) {
 }
 
 func TestEvmKeyLoadingAndMirror(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestStateDir(t)
 	// The well-known test key (address 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf).
 	keyPath := filepath.Join(dir, "evm.key")
 	if err := os.WriteFile(keyPath, []byte("0x0000000000000000000000000000000000000000000000000000000000000001\n"), 0600); err != nil {
@@ -83,13 +94,13 @@ func TestEvmKeyLoadingAndMirror(t *testing.T) {
 
 	// RequireEvmKey with a missing file errors with guidance (never
 	// auto-generates).
-	if _, err := LoadIdentity(IdentityOptions{StateDir: t.TempDir(), RequireEvmKey: true}); err == nil {
+	if _, err := LoadIdentity(IdentityOptions{StateDir: identityTestStateDir(t), RequireEvmKey: true}); err == nil {
 		t.Fatal("missing evm key accepted")
 	}
 }
 
 func TestHotkeyLoadOrCreate(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestStateDir(t)
 	identity1, err := LoadIdentity(IdentityOptions{StateDir: dir, LoadHotkey: true})
 	if err != nil {
 		t.Fatal(err)

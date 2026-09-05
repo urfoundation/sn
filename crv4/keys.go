@@ -1,12 +1,9 @@
 package crv4
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
@@ -82,48 +79,24 @@ func (k *Keypair) Verify(msg, sig []byte) bool {
 }
 
 // LoadOrCreateSeedFile loads a 32-byte seed from path, or (if the file does
-// not exist) generates a fresh random seed and writes it as 0x-prefixed hex
-// with 0600 permissions. Accepted file contents: 64 hex chars with optional
-// 0x prefix and surrounding whitespace, or exactly 32 raw bytes.
+// not exist) durably publishes a fresh random seed without replacing any
+// occupied entry. Private regular files accept 64 hex chars with optional 0x
+// and whitespace, or exactly 32 raw bytes, within the 4096-byte file bound.
 func LoadOrCreateSeedFile(path string) (seed [32]byte, created bool, err error) {
-	raw, err := os.ReadFile(path)
-	switch {
-	case err == nil:
-		seed, err = parseSeedFile(raw)
-		if err != nil {
-			return seed, false, fmt.Errorf("crv4: %s: %w", path, err)
-		}
-		return seed, false, nil
-	case os.IsNotExist(err):
-		if _, err := rand.Read(seed[:]); err != nil {
-			return seed, false, err
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return seed, false, err
-		}
-		content := "0x" + hex.EncodeToString(seed[:]) + "\n"
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			return seed, false, err
-		}
-		return seed, true, nil
-	default:
-		return seed, false, err
-	}
+	return loadSeedFileOwned(path, true, false, seedFileHooks{})
 }
 
 // LoadSeedFile loads a 32-byte seed from path (hex or raw; see
 // LoadOrCreateSeedFile), failing if the file does not exist.
 func LoadSeedFile(path string) ([32]byte, error) {
-	var seed [32]byte
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return seed, err
-	}
-	seed, err = parseSeedFile(raw)
-	if err != nil {
-		return seed, fmt.Errorf("crv4: %s: %w", path, err)
-	}
-	return seed, nil
+	seed, _, err := loadSeedFileOwned(path, false, false, seedFileHooks{})
+	return seed, err
+}
+
+// Raw-only seed custody is shared with the validator's Ed25519 identity. The
+// same non-replacing publication and strict private-file checks apply.
+func LoadOrCreateRawSeedFile(path string) ([32]byte, bool, error) {
+	return loadSeedFileOwned(path, true, true, seedFileHooks{})
 }
 
 func parseSeedFile(raw []byte) ([32]byte, error) {

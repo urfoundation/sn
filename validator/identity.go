@@ -22,7 +22,6 @@ package validator
 import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -98,27 +97,11 @@ func readNetworkJwt() (string, error) {
 // when absent — the provider `.provider.key` convention.
 func loadOrCreateVpkSeed(stateDir string) ([]byte, bool, error) {
 	p := filepath.Join(stateDir, vpkSeedFileName)
-	seed, err := os.ReadFile(p)
-	if err == nil {
-		if len(seed) != ed25519.SeedSize {
-			return nil, false, fmt.Errorf("%s: expected a raw %d-byte seed, found %d bytes", p, ed25519.SeedSize, len(seed))
-		}
-		return seed, false, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
+	seed, created, err := crv4.LoadOrCreateRawSeedFile(p)
+	if err != nil {
 		return nil, false, err
 	}
-	seed = make([]byte, ed25519.SeedSize)
-	if _, err := rand.Read(seed); err != nil {
-		return nil, false, err
-	}
-	if err := ensurePrivateStateDir(stateDir); err != nil {
-		return nil, false, err
-	}
-	if err := atomicStateWrite(p, seed, 0o600); err != nil {
-		return nil, false, err
-	}
-	return seed, true, nil
+	return seed[:], created, nil
 }
 
 // loadEvmKey reads a hex-encoded 32-byte secp256k1 private key (stctl

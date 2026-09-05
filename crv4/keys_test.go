@@ -101,7 +101,12 @@ func TestLoadOrCreateSeedFile(t *testing.T) {
 }
 
 func TestSeedFileFormats(t *testing.T) {
-	dir := t.TempDir()
+	// TempDir's returned child is umask-dependent; seed custody needs an owned
+	// non-shared containing directory, independently of the file format.
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Hex with 0x and trailing newline.
 	hexPath := filepath.Join(dir, "hex.seed")
