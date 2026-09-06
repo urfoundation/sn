@@ -31,30 +31,56 @@ type finalHistoricalCoordinatorReceiptProof struct {
 // chronology can reject an omitted coordinator-targeted setup call without
 // reopening a mutable plan-history directory.
 func finalHistoricalCoordinatorArtifactLineage(evidence *FinalSemanticEvidence, current *SetupPlan, cache map[string][]byte) (map[string]*SetupPlan, []JournalEntry, []byte, error) {
-	if evidence == nil || current == nil || evidence.FleetGeneration == nil || len(cache) == 0 {
-		return nil, nil, nil, errors.New("historical coordinator artifact lineage inputs are unavailable")
-	}
-	lineageData, found := cache[evidence.FleetGeneration.Artifact.URI]
-	if !found {
-		return nil, nil, nil, errors.New("historical coordinator fleet lineage artifact is not loaded")
-	}
-	files, err := finalFleetGenerationArtifactFiles(evidence, lineageData)
+	return finalHistoricalCoordinatorArtifactLineageWithWork(evidence, current, cache, finalHistoricalCoordinatorArtifactWork{})
+}
+
+// Observes actual source decoding within one invocation without replacing any
+// of the strict lineage, plan or journal validators.
+func finalHistoricalCoordinatorArtifactLineageWithWork(evidence *FinalSemanticEvidence, current *SetupPlan, cache map[string][]byte, work finalHistoricalCoordinatorArtifactWork) (map[string]*SetupPlan, []JournalEntry, []byte, error) {
+	sources, err := finalHistoricalCoordinatorArtifactSourcesWithWork(evidence, current, cache, work)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return sources.planHashPlans, sources.entries, append([]byte(nil), sources.journal...), nil
+}
+
+// Owns decoded lineage bytes for one synchronous replay. The supplied current
+// plan remains read-only; a current receipt separately authenticates its bytes.
+type finalHistoricalCoordinatorArtifactSources struct {
+	planHashPlans map[string]*SetupPlan
+	planHashBytes map[string][]byte
+	entries       []JournalEntry
+	journal       []byte
+}
+
+// Retains only approved plan/journal inputs after the complete lineage decoder
+// has authenticated every file. No result is shared with another invocation.
+func finalHistoricalCoordinatorArtifactSourcesWithWork(evidence *FinalSemanticEvidence, current *SetupPlan, cache map[string][]byte, work finalHistoricalCoordinatorArtifactWork) (*finalHistoricalCoordinatorArtifactSources, error) {
+	if evidence == nil || current == nil || evidence.FleetGeneration == nil || len(cache) == 0 {
+		return nil, errors.New("historical coordinator artifact lineage inputs are unavailable")
+	}
+	lineageData, found := cache[evidence.FleetGeneration.Artifact.URI]
+	if !found {
+		return nil, errors.New("historical coordinator fleet lineage artifact is not loaded")
+	}
+	files, err := work.lineage(evidence, lineageData)
+	if err != nil {
+		return nil, err
+	}
 	currentData, found := files["launch-foundation/plan.json"]
 	if !found || !bytes.Equal(currentData, cache[evidence.PlanArtifact.URI]) {
-		return nil, nil, nil, errors.New("historical coordinator current plan differs from fleet lineage bytes")
+		return nil, errors.New("historical coordinator current plan differs from fleet lineage bytes")
 	}
 	plans := map[string]*SetupPlan{current.PlanHash: current}
+	planHashBytes := map[string][]byte{current.PlanHash: currentData}
 	expectedPaths := make(map[string]string, len(current.PriorPlanHashes))
 	for _, planHash := range current.PriorPlanHashes {
 		if err := requireFinalHex32("historical coordinator predecessor plan", planHash); err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 		path := filepath.ToSlash(filepath.Join("plan-history", stringsTrim0x(planHash)+".json"))
 		if _, duplicate := expectedPaths[path]; duplicate {
-			return nil, nil, nil, fmt.Errorf("historical coordinator predecessor plan path %s is duplicated", path)
+			return nil, fmt.Errorf("historical coordinator predecessor plan path %s is duplicated", path)
 		}
 		expectedPaths[path] = planHash
 	}
@@ -63,35 +89,42 @@ func finalHistoricalCoordinatorArtifactLineage(evidence *FinalSemanticEvidence, 
 			continue
 		}
 		if _, approved := expectedPaths[path]; !approved {
-			return nil, nil, nil, fmt.Errorf("historical coordinator lineage plan-history entry %s is unapproved", path)
+			return nil, fmt.Errorf("historical coordinator lineage plan-history entry %s is unapproved", path)
 		}
 	}
 	for path, planHash := range expectedPaths {
 		data, found := files[path]
 		if !found {
-			return nil, nil, nil, fmt.Errorf("historical coordinator predecessor plan %s is absent", planHash)
+			return nil, fmt.Errorf("historical coordinator predecessor plan %s is absent", planHash)
 		}
-		plan, decodeErr := decodePersistedPlanBytes(data)
+		plan, decodeErr := work.plan(data)
 		if decodeErr != nil || plan.PlanHash != planHash || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {
-			return nil, nil, nil, stateMismatchError(decodeErr, "historical coordinator predecessor plan %s differs from approved lineage", planHash)
+			return nil, stateMismatchError(decodeErr, "historical coordinator predecessor plan %s differs from approved lineage", planHash)
 		}
 		plans[planHash] = plan
+		planHashBytes[planHash] = data
 	}
 	journal, found := files["launch-foundation/journal.jsonl"]
 	if !found {
-		return nil, nil, nil, errors.New("historical coordinator lineage journal is absent")
+		return nil, errors.New("historical coordinator lineage journal is absent")
 	}
-	entries, err := decodeFinalSemanticJournalBytes(journal)
+	entries, err := work.journal(journal)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
-	return plans, entries, append([]byte(nil), journal...), nil
+	return &finalHistoricalCoordinatorArtifactSources{planHashPlans: plans, planHashBytes: planHashBytes, entries: entries, journal: journal}, nil
 }
 
 // Retrieves the exact retained plan bytes for one approved lineage member.
 // The current plan comes from its dedicated artifact; predecessors come only
 // from the sealed fleet-lineage namespace, never from an ambient run path.
 func finalHistoricalCoordinatorArtifactPlanBytes(evidence *FinalSemanticEvidence, current, plan *SetupPlan, cache map[string][]byte) ([]byte, error) {
+	return finalHistoricalCoordinatorArtifactPlanBytesWithWork(evidence, current, plan, cache, finalHistoricalCoordinatorArtifactWork{})
+}
+
+// Keeps the standalone plan-byte lookup strict while exposing its full
+// lineage decoding to the same call-local work observation.
+func finalHistoricalCoordinatorArtifactPlanBytesWithWork(evidence *FinalSemanticEvidence, current, plan *SetupPlan, cache map[string][]byte, work finalHistoricalCoordinatorArtifactWork) ([]byte, error) {
 	if evidence == nil || current == nil || plan == nil || evidence.FleetGeneration == nil {
 		return nil, errors.New("historical coordinator lineage plan is unavailable")
 	}
@@ -106,7 +139,7 @@ func finalHistoricalCoordinatorArtifactPlanBytes(evidence *FinalSemanticEvidence
 	if !found {
 		return nil, errors.New("historical coordinator fleet lineage artifact is not loaded")
 	}
-	files, err := finalFleetGenerationArtifactFiles(evidence, lineageData)
+	files, err := work.lineage(evidence, lineageData)
 	if err != nil {
 		return nil, err
 	}
@@ -390,6 +423,12 @@ func verifyFinalHistoricalCoordinatorOracleWindowArtifact(evidence *FinalSemanti
 // receipt. No mutable archive path or self-described evidence field is used
 // as authority during this offline review.
 func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvidence, current *SetupPlan, cache map[string][]byte) error {
+	return verifyFinalHistoricalCoordinatorReceiptArtifactsWithWork(evidence, current, cache, finalHistoricalCoordinatorArtifactWork{})
+}
+
+// Uses a production-nil observer at actual full decoder boundaries. No result
+// or input is shared with another invocation or borrowed from the observer.
+func verifyFinalHistoricalCoordinatorReceiptArtifactsWithWork(evidence *FinalSemanticEvidence, current *SetupPlan, cache map[string][]byte, work finalHistoricalCoordinatorArtifactWork) error {
 	if evidence == nil || current == nil || len(cache) == 0 {
 		return errors.New("historical coordinator artifact inputs are unavailable")
 	}
@@ -401,10 +440,11 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 	if err != nil {
 		return err
 	}
-	plans, entries, lineageJournal, err := finalHistoricalCoordinatorArtifactLineage(evidence, current, cache)
+	sources, err := finalHistoricalCoordinatorArtifactSourcesWithWork(evidence, current, cache, work)
 	if err != nil {
 		return err
 	}
+	plans, entries, lineageJournal := sources.planHashPlans, sources.entries, sources.journal
 	ordinary, err := finalSemanticUniqueCarriedEVMReceipts(evidence)
 	if err != nil {
 		return err
@@ -452,16 +492,27 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		}
 	}
 	receiptLogs := make(map[string][]finalCanonicalEVMLog, len(rows))
+	// The first pass authenticates every complete receipt before chronology;
+	// the row pass retains its exact bytes and transaction identity as well.
+	type decodedReceipt struct {
+		data        []byte
+		receipt     FinalEVMReceipt
+		transaction FinalCollectedEVMTransaction
+		logs        []finalCanonicalEVMLog
+	}
+	transactionHashReceipts := make(map[string]decodedReceipt, len(rows))
 	for transactionHash, row := range rows {
 		receiptData, found := cache[row.ReceiptArtifact.URI]
 		if !found {
 			return fmt.Errorf("historical coordinator receipt artifact %s is not loaded", transactionHash)
 		}
-		_, logs, receiptErr := finalHistoricalCoordinatorReceiptArtifactTransaction(row, receiptData)
+		ownedData := append([]byte(nil), receiptData...)
+		transaction, logs, receiptErr := work.receipt(row, ownedData)
 		if receiptErr != nil {
 			return fmt.Errorf("historical coordinator receipt artifact %s: %w", transactionHash, receiptErr)
 		}
 		receiptLogs[transactionHash] = logs
+		transactionHashReceipts[transactionHash] = decodedReceipt{data: ownedData, receipt: row.Receipt, transaction: transaction, logs: logs}
 	}
 	if finalHistoricalCoordinatorTimelineRequired(evidence) {
 		if err := verifyFinalHistoricalCoordinatorTimelineArtifact(evidence, current, plans, entries, cache[evidence.HistoricalCoordinatorTimelineArtifact.URI]); err != nil {
@@ -471,25 +522,40 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 	if err := verifyFinalHistoricalCoordinatorOracleWindowArtifact(evidence, current, plans, entries, rows, receiptLogs, cache); err != nil {
 		return err
 	}
+	var currentReceiptPlan *SetupPlan
 	for index := range evidence.HistoricalCoordinatorReceipts {
 		row := &evidence.HistoricalCoordinatorReceipts[index]
 		planData, found := cache[row.PlanArtifact.URI]
 		if !found {
 			return fmt.Errorf("historical coordinator plan artifact %d is not loaded", index)
 		}
-		plan, err := decodePersistedPlanBytes(planData)
 		lineagePlan := plans[row.PlanHash]
-		expectedPlanData, lineageErr := finalHistoricalCoordinatorArtifactPlanBytes(evidence, current, lineagePlan, cache)
-		if err != nil || lineageErr != nil || lineagePlan == nil || !bytes.Equal(planData, expectedPlanData) || !strings.EqualFold(plan.PlanHash, row.PlanHash) || !current.allowedPlanHashes()[plan.PlanHash] || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {
-			return stateMismatchError(errors.Join(err, lineageErr), "historical coordinator plan artifact %d differs from the approved lineage", index)
+		expectedPlanData, approved := sources.planHashBytes[row.PlanHash]
+		if lineagePlan == nil || !approved || !bytes.Equal(planData, expectedPlanData) {
+			return fmt.Errorf("historical coordinator plan artifact %d differs from the approved lineage", index)
+		}
+		plan := lineagePlan
+		if row.PlanHash == current.PlanHash {
+			if !bytes.Equal(cache[evidence.PlanArtifact.URI], expectedPlanData) {
+				return fmt.Errorf("historical coordinator plan artifact %d differs from the approved lineage", index)
+			}
+			if currentReceiptPlan == nil {
+				currentReceiptPlan, err = work.plan(expectedPlanData)
+				if err != nil {
+					return stateMismatchError(err, "historical coordinator plan artifact %d differs from the approved lineage", index)
+				}
+			}
+			plan = currentReceiptPlan
+		}
+		if !strings.EqualFold(plan.PlanHash, row.PlanHash) || !current.allowedPlanHashes()[plan.PlanHash] || plan.DeploymentID != evidence.DeploymentID || plan.ChainID != evidence.ChainID || plan.Netuid != evidence.Netuid {
+			return fmt.Errorf("historical coordinator plan artifact %d differs from the approved lineage", index)
 		}
 		journalData, found := cache[row.JournalArtifact.URI]
 		if !found {
 			return fmt.Errorf("historical coordinator journal artifact %d is not loaded", index)
 		}
-		entries, err := decodeFinalSemanticJournalBytes(journalData)
-		if err != nil {
-			return fmt.Errorf("historical coordinator journal artifact %d: %w", index, err)
+		if !bytes.Equal(journalData, lineageJournal) {
+			return fmt.Errorf("historical coordinator journal artifact %d differs from fleet-lineage journal", index)
 		}
 		action, finalized, verified, err := finalHistoricalCoordinatorJournalArtifactAction(evidence, current, plan, entries, row)
 		if err != nil {
@@ -511,10 +577,11 @@ func verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence *FinalSemanticEvi
 		if !found {
 			return fmt.Errorf("historical coordinator receipt artifact %d is not loaded", index)
 		}
-		transaction, logs, err := finalHistoricalCoordinatorReceiptArtifactTransaction(row, receiptData)
-		if err != nil {
-			return fmt.Errorf("historical coordinator receipt artifact %d: %w", index, err)
+		decoded, found := transactionHashReceipts[row.Receipt.TransactionHash]
+		if !found || !bytes.Equal(receiptData, decoded.data) || decoded.receipt != row.Receipt || decoded.transaction.TransactionHash != row.Receipt.TransactionHash || decoded.transaction.Block != row.Receipt.Block || decoded.transaction.From != row.TransactionFrom || decoded.transaction.To != row.TransactionTo || decoded.transaction.Input != row.TransactionInput || decoded.transaction.ValueWei != row.TransactionValueWei {
+			return fmt.Errorf("historical coordinator receipt artifact %d differs from its authenticated bytes or sealed row", index)
 		}
+		transaction, logs := decoded.transaction, decoded.logs
 		emitters, err := finalHistoricalCoordinatorEmitterGraph(logs)
 		if err != nil || !finalJSONEqual(emitters, row.Emitters) {
 			return stateMismatchError(err, "historical coordinator receipt artifact %d emitter graph differs", index)

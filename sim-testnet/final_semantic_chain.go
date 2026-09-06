@@ -7,7 +7,10 @@ package main
 // the raw request/result transcript by hash.
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1340,7 +1343,31 @@ func finalRPCExchangeHashes(exchange FinalRPCExchange) (string, string, error) {
 	return requestHash, responseHash, err
 }
 
+// Finalizes a complete transcript after replaying every independent check.
 func finalizePublicChainVerification(verification *FinalPublicChainVerification, chainID uint64, genesisHash string) error {
+	return finalizePublicChainVerificationWithMarshal(verification, chainID, genesisHash, json.Marshal)
+}
+
+// Keeps full-transcript serialization observable without replacing any RPC
+// canonicalization, chronology, identity or endpoint check.
+func finalizePublicChainVerificationWithMarshal(verification *FinalPublicChainVerification, chainID uint64, genesisHash string, marshal func(any) ([]byte, error)) error {
+	if err := verifyFinalPublicChainVerificationContents(verification, chainID, genesisHash); err != nil {
+		return err
+	}
+	copy := *verification
+	copy.TranscriptHash = ""
+	canonical, err := marshal(copy)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(canonical)
+	verification.TranscriptHash = "0x" + hex.EncodeToString(hash[:])
+	return nil
+}
+
+// Replays every transcript check without changing any input field. Finalizers
+// hash their supplied view; verification hashes its fully JSON-normalized copy.
+func verifyFinalPublicChainVerificationContents(verification *FinalPublicChainVerification, chainID uint64, genesisHash string) error {
 	if verification == nil || verification.Schema != finalPublicChainVerificationSchema || len(verification.Exchanges) == 0 {
 		return errors.New("public chain verification transcript is incomplete")
 	}
@@ -1390,13 +1417,6 @@ func finalizePublicChainVerification(verification *FinalPublicChainVerification,
 	if err := verifyFinalPublicChronologyTranscript(verification); err != nil {
 		return err
 	}
-	copy := *verification
-	copy.TranscriptHash = ""
-	hash, err := canonicalHashHex(copy)
-	if err != nil {
-		return err
-	}
-	verification.TranscriptHash = hash
 	return nil
 }
 
@@ -1432,7 +1452,14 @@ func validateFinalOperatorEvidenceOrigins(origins []FinalOperatorEvidenceOrigin,
 	return nil
 }
 
+// Verifies a detached JSON-normalized transcript without changing its caller.
 func verifyFinalPublicChainVerification(verification *FinalPublicChainVerification, chainID uint64, genesisHash string) error {
+	return verifyFinalPublicChainVerificationWithMarshal(verification, chainID, genesisHash, json.Marshal)
+}
+
+// Exposes only whole-transcript serialization for deterministic work counts.
+// The supplied operation must retain encoding/json's exact wire semantics.
+func verifyFinalPublicChainVerificationWithMarshal(verification *FinalPublicChainVerification, chainID uint64, genesisHash string, marshal func(any) ([]byte, error)) error {
 	if verification == nil {
 		return errors.New("public chain verification transcript is missing")
 	}
@@ -1440,7 +1467,9 @@ func verifyFinalPublicChainVerification(verification *FinalPublicChainVerificati
 	if err := requireFinalHex32("public chain transcript hash", want); err != nil {
 		return err
 	}
-	copyBytes, err := json.Marshal(verification)
+	unsigned := *verification
+	unsigned.TranscriptHash = ""
+	copyBytes, err := marshal(unsigned)
 	if err != nil {
 		return err
 	}
@@ -1448,11 +1477,25 @@ func verifyFinalPublicChainVerification(verification *FinalPublicChainVerificati
 	if err := json.Unmarshal(copyBytes, &copy); err != nil {
 		return err
 	}
-	if err := finalizePublicChainVerification(&copy, chainID, genesisHash); err != nil {
+	if err := verifyFinalPublicChainVerificationContents(&copy, chainID, genesisHash); err != nil {
 		return err
 	}
-	if copy.TranscriptHash != want {
-		return fmt.Errorf("public chain transcript hash %s, reconstructed %s", want, copy.TranscriptHash)
+	// The current typed transcript contains only structs, scalar values and
+	// slices plus RawMessage. Its unsigned wire is stable after this round trip
+	// except that invalid typed UTF-8 becomes an escaped replacement rune on
+	// the first marshal and literal UTF-8 on the second. Retain the original
+	// normalization for that case; raw replacement escapes may conservatively
+	// use the same fallback. Raw numbers/keys/escapes are never rewritten.
+	if bytes.Contains(copyBytes, []byte(`\ufffd`)) {
+		copyBytes, err = marshal(&copy)
+		if err != nil {
+			return err
+		}
+	}
+	hash := sha256.Sum256(copyBytes)
+	reconstructed := "0x" + hex.EncodeToString(hash[:])
+	if reconstructed != want {
+		return fmt.Errorf("public chain transcript hash %s, reconstructed %s", want, reconstructed)
 	}
 	return nil
 }

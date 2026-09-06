@@ -212,34 +212,51 @@ func VerifyAttemptSettlementBatch(transitions []*AttemptSettlementTransition) er
 // Every participant reaches the same cut primitive before its batch identity
 // can be accepted; the caller owns that primitive for this operation.
 func verifyAttemptSettlementBatchWithCutVerifier(transitions []*AttemptSettlementTransition, verifyCut attemptLedgerCutVerifier) error {
+	ordered, err := orderedAttemptSettlementBatch(transitions)
+	if err != nil {
+		return err
+	}
+	wantIdentity, wantBoundary, wantEpoch, wantBatch := ordered[0].Identity, ordered[0].FromBoundary, ordered[0].ToEpoch, ordered[0].Batch
+	for index, transition := range ordered {
+		if err := verifyAttemptSettlementTransitionWithCutVerifier(transition, verifyCut); err != nil {
+			return fmt.Errorf("settlement transition no_id %d: %w", transition.Identity.NoID, err)
+		}
+		if err := matchAttemptSettlementBatchMember(wantIdentity, wantBoundary, wantEpoch, wantBatch, transition, index); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Makes a detached participant ordering and rejects incomplete coverage before
+// either the standalone authentication pass or the containing membership join.
+func orderedAttemptSettlementBatch(transitions []*AttemptSettlementTransition) ([]*AttemptSettlementTransition, error) {
 	if len(transitions) == 0 {
-		return errors.New("settlement transition batch is empty")
+		return nil, errors.New("settlement transition batch is empty")
 	}
 	ordered := append([]*AttemptSettlementTransition(nil), transitions...)
 	for _, transition := range ordered {
 		if transition == nil {
-			return errors.New("settlement transition batch contains nil")
+			return nil, errors.New("settlement transition batch contains nil")
 		}
 	}
 	sort.Slice(ordered, func(i, j int) bool {
 		return ordered[i].Identity.NoID < ordered[j].Identity.NoID
 	})
-	wantBatch := ordered[0].Batch
-	wantIdentity := ordered[0].Identity
-	wantBoundary, wantEpoch := ordered[0].FromBoundary, ordered[0].ToEpoch
-	if len(wantBatch) != len(ordered) {
-		return errors.New("settlement transition batch coverage differs")
+	if len(ordered[0].Batch) != len(ordered) {
+		return nil, errors.New("settlement transition batch coverage differs")
 	}
-	for index, transition := range ordered {
-		if err := verifyAttemptSettlementTransitionWithCutVerifier(transition, verifyCut); err != nil {
-			return fmt.Errorf("settlement transition no_id %d: %w", transition.Identity.NoID, err)
-		}
-		if !equalAttemptSettlementIdentity(wantIdentity, transition.Identity) || transition.FromBoundary != wantBoundary || transition.ToEpoch != wantEpoch || !equalAttemptSettlementBatch(wantBatch, transition.Batch) {
-			return errors.New("settlement transitions do not share one transaction")
-		}
-		if wantBatch[index].NoID != transition.Identity.NoID {
-			return errors.New("settlement transition participant coverage differs")
-		}
+	return ordered, nil
+}
+
+// Compares one participant against the shared transaction and its exact
+// position; the caller separately owns complete transition authentication.
+func matchAttemptSettlementBatchMember(wantIdentity AttemptLedgerIdentity, wantBoundary AttemptBoundary, wantEpoch uint64, wantBatch []AttemptSettlementMember, transition *AttemptSettlementTransition, index int) error {
+	if !equalAttemptSettlementIdentity(wantIdentity, transition.Identity) || transition.FromBoundary != wantBoundary || transition.ToEpoch != wantEpoch || !equalAttemptSettlementBatch(wantBatch, transition.Batch) {
+		return errors.New("settlement transitions do not share one transaction")
+	}
+	if wantBatch[index].NoID != transition.Identity.NoID {
+		return errors.New("settlement transition participant coverage differs")
 	}
 	return nil
 }

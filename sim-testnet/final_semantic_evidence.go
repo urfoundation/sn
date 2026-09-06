@@ -867,6 +867,12 @@ func VerifyFinalSemanticEvidence(evidence *FinalSemanticEvidence) error {
 }
 
 func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bool) error {
+	return verifyFinalSemanticEvidenceWithLineageVerifier(evidence, requireHash, verifyFinalFleetGenerationLineage)
+}
+
+// Observes complete lineage verification across this one pure semantic
+// operation. No field, public transcript or artifact check is bypassed.
+func verifyFinalSemanticEvidenceWithLineageVerifier(evidence *FinalSemanticEvidence, requireHash bool, verifyLineage func(*FinalSemanticEvidence, *FinalFleetGenerationLineageEvidence) error) error {
 	if evidence == nil {
 		return errors.New("final semantic evidence is nil")
 	}
@@ -932,7 +938,7 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 		return err
 	}
 	if evidence.FleetGeneration != nil {
-		if err := verifyFinalFleetGenerationLineage(evidence, evidence.FleetGeneration); err != nil {
+		if err := verifyLineage(evidence, evidence.FleetGeneration); err != nil {
 			return err
 		}
 		if err := verifyFinalFleetGenerationEventTopology(evidence, evidence.FleetGeneration); err != nil {
@@ -1001,8 +1007,18 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 			return err
 		}
 		if evidence.FleetGeneration != nil {
-			if err := verifyFinalPublicFleetGenerationAudit(evidence, evidence.PublicVerification.FleetGenerationAudit); err != nil {
+			// The exact lineage passed full authentication above; no reader or
+			// caller callback intervenes before this pure projection comparison.
+			audit := evidence.PublicVerification.FleetGenerationAudit
+			if err := verifyFinalPublicFleetGenerationAuditShape(audit); err != nil {
 				return err
+			}
+			want, err := finalPublicFleetGenerationAuditProjection(evidence.FleetGeneration)
+			if err != nil {
+				return err
+			}
+			if audit != want {
+				return errors.New("public ordinary fleet generation audit differs from sealed projection")
 			}
 		}
 		if err := verifyFinalPublicNativePayoutAudit(evidence, evidence.PublicVerification.NativePayoutAudit); err != nil {
@@ -3412,6 +3428,18 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if finalSemanticArtifactVerificationCacheHit(cacheKey) {
 		return nil
 	}
+	if err := verifyFinalSemanticArtifactInputs(ctx, evidence, uses, cache, finalSemanticNamespaceWork{}); err != nil {
+		return err
+	}
+	finalSemanticArtifactVerificationCacheStore(cacheKey)
+	return nil
+}
+
+// Replays the exact owned graph selected by the public wrapper's complete
+// semantic checks and loader. This is its unchanged cache-miss continuation;
+// observation supplies no input, cache hit or authentication result.
+func verifyFinalSemanticArtifactInputs(ctx context.Context, evidence *FinalSemanticEvidence, uses []finalSemanticArtifactUse, cache map[string][]byte, namespaceWork finalSemanticNamespaceWork) error {
+	namespaceWork = namespaceWork.forInvocation()
 	lineageFiles, err := decodeFinalFleetLifecycleLineageFiles(evidence, cache[evidence.FleetLifecycle.LineageArtifact.URI])
 	if err != nil {
 		return err
@@ -3466,7 +3494,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		return err
 	}
 	if evidence.FleetGeneration != nil {
-		if err := verifyFinalFleetGenerationArtifacts(evidence, cache); err != nil {
+		if err := verifyFinalFleetGenerationArtifactsWithNamespaceWork(evidence, cache, namespaceWork); err != nil {
 			return err
 		}
 	}
@@ -3515,7 +3543,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err := verifyFinalDeploymentArtifact(evidence, plan, lock, cache[evidence.Deployment.Artifact.URI]); err != nil {
 		return err
 	}
-	if err := verifyFinalHistoricalCoordinatorReceiptArtifacts(evidence, plan, cache); err != nil {
+	if err := verifyFinalHistoricalCoordinatorReceiptArtifactsWithWork(evidence, plan, cache, finalHistoricalCoordinatorArtifactWork{namespaceWork: namespaceWork}); err != nil {
 		return err
 	}
 	if err := verifyFinalReserveArtifact(evidence, cache[evidence.Reserve.Artifact.URI]); err != nil {
@@ -3650,7 +3678,6 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err := verifyFinalValidatorViewTransitionArtifact(evidence, cache[evidence.ValidatorView.Artifact.URI]); err != nil {
 		return err
 	}
-	finalSemanticArtifactVerificationCacheStore(cacheKey)
 	return nil
 }
 

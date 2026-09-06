@@ -94,10 +94,12 @@ func TestReleaseSemanticCensusPinsSettlementClosureRegressions(t *testing.T) {
 		{path: "final_semantic_settlement_closure.go", function: "collectFinalSettlementClosure", callee: "DecodeAttemptSettlementClosureWithServerKeys"},
 		{path: "../validator/attempt_closure.go", function: "DecodeAttemptSettlementClosureWithServerKeys", callee: "decodeAttemptSettlementClosureWithServerKeysAndVerifier"},
 		{path: "../validator/attempt_closure.go", function: "decodeAttemptSettlementClosureWithServerKeysAndVerifier", callee: "decodeAttemptSettlementClosureWithCutVerifier"},
-		{path: "../validator/attempt_ledger.go", function: "verifyAttemptLedgerCutWithAssignVerifier", callee: "verifyAttemptRecordWithAssignVerifier"},
+		{path: "../validator/attempt_ledger.go", function: "verifyAttemptLedgerCutWithAssignVerifier", callee: "verifyAttemptLedgerCutWithComparison"},
+		{path: "../validator/attempt_ledger.go", function: "verifyAttemptLedgerCutWithComparison", callee: "verifyAttemptRecordWithAssignVerifier"},
 		{path: "../validator/attempt_ledger.go", function: "BuildCut", callee: "releaseBlockAtOrBefore"},
-		{path: "../validator/attempt_ledger.go", function: "verifyAttemptLedgerCutWithAssignVerifier", callee: "releaseBlockAtOrBefore"},
-		{path: "../validator/release_measurement.go", function: "releaseMeasurementStats", callee: "releaseBlockAtOrBefore"},
+		{path: "../validator/attempt_ledger.go", function: "verifyAttemptLedgerCutWithComparison", callee: "releaseBlockAtOrBefore"},
+		{path: "../validator/release_measurement.go", function: "releaseMeasurementStats", callee: "releaseMeasurementStatsWithCutVerifier"},
+		{path: "../validator/release_measurement.go", function: "releaseMeasurementStatsWithCutVerifier", callee: "releaseBlockAtOrBefore"},
 		{path: "../validator/release_measurement.go", function: "releaseAttemptCutExtends", callee: "releaseBlockAtOrBefore"},
 		{path: "../validator/release_measurement.go", function: "loadOrDetachReleaseMeasurementInput", callee: "releaseBlockAtOrBefore"},
 		{path: "../validator/release_steer.go", function: "takeHeadEvidence", callee: "releaseBlockAtOrBefore"},
@@ -106,7 +108,8 @@ func TestReleaseSemanticCensusPinsSettlementClosureRegressions(t *testing.T) {
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifacts", callee: "verifyFinalSettlementClosureArtifactsWithLineage"},
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifactsWithLineage", callee: "verifyFinalSettlementClosureArtifactsWithAuthority"},
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifactsWithAuthority", callee: "verifyFinalMeasurementSettlementClosures"},
-		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "verifyFinalSettlementClosureArtifactsWithAuthority"},
+		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "verifyFinalSemanticArtifactInputs"},
+		{path: "final_semantic_evidence.go", function: "verifyFinalSemanticArtifactInputs", callee: "verifyFinalSettlementClosureArtifactsWithAuthority"},
 	} {
 		if !releaseClosureFunctionCalls(t, check.path, check.function)[check.callee] {
 			t.Errorf("%s omits actual call %s", check.function, check.callee)

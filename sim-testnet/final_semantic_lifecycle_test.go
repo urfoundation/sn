@@ -259,6 +259,12 @@ func TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire(t *testing.T) {
 // envelope as a production release plan. The semantic archive supplies only
 // its synthetic genesis, authenticated ancestor, and coordinator targets.
 func finalSemanticFixtureSetupPlan(cfg *ResolvedConfig, source *FinalSemanticEvidence) (*SetupPlan, error) {
+	return finalSemanticFixtureSetupPlanWithBuilder(cfg, source, buildPlan)
+}
+
+// Counts complete production plan construction without changing its inputs,
+// semantic rebinding or persisted-budget validation.
+func finalSemanticFixtureSetupPlanWithBuilder(cfg *ResolvedConfig, source *FinalSemanticEvidence, builder func(*ResolvedConfig, *SetupFacts, PublicRoles, time.Time) (*SetupPlan, error)) (*SetupPlan, error) {
 	if cfg == nil || cfg.Config == nil || source == nil || source.PlanHash == "" || source.DeploymentID == "" || source.GenesisHash == "" || source.ConfigHash == "" || source.PolicyHash == "" || !common.IsHexAddress(source.Deployment.CoordinatorProxy) {
 		return nil, fmt.Errorf("semantic fixture setup plan context is incomplete")
 	}
@@ -275,7 +281,7 @@ func finalSemanticFixtureSetupPlan(cfg *ResolvedConfig, source *FinalSemanticEvi
 	if err != nil {
 		return nil, err
 	}
-	plan, err := buildPlan(cfg, testSetupFacts(), publicRoles, time.Unix(1_700_000_000, 0).UTC())
+	plan, err := builder(cfg, testSetupFacts(), publicRoles, time.Unix(1_700_000_000, 0).UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -323,6 +329,7 @@ func finalSemanticFixtureSetupPlan(cfg *ResolvedConfig, source *FinalSemanticEvi
 // fixture serialization, and that self-consistently rehashed omissions still
 // fail production persisted-plan validation.
 func TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	cfg.Config.Deployment.DeploymentID = "semantic-plan-fixture"
 	cfg.Netuid = 521
@@ -710,7 +717,10 @@ func TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary(t *t
 // construction adjacent to the lifecycle verifier makes every plan, journal,
 // signature, historical UID, and applied-vector substitution testable without
 // accepting a summary-only fixture.
-func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidence, artifacts map[string][]byte) {
+// Takes ownership of the independently reconstructed, budget-validated plan
+// after deployment parity succeeds, and constructs every signed sidecar from
+// it. No other caller retains or mutates its nested maps and slices.
+func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidence, artifacts map[string][]byte, planValue *SetupPlan) {
 	t.Helper()
 	if source == nil {
 		t.Fatal("nil semantic fixture")
@@ -828,9 +838,8 @@ func attachFinalFleetLifecycleFixture(t *testing.T, source *FinalSemanticEvidenc
 		commitmentHashByVariant[name] = hash
 	}
 
-	planValue, err := finalSemanticFixtureSetupPlan(cfg, source)
-	if err != nil {
-		t.Fatal(err)
+	if planValue == nil || planValue.Schema != currentSetupPlanSchema || planValue.Release != "1.0" || planValue.DeploymentID != source.DeploymentID || planValue.ChainID != source.ChainID || planValue.Netuid != source.Netuid || planValue.ConfigHash != source.ConfigHash || planValue.PolicyHash != source.PolicyHash || planValue.GenesisHash != source.GenesisHash || len(planValue.PriorPlanHashes) != 1 || planValue.PriorPlanHashes[0] != source.PlanHash {
+		t.Fatal("independently reconstructed lifecycle plan differs from semantic identity")
 	}
 	plan := *planValue
 	actionByID := make(map[string]Action, len(plan.Actions))

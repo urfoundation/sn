@@ -308,25 +308,45 @@ func finalAttemptSettlementCoreFrom(transition *validatorpkg.AttemptSettlementTr
 	}
 }
 
+// Caller-only compatibility wrapper for deterministic signed settlement bytes.
 func finalAttemptSettlementDigest(t *testing.T, transition *validatorpkg.AttemptSettlementTransition) string {
 	t.Helper()
-	encoded, err := json.Marshal(finalAttemptSettlementCoreFrom(transition))
+	value, err := finalAttemptSettlementDigestResult(transition)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return value
+}
+
+// Errors return to the owner; workers never terminate their test goroutine.
+func finalAttemptSettlementDigestResult(transition *validatorpkg.AttemptSettlementTransition) (string, error) {
+	encoded, err := json.Marshal(finalAttemptSettlementCoreFrom(transition))
+	if err != nil {
+		return "", err
 	}
 	digest := sha256.New()
 	_, _ = digest.Write([]byte(finalAttemptSettlementDigestDomain))
 	_, _ = digest.Write(encoded)
-	return "0x" + hex.EncodeToString(digest.Sum(nil))
+	return "0x" + hex.EncodeToString(digest.Sum(nil)), nil
 }
 
+// Caller-only compatibility wrapper for the exact settlement signing message.
 func finalAttemptSettlementMessage(t *testing.T, transition *validatorpkg.AttemptSettlementTransition) []byte {
 	t.Helper()
-	encoded, err := json.Marshal(finalAttemptSettlementPayload{Core: finalAttemptSettlementCoreFrom(transition), Batch: transition.Batch})
+	value, err := finalAttemptSettlementMessageResult(transition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return append([]byte(finalAttemptSettlementSignDomain), encoded...)
+	return value
+}
+
+// Preserve the complete canonical signing payload without worker fatal paths.
+func finalAttemptSettlementMessageResult(transition *validatorpkg.AttemptSettlementTransition) ([]byte, error) {
+	encoded, err := json.Marshal(finalAttemptSettlementPayload{Core: finalAttemptSettlementCoreFrom(transition), Batch: transition.Batch})
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(finalAttemptSettlementSignDomain), encoded...), nil
 }
 
 func finalAttemptFixtureID(value uint64) connect.Id {
@@ -376,12 +396,38 @@ func finalSemanticFixtureAttemptGroupCount(providers int) int {
 // remains authoritative for every counter, proof, and chain transition.
 func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurementArtifact, validatorKey ed25519.PrivateKey, serverKeys []ed25519.PrivateKey, ledgers map[uint64]*finalAttemptFixtureLedger, previous *validatorpkg.ReleaseMeasurementArtifact) {
 	t.Helper()
-	vpk := validatorKey.Public().(ed25519.PublicKey)
+	if err := attachFinalAttemptCutsResult(artifact, validatorKey, serverKeys, ledgers, previous); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Each lane exclusively owns its ledgers and chronological measurement inputs.
+func attachFinalAttemptCutsResult(artifact *validatorpkg.ReleaseMeasurementArtifact, validatorKey ed25519.PrivateKey, serverKeys []ed25519.PrivateKey, ledgers map[uint64]*finalAttemptFixtureLedger, previous *validatorpkg.ReleaseMeasurementArtifact) error {
+	return attachFinalAttemptCutsResultWithWork(artifact, validatorKey, serverKeys, ledgers, previous, finalSemanticFixtureWorkControl{})
+}
+
+// Observes the actual prepared operator identities and record-work entry;
+// zero-value observation preserves the ordinary fixture's full verification.
+func attachFinalAttemptCutsResultWithWork(artifact *validatorpkg.ReleaseMeasurementArtifact, validatorKey ed25519.PrivateKey, serverKeys []ed25519.PrivateKey, ledgers map[uint64]*finalAttemptFixtureLedger, previous *validatorpkg.ReleaseMeasurementArtifact, work finalSemanticFixtureWorkControl) error {
+	if work.ctx == nil {
+		work.ctx = context.Background()
+	}
+	if err := work.ctx.Err(); err != nil {
+		return err
+	}
+	if artifact == nil || len(validatorKey) != ed25519.PrivateKeySize || ledgers == nil {
+		return fmt.Errorf("fixture attempt ownership or key is incomplete")
+	}
+	for _, key := range serverKeys {
+		if len(key) != ed25519.PrivateKeySize {
+			return fmt.Errorf("fixture server key is incomplete")
+		}
+	}
 	bindingByNO := map[uint64]map[connect.Id]validatorpkg.AttemptBinding{}
 	for _, binding := range artifact.Bindings {
 		clientID, err := connect.ParseId(binding.ClientID)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if bindingByNO[binding.NoID] == nil {
 			bindingByNO[binding.NoID] = map[connect.Id]validatorpkg.AttemptBinding{}
@@ -405,173 +451,86 @@ func attachFinalAttemptCuts(t *testing.T, artifact *validatorpkg.ReleaseMeasurem
 		}
 		if artifact.SettlementEpoch != previous.SettlementEpoch {
 			if artifact.SettlementEpoch != previous.SettlementEpoch+1 {
-				t.Fatalf("fixture settlement epoch jumped from %d to %d", previous.SettlementEpoch, artifact.SettlementEpoch)
+				return fmt.Errorf("fixture settlement epoch jumped from %d to %d", previous.SettlementEpoch, artifact.SettlementEpoch)
 			}
-			transitions := finalSemanticFixtureTerminalTransitions(t, previous, validatorKey)
+			transitions, err := finalSemanticFixtureTerminalTransitionsResult(previous, validatorKey)
+			if err != nil {
+				return err
+			}
 			if len(transitions) != len(artifact.Inputs) {
-				t.Fatal("fixture settlement transition operator census changed")
+				return fmt.Errorf("fixture settlement transition operator census changed")
 			}
 			if err := validatorpkg.VerifyAttemptSettlementBatch(transitions); err != nil {
-				t.Fatalf("fixture settlement transition batch: %v", err)
+				return fmt.Errorf("fixture settlement transition batch: %v", err)
 			}
 			for _, transition := range transitions {
 				transitionsByNO[transition.Identity.NoID] = transition
 			}
 		}
 	}
-	for inputIndex := range artifact.Inputs {
-		input := &artifact.Inputs[inputIndex]
-		if input.NoID == 0 || input.NoID > uint64(len(serverKeys)) {
-			t.Fatalf("invalid fixture operator %d", input.NoID)
+	jobs := make([]finalSemanticFixtureAttemptJob, len(artifact.Inputs))
+	seenNOIDs := map[uint64]bool{}
+	for inputIndex, input := range artifact.Inputs {
+		if input.NoID == 0 || input.NoID > uint64(len(serverKeys)) || seenNOIDs[input.NoID] {
+			return fmt.Errorf("invalid or duplicated fixture operator %d", input.NoID)
 		}
-		serverKey := serverKeys[input.NoID-1]
+		seenNOIDs[input.NoID] = true
 		identity := validatorpkg.AttemptLedgerIdentity{
 			DeploymentID: artifact.DeploymentID, ChainID: artifact.ChainID, GenesisHash: artifact.GenesisHash,
 			Netuid: artifact.Netuid, ValidatorID: artifact.ValidatorID, ValidatorUID: artifact.SelfUID, NoID: input.NoID,
 		}
-		expectedLedger, err := newFinalAttemptFixtureLedger(identity, validatorKey)
+		ledger, err := newFinalAttemptFixtureLedger(identity, validatorKey)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
-		ledger := ledgers[input.NoID]
-		if ledger == nil {
-			ledger = expectedLedger
-			ledgers[input.NoID] = ledger
-		} else if ledger.identity != expectedLedger.identity {
-			t.Fatalf("fixture attempt ledger identity changed for operator %d", input.NoID)
+		if prior := ledgers[input.NoID]; prior != nil {
+			if prior.identity != ledger.identity || !bytes.Equal(prior.validatorKey, validatorKey) {
+				return fmt.Errorf("fixture attempt ledger identity changed for operator %d", input.NoID)
+			}
+			// Existing records are append-only. Cap clipping prevents the worker
+			// from overwriting any caller-owned spare tail before the join.
+			ledger.records = prior.records[:len(prior.records):len(prior.records)]
 		}
-		boundary := validatorpkg.AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
-		tokens := make([]finalAttemptFixtureToken, 0)
-		providerIndexByID := map[connect.Id]int{}
-		for providerIndex := range input.Stats.Providers {
-			provider := &input.Stats.Providers[providerIndex]
-			if len(provider.EgressIPHashHexes) == 0 {
-				continue
-			}
-			clientID, err := connect.ParseId(provider.ClientID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			egressBytes, err := hex.DecodeString(strings.TrimPrefix(provider.EgressIPHashHexes[0], "0x"))
-			if err != nil || len(egressBytes) != 32 {
-				t.Fatalf("invalid fixture egress for %s", provider.ClientID)
-			}
-			var egress [32]byte
-			copy(egress[:], egressBytes)
-			provider.Assignments, provider.Confirmations = 1, 1
-			provider.LatencyBuckets[0] = 1
-			tokens = append(tokens, finalAttemptFixtureToken{clientID: clientID, binding: bindingByNO[input.NoID][clientID], egress: egress})
-			providerIndexByID[clientID] = providerIndex
+		job := finalSemanticFixtureAttemptJob{
+			input: cloneFinalSemanticFixtureMeasurementInput(input), ledger: ledger,
+			validatorKey: append(ed25519.PrivateKey(nil), validatorKey...),
+			serverKey:    append(ed25519.PrivateKey(nil), serverKeys[input.NoID-1]...),
+			bindings:     bindingByNO[input.NoID], validatorID: artifact.ValidatorID, settlementEpoch: artifact.SettlementEpoch,
+			transition: transitionsByNO[input.NoID],
 		}
-		allTokens := append([]finalAttemptFixtureToken(nil), tokens...)
-		sequence := uint64(0)
-		for len(tokens) != 0 {
-			groupSize := finalSemanticFixtureAttemptGroupSize(len(tokens))
-			group := append([]finalAttemptFixtureToken(nil), tokens[:groupSize]...)
-			tokens = tokens[groupSize:]
-			for _, token := range allTokens {
-				if len(group) == finalSemanticFixtureMaximumAttemptM-1 {
-					break
-				}
-				present := false
-				for _, member := range group {
-					present = present || member.clientID == token.clientID
-				}
-				if present {
-					continue
-				}
-				group = append(group, token)
-				provider := &input.Stats.Providers[providerIndexByID[token.clientID]]
-				provider.Assignments++
-				provider.Confirmations++
-				provider.LatencyBuckets[0]++
-			}
-			if len(group) != finalSemanticFixtureMaximumAttemptM-1 {
-				t.Fatal("fixture population cannot fill one policy-depth trail")
-			}
-			sequence++
-			trailID := finalAttemptFixtureID(artifact.ValidatorID*100_000_000 + artifact.SettlementEpoch*1_000_000 + input.NoID*10_000 + sequence)
-			seedID := finalAttemptFixtureID(9_000_000_000 + artifact.ValidatorID*100_000_000 + artifact.SettlementEpoch*1_000_000 + input.NoID*10_000 + sequence)
-			nonce := make([]byte, connect.VerifyNonceSize)
-			binary.BigEndian.PutUint64(nonce[len(nonce)-8:], artifact.ValidatorID*100_000_000+artifact.SettlementEpoch*1_000_000+input.NoID*10_000+sequence)
-			m := len(group) + 1
-			trail := []connect.Id{seedID}
-			hops := []connect.VerifyProofHop{{ClientId: seedID, TimeMs: sequence * 1000}}
-			assignments := make([]validatorpkg.AttemptAssignment, 0, len(group))
-			for tokenIndex, token := range group {
-				walked := append(append([]connect.Id(nil), trail...), token.clientID)
-				message, err := connect.BuildVerifyAssignMessage(1, trailID, nonce, vpk, byte(m), walked)
-				if err != nil {
-					t.Fatal(err)
-				}
-				assignments = append(assignments, validatorpkg.AttemptAssignment{
-					Trail: append([]connect.Id(nil), trail...), NextHop: token.clientID, ServerKeyID: 1,
-					AssignMessage: message, AssignSignature: ed25519.Sign(serverKey, message), Confirmed: true, HasLatency: true, Binding: token.binding,
-				})
-				trail = walked
-				hops = append(hops, connect.VerifyProofHop{ClientId: token.clientID, TimeMs: sequence*1000 + uint64(tokenIndex+1), EgressIpHash: token.egress})
-			}
-			finalMessage, err := connect.BuildVerifyFinalMessage(1, trailID, nonce, vpk, byte(m), hops)
-			if err != nil {
-				t.Fatal(err)
-			}
-			extendMessage, err := connect.BuildVerifyExtendMessage(trailID, nonce, vpk, byte(m), trail)
-			if err != nil {
-				t.Fatal(err)
-			}
-			digest := connect.VerifyFinalDigest(finalMessage)
-			pathID := validatorpkg.TrailPathId(trailID, vpk, 1)
-			proof := &validatorpkg.ProofRecord{
-				Version: 1, Epoch: input.SettlementEpoch, TrailId: trailID, ServerNonce: nonce, Vpk: append([]byte(nil), vpk...), M: m, Hops: hops,
-				ServerKeyId: 1, FinalSig: ed25519.Sign(serverKey, finalMessage), VerifierSig: ed25519.Sign(validatorKey, extendMessage),
-				FinalDigest: digest[:], VpkSig: ed25519.Sign(validatorKey, finalMessage), Coverage: uint64(m - 1), PathId: pathID[:], CompleteTimeMs: hops[len(hops)-1].TimeMs,
-			}
-			for assignmentIndex := range assignments {
-				checkpoint := append([]validatorpkg.AttemptAssignment(nil), assignments[:assignmentIndex+1]...)
-				last := len(checkpoint) - 1
-				checkpoint[last].Confirmed, checkpoint[last].HasLatency, checkpoint[last].LatencyBucket = false, false, 0
-				if err := ledger.append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: checkpoint, Disposition: validatorpkg.AttemptDispositionPending}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err := ledger.append(validatorpkg.AttemptRecord{Boundary: boundary, TrailID: trailID, ServerNonce: nonce, M: m, Assignments: assignments, Disposition: validatorpkg.AttemptDispositionComplete, Proof: proof}); err != nil {
-				t.Fatal(err)
-			}
+		if prior, exists := previousByNO[input.NoID]; exists {
+			job.previous = &prior
+			job.changedEpoch = artifact.SettlementEpoch != previous.SettlementEpoch
 		}
-		firstSequence := uint64(1)
-		if prior, exists := previousByNO[input.NoID]; exists && artifact.SettlementEpoch != previous.SettlementEpoch {
-			if prior.Stats.AttemptCut == nil {
-				t.Fatalf("prior fixture operator %d has no attempt cut", input.NoID)
-			}
-			firstSequence = prior.Stats.AttemptCut.LastSequence + 1
+		if len(transitionsByNO) != 0 && job.transition == nil {
+			return fmt.Errorf("fixture settlement transition operator %d is absent", input.NoID)
 		}
-		cut, err := ledger.buildCut(boundary, firstSequence, firstSequence)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := validatorpkg.VerifyAttemptLedgerCut(cut, vpk, map[byte]ed25519.PublicKey{1: serverKey.Public().(ed25519.PublicKey)}); err != nil {
-			t.Fatal(err)
-		}
-		input.Stats.AttemptCut = cut
-		if len(transitionsByNO) == 0 {
-			continue
-		}
-		transition := transitionsByNO[input.NoID]
-		if transition == nil || transition.Identity != cut.Identity {
-			t.Fatalf("fixture settlement transition operator %d identity changed", input.NoID)
-		}
-		priorQuality := make(map[string]validatorpkg.AttemptSettlementQuality, len(transition.PostFold))
-		for _, quality := range transition.PostFold {
-			priorQuality[quality.ClientID] = quality
-		}
-		for providerIndex := range input.Stats.Providers {
-			provider := &input.Stats.Providers[providerIndex]
-			quality, exists := priorQuality[provider.ClientID]
-			provider.HasPriorQuality = exists
-			provider.PriorQualityPPM = quality.QualityPPM
-		}
-		input.Stats.SettlementTransition = transition
+		jobs[inputIndex] = job
+		work.observeMeasurement(finalSemanticFixtureOperatorPrepared, artifact.ValidatorID, artifact.SettlementEpoch, input.NoID)
 	}
+	operatorWork := work
+	operatorWork.observer = nil
+	if err := operatorWork.run(finalSemanticFixtureOperatorBody, len(jobs), 2, func(ctx context.Context, index int) error {
+		ownedWork := operatorWork
+		ownedWork.ctx = ctx
+		return jobs[index].prepare(ownedWork)
+	}); err != nil {
+		return err
+	}
+	if err := work.ctx.Err(); err != nil {
+		return err
+	}
+	// Only this lane owner publishes fully joined inputs and append tails.
+	for index := range jobs {
+		job := &jobs[index]
+		artifact.Inputs[index] = job.input
+		if prior := ledgers[job.input.NoID]; prior != nil {
+			prior.records = job.ledger.records
+		} else {
+			ledgers[job.input.NoID] = job.ledger
+		}
+	}
+	return nil
 }
 
 func TestFinalSemanticEvidenceBuildRenderAndArtifacts(t *testing.T) {
@@ -1699,20 +1658,29 @@ func TestFinalAttemptFixtureLedgerMatchesDurableProductionWire(t *testing.T) {
 // each claim, so the independent verifier reconstructs the declared rational.
 func finalSemanticFixtureHeadEgress(t *testing.T, candidates []FinalHeadCandidateEvidence, memberCount int, settlementEpoch uint64) (map[uint64][][32]byte, map[uint64]*big.Rat) {
 	t.Helper()
+	egress, raw, err := finalSemanticFixtureHeadEgressResult(candidates, memberCount, settlementEpoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return egress, raw
+}
+
+// Reconstruct all exact claims without mutating candidates or invoking test exits.
+func finalSemanticFixtureHeadEgressResult(candidates []FinalHeadCandidateEvidence, memberCount int, settlementEpoch uint64) (map[uint64][][32]byte, map[uint64]*big.Rat, error) {
 	if memberCount <= 0 || settlementEpoch == 0 {
-		t.Fatal("fixture head egress context is incomplete")
+		return nil, nil, fmt.Errorf("fixture head egress context is incomplete")
 	}
 	groups := map[string][]FinalHeadCandidateEvidence{}
 	scores := map[string]*big.Rat{}
 	seenFleets := map[uint64]bool{}
 	for _, candidate := range candidates {
 		if candidate.FleetID == 0 || seenFleets[candidate.FleetID] {
-			t.Fatalf("fixture head fleet %d is zero or duplicated", candidate.FleetID)
+			return nil, nil, fmt.Errorf("fixture head fleet %d is zero or duplicated", candidate.FleetID)
 		}
 		seenFleets[candidate.FleetID] = true
 		score, err := finalPositiveRational("fixture candidate raw score", candidate.RawScore)
 		if err != nil {
-			t.Fatal(err)
+			return nil, nil, err
 		}
 		key := score.RatString()
 		groups[key] = append(groups[key], candidate)
@@ -1729,21 +1697,21 @@ func finalSemanticFixtureHeadEgress(t *testing.T, candidates []FinalHeadCandidat
 		sort.Slice(group, func(i, j int) bool { return group[i].FleetID < group[j].FleetID })
 		numerator, denominator := scores[key].Num(), scores[key].Denom()
 		if !numerator.IsUint64() || !denominator.IsUint64() {
-			t.Fatalf("fixture candidate score %s exceeds uint64", key)
+			return nil, nil, fmt.Errorf("fixture candidate score %s exceeds uint64", key)
 		}
 		numeratorValue, denominatorValue := numerator.Uint64(), denominator.Uint64()
 		if numeratorValue == 0 || numeratorValue > uint64(memberCount) {
-			t.Fatalf("fixture candidate score %s needs %d claims but fleets have %d members", key, numeratorValue, memberCount)
+			return nil, nil, fmt.Errorf("fixture candidate score %s needs %d claims but fleets have %d members", key, numeratorValue, memberCount)
 		}
 		if denominatorValue == 0 || denominatorValue > uint64(len(group)) || uint64(len(group))%denominatorValue != 0 {
-			t.Fatalf("fixture candidate score %s has %d fleets, not complete groups of %d", key, len(group), denominatorValue)
+			return nil, nil, fmt.Errorf("fixture candidate score %s has %d fleets, not complete groups of %d", key, len(group), denominatorValue)
 		}
 		groupSize := int(denominatorValue)
 		for groupStart := 0; groupStart < len(group); groupStart += groupSize {
 			for claimIndex := uint64(0); claimIndex < numeratorValue; claimIndex++ {
 				egress := sha256.Sum256([]byte(fmt.Sprintf("final-semantic-fixture/egress/v1/%d/%s/%d/%d", settlementEpoch, key, groupStart/groupSize, claimIndex)))
 				if egress == ([32]byte{}) {
-					t.Fatal("fixture candidate egress hash is zero")
+					return nil, nil, fmt.Errorf("fixture candidate egress hash is zero")
 				}
 				for index := groupStart; index < groupStart+groupSize; index++ {
 					fleetID := group[index].FleetID
@@ -1757,7 +1725,7 @@ func finalSemanticFixtureHeadEgress(t *testing.T, candidates []FinalHeadCandidat
 		seenEgress := map[[32]byte]bool{}
 		for _, egress := range egresses {
 			if seenEgress[egress] {
-				t.Fatalf("fixture head fleet %d repeats an egress claim", fleetID)
+				return nil, nil, fmt.Errorf("fixture head fleet %d repeats an egress claim", fleetID)
 			}
 			seenEgress[egress] = true
 			claimCounts[egress]++
@@ -1771,11 +1739,11 @@ func finalSemanticFixtureHeadEgress(t *testing.T, candidates []FinalHeadCandidat
 		}
 		declared, err := finalPositiveRational("fixture candidate raw score", candidate.RawScore)
 		if err != nil || raw.Cmp(declared) != 0 {
-			t.Fatalf("fixture head fleet %d prefix score=%s, want %s: %v", candidate.FleetID, raw.RatString(), candidate.RawScore.Numerator+"/"+candidate.RawScore.Denominator, err)
+			return nil, nil, fmt.Errorf("fixture head fleet %d prefix score=%s, want %s: %v", candidate.FleetID, raw.RatString(), candidate.RawScore.Numerator+"/"+candidate.RawScore.Denominator, err)
 		}
 		rawByFleet[candidate.FleetID] = raw
 	}
-	return egressByFleet, rawByFleet
+	return egressByFleet, rawByFleet, nil
 }
 
 // Selection is downstream of prefix evidence; changing a pre-seal selection
@@ -1958,9 +1926,15 @@ func TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap(t *testing.T) {
 // finalSemanticFixtureCache retains only the deterministic graph's immutable
 // wire bytes. Callers receive fresh graphs and copied artifact byte slices.
 var finalSemanticFixtureCache struct {
-	stateLock        sync.Mutex
-	evidenceBytes    []byte
-	artifactURIBytes map[string][]byte
+	stateLock         sync.Mutex
+	evidenceBytes     []byte
+	artifactURIBytes  map[string][]byte
+	planBuildCount    int
+	workBatches       []finalSemanticFixtureWorkBatch
+	workStages        map[string]finalSemanticFixtureStageObservation
+	measurementWork   []finalSemanticFixtureMeasurementWorkEvent
+	measurementStages map[finalSemanticFixtureMeasurementOwner]finalSemanticFixtureStageObservation
+	namespaceDecodes  []finalSemanticNamespaceDecode
 }
 
 // cloneFinalSemanticFixtureArtifacts copies every artifact value so fixture
@@ -1983,13 +1957,32 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 		finalSemanticFixtureCache.stateLock.Lock()
 		defer finalSemanticFixtureCache.stateLock.Unlock()
 		if len(finalSemanticFixtureCache.evidenceBytes) == 0 {
-			source, artifacts := buildFinalSemanticFixture(t)
+			planBuildCount := 0
+			var workBatches []finalSemanticFixtureWorkBatch
+			stageAudit := newFinalSemanticFixtureStageAudit()
+			measurementAudit := &finalSemanticFixtureMeasurementAudit{}
+			measurementStages := newFinalSemanticFixtureMeasurementStageAudit()
+			var namespaceDecodes []finalSemanticNamespaceDecode
+			source, artifacts := buildFinalSemanticFixtureWithWorkControl(t, func(cfg *ResolvedConfig, facts *SetupFacts, roles PublicRoles, generatedAt time.Time) (*SetupPlan, error) {
+				planBuildCount++
+				return buildPlan(cfg, facts, roles, generatedAt)
+			}, finalSemanticFixtureWorkControl{ctx: t.Context(), entered: stageAudit.enter, measurementObserved: measurementAudit.observe, measurementEntered: measurementStages.enter, namespaceWork: finalSemanticNamespaceWork{decoded: func(observation finalSemanticNamespaceDecode) {
+				namespaceDecodes = append(namespaceDecodes, observation)
+			}}, observer: func(batch finalSemanticFixtureWorkBatch) {
+				workBatches = append(workBatches, batch)
+			}})
 			encoded, err := json.Marshal(&source)
 			if err != nil {
 				t.Fatal(err)
 			}
 			finalSemanticFixtureCache.evidenceBytes = append([]byte(nil), encoded...)
 			finalSemanticFixtureCache.artifactURIBytes = cloneFinalSemanticFixtureArtifacts(artifacts)
+			finalSemanticFixtureCache.planBuildCount = planBuildCount
+			finalSemanticFixtureCache.workBatches = append([]finalSemanticFixtureWorkBatch(nil), workBatches...)
+			finalSemanticFixtureCache.workStages = stageAudit.snapshot()
+			finalSemanticFixtureCache.measurementWork = measurementAudit.snapshot()
+			finalSemanticFixtureCache.measurementStages = measurementStages.snapshot()
+			finalSemanticFixtureCache.namespaceDecodes = append([]finalSemanticNamespaceDecode(nil), namespaceDecodes...)
 		}
 		evidenceBytes = finalSemanticFixtureCache.evidenceBytes
 		artifactURIBytes = finalSemanticFixtureCache.artifactURIBytes
@@ -2007,6 +2000,25 @@ func finalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byt
 // buildFinalSemanticFixture derives the complete 1,000-miner, 202-candidate,
 // top-200 evidence graph and all independently verified signed artifacts.
 func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string][]byte) {
+	return buildFinalSemanticFixtureWithPlanBuilder(t, buildPlan)
+}
+
+// Retains the entire release-scale graph while counting full plan builds.
+func buildFinalSemanticFixtureWithPlanBuilder(t *testing.T, builder func(*ResolvedConfig, *SetupFacts, PublicRoles, time.Time) (*SetupPlan, error)) (FinalSemanticEvidence, map[string][]byte) {
+	t.Helper()
+	return buildFinalSemanticFixtureWithWorkObserver(t, builder, nil)
+}
+
+// Observe independent construction work without changing per-validator order,
+// complete signed inputs, public authentication boundaries or final joins.
+func buildFinalSemanticFixtureWithWorkObserver(t *testing.T, builder func(*ResolvedConfig, *SetupFacts, PublicRoles, time.Time) (*SetupPlan, error), observer finalSemanticFixtureWorkObserver) (FinalSemanticEvidence, map[string][]byte) {
+	t.Helper()
+	return buildFinalSemanticFixtureWithWorkControl(t, builder, finalSemanticFixtureWorkControl{ctx: t.Context(), observer: observer})
+}
+
+// Keep each validator's five epochs chronological; independent owners join
+// before publication and all ordinary public verifiers remain authoritative.
+func buildFinalSemanticFixtureWithWorkControl(t *testing.T, builder func(*ResolvedConfig, *SetupFacts, PublicRoles, time.Time) (*SetupPlan, error), work finalSemanticFixtureWorkControl) (FinalSemanticEvidence, map[string][]byte) {
 	t.Helper()
 	artifacts := map[string][]byte{}
 	artifact := func(kind, name string, data []byte) FinalArtifactLocator {
@@ -2041,7 +2053,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixturePlan, err := buildPlan(cfg, testSetupFacts(), fixtureRoles, time.Unix(1_700_000_000, 0).UTC())
+	fixturePlan, err := builder(cfg, testSetupFacts(), fixtureRoles, time.Unix(1_700_000_000, 0).UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2084,11 +2096,13 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	validatorPathKeys := make([]ed25519.PrivateKey, 2)
 	operatorServerKeys := make([]ed25519.PrivateKey, 2)
 	validatorHotkeys := make([]*crv4.Keypair, 2)
+	validatorHotkeySeeds := make([][32]byte, 2)
 	for i := 0; i < 2; i++ {
 		validatorPathKeys[i] = ed25519.NewKeyFromSeed(bytes.Repeat([]byte{byte(0x41 + i)}, ed25519.SeedSize))
 		operatorServerKeys[i] = ed25519.NewKeyFromSeed(bytes.Repeat([]byte{byte(0x51 + i)}, ed25519.SeedSize))
 		var seed [32]byte
 		seed[0], seed[31] = byte(0x61+i), byte(0x71+i)
+		validatorHotkeySeeds[i] = seed
 		validatorHotkeys[i], err = crv4.KeypairFromSeed(seed)
 		if err != nil {
 			t.Fatal(err)
@@ -2169,10 +2183,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		}
 		return manifest
 	}
-	previousMeasurement := map[uint64][]byte{}
-	previousArtifact := map[uint64]*validatorpkg.ReleaseMeasurementArtifact{}
-	attemptLedgers := map[uint64]map[uint64]*finalAttemptFixtureLedger{}
-	buildMeasurement := func(cycle FinalCRv4Cycle, validatorID uint64) ([]byte, string, *validatorpkg.VerifiedReleaseMeasurement) {
+	buildMeasurement := func(ctx context.Context, cycle FinalCRv4Cycle, validatorID uint64, lane *finalSemanticFixtureValidatorLane) ([]byte, string, *validatorpkg.VerifiedReleaseMeasurement, error) {
 		statsByNO := map[uint64][]validatorpkg.ReleaseProviderMeasurement{1: {}, 2: {}}
 		bindings := make([]validatorpkg.ReleaseBindingMeasurement, 0, 1000)
 		headKeys := make(map[uint64]validatorpkg.FleetScoreKey, finalHeadCandidateCount)
@@ -2180,7 +2191,19 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		for _, candidate := range cycle.Candidates {
 			candidateUIDs[candidate.FleetID] = candidate.UID
 		}
-		egressByFleet, rawByFleet := finalSemanticFixtureHeadEgress(t, cycle.Candidates, cfg.Config.Topology.ClientsPerHeadFleet, cycle.SettlementEpoch)
+		egressByFleet, rawByFleet, err := finalSemanticFixtureHeadEgressResult(cycle.Candidates, cfg.Config.Topology.ClientsPerHeadFleet, cycle.SettlementEpoch)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if cycle.SettlementEpoch == 10 {
+			stageWork := work
+			stageWork.ctx = ctx
+			leave, err := stageWork.enter(finalSemanticFixtureValidatorLanes, int(validatorID-1))
+			if err != nil {
+				return nil, "", nil, err
+			}
+			defer leave()
+		}
 		zero := hex32([32]byte{})
 		for minerID := uint64(1); minerID <= 1000; minerID++ {
 			clientID := minerClientID(minerID)
@@ -2195,7 +2218,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 				fleetManifest := fixtureFleetManifest(fleetID)
 				commitment, commitmentErr := fleetManifest.CommitmentHash()
 				if commitmentErr != nil {
-					t.Fatal(commitmentErr)
+					return nil, "", nil, commitmentErr
 				}
 				fleetKey, hotkey := fleetManifest.FleetID, fleetManifest.Hotkey
 				clientKey := key32("client", minerID)
@@ -2231,17 +2254,17 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		for fleetID := uint64(1); fleetID <= finalHeadCandidateCount; fleetID++ {
 			raw := rawByFleet[fleetID]
 			if raw == nil {
-				t.Fatalf("fixture head fleet %d has no reconstructed raw score", fleetID)
+				return nil, "", nil, fmt.Errorf("fixture head fleet %d has no reconstructed raw score", fleetID)
 			}
 			key := headKeys[fleetID]
 			currentEMA[key.String()] = fixtureEMAValue{key: key, value: new(big.Rat).Set(raw)}
 		}
 		priorEMA := map[string]fixtureEMAValue{}
-		if prior := previousArtifact[validatorID]; prior != nil {
+		if prior := lane.previousArtifact; prior != nil {
 			for _, record := range prior.HeadEMA {
 				value, ok := new(big.Rat).SetString(record.Next.Numerator + "/" + record.Next.Denominator)
 				if !ok {
-					t.Fatalf("invalid fixture prior EMA %+v", record.Next)
+					return nil, "", nil, fmt.Errorf("invalid fixture prior EMA %+v", record.Next)
 				}
 				priorEMA[record.Key.String()] = fixtureEMAValue{key: record.Key, value: value}
 			}
@@ -2292,7 +2315,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			pools[index] = validatorpkg.ReleasePoolMeasurement{NoID: pool.NoID, UID: pool.UID, PoolHotkey: hex32(key32("pool", pool.NoID))}
 		}
 		previousHash := ""
-		if prior := previousMeasurement[validatorID]; len(prior) != 0 {
+		if prior := lane.previousMeasurement; len(prior) != 0 {
 			previousHash = validatorpkg.ReleaseMeasurementContentHash(prior)
 		}
 		cutBlock := cycle.NativeSnapshot.Number
@@ -2312,153 +2335,44 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			},
 			Bindings: bindings, HeadEMA: headEMA, Pools: pools, DepositAudits: audits, SelfUID: uint16(10 + 2*validatorID),
 		}
-		if attemptLedgers[validatorID] == nil {
-			attemptLedgers[validatorID] = map[uint64]*finalAttemptFixtureLedger{}
+		measurementWork := work
+		measurementWork.ctx = ctx
+		if err := attachFinalAttemptCutsResultWithWork(measurement, validatorPathKeys[validatorID-1], operatorServerKeys, lane.attemptLedgers, lane.previousArtifact, measurementWork); err != nil {
+			return nil, "", nil, err
 		}
-		attachFinalAttemptCuts(t, measurement, validatorPathKeys[validatorID-1], operatorServerKeys, attemptLedgers[validatorID], previousArtifact[validatorID])
+		if err := ctx.Err(); err != nil {
+			return nil, "", nil, err
+		}
 		encoded, contentHash, verified, err := validatorpkg.SealReleaseMeasurementArtifact(measurement)
 		if err != nil {
-			t.Fatalf("%v; first binding=%+v", err, bindings[0])
+			return nil, "", nil, fmt.Errorf("%v; first binding=%+v", err, bindings[0])
 		}
-		previousMeasurement[validatorID] = append([]byte(nil), encoded...)
-		previousArtifact[validatorID] = measurement
-		return encoded, contentHash, verified
+		if err := ctx.Err(); err != nil {
+			return nil, "", nil, err
+		}
+		lane.previousMeasurement = append([]byte(nil), encoded...)
+		lane.previousArtifact = measurement
+		work.observeMeasurement(finalSemanticFixtureMeasurementReady, validatorID, cycle.SettlementEpoch, 0)
+		return encoded, contentHash, verified, nil
 	}
-	sealCycle := func(cycle FinalCRv4Cycle, validatorID uint64) FinalCRv4Cycle {
+	prepareCycle := func(ctx context.Context, cycle FinalCRv4Cycle, validatorID uint64, lane *finalSemanticFixtureValidatorLane) (finalSemanticFixtureMeasurementJob, error) {
 		epochStart := uint64(100) + (cycle.SettlementEpoch-10)*finalReleaseEpochBlocks
 		cycle.NativeSnapshot = ChainHead{Number: epochStart + 5, Hash: finalTestHex(byte(epochStart + 5))}
 		cycle.Commit.Block = ChainHead{Number: epochStart + 10 + validatorID, Hash: finalTestHex(byte(epochStart + 10 + validatorID))}
 		cycle.Reveal.Block = ChainHead{Number: epochStart + 20, Hash: finalTestHex(byte(epochStart + 20))}
 		cycle.Application.Block = ChainHead{Number: epochStart + 30 + validatorID, Hash: finalTestHex(byte(epochStart + 30 + validatorID))}
-		fleetByUID := make(map[uint16]uint64, len(cycle.Candidates))
-		for _, candidate := range cycle.Candidates {
-			if candidate.UID == 0 || fleetByUID[candidate.UID] != 0 {
-				t.Fatalf("fixture candidate UID %d is zero or duplicated", candidate.UID)
-			}
-			fleetByUID[candidate.UID] = candidate.FleetID
+		measurementBytes, measurementHash, verified, err := buildMeasurement(ctx, cycle, validatorID, lane)
+		if err != nil {
+			return finalSemanticFixtureMeasurementJob{}, err
 		}
-		measurementBytes, measurementHash, verified := buildMeasurement(cycle, validatorID)
 		if verified == nil {
-			t.Fatal("fixture release measurement has no verified decision")
+			return finalSemanticFixtureMeasurementJob{}, fmt.Errorf("fixture release measurement has no verified decision")
 		}
-		selected := make(map[uint16]bool, len(verified.SelectedHead))
-		for _, head := range verified.SelectedHead {
-			selected[head.UID] = true
-		}
-		cycle.Candidates = make([]FinalHeadCandidateEvidence, 0, len(verified.EligibleHead))
-		for rank, head := range verified.EligibleHead {
-			fleetID := fleetByUID[head.UID]
-			if fleetID == 0 {
-				t.Fatalf("verified fixture candidate UID %d has no fleet", head.UID)
-			}
-			cycle.Candidates = append(cycle.Candidates, FinalHeadCandidateEvidence{
-				FleetID: fleetID, Rank: uint16(rank + 1), UID: head.UID,
-				RawScore: finalRationalFromBig(head.Score), Selected: selected[head.UID],
-			})
-		}
-		valueUIDs := append([]uint16(nil), verified.UIDs...)
-		scores := make([]*big.Rat, len(verified.Scores))
-		for index, score := range verified.Scores {
-			scores[index] = new(big.Rat).Set(score)
-		}
-		capped, err := crv4.ApplyMaxWeightLimitRational(scores, cycle.MaxWeightLimitU16)
-		if err != nil {
-			t.Fatal(err)
-		}
-		valueUIDs, values, err := crv4.NormalizeRationalToU16(valueUIDs, capped)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := finalRepairMaxWeightLimitU16(valueUIDs, values, cycle.MaxWeightLimitU16); err != nil {
-			t.Fatal(err)
-		}
-		valueByUID := map[uint16]uint16{}
-		cycle.Submitted = nil
-		cycle.RealizedHeadValue, cycle.RealizedPoolValue, cycle.RealizedTotalValue = 0, 0, 0
-		for index, uid := range valueUIDs {
-			valueByUID[uid] = values[index]
-			cycle.Submitted = append(cycle.Submitted, FinalSubmittedWeight{UID: uid, Score: finalRationalFromBig(scores[index]), Value: values[index]})
-		}
-		for index := range cycle.Candidates {
-			cycle.Candidates[index].AppliedWeight = valueByUID[cycle.Candidates[index].UID]
-			if cycle.Candidates[index].Selected {
-				cycle.RealizedHeadValue += uint64(cycle.Candidates[index].AppliedWeight)
-			}
-		}
-		for index := range cycle.Pools {
-			cycle.Pools[index].AppliedWeight = valueByUID[cycle.Pools[index].UID]
-			cycle.RealizedPoolValue += uint64(cycle.Pools[index].AppliedWeight)
-		}
-		for _, submitted := range cycle.Submitted {
-			cycle.RealizedTotalValue += uint64(submitted.Value)
-		}
-		encodedValues, err := json.Marshal(values)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cycle.ValuesHash = bytesSHA256(encodedValues)
-		eligibleUIDs := make([]uint16, len(cycle.Candidates))
-		eligibleScores := make([]validatorpkg.RationalJSON, len(cycle.Candidates))
-		for index, candidate := range cycle.Candidates {
-			eligibleUIDs[index] = candidate.UID
-			eligibleScores[index] = validatorpkg.RationalJSON{Numerator: candidate.RawScore.Numerator, Denominator: candidate.RawScore.Denominator}
-		}
-		selectedUIDs, rejectedUIDs := finalCandidateUIDs(cycle.Candidates)
-		intentScores := make([]validatorpkg.RationalJSON, len(cycle.Submitted))
-		for index, submitted := range cycle.Submitted {
-			intentScores[index] = validatorpkg.RationalJSON{Numerator: submitted.Score.Numerator, Denominator: submitted.Score.Denominator}
-		}
-		cycle.MaskedUIDs = append([]uint16(nil), verified.MaskedUIDs...)
-		cycle.MeasurementArtifact = artifact("validator-release-measurement", fmt.Sprintf("validator-%d-measurement-%d.json", validatorID, cycle.SettlementEpoch), measurementBytes)
-		prepared := finalTestPreparedSubmission(t, valueUIDs, values, cycle, validatorHotkeys[validatorID-1].PublicKey())
-		cycle.Commit.ExtrinsicHash = prepared.ExtrinsicHash
-		envelopeBytes, envelopeHash, _, err := validatorpkg.SealReleaseMeasurementEnvelope(measurementBytes, uint16(10+2*validatorID), validatorHotkeys[validatorID-1], prepared.ExtrinsicHash, time.Unix(1_700_000_000+int64(cycle.SettlementEpoch), 0).UTC())
-		if err != nil {
-			t.Fatal(err)
-		}
-		cycle.MeasurementEnvelope = artifact("validator-release-measurement-envelope", fmt.Sprintf("validator-%d-measurement-envelope-%d.json", validatorID, cycle.SettlementEpoch), envelopeBytes)
-		audits := make([]validatorpkg.DepositAudit, len(cycle.Pools))
-		for i, pool := range cycle.Pools {
-			audits[i] = finalDepositAuditFromPool(cycle.SettlementEpoch, &pool)
-		}
-		intent := validatorpkg.SteeringIntent{
-			Schema: validatorpkg.SteeringIntentSchema, ValidatorID: validatorID, Netuid: 521,
-			SubnetEpoch: cycle.SubnetEpoch, NativeSnapshotBlock: cycle.NativeSnapshot.Number, NativeSnapshotHash: cycle.NativeSnapshot.Hash,
-			EVMSnapshotBlock: cycle.EVMSnapshot.Number, EVMSnapshotHash: cycle.EVMSnapshot.Hash, SettlementEpoch: cycle.SettlementEpoch,
-			PolicyHash: policyHash, MeasurementArtifactPath: "measurements/" + strings.TrimPrefix(measurementHash, "sha256:") + ".json",
-			MeasurementArtifactHash: measurementHash, MeasurementArtifactSize: uint64(len(measurementBytes)), SelfUID: uint16(10 + 2*validatorID),
-			MeasurementEnvelopePath: "measurements/envelopes/" + strings.TrimPrefix(envelopeHash, "sha256:") + ".json", MeasurementEnvelopeHash: envelopeHash, MeasurementEnvelopeSize: uint64(len(envelopeBytes)),
-			MaskedUIDs: cycle.MaskedUIDs, EligibleHeadUIDs: eligibleUIDs, EligibleHeadScores: eligibleScores,
-			SelectedHeadUIDs: selectedUIDs, RejectedHeadUIDs: rejectedUIDs, DepositAudits: audits,
-			UIDs: valueUIDs, Scores: intentScores, Prepared: prepared,
-		}
-		vectorHash, err := intent.ReconstructedVectorHash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		intent.VectorHash, intent.Status, intent.Values = vectorHash, "applied", values
-		intent.ExtrinsicHash, intent.FinalizedBlock, intent.FinalizedBlockHash = cycle.Commit.ExtrinsicHash, cycle.Commit.Block.Number, cycle.Commit.Block.Hash
-		intent.RevealBlock, intent.ApplicationBlock, intent.ApplicationBlockHash = cycle.Reveal.Block.Number, cycle.Application.Block.Number, cycle.Application.Block.Hash
-		commitCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationCommit)
-		if err != nil {
-			t.Fatal(err)
-		}
-		revealCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationReveal)
-		if err != nil {
-			t.Fatal(err)
-		}
-		applicationCall, err := finalNativeIntentCallEvidence(&intent, finalNativeOperationApplication)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cycle.Commit.Call, cycle.Reveal.Call, cycle.Application.Call = &commitCall, &revealCall, &applicationCall
-		intentBytes, err := json.Marshal(intent)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cycle.IntentVectorHash = vectorHash
-		cycle.IntentArtifact = artifact("steering-intent", fmt.Sprintf("steering-intent-%d-%d.json", validatorID, cycle.SettlementEpoch), intentBytes)
-		return cycle
+		return finalSemanticFixtureMeasurementJob{
+			validatorID: validatorID, cycle: cycle, measurementBytes: measurementBytes,
+			measurementHash: measurementHash, verified: verified, policyHash: policyHash,
+			hotkeySeed: validatorHotkeySeeds[validatorID-1], expectedHotkey: validatorHotkeys[validatorID-1].PublicKey(),
+		}, nil
 	}
 	cloneCycle := func(source FinalCRv4Cycle) FinalCRv4Cycle {
 		wire, marshalErr := json.Marshal(source)
@@ -2765,16 +2679,60 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 	applyCyclePayouts(&cycle212)
 	applyCyclePayouts(&cycle213)
 	applyCyclePayouts(&cycle214)
-	cycle = sealCycle(cycle, 1)
-	cycle11 = sealCycle(cycle11, 1)
-	cycle12 = sealCycle(cycle12, 1)
-	cycle13 = sealCycle(cycle13, 1)
-	cycle14 = sealCycle(cycle14, 1)
-	cycle2 = sealCycle(cycle2, 2)
-	cycle211 = sealCycle(cycle211, 2)
-	cycle212 = sealCycle(cycle212, 2)
-	cycle213 = sealCycle(cycle213, 2)
-	cycle214 = sealCycle(cycle214, 2)
+	validatorLanes := [][]*FinalCRv4Cycle{
+		{&cycle, &cycle11, &cycle12, &cycle13, &cycle14},
+		{&cycle2, &cycle211, &cycle212, &cycle213, &cycle214},
+	}
+	lanes := make([]finalSemanticFixtureValidatorLane, len(validatorLanes))
+	for index, inputs := range validatorLanes {
+		lanes[index] = finalSemanticFixtureValidatorLane{attemptLedgers: map[uint64]*finalAttemptFixtureLedger{}}
+		for _, input := range inputs {
+			lanes[index].cycles = append(lanes[index].cycles, cloneCycle(*input))
+		}
+	}
+	if err := work.run(finalSemanticFixtureValidatorLanes, len(lanes), 2, func(ctx context.Context, index int) error {
+		lane := &lanes[index]
+		for cycleIndex, input := range lane.cycles {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if cycleIndex > 0 && input.SettlementEpoch != lane.cycles[cycleIndex-1].SettlementEpoch+1 {
+				return fmt.Errorf("fixture validator %d epoch order changed", index+1)
+			}
+			job, err := prepareCycle(ctx, input, uint64(index+1), lane)
+			if err != nil {
+				return err
+			}
+			lane.cycles[cycleIndex] = job.cycle
+			lane.measurements = append(lane.measurements, job)
+		}
+		return ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	measurementJobs := make([]finalSemanticFixtureMeasurementJob, 0, 10)
+	for index := range lanes {
+		measurementJobs = append(measurementJobs, lanes[index].measurements...)
+	}
+	measurementOutputs, err := completeFinalSemanticFixtureMeasurements(measurementJobs, work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := make([]*finalSemanticFixtureArtifacts, len(measurementOutputs))
+	for index := range measurementOutputs {
+		owners[index] = &measurementOutputs[index].artifacts
+	}
+	joinedArtifacts, err := joinFinalSemanticFixtureArtifacts(artifacts, owners)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.ctx.Err(); err != nil {
+		t.Fatal(err)
+	}
+	publishFinalSemanticFixtureArtifacts(artifacts, joinedArtifacts)
+	for _, output := range measurementOutputs {
+		*validatorLanes[output.validatorID-1][output.cycle.SettlementEpoch-10] = output.cycle
+	}
 	headFleets := make([]FinalHeadFleetEvidence, 0, finalHeadCandidateCount)
 	for i := 0; i < finalHeadCandidateCount; i++ {
 		fleetID := uint64(i + 1)
@@ -3187,7 +3145,7 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 			rewards[index].SnapshotArtifact = locator
 		}
 	}
-	pathProofs := finalSemanticFixtureClosedProofs(t, validators, validatorPathKeys, policy.Verify.TrailDepth, artifacts, artifact)
+	pathProofs := finalSemanticFixtureClosedProofsWithWorkControl(t, validators, validatorPathKeys, policy.Verify.TrailDepth, artifacts, artifact, work)
 	cleanupCutoff := time.Unix(1_700_000_000, 456).UTC()
 	cleanupCutoffText := cleanupCutoff.Format(time.RFC3339Nano)
 	cleanupManifestHash := finalTestHex(90)
@@ -3288,15 +3246,20 @@ func buildFinalSemanticFixture(t *testing.T) (FinalSemanticEvidence, map[string]
 		Conservation:  FinalPoolConservation{CapturedRao: "10000", CarryInRao: "0", FundedRao: "10000", ClaimedRao: "10000", PaidRao: "10000", DeferredCreditRao: "0", OutstandingRao: "0", CarryOutRao: "0"},
 		NativeRewards: rewards, PathProofs: pathProofs, Adversaries: adversaries, ExitCriteria: exitCriteria,
 	}
-	reconstructedPlan, reconstructErr := finalSemanticFixtureSetupPlan(cfg, &source)
+	reconstructedPlan, reconstructErr := finalSemanticFixtureSetupPlanWithBuilder(cfg, &source, builder)
 	if reconstructErr != nil {
 		t.Fatal(reconstructErr)
 	}
 	if !finalJSONEqual(fixturePlan.Deployment, reconstructedPlan.Deployment) || fixturePlan.CoordinatorUpgrade != reconstructedPlan.CoordinatorUpgrade {
 		t.Fatalf("fixture deployment changed before lifecycle reconstruction: early=%+v/%+v reconstructed=%+v/%+v", fixturePlan.Deployment, fixturePlan.CoordinatorUpgrade, reconstructedPlan.Deployment, reconstructedPlan.CoordinatorUpgrade)
 	}
-	attachFinalFleetLifecycleFixture(t, &source, artifacts)
-	attachFinalSemanticFixtureGeneration(t, &source, artifacts)
+	// Transfer the independently reconstructed complete plan only after the
+	// parity assertion. Lifecycle attachment owns it from this point onward.
+	attachFinalFleetLifecycleFixture(t, &source, artifacts, reconstructedPlan)
+	attachFinalSemanticFixtureGenerationWithWorkControl(t, &source, artifacts, work)
+	if err := work.ctx.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return source, artifacts
 }
 
@@ -3318,11 +3281,21 @@ func finalSemanticFixtureAdversarialCampaign(t *testing.T, cfg *ResolvedConfig, 
 	return summary
 }
 
+// The compatibility wrapper remains caller-only.
 func finalTestPreparedSubmission(t *testing.T, uids, values []uint16, cycle FinalCRv4Cycle, hotkey [32]byte) *crv4.PreparedSubmission {
 	t.Helper()
-	payload, err := (&crv4.Payload{Hotkey: hotkey, Uids: uids, Values: values, VersionKey: 7}).Encode()
+	result, err := finalTestPreparedSubmissionResult(uids, values, cycle, hotkey)
 	if err != nil {
 		t.Fatal(err)
+	}
+	return result
+}
+
+// Build and fully validate the same prepared native payload inside an owner.
+func finalTestPreparedSubmissionResult(uids, values []uint16, cycle FinalCRv4Cycle, hotkey [32]byte) (*crv4.PreparedSubmission, error) {
+	payload, err := (&crv4.Payload{Hotkey: hotkey, Uids: uids, Values: values, VersionKey: 7}).Encode()
+	if err != nil {
+		return nil, err
 	}
 	ciphertext := []byte{0xaa, hotkey[0], byte(cycle.SubnetEpoch), byte(cycle.Commit.Block.Number)}
 	rawCall, err := finalNativeEncodeCall(
@@ -3330,13 +3303,13 @@ func finalTestPreparedSubmission(t *testing.T, uids, values []uint16, cycle Fina
 		gsrpctypes.NewU16(521), gsrpctypes.NewBytes(ciphertext), gsrpctypes.NewU64(1), gsrpctypes.NewU16(crv4.CommitRevealVersion4),
 	)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	body := append([]byte{finalNativeSignedExtrinsicVersion}, make([]byte, 96)...)
 	body = append(body, rawCall...)
 	prefix, err := gsrpccodec.Encode(gsrpctypes.NewUCompactFromUInt(uint64(len(body))))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	raw := append(prefix, body...)
 	cipherHash := sha256.Sum256(ciphertext)
@@ -3349,9 +3322,9 @@ func finalTestPreparedSubmission(t *testing.T, uids, values []uint16, cycle Fina
 		ExtrinsicHex: "0x" + hex.EncodeToString(raw), ExtrinsicHash: "0x" + hex.EncodeToString(extrinsicHash[:]),
 	}
 	if _, err := prepared.Validate(); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return prepared
+	return prepared, nil
 }
 
 func finalSemanticClone(t *testing.T, source *FinalSemanticEvidence) *FinalSemanticEvidence {

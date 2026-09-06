@@ -6,10 +6,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
@@ -92,8 +94,17 @@ func TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement(t *te
 // transaction. Only the cut boundary changes; its signed records are untouched.
 func finalSemanticFixtureTerminalTransitions(t *testing.T, measurement *validatorpkg.ReleaseMeasurementArtifact, key ed25519.PrivateKey) []*validatorpkg.AttemptSettlementTransition {
 	t.Helper()
-	if measurement == nil || measurement.SettlementEpoch < 9 || len(measurement.Inputs) == 0 {
-		t.Fatal("fixture terminal transition measurement is incomplete")
+	result, err := finalSemanticFixtureTerminalTransitionsResult(measurement, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+// Full terminal authentication returns errors to its joined preparation owner.
+func finalSemanticFixtureTerminalTransitionsResult(measurement *validatorpkg.ReleaseMeasurementArtifact, key ed25519.PrivateKey) ([]*validatorpkg.AttemptSettlementTransition, error) {
+	if len(key) != ed25519.PrivateKeySize || measurement == nil || measurement.SettlementEpoch < 9 || len(measurement.Inputs) == 0 {
+		return nil, fmt.Errorf("fixture terminal transition measurement is incomplete")
 	}
 	epoch := measurement.SettlementEpoch
 	boundary := validatorpkg.AttemptBoundary{SettlementEpoch: epoch, EVMBlock: 100 + (epoch-9)*finalReleaseEpochBlocks - 1, EVMBlockHash: finalTestHex(byte(0xe0 + epoch))}
@@ -102,7 +113,7 @@ func finalSemanticFixtureTerminalTransitions(t *testing.T, measurement *validato
 		preFold := input.Stats
 		preFold.SettlementTransition = nil
 		if preFold.AttemptCut == nil || input.SettlementEpoch != epoch {
-			t.Fatalf("fixture terminal transition operator %d cut is incomplete", input.NoID)
+			return nil, fmt.Errorf("fixture terminal transition operator %d cut is incomplete", input.NoID)
 		}
 		cut := *preFold.AttemptCut
 		cut.Boundary = boundary
@@ -113,13 +124,13 @@ func finalSemanticFixtureTerminalTransitions(t *testing.T, measurement *validato
 		payload := finalAttemptLedgerCutSignaturePayload{Schema: cut.Schema, Identity: cut.Identity, Boundary: boundary, FirstSequence: cut.FirstSequence, EgressFirstSequence: cut.EgressFirstSequence, LastSequence: cut.LastSequence, RecordCount: cut.RecordCount, PriorRoot: cut.PriorRoot, Root: cut.Root, RecordHashes: hashes}
 		data, err := json.Marshal(payload)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		cut.Signature = ed25519.Sign(key, append([]byte(finalAttemptLedgerCutSignDomain), data...))
 		preFold.AttemptCut = &cut
 		verified, err := validatorpkg.VerifyReleaseStatsMeasurement(preFold)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		qualities := make([]validatorpkg.AttemptSettlementQuality, 0, len(verified.Providers))
 		for id, provider := range verified.Providers {
@@ -133,60 +144,170 @@ func finalSemanticFixtureTerminalTransitions(t *testing.T, measurement *validato
 	sort.Slice(transitions, func(i, j int) bool { return transitions[i].Identity.NoID < transitions[j].Identity.NoID })
 	batch := make([]validatorpkg.AttemptSettlementMember, len(transitions))
 	for index, transition := range transitions {
-		batch[index] = validatorpkg.AttemptSettlementMember{NoID: transition.Identity.NoID, Digest: finalAttemptSettlementDigest(t, transition)}
+		digest, err := finalAttemptSettlementDigestResult(transition)
+		if err != nil {
+			return nil, err
+		}
+		batch[index] = validatorpkg.AttemptSettlementMember{NoID: transition.Identity.NoID, Digest: digest}
 	}
 	for _, transition := range transitions {
 		transition.Batch = append([]validatorpkg.AttemptSettlementMember(nil), batch...)
-		transition.Signature = ed25519.Sign(key, finalAttemptSettlementMessage(t, transition))
+		message, err := finalAttemptSettlementMessageResult(transition)
+		if err != nil {
+			return nil, err
+		}
+		transition.Signature = ed25519.Sign(key, message)
 	}
-	return transitions
+	return transitions, nil
 }
 
 // Publishes every accepted terminal transaction and its exact proof projection;
 // no proof is introduced independently of the signed measurement record chain.
 func finalSemanticFixtureClosedProofs(t *testing.T, validators []FinalValidatorIdentityEvidence, keys []ed25519.PrivateKey, depth int, artifacts map[string][]byte, artifact func(string, string, []byte) FinalArtifactLocator) []FinalValidatorPathProofEvidence {
 	t.Helper()
+	return finalSemanticFixtureClosedProofsWithWorkObserver(t, validators, keys, depth, artifacts, artifact, nil)
+}
+
+// Observe the real terminal preparation slots while retaining their exact
+// validator/epoch order and the complete signed-record proof projection.
+func finalSemanticFixtureClosedProofsWithWorkObserver(t *testing.T, validators []FinalValidatorIdentityEvidence, keys []ed25519.PrivateKey, depth int, artifacts map[string][]byte, artifact func(string, string, []byte) FinalArtifactLocator, observer finalSemanticFixtureWorkObserver) []FinalValidatorPathProofEvidence {
+	t.Helper()
+	return finalSemanticFixtureClosedProofsWithWorkControl(t, validators, keys, depth, artifacts, artifact, finalSemanticFixtureWorkControl{ctx: t.Context(), observer: observer})
+}
+
+// Publish only after every terminal owner and canonical projection has joined.
+func finalSemanticFixtureClosedProofsWithWorkControl(t *testing.T, validators []FinalValidatorIdentityEvidence, keys []ed25519.PrivateKey, depth int, artifacts map[string][]byte, artifact func(string, string, []byte) FinalArtifactLocator, work finalSemanticFixtureWorkControl) []FinalValidatorPathProofEvidence {
+	t.Helper()
+	proofs, owner, err := prepareFinalSemanticFixtureClosedProofs(validators, keys, depth, artifacts, work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := joinFinalSemanticFixtureArtifacts(artifacts, []*finalSemanticFixtureArtifacts{owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.ctx.Err(); err != nil {
+		t.Fatal(err)
+	}
+	locators := make(map[string]FinalArtifactLocator, len(joined))
+	for _, value := range joined {
+		locators[value.locator.URI] = artifact(value.locator.Kind, strings.TrimPrefix(value.locator.URI, "final-derived/"), value.data)
+	}
+	for index := range proofs {
+		proofs[index].Artifact = locators[proofs[index].Artifact.URI]
+		for closureIndex := range proofs[index].SettlementClosures {
+			closure := &proofs[index].SettlementClosures[closureIndex]
+			closure.Artifact = locators[closure.Artifact.URI]
+		}
+	}
+	return proofs
+}
+
+// One owner decodes and authenticates an independent terminal transaction.
+type finalSemanticFixtureTerminalJob struct {
+	validatorID uint64
+	data        []byte
+	key         ed25519.PrivateKey
+	closure     *validatorpkg.AttemptSettlementClosure
+	wire        []byte
+}
+
+// The real-stage barrier follows full transition authentication. Queued
+// goroutines alone cannot satisfy the preparation overlap control.
+func prepareFinalSemanticFixtureTerminal(job *finalSemanticFixtureTerminalJob, work finalSemanticFixtureWorkControl, index int) error {
+	var measurement validatorpkg.ReleaseMeasurementArtifact
+	if err := json.Unmarshal(job.data, &measurement); err != nil {
+		return err
+	}
+	epoch := measurement.SettlementEpoch
+	if epoch < 10 || epoch > 14 {
+		return nil
+	}
+	transitions, err := finalSemanticFixtureTerminalTransitionsResult(&measurement, job.key)
+	if err != nil {
+		return err
+	}
+	leave, err := work.enter(finalSemanticFixtureTerminalClosures, index)
+	if err != nil {
+		return err
+	}
+	defer leave()
+	closure := &validatorpkg.AttemptSettlementClosure{Schema: validatorpkg.AttemptSettlementClosureSchema, Epoch: epoch, Transitions: transitions}
+	data, err := json.Marshal(closure)
+	if err != nil {
+		return err
+	}
+	if err := work.ctx.Err(); err != nil {
+		return err
+	}
+	job.closure, job.wire = closure, append(data, '\n')
+	return nil
+}
+
+// Independent epochs are flattened once. Caller-only joins preserve each
+// validator's exact accepted records and complete ordered proof projection.
+func prepareFinalSemanticFixtureClosedProofs(validators []FinalValidatorIdentityEvidence, keys []ed25519.PrivateKey, depth int, artifacts map[string][]byte, work finalSemanticFixtureWorkControl) ([]FinalValidatorPathProofEvidence, *finalSemanticFixtureArtifacts, error) {
+	var jobs []finalSemanticFixtureTerminalJob
+	spans := make([][2]int, len(validators))
+	for validatorIndex, validator := range validators {
+		if validator.ValidatorID == 0 || validator.ValidatorID > uint64(len(keys)) || len(keys[validator.ValidatorID-1]) != ed25519.PrivateKeySize {
+			return nil, nil, fmt.Errorf("fixture terminal validator %d key is incomplete", validator.ValidatorID)
+		}
+		spans[validatorIndex][0] = len(jobs)
+		for _, cycle := range validator.Cycles {
+			data, found := artifacts[cycle.MeasurementArtifact.URI]
+			if !found {
+				return nil, nil, fmt.Errorf("fixture terminal measurement %s is absent", cycle.MeasurementArtifact.URI)
+			}
+			jobs = append(jobs, finalSemanticFixtureTerminalJob{validatorID: validator.ValidatorID, data: append([]byte(nil), data...), key: append(ed25519.PrivateKey(nil), keys[validator.ValidatorID-1]...)})
+		}
+		spans[validatorIndex][1] = len(jobs)
+	}
+	if err := work.run(finalSemanticFixtureTerminalClosures, len(jobs), 4, func(ctx context.Context, index int) error {
+		stageWork := work
+		stageWork.ctx = ctx
+		return prepareFinalSemanticFixtureTerminal(&jobs[index], stageWork, index)
+	}); err != nil {
+		return nil, nil, err
+	}
+	owner := &finalSemanticFixtureArtifacts{}
 	var proofs []FinalValidatorPathProofEvidence
-	for _, validator := range validators {
-		key := keys[validator.ValidatorID-1]
+	for validatorIndex, validator := range validators {
 		records := map[uint64]map[uint64]validatorpkg.AttemptRecord{}
 		var closures []FinalCollectedSettlementClosure
-		for _, cycle := range validator.Cycles {
-			var measurement validatorpkg.ReleaseMeasurementArtifact
-			if err := json.Unmarshal(artifacts[cycle.MeasurementArtifact.URI], &measurement); err != nil {
-				t.Fatal(err)
-			}
-			epoch := measurement.SettlementEpoch
-			if epoch < 10 || epoch > 14 {
+		for _, job := range jobs[spans[validatorIndex][0]:spans[validatorIndex][1]] {
+			if job.closure == nil {
 				continue
 			}
-			closure := &validatorpkg.AttemptSettlementClosure{Schema: validatorpkg.AttemptSettlementClosureSchema, Epoch: epoch, Transitions: finalSemanticFixtureTerminalTransitions(t, &measurement, key)}
+			closure := job.closure
 			for _, transition := range closure.Transitions {
 				noID := transition.Identity.NoID
 				if records[noID] == nil {
 					records[noID] = map[uint64]validatorpkg.AttemptRecord{}
 				}
 				if err := mergeFinalAttemptCut(transition.PreFold.AttemptCut, records[noID]); err != nil {
-					t.Fatal(err)
+					return nil, nil, err
 				}
 			}
-			data, err := json.Marshal(closure)
-			if err != nil {
-				t.Fatal(err)
-			}
-			locator := artifact("validator-settlement-closure", fmt.Sprintf("settlement-closure-%d-%d.json", validator.ValidatorID, epoch), append(data, '\n'))
+			locator := owner.artifact("validator-settlement-closure", fmt.Sprintf("settlement-closure-%d-%d.json", validator.ValidatorID, closure.Epoch), job.wire)
 			boundary := closure.Transitions[0].FromBoundary
-			closures = append(closures, FinalCollectedSettlementClosure{Epoch: epoch, Boundary: ChainHead{Number: boundary.EVMBlock, Hash: boundary.EVMBlockHash}, Artifact: locator})
+			closures = append(closures, FinalCollectedSettlementClosure{Epoch: closure.Epoch, Boundary: ChainHead{Number: boundary.EVMBlock, Hash: boundary.EVMBlockHash}, Artifact: locator})
 		}
 		sort.Slice(closures, func(i, j int) bool { return closures[i].Epoch < closures[j].Epoch })
 		for noID := uint64(1); noID <= uint64(len(records)); noID++ {
 			data, count, err := finalAcceptedAttemptProofBytes(records[noID], 10, 14)
 			if err != nil {
-				t.Fatal(err)
+				return nil, nil, err
 			}
-			locator := artifact("validator-path-proofs", fmt.Sprintf("path-proofs-%d-%d.jsonl", validator.ValidatorID, noID), data)
+			locator := owner.artifact("validator-path-proofs", fmt.Sprintf("path-proofs-%d-%d.jsonl", validator.ValidatorID, noID), data)
 			proofs = append(proofs, FinalValidatorPathProofEvidence{ValidatorID: validator.ValidatorID, NoID: noID, FirstEpoch: 10, LastEpoch: 14, ProofCount: count, TrailDepth: depth, ProofsHash: locator.ContentHash, Artifact: locator, SettlementClosures: append([]FinalCollectedSettlementClosure(nil), closures...)})
 		}
 	}
-	return proofs
+	if owner.err != nil {
+		return nil, nil, owner.err
+	}
+	if err := work.ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return proofs, owner, nil
 }

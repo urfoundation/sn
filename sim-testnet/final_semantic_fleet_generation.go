@@ -72,12 +72,27 @@ type finalFleetGenerationLineageFile struct {
 // derives the public replay summary only from the already validated semantic
 // lineage, rather than letting a producer report independent count claims.
 func finalPublicFleetGenerationAuditForEvidence(evidence *FinalSemanticEvidence) (FinalPublicFleetGenerationAudit, error) {
+	return finalPublicFleetGenerationAuditForEvidenceWithLineageVerifier(evidence, verifyFinalFleetGenerationLineage)
+}
+
+// Makes complete lineage authentication observable without replacing any
+// batch, member, receipt, calldata, runtime or predecessor check.
+func finalPublicFleetGenerationAuditForEvidenceWithLineageVerifier(evidence *FinalSemanticEvidence, verifyLineage func(*FinalSemanticEvidence, *FinalFleetGenerationLineageEvidence) error) (FinalPublicFleetGenerationAudit, error) {
 	if evidence == nil || evidence.FleetGeneration == nil {
 		return FinalPublicFleetGenerationAudit{}, errors.New("ordinary fleet generation lineage is unavailable for public audit")
 	}
 	lineage := evidence.FleetGeneration
-	if err := verifyFinalFleetGenerationLineage(evidence, lineage); err != nil {
+	if err := verifyLineage(evidence, lineage); err != nil {
 		return FinalPublicFleetGenerationAudit{}, err
+	}
+	return finalPublicFleetGenerationAuditProjection(lineage)
+}
+
+// Projects the exact lineage without authenticating it. Containing semantic
+// verification calls this only after its full, same-input lineage checks.
+func finalPublicFleetGenerationAuditProjection(lineage *FinalFleetGenerationLineageEvidence) (FinalPublicFleetGenerationAudit, error) {
+	if lineage == nil {
+		return FinalPublicFleetGenerationAudit{}, errors.New("ordinary fleet generation lineage is unavailable for public audit")
 	}
 	var carriedWrites uint64
 	for _, batch := range lineage.Batches {
@@ -115,10 +130,16 @@ func verifyFinalPublicFleetGenerationAuditShape(audit FinalPublicFleetGeneration
 
 // compares a transcript summary to the exact artifact-bound source scope.
 func verifyFinalPublicFleetGenerationAudit(evidence *FinalSemanticEvidence, audit FinalPublicFleetGenerationAudit) error {
+	return verifyFinalPublicFleetGenerationAuditWithLineageVerifier(evidence, audit, verifyFinalFleetGenerationLineage)
+}
+
+// Retains the standalone audit's complete validation while exposing exactly
+// how often its enclosing semantic verification authenticates that lineage.
+func verifyFinalPublicFleetGenerationAuditWithLineageVerifier(evidence *FinalSemanticEvidence, audit FinalPublicFleetGenerationAudit, verifyLineage func(*FinalSemanticEvidence, *FinalFleetGenerationLineageEvidence) error) error {
 	if err := verifyFinalPublicFleetGenerationAuditShape(audit); err != nil {
 		return err
 	}
-	want, err := finalPublicFleetGenerationAuditForEvidence(evidence)
+	want, err := finalPublicFleetGenerationAuditForEvidenceWithLineageVerifier(evidence, verifyLineage)
 	if err != nil {
 		return err
 	}

@@ -27,17 +27,39 @@ import (
 // fleet proof. The raw map is deliberately separate from archive.files so a
 // derived artifact contains only the source bytes that its index consumes.
 type finalFleetGenerationSource struct {
-	archive    *finalSemanticArchive
-	evidence   *FinalSemanticEvidence
-	chain      *FinalCollectedChainSnapshot
-	events     *finalSemanticEventIndex
-	current    *SetupPlan
-	plans      map[string]*SetupPlan
-	planPaths  map[string]string
-	entries    []JournalEntry
-	raw        map[string][]byte
-	postProofs map[string]FinalArtifactLocator
-	versions   map[string]finalFleetGenerationCachedVersion
+	archive      *finalSemanticArchive
+	evidence     *FinalSemanticEvidence
+	chain        *FinalCollectedChainSnapshot
+	events       *finalSemanticEventIndex
+	current      *SetupPlan
+	plans        map[string]*SetupPlan
+	planPaths    map[string]string
+	entries      []JournalEntry
+	entryIndices map[finalFleetGenerationJournalKey][]int
+	raw          map[string][]byte
+	postProofs   map[string]FinalArtifactLocator
+	versions     map[string]finalFleetGenerationCachedVersion
+	workObserver finalFleetGenerationWorkObserver
+}
+
+// Call-local observation counts actual source work without supplying a cache,
+// decoded value, signature verdict or publication authority.
+type finalFleetGenerationWorkObservation struct {
+	stage    string
+	actionID string
+	fleetID  uint64
+	member   uint64
+}
+
+// Observers are immutable during one single-threaded source operation. A
+// production source leaves this nil; tests retain only detached coordinates.
+type finalFleetGenerationWorkObserver func(finalFleetGenerationWorkObservation)
+
+// Counts the reached loop or authentication boundary, never planned work.
+func (self *finalFleetGenerationSource) observeWork(stage, actionID string, fleetID, member uint64) {
+	if self.workObserver != nil {
+		self.workObserver(finalFleetGenerationWorkObservation{stage: stage, actionID: actionID, fleetID: fleetID, member: member})
+	}
 }
 
 // Stores a parsed signed generation after its source bytes and journal lineage
@@ -79,7 +101,8 @@ func newFinalFleetGenerationSource(archive *finalSemanticArchive, evidence *Fina
 	result := &finalFleetGenerationSource{
 		archive: archive, evidence: evidence, chain: chain, events: events, current: current,
 		plans: map[string]*SetupPlan{current.PlanHash: current}, planPaths: map[string]string{current.PlanHash: "launch-foundation/plan.json"},
-		entries: entries, raw: map[string][]byte{"launch-foundation/plan.json": append([]byte(nil), planBytes...), "launch-foundation/journal.jsonl": append([]byte(nil), journalBytes...)},
+		entries: entries, entryIndices: indexFinalFleetGenerationJournal(entries),
+		raw:        map[string][]byte{"launch-foundation/plan.json": append([]byte(nil), planBytes...), "launch-foundation/journal.jsonl": append([]byte(nil), journalBytes...)},
 		postProofs: make(map[string]FinalArtifactLocator), versions: make(map[string]finalFleetGenerationCachedVersion),
 	}
 	// The closed archive namespace is part of the proof boundary. Do not
@@ -250,7 +273,9 @@ func (self *finalFleetGenerationSource) verifiedMutation(actionID, transactionHa
 		post   *ActionPostcondition
 		data   []byte
 	}
-	for _, verified := range self.entries {
+	for _, verifiedIndex := range self.entryIndices[finalFleetGenerationJournalKey{actionID: actionID, stage: StageVerified}] {
+		verified := self.entries[verifiedIndex]
+		self.observeWork("verified-journal-candidate", actionID, 0, 0)
 		if verified.Stage != StageVerified || verified.ActionID != actionID || !allowed[verified.PlanHash] {
 			continue
 		}
@@ -274,7 +299,8 @@ func (self *finalFleetGenerationSource) verifiedMutation(actionID, transactionHa
 			continue
 		}
 		var finalized *JournalEntry
-		for index := range self.entries {
+		for _, index := range self.entryIndices[finalFleetGenerationJournalKey{actionID: actionID, stage: StageFinalized}] {
+			self.observeWork("finalized-journal-candidate", actionID, 0, 0)
 			candidate := &self.entries[index]
 			if candidate.Stage != StageFinalized || candidate.PlanHash != verified.PlanHash || candidate.ActionID != verified.ActionID || candidate.IntentHash != verified.IntentHash {
 				continue
@@ -412,6 +438,12 @@ func (self *finalSemanticArchive) buildFleetGeneration(source *FinalSemanticEvid
 // decodes and validates one signed manifest generation together with every
 // dual-signed member binding and its native commitment journal lineage.
 func (self *finalFleetGenerationSource) version(fleetID, generation, batch uint64) (FinalFleetGenerationVersionEvidence, protocol.FleetManifest, error) {
+	return self.versionWithBindingChecks(fleetID, generation, batch, nil)
+}
+
+// A synchronous install may share exact signature successes with its own
+// immediate reconstruction, without skipping any source or journal checks.
+func (self *finalFleetGenerationSource) versionWithBindingChecks(fleetID, generation, batch uint64, checks *finalFleetGenerationBindingChecks) (FinalFleetGenerationVersionEvidence, protocol.FleetManifest, error) {
 	if self == nil || fleetID == 0 || generation != 1 && generation != 2 {
 		return FinalFleetGenerationVersionEvidence{}, protocol.FleetManifest{}, errors.New("ordinary fleet generation coordinates are invalid")
 	}
@@ -477,7 +509,7 @@ func (self *finalFleetGenerationSource) version(fleetID, generation, batch uint6
 	for memberIndex := range manifest.Members {
 		memberNumber := uint64(memberIndex + 1)
 		if generation == 1 {
-			memberEvidence, err := self.initialMember(fleetID, memberNumber, manifest, commitment)
+			memberEvidence, err := self.initialMemberWithBindingChecks(fleetID, memberNumber, manifest, commitment, checks)
 			if err != nil {
 				return FinalFleetGenerationVersionEvidence{}, protocol.FleetManifest{}, err
 			}
@@ -524,6 +556,12 @@ func (self *finalFleetGenerationSource) verifyReplacement(fleetID uint64, initia
 // validates one generation-one binding's manifest preimage and both detached
 // signatures before projecting its immutable member identity.
 func (self *finalFleetGenerationSource) initialMember(fleetID, memberNumber uint64, manifest *protocol.FleetManifest, commitment FleetCommitmentEvidence) (FinalFleetGenerationMemberEvidence, error) {
+	return self.initialMemberWithBindingChecks(fleetID, memberNumber, manifest, commitment, nil)
+}
+
+// Per-use message, manifest, receipt and commitment checks remain outside the
+// optional exact primitive cache, which is owned by only one install call.
+func (self *finalFleetGenerationSource) initialMemberWithBindingChecks(fleetID, memberNumber uint64, manifest *protocol.FleetManifest, commitment FleetCommitmentEvidence, checks *finalFleetGenerationBindingChecks) (FinalFleetGenerationMemberEvidence, error) {
 	path := fmt.Sprintf("public/fleet-%d-member-%d.binding.json", fleetID, memberNumber)
 	data, err := self.record(path)
 	if err != nil {
@@ -559,7 +597,7 @@ func (self *finalFleetGenerationSource) initialMember(fleetID, memberNumber uint
 	}
 	clientSignature, clientOK := evidenceFixedHex(evidence.ClientSignature, ed25519.SignatureSize)
 	hotkeySignature, hotkeyOK := evidenceFixedHex(evidence.HotkeySignature, ed25519.SignatureSize)
-	if !clientOK || !hotkeyOK || !binding.VerifyClient(clientSignature) || !binding.VerifyHotkey(hotkeySignature) {
+	if !clientOK || !hotkeyOK || !checks.verify(binding, clientSignature, hotkeySignature, func() { self.observeWork("initial-member-authentication", "", fleetID, memberNumber) }) {
 		return FinalFleetGenerationMemberEvidence{}, errors.New("ordinary fleet generation-one binding signatures are invalid")
 	}
 	if _, _, _, _, err := self.verifiedMutation(fmt.Sprintf("fleet.bind.%d.%d", fleetID, memberNumber), strings.ToLower(evidence.TransactionHash), evidence.BlockNumber, strings.ToLower(evidence.BlockHash), nil); err != nil {
@@ -816,8 +854,9 @@ func (self *finalFleetGenerationSource) installCalldata(batch FinalFleetGenerati
 		return nil, err
 	}
 	fleets := make([]fleetBatcherFleetRefresh, 0, len(installedFleets))
+	checks := &finalFleetGenerationBindingChecks{}
 	for _, fleetID := range installedFleets {
-		version, manifest, versionErr := self.version(fleetID, 1, batch.Batch)
+		version, manifest, versionErr := self.versionWithBindingChecks(fleetID, 1, batch.Batch, checks)
 		if versionErr != nil {
 			return nil, versionErr
 		}
@@ -846,7 +885,7 @@ func (self *finalFleetGenerationSource) installCalldata(batch FinalFleetGenerati
 			}
 			clientSignature, clientOK := evidenceFixedHex(memberEvidence.ClientSignature, ed25519.SignatureSize)
 			hotkeySignature, hotkeyOK := evidenceFixedHex(memberEvidence.HotkeySignature, ed25519.SignatureSize)
-			if !clientOK || !hotkeyOK || !binding.VerifyClient(clientSignature) || !binding.VerifyHotkey(hotkeySignature) {
+			if !clientOK || !hotkeyOK || !checks.verify(binding, clientSignature, hotkeySignature, func() { self.observeWork("initial-member-authentication", "", fleetID, member) }) {
 				return nil, errors.New("ordinary fleet generation install member signatures are invalid")
 			}
 			contractBinding := stabi.STCoordinatorFleetBinding{ChainId: binding.ChainID, Netuid: binding.Netuid, Coordinator: common.BytesToAddress(manifest.Coordinator[:]), FleetId: binding.FleetID, Hotkey: binding.Hotkey, ClientId: binding.ClientID, ClientKey: binding.ClientKey, Generation: binding.Generation, ValidFromEpoch: binding.ValidFromEpoch, ValidToEpoch: binding.ValidToEpoch, CommitmentHash: binding.CommitmentHash}
@@ -896,7 +935,8 @@ func (self *finalFleetGenerationSource) findMirrorMutation(actionID, commitmentH
 	}
 	allowed := self.current.allowedPlanHashes()
 	var found *JournalEntry
-	for _, verified := range self.entries {
+	for _, verifiedIndex := range self.entryIndices[finalFleetGenerationJournalKey{actionID: actionID, stage: StageVerified}] {
+		verified := self.entries[verifiedIndex]
 		if verified.Stage != StageVerified || verified.ActionID != actionID || !allowed[verified.PlanHash] {
 			continue
 		}
@@ -908,7 +948,7 @@ func (self *finalFleetGenerationSource) findMirrorMutation(actionID, commitmentH
 		if !ok || !strings.EqualFold(observed, commitmentHash) {
 			continue
 		}
-		for index := range self.entries {
+		for _, index := range self.entryIndices[finalFleetGenerationJournalKey{actionID: actionID, stage: StageFinalized}] {
 			candidate := &self.entries[index]
 			if candidate.Stage != StageFinalized || candidate.PlanHash != verified.PlanHash || candidate.ActionID != verified.ActionID || candidate.IntentHash != verified.IntentHash {
 				continue

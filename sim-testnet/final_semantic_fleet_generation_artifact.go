@@ -29,6 +29,11 @@ type finalFleetGenerationReceiptArtifact struct {
 // cache, then the production source builder validates the plan/journal/action
 // and signed manifest/binding semantics a second time.
 func verifyFinalFleetGenerationArtifacts(evidence *FinalSemanticEvidence, cache map[string][]byte) error {
+	return verifyFinalFleetGenerationArtifactsWithNamespaceWork(evidence, cache, finalSemanticNamespaceWork{})
+}
+
+// Observes the real namespace decoder without replacing any source replay.
+func verifyFinalFleetGenerationArtifactsWithNamespaceWork(evidence *FinalSemanticEvidence, cache map[string][]byte, work finalSemanticNamespaceWork) error {
 	if evidence == nil || evidence.FleetGeneration == nil || len(cache) == 0 {
 		return errors.New("ordinary fleet generation artifact inputs are unavailable")
 	}
@@ -37,7 +42,7 @@ func verifyFinalFleetGenerationArtifacts(evidence *FinalSemanticEvidence, cache 
 	if !found {
 		return errors.New("ordinary fleet generation lineage artifact is not loaded")
 	}
-	files, err := finalFleetGenerationArtifactFiles(evidence, artifactData)
+	files, err := finalFleetGenerationArtifactFilesWithWork(evidence, artifactData, work, "fleet-replay")
 	if err != nil {
 		return err
 	}
@@ -76,9 +81,26 @@ func verifyFinalFleetGenerationArtifacts(evidence *FinalSemanticEvidence, cache 
 // Decodes the embedded source namespace and rejects aliases, traversal, and
 // alternate ordering before it is exposed to the reconstruction builder.
 func finalFleetGenerationArtifactFiles(evidence *FinalSemanticEvidence, data []byte) (map[string][]byte, error) {
+	return finalFleetGenerationArtifactFilesWithWork(evidence, data, finalSemanticNamespaceWork{}, "standalone")
+}
+
+// A private enclosing replay may reuse one exact owned namespace. Any changed
+// byte or context executes every original check; only successful decoding is
+// retained. Observation stays at that actual full decoder boundary.
+func finalFleetGenerationArtifactFilesWithWork(evidence *FinalSemanticEvidence, data []byte, work finalSemanticNamespaceWork, stage string) (map[string][]byte, error) {
 	if evidence == nil || len(data) == 0 {
 		return nil, errors.New("ordinary fleet generation lineage artifact is empty")
 	}
+	identity := finalSemanticNamespaceIdentityFor(evidence)
+	if files, found := work.reuse.files(identity, data); found {
+		return files, nil
+	}
+	if work.reuse != nil {
+		// Authenticate the exact owned wire later matched after the fixture's
+		// independent loader, not a borrowed slice that a caller can replace.
+		data = bytes.Clone(data)
+	}
+	work.observe(stage, evidence, data)
 	var artifact finalFleetGenerationLineageArtifact
 	if err := decodeStrictJSONBytes(data, &artifact); err != nil {
 		return nil, fmt.Errorf("decode ordinary fleet generation lineage artifact: %w", err)
@@ -94,6 +116,9 @@ func finalFleetGenerationArtifactFiles(evidence *FinalSemanticEvidence, data []b
 		}
 		previous = item.Path
 		files[item.Path] = append([]byte(nil), item.Data...)
+	}
+	if work.reuse != nil {
+		*work.reuse = finalSemanticNamespaceInputs{identity: identity, data: data, pathFileBytes: cloneFinalSemanticNamespaceFiles(files)}
 	}
 	return files, nil
 }

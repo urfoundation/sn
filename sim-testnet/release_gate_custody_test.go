@@ -73,9 +73,10 @@ func TestProducerGateCustodySelectionCoversOperatorPathCallEdges(t *testing.T) {
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifacts", callee: "decodeFinalFleetLifecycleLineageFiles"},
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifactsWithLineage", callee: "decodeFinalOperatorPathAuthority"},
 		{path: "final_semantic_settlement_closure.go", function: "verifyFinalSettlementClosureArtifactsWithAuthority", callee: "verify"},
-		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "decodeFinalFleetLifecycleLineageFiles"},
-		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "decodeFinalOperatorPathAuthority"},
-		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "verifyFinalFleetLifecycleArtifactsWithIdentities"},
+		{path: "final_semantic_evidence.go", function: "VerifyFinalSemanticArtifacts", callee: "verifyFinalSemanticArtifactInputs"},
+		{path: "final_semantic_evidence.go", function: "verifyFinalSemanticArtifactInputs", callee: "decodeFinalFleetLifecycleLineageFiles"},
+		{path: "final_semantic_evidence.go", function: "verifyFinalSemanticArtifactInputs", callee: "decodeFinalOperatorPathAuthority"},
+		{path: "final_semantic_evidence.go", function: "verifyFinalSemanticArtifactInputs", callee: "verifyFinalFleetLifecycleArtifactsWithIdentities"},
 		{path: "final_semantic_evidence.go", function: "verifyFinalPathProofArtifactBound", callee: "finalOperatorPathKeys"},
 		{path: "final_semantic_evidence.go", function: "verifyFinalPathProofArtifactBound", callee: "VerifyProofRecord"},
 		{path: "final_semantic_source.go", function: "buildValidators", callee: "decodeFinalOperatorPathAuthority"},
@@ -93,10 +94,10 @@ func TestProducerGateCustodySelectionCoversOperatorPathCallEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	counts := map[string]int{"decodeFinalFleetLifecycleLineageFiles": 0, "decodeFinalOperatorPathAuthority": 0}
+	counts := map[string]int{"verifyFinalSemanticArtifactInputs": 0, "decodeFinalFleetLifecycleLineageFiles": 0, "decodeFinalOperatorPathAuthority": 0}
 	for _, declaration := range parsed.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "VerifyFinalSemanticArtifacts" {
+		if !ok || function.Name.Name != "VerifyFinalSemanticArtifacts" && function.Name.Name != "verifyFinalSemanticArtifactInputs" {
 			continue
 		}
 		ast.Inspect(function.Body, func(node ast.Node) bool {

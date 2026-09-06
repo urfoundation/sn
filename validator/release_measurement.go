@@ -222,6 +222,12 @@ func verifyReleaseMeasurementIdentity(artifact *ReleaseMeasurementArtifact) erro
 // releaseMeasurementStats validates canonical operator cuts and constructs
 // lookup maps used by both pool and head reconstruction.
 func releaseMeasurementStats(artifact *ReleaseMeasurementArtifact) (map[uint64]VerifiedReleaseStats, error) {
+	return releaseMeasurementStatsWithCutVerifier(artifact, verifyAttemptLedgerCut)
+}
+
+// Authenticates ordinary cuts and terminal transitions once per input, then
+// joins their complete shared batch without repeating the same terminal cut.
+func releaseMeasurementStatsWithCutVerifier(artifact *ReleaseMeasurementArtifact, verifyCut attemptLedgerCutVerifier) (map[uint64]VerifiedReleaseStats, error) {
 	statsByNO := make(map[uint64]VerifiedReleaseStats, len(artifact.Inputs))
 	priorNOID := uint64(0)
 	transitions := make([]*AttemptSettlementTransition, 0, len(artifact.Inputs))
@@ -256,7 +262,7 @@ func releaseMeasurementStats(artifact *ReleaseMeasurementArtifact) (map[uint64]V
 		if cut.Boundary.SettlementEpoch != input.SettlementEpoch || cut.Boundary.EVMBlock != input.CutEVMSnapshotBlock || cut.Boundary.EVMBlockHash != input.CutEVMSnapshotHash {
 			return nil, fmt.Errorf("operator %d attempt cut boundary differs from the atomic statistics cut", input.NoID)
 		}
-		verified, err := VerifyReleaseStatsMeasurement(input.Stats)
+		verified, err := verifyReleaseStatsMeasurementWithCutVerifier(input.Stats, verifyCut)
 		if err != nil {
 			return nil, fmt.Errorf("operator %d statistics: %w", input.NoID, err)
 		}
@@ -277,7 +283,21 @@ func releaseMeasurementStats(artifact *ReleaseMeasurementArtifact) (map[uint64]V
 		if transitionCount != len(artifact.Inputs) {
 			return nil, errors.New("release measurement settlement transition coverage is partial")
 		}
-		if err := VerifyAttemptSettlementBatch(transitions); err != nil {
+		// Every transition passed complete per-input authentication above.
+		// Only their shared transaction relationship remains to be joined.
+		if err := func() error {
+			ordered, err := orderedAttemptSettlementBatch(transitions)
+			if err != nil {
+				return err
+			}
+			wantIdentity, wantBoundary, wantEpoch, wantBatch := ordered[0].Identity, ordered[0].FromBoundary, ordered[0].ToEpoch, ordered[0].Batch
+			for index, transition := range ordered {
+				if err := matchAttemptSettlementBatchMember(wantIdentity, wantBoundary, wantEpoch, wantBatch, transition, index); err != nil {
+					return err
+				}
+			}
+			return nil
+		}(); err != nil {
 			return nil, fmt.Errorf("release measurement settlement batch: %w", err)
 		}
 	}
@@ -673,6 +693,12 @@ func releaseMeasurementPools(artifact *ReleaseMeasurementArtifact, statsByNO map
 // VerifyReleaseMeasurementArtifact reconstructs every derived release weight
 // decision from canonical source observations.
 func VerifyReleaseMeasurementArtifact(artifact *ReleaseMeasurementArtifact) (*VerifiedReleaseMeasurement, error) {
+	return verifyReleaseMeasurementArtifactWithCutVerifier(artifact, verifyAttemptLedgerCut)
+}
+
+// Observes full signed-cut authentication inside the unchanged public artifact
+// reconstruction; no verification result is retained across calls.
+func verifyReleaseMeasurementArtifactWithCutVerifier(artifact *ReleaseMeasurementArtifact, verifyCut attemptLedgerCutVerifier) (*VerifiedReleaseMeasurement, error) {
 	if err := verifyReleaseMeasurementIdentity(artifact); err != nil {
 		return nil, err
 	}
@@ -683,7 +709,7 @@ func VerifyReleaseMeasurementArtifact(artifact *ReleaseMeasurementArtifact) (*Ve
 		}
 		controlled[noID] = true
 	}
-	statsByNO, err := releaseMeasurementStats(artifact)
+	statsByNO, err := releaseMeasurementStatsWithCutVerifier(artifact, verifyCut)
 	if err != nil {
 		return nil, err
 	}
