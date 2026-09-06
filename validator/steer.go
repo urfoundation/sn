@@ -765,6 +765,9 @@ func (self *Steerer) selfUid() (*uint16, error) {
 // SubmitOnce runs one full steering iteration: gather → build → CRv4
 // commit through the first answering substrate endpoint.
 func (self *Steerer) SubmitOnce(ctx context.Context) error {
+	if err := self.stats.requireLegacyAttemptStats(); err != nil {
+		return err
+	}
 	// Fold the stats window into the cross-epoch EMA at epoch boundaries.
 	if epoch, err := self.chain.Epoch(); err == nil {
 		e := epoch.Uint64()
@@ -772,7 +775,9 @@ func (self *Steerer) SubmitOnce(ctx context.Context) error {
 			self.epochSeen = true
 			self.lastFoldedEpoch = e
 		} else if e > self.lastFoldedEpoch {
-			self.stats.Fold()
+			if err := self.stats.Fold(); err != nil {
+				return err
+			}
 			self.lastFoldedEpoch = e
 		}
 	}
@@ -810,6 +815,9 @@ func (self *Steerer) SubmitOnce(ctx context.Context) error {
 
 	var errs []error
 	for _, wsUrl := range self.cfg.SubstrateUrls {
+		if err := self.stats.requireLegacyAttemptStats(); err != nil {
+			return err
+		}
 		substrate, err := crv4.DialChain(wsUrl)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", wsUrl, err))

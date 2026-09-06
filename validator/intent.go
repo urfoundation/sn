@@ -142,7 +142,12 @@ func (s *IntentStore) readMeasurementArtifactLocked(intent *SteeringIntent) (*Re
 	return artifact, verified, nil
 }
 
-func (s *IntentStore) verifyMeasurementEnvelopeLocked(intent *SteeringIntent, measurement []byte) error {
+func (self *IntentStore) verifyMeasurementEnvelopeLocked(intent *SteeringIntent, measurement []byte) error {
+	return self.verifyMeasurementEnvelopeWithHexWorkLocked(intent, measurement, canonicalHexWork{})
+}
+
+// Observes only real prepared-field normalization under the existing owner lock.
+func (self *IntentStore) verifyMeasurementEnvelopeWithHexWorkLocked(intent *SteeringIntent, measurement []byte, work canonicalHexWork) error {
 	if intent == nil || intent.Prepared == nil || intent.MeasurementEnvelopeSize == 0 || intent.MeasurementEnvelopeSize > 1024*1024 {
 		return errors.New("steering intent measurement envelope size is invalid")
 	}
@@ -153,7 +158,7 @@ func (s *IntentStore) verifyMeasurementEnvelopeLocked(intent *SteeringIntent, me
 	if intent.MeasurementEnvelopePath != expectedPath || filepath.IsAbs(intent.MeasurementEnvelopePath) || filepath.Clean(filepath.FromSlash(intent.MeasurementEnvelopePath)) != filepath.FromSlash(intent.MeasurementEnvelopePath) {
 		return errors.New("steering intent measurement envelope path is not canonical")
 	}
-	absolutePath := filepath.Join(s.stateDir, filepath.FromSlash(intent.MeasurementEnvelopePath))
+	absolutePath := filepath.Join(self.stateDir, filepath.FromSlash(intent.MeasurementEnvelopePath))
 	info, err := os.Lstat(absolutePath)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || uint64(info.Size()) != intent.MeasurementEnvelopeSize {
 		return errors.New("steering intent measurement envelope is not the expected private regular file")
@@ -169,11 +174,11 @@ func (s *IntentStore) verifyMeasurementEnvelopeLocked(intent *SteeringIntent, me
 	if err != nil {
 		return err
 	}
-	hotkey, err := parseReleaseHex32("prepared validator hotkey", strings.ToLower(intent.Prepared.HotkeyHex), false)
-	if err != nil || intent.Prepared.HotkeyHex != strings.ToLower(intent.Prepared.HotkeyHex) {
+	hotkey, err := parseReleaseHex32("prepared validator hotkey", normalizeReleasePreparedHex32(intent.Prepared.HotkeyHex, work), false)
+	if err != nil || intent.Prepared.HotkeyHex != normalizeReleasePreparedHex32(intent.Prepared.HotkeyHex, work) {
 		return errors.New("steering intent prepared validator hotkey is not canonical")
 	}
-	if _, _, err := VerifyReleaseMeasurementEnvelope(envelope, measurement, hotkey, intent.SelfUID, strings.ToLower(intent.Prepared.ExtrinsicHash)); err != nil {
+	if _, _, err := verifyReleaseMeasurementEnvelopeWithHexWork(envelope, measurement, hotkey, intent.SelfUID, normalizeReleasePreparedHex32(intent.Prepared.ExtrinsicHash, work), work); err != nil {
 		return err
 	}
 	return nil
