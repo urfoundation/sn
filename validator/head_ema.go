@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +53,8 @@ type HeadEMAStore struct {
 	lastSubnetEpoch *uint64
 	lastAlpha       *protocol.Rational
 	lastFold        []HeadEMAMeasurement
+	// Non-nil only for stores admitted by the explicit bounded constructor.
+	v2              *headEMAStoreV2Owner
 }
 
 // HeadEMAMeasurement records every live raw input and every persisted prior
@@ -299,6 +302,9 @@ func (s *HeadEMAStore) foldWithLock(raw map[FleetScoreKey]*big.Rat, alpha protoc
 // generation, uid). Missing identities decay; a new generation never inherits
 // the score of the prior owner of the same UID.
 func (s *HeadEMAStore) Fold(raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, error) {
+	if useHeadEMAStoreV2Runtime(s) {
+		return s.FoldV2(context.Background(), raw, alpha)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	priorValues := cloneHeadEMAEntries(s.values)
@@ -362,6 +368,9 @@ func equalHeadEMAFolds(left, right []HeadEMAMeasurement) bool {
 // durably present, so a downstream RPC or disk failure cannot contaminate the
 // following native epoch.
 func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
+	if useHeadEMAStoreV2Runtime(s) {
+		return s.PreviewForEpochV2(context.Background(), subnetEpoch, raw, alpha)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.lastSubnetEpoch != nil {
@@ -400,6 +409,9 @@ func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey
 // CommitForEpoch advances durable EMA state using an already-published exact
 // transcript. It is idempotent for restart recovery after IntentStore.Begin.
 func (s *HeadEMAStore) CommitForEpoch(subnetEpoch uint64, records []HeadEMAMeasurement, alpha protocol.Rational) error {
+	if useHeadEMAStoreV2Runtime(s) {
+		return s.CommitForEpochV2(context.Background(), subnetEpoch, records, alpha)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.lastSubnetEpoch != nil {
@@ -447,6 +459,9 @@ func (s *HeadEMAStore) CommitForEpoch(subnetEpoch uint64, records []HeadEMAMeasu
 // supply byte-equivalent raw inputs and receives the already persisted fold;
 // it can never apply alpha twice after a process restart.
 func (s *HeadEMAStore) FoldForEpoch(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
+	if useHeadEMAStoreV2Runtime(s) {
+		return s.FoldForEpochV2(context.Background(), subnetEpoch, raw, alpha)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.lastSubnetEpoch != nil {

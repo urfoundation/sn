@@ -1,7 +1,7 @@
 package validator
 
-// Bounded restart admission is separate from live preview and durable commit.
-// It accepts the existing finite EMA schemas without repairing persisted state.
+// Restart admission and live operation share explicit caller limits without
+// repairing persisted state or activating a legacy-created store.
 
 import (
 	"bytes"
@@ -27,9 +27,11 @@ type HeadEMAStoreV2Limits struct {
 
 const maxHeadEMAStoreV2Bytes = 64 * 1024 * 1024
 
-// Both the decoded file and returned store coexist during verification.
+// Both the decoded file and returned store coexist during verification. The
+// immutable runtime owner (including its atomic admission bit and namespace
+// witness) is a separate logical owner; it has no channel or backing allocation.
 func headEMAStoreV2FixedControlBytes() uint64 {
-	return uint64(reflect.TypeFor[headEMAFile]().Size()) + uint64(reflect.TypeFor[HeadEMAStore]().Size())
+	return uint64(reflect.TypeFor[headEMAFile]().Size()) + uint64(reflect.TypeFor[HeadEMAStore]().Size()) + uint64(reflect.TypeFor[headEMAStoreV2Owner]().Size())
 }
 
 // Refuse invalid limits before any native acquisition or length conversion.

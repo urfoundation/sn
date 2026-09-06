@@ -7,6 +7,7 @@ package validator
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +35,8 @@ func (self headEMAStoreV2LoadHooks) observe(operation string, file *os.File) err
 
 // The existing legacy loader is unchanged. This opt-in loader requires an
 // already provisioned private physical directory and explicit trusted limits.
-// Bounded startup is not activation, a bounded commit API or history authority.
+// The returned store retains this reader's exact identity and caller limits
+// for all later operations. This is not activation or history authority.
 func NewHeadEMAStoreV2(ctx context.Context, stateDir string, limits HeadEMAStoreV2Limits) (*HeadEMAStore, error) {
 	return newHeadEMAStoreV2(ctx, stateDir, limits, headEMAStoreV2LoadHooks{})
 }
@@ -64,14 +66,19 @@ func newHeadEMAStoreV2(ctx context.Context, stateDir string, limits HeadEMAStore
 	if minimum > limits.MaxControlBytes {
 		return nil, errors.New("bounded head EMA owner exceeds its control allowance")
 	}
-	encoded, missing, err := readHeadEMAStoreV2(ctx, stateDir, limits.MaxFileBytes, hooks)
+	var namespace headEMAStoreV2Namespace
+	encoded, missing, err := readHeadEMAStoreV2(ctx, stateDir, limits.MaxFileBytes, hooks, &namespace)
 	if err != nil {
 		return nil, err
 	}
 	if missing {
-		return &HeadEMAStore{path: path, values: map[string]headEMAEntry{}}, nil
+		result = &HeadEMAStore{path: path, values: map[string]headEMAEntry{}}
+	} else {
+		result, err = decodeHeadEMAStoreV2(ctx, path, encoded, limits, hooks.beforeRational)
+		if err != nil { return nil, err }
 	}
-	return decodeHeadEMAStoreV2(ctx, path, encoded, limits, hooks.beforeRational)
+	result.v2 = &headEMAStoreV2Owner{limits: limits, namespace: namespace}
+	return result, nil
 }
 
 // Exact leaf state includes full-width modification/change timestamps. Clean
@@ -80,6 +87,7 @@ func checkHeadEMAStoreV2Witness(directory *attemptPrivateDirectory, before *atte
 	if err := directory.check(); err != nil {
 		return err
 	}
+	if err := requireHeadEMAStoreV2NoMarker(directory); err != nil { return err }
 	if before == nil && !missing {
 		return nil
 	}
@@ -99,7 +107,7 @@ func checkHeadEMAStoreV2Witness(directory *attemptPrivateDirectory, before *atte
 // A nonblocking no-follow open precedes fstat, so replacing an observed file
 // with a FIFO cannot make the type check wait for a peer. Every acquired handle
 // is closed even if the caller cancels or a real boundary observer fails.
-func readHeadEMAStoreV2(ctx context.Context, stateDir string, limit uint64, hooks headEMAStoreV2LoadHooks) (encoded []byte, missing bool, resultErr error) {
+func readHeadEMAStoreV2(ctx context.Context, stateDir string, limit uint64, hooks headEMAStoreV2LoadHooks, observation *headEMAStoreV2Namespace) (encoded []byte, missing bool, resultErr error) {
 	if ctx == nil {
 		return nil, false, errors.New("bounded head EMA context is nil")
 	}
@@ -142,11 +150,17 @@ func readHeadEMAStoreV2(ctx context.Context, stateDir string, limit uint64, hook
 		resultErr = errors.Join(resultErr, witnessErr, ctx.Err())
 		if resultErr != nil {
 			encoded, missing = nil, false
+		} else if observation != nil {
+			// These are the original reader observations, not authority
+			// reacquired after decoding or supplied by an external callback.
+			*observation = headEMAStoreV2Namespace{directory: anchor, digest: sha256.Sum256(encoded), missing: missing}
+			if before != nil { observation.leaf = *before }
 		}
 	}()
 	if directory.anchor.mode&0o077 != 0 || directory.anchor.uid != uint32(os.Geteuid()) {
 		return nil, false, errors.New("bounded head EMA state directory is not private to its owner")
 	}
+	if err := requireHeadEMAStoreV2NoMarker(directory); err != nil { return nil, false, err }
 	if err := hooks.observe("directory-opened", directory.file); err != nil {
 		return nil, false, err
 	}
