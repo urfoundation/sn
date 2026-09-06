@@ -55,6 +55,13 @@ func (self attemptCutV2SealTestTransport) PostVerify(ctx context.Context, hop co
 // M8 remains the real release-policy control and no minimum is reduced.
 func newAttemptCutV2SealTestFixture(t *testing.T, depth, completed, failed int) *attemptCutV2SealTestFixture {
 	t.Helper()
+	return newAttemptCutV2SealTestFixtureWithLedgerLimits(t, depth, completed, failed, attemptLedgerDiskTestLimits())
+}
+
+// Larger aggregate controls provision their explicit test-only ledger ceiling
+// before the real constructor. The original default fixture is unchanged.
+func newAttemptCutV2SealTestFixtureWithLedgerLimits(t *testing.T, depth, completed, failed int, limits AttemptLedgerDiskLimits) *attemptCutV2SealTestFixture {
+	t.Helper()
 	policy := exactPolicy(t)
 	if policy.Verify.TrailDepth != 8 {
 		t.Fatalf("release policy depth = %d, want the existing M8 policy", policy.Verify.TrailDepth)
@@ -70,7 +77,7 @@ func newAttemptCutV2SealTestFixture(t *testing.T, depth, completed, failed int) 
 	if err := stats.AdvanceSettlementEpoch(42, state); err != nil {
 		t.Fatal(err)
 	}
-	ledger, err := NewDiskAttemptLedger(context.Background(), state, AttemptLedgerIdentity{DeploymentID: "attempt-cut-v2-sealer-test", ChainID: 945, GenesisHash: attemptHex32([32]byte{4}), Netuid: 521, ValidatorID: 1, ValidatorUID: 7, NoID: 9}, attemptLedgerDiskTestCoordinator, key, attemptLedgerDiskTestLimits())
+	ledger, err := NewDiskAttemptLedger(context.Background(), state, AttemptLedgerIdentity{DeploymentID: "attempt-cut-v2-sealer-test", ChainID: 945, GenesisHash: attemptHex32([32]byte{4}), Netuid: 521, ValidatorID: 1, ValidatorUID: 7, NoID: 9}, attemptLedgerDiskTestCoordinator, key, limits)
 	if err != nil {
 		t.Fatal(err)
 	}

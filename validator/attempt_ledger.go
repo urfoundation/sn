@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1074,28 +1073,33 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	if ledger == nil {
 		return errors.New("attempt ledger is nil")
 	}
-	self.mu.Lock()
-	defer self.mu.Unlock()
-	if self.attemptLedger != nil && self.attemptLedger != ledger {
+	owner, err := self.acquireStatsWrite(ctx, "attach")
+	if err != nil {
+		return err
+	}
+	defer owner.release()
+	candidate := owner.clone()
+	basis := func() statsReplayBasis {
+		candidate.mu.Lock()
+		defer candidate.mu.Unlock()
+		return candidate.replayBasisWithLock()
+	}()
+	if candidate.attemptLedger != nil && candidate.attemptLedger != ledger {
 		return errors.New("statistics engine already has a different attempt ledger")
 	}
-	if self.activeAttemptCount != 0 {
+	if candidate.activeAttemptCount != 0 {
 		return errors.New("cannot replay attempt startup with active trails")
 	}
+	candidate.attemptLedger = ledger
 	if err := ledger.RecoverPendingContext(ctx, func(AttemptRecord) error { return nil }); err != nil {
 		return fmt.Errorf("recover pending attempt: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	head, err := ledger.checkedHead()
 	if err != nil || head.LastSequence == ^uint64(0) {
 		return errors.Join(errors.New("statistics cannot establish the durable attempt head"), err)
-	}
-	candidate := &StatsEngine{cfg: self.cfg, window: cloneProviderWindows(self.window), ema: maps.Clone(self.ema), emaPPM: maps.Clone(self.emaPPM),
-		egress: make(map[connect.Id]map[[32]byte]bool, len(self.egress)), settlementEpoch: self.settlementEpoch, settlementEpochKnown: self.settlementEpochKnown,
-		egressGeneration: self.egressGeneration, attemptLedger: ledger, attemptLastAppliedSequence: self.attemptLastAppliedSequence,
-		attemptSettlementFirstSequence: self.attemptSettlementFirstSequence, attemptEgressFirstSequence: self.attemptEgressFirstSequence,
-		settlementTransition: self.settlementTransition}
-	for clientID, hashes := range self.egress {
-		candidate.egress[clientID] = maps.Clone(hashes)
 	}
 	lastSequence := head.LastSequence
 	if candidate.attemptSettlementFirstSequence == 0 {
@@ -1110,6 +1114,11 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	}
 	if candidate.attemptLastAppliedSequence < lastSequence {
 		if err := ledger.Walk(ctx, candidate.attemptLastAppliedSequence+1, lastSequence, func(record AttemptRecord) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			candidate.mu.Lock()
+			defer candidate.mu.Unlock()
 			if !candidate.settlementEpochKnown || record.Boundary.SettlementEpoch != candidate.settlementEpoch {
 				return fmt.Errorf("unapplied attempt sequence %d belongs to settlement epoch %d, active %d", record.Sequence, record.Boundary.SettlementEpoch, candidate.settlementEpoch)
 			}
@@ -1128,21 +1137,25 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := candidate.saveWithLock(stateDir); err != nil {
+	if err := candidate.saveOwned(stateDir, func(path string, data []byte) error {
+		return owner.persistChecked(path, data, func() error { return owner.checkReplayBasis(basis) })
+	}); err != nil {
 		return err
 	}
-	self.window, self.egress = candidate.window, candidate.egress
-	self.attemptLedger = ledger
-	self.attemptLastAppliedSequence = candidate.attemptLastAppliedSequence
-	self.attemptSettlementFirstSequence = candidate.attemptSettlementFirstSequence
-	self.attemptEgressFirstSequence = candidate.attemptEgressFirstSequence
+	owner.publish(candidate)
 	return nil
 }
 
+// Retains write ownership across the durable append, without blocking public
+// readers or cloning the statistics window for each pending checkpoint.
 func (self *StatsEngine) checkpointAttempt(ledger *AttemptLedger, record AttemptRecord) error {
+	owner := self.lockStatsWrite("checkpoint")
+	defer owner.release()
 	self.mu.Lock()
-	defer self.mu.Unlock()
-	if self.activeAttemptCount == 0 || self.attemptLedger != ledger || ledger == nil {
+	valid := self.activeAttemptCount != 0 && self.attemptLedger == ledger && ledger != nil
+	applied := self.attemptLastAppliedSequence
+	self.mu.Unlock()
+	if !valid {
 		return errors.New("checkpoint trail attempt without active ownership")
 	}
 	record.Disposition = AttemptDispositionPending
@@ -1151,14 +1164,18 @@ func (self *StatsEngine) checkpointAttempt(ledger *AttemptLedger, record Attempt
 	if err != nil {
 		return fmt.Errorf("attempt checkpoint append: %w", err)
 	}
-	if committed.Sequence != self.attemptLastAppliedSequence+1 {
-		return fmt.Errorf("attempt checkpoint sequence %d does not follow applied %d", committed.Sequence, self.attemptLastAppliedSequence)
+	if committed.Sequence != applied+1 {
+		return fmt.Errorf("attempt checkpoint sequence %d does not follow applied %d", committed.Sequence, applied)
 	}
+	self.mu.Lock()
 	self.attemptLastAppliedSequence = committed.Sequence
+	self.mu.Unlock()
 	return nil
 }
 
 func (self *StatsEngine) beginAttempt(settlementEpoch uint64, ledger *AttemptLedger) error {
+	owner := self.lockStatsWrite("begin-attempt")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	if ledger == nil || self.attemptLedger != ledger {
@@ -1181,6 +1198,8 @@ func (self *StatsEngine) beginAttempt(settlementEpoch uint64, ledger *AttemptLed
 }
 
 func (self *StatsEngine) abortAttempt() {
+	owner := self.lockStatsWrite("abort-attempt")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	if self.activeAttemptCount == 0 {
@@ -1258,31 +1277,46 @@ func (self *StatsEngine) applyAttemptStatsWithLock(record *AttemptRecord) {
 // commitAttempt makes the signed WAL append and derived statistics one ordered
 // operation with respect to every cut. The legacy proof file is an idempotent
 // projection written only after the authoritative terminal record exists.
+// The write token spans both external operations, but neither retains Stats.mu.
 func (self *StatsEngine) commitAttempt(ledger *AttemptLedger, store *ProofStore, record AttemptRecord) (*AttemptRecord, error) {
+	owner := self.lockStatsWrite("commit-attempt")
+	defer owner.release()
 	self.mu.Lock()
-	defer self.mu.Unlock()
 	if self.activeAttemptCount == 0 {
+		self.mu.Unlock()
 		return nil, errors.New("commit trail attempt without active ownership")
 	}
-	defer func() { self.activeAttemptCount-- }()
+	defer func() {
+		self.mu.Lock()
+		self.activeAttemptCount--
+		self.mu.Unlock()
+	}()
 	if self.attemptLedger != ledger || ledger == nil {
+		self.mu.Unlock()
 		return nil, errors.New("trail attempt ledger differs from statistics")
 	}
 	if record.Boundary.SettlementEpoch != self.settlementEpoch {
-		return nil, fmt.Errorf("trail attempt completed in settlement epoch %d after boundary advanced to %d", record.Boundary.SettlementEpoch, self.settlementEpoch)
+		epoch := self.settlementEpoch
+		self.mu.Unlock()
+		return nil, fmt.Errorf("trail attempt completed in settlement epoch %d after boundary advanced to %d", record.Boundary.SettlementEpoch, epoch)
 	}
 	if err := self.validateAttemptStatsWithLock(&record); err != nil {
+		self.mu.Unlock()
 		return nil, err
 	}
+	applied := self.attemptLastAppliedSequence
+	self.mu.Unlock()
 	committed, err := ledger.Append(record)
 	if err != nil {
 		return nil, fmt.Errorf("attempt ledger append: %w", err)
 	}
-	if committed.Sequence != self.attemptLastAppliedSequence+1 {
-		return nil, fmt.Errorf("attempt ledger sequence %d does not follow applied %d", committed.Sequence, self.attemptLastAppliedSequence)
+	if committed.Sequence != applied+1 {
+		return nil, fmt.Errorf("attempt ledger sequence %d does not follow applied %d", committed.Sequence, applied)
 	}
+	self.mu.Lock()
 	self.applyAttemptStatsWithLock(committed)
 	self.attemptLastAppliedSequence = committed.Sequence
+	self.mu.Unlock()
 	if committed.Proof != nil && store != nil {
 		if err := store.projectAttemptProof(ledger, committed.Proof); err != nil {
 			return committed, fmt.Errorf("proof projection persist: %w", err)

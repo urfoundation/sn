@@ -8,6 +8,7 @@ package validator
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,6 +82,7 @@ func validateAttemptSettlementParticipants(participants []AttemptSettlementParti
 	ordered := append([]AttemptSettlementParticipant(nil), participants...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].NoID < ordered[j].NoID })
 	paths := map[string]bool{}
+	engines := map[*StatsEngine]bool{}
 	for index, participant := range ordered {
 		if participant.NoID == 0 || participant.StateDir == "" || !filepath.IsAbs(participant.StateDir) || (index > 0 && participant.NoID == ordered[index-1].NoID) {
 			return nil, errors.New("settlement participants are incomplete or duplicated")
@@ -88,6 +90,10 @@ func validateAttemptSettlementParticipants(participants []AttemptSettlementParti
 		if requireStats && participant.Stats == nil {
 			return nil, fmt.Errorf("settlement participant no_id %d has no statistics engine", participant.NoID)
 		}
+		if requireStats && engines[participant.Stats] {
+			return nil, errors.New("settlement participants share a statistics engine")
+		}
+		engines[participant.Stats] = true
 		path := filepath.Clean(filepath.Join(participant.StateDir, "stats.json"))
 		if paths[path] {
 			return nil, errors.New("settlement participants share a statistics path")
@@ -97,7 +103,43 @@ func validateAttemptSettlementParticipants(participants []AttemptSettlementParti
 	if len(ordered) == 0 {
 		return nil, errors.New("settlement transaction has no participants")
 	}
+	if requireStats {
+		if err := validateAttemptSettlementRouting(ordered); err != nil {
+			return nil, err
+		}
+	}
 	return ordered, nil
+}
+
+// Caller labels and paths cannot replace already-bound ledger authority. Only
+// short, separate state reads precede immutable identity/path comparisons.
+// Recheck after token acquisition because startup may bind while queued.
+// Unbound compatibility engines and pre-load recovery invent no such authority;
+// canonical path equality does not replace descriptor-safe filesystem custody.
+func validateAttemptSettlementRouting(participants []AttemptSettlementParticipant) error {
+	var commonIdentity AttemptLedgerIdentity
+	commonKnown := false
+	for _, participant := range participants {
+		ledger := func() *AttemptLedger {
+			participant.Stats.mu.Lock()
+			defer participant.Stats.mu.Unlock()
+			return participant.Stats.attemptLedger
+		}()
+		if ledger == nil {
+			continue
+		}
+		if ledger.identity.NoID != participant.NoID {
+			return fmt.Errorf("settlement participant no_id %d differs from bound ledger no_id %d", participant.NoID, ledger.identity.NoID)
+		}
+		if filepath.Clean(participant.StateDir) != filepath.Dir(ledger.path) {
+			return fmt.Errorf("settlement participant no_id %d state directory differs from bound ledger", participant.NoID)
+		}
+		if commonKnown && !equalAttemptSettlementIdentity(commonIdentity, ledger.identity) {
+			return errors.New("settlement transition validator identities differ")
+		}
+		commonIdentity, commonKnown = ledger.identity, true
+	}
+	return nil
 }
 
 func decodeAttemptSettlementTransaction(encoded []byte, participants []AttemptSettlementParticipant) (*attemptSettlementTransaction, error) {
@@ -165,7 +207,7 @@ func finishCurrentAttemptSettlementTransaction(path string, epoch uint64, partic
 	if errors.Is(err, os.ErrNotExist) {
 		transaction := &attemptSettlementTransaction{Schema: attemptSettlementTransactionSchema, Epoch: epoch}
 		for _, participant := range participants {
-			statsJSON, err := encodeStatsSnapshot(participant.Stats.snapshotWithLock())
+			statsJSON, err := encodeStatsSnapshot(participant.Stats.snapshotStats())
 			if err != nil {
 				return err
 			}
@@ -181,7 +223,7 @@ func finishCurrentAttemptSettlementTransaction(path string, epoch uint64, partic
 		return errors.New("persisted settlement transaction differs from current memory")
 	}
 	for index, participant := range participants {
-		current, err := encodeStatsSnapshot(participant.Stats.snapshotWithLock())
+		current, err := encodeStatsSnapshot(participant.Stats.snapshotStats())
 		if err != nil || !bytes.Equal(current, transaction.Snapshots[index].StatsJSON) {
 			return fmt.Errorf("no_id %d current statistics differ from the pending settlement transaction", participant.NoID)
 		}
@@ -242,9 +284,21 @@ func advanceAttemptSettlementEpochWithIO(coordinatorStateDir string, epoch uint6
 	return advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir, epoch, terminalBoundary, participants, writeSnapshot, removeTransaction, true)
 }
 
-// Unchanged refreshes are no-ops under the same locks used by native retries;
+// Unchanged refreshes are no-ops under the same ownership used by native retries;
 // a race after resolving a boundary cannot clear another owner's detach gate.
 func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error, finishCurrent bool) error {
+	return advanceAttemptSettlementEpochWithIOModeContext(context.Background(), coordinatorStateDir, epoch, terminalBoundary, participants, writeSnapshot, removeTransaction, finishCurrent)
+}
+
+// Acquire every write token in stable engine order, before any state mutex.
+// Cancellation releases acquired tokens without changing state or snapshots.
+func advanceAttemptSettlementEpochWithIOModeContext(ctx context.Context, coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error, finishCurrent bool) error {
+	if ctx == nil {
+		return errors.New("settlement write context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	ordered, err := validateAttemptSettlementParticipants(participants, true)
 	if err != nil {
 		return err
@@ -255,16 +309,66 @@ func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch u
 	if removeTransaction == nil {
 		return errors.New("settlement transaction remover is nil")
 	}
-	for _, participant := range ordered {
-		participant.Stats.mu.Lock()
+	engineOrder, err := orderStatsEngineOwners(ordered)
+	if err != nil {
+		return err
 	}
+	owners := make([]*statsWriteOwner, 0, len(ordered))
+	engineOwners := make(map[*StatsEngine]*statsWriteOwner, len(ordered))
 	defer func() {
-		for index := len(ordered) - 1; index >= 0; index-- {
-			ordered[index].Stats.mu.Unlock()
+		for index := len(owners) - 1; index >= 0; index-- {
+			owners[index].release()
 		}
 	}()
+	for _, participant := range engineOrder {
+		owner, err := participant.Stats.acquireStatsWrite(ctx, "settlement")
+		if err != nil {
+			return err
+		}
+		owners = append(owners, owner)
+		engineOwners[participant.Stats] = owner
+	}
+	if err := validateAttemptSettlementRouting(ordered); err != nil {
+		return err
+	}
+	candidates := make([]AttemptSettlementParticipant, len(ordered))
+	for index, participant := range ordered {
+		candidates[index] = AttemptSettlementParticipant{NoID: participant.NoID, StateDir: participant.StateDir, Stats: engineOwners[participant.Stats].clone()}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Publish all candidate generations together, including retry reservations
+	// after failure. No I/O or callback runs while these short locks are held.
+	publish := func() {
+		for _, participant := range engineOrder {
+			participant.Stats.mu.Lock()
+		}
+		for index, participant := range ordered {
+			participant.Stats.publishStatsWithLock(candidates[index].Stats)
+		}
+		for index := len(engineOrder) - 1; index >= 0; index-- {
+			engineOrder[index].Stats.mu.Unlock()
+		}
+	}
+	err = advanceAttemptSettlementCandidatesOwned(coordinatorStateDir, epoch, terminalBoundary, candidates, writeSnapshot, func(path string) error {
+		// Both fresh advancement and current-epoch retries reach removal only
+		// after all snapshots and their signed closure are durable. Expose that
+		// complete generation with admission still closed before external code.
+		publish()
+		return removeTransaction(path)
+	}, finishCurrent)
+	// Only retry/admission flags can change after the removal boundary.
+	// Retain every write token until final publication or failure reservations.
+	publish()
+	return err
+}
+
+// Only detached candidate engines are mutated. The caller retains every public
+// engine's write token through journaling, snapshot writes and publication.
+func advanceAttemptSettlementCandidatesOwned(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, ordered []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error, finishCurrent bool) error {
 	// Reject stale snapshots before changing any admission barrier. Both the
-	// native submitter and independent EVM refresh use these same sorted locks.
+	// native submitter and independent EVM refresh retain the same write tokens.
 	for _, participant := range ordered {
 		if participant.Stats.settlementEpochKnown && participant.Stats.settlementEpoch > epoch {
 			return errAttemptSettlementSnapshotStale
@@ -379,7 +483,7 @@ func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch u
 			if stats.attemptLedger == nil {
 				return fmt.Errorf("no_id %d has no attempt ledger for settlement transition", participant.NoID)
 			}
-			preFold := stats.releaseStatsMeasurementWithLock()
+			preFold := stats.currentReleaseStatsMeasurement()
 			preFold.SettlementTransition = nil
 			cut, err := stats.attemptLedger.BuildCut(terminalBoundary, stats.attemptSettlementFirstSequence, stats.attemptEgressFirstSequence)
 			if err != nil {
@@ -400,7 +504,7 @@ func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch u
 		priorSettlementFirst, priorEgressFirst := stats.attemptSettlementFirstSequence, stats.attemptEgressFirstSequence
 		stats.window, stats.ema, stats.emaPPM = candidate.window, candidate.ema, candidate.emaPPM
 		if transitioning {
-			stats.foldWithLock()
+			stats.foldStatsOwned()
 		}
 		candidate.window, candidate.ema, candidate.emaPPM = stats.window, stats.ema, stats.emaPPM
 		if transitioning {
@@ -455,7 +559,7 @@ func advanceAttemptSettlementEpochWithIOMode(coordinatorStateDir string, epoch u
 		stats.settlementEpoch, stats.settlementEpochKnown = epoch, true
 		stats.attemptSettlementFirstSequence, stats.attemptEgressFirstSequence = candidate.settlementFirstSequence, candidate.egressFirstSequence
 		stats.settlementTransition = candidate.transition
-		statsJSON, encodeErr := encodeStatsSnapshot(stats.snapshotWithLock())
+		statsJSON, encodeErr := encodeStatsSnapshot(stats.snapshotStats())
 		stats.window, stats.ema, stats.emaPPM = priorWindow, priorEMA, priorEMAPPM
 		stats.egress, stats.egressGeneration = priorEgress, priorEgressGeneration
 		stats.settlementEpoch, stats.settlementEpochKnown = previousEpoch, priorKnown

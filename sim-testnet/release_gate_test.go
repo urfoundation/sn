@@ -40,6 +40,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 		{variable: "provider_input_tests", selector: "^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)", pkg: "./controller"},
 		{variable: "test_env_fail_fast_tests", selector: "^Test(DefaultTestEnvReleaseFailFast|RunRetriesUntilPass|RunFailsAfterExhaustion|RunReportsPanicOriginAfterExhaustion)", pkg: "."},
 		{variable: "parser_framing_tests", selector: releaseParserFramingSelector, pkg: "./protocol ./miner ./validator ./sim-testnet"},
+		{variable: "seed_admission_tests", selector: "^Test(VerifySeedAdmission|VerifySeedRejectsMissingSignature|VerifyClampM)", pkg: "./controller"},
 	}
 	for _, path := range []string{"../scripts/test-release-1.0-producer-gate.sh", "../scripts/test-release-1.0-local.sh"} {
 		value, err := os.ReadFile(path)
@@ -77,6 +78,7 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 		{path: "../../connect/transport_auth_test.go", selector: groups[2].selector},
 		{path: "../../sdk/device_token_manager_transport_test.go", selector: groups[3].selector},
 		{path: "../../server/controller/st_payout_canonical_test.go", selector: groups[4].selector},
+		{path: "../../server/controller/verify_seed_admission_test.go", selector: groups[7].selector},
 	} {
 		value, err := os.ReadFile(source.path)
 		if err != nil {

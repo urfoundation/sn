@@ -78,7 +78,9 @@ func TestReleaseSemanticCensusPinsSettlementClosureRegressions(t *testing.T) {
 		}
 	}
 	for _, check := range []struct{ path, function, callee string }{
-		{path: "../validator/attempt_settlement.go", function: "advanceAttemptSettlementEpochWithIOMode", callee: "publishAttemptSettlementClosure"},
+		{path: "../validator/attempt_settlement.go", function: "advanceAttemptSettlementEpochWithIOMode", callee: "advanceAttemptSettlementEpochWithIOModeContext"},
+		{path: "../validator/attempt_settlement.go", function: "advanceAttemptSettlementEpochWithIOModeContext", callee: "advanceAttemptSettlementCandidatesOwned"},
+		{path: "../validator/attempt_settlement.go", function: "advanceAttemptSettlementCandidatesOwned", callee: "publishAttemptSettlementClosure"},
 		{path: "../validator/attempt_settlement.go", function: "recoverAttemptSettlementEpochWithRemove", callee: "publishAttemptSettlementClosure"},
 		{path: "../validator/release_run.go", function: "RunRelease", callee: "runReleaseSettlementRefresh"},
 		{path: "../validator/release_run.go", function: "RunRelease", callee: "Wait"},

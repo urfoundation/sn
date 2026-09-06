@@ -26,18 +26,22 @@ func advanceReleaseSettlementSnapshotWithMode(ctx context.Context, stateDir stri
 	if err != nil {
 		return err
 	}
+	engineOrder, err := orderStatsEngineOwners(ordered)
+	if err != nil {
+		return err
+	}
 	target := snapshot.Epoch.Uint64()
 	{
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		epoch, known, err := func() (uint64, bool, error) {
-			for _, participant := range ordered {
+			for _, participant := range engineOrder {
 				participant.Stats.mu.Lock()
 			}
 			defer func() {
-				for index := len(ordered) - 1; index >= 0; index-- {
-					ordered[index].Stats.mu.Unlock()
+				for index := len(engineOrder) - 1; index >= 0; index-- {
+					engineOrder[index].Stats.mu.Unlock()
 				}
 			}()
 			first := ordered[0].Stats
@@ -54,9 +58,8 @@ func advanceReleaseSettlementSnapshotWithMode(ctx context.Context, stateDir stri
 		if known && epoch > target {
 			return errAttemptSettlementSnapshotStale
 		}
-		if known && epoch == target && !finishCurrent {
-			return nil
-		}
+		// Readers may see the coherent old epoch while its successor is being
+		// persisted. Even a no-op must recheck under exclusive write ownership.
 		if known && epoch < target && epoch+1 != target {
 			return fmt.Errorf("cannot refresh settlement epoch %d from %d without consecutive terminal evidence", target, epoch)
 		}
@@ -67,7 +70,7 @@ func advanceReleaseSettlementSnapshotWithMode(ctx context.Context, stateDir stri
 				return err
 			}
 		}
-		return advanceAttemptSettlementEpochWithIOMode(stateDir, target, terminal, ordered, func(path string, payload []byte) error {
+		return advanceAttemptSettlementEpochWithIOModeContext(ctx, stateDir, target, terminal, ordered, func(path string, payload []byte) error {
 			return atomicStateWrite(path, payload, 0o600)
 		}, removeAttemptSettlementTransaction, finishCurrent)
 	}

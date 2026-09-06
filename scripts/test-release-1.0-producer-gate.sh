@@ -94,7 +94,7 @@ echo "[release-1.0 producer] strict proof and configuration framing"
 echo "[release-1.0 producer] signed validator evidence and settlement"
 (
   cd "$sn_repo"
-  producer_tests='^Test(Attempt|DiskAttempt|TrailPolicyDepth|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
+  producer_tests='^Test(Attempt|DiskAttempt|TrailPolicyDepth|StatsWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
   go test ./validator -run "$producer_tests" -count=1
   go test -race ./validator -run "$producer_tests" -count=1
 )
@@ -156,6 +156,10 @@ echo "[release-1.0 producer] operator proof and artifact APIs"
   provider_input_tests='^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)'
   go test ./controller -run "$provider_input_tests" -count=1
   go test -race ./controller -run "$provider_input_tests" -count=1
+  # Requested depth must fit its signed byte before settings or state admission.
+  seed_admission_tests='^Test(VerifySeedAdmission|VerifySeedRejectsMissingSignature|VerifyClampM)'
+  go test ./controller -run "$seed_admission_tests" -count=1
+  go test -race ./controller -run "$seed_admission_tests" -count=1
   payout_allocation_tests='^Test(EvenContractPayoutShare|AllocateContractParticipantPayouts|AllocateContractParticipantPayoutEligibilityMatrix)$'
   go test ./model -run "$payout_allocation_tests" -count=1
   go test -race ./model -run "$payout_allocation_tests" -count=1

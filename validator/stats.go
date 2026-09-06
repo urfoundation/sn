@@ -190,14 +190,22 @@ type statsSnapshot struct {
 	Egress                         map[string][]string          `json:"egress,omitempty"`
 }
 
-// StatsEngine aggregates per-provider counters and cross-epoch EMAs.
-// Safe for concurrent use.
+// Aggregates per-provider counters and cross-epoch EMAs. Safe for concurrent
+// use: mutators and persistence retain one exclusive write token; readers only
+// take the short state mutex. External callbacks may read the old coherent
+// generation but must not recursively mutate an engine owned by their caller.
 type StatsEngine struct {
-	mu     sync.Mutex
-	cfg    StatsConfig
-	window map[connect.Id]*ProviderWindow
-	ema    map[connect.Id]float64
-	emaPPM map[connect.Id]uint32
+	mu            sync.Mutex
+	writeGateOnce sync.Once
+	writeGate     chan struct{}
+	writeOrder    uint64
+	writeInitErr  error
+	writeOwner    *statsWriteOwner
+	writeHooks    statsWriteHooks
+	cfg           StatsConfig
+	window        map[connect.Id]*ProviderWindow
+	ema           map[connect.Id]float64
+	emaPPM        map[connect.Id]uint32
 	// egress is the per-provider set of distinct routable egress-IP-hashes seen
 	// in the current native-tempo window (§11.1, D27). It is independent of the
 	// settlement-quality Fold clock and remains ephemeral; the steerer persists
@@ -243,6 +251,8 @@ func (self *StatsEngine) windowFor(hop connect.Id) *ProviderWindow {
 // Call it when an ASSIGN names hop as the pending next hop — never for the
 // validator-chosen seed (§7.6).
 func (self *StatsEngine) RecordAssignment(hop connect.Id) {
+	owner := self.lockStatsWrite("record-assignment")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	self.windowFor(hop).Assignments++
@@ -252,6 +262,8 @@ func (self *StatsEngine) RecordAssignment(hop connect.Id) {
 // measured round-trip latency (§7.5 — record per step, at confirmation
 // time, so an abandoned trail keeps the slow hop's sample).
 func (self *StatsEngine) RecordConfirmation(hop connect.Id, latencyMs float64) {
+	owner := self.lockStatsWrite("record-confirmation")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	w := self.windowFor(hop)
@@ -268,6 +280,8 @@ func (self *StatsEngine) RecordEgressHash(hop connect.Id, egressHash [32]byte) {
 	if egressHash == ([32]byte{}) {
 		return
 	}
+	owner := self.lockStatsWrite("record-egress")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	set, ok := self.egress[hop]
@@ -300,6 +314,8 @@ func (self *StatsEngine) EgressIpHashes() map[connect.Id]map[[32]byte]bool {
 // window. Proofs recorded after the swap belong to the following tempo and
 // cannot be erased by a concurrent copy-then-clear race.
 func (self *StatsEngine) TakeEgressIpHashes() map[connect.Id]map[[32]byte]bool {
+	owner := self.lockStatsWrite("take-egress")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	out := make(map[connect.Id]map[[32]byte]bool, len(self.egress))
@@ -437,6 +453,8 @@ func (self *StatsEngine) Exposure() map[connect.Id]uint64 {
 // contract epoch boundaries. Providers below a_min carry their EMA forward
 // untouched (one sparse epoch does not decay an established provider).
 func (self *StatsEngine) Fold() {
+	owner := self.lockStatsWrite("fold")
+	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	self.foldWithLock()
@@ -526,29 +544,27 @@ func encodeStatsSnapshot(snapshot statsSnapshot) ([]byte, error) {
 
 // Save persists a snapshot to <dir>/stats.json.
 func (self *StatsEngine) Save(dir string) error {
-	self.mu.Lock()
-	defer self.mu.Unlock()
-	return self.saveWithLock(dir)
-}
-
-// saveWithLock serializes the exact current state while the caller holds the
-// state lock. Keeping the lock through rename prevents an older periodic save
-// from overwriting a newer epoch fold or native-window cut.
-func (self *StatsEngine) saveWithLock(dir string) error {
-	b, err := encodeStatsSnapshot(self.snapshotWithLock())
-	if err != nil {
-		return err
-	}
-	return atomicStateWrite(filepath.Join(dir, "stats.json"), b, 0o600)
+	owner := self.lockStatsWrite("save")
+	defer owner.release()
+	return self.saveOwned(dir, owner.persist)
 }
 
 // AdvanceSettlementEpoch durably applies at most one exact boundary fold. It
-// holds the statistics lock through the atomic write so event recording cannot
-// enter an epoch until that epoch owns its persisted state. A skipped epoch is
+// retains exclusive write ownership, not the reader mutex, through the atomic
+// write so an epoch cannot admit events before its persisted state. A skipped epoch is
 // unrecoverable from local counters and therefore fails closed.
 func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error {
-	self.mu.Lock()
-	defer self.mu.Unlock()
+	owner := self.lockStatsWrite("advance-epoch")
+	defer owner.release()
+	candidate := owner.clone()
+	err := candidate.advanceSettlementEpochOwned(epoch, dir, owner.persist)
+	owner.publish(candidate)
+	return err
+}
+
+// Operates on an exclusively owned candidate; even a retryable failure retains
+// its original admission reservation while failed snapshots roll back the fold.
+func (self *StatsEngine) advanceSettlementEpochOwned(epoch uint64, dir string, persist func(string, []byte) error) error {
 	var nextAttemptSequence uint64
 	if self.attemptLedger != nil {
 		head, err := self.attemptLedger.checkedHead()
@@ -591,7 +607,7 @@ func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error 
 		self.window = cloneProviderWindows(self.window)
 		self.ema = maps.Clone(self.ema)
 		self.emaPPM = maps.Clone(self.emaPPM)
-		self.foldWithLock()
+		self.foldStatsOwned()
 	}
 	self.settlementEpoch, self.settlementEpochKnown = epoch, true
 	if self.attemptLedger != nil {
@@ -605,7 +621,7 @@ func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error 
 		self.egress = map[connect.Id]map[[32]byte]bool{}
 		self.egressGeneration++
 	}
-	err := self.saveWithLock(dir)
+	err := self.saveOwned(dir, persist)
 	if err != nil {
 		self.window, self.ema, self.emaPPM = priorWindow, priorEMA, priorEMAPPM
 		self.egress, self.egressGeneration = priorEgress, priorEgressGeneration
@@ -620,6 +636,21 @@ func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error 
 // Load restores a snapshot from <dir>/stats.json; a missing file is a clean
 // start. Corrupt, ambiguous or partially canonical state fails closed.
 func (self *StatsEngine) Load(dir string) error {
+	owner := self.lockStatsWrite("load")
+	defer owner.release()
+	candidate := owner.clone()
+	if candidate.attemptLedger != nil || candidate.activeAttemptCount != 0 || candidate.attemptCutPending || candidate.attemptSettlementCutPending {
+		return errors.New("statistics engine is already owned before loading state")
+	}
+	if err := candidate.loadStatsOwned(dir); err != nil {
+		return err
+	}
+	owner.publish(candidate)
+	return nil
+}
+
+// Decode and validate the complete snapshot before it can replace public state.
+func (self *StatsEngine) loadStatsOwned(dir string) error {
 	b, err := os.ReadFile(filepath.Join(dir, "stats.json"))
 	if os.IsNotExist(err) {
 		return nil
@@ -646,8 +677,6 @@ func (self *StatsEngine) Load(dir string) error {
 	if snap.Version < 4 && len(snap.Egress) != 0 {
 		return errors.New("legacy statistics egress window has no durable generation")
 	}
-	self.mu.Lock()
-	defer self.mu.Unlock()
 	if len(self.window) != 0 || len(self.ema) != 0 || len(self.emaPPM) != 0 || len(self.egress) != 0 || self.settlementEpochKnown || self.egressGeneration != 0 || self.settlementTransition != nil {
 		return errors.New("statistics engine must be empty before loading state")
 	}
@@ -733,7 +762,7 @@ func (self *StatsEngine) Load(dir string) error {
 		}
 	}
 	if self.settlementTransition != nil {
-		if err := verifyAttemptSettlementTransitionForMeasurement(self.settlementTransition, self.releaseStatsMeasurementWithLock()); err != nil {
+		if err := verifyAttemptSettlementTransitionForMeasurement(self.settlementTransition, self.currentReleaseStatsMeasurement()); err != nil {
 			return fmt.Errorf("persisted settlement transition: %w", err)
 		}
 	}

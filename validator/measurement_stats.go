@@ -339,26 +339,29 @@ func (self *StatsEngine) currentReleaseStatsMeasurement() ReleaseStatsMeasuremen
 	return self.releaseStatsMeasurementWithLock()
 }
 
-// detachReleaseStatsMeasurement persists a write-ahead snapshot while holding
-// the measurement lock and rotates egress evidence only after persistence
-// succeeds. This deliberately trades a short disk-write pause for crash-safe
-// native-window ownership; a failed write leaves all evidence in memory.
+// The exclusive write token covers the write-ahead snapshot and durable egress
+// rotation. Public readers retain the old coherent generation during callbacks.
 func (self *StatsEngine) detachReleaseStatsMeasurement(dir string, persist func(ReleaseStatsMeasurement, uint64) error) (ReleaseStatsMeasurement, error) {
-	self.mu.Lock()
-	hasAttemptLedger := self.attemptLedger != nil
-	self.mu.Unlock()
-	if hasAttemptLedger {
+	owner := self.lockStatsWrite("detach-native")
+	defer owner.release()
+	candidate := owner.clone()
+	measurement, err := candidate.detachReleaseStatsMeasurementOwned(dir, persist, owner.persist)
+	owner.publish(candidate)
+	return measurement, err
+}
+
+// Candidate changes remain private through external persistence and rollback.
+func (self *StatsEngine) detachReleaseStatsMeasurementOwned(dir string, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(string, []byte) error) (ReleaseStatsMeasurement, error) {
+	if self.attemptLedger != nil {
 		return ReleaseStatsMeasurement{}, errors.New("attempt-backed release statistics require an exact cut boundary")
 	}
 	if persist == nil {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics persistence callback is nil")
 	}
-	self.mu.Lock()
-	defer self.mu.Unlock()
 	if self.egressGeneration == ^uint64(0) {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics egress generation overflow")
 	}
-	measurement := self.releaseStatsMeasurementWithLock()
+	measurement := self.currentReleaseStatsMeasurement()
 	if _, err := VerifyReleaseStatsMeasurement(measurement); err != nil {
 		return ReleaseStatsMeasurement{}, err
 	}
@@ -369,7 +372,7 @@ func (self *StatsEngine) detachReleaseStatsMeasurement(dir string, persist func(
 	priorEgress := self.egress
 	self.egress = map[connect.Id]map[[32]byte]bool{}
 	self.egressGeneration++
-	if err := self.saveWithLock(dir); err != nil {
+	if err := self.saveOwned(dir, writeStats); err != nil {
 		self.egress = priorEgress
 		self.egressGeneration = cutGeneration
 		return ReleaseStatsMeasurement{}, err
@@ -382,11 +385,19 @@ func (self *StatsEngine) detachReleaseStatsMeasurement(dir string, persist func(
 // the prior native cut. An active trail makes the cut retryable and blocks new
 // attempts until the exact attempt has committed or aborted.
 func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error) (ReleaseStatsMeasurement, error) {
+	owner := self.lockStatsWrite("detach-attempt-cut")
+	defer owner.release()
+	candidate := owner.clone()
+	measurement, err := candidate.detachReleaseStatsMeasurementWithAttemptCutOwned(dir, boundary, persist, owner.persist)
+	owner.publish(candidate)
+	return measurement, err
+}
+
+// Failed or active cuts preserve the candidate's existing retry reservation.
+func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCutOwned(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(string, []byte) error) (ReleaseStatsMeasurement, error) {
 	if persist == nil {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics persistence callback is nil")
 	}
-	self.mu.Lock()
-	defer self.mu.Unlock()
 	if self.attemptLedger == nil {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics attempt ledger is absent")
 	}
@@ -403,7 +414,7 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string,
 	if self.egressGeneration == ^uint64(0) {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics egress generation overflow")
 	}
-	measurement := self.releaseStatsMeasurementWithLock()
+	measurement := self.currentReleaseStatsMeasurement()
 	cut, err := self.attemptLedger.BuildCut(boundary, self.attemptSettlementFirstSequence, self.attemptEgressFirstSequence)
 	if err != nil {
 		return ReleaseStatsMeasurement{}, err
@@ -421,7 +432,7 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string,
 	self.egress = map[connect.Id]map[[32]byte]bool{}
 	self.egressGeneration++
 	self.attemptEgressFirstSequence = cut.LastSequence + 1
-	if err := self.saveWithLock(dir); err != nil {
+	if err := self.saveOwned(dir, writeStats); err != nil {
 		self.egress = priorEgress
 		self.egressGeneration = cutGeneration
 		self.attemptEgressFirstSequence = priorEgressFirst
@@ -435,8 +446,16 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string,
 // process or disk failure. A snapshot already in a later generation is left
 // untouched, preserving evidence recorded after the cut.
 func (self *StatsEngine) reconcileReleaseStatsCut(dir string, cutGeneration uint64, attemptCuts ...*AttemptLedgerCut) error {
-	self.mu.Lock()
-	defer self.mu.Unlock()
+	owner := self.lockStatsWrite("reconcile-native-cut")
+	defer owner.release()
+	candidate := owner.clone()
+	err := candidate.reconcileReleaseStatsCutOwned(dir, cutGeneration, owner.persist, attemptCuts...)
+	owner.publish(candidate)
+	return err
+}
+
+// A detached candidate retains rollback and newer-generation no-op semantics.
+func (self *StatsEngine) reconcileReleaseStatsCutOwned(dir string, cutGeneration uint64, writeStats func(string, []byte) error, attemptCuts ...*AttemptLedgerCut) error {
 	if self.attemptSettlementCutPending {
 		return errAttemptCutPending
 	}
@@ -467,7 +486,7 @@ func (self *StatsEngine) reconcileReleaseStatsCut(dir string, cutGeneration uint
 	}
 	self.egress = map[connect.Id]map[[32]byte]bool{}
 	self.egressGeneration++
-	if err := self.saveWithLock(dir); err != nil {
+	if err := self.saveOwned(dir, writeStats); err != nil {
 		self.egress = priorEgress
 		self.egressGeneration = cutGeneration
 		self.attemptEgressFirstSequence = priorEgressFirst

@@ -137,6 +137,8 @@ type mockVerifyServer struct {
 	poisonFinal             bool                // emit garbage final_sig
 	extendCount             int                 // EXTENDs processed (not counting cache hits)
 	cacheHits               int
+	// Optional fixture selection still passes the complete eligibility test.
+	sampleNextOverride connect.Id
 }
 
 func newMockVerifyServer(t *testing.T, providerCount int) (*mockVerifyServer, ed25519.PrivateKey, connect.Id) {
@@ -184,6 +186,14 @@ func (self *mockVerifyServer) sampleNext(trail []connect.Id) (connect.Id, error)
 	}
 	if len(eligible) == 0 {
 		return connect.Id{}, fmt.Errorf("no eligible providers")
+	}
+	if self.sampleNextOverride != (connect.Id{}) {
+		for _, provider := range eligible {
+			if provider == self.sampleNextOverride {
+				return provider, nil
+			}
+		}
+		return connect.Id{}, fmt.Errorf("fixture next provider is not eligible")
 	}
 	return eligible[mathrand.Intn(len(eligible))], nil
 }

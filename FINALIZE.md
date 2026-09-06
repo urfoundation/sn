@@ -1,7 +1,7 @@
 # UR Subnet release 1.0 finalization plan
 
 Current execution record: [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md), reconciled
-2026-09-05 19:18 UTC. The final live campaign has not started. Existing attempt-4
+2026-09-05 20:10 UTC. The final live campaign has not started. Existing attempt-4
 testnet deployments and custody are preserved; no partial local qualification
 authorizes activation or proves final acceptance.
 
@@ -12,9 +12,11 @@ The latter's complete99-path reviewed source manifest matched that checkpoint; i
 validator341 suite passes normally and under race. Launcher4 also passes both
 modes. These are implementation checkpoints, not a final release qualification.
 Source checkpointc878a13 now also commits the exact qualified13-file seed-custody
-repair and producer-selection fixes described below; the preceding pushed
-checkpoint was744c0f4. All8 composed gate checks pass normal/race. Active Stats
-and timeout repairs remain in isolated temp/sn-* trees.
+repair and producer-selection fixes described below; current pushed checkpoint
+is1cc8014. Its8 composed gate checks pass normal/race. Main now also contains
+the uncommitted Stats v4 repair and new Stats/server gate coverage; these newer
+composed changes are not yet qualified. Client-key and timeout candidates remain
+in isolated temp/sn-* trees.
 
 The composed disk/settlement candidate passes validator285 and simulator6
 normally/race. Cold durable-parity still fails its3m race deadline; broader
@@ -24,26 +26,42 @@ semantic/settlement verification is a larger cost than plan decoding. The
 two smaller transcript/plan work-count defects have exact causal reproductions;
 the dominant same-call duplicate-lineage/cut checks now have two additional
 causal failures and twelve passing controls. Their pure-projection/batch-join
-repair is reviewed and its focused29 qualification is authorized, followed by
-the original cold comparison only after focused GREEN. No coverage or deadline
-is waived; the full semantic rerun remains mandatory.
+repair passes validator8 normal/race and simulator21 normally. Simulator21's
+race run fails at3m in the cold fixture constructor; the cold durable comparison
+and full semantic rerun were not executed. The captured-binary profile identifies
+cycle sealing and fleet-generation work as the remaining critical paths. Bounded
+fixture parallelization is being prepared with private mutable ownership and
+unchanged full crypto/chronology. No coverage or deadline is waived.
 
 The engine policy-depth repair passes all51 normal/race roots after genuine
 signed M4/M16-under-M8 causal reproductions and is included in c86effa. Two
 adjacent wrong-clamp/invalid-encoding failures are also causally reproduced.
-The server-side signed-byte alias remains open. Key custody v3 passes all24
+The server-side signed-byte alias now has two causal failures and a nine-root
+normal/race GREEN repair. Its exact two files are integrated in primary server,
+and both main SN gates now select it explicitly. Composed gate and service-backed
+full-trail qualification remain. Key custody v3 passes all24
 CRV4/validator roots normally and under race after explicit private-parent
 fixture preparation; both earlier failed captures remain preserved. All18
 reviewed source paths match the integrated main checkout. Both packages also
 compile for Linux/Darwin on amd64/arm64 (eight builds); actual deployment-path
-compatibility and platform runtime evidence remain separate obligations.
+compatibility and platform runtime evidence remain separate obligations. The
+actual release client.key reader has six newly reproduced custody, identity-drift
+and incomplete-state admission failures, with five compatibility controls passing.
+An additional genuine-ledger regression proves accepting that same key in a
+different configured operator domain. Its reviewed repair is authorized for
+exact52 normal/race tests; the raw-only simulator readers remain separately in scope.
 Stats has five deterministic callback lock-inversion reproductions. Review of
 its first repair also found caller-controlled cross-batch lock ordering and
 wrong-operator admission mutation; both now have causal failures. A separate
 Load regression proves partial state survives a rejected snapshot. Their
-unchanged positive controls pass; held v2 focused27/structural1 is under
-qualification. A separate exact4 neutral candidate now targets state-directory
-misrouting and mixed-domain admission; the complete repair remains unqualified.
+unchanged positive controls pass; v2 focused27/structural1 is GREEN. Routing exact4
+then reproduces wrong-directory publication and mixed-domain admission mutation.
+V3's focused35/structural1 passes normal/race, but affected316 ordinary failed
+on the unchanged closure-before-removal root (315 passed; race did not run).
+The cause is delayed public-generation publication, not demonstrated early
+write-token release. V4's narrow repair and six deterministic adjacent tests
+are integrated in main; all15 Stats paths match the reviewed delta. Focused42/
+structural1 and conditional affected322 are authorized; composed qualification remains.
 
 Bounded aggregates, collector/public typed replication, authenticated activation,
 global cross-cut terminal history, aggregate capacity and on-chain validator
@@ -52,6 +70,10 @@ causally reproduced. The working gate now selects disk/depth, all namespace,
 launcher and its own guard tests, and explicitly runs both custody entry points
 normally and under race. All8 focused source/invocation guards now pass both
 modes; they do not stand in for execution of the complete selected suites.
+A subsequent exact3 capture also proves omitted Stats test families while the
+disk/depth controls pass. Main's new selector/guard now covers all37 added Stats
+roots, and both scripts explicitly include server signed-depth admission tests.
+These latest source/invocation changes still require their own qualification.
 Both release gates, final source lock,
 Ready doctor, matching plans, real live phases, FINAL.md and independent
 on-chain verification are still outstanding. Section12 of the handoff records

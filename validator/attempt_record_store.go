@@ -792,21 +792,25 @@ func (self *attemptRecordStore) Close() error {
 // Descriptor-relative storage adds strict CURRENT selection, no-alias private
 // files, bounded reservations and parent durability to the LevelDB engine.
 type attemptRecordStoreStorage struct {
-	stateLock sync.Mutex
-	metaLock  sync.Mutex
-	path      string
-	anchor    os.FileInfo
-	root      *os.Root
-	directory *os.File
-	ownerFile *os.File
-	locked    bool
-	closed    bool
-	failure   error
-	sizes     map[string]uint64
-	used      uint64
-	bounds    attemptRecordStoreBounds
-	hooks     attemptRecordStoreHooks
-	fault     func(error)
+	stateLock  sync.Mutex
+	metaLock   sync.Mutex
+	path       string
+	anchor     os.FileInfo
+	root       *os.Root
+	parent     *os.Root
+	directory  *os.File
+	ownerFile  *os.File
+	locked     bool
+	closed     bool
+	failure    error
+	sizes      map[string]uint64
+	used       uint64
+	bounds     attemptRecordStoreBounds
+	hooks      attemptRecordStoreHooks
+	fault      func(error)
+	openingCtx context.Context
+	inspection bool
+	observed   map[string]os.FileInfo
 }
 
 // Creates only the final private directory through an anchored parent. All
@@ -835,111 +839,17 @@ func openAttemptRecordStoreStorageAt(parentRoot *os.Root, path string, bounds at
 // A fresh-directory owner binds its earlier inode observation to the actual
 // storage descriptor before parent fsync, owner locking or backend mutation.
 func openAttemptRecordStoreStorageAtWithAnchor(parentRoot *os.Root, path string, expected os.FileInfo, bounds attemptRecordStoreBounds, hooks attemptRecordStoreHooks, fault func(error)) (*attemptRecordStoreStorage, error) {
-	if parentRoot == nil || expected != nil && !attemptStorePrivateDirectory(expected) {
-		return nil, errors.New("attempt record store directory authority is incomplete")
-	}
-	name := filepath.Base(path)
-	if info, err := parentRoot.Lstat(name); errors.Is(err, os.ErrNotExist) {
-		if expected != nil {
-			return nil, errors.New("attempt record store owned directory is missing")
-		}
-		if err := parentRoot.Mkdir(name, 0o700); err != nil {
-			return nil, err
-		}
-	} else if err != nil || !attemptStorePrivateDirectory(info) {
-		return nil, errors.New("attempt record store directory is not private and regular")
-	}
-	anchor, err := parentRoot.Lstat(name)
+	disk, err := acquireAttemptRecordStoreStorage(context.Background(), parentRoot, path, expected, bounds, hooks, fault)
 	if err != nil {
 		return nil, err
 	}
-	if !attemptStorePrivateDirectory(anchor) || expected != nil && !os.SameFile(expected, anchor) {
-		return nil, errors.New("attempt record store owned directory changed before open")
+	if err := disk.promoteInspection(); err != nil {
+		return nil, errors.Join(err, disk.Close())
 	}
-	self := &attemptRecordStoreStorage{path: path, anchor: anchor, bounds: bounds, hooks: hooks, fault: fault, sizes: map[string]uint64{}, used: attemptStoreMetadataReserve}
-	if err := self.step("after-directory-check", ""); err != nil {
-		return nil, err
+	if err := disk.finishOpening(); err != nil {
+		return nil, errors.Join(err, disk.Close())
 	}
-	self.root, err = parentRoot.OpenRoot(name)
-	if err != nil {
-		return nil, err
-	}
-	complete := false
-	defer func() {
-		if !complete {
-			_ = self.Close()
-		}
-	}()
-	self.directory, err = self.root.Open(".")
-	if err != nil {
-		return nil, err
-	}
-	opened, err := self.directory.Stat()
-	if err != nil || !attemptStorePrivateDirectory(opened) || !os.SameFile(anchor, opened) || expected != nil && !os.SameFile(expected, opened) {
-		return nil, errors.New("attempt record store directory changed during open")
-	}
-	parentFile, err := parentRoot.Open(".")
-	if err != nil {
-		return nil, err
-	}
-	err = self.syncDirectoryFile(parentFile, "parent")
-	err = errors.Join(err, parentFile.Close())
-	if err != nil {
-		return nil, err
-	}
-	// The directory inode, not replaceable LOCK-file contents, is authority.
-	if err := attemptStoreLockFile(self.directory); err != nil {
-		return nil, err
-	}
-	self.ownerFile, err = self.openFile("LOCK", os.O_RDWR|os.O_CREATE, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := self.syncDirectoryFile(self.directory, "owner"); err != nil {
-		return nil, err
-	}
-	directory, err := self.root.Open(".")
-	if err != nil {
-		return nil, err
-	}
-	var entries, metadataBytes uint64
-	for {
-		infos, readErr := directory.ReadDir(128)
-		for _, entry := range infos {
-			entries++
-			info, infoErr := entry.Info()
-			if infoErr != nil || !attemptStorePrivateFile(info) || entries > bounds.MaxStorageFiles {
-				directory.Close()
-				return nil, errors.New("attempt record store contains nonregular or excessive files")
-			}
-			self.sizes[entry.Name()] = uint64(info.Size())
-			if !attemptStoreMetadataName(entry.Name()) {
-				if uint64(info.Size()) > bounds.MaxStorageBytes-self.used {
-					directory.Close()
-					return nil, errAttemptRecordStoreLimit
-				}
-				self.used += uint64(info.Size())
-			} else {
-				metadataBytes += uint64(info.Size())
-				if metadataBytes > attemptStoreMetadataReserve {
-					directory.Close()
-					return nil, errors.New("attempt record store metadata files exceed their reservation")
-				}
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			directory.Close()
-			return nil, readErr
-		}
-	}
-	if err := directory.Close(); err != nil {
-		return nil, err
-	}
-	complete = true
-	return self, nil
+	return disk, nil
 }
 
 // Lock is the engine's single-session lock; the process lock outlives it.
@@ -1000,6 +910,9 @@ func (self *attemptRecordStoreStorage) step(operation, name string) error {
 	if failure != nil {
 		return failure
 	}
+	if err := self.openingContextError(); err != nil {
+		return err
+	}
 	info, err := os.Lstat(self.path)
 	if err != nil || !attemptStorePrivateDirectory(info) || !os.SameFile(info, self.anchor) {
 		err = errors.New("attempt record store directory anchor changed")
@@ -1012,11 +925,14 @@ func (self *attemptRecordStoreStorage) step(operation, name string) error {
 			return self.fail(err)
 		}
 	}
-	return nil
+	return self.openingContextError()
 }
 
 // Fsync the directory containing every newly created durable file name.
 func (self *attemptRecordStoreStorage) syncDirectoryFile(directory *os.File, stage string) error {
+	if err := self.requireWritable(); err != nil {
+		return err
+	}
 	if err := self.step("before-directory-sync", stage); err != nil {
 		return err
 	}
@@ -1043,7 +959,12 @@ func (self *attemptRecordStoreStorage) checkFile(name string, missingAllowed boo
 
 // No-follow descriptor-relative open checks the actual opened inode as well as
 // both directory observations. A swapped path never redirects outside root.
-func (self *attemptRecordStoreStorage) openFile(name string, flags int, missingAllowed bool) (*os.File, error) {
+func (self *attemptRecordStoreStorage) openFile(name string, flags int, missingAllowed bool) (result *os.File, resultErr error) {
+	if flags&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC) != 0 {
+		if err := self.requireWritable(); err != nil {
+			return nil, err
+		}
+	}
 	if err := self.checkFile(name, missingAllowed); err != nil {
 		return nil, err
 	}
@@ -1058,15 +979,22 @@ func (self *attemptRecordStoreStorage) openFile(name string, flags int, missingA
 	if err != nil {
 		return nil, self.fail(err)
 	}
+	complete := false
+	defer func() {
+		if !complete {
+			resultErr = errors.Join(resultErr, self.fail(file.Close()))
+			result = nil
+		}
+	}()
 	opened, openedErr := file.Stat()
 	after, afterErr := self.root.Lstat(name)
 	if openedErr != nil || afterErr != nil || !attemptStorePrivateFile(opened) || !attemptStorePrivateFile(after) || !os.SameFile(opened, after) || (beforeErr == nil && !os.SameFile(before, opened)) {
-		err := errors.Join(errors.New("attempt record store file identity changed during open"), file.Close())
-		return nil, self.fail(err)
+		return nil, self.fail(errors.New("attempt record store file identity changed during open"))
 	}
 	if err := self.step("after-open", name); err != nil {
-		return nil, errors.Join(err, file.Close())
+		return nil, err
 	}
+	complete = true
 	return file, nil
 }
 
@@ -1125,6 +1053,9 @@ func (self *attemptRecordStoreStorage) GetMeta() (storage.FileDesc, error) {
 
 // CURRENT replacement is durable before its manifest is treated as selected.
 func (self *attemptRecordStoreStorage) SetMeta(fd storage.FileDesc) error {
+	if err := self.requireWritable(); err != nil {
+		return err
+	}
 	if !storage.FileDescOk(fd) || fd.Type != storage.TypeManifest {
 		return storage.ErrInvalidFile
 	}
@@ -1260,6 +1191,9 @@ func (self *attemptRecordStoreStorage) List(types storage.FileType) ([]storage.F
 // New files reserve a bounded descriptor before creation; their names are
 // parent-fsynced immediately and again after syncing record-bearing contents.
 func (self *attemptRecordStoreStorage) Create(fd storage.FileDesc) (storage.Writer, error) {
+	if err := self.requireWritable(); err != nil {
+		return nil, err
+	}
 	if !storage.FileDescOk(fd) {
 		return nil, storage.ErrInvalidFile
 	}
@@ -1296,6 +1230,9 @@ func (self *attemptRecordStoreStorage) Create(fd storage.FileDesc) (storage.Writ
 
 // Backend compaction may remove only its own validated file descriptors.
 func (self *attemptRecordStoreStorage) Remove(fd storage.FileDesc) error {
+	if err := self.requireWritable(); err != nil {
+		return err
+	}
 	if err := self.checkFile(fd.String(), false); err != nil {
 		return err
 	}
@@ -1311,6 +1248,9 @@ func (self *attemptRecordStoreStorage) Remove(fd storage.FileDesc) error {
 
 // Renamed backend files retain the same conservative byte reservation.
 func (self *attemptRecordStoreStorage) Rename(old, next storage.FileDesc) error {
+	if err := self.requireWritable(); err != nil {
+		return err
+	}
 	if old == next {
 		return self.checkFile(old.String(), false)
 	}
@@ -1352,6 +1292,9 @@ func (self *attemptRecordStoreStorage) Close() error {
 	}
 	if self.root != nil {
 		err = errors.Join(err, self.root.Close())
+	}
+	if self.parent != nil {
+		err = errors.Join(err, self.parent.Close())
 	}
 	return self.fail(err)
 }

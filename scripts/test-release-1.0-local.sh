@@ -103,6 +103,10 @@ echo "[release-1.0] operator pure/unit suites"
   provider_input_tests='^Test(StCanonicalProviderUsages|StBuildReleaseProviderInputs)'
   go test ./controller -run "$provider_input_tests" -count=1
   go test -race ./controller -run "$provider_input_tests" -count=1
+  # Requested depth must fit its signed byte before settings or state admission.
+  seed_admission_tests='^Test(VerifySeedAdmission|VerifySeedRejectsMissingSignature|VerifyClampM)'
+  go test ./controller -run "$seed_admission_tests" -count=1
+  go test -race ./controller -run "$seed_admission_tests" -count=1
   payout_allocation_tests='^Test(EvenContractPayoutShare|AllocateContractParticipantPayouts|AllocateContractParticipantPayoutEligibilityMatrix)$'
   go test ./model -run "$payout_allocation_tests" -count=1
   go test -race ./model -run "$payout_allocation_tests" -count=1
