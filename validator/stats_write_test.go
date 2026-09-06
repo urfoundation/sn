@@ -155,9 +155,9 @@ func TestStatsWriteCompetingLedgerCannotReplaceCompletedReplay(t *testing.T) {
 		if operation == "attach" && stage == "waiting" {
 			close(waiting)
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		writes++
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	first := startStatsWriteTestCall(func() error { return stats.AttachAttemptLedger(ledger, dir) })
 	defer func() { release(); _ = first.join() }()
@@ -196,10 +196,10 @@ func TestStatsWriteReplayPreservesQueuedAssignmentAndSave(t *testing.T) {
 		if operation == "record-assignment" && stage == "waiting" {
 			close(waiting)
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		writes++
 		_ = stats.ProviderIDs()
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	first := startStatsWriteTestCall(func() error { return stats.AttachAttemptLedger(ledger, dir) })
 	defer func() { release(); _ = first.join() }()
@@ -294,9 +294,9 @@ func TestStatsWriteReplayCancellationBeforeSnapshotDoesNotPublish(t *testing.T) 
 		if operation == "attach" && stage == "before-snapshot" {
 			cancel()
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		writes++
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	if err := stats.AttachAttemptLedgerContext(ctx, ledger, dir); !errors.Is(err, context.Canceled) {
 		t.Fatalf("pre-write cancellation was not returned: %v", err)
@@ -323,8 +323,8 @@ func TestStatsWriteReplayPublishesSuccessfulWriteDespiteLateCancellation(t *test
 	stats, ledger, _, dir := newStatsWriteReplayTest(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stats.writeHooks.writeSnapshot = func(path string, raw []byte) error {
-		if err := atomicStateWrite(path, raw, 0o600); err != nil {
+	stats.writeHooks.writeSnapshot = func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
+		if err := writeStatsSnapshotOwned(directory, write); err != nil {
 			return err
 		}
 		cancel()
@@ -351,7 +351,7 @@ func TestStatsWriteReplayGenerationMismatchRefusesBeforeSnapshot(t *testing.T) {
 			stats.egressGeneration++
 			stats.mu.Unlock()
 		}
-	}, writeSnapshot: func(string, []byte) error { writes++; return nil }}
+	}, writeSnapshot: func(*statsSnapshotDirectory, statsSnapshotWrite) error { writes++; return nil }}
 	if err := stats.AttachAttemptLedger(ledger, dir); err == nil || !strings.Contains(err.Error(), "replay generation changed") {
 		t.Fatalf("stale replay was not rejected before persistence: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestStatsWriteSaveCannotOverwriteLaterEventSnapshot(t *testing.T) {
 		if operation == "record-assignment" && stage == "waiting" {
 			close(waiting)
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		writes++
 		if !stats.mu.TryLock() {
 			return errors.New("save writer retained the statistics state mutex")
@@ -598,7 +598,7 @@ func TestStatsWriteSaveCannotOverwriteLaterEventSnapshot(t *testing.T) {
 			close(entered)
 			<-release
 		}
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	first := startStatsWriteTestCall(func() error { return stats.Save(dir) })
 	defer func() { unblock(); _ = first.join() }()
@@ -702,10 +702,10 @@ func TestStatsWriteUnchangedRefreshRechecksAfterInFlightEpochCommit(t *testing.T
 		if operation == "settlement" && stage == "waiting" {
 			close(waiting)
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		close(entered)
 		<-release
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	first := startStatsWriteTestCall(func() error { return stats.AdvanceSettlementEpoch(43, dir) })
 	defer func() { unblock(); _ = first.join() }()

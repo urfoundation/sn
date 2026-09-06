@@ -27,9 +27,9 @@ func TestStatsMultiBatchRechecksLedgerBoundDuringQueuedAdmission(t *testing.T) {
 		if operation == "settlement" && stage == "waiting" {
 			close(waiting)
 		}
-	}, writeSnapshot: func(path string, raw []byte) error {
+	}, writeSnapshot: func(directory *statsSnapshotDirectory, write statsSnapshotWrite) error {
 		snapshotWrites++
-		return atomicStateWrite(path, raw, 0o600)
+		return writeStatsSnapshotOwned(directory, write)
 	}}
 	replay := startStatsWriteTestCall(func() error { return stats.AttachAttemptLedger(ledger, dir) })
 	defer func() { release(); _ = replay.join() }()

@@ -28,7 +28,8 @@ var statsWriteOrders struct {
 // A callback may read Stats, but must not recursively mutate an owned engine.
 type statsWriteHooks struct {
 	step          func(operation, stage string)
-	writeSnapshot func(string, []byte) error
+	writeSnapshot func(*statsSnapshotDirectory, statsSnapshotWrite) error
+	snapshotIO    statsSnapshotIOHooks
 }
 
 // The non-zero-sized owner pointer uniquely identifies one retained token.
@@ -37,6 +38,7 @@ type statsWriteOwner struct {
 	ctx       context.Context
 	operation string
 	hooks     statsWriteHooks
+	snapshot  *statsSnapshotDirectory
 }
 
 // Captures control state as well as the exclusive owner. Comparison happens
@@ -171,13 +173,20 @@ func (self *statsWriteOwner) check() error {
 
 // The commit boundary is the start of the writer after the final cancellation
 // check. A successful write is published even if cancellation arrives during it.
-func (self *statsWriteOwner) persist(path string, data []byte) error {
-	return self.persistChecked(path, data, self.check)
+func (self *statsWriteOwner) persist(write statsSnapshotWrite) error {
+	return self.persistChecked(write, self.check)
 }
 
 // Startup supplies its stronger generation comparison at the same final
 // pre-write boundary, after hooks and cancellation but before any writer call.
-func (self *statsWriteOwner) persistChecked(path string, data []byte, check func() error) error {
+func (self *statsWriteOwner) persistChecked(write statsSnapshotWrite, check func() error) (resultErr error) {
+	if self.snapshot == nil {
+		owner, err := acquireStatsSnapshotDirectory(write.path, write.version >= 6, self.hooks.snapshotIO)
+		self.snapshot = owner
+		if err != nil { return errors.Join(err, self.finishSnapshot()) }
+	}
+	defer func() { resultErr = errors.Join(resultErr, self.finishSnapshot()) }()
+	if err := self.snapshot.admit(write); err != nil { return err }
 	self.step("before-snapshot")
 	if err := self.ctx.Err(); err != nil {
 		return err
@@ -185,10 +194,13 @@ func (self *statsWriteOwner) persistChecked(path string, data []byte, check func
 	if err := check(); err != nil {
 		return err
 	}
+	if err := self.snapshot.check(); err != nil { return err }
 	if self.hooks.writeSnapshot != nil {
-		return self.hooks.writeSnapshot(path, data)
+		if err := self.hooks.writeSnapshot(self.snapshot, write); err != nil { return err }
+		if !self.snapshot.written { return errors.New("statistics snapshot callback did not complete the owned writer") }
+		return nil
 	}
-	return atomicStateWrite(path, data, 0o600)
+	return writeStatsSnapshotOwned(self.snapshot, write)
 }
 
 // Only startup/boundary work clones the full window; hot-path checkpoints and
@@ -241,12 +253,14 @@ func (self *statsWriteOwner) publish(candidate *StatsEngine) {
 
 // A candidate can use existing snapshot encoding without retaining any state
 // mutex while the supplied write operation executes.
-func (self *StatsEngine) saveOwned(dir string, persist func(string, []byte) error) error {
-	b, err := encodeStatsSnapshot(self.snapshotStats())
+func (self *StatsEngine) saveOwned(dir string, persist func(statsSnapshotWrite) error) error {
+	snapshot := self.snapshotStats()
+	if snapshot.Version >= 6 { if err := validateStatsSnapshotPhysicalDirectory(dir); err != nil { return err } }
+	b, err := encodeStatsSnapshot(snapshot)
 	if err != nil {
 		return err
 	}
-	return persist(filepath.Join(dir, "stats.json"), b)
+	return persist(statsSnapshotWrite{path: filepath.Join(dir, "stats.json"), data: b, version: snapshot.Version})
 }
 
 // Copy under only the short state mutex, never across encoding or persistence.

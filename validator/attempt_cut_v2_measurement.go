@@ -39,7 +39,13 @@ type VerifiedAttemptCutV2Measurement struct {
 // Uses the same admission and per-record primitives as standalone statistics
 // and head replay. The private visitor invokes both against every authenticated
 // record; no external callback, cached verdict or second history scan is used.
-func VerifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2MeasurementOptions) (result VerifiedAttemptCutV2Measurement, resultErr error) {
+func VerifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2MeasurementOptions) (VerifiedAttemptCutV2Measurement, error) {
+	return verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, measurement, cut, expected, policy, bounds, options, nil)
+}
+
+// Only an operation-owned release/lineage join may add this private observer.
+// The public Replay.VisitRecord option remains rejected by both projections.
+func verifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2MeasurementOptions, visitRecord func(AttemptRecord) error) (result VerifiedAttemptCutV2Measurement, resultErr error) {
 	if ctx == nil {
 		return result, errors.New("compact measurement context is nil")
 	}
@@ -71,7 +77,13 @@ func VerifyReleaseStatsAndHeadWithAttemptCutV2(ctx context.Context, measurement 
 		if err := stats.visitRecord(record); err != nil {
 			return err
 		}
-		return head.visitRecord(record)
+		if err := head.visitRecord(record); err != nil {
+			return err
+		}
+		if visitRecord != nil {
+			return visitRecord(record)
+		}
+		return nil
 	}
 	replayed, err := ReplayAttemptCutV2WithPolicy(ctx, cut, expected, policy, bounds, replayOptions)
 	if err != nil {

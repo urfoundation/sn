@@ -71,7 +71,7 @@ func advanceReleaseSettlementSnapshotWithMode(ctx context.Context, stateDir stri
 			}
 		}
 		return advanceAttemptSettlementEpochWithIOModeContext(ctx, stateDir, target, terminal, ordered, func(path string, payload []byte) error {
-			return atomicStateWrite(path, payload, 0o600)
+			return writeEncodedStatsSnapshot(path, payload)
 		}, removeAttemptSettlementTransaction, finishCurrent)
 	}
 }

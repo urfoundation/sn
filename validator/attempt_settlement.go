@@ -610,6 +610,6 @@ func advanceAttemptSettlementCandidatesOwned(coordinatorStateDir string, epoch u
 // recovery journal makes sequential filesystem replacement one logical commit.
 func AdvanceAttemptSettlementEpoch(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant) error {
 	return advanceAttemptSettlementEpochWithWrite(coordinatorStateDir, epoch, terminalBoundary, participants, func(path string, payload []byte) error {
-		return atomicStateWrite(path, payload, 0o600)
+		return writeEncodedStatsSnapshot(path, payload)
 	})
 }

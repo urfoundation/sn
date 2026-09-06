@@ -553,18 +553,23 @@ func (self *StatsEngine) Save(dir string) error {
 // retains exclusive write ownership, not the reader mutex, through the atomic
 // write so an epoch cannot admit events before its persisted state. A skipped epoch is
 // unrecoverable from local counters and therefore fails closed.
-func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error {
+func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) (resultErr error) {
 	owner := self.lockStatsWrite("advance-epoch")
 	defer owner.release()
+	defer func() { resultErr = errors.Join(resultErr, owner.finishSnapshot()) }()
+	if err := owner.prepareSnapshot(dir, false); err != nil { return err }
 	candidate := owner.clone()
 	err := candidate.advanceSettlementEpochOwned(epoch, dir, owner.persist)
+	finishErr := owner.finishSnapshot()
+	if err == nil && finishErr != nil { return finishErr }
+	err = errors.Join(err, finishErr)
 	owner.publish(candidate)
 	return err
 }
 
 // Operates on an exclusively owned candidate; even a retryable failure retains
 // its original admission reservation while failed snapshots roll back the fold.
-func (self *StatsEngine) advanceSettlementEpochOwned(epoch uint64, dir string, persist func(string, []byte) error) error {
+func (self *StatsEngine) advanceSettlementEpochOwned(epoch uint64, dir string, persist func(statsSnapshotWrite) error) error {
 	var nextAttemptSequence uint64
 	if self.attemptLedger != nil {
 		head, err := self.attemptLedger.checkedHead()

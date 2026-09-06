@@ -194,8 +194,13 @@ type AttemptLedger struct {
 }
 
 func canonicalAttemptHex32(name, encoded string, zeroAllowed bool) ([32]byte, error) {
+	return canonicalAttemptHex32WithWork(name, encoded, zeroAllowed, canonicalHexWork{})
+}
+
+// Keeps canonical decoding on the same production path with call-local work.
+func canonicalAttemptHex32WithWork(name, encoded string, zeroAllowed bool, work canonicalHexWork) ([32]byte, error) {
 	var value [32]byte
-	if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") {
+	if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") {
 		return value, fmt.Errorf("%s is not canonical 32-byte hex", name)
 	}
 	decoded, err := hex.DecodeString(encoded[2:])
@@ -1084,7 +1089,7 @@ func (self *StatsEngine) AttachAttemptLedger(ledger *AttemptLedger, stateDir str
 // Replay modifies an exclusively owned candidate. The public statistics and
 // ledger binding are installed only after every record and the snapshot write
 // succeeds; a late invalid record or cancellation cannot expose partial stats.
-func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger *AttemptLedger, stateDir string) error {
+func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger *AttemptLedger, stateDir string) (resultErr error) {
 	if ledger == nil {
 		return errors.New("attempt ledger is nil")
 	}
@@ -1105,6 +1110,8 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	if candidate.activeAttemptCount != 0 {
 		return errors.New("cannot replay attempt startup with active trails")
 	}
+	defer func() { resultErr = errors.Join(resultErr, owner.finishSnapshot()) }()
+	if err := owner.prepareSnapshot(stateDir, false); err != nil { return err }
 	candidate.attemptLedger = ledger
 	if err := ledger.RecoverPendingContext(ctx, func(AttemptRecord) error { return nil }); err != nil {
 		return fmt.Errorf("recover pending attempt: %w", err)
@@ -1152,11 +1159,12 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := candidate.saveOwned(stateDir, func(path string, data []byte) error {
-		return owner.persistChecked(path, data, func() error { return owner.checkReplayBasis(basis) })
+	if err := candidate.saveOwned(stateDir, func(write statsSnapshotWrite) error {
+		return owner.persistChecked(write, func() error { return owner.checkReplayBasis(basis) })
 	}); err != nil {
 		return err
 	}
+	if err := owner.finishSnapshot(); err != nil { return err }
 	owner.publish(candidate)
 	return nil
 }

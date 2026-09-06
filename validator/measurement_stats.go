@@ -140,6 +140,11 @@ func VerifyReleaseStatsMeasurement(measurement ReleaseStatsMeasurement) (Verifie
 // A containing settlement verification can supply the same full cut primitive
 // while retaining every statistics and recursive transition check.
 func verifyReleaseStatsMeasurementWithCutVerifier(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier) (VerifiedReleaseStats, error) {
+	return verifyReleaseStatsMeasurementWithHexWork(measurement, verifyCut, canonicalHexWork{})
+}
+
+// Observes egress normalization without changing any recursive cut check.
+func verifyReleaseStatsMeasurementWithHexWork(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier, work canonicalHexWork) (VerifiedReleaseStats, error) {
 	config := measurement.Config
 	if config.AMin == 0 || config.AlphaDenominator == 0 || config.AlphaNumerator > config.AlphaDenominator || config.LatRefMillis == 0 {
 		return VerifiedReleaseStats{}, errors.New("release statistics config is invalid")
@@ -165,7 +170,7 @@ func verifyReleaseStatsMeasurementWithCutVerifier(measurement ReleaseStatsMeasur
 		egress := make(map[[32]byte]bool, len(provider.EgressIPHashHexes))
 		priorHash := ""
 		for hashIndex, encoded := range provider.EgressIPHashHexes {
-			if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") || (priorHash != "" && encoded <= priorHash) {
+			if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") || (priorHash != "" && encoded <= priorHash) {
 				return VerifiedReleaseStats{}, fmt.Errorf("provider %s egress hash %d is not canonical", provider.ClientID, hashIndex)
 			}
 			decoded, decodeErr := hex.DecodeString(encoded[2:])
@@ -341,17 +346,22 @@ func (self *StatsEngine) currentReleaseStatsMeasurement() ReleaseStatsMeasuremen
 
 // The exclusive write token covers the write-ahead snapshot and durable egress
 // rotation. Public readers retain the old coherent generation during callbacks.
-func (self *StatsEngine) detachReleaseStatsMeasurement(dir string, persist func(ReleaseStatsMeasurement, uint64) error) (ReleaseStatsMeasurement, error) {
+func (self *StatsEngine) detachReleaseStatsMeasurement(dir string, persist func(ReleaseStatsMeasurement, uint64) error) (resultMeasurement ReleaseStatsMeasurement, resultErr error) {
 	owner := self.lockStatsWrite("detach-native")
 	defer owner.release()
+	defer func() { resultErr = errors.Join(resultErr, owner.finishSnapshot()) }()
+	if err := owner.prepareSnapshot(dir, false); err != nil { return ReleaseStatsMeasurement{}, err }
 	candidate := owner.clone()
 	measurement, err := candidate.detachReleaseStatsMeasurementOwned(dir, persist, owner.persist)
+	finishErr := owner.finishSnapshot()
+	if err == nil && finishErr != nil { return ReleaseStatsMeasurement{}, finishErr }
+	err = errors.Join(err, finishErr)
 	owner.publish(candidate)
 	return measurement, err
 }
 
 // Candidate changes remain private through external persistence and rollback.
-func (self *StatsEngine) detachReleaseStatsMeasurementOwned(dir string, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(string, []byte) error) (ReleaseStatsMeasurement, error) {
+func (self *StatsEngine) detachReleaseStatsMeasurementOwned(dir string, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(statsSnapshotWrite) error) (ReleaseStatsMeasurement, error) {
 	if self.attemptLedger != nil {
 		return ReleaseStatsMeasurement{}, errors.New("attempt-backed release statistics require an exact cut boundary")
 	}
@@ -384,17 +394,22 @@ func (self *StatsEngine) detachReleaseStatsMeasurementOwned(dir string, persist 
 // counters start at the settlement boundary and whose egress claims start at
 // the prior native cut. An active trail makes the cut retryable and blocks new
 // attempts until the exact attempt has committed or aborted.
-func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error) (ReleaseStatsMeasurement, error) {
+func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCut(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error) (resultMeasurement ReleaseStatsMeasurement, resultErr error) {
 	owner := self.lockStatsWrite("detach-attempt-cut")
 	defer owner.release()
+	defer func() { resultErr = errors.Join(resultErr, owner.finishSnapshot()) }()
+	if err := owner.prepareSnapshot(dir, false); err != nil { return ReleaseStatsMeasurement{}, err }
 	candidate := owner.clone()
 	measurement, err := candidate.detachReleaseStatsMeasurementWithAttemptCutOwned(dir, boundary, persist, owner.persist)
+	finishErr := owner.finishSnapshot()
+	if err == nil && finishErr != nil { return ReleaseStatsMeasurement{}, finishErr }
+	err = errors.Join(err, finishErr)
 	owner.publish(candidate)
 	return measurement, err
 }
 
 // Failed or active cuts preserve the candidate's existing retry reservation.
-func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCutOwned(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(string, []byte) error) (ReleaseStatsMeasurement, error) {
+func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCutOwned(dir string, boundary AttemptBoundary, persist func(ReleaseStatsMeasurement, uint64) error, writeStats func(statsSnapshotWrite) error) (ReleaseStatsMeasurement, error) {
 	if persist == nil {
 		return ReleaseStatsMeasurement{}, errors.New("release statistics persistence callback is nil")
 	}
@@ -445,17 +460,22 @@ func (self *StatsEngine) detachReleaseStatsMeasurementWithAttemptCutOwned(dir st
 // reconcileReleaseStatsCut completes a journal-first egress cut after a
 // process or disk failure. A snapshot already in a later generation is left
 // untouched, preserving evidence recorded after the cut.
-func (self *StatsEngine) reconcileReleaseStatsCut(dir string, cutGeneration uint64, attemptCuts ...*AttemptLedgerCut) error {
+func (self *StatsEngine) reconcileReleaseStatsCut(dir string, cutGeneration uint64, attemptCuts ...*AttemptLedgerCut) (resultErr error) {
 	owner := self.lockStatsWrite("reconcile-native-cut")
 	defer owner.release()
+	defer func() { resultErr = errors.Join(resultErr, owner.finishSnapshot()) }()
+	if err := owner.prepareSnapshot(dir, false); err != nil { return err }
 	candidate := owner.clone()
 	err := candidate.reconcileReleaseStatsCutOwned(dir, cutGeneration, owner.persist, attemptCuts...)
+	finishErr := owner.finishSnapshot()
+	if err == nil && finishErr != nil { return finishErr }
+	err = errors.Join(err, finishErr)
 	owner.publish(candidate)
 	return err
 }
 
 // A detached candidate retains rollback and newer-generation no-op semantics.
-func (self *StatsEngine) reconcileReleaseStatsCutOwned(dir string, cutGeneration uint64, writeStats func(string, []byte) error, attemptCuts ...*AttemptLedgerCut) error {
+func (self *StatsEngine) reconcileReleaseStatsCutOwned(dir string, cutGeneration uint64, writeStats func(statsSnapshotWrite) error, attemptCuts ...*AttemptLedgerCut) error {
 	if self.attemptSettlementCutPending {
 		return errAttemptCutPending
 	}
