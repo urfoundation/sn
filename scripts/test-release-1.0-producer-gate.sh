@@ -102,7 +102,7 @@ echo "[release-1.0 producer] strict proof and configuration framing"
 echo "[release-1.0 producer] signed validator evidence and settlement"
 (
   cd "$sn_repo"
-  producer_tests='^Test(Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
+  producer_tests='^Test(Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|ReleaseSteeringLoop|ReleaseSettlementRefresh)'
   go test ./validator -run "$producer_tests" -count=1
   go test -race ./validator -run "$producer_tests" -count=1
 )

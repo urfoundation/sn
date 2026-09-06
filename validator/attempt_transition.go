@@ -143,6 +143,11 @@ func VerifyAttemptSettlementTransition(transition *AttemptSettlementTransition) 
 // Carries the containing verifier through terminal statistics without changing
 // the transition's digest, signature, participant or epoch checks.
 func verifyAttemptSettlementTransitionWithCutVerifier(transition *AttemptSettlementTransition, verifyCut attemptLedgerCutVerifier) error {
+	return verifyAttemptSettlementTransitionWithHexWork(transition, verifyCut, canonicalHexWork{})
+}
+
+// Retains full terminal replay and observes its actual member-digest parser.
+func verifyAttemptSettlementTransitionWithHexWork(transition *AttemptSettlementTransition, verifyCut attemptLedgerCutVerifier, work canonicalHexWork) error {
 	if transition == nil || transition.Schema != attemptSettlementTransitionSchema || transition.ToEpoch == 0 || transition.ToEpoch != transition.FromBoundary.SettlementEpoch+1 {
 		return errors.New("settlement transition identity is incomplete")
 	}
@@ -180,7 +185,7 @@ func verifyAttemptSettlementTransitionWithCutVerifier(transition *AttemptSettlem
 		if member.NoID == 0 || (index > 0 && member.NoID <= transition.Batch[index-1].NoID) {
 			return errors.New("settlement transition batch is not strictly ordered")
 		}
-		if _, err := canonicalAttemptHex32("settlement transition member digest", member.Digest, false); err != nil {
+		if _, err := canonicalAttemptHex32WithWork("settlement transition member digest", member.Digest, false, work); err != nil {
 			return err
 		}
 		if member.NoID == transition.Identity.NoID {
