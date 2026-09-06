@@ -364,15 +364,21 @@ func equalHeadEMAFolds(left, right []HeadEMAMeasurement) bool {
 func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.lastSubnetEpoch != nil {
-		if subnetEpoch < *s.lastSubnetEpoch {
-			return nil, nil, fmt.Errorf("head EMA epoch regressed from %d to %d", *s.lastSubnetEpoch, subnetEpoch)
+	return s.previewForEpochWithLock(subnetEpoch, raw, alpha)
+}
+
+// The exact fold is shared with bounded compact admission while the same
+// state lock remains held; admission must not race a concurrent EMA commit.
+func (self *HeadEMAStore) previewForEpochWithLock(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
+	if self.lastSubnetEpoch != nil {
+		if subnetEpoch < *self.lastSubnetEpoch {
+			return nil, nil, fmt.Errorf("head EMA epoch regressed from %d to %d", *self.lastSubnetEpoch, subnetEpoch)
 		}
-		if subnetEpoch == *s.lastSubnetEpoch {
-			if s.lastAlpha == nil || *s.lastAlpha != alpha {
+		if subnetEpoch == *self.lastSubnetEpoch {
+			if self.lastAlpha == nil || *self.lastAlpha != alpha {
 				return nil, nil, errors.New("same-epoch head EMA policy changed")
 			}
-			candidateRaw, err := rawHeadEMAInputs(s.lastFold)
+			candidateRaw, err := rawHeadEMAInputs(self.lastFold)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -385,14 +391,14 @@ func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey
 					return nil, nil, errors.New("same-epoch head EMA raw inputs changed")
 				}
 			}
-			out, err := headEMAOutput(s.lastFold)
-			return out, append([]HeadEMAMeasurement(nil), s.lastFold...), err
+			out, err := headEMAOutput(self.lastFold)
+			return out, append([]HeadEMAMeasurement(nil), self.lastFold...), err
 		}
-		if *s.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *s.lastSubnetEpoch+1 {
-			return nil, nil, fmt.Errorf("head EMA epoch jumped from %d to %d", *s.lastSubnetEpoch, subnetEpoch)
+		if *self.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *self.lastSubnetEpoch+1 {
+			return nil, nil, fmt.Errorf("head EMA epoch jumped from %d to %d", *self.lastSubnetEpoch, subnetEpoch)
 		}
 	}
-	preview := &HeadEMAStore{values: cloneHeadEMAEntries(s.values)}
+	preview := &HeadEMAStore{values: cloneHeadEMAEntries(self.values)}
 	out, records, err := preview.foldWithLock(raw, alpha)
 	return out, records, err
 }
