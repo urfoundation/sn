@@ -184,6 +184,7 @@ type statsSnapshot struct {
 	AttemptSettlementFirstSequence uint64                       `json:"attempt_settlement_first_sequence,omitempty"`
 	AttemptEgressFirstSequence     uint64                       `json:"attempt_egress_first_sequence,omitempty"`
 	SettlementTransition           *AttemptSettlementTransition `json:"settlement_transition,omitempty"`
+	AttemptV2                      *attemptStatsV2State         `json:"attempt_v2,omitempty"`
 	Ema                            map[string]float64           `json:"ema"`
 	EmaPPM                         map[string]uint32            `json:"ema_ppm,omitempty"`
 	Window                         map[string]*ProviderWindow   `json:"window"`
@@ -226,6 +227,7 @@ type StatsEngine struct {
 	attemptSettlementCutPending bool
 	attemptSettlementCutEpoch   uint64
 	settlementTransition        *AttemptSettlementTransition
+	attemptV2                   *attemptStatsV2State
 }
 
 func NewStatsEngine(cfg StatsConfig) *StatsEngine {
@@ -452,12 +454,25 @@ func (self *StatsEngine) Exposure() map[connect.Id]uint64 {
 // Fold applies the cross-epoch EMA (§11.1) and resets the window. Call at
 // contract epoch boundaries. Providers below a_min carry their EMA forward
 // untouched (one sparse epoch does not decay an established provider).
-func (self *StatsEngine) Fold() {
+func (self *StatsEngine) Fold() error {
 	owner := self.lockStatsWrite("fold")
 	defer owner.release()
 	self.mu.Lock()
 	defer self.mu.Unlock()
+	if self.attemptV2 != nil {
+		return errors.New("compact attempt statistics require an authenticated terminal fold")
+	}
 	self.foldWithLock()
+	return nil
+}
+
+// Legacy steering has no independently authenticated compact settlement
+// authority. Refuse it before any chain lookup or external weight submission.
+func (self *StatsEngine) requireLegacyAttemptStats() error {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if self.attemptV2 != nil { return errors.New("compact attempt statistics require the authenticated v2 steering path") }
+	return nil
 }
 
 // foldWithLock advances the quality EMA and clears one settlement window. The
@@ -501,12 +516,16 @@ func (self *StatsEngine) snapshotWithLock() statsSnapshot {
 	if self.attemptLedger != nil || self.attemptLastAppliedSequence != 0 || self.attemptSettlementFirstSequence != 0 || self.attemptEgressFirstSequence != 0 {
 		version = 5
 	}
+	if self.attemptV2 != nil {
+		version = 6
+	}
 	snapshot := statsSnapshot{
 		Version: version, Ema: map[string]float64{}, EmaPPM: map[string]uint32{},
 		Window: map[string]*ProviderWindow{}, Egress: map[string][]string{},
 		EgressGeneration: self.egressGeneration, AttemptLastAppliedSequence: self.attemptLastAppliedSequence,
 		AttemptSettlementFirstSequence: self.attemptSettlementFirstSequence, AttemptEgressFirstSequence: self.attemptEgressFirstSequence,
 		SettlementTransition: self.settlementTransition,
+		AttemptV2: self.attemptV2,
 	}
 	if self.settlementEpochKnown {
 		epoch := self.settlementEpoch
@@ -535,6 +554,9 @@ func (self *StatsEngine) snapshotWithLock() statsSnapshot {
 
 // encodeStatsSnapshot returns the durable human-readable state representation.
 func encodeStatsSnapshot(snapshot statsSnapshot) ([]byte, error) {
+	if err := validateAttemptStatsV2Snapshot(snapshot); err != nil {
+		return nil, err
+	}
 	b, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return nil, err
@@ -565,6 +587,9 @@ func (self *StatsEngine) AdvanceSettlementEpoch(epoch uint64, dir string) error 
 // Operates on an exclusively owned candidate; even a retryable failure retains
 // its original admission reservation while failed snapshots roll back the fold.
 func (self *StatsEngine) advanceSettlementEpochOwned(epoch uint64, dir string, persist func(string, []byte) error) error {
+	if self.attemptV2 != nil {
+		return errors.New("compact attempt statistics require the v2 settlement coordinator")
+	}
 	var nextAttemptSequence uint64
 	if self.attemptLedger != nil {
 		head, err := self.attemptLedger.checkedHead()
@@ -658,6 +683,12 @@ func (self *StatsEngine) loadStatsOwned(dir string) error {
 	if err != nil {
 		return err
 	}
+	return self.loadStatsSnapshotOwned(b)
+}
+
+// Recovery decodes the exact journal postimage into an unpublished candidate.
+// Local shape validation never substitutes for independent all-operator replay.
+func (self *StatsEngine) loadStatsSnapshotOwned(b []byte) error {
 	var snap statsSnapshot
 	decoder := json.NewDecoder(bytes.NewReader(b))
 	decoder.DisallowUnknownFields()
@@ -671,13 +702,16 @@ func (self *StatsEngine) loadStatsOwned(dir string) error {
 		}
 		return err
 	}
-	if snap.Version < 1 || snap.Version > 5 {
+	if snap.Version < 1 || snap.Version > 6 {
 		return fmt.Errorf("unsupported statistics snapshot version %d", snap.Version)
+	}
+	if err := validateAttemptStatsV2Snapshot(snap); err != nil {
+		return err
 	}
 	if snap.Version < 4 && len(snap.Egress) != 0 {
 		return errors.New("legacy statistics egress window has no durable generation")
 	}
-	if len(self.window) != 0 || len(self.ema) != 0 || len(self.emaPPM) != 0 || len(self.egress) != 0 || self.settlementEpochKnown || self.egressGeneration != 0 || self.settlementTransition != nil {
+	if len(self.window) != 0 || len(self.ema) != 0 || len(self.emaPPM) != 0 || len(self.egress) != 0 || self.settlementEpochKnown || self.egressGeneration != 0 || self.settlementTransition != nil || self.attemptV2 != nil {
 		return errors.New("statistics engine must be empty before loading state")
 	}
 	if snap.SettlementEpoch != nil {
@@ -689,10 +723,11 @@ func (self *StatsEngine) loadStatsOwned(dir string) error {
 	self.attemptSettlementFirstSequence = snap.AttemptSettlementFirstSequence
 	self.attemptEgressFirstSequence = snap.AttemptEgressFirstSequence
 	self.settlementTransition = snap.SettlementTransition
+	self.attemptV2 = snap.AttemptV2
 	if snap.Version < 5 && (self.attemptLastAppliedSequence != 0 || self.attemptSettlementFirstSequence != 0 || self.attemptEgressFirstSequence != 0) {
 		return errors.New("legacy statistics snapshot contains attempt ledger cursors")
 	}
-	if snap.Version == 5 && (self.attemptSettlementFirstSequence == 0 || self.attemptEgressFirstSequence < self.attemptSettlementFirstSequence || self.attemptLastAppliedSequence+1 < self.attemptEgressFirstSequence) {
+	if snap.Version >= 5 && (self.attemptSettlementFirstSequence == 0 || self.attemptEgressFirstSequence < self.attemptSettlementFirstSequence || self.attemptLastAppliedSequence+1 < self.attemptEgressFirstSequence) {
 		return errors.New("statistics attempt ledger cursors are invalid")
 	}
 	for idStr, v := range snap.Ema {
@@ -711,7 +746,7 @@ func (self *StatsEngine) loadStatsOwned(dir string) error {
 	}
 	// Deterministic migration from the pre-v2 reporting EMA. This occurs once;
 	// all subsequent folds and snapshots use the exact integer representation.
-	if len(snap.EmaPPM) == 0 {
+	if snap.Version < 6 && len(snap.EmaPPM) == 0 {
 		for id, v := range self.ema {
 			if v <= 0 {
 				self.emaPPM[id] = 0
@@ -762,9 +797,25 @@ func (self *StatsEngine) loadStatsOwned(dir string) error {
 		}
 	}
 	if self.settlementTransition != nil {
-		if err := verifyAttemptSettlementTransitionForMeasurement(self.settlementTransition, self.currentReleaseStatsMeasurement()); err != nil {
+		var err error
+		if self.attemptV2 != nil && self.attemptV2.Terminal != nil {
+			err = VerifyAttemptSettlementTransition(self.settlementTransition)
+		} else {
+			err = verifyAttemptSettlementTransitionForMeasurement(self.settlementTransition, self.currentReleaseStatsMeasurement())
+		}
+		if err != nil {
 			return fmt.Errorf("persisted settlement transition: %w", err)
 		}
+	}
+	if self.attemptV2 != nil {
+		if terminal := self.attemptV2.Terminal; terminal != nil && self.currentReleaseStatsMeasurement().Config != terminal.PreFold.Config {
+			return errors.New("compact persisted statistics scoring config differs")
+		}
+		// Plain Load is deliberately not activation. Only the complete startup
+		// coordinator clears this gate after independent full-batch replay.
+		self.attemptCutPending = true
+		self.attemptSettlementCutPending = true
+		self.attemptSettlementCutEpoch = self.settlementEpoch
 	}
 	return nil
 }

@@ -194,8 +194,13 @@ type AttemptLedger struct {
 }
 
 func canonicalAttemptHex32(name, encoded string, zeroAllowed bool) ([32]byte, error) {
+	return canonicalAttemptHex32WithWork(name, encoded, zeroAllowed, canonicalHexWork{})
+}
+
+// Keeps canonical decoding on the same production path with call-local work.
+func canonicalAttemptHex32WithWork(name, encoded string, zeroAllowed bool, work canonicalHexWork) ([32]byte, error) {
 	var value [32]byte
-	if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") {
+	if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") {
 		return value, fmt.Errorf("%s is not canonical 32-byte hex", name)
 	}
 	decoded, err := hex.DecodeString(encoded[2:])
@@ -1094,6 +1099,9 @@ func (self *StatsEngine) AttachAttemptLedgerContext(ctx context.Context, ledger 
 	}
 	defer owner.release()
 	candidate := owner.clone()
+	if candidate.attemptV2 != nil {
+		return errors.New("compact attempt statistics require independently authenticated v2 recovery")
+	}
 	basis := func() statsReplayBasis {
 		candidate.mu.Lock()
 		defer candidate.mu.Unlock()

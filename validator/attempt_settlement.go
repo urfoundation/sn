@@ -171,6 +171,9 @@ func decodeAttemptSettlementTransaction(encoded []byte, participants []AttemptSe
 		if err := statsDecoder.Decode(&stats); err != nil || stats.SettlementEpoch == nil || *stats.SettlementEpoch != transaction.Epoch {
 			return nil, fmt.Errorf("settlement snapshot %d has invalid epoch state", index)
 		}
+		if stats.Version < 1 || stats.Version > 5 || stats.AttemptV2 != nil {
+			return nil, fmt.Errorf("legacy settlement snapshot %d contains unsupported or compact state", index)
+		}
 		canonicalStats, err := encodeStatsSnapshot(stats)
 		if err != nil || !bytes.Equal(canonicalStats, snapshot.StatsJSON) {
 			return nil, fmt.Errorf("settlement snapshot %d statistics are not canonical", index)
@@ -238,42 +241,14 @@ func finishCurrentAttemptSettlementTransaction(path string, epoch uint64, partic
 // before any StatsEngine is loaded. The configured participant set prevents a
 // corrupted journal from selecting arbitrary filesystem targets.
 func RecoverAttemptSettlementEpoch(coordinatorStateDir string, participants []AttemptSettlementParticipant) error {
-	return recoverAttemptSettlementEpochWithRemove(coordinatorStateDir, participants, removeAttemptSettlementTransaction)
+	return recoverAttemptSettlementEpochOwned(coordinatorStateDir, participants, nil, nil)
 }
 
+// Compatibility test seam runs at the already-durable removal boundary;
+// production recovery removes through its retained native coordinator owner.
 func recoverAttemptSettlementEpochWithRemove(coordinatorStateDir string, participants []AttemptSettlementParticipant, removeTransaction func(string) error) error {
-	ordered, err := validateAttemptSettlementParticipants(participants, false)
-	if err != nil {
-		return err
-	}
-	if removeTransaction == nil {
-		return errors.New("settlement transaction remover is nil")
-	}
-	path := attemptSettlementTransactionPath(coordinatorStateDir)
-	encoded, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return errors.New("settlement transaction is not a private regular file")
-	}
-	transaction, err := decodeAttemptSettlementTransaction(encoded, ordered)
-	if err != nil {
-		return err
-	}
-	for _, snapshot := range transaction.Snapshots {
-		if err := atomicStateWrite(snapshot.StatsPath, snapshot.StatsJSON, 0o600); err != nil {
-			return err
-		}
-	}
-	if err := publishAttemptSettlementClosure(coordinatorStateDir, transaction); err != nil {
-		return err
-	}
-	return removeTransaction(path)
+	if removeTransaction == nil { return errors.New("settlement transaction remover is nil") }
+	return recoverAttemptSettlementEpochOwned(coordinatorStateDir, participants, removeTransaction, nil)
 }
 
 func advanceAttemptSettlementEpochWithWrite(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, participants []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error) error {
@@ -335,6 +310,11 @@ func advanceAttemptSettlementEpochWithIOModeContext(ctx context.Context, coordin
 	for index, participant := range ordered {
 		candidates[index] = AttemptSettlementParticipant{NoID: participant.NoID, StateDir: participant.StateDir, Stats: engineOwners[participant.Stats].clone()}
 	}
+	for _, participant := range candidates {
+		if participant.Stats.attemptV2 != nil {
+			return errors.New("compact attempt statistics require the v2 settlement coordinator")
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -367,6 +347,11 @@ func advanceAttemptSettlementEpochWithIOModeContext(ctx context.Context, coordin
 // Only detached candidate engines are mutated. The caller retains every public
 // engine's write token through journaling, snapshot writes and publication.
 func advanceAttemptSettlementCandidatesOwned(coordinatorStateDir string, epoch uint64, terminalBoundary AttemptBoundary, ordered []AttemptSettlementParticipant, writeSnapshot func(string, []byte) error, removeTransaction func(string) error, finishCurrent bool) error {
+	for _, participant := range ordered {
+		if participant.Stats.attemptV2 != nil {
+			return errors.New("compact attempt statistics require the v2 settlement coordinator")
+		}
+	}
 	// Reject stale snapshots before changing any admission barrier. Both the
 	// native submitter and independent EVM refresh retain the same write tokens.
 	for _, participant := range ordered {
