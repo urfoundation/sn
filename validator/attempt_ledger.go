@@ -725,9 +725,7 @@ func (self *AttemptLedger) checkLegacyPrefixWithLock() (resultErr error) {
 }
 
 func attemptAssignmentsEqual(left, right []AttemptAssignment) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
+	return (attemptAssignmentComparisonWork{}).equal(left, right)
 }
 
 func attemptAssignmentsWithUnconfirmedLast(assignments []AttemptAssignment) []AttemptAssignment {
@@ -742,6 +740,11 @@ func attemptAssignmentsWithUnconfirmedLast(assignments []AttemptAssignment) []At
 }
 
 func validateAttemptLifecycleRecord(pending map[connect.Id]AttemptRecord, terminal map[connect.Id]bool, record AttemptRecord, index int) error {
+	return validateAttemptLifecycleRecordWithComparison(pending, terminal, record, index, attemptAssignmentComparisonWork{})
+}
+
+// The call-local observation retains the exact ordinary lifecycle path.
+func validateAttemptLifecycleRecordWithComparison(pending map[connect.Id]AttemptRecord, terminal map[connect.Id]bool, record AttemptRecord, index int, work attemptAssignmentComparisonWork) error {
 	prior, exists := pending[record.TrailID]
 	if record.Disposition == AttemptDispositionPending {
 		if terminal[record.TrailID] {
@@ -760,15 +763,17 @@ func validateAttemptLifecycleRecord(pending map[connect.Id]AttemptRecord, termin
 				return fmt.Errorf("attempt record %d does not extend its pending checkpoint", index)
 			}
 			prefix := attemptAssignmentsWithUnconfirmedLast(record.Assignments[:len(prior.Assignments)])
-			if !attemptAssignmentsEqual(prefix, prior.Assignments) {
+			if !work.equal(prefix, prior.Assignments) {
 				return fmt.Errorf("attempt record %d does not extend its pending checkpoint", index)
 			}
 		}
 		return nil
 	}
-	assignmentsMatch := attemptAssignmentsEqual(record.Assignments, prior.Assignments)
+	var assignmentsMatch bool
 	if record.Disposition == AttemptDispositionComplete {
-		assignmentsMatch = attemptAssignmentsEqual(attemptAssignmentsWithUnconfirmedLast(record.Assignments), prior.Assignments)
+		assignmentsMatch = work.equal(attemptAssignmentsWithUnconfirmedLast(record.Assignments), prior.Assignments)
+	} else {
+		assignmentsMatch = work.equal(record.Assignments, prior.Assignments)
 	}
 	if !exists || !assignmentsMatch || record.Boundary != prior.Boundary || record.M != prior.M || !bytes.Equal(record.ServerNonce, prior.ServerNonce) {
 		return fmt.Errorf("attempt record %d has no matching pending checkpoint", index)
@@ -786,10 +791,15 @@ func applyAttemptLifecycleRecord(pending map[connect.Id]AttemptRecord, terminal 
 }
 
 func attemptLifecycle(records []AttemptRecord) (map[connect.Id]AttemptRecord, map[connect.Id]bool, error) {
+	return attemptLifecycleWithComparison(records, attemptAssignmentComparisonWork{})
+}
+
+// Every record is still checked in source order before its state is applied.
+func attemptLifecycleWithComparison(records []AttemptRecord, work attemptAssignmentComparisonWork) (map[connect.Id]AttemptRecord, map[connect.Id]bool, error) {
 	pending := map[connect.Id]AttemptRecord{}
 	terminal := map[connect.Id]bool{}
 	for index, record := range records {
-		if err := validateAttemptLifecycleRecord(pending, terminal, record, index); err != nil {
+		if err := validateAttemptLifecycleRecordWithComparison(pending, terminal, record, index, work); err != nil {
 			return nil, nil, err
 		}
 		applyAttemptLifecycleRecord(pending, terminal, record)
@@ -914,6 +924,11 @@ func verifyAttemptLedgerCut(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey
 // The injected primitive lets regressions count real assignment verifications
 // through the complete cut validator without a global hook.
 func verifyAttemptLedgerCutWithAssignVerifier(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool, verifyAssign func([]byte, []byte, []byte) bool) error {
+	return verifyAttemptLedgerCutWithComparison(cut, expectedVPK, serverKeys, requireServerKeys, verifyAssign, attemptAssignmentComparisonWork{})
+}
+
+// Full public cut authentication forwards only a private comparison observer.
+func verifyAttemptLedgerCutWithComparison(cut *AttemptLedgerCut, expectedVPK ed25519.PublicKey, serverKeys map[byte]ed25519.PublicKey, requireServerKeys bool, verifyAssign func([]byte, []byte, []byte) bool, work attemptAssignmentComparisonWork) error {
 	if cut == nil || cut.Schema != attemptLedgerCutSchema || cut.FirstSequence == 0 || cut.EgressFirstSequence < cut.FirstSequence {
 		return errors.New("attempt ledger cut identity is incomplete")
 	}
@@ -956,7 +971,7 @@ func verifyAttemptLedgerCutWithAssignVerifier(cut *AttemptLedgerCut, expectedVPK
 	} else if cut.LastSequence != cut.Records[len(cut.Records)-1].Sequence || cut.Root != previousHash || cut.EgressFirstSequence > cut.LastSequence+1 {
 		return errors.New("attempt cut terminal root or cursor differs")
 	}
-	if pending, err := pendingAttemptRecords(cutRecords); err != nil {
+	if pending, _, err := attemptLifecycleWithComparison(cutRecords, work); err != nil {
 		return err
 	} else if len(pending) != 0 {
 		return errors.New("attempt cut contains an unfinished trail")
