@@ -104,6 +104,25 @@ func TestProducerGateStateSelectionCoversAttemptStreamMeasurement(t *testing.T) 
 	})
 }
 
+// The public compact artifact path must retain real-stream wire, ownership,
+// complete-census and lineage controls in both actual producer gate modes.
+func TestProducerGateStateSelectionCoversReleaseMeasurementV2(t *testing.T) {
+	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "compact-release-measurement", []string{
+		"../validator/release_measurement_v2_test.go",
+		"../validator/release_measurement_v2_settlement_test.go",
+		"../validator/release_measurement_envelope_v2_test.go",
+	})
+}
+
+// Terminal replay, complete participant consent, restart and exact successor
+// fold/cursor continuity must qualify before a compact runtime can close.
+func TestProducerGateStateSelectionCoversCompactSettlement(t *testing.T) {
+	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "compact-settlement", []string{
+		"../validator/attempt_transition_v2_test.go",
+		"../validator/attempt_closure_v2_test.go",
+	})
+}
+
 // Simulator storage bindings must qualify before public replication can use
 // their per-operator namespaces, independent typed limits and origin profile.
 func TestProducerGateStateSelectionCoversAttemptReplicaStorage(t *testing.T) {
@@ -144,5 +163,9 @@ func TestProducerGateStateSelectionCoversLauncherAndItsOwnChecks(t *testing.T) {
 	assertProducerStateRegressionCoverage(t, "capture_tests", "./sim-testnet", "qualification-launcher", []string{
 		"qualification_launcher_test.go",
 		"release_gate_state_test.go",
+		"release_gate_measurement_v2_test.go",
+		"release_gate_terminal_v2_test.go",
+		"release_gate_canonical_hex_test.go",
+		"release_gate_envelope_v2_test.go",
 	})
 }

@@ -348,59 +348,7 @@ func (s *ReleaseSteerer) gatherHead(ctx context.Context, snapshot *ReleaseSnapsh
 			membersByUID[uid] = append(membersByUID[uid], releaseHeadMember{NoID: noID, ClientID: clientID})
 		}
 	}
-	claims := map[[32]byte]uint64{}
-	for _, hashes := range fleets {
-		for hash := range hashes {
-			claims[hash]++
-		}
-	}
-	raw := map[FleetScoreKey]*big.Rat{}
-	for key, hashes := range fleets {
-		score := new(big.Rat)
-		for hash := range hashes {
-			if claims[hash] != 0 {
-				score.Add(score, new(big.Rat).SetFrac(big.NewInt(1), new(big.Int).SetUint64(claims[hash])))
-			}
-		}
-		raw[key] = score
-	}
-	ema, headEMA, err := s.headEMA.PreviewForEpoch(subnetEpoch, raw, s.cfg.Policy.Steering.HeadScoreEMA)
-	if err != nil {
-		return releaseHeadResult{}, err
-	}
-	uids := make([]uint16, 0, len(ema))
-	for uid := range ema {
-		uids = append(uids, uid)
-	}
-	sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
-	eligible := make([]ExactWeightInput, 0, len(uids))
-	for _, uid := range uids {
-		eligible = append(eligible, ExactWeightInput{UID: uid, Score: ema[uid]})
-	}
-	selection, err := selectHeadFleets(eligible, s.cfg.Policy.Steering.MaximumHeadFleets)
-	if err != nil {
-		return releaseHeadResult{}, err
-	}
-	controlledHead := excludeLiveHeadMembers(bound, controlledNO, membersByUID)
-	sort.Slice(staleBindings, func(i, j int) bool {
-		if staleBindings[i].NoID != staleBindings[j].NoID {
-			return staleBindings[i].NoID < staleBindings[j].NoID
-		}
-		return staleBindings[i].ClientID < staleBindings[j].ClientID
-	})
-	return releaseHeadResult{
-		Weights:       selection.Selected,
-		Eligible:      append(append([]ExactWeightInput(nil), selection.Selected...), selection.Rejected...),
-		Bound:         bound,
-		Controlled:    controlledHead,
-		EligibleUIDs:  append(headSelectionUIDs(selection.Selected), headSelectionUIDs(selection.Rejected)...),
-		SelectedUIDs:  headSelectionUIDs(selection.Selected),
-		RejectedUIDs:  headSelectionUIDs(selection.Rejected),
-		StaleBindings: staleBindings,
-		Inputs:        inputs,
-		Bindings:      bindings,
-		HeadEMA:       headEMA,
-	}, nil
+	return finishReleaseHead(s.headEMA, subnetEpoch, s.cfg.Policy, fleets, bound, controlledNO, membersByUID, staleBindings, inputs, bindings)
 }
 
 func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, hotkeyUIDs map[[32]byte]uint16, poolObservations *[]ReleasePoolMeasurement) ([]ExactWeightInput, map[uint16]bool, []DepositAudit, error) {

@@ -76,6 +76,11 @@ func canonicalReleaseMeasurementEnvelopeBytes(envelope *ReleaseMeasurementEnvelo
 // releaseMeasurementEnvelopeSigningDigest hashes the versioned domain and
 // canonical unsigned envelope into the fixed-size sr25519 signing message.
 func releaseMeasurementEnvelopeSigningDigest(envelope *ReleaseMeasurementEnvelope) ([32]byte, error) {
+	return releaseMeasurementEnvelopeSigningDigestWithDomain(envelope, ReleaseMeasurementEnvelopeSigningDomain)
+}
+
+// The explicit entrypoint, never a candidate field, selects the signature domain.
+func releaseMeasurementEnvelopeSigningDigestWithDomain(envelope *ReleaseMeasurementEnvelope, signingDomain string) ([32]byte, error) {
 	if envelope == nil {
 		return [32]byte{}, errors.New("release measurement envelope is nil")
 	}
@@ -86,8 +91,8 @@ func releaseMeasurementEnvelopeSigningDigest(envelope *ReleaseMeasurementEnvelop
 	if err != nil {
 		return [32]byte{}, err
 	}
-	digestInput := make([]byte, 0, len(ReleaseMeasurementEnvelopeSigningDomain)+1+len(encoded))
-	digestInput = append(digestInput, ReleaseMeasurementEnvelopeSigningDomain...)
+	digestInput := make([]byte, 0, len(signingDomain)+1+len(encoded))
+	digestInput = append(digestInput, signingDomain...)
 	digestInput = append(digestInput, 0)
 	digestInput = append(digestInput, encoded...)
 	return sha256.Sum256(digestInput), nil
@@ -95,7 +100,12 @@ func releaseMeasurementEnvelopeSigningDigest(envelope *ReleaseMeasurementEnvelop
 
 // parseReleaseMeasurementEnvelopeSignature requires canonical 64-byte hex.
 func parseReleaseMeasurementEnvelopeSignature(encoded string) ([]byte, error) {
-	if encoded != strings.ToLower(encoded) || len(encoded) != 130 || !strings.HasPrefix(encoded, "0x") {
+	return parseReleaseMeasurementEnvelopeSignatureWithWork(encoded, canonicalHexWork{})
+}
+
+// Observes the actual signature parser, not its later cryptographic verdict.
+func parseReleaseMeasurementEnvelopeSignatureWithWork(encoded string, work canonicalHexWork) ([]byte, error) {
+	if len(encoded) != 130 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") {
 		return nil, errors.New("release measurement envelope signature is not canonical 64-byte hex")
 	}
 	signature, err := hex.DecodeString(encoded[2:])
@@ -108,16 +118,26 @@ func parseReleaseMeasurementEnvelopeSignature(encoded string) ([]byte, error) {
 // validateReleaseMeasurementEnvelope checks canonical field representations
 // and verifies the embedded hotkey signature without assigning signer trust.
 func validateReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope) error {
+	return validateReleaseMeasurementEnvelopeWithHexWork(envelope, canonicalHexWork{})
+}
+
+// Keeps every original signature and identity check after observed addresses.
+func validateReleaseMeasurementEnvelopeWithHexWork(envelope *ReleaseMeasurementEnvelope, work canonicalHexWork) error {
 	if envelope == nil {
 		return errors.New("release measurement envelope is nil")
 	}
 	if envelope.Schema != ReleaseMeasurementEnvelopeSchema || envelope.MeasurementSchema != ReleaseMeasurementSchema {
 		return errors.New("release measurement envelope schema is invalid")
 	}
+	return validateReleaseMeasurementEnvelopeFieldsWithHexWork(envelope, work, ReleaseMeasurementEnvelopeSigningDomain)
+}
+
+// Both explicit versions keep the same canonical identity and real signature checks.
+func validateReleaseMeasurementEnvelopeFieldsWithHexWork(envelope *ReleaseMeasurementEnvelope, work canonicalHexWork, signingDomain string) error {
 	if envelope.DeploymentID == "" || envelope.DeploymentID != strings.TrimSpace(envelope.DeploymentID) || envelope.ChainID == 0 || envelope.ValidatorID == 0 || envelope.Netuid == 0 {
 		return errors.New("release measurement envelope identity is incomplete")
 	}
-	if envelope.Coordinator != strings.ToLower(envelope.Coordinator) || envelope.SettlementVault != strings.ToLower(envelope.SettlementVault) || !common.IsHexAddress(envelope.Coordinator) || common.HexToAddress(envelope.Coordinator) == (common.Address{}) || !common.IsHexAddress(envelope.SettlementVault) || common.HexToAddress(envelope.SettlementVault) == (common.Address{}) {
+	if (len(envelope.Coordinator) != 40 && len(envelope.Coordinator) != 42) || (len(envelope.SettlementVault) != 40 && len(envelope.SettlementVault) != 42) || envelope.Coordinator != work.lower(envelope.Coordinator) || envelope.SettlementVault != work.lower(envelope.SettlementVault) || !common.IsHexAddress(envelope.Coordinator) || common.HexToAddress(envelope.Coordinator) == (common.Address{}) || !common.IsHexAddress(envelope.SettlementVault) || common.HexToAddress(envelope.SettlementVault) == (common.Address{}) {
 		return errors.New("release measurement envelope contract identity is invalid")
 	}
 	if _, err := parseReleaseHex32("genesis hash", envelope.GenesisHash, false); err != nil {
@@ -164,7 +184,7 @@ func validateReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope) er
 	if err != nil {
 		return fmt.Errorf("release measurement envelope signing hash: %w", err)
 	}
-	digest, err := releaseMeasurementEnvelopeSigningDigest(envelope)
+	digest, err := releaseMeasurementEnvelopeSigningDigestWithDomain(envelope, signingDomain)
 	if err != nil {
 		return err
 	}
@@ -213,6 +233,11 @@ func persistReleaseMeasurementEnvelope(stateDir string, encoded []byte, contentH
 // SealReleaseMeasurementEnvelope validates the canonical measurement, binds
 // its self UID, and signs its identity and content address with the hotkey.
 func SealReleaseMeasurementEnvelope(measurement []byte, validatorUID uint16, hotkey *crv4.Keypair, preparedExtrinsicHash string, signedAt time.Time) ([]byte, string, *ReleaseMeasurementEnvelope, error) {
+	return sealReleaseMeasurementEnvelopeWithHexWork(measurement, validatorUID, hotkey, preparedExtrinsicHash, signedAt, canonicalHexWork{})
+}
+
+// Observes prepared input normalization while retaining both full public seals.
+func sealReleaseMeasurementEnvelopeWithHexWork(measurement []byte, validatorUID uint16, hotkey *crv4.Keypair, preparedExtrinsicHash string, signedAt time.Time, work canonicalHexWork) ([]byte, string, *ReleaseMeasurementEnvelope, error) {
 	if hotkey == nil {
 		return nil, "", nil, errors.New("release measurement envelope hotkey is nil")
 	}
@@ -222,8 +247,8 @@ func SealReleaseMeasurementEnvelope(measurement []byte, validatorUID uint16, hot
 	if len(measurement) == 0 || len(measurement) > releaseMeasurementEnvelopeMaxArtifactSize {
 		return nil, "", nil, errors.New("release measurement envelope artifact size is invalid")
 	}
-	preparedHash, err := parseReleaseHex32("prepared extrinsic hash", strings.ToLower(preparedExtrinsicHash), false)
-	if err != nil || preparedExtrinsicHash != strings.ToLower(preparedExtrinsicHash) {
+	preparedHash, err := parseReleaseHex32("prepared extrinsic hash", normalizeReleasePreparedHex32(preparedExtrinsicHash, work), false)
+	if err != nil || preparedExtrinsicHash != normalizeReleasePreparedHex32(preparedExtrinsicHash, work) {
 		return nil, "", nil, errors.New("release measurement envelope prepared extrinsic hash is not canonical")
 	}
 	artifact, _, err := DecodeReleaseMeasurementArtifact(measurement)
@@ -234,8 +259,31 @@ func SealReleaseMeasurementEnvelope(measurement []byte, validatorUID uint16, hot
 		return nil, "", nil, errors.New("release measurement envelope validator UID differs from artifact")
 	}
 	publicKey := hotkey.PublicKey()
-	envelope := &ReleaseMeasurementEnvelope{
-		Schema:                  ReleaseMeasurementEnvelopeSchema,
+	envelope := newReleaseMeasurementEnvelope(artifact, measurement, publicKey, validatorUID, preparedHash, signedAt, ReleaseMeasurementEnvelopeSchema)
+	digest, err := releaseMeasurementEnvelopeSigningDigest(envelope)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	envelope.SigningHash = "sha256:" + hex.EncodeToString(digest[:])
+	signature, err := hotkey.Sign(digest[:])
+	if err != nil {
+		return nil, "", nil, err
+	}
+	envelope.Signature = "0x" + hex.EncodeToString(signature)
+	if err := validateReleaseMeasurementEnvelope(envelope); err != nil {
+		return nil, "", nil, err
+	}
+	encoded, err := canonicalReleaseMeasurementEnvelopeBytes(envelope)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	return encoded, ReleaseMeasurementEnvelopeContentHash(encoded), envelope, nil
+}
+
+// Projects the same complete identity in both versions after full artifact replay.
+func newReleaseMeasurementEnvelope(artifact *ReleaseMeasurementArtifact, measurement []byte, publicKey [32]byte, validatorUID uint16, preparedHash [32]byte, signedAt time.Time, schema string) *ReleaseMeasurementEnvelope {
+	return &ReleaseMeasurementEnvelope{
+		Schema:                  schema,
 		MeasurementSchema:       artifact.Schema,
 		DeploymentID:            artifact.DeploymentID,
 		ChainID:                 artifact.ChainID,
@@ -260,29 +308,23 @@ func SealReleaseMeasurementEnvelope(measurement []byte, validatorUID uint16, hot
 		SignedAt:                signedAt.UTC().Format(time.RFC3339Nano),
 		SignatureScheme:         releaseMeasurementEnvelopeSignatureScheme,
 	}
-	digest, err := releaseMeasurementEnvelopeSigningDigest(envelope)
-	if err != nil {
-		return nil, "", nil, err
-	}
-	envelope.SigningHash = "sha256:" + hex.EncodeToString(digest[:])
-	signature, err := hotkey.Sign(digest[:])
-	if err != nil {
-		return nil, "", nil, err
-	}
-	envelope.Signature = "0x" + hex.EncodeToString(signature)
-	if err := validateReleaseMeasurementEnvelope(envelope); err != nil {
-		return nil, "", nil, err
-	}
-	encoded, err := canonicalReleaseMeasurementEnvelopeBytes(envelope)
-	if err != nil {
-		return nil, "", nil, err
-	}
-	return encoded, ReleaseMeasurementEnvelopeContentHash(encoded), envelope, nil
 }
 
 // DecodeReleaseMeasurementEnvelope accepts only the exact canonical encoding
 // and verifies its self-declared sr25519 signature.
 func DecodeReleaseMeasurementEnvelope(encoded []byte) (*ReleaseMeasurementEnvelope, error) {
+	envelope, err := decodeReleaseMeasurementEnvelopeFields(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateReleaseMeasurementEnvelope(envelope); err != nil {
+		return nil, err
+	}
+	return envelope, nil
+}
+
+// Strict canonical decoding is shared; each public entrypoint authenticates its version.
+func decodeReleaseMeasurementEnvelopeFields(encoded []byte) (*ReleaseMeasurementEnvelope, error) {
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var envelope ReleaseMeasurementEnvelope
@@ -303,15 +345,17 @@ func DecodeReleaseMeasurementEnvelope(encoded []byte) (*ReleaseMeasurementEnvelo
 	if !bytes.Equal(encoded, canonical) {
 		return nil, errors.New("release measurement envelope bytes are not canonical")
 	}
-	if err := validateReleaseMeasurementEnvelope(&envelope); err != nil {
-		return nil, err
-	}
 	return &envelope, nil
 }
 
 // VerifyReleaseMeasurementEnvelope pins the trusted hotkey and UID, verifies
 // the exact artifact bytes, and cross-checks every mirrored measurement field.
 func VerifyReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope, measurement []byte, expectedHotkey [32]byte, expectedUID uint16, expectedPreparedExtrinsicHash string) (*ReleaseMeasurementArtifact, *VerifiedReleaseMeasurement, error) {
+	return verifyReleaseMeasurementEnvelopeWithHexWork(envelope, measurement, expectedHotkey, expectedUID, expectedPreparedExtrinsicHash, canonicalHexWork{})
+}
+
+// Keeps independent signature, content and mirrored-field verification intact.
+func verifyReleaseMeasurementEnvelopeWithHexWork(envelope *ReleaseMeasurementEnvelope, measurement []byte, expectedHotkey [32]byte, expectedUID uint16, expectedPreparedExtrinsicHash string, work canonicalHexWork) (*ReleaseMeasurementArtifact, *VerifiedReleaseMeasurement, error) {
 	if err := validateReleaseMeasurementEnvelope(envelope); err != nil {
 		return nil, nil, err
 	}
@@ -325,7 +369,7 @@ func VerifyReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope, meas
 	if envelope.ValidatorUID != expectedUID {
 		return nil, nil, errors.New("release measurement envelope UID is not the expected pinned UID")
 	}
-	if envelope.PreparedExtrinsicHash != strings.ToLower(expectedPreparedExtrinsicHash) {
+	if envelope.PreparedExtrinsicHash != normalizeReleasePreparedHex32(expectedPreparedExtrinsicHash, work) {
 		return nil, nil, errors.New("release measurement envelope prepared extrinsic hash differs")
 	}
 	if len(measurement) == 0 || len(measurement) > releaseMeasurementEnvelopeMaxArtifactSize || envelope.MeasurementArtifactSize != uint64(len(measurement)) {
@@ -338,7 +382,7 @@ func VerifyReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope, meas
 	if err != nil {
 		return nil, nil, fmt.Errorf("release measurement envelope artifact: %w", err)
 	}
-	if artifact.Schema != envelope.MeasurementSchema || artifact.DeploymentID != envelope.DeploymentID || artifact.ChainID != envelope.ChainID || artifact.GenesisHash != envelope.GenesisHash || artifact.Coordinator != envelope.Coordinator || artifact.SettlementVault != envelope.SettlementVault || artifact.ValidatorID != envelope.ValidatorID || artifact.SelfUID != envelope.ValidatorUID || artifact.SelfUID != expectedUID || artifact.Netuid != envelope.Netuid || artifact.SubnetEpoch != envelope.SubnetEpoch || artifact.SettlementEpoch != envelope.SettlementEpoch || artifact.PolicyHash != envelope.PolicyHash || artifact.PreviousArtifactHash != envelope.PreviousArtifactHash || artifact.NativeSnapshotBlock != envelope.NativeSnapshotBlock || artifact.NativeSnapshotHash != envelope.NativeSnapshotHash || artifact.EVMSnapshotBlock != envelope.EVMSnapshotBlock || artifact.EVMSnapshotHash != envelope.EVMSnapshotHash {
+	if !releaseMeasurementEnvelopeMatchesArtifact(envelope, artifact, expectedUID) {
 		return nil, nil, errors.New("release measurement envelope fields differ from artifact")
 	}
 	digest, err := releaseMeasurementEnvelopeSigningDigest(envelope)
@@ -354,4 +398,9 @@ func VerifyReleaseMeasurementEnvelope(envelope *ReleaseMeasurementEnvelope, meas
 		return nil, nil, errors.New("release measurement envelope signature does not verify under expected hotkey")
 	}
 	return artifact, verified, nil
+}
+
+// No mirrored chain, window, validator, policy or lineage coordinate is omitted.
+func releaseMeasurementEnvelopeMatchesArtifact(envelope *ReleaseMeasurementEnvelope, artifact *ReleaseMeasurementArtifact, expectedUID uint16) bool {
+	return envelope != nil && artifact != nil && artifact.Schema == envelope.MeasurementSchema && artifact.DeploymentID == envelope.DeploymentID && artifact.ChainID == envelope.ChainID && artifact.GenesisHash == envelope.GenesisHash && artifact.Coordinator == envelope.Coordinator && artifact.SettlementVault == envelope.SettlementVault && artifact.ValidatorID == envelope.ValidatorID && artifact.SelfUID == envelope.ValidatorUID && artifact.SelfUID == expectedUID && artifact.Netuid == envelope.Netuid && artifact.SubnetEpoch == envelope.SubnetEpoch && artifact.SettlementEpoch == envelope.SettlementEpoch && artifact.PolicyHash == envelope.PolicyHash && artifact.PreviousArtifactHash == envelope.PreviousArtifactHash && artifact.NativeSnapshotBlock == envelope.NativeSnapshotBlock && artifact.NativeSnapshotHash == envelope.NativeSnapshotHash && artifact.EVMSnapshotBlock == envelope.EVMSnapshotBlock && artifact.EVMSnapshotHash == envelope.EVMSnapshotHash
 }
