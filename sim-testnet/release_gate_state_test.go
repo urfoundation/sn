@@ -9,6 +9,13 @@ import (
 	"testing"
 )
 
+// The real fixed-width admission and old-wire controls must stay in the gate.
+func TestProducerGateStateSelectionCoversCanonicalHexAdmission(t *testing.T) {
+	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "canonical-hex-admission", []string{
+		"../validator/canonical_hex_test.go",
+	})
+}
+
 // Check every declaration in each reviewed source group and both executable
 // normal/race command lines. Comments cannot stand in for an invocation.
 func assertProducerStateRegressionCoverage(t *testing.T, variable, packagePath, boundary string, paths []string) {

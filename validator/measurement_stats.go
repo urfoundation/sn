@@ -140,6 +140,11 @@ func VerifyReleaseStatsMeasurement(measurement ReleaseStatsMeasurement) (Verifie
 // A containing settlement verification can supply the same full cut primitive
 // while retaining every statistics and recursive transition check.
 func verifyReleaseStatsMeasurementWithCutVerifier(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier) (VerifiedReleaseStats, error) {
+	return verifyReleaseStatsMeasurementWithHexWork(measurement, verifyCut, canonicalHexWork{})
+}
+
+// Observes egress normalization without changing any recursive cut check.
+func verifyReleaseStatsMeasurementWithHexWork(measurement ReleaseStatsMeasurement, verifyCut attemptLedgerCutVerifier, work canonicalHexWork) (VerifiedReleaseStats, error) {
 	config := measurement.Config
 	if config.AMin == 0 || config.AlphaDenominator == 0 || config.AlphaNumerator > config.AlphaDenominator || config.LatRefMillis == 0 {
 		return VerifiedReleaseStats{}, errors.New("release statistics config is invalid")
@@ -165,7 +170,7 @@ func verifyReleaseStatsMeasurementWithCutVerifier(measurement ReleaseStatsMeasur
 		egress := make(map[[32]byte]bool, len(provider.EgressIPHashHexes))
 		priorHash := ""
 		for hashIndex, encoded := range provider.EgressIPHashHexes {
-			if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") || (priorHash != "" && encoded <= priorHash) {
+			if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") || (priorHash != "" && encoded <= priorHash) {
 				return VerifiedReleaseStats{}, fmt.Errorf("provider %s egress hash %d is not canonical", provider.ClientID, hashIndex)
 			}
 			decoded, decodeErr := hex.DecodeString(encoded[2:])

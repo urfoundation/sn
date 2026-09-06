@@ -440,7 +440,7 @@ func TestReleaseMeasurementReconstructsTop200AndPoolClamp(t *testing.T) {
 // TestReleaseMeasurementRejectsUnprovenPositiveHeadScore deterministically
 // removes one measured prefix while retaining the declared EMA raw score.
 func TestReleaseMeasurementRejectsUnprovenPositiveHeadScore(t *testing.T) {
-	artifact := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 202))
+	artifact := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
 	for inputIndex := range artifact.Inputs {
 		for providerIndex := range artifact.Inputs[inputIndex].Stats.Providers {
 			provider := &artifact.Inputs[inputIndex].Stats.Providers[providerIndex]
@@ -488,13 +488,14 @@ func TestReleaseMeasurementRejectsReboundPrefixInheritance(t *testing.T) {
 // TestReleaseMeasurementRequiresSignedAttemptCuts covers missing and
 // cross-operator cut identities before any derived score is accepted.
 func TestReleaseMeasurementRequiresSignedAttemptCuts(t *testing.T) {
-	missing := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
+	base := releaseMeasurementTopFixture(t, 2)
+	missing := cloneReleaseMeasurementArtifact(t, base)
 	missing.Inputs[0].Stats.AttemptCut = nil
 	if _, err := VerifyReleaseMeasurementArtifact(missing); err == nil {
 		t.Fatal("release measurement accepted raw statistics without a signed attempt cut")
 	}
 
-	wrongOperator := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
+	wrongOperator := cloneReleaseMeasurementArtifact(t, base)
 	wrongOperator.Inputs[0].Stats.AttemptCut.Identity.NoID = 2
 	if _, err := VerifyReleaseMeasurementArtifact(wrongOperator); err == nil {
 		t.Fatal("release measurement accepted an attempt cut from another operator")
@@ -504,6 +505,7 @@ func TestReleaseMeasurementRequiresSignedAttemptCuts(t *testing.T) {
 // TestReleaseMeasurementRejectsMalformedQualityInputs covers adjacent counter,
 // histogram and integer-overflow attacks on pool-quality reconstruction.
 func TestReleaseMeasurementRejectsMalformedQualityInputs(t *testing.T) {
+	base := releaseMeasurementTopFixture(t, 2)
 	cases := []func(*ReleaseMeasurementArtifact){
 		func(artifact *ReleaseMeasurementArtifact) {
 			artifact.Inputs[0].Stats.Providers[0].Confirmations = 1
@@ -516,7 +518,7 @@ func TestReleaseMeasurementRejectsMalformedQualityInputs(t *testing.T) {
 		},
 	}
 	for index, mutate := range cases {
-		artifact := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
+		artifact := cloneReleaseMeasurementArtifact(t, base)
 		mutate(artifact)
 		if _, err := VerifyReleaseMeasurementArtifact(artifact); err == nil {
 			t.Fatalf("malformed quality input %d was accepted", index)
@@ -527,6 +529,7 @@ func TestReleaseMeasurementRejectsMalformedQualityInputs(t *testing.T) {
 // TestReleaseMeasurementRejectsFabricatedDepositAudits covers status, lag,
 // formula, cap, commitment, deadline and canonical-decimal equivocation.
 func TestReleaseMeasurementRejectsFabricatedDepositAudits(t *testing.T) {
+	base := releaseMeasurementTopFixture(t, 2)
 	mutations := []func(*DepositAudit, *ReleaseMeasurementArtifact){
 		func(audit *DepositAudit, _ *ReleaseMeasurementArtifact) {
 			audit.Status, audit.Compliant, audit.Disposition = DepositAuditMismatch, false, "zero_pool_weight"
@@ -550,7 +553,7 @@ func TestReleaseMeasurementRejectsFabricatedDepositAudits(t *testing.T) {
 		func(audit *DepositAudit, _ *ReleaseMeasurementArtifact) { audit.ConvictionBeforeRao = "00" },
 	}
 	for index, mutate := range mutations {
-		artifact := cloneReleaseMeasurementArtifact(t, releaseMeasurementTopFixture(t, 2))
+		artifact := cloneReleaseMeasurementArtifact(t, base)
 		mutate(&artifact.DepositAudits[0], artifact)
 		if _, err := VerifyReleaseMeasurementArtifact(artifact); err == nil {
 			t.Fatalf("fabricated deposit audit mutation %d was accepted", index)

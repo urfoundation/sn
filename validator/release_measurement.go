@@ -154,8 +154,13 @@ type VerifiedReleaseMeasurement struct {
 
 // parseReleaseHex32 requires the unique lowercase 0x-prefixed representation.
 func parseReleaseHex32(name, encoded string, zeroAllowed bool) ([32]byte, error) {
+	return parseReleaseHex32WithWork(name, encoded, zeroAllowed, canonicalHexWork{})
+}
+
+// Retains the independent release parser and its exact error contract.
+func parseReleaseHex32WithWork(name, encoded string, zeroAllowed bool, work canonicalHexWork) ([32]byte, error) {
 	var value [32]byte
-	if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") {
+	if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") {
 		return value, fmt.Errorf("%s is not canonical 32-byte hex", name)
 	}
 	decoded, err := hex.DecodeString(encoded[2:])
@@ -176,10 +181,15 @@ func releaseHex32(value [32]byte) string {
 
 // verifyReleaseMeasurementIdentity validates chain, policy and snapshot pins.
 func verifyReleaseMeasurementIdentity(artifact *ReleaseMeasurementArtifact) error {
+	return verifyReleaseMeasurementIdentityWithHexWork(artifact, canonicalHexWork{})
+}
+
+// Observes only the real contract-address normalization in the public path.
+func verifyReleaseMeasurementIdentityWithHexWork(artifact *ReleaseMeasurementArtifact, work canonicalHexWork) error {
 	if artifact == nil || artifact.Schema != ReleaseMeasurementSchema || artifact.DeploymentID == "" || artifact.ValidatorID == 0 || artifact.ChainID == 0 || artifact.Netuid == 0 {
 		return errors.New("release measurement identity is incomplete")
 	}
-	if artifact.Coordinator != strings.ToLower(artifact.Coordinator) || artifact.SettlementVault != strings.ToLower(artifact.SettlementVault) || !common.IsHexAddress(artifact.Coordinator) || common.HexToAddress(artifact.Coordinator) == (common.Address{}) || !common.IsHexAddress(artifact.SettlementVault) || common.HexToAddress(artifact.SettlementVault) == (common.Address{}) {
+	if (len(artifact.Coordinator) != 40 && len(artifact.Coordinator) != 42) || (len(artifact.SettlementVault) != 40 && len(artifact.SettlementVault) != 42) || artifact.Coordinator != work.lower(artifact.Coordinator) || artifact.SettlementVault != work.lower(artifact.SettlementVault) || !common.IsHexAddress(artifact.Coordinator) || common.HexToAddress(artifact.Coordinator) == (common.Address{}) || !common.IsHexAddress(artifact.SettlementVault) || common.HexToAddress(artifact.SettlementVault) == (common.Address{}) {
 		return errors.New("release measurement contract identity is invalid")
 	}
 	if artifact.ControlledNOIDs == nil || artifact.Inputs == nil || artifact.Bindings == nil || artifact.HeadEMA == nil || artifact.Pools == nil || artifact.DepositAudits == nil {
@@ -487,8 +497,14 @@ func parseCanonicalDepositAmount(name, encoded string) (*big.Int, error) {
 	return value, nil
 }
 
+// Retains lowercase nonzero addresses in both previously accepted widths.
 func verifyCanonicalDepositAddress(name, encoded string) error {
-	if encoded != strings.ToLower(encoded) || !common.IsHexAddress(encoded) || common.HexToAddress(encoded) == (common.Address{}) {
+	return verifyCanonicalDepositAddressWithWork(name, encoded, canonicalHexWork{})
+}
+
+// Observes normalization without changing address admission or byte decoding.
+func verifyCanonicalDepositAddressWithWork(name, encoded string, work canonicalHexWork) error {
+	if (len(encoded) != 40 && len(encoded) != 42) || encoded != work.lower(encoded) || !common.IsHexAddress(encoded) || common.HexToAddress(encoded) == (common.Address{}) {
 		return fmt.Errorf("%s is not a canonical nonzero address", name)
 	}
 	return nil
@@ -745,8 +761,13 @@ func ReleaseMeasurementContentHash(encoded []byte) string {
 
 // parseReleaseContentHash validates a canonical SHA-256 content address.
 func parseReleaseContentHash(encoded string) ([32]byte, error) {
+	return parseReleaseContentHashWithWork(encoded, canonicalHexWork{})
+}
+
+// Retains the content hash parser, including its accepted zero digest.
+func parseReleaseContentHashWithWork(encoded string, work canonicalHexWork) ([32]byte, error) {
 	var value [32]byte
-	if encoded != strings.ToLower(encoded) || len(encoded) != 71 || !strings.HasPrefix(encoded, "sha256:") {
+	if len(encoded) != 71 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "sha256:") {
 		return value, errors.New("content hash is not canonical SHA-256")
 	}
 	decoded, err := hex.DecodeString(encoded[7:])

@@ -194,8 +194,13 @@ type AttemptLedger struct {
 }
 
 func canonicalAttemptHex32(name, encoded string, zeroAllowed bool) ([32]byte, error) {
+	return canonicalAttemptHex32WithWork(name, encoded, zeroAllowed, canonicalHexWork{})
+}
+
+// Keeps canonical decoding on the same production path with call-local work.
+func canonicalAttemptHex32WithWork(name, encoded string, zeroAllowed bool, work canonicalHexWork) ([32]byte, error) {
 	var value [32]byte
-	if encoded != strings.ToLower(encoded) || len(encoded) != 66 || !strings.HasPrefix(encoded, "0x") {
+	if len(encoded) != 66 || encoded != work.lower(encoded) || !strings.HasPrefix(encoded, "0x") {
 		return value, fmt.Errorf("%s is not canonical 32-byte hex", name)
 	}
 	decoded, err := hex.DecodeString(encoded[2:])
@@ -290,16 +295,9 @@ func attemptRecordHash(record *AttemptRecord) ([32]byte, error) {
 	return value, nil
 }
 
+// Routes every ledger owner through the same detached compatibility copy.
 func cloneAttemptRecord(record AttemptRecord) (AttemptRecord, error) {
-	encoded, err := json.Marshal(&record)
-	if err != nil {
-		return AttemptRecord{}, err
-	}
-	var cloned AttemptRecord
-	if err := json.Unmarshal(encoded, &cloned); err != nil {
-		return AttemptRecord{}, err
-	}
-	return cloned, nil
+	return (attemptRecordCloneWork{}).clone(record)
 }
 
 func attemptRecordSignatureMessage(recordHash [32]byte) []byte {
