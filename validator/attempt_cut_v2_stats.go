@@ -40,6 +40,12 @@ type attemptCutV2ProviderRemainder struct {
 // Prior EMA lineage, historical activation/eligibility and cross-cut terminal-ID
 // continuity remain outer checks; this does not activate a production writer.
 func VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2StatsOptions) (result VerifiedReleaseStats, replayed AttemptCutV2ReplayResult, resultErr error) {
+	return verifyReleaseStatsMeasurementWithAttemptCutV2AndObserver(ctx, measurement, cut, expected, policy, bounds, options, nil)
+}
+
+// The operation-local observer marks the real generic verification boundary;
+// production callers supply nil and retain the exact public replay path.
+func verifyReleaseStatsMeasurementWithAttemptCutV2AndObserver(ctx context.Context, measurement ReleaseStatsMeasurement, cut AttemptCutV2, expected AttemptCutV2Context, policy protocol.Policy, bounds AttemptCutV2Bounds, options AttemptCutV2StatsOptions, observeStatsVerifier func()) (result VerifiedReleaseStats, replayed AttemptCutV2ReplayResult, resultErr error) {
 	if ctx == nil {
 		return result, replayed, errors.New("compact attempt statistics context is nil")
 	}
@@ -63,11 +69,30 @@ func VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx context.Context, measurem
 	}
 	var egressCount uint64
 	for _, provider := range measurement.Providers {
+		if err := ctx.Err(); err != nil {
+			return result, replayed, err
+		}
 		if count := uint64(len(provider.EgressIPHashHexes)); count > options.MaxEgressHashes-egressCount {
 			return result, replayed, errors.New("compact attempt statistics egress census exceeds its bound")
 		} else {
 			egressCount += count
 		}
+		// Generic UUID errors and case normalization can copy their input.
+		// Canonical fixed widths bound that work before entering the verifier.
+		if len(provider.ClientID) != 36 || len(provider.LatencyBuckets) != statsLatencyBuckets {
+			return result, replayed, errors.New("compact attempt statistics provider shape is not canonical")
+		}
+		for _, encoded := range provider.EgressIPHashHexes {
+			if err := ctx.Err(); err != nil {
+				return result, replayed, err
+			}
+			if len(encoded) != 66 {
+				return result, replayed, errors.New("compact attempt statistics egress hash width is not canonical")
+			}
+		}
+	}
+	if observeStatsVerifier != nil {
+		observeStatsVerifier()
 	}
 	verified, err := VerifyReleaseStatsMeasurement(measurement)
 	if err != nil {

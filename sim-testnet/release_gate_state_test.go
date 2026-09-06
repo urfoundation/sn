@@ -83,6 +83,7 @@ func TestProducerGateStateSelectionCoversAttemptStreamPublication(t *testing.T) 
 func TestProducerGateStateSelectionCoversAttemptStreamStats(t *testing.T) {
 	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "attempt-stream-statistics", []string{
 		"../validator/attempt_cut_v2_stats_test.go",
+		"../validator/attempt_cut_v2_stats_admission_test.go",
 		"../validator/attempt_cut_v2_stats_quality_test.go",
 	})
 }
