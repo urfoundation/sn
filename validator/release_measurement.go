@@ -48,6 +48,7 @@ type ReleaseMeasurementInput struct {
 	CutEVMSnapshotHash  string                  `json:"cut_evm_snapshot_hash"`
 	EgressGeneration    uint64                  `json:"egress_generation"`
 	Stats               ReleaseStatsMeasurement `json:"stats"`
+	AttemptCutV2        *AttemptCutV2           `json:"attempt_cut_v2,omitempty"`
 }
 
 // releaseMeasurementInputJournal makes native-window rotation durable before
@@ -123,6 +124,7 @@ type ReleaseMeasurementArtifact struct {
 	Pools                []ReleasePoolMeasurement    `json:"pools"`
 	DepositAudits        []DepositAudit              `json:"deposit_audits"`
 	SelfUID              uint16                      `json:"self_uid"`
+	SettlementClosureV2  *AttemptSettlementClosureV2 `json:"settlement_closure_v2,omitempty"`
 }
 
 // VerifiedReleasePool is one independently derived pool decision. Ineligible
@@ -176,7 +178,24 @@ func releaseHex32(value [32]byte) string {
 
 // verifyReleaseMeasurementIdentity validates chain, policy and snapshot pins.
 func verifyReleaseMeasurementIdentity(artifact *ReleaseMeasurementArtifact) error {
-	if artifact == nil || artifact.Schema != ReleaseMeasurementSchema || artifact.DeploymentID == "" || artifact.ValidatorID == 0 || artifact.ChainID == 0 || artifact.Netuid == 0 {
+	if artifact == nil || artifact.Schema != ReleaseMeasurementSchema {
+		return errors.New("release measurement identity is incomplete")
+	}
+	if artifact.SettlementClosureV2 != nil {
+		return errors.New("legacy release measurement rejects compact settlement evidence")
+	}
+	for _, input := range artifact.Inputs {
+		if input.AttemptCutV2 != nil {
+			return errors.New("legacy release measurement rejects compact attempt evidence")
+		}
+	}
+	return verifyReleaseMeasurementCommonIdentity(artifact)
+}
+
+// Both explicit wire versions share these chain, policy and snapshot checks.
+// This helper does not authenticate either version's attempt evidence.
+func verifyReleaseMeasurementCommonIdentity(artifact *ReleaseMeasurementArtifact) error {
+	if artifact == nil || artifact.DeploymentID == "" || artifact.ValidatorID == 0 || artifact.ChainID == 0 || artifact.Netuid == 0 {
 		return errors.New("release measurement identity is incomplete")
 	}
 	if artifact.Coordinator != strings.ToLower(artifact.Coordinator) || artifact.SettlementVault != strings.ToLower(artifact.SettlementVault) || !common.IsHexAddress(artifact.Coordinator) || common.HexToAddress(artifact.Coordinator) == (common.Address{}) || !common.IsHexAddress(artifact.SettlementVault) || common.HexToAddress(artifact.SettlementVault) == (common.Address{}) {
@@ -284,9 +303,10 @@ func releaseMeasurementStats(artifact *ReleaseMeasurementArtifact) (map[uint64]V
 	return statsByNO, nil
 }
 
-// releaseMeasurementBindings validates exact provider coverage, then derives
-// fleet prefix sets, pool exclusions and stale-binding evidence.
-func releaseMeasurementBindings(artifact *ReleaseMeasurementArtifact, statsByNO map[uint64]VerifiedReleaseStats) (map[FleetScoreKey]map[[32]byte]bool, map[uint64]map[connect.Id]bool, map[uint16][]releaseHeadMember, []StaleHeadBinding, error) {
+// releaseMeasurementBindingObservations applies the common exact coordinator
+// and native eligibility rules to a provider identity census. It does not
+// interpret counters or authenticate a cut; each wire verifier does that.
+func releaseMeasurementBindingObservations(artifact *ReleaseMeasurementArtifact, providerKVs map[uint64]map[connect.Id]bool) (map[FleetScoreKey]map[[32]byte]bool, map[uint64]map[connect.Id]bool, map[uint16][]releaseHeadMember, []StaleHeadBinding, map[string]FleetScoreKey, error) {
 	fleets := map[FleetScoreKey]map[[32]byte]bool{}
 	bound := map[uint64]map[connect.Id]bool{}
 	membersByUID := map[uint16][]releaseHeadMember{}
@@ -297,60 +317,60 @@ func releaseMeasurementBindings(artifact *ReleaseMeasurementArtifact, statsByNO 
 	for index, binding := range artifact.Bindings {
 		key := fmt.Sprintf("%020d:%s", binding.NoID, binding.ClientID)
 		if priorKey != "" && key <= priorKey {
-			return nil, nil, nil, nil, errors.New("release binding observations are not strictly ordered")
+			return nil, nil, nil, nil, nil, errors.New("release binding observations are not strictly ordered")
 		}
-		stats, ok := statsByNO[binding.NoID]
+		providers, ok := providerKVs[binding.NoID]
 		if !ok {
-			return nil, nil, nil, nil, fmt.Errorf("binding %d references unknown no_id %d", index, binding.NoID)
+			return nil, nil, nil, nil, nil, fmt.Errorf("binding %d references unknown no_id %d", index, binding.NoID)
 		}
 		clientID, err := connect.ParseId(binding.ClientID)
 		if err != nil || clientID.String() != binding.ClientID {
-			return nil, nil, nil, nil, fmt.Errorf("binding %d client id is not canonical", index)
+			return nil, nil, nil, nil, nil, fmt.Errorf("binding %d client id is not canonical", index)
 		}
-		if _, ok := stats.Providers[clientID]; !ok {
-			return nil, nil, nil, nil, fmt.Errorf("binding %d references a provider absent from its statistics cut", index)
+		if _, ok := providers[clientID]; !ok {
+			return nil, nil, nil, nil, nil, fmt.Errorf("binding %d references a provider absent from its statistics cut", index)
 		}
 		providerKey := fmt.Sprintf("%020d:%s", binding.NoID, binding.ClientID)
 		if seenProvider[providerKey] {
-			return nil, nil, nil, nil, fmt.Errorf("provider %s has duplicate binding observations", binding.ClientID)
+			return nil, nil, nil, nil, nil, fmt.Errorf("provider %s has duplicate binding observations", binding.ClientID)
 		}
 		if owner, exists := providerOwner[binding.ClientID]; exists && owner != binding.NoID {
-			return nil, nil, nil, nil, fmt.Errorf("provider %s appears in more than one operator context", binding.ClientID)
+			return nil, nil, nil, nil, nil, fmt.Errorf("provider %s appears in more than one operator context", binding.ClientID)
 		}
 		providerOwner[binding.ClientID] = binding.NoID
 		seenProvider[providerKey] = true
 		fleetID, err := parseReleaseHex32("fleet id", binding.FleetID, true)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		hotkey, err := parseReleaseHex32("hotkey", binding.Hotkey, true)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		clientKey, err := parseReleaseHex32("client key", binding.ClientKey, true)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		localClientKey, err := parseReleaseHex32("local client key", binding.LocalClientKey, true)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		commitmentHash, err := parseReleaseHex32("commitment hash", binding.CommitmentHash, true)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 		if !binding.Active {
 			if localClientKey != ([32]byte{}) || binding.LiveUIDFound || binding.LiveUID != 0 {
-				return nil, nil, nil, nil, fmt.Errorf("inactive binding %s contains live local observations", binding.ClientID)
+				return nil, nil, nil, nil, nil, fmt.Errorf("inactive binding %s contains live local observations", binding.ClientID)
 			}
 			priorKey = key
 			continue
 		}
 		if fleetID == ([32]byte{}) || hotkey == ([32]byte{}) || clientKey == ([32]byte{}) || localClientKey != clientKey || binding.Generation == 0 || binding.Cleaned || binding.CleanedAtEpoch != 0 || binding.ValidFromEpoch > artifact.SettlementEpoch || binding.ValidToEpoch < artifact.SettlementEpoch || binding.ValidToEpoch < binding.ValidFromEpoch {
-			return nil, nil, nil, nil, fmt.Errorf("active binding %s is incomplete, mismatched or outside its epoch", binding.ClientID)
+			return nil, nil, nil, nil, nil, fmt.Errorf("active binding %s is incomplete, mismatched or outside its epoch", binding.ClientID)
 		}
 		if artifact.Policy.Binding.CommitmentsRequired && commitmentHash == ([32]byte{}) {
-			return nil, nil, nil, nil, fmt.Errorf("active binding %s has no required commitment", binding.ClientID)
+			return nil, nil, nil, nil, nil, fmt.Errorf("active binding %s has no required commitment", binding.ClientID)
 		}
 		if !binding.LiveUIDFound || binding.LiveUID != binding.RecordUID {
 			priorKey = key
@@ -368,16 +388,45 @@ func releaseMeasurementBindings(artifact *ReleaseMeasurementArtifact, statsByNO 
 		membersByUID[binding.LiveUID] = append(membersByUID[binding.LiveUID], releaseHeadMember{NoID: binding.NoID, ClientID: clientID})
 		priorKey = key
 	}
-	for noID, stats := range statsByNO {
+	for noID, providers := range providerKVs {
 		if bound[noID] == nil {
 			bound[noID] = map[connect.Id]bool{}
 		}
-		for clientID := range stats.Providers {
+		for clientID := range providers {
 			providerKey := fmt.Sprintf("%020d:%s", noID, clientID.String())
 			if !seenProvider[providerKey] {
-				return nil, nil, nil, nil, fmt.Errorf("provider %s has no binding observation", clientID)
+				return nil, nil, nil, nil, nil, fmt.Errorf("provider %s has no binding observation", clientID)
 			}
 		}
+	}
+	stale := make([]StaleHeadBinding, 0)
+	for _, binding := range artifact.Bindings {
+		if binding.Active && (!binding.LiveUIDFound || binding.LiveUID != binding.RecordUID) {
+			stale = append(stale, StaleHeadBinding{NoID: binding.NoID, ClientID: binding.ClientID, RecordUID: binding.RecordUID, LiveUID: binding.LiveUID, Found: binding.LiveUIDFound})
+		}
+	}
+	sort.Slice(stale, func(i, j int) bool {
+		if stale[i].NoID != stale[j].NoID {
+			return stale[i].NoID < stale[j].NoID
+		}
+		return stale[i].ClientID < stale[j].ClientID
+	})
+	return fleets, bound, membersByUID, stale, activeFleetByProvider, nil
+}
+
+// releaseMeasurementBindings keeps the complete legacy claim projection and
+// shares only pure binding eligibility with compact replay.
+func releaseMeasurementBindings(artifact *ReleaseMeasurementArtifact, statsByNO map[uint64]VerifiedReleaseStats) (map[FleetScoreKey]map[[32]byte]bool, map[uint64]map[connect.Id]bool, map[uint16][]releaseHeadMember, []StaleHeadBinding, error) {
+	providerKVs := make(map[uint64]map[connect.Id]bool, len(statsByNO))
+	for noID, stats := range statsByNO {
+		providerKVs[noID] = make(map[connect.Id]bool, len(stats.Providers))
+		for clientID := range stats.Providers {
+			providerKVs[noID][clientID] = true
+		}
+	}
+	fleets, bound, membersByUID, stale, activeFleetByProvider, err := releaseMeasurementBindingObservations(artifact, providerKVs)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	// Only a server-attested prefix captured while this exact fleet generation
 	// was active can feed its head score. The provider-level detached map is
@@ -402,18 +451,6 @@ func releaseMeasurementBindings(artifact *ReleaseMeasurementArtifact, statsByNO 
 			fleets[fleetKey][egressHash] = true
 		}
 	}
-	stale := make([]StaleHeadBinding, 0)
-	for _, binding := range artifact.Bindings {
-		if binding.Active && (!binding.LiveUIDFound || binding.LiveUID != binding.RecordUID) {
-			stale = append(stale, StaleHeadBinding{NoID: binding.NoID, ClientID: binding.ClientID, RecordUID: binding.RecordUID, LiveUID: binding.LiveUID, Found: binding.LiveUIDFound})
-		}
-	}
-	sort.Slice(stale, func(i, j int) bool {
-		if stale[i].NoID != stale[j].NoID {
-			return stale[i].NoID < stale[j].NoID
-		}
-		return stale[i].ClientID < stale[j].ClientID
-	})
 	return fleets, bound, membersByUID, stale, nil
 }
 
@@ -696,6 +733,12 @@ func VerifyReleaseMeasurementArtifact(artifact *ReleaseMeasurementArtifact) (*Ve
 	if err != nil {
 		return nil, err
 	}
+	return assembleReleaseMeasurement(artifact, statsByNO, fleets, bound, membersByUID, stale, controlled)
+}
+
+// Only fully authenticated legacy or compact projections reach the common
+// exact top-200, EMA, pool, exclusion and vector mathematics.
+func assembleReleaseMeasurement(artifact *ReleaseMeasurementArtifact, statsByNO map[uint64]VerifiedReleaseStats, fleets map[FleetScoreKey]map[[32]byte]bool, bound map[uint64]map[connect.Id]bool, membersByUID map[uint16][]releaseHeadMember, stale []StaleHeadBinding, controlled map[uint64]bool) (*VerifiedReleaseMeasurement, error) {
 	eligible, selection, err := releaseMeasurementHead(artifact, fleets)
 	if err != nil {
 		return nil, err
@@ -917,6 +960,11 @@ func VerifyReleaseMeasurementLineage(previousEncoded []byte, current *ReleaseMea
 			return fmt.Errorf("operator %d current settlement cut is not rooted in its transition", input.NoID)
 		}
 	}
+	return verifyReleaseMeasurementHeadLineage(previous, current)
+}
+
+// The native EMA clock is independent of settlement and cut serialization.
+func verifyReleaseMeasurementHeadLineage(previous, current *ReleaseMeasurementArtifact) error {
 	priorNext := make(map[string]RationalJSON, len(previous.HeadEMA))
 	if current.SubnetEpoch == previous.SubnetEpoch {
 		// A failed submission may be rebuilt inside the same native epoch. It
@@ -1001,6 +1049,9 @@ func decodeReleaseMeasurementInput(encoded []byte) (*releaseMeasurementInputJour
 	}
 	if _, err := parseReleaseHex32("measurement input EVM hash", journal.MeasurementInput.CutEVMSnapshotHash, false); err != nil {
 		return nil, err
+	}
+	if journal.MeasurementInput.AttemptCutV2 != nil {
+		return nil, errors.New("legacy measurement input journal rejects compact evidence")
 	}
 	if _, err := VerifyReleaseStatsMeasurement(journal.MeasurementInput.Stats); err != nil {
 		return nil, err

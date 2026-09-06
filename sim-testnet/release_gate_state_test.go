@@ -84,6 +84,7 @@ func TestProducerGateStateSelectionCoversAttemptStreamStats(t *testing.T) {
 	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "attempt-stream-statistics", []string{
 		"../validator/attempt_cut_v2_stats_test.go",
 		"../validator/attempt_cut_v2_stats_quality_test.go",
+		"../validator/attempt_cut_v2_stats_admission_test.go",
 	})
 }
 
@@ -92,6 +93,14 @@ func TestProducerGateStateSelectionCoversAttemptStreamStats(t *testing.T) {
 func TestProducerGateStateSelectionCoversAttemptStreamHead(t *testing.T) {
 	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "attempt-stream-head", []string{
 		"../validator/attempt_cut_v2_head_test.go",
+	})
+}
+
+// Both statistics and head attribution share the actual complete replay;
+// integration cannot omit either projection's atomic-publication controls.
+func TestProducerGateStateSelectionCoversAttemptStreamMeasurement(t *testing.T) {
+	assertProducerStateRegressionCoverage(t, "producer_tests", "./validator", "attempt-stream-measurement", []string{
+		"../validator/attempt_cut_v2_measurement_test.go",
 	})
 }
 
