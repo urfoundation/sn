@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func fleetLifecycleDecisionFixture(epoch uint64) *ScenarioObservation {

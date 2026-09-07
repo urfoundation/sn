@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	minerpkg "github.com/urfoundation/sn/miner"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	minerpkg "github.com/urfoundation/sn/v2026/miner"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 	"gopkg.in/yaml.v3"
 )
 
