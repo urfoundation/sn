@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	serverapi "github.com/urnetwork/server/api"
-	serverconnect "github.com/urnetwork/server/connect"
-	servertaskworker "github.com/urnetwork/server/taskworker"
+	serverapi "github.com/urnetwork/server/v2026/api"
+	serverconnect "github.com/urnetwork/server/v2026/connect"
+	servertaskworker "github.com/urnetwork/server/v2026/taskworker"
 
-	minercomponent "github.com/urfoundation/sn/miner"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	minercomponent "github.com/urfoundation/sn/v2026/miner"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 var version = "1.0"

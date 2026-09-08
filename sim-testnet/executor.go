@@ -28,10 +28,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"gopkg.in/yaml.v3"
 
-	"github.com/urfoundation/sn/crv4"
-	minercomponent "github.com/urfoundation/sn/miner"
-	"github.com/urfoundation/sn/ss58"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/crv4"
+	minercomponent "github.com/urfoundation/sn/v2026/miner"
+	"github.com/urfoundation/sn/v2026/ss58"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 type Executor struct {

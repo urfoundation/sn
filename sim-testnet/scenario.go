@@ -27,10 +27,10 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/payoutartifact"
-	"github.com/urfoundation/sn/protocol"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // AssertionRecord is the stable machine-readable assertion format shared by
