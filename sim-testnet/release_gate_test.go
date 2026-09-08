@@ -1609,9 +1609,9 @@ func TestReleaseSourceFreezeRecordsCompleteCleanWorkspace(t *testing.T) {
 		t.Fatalf("source freeze recorded %d repositories, want 12: %s", len(lines), output)
 	}
 	expectedOrigins := map[string]string{
-		"sn": "github.com/urfoundation/sn", "server": "github.com/urnetwork/server", "operator-proxy": "github.com/urnetwork/operator-proxy",
-		"connect": "github.com/urnetwork/connect", "sdk": "github.com/urnetwork/sdk", "glog": "github.com/urnetwork/glog",
-		"goidenticons": "github.com/urnetwork/goidenticons", "proxy": "github.com/urnetwork/proxy", "userwireguard": "github.com/urnetwork/userwireguard",
+		"sn": "github.com/urfoundation/sn/v2026", "server": "github.com/urnetwork/server", "operator-proxy": "github.com/urnetwork/operator-proxy/v2026",
+		"connect": "github.com/urnetwork/connect/v2026", "sdk": "github.com/urnetwork/sdk/v2026", "glog": "github.com/urnetwork/glog/v2026",
+		"goidenticons": "github.com/urnetwork/goidenticons/v2026", "proxy": "github.com/urnetwork/proxy/v2026", "userwireguard": "github.com/urnetwork/userwireguard/v2026",
 		"vault": "github.com/urnetwork/vault", "xops": "github.com/urnetwork/xops", "config": "github.com/urnetwork/config",
 	}
 	for _, line := range lines {
