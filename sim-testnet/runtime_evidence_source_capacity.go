@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Values are per validator/operator source except the explicitly combined

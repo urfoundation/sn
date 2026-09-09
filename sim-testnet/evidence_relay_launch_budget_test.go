@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Each original operator consents separately even when both headers share

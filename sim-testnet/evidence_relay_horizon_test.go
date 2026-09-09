@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/protocol"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/protocol"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Original generated source identities own four slots per epoch. The native

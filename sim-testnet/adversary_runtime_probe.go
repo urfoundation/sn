@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // Captures one endpoint's exact finalized commit/reveal configuration.
