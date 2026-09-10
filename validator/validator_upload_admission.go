@@ -450,6 +450,9 @@ func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
 	entry := self.entries[intent.ActivationHash]
+	if self.lastError != nil {
+		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: %w", self.lastError)
+	}
 	if self.closed || self.lastError != nil || !now.Before(self.validUntil) || entry == nil || entry.record.VPK != intent.VPK || entry.ctx.Err() != nil {
 		return nil, errors.New("validator staging activation is absent, stale or superseded")
 	}
