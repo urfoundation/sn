@@ -298,6 +298,12 @@ func startSwarmMember(ctx context.Context, member ProviderSwarmMember, failed fu
 		return nil, err
 	}
 	strategySettings := connect.DefaultClientStrategySettings()
+	// Testnet registration waits for a shared, rate-limited chain observation.
+	// The strategy divides this deadline among routes; its normal 15-second
+	// budget can cancel every attempt before that observation completes.
+	strategySettings.RequestTimeout = 120 * time.Second
+	// ConnectTimeout also bounds response headers for the processed reply.
+	strategySettings.ConnectTimeout = 45 * time.Second
 	strategySettings.DialContextSettings = dialSettings
 	if err := setSwarmMemberWallet(ctx, member, strategySettings); err != nil {
 		return nil, fmt.Errorf("set wallet: %w", err)
