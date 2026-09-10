@@ -26,9 +26,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"gopkg.in/yaml.v3"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
-	serverst "github.com/urnetwork/server/st"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
+	serverst "github.com/urnetwork/server/v2026/st"
 )
 
 type Check struct {
@@ -488,11 +488,11 @@ func validateRepoIdentity(name, path string) error {
 		if err != nil {
 			return err
 		}
-		want := "github.com/urfoundation/sn"
+		want := "github.com/urfoundation/sn/v2026"
 		if name == "server" {
-			want = "github.com/urnetwork/server"
+			want = "github.com/urnetwork/server/v2026"
 		} else if name == "operator-proxy" {
-			want = "github.com/urnetwork/operator-proxy"
+			want = "github.com/urnetwork/operator-proxy/v2026"
 		}
 		if !strings.Contains(string(b), "module "+want) {
 			return fmt.Errorf("go.mod is not %s", want)
