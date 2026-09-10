@@ -64,7 +64,7 @@ repositories:
     server_audited_base_commit: 7b5cc6e14115a61ce17e0d6f7a26404cac5f39b4
     server_go_source_hash: sha256:1e2c601680e50f5a75dd7a1204cfffc237504e531dd6ce490ca47eeab3f56e77
     sn_audited_base_commit: 900b973e1a31dff617d420a374eb29e307dd462e
-    sn_go_source_hash: sha256:80514bf650a2201990718a45bc062c49fbbafa087f259254cd4ec509a59771d4
+    sn_go_source_hash: sha256:91365eb4573c0b8c2fa2ff90476f06c6affa8485f9fb7e1e395ee40a3ca4fc24
     userwireguard_go_source_hash: sha256:f30a610db4807d43c78f97049da3ab14902b6bc5410664c6cf184bb7149d98c9
     vault_audited_base_commit: 992f69a4ba744dabf43c71401a3f355f05f46428
 dependencies:
