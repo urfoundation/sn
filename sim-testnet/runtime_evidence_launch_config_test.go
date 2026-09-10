@@ -106,6 +106,7 @@ func retainRuntimeEvidenceLaunchInputsTest(t *testing.T, cfg *ResolvedConfig, st
 // Actual launch capacities must not be replaced by the much smaller generic
 // fixture. Both API destinations and both validator loaders see exact outputs.
 func TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender(t *testing.T) {
+	t.Parallel()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
 	approvedHash := cfg.ConfigHash
 	cfg.Repos.PlatformConfig = testOperatorConfigSources(t)
@@ -203,6 +204,38 @@ func TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender(t *testin
 	if fixture.transport.sendCalls.Load() != 1 {
 		t.Fatal("rendering replayed the original constructor transaction")
 	}
+	// A manifest-scoped resolved view must not survive a later operation.
+	// Both an original bounded reference and its prepared source stay live
+	// authentication boundaries after the unchanged full render/restart pair.
+	manifestPath := runtimeConfigManifestPath(stateDir)
+	manifestBefore, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{resolved.Config.ValidatorEvidenceV2[0].Evidence.Operators[0].Context.Path, filepath.Join(stateDir, "evidence-v2-setup", "prepared.json")} {
+		original, err := os.ReadFile(path)
+		if err != nil || len(original) == 0 {
+			t.Fatalf("missing original manifest source: %v", err)
+		}
+		changed := slices.Clone(original)
+		changed[0] ^= 1
+		if err := os.WriteFile(path, changed, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := verifyRuntimeConfigManifest(cfg, stateDir); err == nil {
+			t.Fatal("later manifest verification reused stale resolved source authority")
+		}
+		if err := writeRuntimeConfigManifest(cfg, stateDir); err == nil {
+			t.Fatal("later manifest rebuild adopted a changed authenticated source")
+		}
+		after, err := os.ReadFile(manifestPath)
+		if err != nil || string(after) != string(manifestBefore) {
+			t.Fatalf("failed manifest rebuild changed the original manifest: %v", err)
+		}
+		if err := os.WriteFile(path, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // Partial generated identity, private allowlists and omitted finite fields
@@ -258,6 +291,7 @@ func TestRuntimeEvidenceLaunchV2TemplateRejectsPartialIdentityAndImplicitCapacit
 // A valid template does not make missing or foreign retained constructor
 // evidence authoritative. The ordinary journal writer creates each control.
 func TestRuntimeEvidenceLaunchV2TemplateRejectsMissingAndForeignCreation(t *testing.T) {
+	t.Parallel()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
 	stateDir := t.TempDir()
 	roles, err := BuildRoleSecrets(cfg)

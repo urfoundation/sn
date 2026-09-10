@@ -344,6 +344,10 @@ func publicEVMResponseNeedsRetry(response *http.Response, readOnly bool) (bool, 
 // Match the exact capacity signal observed from the official public testnet
 // endpoint without turning contract reverts or arbitrary server errors transient.
 func publicEVMRPCResponseIsOverloaded(body []byte) bool {
+	return publicEVMRPCResponseHasError(body, "upstream overloaded", "Historical work rate limit exceeded")
+}
+
+func publicEVMRPCResponseHasError(body []byte, messages ...string) bool {
 	var responses []publicEVMRPCResponse
 	if bytes.HasPrefix(bytes.TrimSpace(body), []byte("[")) {
 		if json.Unmarshal(body, &responses) != nil || len(responses) == 0 {
@@ -357,8 +361,12 @@ func publicEVMRPCResponseIsOverloaded(body []byte) bool {
 		responses = []publicEVMRPCResponse{single}
 	}
 	for _, response := range responses {
-		if response.Error != nil && strings.EqualFold(strings.TrimSpace(response.Error.Message), "upstream overloaded") {
-			return true
+		if response.Error != nil {
+			for _, message := range messages {
+				if strings.EqualFold(strings.TrimSpace(response.Error.Message), message) {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -410,6 +418,11 @@ func rpcRetryAfter(header http.Header, body []byte, now time.Time, fallback, max
 	}
 	if delay < 0 || maximum <= 0 || delay > maximum {
 		return 0, fmt.Errorf("public EVM retry-after %s exceeds maximum %s", delay, maximum)
+	}
+	if publicEVMRPCResponseHasError(body, "Historical work rate limit exceeded") {
+		// Historical capacity refusals need a longer shared recovery window.
+		// Keep the existing maximum authoritative, including injected test bounds.
+		delay = max(delay, min(time.Minute, maximum))
 	}
 	return delay, nil
 }

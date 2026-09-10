@@ -18,6 +18,7 @@ import (
 // nonblocking bit added only after Open. After that causal assertion passes,
 // the same production reader must acquire and refuse the FIFO without a peer.
 func TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"plan.json", "plans/source.json", "transactions/source.rlp", "receipts/postconditions/source.json"} {
 		func() {
 			directory := filepath.Join(t.TempDir(), "owner")
@@ -91,6 +92,7 @@ func TestValidatorEvidenceCarryHistoricalFilesUseNativeNonblockingOpen(t *testin
 // Root, parent and leaf aliases back to the exact same inode must not turn
 // namespace indirection into approved historical source authority.
 func TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases(t *testing.T) {
+	t.Parallel()
 	for _, location := range []string{"root", "parent", "leaf"} {
 		directory := filepath.Join(t.TempDir(), "owner")
 		name := "plans/source.json"
@@ -150,6 +152,7 @@ func TestValidatorEvidenceCarryHistoricalFilesRejectSameOwnerAliases(t *testing.
 // Directory-only admission must reject special root/parent components before
 // opening them as streams; leaf directories cannot become historical bytes.
 func TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents(t *testing.T) {
+	t.Parallel()
 	for _, location := range []string{"root-fifo", "parent-fifo", "leaf-directory"} {
 		directory := filepath.Join(t.TempDir(), "owner")
 		if err := ensurePrivateDir(directory); err != nil {
@@ -183,6 +186,7 @@ func TestValidatorEvidenceCarryHistoricalFilesRejectSpecialComponents(t *testing
 // The real persisted public receipt and signed journal succeed with nil
 // independent client; replacing a cloned head must fail even with a new hash.
 func TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	fixture.authenticate(t)
 	executor := fixture.executor

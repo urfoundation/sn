@@ -4,7 +4,54 @@ Start with [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) for the concise current
 work/ownership index. The detailed records below retain historical evidence;
 do not reload the whole history for routine test status.
 
-## Current frontier — 2026-09-09 19:27 UTC
+## Current frontier — 2026-09-09 20:24 UTC
+
+The user renewed the one-hour launch objective at20:12:49UTC (deadline21:12:49)
+and explicitly raised the reserve repair allowance to6,000testnet alpha.
+SN source e7a8b39 and Vault cae4179 are committed and pushed. The active
+repair tranche is6,000alpha; the corresponding lifetime ceiling is31,250alpha.
+TAO/gas caps, the2,000alpha source minimum, and majority targets are unchanged.
+
+The omitted retired-alpha repair is now reconstructed from authenticated plan
+history before reserve sizing. The reviewed donor has21 new/adjacent roots
+passing normal/race; old-source normal reproduces the exact omitted-spend
+failure, with its race proof finishing independently. Source checkpoint is
+not live acceptance. Clean source CLI SHA256 is
+71a45926bbcc9e66e64973f2bfee60f67d50c4ba4a4b26b45ead4454eda62b58.
+The reviewed lock changes only the SN Go source hash; observed/applied SHA256
+is1e6cdbd75f8479c45e045c8272effafd802f0430ac85069b3c54c22df66dacda.
+
+The earlier b4f6301 producer and aggregate were intentionally stopped through
+verified native identities before source integration. Both retained143 and
+all descendants joined; they are not full-gate PASS. Completed unchanged
+component receipts remain under their original identities. The next strict
+producer uses supported6 jobs/24CPU with every original test, mode and
+deadline, prioritizing launch over the nonblocking aggregate. Serial preflight
+may overlap final CLI/focused checks only within actual24CPU capacity;
+those workers join before all six phase bodies run. Aggregate restarts as
+capacity permits and remains mandatory for final acceptance.
+
+Root owns final CLI, fresh doctor and two matching serialized plans. Keep
+attempt4 and its immutable journal; no reset or reduced topology/adversaries.
+Producer PASS and repaired-root evidence still precede campaign writes.
+Prepare a bounded read-only contract observer as the deadline fallback; its
+scope is explicitly separate from real operator/miner/validator RC acceptance.
+The first status observation reached finalized7970236 with conservation=true,
+but healthy=false (stopped supervisor) and runtime_code_matches=false
+(pending coordinator upgrade). Do not relabel those as a healthy live RC.
+
+Current external execution records:
+- `temp/sn-soak-deadline-20260909T201249Z/`: approved budget, CLI/lock/readers,
+  deadline status, and observer preparation.
+- `temp/sn-strict-producer6-deadline2112-v1-u6om9slz/`: sealed six-job gate
+  owner ready to start on the next clean pushed lock checkpoint.
+- `temp/sn-retired-alpha-qualification-v1-terra-20260909/`: immutable native
+  new/adjacent and physical old-source qualification.
+
+No new testnet campaign or transaction is claimed. The complete RC, three
+final epochs and independently replayable FINAL.md evidence remain required.
+
+## Historical frontier — 2026-09-09 19:27 UTC
 
 No new release-candidate or final-soak campaign has launched. The19:30 target
 is not a passing-gate claim. Source checkpoint SN a99bd1505c86b6058cc6f85a0c64459b6651b1b5

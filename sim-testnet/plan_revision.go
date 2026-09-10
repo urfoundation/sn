@@ -2859,28 +2859,186 @@ func addRetiredVerifiedEVMGas(prior, revised *SetupPlan, entries []JournalEntry,
 	return spend, nil
 }
 
-func verifiedOperatorAlphaSpend(prior *SetupPlan, entries []JournalEntry) (uint64, error) {
+// Recover retired alpha ceilings from exact verified lineage effects, including
+// repairs omitted by older policy revisions. Repeated verification and local
+// reconciliation name one transfer, while a higher historical floor is retained.
+func retiredVerifiedAlphaSpend(stateDir string, prior *SetupPlan, activeActions []Action, entries []JournalEntry, floor uint64) (uint64, error) {
 	if prior == nil {
 		return 0, errors.New("prior alpha plan is unavailable")
 	}
-	verified := map[string]bool{}
-	for _, entry := range entries {
-		if prior.allowedPlanHashes()[entry.PlanHash] && entry.Stage == StageVerified {
-			verified[entry.ActionID+"\x00"+entry.IntentHash] = true
+	effectKey := func(action Action) (string, error) {
+		if _, _, err := alphaTransferTargetFromActionID(action.ID); err != nil {
+			return "", err
 		}
+		intent := action.IntentHash
+		switch action.Kind {
+		case "substrate-extrinsic":
+		case "substrate-reconciliation":
+			intent = action.Parameters[alphaRecoveryIntentHashParameter]
+			if _, err := decodeHex32("reconciled alpha intent", intent); err != nil {
+				return "", err
+			}
+		default:
+			return "", fmt.Errorf("alpha action %s has unsupported kind %s", action.ID, action.Kind)
+		}
+		return action.ID + "\x00" + intent, nil
 	}
-	total := prior.SupersededSpend.AlphaRao
-	for _, action := range prior.Actions {
-		if !strings.HasPrefix(action.ID, "alpha.transfer.operator-deposit.") || !verified[action.ID+"\x00"+action.IntentHash] {
+	indexActions := func(actions []Action) (map[string]Action, map[string]Action, error) {
+		effectKVs := map[string]Action{}
+		exactKVs := map[string]Action{}
+		for _, action := range actions {
+			if action.Spend.AlphaRao == 0 {
+				continue
+			}
+			intent, err := actionIntentHash(action)
+			if err != nil || intent != action.IntentHash {
+				return nil, nil, stateMismatchError(err, "alpha action %s does not authenticate its ceiling", action.ID)
+			}
+			key, err := effectKey(action)
+			if err != nil {
+				return nil, nil, err
+			}
+			if _, duplicate := effectKVs[key]; duplicate {
+				return nil, nil, fmt.Errorf("duplicate active alpha effect %s", action.ID)
+			}
+			effectKVs[key] = action
+			exactKVs[action.ID+"\x00"+action.IntentHash] = action
+		}
+		return effectKVs, exactKVs, nil
+	}
+	activeEffectKVs, activeExactKVs, err := indexActions(activeActions)
+	if err != nil {
+		return 0, err
+	}
+	priorEffectKVs, _, err := indexActions(prior.Actions)
+	if err != nil {
+		return 0, err
+	}
+	allowedPlans := prior.allowedPlanHashes()
+	planKVs := map[string]*SetupPlan{prior.PlanHash: prior}
+	loadPlan := func(hash string) (*SetupPlan, error) {
+		if !allowedPlans[hash] {
+			return nil, fmt.Errorf("alpha source plan %s is outside the approved lineage", hash)
+		}
+		if plan := planKVs[hash]; plan != nil {
+			return plan, nil
+		}
+		plan, err := readValidatorEvidenceHistoricalPlan(stateDir, hash)
+		if err != nil {
+			return nil, fmt.Errorf("read retired alpha source plan %s: %w", hash, err)
+		}
+		if plan.DeploymentID != prior.DeploymentID || plan.Netuid != prior.Netuid || plan.ChainID != prior.ChainID || plan.GenesisHash != prior.GenesisHash || plan.Owner != prior.Owner {
+			return nil, fmt.Errorf("retired alpha source plan %s has a foreign deployment identity", hash)
+		}
+		planKVs[hash] = plan
+		return plan, nil
+	}
+	retiredEffectKVs := map[string]Action{}
+	seenExactKVs := map[string]bool{}
+	finalizedTransactionKVs := map[string]string{}
+	conflictingFinalizedKVs := map[string]bool{}
+	for _, entry := range entries {
+		if !allowedPlans[entry.PlanHash] || entry.Stage != StageFinalized || entry.TransactionHash == "" || entry.BlockNumber == 0 || entry.BlockHash == "" || (entry.DeploymentID != "" && entry.DeploymentID != prior.DeploymentID) {
 			continue
 		}
+		if !strings.HasPrefix(entry.ActionID, "alpha.transfer.") && !strings.HasPrefix(entry.ActionID, "alpha.repair.") {
+			continue
+		}
+		key := entry.ActionID + "\x00" + entry.IntentHash
+		transaction := strings.ToLower(entry.TransactionHash)
+		if previous := finalizedTransactionKVs[key]; previous != "" && previous != transaction {
+			conflictingFinalizedKVs[key] = true
+		}
+		finalizedTransactionKVs[key] = transaction
+	}
+	var olderRetired, newlyRetired uint64
+	for _, entry := range entries {
+		if !allowedPlans[entry.PlanHash] || entry.Stage != StageVerified || (entry.DeploymentID != "" && entry.DeploymentID != prior.DeploymentID) {
+			continue
+		}
+		if !strings.HasPrefix(entry.ActionID, "alpha.transfer.") && !strings.HasPrefix(entry.ActionID, "alpha.repair.") {
+			continue
+		}
+		exactKey := entry.ActionID + "\x00" + entry.IntentHash
+		if conflictingFinalizedKVs[exactKey] {
+			return 0, fmt.Errorf("alpha effect %s has distinct finalized transactions across its lineage", entry.ActionID)
+		}
+		// An exact active intent already authenticates the same ceiling. Only
+		// retired effects need their original archived owner loaded from disk.
+		if active, carried := activeExactKVs[exactKey]; carried {
+			key, _ := effectKey(active)
+			if conflictingFinalizedKVs[key] {
+				return 0, fmt.Errorf("alpha effect %s has distinct finalized transactions across its lineage", entry.ActionID)
+			}
+			continue
+		}
+		if seenExactKVs[exactKey] {
+			continue
+		}
+		sourcePlan, err := loadPlan(entry.PlanHash)
+		if err != nil {
+			return 0, err
+		}
+		source, err := exactPlanActionByID(sourcePlan, entry.ActionID)
+		if err != nil || source.IntentHash != entry.IntentHash || source.Spend.AlphaRao == 0 {
+			return 0, stateMismatchError(err, "verified alpha action %s has no exact source intent in plan %s", entry.ActionID, entry.PlanHash)
+		}
+		key, err := effectKey(source)
+		if err != nil {
+			return 0, err
+		}
+		// Journal uniqueness is plan-local. A second physical finalized send
+		// under an ancestor approval cannot be collapsed into a repeated proof.
+		if conflictingFinalizedKVs[key] {
+			return 0, fmt.Errorf("alpha effect %s has distinct finalized transactions across its lineage", source.ID)
+		}
+		if source.Kind == "substrate-reconciliation" {
+			if !hasFinalizedAlphaRecoveryEvidence(prior, source, entries) {
+				return 0, fmt.Errorf("retired alpha reconciliation %s has no exact finalized source", source.ID)
+			}
+			originalPlan, err := loadPlan(source.Parameters[alphaRecoveryPlanHashParameter])
+			if err != nil {
+				return 0, err
+			}
+			original, err := exactPlanActionByID(originalPlan, source.ID)
+			if err != nil || original.Kind != "substrate-extrinsic" || original.IntentHash != source.Parameters[alphaRecoveryIntentHashParameter] || original.Target != source.Target || original.Spend.AlphaRao != source.Spend.AlphaRao {
+				return 0, stateMismatchError(err, "retired alpha reconciliation %s differs from its source ceiling", source.ID)
+			}
+		}
+		seenExactKVs[exactKey] = true
+		if active, carried := activeEffectKVs[key]; carried {
+			if active.Target != source.Target || active.Spend.AlphaRao != source.Spend.AlphaRao {
+				return 0, fmt.Errorf("carried alpha effect %s differs from its source ceiling", source.ID)
+			}
+			continue
+		}
+		if previous, duplicate := retiredEffectKVs[key]; duplicate {
+			if previous.Target != source.Target || previous.Spend.AlphaRao != source.Spend.AlphaRao {
+				return 0, fmt.Errorf("retired alpha effect %s has conflicting ceilings", source.ID)
+			}
+			continue
+		}
+		retiredEffectKVs[key] = source
+		total := &olderRetired
+		if previous, newly := priorEffectKVs[key]; newly {
+			if previous.Target != source.Target || previous.Spend.AlphaRao != source.Spend.AlphaRao {
+				return 0, fmt.Errorf("prior alpha effect %s differs from its source ceiling", source.ID)
+			}
+			total = &newlyRetired
+		}
 		var ok bool
-		total, ok = checkedAdd(total, action.Spend.AlphaRao)
+		*total, ok = checkedAdd(*total, source.Spend.AlphaRao)
 		if !ok {
-			return 0, errors.New("verified operator alpha spend overflows uint64")
+			return 0, errors.New("retired alpha spend overflows uint64")
 		}
 	}
-	return total, nil
+	total, ok := checkedAdd(max64(prior.SupersededSpend.AlphaRao, olderRetired), newlyRetired)
+	if !ok {
+		return 0, errors.New("cumulative retired alpha spend overflows uint64")
+	}
+	// Full deployment retirement may already reserve a greater generation
+	// ceiling. Reconstructing individual alpha effects must not lower it.
+	return max64(total, floor), nil
 }
 
 func validatePolicyRevisionOnChain(ctx context.Context, cfg *ResolvedConfig, stateDir string, prior *SetupPlan, entries []JournalEntry, decision policyRevisionDecision, recoveries planRevisionRecoveries) error {
@@ -3329,6 +3487,39 @@ func preserveVerifiedValidatorAlphaTransfers(revised, prior *SetupPlan, entries 
 	return nil
 }
 
+// Identify the exact prior reserve repair chain before retirement accounting.
+// These actions remain active even when no new majority repair is necessary.
+func priorReserveValidatorRepairChain(revised, prior *SetupPlan, entries []JournalEntry) ([]Action, error) {
+	base, err := exactPlanActionByID(revised, "alpha.transfer.validator.1")
+	if err != nil {
+		return nil, err
+	}
+	priorBase, err := exactPlanActionByID(prior, base.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !exactVerifiedPlanAction(prior, entries, priorBase.ID) || priorBase.IntentHash != base.IntentHash {
+		return nil, nil
+	}
+	repairs := make([]Action, 0, 2)
+	tail := base.ID
+	for _, action := range prior.Actions {
+		kind, index, parseErr := alphaTransferTargetFromActionID(action.ID)
+		if parseErr != nil || !strings.HasPrefix(action.ID, "alpha.repair.") || kind != "validator" || index != 1 {
+			continue
+		}
+		if action.Kind != "substrate-extrinsic" || action.Target != base.Target || action.Parameters[alphaRepairForActionParameter] != base.ID {
+			return nil, fmt.Errorf("prior reserve-validator repair %s differs from its bootstrap transfer", action.ID)
+		}
+		if len(action.DependsOn) != 1 || action.DependsOn[0] != tail {
+			return nil, fmt.Errorf("prior reserve-validator repair %s is outside the exact repair chain after %s", action.ID, tail)
+		}
+		repairs = append(repairs, action)
+		tail = action.ID
+	}
+	return repairs, nil
+}
+
 // Carry every prior validator-1 repair in its original order and, when live
 // emissions have diluted the reserve below its configured target, append one
 // fixed repair which consumes only the remaining cumulative alpha ceiling.
@@ -3337,7 +3528,7 @@ func preserveVerifiedValidatorAlphaTransfers(revised, prior *SetupPlan, entries 
 // bootstrap transfer is never resized or replayed. A changed majority barrier
 // depends on the repair tail, so its older point-in-time verification cannot
 // block the top-up or impersonate the new live-majority proof.
-func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *SetupPlan, current *SetupFacts, entries []JournalEntry) error {
+func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *SetupPlan, current *SetupFacts, entries []JournalEntry, repairs []Action) error {
 	if cfg == nil || cfg.Config == nil || revised == nil || prior == nil || current == nil {
 		return errors.New("reserve-validator majority repair context is unavailable")
 	}
@@ -3372,21 +3563,10 @@ func applyReserveValidatorMajorityRepair(cfg *ResolvedConfig, revised, prior *Se
 		usedIDs[action.ID] = true
 	}
 
-	repairs := make([]Action, 0, 2)
+	repairs = append([]Action(nil), repairs...)
 	tail := base.ID
 	prospectiveReserve := current.ReserveValidatorAlphaRao
-	for _, action := range prior.Actions {
-		kind, index, parseErr := alphaTransferTargetFromActionID(action.ID)
-		if parseErr != nil || !strings.HasPrefix(action.ID, "alpha.repair.") || kind != "validator" || index != 1 {
-			continue
-		}
-		if action.Kind != "substrate-extrinsic" || action.Target != base.Target || action.Parameters[alphaRepairForActionParameter] != base.ID {
-			return fmt.Errorf("prior reserve-validator repair %s differs from its bootstrap transfer", action.ID)
-		}
-		if len(action.DependsOn) != 1 || action.DependsOn[0] != tail {
-			return fmt.Errorf("prior reserve-validator repair %s is outside the exact repair chain after %s", action.ID, tail)
-		}
-		repairs = append(repairs, action)
+	for _, action := range repairs {
 		tail = action.ID
 		if isVerified(action) {
 			continue
@@ -3836,13 +4016,6 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		return nil, errors.New("plan revision coldkey alpha overflow")
 	}
 	supersededSpend := prior.SupersededSpend
-	if policyChanged {
-		alphaSpend, alphaErr := verifiedOperatorAlphaSpend(prior, entries)
-		if alphaErr != nil {
-			return nil, alphaErr
-		}
-		supersededSpend.AlphaRao = alphaSpend
-	}
 	if deploymentSuperseded {
 		supersededSpend, err = supersededVerifiedSpend(prior, entries)
 		if err != nil {
@@ -3954,6 +4127,15 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := reconcileFinalizedAlphaTransfers(revised, prior, entries); err != nil {
 		return nil, fmt.Errorf("reconcile finalized alpha transfers: %w", err)
 	}
+	reserveRepairs, err := priorReserveValidatorRepairChain(revised, prior, entries)
+	if err != nil {
+		return nil, fmt.Errorf("retain reserve-validator repair chain: %w", err)
+	}
+	activeAlphaActions := append(append([]Action(nil), revised.Actions...), reserveRepairs...)
+	supersededSpend.AlphaRao, err = retiredVerifiedAlphaSpend(stateDir, prior, activeAlphaActions, entries, supersededSpend.AlphaRao)
+	if err != nil {
+		return nil, fmt.Errorf("retain retired alpha spend: %w", err)
+	}
 	if !deploymentSuperseded {
 		supersededSpend, err = addRetiredVerifiedEVMGas(prior, revised, entries, supersededSpend)
 		if err != nil {
@@ -3965,7 +4147,7 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, err
 		}
 	}
-	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries); err != nil {
+	if err := applyReserveValidatorMajorityRepair(cfg, revised, prior, current, entries, reserveRepairs); err != nil {
 		return nil, fmt.Errorf("repair reserve-validator majority: %w", err)
 	}
 	if err := applyFleetCommitmentRecoveries(cfg, stateDir, revised, prior, current, entries); err != nil {

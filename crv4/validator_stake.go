@@ -33,7 +33,7 @@ type ValidatorStakeObservation struct {
 	SubnetOwnerRegistered bool
 }
 
-// Mirrors runtime454 check_weights_min_stake and the non-self branch of
+// Mirrors runtime454/455 check_weights_min_stake and the non-self branch of
 // check_validator_permit. Weight version, timing, payload, commit/reveal and
 // transaction admission remain separate; this is not a submission guarantee.
 func (self ValidatorStakeObservation) MeetsNonSelfStakeAndPermit() bool {
@@ -43,8 +43,11 @@ func (self ValidatorStakeObservation) MeetsNonSelfStakeAndPermit() bool {
 	return self.Identity.ValidatorPermit && self.TotalStakeRao >= self.StakeThresholdRao
 }
 
-// Executes only caller-cancellable reads. Runtime454's frozen selective
+// Executes only caller-cancellable reads. Runtime454/455's frozen selective
 // metagraph layout bb7420226d39c0eb is decoded as a complete bounded census.
+// The pinned 455 source leaves the API, stake calculation and admission rules
+// byte-identical to 454; exact block/version/code/metadata authentication below
+// remains mandatory for either reviewed layout identity.
 // Its integer floor preserves comparison with the integer StakeThreshold:
 // floor(nonnegative fixed stake) >= threshold iff fixed stake >= threshold.
 // The API's Validators field is deliberately unused: it applies strict >
@@ -55,7 +58,8 @@ func ReadValidatorStakeAtContext(ctx context.Context, chain *Chain, query Valida
 	if err != nil {
 		return empty, err
 	}
-	if identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}) {
+	if identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}) &&
+		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1}) {
 		return empty, errors.New("validator stake runtime layout has not been reviewed")
 	}
 	artifact, err := AuthenticateRuntimeArtifactAtContext(ctx, chain, query.BlockHash, allowed...)
@@ -91,7 +95,7 @@ func ReadValidatorStakeAtContext(ctx context.Context, chain *Chain, query Valida
 	if err != nil {
 		return empty, err
 	}
-	// StakeThreshold is ValueQuery with an exact zero default in runtime454.
+	// StakeThreshold is ValueQuery with an exact zero default in runtime454/455.
 	if threshold != nil {
 		if len(threshold) != 8 {
 			return empty, errors.New("validator stake threshold is not an exact u64")

@@ -206,6 +206,7 @@ func prepareRuntimeReservedRenderTest(t *testing.T, cfg *ResolvedConfig, stateDi
 // The real top-level renderer must stop before overlays or output mutation
 // when any retained setup source or explicit destination authority is absent.
 func TestRuntimeEvidenceV2ReservedRendererRejectsMissingOrChangedSetup(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	cfg.OperationalRPCMode = rpcModePublicOverride
 	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.opentensor.ai"

@@ -899,7 +899,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err != nil {
 			return nil, err
 		}
-		matched := bootstrapPolicyMatches(e.cfg, active)
+		activeMatched := bootstrapPolicyMatches(e.cfg, active)
+		matched := activeMatched
 		if !matched && a.ID == "policy.schedule-bootstrap" && count > 1 {
 			parsed, parseErr := abi.JSON(strings.NewReader(CoordinatorABI))
 			if parseErr != nil {
@@ -918,7 +919,7 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["current_epoch"] = current
 		state["policy_count"] = count
 		state["policy_hash"] = e.cfg.PolicyHash
-		state["active"] = bootstrapPolicyMatches(e.cfg, active)
+		state["active"] = activeMatched
 		if a.ID == "policy.schedule-bootstrap" && count >= 2 {
 			parsed, parseErr := abi.JSON(strings.NewReader(CoordinatorABI))
 			if parseErr != nil {
@@ -929,7 +930,9 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 				return nil, readErr
 			}
 			scheduled, convertErr := coordinatorPolicy(values)
-			if convertErr != nil || !bootstrapPolicyMatches(e.cfg, scheduled) || scheduled.EffectiveEpoch <= current || scheduled.EffectiveBlock == 0 {
+			// Activation preserves the canonical schedule; only a pending policy
+			// must still have an effective epoch later than the current epoch.
+			if convertErr != nil || !bootstrapPolicyMatches(e.cfg, scheduled) || (!activeMatched && scheduled.EffectiveEpoch <= current) || scheduled.EffectiveBlock == 0 {
 				return nil, stateMismatchError(convertErr, "scheduled bootstrap policy post-state is invalid")
 			}
 			state["scheduled_policy_index"] = count - 1

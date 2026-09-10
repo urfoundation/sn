@@ -92,6 +92,7 @@ func runtimeReservedCreationStateTest(t *testing.T, source string, entries []Jou
 // Reopening the actual completed source is read-only and never sends or asks
 // a current provider to invent a substitute historical creation observation.
 func TestRuntimeEvidenceV2ReservedCreationRetainsOriginalSourceOnRestart(t *testing.T) {
+	t.Parallel()
 	cfg, stateDir, fixture := runtimeReservedCreationFixtureTest(t)
 	before := validatorNamespaceTreeSnapshot(t, stateDir)
 	calls := fixture.transport.rpcCalls.Load()
@@ -109,6 +110,7 @@ func TestRuntimeEvidenceV2ReservedCreationRetainsOriginalSourceOnRestart(t *test
 // A valid journal chain can be authored for a foreign intent or deployment.
 // Neither becomes an approved CREATE merely by naming its action and height.
 func TestRuntimeEvidenceV2ReservedCreationRejectsForgedIntentAndForeignDeployment(t *testing.T) {
+	t.Parallel()
 	cfg, stateDir, fixture := runtimeReservedCreationFixtureTest(t)
 	entries, err := readJournalEntries(stateDir)
 	if err != nil {
@@ -137,6 +139,7 @@ func TestRuntimeEvidenceV2ReservedCreationRejectsForgedIntentAndForeignDeploymen
 // Every current source is required: a finalized stage is not a signature, a
 // verified label is not its retained postcondition, and bytes are hash-bound.
 func TestRuntimeEvidenceV2ReservedCreationRejectsMissingOrChangedSources(t *testing.T) {
+	t.Parallel()
 	cfg, stateDir, fixture := runtimeReservedCreationFixtureTest(t)
 	entries, err := readJournalEntries(stateDir)
 	if err != nil {
@@ -203,6 +206,7 @@ func TestRuntimeEvidenceV2ReservedCreationRejectsMissingOrChangedSources(t *test
 // Conflicting final observations fail even at the same height. An earlier
 // nonfinal inclusion may move during a reorg without changing the final owner.
 func TestRuntimeEvidenceV2ReservedCreationSeparatesReorgFromFinalConflict(t *testing.T) {
+	t.Parallel()
 	cfg, stateDir, fixture := runtimeReservedCreationFixtureTest(t)
 	entries, err := readJournalEntries(stateDir)
 	if err != nil {
@@ -237,6 +241,7 @@ func TestRuntimeEvidenceV2ReservedCreationSeparatesReorgFromFinalConflict(t *tes
 // The carry is built by actual historical code/receipt/immutable reads. Its
 // hash-approved shape alone cannot replace a missing or changed original.
 func TestRuntimeEvidenceV2ReservedCreationRequiresOriginalPredecessorCarry(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	executor := fixture.executor

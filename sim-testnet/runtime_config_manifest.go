@@ -250,6 +250,11 @@ func runtimeConfigManifestHash(manifest RuntimeConfigManifest) (string, error) {
 
 // Observe the complete expected static input set after atomic rendering.
 func buildRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeConfigManifest, error) {
+	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+	if err != nil {
+		return nil, err
+	}
+	cfg = resolved
 	expected, err := expectedRuntimeConfigFiles(cfg, stateDir)
 	if err != nil {
 		return nil, err
@@ -273,7 +278,7 @@ func buildRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*RuntimeC
 		if err := validateRuntimeConfigPathAncestry(stateDir, relative); err != nil {
 			return nil, err
 		}
-		digest, mode, err := runtimeManifestInputDigest(cfg, stateDir, relative)
+		digest, mode, err := resolvedRuntimeManifestInputDigest(cfg, stateDir, relative)
 		if err != nil {
 			return nil, err
 		}
@@ -438,8 +443,19 @@ func authenticatedRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (*
 	return &manifest, expected, nil
 }
 
+// A complete manifest operation authenticates its resolved evidence before
+// walking files. Every original reference still gets the same bounded owned
+// descriptor and byte/hash check; do not reload the whole setup plan for each
+// reference. Setup control documents retain their fresh paired-source checks.
+func resolvedRuntimeManifestInputDigest(cfg *ResolvedConfig, stateDir, relative string) (string, os.FileMode, error) {
+	if strings.Contains(relative, "/evidence-v2/") {
+		return runtimeConfigInputDigest(cfg, filepath.Join(stateDir, filepath.FromSlash(relative)))
+	}
+	return runtimeManifestInputDigest(cfg, stateDir, relative)
+}
+
 func verifyRuntimeConfigManifestFile(cfg *ResolvedConfig, stateDir string, file RuntimeConfigFile, expectedMode os.FileMode) error {
-	digest, observedMode, err := runtimeManifestInputDigest(cfg, stateDir, file.Path)
+	digest, observedMode, err := resolvedRuntimeManifestInputDigest(cfg, stateDir, file.Path)
 	if err != nil {
 		return err
 	}
@@ -478,6 +494,11 @@ func verifyRuntimeBlobConfigManifest(cfg *ResolvedConfig, stateDir string) error
 // Reconstruct identity, inventory, modes and bytes before accepting config
 // rendering as a durable setup postcondition.
 func verifyRuntimeConfigManifest(cfg *ResolvedConfig, stateDir string) (runtimeConfigVerification, error) {
+	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+	if err != nil {
+		return runtimeConfigVerification{}, err
+	}
+	cfg = resolved
 	manifest, expected, err := authenticatedRuntimeConfigManifest(cfg, stateDir)
 	if err != nil {
 		return runtimeConfigVerification{}, err

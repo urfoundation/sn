@@ -564,7 +564,7 @@ func bindValidatorEvidenceCarryPayloads(payloads *DeploymentPayloads, observed *
 // Preserve the exact two approved actions once. The ordinary spend reducer
 // recognizes their original verified intents instead of charging them again.
 func carryValidatorEvidencePlan(revised, prior *SetupPlan, observed *validatorEvidenceCarryObservation) error {
-	if revised == nil || prior == nil || observed == nil || observed.sourcePlan == nil || observed.payloads == nil {
+	if revised == nil || revised.ValidatorEvidence == nil || prior == nil || observed == nil || observed.sourcePlan == nil || observed.payloads == nil {
 		return errors.New("validator evidence carry plan authority is unavailable")
 	}
 	if err := validatorEvidenceSourcePlanMatches(prior, observed.sourcePlan); err != nil {
@@ -577,6 +577,7 @@ func carryValidatorEvidencePlan(revised, prior *SetupPlan, observed *validatorEv
 	if err != nil {
 		return err
 	}
+	generated := *revised.ValidatorEvidence
 	manifest, reference := observed.payloads.Manifest, observed.reference
 	revised.ValidatorEvidence, revised.ValidatorEvidenceSource, revised.ValidatorEvidenceCarry = &manifest, source, &reference
 	for _, id := range []string{validatorEvidenceDeployActionID, validatorEvidenceAnchorActionID} {
@@ -596,6 +597,33 @@ func carryValidatorEvidencePlan(revised, prior *SetupPlan, observed *validatorEv
 		}
 		if count != 1 {
 			return errors.New("validator evidence carry action census is not exact")
+		}
+	}
+	// Fresh activation and relay quotas were generated with a predicted CREATE
+	// address. Bind those new approvals to the authenticated retained companion;
+	// the original deploy/anchor actions above remain exactly unchanged.
+	for index := range revised.Actions {
+		action := &revised.Actions[index]
+		activation := strings.HasPrefix(action.ID, "evidence.activate.")
+		boundary, relay := action.ID == runtimeEvidenceActivationBoundaryActionId, action.ID == evidenceRelayReserveId
+		if !activation && !boundary && !relay {
+			continue
+		}
+		if action.Target != generated.Address.Hex() || ((activation || boundary) && action.Parameters["mode"] != "fresh-v2") || (relay && action.Parameters["runtime_code_hash"] != generated.RuntimeCodeHash.Hex()) {
+			return errors.New("validator evidence dependent quota differs from its generated source")
+		}
+		intent, err := actionIntentHash(*action)
+		if err != nil || intent != action.IntentHash {
+			return errors.Join(errors.New("validator evidence dependent quota has an invalid intent"), err)
+		}
+		action.Target = manifest.Address.Hex()
+		if relay {
+			action.Parameters = maps.Clone(action.Parameters)
+			action.Parameters["runtime_code_hash"] = manifest.RuntimeCodeHash.Hex()
+		}
+		action.IntentHash, err = actionIntentHash(*action)
+		if err != nil {
+			return err
 		}
 	}
 	revised.MaximumSpend, err = maximumActionSpend(revised.Actions)

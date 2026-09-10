@@ -25,6 +25,7 @@ import (
 )
 
 func TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime(t *testing.T) {
+	t.Parallel()
 	for _, historical := range []bool{false, true} {
 		fixture := newValidatorEvidenceCarryTestFixture(t, historical)
 		observed := fixture.authenticate(t)
@@ -47,6 +48,7 @@ func TestValidatorEvidenceCarryAuthenticatesOriginalApprovalAndRuntime(t *testin
 }
 
 func TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -92,6 +94,7 @@ func TestValidatorEvidenceCarryRejectsIncompleteOriginalJournal(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -142,6 +145,7 @@ func TestValidatorEvidenceCarryRefusesArchivedSourceSubstitution(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -159,6 +163,7 @@ func TestValidatorEvidenceCarryRejectsConflictingFinalizedHTTPHistory(t *testing
 }
 
 func TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -262,6 +267,7 @@ func TestValidatorEvidenceCarryOriginalSignedEnvelopesRemainExact(t *testing.T) 
 }
 
 func TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	observed := fixture.authenticate(t)
 	executor := fixture.executor
@@ -311,6 +317,7 @@ func TestValidatorEvidenceCarryRevisionRetainsOriginalActionsAndSpend(t *testing
 }
 
 func TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	observed := fixture.authenticate(t)
 	executor := fixture.executor
@@ -359,6 +366,7 @@ func TestValidatorEvidenceCarryExecutorNeverRedeploysOrReanchors(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	observed := fixture.authenticate(t)
 	prior := *fixture.executor.plan
@@ -412,6 +420,7 @@ func TestValidatorEvidenceCarryNonceSuffixIsConsumedExactlyOnce(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJournal(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryUpgradeTestFixture(t, true, false, true)
 	observed := fixture.authenticate(t)
 	executor := fixture.executor
@@ -513,6 +522,7 @@ func TestValidatorEvidenceCarryObservedUpgradeAndContinuationPreserveOriginalJou
 }
 
 func TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -550,6 +560,7 @@ func TestValidatorEvidenceCarryCanceledReadReturnsNoAuthority(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "owner")
 	if err := ensurePrivateDir(dir); err != nil {
 		t.Fatal(err)
@@ -583,6 +594,7 @@ func TestValidatorEvidenceCarrySourceTransportBoundsPrecedeDecoding(t *testing.T
 // Both providers must agree when the deployment mode requires independence.
 // The original source postconditions cannot be relabelled into another mode.
 func TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -598,6 +610,7 @@ func TestValidatorEvidenceCarryIndependentModeCannotBorrowPublicReceipts(t *test
 }
 
 func TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryModeTestFixture(t, true, true)
 	fixture.authenticate(t)
 	if fixture.independent == nil || fixture.independent.calls.Load() == 0 {
@@ -613,6 +626,7 @@ func TestValidatorEvidenceCarryAuthenticatesBothIndependentProviders(t *testing.
 }
 
 func TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, false)
 	fixture.authenticate(t)
 	executor := fixture.executor
@@ -640,6 +654,7 @@ func TestValidatorEvidenceCarryRejectsConfiguredDomainDriftBeforeRPC(t *testing.
 }
 
 func TestValidatorEvidenceCarryRejectsUnreviewedABIAndImmutableAliases(t *testing.T) {
+	t.Parallel()
 	artifact, err := currentValidatorEvidenceArtifact()
 	if err != nil {
 		t.Fatal(err)

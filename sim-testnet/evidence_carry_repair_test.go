@@ -107,6 +107,7 @@ func validatorEvidenceHistoricalSuccessorTest(t *testing.T, fixture validatorEvi
 }
 
 func TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	original := fixture.executor.plan
@@ -154,6 +155,7 @@ func TestValidatorEvidenceCarryHistoricalAncestorsRemainReadOnly(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryHistoricalActionRecovery(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	source := fixture.executor.plan
@@ -197,6 +199,7 @@ func TestValidatorEvidenceCarryHistoricalActionRecovery(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryHistoricalCommitmentRecovery(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	source := fixture.executor.plan
@@ -238,6 +241,7 @@ func TestValidatorEvidenceCarryHistoricalCommitmentRecovery(t *testing.T) {
 }
 
 func TestValidatorEvidenceCarryHistoricalCaptureCensus(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryTestFixture(t, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	deployment := current.Deployment
@@ -297,6 +301,7 @@ func (self *validatorEvidenceHistoricalBaselineRPC) GetStorageAt(_ context.Conte
 }
 
 func TestValidatorEvidenceCarryHistoricalCoordinatorBaseline(t *testing.T) {
+	t.Parallel()
 	fixture := newValidatorEvidenceCarryModeTestFixture(t, true, true)
 	current := validatorEvidenceHistoricalSuccessorTest(t, fixture)
 	source, payloads := fixture.executor.plan, fixture.executor.payloads
