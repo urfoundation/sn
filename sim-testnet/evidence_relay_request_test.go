@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Reads the exact file emitted by the production admission path.
