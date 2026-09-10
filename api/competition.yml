@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.9.9
+  version: 2026.9.10
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -96,11 +96,23 @@ paths:
       security: []
       summary: Published final results for completed epochs
       description: |
-        Returns only finalized epochs. Entries are deterministically ordered by
-        normalized score, raw score, submission time, and job id. Public rows
-        identify the immutable job and patch, not bearer-token principals. An
-        epoch is not published until admission has closed, every accepted job
-        is terminal, and winner selection commits atomically.
+        Returns only finalized production epochs by default. Set
+        include_staging=true to also return finalized staging epochs through
+        the same reconciliation shape. Staging epochs are explicitly marked,
+        never select a winner, and publish winner_job_id as null. Entries are
+        deterministically ordered by normalized score, raw score, submission
+        time, and job id. Public rows identify the immutable job and patch, not
+        bearer-token principals. An epoch is not published until admission has
+        closed, every accepted job is terminal, and finalization commits
+        atomically.
+      parameters:
+        - name: include_staging
+          in: query
+          required: false
+          description: Include finalized fee-free staging epochs after their embargo lifts.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Finalized epoch leaderboards and winners.
@@ -737,14 +749,13 @@ components:
           minLength: 1
         epochs:
           type: array
-          maxItems: 6
           items:
             $ref: "#/components/schemas/CompetitionLeaderboardResult"
 
     CompetitionLeaderboardResult:
       type: object
       additionalProperties: false
-      required: [competition_id, round_id, epoch, status, finalized_at, entries]
+      required: [competition_id, round_id, epoch, staging, status, finalized_at, winner_job_id, entries]
       properties:
         competition_id:
           type: string
@@ -754,8 +765,11 @@ components:
           format: uuid
         epoch:
           type: integer
-          minimum: 1
-          maximum: 6
+          minimum: 0
+          description: Staging sequence from zero, or production epoch in 1..6.
+        staging:
+          type: boolean
+          description: True only for a fee-free pre-production staging epoch.
         status:
           type: string
           const: finalized
@@ -763,6 +777,7 @@ components:
           type: string
           format: date-time
         winner_job_id:
+          description: Always null for staging and for production epochs with no winner.
           oneOf:
             - type: string
               format: uuid
