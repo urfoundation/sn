@@ -90,7 +90,8 @@ type Chain struct {
 // package-level Client interface, which additionally requires a stable URL.
 type contextSubstrateClient struct {
 	*gsrpcgeth.Client
-	url string
+	url           string
+	readLifecycle substrateRPCReadLifecycle
 }
 
 // URL identifies the endpoint without exposing transport internals.
