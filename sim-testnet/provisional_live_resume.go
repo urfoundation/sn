@@ -19,6 +19,7 @@ type provisionalLiveTopology struct {
 	Schema                   string                      `json:"schema"`
 	Provisional              bool                        `json:"provisional"`
 	FinalAcceptance          bool                        `json:"final_acceptance"`
+	FullDoctorSkipped        bool                        `json:"full_doctor_skipped,omitempty"`
 	PlanHash                 string                      `json:"plan_hash"`
 	StartedAt                string                      `json:"started_at"`
 	CompletedAt              string                      `json:"completed_at,omitempty"`
@@ -34,6 +35,35 @@ type provisionalLiveTopology struct {
 	VerifiedProofCounts      map[string]int              `json:"verified_proof_counts,omitempty"`
 	PriorRestarts            map[string]int              `json:"prior_process_restarts"`
 	manifest                 SupervisorFile
+}
+
+// The full plan retains campaign/retirement reserves after setup is done.
+// This guard instead covers every action live adoption can execute. The
+// caller has authenticated all verified receipts before consulting it.
+func provisionalLiveResumeNeedsDoctor(executor *Executor) (bool, error) {
+	if executor == nil || executor.plan == nil || executor.journal == nil || !provisionalResumeEnabled(executor.cfg) {
+		return true, nil
+	}
+	if _, err := postTopologyTournamentActions(executor.plan); err != nil {
+		return true, err
+	}
+	for _, action := range executor.plan.Actions {
+		if action.ID == "topology.launch" || action.ID == "churn.tournament-complete" {
+			if action.Kind != "local" || !spendIsZero(action.Spend) {
+				return true, nil
+			}
+			if action.ID == "churn.tournament-complete" {
+				return false, nil
+			}
+			continue
+		}
+		// Even a zero-declared-spend commitment may consume transaction fees.
+		// Require its exact verified intent, including every setup prefix.
+		if _, verified := executor.verifiedActionEntry(action); !verified {
+			return true, nil
+		}
+	}
+	return true, errors.New("live adoption has no completed action boundary")
 }
 
 func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command string) (*provisionalLiveTopology, error) {

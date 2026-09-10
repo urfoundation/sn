@@ -522,13 +522,32 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err != nil {
 		return err
 	}
-	// Approval is necessary but not sufficient: every apply re-runs all live
-	// safety checks against the exact unverified spend so a persisted plan
-	// cannot bypass changed RPCs, services, facts, repository locks, or host
-	// readiness, while an honest partial deployment remains resumable.
-	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
-	if err := doctor.Error(); err != nil {
-		return fmt.Errorf("doctor must pass immediately before apply: %w", err)
+	// A live provisional adoption can finish without another transaction.
+	// Authenticate its receipts before deciding whether any apply-time spend
+	// checks remain; campaign and retirement reserves keep their full budgets.
+	needsDoctor, provisionalHistoryChecked := true, false
+	if liveAdoption != nil {
+		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
+		if err := local.verifyProvisionalActionHistory(ctx); err != nil {
+			return fmt.Errorf("carried plan history preflight: %w", err)
+		}
+		provisionalHistoryChecked = true
+		needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+		if err != nil {
+			return err
+		}
+	}
+	if needsDoctor {
+		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
+		if err := doctor.Error(); err != nil {
+			return fmt.Errorf("doctor must pass immediately before apply: %w", err)
+		}
+	} else {
+		liveAdoption.FullDoctorSkipped = true
+		if err := writeProvisionalLiveTopologyRecord(liveAdoption); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
 	}
 	var roles *RoleSecrets
 	if liveAdoption != nil {
@@ -572,8 +591,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		return err
 	}
 	defer ex.Close()
-	if err := ex.verifyCarriedActionHistory(ctx); err != nil {
-		return fmt.Errorf("carried plan history preflight: %w", err)
+	if !provisionalHistoryChecked {
+		if err := ex.verifyCarriedActionHistory(ctx); err != nil {
+			return fmt.Errorf("carried plan history preflight: %w", err)
+		}
 	}
 	// Chain/environment setup always stops at the disabled configuration
 	// boundary. LaunchDeployment then starts temporary operator APIs, provisions

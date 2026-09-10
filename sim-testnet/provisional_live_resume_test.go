@@ -111,3 +111,51 @@ func TestProvisionalLiveAdoptionKeepsGenerationAndEveryProofDomain(t *testing.T)
 		t.Fatal("missing proof domain accepted")
 	}
 }
+
+func TestProvisionalLiveAdoptionDoctorGuardPreservesFutureBudgetsAndPendingWrites(t *testing.T) {
+	makeExecutor := func() *Executor {
+		plan := &SetupPlan{PlanHash: "active", MaximumSpend: Spend{TAORao: 1000}, Actions: []Action{
+			{ID: "wallet.native-fee-reserve", Kind: "budget-reserve", IntentHash: "reserve", Spend: Spend{TAORao: 100}},
+			{ID: "topology.launch", Kind: "local", IntentHash: "topology"},
+			{ID: "fleet.register.201", Kind: "substrate-extrinsic", IntentHash: "register", Spend: Spend{Registrations: 1}},
+			{ID: "fleet.commitment.201", Kind: "substrate-extrinsic", IntentHash: "commitment"},
+			{ID: "churn.tournament-complete", Kind: "local", IntentHash: "tournament"},
+			{ID: "future-campaign-write", Kind: "evm-transaction", IntentHash: "future", Spend: Spend{TAORao: 10}},
+		}}
+		entries := []JournalEntry{}
+		for _, index := range []int{0, 2, 3} {
+			action := plan.Actions[index]
+			entries = append(entries, JournalEntry{PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified})
+		}
+		cfg := &ResolvedConfig{provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{PlanHash: plan.PlanHash}}}
+		return &Executor{cfg: cfg, plan: plan, journal: &Journal{entries: entries}}
+	}
+	executor := makeExecutor()
+	// The reserve and a future campaign write remain approved; neither is a
+	// transaction performed by this adoption after all setup writes verify.
+	before := executor.plan.MaximumSpend
+	if need, err := provisionalLiveResumeNeedsDoctor(executor); err != nil || need {
+		t.Fatalf("completed zero-spend adoption needs doctor: %t %v", need, err)
+	}
+	if executor.plan.MaximumSpend != before || !spendIsZero(executor.plan.Actions[3].Spend) {
+		t.Fatal("doctor guard changed approved budget inputs")
+	}
+	for name, change := range map[string]func(*Executor){
+		"strict":                        func(e *Executor) { e.cfg.provisionalResume = nil },
+		"pending-registration":          func(e *Executor) { e.journal.entries[1].Stage = StageFinalized },
+		"pending-zero-spend-commitment": func(e *Executor) { e.journal.entries[2].Stage = StageFinalized },
+		"wrong-intent":                  func(e *Executor) { e.journal.entries[2].IntentHash = "different" },
+		"unapproved-plan":               func(e *Executor) { e.journal.entries[2].PlanHash = "unapproved" },
+		"missing-setup":                 func(e *Executor) { e.journal.entries[0].Stage = StageFailed },
+		"local-nonzero-spend":           func(e *Executor) { e.plan.Actions[1].Spend.AlphaRao = 1 },
+		"local-actually-transaction":    func(e *Executor) { e.plan.Actions[1].Kind = "evm-transaction" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			executor := makeExecutor()
+			change(executor)
+			if need, err := provisionalLiveResumeNeedsDoctor(executor); err == nil && !need {
+				t.Fatal("pending work bypassed doctor")
+			}
+		})
+	}
+}
