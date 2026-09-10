@@ -547,6 +547,9 @@ transaction recovery and spending limits, and uses the admitted driver image
 for restarted components. It records actual executable provenance before work
 begins and marks scenario results provisional with `final_acceptance=false`.
 Strict release acceptance cannot consume those provisional results.
+Provisional mode also enables the testnet server's unsigned wallet setting for
+simulated miners that submit their coldkeys without a challenge signature.
+Strict mode keeps that setting disabled.
 
 Two authenticated atomic-alias receipt formats exist. Current aliases name the
 exact source batch receipt and clone its finalized checkpoints. The first five

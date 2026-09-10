@@ -4367,11 +4367,13 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		// values. The server loader must never be able to fall through to a
 		// mainnet signer or address when URNETWORK_ST_PROFILE=testnet.
 		st := map[string]any{
-			"profile":                                    "testnet",
-			"testnet-enabled":                            true,
-			"testnet-attempt-upload":                     uploadBudget,
-			"testnet-reserved-attempt-upload":            reservedUploads[i-1],
-			"testnet-wallet-allow-unsigned":              false,
+			"profile":                         "testnet",
+			"testnet-enabled":                 true,
+			"testnet-attempt-upload":          uploadBudget,
+			"testnet-reserved-attempt-upload": reservedUploads[i-1],
+			// The simulated miners set their coldkeys without a challenge
+			// signature. Only explicitly admitted provisional testnet runs permit it.
+			"testnet-wallet-allow-unsigned":              provisionalResumeEnabled(cfg),
 			"testnet-public-rpc-url":                     publicRPCURL,
 			"testnet-authority":                          workloadRPCAuthority(),
 			"testnet-rpc-urls":                           []string{evmHTTP(workloadRPCAuthority())},

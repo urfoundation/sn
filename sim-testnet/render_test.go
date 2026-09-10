@@ -122,6 +122,15 @@ func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {
 }
 
 func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
+	testRuntimeConfigsAcceptedByReleaseLoaders(t, false)
+}
+
+func TestProvisionalRuntimeConfigsAllowUnsignedTestnetWallet(t *testing.T) {
+	testRuntimeConfigsAcceptedByReleaseLoaders(t, true)
+}
+
+func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) {
+	t.Helper()
 	cfg := testResolvedConfig(t)
 	// Explicit owned test capacity, never a fallback for the live profile.
 	budget, err := requiredRuntimeClientKeyUploadBudget(cfg)
@@ -182,6 +191,9 @@ func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoader
 	}
 	reserved := prepareRuntimeReservedRenderTest(t, cfg, stateDir, roles)
 	deployment := reserved.deployment
+	if provisional {
+		cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true, PlanHash: reserved.plan.PlanHash}}
+	}
 	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
 		t.Fatal(err)
 	}
@@ -370,8 +382,8 @@ func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoader
 	if st["testnet-public-rpc-url"] != cfg.Public.Chain.EVMPublicReadEndpoint {
 		t.Fatalf("operator public testnet RPC = %v, want %q", st["testnet-public-rpc-url"], cfg.Public.Chain.EVMPublicReadEndpoint)
 	}
-	if unsigned, ok := st["testnet-wallet-allow-unsigned"]; !ok || unsigned != false {
-		t.Fatalf("operator unsigned testnet wallet policy = %v, present=%t", unsigned, ok)
+	if unsigned, ok := st["testnet-wallet-allow-unsigned"]; !ok || unsigned != provisional {
+		t.Fatalf("operator unsigned testnet wallet policy = %v, present=%t, provisional=%t", unsigned, ok, provisional)
 	}
 	for _, key := range []string{"public_rpc_url", "wallet_allow_unsigned"} {
 		if _, ok := st[key]; ok {
