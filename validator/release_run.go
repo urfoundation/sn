@@ -186,8 +186,8 @@ func releaseSeedAttemptInterval(hardLimit int) (time.Duration, error) {
 	return interval, nil
 }
 
-func newReleaseAttemptBoundaryResolver(chain *ChainClient, cfg *ReleaseConfig) *cachedAttemptBoundaryResolver {
-	return newCachedAttemptBoundaryResolver(&chainAttemptBoundaryRPC{chain: chain, netuid: cfg.Netuid})
+func newReleaseAttemptBoundaryResolver(ctx context.Context, chain *ChainClient, cfg *ReleaseConfig) *cachedAttemptBoundaryResolver {
+	return newCachedAttemptBoundaryResolverWithLifecycle(ctx, &chainAttemptBoundaryRPC{chain: chain, netuid: cfg.Netuid}, releaseNativeEndpointTimeout(cfg))
 }
 
 func loadReleaseAttemptState(cfg *ReleaseConfig, op OperatorConfig, validatorUID uint16) (*releaseAttemptState, error) {
@@ -533,7 +533,8 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 	if err != nil {
 		return fmt.Errorf("release V2 semantic startup: %w", err)
 	}
-	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(chain, cfg)
+	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(ctx, chain, cfg)
+	defer attemptBoundaryResolver.close()
 	runtimeV2.publishEpoch = func(epoch uint64) {
 		attemptBoundaryResolver.invalidateLatest()
 		settlementEpoch.Store(epoch)
