@@ -4605,7 +4605,7 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 	if err != nil {
 		return err
 	}
-	processLogs, err := loadLiveProcessLogGate(stateDir)
+	processLogs, err := loadProvisionalOrStrictProcessLogGate(cfg, stateDir)
 	if err != nil {
 		return fmt.Errorf("open live process log gate: %w", err)
 	}

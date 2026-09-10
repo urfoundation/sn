@@ -518,6 +518,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err != nil {
 		return err
 	}
+	liveAdoption, err := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
+	if err != nil {
+		return err
+	}
 	// Approval is necessary but not sufficient: every apply re-runs all live
 	// safety checks against the exact unverified spend so a persisted plan
 	// cannot bypass changed RPCs, services, facts, repository locks, or host
@@ -526,7 +530,12 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err := doctor.Error(); err != nil {
 		return fmt.Errorf("doctor must pass immediately before apply: %w", err)
 	}
-	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
+	var roles *RoleSecrets
+	if liveAdoption != nil {
+		roles, err = loadExistingProvisionalRoles(cfg, stateDir)
+	} else {
+		roles, err = LoadOrWriteRoleSecrets(cfg, stateDir)
+	}
 	if err != nil {
 		return err
 	}
@@ -538,7 +547,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	// Finish all reversible host preflight before opening a transaction-capable
 	// executor. In particular, a missing Docker daemon or a broken build must
 	// never be discovered after contracts or registrations have been written.
-	if requiresManagedDependencies(cmd) {
+	if liveAdoption == nil && requiresManagedDependencies(cmd) {
 		if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
 			return fmt.Errorf("prepare operator config overlays: %w", err)
 		}
@@ -547,13 +556,13 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	var bins map[string]string
-	if requiresReleaseBinaries(cmd) {
+	if liveAdoption == nil && requiresReleaseBinaries(cmd) {
 		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
 		if err != nil {
 			return err
 		}
 	}
-	if cmd == "launch" || cmd == "resume" {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
 		if err := preflightReleaseHost(ctx, stateDir, cfg, bins); err != nil {
 			return fmt.Errorf("release host preflight: %w", err)
 		}
@@ -577,10 +586,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
 	}
-	if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
+	if liveAdoption != nil {
+		if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
+			return err
+		}
+	} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
 		return err
 	}
-	if cmd == "launch" || cmd == "resume" {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
 		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
 			return err
 		}
