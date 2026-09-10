@@ -139,6 +139,9 @@ func (self *TunnelTransport) currentByClientJwt() (string, error) {
 func newTunnelClientSettings() *connect.ClientSettings {
 	clientSettings := connect.DefaultClientSettings()
 	clientSettings.EncryptionSettings.Mode = connect.EncryptionModeOpportunistic
+	// Providers must be able to read the derived client's identity key before
+	// the generator admits tunnel traffic, not merely after a delivery ack.
+	clientSettings.ClientKeyRegistrationRequired = true
 	return clientSettings
 }
 
