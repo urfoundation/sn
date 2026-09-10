@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urnetwork/connect"
-	serverpkg "github.com/urnetwork/server"
+	"github.com/urnetwork/connect/v2026"
+	serverpkg "github.com/urnetwork/server/v2026"
 )
 
 func TestOperatorConnectTLSArtifactsAreDeterministicAndOperatorScoped(t *testing.T) {

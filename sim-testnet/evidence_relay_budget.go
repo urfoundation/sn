@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 const evidenceRelayReserveId = "campaign.evidence-relay-reserve"

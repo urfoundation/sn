@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Include each raw byte as a string, malformed multibyte forms, Html escaping
