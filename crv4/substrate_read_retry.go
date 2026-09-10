@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net"
 	"syscall"
 	"time"
@@ -38,7 +37,7 @@ func substrateRPCDisconnected(err error) bool {
 		return closed.Code == websocket.CloseAbnormalClosure || closed.Code == websocket.CloseGoingAway
 	}
 	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, net.ErrClosed) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || err.Error() == "client reconnected"
+		err.Error() == "client reconnected"
 }
 
 // Route GSRPC's contextless storage helpers through the same bounded read path.
