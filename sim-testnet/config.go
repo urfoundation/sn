@@ -22,11 +22,11 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 	"gopkg.in/yaml.v3"
 
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/ss58"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/controller"
-	"github.com/urnetwork/server/model"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/ss58"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/controller"
+	"github.com/urnetwork/server/v2026/model"
 )
 
 const (
@@ -1389,7 +1389,7 @@ func canonicalHashHex(v any) (string, error) {
 func discoverRepos(configPath string, opts LoadOptions) (RepoPaths, error) {
 	sn := opts.SNRepo
 	if sn == "" {
-		sn = findModule(filepath.Dir(configPath), "github.com/urfoundation/sn")
+		sn = findModule(filepath.Dir(configPath), "github.com/urfoundation/sn/v2026")
 	}
 	if sn == "" {
 		return RepoPaths{}, errors.New("cannot discover sn repository; use --sn-repo")
@@ -1397,11 +1397,11 @@ func discoverRepos(configPath string, opts LoadOptions) (RepoPaths, error) {
 	parent := filepath.Dir(sn)
 	server := opts.ServerRepo
 	if server == "" {
-		server = findSiblingModule(parent, "github.com/urnetwork/server")
+		server = findSiblingModule(parent, "github.com/urnetwork/server/v2026")
 	}
 	operatorProxy := opts.OperatorProxyRepo
 	if operatorProxy == "" {
-		operatorProxy = findSiblingModule(parent, "github.com/urnetwork/operator-proxy")
+		operatorProxy = findSiblingModule(parent, "github.com/urnetwork/operator-proxy/v2026")
 	}
 	vault := opts.VaultRepo
 	if vault == "" {
