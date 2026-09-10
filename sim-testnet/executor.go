@@ -51,6 +51,7 @@ type Executor struct {
 	releaseGate             *ReleaseCampaignGate
 	carriedVerificationKeys map[string]bool
 	carriedFleetHistoryKeys map[string]bool
+	auditAuthorizedConfig   *ResolvedConfig
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
@@ -138,7 +139,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits}
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
 	if !independentRPCRequired(runtimeCfg) {
 		if err := e.ensurePayloads(ctx); err != nil {
 			e.Close()

@@ -520,10 +520,24 @@ block-pinned mirror/binding calls into at-most-50-element JSON-RPC batches. This
 changes only transport cardinality: every response is still matched to its
 exact action, receipt hash, recorded height, canonical hash and observed state.
 Private mode repeats the batches through the independent observer; public
-override mode requires identical detached comparison evidence. The temporary
-receipt-keyed audit cache is populated only after the complete batch succeeds
-and is discarded when that preflight returns, so a timeout, partial response or
-adjacent receipt cannot suppress ordinary verification.
+override mode requires identical detached comparison evidence. Successful
+generation-1 mirror/binding proofs are saved individually under the state directory's
+`historical-audit-cache-v1` directory, so a later failure or process restart
+retains completed work. Entries authenticate the exact inputs and bind the
+plan, release, verifier executable and authorized observers. Changed inputs,
+unreadable entries or authentication failures cause the original verification
+to run again. Builds predating this cache cannot contribute entries from their
+progress logs.
+
+Cache hits still require fresh canonical/finalized checkpoints and revalidated
+local receipts, decoder inputs and successor relationships. Current balances,
+runtime identity and live postconditions are always checked again. Finalized
+native extrinsic proofs use the same persistent cache after their fresh chain
+checks. Install batches also retain their successful block-pinned mirror/binding
+comparisons before fetching the transaction receipt. Local member signatures,
+native commitments, transaction receipts and install events remain outside that
+cache boundary. No failed or canceled proof is saved, and independent observers
+must both succeed before a combined fleet proof can be reused.
 
 Two authenticated atomic-alias receipt formats exist. Current aliases name the
 exact source batch receipt and clone its finalized checkpoints. The first five
