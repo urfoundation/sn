@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func validatorUploadSeededTestConfig(t *testing.T, fixture *validatorUploadAuthorityTestFixture) ValidatorUploadAdmissionConfig {
@@ -107,5 +108,166 @@ func TestValidatorUploadAdmissionProvisionalSeededConfigAndCustody(t *testing.T)
 				t.Fatalf("%s allowed provisional seed authority", test)
 			}
 		})
+	}
+}
+
+func TestValidatorUploadAdmissionSeededHistoryReuseKeepsCurrentEligibilityFresh(t *testing.T) {
+	fixture := newValidatorUploadAuthorityTestFixture(t)
+	config := validatorUploadSeededTestConfig(t, fixture)
+	config.RefreshSeconds, config.MaximumHeadAgeSeconds = 120, 600
+	owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	historicalReads, currentReads := fixture.activationReads.Load(), fixture.currentCanonicalCalls
+	if historicalReads == 0 || len(owner.seededHistory) != 1 || owner.nextRefreshDelay() != 120*time.Second {
+		t.Fatal("successful seeded history was not retained with its normal refresh interval")
+	}
+	header, session, digest := validatorUploadAdmissionTestHeader(t, fixture, fixture.authority.Expected, 0x41, "current-api-client", []byte("object"))
+	lease, err := owner.beginAt(t.Context(), header, session, 1, digest, 6, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.activationReads.Load() != historicalReads || fixture.currentCanonicalCalls <= currentReads {
+		t.Fatal("warm refresh repeated historical activation calls or skipped current native observation")
+	}
+	fixture.currentPermit = false
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-lease.Context().Done():
+	case <-time.After(time.Second):
+		t.Fatal("fresh native permit loss did not retire the cached owner's lease")
+	}
+	if next, err := owner.beginAt(t.Context(), header, session, 1, digest, 6, fixture.now); err == nil || next != nil {
+		if next != nil {
+			next.Close()
+		}
+		t.Fatal("historical success authorized a currently ineligible owner")
+	}
+	if fixture.activationReads.Load() != historicalReads || len(owner.seededHistory) != 1 || owner.nextRefreshDelay() != 30*time.Second {
+		t.Fatal("permit loss discarded immutable history or delayed the incomplete refresh")
+	}
+	fixture.currentPermit = true
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.activationReads.Load() != historicalReads || len(owner.seededFailures) != 0 || owner.nextRefreshDelay() != 120*time.Second {
+		t.Fatal("recovered current eligibility did not reuse history and clear its failure")
+	}
+}
+
+// One real seed succeeds while a second well-formed configured record is not
+// published. Retry must preserve the first proof and actually reread the second.
+func TestValidatorUploadAdmissionSeededPartialHistoryRetriesOnlyUnverifiedSeed(t *testing.T) {
+	fixture := newValidatorUploadAuthorityTestFixture(t)
+	config := validatorUploadSeededTestConfig(t, fixture)
+	config.RefreshSeconds, config.MaximumHeadAgeSeconds = 120, 600
+	encoded, err := ReadReleaseEvidenceV2File(t.Context(), config.ActivationContexts[0], config.MaximumContextBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing, err := decodeReleaseEvidenceV2ActivationContext(encoded, config.MaximumContextBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing.Activation.NoID = 3
+	missing.InitialCut.Identity.NoID = 3
+	missing.InitialCut.Activation.Domain, err = missing.Activation.EvidenceDomain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = missing.CanonicalJSON(config.MaximumContextBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ActivationContexts = append(config.ActivationContexts, writeReleaseBootstrapV2TestFile(t, filepath.Join(t.TempDir(), "owner", "pending.json"), encoded))
+	owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	close(owner.ready) // The owned loop signals its first completed pass here.
+	if err := owner.WaitReady(t.Context()); !errors.Is(err, ErrValidatorEvidenceAbsent) {
+		t.Fatalf("partial seeded admission reported complete readiness: %v", err)
+	}
+	if len(owner.seededHistory) != 1 || len(owner.entries) != 1 || owner.nextRefreshDelay() != 30*time.Second {
+		t.Fatal("partial refresh lost its success, admitted the missing seed, or failed to schedule prompt retry")
+	}
+	header, session, digest := validatorUploadAdmissionTestHeader(t, fixture, missing.Activation, 0x41, "current-api-client", []byte("object"))
+	if lease, err := owner.beginAt(t.Context(), header, session, 1, digest, 6, fixture.now); lease != nil || !errors.Is(err, ErrValidatorEvidenceAbsent) || !strings.Contains(err.Error(), "historical activation authentication") {
+		if lease != nil {
+			lease.Close()
+		}
+		t.Fatalf("absent seed did not retain its actual authentication error: %v", err)
+	}
+	reads, absent := fixture.activationReads.Load(), fixture.absentActivationReads.Load()
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.activationReads.Load() != reads+1 || fixture.absentActivationReads.Load() != absent+1 || len(owner.seededHistory) != 1 {
+		t.Fatal("partial retry cached an unverified seed or repeated the successful seed's history")
+	}
+}
+
+func TestValidatorUploadAdmissionSeededHistoryRejectsChangedCanonicalAnchor(t *testing.T) {
+	fixture := newValidatorUploadAuthorityTestFixture(t)
+	config := validatorUploadSeededTestConfig(t, fixture)
+	owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	fixture.observerReorg.Store(true)
+	if err := owner.refresh(t.Context(), fixture.now); err == nil {
+		t.Fatal("changed canonical EVM anchor passed a warm refresh")
+	}
+	if len(owner.seededHistory) != 0 {
+		t.Fatal("historical success survived a changed canonical anchor")
+	}
+}
+
+func TestValidatorUploadAdmissionSeededHistorySurvivesUnavailableAnchor(t *testing.T) {
+	fixture := newValidatorUploadAuthorityTestFixture(t)
+	config := validatorUploadSeededTestConfig(t, fixture)
+	owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	reads := fixture.activationReads.Load()
+	fixture.fault = "canonical-unavailable"
+	if err := owner.refresh(t.Context(), fixture.now); err == nil {
+		t.Fatal("unavailable current canonical read admitted a refresh")
+	} else {
+		owner.invalidate(err)
+	}
+	if len(owner.seededHistory) != 1 || len(owner.entries) != 0 {
+		t.Fatal("read unavailability erased immutable proof or retained current admission")
+	}
+	fixture.fault = ""
+	if err := owner.refresh(t.Context(), fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	if len(owner.entries) != 1 || fixture.activationReads.Load() != reads {
+		t.Fatal("recovered canonical reads failed to reuse successful historical proof")
 	}
 }

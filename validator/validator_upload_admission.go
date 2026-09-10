@@ -123,13 +123,17 @@ type ValidatorUploadAdmission struct {
 	native           *crv4.Chain
 	config           ValidatorUploadAdmissionConfig
 	discoveryDigests [][32]byte
-	stateLock        sync.Mutex
-	entries          map[[32]byte]*validatorUploadAdmissionEntry
-	ownerSlots       map[ValidatorUploadOwner]*validatorUploadOwnerSlots
-	validUntil       time.Time
-	lastError        error
-	closed           bool
-	leases           sync.WaitGroup
+	// Only the owned refresh loop accesses historical successes. Request-side
+	// diagnostics use seededFailures under stateLock.
+	seededHistory  map[[32]byte]VerifiedReleaseActivationV2
+	seededFailures map[[32]byte]error
+	stateLock      sync.Mutex
+	entries        map[[32]byte]*validatorUploadAdmissionEntry
+	ownerSlots     map[ValidatorUploadOwner]*validatorUploadOwnerSlots
+	validUntil     time.Time
+	lastError      error
+	closed         bool
+	leases         sync.WaitGroup
 }
 
 // File custody and canonical context syntax precede the first RPC. The API
@@ -179,8 +183,13 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 		digests = append(digests, digest)
 	}
 	ownerCtx, cancel := context.WithCancel(ctx)
-	return &ValidatorUploadAdmission{ctx: ownerCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan struct{}), chain: chain, native: native, config: config,
-		discoveryDigests: digests, entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed")}, nil
+	owner := &ValidatorUploadAdmission{ctx: ownerCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan struct{}), chain: chain, native: native, config: config,
+		discoveryDigests: digests, entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed")}
+	if config.ProvisionalSeededDiscoveryOnly {
+		owner.seededHistory = make(map[[32]byte]VerifiedReleaseActivationV2, len(digests))
+		owner.seededFailures = make(map[[32]byte]error, len(digests))
+	}
+	return owner, nil
 }
 
 // Never overlap refreshes or retry inside an observation. Each next attempt
@@ -209,7 +218,7 @@ func (self *ValidatorUploadAdmission) run() {
 		select {
 		case <-self.ctx.Done():
 			return
-		case <-time.After(time.Duration(self.config.RefreshSeconds) * time.Second):
+		case <-time.After(self.nextRefreshDelay()):
 		}
 	}
 }
@@ -228,7 +237,94 @@ func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	return errors.Join(self.lastError, self.ctx.Err(), ctx.Err())
+	return errors.Join(self.lastError, self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
+}
+
+// A successful subset remains usable, but never reports complete seeded
+// readiness. Incomplete seeded refreshes retry promptly without redoing the
+// immutable history of already authenticated candidates.
+func (self *ValidatorUploadAdmission) seededReadinessErrorLocked() error {
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		return nil
+	}
+	for _, digest := range self.discoveryDigests {
+		if err := self.seededFailures[digest]; err != nil {
+			return fmt.Errorf("provisional seeded admission incomplete for activation %x: %w", digest[:8], err)
+		}
+		if entry := self.entries[digest]; entry == nil || entry.ctx.Err() != nil {
+			return fmt.Errorf("provisional seeded admission incomplete for activation %x", digest[:8])
+		}
+	}
+	return nil
+}
+
+func (self *ValidatorUploadAdmission) nextRefreshDelay() time.Duration {
+	delay := time.Duration(self.config.RefreshSeconds) * time.Second
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.config.ProvisionalSeededDiscoveryOnly && (self.lastError != nil || self.seededReadinessErrorLocked() != nil) {
+		return min(delay, 30*time.Second)
+	}
+	return delay
+}
+
+func (self *ValidatorUploadAdmission) recordSeededFailure(digest [32]byte, err error) {
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		return
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if err == nil {
+		delete(self.seededFailures, digest)
+	} else {
+		self.seededFailures[digest] = err
+	}
+}
+
+// Cache only successful exact configured activation proofs for this owner
+// lifecycle. Both chains must still cover their original canonical anchors;
+// current native eligibility is separately read on every refresh below.
+func (self *ValidatorUploadAdmission) authenticateRefreshCandidate(ctx context.Context, digest [32]byte, observer ValidatorUploadObserver, nativeObserver ValidatorUploadNativeObserver) (VerifiedReleaseActivationV2, error) {
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		return self.chain.AuthenticateValidatorUploadActivationContext(ctx, self.native, self.config.Deployment, digest, observer)
+	}
+	if cached, ok := self.seededHistory[digest]; ok {
+		var err error
+		changed := false
+		if observer.Number < cached.ObservedEVMBlock || nativeObserver.Number < cached.Publication.Record.NativeBlock {
+			err = errors.New("seeded history is ahead of the current finalized observers")
+		} else {
+			var canonical [32]byte
+			canonical, err = self.chain.BlockHashContext(ctx, cached.ObservedEVMBlock)
+			if err == nil && canonical != cached.ObservedEVMHash {
+				changed = true
+				err = errors.New("seeded historical EVM canonical block changed")
+			}
+		}
+		if err == nil {
+			var canonical string
+			err = self.native.API.Client.CallContext(ctx, &canonical, "chain_getBlockHash", cached.Publication.Record.NativeBlock)
+			if err == nil && canonical != types.Hash(cached.Publication.Record.NativeHash).Hex() {
+				changed = true
+				err = errors.New("seeded historical native canonical block changed")
+			}
+		}
+		if err = errors.Join(err, ctx.Err()); err != nil {
+			// Unavailability denies this refresh without erasing successful
+			// immutable work. Only an observed different hash invalidates it.
+			if changed {
+				delete(self.seededHistory, digest)
+			}
+			return VerifiedReleaseActivationV2{}, err
+		}
+		return cached, nil
+	}
+	verified, err := self.chain.AuthenticateValidatorUploadActivationContext(ctx, self.native, self.config.Deployment, digest, observer)
+	if err = errors.Join(err, ctx.Err()); err != nil {
+		return VerifiedReleaseActivationV2{}, err
+	}
+	self.seededHistory[digest] = verified
+	return verified, nil
 }
 
 // Retain no accepted entry after a failed observer or incomplete scan. Cancel
@@ -278,13 +374,15 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	// Current eligibility is read once per stable hotkey in this captured
 	// refresh. Its metadata and resolved UID come from the actual current hash.
 	current := make(map[[32]byte]bool)
+	currentErrors := make(map[[32]byte]error)
 	admit := func(digest [32]byte, event *ValidatorUploadActivationEvent) error {
 		if seen[digest] {
 			return nil
 		}
 		seen[digest] = true
-		verified, err := self.chain.AuthenticateValidatorUploadActivationContext(ctx, self.native, self.config.Deployment, digest, observer)
+		verified, err := self.authenticateRefreshCandidate(ctx, digest, observer, nativeObserver)
 		if err != nil {
+			self.recordSeededFailure(digest, fmt.Errorf("historical activation authentication: %w", err))
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -302,14 +400,17 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 				return ctx.Err()
 			}
 			eligible = err == nil && observation.Stake.MeetsNonSelfStakeAndPermit()
+			currentErrors[record.Hotkey] = err
 			if uint64(len(current)) >= self.config.MaximumOwners {
 				return errors.New("validator staging current native owner census exceeds its bound")
 			}
 			current[record.Hotkey] = eligible
 		}
 		if !eligible {
+			self.recordSeededFailure(digest, errors.Join(errors.New("current native hotkey lacks authenticated stake and permit"), currentErrors[record.Hotkey]))
 			return nil
 		}
+		self.recordSeededFailure(digest, nil)
 		owner := ValidatorUploadOwner{Hotkey: record.Hotkey, OperatorNoID: record.NoID}
 		prior, exists := next[owner]
 		if !exists && uint64(len(next)) >= self.config.MaximumOwners {
@@ -462,6 +563,11 @@ func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string
 	entry := self.entries[intent.ActivationHash]
 	if self.lastError != nil {
 		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: %w", self.lastError)
+	}
+	if entry == nil && self.config.ProvisionalSeededDiscoveryOnly {
+		if err := self.seededFailures[intent.ActivationHash]; err != nil {
+			return nil, fmt.Errorf("validator staging activation %x is unavailable: %w", intent.ActivationHash[:8], err)
+		}
 	}
 	if self.closed || self.lastError != nil || !now.Before(self.validUntil) || entry == nil || entry.record.VPK != intent.VPK || entry.ctx.Err() != nil {
 		return nil, errors.New("validator staging activation is absent, stale or superseded")
