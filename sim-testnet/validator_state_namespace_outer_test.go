@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urnetwork/server/model"
+	"github.com/urnetwork/server/v2026/model"
 )
 
 // Supplies a real approved plan and a test-owned migration executable. The
