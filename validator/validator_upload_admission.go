@@ -25,20 +25,23 @@ import (
 // Operators must provision enough finite scan capacity for their journal;
 // exceeding it refuses refresh rather than silently installing an allowlist.
 type ValidatorUploadAdmissionConfig struct {
-	Deployment            ValidatorUploadDeployment `json:"deployment" yaml:"deployment"`
-	ReplicaNoID           uint64                    `json:"replica_no_id" yaml:"replica_no_id"`
-	ActivationContexts    []ReleaseEvidenceV2File   `json:"activation_contexts" yaml:"activation_contexts"`
-	MaximumContextBytes   uint64                    `json:"maximum_context_bytes" yaml:"maximum_context_bytes"`
-	MaximumOwners         uint64                    `json:"maximum_owners" yaml:"maximum_owners"`
-	BlocksPerRange        uint64                    `json:"blocks_per_range" yaml:"blocks_per_range"`
-	MaximumRanges         uint64                    `json:"maximum_ranges" yaml:"maximum_ranges"`
-	MaximumEventsPerRange uint64                    `json:"maximum_events_per_range" yaml:"maximum_events_per_range"`
-	RefreshSeconds        uint64                    `json:"refresh_seconds" yaml:"refresh_seconds"`
-	MaximumRefreshSeconds uint64                    `json:"maximum_refresh_seconds" yaml:"maximum_refresh_seconds"`
-	MaximumHeadAgeSeconds uint64                    `json:"maximum_head_age_seconds" yaml:"maximum_head_age_seconds"`
-	MaximumIntentSeconds  uint64                    `json:"maximum_intent_seconds" yaml:"maximum_intent_seconds"`
-	FreshActivePerOwner   uint64                    `json:"fresh_active_per_owner" yaml:"fresh_active_per_owner"`
-	RetryActivePerOwner   uint64                    `json:"retry_active_per_owner" yaml:"retry_active_per_owner"`
+	Deployment         ValidatorUploadDeployment `json:"deployment" yaml:"deployment"`
+	ReplicaNoID        uint64                    `json:"replica_no_id" yaml:"replica_no_id"`
+	ActivationContexts []ReleaseEvidenceV2File   `json:"activation_contexts" yaml:"activation_contexts"`
+	// Provisional testnet continuity discovers only these exact references;
+	// their anchored authentication and current eligibility remain mandatory.
+	ProvisionalSeededDiscoveryOnly bool   `json:"provisional_seeded_discovery_only,omitempty" yaml:"provisional_seeded_discovery_only,omitempty"`
+	MaximumContextBytes            uint64 `json:"maximum_context_bytes" yaml:"maximum_context_bytes"`
+	MaximumOwners                  uint64 `json:"maximum_owners" yaml:"maximum_owners"`
+	BlocksPerRange                 uint64 `json:"blocks_per_range" yaml:"blocks_per_range"`
+	MaximumRanges                  uint64 `json:"maximum_ranges" yaml:"maximum_ranges"`
+	MaximumEventsPerRange          uint64 `json:"maximum_events_per_range" yaml:"maximum_events_per_range"`
+	RefreshSeconds                 uint64 `json:"refresh_seconds" yaml:"refresh_seconds"`
+	MaximumRefreshSeconds          uint64 `json:"maximum_refresh_seconds" yaml:"maximum_refresh_seconds"`
+	MaximumHeadAgeSeconds          uint64 `json:"maximum_head_age_seconds" yaml:"maximum_head_age_seconds"`
+	MaximumIntentSeconds           uint64 `json:"maximum_intent_seconds" yaml:"maximum_intent_seconds"`
+	FreshActivePerOwner            uint64 `json:"fresh_active_per_owner" yaml:"fresh_active_per_owner"`
+	RetryActivePerOwner            uint64 `json:"retry_active_per_owner" yaml:"retry_active_per_owner"`
 }
 
 // Capacity products are checked before allocation or file/RPC work. These
@@ -46,6 +49,9 @@ type ValidatorUploadAdmissionConfig struct {
 func (self ValidatorUploadAdmissionConfig) Validate() error {
 	if err := self.Deployment.Validate(); err != nil {
 		return err
+	}
+	if self.ProvisionalSeededDiscoveryOnly && (self.Deployment.ChainID != 945 || len(self.ActivationContexts) == 0) {
+		return errors.New("provisional seeded discovery requires testnet chain 945 and explicit activation contexts")
 	}
 	return self.ValidateCapacity()
 }
@@ -264,7 +270,7 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		return errors.New("validator staging chain observer is stale or from the future")
 	}
 	start := self.config.Deployment.DeploymentBlock
-	if observer.Number < start || observer.Number-start >= self.config.BlocksPerRange*self.config.MaximumRanges {
+	if observer.Number < start || !self.config.ProvisionalSeededDiscoveryOnly && observer.Number-start >= self.config.BlocksPerRange*self.config.MaximumRanges {
 		return errors.New("validator staging complete discovery exceeds its explicit range budget")
 	}
 	next := make(map[ValidatorUploadOwner]VerifiedReleaseActivationV2)
@@ -318,7 +324,11 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		next[owner] = verified
 		return nil
 	}
-	for range self.config.MaximumRanges {
+	discoveryRanges := self.config.MaximumRanges
+	if self.config.ProvisionalSeededDiscoveryOnly {
+		discoveryRanges = 0
+	}
+	for range discoveryRanges {
 		end := observer.Number
 		if observer.Number-start >= self.config.BlocksPerRange {
 			end = start + self.config.BlocksPerRange - 1

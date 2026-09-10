@@ -44,6 +44,7 @@ type validatorUploadAuthorityTestFixture struct {
 	currentCanonicalCalls      uint64
 	reorgAfterCurrentCanonical bool
 	observerReorg              atomic.Bool
+	logCalls                   atomic.Uint64
 }
 
 // Both native clocks are real fixed SCALE responses. Current permit can
@@ -282,6 +283,10 @@ func (self *validatorUploadAuthorityTestFixture) Call(ctx context.Context, call 
 // The real JSON-RPC method requires the full approved address/topic/range and
 // returns canonical event words. Faults mutate actual transport responses.
 func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, filter map[string]json.RawMessage) ([]map[string]any, error) {
+	self.logCalls.Add(1)
+	if self.fault == "logs-denied" {
+		return nil, errors.New("Method not allowed")
+	}
 	if len(filter) != 4 {
 		return nil, errors.New("fixture event filter census differs")
 	}
