@@ -27,7 +27,7 @@ var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
-	Apply, Detach                                                                                                                   bool
+	Apply, Detach, ProvisionalResume                                                                                                bool
 }
 
 func usage() {
@@ -60,6 +60,7 @@ Common options:
   --platform-config-repo PATH  platform config repository override
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
+  --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -93,6 +94,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RunID, "run-id", "", "")
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
+	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return "", o, err
 	}
@@ -107,6 +109,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
+	}
+	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return "", o, err
 	}
 	return cmd, o, nil
 }

@@ -539,6 +539,15 @@ native commitments, transaction receipts and install events remain outside that
 cache boundary. No failed or canceled proof is saved, and independent observers
 must both succeed before a combined fleet proof can be reused.
 
+For a provisional testnet run, `resume` and `scenario` accept
+`--provisional-resume` together with `--apply` and the exact persisted plan hash.
+Retain the original configuration and repository arguments when replacing the
+driver. This mode authenticates completed receipts locally, keeps pending
+transaction recovery and spending limits, and uses the admitted driver image
+for restarted components. It records actual executable provenance before work
+begins and marks scenario results provisional with `final_acceptance=false`.
+Strict release acceptance cannot consume those provisional results.
+
 Two authenticated atomic-alias receipt formats exist. Current aliases name the
 exact source batch receipt and clone its finalized checkpoints. The first five
 migration fleets instead recorded separate live mirror/binding reads after their

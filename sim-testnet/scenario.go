@@ -265,40 +265,43 @@ type ScenarioObservation struct {
 }
 
 type ScenarioResult struct {
-	Schema               string                     `json:"schema"`
-	Release              string                     `json:"release"`
-	RunID                string                     `json:"run_id"`
-	DeploymentID         string                     `json:"deployment_id"`
-	Name                 string                     `json:"name"`
-	ScenarioDefinition   string                     `json:"scenario_definition_hash"`
-	ScenarioMatrix       string                     `json:"scenario_matrix_hash,omitempty"`
-	AdversarialMatrix    string                     `json:"adversarial_matrix_hash,omitempty"`
-	ConfigHash           string                     `json:"config_hash"`
-	PolicyHash           string                     `json:"policy_hash"`
-	ChainID              uint64                     `json:"chain_id"`
-	GenesisHash          string                     `json:"genesis_hash"`
-	Netuid               uint16                     `json:"netuid"`
-	StartedAt            string                     `json:"started_at"`
-	CompletedAt          string                     `json:"completed_at"`
-	CampaignStartHead    ChainHead                  `json:"campaign_start_finalized_head"`
-	CampaignStartEpoch   uint64                     `json:"campaign_start_epoch"`
-	StartHead            ChainHead                  `json:"start_finalized_head"`
-	EndHead              ChainHead                  `json:"end_finalized_head"`
-	StartEpoch           uint64                     `json:"start_epoch"`
-	EndEpoch             uint64                     `json:"end_epoch"`
-	AcceptanceWindow     *ScenarioAcceptanceWindow  `json:"acceptance_window,omitempty"`
-	AssertionCount       int                        `json:"assertion_count"`
-	FailedAssertionCount int                        `json:"failed_assertion_count"`
-	Assertions           []AssertionRecord          `json:"assertions"`
-	Faults               []ScenarioFaultRecord      `json:"faults,omitempty"`
-	Adversaries          *AdversaryCampaignEvidence `json:"adversaries,omitempty"`
-	Anomalies            *ScenarioAnomalyLedger     `json:"anomalies"`
-	ValueReconciliation  map[string]string          `json:"value_reconciliation"`
-	PublishedEvidence    []PublishedEvidence        `json:"published_evidence,omitempty"`
-	LifecycleHandoff     *ScenarioLifecycleHandoff  `json:"lifecycle_handoff,omitempty"`
-	PriorRelease         *ReleaseCampaignGate       `json:"prior_release,omitempty"`
-	EvidenceHash         string                     `json:"evidence_hash"`
-	Result               string                     `json:"result"`
+	Provisional          bool                           `json:"provisional,omitempty"`
+	FinalAcceptance      *bool                          `json:"final_acceptance,omitempty"`
+	ProvisionalDriver    *provisionalScenarioProvenance `json:"provisional_driver,omitempty"`
+	Schema               string                         `json:"schema"`
+	Release              string                         `json:"release"`
+	RunID                string                         `json:"run_id"`
+	DeploymentID         string                         `json:"deployment_id"`
+	Name                 string                         `json:"name"`
+	ScenarioDefinition   string                         `json:"scenario_definition_hash"`
+	ScenarioMatrix       string                         `json:"scenario_matrix_hash,omitempty"`
+	AdversarialMatrix    string                         `json:"adversarial_matrix_hash,omitempty"`
+	ConfigHash           string                         `json:"config_hash"`
+	PolicyHash           string                         `json:"policy_hash"`
+	ChainID              uint64                         `json:"chain_id"`
+	GenesisHash          string                         `json:"genesis_hash"`
+	Netuid               uint16                         `json:"netuid"`
+	StartedAt            string                         `json:"started_at"`
+	CompletedAt          string                         `json:"completed_at"`
+	CampaignStartHead    ChainHead                      `json:"campaign_start_finalized_head"`
+	CampaignStartEpoch   uint64                         `json:"campaign_start_epoch"`
+	StartHead            ChainHead                      `json:"start_finalized_head"`
+	EndHead              ChainHead                      `json:"end_finalized_head"`
+	StartEpoch           uint64                         `json:"start_epoch"`
+	EndEpoch             uint64                         `json:"end_epoch"`
+	AcceptanceWindow     *ScenarioAcceptanceWindow      `json:"acceptance_window,omitempty"`
+	AssertionCount       int                            `json:"assertion_count"`
+	FailedAssertionCount int                            `json:"failed_assertion_count"`
+	Assertions           []AssertionRecord              `json:"assertions"`
+	Faults               []ScenarioFaultRecord          `json:"faults,omitempty"`
+	Adversaries          *AdversaryCampaignEvidence     `json:"adversaries,omitempty"`
+	Anomalies            *ScenarioAnomalyLedger         `json:"anomalies"`
+	ValueReconciliation  map[string]string              `json:"value_reconciliation"`
+	PublishedEvidence    []PublishedEvidence            `json:"published_evidence,omitempty"`
+	LifecycleHandoff     *ScenarioLifecycleHandoff      `json:"lifecycle_handoff,omitempty"`
+	PriorRelease         *ReleaseCampaignGate           `json:"prior_release,omitempty"`
+	EvidenceHash         string                         `json:"evidence_hash"`
+	Result               string                         `json:"result"`
 }
 
 // ScenarioAcceptanceWindow binds a release result to complete contract epochs
@@ -3498,6 +3501,7 @@ func writeInitialScenarioFailure(cfg *ResolvedConfig, runDir, runID, definitionH
 		StartedAt: started.Format(time.RFC3339Nano), CompletedAt: completed.Format(time.RFC3339Nano),
 		Assertions: []AssertionRecord{assertion}, Result: "fail",
 	}
+	applyProvisionalScenarioProvenance(cfg, result)
 	applyScenarioAttemptBinding(result, attempt)
 	attachScenarioAnomalyGate(result, completed, nil, observation)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
@@ -4069,6 +4073,7 @@ scenarioLoop:
 		Result:              "pass",
 	}
 	result.LifecycleHandoff = lifecycleHandoff
+	applyProvisionalScenarioProvenance(cfg, result)
 	applyScenarioAttemptBinding(result, options.Attempt)
 	attachScenarioAnomalyGate(result, completed, campaignStart, current, observationHistory...)
 	result.EvidenceHash, _ = canonicalScenarioResultHash(result)
@@ -4299,6 +4304,9 @@ func canonicalScenarioResultHash(result *ScenarioResult) (string, error) {
 }
 
 func validateScenarioFinalSemanticSource(cfg *ResolvedConfig, roles *RoleSecrets, result *ScenarioResult, source *FinalSemanticEvidence) error {
+	if result != nil && result.Provisional {
+		return errors.New("provisional testnet scenario cannot receive final release acceptance")
+	}
 	if cfg == nil || cfg.Config == nil || roles == nil || result == nil || result.AcceptanceWindow == nil || source == nil {
 		return errors.New("final semantic campaign identity is incomplete")
 	}

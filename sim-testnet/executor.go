@@ -435,6 +435,9 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return err
+	}
 	if cmd == "retire" {
 		return runRetirement(ctx, cfg, stateDir, o)
 	}
@@ -457,6 +460,16 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	p, planErr := loadPersistedPlan(cfg, stateDir)
+	if o.ProvisionalResume {
+		// A provisional successor adopts this exact used plan. It may not
+		// generate a replacement approval or alter activation/prepared inputs.
+		if planErr != nil {
+			return fmt.Errorf("provisional resume requires the unchanged persisted plan: %w", planErr)
+		}
+		if err := prepareProvisionalResume(ctx, cfg, stateDir, cmd, o, p); err != nil {
+			return err
+		}
+	}
 	if !o.Apply {
 		if planErr != nil {
 			p, planErr = BuildPlanForState(ctx, cfg, stateDir)
@@ -475,7 +488,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	defer j.Close()
 	entries := j.Entries()
-	if mayRefreshPersistedPlan(planErr, entries) {
+	if o.ProvisionalResume {
+		// Exact persisted identity and approval were checked before opening the
+		// journal. Keep all unfinished actions on their original recovery keys.
+	} else if mayRefreshPersistedPlan(planErr, entries) {
 		p, planErr = BuildPlan(ctx, cfg)
 	} else if errors.Is(planErr, errPersistedPlanIdentityMismatch) {
 		prior, priorErr := readPersistedPlan(stateDir)
@@ -514,8 +530,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err != nil {
 		return err
 	}
-	if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
-		return err
+	if !o.ProvisionalResume {
+		if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
+			return err
+		}
 	}
 	// Finish all reversible host preflight before opening a transaction-capable
 	// executor. In particular, a missing Docker daemon or a broken build must
@@ -579,6 +597,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir)}
+	if provisionalResumeEnabled(cfg) {
+		result["provisional"] = true
+		result["final_acceptance"] = false
+		result["provisional_resume_record"] = cfg.provisionalResume.RecordPath
+	}
 	return printResult(o.Format, result, nil)
 }
 
@@ -1336,6 +1359,11 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
 	if prior, ok := e.verifiedActionEntry(a); ok {
+		if provisionalResumeEnabled(e.cfg) && a.ID != "topology.launch" {
+			// Never fall through to dispatch when a verified receipt fails local
+			// authentication: that could spend again under a fresh nonce.
+			return e.authenticateProvisionalReceipt(a, prior)
+		}
 		if prior.PlanHash != e.plan.PlanHash && e.carriedVerificationKeys[carriedVerificationKey(prior)] {
 			return nil
 		}
@@ -3936,6 +3964,9 @@ func runOrderedConcurrentAudits(count, workers int, audit func(int) error) error
 func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 	if e == nil || e.plan == nil || e.journal == nil {
 		return errors.New("plan/journal is unavailable")
+	}
+	if provisionalResumeEnabled(e.cfg) {
+		return e.verifyProvisionalActionHistory(ctx)
 	}
 	if e.plan.ValidatorEvidenceCarry != nil {
 		if _, err := e.authenticateValidatorEvidenceCarry(ctx); err != nil {

@@ -24,6 +24,7 @@ const (
 	executableAttestationNone executableAttestationMode = iota
 	executableAttestationPushedSource
 	executableAttestationLockedSource
+	executableAttestationProvisionalResume
 )
 
 // Retain the authenticated subset of Go's in-process build information.
@@ -62,6 +63,9 @@ type currentSNRevisionObserver func(context.Context) (string, error)
 // which does not otherwise consume it. Stop remains available during source
 // repair and relies on its exact process-ownership fence for safe teardown.
 func executableAttestationModeForCommand(command string, options cliOptions) executableAttestationMode {
+	if options.ProvisionalResume {
+		return executableAttestationProvisionalResume
+	}
 	if command == "stop" {
 		return executableAttestationNone
 	}
@@ -77,6 +81,9 @@ func executableAttestationModeForCommand(command string, options cliOptions) exe
 // Apply the command policy through an explicit callback so dispatch coverage
 // can be tested without trusting the Go test binary's own build information.
 func authenticateCommandExecutable(ctx context.Context, cfg *ResolvedConfig, command string, options cliOptions, authenticate releaseExecutableAuthenticator) error {
+	if err := validateProvisionalResumeOptions(command, options); err != nil {
+		return err
+	}
 	mode := executableAttestationModeForCommand(command, options)
 	if mode == executableAttestationNone {
 		return nil
@@ -139,6 +146,13 @@ func validateReleaseExecutablePath(invocationPath, executablePath string) error 
 // Decode only Go's signed-in build settings needed to distinguish a canonical
 // release build from go run, a dirty developer build, or another module.
 func parseReleaseExecutableBuildInfo(info *debug.BuildInfo) (releaseExecutableBuildIdentity, error) {
+	return parseExecutableBuildInfo(info, true)
+}
+
+// Provisional runs record dirty/trimpath status honestly without qualifying
+// those bytes as the retained release. Package/module and VCS identity remain
+// mandatory so the provenance names the actual driver.
+func parseExecutableBuildInfo(info *debug.BuildInfo, strict bool) (releaseExecutableBuildIdentity, error) {
 	if info == nil {
 		return releaseExecutableBuildIdentity{}, errors.New("Go build information is unavailable")
 	}
@@ -163,19 +177,19 @@ func parseReleaseExecutableBuildInfo(info *debug.BuildInfo) (releaseExecutableBu
 	if !modifiedOK || (modified != "true" && modified != "false") {
 		return releaseExecutableBuildIdentity{}, errors.New("running executable has no canonical VCS modification status")
 	}
-	if modified != "false" {
+	if strict && modified != "false" {
 		return releaseExecutableBuildIdentity{}, errors.New("running executable was built from a modified VCS checkout")
 	}
 	trimpath, trimpathOK := settings["-trimpath"]
-	if !trimpathOK || trimpath != "true" {
+	if strict && (!trimpathOK || trimpath != "true") {
 		return releaseExecutableBuildIdentity{}, errors.New("running executable is not a canonical -trimpath release build")
 	}
 	return releaseExecutableBuildIdentity{
 		PackagePath: info.Path,
 		ModulePath:  info.Main.Path,
 		Revision:    revision,
-		Modified:    false,
-		Trimpath:    true,
+		Modified:    modified == "true",
+		Trimpath:    trimpathOK && trimpath == "true",
 	}, nil
 }
 
@@ -375,6 +389,21 @@ func authenticateRunningReleaseExecutable(ctx context.Context, cfg *ResolvedConf
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return errors.New("running executable has no Go build information")
+	}
+	if mode == executableAttestationProvisionalResume {
+		if cfg == nil {
+			return errors.New("provisional resume configuration is unavailable")
+		}
+		build, err := parseExecutableBuildInfo(info, false)
+		if err != nil {
+			return err
+		}
+		digest, err := historicalAuditExecutableSHA256()
+		if err != nil {
+			return err
+		}
+		cfg.provisionalResume = &provisionalResumeState{Driver: provisionalDriverProvenance{ExecutablePath: executablePath, ExecutableSHA256: "sha256:" + digest, Build: build}}
+		return ctx.Err()
 	}
 	build, err := parseReleaseExecutableBuildInfo(info)
 	if err != nil {

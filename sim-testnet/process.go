@@ -980,6 +980,15 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	result := map[string]string{}
 	for _, t := range targets {
 		path := filepath.Join(out, t.name)
+		if t.name == "sim-testnet" && provisionalResumeEnabled(cfg) {
+			// Keep the retained configuration source while running the exact
+			// explicitly admitted provisional image, including its startup fixes.
+			if err := copyProvisionalSimulatorBinary(cfg, path); err != nil {
+				return nil, err
+			}
+			result[t.name] = path
+			continue
+		}
 		cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags=-buildid=", "-o", path, t.pkg)
 		cmd.Dir = t.dir
 		output, err := cmd.CombinedOutput()
@@ -1967,7 +1976,7 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 	if err != nil {
 		return supervisedProcessIdentity{}, err
 	}
-	executable, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	executable, err := readSupervisedProcessExecutable(pid)
 	if err != nil {
 		return supervisedProcessIdentity{}, err
 	}
@@ -1976,6 +1985,10 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
 	}
 	commandLineHash := sha256.Sum256(commandLine)
+	observedStart, err := processStartTimeTicks(pid)
+	if err != nil || observedStart != startTimeTicks {
+		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d changed during identity observation", pid)
+	}
 	return supervisedProcessIdentity{
 		PID: pid, ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
 		Executable: executable, CommandLineHash: hex.EncodeToString(commandLineHash[:]),

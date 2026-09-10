@@ -960,6 +960,9 @@ func validateScenarioAcceptanceResult(cfg *ResolvedConfig, definition scenarioDe
 // independently of its complete marker. The expected name selects the exact
 // executable definition, epoch span, faults, and adversarial evidence.
 func validateScenarioCampaignResult(cfg *ResolvedConfig, result *ScenarioResult, name string) error {
+	if result != nil && result.Provisional && !provisionalResumeEnabled(cfg) {
+		return errors.New("provisional testnet scenario requires explicit --provisional-resume and cannot satisfy strict release acceptance")
+	}
 	if cfg == nil || cfg.Config == nil || result == nil || strings.TrimSpace(name) == "" {
 		return errors.New("release campaign result context is incomplete")
 	}
@@ -1494,6 +1497,11 @@ func runReleaseCandidateCampaign(ctx context.Context, cfg *ResolvedConfig, state
 }
 
 func runFinalSemanticCampaignAnalyzer(ctx context.Context, cfg *ResolvedConfig, stateDir, runDir string, roles *RoleSecrets, result *ScenarioResult) error {
+	if provisionalResumeEnabled(cfg) {
+		// Operational completion may hand off to the next live phase, while
+		// explicit provisional evidence is never promoted to final acceptance.
+		return ctx.Err()
+	}
 	_, err := PublishOrResumeFinalSemanticSupplement(ctx, cfg, roles, stateDir, runDir, result)
 	return err
 }
