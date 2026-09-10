@@ -58,10 +58,11 @@ type ProcessState struct {
 	ExitError string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
-	Schema       string        `json:"schema"`
-	DeploymentID string        `json:"deployment_id"`
-	BinaryHash   string        `json:"binary_hash"`
-	Specs        []ProcessSpec `json:"specs"`
+	Schema                  string        `json:"schema"`
+	DeploymentID            string        `json:"deployment_id"`
+	BinaryHash              string        `json:"binary_hash"`
+	Specs                   []ProcessSpec `json:"specs"`
+	ProviderStartupWaveSize int           `json:"provider_startup_wave_size,omitempty"`
 }
 type SupervisorState struct {
 	Schema                   string         `json:"schema"`
@@ -798,7 +799,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return err
 	}
-	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs}
+	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: provisionalProviderStartupWaveSize(cfg)}
 	b, _ := json.MarshalIndent(sf, "", "  ")
 	specPath := filepath.Join(stateDir, "supervisor.json")
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
@@ -839,7 +840,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 				return err
 			}
 		}
-		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
+		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf))
 		if err != nil {
 			return err
 		}
@@ -861,7 +862,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	defer cancelSupervisor()
 	supervisorErr := make(chan error, 1)
 	go func() { supervisorErr <- supervise(supervisorCtx, stateDir, specPath) }()
-	readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
+	readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf))
 	if err != nil {
 		cancelSupervisor()
 		<-supervisorErr
@@ -2624,19 +2625,67 @@ func supervisorStartupProvider(spec ProcessSpec) bool {
 	return spec.Role == "miner-swarm"
 }
 
+const supervisorStartupPhaseTimeout = 2 * time.Minute
+
+// A provisional launch admits one complete swarm at a time so processed
+// client-key registrations can finish within the shared public RPC quota.
+// The setting is carried in the manifest into the internal supervisor process.
+func provisionalProviderStartupWaveSize(cfg *ResolvedConfig) int {
+	if provisionalResumeEnabled(cfg) {
+		return 1
+	}
+	return 0
+}
+
+// Cover every bounded readiness phase plus one minute for startup/publication.
+// Strict manifests retain their original three-minute outer deadline.
+func supervisorStartupReadinessTimeout(manifest SupervisorFile) time.Duration {
+	if manifest.ProviderStartupWaveSize <= 0 {
+		return 3 * time.Minute
+	}
+	providers := 0
+	deferredWorkerPhase := 0
+	for _, spec := range manifest.Specs {
+		if supervisorStartupProvider(spec) {
+			providers++
+		}
+		if spec.Role == "operator-taskworker" {
+			deferredWorkerPhase = 1
+		}
+	}
+	waves := 0
+	if providers > 0 {
+		waves = 1 + (providers-1)/manifest.ProviderStartupWaveSize
+	}
+	return time.Duration(waves+1+deferredWorkerPhase)*supervisorStartupPhaseTimeout + time.Minute
+}
+
 // Starts service prerequisites and provider swarms across two explicit health
 // barriers, then starts validators and relayers.
 // Callbacks keep the ordering deterministic in tests while production retains
 // the supervisor's real process ownership.
 func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
+	return startSupervisorSpecsWithProviderWaves(specs, 0, start, wait)
+}
+
+func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
 	if start == nil || wait == nil {
 		return errors.New("supervisor startup callbacks are incomplete")
 	}
+	if waveSize < 0 {
+		return errors.New("supervisor provider startup wave size is negative")
+	}
+	provisionalWaves := waveSize > 0
 	prerequisites := make([]ProcessSpec, 0, len(specs))
 	providers := make([]ProcessSpec, 0, len(specs))
+	deferredWorkers := make([]ProcessSpec, 0, len(specs))
 	dependents := make([]ProcessSpec, 0, len(specs))
 	for _, spec := range specs {
-		if supervisorStartupPrerequisite(spec) {
+		if waveSize > 0 && spec.Role == "operator-taskworker" {
+			// Catch-up jobs share the RPC quota needed for key registration.
+			// Provisional startup admits them after providers, before consumers.
+			deferredWorkers = append(deferredWorkers, spec)
+		} else if supervisorStartupPrerequisite(spec) {
 			prerequisites = append(prerequisites, spec)
 		} else if supervisorStartupProvider(spec) {
 			providers = append(providers, spec)
@@ -2644,7 +2693,7 @@ func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSp
 			dependents = append(dependents, spec)
 		}
 	}
-	for _, phase := range [][]ProcessSpec{prerequisites, providers} {
+	for _, phase := range [][]ProcessSpec{prerequisites, providers, deferredWorkers} {
 		for _, spec := range phase {
 			if spec.HealthURL == "" {
 				return fmt.Errorf("supervisor startup readiness role %s has no health endpoint", spec.ID)
@@ -2667,7 +2716,23 @@ func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSp
 	if err := startAndWait("prerequisite", prerequisites); err != nil {
 		return err
 	}
-	if err := startAndWait("provider", providers); err != nil {
+	if waveSize == 0 {
+		waveSize = max(1, len(providers))
+	}
+	for first := 0; first < len(providers); first += waveSize {
+		last := min(first+waveSize, len(providers))
+		if err := startAndWait("provider", providers[first:last]); err != nil {
+			return err
+		}
+		if provisionalWaves {
+			ids := make([]string, 0, last-first)
+			for _, spec := range providers[first:last] {
+				ids = append(ids, spec.ID)
+			}
+			fmt.Fprintf(os.Stderr, "sim-testnet: provisional provider startup ready %d/%d swarms; wave %s\n", last, len(providers), strings.Join(ids, ","))
+		}
+	}
+	if err := startAndWait("taskworker", deferredWorkers); err != nil {
 		return err
 	}
 	for _, spec := range dependents {
@@ -2909,8 +2974,9 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 		}
 		stopSupervisorCommands(commands)
 	}()
-	if err := startSupervisorSpecsWithReadiness(
+	if err := startSupervisorSpecsWithProviderWaves(
 		sf.Specs,
+		sf.ProviderStartupWaveSize,
 		func(spec ProcessSpec) error {
 			r := runs[spec.ID]
 			if r == nil {
@@ -2919,7 +2985,7 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 			return start(r)
 		},
 		func(prerequisites []ProcessSpec) error {
-			return waitSpecsReady(ctx, prerequisites, 2*time.Minute)
+			return waitSpecsReady(ctx, prerequisites, supervisorStartupPhaseTimeout)
 		},
 	); err != nil {
 		return err
