@@ -230,8 +230,20 @@ func newValidatorEvidenceCarryModeTestFixture(t *testing.T, historical, private 
 // the source plan is approved, while all six original custody contracts stay
 // byte-identical. It exposes migration fast paths which consult only those six.
 func newValidatorEvidenceCarryUpgradeTestFixture(t *testing.T, historical, private, olderUpgrade bool) validatorEvidenceCarryTestFixture {
+	return newValidatorEvidenceCarryConfiguredTestFixture(t, historical, private, olderUpgrade, nil)
+}
+
+func newValidatorEvidenceCarryConfiguredTestFixture(t *testing.T, historical, private, olderUpgrade bool, configure func(*ResolvedConfig)) validatorEvidenceCarryTestFixture {
 	t.Helper()
 	cfg, secrets, payloads := validatorEvidenceInstallTest(t)
+	if configure != nil {
+		configure(cfg)
+		var err error
+		cfg.ConfigHash, err = releaseConfigHash(cfg.Config, cfg.Public, cfg.Hyperparameters)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	artifact := cloneValidatorEvidenceArtifact(payloads.ValidatorEvidence.Artifact)
 	if historical {
 		artifact = validatorEvidenceCarryHistoricalArtifactTest(t, artifact)
