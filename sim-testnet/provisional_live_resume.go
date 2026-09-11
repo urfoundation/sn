@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -156,6 +157,46 @@ func provisionalAdoptionGeneration(adoption *provisionalLiveTopology, state Supe
 	return validateSupervisorGeneration(state)
 }
 
+// Provisional launch admits live provider swarms while their members catch up.
+// Keep their recorded health unchanged: full health remains a scenario assertion.
+// Every retained identity and PID must still be present and alive, and every
+// non-provider process must retain its ordinary health requirement.
+func provisionalSupervisorStateReady(state SupervisorState, wantHash string, specs []ProcessSpec) bool {
+	if state.Schema != "urnetwork-sim-supervisor-state-v1" || state.ManifestHash != wantHash || validateSupervisorGeneration(state) != nil || len(state.Processes) != len(specs) {
+		return false
+	}
+	want := make(map[string]ProcessSpec, len(specs))
+	for _, spec := range specs {
+		if spec.ID == "" || want[spec.ID].ID != "" {
+			return false
+		}
+		want[spec.ID] = spec
+	}
+	for _, process := range state.Processes {
+		spec, ok := want[process.ID]
+		if !ok || process.Role != spec.Role || process.Identity != spec.Identity || process.PID <= 1 || syscall.Kill(process.PID, syscall.Signal(0)) != nil {
+			return false
+		}
+		if spec.Role != "miner-swarm" && !process.Healthy {
+			return false
+		}
+		delete(want, process.ID)
+	}
+	return len(want) == 0
+}
+
+func provisionalSupervisorReadyNow(stateDir string, want SupervisorFile) (bool, error) {
+	hash, err := canonicalHashHex(want)
+	if err != nil {
+		return false, err
+	}
+	var state SupervisorState
+	if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &state); err != nil {
+		return false, err
+	}
+	return provisionalSupervisorStateReady(state, hash, want.Specs), nil
+}
+
 func provisionalProofsAdvanced(baseline, current map[string]int) bool {
 	if len(baseline) == 0 || len(current) != len(baseline) {
 		return false
@@ -255,6 +296,7 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	fmt.Fprintf(os.Stderr, "sim-testnet: adopting provisional live topology pid=%d start=%d; waiting up to 30m for fresh signed validator proofs; prior generation retained on failure\n", adoption.SupervisorPID, adoption.SupervisorStartTimeTicks)
+	lastProviderHealth := ""
 	for {
 		var live SupervisorState
 		if err := readJSONFile(filepath.Join(stateDir, "supervisor.state.json"), &live); err != nil {
@@ -274,10 +316,29 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 		if err != nil {
 			return err
 		}
-		if supervisorStateReady(live, adoption.ManifestHash, adoption.manifest.Specs) && provisionalProofsAdvanced(adoption.ProofBaseline, current) {
+		liveReady := provisionalSupervisorStateReady(live, adoption.ManifestHash, adoption.manifest.Specs)
+		if liveReady {
+			healthy, total := 0, 0
+			for _, process := range live.Processes {
+				if process.Role == "miner-swarm" {
+					total++
+					if process.Healthy {
+						healthy++
+					}
+				}
+			}
+			observed := fmt.Sprintf("%d/%d", healthy, total)
+			if healthy < total && observed != lastProviderHealth {
+				fmt.Fprintf(os.Stderr, "sim-testnet: provisional partial provider readiness; healthy_swarms=%s; all retained processes alive; final_acceptance=false\n", observed)
+			}
+			lastProviderHealth = observed
+		}
+		// Managed validator trail engines create these proofs independently of
+		// scenario startup, so partial provider health does not waive freshness.
+		if liveReady && provisionalProofsAdvanced(adoption.ProofBaseline, current) {
 			var healthSpecs []ProcessSpec
 			for _, spec := range adoption.manifest.Specs {
-				if spec.HealthURL != "" {
+				if spec.HealthURL != "" && spec.Role != "miner-swarm" {
 					healthSpecs = append(healthSpecs, spec)
 				}
 			}
@@ -365,8 +426,8 @@ func loadProvisionalOrStrictProcessLogGateState(cfg *ResolvedConfig, stateDir st
 	if err != nil {
 		return nil, err
 	}
-	if hash != adoption.ManifestHash || !supervisorStateReady(live, hash, manifest.Specs) {
-		return nil, errors.New("provisional log gate requires its exact healthy live supervisor")
+	if hash != adoption.ManifestHash || !provisionalSupervisorStateReady(live, hash, manifest.Specs) {
+		return nil, errors.New("provisional log gate requires its exact live supervisor and healthy non-provider processes")
 	}
 	var state processLogGateState
 	if err := readJSONFile(adoption.ProcessLogGatePath, &state); err != nil {

@@ -1,7 +1,8 @@
 //go:build linux || darwin
 
-// A bounded, refresh-owned staging cache contains only actual anchored and
-// historically/currently eligible hotkeys. Upload requests perform no RPC.
+// Strict staging refresh admits actual anchored, eligible hotkeys. An explicit
+// provisional testnet mode instead grants the retained private context allowance.
+// Upload requests perform no RPC.
 // Ordinary accounts and duplicate reads cannot take a fresh owner's slot.
 package validator
 
@@ -20,7 +21,8 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// Explicit deployment-provisioned references seed discovery, never authority.
+// Ordinary deployment-provisioned references seed discovery; the separate
+// provisional retained mode explicitly grants these exact contexts authority.
 // The bounded complete event scan also discovers later external validators.
 // Operators must provision enough finite scan capacity for their journal;
 // exceeding it refuses refresh rather than silently installing an allowlist.
@@ -30,18 +32,21 @@ type ValidatorUploadAdmissionConfig struct {
 	ActivationContexts []ReleaseEvidenceV2File   `json:"activation_contexts" yaml:"activation_contexts"`
 	// Provisional testnet continuity discovers only these exact references;
 	// their anchored authentication and current eligibility remain mandatory.
-	ProvisionalSeededDiscoveryOnly bool   `json:"provisional_seeded_discovery_only,omitempty" yaml:"provisional_seeded_discovery_only,omitempty"`
-	MaximumContextBytes            uint64 `json:"maximum_context_bytes" yaml:"maximum_context_bytes"`
-	MaximumOwners                  uint64 `json:"maximum_owners" yaml:"maximum_owners"`
-	BlocksPerRange                 uint64 `json:"blocks_per_range" yaml:"blocks_per_range"`
-	MaximumRanges                  uint64 `json:"maximum_ranges" yaml:"maximum_ranges"`
-	MaximumEventsPerRange          uint64 `json:"maximum_events_per_range" yaml:"maximum_events_per_range"`
-	RefreshSeconds                 uint64 `json:"refresh_seconds" yaml:"refresh_seconds"`
-	MaximumRefreshSeconds          uint64 `json:"maximum_refresh_seconds" yaml:"maximum_refresh_seconds"`
-	MaximumHeadAgeSeconds          uint64 `json:"maximum_head_age_seconds" yaml:"maximum_head_age_seconds"`
-	MaximumIntentSeconds           uint64 `json:"maximum_intent_seconds" yaml:"maximum_intent_seconds"`
-	FreshActivePerOwner            uint64 `json:"fresh_active_per_owner" yaml:"fresh_active_per_owner"`
-	RetryActivePerOwner            uint64 `json:"retry_active_per_owner" yaml:"retry_active_per_owner"`
+	ProvisionalSeededDiscoveryOnly bool `json:"provisional_seeded_discovery_only,omitempty" yaml:"provisional_seeded_discovery_only,omitempty"`
+	// A separately authorized testnet staging allowance uses exact private
+	// context pins without asserting historical or current chain eligibility.
+	ProvisionalRetainedContextAuthority bool   `json:"provisional_retained_context_authority,omitempty" yaml:"provisional_retained_context_authority,omitempty"`
+	MaximumContextBytes                 uint64 `json:"maximum_context_bytes" yaml:"maximum_context_bytes"`
+	MaximumOwners                       uint64 `json:"maximum_owners" yaml:"maximum_owners"`
+	BlocksPerRange                      uint64 `json:"blocks_per_range" yaml:"blocks_per_range"`
+	MaximumRanges                       uint64 `json:"maximum_ranges" yaml:"maximum_ranges"`
+	MaximumEventsPerRange               uint64 `json:"maximum_events_per_range" yaml:"maximum_events_per_range"`
+	RefreshSeconds                      uint64 `json:"refresh_seconds" yaml:"refresh_seconds"`
+	MaximumRefreshSeconds               uint64 `json:"maximum_refresh_seconds" yaml:"maximum_refresh_seconds"`
+	MaximumHeadAgeSeconds               uint64 `json:"maximum_head_age_seconds" yaml:"maximum_head_age_seconds"`
+	MaximumIntentSeconds                uint64 `json:"maximum_intent_seconds" yaml:"maximum_intent_seconds"`
+	FreshActivePerOwner                 uint64 `json:"fresh_active_per_owner" yaml:"fresh_active_per_owner"`
+	RetryActivePerOwner                 uint64 `json:"retry_active_per_owner" yaml:"retry_active_per_owner"`
 }
 
 // Capacity products are checked before allocation or file/RPC work. These
@@ -52,6 +57,9 @@ func (self ValidatorUploadAdmissionConfig) Validate() error {
 	}
 	if self.ProvisionalSeededDiscoveryOnly && (self.Deployment.ChainID != 945 || len(self.ActivationContexts) == 0) {
 		return errors.New("provisional seeded discovery requires testnet chain 945 and explicit activation contexts")
+	}
+	if self.ProvisionalRetainedContextAuthority && (!self.ProvisionalSeededDiscoveryOnly || self.Deployment.ChainID != 945 || len(self.ActivationContexts) != provisionalRetainedValidatorUploadContexts || self.MaximumOwners != provisionalRetainedValidatorUploadContexts) {
+		return errors.New("provisional retained staging requires testnet chain 945, seeded discovery and exactly four pinned contexts and owners")
 	}
 	return self.ValidateCapacity()
 }
@@ -160,6 +168,7 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 	config.ActivationContexts = slices.Clone(config.ActivationContexts)
 	digests := make([][32]byte, 0, len(config.ActivationContexts))
 	seen := make(map[[32]byte]bool, len(config.ActivationContexts))
+	var retainedContexts []ReleaseEvidenceV2ActivationContext
 	for _, reference := range config.ActivationContexts {
 		encoded, err := ReadReleaseEvidenceV2File(ctx, reference, config.MaximumContextBytes)
 		if err != nil {
@@ -181,6 +190,9 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 		}
 		seen[digest] = true
 		digests = append(digests, digest)
+		if config.ProvisionalRetainedContextAuthority {
+			retainedContexts = append(retainedContexts, parsed)
+		}
 	}
 	ownerCtx, cancel := context.WithCancel(ctx)
 	owner := &ValidatorUploadAdmission{ctx: ownerCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan struct{}), chain: chain, native: native, config: config,
@@ -188,6 +200,12 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 	if config.ProvisionalSeededDiscoveryOnly {
 		owner.seededHistory = make(map[[32]byte]VerifiedReleaseActivationV2, len(digests))
 		owner.seededFailures = make(map[[32]byte]error, len(digests))
+	}
+	if config.ProvisionalRetainedContextAuthority {
+		if err := owner.installProvisionalRetainedContextAuthority(retainedContexts); err != nil {
+			cancel()
+			return nil, err
+		}
 	}
 	return owner, nil
 }
@@ -203,6 +221,12 @@ func (self *ValidatorUploadAdmission) run() {
 			self.invalidate(errors.New("validator staging refresh stopped"))
 		}
 	}()
+	if self.config.ProvisionalRetainedContextAuthority {
+		self.logProvisionalRetainedContextAuthority("startup")
+		close(self.ready)
+		<-self.ctx.Done()
+		return
+	}
 	first := true
 	for {
 		operationCtx, cancel := context.WithTimeout(self.ctx, time.Duration(self.config.MaximumRefreshSeconds)*time.Second)
@@ -223,7 +247,8 @@ func (self *ValidatorUploadAdmission) run() {
 	}
 }
 
-// Readiness reports the actual first refresh, never the act of starting it.
+// Ordinary readiness reports the actual first refresh. Explicit retained
+// staging readiness reports only its local allowance, with chain checks unrun.
 func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	if self == nil || ctx == nil {
 		return errors.New("validator staging readiness owner is unavailable")
@@ -234,6 +259,9 @@ func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	case <-self.done:
 		return errors.New("validator staging admission stopped")
 	case <-self.ready:
+	}
+	if self.config.ProvisionalRetainedContextAuthority {
+		self.logProvisionalRetainedContextAuthority("local-readiness")
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
@@ -569,11 +597,11 @@ func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string
 			return nil, fmt.Errorf("validator staging activation %x is unavailable: %w", intent.ActivationHash[:8], err)
 		}
 	}
-	if self.closed || self.lastError != nil || !now.Before(self.validUntil) || entry == nil || entry.record.VPK != intent.VPK || entry.ctx.Err() != nil {
+	if self.closed || self.lastError != nil || (!self.config.ProvisionalRetainedContextAuthority && !now.Before(self.validUntil)) || entry == nil || entry.record.VPK != intent.VPK || entry.ctx.Err() != nil {
 		return nil, errors.New("validator staging activation is absent, stale or superseded")
 	}
 	deadline := time.Unix(int64(intent.NotAfter), 0)
-	if self.validUntil.Before(deadline) {
+	if !self.config.ProvisionalRetainedContextAuthority && self.validUntil.Before(deadline) {
 		deadline = self.validUntil
 	}
 	leaseCtx, cancel := context.WithDeadline(ctx, deadline)

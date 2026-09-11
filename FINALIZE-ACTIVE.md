@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 09:07 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 12:52 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -22,6 +22,12 @@ gates are no longer conditions of completing this testnet exercise.
    spending limits, journal serialization, process ownership and live health.
    Process log classifications are observations in this mode: preserve every
    finding and its original classification without stopping the fleet for it.
+   Provisional startup may use ready providers while other live swarms catch up;
+   retain actual health values and fresh signed proof requirements. The four
+   exact private activation contexts may grant testnet staging directly under
+   the explicit retained-context allowance. Upload signatures, session/object
+   binding, finite intent expiry and quotas remain enforced. Historical and
+   current-chain admission checks are waived/unrun, never reported as passing.
 3. Observe real transactions, provider traffic, validator proofs and accepted
    epochs. Fix concrete runtime failures and resume supported completed work.
    Keep original errors and actual completion markers; never invent a pass.

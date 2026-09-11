@@ -525,16 +525,31 @@ func runReleaseWithActivationSetup(ctx context.Context, configPath string, retai
 		return err
 	}
 	settlementEpoch.Store(snapshot.Epoch.Uint64())
-	validatorUID, found, err := chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
+	var activationInputs []releaseEvidenceV2ActivationInput
+	if retainedSetup != nil {
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), retainedSetup)
+		if err != nil {
+			return fmt.Errorf("reserved upload activation startup: %w", err)
+		}
+	}
+	var validatorUID uint16
+	var found bool
+	if retainedSetup != nil {
+		validatorUID, found, err = findProvisionalValidatorUIDAtHashContext(ctx, chain, snapshot, cfg.Netuid, hotkey.PublicKey(), activationInputs)
+	} else {
+		validatorUID, found, err = chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
+	}
 	if err != nil || !found {
 		return fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d: %w", snapshot.BlockNumber, err)
 	}
 	if _, err := authenticateReleaseValidatorStakeContext(ctx, native, cfg, hotkey.PublicKey(), validatorUID); err != nil {
 		return err
 	}
-	activationInputs, err := loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), retainedSetup)
-	if err != nil {
-		return fmt.Errorf("reserved upload activation startup: %w", err)
+	if retainedSetup == nil {
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), nil)
+		if err != nil {
+			return fmt.Errorf("reserved upload activation startup: %w", err)
+		}
 	}
 	if len(cfg.Operators) < 2 {
 		return errors.New("release V2 requires two configured public operator origins")

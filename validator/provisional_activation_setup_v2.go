@@ -184,3 +184,44 @@ func provisionalRetainedStartupHistory(inputs []releaseEvidenceV2ActivationInput
 	}
 	return true
 }
+
+// A retained UID is only a lookup hint. Read its current membership and exact
+// hotkey at the captured canonical EVM hash; native stake/permit authentication
+// still follows independently. Re-registration falls back to normal discovery.
+func findProvisionalValidatorUIDAtHashContext(ctx context.Context, chain *ChainClient, snapshot *ReleaseSnapshot, netuid uint16, hotkey [32]byte, inputs []releaseEvidenceV2ActivationInput) (uint16, bool, error) {
+	if !provisionalRetainedStartupHistory(inputs) {
+		return 0, false, errors.New("provisional UID hint lacks admitted activation inputs")
+	}
+	hint := inputs[0].Context.ValidatorUID
+	selector := evmSelector("getUidCount(uint16)")
+	argNetuid := evmUint16Word(netuid)
+	output, err := chain.ethCallAtHashContext(ctx, metagraphAddress, append(selector[:], argNetuid[:]...), snapshot.BlockNumber, snapshot.BlockHash)
+	if err != nil {
+		return 0, false, fmt.Errorf("metagraph UID hint count: %w", err)
+	}
+	if len(output) != 32 {
+		return 0, false, fmt.Errorf("metagraph UID hint count: noncanonical return (%d bytes)", len(output))
+	}
+	for _, value := range output[:30] {
+		if value != 0 {
+			return 0, false, errors.New("metagraph UID hint count exceeds uint16")
+		}
+	}
+	count := uint16(output[30])<<8 | uint16(output[31])
+	if hint < count {
+		selector = evmSelector("getHotkey(uint16,uint16)")
+		argUID := evmUint16Word(hint)
+		calldata := append(append(selector[:], argNetuid[:]...), argUID[:]...)
+		output, err = chain.ethCallAtHashContext(ctx, metagraphAddress, calldata, snapshot.BlockNumber, snapshot.BlockHash)
+		if err != nil {
+			return 0, false, fmt.Errorf("metagraph UID hint %d: %w", hint, err)
+		}
+		if len(output) != 32 {
+			return 0, false, fmt.Errorf("metagraph UID hint %d: noncanonical return (%d bytes)", hint, len(output))
+		}
+		if bytes.Equal(output, hotkey[:]) {
+			return hint, true, nil
+		}
+	}
+	return chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, netuid, hotkey)
+}
