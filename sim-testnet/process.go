@@ -1974,6 +1974,8 @@ type supervisedProcessIdentity struct {
 	CommandLineHash string
 }
 
+var errEmptySupervisedProcessCommandLine = errors.New("empty process command line")
+
 // Captures lightweight immutable kernel identity for frequent shutdown polls.
 // Hashing the full executable here would multiply large binary reads across
 // every process and poll; the proc executable link and argv hash distinguish
@@ -1992,8 +1994,11 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 		return supervisedProcessIdentity{}, err
 	}
 	commandLine, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil || len(commandLine) == 0 {
+	if err != nil {
 		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
+	}
+	if len(commandLine) == 0 {
+		return supervisedProcessIdentity{}, fmt.Errorf("process %d command line is empty: %w", pid, errEmptySupervisedProcessCommandLine)
 	}
 	commandLineHash := sha256.Sum256(commandLine)
 	observedStart, err := processStartTimeTicks(pid)
@@ -2004,6 +2009,42 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 		PID: pid, ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
 		Executable: executable, CommandLineHash: hex.EncodeToString(commandLineHash[:]),
 	}, nil
+}
+
+// Startup alone may briefly retry an empty argv observation. Every retry is
+// confined to the original child's start time and process group.
+func observeStartedSupervisedProcessIdentity(ctx context.Context, pid int) (supervisedProcessIdentity, error) {
+	start, err := processStartTimeTicks(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	group, err := syscall.Getpgid(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for {
+		identity, err := observeSupervisedProcessIdentity(pid)
+		if err == nil {
+			if identity.StartTimeTicks != start || identity.ProcessGroupID != group {
+				return supervisedProcessIdentity{}, fmt.Errorf("process %d changed during startup identity observation", pid)
+			}
+			return identity, nil
+		}
+		if !errors.Is(err, errEmptySupervisedProcessCommandLine) || !time.Now().Before(deadline) {
+			return supervisedProcessIdentity{}, err
+		}
+		currentStart, startErr := processStartTimeTicks(pid)
+		currentGroup, groupErr := syscall.Getpgid(pid)
+		if startErr != nil || groupErr != nil || currentStart != start || currentGroup != group {
+			return supervisedProcessIdentity{}, stateMismatchError(errors.Join(startErr, groupErr), "process %d changed during startup identity observation", pid)
+		}
+		select {
+		case <-ctx.Done():
+			return supervisedProcessIdentity{}, ctx.Err()
+		case <-time.After(min(10*time.Millisecond, time.Until(deadline))):
+		}
+	}
 }
 
 type supervisedCommand struct {
@@ -2968,11 +3009,11 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 		if err != nil {
 			return err
 		}
-		identity, err := observeSupervisedProcessIdentity(cmd.Process.Pid)
+		identity, err := observeStartedSupervisedProcessIdentity(childCtx, cmd.Process.Pid)
 		if err != nil || identity.ProcessGroupID != identity.PID {
 			_ = cmd.Process.Kill()
-			_ = <-exited
-			return stateMismatchError(err, "record supervisor child %s kernel identity", r.spec.ID)
+			exitErr := <-exited
+			return errors.Join(stateMismatchError(err, "record supervisor child %s kernel identity", r.spec.ID), exitErr)
 		}
 		r.cmd = cmd
 		r.identity = identity
