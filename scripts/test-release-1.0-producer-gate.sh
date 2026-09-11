@@ -73,6 +73,9 @@ echo "[release-1.0 producer] compile complete simulator and validator graph"
 release_phase_compile() {
   cd "$sn_repo"
   go test ./validator ./sim-testnet -run '^$' -count=1
+  startup_readiness_tests='^Test(SupervisorStartup|ReleaseTopologyReadiness)'
+  go test ./sim-testnet -run "$startup_readiness_tests" -count=1 -timeout 3m
+  go test -race ./sim-testnet -run "$startup_readiness_tests" -count=1 -timeout 3m
 }
 release_gate_start compile release_phase_compile
 
@@ -109,6 +112,9 @@ release_phase_seed() {
   seed_custody_tests='^Test(Keypair|LoadOrCreateSeedFile|SeedFileFormats|SeedCustody|VpkSeed|EvmKeyLoadingAndMirror|HotkeyLoadOrCreate|IdentityCustody|ReleaseClientSeed)'
   go test ./crv4 ./validator -run "$seed_custody_tests" -count=1
   go test -race ./crv4 ./validator -run "$seed_custody_tests" -count=1
+  swarm_wallet_tests='^Test(SetSwarmMemberWallet|SwarmMemberWallet)'
+  go test ./miner -run "$swarm_wallet_tests" -count=1
+  go test -race ./miner -run "$swarm_wallet_tests" -count=1
 }
 release_gate_start seed release_phase_seed
 

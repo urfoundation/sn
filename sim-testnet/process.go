@@ -799,7 +799,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return err
 	}
-	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: provisionalProviderStartupWaveSize(cfg)}
+	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg)}
 	b, _ := json.MarshalIndent(sf, "", "  ")
 	specPath := filepath.Join(stateDir, "supervisor.json")
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
@@ -844,7 +844,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		if err != nil {
 			return err
 		}
-		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
 			return err
 		}
 		if err := processLogs.RequireClean(false); err != nil {
@@ -868,7 +868,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 		<-supervisorErr
 		return err
 	}
-	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -2627,18 +2627,33 @@ func supervisorStartupProvider(spec ProcessSpec) bool {
 
 const supervisorStartupPhaseTimeout = 2 * time.Minute
 
-// A provisional launch admits one complete swarm at a time so processed
-// client-key registrations can finish within the shared public RPC quota.
-// The setting is carried in the manifest into the internal supervisor process.
-func provisionalProviderStartupWaveSize(cfg *ResolvedConfig) int {
+// Public RPC startup shares a small request quota with processed registrations.
+// The retained two-swarm launch reached all 1,000 providers; formal launches on
+// that same RPC mode need its ordering too. The manifest carries this setting
+// into the internal supervisor without changing any readiness requirement.
+func providerStartupWaveSize(cfg *ResolvedConfig) int {
 	if provisionalResumeEnabled(cfg) {
 		return 1
+	}
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 2
 	}
 	return 0
 }
 
+// Real public-RPC validator initialization took about twenty minutes before
+// its first signed trails. Allow bounded warm-up after provider readiness;
+// fresh proofs, signature checks, process ownership and log checks still gate
+// admission. This does not extend campaign windows or per-request deadlines.
+func releaseTopologyStartupReadinessTimeout(cfg *ResolvedConfig) time.Duration {
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 30 * time.Minute
+	}
+	return 5 * time.Minute
+}
+
 // Cover every bounded readiness phase plus one minute for startup/publication.
-// Strict manifests retain their original three-minute outer deadline.
+// Manifests without provider waves retain their three-minute outer deadline.
 func supervisorStartupReadinessTimeout(manifest SupervisorFile) time.Duration {
 	if manifest.ProviderStartupWaveSize <= 0 {
 		return 3 * time.Minute
@@ -2675,7 +2690,7 @@ func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, st
 	if waveSize < 0 {
 		return errors.New("supervisor provider startup wave size is negative")
 	}
-	provisionalWaves := waveSize > 0
+	boundedWaves := waveSize > 0
 	prerequisites := make([]ProcessSpec, 0, len(specs))
 	providers := make([]ProcessSpec, 0, len(specs))
 	deferredWorkers := make([]ProcessSpec, 0, len(specs))
@@ -2683,7 +2698,7 @@ func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, st
 	for _, spec := range specs {
 		if waveSize > 0 && spec.Role == "operator-taskworker" {
 			// Catch-up jobs share the RPC quota needed for key registration.
-			// Provisional startup admits them after providers, before consumers.
+			// Bounded startup admits them after providers, before consumers.
 			deferredWorkers = append(deferredWorkers, spec)
 		} else if supervisorStartupPrerequisite(spec) {
 			prerequisites = append(prerequisites, spec)
@@ -2724,12 +2739,12 @@ func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, st
 		if err := startAndWait("provider", providers[first:last]); err != nil {
 			return err
 		}
-		if provisionalWaves {
+		if boundedWaves {
 			ids := make([]string, 0, last-first)
 			for _, spec := range providers[first:last] {
 				ids = append(ids, spec.ID)
 			}
-			fmt.Fprintf(os.Stderr, "sim-testnet: provisional provider startup ready %d/%d swarms; wave %s\n", last, len(providers), strings.Join(ids, ","))
+			fmt.Fprintf(os.Stderr, "sim-testnet: provider startup ready %d/%d swarms; wave %s\n", last, len(providers), strings.Join(ids, ","))
 		}
 	}
 	if err := startAndWait("taskworker", deferredWorkers); err != nil {

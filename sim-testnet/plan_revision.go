@@ -4170,6 +4170,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := validateApprovedSetupFacts(revised, current, revisedRemaining); err != nil {
 		return nil, fmt.Errorf("revised plan is not affordable from current finalized state: %w", err)
 	}
+	if err := validateRuntimeEvidenceSetupRevisionV2(cfg, stateDir, revised, roleSecrets, entries); err != nil {
+		return nil, fmt.Errorf("retain original activation setup: %w", err)
+	}
 	return revised, nil
 }
 

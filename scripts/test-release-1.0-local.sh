@@ -82,6 +82,9 @@ release_phase_sn_go() {
   seed_custody_tests='^Test(Keypair|LoadOrCreateSeedFile|SeedFileFormats|SeedCustody|VpkSeed|EvmKeyLoadingAndMirror|HotkeyLoadOrCreate|IdentityCustody|ReleaseClientSeed)'
   go test ./crv4 ./validator -run "$seed_custody_tests" -count=1
   go test -race ./crv4 ./validator -run "$seed_custody_tests" -count=1
+  swarm_wallet_tests='^Test(SetSwarmMemberWallet|SwarmMemberWallet)'
+  go test ./miner -run "$swarm_wallet_tests" -count=1
+  go test -race ./miner -run "$swarm_wallet_tests" -count=1
   # The simulator's provisioned client keys retain their narrower raw32 grammar.
   simulator_seed_custody_tests='^Test(SimulatorClientSeedCustody|SimulatorOperatorPath|InspectValidatorPathProofsRequiresEveryOperatorDomain$|FinalSettlementClosureWaitHonorsPublicationAndCancellation$|FinalLifecycleIntentRequirementsKeepSettlementAndNativeClocksDistinct$)'
   go test ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m

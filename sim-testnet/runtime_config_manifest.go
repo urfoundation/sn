@@ -15,6 +15,10 @@ import (
 
 const runtimeConfigManifestSchema = "urnetwork-sim-runtime-config-manifest-v1"
 
+// Changes to required rendered files must invalidate the local render action
+// without changing the policy or configuration identity of chain receipts.
+const runtimeConfigFormatVersion = "signed-provider-wallet-v1"
+
 // Bind one immutable process input by state-relative path, content and mode.
 type RuntimeConfigFile struct {
 	Path   string `json:"path"`
@@ -176,6 +180,9 @@ func expectedRuntimeConfigFiles(cfg *ResolvedConfig, stateDir string) (map[strin
 		}
 	}
 	for miner := 1; miner <= cfg.Config.Topology.Miners; miner++ {
+		if err := addRuntimeConfigPath(paths, stateDir, minerPayoutSeedPath(stateDir, miner), 0o600); err != nil {
+			return nil, err
+		}
 		root := filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner))
 		for _, name := range []string{"miner.yml", "claim-daemon.yml"} {
 			if err := addRuntimeConfigPath(paths, stateDir, filepath.Join(root, name), 0o600); err != nil {

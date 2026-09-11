@@ -8,6 +8,7 @@ package miner
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -29,19 +30,21 @@ import (
 	"github.com/urnetwork/sdk"
 
 	"github.com/urfoundation/sn/clientauth"
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/ss58"
 )
 
 const ProviderSwarmSchema = "urnetwork-provider-swarm-v1"
 
 type ProviderSwarmMember struct {
-	ID          string `json:"id"`
-	APIURL      string `json:"api_url"`
-	ConnectURL  string `json:"connect_url"`
-	DNSPumpHost string `json:"dns_pump_host"`
-	StateDir    string `json:"state_dir"`
-	Wallet      string `json:"wallet"`
-	SourceIP    string `json:"source_ip"`
+	ID             string `json:"id"`
+	APIURL         string `json:"api_url"`
+	ConnectURL     string `json:"connect_url"`
+	DNSPumpHost    string `json:"dns_pump_host"`
+	StateDir       string `json:"state_dir"`
+	Wallet         string `json:"wallet"`
+	WalletSeedFile string `json:"wallet_seed_file"`
+	SourceIP       string `json:"source_ip"`
 }
 
 type ProviderSwarmConfig struct {
@@ -153,6 +156,9 @@ func (self ProviderSwarmConfig) Validate() error {
 		if _, err := ss58.DecodeWithPrefix(member.Wallet, ss58.BittensorPrefix); err != nil {
 			return fmt.Errorf("member %s wallet: %w", member.ID, err)
 		}
+		if _, err := swarmMemberWalletKey(member); err != nil {
+			return fmt.Errorf("member %s wallet identity: %w", member.ID, err)
+		}
 		source, err := netip.ParseAddr(member.SourceIP)
 		if err != nil || !source.Is4() || !source.IsLoopback() || seenSources[source.String()] {
 			return fmt.Errorf("member %s source_ip must be a unique IPv4 loopback address", member.ID)
@@ -227,8 +233,44 @@ func writeProviderTLSState(stateDir string, certificatePEM, keyPEM []byte) error
 	return os.WriteFile(filepath.Join(stateDir, ".provider.cert"), append(append([]byte(nil), certificatePEM...), keyPEM...), 0o600)
 }
 
+// Loading never creates a wallet: the simulator provisions the existing payout
+// role, and the address must match before any request can leave this process.
+func swarmMemberWalletKey(member ProviderSwarmMember) (*crv4.Keypair, error) {
+	if !filepath.IsAbs(member.WalletSeedFile) || filepath.Clean(member.WalletSeedFile) != member.WalletSeedFile {
+		return nil, errors.New("wallet_seed_file must be an absolute canonical path")
+	}
+	seed, err := crv4.LoadSeedFile(member.WalletSeedFile)
+	if err != nil {
+		return nil, err
+	}
+	key, err := crv4.KeypairFromSeed(seed)
+	if err != nil {
+		return nil, err
+	}
+	if key.Address() != member.Wallet {
+		return nil, errors.New("wallet seed differs from the configured payout address")
+	}
+	return key, nil
+}
+
 func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, settings *connect.ClientStrategySettings) error {
+	key, err := swarmMemberWalletKey(member)
+	if err != nil {
+		return err
+	}
 	jwt, err := clientauth.ReadToken(filepath.Join(member.StateDir, "jwt"))
+	if err != nil {
+		return err
+	}
+	providerJWT, err := clientauth.ReadToken(filepath.Join(member.StateDir, ".provider.jwt"))
+	if err != nil {
+		return err
+	}
+	providerID, err := clientauth.ClientIdFromJwt(providerJWT)
+	if err != nil {
+		return fmt.Errorf("wallet provider identity: %w", err)
+	}
+	clientID, err := sdk.ParseId(providerID.String())
 	if err != nil {
 		return err
 	}
@@ -239,9 +281,36 @@ func setSwarmMemberWallet(ctx context.Context, member ProviderSwarmMember, setti
 		_ = api.CloseAndWait(context.Background())
 	}()
 	api.SetByJwt(jwt)
-	result, err := api.SnSetWalletSync(&sdk.SnSetWalletArgs{ColdkeySs58: member.Wallet})
+	challenge, err := connect.HttpPostWithStrategy(ctx, strategy, member.APIURL+"/auth/wallet-challenge",
+		&sdk.AuthWalletChallengeArgs{WalletAddress: member.Wallet, Blockchain: "TAO"}, jwt,
+		&sdk.AuthWalletChallengeResult{}, connect.NewNoopApiCallback[*sdk.AuthWalletChallengeResult]())
+	if err != nil {
+		return fmt.Errorf("wallet challenge: %w", err)
+	}
+	if challenge == nil {
+		return errors.New("wallet challenge returned no result")
+	}
+	if challenge.Error != nil {
+		return fmt.Errorf("wallet challenge: %s", challenge.Error.Message)
+	}
+	if challenge.MessageTemplate == "" {
+		return errors.New("wallet challenge returned an empty message")
+	}
+	// The server consumes this exact challenge once. Sign its bytes using the
+	// coldkey's substrate context; never reuse a previous challenge/signature.
+	signature, err := key.Sign([]byte(challenge.MessageTemplate))
 	if err != nil {
 		return err
+	}
+	result, err := api.SnSetWalletSyncWithContext(ctx, &sdk.SnSetWalletArgs{
+		ColdkeySs58: member.Wallet, ClientId: clientID,
+		Signature: "0x" + hex.EncodeToString(signature), Message: challenge.MessageTemplate,
+	})
+	if err != nil {
+		return err
+	}
+	if result == nil {
+		return errors.New("wallet set returned no result")
 	}
 	if result.Error != nil {
 		return errors.New(result.Error.Message)

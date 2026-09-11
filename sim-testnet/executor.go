@@ -4405,8 +4405,8 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 			"testnet-enabled":                 true,
 			"testnet-attempt-upload":          uploadBudget,
 			"testnet-reserved-attempt-upload": reservedUploads[i-1],
-			// The simulated miners set their coldkeys without a challenge
-			// signature. Only explicitly admitted provisional testnet runs permit it.
+			// Swarms sign with their existing payout roles. Retain unsigned
+			// compatibility only for explicitly admitted provisional runs.
 			"testnet-wallet-allow-unsigned":              provisionalResumeEnabled(cfg),
 			"testnet-public-rpc-url":                     publicRPCURL,
 			"testnet-authority":                          workloadRPCAuthority(),
@@ -4679,6 +4679,9 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
 		v := cloneMap(base)
+		if err := ensureMinerPayoutSeed(stateDir, i, roles.Substrate[fmt.Sprintf("miner-%d-payout", i)]); err != nil {
+			return err
+		}
 		v["miner_id"] = i
 		v["operator_no_id"] = operatorForMiner(cfg, i)
 		v["state_dir"] = filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
@@ -4722,6 +4725,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 				DNSPumpHost: operatorConnectHostIP(operator),
 				StateDir:    filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state"),
 				Wallet:      roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58, SourceIP: minerTestEgressSourceIP(miner),
+				WalletSeedFile: minerPayoutSeedPath(stateDir, miner),
 			})
 		}
 		b, err := json.MarshalIndent(config, "", "  ")

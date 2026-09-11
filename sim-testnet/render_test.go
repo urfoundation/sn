@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -315,6 +316,9 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 				t.Fatalf("provider swarm %d member id = %q", swarm, member.ID)
 			}
 			operator := operatorForMiner(cfg, miner)
+			if member.WalletSeedFile != minerPayoutSeedPath(stateDir, miner) || member.Wallet != roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58 {
+				t.Fatalf("provider %s changed its provisioned payout seed or wallet", member.ID)
+			}
 			if member.APIURL != cfg.OperatorAPIOrigins[operator-1] {
 				t.Fatalf("provider %s changed its approved API origin", member.ID)
 			}

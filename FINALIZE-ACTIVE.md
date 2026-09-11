@@ -1,14 +1,9 @@
 # Release 1.0 active work index
 
-Updated 2026-09-09 20:24 UTC. Read this index first; use
+Updated 2026-09-11 04:21 UTC. Read this index first; use
 [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md) for detailed history and evidence.
 This is not a source freeze, full-gate certificate or live acceptance report.
 
-Implementation checkpoints SN `91572df`, server `27e5ceb7`, Connect `289bdbd`,
-and SDK `6970c5a` are committed, pulled without upstream changes and pushed.
-The subsequent lock/document checkpoint is described below. Source identity
-and pending qualification must not be reported as testnet acceptance.
-The temporary candidate remains an independent qualification workspace.
 The user subsequently approved **on-chain hashes + API/MinIO proof bytes** on
 2026-09-07 UTC. Section10.1 of the complete handoff now records that decision.
 Implement independent immutable validator/operator evidence slots, including
@@ -23,7 +18,49 @@ adversarial actors. Final acceptance still requires both full gates, the
 approved live RC and three final epochs, investigation of every anomaly, and
 independently replayable on-chain evidence in `FINAL.md`.
 
-## Current frontier — 2026-09-09 20:24 UTC
+## Current frontier — 2026-09-11 04:21 UTC
+
+**INCOMPLETE; final acceptance is false.** The provisional workload soak is
+running; the formal release-candidate campaign has not launched. The exact
+04:21:56.664017 UTC [observer sample](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/provisional-r30/observational-soak.jsonl)
+records 1,000 ready providers, 20 healthy swarms, and both managed R32
+validators active with zero restarts. Counts are 69 + 65 and 19 + 17;
+only six records have been locally signature-verified. See [FINAL.md](FINAL.md)
+for their identities, rollout receipts and remaining acceptance matrix.
+
+SN `e76a0e696a095ed6f2ce7627da6e9633b565c57a` is published to origin/main
+(actual exit 0, joined at 03:45:43.878843). Server `4b8c3303…` and
+Connect `eb163c00…` are also published. The regular SN checkout now carries
+additional wallet, render-format, original-setup carry and bounded public
+startup changes under focused qualification. No focused carry PASS is claimed.
+Final publication, VCS-stamped CLI, regenerated lock, complete producer and
+aggregate gates, strict doctor/paired plans and formal launch remain pending.
+
+The nine affected model normal roots have completed three sequential passes
+on one exact binary with actual exits 0 and joined private-fixture cleanup.
+[Confirmation inventory](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/pending-confirmations.md):
+no pending assertion streaks from the reviewed previous-gate inventory remain.
+Current carry development tests remain under correction/qualification; package
+timeouts and source-fence failures remain historical non-passing gates. Do not repeat unrelated closed streaks.
+
+Retain attempt-4, plan76, original activations/journals and all failed attempts.
+The 6,000-alpha repair tranche, 31,250-alpha lifetime cap, 180 EVM allowance
+within 200 total TAO, and 262-registration limit remain binding. Formal
+maintenance must stop/join both external validators and the retained topology,
+apply the rehearsed DB bridge through its owner, then use native revision and
+fresh rendering. Preserve unsubmitted input history and start strict steering
+in a later finalized native epoch than the stopped input frontier; no pending
+signed steering intent was present at the 04:13 local inspection. Full RC,
+three final production epochs, independent public replay and shutdown evidence
+remain required. The provisional waiver does not certify those outcomes.
+
+## Historical frontier — 2026-09-09 20:24 UTC
+
+Implementation checkpoints SN `91572df`, server `27e5ceb7`, Connect `289bdbd`,
+and SDK `6970c5a` are committed, pulled without upstream changes and pushed.
+The subsequent lock/document checkpoint is described below. Source identity
+and pending qualification must not be reported as testnet acceptance.
+The temporary candidate remains an independent qualification workspace.
 
 The user renewed the one-hour launch objective at20:12:49UTC (deadline21:12:49)
 and explicitly raised the reserve repair allowance to6,000testnet alpha.

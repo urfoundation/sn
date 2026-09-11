@@ -194,6 +194,16 @@ func runtimeEvidenceV2ResolvedConfig(cfg *ResolvedConfig, stateDir string) (*Res
 	if completed.PreparedHash != fmt.Sprintf("0x%x", sha256.Sum256(encoded)) {
 		return nil, errors.New("evidence setup completion references different retained signatures")
 	}
+	if prepared.PlanHash != plan.PlanHash {
+		entries, err := readJournalEntries(stateDir)
+		if err != nil {
+			return nil, err
+		}
+		plan, err = runtimeEvidenceSetupSourcePlanV2(cfg, plan, stateDir, roles, &prepared, encoded, &completed, entries)
+		if err != nil {
+			return nil, err
+		}
+	}
 	values, inputs, err := runtimeEvidenceFixedInputsV2(cfg, plan, stateDir, roles, &prepared, &completed)
 	if err != nil {
 		return nil, err

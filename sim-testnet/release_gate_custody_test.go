@@ -16,6 +16,7 @@ import (
 func releaseCustodyRegressionPaths() []string {
 	return []string{
 		"../crv4/keys_test.go",
+		"../crv4/seed_file_expected_test.go",
 		"../crv4/keys_custody_test.go",
 		"../crv4/seed_file_test.go",
 		"../crv4/seed_file_read_test.go",
@@ -270,6 +271,39 @@ func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 // key-vector, identity reload and mirror-address controls.
 func TestProducerGateCustodySelectionCoversBothIdentityEntryPoints(t *testing.T) {
 	assertProducerStateRegressionCoverage(t, "seed_custody_tests", "./crv4 ./validator", "seed-and-validator-custody", releaseCustodyRegressionPaths())
+}
+
+func TestProducerGateCustodySelectionCoversSwarmWallet(t *testing.T) {
+	assertProducerStateRegressionCoverage(t, "swarm_wallet_tests", "./miner", "signed-swarm-wallet", []string{"../miner/swarm_wallet_test.go"})
+	for _, path := range []string{"../scripts/test-release-1.0-producer-gate.sh", "../scripts/test-release-1.0-local.sh"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(raw)
+		for _, group := range []struct{ variable, source, pkg string }{
+			{"swarm_wallet_tests", "../miner/swarm_wallet_test.go", "./miner"},
+			{"simulator_seed_custody_tests", "runtime_wallet_seed_test.go", "./sim-testnet"},
+		} {
+			selector, err := releaseConnectPolicySelectorAssignment(script, group.variable)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source, err := os.ReadFile(group.source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyReleaseSourceTestCoverage(selector, "^Test", []string{string(source)}); err != nil {
+				t.Fatalf("%s omits wallet custody: %v", path, err)
+			}
+			for _, prefix := range []string{"go test ", "go test -race "} {
+				command := prefix + group.pkg + " -run \"$" + group.variable + "\" -count=1"
+				if !regexp.MustCompile("(?m)^[\\t ]*" + regexp.QuoteMeta(command) + "(?:[\\t ]+[^\\n]*)?$").MatchString(script) {
+					t.Fatalf("%s omits wallet invocation %s", path, command)
+				}
+			}
+		}
+	}
 }
 
 // A guard omitted from its own ordinary/race gate cannot protect deployment.
