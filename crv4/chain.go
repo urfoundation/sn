@@ -1,7 +1,6 @@
 package crv4
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -535,18 +534,17 @@ func (self *Chain) storageRawAtContext(ctx context.Context, key types.StorageKey
 	if ctx == nil || self == nil || self.API == nil || self.API.Client == nil || blockHash == (types.Hash{}) {
 		return nil, errors.New("crv4: storage read context is unavailable")
 	}
-	var raw json.RawMessage
-	if err := self.API.Client.CallContext(ctx, &raw, "state_getStorage", key.Hex(), blockHash.Hex()); err != nil {
+	// GSRPC decodes through an interface, so a JSON null leaves a caller's
+	// RawMessage untouched. A nullable string preserves that valid absence
+	// without confusing it with malformed or missing JSON-RPC results.
+	var encoded *string
+	if err := self.API.Client.CallContext(ctx, &encoded, "state_getStorage", key.Hex(), blockHash.Hex()); err != nil {
 		return nil, err
 	}
-	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+	if encoded == nil {
 		return nil, nil
 	}
-	var encoded string
-	if err := json.Unmarshal(raw, &encoded); err != nil {
-		return nil, fmt.Errorf("crv4: storage result is not a hex string: %w", err)
-	}
-	decoded, err := codec.HexDecodeString(encoded)
+	decoded, err := codec.HexDecodeString(*encoded)
 	if err != nil {
 		return nil, err
 	}

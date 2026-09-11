@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 16:43 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 17:33 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -127,9 +127,29 @@ request/write allowance and records abort causes. It also uses existing
 same-nonce cancellation for an expired close intent, and schedules ST sync and
 close retries every five seconds to reach the five-block close window. The
 owned-LAN deployment restores the original taskworker count 8 / batch size 4.
-Observe publication, fresh proofs, real transaction receipts and payouts from
-the running processes. Their success remains to be established; keep actual
-failures and completed closures instead of restarting preparation.
+Both operators finalized their epoch293 closes before the cutoff; captured
+emission and payout remained zero. Both validators subsequently published
+epoch293 evidence. CLI33 normalized validated in-memory contract address text,
+allowing native1394 measurements to seal without changing retained files.
+CLI34 added a bounded observation of the actual retained V2 intent records;
+it leaves strict authenticated counters and acceptance claims unchanged.
+The next actual native submission failure exposed GSRPC's handling of JSON
+null storage results. Decode those results as nullable strings so an absent
+slot remains distinguishable from malformed responses. Deploy this correction
+through the same retained-state resume procedure; keep all original failures.
+
+The bounded consumer run completed once and joined successfully. All eight
+escrow contracts settled, producing 1,052,426 and 1,052,424 provider usage bytes
+for the two operators from existing credits. No new account, credit or chain
+funding was created. These byte sweeps establish actual usage, not a chain
+payout; their fiat revenue is zero. Do not repeat this traffic as preparation.
+Observe epoch294 provider eligibility and a nonempty payout commitment, then
+the existing epoch295 deposit and subsequent pool scoring. A nonempty usage
+root can be committed even when captured emission is zero. The sealed294
+measurements correctly gave zero pool weight because source293 had no root;
+preserve those measurements. Native application, positive capture and payout
+remain actual-run outcomes to establish. Record their results in CURRENT.json
+and the report while the fleet continues working.
 
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
