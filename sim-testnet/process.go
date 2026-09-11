@@ -58,11 +58,12 @@ type ProcessState struct {
 	ExitError string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
-	Schema                  string        `json:"schema"`
-	DeploymentID            string        `json:"deployment_id"`
-	BinaryHash              string        `json:"binary_hash"`
-	Specs                   []ProcessSpec `json:"specs"`
-	ProviderStartupWaveSize int           `json:"provider_startup_wave_size,omitempty"`
+	Schema                                    string        `json:"schema"`
+	DeploymentID                              string        `json:"deployment_id"`
+	BinaryHash                                string        `json:"binary_hash"`
+	Specs                                     []ProcessSpec `json:"specs"`
+	ProviderStartupWaveSize                   int           `json:"provider_startup_wave_size,omitempty"`
+	ProvisionalProviderStartupObservationOnly bool          `json:"provisional_provider_startup_observation_only,omitempty"`
 }
 type SupervisorState struct {
 	Schema                   string         `json:"schema"`
@@ -808,7 +809,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return err
 	}
-	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg)}
+	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg), ProvisionalProviderStartupObservationOnly: provisionalResumeEnabled(cfg)}
 	b, _ := json.MarshalIndent(sf, "", "  ")
 	specPath := filepath.Join(stateDir, "supervisor.json")
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
@@ -2735,6 +2736,10 @@ func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSp
 }
 
 func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
+	return startSupervisorSpecsWithProviderStartupPolicy(specs, waveSize, false, start, wait)
+}
+
+func startSupervisorSpecsWithProviderStartupPolicy(specs []ProcessSpec, waveSize int, observeProvidersOnly bool, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
 	if start == nil || wait == nil {
 		return errors.New("supervisor startup callbacks are incomplete")
 	}
@@ -2790,7 +2795,7 @@ func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, st
 		if err := startAndWait("provider", providers[first:last]); err != nil {
 			return err
 		}
-		if boundedWaves {
+		if boundedWaves && !observeProvidersOnly {
 			ids := make([]string, 0, last-first)
 			for _, spec := range providers[first:last] {
 				ids = append(ids, spec.ID)
@@ -3040,9 +3045,10 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 		}
 		stopSupervisorCommands(commands)
 	}()
-	if err := startSupervisorSpecsWithProviderWaves(
+	if err := startSupervisorSpecsWithProviderStartupPolicy(
 		sf.Specs,
 		sf.ProviderStartupWaveSize,
+		sf.ProvisionalProviderStartupObservationOnly,
 		func(spec ProcessSpec) error {
 			r := runs[spec.ID]
 			if r == nil {
@@ -3050,8 +3056,23 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 			}
 			return start(r)
 		},
-		func(prerequisites []ProcessSpec) error {
-			return waitSpecsReady(ctx, prerequisites, supervisorStartupPhaseTimeout)
+		func(phase []ProcessSpec) error {
+			if sf.ProvisionalProviderStartupObservationOnly && len(phase) != 0 && supervisorStartupProvider(phase[0]) {
+				// Keep the actual observation without making slow registration
+				// tear down providers that are already serving. Native adoption
+				// still requires current health and fresh validator proofs.
+				err := waitSpecsReady(ctx, phase, 10*time.Second)
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				ids := make([]string, 0, len(phase))
+				for _, spec := range phase {
+					ids = append(ids, spec.ID)
+				}
+				fmt.Fprintf(os.Stderr, "sim-testnet: provisional provider startup observation; wave %s; ready=%t; final_acceptance=false; finding=%v\n", strings.Join(ids, ","), err == nil, err)
+				return nil
+			}
+			return waitSpecsReady(ctx, phase, supervisorStartupPhaseTimeout)
 		},
 	); err != nil {
 		return err

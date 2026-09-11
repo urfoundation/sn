@@ -132,7 +132,19 @@ func (self *HTTPAttemptStreamV2Writer) write(ctx context.Context, kind, contentH
 	}
 	defer func() { resultErr = errors.Join(resultErr, response.Body.Close()) }()
 	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("attempt upload response status is %d", response.StatusCode)
+		// The existing request owns this bounded diagnostic read. Never retry
+		// an ambiguous write or include headers in its error message.
+		raw, readErr := io.ReadAll(io.LimitReader(response.Body, 1024))
+		detail := strings.TrimSpace(string(raw))
+		// Suppress even a truncated reflection of this request's session.
+		if strings.Contains(detail, credential[:min(len(credential), 32)]) ||
+			strings.Contains(strings.ToLower(detail), "bearer ") {
+			detail = "[redacted client session]"
+		}
+		if detail == "" {
+			return errors.Join(fmt.Errorf("attempt upload response status is %d", response.StatusCode), readErr)
+		}
+		return errors.Join(fmt.Errorf("attempt upload response status is %d: %q", response.StatusCode, detail), readErr)
 	}
 	if len(response.Header.Values("ETag")) != 1 || response.Header.Get("ETag") != `"`+contentHash+`"` || response.ContentLength > 0 || response.Uncompressed || len(response.Header.Values("Content-Encoding")) != 0 || len(response.Header.Values("Content-Range")) != 0 {
 		return errors.New("attempt upload acknowledgement differs from exact immutable object")
