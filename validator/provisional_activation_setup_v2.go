@@ -137,6 +137,9 @@ func (self *ProvisionalActivationSetupV2) validate(cfg *ReleaseConfig, configPat
 			return err
 		}
 	}
+	// Retain signed cuts from a closed settlement and use the existing native
+	// epoch deferral instead of attempting to replace them during continuation.
+	cfg.ProvisionalDeferClosedNativeInput = true
 	return nil
 }
 

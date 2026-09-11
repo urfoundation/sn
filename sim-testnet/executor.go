@@ -42,6 +42,7 @@ type Executor struct {
 	roles                   *RoleSecrets
 	substrate               *SubstrateManager
 	independentSubstrate    *SubstrateManager
+	nativeOwner             *Executor
 	independentEVM          *ethclient.Client
 	deployer, owner         *EvmTxManager
 	guardian                *EvmTxManager
@@ -57,17 +58,23 @@ type Executor struct {
 // NewExecutor opens transaction managers only against the canonical endpoint
 // selection which was validated and hashed into the approved plan.
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
-	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles)
+	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles, nil)
 }
 
 // NewCampaignExecutor retains the canonical endpoint authorization check but
 // sends live-topology EVM traffic through the simulator-owned aggregate gate.
 func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, *ResolvedConfig, error) {
+	return newCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, p, j, roles, nil)
+}
+
+// The calling executor outlives the nested campaign and remains the sole owner
+// of its already authenticated native connections, including on setup failure.
+func newCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, *ResolvedConfig, error) {
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles)
+	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -76,38 +83,52 @@ func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 
 // newExecutorWithTransport separates immutable route authorization from the
 // local transport hop used during a supervised campaign.
-func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
+func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, error) {
 	if err := validateExecutionRPCConfiguration(authorizedCfg); err != nil {
 		return nil, fmt.Errorf("execution RPC configuration: %w", err)
 	}
 	if err := validateCampaignRPCTransport(authorizedCfg, runtimeCfg); err != nil {
 		return nil, err
 	}
-	s, err := DialSubstrateManager(runtimeCfg, stateDir, j)
-	if err != nil {
-		return nil, err
+	var s *SubstrateManager
+	if nativeOwner != nil {
+		if nativeOwner.cfg == nil || nativeOwner.cfg.Public == nil || nativeOwner.substrate == nil || nativeOwner.stateDir != stateDir || nativeOwner.plan != p || nativeOwner.journal != j || nativeOwner.cfg.ConfigHash != authorizedCfg.ConfigHash || nativeOwner.cfg.PolicyHash != authorizedCfg.PolicyHash || nativeOwner.cfg.ChainID != runtimeCfg.ChainID || nativeOwner.cfg.Netuid != runtimeCfg.Netuid || nativeOwner.cfg.OperationalRPCMode != runtimeCfg.OperationalRPCMode || nativeOwner.cfg.OperationalSubstrate != runtimeCfg.OperationalSubstrate || nativeOwner.cfg.Public.Chain.SubstratePublicReadEndpoint != runtimeCfg.Public.Chain.SubstratePublicReadEndpoint || (independentRPCRequired(runtimeCfg) && nativeOwner.independentSubstrate == nil) {
+			return nil, errors.New("campaign native owner differs from the approved executor")
+		}
+		s = nativeOwner.substrate
+	} else {
+		var err error
+		s, err = DialSubstrateManager(runtimeCfg, stateDir, j)
+		if err != nil {
+			return nil, err
+		}
+	}
+	closeSubstrate := func() {
+		if nativeOwner == nil {
+			s.Close()
+		}
 	}
 	d, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "deployer")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		return nil, err
 	}
 	o, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "testnet-owner")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		return nil, err
 	}
 	guardian, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "guardian")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		return nil, err
 	}
 	oracle, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "commitment-oracle")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		guardian.Close()
@@ -115,7 +136,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 	}
 	keeper, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "keeper")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		guardian.Close()
@@ -129,7 +150,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 			for _, opened := range deposits {
 				opened.Close()
 			}
-			s.Close()
+			closeSubstrate()
 			d.Close()
 			o.Close()
 			guardian.Close()
@@ -139,7 +160,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
 	if !independentRPCRequired(runtimeCfg) {
 		if err := e.ensurePayloads(ctx); err != nil {
 			e.Close()
@@ -147,10 +168,14 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		return e, nil
 	}
-	e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
-	if err != nil {
-		e.Close()
-		return nil, fmt.Errorf("independent Substrate RPC: %w", err)
+	if nativeOwner != nil {
+		e.independentSubstrate = nativeOwner.independentSubstrate
+	} else {
+		e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
+		if err != nil {
+			e.Close()
+			return nil, fmt.Errorf("independent Substrate RPC: %w", err)
+		}
 	}
 	e.independentEVM, err = dialConfiguredEVMClient(ctx, runtimeCfg, runtimeCfg.Public.Chain.EVMPublicReadEndpoint)
 	if err != nil {
@@ -191,10 +216,10 @@ func (e *Executor) Close() {
 	if e.deployer != nil {
 		e.deployer.Close()
 	}
-	if e.substrate != nil {
+	if e.nativeOwner == nil && e.substrate != nil {
 		e.substrate.Close()
 	}
-	if e.independentSubstrate != nil {
+	if e.nativeOwner == nil && e.independentSubstrate != nil {
 		e.independentSubstrate.Close()
 	}
 	if e.independentEVM != nil {

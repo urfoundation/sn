@@ -4656,7 +4656,7 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 		if journal == nil || executor.plan == nil {
 			return errors.New("live scenario RPC handoff requires the approved plan and journal")
 		}
-		scenarioExecutor, runtimeCfg, err = NewCampaignExecutor(ctx, cfg, stateDir, executor.plan, journal, roles)
+		scenarioExecutor, runtimeCfg, err = newCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, executor.plan, journal, roles, executor)
 		if err != nil {
 			return fmt.Errorf("open campaign executor through shared EVM egress: %w", err)
 		}

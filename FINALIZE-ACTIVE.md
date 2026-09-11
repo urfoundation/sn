@@ -70,6 +70,12 @@ classifications without making them launch conditions. The SQL correction is
 prepared separately and must not delay launch. No preparation tests are running.
 This mode records final_acceptance=false; do not claim strict certification.
 
+Prepared worker correction: after the hash-pinned testnet handoff validates,
+enable existing closed-native-input deferral in memory. Preserve signed subnet
+1391 inputs from settlement 290; report deferral without native submission and
+continue at the next native epoch. This is not deployed to fleet 21 yet and
+does not establish successful trail proofs.
+
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
 campaign's full epoch windows remain real elapsed time; there is no renewed
