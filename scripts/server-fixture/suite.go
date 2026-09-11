@@ -36,6 +36,54 @@ var suiteFixtureResourceKindNames = map[string][]string{
 	"config":     {"apple_roots.pem", "brevo.yml", "city-list.yml", "db.yml", "email.yml", "iso-country-list.yml", "pro.yml", "redis.yml", "settings.yml", "subsidy.yml", "tls.yml"},
 }
 
+// The portable suite resolves only its documentation subnets without importing
+// the production-sized location database; tests of the real database stay out
+// of this override and retain their separate resource contract.
+const suiteFixtureSettings = `all:
+  ip_overrides:
+    - subnet: "192.0.2.0/24"
+      country_code: "zz"
+      country: "Fixture Country"
+      region: "Fixture Region"
+      city: "Fixture City"
+    - subnet: "2001:db8::/32"
+      country_code: "zz"
+      country: "Fixture Country"
+      region: "Fixture Region"
+      city: "Fixture City"
+`
+
+// pro.yml is a physical member of the frozen suite resource census. Keep its
+// product values inert while still satisfying the server's typed parser: an
+// empty mapping is present-but-malformed, whereas these explicit zero values
+// exercise the same fail-open/no-grant/no-sale behavior as an absent spec.
+const suiteFixturePro = `enforce_concurrent_clients: false
+enforce_features: false
+free:
+  concurrent_clients: 0
+  data: 0b
+  data_period: 0s
+  features: {}
+pro:
+  concurrent_clients: 0
+  data: 0b
+  data_period: 0s
+  price_usd:
+    monthly: 0
+    yearly: 0
+  features: {}
+referral:
+  bonus_per_referral: 0b
+  referred_bonus: 0b
+  period: 0s
+  max_referrals: 0
+seeker:
+  data_multiplier: 1
+data_code:
+  duration: 0s
+  skus: []
+`
+
 // Suite admission reads a few fixed small physical source files only.
 func readSuiteFixtureSource(server, relative string) ([]byte, error) {
 	path := filepath.Join(server, filepath.FromSlash(relative))
@@ -247,10 +295,10 @@ func createSuiteFixture(parent, server, postgres, redis string) (report fixtureR
 		"config/brevo.yml":            []byte("brevo:\n  list_ids:\n    new_networks: 1\n    network_users: 2\n"),
 		"config/city-list.yml":        []byte("{}\n"),
 		"config/iso-country-list.yml": []byte("{}\n"),
-		"config/pro.yml":              []byte("{}\n"),
+		"config/pro.yml":              []byte(suiteFixturePro),
 		"config/db.yml":               dbConfig, "config/db_maintenance.yml": dbConfig, "config/redis.yml": redisConfig,
 		"config/email.yml":    []byte("company_sender_email: nobody@fixture.example\nreply_to_email: nobody@fixture.example\n"),
-		"config/settings.yml": []byte("all: {}\n"),
+		"config/settings.yml": []byte(suiteFixtureSettings),
 		"config/subsidy.yml":  []byte("days: 1\nmin_days_fraction: 1\nusd_per_active_user: 0\nsubscription_net_revenue_fraction: 0\nmin_payout_usd: 1\nactive_user_byte_count_threshold: 1GiB\nreferral_parent_payout_fraction: 0\nreferral_child_payout_fraction: 0\naccount_points_per_payout: 0\nreliability_points_per_payout: 0\nreliability_subsidy_per_payout_usd: 0\ncountry_reliability_weight_target: 1\nmax_country_reliability_multiplier: 1\nmin_wallet_payout_usd: 1\nwallet_payout_timeout: 24h\nseeker_holder_multiplier: 1\n"),
 		"config/tls.yml":      []byte("allowed_hosts:\n  - fixture.example\n"),
 	}

@@ -7,11 +7,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	servermodel "github.com/urnetwork/server/model"
+	"gopkg.in/yaml.v3"
 )
 
 // Only the frozen source resource contract is shared with the real adapter.
@@ -113,6 +117,89 @@ func TestServerFixtureSuiteSatisfiesActualResourceCensus(t *testing.T) {
 		if err != nil || !bytes.Equal(first, second) {
 			t.Fatalf("maintenance source differs: %v", err)
 		}
+	}
+}
+
+// Portable connection fixtures resolve reserved addresses without requiring
+// the production-sized location database or masking real-database test inputs.
+func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) {
+	parent, server := suiteFixtureTestInputs(t)
+	report, err := createSuiteFixture(parent, server, "127.0.0.1:35431", "127.0.0.1:36371")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(filepath.Join(report.Workspace, "config", "settings.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		All struct {
+			IpOverrides []struct {
+				Subnet      string `yaml:"subnet"`
+				CountryCode string `yaml:"country_code"`
+				Country     string `yaml:"country"`
+				Region      string `yaml:"region"`
+				City        string `yaml:"city"`
+			} `yaml:"ip_overrides"`
+		} `yaml:"all"`
+	}
+	if err := yaml.Unmarshal(encoded, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.All.IpOverrides) != 2 {
+		t.Fatalf("ip override count = %d, want 2", len(settings.All.IpOverrides))
+	}
+	for index, expected := range []struct {
+		Prefix  string
+		Inside  string
+		Outside string
+	}{
+		{Prefix: "192.0.2.0/24", Inside: "192.0.2.1", Outside: "198.51.100.1"},
+		{Prefix: "2001:db8::/32", Inside: "2001:db8::1", Outside: "::1"},
+	} {
+		override := settings.All.IpOverrides[index]
+		prefix, err := netip.ParsePrefix(override.Subnet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if prefix.String() != expected.Prefix || !prefix.Contains(netip.MustParseAddr(expected.Inside)) || prefix.Contains(netip.MustParseAddr(expected.Outside)) {
+			t.Fatalf("fixture override %d does not isolate the intended documentation subnet", index)
+		}
+		if override.CountryCode != "zz" || override.Country != "Fixture Country" || override.Region != "Fixture Region" || override.City != "Fixture City" {
+			t.Fatalf("fixture override %d lost its synthetic location fields", index)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", "ip-ipinfo.mmdb")); !os.IsNotExist(err) {
+		t.Fatalf("portable fixture unexpectedly materialized the location database: %v", err)
+	}
+}
+
+// The required physical pro.yml must be valid under the owning server parser,
+// while its synthetic values remain inert rather than copying a real product
+// plan into the portable fixture.
+func TestServerFixtureSuiteProConfigIsSyntheticAndParseable(t *testing.T) {
+	parent, server := suiteFixtureTestInputs(t)
+	report, err := createSuiteFixture(parent, server, "127.0.0.1:35431", "127.0.0.1:36371")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WARP_CONFIG_HOME", filepath.Join(report.Workspace, "config"))
+
+	config := servermodel.Pro()
+	if config.EnforceConcurrentClients || config.EnforceFeatures {
+		t.Fatal("portable Pro fixture unexpectedly enables enforcement")
+	}
+	if config.MaxConcurrentClients(false) != 0 || config.MaxConcurrentClients(true) != 0 {
+		t.Fatal("portable Pro fixture unexpectedly configures client limits")
+	}
+	if config.DataAmount(false) != 0 || config.DataAmount(true) != 0 || config.ReferralBonus != 0 || config.ReferredBonus != 0 {
+		t.Fatal("portable Pro fixture unexpectedly configures a data grant")
+	}
+	if config.PriceMonthlyUsd() != 0 || config.PriceYearlyUsd() != 0 || config.DataCodeDuration != 0 || len(config.DataCodeSkus) != 0 {
+		t.Fatal("portable Pro fixture unexpectedly configures a product for sale")
+	}
+	if config.MaxReferrals != 0 || config.ReferralsCapped(0) || config.SeekerDataMultiplier() != 1 || config.ReferralGrantPeriod() <= 0 {
+		t.Fatal("portable Pro fixture lost the inert referral/task contract")
 	}
 }
 
