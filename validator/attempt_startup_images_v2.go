@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // Absence is an explicit original image, never an empty-file substitute.
@@ -36,7 +37,10 @@ func newAttemptSettlementV2StartupImages(ctx context.Context, coordinator string
 	if err := bounds.validate(); err != nil {
 		return nil, err
 	}
-	paths := []string{coordinator}
+	if err := validateAttemptSettlementV2Paths([]string{coordinator}); err != nil {
+		return nil, err
+	}
+	paths := []string{}
 	seen := map[uint64]bool{}
 	for index, participant := range participants {
 		if err := ctx.Err(); err != nil {
@@ -46,6 +50,11 @@ func newAttemptSettlementV2StartupImages(ctx context.Context, coordinator string
 			return nil, errors.New("compact startup snapshot identity, bytes or absence differs")
 		}
 		seen[participant.NoID] = true
+		// The coordinator may own the operator directories beneath it, as in
+		// live settlement admission. An operator cannot own the coordinator.
+		if participant.StateDir == coordinator || strings.HasPrefix(coordinator, participant.StateDir+string(filepath.Separator)) {
+			return nil, errors.New("compact startup operator cannot contain the coordinator directory")
+		}
 		paths = append(paths, participant.StateDir)
 	}
 	if err := validateAttemptSettlementV2Paths(paths); err != nil {

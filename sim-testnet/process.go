@@ -648,11 +648,17 @@ func releaseTopologyProofCounts(cfg *ResolvedConfig, stateDir string) (map[strin
 // tolerates no restart, and each real validator must complete a fresh verified
 // trail through each real operator after this launch command began.
 func releaseTopologyReady(state SupervisorState, wantHash string, specs []ProcessSpec, supervisorPID int, supervisorStartTimeTicks uint64, baseline, current map[string]int) (bool, error) {
+	return releaseTopologyReadyWithRestartPolicy(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, current, false)
+}
+
+// Provisional startup may recover a child while retaining its actual restart
+// count. Supervisor ownership, current health and fresh proofs still apply.
+func releaseTopologyReadyWithRestartPolicy(state SupervisorState, wantHash string, specs []ProcessSpec, supervisorPID int, supervisorStartTimeTicks uint64, baseline, current map[string]int, allowRecoveredRestarts bool) (bool, error) {
 	if state.SupervisorPID != supervisorPID || state.SupervisorStartTimeTicks != supervisorStartTimeTicks {
 		return false, fmt.Errorf("release topology supervisor generation changed from pid=%d start=%d to pid=%d start=%d", supervisorPID, supervisorStartTimeTicks, state.SupervisorPID, state.SupervisorStartTimeTicks)
 	}
 	for _, process := range state.Processes {
-		if process.Restarts != 0 {
+		if process.Restarts != 0 && !allowRecoveredRestarts {
 			return false, fmt.Errorf("release topology process %s restarted %d time(s)", process.ID, process.Restarts)
 		}
 	}
@@ -675,8 +681,8 @@ func releaseTopologyReady(state SupervisorState, wantHash string, specs []Proces
 }
 
 // Waits for semantic topology evidence without accepting stale proofs from an
-// earlier attempt. A restart is terminal immediately; ordinary startup and
-// trail progress may continue until the bounded launch deadline.
+// earlier attempt. Strict mode rejects restarts; provisional mode permits
+// recovery within the same bounded launch deadline.
 func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, processLogs *processLogGate, timeout time.Duration) error {
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
@@ -696,7 +702,7 @@ func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir
 			return err
 		} else if current, err := releaseTopologyProofCounts(cfg, stateDir); err != nil {
 			lastErr = err
-		} else if ready, err := releaseTopologyReady(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current); err != nil {
+		} else if ready, err := releaseTopologyReadyWithRestartPolicy(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current, provisionalResumeEnabled(cfg)); err != nil {
 			return err
 		} else if ready {
 			return nil
