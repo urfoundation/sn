@@ -16,6 +16,11 @@ func TestTunnelTransportReadsCurrentJwtForEveryTunnel(t *testing.T) {
 		strategy,
 		TunnelTransportConfig{ByClientJwt: func() string { return currentJwt }},
 	)
+	defer func() {
+		if err := transport.CloseAndWait(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	got, err := transport.currentByClientJwt()
 	if err != nil || got != "first" {

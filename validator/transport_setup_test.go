@@ -81,6 +81,11 @@ func TestTunnelTransportCancellationDuringProcessedRegistration(t *testing.T) {
 	strategy := connect.NewClientStrategy(ctx, settings)
 	defer strategy.Close()
 	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: endpoint.URL, ConnectUrl: endpoint.URL, ByClientJwt: func() string { return token }, SourceClientId: connect.NewId()})
+	defer func() {
+		if err := transport.CloseAndWait(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
 	stepCtx, stepCancel := context.WithCancel(ctx)
 	defer stepCancel()
 	done := make(chan error, 1)

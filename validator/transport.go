@@ -8,8 +8,7 @@ package validator
 //
 // Wiring (the connect stack, mirroring urnetwork/proxy/socks/main.go):
 //
-//	ProviderSpec{ClientId: hop}                     — pin the egress
-//	  -> NewApiMultiClientGenerator                 — derived per-tunnel client
+//	NewApiMultiClientGenerator                     — one registered client
 //	  -> NewRemoteUserNatClient                     — packet path to the hop
 //	  <-> connect.Tun (gVisor netstack)             — userspace TCP/IP
 //	  -> http.Transport{DialContext: tun.DialContext}
@@ -18,9 +17,9 @@ package validator
 // dials through itself), so no bytes of the verify exchange leave outside
 // the hop.
 //
-// A tunnel is built per PostVerify call and torn down after: each hop is
-// used exactly once per trail, so there is nothing to pool per-trail; a
-// cross-trail tunnel cache is a later optimization (TODO below).
+// Each request owns a fresh tunnel pinned to its exact hop. One exclusively
+// leased client retains processed key registration across sequential requests;
+// operator shutdown joins its final transport and identity retirement.
 
 import (
 	"bytes"
@@ -57,8 +56,14 @@ type TunnelTransportConfig struct {
 // ctx (the engine's StepTimeout).
 type TunnelTransport struct {
 	ctx            context.Context
+	cancel         context.CancelFunc
 	clientStrategy *connect.ClientStrategy
 	cfg            TunnelTransportConfig
+	clientLease    chan struct{}
+	client         tunnelTransportClient
+	newClient      func(context.Context, connect.Id) (tunnelTransportClient, error)
+	closed         chan struct{}
+	closeErr       error
 }
 
 type tunnelAttemptGenerator interface {
@@ -154,11 +159,19 @@ func (self *tunnelAttempt) closeAndWait(ctx context.Context) error {
 }
 
 func NewTunnelTransport(ctx context.Context, clientStrategy *connect.ClientStrategy, cfg TunnelTransportConfig) *TunnelTransport {
-	return &TunnelTransport{
-		ctx:            ctx,
+	ownerCtx, cancel := context.WithCancel(ctx)
+	self := &TunnelTransport{
+		ctx:            ownerCtx,
+		cancel:         cancel,
 		clientStrategy: clientStrategy,
 		cfg:            cfg,
+		clientLease:    make(chan struct{}, 1),
+		closed:         make(chan struct{}),
 	}
+	self.newClient = self.newRegisteredClient
+	self.clientLease <- struct{}{}
+	go self.run()
+	return self
 }
 
 func (self *TunnelTransport) currentByClientJwt() (string, error) {
@@ -187,102 +200,34 @@ func newTunnelClientSettings() *connect.ClientSettings {
 	return clientSettings
 }
 
-// PostVerify opens an egress-pinned tunnel through hop, POSTs the body to
-// <ApiUrl>/verify through it, and tears the tunnel down. ctx bounds the
-// whole attempt (the engine's StepTimeout).
-//
-// TODO(integration): reuse tunnels across trails keyed by hop with an
-// idle-TTL LRU — saves the ~seconds of client auth + provide-ack per hop at
-// the cost of a supervisor. The per-call construction below is the correct,
-// simple v1.
-func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jsonBody []byte) (responseBody []byte, returnErr error) {
-	tunnelCtx, tunnelCancel := context.WithCancel(self.ctx)
-	attempt := &tunnelAttempt{cancel: tunnelCancel}
-	defer func() {
-		returnErr = errors.Join(returnErr, attempt.close())
-	}()
-
-	hopId := hop
-	byClientJwt, err := self.currentByClientJwt()
+// Each lease constructs and joins its own exact-hop packet path. The
+// registered identity remains alive after request cancellation or rejection.
+func (self *registeredTunnelClient) postVerify(ctx context.Context, hop connect.Id, jsonBody []byte) (responseBody []byte, returnErr error) {
+	byClientJwt, err := self.owner.currentByClientJwt()
 	if err != nil {
 		return nil, err
 	}
-	specs := []*connect.ProviderSpec{
-		{ClientId: &hopId},
+	self.generator.SetByJwt(byClientJwt)
+	if err := self.client.ClientKeyManager().WaitForRegistration(ctx); err != nil {
+		return nil, fmt.Errorf("tunnel client registration: %w", err)
 	}
-	generatorSettings := connect.DefaultApiMultiClientGeneratorSettings()
-	generatorSettings.PlatformTransportCreated = func(_ *connect.Client, transport *connect.PlatformTransport) {
-		attempt.addTransport(transport)
-	}
-	generator := connect.NewApiMultiClientGenerator(
-		// Its private context stays live through client/contract retirement;
-		// CloseAndWait closes it after those owned operations have joined.
-		context.WithoutCancel(self.ctx),
-		specs,
-		self.clientStrategy,
-		// exclude self — a validator may not egress through itself
-		[]connect.Id{self.cfg.SourceClientId},
-		self.cfg.ApiUrl,
-		byClientJwt,
-		self.cfg.ConnectUrl,
-		"validator",
-		"validator",
-		RequireVersion(),
-		&self.cfg.SourceClientId,
-		newTunnelClientSettings,
-		generatorSettings,
-	)
-	attempt.generator = generator
-
 	destination, err := connect.NewMultiHopId(hop)
 	if err != nil {
 		return nil, fmt.Errorf("tunnel destination: %w", err)
 	}
-	args, err := generator.NewClientArgsForDestinationContext(ctx, destination)
-	if err != nil {
-		return nil, fmt.Errorf("tunnel identity: %w", err)
-	}
-	attempt.removeIdentity = func(joinCtx context.Context) error {
-		jwt, err := self.currentByClientJwt()
-		if err != nil {
-			return err
+	tunnelCtx, tunnelCancel := context.WithCancel(ctx)
+	attempt := &tunnelAttempt{cancel: tunnelCancel}
+	self.packetCleanup = attempt
+	defer func() {
+		closeErr := attempt.close()
+		if closeErr != nil {
+			// An unjoined packet path cannot share this identity with another hop.
+			self.cleanup.cancel()
+		} else {
+			self.packetCleanup = nil
 		}
-		result, err := connect.HttpPostWithStrategy(joinCtx, self.clientStrategy,
-			self.cfg.ApiUrl+"/network/remove-client", &connect.RemoveNetworkClientArgs{ClientId: args.ClientId}, jwt,
-			&connect.RemoveNetworkClientResult{}, connect.NewNoopApiCallback[*connect.RemoveNetworkClientResult]())
-		if err != nil {
-			return err
-		}
-		if result == nil {
-			return errors.New("client removal returned no result")
-		}
-		// The generator's best-effort removal may have won the race. The API
-		// scopes this exact derived client ID to the authenticated network.
-		if result.Error != nil && result.Error.Message != "Client does not exist." {
-			return errors.New(result.Error.Message)
-		}
-		return nil
-	}
-	// Setup consumes the caller's existing step budget. A generic multi-client
-	// window has its own 15-second expansion deadline and can discard a client
-	// whose processed registration succeeds after that deadline. This hop has
-	// exactly one prescribed destination, so admit it directly after registration
-	// and only then emit the HTTP request's first packet.
-	client, err := generator.NewClientContext(tunnelCtx, ctx, args, newTunnelClientSettings())
-	if err != nil {
-		// NewClientContext owns failed-client/args retirement once setup starts;
-		// the generator join below includes that retirement.
-		return nil, fmt.Errorf("tunnel client setup: %w", err)
-	}
-	attempt.retireClient = func(joinCtx context.Context) error {
-		generator.RemoveClientWithArgs(client, args)
-		client.Cancel()
-		joinErr := client.CloseAndWait(joinCtx)
-		if control, ok := client.ClientOob().(interface{ CloseAndWait(context.Context) error }); ok {
-			joinErr = errors.Join(joinErr, control.CloseAndWait(joinCtx))
-		}
-		return joinErr
-	}
+		returnErr = errors.Join(returnErr, closeErr)
+	}()
 
 	tun, err := connect.CreateTunWithDefaults(tunnelCtx)
 	if err != nil {
@@ -291,19 +236,14 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 	attempt.tun = tun
 
 	packetClient := connect.NewRemoteUserNatClient(
-		client,
-		func(source connect.TransferPath, provideMode protocol.ProvideMode, ipPath *connect.IpPath, packet []byte) {
-			if _, err := tun.Write(packet); err != nil {
-				// netstack rejected the packet — drop; TCP retransmit or
-				// the request timeout handles it.
-			}
-		},
+		self.client,
+		newTunnelPacketReceiver(tunnelCtx, hop, tun),
 		[]connect.MultiHopId{destination},
 		protocol.ProvideMode_Network,
 	)
 	attempt.packetClient = packetClient
 
-	source := connect.SourceId(self.cfg.SourceClientId)
+	source := connect.SourceId(self.owner.cfg.SourceClientId)
 	pumpDone := make(chan struct{})
 	attempt.pumpDone = pumpDone
 	go connect.HandleError(func() {
@@ -319,15 +259,15 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		}
 	})
 
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			DialContext:       tun.DialContext,
-			DisableKeepAlives: true,
-			ForceAttemptHTTP2: false,
-		},
+	httpTransport := &http.Transport{
+		DialContext:       tun.DialContext,
+		DisableKeepAlives: true,
+		ForceAttemptHTTP2: false,
 	}
+	defer httpTransport.CloseIdleConnections()
+	httpClient := &http.Client{Transport: httpTransport}
 
-	request, err := http.NewRequestWithContext(ctx, "POST", self.cfg.ApiUrl+"/verify", bytes.NewReader(jsonBody))
+	request, err := http.NewRequestWithContext(ctx, "POST", self.owner.cfg.ApiUrl+"/verify", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -346,6 +286,17 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		return nil, fmt.Errorf("verify post via %s: http %d: %s", hop, response.StatusCode, truncateForLog(responseBody))
 	}
 	return responseBody, nil
+}
+
+// Shared identities may still receive a previous hop's delayed packets. Only
+// the authenticated requested source can write into this request's netstack.
+func newTunnelPacketReceiver(ctx context.Context, hop connect.Id, writer io.Writer) connect.ReceivePacketFunction {
+	return func(source connect.TransferPath, _ protocol.ProvideMode, _ *connect.IpPath, packet []byte) {
+		if ctx.Err() != nil || source.SourceId != hop {
+			return
+		}
+		_, _ = writer.Write(packet)
+	}
 }
 
 func truncateForLog(b []byte) string {

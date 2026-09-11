@@ -348,17 +348,20 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	platformTransport := connect.NewPlatformTransportWithDefaults(ctx, strategy, identityClient.RouteManager(), op.ConnectURL, &connect.ClientAuth{
 		ByJwt: byClientJWT, InstanceId: instanceID, AppVersion: RequireVersion(),
 	})
+	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	refreshSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
 		if err := clientauth.WriteToken(op.ClientJWTFile, jwt); err != nil {
 			fmt.Printf("validator no_id %d JWT save failed: %v\n", op.NoID, err)
 			cancelled.Store(true)
 			upload.close()
+			transport.Close()
 		}
 		clientOOB.SetByJwt(jwt)
 		platformTransport.SetAuth(&connect.ClientAuth{ByJwt: jwt, InstanceId: instanceID, AppVersion: RequireVersion()})
 	}))
 	logoutSub := api.AddAuthLogoutListener(clientauth.AuthLogoutListenerFunc(func() {
 		upload.close()
+		transport.Close()
 		_ = clientauth.MarkRejected(op.ClientJWTFile, op.NetworkJWTFile)
 		cancelled.Store(true)
 	}))
@@ -368,6 +371,7 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	closeResources := func() error {
 		closeOnce.Do(func() {
 			upload.close()
+			closeErr = errors.Join(closeErr, releaseStageError("tunnel transport", transport.CloseAndWait(context.Background())))
 			refreshSub.Close()
 			logoutSub.Close()
 			closeErr = errors.Join(closeErr, releaseStageError("platform transport", platformTransport.CloseAndWait(context.Background())))
@@ -379,7 +383,6 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 		return closeErr
 	}
 
-	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	engine := NewTrailEngine(clientID, privateKey, transport, NewApiServerKeyRing(api), NewFindProvidersSeedPicker(api, clientID), stats, store, epochFn, TrailEngineConfig{
 		M:                   cfg.Policy.Verify.TrailDepth,
 		StepTimeout:         time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
