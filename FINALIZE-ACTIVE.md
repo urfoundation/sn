@@ -1,6 +1,6 @@
 # Release 1.0 active work index
 
-Updated 2026-09-11 06:17 UTC. Read this index first; use
+Updated 2026-09-11 06:23 UTC. Read this index first; use
 [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md) for detailed history and evidence.
 This is not a source freeze, full-gate certificate or live acceptance report.
 
@@ -18,45 +18,50 @@ adversarial actors. Final acceptance still requires both full gates, the
 approved live RC and three final epochs, investigation of every anomaly, and
 independently replayable on-chain evidence in `FINAL.md`.
 
-## Current frontier — 2026-09-11 06:17 UTC
+## Current frontier — 2026-09-11 06:23 UTC
 
-**INCOMPLETE; final acceptance is false.** Source `36c638dce78ab15a326b30a4f8e6c65ce71d0358` was published at 05:35:31 UTC. CLI4 built
-with actual exit 0 and clean VCS metadata, SHA-256
-`9116cd9ccc30aee55a8cd5e4c1fcecbe19837575d5b56b168628acbea97b0d1b`.
-[Build receipt](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-4/result.json),
-[exact executable identity](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-4/executable.json).
-No subsequent native lock apply or second producer/aggregate gate has run.
-CLI4 predates the typed-metadata repair and does not fix the blocker below.
+**INCOMPLETE; final acceptance is false.** The typed-metadata correction is
+published at source `6b442d1a7a3266f340652167466fd8a91c3de2f9` (06:17:36 UTC).
+Clean CLI5 built with actual exit 0 and SHA-256
+`13e38cb59aad6a7fd2acc0a434ad57db4ecac2edfa4c1008bd1cd60149a04284`.
+[Publication](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/source-publication/sn-typed-metadata/result.json),
+[build identity](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-5/executable.json).
 
-Both R32 validators reached initial terminal publication after semantic startup
-and JWT refresh, then failed deterministically: validator 2 exited 1 at
-05:26:54 and validator 1 at 05:29:58. The epoch-281 NO1/NO2 transition sizes are
-84,896/86,743 bytes for validator 1 and 68,229/63,185 for validator 2; publication
-manifests still stop at epoch 280. An incidental 64KiB stream-metadata cap clips
-the existing 4MiB typed transition allowance before signing/upload. This is a
-capacity bug distinct from earlier RPC timeouts and the user's reported outage.
-The separate server 2MiB cap is unchanged; current payloads fit it.
-[Local diagnosis and retained evidence](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-terminal-metadata-blocker/REPORT.md).
+R33 replaced both managed validator images at 06:20:26.267245 UTC; rollout and
+caller joined actual exit 0. Both old cgroups emptied before replacement,
+and all five protected plan/journal/supervisor/configuration inputs plus the
+original stop timer remained unchanged. New PIDs are 1610835 and 1610836.
+This proves image replacement; application warmup and fresh proof production
+remain pending. The 1,000-provider fleet was not stopped. Only six historical
+proof records have been locally signature-verified.
+[Actual rollout](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/provisional-r33/caller/verified-result.json).
 
-The typed transport correction has completed focused qualification. The first
-normal run retains 39 unaffected passes and two new fixture failures; only the
-new fixture file then changed. Both corrected roots passed three sequential
-normal confirmations on one retained binary, and all 41 focused race roots
-passed. The corrected owner joined actual exit 0 at 06:12:36.814585 UTC with
-all 17 source hashes unchanged. The initial failure remains preserved.
-[Exact tests, binaries and exits](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/metadata-transport-corrected/HANDOFF.md),
-[review and fixture correction](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/typed-metadata-review/FIXTURE-CORRECTION-REVIEW.md).
-Configuration, custody, used activations, page/header bounds and the separate
-server cap remain unchanged. Publish/build the exact clean repaired source,
-then use the prepared, unexecuted
-[R33 rollout owner](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/provisional-r33/README.md) for both managed validators
-and proceed to the second native gates. No new image or restored application
-readiness is claimed. Earlier provisional proofs remain valid historical
-evidence; only six records have been locally signature-verified. Formal RC,
-three production epochs, public replay and shutdown remain pending.
+Native lock apply3 used CLI5 and joined actual exit 0 at 06:21:01.623604 UTC.
+The new lock SHA-256 is
+`f0156a59bf64d9f8693e9900d2b78e40e88b7d55518c28872145ffce00e83cb1`.
+Only the protocol and SN Go source digest bindings changed for the reviewed
+source updates; runtime, contracts, configuration, custody and allowances are
+unchanged. Publish this lock/handoff checkpoint, then build the final-revision
+CLI and start both second native gates in parallel. Neither second gate has
+run at this timestamp. Formal admission and acceptance remain pending.
+[Native lock result](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-apply-3/result.json).
 
-The previous source, first-gate timeout and focused guard history follows
-unchanged; it is not superseded by a fabricated full-gate pass.
+Focused qualification is closed: the first normal run preserves 39 unaffected
+passes and two new fixture failures. Only the new fixture file then changed;
+both corrected roots passed three sequential normal confirmations on one
+retained binary, and all 41 focused race roots passed. The owner joined actual
+exit 0 at 06:12:36.814585 UTC with all 17 source hashes unchanged. These results
+and the reviewed production changes remain valid; no whole-gate PASS is implied.
+[Tests, binaries and exits](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/metadata-transport-corrected/HANDOFF.md),
+[review addendum](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/typed-metadata-review/FIXTURE-CORRECTION-REVIEW.md).
+
+The repaired bug clipped the approved 4MiB typed transition allowance to a
+64KiB stream page limit. Retained epoch-281 transitions were 84,896/86,743 bytes
+for validator 1 and 68,229/63,185 for validator 2. Page/header bounds and the
+separate server 2MiB limit are unchanged. This deterministic source failure is
+distinct from the earlier RPC timeouts and the user's reported transient outage.
+[Diagnosis](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-terminal-metadata-blocker/REPORT.md).
+Formal RC, three production epochs, public replay and shutdown remain pending.
 
 ## Historical frontier — 2026-09-11 05:33 UTC
 
