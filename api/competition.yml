@@ -1,6 +1,6 @@
 openapi: "3.1.0"
 info:
-  version: 2026.9.10
+  version: 2026.9.11
   title: URnetwork Competition API
   description: |
     Control-plane API for reproducible, cached sim-latency competition rounds.
@@ -253,7 +253,7 @@ paths:
     post:
       operationId: CompetitionSubmitScore
       tags: [Competition]
-      summary: Validate, canonicalize, cache, and enqueue a patch
+      summary: Validate, cache, and enqueue an already canonical patch
       description: |
         The response is asynchronous. Submitting identical canonical patch
         bytes for the same round returns the existing job and cannot buy
@@ -830,6 +830,15 @@ components:
           type: string
           minLength: 1
           maxLength: 262144
+          description: |
+            Exact UTF-8 unified-diff bytes. The API validates but does not
+            rewrite this value: use LF (`0x0a`) line endings, no CR bytes,
+            and exactly one final LF (the value must end in `\n` but not
+            `\n\n`). File sections must be sorted lexicographically by path
+            and use canonical `diff --git`, `--- a/path`, `+++ b/path`, and
+            valid `@@` hunk forms. Only regular 100644 modifications to the
+            published allowlist are accepted. Preserve the final LF when
+            encoding JSON; shell command substitution commonly removes it.
 
     CompetitionScoreAcceptedResult:
       type: object
@@ -844,7 +853,7 @@ components:
           format: uuid
         staging:
           type: boolean
-          description: True when this admission is an uncharged API-integration test that will not be evaluated.
+          description: True for a fee-free staging-era job that enters the real FIFO evaluator against source epoch zero.
         patch_sha256:
           $ref: "#/components/schemas/Sha256"
         state:
