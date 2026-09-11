@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 15:08 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 16:05 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -17,8 +17,17 @@ gates are no longer conditions of completing this testnet exercise.
 1. Reuse the existing attempt-4 plan and completed receipts. The carry repair,
    database migration and configuration rendering are complete. Do not repeat
    them or regenerate the plan for a provisional driver correction.
-2. Run resume and then release-candidate with explicit --provisional-resume,
-   using the retained configuration and corrected driver. Keep native custody,
+2. Keep the existing `epoch` scenario running with explicit --provisional-resume,
+   using the retained configuration and corrected driver. Its actual run is
+   `20260911T155651.867116381Z-epoch`, started at 15:56:51 UTC. It observes
+   the transition from settlement 293 to 294 on the working fleet; it does not
+   certify the full release or production acceptance window. Fix failures
+   observed by this run and report its actual outcome.
+   The full release attempt completed all 16 lifecycle preparation actions,
+   then stopped before acceptance because its planned pruning target was UID 7
+   while the computed and recorded target was UID 1. Preserve that attempt and
+   failure; defer the pruning/fault campaign while the epoch scenario runs.
+   Keep native custody,
    spending limits, journal serialization, process ownership and live health.
    Process log classifications are observations in this mode: preserve every
    finding and its original classification without stopping the fleet for it.
@@ -45,10 +54,10 @@ gates are no longer conditions of completing this testnet exercise.
    both prerequisites as waived. Do not repeat probe funding or commitments
    to enter the traffic run; keep actual takeover binding actions and their
    spending/transaction postconditions. Full conformance remains unproven.
-   The user authorized the owned LAN RPC at 192.168.1.162 and removal of all
-   RPC rate limits on that route. Once its exposed port and testnet identity
-   are confirmed, route native and EVM traffic there using an invocation-only
-   provisional transport override and the existing workload fault proxies.
+   The owned LAN RPC at 192.168.1.162:9944 has been verified against testnet
+   chain 945 and the original native genesis. Native and EVM traffic now use
+   that route through an invocation-only provisional transport override and
+   the existing workload fault proxies, with all RPC rate limits removed.
    Record the actual endpoints and zero RPC rate limits. Retain the approved
    plan, signed inputs, receipts and spending limits; omit independent public
    RPC comparison in this mode and keep final_acceptance=false.
@@ -100,8 +109,14 @@ proofs.
 Also deployed in CLI25: validated provisional shared boundary preparation receives a
 120-second canonical-read budget within its existing producer deadline (240
 seconds in this run). Trail/packet deadlines and ordinary reads remain 30
-seconds. The public RPC quota remains until the owned LAN route is enabled;
-canonical checks remain in place and live proof success is pending.
+seconds. The owned LAN route now has no RPC request quota; canonical checks
+remain in place. CLI27 also corrected the stale dedicated Connect binary,
+which had disabled subnet egress attribution. This produced 660 additional
+proof rows across all four validator/operator paths before the epoch scenario.
+During that scenario, the settlement owner has remained at 292 while the
+chain and trail workers request 293. Fresh proofs and validator publication
+have stopped advancing; diagnose this actual transition without restarting
+preparation. No payout or finalized validator intent has been established.
 
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
