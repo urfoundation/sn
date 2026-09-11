@@ -1,5 +1,13 @@
 # sim-testnet finalization report
 
+**Current status — 2026-09-11 07:48 UTC: INCOMPLETE.** The user has replaced the
+preparation-heavy finalization sequence with [the live execution plan](FINALIZE-ACTIVE.md).
+No new preparation tests or complete gates are required before launch. The known
+resume correction and the already rehearsed live database migration are being
+completed in parallel, followed by one plan/resume and the actual campaign.
+The campaign has not started at this timestamp. The historical snapshots below
+retain their original times and do not describe the current execution policy.
+
 **Verdict: INCOMPLETE. `final_acceptance: false`.** As of 2026-09-11 06:23 UTC, the typed-metadata fix is published at `6b442d1a7a3266f340652167466fd8a91c3de2f9`, its focused normal/race qualification is complete, and R33 has replaced both managed validator images. Fresh application/proof readiness is pending. Native lock apply3 joined actual exit 0; publishing the lock checkpoint, building the final CLI and running both second native gates remain next. Formal campaigns and independent public replay remain pending. This report follows [FINALIZE.md](FINALIZE.md) and [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md) and preserves the first gate failures below.
 
 Before R33, the provisional workload retained its 1,000-provider fleet while both managed R32 validators automatically restarted after startup RPC timeouts. At the exact 05:25:08.896735 [restart/readiness snapshot](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-restarts-20260911T0521/README.md), both replacement processes were alive at restart count 4; neither current invocation had an application-running marker or new completed trail. Retained record counts were 92 + 89 for validator 1 and 42 + 40 for validator 2. The earlier 04:21:56.664017 [recorder sample](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/provisional-r30/observational-soak.jsonl) remains historical evidence of 20 healthy swarms and both validators active with zero restarts at that time. **Only six records have been locally signature-verified:** validator 1 has one per operator in each of epochs 278 and 280; validator 2 has one per operator in epoch 280. Validator 1's two R32 records completed with all background workers resumed. Later counts are not additional signature qualification or evidence of current application readiness. The earlier [02:24 workload review](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workload-blocker.md) retains registration/boundary failures and native epoch 1381 deferral without submission.

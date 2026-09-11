@@ -63,6 +63,10 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 		return nil, err
 	}
 	actions = append(actions, boundaryAction)
+	entries, err = runtimeEvidenceSetupCarryHistoryV2(stateDir, plan, source, actions, entries)
+	if err != nil {
+		return nil, err
+	}
 	allowed := plan.allowedPlanHashes()
 	for _, action := range actions {
 		current, err := exactPlanActionByID(plan, action.ID)
@@ -144,6 +148,87 @@ func runtimeEvidenceSetupSourcePlanV2(cfg *ResolvedConfig, plan *SetupPlan, stat
 		return nil, errors.New("activation setup completion receipt differs from original prepared bytes or boundary")
 	}
 	return source, nil
+}
+
+// The full journal has already been authenticated by its reader. This local
+// view excludes only closed attempts from before the successful setup owner;
+// retained entries keep their original hashes, order and transaction evidence.
+func runtimeEvidenceSetupCarryHistoryV2(stateDir string, plan, source *SetupPlan, actions []Action, entries []JournalEntry) ([]JournalEntry, error) {
+	relevant := make(map[string]Action, len(actions))
+	for _, action := range actions {
+		relevant[action.ID] = action
+	}
+	var firstSourceSequence, previousSequence uint64
+	for _, entry := range entries {
+		if entry.Sequence <= previousSequence {
+			return nil, errors.New("activation setup carry journal order differs")
+		}
+		previousSequence = entry.Sequence
+		if _, exists := relevant[entry.ActionID]; exists && entry.PlanHash == source.PlanHash && firstSourceSequence == 0 {
+			firstSourceSequence = entry.Sequence
+		}
+	}
+	allowed, ancestors := plan.allowedPlanHashes(), source.allowedPlanHashes()
+	archives := make(map[string]*SetupPlan)
+	pending := make(map[string]JournalEntry)
+	view := make([]JournalEntry, 0, len(entries))
+	for _, entry := range entries {
+		action, exists := relevant[entry.ActionID]
+		if !exists || !allowed[entry.PlanHash] || entry.PlanHash == source.PlanHash {
+			view = append(view, entry)
+			continue
+		}
+		if !ancestors[entry.PlanHash] || entry.PlanHash == plan.PlanHash || firstSourceSequence == 0 || entry.Sequence >= firstSourceSequence || entry.DeploymentID != source.DeploymentID {
+			return nil, errors.New("activation setup carry contains competing or unfinished ancestor progress")
+		}
+		// Whitelist identity, ordering and failure text. Every signer, nonce,
+		// transaction, recovery, fee and receipt field must remain zero.
+		identity := JournalEntry{Schema: entry.Schema, Sequence: entry.Sequence, Time: entry.Time, DeploymentID: entry.DeploymentID,
+			PlanHash: entry.PlanHash, ActionID: entry.ActionID, IntentHash: entry.IntentHash, Stage: entry.Stage,
+			Error: entry.Error, PreviousHash: entry.PreviousHash, EntryHash: entry.EntryHash}
+		if entry != identity {
+			return nil, errors.New("activation setup ancestor attempt has transaction or receipt metadata")
+		}
+		archive := archives[entry.PlanHash]
+		if archive == nil {
+			var err error
+			archive, err = readValidatorEvidenceHistoricalPlan(stateDir, entry.PlanHash)
+			if err != nil {
+				return nil, err
+			}
+			if archive.DeploymentID != source.DeploymentID || archive.ChainID != source.ChainID || archive.GenesisHash != source.GenesisHash || archive.Netuid != source.Netuid || archive.Owner != source.Owner {
+				return nil, errors.New("activation setup ancestor approval has another deployment domain")
+			}
+			archives[entry.PlanHash] = archive
+		}
+		original, err := exactPlanActionByID(archive, entry.ActionID)
+		if err != nil {
+			return nil, err
+		}
+		intent, err := actionIntentHash(original)
+		if err != nil || original.Kind != action.Kind || intent != original.IntentHash || entry.IntentHash != intent {
+			return nil, errors.Join(errors.New("activation setup ancestor attempt differs from its archived action"), err)
+		}
+		switch entry.Stage {
+		case StageIntent:
+			if _, exists := pending[entry.ActionID]; exists || entry.Error != "" {
+				return nil, errors.New("activation setup ancestor attempt is already pending")
+			}
+			pending[entry.ActionID] = entry
+		case StageFailed:
+			intent, exists := pending[entry.ActionID]
+			if !exists || intent.PlanHash != entry.PlanHash || intent.IntentHash != entry.IntentHash || intent.Sequence >= entry.Sequence {
+				return nil, errors.New("activation setup ancestor failure has no original pending intent")
+			}
+			delete(pending, entry.ActionID)
+		default:
+			return nil, errors.New("activation setup ancestor attempt has durable progress")
+		}
+	}
+	if len(pending) != 0 {
+		return nil, errors.New("activation setup ancestor attempt remains pending")
+	}
+	return view, nil
 }
 
 // Refuse a revision of partial/foreign setup before producing a new approval.

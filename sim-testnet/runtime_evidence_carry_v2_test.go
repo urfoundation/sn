@@ -32,11 +32,20 @@ import (
 // anchor, then sign all four original sources under that same approval.
 func newRuntimeEvidenceSetupOriginalCarryV2Test(t *testing.T) *runtimeEvidenceProvisionV2TestFixture {
 	t.Helper()
+	return newRuntimeEvidenceSetupOriginalCarryHistoryV2Test(t, nil)
+}
+
+// Insert predecessor history before any original setup bytes are signed.
+func newRuntimeEvidenceSetupOriginalCarryHistoryV2Test(t *testing.T, beforePreparation func(*Executor)) *runtimeEvidenceProvisionV2TestFixture {
+	t.Helper()
 	creation := newValidatorEvidenceActivationCarryTestFixture(t)
 	executor := creation.executor
 	executor.plan.validatorEvidenceObserved = creation.authenticate(t)
 	if err := executor.journal.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if beforePreparation != nil {
+		beforePreparation(executor)
 	}
 	prepared := &runtimeEvidenceActivationPreparedV2{Schema: "urnetwork-sim-evidence-activation-prepared-v2", PlanHash: executor.plan.PlanHash, ConfigHash: executor.cfg.ConfigHash, PolicyHash: executor.cfg.PolicyHash, Epoch: 9,
 		Native: ChainHead{Number: 100, Hash: common.Hash{0x31}.Hex()}, Evm: ChainHead{Number: 200, Hash: common.Hash{0x32}.Hex()}}

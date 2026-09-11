@@ -1,5 +1,16 @@
 # Release 1.0 testnet completion handoff
 
+## Execution override — 2026-09-11 07:48 UTC
+
+The user has directed us to stop preparation tests and run the actual testnet
+simulation, fixing issues from that run. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md)
+is now the controlling, shortened execution plan. Full producer/aggregate gates,
+repeated confirmation tests, duplicate plan comparisons and separate pre-launch
+smoke rehearsals are no longer launch or testnet-completion prerequisites.
+Retain spending limits, custody, saved progress and one writer per transaction
+stream. Reuse completed work and report omitted checks as omitted, never PASS.
+The older requirements and frontiers below are historical wherever they conflict.
+
 Start with [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) for the concise current
 work/ownership index. The detailed records below retain historical evidence;
 do not reload the whole history for routine test status.
