@@ -27,6 +27,24 @@ type HTTPAttemptStreamV2Reader struct {
 	client        *http.Client
 }
 
+const attemptStreamV2HTTPIOTimeout = 30 * time.Second
+
+// Charge only network I/O to the transport budget. Replay authenticates and
+// synchronously indexes rows between Reads; that work is not a stalled body.
+// Joining an expired timer prevents it from canceling a later operation.
+func attemptStreamV2HTTPDeadline(cancel context.CancelCauseFunc, remaining time.Duration) func() {
+	finished := make(chan struct{})
+	timer := time.AfterFunc(remaining, func() {
+		defer close(finished)
+		cancel(context.DeadlineExceeded)
+	})
+	return func() {
+		if !timer.Stop() {
+			<-finished
+		}
+	}
+}
+
 // Uses a dedicated typed endpoint; generic evidence object limits are unchanged.
 // Loopback HTTP is supported for the explicitly configured local testnet origins.
 func NewHTTPAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds) (*HTTPAttemptStreamV2Reader, error) {
@@ -63,7 +81,7 @@ func newHttpAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds, meta
 	return &HTTPAttemptStreamV2Reader{
 		endpoint: *endpoint, metadataBytes: metadataBytes,
 		recordBytes: bounds.Records.MaxChunkBytes, proofBytes: bounds.Proofs.MaxChunkBytes,
-		client: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+		client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
 	}, nil
@@ -118,7 +136,14 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 	}
 	endpoint := self.endpoint
 	endpoint.RawQuery = url.Values{"kind": {kind}, "hash": {contentHash}}.Encode()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	requestCtx, cancel := context.WithCancelCause(ctx)
+	transferred := false
+	defer func() {
+		if !transferred {
+			cancel(nil)
+		}
+	}()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -128,14 +153,21 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 	}
 	request.Header.Set("Accept", contentType)
 	request.Header.Set("Accept-Encoding", "identity")
+	started := time.Now()
+	stopDeadline := attemptStreamV2HTTPDeadline(cancel, attemptStreamV2HTTPIOTimeout)
 	response, err := self.client.Do(request)
+	stopDeadline()
+	remainingIO := attemptStreamV2HTTPIOTimeout - time.Since(started)
+	if remainingIO <= 0 {
+		cancel(context.DeadlineExceeded)
+	}
 	if err != nil {
-		return nil, errors.Join(err, ctx.Err())
+		return nil, errors.Join(err, context.Cause(requestCtx))
 	}
 	refuse := func(cause error) (io.ReadCloser, error) {
-		return nil, errors.Join(cause, response.Body.Close(), ctx.Err())
+		return nil, errors.Join(cause, response.Body.Close(), context.Cause(requestCtx))
 	}
-	if err := ctx.Err(); err != nil {
+	if err := context.Cause(requestCtx); err != nil {
 		return refuse(err)
 	}
 	if response.StatusCode != http.StatusOK {
@@ -152,22 +184,25 @@ func (self *HTTPAttemptStreamV2Reader) open(ctx context.Context, kind, contentHa
 	if response.ContentLength >= 0 && uint64(response.ContentLength) != size {
 		return refuse(errors.New("attempt stream HTTP content length differs from its authenticated size"))
 	}
-	return &attemptStreamV2HTTPBody{ctx: ctx, body: response.Body, remaining: size, expected: expected, digest: sha256.New()}, nil
+	transferred = true
+	return &attemptStreamV2HTTPBody{ctx: requestCtx, cancel: cancel, remainingIO: remainingIO, body: response.Body, remaining: size, expected: expected, digest: sha256.New()}, nil
 }
 
 // One caller owns Read/Close; methods are not concurrent. Byte/hash checks stay
 // streaming, and no synthetic EOF can hide a trailing byte or transport error.
 type attemptStreamV2HTTPBody struct {
-	ctx        context.Context
-	body       io.ReadCloser
-	remaining  uint64
-	expected   [32]byte
-	digest     hash.Hash
-	verified   bool
-	closed     bool
-	fault      error
-	closeErr   error
-	emptyReads int
+	ctx         context.Context
+	cancel      context.CancelCauseFunc
+	remainingIO time.Duration
+	body        io.ReadCloser
+	remaining   uint64
+	expected    [32]byte
+	digest      hash.Hash
+	verified    bool
+	closed      bool
+	fault       error
+	closeErr    error
+	emptyReads  int
 }
 
 // Retains the first failure; bytes returned with an error are never authority.
@@ -178,7 +213,7 @@ func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 	if self.fault != nil {
 		return 0, self.fault
 	}
-	if err := self.ctx.Err(); err != nil {
+	if err := context.Cause(self.ctx); err != nil {
 		self.fault = err
 		return 0, err
 	}
@@ -189,14 +224,21 @@ func (self *attemptStreamV2HTTPBody) Read(value []byte) (int, error) {
 		return 0, nil
 	}
 	value = value[:min(uint64(len(value)), self.remaining+1)]
+	started := time.Now()
+	stopDeadline := attemptStreamV2HTTPDeadline(self.cancel, self.remainingIO)
 	count, readErr := self.body.Read(value)
+	stopDeadline()
+	self.remainingIO -= time.Since(started)
+	if self.remainingIO <= 0 {
+		self.cancel(context.DeadlineExceeded)
+	}
 	if count < 0 || count > len(value) || uint64(count) > self.remaining {
 		self.fault = errors.New("attempt stream HTTP body exceeds its authenticated size")
 		return 0, self.fault
 	}
 	self.remaining -= uint64(count)
 	_, _ = self.digest.Write(value[:count])
-	if err := self.ctx.Err(); err != nil {
+	if err := context.Cause(self.ctx); err != nil {
 		self.fault = errors.Join(readErr, err)
 		return count, self.fault
 	}
@@ -231,10 +273,11 @@ func (self *attemptStreamV2HTTPBody) Close() error {
 		return self.closeErr
 	}
 	self.closed = true
+	defer self.cancel(nil)
 	var incomplete error
 	if !self.verified {
 		incomplete = errors.New("attempt stream HTTP body closed before complete authenticated EOF")
 	}
-	self.closeErr = errors.Join(self.fault, incomplete, self.body.Close(), self.ctx.Err())
+	self.closeErr = errors.Join(self.fault, incomplete, self.body.Close(), context.Cause(self.ctx))
 	return self.closeErr
 }
