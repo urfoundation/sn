@@ -70,6 +70,13 @@ type OperatorLifecyclePayoutArtifactObservation struct {
 	Clients     []OperatorPayoutClientTierObservation `json:"clients"`
 }
 
+type ProvisionalPayoutCohortObservation struct {
+	Scope           string `json:"scope"`
+	Provisional     bool   `json:"provisional"`
+	FinalAcceptance bool   `json:"final_acceptance"`
+	Error           string `json:"error"`
+}
+
 type OperatorObservation struct {
 	NoID                        int                                          `json:"no_id"`
 	APIURL                      string                                       `json:"api_url"`
@@ -106,6 +113,7 @@ type OperatorObservation struct {
 	PoolTailHeadExcluded        int                                          `json:"pool_tail_head_excluded,omitempty"`
 	PoolTailLeaves              int                                          `json:"pool_tail_leaves,omitempty"`
 	TierMembershipValid         bool                                         `json:"tier_membership_valid"`
+	ProvisionalPayoutCohort     *ProvisionalPayoutCohortObservation          `json:"provisional_payout_cohort,omitempty"`
 	Error                       string                                       `json:"error,omitempty"`
 }
 
@@ -1134,6 +1142,12 @@ type payoutTierMembership struct {
 	PoolTailLeaves        int
 }
 
+// The release's configured cohort is distinct from actual epoch binding state.
+// Structural artifact errors must never receive this classification.
+type payoutCohortExpectationError struct{ message string }
+
+func (err *payoutCohortExpectationError) Error() string { return err.message }
+
 func summarizePayoutTierMembership(cfg *ResolvedConfig, noID int, artifact *payoutArtifact, minerClients map[[16]byte]int) (payoutTierMembership, error) {
 	candidates := make(map[int]bool, cfg.Config.Topology.fleetCandidateMiners())
 	for miner := 1; miner <= cfg.Config.Topology.fleetCandidateMiners(); miner++ {
@@ -1178,25 +1192,36 @@ func summarizePayoutTierMembershipForCandidates(cfg *ResolvedConfig, noID int, a
 			return result, fmt.Errorf("artifact provider has an unknown, foreign, or duplicate client id")
 		}
 		providers[provider.ClientID] = true
+	}
+	// Validate every provider identity before classifying a cohort mismatch.
+	// Otherwise an early candidate mismatch could hide a later corrupt entry.
+	var cohortError *payoutCohortExpectationError
+	for _, provider := range artifact.Providers {
+		miner := minerClients[provider.ClientID]
 		result.Providers++
 		if candidates[miner] {
 			result.CandidateProviders++
 			if provider.HeadExcluded {
 				result.CandidateHeadExcluded++
 			}
-			if !provider.HeadExcluded || provider.ExclusionReason != "head_fleet_active" || leaves[provider.ClientID] {
-				return result, fmt.Errorf("candidate miner %d is not exclusively excluded from its pool", miner)
+			if (!provider.HeadExcluded || provider.ExclusionReason != "head_fleet_active" || leaves[provider.ClientID]) && cohortError == nil {
+				cohortError = &payoutCohortExpectationError{fmt.Sprintf("candidate miner %d is not exclusively excluded from its pool", miner)}
 			}
 		} else {
 			result.PoolTailProviders++
 			if provider.HeadExcluded {
 				result.PoolTailHeadExcluded++
-				return result, fmt.Errorf("pool-tail miner %d is incorrectly head-excluded", miner)
+				if cohortError == nil {
+					cohortError = &payoutCohortExpectationError{fmt.Sprintf("pool-tail miner %d is incorrectly head-excluded", miner)}
+				}
 			}
 		}
 	}
+	if cohortError != nil {
+		return result, cohortError
+	}
 	if result.CandidateProviders != expectedCandidate || result.CandidateHeadExcluded != expectedCandidate || result.PoolTailProviders != expectedTail || result.CandidateLeaves != 0 || result.PoolTailHeadExcluded != 0 || result.PoolTailLeaves == 0 {
-		return result, fmt.Errorf("tier membership candidate=%d/%d excluded=%d leaves=%d tail=%d/%d excluded=%d leaves=%d", result.CandidateProviders, expectedCandidate, result.CandidateHeadExcluded, result.CandidateLeaves, result.PoolTailProviders, expectedTail, result.PoolTailHeadExcluded, result.PoolTailLeaves)
+		return result, &payoutCohortExpectationError{fmt.Sprintf("tier membership candidate=%d/%d excluded=%d leaves=%d tail=%d/%d excluded=%d leaves=%d", result.CandidateProviders, expectedCandidate, result.CandidateHeadExcluded, result.CandidateLeaves, result.PoolTailProviders, expectedTail, result.PoolTailHeadExcluded, result.PoolTailLeaves)}
 	}
 	return result, nil
 }
@@ -1518,7 +1543,15 @@ func (p *liveScenarioProbe) inspectOperatorAt(ctx context.Context, contracts *Co
 		o.PoolTailLeaves = membership.PoolTailLeaves
 		o.TierMembershipValid = membershipErr == nil
 		if membershipErr != nil {
-			problems = append(problems, "latest artifact tier membership: "+membershipErr.Error())
+			var cohortError *payoutCohortExpectationError
+			if provisionalResumeEnabled(p.cfg) && errors.As(membershipErr, &cohortError) {
+				o.ProvisionalPayoutCohort = &ProvisionalPayoutCohortObservation{
+					Scope: "configured-release-cohort-expectation", Provisional: true, FinalAcceptance: false,
+					Error: "latest artifact tier membership: " + cohortError.Error(),
+				}
+			} else {
+				problems = append(problems, "latest artifact tier membership: "+membershipErr.Error())
+			}
 		}
 	}
 	sort.Strings(o.ArtifactHashes)
