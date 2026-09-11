@@ -17,29 +17,30 @@ import (
 )
 
 type provisionalLiveTopology struct {
-	Schema                   string                      `json:"schema"`
-	Provisional              bool                        `json:"provisional"`
-	FinalAcceptance          bool                        `json:"final_acceptance"`
-	FullDoctorSkipped        bool                        `json:"full_doctor_skipped,omitempty"`
-	PlanHash                 string                      `json:"plan_hash"`
-	StartedAt                string                      `json:"started_at"`
-	CompletedAt              string                      `json:"completed_at,omitempty"`
-	ManifestHash             string                      `json:"supervisor_manifest_hash"`
-	ManifestBytesSHA256      string                      `json:"supervisor_manifest_bytes_sha256"`
-	SupervisorBinarySHA256   string                      `json:"supervisor_binary_sha256"`
-	SupervisorPID            int                         `json:"supervisor_pid"`
-	SupervisorStartTimeTicks uint64                      `json:"supervisor_start_time_ticks"`
-	Driver                   provisionalDriverProvenance `json:"actual_driver"`
-	ProvenancePath           string                      `json:"driver_provenance_path"`
-	ProcessLogGatePath       string                      `json:"process_log_gate_path"`
-	ProofBaseline            map[string]int              `json:"proof_baseline"`
-	FreshProofStartupWaived  bool                        `json:"fresh_proof_startup_waived"`
-	ObservedProofCounts      map[string]int              `json:"observed_proof_counts,omitempty"`
-	ObservedProofCountsAt    string                      `json:"observed_proof_counts_at,omitempty"`
-	ObservedProofsVerified   bool                        `json:"observed_proof_counts_verified"`
-	VerifiedProofCounts      map[string]int              `json:"verified_proof_counts,omitempty"`
-	PriorRestarts            map[string]int              `json:"prior_process_restarts"`
-	manifest                 SupervisorFile
+	Schema                              string                      `json:"schema"`
+	Provisional                         bool                        `json:"provisional"`
+	FinalAcceptance                     bool                        `json:"final_acceptance"`
+	FullDoctorSkipped                   bool                        `json:"full_doctor_skipped,omitempty"`
+	DeploymentEvidencePublicationWaived bool                        `json:"deployment_evidence_publication_waived"`
+	PlanHash                            string                      `json:"plan_hash"`
+	StartedAt                           string                      `json:"started_at"`
+	CompletedAt                         string                      `json:"completed_at,omitempty"`
+	ManifestHash                        string                      `json:"supervisor_manifest_hash"`
+	ManifestBytesSHA256                 string                      `json:"supervisor_manifest_bytes_sha256"`
+	SupervisorBinarySHA256              string                      `json:"supervisor_binary_sha256"`
+	SupervisorPID                       int                         `json:"supervisor_pid"`
+	SupervisorStartTimeTicks            uint64                      `json:"supervisor_start_time_ticks"`
+	Driver                              provisionalDriverProvenance `json:"actual_driver"`
+	ProvenancePath                      string                      `json:"driver_provenance_path"`
+	ProcessLogGatePath                  string                      `json:"process_log_gate_path"`
+	ProofBaseline                       map[string]int              `json:"proof_baseline"`
+	FreshProofStartupWaived             bool                        `json:"fresh_proof_startup_waived"`
+	ObservedProofCounts                 map[string]int              `json:"observed_proof_counts,omitempty"`
+	ObservedProofCountsAt               string                      `json:"observed_proof_counts_at,omitempty"`
+	ObservedProofsVerified              bool                        `json:"observed_proof_counts_verified"`
+	VerifiedProofCounts                 map[string]int              `json:"verified_proof_counts,omitempty"`
+	PriorRestarts                       map[string]int              `json:"prior_process_restarts"`
+	manifest                            SupervisorFile
 }
 
 // The full plan retains campaign/retirement reserves after setup is done.
@@ -114,7 +115,8 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 	}
 	adoption := &provisionalLiveTopology{
 		Schema: "urnetwork-sim-provisional-live-topology-v1", Provisional: true, FinalAcceptance: false,
-		PlanHash: cfg.provisionalResume.Record.PlanHash, StartedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		DeploymentEvidencePublicationWaived: true,
+		PlanHash:                            cfg.provisionalResume.Record.PlanHash, StartedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		ManifestHash: hash, ManifestBytesSHA256: bytesSHA256(raw), SupervisorBinarySHA256: binaryHash,
 		SupervisorPID: live.SupervisorPID, SupervisorStartTimeTicks: live.SupervisorStartTimeTicks,
 		Driver: cfg.provisionalResume.Driver, ProvenancePath: cfg.provisionalResume.RecordPath,
@@ -299,7 +301,7 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 	if err != nil {
 		return err
 	}
-	// Bound only actual process readiness. Journal and publication work below
+	// Bound only actual process readiness. Journal and topology actions below
 	// keep the caller's context rather than inheriting this short startup bound.
 	readinessCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -380,9 +382,11 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 	if err := executePostTopologyTournament(ctx, plan, executor); err != nil {
 		return err
 	}
-	if err := publishDeploymentEvidence(ctx, cfg, stateDir, plan, roles, gate); err != nil {
-		return err
-	}
+	// Public deployment publication revalidates superseded historical evidence.
+	// The provisional run-first waiver preserves those files and prior errors
+	// without creating a replacement manifest or claiming publication succeeded.
+	adoption.DeploymentEvidencePublicationWaived = true
+	fmt.Fprintln(os.Stderr, "sim-testnet: provisional deployment_evidence_publication_waived=true; retained public evidence unchanged; final_acceptance=false")
 	adoption.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if err := writeProvisionalLiveTopologyRecord(adoption); err != nil {
 		return err

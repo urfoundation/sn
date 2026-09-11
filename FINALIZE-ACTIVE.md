@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 13:34 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 13:43 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -33,6 +33,12 @@ gates are no longer conditions of completing this testnet exercise.
    counts with observed_proof_counts_verified=false. Do not fill verified proof
    counts or describe old coverage as a fresh-proof pass. Continue actual proof
    validation during scenario observations and completion reporting.
+   Provisional adoption also waives strict public deployment evidence
+   publication, which revalidates superseded historical manifests. Record
+   deployment_evidence_publication_waived=true and final_acceptance=false in the
+   provisional handoff. Preserve existing public files and publication errors;
+   do not create a substitute published manifest or describe publication as
+   passing. Keep approved topology actions, journal entries and spending caps.
    The four exact private activation contexts may grant testnet staging directly under
    the explicit retained-context allowance. Upload signatures, session/object
    binding, finite intent expiry and quotas remain enforced. Historical and

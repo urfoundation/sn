@@ -20,6 +20,16 @@ type tunnelTransportClient interface {
 	closeAndWait(context.Context) error
 }
 
+const tunnelClientRegistrationTimeout = 2 * time.Minute
+
+// The request lease owns this pointer; the producer publishes its result once
+// by closing done. A timed-out waiter does not cancel or replace that producer.
+type tunnelClientRegistration struct {
+	done   chan struct{}
+	client tunnelTransportClient
+	err    error
+}
+
 // Retains exactly one generated client and its private generator. The
 // generator's initial destination is identity bookkeeping, not packet routing.
 type registeredTunnelClient struct {
@@ -69,14 +79,8 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, bod
 		}
 	}
 	if self.client == nil {
-		client, err := self.newClient(callCtx, hop)
-		self.client = client
-		err = errors.Join(err, callCtx.Err(), self.ctx.Err())
-		if err != nil {
-			return nil, errors.Join(err, self.retireClient())
-		}
-		if client == nil {
-			return nil, errors.New("tunnel registration returned no client")
+		if err := self.waitForClientRegistration(callCtx, hop); err != nil {
+			return nil, err
 		}
 	}
 	response, err := self.client.postVerify(callCtx, hop, body)
@@ -86,6 +90,60 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, bod
 	default:
 	}
 	return response, err
+}
+
+// Called only with the request lease. Preparation keeps its own finite budget,
+// while every waiter and the eventual packet exchange retain the step deadline.
+func (self *TunnelTransport) waitForClientRegistration(ctx context.Context, firstHop connect.Id) error {
+	if self.registration == nil {
+		load := &tunnelClientRegistration{done: make(chan struct{})}
+		self.registration = load
+		newClient := self.newClient
+		go func() {
+			defer close(load.done)
+			setupCtx, cancel := context.WithTimeout(self.ctx, tunnelClientRegistrationTimeout)
+			load.client, load.err = newClient(setupCtx, firstHop)
+			load.err = errors.Join(load.err, setupCtx.Err(), self.ctx.Err())
+			cancel()
+			if load.client == nil && load.err == nil {
+				load.err = errors.New("tunnel registration returned no client")
+			}
+			if load.err != nil && load.client != nil {
+				closeCtx, closeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				closeErr := load.client.closeAndWait(closeCtx)
+				closeCancel()
+				load.err = errors.Join(load.err, closeErr)
+				if closeErr != nil {
+					// The shutdown owner retains this exact client for a final join.
+					self.cancel()
+				} else {
+					load.client = nil
+				}
+			}
+		}()
+	}
+	load := self.registration
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-self.ctx.Done():
+		return self.ctx.Err()
+	case <-load.done:
+	}
+	if err := errors.Join(ctx.Err(), self.ctx.Err()); err != nil {
+		return err
+	}
+	self.registration = nil
+	self.client = load.client
+	if load.err != nil {
+		return errors.Join(load.err, self.retireClient())
+	}
+	select {
+	case <-self.client.done():
+		return errors.Join(errors.New("registered tunnel client closed during setup"), self.retireClient())
+	default:
+		return nil
+	}
 }
 
 // Called only with the lease. Failed retirement closes admission and leaves
@@ -105,11 +163,17 @@ func (self *TunnelTransport) retireClient() error {
 }
 
 // Constructor-owned shutdown runs outside the client callback tree. It first
-// joins the exclusive request lease, then closes the retained identity.
+// joins the exclusive request lease and any initial registration producer,
+// then closes the retained identity.
 func (self *TunnelTransport) run() {
 	defer close(self.closed)
 	<-self.ctx.Done()
 	<-self.clientLease
+	if self.registration != nil {
+		<-self.registration.done
+		self.client = self.registration.client
+		self.registration = nil
+	}
 	if self.client != nil {
 		self.closeErr = self.client.closeAndWait(context.Background())
 		self.client = nil
@@ -136,8 +200,8 @@ func (self *TunnelTransport) CloseAndWait(ctx context.Context) error {
 	}
 }
 
-// Registration uses the caller's setup budget, while the completed client is
-// owned by the operator. Every partially created identity has the same cleanup.
+// Registration uses the transport's setup budget, while the completed client
+// is owned by the operator. Every partial identity has the same cleanup.
 func (self *TunnelTransport) newRegisteredClient(ctx context.Context, firstHop connect.Id) (tunnelTransportClient, error) {
 	jwt, err := self.currentByClientJwt()
 	if err != nil {

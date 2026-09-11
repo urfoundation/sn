@@ -52,8 +52,8 @@ type TunnelTransportConfig struct {
 }
 
 // TunnelTransport implements TrailTransport over real per-hop tunnels.
-// Every call — tunnel establishment included — is bounded by the caller's
-// ctx (the engine's StepTimeout).
+// Every call is bounded by the caller's ctx (the engine's StepTimeout).
+// Initial registration has one bounded transport-owned lifetime across calls.
 type TunnelTransport struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -61,6 +61,7 @@ type TunnelTransport struct {
 	cfg            TunnelTransportConfig
 	clientLease    chan struct{}
 	client         tunnelTransportClient
+	registration   *tunnelClientRegistration
 	newClient      func(context.Context, connect.Id) (tunnelTransportClient, error)
 	closed         chan struct{}
 	closeErr       error
