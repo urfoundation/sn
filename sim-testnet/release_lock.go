@@ -825,8 +825,12 @@ var subtensorNodeReleaseFiles = []string{
 	"main/ansible/host_files/snow/subtensor/subtensor.service",
 	"main/ansible/playbook-subtensor-lightnode.yml",
 	"main/ansible/run-playbook.sh",
-	"main/ansible/run-subtensor-lightnode.sh",
+	"main/ansible/resolve-controller-virtualenv.sh",
+	"main/ansible/run-subtensor.sh",
 	"main/ansible/tasks/subtensor-lightnode-preflight.yml",
+	"main/ansible/tasks/subtensor-monitor-helper.yml",
+	"main/ansible/host_files/snow/subtensor/subtensor-monitor.py",
+	"main/ansible/host_files/snow/subtensor/subtensor-monitor.sudoers",
 }
 
 func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, error) {

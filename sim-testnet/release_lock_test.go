@@ -824,8 +824,12 @@ func TestSubtensorReleaseLockCoversLightnodeRuntimeSurface(t *testing.T) {
 		"subtensor.service",
 		"playbook-subtensor-lightnode.yml",
 		"run-playbook.sh",
-		"run-subtensor-lightnode.sh",
+		"resolve-controller-virtualenv.sh",
+		"run-subtensor.sh",
 		"subtensor-lightnode-preflight.yml",
+		"subtensor-monitor-helper.yml",
+		"subtensor-monitor.py",
+		"subtensor-monitor.sudoers",
 	} {
 		if !strings.Contains(node, required) {
 			t.Fatalf("node release files do not cover %s", required)
