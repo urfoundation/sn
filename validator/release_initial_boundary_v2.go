@@ -120,6 +120,9 @@ func authenticateReleaseEvidenceV2InitialHistory(ctx context.Context, cfg *Relea
 	if err != nil {
 		return nil, err
 	}
+	if provisionalRetainedStartupHistory(inputs) {
+		return last, ctx.Err()
+	}
 	operationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(cfg))
 	defer cancel()
 	failures := make([]error, len(inputs))

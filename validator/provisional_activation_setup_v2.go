@@ -167,3 +167,20 @@ func (self *ProvisionalActivationSetupV2) admit(input *releaseEvidenceV2Activati
 func (self *provisionalReleaseActivationV2Admission) matches(record protocol.ValidatorEvidenceActivation) bool {
 	return self != nil && self.setupSHA256 != "" && self.activation == record && self.publication > record.EVMBlock && self.boundary >= self.publication && self.boundaryHash != ([32]byte{})
 }
+
+// Explicit provisional continuation replays every retained signed record and
+// actual ledger locally, but does not repeat its historical external audits.
+// Every configured input must belong to the same validated private handoff.
+// New runtime observations never call this startup-only admission helper.
+func provisionalRetainedStartupHistory(inputs []releaseEvidenceV2ActivationInput) bool {
+	if len(inputs) == 0 || inputs[0].retainedSetup == nil {
+		return false
+	}
+	setupHash := inputs[0].retainedSetup.setupSHA256
+	for _, input := range inputs {
+		if !input.retainedSetup.matches(input.Candidate) || input.retainedSetup.setupSHA256 != setupHash || input.Candidate != input.Context.Activation || input.Config.NoID != input.Candidate.NoID {
+			return false
+		}
+	}
+	return true
+}

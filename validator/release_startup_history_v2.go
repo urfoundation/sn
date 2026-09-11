@@ -443,6 +443,7 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 	if err != nil {
 		return nil, err
 	}
+	retainedHistoricalRPC := provisionalRetainedStartupHistory(inputs)
 	for index, input := range inputs {
 		initial := input.Context.InitialCut
 		cursor := releaseEvidenceV2StartupCursor{epoch: initial.Boundary.SettlementEpoch, first: initial.FirstSequence, egressFirst: initial.EgressFirstSequence, generation: initial.EgressGeneration, priorRoot: initial.PriorRoot, lastSequence: initial.FirstSequence - 1, lastRoot: initial.PriorRoot, lastBoundary: initial.Boundary}
@@ -473,13 +474,13 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 		owned.inputByEpoch[journal.SubnetEpoch][member.noID] = journal
 		input := journal.MeasurementInput
 		observationCtx, cancel := context.WithTimeout(ctx, releaseNativeEndpointTimeout(&owned.cfg))
-		err = authenticateReleaseStartupNativeV2Context(observationCtx, native, initial, journal, runtime, member.legacy)
+		err = authenticateReleaseStartupNativeV2ContextWithRetainedHistory(observationCtx, native, initial, journal, runtime, member.legacy, retainedHistoricalRPC)
 		cancel()
 		if err != nil {
 			return nil, err
 		}
 		boundary := AttemptBoundary{SettlementEpoch: input.SettlementEpoch, EVMBlock: input.CutEVMSnapshotBlock, EVMBlockHash: input.CutEVMSnapshotHash}
-		if err := chain.authenticateReleaseStartupBoundaryV2Context(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false); err != nil {
+		if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, initial.InitialCut.Activation.Domain, member.noID, boundary, false, retainedHistoricalRPC); err != nil {
 			return nil, err
 		}
 		if member.legacy {
@@ -560,7 +561,7 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 			if transition == nil || transition.Identity.NoID != participant.NoID {
 				return nil, errors.New("startup terminal operator order differs from configured history")
 			}
-			if err := chain.authenticateReleaseStartupBoundaryV2Context(ctx, owned.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, transition.FromBoundary, true); err != nil {
+			if err := chain.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, owned.initial[participant.NoID].InitialCut.Activation.Domain, participant.NoID, transition.FromBoundary, true, retainedHistoricalRPC); err != nil {
 				return nil, err
 			}
 		}
