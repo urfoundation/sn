@@ -66,6 +66,15 @@ func preflightSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string)
 	if cfg == nil || cfg.Config == nil || stateDir == "" || cfg.Config.Topology.Validators < 1 || cfg.Config.Topology.Operators < 1 {
 		return errors.New("validator attempt-state namespace inputs are incomplete")
 	}
+	if provisionalResumeEnabled(cfg) {
+		if !cfg.Config.ProvisionValidatorEvidenceV2 {
+			return errors.New("provisional namespace reuse requires the retained V2 activation setup")
+		}
+		// Reuse the authenticated original activation and its existing namespace.
+		// The V2 validator opens and verifies its disk ledger under those exact
+		// identities at startup; the legacy migration classifier cannot do so.
+		return preflightRuntimeEvidenceV2(cfg, stateDir)
+	}
 	// Find protected current or archived authority in every configured validator
 	// before the first reset. Writers must already be stopped; this is not a lock.
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
@@ -80,6 +89,10 @@ func preflightSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string)
 func prepareSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string) error {
 	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
 		return err
+	}
+	if provisionalResumeEnabled(cfg) {
+		// A resume never migrates, archives or resets already activated state.
+		return nil
 	}
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
 		if err := prepareSignedAttemptStateNamespace(cfg.Config.Deployment.DeploymentID, stateDir, validatorID, cfg.Config.Topology.Operators); err != nil {
