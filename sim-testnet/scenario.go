@@ -2050,6 +2050,33 @@ func epochScenarioChecks() []scenarioCheck {
 	}
 }
 
+// Provisional epoch completion consumes the separately labeled runtime receipts;
+// it never fills or substitutes for the authenticated strict intent counters.
+func provisionalEpochScenarioChecks() []scenarioCheck {
+	checks := epochScenarioChecks()
+	for index := range checks {
+		if checks[index].ID != "validator_intents_finalized" {
+			continue
+		}
+		checks[index] = scenarioCheck{ID: "validator_local_v2_receipts_finalized_and_applied", Check: func(e *scenarioEvaluation) (bool, string) {
+			if !provisionalResumeEnabled(e.Cfg) || len(e.Current.Validators) != e.Cfg.Config.Topology.Validators {
+				return false, "provisional validator receipt evidence missing"
+			}
+			for _, validator := range e.Current.Validators {
+				local := validator.LocalRuntimeIntents
+				if validator.Error != "" || local == nil || local.Scope != "local-runtime-observation" || local.FinalAcceptance || local.State != "observed" || local.Error != "" || !validSHA256ContentHash(local.StoreSHA256) || !validSHA256ContentHash(local.HandoffSHA256) || local.RecordedFinalizedIntents == nil || local.RecordedAppliedIntents == nil {
+					return false, fmt.Sprintf("validator=%d local V2 receipt observation incomplete; error=%s", validator.ValidatorID, validator.Error)
+				}
+				if *local.RecordedFinalizedIntents < 1 || *local.RecordedAppliedIntents < 1 || len(local.Receipts) == 0 {
+					return false, fmt.Sprintf("validator=%d recorded_finalized=%d recorded_applied=%d; scope=local-runtime-observation", validator.ValidatorID, *local.RecordedFinalizedIntents, *local.RecordedAppliedIntents)
+				}
+			}
+			return true, "all validators have recorded finalized and applied V2 receipts; scope=local-runtime-observation provisional=true strict_replay=unrun final_acceptance=false"
+		}}
+	}
+	return checks
+}
+
 func validateHeadSlotBoundary(validator ValidatorObservation, headSlots, candidateFleets int) (bool, string) {
 	if headSlots < 1 || headSlots > int(^uint16(0)) || candidateFleets <= headSlots {
 		return false, fmt.Sprintf("invalid boundary slots=%d candidates=%d", headSlots, candidateFleets)
@@ -3130,7 +3157,11 @@ func scenarioDefinitionFor(cfg *ResolvedConfig, name string) (scenarioDefinition
 		return definition, nil
 	case "epoch":
 		definition.GoalEpochs = 1
-		definition.Checks = append(definition.Checks, epochScenarioChecks()...)
+		if provisionalResumeEnabled(cfg) {
+			definition.Checks = append(definition.Checks, provisionalEpochScenarioChecks()...)
+		} else {
+			definition.Checks = append(definition.Checks, epochScenarioChecks()...)
+		}
 		return definition, nil
 	case "release-1.0":
 		if cfg.Config.Scenarios.ShortEpochs < 1 {
