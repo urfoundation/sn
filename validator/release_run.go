@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -476,6 +477,10 @@ func typesHash(value [32]byte) [32]byte { return value }
 // RunRelease starts the production validator modules under a caller-owned
 // lifecycle. CLIs and integration harnesses share this exact entry point.
 func RunRelease(ctx context.Context, configPath string) (returnErr error) {
+	return runReleaseWithActivationSetup(ctx, configPath, nil)
+}
+
+func runReleaseWithActivationSetup(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2) (returnErr error) {
 	if ctx == nil {
 		return errors.New("release production lifecycle context is unavailable")
 	}
@@ -485,6 +490,12 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 	cfg, err := LoadReleaseConfig(configPath)
 	if err != nil {
 		return err
+	}
+	if retainedSetup != nil {
+		if err := retainedSetup.validate(cfg, configPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "validator: provisional retained activation setup; final_acceptance=false; source_plan=%s handoff=%s\n", retainedSetup.SourcePlanHash, retainedSetup.contentHash)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -521,7 +532,7 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 	if _, err := authenticateReleaseValidatorStakeContext(ctx, native, cfg, hotkey.PublicKey(), validatorUID); err != nil {
 		return err
 	}
-	activationInputs, err := loadReleaseEvidenceV2ActivationInputs(ctx, cfg, chain, native, hotkey.PublicKey())
+	activationInputs, err := loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), retainedSetup)
 	if err != nil {
 		return fmt.Errorf("reserved upload activation startup: %w", err)
 	}

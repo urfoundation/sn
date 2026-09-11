@@ -19,9 +19,10 @@ func newReleaseAttemptUploadSourceV2(cfg *ReleaseConfig, input releaseEvidenceV2
 		return nil, errors.New("reserved upload runtime requires an explicit finite intent lifetime")
 	}
 	record := input.Context.Activation
-	if input.Config.NoID != record.NoID || input.Candidate != record || input.Observation.Publication.Record != record ||
-		input.Observation.Publication.PublishedBlock <= record.EVMBlock || input.Observation.ObservedEVMBlock < input.Observation.Publication.PublishedBlock ||
-		input.Observation.ObservedEVMHash == ([32]byte{}) || input.Observation.Native.Identity.Hotkey != record.Hotkey || !input.Observation.Native.MeetsNonSelfStakeAndPermit() {
+	historical := input.Observation.Publication.Record == record &&
+		input.Observation.Publication.PublishedBlock > record.EVMBlock && input.Observation.ObservedEVMBlock >= input.Observation.Publication.PublishedBlock &&
+		input.Observation.ObservedEVMHash != ([32]byte{}) && input.Observation.Native.Identity.Hotkey == record.Hotkey && input.Observation.Native.MeetsNonSelfStakeAndPermit()
+	if input.Config.NoID != record.NoID || input.Candidate != record || !historical && !input.retainedSetup.matches(record) {
 		return nil, errors.New("reserved upload source differs from authenticated activation startup")
 	}
 	if err := record.Verify(record, input.VPKSignature, input.HotkeySignature); err != nil {

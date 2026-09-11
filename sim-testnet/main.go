@@ -208,12 +208,20 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		component := args[0]
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var configPath string
+		var provisionalSetupPath, provisionalSetupSHA256 string
 		fs.StringVar(&configPath, "config", "", "")
+		fs.StringVar(&provisionalSetupPath, "provisional-activation-setup", "", "")
+		fs.StringVar(&provisionalSetupSHA256, "provisional-activation-setup-sha256", "", "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if configPath == "" || fs.NArg() != 0 {
 			return fmt.Errorf("invalid internal %s invocation", component)
+		}
+		if provisionalSetupPath != "" || provisionalSetupSHA256 != "" {
+			if component != "__validator" || provisionalSetupPath == "" || provisionalSetupSHA256 == "" {
+				return errors.New("provisional activation handoff requires its validator path and hash")
+			}
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -222,6 +230,13 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 		if component == "__claim_swarm" {
 			return minercomponent.RunClaimSwarm(ctx, configPath)
+		}
+		if provisionalSetupPath != "" {
+			raw, err := readProvisionalActivationSetup(configPath, provisionalSetupPath)
+			if err != nil {
+				return err
+			}
+			return validatorcomponent.RunReleaseWithProvisionalActivationSetup(ctx, configPath, raw, provisionalSetupSHA256)
 		}
 		return validatorcomponent.RunRelease(ctx, configPath)
 	}

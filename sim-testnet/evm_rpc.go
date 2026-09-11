@@ -264,6 +264,9 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			if response != nil && response.Body != nil {
 				response.Body.Close()
 			}
+			if ctxErr := request.Context().Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			if !readOnly || attempt >= transport.maximumRetries {
 				return nil, err
 			}
