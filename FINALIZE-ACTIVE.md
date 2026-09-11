@@ -40,6 +40,11 @@ gates are no longer conditions of completing this testnet exercise.
    actual publication before its relay admission and send. Keep the original
    activation/native anchors, 256-slot ceiling, debits and all spending caps.
    Full phase coverage is not established by this provisional admission.
+   Provisional launch omits precompile conformance and the pre-launch
+   governance drill. Preserve their actual failed/unrun evidence and report
+   both prerequisites as waived. Do not repeat probe funding or commitments
+   to enter the traffic run; keep actual takeover binding actions and their
+   spending/transaction postconditions. Full conformance remains unproven.
    The user authorized the owned LAN RPC at 192.168.1.162 and removal of all
    RPC rate limits on that route. Once its exposed port and testnet identity
    are confirmed, route native and EVM traffic there using an invocation-only

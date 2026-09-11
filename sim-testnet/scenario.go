@@ -4696,37 +4696,41 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 			if scenarioExecutor == nil {
 				return errors.New("release scenario requires the approved deployment executor")
 			}
-			precompile, readErr := loadPrecompileEvidence(stateDir)
-			if readErr != nil || !precompileEvidenceComplete(precompile) {
-				// Run conformance inside the release campaign so continuous
-				// adversaries cover the actual precompile happy path. A prior
-				// standalone run is adopted only after the same postconditions are
-				// revalidated by Executor.Execute.
-				if err := executePrecompileActions(prepareCtx, scenarioExecutor); err != nil {
-					return fmt.Errorf("release precompile conformance: %w", err)
+			if provisionalResumeEnabled(cfg) {
+				fmt.Fprintln(os.Stderr, "sim-testnet: provisional precompile_conformance_startup_waived=true governance_drill_startup_waived=true; retained failures and unrun actions are not passes; final_acceptance=false")
+			} else {
+				precompile, readErr := loadPrecompileEvidence(stateDir)
+				if readErr != nil || !precompileEvidenceComplete(precompile) {
+					// Run conformance inside the release campaign so continuous
+					// adversaries cover the actual precompile happy path. A prior
+					// standalone run is adopted only after the same postconditions are
+					// revalidated by Executor.Execute.
+					if err := executePrecompileActions(prepareCtx, scenarioExecutor); err != nil {
+						return fmt.Errorf("release precompile conformance: %w", err)
+					}
+					precompile, readErr = loadPrecompileEvidence(stateDir)
+					if readErr != nil {
+						return fmt.Errorf("release precompile evidence: %w", readErr)
+					}
 				}
-				precompile, readErr = loadPrecompileEvidence(stateDir)
-				if readErr != nil {
-					return fmt.Errorf("release precompile evidence: %w", readErr)
+				if scenarioExecutor.payloads == nil {
+					return errors.New("release scenario requires installed deployment payloads")
 				}
-			}
-			if scenarioExecutor.payloads == nil {
-				return errors.New("release scenario requires installed deployment payloads")
-			}
-			if identityErr := validatePrecompileEvidenceIdentity(cfg, scenarioExecutor.payloads.PrecompileProbeAddress, precompile); identityErr != nil {
-				return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
-			}
-			if !precompileEvidenceComplete(precompile) {
-				return errors.New("release scenario precompile-conformance gate is incomplete")
-			}
-			waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
-			if err := waitForGovernanceDrillReady(prepareCtx, scenarioExecutor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
-				return err
-			}
-			for _, action := range scenarioExecutor.plan.Actions {
-				if strings.HasPrefix(action.ID, "governance.") {
-					if err := scenarioExecutor.Execute(prepareCtx, action); err != nil {
-						return err
+				if identityErr := validatePrecompileEvidenceIdentity(cfg, scenarioExecutor.payloads.PrecompileProbeAddress, precompile); identityErr != nil {
+					return fmt.Errorf("release scenario precompile evidence identity: %w", identityErr)
+				}
+				if !precompileEvidenceComplete(precompile) {
+					return errors.New("release scenario precompile-conformance gate is incomplete")
+				}
+				waitBlocks := cfg.Policy.Settlement.EpochBlocks + cfg.Policy.Settlement.FinalizeOffsetBlocks + 20
+				if err := waitForGovernanceDrillReady(prepareCtx, scenarioExecutor, time.Duration(waitBlocks*cfg.Public.Chain.ExpectedBlockSeconds)*time.Second); err != nil {
+					return err
+				}
+				for _, action := range scenarioExecutor.plan.Actions {
+					if strings.HasPrefix(action.ID, "governance.") {
+						if err := scenarioExecutor.Execute(prepareCtx, action); err != nil {
+							return err
+						}
 					}
 				}
 			}
