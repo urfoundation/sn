@@ -148,18 +148,23 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 			`go test ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m`,
 			`go test -race ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m`,
 		}},
-		{phase: "solidity", variable: "validator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./protocol", "./stabi", "./sim-testnet/gencontracts", "./sim-testnet"}, sources: map[string][]string{
+		{phase: "solidity", variable: "validator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./protocol", "./stabi", "./sim-testnet/gencontracts"}, sources: map[string][]string{
 			"./protocol":                 releaseEvidenceV2GateSources(t, []string{"../protocol/validator_evidence*_test.go", "../protocol/client_key_history*_test.go"}),
 			"./stabi":                    releaseEvidenceV2GateSources(t, []string{"../stabi/validator_evidence*_test.go"}),
 			"./sim-testnet/gencontracts": releaseEvidenceV2GateSources(t, []string{"gencontracts/evidence*_test.go"}),
-			"./sim-testnet":              releaseEvidenceV2GateSources(t, []string{"evidence_deployment*_test.go", "evidence_carry*_test.go", "runtime_evidence*_test.go", "evidence_relay*_test.go", "evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go", "evm_nonce_turn_test.go", "adversary_client_key_batch_test.go"}),
 		}, commands: []string{
-			`go test ./protocol ./stabi ./sim-testnet/gencontracts ./sim-testnet -run "$validator_evidence_tests" -count=1`,
-			`go test -race ./protocol ./stabi ./sim-testnet/gencontracts ./sim-testnet -run "$validator_evidence_tests" -count=1`,
+			`go test ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1`,
+			`go test -race ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1`,
 		}},
-		{phase: "capture", variable: "capture_tests", packages: []string{"./sim-testnet"}, sources: map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_evidence_v2_test.go", "release_gate_capture_metadata_test.go", "release_gate_history_population_test.go", "release_gate_launch_source_test.go", "final_semantic_capture_v2_test.go", "final_semantic_pending_prior_v2_test.go", "evidence_streaming_test.go", "final_semantic_capture_capacity_test.go", "final_semantic_capture_streaming_v2_test.go", "evidence_limits_v2_test.go", "evidence_readback_v2_test.go", "evidence_public_file_v2_test.go", "evidence_population_v2_test.go", "evidence_metadata_row_size_v2_test.go", "evidence_metadata_census_v2_test.go", "evidence_metadata_v2_test.go", "evidence_publication_batch_test.go", "final_semantic_prior_carrier_v2_test.go", "final_semantic_prior_carrier_decode_v2_test.go", "final_semantic_prior_carrier_canonical_v2_test.go"})}, commands: []string{
+		{phase: "capture", variable: "capture_tests", packages: []string{"./sim-testnet"}, sources: map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_evidence_v2_test.go", "release_gate_simulator_evidence_test.go", "release_gate_capture_metadata_test.go", "release_gate_history_population_test.go", "release_gate_launch_source_test.go", "final_semantic_capture_v2_test.go", "final_semantic_pending_prior_v2_test.go", "evidence_streaming_test.go", "final_semantic_capture_capacity_test.go", "final_semantic_capture_streaming_v2_test.go", "evidence_limits_v2_test.go", "evidence_readback_v2_test.go", "evidence_public_file_v2_test.go", "evidence_population_v2_test.go", "evidence_metadata_row_size_v2_test.go", "evidence_metadata_census_v2_test.go", "evidence_metadata_v2_test.go", "evidence_publication_batch_test.go", "final_semantic_prior_carrier_v2_test.go", "final_semantic_prior_carrier_decode_v2_test.go", "final_semantic_prior_carrier_canonical_v2_test.go"})}, commands: []string{
 			`go test ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 5m`,
 			`go test -race ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 10m`,
+		}},
+		{phase: "evidence_simulator", job: "evidence-simulator", variable: "simulator_evidence_tests", alternatives: "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory", packages: []string{"./sim-testnet"}, sources: map[string][]string{
+			"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"evidence_deployment*_test.go", "evidence_carry*_test.go", "runtime_evidence*_test.go", "evidence_relay*_test.go", "evidence_relay_launch_budget_test.go", "evidence_relay_launch_runtime_test.go", "evm_nonce_turn_test.go", "adversary_client_key_batch_test.go"}),
+		}, commands: []string{
+			`go test ./sim-testnet -run "$simulator_evidence_tests" -count=1` + releaseGateSimulatorEvidenceOwnerSkip + ` -timeout 10m`,
+			`go test -race ./sim-testnet -run "$simulator_evidence_tests" -count=1` + releaseGateSimulatorEvidenceOwnerSkip + ` -timeout 10m`,
 		}},
 	}
 	return string(encoded), groups
@@ -178,8 +183,10 @@ func TestProducerGateStateSelectionCoversEvidenceV2ValidatorSources(t *testing.T
 func TestProducerGateStateSelectionCoversEvidenceV2ContractAndInstallerSources(t *testing.T) {
 	t.Parallel()
 	script, groups := releaseEvidenceV2GateFixture(t)
-	if err := verifyReleaseEvidenceV2GateGroup(script, groups[1]); err != nil {
-		t.Fatalf("companion Go source gate is incomplete: %v", err)
+	for _, index := range []int{1, 3} {
+		if err := verifyReleaseEvidenceV2GateGroup(script, groups[index]); err != nil {
+			t.Fatalf("companion Go source gate is incomplete: %v", err)
+		}
 	}
 }
 
@@ -222,8 +229,12 @@ func TestProducerGateStateSelectionEvidenceV2PreservesEveryOldFamily(t *testing.
 func TestProducerGateStateSelectionEvidenceV2RejectsEveryNewFamilyOmission(t *testing.T) {
 	t.Parallel()
 	script, groups := releaseEvidenceV2GateFixture(t)
-	for index, families := range []string{releaseEvidenceV2NewProducerGroups, "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory"} {
+	for _, index := range []int{0, 1, 3} {
 		group := groups[index]
+		families := "ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory"
+		if index == 0 {
+			families = releaseEvidenceV2NewProducerGroups
+		}
 		selector, err := releaseConnectPolicySelectorAssignment(script, group.variable)
 		if err != nil {
 			t.Fatal(err)
@@ -256,7 +267,7 @@ func TestProducerGateStateSelectionEvidenceV2KeepsAdjacentSourceCoverage(t *test
 			if err := verifyReleaseEvidenceV2GateGroup(script, group); err == nil {
 				t.Fatalf("renamed %s source escaped its real selector", packagePath)
 			}
-			prefix := []string{"ReleaseEvidenceV2", "ValidatorEvidence", "ProducerGateStateSelection"}[index]
+			prefix := []string{"ReleaseEvidenceV2", "ValidatorEvidence", "ProducerGateStateSelection", "ValidatorEvidence"}[index]
 			group.sources[packagePath] = append(append([]string{}, original...), "func Test"+prefix+"FutureAdjacentBoundary(t *testing.T) {}\n")
 			if err := verifyReleaseEvidenceV2GateGroup(script, group); err != nil {
 				t.Fatalf("adjacent %s source was narrowed: %v", packagePath, err)
@@ -304,7 +315,11 @@ func TestProducerGateStateSelectionEvidenceV2RejectsDisconnectedPhases(t *testin
 	t.Parallel()
 	script, groups := releaseEvidenceV2GateFixture(t)
 	for _, group := range groups {
-		start := "release_gate_start " + group.phase + " release_phase_" + group.phase
+		job := group.job
+		if job == "" {
+			job = group.phase
+		}
+		start := "release_gate_start " + job + " release_phase_" + group.phase
 		for _, replacement := range []string{":", "# " + start, start + "\n" + start} {
 			changed := strings.Replace(script, start, replacement, 1)
 			if err := verifyReleaseEvidenceV2GateGroup(changed, group); err == nil {

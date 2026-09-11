@@ -122,10 +122,12 @@ func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {
 }
 
 func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
+	t.Parallel()
 	testRuntimeConfigsAcceptedByReleaseLoaders(t, false)
 }
 
 func TestProvisionalRuntimeConfigsAllowUnsignedTestnetWallet(t *testing.T) {
+	t.Parallel()
 	testRuntimeConfigsAcceptedByReleaseLoaders(t, true)
 }
 
