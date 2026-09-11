@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -317,6 +318,12 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	// provider registration budgets while retaining each trail's own context.
 	strategySettings.RequestTimeout = 120 * time.Second
 	strategySettings.ConnectTimeout = 45 * time.Second
+	if apiURL, err := url.Parse(op.APIURL); err == nil && apiURL.Scheme == "http" {
+		if address := net.ParseIP(apiURL.Hostname()); address != nil && address.IsLoopback() {
+			// Local control requests need one budget, without resilient route splits.
+			strategySettings.EnableResilient = false
+		}
+	}
 	strategy := connect.NewClientStrategy(ctx, strategySettings)
 	api := sdk.NewApi(ctx, strategy, op.APIURL)
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
