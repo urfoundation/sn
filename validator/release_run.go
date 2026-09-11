@@ -574,7 +574,13 @@ func runReleaseWithActivationSetup(ctx context.Context, configPath string, retai
 	if err != nil {
 		return fmt.Errorf("release V2 semantic startup: %w", err)
 	}
-	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(ctx, chain, cfg)
+	boundaryCtx := ctx
+	if retainedSetup != nil {
+		// Scope longer reads to shared preparation; trail callers keep their
+		// original deadline and never inherit this private owner context.
+		boundaryCtx = context.WithValue(ctx, provisionalBoundaryReadBudgetKey{}, true)
+	}
+	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(boundaryCtx, chain, cfg)
 	defer attemptBoundaryResolver.close()
 	runtimeV2.publishEpoch = func(epoch uint64) {
 		attemptBoundaryResolver.invalidateLatest()

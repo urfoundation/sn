@@ -76,6 +76,11 @@ enable existing closed-native-input deferral in memory. Preserve signed subnet
 continue at the next native epoch. This is not deployed to fleet 21 yet and
 does not establish successful trail proofs.
 
+Also prepared: validated provisional shared boundary preparation receives a
+120-second canonical-read budget within its existing producer deadline (240
+seconds in this run). Trail/packet deadlines and ordinary reads remain 30
+seconds. RPC quota and canonical checks are unchanged; live success is pending.
+
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
 campaign's full epoch windows remain real elapsed time; there is no renewed
