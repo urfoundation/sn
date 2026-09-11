@@ -106,6 +106,11 @@ func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validator config %s: %w", abs, err)
 	}
+	// Config accepts checksum-case addresses, while signed measurement identities
+	// require lowercase. Keep every producer and its expected decision consistent
+	// without rewriting the configured file or retained signed inputs.
+	cfg.Coordinator = strings.ToLower(cfg.Coordinator)
+	cfg.SettlementVault = strings.ToLower(cfg.SettlementVault)
 	return &cfg, nil
 }
 
