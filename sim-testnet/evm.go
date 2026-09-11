@@ -1403,7 +1403,23 @@ func (m *EvmTxManager) finalizeReceipt(ctx context.Context, planHash string, a A
 	if err := validateEVMReceiptIdentity(r, expectedHash); err != nil {
 		return nil, err
 	}
-	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageIncluded, TransactionHash: expectedHash.Hex(), BlockNumber: r.BlockNumber.Uint64(), BlockHash: r.BlockHash.Hex()}); err != nil {
+	// Inclusion/finality must retain the original pre-broadcast checkpoint.
+	// Recovery reads the same signed transaction and may reach this method
+	// after an older finality row omitted it; never infer a new checkpoint.
+	var recovery ChainHead
+	for _, entry := range m.journal.Entries() {
+		if entry.Stage != StageBroadcast || entry.DeploymentID != m.deploymentID || entry.PlanHash != planHash || entry.ActionID != a.ID || entry.IntentHash != a.IntentHash || !strings.EqualFold(entry.TransactionHash, expectedHash.Hex()) {
+			continue
+		}
+		if entry.RecoveryBlock == 0 || entry.RecoveryBlockHash == "" || recovery.Number != 0 && (recovery.Number != entry.RecoveryBlock || !strings.EqualFold(recovery.Hash, entry.RecoveryBlockHash)) {
+			return nil, errors.New("EVM receipt has inconsistent original broadcast recovery checkpoints")
+		}
+		recovery = ChainHead{Number: entry.RecoveryBlock, Hash: entry.RecoveryBlockHash}
+	}
+	if recovery.Number == 0 {
+		return nil, errors.New("EVM receipt lacks its exact original broadcast recovery checkpoint")
+	}
+	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageIncluded, TransactionHash: expectedHash.Hex(), BlockNumber: r.BlockNumber.Uint64(), BlockHash: r.BlockHash.Hex(), RecoveryBlock: recovery.Number, RecoveryBlockHash: recovery.Hash}); err != nil {
 		return r, err
 	}
 	finalized, err := waitEVMReceiptFinality(ctx, m.client, expectedHash)
@@ -1413,7 +1429,7 @@ func (m *EvmTxManager) finalizeReceipt(ctx context.Context, planHash string, a A
 	if finalized.Status != types.ReceiptStatusSuccessful {
 		return finalized, fmt.Errorf("EVM transaction %s reverted in its canonical inclusion", finalized.TxHash)
 	}
-	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: expectedHash.Hex(), BlockNumber: finalized.BlockNumber.Uint64(), BlockHash: finalized.BlockHash.Hex()}); err != nil {
+	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageFinalized, TransactionHash: expectedHash.Hex(), BlockNumber: finalized.BlockNumber.Uint64(), BlockHash: finalized.BlockHash.Hex(), RecoveryBlock: recovery.Number, RecoveryBlockHash: recovery.Hash}); err != nil {
 		return finalized, err
 	}
 	return finalized, nil
