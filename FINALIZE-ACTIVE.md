@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 13:43 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 15:08 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -34,6 +34,19 @@ gates are no longer conditions of completing this testnet exercise.
    The nested provisional campaign executor reuses its exact parent's already
    authenticated deployment payloads. Omit the duplicate historical deployment
    preflight while retaining current scenario actions and their postconditions.
+   Provisional relay startup and preparation require only the next block to
+   fit the original paid horizon; log the full requested forecast as waived.
+   Skip the duplicate pending-public-census preview, while authenticating each
+   actual publication before its relay admission and send. Keep the original
+   activation/native anchors, 256-slot ceiling, debits and all spending caps.
+   Full phase coverage is not established by this provisional admission.
+   The user authorized the owned LAN RPC at 192.168.1.162 and removal of all
+   RPC rate limits on that route. Once its exposed port and testnet identity
+   are confirmed, route native and EVM traffic there using an invocation-only
+   provisional transport override and the existing workload fault proxies.
+   Record the actual endpoints and zero RPC rate limits. Retain the approved
+   plan, signed inputs, receipts and spending limits; omit independent public
+   RPC comparison in this mode and keep final_acceptance=false.
    Fresh signed proof coverage is an observation during the run, not a
    provisional campaign startup prerequisite. Record
    fresh_proof_startup_waived=true, the original proof baseline, and observed
@@ -73,16 +86,17 @@ classifications without making them launch conditions. The SQL correction is
 prepared separately and must not delay launch. No preparation tests are running.
 This mode records final_acceptance=false; do not claim strict certification.
 
-Prepared worker correction: after the hash-pinned testnet handoff validates,
+Deployed in CLI25: after the hash-pinned testnet handoff validates,
 enable existing closed-native-input deferral in memory. Preserve signed subnet
 1391 inputs from settlement 290; report deferral without native submission and
-continue at the next native epoch. This is not deployed to fleet 21 yet and
-does not establish successful trail proofs.
+continue at the next native epoch. This does not establish successful trail
+proofs.
 
-Also prepared: validated provisional shared boundary preparation receives a
+Also deployed in CLI25: validated provisional shared boundary preparation receives a
 120-second canonical-read budget within its existing producer deadline (240
 seconds in this run). Trail/packet deadlines and ordinary reads remain 30
-seconds. RPC quota and canonical checks are unchanged; live success is pending.
+seconds. The public RPC quota remains until the owned LAN route is enabled;
+canonical checks remain in place and live proof success is pending.
 
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native

@@ -58,6 +58,13 @@ type Executor struct {
 // NewExecutor opens transaction managers only against the canonical endpoint
 // selection which was validated and hashed into the approved plan.
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
+	if cfg != nil && cfg.provisionalRPCAuthority != "" {
+		runtimeCfg, err := campaignRPCConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nil)
+	}
 	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles, nil)
 }
 
@@ -498,6 +505,9 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			return fmt.Errorf("provisional resume requires the unchanged persisted plan: %w", planErr)
 		}
 		if err := prepareProvisionalResume(ctx, cfg, stateDir, cmd, o, p); err != nil {
+			return err
+		}
+		if err := prepareProvisionalRPCOverride(cfg, stateDir, o.ProvisionalRPCAuthority); err != nil {
 			return err
 		}
 	}

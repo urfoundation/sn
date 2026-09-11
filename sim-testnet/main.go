@@ -26,6 +26,7 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	ProvisionalRPCAuthority                                                                                                         string
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume                                                                                                bool
 }
@@ -61,6 +62,7 @@ Common options:
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
+  --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -95,6 +97,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
+	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return "", o, err
 	}
@@ -112,6 +115,14 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
 		return "", o, err
+	}
+	if o.ProvisionalRPCAuthority != "" {
+		if !o.ProvisionalResume {
+			return "", o, errors.New("--provisional-rpc-authority requires --provisional-resume")
+		}
+		if err := validateProvisionalRPCAuthority(o.ProvisionalRPCAuthority); err != nil {
+			return "", o, err
+		}
 	}
 	return cmd, o, nil
 }

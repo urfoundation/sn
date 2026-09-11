@@ -354,35 +354,36 @@ type RepoPaths struct{ SN, Server, OperatorProxy, Vault, PlatformConfig string }
 type ResolvedConfig struct {
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
-	provisionalResume    *provisionalResumeState
-	ConfigPath           string
-	Config               *HarnessConfig
-	Public               *PublicManifest
-	Policy               *protocol.Policy
-	Release              *ReleaseLock
-	Hyperparameters      *Hyperparameters
-	Repos                RepoPaths
-	VaultPath            string
-	Vault                map[string]any
-	Netuid               uint16
-	ChainID              uint64
-	Authority            string
-	OperationalRPCMode   string
-	OperationalSubstrate string
-	OperationalEVM       string
-	ObjectStoreHost      string
-	OperatorAPIOrigins   []string
-	WalletSecret         string
-	WalletMaterial       string
-	WalletPasswordSecret string
-	WalletPassword       string
-	WalletPublic         string
-	WalletHotkeyPublic   string
-	MaximumTAORao        uint64
-	MaximumAlphaRao      uint64
-	MaximumEVMGasWei     DecimalUint
-	PolicyHash           string
-	ConfigHash           string
+	provisionalResume       *provisionalResumeState
+	provisionalRPCAuthority string
+	ConfigPath              string
+	Config                  *HarnessConfig
+	Public                  *PublicManifest
+	Policy                  *protocol.Policy
+	Release                 *ReleaseLock
+	Hyperparameters         *Hyperparameters
+	Repos                   RepoPaths
+	VaultPath               string
+	Vault                   map[string]any
+	Netuid                  uint16
+	ChainID                 uint64
+	Authority               string
+	OperationalRPCMode      string
+	OperationalSubstrate    string
+	OperationalEVM          string
+	ObjectStoreHost         string
+	OperatorAPIOrigins      []string
+	WalletSecret            string
+	WalletMaterial          string
+	WalletPasswordSecret    string
+	WalletPassword          string
+	WalletPublic            string
+	WalletHotkeyPublic      string
+	MaximumTAORao           uint64
+	MaximumAlphaRao         uint64
+	MaximumEVMGasWei        DecimalUint
+	PolicyHash              string
+	ConfigHash              string
 }
 
 type LoadOptions struct {

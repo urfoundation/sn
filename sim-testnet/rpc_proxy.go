@@ -58,6 +58,9 @@ func campaignRPCConfig(cfg *ResolvedConfig) (*ResolvedConfig, error) {
 	if cfg == nil || cfg.Config == nil || cfg.Public == nil {
 		return nil, errors.New("campaign RPC configuration is incomplete")
 	}
+	if cfg.provisionalRPCAuthority != "" {
+		return provisionalRPCTransportConfig(cfg)
+	}
 	resolved := *cfg
 	harness := *cfg.Config
 	public := *cfg.Public

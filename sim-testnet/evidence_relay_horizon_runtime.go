@@ -1,7 +1,7 @@
 //go:build linux || darwin
 
-// Read-only phase entry authenticates original debits and every retained
-// pending public census before the existing relay worker may spend anything.
+// Read-only phase entry authenticates original debits. Strict entry also
+// previews pending public censuses; every actual relay authenticates its input.
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -122,6 +123,41 @@ func (self *evidenceRelayRuntime) readAuditPublication(ctx context.Context, sour
 	return result, nil
 }
 
+// Provisional continuation admits only the next block of work. The original
+// horizon and every actual header/debit remain bounded by the paid allowance.
+func (self *evidenceRelayRuntime) phaseHorizonRemaining(horizon *evidenceRelayHorizon, block, remaining uint64) (uint64, error) {
+	if self == nil || self.executor == nil || !provisionalResumeEnabled(self.executor.cfg) {
+		return remaining, nil
+	}
+	end, ok := checkedAdd(block, remaining)
+	if !ok || remaining == 0 {
+		return 0, errors.New("evidence relay remaining horizon is zero or overflows")
+	}
+	funded, _, _, err := horizon.ceilings(nil)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Fprintf(os.Stderr, "sim-testnet: provisional evidence relay phase forecast; observed_block=%d requested_remaining=%d requested_end=%d funded_end=%d forecast_waived=true final_acceptance=false\n", block, remaining, end, funded)
+	return 1, nil
+}
+
+func (self *evidenceRelayRuntime) requireHorizonRemaining(horizon *evidenceRelayHorizon, block, native, remaining uint64) error {
+	bounded, err := self.phaseHorizonRemaining(horizon, block, remaining)
+	if err != nil {
+		return err
+	}
+	if bounded != remaining {
+		nativeRemaining := remaining / horizon.work.nativeCadence
+		if remaining%horizon.work.nativeCadence != 0 {
+			nativeRemaining++
+		}
+		if _, ok := checkedAdd(native, nativeRemaining); !ok {
+			return errors.New("evidence relay remaining native horizon overflows")
+		}
+	}
+	return horizon.requireRemaining(block, native, bounded)
+}
+
 // The worker has not admitted or sent anything when this executes. Read each
 // original request separately; only its header survives the bounded read.
 func (self *evidenceRelayRuntime) prepareHorizon() error {
@@ -155,7 +191,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	}
 	// Reject plainly insufficient profiles before historical/native/public
 	// source I/O. This does not authenticate or credit any private candidate.
-	if err := horizon.requireRemaining(block, 0, remaining); err != nil {
+	if err := self.requireHorizonRemaining(horizon, block, 0, remaining); err != nil {
 		return err
 	}
 	anchorNative, err := self.readHorizonNative(self.ctx, anchor, false)
@@ -167,7 +203,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
-	if err := horizon.requireRemaining(block, currentNative, remaining); err != nil {
+	if err := self.requireHorizonRemaining(horizon, block, currentNative, remaining); err != nil {
 		return err
 	}
 	canonical, err := self.chain.BlockHashContext(self.ctx, anchor.EVMBlock)
@@ -178,6 +214,10 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 		return err
 	}
 	for index := range self.sources {
+		if provisionalResumeEnabled(self.executor.cfg) {
+			fmt.Fprintln(os.Stderr, "sim-testnet: provisional evidence relay pending_public_census_preview_waived=true; actual publication authentication and slot admission remain required; final_acceptance=false")
+			break
+		}
 		source := &self.sources[index]
 		closed, err := validatorcomponent.DiscoverValidatorEvidencePublicationV2Manifests(self.ctx, source.stateDir, source.bounds)
 		if err != nil {
@@ -220,7 +260,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
-	if err := horizon.requireRemaining(block, currentNative, remaining); err != nil {
+	if err := self.requireHorizonRemaining(horizon, block, currentNative, remaining); err != nil {
 		return err
 	}
 	self.horizon = horizon
@@ -287,6 +327,10 @@ func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 		if err != nil {
 			return err
 		}
+		remaining, err = self.phaseHorizonRemaining(self.horizon, block, remaining)
+		if err != nil {
+			return err
+		}
 		end, ok := checkedAdd(block, remaining)
 		if !ok || end > maximum {
 			return fmt.Errorf("evidence relay preparation exhausted required later work: block=%d remaining=%d maximum=%d", block, remaining, maximum)
@@ -317,7 +361,7 @@ func (self *evidenceRelayRuntime) checkRemaining(request evidenceRelayRemainingR
 	if err != nil {
 		return err
 	}
-	if err := self.horizon.requireRemaining(block, native, request.remaining); err != nil {
+	if err := self.requireHorizonRemaining(self.horizon, block, native, request.remaining); err != nil {
 		return err
 	}
 	self.prepared = true
