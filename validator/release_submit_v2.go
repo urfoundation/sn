@@ -331,7 +331,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	if err != nil || !observed.Stake.MeetsNonSelfStakeAndPermit() || observed.SubnetEpochIndex != nativeState.SubnetEpochIndex || hotkeyUids[self.hotkey.PublicKey()] != observed.Stake.Identity.UID {
 		return errors.Join(errors.New("V2 current native validator schedule/stake/permit differs from independent EVM registration"), err)
 	}
-	inputs, options, err := self.runtimeV2.collect(ctx, self, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids)
+	inputs, options, err := self.runtimeV2.collect(ctx, self, current, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids)
 	if err != nil {
 		return err
 	}

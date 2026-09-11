@@ -426,7 +426,7 @@ func (self *releaseRuntimeV2) closureForDecision(ctx context.Context, epoch uint
 // Real native detach owns drain, signed streams, immutable input publication
 // and durable egress rotation. Head selection and prepared native intent are
 // separate actual consumers, supplied independent contexts rather than verdicts.
-func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteerer, snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string, hotkeys map[[32]byte]uint16) ([]ReleaseMeasurementInput, ReleaseMeasurementV2Options, error) {
+func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteerer, current *SteeringIntent, snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string, hotkeys map[[32]byte]uint16) ([]ReleaseMeasurementInput, ReleaseMeasurementV2Options, error) {
 	var zero ReleaseMeasurementV2Options
 	release, err := self.acquire(ctx)
 	if err != nil {
@@ -437,6 +437,9 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		return nil, zero, errors.New("release V2 native collector owner differs")
 	}
 	if err := self.advanceOwned(ctx, snapshot); err != nil {
+		return nil, zero, err
+	}
+	if err := self.history.provisionalClosedInputDeferral(ctx, current, subnetEpoch, nativeBlock, nativeHash, snapshot); err != nil {
 		return nil, zero, err
 	}
 	if err := self.refreshServerKeys(ctx); err != nil {
