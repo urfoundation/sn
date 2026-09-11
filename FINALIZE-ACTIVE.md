@@ -31,6 +31,9 @@ gates are no longer conditions of completing this testnet exercise.
    preparation as resume to omit the full doctor when no spend is pending.
    It reuses the completed topology handoff through the existing process log
    gate; it must not manufacture completion or new verified setup receipts.
+   The nested provisional campaign executor reuses its exact parent's already
+   authenticated deployment payloads. Omit the duplicate historical deployment
+   preflight while retaining current scenario actions and their postconditions.
    Fresh signed proof coverage is an observation during the run, not a
    provisional campaign startup prerequisite. Record
    fresh_proof_startup_waived=true, the original proof baseline, and observed

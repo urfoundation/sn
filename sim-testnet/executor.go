@@ -161,6 +161,12 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		deposits[i] = manager
 	}
 	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
+	if nativeOwner != nil && provisionalResumeEnabled(runtimeCfg) && nativeOwner.payloads != nil {
+		// The exact parent guard above binds this already authenticated result
+		// to the same plan, configuration and journal for provisional continuation.
+		e.payloads = nativeOwner.payloads
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional campaign reuses authenticated parent deployment payloads; final_acceptance=false")
+	}
 	if !independentRPCRequired(runtimeCfg) {
 		if err := e.ensurePayloads(ctx); err != nil {
 			e.Close()
