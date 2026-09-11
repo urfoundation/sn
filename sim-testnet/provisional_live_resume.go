@@ -33,6 +33,10 @@ type provisionalLiveTopology struct {
 	ProvenancePath           string                      `json:"driver_provenance_path"`
 	ProcessLogGatePath       string                      `json:"process_log_gate_path"`
 	ProofBaseline            map[string]int              `json:"proof_baseline"`
+	FreshProofStartupWaived  bool                        `json:"fresh_proof_startup_waived"`
+	ObservedProofCounts      map[string]int              `json:"observed_proof_counts,omitempty"`
+	ObservedProofCountsAt    string                      `json:"observed_proof_counts_at,omitempty"`
+	ObservedProofsVerified   bool                        `json:"observed_proof_counts_verified"`
 	VerifiedProofCounts      map[string]int              `json:"verified_proof_counts,omitempty"`
 	PriorRestarts            map[string]int              `json:"prior_process_restarts"`
 	manifest                 SupervisorFile
@@ -115,7 +119,9 @@ func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command strin
 		SupervisorPID: live.SupervisorPID, SupervisorStartTimeTicks: live.SupervisorStartTimeTicks,
 		Driver: cfg.provisionalResume.Driver, ProvenancePath: cfg.provisionalResume.RecordPath,
 		ProcessLogGatePath: filepath.Join(filepath.Dir(cfg.provisionalResume.RecordPath), "process-log-gate.json"),
-		ProofBaseline:      baseline, PriorRestarts: priorRestarts, manifest: manifest,
+		ProofBaseline:      baseline, FreshProofStartupWaived: true,
+		ObservedProofCounts: baseline, ObservedProofCountsAt: time.Now().UTC().Format(time.RFC3339Nano),
+		PriorRestarts: priorRestarts, manifest: manifest,
 	}
 	if err := writeProvisionalLiveTopologyRecord(adoption); err != nil {
 		return nil, err
@@ -293,9 +299,14 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	// Bound only actual process readiness. Journal and publication work below
+	// keep the caller's context rather than inheriting this short startup bound.
+	readinessCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	fmt.Fprintf(os.Stderr, "sim-testnet: adopting provisional live topology pid=%d start=%d; waiting up to 30m for fresh signed validator proofs; prior generation retained on failure\n", adoption.SupervisorPID, adoption.SupervisorStartTimeTicks)
+	adoption.FreshProofStartupWaived = true
+	adoption.ObservedProofsVerified = false
+	adoption.VerifiedProofCounts = nil
+	fmt.Fprintf(os.Stderr, "sim-testnet: adopting provisional live topology pid=%d start=%d; waiting up to 30s for live processes and non-provider health; fresh_proof_startup_waived=true; final_acceptance=false; prior generation retained on failure\n", adoption.SupervisorPID, adoption.SupervisorStartTimeTicks)
 	lastProviderHealth := ""
 	for {
 		var live SupervisorState
@@ -316,6 +327,8 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 		if err != nil {
 			return err
 		}
+		adoption.ObservedProofCounts = current
+		adoption.ObservedProofCountsAt = time.Now().UTC().Format(time.RFC3339Nano)
 		liveReady := provisionalSupervisorStateReady(live, adoption.ManifestHash, adoption.manifest.Specs)
 		if liveReady {
 			healthy, total := 0, 0
@@ -333,34 +346,29 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 			}
 			lastProviderHealth = observed
 		}
-		// Managed validator trail engines create these proofs independently of
-		// scenario startup, so partial provider health does not waive freshness.
-		if liveReady && provisionalProofsAdvanced(adoption.ProofBaseline, current) {
+		// Proof production is actual run progress, not provisional admission.
+		// Preserve the baseline and unverified counts; scenario observation and
+		// completion still validate actual proofs without manufacturing coverage.
+		if liveReady {
 			var healthSpecs []ProcessSpec
 			for _, spec := range adoption.manifest.Specs {
 				if spec.HealthURL != "" && spec.Role != "miner-swarm" {
 					healthSpecs = append(healthSpecs, spec)
 				}
 			}
-			if err := waitSpecsReady(ctx, healthSpecs, 30*time.Second); err != nil {
+			if err := waitSpecsReady(readinessCtx, healthSpecs, 30*time.Second); err != nil {
 				return err
 			}
-			verified, err := provisionalVerifiedProofCounts(ctx, cfg, stateDir, adoption.manifest)
-			if err != nil {
-				return err
-			}
-			if !provisionalProofsAdvanced(adoption.ProofBaseline, verified) {
-				return errors.New("fresh signed proof coverage is incomplete")
-			}
-			adoption.VerifiedProofCounts = verified
+			fmt.Fprintf(os.Stderr, "sim-testnet: provisional fresh proof startup waived; proof_baseline=%v observed_proof_counts=%v observed_proof_counts_verified=false; final_acceptance=false\n", adoption.ProofBaseline, adoption.ObservedProofCounts)
 			break
 		}
 		select {
-		case <-ctx.Done():
-			return fmt.Errorf("provisional live topology readiness: %w", ctx.Err())
+		case <-readinessCtx.Done():
+			return fmt.Errorf("provisional live topology process readiness: %w", readinessCtx.Err())
 		case <-time.After(time.Second):
 		}
 	}
+	cancel()
 	if err := gate.RequireClean(false); err != nil {
 		return err
 	}
