@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
-	"github.com/urnetwork/connect"
-	servercontroller "github.com/urnetwork/server/controller"
+	"github.com/urnetwork/connect/v2026"
+	servercontroller "github.com/urnetwork/server/v2026/controller"
 )
 
 // Returns this test process's exact kernel generation for supervisor fixtures.

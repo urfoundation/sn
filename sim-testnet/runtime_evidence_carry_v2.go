@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Resolve a completed ancestor without changing its signatures, first epoch,

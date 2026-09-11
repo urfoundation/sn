@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"golang.org/x/crypto/blake2b"
 
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // Holds one deterministic native registration ownership pair.

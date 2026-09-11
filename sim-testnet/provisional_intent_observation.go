@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urfoundation/sn/ss58"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/ss58"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The completed live handoff, manifest and actual argv select the state owner.

@@ -82,7 +82,7 @@ func prepareProvisionalResume(ctx context.Context, cfg *ResolvedConfig, stateDir
 		return err
 	}
 	driver := cfg.provisionalResume.Driver
-	if !releaseSHA256.MatchString(driver.ExecutableSHA256) || !releaseGitCommit.MatchString(driver.Build.Revision) || driver.Build.PackagePath != "github.com/urfoundation/sn/sim-testnet" || driver.Build.ModulePath != "github.com/urfoundation/sn" || !filepath.IsAbs(driver.ExecutablePath) {
+	if !releaseSHA256.MatchString(driver.ExecutableSHA256) || !releaseGitCommit.MatchString(driver.Build.Revision) || driver.Build.PackagePath != "github.com/urfoundation/sn/sim-testnet" || driver.Build.ModulePath != "github.com/urfoundation/sn/v2026" || !filepath.IsAbs(driver.ExecutablePath) {
 		return errors.New("provisional resume actual driver provenance is incomplete")
 	}
 	if err := ctx.Err(); err != nil {

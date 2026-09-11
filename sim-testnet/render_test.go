@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	minerpkg "github.com/urfoundation/sn/miner"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/server/controller"
-	"github.com/urnetwork/server/model"
+	minerpkg "github.com/urfoundation/sn/v2026/miner"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/server/v2026/controller"
+	"github.com/urnetwork/server/v2026/model"
 	"gopkg.in/yaml.v3"
 )
 

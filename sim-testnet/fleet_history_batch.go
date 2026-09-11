@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 const carriedFleetHistoryBatchTimeout = 10 * time.Minute
