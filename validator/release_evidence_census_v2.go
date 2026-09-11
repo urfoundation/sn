@@ -186,7 +186,7 @@ func publishValidatorEvidenceClosedCensusV2(ctx context.Context, closure *Attemp
 				return nil, errors.New("validator evidence census omits a source replica owner")
 			}
 		}
-		publishers[index], err = newAttemptCutV2Replicas(operator.Bounds, replicas)
+		publishers[index], err = newAttemptCutV2ReplicasWithMetadataLimit(operator.Bounds, replicas, max(attemptStreamV2MetadataBytes(operator.Bounds), operation.options.MaxTransitionBytes))
 		if err != nil {
 			return nil, err
 		}

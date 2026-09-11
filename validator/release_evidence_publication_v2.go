@@ -110,11 +110,11 @@ func ReadValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *V
 	if manifest.Epoch != options.Window.Epoch || manifest.Origins != options.Origins || len(manifest.Members) != len(options.Activations) {
 		return nil, errors.New("evidence publication locator differs from configured epoch, origins or complete membership")
 	}
-	metadataLimit := max(options.Bounds.Cut.Records.MaxManifestBytes, options.Bounds.Cut.Records.MaxPageBytes, options.Bounds.Cut.Proofs.MaxManifestBytes, options.Bounds.Cut.Proofs.MaxPageBytes)
+	metadataLimit := max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes)
 	if manifest.CensusBytes > metadataLimit {
 		return nil, errors.New("evidence publication census exceeds the approved public metadata limit")
 	}
-	readers, err := newReleaseEvidenceV2StartupReaders(options.Origins, options.Bounds.Cut)
+	readers, err := newReleaseEvidenceV2ReadersWithMetadataLimit(options.Origins, options.Bounds.Cut, metadataLimit)
 	if err != nil {
 		return nil, err
 	}

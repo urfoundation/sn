@@ -30,6 +30,18 @@ type HTTPAttemptStreamV2Reader struct {
 // Uses a dedicated typed endpoint; generic evidence object limits are unchanged.
 // Loopback HTTP is supported for the explicitly configured local testnet origins.
 func NewHTTPAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds) (*HTTPAttemptStreamV2Reader, error) {
+	return newHttpAttemptStreamV2Reader(origin, bounds, attemptStreamV2MetadataBytes(bounds))
+}
+
+// Ordinary stream metadata retains its independently configured page limits.
+func attemptStreamV2MetadataBytes(bounds AttemptCutV2Bounds) uint64 {
+	return max(bounds.Records.MaxManifestBytes, bounds.Records.MaxPageBytes,
+		bounds.Proofs.MaxManifestBytes, bounds.Proofs.MaxPageBytes)
+}
+
+// Typed evidence callers supply their admitted payload allowance separately;
+// record/proof chunk limits and every exact-body check remain unchanged.
+func newHttpAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds, metadataBytes uint64) (*HTTPAttemptStreamV2Reader, error) {
 	endpoint, err := url.Parse(origin)
 	if err != nil || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.Opaque != "" ||
 		(endpoint.Scheme != "http" && endpoint.Scheme != "https") ||
@@ -43,10 +55,8 @@ func NewHTTPAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds) (*HT
 	if err := bounds.Proofs.Validate(); err != nil {
 		return nil, err
 	}
-	metadataBytes := max(bounds.Records.MaxManifestBytes, bounds.Records.MaxPageBytes,
-		bounds.Proofs.MaxManifestBytes, bounds.Proofs.MaxPageBytes)
 	maximumInt := uint64(^uint(0) >> 1)
-	if metadataBytes > maximumInt/2 || bounds.Records.MaxChunkBytes >= uint64(1<<63-1) || bounds.Proofs.MaxChunkBytes >= uint64(1<<63-1) {
+	if metadataBytes == 0 || metadataBytes > maximumInt/2 || bounds.Records.MaxChunkBytes >= uint64(1<<63-1) || bounds.Proofs.MaxChunkBytes >= uint64(1<<63-1) {
 		return nil, errors.New("attempt stream HTTP bounds overflow bounded reads")
 	}
 	endpoint.Path = "/sn/attempt-artifact"

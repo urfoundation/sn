@@ -333,7 +333,7 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 		return nil, errors.Join(fmt.Errorf("no_id %d authentication: %w", op.NoID, err), releaseStageError("authentication API shutdown", closeErr))
 	}
 
-	upload, err := newReleaseAttemptUploadV2(ctx, op, cfg.EvidenceV2.Bounds.Cut, api.GetByJwt)
+	upload, err := newReleaseAttemptUploadV2(ctx, op, cfg.EvidenceV2.Bounds, api.GetByJwt)
 	if err != nil {
 		closeErr := api.CloseAndWait(context.Background())
 		strategy.Close()

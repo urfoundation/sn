@@ -66,8 +66,14 @@ type depositAuditPublicationV2TestFixture struct {
 // Extend the existing actual activation/runtime fixture with independently
 // served later epoch views. The prior activation/keys remain unchanged.
 func newDepositAuditPublicationV2TestFixture(t *testing.T, mode string) *depositAuditPublicationV2TestFixture {
+	return newDepositAuditPublicationV2TestFixtureWithBounds(t, mode, nil, 1)
+}
+
+// Larger source observations choose their complete signed provider census and
+// independent bounds before the real runtime and HTTP owners are constructed.
+func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string, bounds *ReleaseEvidenceV2Bounds, providerCount int) *depositAuditPublicationV2TestFixture {
 	t.Helper()
-	self := &depositAuditPublicationV2TestFixture{base: newReleaseRuntimeV2TestFixture(t), chain: newReleaseDecisionV2TestFixture(t), mode: mode}
+	self := &depositAuditPublicationV2TestFixture{base: newReleaseRuntimeV2TestFixtureWithBounds(t, bounds), chain: newReleaseDecisionV2TestFixture(t), mode: mode}
 	runtime, chain := self.base.runtime, self.chain
 	cfg := runtime.cfg
 	// Startup's private explicit-artifact fixture uses genuine tiny metadata.
@@ -106,9 +112,17 @@ func newDepositAuditPublicationV2TestFixture(t *testing.T, mode string) *deposit
 	chain.set(t, "epochStartBlock", coordinator.PackEpochStartBlock(new(big.Int).SetUint64(epoch)), new(big.Int).SetUint64(start))
 	chain.set(t, "epochStartBlock", coordinator.PackEpochStartBlock(new(big.Int).SetUint64(epoch-1)), new(big.Int).SetUint64(sourceStart))
 	chain.set(t, "epochEndBlock", coordinator.PackEpochEndBlock(new(big.Int).SetUint64(epoch-1)), new(big.Int).SetUint64(start))
+	providers := []payoutartifact.ProviderInput{{ClientID: [16]byte{1}, Coldkey: [32]byte{1}, UsageBytes: 3 * 1024 * 1024 * 1024, Assignments: 8, Confirmations: 8, Eligible: true}}
+	for index := 1; index < providerCount; index++ {
+		var clientId [16]byte
+		clientId[0], clientId[1], clientId[2] = 2, byte(index>>8), byte(index)
+		var coldkey [32]byte
+		copy(coldkey[:], clientId[:])
+		providers = append(providers, payoutartifact.ProviderInput{ClientID: clientId, Coldkey: coldkey, UsageBytes: 1, Assignments: 8, Confirmations: 8, Eligible: true})
+	}
 	self.payout, err = payoutartifact.Build(payoutartifact.BuildInput{DeploymentID: cfg.DeploymentID, GenesisHash: cfg.GenesisHash, PolicyHash: cfg.PolicyHash, ChainID: cfg.ChainID, Netuid: cfg.Netuid, Coordinator: common.HexToAddress(cfg.Coordinator), SettlementVault: common.HexToAddress(cfg.SettlementVault), Epoch: epoch - 1, NoID: self.sourceNoIds[0],
 		Start: payoutartifact.Boundary{Number: sourceStart, Hash: attemptHex32(chain.blocks[sourceStart])}, End: payoutartifact.Boundary{Number: start, Hash: attemptHex32(chain.blocks[start])}, OperatorSnapshotHash: "sha256:" + strings.Repeat("10", 32), FleetSnapshotHash: "sha256:" + strings.Repeat("20", 32),
-		Providers: []payoutartifact.ProviderInput{{ClientID: [16]byte{1}, Coldkey: [32]byte{1}, UsageBytes: 3 * 1024 * 1024 * 1024, Assignments: 8, Confirmations: 8, Eligible: true}}, ReliabilityAMin: cfg.Policy.Verify.ReliabilityAMin, CreatedAt: time.Unix(1700000000, 0).UTC()})
+		Providers: providers, ReliabilityAMin: cfg.Policy.Verify.ReliabilityAMin, CreatedAt: time.Unix(1700000000, 0).UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +260,7 @@ func newDepositAuditPublicationV2TestFixture(t *testing.T, mode string) *deposit
 			strategy.Close()
 		})
 		cfg.Operators[index].APIURL, cfg.Operators[index].ArtifactSigner = endpoint.URL, self.payout.Signer.Hex()
-		upload, err := newReleaseAttemptUploadV2(t.Context(), cfg.Operators[index], cfg.EvidenceV2.Bounds.Cut, api.GetByJwt)
+		upload, err := newReleaseAttemptUploadV2(t.Context(), cfg.Operators[index], cfg.EvidenceV2.Bounds, api.GetByJwt)
 		if err != nil {
 			t.Fatal(err)
 		}

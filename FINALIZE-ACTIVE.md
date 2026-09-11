@@ -1,6 +1,6 @@
 # Release 1.0 active work index
 
-Updated 2026-09-11 05:33 UTC. Read this index first; use
+Updated 2026-09-11 06:17 UTC. Read this index first; use
 [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md) for detailed history and evidence.
 This is not a source freeze, full-gate certificate or live acceptance report.
 
@@ -18,7 +18,47 @@ adversarial actors. Final acceptance still requires both full gates, the
 approved live RC and three final epochs, investigation of every anomaly, and
 independently replayable on-chain evidence in `FINAL.md`.
 
-## Current frontier — 2026-09-11 05:33 UTC
+## Current frontier — 2026-09-11 06:17 UTC
+
+**INCOMPLETE; final acceptance is false.** Source `36c638dce78ab15a326b30a4f8e6c65ce71d0358` was published at 05:35:31 UTC. CLI4 built
+with actual exit 0 and clean VCS metadata, SHA-256
+`9116cd9ccc30aee55a8cd5e4c1fcecbe19837575d5b56b168628acbea97b0d1b`.
+[Build receipt](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-4/result.json),
+[exact executable identity](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-4/executable.json).
+No subsequent native lock apply or second producer/aggregate gate has run.
+CLI4 predates the typed-metadata repair and does not fix the blocker below.
+
+Both R32 validators reached initial terminal publication after semantic startup
+and JWT refresh, then failed deterministically: validator 2 exited 1 at
+05:26:54 and validator 1 at 05:29:58. The epoch-281 NO1/NO2 transition sizes are
+84,896/86,743 bytes for validator 1 and 68,229/63,185 for validator 2; publication
+manifests still stop at epoch 280. An incidental 64KiB stream-metadata cap clips
+the existing 4MiB typed transition allowance before signing/upload. This is a
+capacity bug distinct from earlier RPC timeouts and the user's reported outage.
+The separate server 2MiB cap is unchanged; current payloads fit it.
+[Local diagnosis and retained evidence](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-terminal-metadata-blocker/REPORT.md).
+
+The typed transport correction has completed focused qualification. The first
+normal run retains 39 unaffected passes and two new fixture failures; only the
+new fixture file then changed. Both corrected roots passed three sequential
+normal confirmations on one retained binary, and all 41 focused race roots
+passed. The corrected owner joined actual exit 0 at 06:12:36.814585 UTC with
+all 17 source hashes unchanged. The initial failure remains preserved.
+[Exact tests, binaries and exits](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/metadata-transport-corrected/HANDOFF.md),
+[review and fixture correction](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/typed-metadata-review/FIXTURE-CORRECTION-REVIEW.md).
+Configuration, custody, used activations, page/header bounds and the separate
+server cap remain unchanged. Publish/build the exact clean repaired source,
+then use the prepared, unexecuted
+[R33 rollout owner](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/provisional-r33/README.md) for both managed validators
+and proceed to the second native gates. No new image or restored application
+readiness is claimed. Earlier provisional proofs remain valid historical
+evidence; only six records have been locally signature-verified. Formal RC,
+three production epochs, public replay and shutdown remain pending.
+
+The previous source, first-gate timeout and focused guard history follows
+unchanged; it is not superseded by a fabricated full-gate pass.
+
+## Historical frontier — 2026-09-11 05:33 UTC
 
 **INCOMPLETE; final acceptance is false.** The provisional fleet is retained;
 the formal release-candidate campaign has not launched. Both managed R32

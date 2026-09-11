@@ -72,10 +72,16 @@ type releaseEvidenceV2StartupHistory struct {
 // Owns independent HTTP origins without installing publication callbacks in a
 // read-only workflow. This retains the replicated sealer's same-origin grammar.
 func newReleaseEvidenceV2StartupReaders(origins [2]string, bounds AttemptCutV2Bounds) ([2]*HTTPAttemptStreamV2Reader, error) {
+	return newReleaseEvidenceV2ReadersWithMetadataLimit(origins, bounds, attemptStreamV2MetadataBytes(bounds))
+}
+
+// Complete typed payloads may exceed stream pages. Their caller supplies the
+// independent finite allowance while both origins retain identical admission.
+func newReleaseEvidenceV2ReadersWithMetadataLimit(origins [2]string, bounds AttemptCutV2Bounds, metadataBytes uint64) ([2]*HTTPAttemptStreamV2Reader, error) {
 	var readers [2]*HTTPAttemptStreamV2Reader
 	var canonical [2]string
 	for index, origin := range origins {
-		reader, err := NewHTTPAttemptStreamV2Reader(origin, bounds)
+		reader, err := newHttpAttemptStreamV2Reader(origin, bounds, metadataBytes)
 		if err != nil {
 			return [2]*HTTPAttemptStreamV2Reader{}, err
 		}

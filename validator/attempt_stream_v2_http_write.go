@@ -33,7 +33,13 @@ type HTTPAttemptStreamV2Writer struct {
 // Reuses typed reader origin/bound admission and its non-redirecting client.
 // Credentials require TLS except literal loopback HTTP in the local simulator.
 func NewHTTPAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, byJwt func() string) (*HTTPAttemptStreamV2Writer, error) {
-	reader, err := NewHTTPAttemptStreamV2Reader(origin, bounds)
+	return newHttpAttemptStreamV2Writer(origin, bounds, attemptStreamV2MetadataBytes(bounds), byJwt)
+}
+
+// Typed payload admission is explicit; the public stream constructor keeps its
+// original page allowance, credential policy and bounded acknowledgement owner.
+func newHttpAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, metadataBytes uint64, byJwt func() string) (*HTTPAttemptStreamV2Writer, error) {
+	reader, err := newHttpAttemptStreamV2Reader(origin, bounds, metadataBytes)
 	if err != nil {
 		return nil, err
 	}

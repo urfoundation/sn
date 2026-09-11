@@ -62,6 +62,8 @@ func newReleaseAttemptUploadV2HTTPFixture(t *testing.T, count int, bounds Attemp
 	operators := make([]OperatorConfig, count)
 	runtimes := make([]*releaseOperatorRuntime, count)
 	stores := make([]*releaseAttemptUploadV2TestStore, count)
+	evidenceBounds := releaseEvidenceV2TestConfig(t.TempDir(), operators).Bounds
+	evidenceBounds.Cut = bounds
 	for index := range operators {
 		store := &releaseAttemptUploadV2TestStore{objects: map[string][]byte{}}
 		endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +131,7 @@ func newReleaseAttemptUploadV2HTTPFixture(t *testing.T, count int, bounds Attemp
 			strategy.Close()
 		})
 		operator := OperatorConfig{NoID: uint64(index + 1), APIURL: endpoint.URL}
-		upload, err := newReleaseAttemptUploadV2(t.Context(), operator, bounds, api.GetByJwt)
+		upload, err := newReleaseAttemptUploadV2(t.Context(), operator, evidenceBounds, api.GetByJwt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +177,7 @@ func TestReleaseEvidenceV2UploadOwnerCancellationJoinsInFlight(t *testing.T) {
 		}))
 		parent, cancelParent := context.WithCancel(t.Context())
 		caller, cancelCaller := context.WithCancel(t.Context())
-		upload, err := newReleaseAttemptUploadV2(parent, OperatorConfig{NoID: 1, APIURL: endpoint.URL}, attemptCutV2ReplicaTestBounds(), func() string { return "fixture" })
+		upload, err := newReleaseAttemptUploadV2(parent, OperatorConfig{NoID: 1, APIURL: endpoint.URL}, ReleaseEvidenceV2Bounds{Cut: attemptCutV2ReplicaTestBounds(), MaxTransitionBytes: 1024 * 1024}, func() string { return "fixture" })
 		if err != nil {
 			cancelParent()
 			cancelCaller()
@@ -214,7 +216,7 @@ func TestReleaseEvidenceV2UploadCancellationInsideCredentialGetter(t *testing.T)
 	var upload *releaseAttemptUploadV2
 	var calls int
 	var err error
-	upload, err = newReleaseAttemptUploadV2(t.Context(), OperatorConfig{NoID: 1, APIURL: "http://127.0.0.1:1"}, attemptCutV2ReplicaTestBounds(), func() string { upload.close(); return "fixture" })
+	upload, err = newReleaseAttemptUploadV2(t.Context(), OperatorConfig{NoID: 1, APIURL: "http://127.0.0.1:1"}, ReleaseEvidenceV2Bounds{Cut: attemptCutV2ReplicaTestBounds(), MaxTransitionBytes: 1024 * 1024}, func() string { upload.close(); return "fixture" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,10 +230,11 @@ func TestReleaseEvidenceV2UploadCancellationInsideCredentialGetter(t *testing.T)
 
 func TestReleaseEvidenceV2UploadRejectsIncompleteAdmission(t *testing.T) {
 	t.Parallel()
-	for _, fault := range []string{"context", "cancelled", "operator", "getter", "origin", "header", "stream"} {
+	for _, fault := range []string{"context", "cancelled", "operator", "getter", "origin", "header", "stream", "transition-zero", "transition-overflow"} {
 		ctx, cancel := context.WithCancel(t.Context())
 		operator := OperatorConfig{NoID: 1, APIURL: "http://127.0.0.1:1"}
 		bounds := attemptCutV2ReplicaTestBounds()
+		transitionBytes := uint64(1024 * 1024)
 		getter := func() string { t.Error("constructor fetched credentials"); return "fixture" }
 		switch fault {
 		case "context":
@@ -248,8 +251,12 @@ func TestReleaseEvidenceV2UploadRejectsIncompleteAdmission(t *testing.T) {
 			bounds.MaxHeaderBytes = max(bounds.Records.MaxPageBytes, bounds.Records.MaxManifestBytes, bounds.Proofs.MaxPageBytes, bounds.Proofs.MaxManifestBytes) + 1
 		case "stream":
 			bounds.Records.MaxChunkBytes = 0
+		case "transition-zero":
+			transitionBytes = 0
+		case "transition-overflow":
+			transitionBytes = ^uint64(0)
 		}
-		owner, err := newReleaseAttemptUploadV2(ctx, operator, bounds, getter)
+		owner, err := newReleaseAttemptUploadV2(ctx, operator, ReleaseEvidenceV2Bounds{Cut: bounds, MaxTransitionBytes: transitionBytes}, getter)
 		cancel()
 		if owner != nil {
 			owner.close()
@@ -267,7 +274,7 @@ func TestReleaseEvidenceV2UploadReplicasRequireCompleteRuntimeCensus(t *testing.
 	if _, err := releaseAttemptUploadReplicasV2(cfg, origins, runtimes); err != nil {
 		t.Fatal(err)
 	}
-	for _, fault := range []string{"missing-runtime", "nil-runtime", "duplicate-runtime", "missing-upload", "measurement", "role", "origin", "bounds", "closed", "writer", "duplicate-config", "capacity", "unselected-origin", "same-origin"} {
+	for _, fault := range []string{"missing-runtime", "nil-runtime", "duplicate-runtime", "missing-upload", "measurement", "role", "origin", "bounds", "transition", "closed", "writer", "duplicate-config", "capacity", "unselected-origin", "same-origin"} {
 		config := *cfg
 		config.Operators = slices.Clone(cfg.Operators)
 		owners := slices.Clone(runtimes)
@@ -293,6 +300,8 @@ func TestReleaseEvidenceV2UploadReplicasRequireCompleteRuntimeCensus(t *testing.
 			owner.origin = "https://other.invalid"
 		case "bounds":
 			owner.bounds.MaxHeaderBytes++
+		case "transition":
+			owner.maxTransitionBytes++
 		case "closed":
 			var cancel context.CancelFunc
 			owner.ctx, cancel = context.WithCancel(t.Context())
@@ -474,6 +483,8 @@ func TestReleaseEvidenceV2UploadReplicasOverlapAndJoinFailure(t *testing.T) {
 	bounds := attemptCutV2ReplicaTestBounds()
 	operators := make([]OperatorConfig, 2)
 	runtimes := make([]*releaseOperatorRuntime, 2)
+	evidenceBounds := releaseEvidenceV2TestConfig(t.TempDir(), operators).Bounds
+	evidenceBounds.Cut = bounds
 	for index := range operators {
 		endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.Copy(io.Discard, r.Body)
@@ -488,7 +499,7 @@ func TestReleaseEvidenceV2UploadReplicasOverlapAndJoinFailure(t *testing.T) {
 		}))
 		t.Cleanup(endpoint.Close)
 		operators[index] = OperatorConfig{NoID: uint64(index + 1), APIURL: endpoint.URL}
-		owner, err := newReleaseAttemptUploadV2(t.Context(), operators[index], bounds, func() string { return "fixture" })
+		owner, err := newReleaseAttemptUploadV2(t.Context(), operators[index], evidenceBounds, func() string { return "fixture" })
 		if err != nil {
 			t.Fatal(err)
 		}

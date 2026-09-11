@@ -35,7 +35,7 @@ func releaseAttemptUploadReplicasV2(cfg *ReleaseConfig, origins [2]string, runti
 		}
 		owner := runtime.attemptUpload
 		operator, found := configured[owner.noID]
-		if !found || seen[owner.noID] || runtime.measurement.NoID != owner.noID || owner.origin != operator.APIURL || owner.bounds != cfg.EvidenceV2.Bounds.Cut || owner.ctx == nil || owner.cancel == nil || owner.writer == nil {
+		if !found || seen[owner.noID] || runtime.measurement.NoID != owner.noID || owner.origin != operator.APIURL || owner.bounds != cfg.EvidenceV2.Bounds.Cut || owner.maxTransitionBytes != cfg.EvidenceV2.Bounds.MaxTransitionBytes || owner.ctx == nil || owner.cancel == nil || owner.writer == nil {
 			return zero, errors.New("release attempt upload runtime differs from its configured operator")
 		}
 		if err := owner.ctx.Err(); err != nil {
@@ -43,12 +43,12 @@ func releaseAttemptUploadReplicasV2(cfg *ReleaseConfig, origins [2]string, runti
 		}
 		// Check the actual attached writer, not only its owner's markers. This
 		// constructs no request and never calls the live credential getter.
-		expected, err := NewHTTPAttemptStreamV2Writer(operator.APIURL, owner.bounds, owner.writer.byJwt)
+		expected, err := newHttpAttemptStreamV2Writer(operator.APIURL, owner.bounds, max(attemptStreamV2MetadataBytes(owner.bounds), owner.maxTransitionBytes), owner.writer.byJwt)
 		if err != nil {
 			return zero, err
 		}
 		writer := owner.writer
-		if owner.bounds.MaxHeaderBytes == 0 || owner.bounds.MaxHeaderBytes > expected.metadataBytes ||
+		if owner.bounds.MaxHeaderBytes == 0 || owner.bounds.MaxHeaderBytes > attemptStreamV2MetadataBytes(owner.bounds) ||
 			writer.endpoint != expected.endpoint || writer.metadataBytes != expected.metadataBytes ||
 			writer.recordBytes != expected.recordBytes || writer.proofBytes != expected.proofBytes ||
 			writer.client == nil || writer.client.Timeout != expected.client.Timeout || writer.client.CheckRedirect == nil ||
