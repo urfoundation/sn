@@ -63,6 +63,40 @@ func TestProvisionalClosedNativeInputAuthenticatesAndPreservesClosedHistory(t *t
 	}
 }
 
+func TestProvisionalClosedNativeInputPreservesPartialCensus(t *testing.T) {
+	fixture := newReleaseStartupV2TestFixture(t, true)
+	fixture.ordinary(t, 0, 1, false)
+	fixture.terminal(t, false)
+	fixture.reopen(t)
+	fixture.cfg.ProvisionalDeferClosedNativeInput = true
+	var history *releaseEvidenceV2StartupHistory
+	err := startReleaseEvidenceV2DiskStateOwned(t.Context(), &fixture.cfg, fixture.chain, fixture.nativeFixture.chain, fixture.inputs, fixture.keys, [2]string{fixture.replicas[0].Origin, fixture.replicas[1].Origin}, fixture.disk, fixture.nativeFixture.expected, attemptSettlementV2PhysicalIO(), &history)
+	if err != nil || history == nil {
+		t.Fatalf("actual partial-input restart: %v", err)
+	}
+	noID := fixture.disk.participants[0].NoID
+	path := releaseMeasurementInputV2Path(fixture.cfg.StateDir, 1, noID)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := history.inputByEpoch[1][noID]
+	snapshot := &ReleaseSnapshot{Epoch: big.NewInt(8), BlockNumber: fixture.finalized, BlockHash: fixture.blocks[fixture.finalized]}
+	err = history.provisionalClosedInputDeferral(t.Context(), nil, 1, journal.MeasurementInput.CutNativeBlock, journal.MeasurementInput.CutNativeBlockHash, snapshot)
+	var deferred *provisionalClosedNativeInput
+	if !errors.As(err, &deferred) || deferred.nativeEpoch != 1 || deferred.activeSettlement != 8 {
+		t.Fatalf("actual partial input did not defer after complete terminal closure: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("deferral changed retained signed journal: %v", err)
+	}
+	absent := releaseMeasurementInputV2Path(fixture.cfg.StateDir, 1, fixture.disk.participants[1].NoID)
+	if _, err := os.Stat(absent); !os.IsNotExist(err) {
+		t.Fatalf("deferral manufactured missing operator input: %v", err)
+	}
+}
+
 func TestProvisionalClosedNativeInputRejectsUnclosedUnsafeAndChangedEvidence(t *testing.T) {
 	fixture, history, snapshot := newProvisionalClosedNativeInputFixture(t)
 	noID := fixture.disk.participants[0].NoID

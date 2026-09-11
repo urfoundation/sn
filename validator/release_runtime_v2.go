@@ -39,6 +39,7 @@ type releaseRuntimeV2 struct {
 	publicationContexts  map[uint64]map[uint64]AttemptCutV2Context
 	retainedStartupEpoch uint64
 	publishEpoch         func(uint64)
+	nativeReservations   map[uint64]uint64 // no_id -> native epoch, owned by gate
 }
 
 // Semantic startup is called while the complete disk census is still dormant.
@@ -451,6 +452,9 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 	if steerer == nil || steerer.runtimeV2 != self || nativeBlock == 0 || hotkeys == nil {
 		return nil, zero, errors.New("release V2 native collector owner differs")
 	}
+	if err := self.cancelExpiredNativeReservationOwned(ctx, current, subnetEpoch, snapshot); err != nil {
+		return nil, zero, err
+	}
 	if err := self.advanceOwned(ctx, snapshot); err != nil {
 		return nil, zero, err
 	}
@@ -505,6 +509,15 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		inputOptions := releaseMeasurementInputV2Options{MaxJournalBytes: bounds.MaxInputJournalBytes,
 			Stats: releaseStatsV2Options{Activation: expected.Activation, Policy: self.cfg.Policy, Bounds: bounds.Cut, Seal: seal,
 				Stats: AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, Replay: operator.Measurement.Replay}}}
+		if provisionalClosedNativeInputEnabled(&self.cfg) {
+			if self.nativeReservations == nil {
+				self.nativeReservations = make(map[uint64]uint64)
+			}
+			if reserved, owned := self.nativeReservations[noId]; owned && reserved != subnetEpoch {
+				return nil, zero, errors.New("release V2 native reservation still belongs to an earlier input")
+			}
+			self.nativeReservations[noId] = subnetEpoch
+		}
 		input, err := steerer.loadOrDetachReleaseMeasurementInputV2(ctx, noId, subnetEpoch, nativeBlock, nativeHash, snapshot, inputOptions)
 		if err != nil {
 			return nil, zero, err
@@ -554,6 +567,7 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 			}
 			self.history.ordinaryContexts[noId] = expected
 		}
+		delete(self.nativeReservations, noId)
 		// The following consumer needs a fresh physical replay name: the
 		// ordinary statistics reconciliation already consumed its own one.
 		operator, err = self.operator(ctx, expected, "ordinary-head")

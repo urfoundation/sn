@@ -32,14 +32,32 @@ func (self *releaseEvidenceV2StartupHistory) provisionalClosedInputDeferral(ctx 
 	if current != nil && (current.SubnetEpoch >= nativeEpoch || current.Status == "pending") {
 		return errors.New("provisional native input deferral cannot replace an existing native intent")
 	}
-	if len(inputs) != len(self.participants) || len(inputs) == 0 {
-		return errors.New("provisional native input deferral requires the complete retained operator census")
+	if len(inputs) > len(self.participants) || len(inputs) == 0 {
+		return errors.New("provisional native input deferral has an invalid retained operator census")
+	}
+	known := make(map[uint64]bool, len(self.participants))
+	for _, participant := range self.participants {
+		known[participant.NoID] = true
+	}
+	for noID := range inputs {
+		if !known[noID] {
+			return errors.New("provisional native input deferral contains an unknown operator")
+		}
 	}
 	for _, participant := range self.participants {
 		noID := participant.NoID
 		journal := inputs[noID]
 		if journal == nil {
-			return errors.New("provisional native input deferral is missing an operator")
+			// A drained native reservation can expire before this operator ever
+			// signs an input. Preserve that absence; never synthesize its journal.
+			_, err := readReleaseMeasurementInputV2Context(ctx, releaseMeasurementInputV2Path(self.cfg.StateDir, nativeEpoch, noID), self.cfg.EvidenceV2.Bounds.MaxInputJournalBytes, releaseMeasurementInputV2ReadHooks{})
+			if !releaseMeasurementInputV2InitialAbsence(err) {
+				return errors.Join(errors.New("provisional native input absence differs from authenticated history"), err)
+			}
+			if cursor, owned := self.current[noID]; !owned || cursor.epoch != active {
+				return errors.New("provisional native input deferral is missing current settlement ownership")
+			}
+			continue
 		}
 		input := journal.MeasurementInput
 		cursor, owned := self.current[noID]
