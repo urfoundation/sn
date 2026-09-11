@@ -27,6 +27,10 @@ gates are no longer conditions of completing this testnet exercise.
    without replacing its binary or manifest, or restarting its processes.
    Bound actual process readiness to 30 seconds; retain exact generation and
    process identities, live PIDs, and non-provider health probes.
+   Provisional scenario startup uses the same authenticated live-fleet
+   preparation as resume to omit the full doctor when no spend is pending.
+   It reuses the completed topology handoff through the existing process log
+   gate; it must not manufacture completion or new verified setup receipts.
    Fresh signed proof coverage is an observation during the run, not a
    provisional campaign startup prerequisite. Record
    fresh_proof_startup_waived=true, the original proof baseline, and observed

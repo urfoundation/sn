@@ -73,7 +73,7 @@ func provisionalLiveResumeNeedsDoctor(executor *Executor) (bool, error) {
 }
 
 func prepareProvisionalLiveTopology(cfg *ResolvedConfig, stateDir, command string) (*provisionalLiveTopology, error) {
-	if command != "resume" || !provisionalResumeEnabled(cfg) {
+	if (command != "resume" && command != "scenario") || !provisionalResumeEnabled(cfg) {
 		return nil, nil
 	}
 	live, err := liveRecordedSupervisor(stateDir)
