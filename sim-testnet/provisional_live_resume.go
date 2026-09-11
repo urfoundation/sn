@@ -174,7 +174,7 @@ func newProvisionalProcessLogGate(stateDir string, adoption *provisionalLiveTopo
 		return nil, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	gate := &processLogGate{stateDir: stateDir, path: adoption.ProcessLogGatePath, state: processLogGateState{
+	gate := &processLogGate{stateDir: stateDir, path: adoption.ProcessLogGatePath, provisionalObservationOnly: true, state: processLogGateState{
 		Schema: processLogGateSchema, Classifier: processLogClassifierVersion, DeploymentID: adoption.manifest.DeploymentID,
 		ManifestHash: adoption.ManifestHash, SupervisorPID: adoption.SupervisorPID, SupervisorStartTimeTicks: adoption.SupervisorStartTimeTicks,
 		GeneratedAt: now, UpdatedAt: now, Cursors: cursors, Findings: []ProcessLogFinding{},
@@ -326,6 +326,14 @@ func adoptProvisionalLiveTopology(ctx context.Context, cfg *ResolvedConfig, stat
 }
 
 func loadProvisionalOrStrictProcessLogGate(cfg *ResolvedConfig, stateDir string) (*processLogGate, error) {
+	gate, err := loadProvisionalOrStrictProcessLogGateState(cfg, stateDir)
+	if err == nil && gate != nil {
+		gate.provisionalObservationOnly = provisionalResumeEnabled(cfg)
+	}
+	return gate, err
+}
+
+func loadProvisionalOrStrictProcessLogGateState(cfg *ResolvedConfig, stateDir string) (*processLogGate, error) {
 	if !provisionalResumeEnabled(cfg) {
 		return loadLiveProcessLogGate(stateDir)
 	}

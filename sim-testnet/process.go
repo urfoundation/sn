@@ -809,6 +809,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return fmt.Errorf("initialize process log gate: %w", err)
 	}
+	processLogs.provisionalObservationOnly = provisionalResumeEnabled(cfg)
 	var topologyAction *Action
 	for i := range p.Actions {
 		if p.Actions[i].ID == "topology.launch" {
@@ -2633,7 +2634,7 @@ const supervisorStartupPhaseTimeout = 2 * time.Minute
 // into the internal supervisor without changing any readiness requirement.
 func providerStartupWaveSize(cfg *ResolvedConfig) int {
 	if provisionalResumeEnabled(cfg) {
-		return 1
+		return 2
 	}
 	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
 		return 2

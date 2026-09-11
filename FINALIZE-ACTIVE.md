@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 07:48 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 09:07 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -14,20 +14,18 @@ gates are no longer conditions of completing this testnet exercise.
 
 ## Execute now
 
-1. Finish the known carry fix for obsolete, closed, never-broadcast activation
-   attempts. Publish it, update the existing release lock and build the CLI once.
-   Validate the repair through the actual plan/resume operation.
-2. In parallel, stop and join existing writers, back up and migrate both existing
-   databases using the already rehearsed bridge, and use the qualified server
-   at the original path. Preserve the current database volumes and all history.
-3. Generate one actual plan, check its spending and retained transaction state,
-   then resume attempt-4 and start the real release-candidate campaign. Perform
-   only prerequisites enforced by the native command or needed to avoid duplicate
-   transactions, lost state or conflicting writers.
-4. Observe real transactions, provider traffic, validator proofs and accepted
+1. Reuse the existing attempt-4 plan and completed receipts. The carry repair,
+   database migration and configuration rendering are complete. Do not repeat
+   them or regenerate the plan for a provisional driver correction.
+2. Run resume and then release-candidate with explicit --provisional-resume,
+   using the retained configuration and corrected driver. Keep native custody,
+   spending limits, journal serialization, process ownership and live health.
+   Process log classifications are observations in this mode: preserve every
+   finding and its original classification without stopping the fleet for it.
+3. Observe real transactions, provider traffic, validator proofs and accepted
    epochs. Fix concrete runtime failures and resume supported completed work.
    Keep original errors and actual completion markers; never invent a pass.
-5. Report the achieved coverage, transactions, epochs, failures and remaining
+4. Report the achieved coverage, transactions, epochs, failures and remaining
    gaps from the actual run. Public replay and release certification work must
    not delay launch; describe any omitted validation honestly.
 
@@ -40,10 +38,12 @@ Caps remain: 6,000 alpha reserve-repair allowance, 31,250 alpha lifetime,
 180 EVM within 200 total TAO, 262 registrations, and no new subnets.
 Do not reset state or repeat funding/registration transactions.
 
-At this update, the provisional fleet has run real testnet work but the
-release-candidate campaign has not started. Both second preparation gates
-were cancelled and joined; neither passed. No preparation tests are running.
-The actual carry failure and migration are the current launch work.
+The provisional fleet has run real testnet work. All twenty swarms passed live
+startup on September 11 before a process-log gate stopped that generation for
+onboarding-metric SQL warnings. The provisional driver now records those
+classifications without making them launch conditions. The SQL correction is
+prepared separately and must not delay launch. No preparation tests are running.
+This mode records final_acceptance=false; do not claim strict certification.
 
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native

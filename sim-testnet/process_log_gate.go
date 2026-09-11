@@ -68,16 +68,17 @@ type processLogCursor struct {
 }
 
 type processLogGateState struct {
-	Schema                   string              `json:"schema"`
-	Classifier               string              `json:"classifier"`
-	DeploymentID             string              `json:"deployment_id"`
-	ManifestHash             string              `json:"manifest_hash"`
-	SupervisorPID            int                 `json:"supervisor_pid,omitempty"`
-	SupervisorStartTimeTicks uint64              `json:"supervisor_start_time_ticks,omitempty"`
-	GeneratedAt              string              `json:"generated_at"`
-	UpdatedAt                string              `json:"updated_at"`
-	Cursors                  []processLogCursor  `json:"cursors"`
-	Findings                 []ProcessLogFinding `json:"findings"`
+	Schema                     string              `json:"schema"`
+	Classifier                 string              `json:"classifier"`
+	ProvisionalObservationOnly bool                `json:"provisional_observation_only,omitempty"`
+	DeploymentID               string              `json:"deployment_id"`
+	ManifestHash               string              `json:"manifest_hash"`
+	SupervisorPID              int                 `json:"supervisor_pid,omitempty"`
+	SupervisorStartTimeTicks   uint64              `json:"supervisor_start_time_ticks,omitempty"`
+	GeneratedAt                string              `json:"generated_at"`
+	UpdatedAt                  string              `json:"updated_at"`
+	Cursors                    []processLogCursor  `json:"cursors"`
+	Findings                   []ProcessLogFinding `json:"findings"`
 }
 
 type processLogScanResult struct {
@@ -159,6 +160,8 @@ type processLogGate struct {
 	stateDir  string
 	path      string
 	state     processLogGateState
+	// Invocation policy is never restored from persisted report metadata.
+	provisionalObservationOnly bool
 
 	readRangeForTest    func(*os.File, int64, int64) ([]byte, error)
 	afterCursorsForTest func(bool)
@@ -603,6 +606,17 @@ func (self *processLogGate) Scan(final bool, faults ...processLogFaultScope) (pr
 	result := processLogScanResult{
 		Findings: append([]ProcessLogFinding(nil), self.state.Findings...),
 	}
+	if self.provisionalObservationOnly {
+		// Preserve the original release classifications in the durable report.
+		// Runtime observations retain every finding with an explicit disposition
+		// so launch, rotation and scenario anomaly checks share this policy.
+		for index := range result.Findings {
+			if result.Findings[index].Blocking {
+				result.Findings[index].Blocking = false
+				result.Findings[index].Disposition = "provisional-observation"
+			}
+		}
+	}
 	return result, errors.Join(scanErr, persistErr)
 }
 
@@ -915,7 +929,9 @@ func blockingProcessLogFindings(findings []ProcessLogFinding) []ProcessLogFindin
 }
 
 func (self *processLogGate) persistWithLock() error {
-	raw, err := json.MarshalIndent(self.state, "", "  ")
+	state := self.state
+	state.ProvisionalObservationOnly = self.provisionalObservationOnly
+	raw, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -928,6 +944,7 @@ func (self *processLogGate) WriteEvidence(runDir string) error {
 		self.stateLock.Lock()
 		defer self.stateLock.Unlock()
 		evidence = self.state
+		evidence.ProvisionalObservationOnly = self.provisionalObservationOnly
 		evidence.Cursors = append([]processLogCursor(nil), self.state.Cursors...)
 		evidence.Findings = append([]ProcessLogFinding(nil), self.state.Findings...)
 	}()
