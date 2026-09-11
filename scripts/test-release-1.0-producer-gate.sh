@@ -123,7 +123,9 @@ release_phase_sim_seed() {
   cd "$sn_repo"
   simulator_seed_custody_tests='^Test(SimulatorClientSeedCustody|SimulatorOperatorPath|InspectValidatorPathProofsRequiresEveryOperatorDomain$|FinalSettlementClosureWaitHonorsPublicationAndCancellation$|FinalLifecycleIntentRequirementsKeepSettlementAndNativeClocksDistinct$)'
   go test ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
-  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
+  # The complete serial census measured 211s with race instrumentation. Keep
+  # its selection and fixture deadlines; allow headroom for the package clock.
+  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 10m
 }
 release_gate_start sim-seed release_phase_sim_seed
 

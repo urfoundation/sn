@@ -88,7 +88,9 @@ release_phase_sn_go() {
   # The simulator's provisioned client keys retain their narrower raw32 grammar.
   simulator_seed_custody_tests='^Test(SimulatorClientSeedCustody|SimulatorOperatorPath|InspectValidatorPathProofsRequiresEveryOperatorDomain$|FinalSettlementClosureWaitHonorsPublicationAndCancellation$|FinalLifecycleIntentRequirementsKeepSettlementAndNativeClocksDistinct$)'
   go test ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
-  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
+  # The complete serial census measured 211s with race instrumentation. Keep
+  # its selection and fixture deadlines; allow headroom for the package clock.
+  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 10m
   # sim-testnet contains launch-scale 1,000-miner fixtures. The package has an
   # isolated 90-minute race deadline below; do not let Go's implicit 10-minute
   # package deadline terminate the faster ordinary pass while its independent
