@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-11 16:05 UTC. This is the active plan and supersedes conflicting
+Updated 2026-09-11 16:43 UTC. This is the active plan and supersedes conflicting
 preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
 
 The user directed us to stop preparation tests, run the actual simulation on the
@@ -18,15 +18,20 @@ gates are no longer conditions of completing this testnet exercise.
    database migration and configuration rendering are complete. Do not repeat
    them or regenerate the plan for a provisional driver correction.
 2. Keep the existing `epoch` scenario running with explicit --provisional-resume,
-   using the retained configuration and corrected driver. Its actual run is
-   `20260911T155651.867116381Z-epoch`, started at 15:56:51 UTC. It observes
-   the transition from settlement 293 to 294 on the working fleet; it does not
+   using the retained configuration and corrected driver. The first timed run
+   started at 15:56:51 UTC. Current ownership and the latest run ID are recorded
+   in the external finalization directory's CURRENT.json. This scenario observes
+   an epoch transition on the working fleet; it does not
    certify the full release or production acceptance window. Fix failures
    observed by this run and report its actual outcome.
    The full release attempt completed all 16 lifecycle preparation actions,
    then stopped before acceptance because its planned pruning target was UID 7
    while the computed and recorded target was UID 1. Preserve that attempt and
    failure; defer the pruning/fault campaign while the epoch scenario runs.
+   When an actual runtime correction requires a new worker image, preserve the
+   interrupted result and completed state, join its owner and fleet, deploy the
+   corrected image to both simulator and dedicated Connect, and resume the
+   existing epoch scenario. Never describe an interrupted interval as passing.
    Keep native custody,
    spending limits, journal serialization, process ownership and live health.
    Process log classifications are observations in this mode: preserve every
@@ -113,10 +118,18 @@ seconds. The owned LAN route now has no RPC request quota; canonical checks
 remain in place. CLI27 also corrected the stale dedicated Connect binary,
 which had disabled subnet egress attribution. This produced 660 additional
 proof rows across all four validator/operator paths before the epoch scenario.
-During that scenario, the settlement owner has remained at 292 while the
-chain and trail workers request 293. Fresh proofs and validator publication
-have stopped advancing; diagnose this actual transition without restarting
-preparation. No payout or finalized validator intent has been established.
+That scenario exposed a settlement rollover failure. CLI29 excluded local
+signature verification and scratch writes from the HTTP I/O deadline; both
+settlement 292 closures completed. Public evidence replay then encountered a
+truncated stream; its interaction with server deadlines is the inferred cause.
+CLI32 gives that bounded route a ten-minute
+request/write allowance and records abort causes. It also uses existing
+same-nonce cancellation for an expired close intent, and schedules ST sync and
+close retries every five seconds to reach the five-block close window. The
+owned-LAN deployment restores the original taskworker count 8 / batch size 4.
+Observe publication, fresh proofs, real transaction receipts and payouts from
+the running processes. Their success remains to be established; keep actual
+failures and completed closures instead of restarting preparation.
 
 Historical evidence remains in [FINALIZE-COMPLETE.md](FINALIZE-COMPLETE.md),
 [FINAL.md](FINAL.md), and the external finalization directory. The native
