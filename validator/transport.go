@@ -10,7 +10,7 @@ package validator
 //
 //	ProviderSpec{ClientId: hop}                     — pin the egress
 //	  -> NewApiMultiClientGenerator                 — derived per-tunnel client
-//	  -> NewRemoteUserNatMultiClient                — packet path to the hop
+//	  -> NewRemoteUserNatClient                     — packet path to the hop
 //	  <-> connect.Tun (gVisor netstack)             — userspace TCP/IP
 //	  -> http.Transport{DialContext: tun.DialContext}
 //
@@ -31,6 +31,7 @@ import (
 	"io"
 	mathrand "math/rand"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/urnetwork/connect"
@@ -64,7 +65,7 @@ type tunnelAttemptGenerator interface {
 	CloseAndWait(context.Context) error
 }
 
-type tunnelAttemptMultiClient interface {
+type tunnelAttemptPacketClient interface {
 	CloseAndWait(context.Context) error
 }
 
@@ -76,16 +77,32 @@ type tunnelAttemptTun interface {
 // completion: the packet pump must exit before the generator can retire its
 // clients and return their message buffers.
 type tunnelAttempt struct {
-	cancel      context.CancelFunc
-	generator   tunnelAttemptGenerator
-	tun         tunnelAttemptTun
-	multiClient tunnelAttemptMultiClient
-	pumpDone    <-chan struct{}
+	cancel         context.CancelFunc
+	generator      tunnelAttemptGenerator
+	tun            tunnelAttemptTun
+	packetClient   tunnelAttemptPacketClient
+	retireClient   func(context.Context) error
+	removeIdentity func(context.Context) error
+	pumpDone       <-chan struct{}
+	transportLock  sync.Mutex
+	transports     []tunnelAttemptPacketClient
 }
 
-// Stops packet production, joins the multi-client and pump, then retires all
+func (self *tunnelAttempt) addTransport(transport tunnelAttemptPacketClient) {
+	self.transportLock.Lock()
+	defer self.transportLock.Unlock()
+	self.transports = append(self.transports, transport)
+}
+
+// Stops packet production, joins the packet client and pump, then retires all
 // generated clients. Partial construction follows the same path.
 func (self *tunnelAttempt) close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return self.closeAndWait(ctx)
+}
+
+func (self *tunnelAttempt) closeAndWait(ctx context.Context) error {
 	if self.cancel != nil {
 		self.cancel()
 	}
@@ -95,17 +112,42 @@ func (self *tunnelAttempt) close() error {
 			closeErrors = append(closeErrors, fmt.Errorf("close tunnel netstack: %w", err))
 		}
 	}
-	if self.multiClient != nil {
-		if err := self.multiClient.CloseAndWait(context.Background()); err != nil {
-			closeErrors = append(closeErrors, fmt.Errorf("close tunnel multi-client: %w", err))
+	if self.packetClient != nil {
+		if err := self.packetClient.CloseAndWait(ctx); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close tunnel packet client: %w", err))
 		}
 	}
 	if self.pumpDone != nil {
-		<-self.pumpDone
+		select {
+		case <-self.pumpDone:
+		case <-ctx.Done():
+			closeErrors = append(closeErrors, fmt.Errorf("join tunnel packet pump: %w", ctx.Err()))
+		}
+	}
+	if self.retireClient != nil {
+		if err := self.retireClient(ctx); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("retire tunnel client: %w", err))
+		}
 	}
 	if self.generator != nil {
-		if err := self.generator.CloseAndWait(context.Background()); err != nil {
+		if err := self.generator.CloseAndWait(ctx); err != nil {
 			closeErrors = append(closeErrors, fmt.Errorf("close tunnel generator: %w", err))
+		}
+	}
+	self.transportLock.Lock()
+	transports := append([]tunnelAttemptPacketClient(nil), self.transports...)
+	self.transportLock.Unlock()
+	for _, transport := range transports {
+		if err := transport.CloseAndWait(ctx); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("close tunnel platform transport: %w", err))
+		}
+	}
+	// The generator's final RemoveClientArgs uses a fire-and-forget API call.
+	// Own one idempotent completion after all identity users have joined, so
+	// closing the generator API cannot silently leave this derived identity.
+	if self.removeIdentity != nil && len(closeErrors) == 0 {
+		if err := self.removeIdentity(ctx); err != nil {
+			closeErrors = append(closeErrors, fmt.Errorf("remove tunnel identity: %w", err))
 		}
 	}
 	return errors.Join(closeErrors...)
@@ -168,8 +210,14 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 	specs := []*connect.ProviderSpec{
 		{ClientId: &hopId},
 	}
+	generatorSettings := connect.DefaultApiMultiClientGeneratorSettings()
+	generatorSettings.PlatformTransportCreated = func(_ *connect.Client, transport *connect.PlatformTransport) {
+		attempt.addTransport(transport)
+	}
 	generator := connect.NewApiMultiClientGenerator(
-		tunnelCtx,
+		// Its private context stays live through client/contract retirement;
+		// CloseAndWait closes it after those owned operations have joined.
+		context.WithoutCancel(self.ctx),
 		specs,
 		self.clientStrategy,
 		// exclude self — a validator may not egress through itself
@@ -182,9 +230,59 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 		RequireVersion(),
 		&self.cfg.SourceClientId,
 		newTunnelClientSettings,
-		connect.DefaultApiMultiClientGeneratorSettings(),
+		generatorSettings,
 	)
 	attempt.generator = generator
+
+	destination, err := connect.NewMultiHopId(hop)
+	if err != nil {
+		return nil, fmt.Errorf("tunnel destination: %w", err)
+	}
+	args, err := generator.NewClientArgsForDestinationContext(ctx, destination)
+	if err != nil {
+		return nil, fmt.Errorf("tunnel identity: %w", err)
+	}
+	attempt.removeIdentity = func(joinCtx context.Context) error {
+		jwt, err := self.currentByClientJwt()
+		if err != nil {
+			return err
+		}
+		result, err := connect.HttpPostWithStrategy(joinCtx, self.clientStrategy,
+			self.cfg.ApiUrl+"/network/remove-client", &connect.RemoveNetworkClientArgs{ClientId: args.ClientId}, jwt,
+			&connect.RemoveNetworkClientResult{}, connect.NewNoopApiCallback[*connect.RemoveNetworkClientResult]())
+		if err != nil {
+			return err
+		}
+		if result == nil {
+			return errors.New("client removal returned no result")
+		}
+		// The generator's best-effort removal may have won the race. The API
+		// scopes this exact derived client ID to the authenticated network.
+		if result.Error != nil && result.Error.Message != "Client does not exist." {
+			return errors.New(result.Error.Message)
+		}
+		return nil
+	}
+	// Setup consumes the caller's existing step budget. A generic multi-client
+	// window has its own 15-second expansion deadline and can discard a client
+	// whose processed registration succeeds after that deadline. This hop has
+	// exactly one prescribed destination, so admit it directly after registration
+	// and only then emit the HTTP request's first packet.
+	client, err := generator.NewClientContext(tunnelCtx, ctx, args, newTunnelClientSettings())
+	if err != nil {
+		// NewClientContext owns failed-client/args retirement once setup starts;
+		// the generator join below includes that retirement.
+		return nil, fmt.Errorf("tunnel client setup: %w", err)
+	}
+	attempt.retireClient = func(joinCtx context.Context) error {
+		generator.RemoveClientWithArgs(client, args)
+		client.Cancel()
+		joinErr := client.CloseAndWait(joinCtx)
+		if control, ok := client.ClientOob().(interface{ CloseAndWait(context.Context) error }); ok {
+			joinErr = errors.Join(joinErr, control.CloseAndWait(joinCtx))
+		}
+		return joinErr
+	}
 
 	tun, err := connect.CreateTunWithDefaults(tunnelCtx)
 	if err != nil {
@@ -192,18 +290,18 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 	}
 	attempt.tun = tun
 
-	multiClient := connect.NewRemoteUserNatMultiClientWithDefaults(
-		tunnelCtx,
-		generator,
+	packetClient := connect.NewRemoteUserNatClient(
+		client,
 		func(source connect.TransferPath, provideMode protocol.ProvideMode, ipPath *connect.IpPath, packet []byte) {
 			if _, err := tun.Write(packet); err != nil {
 				// netstack rejected the packet — drop; TCP retransmit or
 				// the request timeout handles it.
 			}
 		},
+		[]connect.MultiHopId{destination},
 		protocol.ProvideMode_Network,
 	)
-	attempt.multiClient = multiClient
+	attempt.packetClient = packetClient
 
 	source := connect.SourceId(self.cfg.SourceClientId)
 	pumpDone := make(chan struct{})
@@ -215,7 +313,9 @@ func (self *TunnelTransport) PostVerify(ctx context.Context, hop connect.Id, jso
 			if err != nil {
 				return
 			}
-			multiClient.SendPacket(source, protocol.ProvideMode_Network, packet, 15*time.Second)
+			if !packetClient.SendPacket(source, protocol.ProvideMode_Network, packet, time.Second) {
+				connect.MessagePoolReturn(packet)
+			}
 		}
 	})
 
