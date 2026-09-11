@@ -312,7 +312,12 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	if err != nil {
 		return nil, fmt.Errorf("no_id %d artifact reader: %w", op.NoID, err)
 	}
-	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	strategySettings := connect.DefaultClientStrategySettings()
+	// Processed ClientKey replies wait for a shared chain observation. Match
+	// provider registration budgets while retaining each trail's own context.
+	strategySettings.RequestTimeout = 120 * time.Second
+	strategySettings.ConnectTimeout = 45 * time.Second
+	strategy := connect.NewClientStrategy(ctx, strategySettings)
 	api := sdk.NewApi(ctx, strategy, op.APIURL)
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
 	if err != nil {
