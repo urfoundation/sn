@@ -646,7 +646,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		if o.Name == releaseCandidateCampaignName {
 			return runReleaseCandidateCampaign(ctx, cfg, stateDir, j, ex, roles, runScenarioCampaignAttempt)
 		}
-		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
+		return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, o.Name, j, ex, nil, o.ProvisionalObservationTimeout)
 	}
 	if liveAdoption != nil {
 		if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {

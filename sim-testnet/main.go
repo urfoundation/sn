@@ -26,6 +26,7 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume                                                                                                bool
@@ -63,6 +64,7 @@ Common options:
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
+  --provisional-observation-timeout DURATION  scenario --name epoch --provisional-resume only; 0 keeps the default, maximum 6h
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -98,11 +100,24 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
+	fs.DurationVar(&o.ProvisionalObservationTimeout, "provisional-observation-timeout", 0, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return "", o, err
 	}
 	if fs.NArg() != 0 {
 		return "", o, fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if o.ProvisionalObservationTimeout < 0 || o.ProvisionalObservationTimeout > 6*time.Hour {
+		return "", o, errors.New("--provisional-observation-timeout must be between 0 and 6h")
+	}
+	observationTimeoutSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "provisional-observation-timeout" {
+			observationTimeoutSet = true
+		}
+	})
+	if observationTimeoutSet && (cmd != "scenario" || o.Name != "epoch" || !o.ProvisionalResume) {
+		return "", o, errors.New("--provisional-observation-timeout requires scenario --name epoch --provisional-resume")
 	}
 	if o.Format != "human" && o.Format != "json" {
 		return "", o, errors.New("--format must be human or json")

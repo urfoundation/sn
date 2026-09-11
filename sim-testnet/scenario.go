@@ -4670,6 +4670,16 @@ func RunScenario(ctx context.Context, cfg *ResolvedConfig, stateDir, name string
 }
 
 func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor, attempt *scenarioCampaignAttempt) error {
+	return runScenarioCampaignAttemptWithTimeout(ctx, cfg, stateDir, name, journal, executor, attempt, 0)
+}
+
+func runScenarioCampaignAttemptWithTimeout(ctx context.Context, cfg *ResolvedConfig, stateDir, name string, journal *Journal, executor *Executor, attempt *scenarioCampaignAttempt, observationTimeout time.Duration) error {
+	if observationTimeout < 0 || observationTimeout > 6*time.Hour {
+		return errors.New("provisional observation timeout must be between 0 and 6h")
+	}
+	if observationTimeout != 0 && (name != "epoch" || !provisionalResumeEnabled(cfg)) {
+		return errors.New("observation timeout override requires an explicit provisional epoch scenario")
+	}
 	// Validate the immutable definition before any live action. A malformed
 	// release matrix must not be able to leave the coordinator paused/upgraded.
 	definition, err := scenarioDefinitionFor(cfg, name)
@@ -4852,7 +4862,7 @@ func runScenarioCampaignAttempt(ctx context.Context, cfg *ResolvedConfig, stateD
 		faultDriver.coordinator = strings.ToLower(scenarioExecutor.payloads.Manifest.CoordinatorProxy.Hex())
 	}
 	_, err = runScenarioWithEvidenceRelay(ctx, cfg, stateDir, definition, probe, scenarioRunOptions{
-		Roles: roles, Publish: true, FaultDriver: faultDriver,
+		Roles: roles, Publish: true, FaultDriver: faultDriver, Timeout: observationTimeout,
 		Adversaries: campaign, Prepare: prepare, ProcessLogs: processLogs, FleetLifecycle: fleetLifecycle, Attempt: attempt,
 	}, scenarioExecutor)
 	return err
