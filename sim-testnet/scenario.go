@@ -200,6 +200,8 @@ type ValidatorObservation struct {
 	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
 	PathProofCounts    map[int]int                 `json:"path_proof_counts,omitempty"`
 	Error              string                      `json:"error,omitempty"`
+
+	LocalRuntimeIntents *validatorpkg.ProvisionalIntentObservationV2 `json:"local_runtime_intents,omitempty"`
 }
 
 type ClaimObservation struct {
@@ -597,7 +599,12 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		observation.Operators = append(observation.Operators, p.inspectOperator(ctx, status.Contracts, noID, expectedSigners[noID], minerClients))
 	}
 	for validatorID := 1; validatorID <= p.cfg.Config.Topology.Validators; validatorID++ {
-		validator := inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
+		var validator ValidatorObservation
+		if provisionalResumeEnabled(p.cfg) {
+			validator = inspectProvisionalValidatorIntent(ctx, p.cfg, p.stateDir, validatorID)
+		} else {
+			validator = inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
+		}
 		validator.PathProofCounts, err = inspectValidatorPathProofs(p.cfg, p.stateDir, validatorID, observation.Operators)
 		if err != nil {
 			if validator.Error == "" {
