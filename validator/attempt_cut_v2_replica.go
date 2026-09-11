@@ -110,17 +110,23 @@ type attemptCutV2Replicas struct {
 // DNS aliases cannot establish independent ownership; deployment admission is
 // still responsible for that. Obvious same-origin aliases are rejected here.
 func newAttemptCutV2Replicas(bounds AttemptCutV2Bounds, replicas [2]AttemptCutV2Replica) (*attemptCutV2Replicas, error) {
+	return newAttemptCutV2ReplicasWithMetadataLimit(bounds, replicas, attemptStreamV2MetadataBytes(bounds))
+}
+
+// Terminal evidence uses its admitted transition allowance without changing
+// the stream schemas or the default cut publisher's metadata capacity.
+func newAttemptCutV2ReplicasWithMetadataLimit(bounds AttemptCutV2Bounds, replicas [2]AttemptCutV2Replica, metadataBytes uint64) (*attemptCutV2Replicas, error) {
 	self := &attemptCutV2Replicas{replicas: replicas}
 	var origins [2]string
 	for index, replica := range replicas {
 		if replica.WriteRecords == nil || replica.WriteProofs == nil || replica.WriteMetadata == nil {
 			return nil, errors.New("replicated attempt publisher is incomplete")
 		}
-		reader, err := NewHTTPAttemptStreamV2Reader(replica.Origin, bounds)
+		reader, err := newHttpAttemptStreamV2Reader(replica.Origin, bounds, metadataBytes)
 		if err != nil {
 			return nil, err
 		}
-		if bounds.MaxHeaderBytes == 0 || bounds.MaxHeaderBytes > reader.metadataBytes {
+		if bounds.MaxHeaderBytes == 0 || bounds.MaxHeaderBytes > min(attemptStreamV2MetadataBytes(bounds), reader.metadataBytes) {
 			return nil, errors.New("replicated attempt header exceeds its public metadata bound")
 		}
 		endpoint, err := url.Parse(replica.Origin)

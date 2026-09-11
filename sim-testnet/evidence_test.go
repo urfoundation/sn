@@ -1135,6 +1135,7 @@ func TestVerifyPublishedEvidenceOriginUsesExactDottedRunHistoryPage(t *testing.T
 }
 
 func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
+	t.Parallel()
 	cfg := testResolvedConfig(t)
 	cfg.ConfigPath = "/machine-specific/repo/sim-testnet/testnet.yml"
 	cfg.OperationalRPCMode = rpcModePublicOverride
@@ -1497,6 +1498,7 @@ func TestPublicDeploymentManifestIsPortableAndIdempotent(t *testing.T) {
 }
 
 func TestPublicDeploymentManifestPublishesAuthenticatedReplacementProbe(t *testing.T) {
+	t.Parallel()
 	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
 	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.example"
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://test.substrate.example"

@@ -58,10 +58,12 @@ type ProcessState struct {
 	ExitError string `json:"exit_error,omitempty"`
 }
 type SupervisorFile struct {
-	Schema       string        `json:"schema"`
-	DeploymentID string        `json:"deployment_id"`
-	BinaryHash   string        `json:"binary_hash"`
-	Specs        []ProcessSpec `json:"specs"`
+	Schema                                    string        `json:"schema"`
+	DeploymentID                              string        `json:"deployment_id"`
+	BinaryHash                                string        `json:"binary_hash"`
+	Specs                                     []ProcessSpec `json:"specs"`
+	ProviderStartupWaveSize                   int           `json:"provider_startup_wave_size,omitempty"`
+	ProvisionalProviderStartupObservationOnly bool          `json:"provisional_provider_startup_observation_only,omitempty"`
 }
 type SupervisorState struct {
 	Schema                   string         `json:"schema"`
@@ -647,11 +649,17 @@ func releaseTopologyProofCounts(cfg *ResolvedConfig, stateDir string) (map[strin
 // tolerates no restart, and each real validator must complete a fresh verified
 // trail through each real operator after this launch command began.
 func releaseTopologyReady(state SupervisorState, wantHash string, specs []ProcessSpec, supervisorPID int, supervisorStartTimeTicks uint64, baseline, current map[string]int) (bool, error) {
+	return releaseTopologyReadyWithRestartPolicy(state, wantHash, specs, supervisorPID, supervisorStartTimeTicks, baseline, current, false)
+}
+
+// Provisional startup may recover a child while retaining its actual restart
+// count. Supervisor ownership, current health and fresh proofs still apply.
+func releaseTopologyReadyWithRestartPolicy(state SupervisorState, wantHash string, specs []ProcessSpec, supervisorPID int, supervisorStartTimeTicks uint64, baseline, current map[string]int, allowRecoveredRestarts bool) (bool, error) {
 	if state.SupervisorPID != supervisorPID || state.SupervisorStartTimeTicks != supervisorStartTimeTicks {
 		return false, fmt.Errorf("release topology supervisor generation changed from pid=%d start=%d to pid=%d start=%d", supervisorPID, supervisorStartTimeTicks, state.SupervisorPID, state.SupervisorStartTimeTicks)
 	}
 	for _, process := range state.Processes {
-		if process.Restarts != 0 {
+		if process.Restarts != 0 && !allowRecoveredRestarts {
 			return false, fmt.Errorf("release topology process %s restarted %d time(s)", process.ID, process.Restarts)
 		}
 	}
@@ -674,8 +682,8 @@ func releaseTopologyReady(state SupervisorState, wantHash string, specs []Proces
 }
 
 // Waits for semantic topology evidence without accepting stale proofs from an
-// earlier attempt. A restart is terminal immediately; ordinary startup and
-// trail progress may continue until the bounded launch deadline.
+// earlier attempt. Strict mode rejects restarts; provisional mode permits
+// recovery within the same bounded launch deadline.
 func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir string, want SupervisorFile, supervisorPID int, supervisorStartTimeTicks uint64, baseline map[string]int, processLogs *processLogGate, timeout time.Duration) error {
 	wantHash, err := canonicalHashHex(want)
 	if err != nil {
@@ -695,7 +703,7 @@ func waitReleaseTopologyReady(ctx context.Context, cfg *ResolvedConfig, stateDir
 			return err
 		} else if current, err := releaseTopologyProofCounts(cfg, stateDir); err != nil {
 			lastErr = err
-		} else if ready, err := releaseTopologyReady(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current); err != nil {
+		} else if ready, err := releaseTopologyReadyWithRestartPolicy(state, wantHash, want.Specs, supervisorPID, supervisorStartTimeTicks, baseline, current, provisionalResumeEnabled(cfg)); err != nil {
 			return err
 		} else if ready {
 			return nil
@@ -794,11 +802,14 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	}
 	stopTemporaryCommands(stateDir, temporary)
 	specs := append(serverSpecs, buildClientSpecs(cfg, stateDir, bins, roles)...)
+	if err := attachProvisionalActivationSetup(cfg, stateDir, p, roles, specs); err != nil {
+		return fmt.Errorf("provisional validator activation handoff: %w", err)
+	}
 	binaryHash, err := fileSHA256(bins["sim-testnet"])
 	if err != nil {
 		return err
 	}
-	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs}
+	sf := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: cfg.Config.Deployment.DeploymentID, BinaryHash: binaryHash, Specs: specs, ProviderStartupWaveSize: providerStartupWaveSize(cfg), ProvisionalProviderStartupObservationOnly: provisionalResumeEnabled(cfg)}
 	b, _ := json.MarshalIndent(sf, "", "  ")
 	specPath := filepath.Join(stateDir, "supervisor.json")
 	if err := atomicWrite(specPath, append(b, '\n'), 0o600); err != nil {
@@ -808,6 +819,7 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err != nil {
 		return fmt.Errorf("initialize process log gate: %w", err)
 	}
+	processLogs.provisionalObservationOnly = provisionalResumeEnabled(cfg)
 	var topologyAction *Action
 	for i := range p.Actions {
 		if p.Actions[i].ID == "topology.launch" {
@@ -839,11 +851,11 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 				return err
 			}
 		}
-		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
+		readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf))
 		if err != nil {
 			return err
 		}
-		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+		if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
 			return err
 		}
 		if err := processLogs.RequireClean(false); err != nil {
@@ -861,13 +873,13 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	defer cancelSupervisor()
 	supervisorErr := make(chan error, 1)
 	go func() { supervisorErr <- supervise(supervisorCtx, stateDir, specPath) }()
-	readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, 3*time.Minute)
+	readyState, err := waitSupervisorReady(ctx, stateDir, sf, processLogs, supervisorStartupReadinessTimeout(sf))
 	if err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
 	}
-	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, 5*time.Minute); err != nil {
+	if err := waitReleaseTopologyReady(ctx, cfg, stateDir, sf, readyState.SupervisorPID, readyState.SupervisorStartTimeTicks, proofBaseline, processLogs, releaseTopologyStartupReadinessTimeout(cfg)); err != nil {
 		cancelSupervisor()
 		<-supervisorErr
 		return err
@@ -980,6 +992,15 @@ func buildReleaseBinaries(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	result := map[string]string{}
 	for _, t := range targets {
 		path := filepath.Join(out, t.name)
+		if t.name == "sim-testnet" && provisionalResumeEnabled(cfg) {
+			// Keep the retained configuration source while running the exact
+			// explicitly admitted provisional image, including its startup fixes.
+			if err := copyProvisionalSimulatorBinary(cfg, path); err != nil {
+				return nil, err
+			}
+			result[t.name] = path
+			continue
+		}
 		cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags=-buildid=", "-o", path, t.pkg)
 		cmd.Dir = t.dir
 		output, err := cmd.CombinedOutput()
@@ -1954,6 +1975,8 @@ type supervisedProcessIdentity struct {
 	CommandLineHash string
 }
 
+var errEmptySupervisedProcessCommandLine = errors.New("empty process command line")
+
 // Captures lightweight immutable kernel identity for frequent shutdown polls.
 // Hashing the full executable here would multiply large binary reads across
 // every process and poll; the proc executable link and argv hash distinguish
@@ -1967,19 +1990,62 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 	if err != nil {
 		return supervisedProcessIdentity{}, err
 	}
-	executable, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	executable, err := readSupervisedProcessExecutable(pid)
 	if err != nil {
 		return supervisedProcessIdentity{}, err
 	}
 	commandLine, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil || len(commandLine) == 0 {
+	if err != nil {
 		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
 	}
+	if len(commandLine) == 0 {
+		return supervisedProcessIdentity{}, fmt.Errorf("process %d command line is empty: %w", pid, errEmptySupervisedProcessCommandLine)
+	}
 	commandLineHash := sha256.Sum256(commandLine)
+	observedStart, err := processStartTimeTicks(pid)
+	if err != nil || observedStart != startTimeTicks {
+		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d changed during identity observation", pid)
+	}
 	return supervisedProcessIdentity{
 		PID: pid, ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
 		Executable: executable, CommandLineHash: hex.EncodeToString(commandLineHash[:]),
 	}, nil
+}
+
+// Startup alone may briefly retry an empty argv observation. Every retry is
+// confined to the original child's start time and process group.
+func observeStartedSupervisedProcessIdentity(ctx context.Context, pid int) (supervisedProcessIdentity, error) {
+	start, err := processStartTimeTicks(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	group, err := syscall.Getpgid(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for {
+		identity, err := observeSupervisedProcessIdentity(pid)
+		if err == nil {
+			if identity.StartTimeTicks != start || identity.ProcessGroupID != group {
+				return supervisedProcessIdentity{}, fmt.Errorf("process %d changed during startup identity observation", pid)
+			}
+			return identity, nil
+		}
+		if !errors.Is(err, errEmptySupervisedProcessCommandLine) || !time.Now().Before(deadline) {
+			return supervisedProcessIdentity{}, err
+		}
+		currentStart, startErr := processStartTimeTicks(pid)
+		currentGroup, groupErr := syscall.Getpgid(pid)
+		if startErr != nil || groupErr != nil || currentStart != start || currentGroup != group {
+			return supervisedProcessIdentity{}, stateMismatchError(errors.Join(startErr, groupErr), "process %d changed during startup identity observation", pid)
+		}
+		select {
+		case <-ctx.Done():
+			return supervisedProcessIdentity{}, ctx.Err()
+		case <-time.After(min(10*time.Millisecond, time.Until(deadline))):
+		}
+	}
 }
 
 type supervisedCommand struct {
@@ -2611,19 +2677,86 @@ func supervisorStartupProvider(spec ProcessSpec) bool {
 	return spec.Role == "miner-swarm"
 }
 
+const supervisorStartupPhaseTimeout = 2 * time.Minute
+
+// Public RPC startup shares a small request quota with processed registrations.
+// The retained two-swarm launch reached all 1,000 providers; formal launches on
+// that same RPC mode need its ordering too. The manifest carries this setting
+// into the internal supervisor without changing any readiness requirement.
+func providerStartupWaveSize(cfg *ResolvedConfig) int {
+	if provisionalResumeEnabled(cfg) {
+		return 2
+	}
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 2
+	}
+	return 0
+}
+
+// Real public-RPC validator initialization took about twenty minutes before
+// its first signed trails. Allow bounded warm-up after provider readiness;
+// fresh proofs, signature checks, process ownership and log checks still gate
+// admission. This does not extend campaign windows or per-request deadlines.
+func releaseTopologyStartupReadinessTimeout(cfg *ResolvedConfig) time.Duration {
+	if cfg != nil && cfg.OperationalRPCMode == rpcModePublicOverride {
+		return 30 * time.Minute
+	}
+	return 5 * time.Minute
+}
+
+// Cover every bounded readiness phase plus one minute for startup/publication.
+// Manifests without provider waves retain their three-minute outer deadline.
+func supervisorStartupReadinessTimeout(manifest SupervisorFile) time.Duration {
+	if manifest.ProviderStartupWaveSize <= 0 {
+		return 3 * time.Minute
+	}
+	providers := 0
+	deferredWorkerPhase := 0
+	for _, spec := range manifest.Specs {
+		if supervisorStartupProvider(spec) {
+			providers++
+		}
+		if spec.Role == "operator-taskworker" {
+			deferredWorkerPhase = 1
+		}
+	}
+	waves := 0
+	if providers > 0 {
+		waves = 1 + (providers-1)/manifest.ProviderStartupWaveSize
+	}
+	return time.Duration(waves+1+deferredWorkerPhase)*supervisorStartupPhaseTimeout + time.Minute
+}
+
 // Starts service prerequisites and provider swarms across two explicit health
 // barriers, then starts validators and relayers.
 // Callbacks keep the ordering deterministic in tests while production retains
 // the supervisor's real process ownership.
 func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
+	return startSupervisorSpecsWithProviderWaves(specs, 0, start, wait)
+}
+
+func startSupervisorSpecsWithProviderWaves(specs []ProcessSpec, waveSize int, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
+	return startSupervisorSpecsWithProviderStartupPolicy(specs, waveSize, false, start, wait)
+}
+
+func startSupervisorSpecsWithProviderStartupPolicy(specs []ProcessSpec, waveSize int, observeProvidersOnly bool, start func(ProcessSpec) error, wait func([]ProcessSpec) error) error {
 	if start == nil || wait == nil {
 		return errors.New("supervisor startup callbacks are incomplete")
 	}
+	if waveSize < 0 {
+		return errors.New("supervisor provider startup wave size is negative")
+	}
+	boundedWaves := waveSize > 0
 	prerequisites := make([]ProcessSpec, 0, len(specs))
 	providers := make([]ProcessSpec, 0, len(specs))
+	deferredWorkers := make([]ProcessSpec, 0, len(specs))
 	dependents := make([]ProcessSpec, 0, len(specs))
 	for _, spec := range specs {
-		if supervisorStartupPrerequisite(spec) {
+		if waveSize > 0 && spec.Role == "operator-taskworker" {
+			// Catch-up jobs share the RPC quota needed for key registration.
+			// Bounded startup admits them after providers, before consumers.
+			deferredWorkers = append(deferredWorkers, spec)
+		} else if supervisorStartupPrerequisite(spec) {
 			prerequisites = append(prerequisites, spec)
 		} else if supervisorStartupProvider(spec) {
 			providers = append(providers, spec)
@@ -2631,7 +2764,7 @@ func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSp
 			dependents = append(dependents, spec)
 		}
 	}
-	for _, phase := range [][]ProcessSpec{prerequisites, providers} {
+	for _, phase := range [][]ProcessSpec{prerequisites, providers, deferredWorkers} {
 		for _, spec := range phase {
 			if spec.HealthURL == "" {
 				return fmt.Errorf("supervisor startup readiness role %s has no health endpoint", spec.ID)
@@ -2654,7 +2787,23 @@ func startSupervisorSpecsWithReadiness(specs []ProcessSpec, start func(ProcessSp
 	if err := startAndWait("prerequisite", prerequisites); err != nil {
 		return err
 	}
-	if err := startAndWait("provider", providers); err != nil {
+	if waveSize == 0 {
+		waveSize = max(1, len(providers))
+	}
+	for first := 0; first < len(providers); first += waveSize {
+		last := min(first+waveSize, len(providers))
+		if err := startAndWait("provider", providers[first:last]); err != nil {
+			return err
+		}
+		if boundedWaves && !observeProvidersOnly {
+			ids := make([]string, 0, last-first)
+			for _, spec := range providers[first:last] {
+				ids = append(ids, spec.ID)
+			}
+			fmt.Fprintf(os.Stderr, "sim-testnet: provider startup ready %d/%d swarms; wave %s\n", last, len(providers), strings.Join(ids, ","))
+		}
+	}
+	if err := startAndWait("taskworker", deferredWorkers); err != nil {
 		return err
 	}
 	for _, spec := range dependents {
@@ -2865,11 +3014,11 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 		if err != nil {
 			return err
 		}
-		identity, err := observeSupervisedProcessIdentity(cmd.Process.Pid)
+		identity, err := observeStartedSupervisedProcessIdentity(childCtx, cmd.Process.Pid)
 		if err != nil || identity.ProcessGroupID != identity.PID {
 			_ = cmd.Process.Kill()
-			_ = <-exited
-			return stateMismatchError(err, "record supervisor child %s kernel identity", r.spec.ID)
+			exitErr := <-exited
+			return errors.Join(stateMismatchError(err, "record supervisor child %s kernel identity", r.spec.ID), exitErr)
 		}
 		r.cmd = cmd
 		r.identity = identity
@@ -2896,8 +3045,10 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 		}
 		stopSupervisorCommands(commands)
 	}()
-	if err := startSupervisorSpecsWithReadiness(
+	if err := startSupervisorSpecsWithProviderStartupPolicy(
 		sf.Specs,
+		sf.ProviderStartupWaveSize,
+		sf.ProvisionalProviderStartupObservationOnly,
 		func(spec ProcessSpec) error {
 			r := runs[spec.ID]
 			if r == nil {
@@ -2905,8 +3056,23 @@ func superviseWithContractCleanup(ctx context.Context, stateDir, specPath string
 			}
 			return start(r)
 		},
-		func(prerequisites []ProcessSpec) error {
-			return waitSpecsReady(ctx, prerequisites, 2*time.Minute)
+		func(phase []ProcessSpec) error {
+			if sf.ProvisionalProviderStartupObservationOnly && len(phase) != 0 && supervisorStartupProvider(phase[0]) {
+				// Keep the actual observation without making slow registration
+				// tear down providers that are already serving. Native adoption
+				// still requires current health and fresh validator proofs.
+				err := waitSpecsReady(ctx, phase, 10*time.Second)
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				ids := make([]string, 0, len(phase))
+				for _, spec := range phase {
+					ids = append(ids, spec.ID)
+				}
+				fmt.Fprintf(os.Stderr, "sim-testnet: provisional provider startup observation; wave %s; ready=%t; final_acceptance=false; finding=%v\n", strings.Join(ids, ","), err == nil, err)
+				return nil
+			}
+			return waitSpecsReady(ctx, phase, supervisorStartupPhaseTimeout)
 		},
 	); err != nil {
 		return err

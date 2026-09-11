@@ -628,6 +628,25 @@ func knownClaimTransaction(err error) bool {
 	return strings.Contains(message, "known transaction") || strings.Contains(message, "already known") || strings.Contains(message, "already imported") || strings.Contains(message, "nonce too low") || strings.Contains(message, "replacement transaction underpriced")
 }
 
+// Claim discovery needs only the epoch clock. Optional chain settings in the
+// shared API response have independent wire types and are not claim authority.
+func readClaimEpoch(ctx context.Context, strategy *connect.ClientStrategy, apiURL, byJWT string) (int64, error) {
+	body, err := connect.HttpGetWithStrategyRaw(ctx, strategy, apiURL+"/sn/epoch", byJWT)
+	if err != nil {
+		return 0, err
+	}
+	var summary struct {
+		Epoch *int64 `json:"epoch"`
+	}
+	if err := json.Unmarshal(body, &summary); err != nil {
+		return 0, err
+	}
+	if summary.Epoch == nil || *summary.Epoch < 0 {
+		return 0, errors.New("claim epoch response has no nonnegative epoch")
+	}
+	return *summary.Epoch, nil
+}
+
 type claimAPI interface {
 	SnPoolClaimSyncWithContext(context.Context, *sdk.SnPoolClaimArgs) (*sdk.SnPoolClaimResult, error)
 }
@@ -890,9 +909,9 @@ func runClaimDaemonWithLock(ctx context.Context, configPath string, chainStateLo
 	ticker := time.NewTicker(time.Duration(cfg.PollSeconds) * time.Second)
 	defer ticker.Stop()
 	for {
-		current, err := api.SnEpochSyncWithContext(ctx)
+		current, err := readClaimEpoch(ctx, strategy, cfg.APIURL, api.GetByJwt())
 		if err == nil {
-			discoverClaims(queue, current.Epoch, cfg.LookbackEpochs)
+			discoverClaims(queue, current, cfg.LookbackEpochs)
 			if err := store.save(queue); err != nil {
 				return err
 			}

@@ -2,6 +2,7 @@ package miner
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 )
@@ -25,6 +26,9 @@ func validProviderSwarmConfig(t *testing.T) ProviderSwarmConfig {
 	}
 	for _, name := range []string{"jwt", ".provider.jwt", ".provider.key"} {
 		value := []byte("token")
+		if name == ".provider.jwt" {
+			value = []byte("eyJhbGciOiJIUzI1NiJ9." + base64.RawURLEncoding.EncodeToString([]byte(`{"client_id":"00000000-0000-0000-0000-000000000001","device_id":"00000000-0000-0000-0000-000000000002"}`)) + ".c2ln")
+		}
 		if name == ".provider.key" {
 			value = make([]byte, 32)
 		}
@@ -32,15 +36,20 @@ func validProviderSwarmConfig(t *testing.T) ProviderSwarmConfig {
 			t.Fatal(err)
 		}
 	}
-	wallet, err := ss58.Encode([32]byte{1}, ss58.BittensorPrefix)
+	seed := [32]byte{1}
+	key, err := crv4.KeypairFromSeed(seed)
 	if err != nil {
+		t.Fatal(err)
+	}
+	seedPath := filepath.Join(stateDir, "wallet.seed")
+	if err := crv4.EnsureSeedFile(seedPath, seed); err != nil {
 		t.Fatal(err)
 	}
 	return ProviderSwarmConfig{
 		Schema: ProviderSwarmSchema, ListenAddress: "127.0.0.1:21081",
 		Members: []ProviderSwarmMember{{
 			ID: "miner-1", APIURL: "http://127.0.0.1:18081", ConnectURL: "ws://127.0.0.1:19081",
-			DNSPumpHost: "127.0.0.1", StateDir: stateDir, Wallet: wallet, SourceIP: "127.64.0.1",
+			DNSPumpHost: "127.0.0.1", StateDir: stateDir, Wallet: key.Address(), WalletSeedFile: seedPath, SourceIP: "127.64.0.1",
 		}},
 	}
 }
@@ -260,6 +269,11 @@ func TestSetSwarmMemberWalletClosesOneShotStrategy(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if r.Method == http.MethodPost && r.URL.Path == "/auth/wallet-challenge" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"message_template":"Sign in to URnetwork\nChallenge: lifecycle-test\nTimestamp: 1"}`))
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/sn/wallet" {
 			t.Errorf("request = %s %s", r.Method, r.URL.Path)
 			http.Error(w, "unexpected request", http.StatusNotFound)
@@ -291,19 +305,13 @@ func TestSetSwarmMemberWalletClosesOneShotStrategy(t *testing.T) {
 	server.Start()
 	t.Cleanup(server.Close)
 
-	stateDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(stateDir, "jwt"), []byte("test-jwt"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	member := validProviderSwarmConfig(t).Members[0]
+	member.APIURL = server.URL
 	settings := connect.DefaultClientStrategySettings()
 	settings.EnableResilient = false
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	if err := setSwarmMemberWallet(ctx, ProviderSwarmMember{
-		APIURL:   server.URL,
-		StateDir: stateDir,
-		Wallet:   "test-wallet",
-	}, settings); err != nil {
+	if err := setSwarmMemberWallet(ctx, member, settings); err != nil {
 		t.Fatal(err)
 	}
 	var walletConnection net.Conn

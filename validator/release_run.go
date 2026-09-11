@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -186,8 +188,8 @@ func releaseSeedAttemptInterval(hardLimit int) (time.Duration, error) {
 	return interval, nil
 }
 
-func newReleaseAttemptBoundaryResolver(chain *ChainClient, cfg *ReleaseConfig) *cachedAttemptBoundaryResolver {
-	return newCachedAttemptBoundaryResolver(&chainAttemptBoundaryRPC{chain: chain, netuid: cfg.Netuid})
+func newReleaseAttemptBoundaryResolver(ctx context.Context, chain *ChainClient, cfg *ReleaseConfig) *cachedAttemptBoundaryResolver {
+	return newCachedAttemptBoundaryResolverWithLifecycle(ctx, &chainAttemptBoundaryRPC{chain: chain, netuid: cfg.Netuid}, releaseNativeEndpointTimeout(cfg))
 }
 
 func loadReleaseAttemptState(cfg *ReleaseConfig, op OperatorConfig, validatorUID uint16) (*releaseAttemptState, error) {
@@ -312,7 +314,18 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	if err != nil {
 		return nil, fmt.Errorf("no_id %d artifact reader: %w", op.NoID, err)
 	}
-	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	strategySettings := connect.DefaultClientStrategySettings()
+	// Processed ClientKey replies wait for a shared chain observation. Match
+	// provider registration budgets while retaining each trail's own context.
+	strategySettings.RequestTimeout = 120 * time.Second
+	strategySettings.ConnectTimeout = 45 * time.Second
+	if apiURL, err := url.Parse(op.APIURL); err == nil && apiURL.Scheme == "http" {
+		if address := net.ParseIP(apiURL.Hostname()); address != nil && address.IsLoopback() {
+			// Local control requests need one budget, without resilient route splits.
+			strategySettings.EnableResilient = false
+		}
+	}
+	strategy := connect.NewClientStrategy(ctx, strategySettings)
 	api := sdk.NewApi(ctx, strategy, op.APIURL)
 	byClientJWT, clientID, err := clientauth.LoadOrCreateClientJwt(ctx, api, op.NetworkJWTFile, op.ClientJWTFile, fmt.Sprintf("validator-%d no-%d release-1.0", cfg.ValidatorID, op.NoID))
 	if err != nil {
@@ -321,7 +334,7 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 		return nil, errors.Join(fmt.Errorf("no_id %d authentication: %w", op.NoID, err), releaseStageError("authentication API shutdown", closeErr))
 	}
 
-	upload, err := newReleaseAttemptUploadV2(ctx, op, cfg.EvidenceV2.Bounds.Cut, api.GetByJwt)
+	upload, err := newReleaseAttemptUploadV2(ctx, op, cfg.EvidenceV2.Bounds, api.GetByJwt)
 	if err != nil {
 		closeErr := api.CloseAndWait(context.Background())
 		strategy.Close()
@@ -336,17 +349,20 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	platformTransport := connect.NewPlatformTransportWithDefaults(ctx, strategy, identityClient.RouteManager(), op.ConnectURL, &connect.ClientAuth{
 		ByJwt: byClientJWT, InstanceId: instanceID, AppVersion: RequireVersion(),
 	})
+	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	refreshSub := api.AddJwtRefreshListener(clientauth.JwtRefreshListenerFunc(func(jwt string) {
 		if err := clientauth.WriteToken(op.ClientJWTFile, jwt); err != nil {
 			fmt.Printf("validator no_id %d JWT save failed: %v\n", op.NoID, err)
 			cancelled.Store(true)
 			upload.close()
+			transport.Close()
 		}
 		clientOOB.SetByJwt(jwt)
 		platformTransport.SetAuth(&connect.ClientAuth{ByJwt: jwt, InstanceId: instanceID, AppVersion: RequireVersion()})
 	}))
 	logoutSub := api.AddAuthLogoutListener(clientauth.AuthLogoutListenerFunc(func() {
 		upload.close()
+		transport.Close()
 		_ = clientauth.MarkRejected(op.ClientJWTFile, op.NetworkJWTFile)
 		cancelled.Store(true)
 	}))
@@ -356,6 +372,7 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 	closeResources := func() error {
 		closeOnce.Do(func() {
 			upload.close()
+			closeErr = errors.Join(closeErr, releaseStageError("tunnel transport", transport.CloseAndWait(context.Background())))
 			refreshSub.Close()
 			logoutSub.Close()
 			closeErr = errors.Join(closeErr, releaseStageError("platform transport", platformTransport.CloseAndWait(context.Background())))
@@ -367,7 +384,6 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 		return closeErr
 	}
 
-	transport := NewTunnelTransport(ctx, strategy, TunnelTransportConfig{ApiUrl: op.APIURL, ConnectUrl: op.ConnectURL, ByClientJwt: api.GetByJwt, SourceClientId: clientID})
 	engine := NewTrailEngine(clientID, privateKey, transport, NewApiServerKeyRing(api), NewFindProvidersSeedPicker(api, clientID), stats, store, epochFn, TrailEngineConfig{
 		M:                   cfg.Policy.Verify.TrailDepth,
 		StepTimeout:         time.Duration(cfg.Policy.Verify.StepTimeoutSeconds) * time.Second,
@@ -461,6 +477,10 @@ func typesHash(value [32]byte) [32]byte { return value }
 // RunRelease starts the production validator modules under a caller-owned
 // lifecycle. CLIs and integration harnesses share this exact entry point.
 func RunRelease(ctx context.Context, configPath string) (returnErr error) {
+	return runReleaseWithActivationSetup(ctx, configPath, nil)
+}
+
+func runReleaseWithActivationSetup(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2) (returnErr error) {
 	if ctx == nil {
 		return errors.New("release production lifecycle context is unavailable")
 	}
@@ -470,6 +490,12 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 	cfg, err := LoadReleaseConfig(configPath)
 	if err != nil {
 		return err
+	}
+	if retainedSetup != nil {
+		if err := retainedSetup.validate(cfg, configPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "validator: provisional retained activation setup; final_acceptance=false; source_plan=%s handoff=%s\n", retainedSetup.SourcePlanHash, retainedSetup.contentHash)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -499,16 +525,31 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 		return err
 	}
 	settlementEpoch.Store(snapshot.Epoch.Uint64())
-	validatorUID, found, err := chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
+	var activationInputs []releaseEvidenceV2ActivationInput
+	if retainedSetup != nil {
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), retainedSetup)
+		if err != nil {
+			return fmt.Errorf("reserved upload activation startup: %w", err)
+		}
+	}
+	var validatorUID uint16
+	var found bool
+	if retainedSetup != nil {
+		validatorUID, found, err = findProvisionalValidatorUIDAtHashContext(ctx, chain, snapshot, cfg.Netuid, hotkey.PublicKey(), activationInputs)
+	} else {
+		validatorUID, found, err = chain.FindUidByHotkeyAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, cfg.Netuid, hotkey.PublicKey())
+	}
 	if err != nil || !found {
 		return fmt.Errorf("release validator hotkey has no UID at finalized EVM block %d: %w", snapshot.BlockNumber, err)
 	}
 	if _, err := authenticateReleaseValidatorStakeContext(ctx, native, cfg, hotkey.PublicKey(), validatorUID); err != nil {
 		return err
 	}
-	activationInputs, err := loadReleaseEvidenceV2ActivationInputs(ctx, cfg, chain, native, hotkey.PublicKey())
-	if err != nil {
-		return fmt.Errorf("reserved upload activation startup: %w", err)
+	if retainedSetup == nil {
+		activationInputs, err = loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey.PublicKey(), nil)
+		if err != nil {
+			return fmt.Errorf("reserved upload activation startup: %w", err)
+		}
 	}
 	if len(cfg.Operators) < 2 {
 		return errors.New("release V2 requires two configured public operator origins")
@@ -533,7 +574,14 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 	if err != nil {
 		return fmt.Errorf("release V2 semantic startup: %w", err)
 	}
-	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(chain, cfg)
+	boundaryCtx := ctx
+	if retainedSetup != nil {
+		// Scope longer reads to shared preparation; trail callers keep their
+		// original deadline and never inherit this private owner context.
+		boundaryCtx = context.WithValue(ctx, provisionalBoundaryReadBudgetKey{}, true)
+	}
+	attemptBoundaryResolver := newReleaseAttemptBoundaryResolver(boundaryCtx, chain, cfg)
+	defer attemptBoundaryResolver.close()
 	runtimeV2.publishEpoch = func(epoch uint64) {
 		attemptBoundaryResolver.invalidateLatest()
 		settlementEpoch.Store(epoch)

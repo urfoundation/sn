@@ -93,10 +93,17 @@ type releaseRuntimeV2TestFixture struct {
 // Complete real source/destination owners are attached only after semantic
 // startup authenticated the dormant disk census and native/Evm history.
 func newReleaseRuntimeV2TestFixture(t *testing.T) *releaseRuntimeV2TestFixture {
+	return newReleaseRuntimeV2TestFixtureWithBounds(t, nil)
+}
+
+// Bounds are independently supplied before startup, ledger and HTTP ownership.
+func newReleaseRuntimeV2TestFixtureWithBounds(t *testing.T, bounds *ReleaseEvidenceV2Bounds) *releaseRuntimeV2TestFixture {
 	t.Helper()
-	startup := newReleaseStartupV2TestFixture(t, false)
+	startup := newReleaseStartupV2TestFixtureWithBounds(t, false, bounds)
 	startup.cfg.EvidenceV2.UploadIntentSeconds = 300
-	startup.cfg.EvidenceV2.Bounds.Cut.Records.MaxPageBytes = 256 * 1024
+	if bounds == nil {
+		startup.cfg.EvidenceV2.Bounds.Cut.Records.MaxPageBytes = 256 * 1024
+	}
 	if err := startup.cfg.Validate(); err != nil {
 		t.Fatalf("runtime fixture changed reviewed production configuration: %v", err)
 	}
@@ -198,7 +205,7 @@ func newReleaseRuntimeV2TestFixture(t *testing.T) *releaseRuntimeV2TestFixture {
 			strategy.Close()
 		})
 		startup.cfg.Operators[index].APIURL = apiEndpoint.URL
-		upload, err := newReleaseAttemptUploadV2(t.Context(), startup.cfg.Operators[index], startup.cfg.EvidenceV2.Bounds.Cut, api.GetByJwt)
+		upload, err := newReleaseAttemptUploadV2(t.Context(), startup.cfg.Operators[index], startup.cfg.EvidenceV2.Bounds, api.GetByJwt)
 		if err != nil {
 			t.Fatal(err)
 		}

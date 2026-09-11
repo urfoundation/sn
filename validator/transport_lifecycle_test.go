@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -45,23 +46,60 @@ func TestTunnelAttemptCloseJoinsPumpBeforeGenerator(t *testing.T) {
 			record("tun")
 			return nil
 		}),
-		multiClient: tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
-			record("multi-client")
+		packetClient: tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
+			record("packet-client")
 			close(pumpRelease)
 			return nil
 		}),
 		pumpDone: pumpDone,
+		retireClient: func(context.Context) error {
+			record("retire-client")
+			return nil
+		},
 		generator: tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
 			record("generator")
 			return nil
 		}),
 	}
+	attempt.addTransport(tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
+		record("platform-transport")
+		return nil
+	}))
 	if err := attempt.close(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"cancel", "tun", "multi-client", "pump", "generator"}
+	want := []string{"cancel", "tun", "packet-client", "pump", "retire-client", "generator", "platform-transport"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("close order = %v, want %v", events, want)
+	}
+}
+
+func TestTunnelAttemptCloseReportsIncompleteJoinAndContinuesRetirement(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	retired, generatorJoined, transportJoined := false, false, false
+	retirementErr := errors.New("retirement failed")
+	attempt := &tunnelAttempt{
+		pumpDone: make(chan struct{}),
+		retireClient: func(context.Context) error {
+			retired = true
+			return retirementErr
+		},
+		generator: tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
+			generatorJoined = true
+			return nil
+		}),
+	}
+	attempt.addTransport(tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
+		transportJoined = true
+		return nil
+	}))
+	err := attempt.closeAndWait(ctx)
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, retirementErr) {
+		t.Fatalf("close error = %v, want pump cancellation and retirement failure", err)
+	}
+	if !retired || !generatorJoined || !transportJoined {
+		t.Fatalf("cleanup stopped early: retired=%t generator=%t transport=%t", retired, generatorJoined, transportJoined)
 	}
 }
 
@@ -73,6 +111,10 @@ func TestTunnelAttemptCloseReleasesPartialConstruction(t *testing.T) {
 		cancel: func() {
 			events = append(events, "cancel")
 		},
+		retireClient: func(context.Context) error {
+			events = append(events, "retire-client")
+			return nil
+		},
 		generator: tunnelAttemptCloseAndWaitFunc(func(context.Context) error {
 			events = append(events, "generator")
 			return nil
@@ -81,7 +123,7 @@ func TestTunnelAttemptCloseReleasesPartialConstruction(t *testing.T) {
 	if err := attempt.close(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"cancel", "generator"}
+	want := []string{"cancel", "retire-client", "generator"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("partial close order = %v, want %v", events, want)
 	}

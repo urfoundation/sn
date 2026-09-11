@@ -48,8 +48,16 @@ type releaseStartupV2TestFixture struct {
 // Independent pins are chosen by the existing actual bootstrap before any
 // candidate under test is read. Native UID 2 differs from historical UID 1.
 func newReleaseStartupV2TestFixture(t *testing.T, active bool) *releaseStartupV2TestFixture {
+	return newReleaseStartupV2TestFixtureWithBounds(t, active, nil)
+}
+
+// Larger real populations choose their finite bounds before disk admission.
+func newReleaseStartupV2TestFixtureWithBounds(t *testing.T, active bool, bounds *ReleaseEvidenceV2Bounds) *releaseStartupV2TestFixture {
 	t.Helper()
 	base, inputs := newReleaseEvidenceV2DiskTestFixture(t)
+	if bounds != nil {
+		base.cfg.EvidenceV2.Bounds = *bounds
+	}
 	fixture := &releaseStartupV2TestFixture{releaseInitialBoundaryV2TestFixture: base, inputs: inputs, nativeEpoch: map[string]uint64{}, blocks: map[uint64][32]byte{}, keys: map[uint64]map[byte]ed25519.PublicKey{}}
 	fixture.boundary = inputs[0].Context.InitialCut.Boundary
 	fixture.finalized = fixture.boundary.EVMBlock

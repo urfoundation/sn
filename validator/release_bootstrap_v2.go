@@ -102,12 +102,17 @@ type releaseEvidenceV2ActivationInput struct {
 	PrivateKey      ed25519.PrivateKey
 	HistoryBytes    []byte
 	Observation     VerifiedReleaseActivationV2
+	retainedSetup   *provisionalReleaseActivationV2Admission
 }
 
 // Complete byte/census admission precedes any file read or chain request.
 // Callers retain immutable configuration ownership until this method returns.
 // No durable directory, ledger, Stats engine or network worker is created here.
 func loadReleaseEvidenceV2ActivationInputs(ctx context.Context, cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey [32]byte) (result []releaseEvidenceV2ActivationInput, resultErr error) {
+	return loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey, nil)
+}
+
+func loadReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx context.Context, cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey [32]byte, retained *ProvisionalActivationSetupV2) (result []releaseEvidenceV2ActivationInput, resultErr error) {
 	if cfg == nil {
 		return nil, errors.New("activation bootstrap configuration is absent")
 	}
@@ -115,7 +120,7 @@ func loadReleaseEvidenceV2ActivationInputs(ctx context.Context, cfg *ReleaseConf
 		Version:  crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.RuntimeSpec, TransactionVersion: cfg.TransactionVersion, StateVersion: cfg.StateVersion},
 		CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash,
 	}
-	return readReleaseEvidenceV2ActivationInputs(ctx, cfg, chain, native, hotkey, nativeRuntime)
+	return readReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey, nativeRuntime, retained)
 }
 
 // The private reader receives an explicit historical runtime identity, just
@@ -125,6 +130,10 @@ func loadReleaseEvidenceV2ActivationInputs(ctx context.Context, cfg *ReleaseConf
 // Each pinned context supplies its own historical mapping. Current native
 // eligibility remains a separate startup prerequisite after re-registration.
 func readReleaseEvidenceV2ActivationInputs(ctx context.Context, cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey [32]byte, nativeRuntime crv4.RuntimeArtifactIdentity) (result []releaseEvidenceV2ActivationInput, resultErr error) {
+	return readReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx, cfg, chain, native, hotkey, nativeRuntime, nil)
+}
+
+func readReleaseEvidenceV2ActivationInputsWithRetainedSetup(ctx context.Context, cfg *ReleaseConfig, chain *ChainClient, native *crv4.Chain, hotkey [32]byte, nativeRuntime crv4.RuntimeArtifactIdentity, retained *ProvisionalActivationSetupV2) (result []releaseEvidenceV2ActivationInput, resultErr error) {
 	if ctx == nil || cfg == nil {
 		return nil, errors.New("activation bootstrap context or configuration is absent")
 	}
@@ -204,6 +213,14 @@ func readReleaseEvidenceV2ActivationInputs(ctx context.Context, cfg *ReleaseConf
 			return nil, err
 		}
 		inputs[index] = releaseEvidenceV2ActivationInput{Config: operator, Context: configured, Candidate: candidate, VPKSignature: vpkSignature, HotkeySignature: hotkeySignature, PrivateKey: privateKey, HistoryBytes: history}
+	}
+	if retained != nil {
+		for index := range inputs {
+			if err := retained.admit(&inputs[index]); err != nil {
+				return nil, err
+			}
+		}
+		return inputs, nil
 	}
 	// All configured operators passed local admission before the first RPC.
 	// Parallelism follows effective host capacity and the complete finite census.

@@ -11,25 +11,29 @@ import (
 // owner cancels on logout, failed token persistence or runtime shutdown; each
 // operation also joins its caller's cancellation before returning.
 type releaseAttemptUploadV2 struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	noID   uint64
-	origin string
-	bounds AttemptCutV2Bounds
-	writer *HTTPAttemptStreamV2Writer
+	ctx                context.Context
+	cancel             context.CancelFunc
+	noID               uint64
+	origin             string
+	bounds             AttemptCutV2Bounds
+	maxTransitionBytes uint64
+	writer             *HTTPAttemptStreamV2Writer
 }
 
 // Admission does not fetch a credential or perform network I/O. The getter is
 // the actual API session's live getter, never a copied bootstrap credential.
-func newReleaseAttemptUploadV2(ctx context.Context, operator OperatorConfig, bounds AttemptCutV2Bounds, byJwt func() string) (*releaseAttemptUploadV2, error) {
+func newReleaseAttemptUploadV2(ctx context.Context, operator OperatorConfig, bounds ReleaseEvidenceV2Bounds, byJwt func() string) (*releaseAttemptUploadV2, error) {
 	if ctx == nil || operator.NoID == 0 || byJwt == nil {
 		return nil, errors.New("release attempt upload session is incomplete")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := validateReleaseMeasurementInputV2Limit(bounds.MaxTransitionBytes); err != nil {
+		return nil, err
+	}
 	ownerCtx, cancel := context.WithCancel(ctx)
-	writer, err := NewHTTPAttemptStreamV2Writer(operator.APIURL, bounds, func() string {
+	writer, err := newHttpAttemptStreamV2Writer(operator.APIURL, bounds.Cut, max(attemptStreamV2MetadataBytes(bounds.Cut), bounds.MaxTransitionBytes), func() string {
 		if ownerCtx.Err() != nil {
 			return ""
 		}
@@ -43,7 +47,7 @@ func newReleaseAttemptUploadV2(ctx context.Context, operator OperatorConfig, bou
 		cancel()
 		return nil, err
 	}
-	if bounds.MaxHeaderBytes == 0 || bounds.MaxHeaderBytes > writer.metadataBytes {
+	if bounds.Cut.MaxHeaderBytes == 0 || bounds.Cut.MaxHeaderBytes > attemptStreamV2MetadataBytes(bounds.Cut) {
 		cancel()
 		return nil, errors.New("release attempt upload header exceeds its public metadata bound")
 	}
@@ -51,7 +55,7 @@ func newReleaseAttemptUploadV2(ctx context.Context, operator OperatorConfig, bou
 		cancel()
 		return nil, err
 	}
-	return &releaseAttemptUploadV2{ctx: ownerCtx, cancel: cancel, noID: operator.NoID, origin: operator.APIURL, bounds: bounds, writer: writer}, nil
+	return &releaseAttemptUploadV2{ctx: ownerCtx, cancel: cancel, noID: operator.NoID, origin: operator.APIURL, bounds: bounds.Cut, maxTransitionBytes: bounds.MaxTransitionBytes, writer: writer}, nil
 }
 
 // Cancellation requests are nonjoining and safe inside API callbacks. Every

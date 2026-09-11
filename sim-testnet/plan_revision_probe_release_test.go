@@ -165,6 +165,7 @@ func TestUnusedReplacementProbeRefreshesAuthenticatedReleaseApproval(t *testing.
 // Every progress, custody and historical-authentication failure keeps the
 // old approval closed; a refreshed digest alone never supplies authority.
 func TestUnusedReplacementProbeRefreshRejectsProgressAndAuthorityDrift(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		mutate    func(*testing.T, *unusedReplacementReleaseFixture)

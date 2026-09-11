@@ -1010,7 +1010,14 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		if err := readJSONFile(filepath.Join(e.stateDir, "supervisor.json"), &supervisor); err != nil {
 			return nil, err
 		}
-		ready, err := supervisorReadyNow(e.stateDir, supervisor)
+		readiness := supervisorReadyNow
+		if provisionalResumeEnabled(e.cfg) {
+			readiness = provisionalSupervisorReadyNow
+			state["readiness_scope"] = "live-processes-and-non-provider-health"
+			state["provider_full_readiness"] = "observed-not-required-for-launch"
+			state["final_acceptance"] = false
+		}
+		ready, err := readiness(e.stateDir, supervisor)
 		if err != nil || !ready {
 			return nil, stateMismatchError(err, "supervisor postcondition ready=%t", ready)
 		}

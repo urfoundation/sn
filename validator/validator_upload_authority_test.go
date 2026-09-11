@@ -44,6 +44,9 @@ type validatorUploadAuthorityTestFixture struct {
 	currentCanonicalCalls      uint64
 	reorgAfterCurrentCanonical bool
 	observerReorg              atomic.Bool
+	logCalls                   atomic.Uint64
+	activationReads            atomic.Uint64
+	absentActivationReads      atomic.Uint64
 }
 
 // Both native clocks are real fixed SCALE responses. Current permit can
@@ -199,6 +202,9 @@ func (self *validatorUploadAuthorityTestFixture) config() ValidatorUploadAdmissi
 
 // Header timestamp is a required actual field, not callback completion time.
 func (self *validatorUploadAuthorityTestFixture) GetBlockByNumber(ctx context.Context, block gethrpc.BlockNumber, full bool) (map[string]any, error) {
+	if self.fault == "canonical-unavailable" && block == gethrpc.BlockNumber(self.block) {
+		return nil, context.DeadlineExceeded
+	}
 	if full {
 		return nil, errors.New("staging fixture does not return full blocks")
 	}
@@ -256,12 +262,16 @@ func (self *validatorUploadAuthorityTestFixture) Call(ctx context.Context, call 
 	contract := stabi.NewSTValidatorEvidence()
 	input := call["input"]
 	if len(input) == 36 && bytes.Equal(input[:4], contract.PackActivation([32]byte{})[:4]) && common.BytesToAddress(call["to"]) == self.authority.Journal {
+		self.activationReads.Add(1)
 		if selector.BlockHash == nil || *selector.BlockHash != common.Hash(self.blockHash) || !selector.RequireCanonical || selector.BlockNumber != nil {
 			return nil, errors.New("fixture activation getter lost observer identity")
 		}
 		var digest [32]byte
 		copy(digest[:], input[4:])
 		value := self.records[digest]
+		if value.PublishedBlock == 0 {
+			self.absentActivationReads.Add(1)
+		}
 		stored := stabi.STValidatorEvidenceActivation{Record: stabi.ValidatorEvidenceActivationRecordFromProtocol(value.Record), PublishedBlock: value.PublishedBlock}
 		if self.fault == "wrong-digest" {
 			stored.Record.NoId++
@@ -282,6 +292,10 @@ func (self *validatorUploadAuthorityTestFixture) Call(ctx context.Context, call 
 // The real JSON-RPC method requires the full approved address/topic/range and
 // returns canonical event words. Faults mutate actual transport responses.
 func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, filter map[string]json.RawMessage) ([]map[string]any, error) {
+	self.logCalls.Add(1)
+	if self.fault == "logs-denied" {
+		return nil, errors.New("Method not allowed")
+	}
 	if len(filter) != 4 {
 		return nil, errors.New("fixture event filter census differs")
 	}

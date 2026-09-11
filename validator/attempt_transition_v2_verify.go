@@ -37,6 +37,7 @@ type AttemptSettlementV2Options struct {
 	MaxParticipants    uint64
 	MaxTransitionBytes uint64
 	MaxClosureBytes    uint64
+	retainedStartup    bool
 }
 
 // No map is published after a missing member, late read/close error or cancel.

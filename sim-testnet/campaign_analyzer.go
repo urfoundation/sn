@@ -48,6 +48,15 @@ func runFinalCampaignArchivePreflight(ctx context.Context, cfg *ResolvedConfig, 
 	if ctx == nil || cfg == nil || stateDir == "" {
 		return errors.New("archive-retention campaign preflight context is incomplete")
 	}
+	if provisionalResumeEnabled(cfg) {
+		path := filepath.Join(filepath.Dir(cfg.provisionalResume.RecordPath), "archive-retention-preflight-waiver.json")
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional archive-retention preflight waived; execution_status=unrun; final_acceptance=false")
+		return errors.Join(ctx.Err(), writePublicJSON(path, map[string]any{
+			"schema": "urnetwork-sim-archive-retention-preflight-waiver-v1", "plan_hash": cfg.provisionalResume.Record.PlanHash,
+			"status": "waived", "execution_status": "unrun", "performed": false, "provisional": true, "final_acceptance": false,
+			"observed_at": time.Now().UTC().Format(time.RFC3339Nano),
+		}))
+	}
 	_, public, err := loadDeploymentReferenceForConfig(ctx, cfg, stateDir, filepath.Join(stateDir, "public.json"))
 	if err != nil || public == nil {
 		return stateMismatchError(err, "load archive-retention public deployment manifest")

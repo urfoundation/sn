@@ -2,6 +2,8 @@ package validator
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +12,183 @@ import (
 
 	"github.com/urfoundation/sn/stabi"
 )
+
+// Blocks the actual shared census, after the finalized boundary was read.
+// Its first call observes the preparation owner's cancellation explicitly.
+type attemptBoundaryOwnedRPC struct {
+	*attemptBoundaryRPCCounters
+	started  chan struct{}
+	resume   chan struct{}
+	finished chan error
+	failure  error
+}
+
+func (self *attemptBoundaryOwnedRPC) Hotkeys(ctx context.Context, boundary AttemptBoundary) (map[[32]byte]uint16, error) {
+	self.stateLock.Lock()
+	self.scans++
+	first := self.scans == 1
+	hotkeys := self.hotkeys
+	self.stateLock.Unlock()
+	if first {
+		close(self.started)
+		var err error
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case <-self.resume:
+			err = self.failure
+		}
+		self.finished <- err
+		if err != nil {
+			return nil, err
+		}
+	}
+	return hotkeys, nil
+}
+
+func newAttemptBoundaryOwnedRPC() *attemptBoundaryOwnedRPC {
+	return &attemptBoundaryOwnedRPC{
+		attemptBoundaryRPCCounters: &attemptBoundaryRPCCounters{
+			boundary: attemptLedgerTestBoundary(), hotkeys: map[[32]byte]uint16{{1}: 7},
+			bindings: map[connect.Id]stabi.BindingAtOutput{}, reads: map[connect.Id]int{},
+		},
+		started: make(chan struct{}), resume: make(chan struct{}), finished: make(chan error, 1),
+	}
+}
+
+func TestAttemptBoundaryCacheWaiterDeadlinePreservesSharedPreparation(t *testing.T) {
+	rpc := newAttemptBoundaryOwnedRPC()
+	resolver := newCachedAttemptBoundaryResolverWithLifecycle(context.Background(), rpc, time.Second)
+	defer resolver.close()
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer firstCancel()
+	firstResult := make(chan error, 1)
+	go func() {
+		_, _, err := resolver.Resolve(firstCtx, nil, nil)
+		firstResult <- err
+	}()
+	<-rpc.started
+	if err := <-firstResult; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first waiter error = %v", err)
+	}
+	select {
+	case err := <-rpc.finished:
+		t.Fatalf("waiter canceled shared preparation: %v", err)
+	default:
+	}
+	close(rpc.resume)
+	boundary, bindings, err := resolver.Resolve(context.Background(), nil, nil)
+	if err != nil || boundary != rpc.boundary || len(bindings) != 0 {
+		t.Fatalf("later waiter lost prepared boundary: %+v %v %v", boundary, bindings, err)
+	}
+	if _, _, err := resolver.Resolve(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	rpc.stateLock.Lock()
+	defer rpc.stateLock.Unlock()
+	if rpc.snapshots != 1 || rpc.scans != 1 {
+		t.Fatalf("completed work repeated: snapshots=%d scans=%d", rpc.snapshots, rpc.scans)
+	}
+}
+
+func TestAttemptBoundaryCacheLifecycleShutdownCancelsAndJoinsPreparation(t *testing.T) {
+	rpc := newAttemptBoundaryOwnedRPC()
+	owner, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resolver := newCachedAttemptBoundaryResolverWithLifecycle(owner, rpc, time.Minute)
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := resolver.Resolve(context.Background(), nil, nil)
+		result <- err
+	}()
+	<-rpc.started
+	cancel()
+	joined := make(chan struct{})
+	go func() { resolver.close(); close(joined) }()
+	select {
+	case <-joined:
+	case <-time.After(time.Second):
+		t.Fatal("lifecycle shutdown did not join preparation")
+	}
+	if err := <-rpc.finished; !errors.Is(err, context.Canceled) {
+		t.Fatalf("RPC owner error = %v", err)
+	}
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("waiter shutdown error = %v", err)
+	}
+	if len(resolver.blocks) != 0 || resolver.latest != (AttemptBoundary{}) {
+		t.Fatal("canceled preparation entered the success cache")
+	}
+}
+
+func TestAttemptBoundaryCacheFailedOwnedPreparationRetries(t *testing.T) {
+	for _, deadline := range []bool{false, true} {
+		t.Run(fmt.Sprint("deadline=", deadline), func(t *testing.T) {
+			rpc := newAttemptBoundaryOwnedRPC()
+			limit := time.Second
+			want := errors.New("temporary canonical census failure")
+			if deadline {
+				limit, want = 30*time.Millisecond, context.DeadlineExceeded
+			} else {
+				rpc.failure = want
+				close(rpc.resume)
+			}
+			resolver := newCachedAttemptBoundaryResolverWithLifecycle(context.Background(), rpc, limit)
+			defer resolver.close()
+			if _, _, err := resolver.Resolve(context.Background(), nil, nil); !errors.Is(err, want) {
+				t.Fatalf("first preparation error = %v, want %v", err, want)
+			}
+			// A deadline can release the snapshot waiter before its census
+			// observes the same cancellation; wait for that failed load to retire.
+			<-rpc.finished
+			resolver.preparations.Wait()
+			if _, _, err := resolver.Resolve(context.Background(), nil, nil); err != nil {
+				t.Fatalf("retry did not recover: %v", err)
+			}
+			if _, _, err := resolver.Resolve(context.Background(), nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			rpc.stateLock.Lock()
+			defer rpc.stateLock.Unlock()
+			if rpc.snapshots != 2 || rpc.scans != 2 {
+				t.Fatalf("failed/successful work reused incorrectly: snapshots=%d scans=%d", rpc.snapshots, rpc.scans)
+			}
+		})
+	}
+}
+
+func TestAttemptBoundaryCacheInvalidationDuringOwnedCensus(t *testing.T) {
+	rpc := newAttemptBoundaryOwnedRPC()
+	resolver := newCachedAttemptBoundaryResolverWithLifecycle(context.Background(), rpc, time.Second)
+	defer resolver.close()
+	type outcome struct {
+		boundary AttemptBoundary
+		err      error
+	}
+	result := make(chan outcome, 1)
+	go func() {
+		boundary, _, err := resolver.Resolve(context.Background(), nil, nil)
+		result <- outcome{boundary, err}
+	}()
+	<-rpc.started
+	rpc.stateLock.Lock()
+	rpc.boundary.SettlementEpoch++
+	rpc.boundary.EVMBlock++
+	rpc.boundary.EVMBlockHash = attemptHex32([32]byte{32})
+	want := rpc.boundary
+	rpc.stateLock.Unlock()
+	resolver.invalidateLatest()
+	close(rpc.resume)
+	got := <-result
+	if got.err != nil || got.boundary != want {
+		t.Fatalf("invalidated preparation escaped: %+v %v, want %+v", got.boundary, got.err, want)
+	}
+	rpc.stateLock.Lock()
+	defer rpc.stateLock.Unlock()
+	if rpc.snapshots != 2 || rpc.scans != 2 {
+		t.Fatalf("new settlement was not authenticated: snapshots=%d scans=%d", rpc.snapshots, rpc.scans)
+	}
+}
 
 type attemptBoundaryRPCCounters struct {
 	stateLock sync.Mutex

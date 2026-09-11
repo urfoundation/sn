@@ -3,7 +3,8 @@ package main
 // This file batches the exact historical block and contract reads needed to
 // authenticate generation-1 fleet state after an approved generation-2
 // refresh. Every action retains its own checkpoint and observed-state proof;
-// only the JSON-RPC transport is shared.
+// historical eth_call proofs may be reused only after their exact local
+// evidence and fresh canonical/finalized checkpoints have been checked.
 
 import (
 	"context"
@@ -33,12 +34,31 @@ type carriedActionAudit struct {
 }
 
 type historicalFleetGenerationOneCall struct {
-	action  Action
-	entry   JournalEntry
-	record  *ActionPostcondition
-	address common.Address
-	data    []byte
-	observe func([]byte) (map[string]any, error)
+	action      Action
+	entry       JournalEntry
+	record      *ActionPostcondition
+	address     common.Address
+	data        []byte
+	expectation any
+	observe     func([]byte) (map[string]any, error)
+}
+
+const historicalFleetGenerationOneCacheKind = "fleet-generation-one-eth-call-v1"
+
+// Bind each observer's exact request as well as every input used to interpret
+// the output. The durable cache also binds the authorized endpoint identities.
+type historicalFleetGenerationOneCacheInput struct {
+	Action      Action                           `json:"action"`
+	Entry       JournalEntry                     `json:"entry"`
+	Record      *ActionPostcondition             `json:"record"`
+	Expectation any                              `json:"expectation"`
+	Observers   []historicalFleetObserverRequest `json:"observers"`
+}
+
+type historicalFleetObserverRequest struct {
+	Observer   string            `json:"observer"`
+	Checkpoint ChainHead         `json:"checkpoint"`
+	Request    coordinatorCallAt `json:"request"`
 }
 
 // Read numbered EVM-RPC block identities in bounded batches. The embedded
@@ -129,6 +149,10 @@ func (self *Executor) prepareHistoricalFleetGenerationOneCall(ctx context.Contex
 			return call, err
 		}
 		call.data = contract.PackMirroredCommitments(manifest.Hotkey)
+		call.expectation = struct {
+			CommitmentHash [32]byte                 `json:"commitment_hash"`
+			Evidence       *FleetCommitmentEvidence `json:"evidence"`
+		}{CommitmentHash: commitmentHash, Evidence: evidence}
 		call.observe = func(output []byte) (map[string]any, error) {
 			got, err := contract.UnpackMirroredCommitments(output)
 			if err != nil || !fleetMirrorMatches(got, commitmentHash, evidence.CommitmentBlock, finalizedBlockHash) {
@@ -153,6 +177,7 @@ func (self *Executor) prepareHistoricalFleetGenerationOneCall(ctx context.Contex
 	var clientID [16]byte
 	copy(clientID[:], clientIDBytes)
 	call.data = contract.PackBindingAt(clientID, new(big.Int).SetUint64(evidence.ValidFromEpoch))
+	call.expectation = evidence
 	call.observe = func(output []byte) (map[string]any, error) {
 		got, err := contract.UnpackBindingAt(output)
 		if err != nil || !got.Active || got.Record.Uid != evidence.UID || got.Record.Generation != evidence.Generation {
@@ -166,10 +191,9 @@ func (self *Executor) prepareHistoricalFleetGenerationOneCall(ctx context.Contex
 	return call, nil
 }
 
-// Verify one observer's finalized head, every distinct historical canonical
-// block, and every block-pinned contract result. Conflicting hashes for one
-// height fail before the RPC is consulted.
-func verifyHistoricalFleetGenerationOneClient(ctx context.Context, client *ethclient.Client, calls []historicalFleetGenerationOneCall, independent bool) error {
+// Verify one observer's fresh finalized head and every distinct historical
+// canonical block, including calls whose immutable replay proof was cached.
+func verifyHistoricalFleetGenerationOneCheckpoints(ctx context.Context, client *ethclient.Client, calls []historicalFleetGenerationOneCall, independent bool) error {
 	if client == nil || len(calls) == 0 {
 		return errors.New("historical fleet EVM client is unavailable")
 	}
@@ -215,28 +239,48 @@ func verifyHistoricalFleetGenerationOneClient(ctx context.Context, client *ethcl
 			return fmt.Errorf("historical EVM block %d is not finalized (head %d)", number, finalized.Number)
 		}
 	}
+	return nil
+}
+
+func historicalFleetGenerationOneRequest(call historicalFleetGenerationOneCall, independent bool) coordinatorCallAt {
+	block := call.record.EVMFinalized.Number
+	if independent {
+		block = call.record.IndependentEVMFinalized.Number
+	}
+	return coordinatorCallAt{Address: call.address, Data: call.data, Block: block}
+}
+
+func verifyHistoricalFleetGenerationOneObservation(call historicalFleetGenerationOneCall, output []byte, independent bool) error {
+	observed, err := call.observe(output)
+	if err != nil {
+		return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, err)
+	}
+	recorded := call.record.Observed
+	if independent {
+		recorded = call.record.IndependentObserved
+	}
+	if err := observedPostconditionMatches(recorded, observed); err != nil {
+		return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, err)
+	}
+	return nil
+}
+
+// The ordinary observer verifier remains a complete, uncached proof. The
+// carried-action path below may skip only its immutable eth_call component.
+func verifyHistoricalFleetGenerationOneClient(ctx context.Context, client *ethclient.Client, calls []historicalFleetGenerationOneCall, independent bool) error {
+	if err := verifyHistoricalFleetGenerationOneCheckpoints(ctx, client, calls, independent); err != nil {
+		return err
+	}
 	requests := make([]coordinatorCallAt, 0, len(calls))
 	requestCalls := make([]historicalFleetGenerationOneCall, 0, len(calls))
 	for _, call := range calls {
 		if len(call.data) == 0 {
-			observed, observeErr := call.observe(nil)
-			if observeErr != nil {
-				return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, observeErr)
-			}
-			recorded := call.record.Observed
-			if independent {
-				recorded = call.record.IndependentObserved
-			}
-			if matchErr := observedPostconditionMatches(recorded, observed); matchErr != nil {
-				return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, matchErr)
+			if err := verifyHistoricalFleetGenerationOneObservation(call, nil, independent); err != nil {
+				return err
 			}
 			continue
 		}
-		block := call.record.EVMFinalized.Number
-		if independent {
-			block = call.record.IndependentEVMFinalized.Number
-		}
-		requests = append(requests, coordinatorCallAt{Address: call.address, Data: call.data, Block: block})
+		requests = append(requests, historicalFleetGenerationOneRequest(call, independent))
 		requestCalls = append(requestCalls, call)
 	}
 	if len(requests) == 0 {
@@ -247,20 +291,158 @@ func verifyHistoricalFleetGenerationOneClient(ctx context.Context, client *ethcl
 		return fmt.Errorf("historical fleet contract calls: %w", err)
 	}
 	for index, output := range outputs {
-		call := requestCalls[index]
-		observed, observeErr := call.observe(output)
-		if observeErr != nil {
-			return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, observeErr)
-		}
-		recorded := call.record.Observed
-		if independent {
-			recorded = call.record.IndependentObserved
-		}
-		if matchErr := observedPostconditionMatches(recorded, observed); matchErr != nil {
-			return fmt.Errorf("action %s historical fleet state: %w", call.action.ID, matchErr)
+		if err := verifyHistoricalFleetGenerationOneObservation(requestCalls[index], output, independent); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+type historicalFleetGenerationOneResult struct {
+	output hexutil.Bytes
+	err    error
+}
+
+// Retain individual RPC errors so an earlier action whose two observations
+// succeeded can be saved even when a later element in the same batch fails.
+func readHistoricalFleetGenerationOneBatch(ctx context.Context, client *ethclient.Client, calls []historicalFleetGenerationOneCall, independent bool) ([]historicalFleetGenerationOneResult, error) {
+	if client == nil || len(calls) == 0 || len(calls) > maximumEVMRPCBatchCalls {
+		return nil, errors.New("historical fleet contract batch is unavailable or unbounded")
+	}
+	results := make([]historicalFleetGenerationOneResult, len(calls))
+	batch := make([]rpc.BatchElem, len(calls))
+	for index, call := range calls {
+		request := historicalFleetGenerationOneRequest(call, independent)
+		if request.Block == 0 || request.Address == (common.Address{}) || len(request.Data) == 0 {
+			return nil, fmt.Errorf("action %s has an incomplete historical fleet request", call.action.ID)
+		}
+		batch[index] = rpc.BatchElem{
+			Method: "eth_call",
+			Args: []any{
+				map[string]any{"to": request.Address, "data": hexutil.Bytes(request.Data)},
+				hexutil.EncodeUint64(request.Block),
+			},
+			Result: &results[index].output,
+		}
+	}
+	if err := client.Client().BatchCallContext(ctx, batch); err != nil {
+		return nil, err
+	}
+	for index := range batch {
+		results[index].err = batch[index].Error
+	}
+	return results, nil
+}
+
+// Only the carried generation-1 path calls this after authenticating every
+// source/install/refresh relationship and rebuilding its decoder inputs.
+// All checkpoint checks and derived-alias observations remain fresh. Misses
+// retain bounded transport batching, and each success is durable immediately
+// after both required observers have passed that action's exact comparison.
+func (self *Executor) verifyHistoricalFleetGenerationOneCalls(ctx context.Context, calls []historicalFleetGenerationOneCall) (map[string]bool, error) {
+	verifiedKeys := map[string]bool{}
+	if len(calls) == 0 {
+		return verifiedKeys, nil
+	}
+	if self.deployer == nil || self.deployer.client == nil {
+		return nil, errors.New("operational historical fleet EVM client is unavailable")
+	}
+	if err := verifyHistoricalFleetGenerationOneCheckpoints(ctx, self.deployer.client, calls, false); err != nil {
+		return nil, fmt.Errorf("operational historical fleet audit: %w", err)
+	}
+	independent := independentRPCRequired(self.cfg)
+	if independent {
+		if err := verifyHistoricalFleetGenerationOneCheckpoints(ctx, self.independentEVM, calls, true); err != nil {
+			return nil, fmt.Errorf("independent historical fleet audit: %w", err)
+		}
+	} else {
+		for _, call := range calls {
+			if call.record.IndependentEVMFinalized.Number != call.record.EVMFinalized.Number || !strings.EqualFold(call.record.IndependentEVMFinalized.Hash, call.record.EVMFinalized.Hash) {
+				return nil, fmt.Errorf("action %s shared-provider historical EVM checkpoints differ", call.action.ID)
+			}
+			if err := observedPostconditionMatches(call.record.Observed, call.record.IndependentObserved); err != nil {
+				return nil, fmt.Errorf("action %s shared-provider historical EVM clone: %w", call.action.ID, err)
+			}
+		}
+	}
+	misses := make([]historicalFleetGenerationOneCall, 0, len(calls))
+	entries := make([]*historicalAuditCacheEntry, 0, len(calls))
+	for _, call := range calls {
+		if len(call.data) == 0 {
+			if err := verifyHistoricalFleetGenerationOneObservation(call, nil, false); err != nil {
+				return nil, fmt.Errorf("operational historical fleet audit: %w", err)
+			}
+			if independent {
+				if err := verifyHistoricalFleetGenerationOneObservation(call, nil, true); err != nil {
+					return nil, fmt.Errorf("independent historical fleet audit: %w", err)
+				}
+			}
+			verifiedKeys[carriedVerificationKey(call.entry)] = true
+			continue
+		}
+		if call.expectation == nil {
+			return nil, fmt.Errorf("action %s has no historical fleet decoder evidence", call.action.ID)
+		}
+		observers := []historicalFleetObserverRequest{{
+			Observer: "operational", Checkpoint: call.record.EVMFinalized,
+			Request: historicalFleetGenerationOneRequest(call, false),
+		}}
+		if independent {
+			observers = append(observers, historicalFleetObserverRequest{
+				Observer: "independent", Checkpoint: call.record.IndependentEVMFinalized,
+				Request: historicalFleetGenerationOneRequest(call, true),
+			})
+		}
+		entry, hit := self.lookupHistoricalAuditCache(ctx, historicalFleetGenerationOneCacheKind, historicalFleetGenerationOneCacheInput{
+			Action: call.action, Entry: call.entry, Record: call.record, Expectation: call.expectation, Observers: observers,
+		})
+		if hit {
+			verifiedKeys[carriedVerificationKey(call.entry)] = true
+			continue
+		}
+		misses = append(misses, call)
+		entries = append(entries, entry)
+	}
+	for start := 0; start < len(misses); start += maximumEVMRPCBatchCalls {
+		end := min(start+maximumEVMRPCBatchCalls, len(misses))
+		batch := misses[start:end]
+		operational, err := readHistoricalFleetGenerationOneBatch(ctx, self.deployer.client, batch, false)
+		if err != nil {
+			return nil, fmt.Errorf("operational historical fleet contract calls: %w", err)
+		}
+		var comparison []historicalFleetGenerationOneResult
+		if independent {
+			comparison, err = readHistoricalFleetGenerationOneBatch(ctx, self.independentEVM, batch, true)
+			if err != nil {
+				return nil, fmt.Errorf("independent historical fleet contract calls: %w", err)
+			}
+		}
+		for index, call := range batch {
+			if operational[index].err != nil {
+				return nil, fmt.Errorf("action %s operational historical fleet call: %w", call.action.ID, operational[index].err)
+			}
+			if err := verifyHistoricalFleetGenerationOneObservation(call, operational[index].output, false); err != nil {
+				return nil, fmt.Errorf("operational historical fleet audit: %w", err)
+			}
+			if independent {
+				if comparison[index].err != nil {
+					return nil, fmt.Errorf("action %s independent historical fleet call: %w", call.action.ID, comparison[index].err)
+				}
+				if err := verifyHistoricalFleetGenerationOneObservation(call, comparison[index].output, true); err != nil {
+					return nil, fmt.Errorf("independent historical fleet audit: %w", err)
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			entries[start+index].saveSuccess(ctx)
+			verifiedKeys[carriedVerificationKey(call.entry)] = true
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return verifiedKeys, nil
 }
 
 // Authenticate every superseded per-fleet proof before the ordinary carried
@@ -287,6 +469,10 @@ func (self *Executor) verifyCarriedFleetGenerationOneHistory(ctx context.Context
 		if !superseded {
 			continue
 		}
+		hash, err := canonicalHashHex(audit.record)
+		if err != nil || hash != audit.entry.PostconditionHash {
+			return nil, stateMismatchError(err, "action %s historical fleet receipt hash %s differs from verified %s", audit.action.ID, hash, audit.entry.PostconditionHash)
+		}
 		call, err := self.prepareHistoricalFleetGenerationOneCall(batchCtx, audit, coordinates)
 		if err != nil {
 			return nil, fmt.Errorf("action %s historical fleet preparation: %w", audit.action.ID, err)
@@ -297,28 +483,9 @@ func (self *Executor) verifyCarriedFleetGenerationOneHistory(ctx context.Context
 		return verifiedKeys, nil
 	}
 	fmt.Fprintf(os.Stderr, "sim-testnet: batched historical fleet audit 0/%d\n", len(calls))
-	if self.deployer == nil || self.deployer.client == nil {
-		return nil, errors.New("operational historical fleet EVM client is unavailable")
-	}
-	if err := verifyHistoricalFleetGenerationOneClient(batchCtx, self.deployer.client, calls, false); err != nil {
-		return nil, fmt.Errorf("operational historical fleet audit: %w", err)
-	}
-	if !independentRPCRequired(self.cfg) {
-		for _, call := range calls {
-			if call.record.IndependentEVMFinalized.Number != call.record.EVMFinalized.Number || !strings.EqualFold(call.record.IndependentEVMFinalized.Hash, call.record.EVMFinalized.Hash) {
-				return nil, fmt.Errorf("action %s shared-provider historical EVM checkpoints differ", call.action.ID)
-			}
-			if err := observedPostconditionMatches(call.record.Observed, call.record.IndependentObserved); err != nil {
-				return nil, fmt.Errorf("action %s shared-provider historical EVM clone: %w", call.action.ID, err)
-			}
-		}
-	} else {
-		if err := verifyHistoricalFleetGenerationOneClient(batchCtx, self.independentEVM, calls, true); err != nil {
-			return nil, fmt.Errorf("independent historical fleet audit: %w", err)
-		}
-	}
-	for _, call := range calls {
-		verifiedKeys[carriedVerificationKey(call.entry)] = true
+	verifiedKeys, err := self.verifyHistoricalFleetGenerationOneCalls(batchCtx, calls)
+	if err != nil {
+		return nil, err
 	}
 	fmt.Fprintf(os.Stderr, "sim-testnet: batched historical fleet audit %d/%d\n", len(calls), len(calls))
 	return verifiedKeys, nil

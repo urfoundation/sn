@@ -1,5 +1,16 @@
 # UR Subnet release 1.0 finalization plan
 
+## Execution override — 2026-09-11 07:48 UTC
+
+The user has directed us to stop preparation tests and run the actual testnet
+simulation, fixing issues from that run. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md)
+is now the controlling, shortened execution plan. Full producer/aggregate gates,
+repeated confirmation tests, duplicate plan comparisons and separate pre-launch
+smoke rehearsals are no longer launch or testnet-completion prerequisites.
+Retain spending limits, custody, saved progress and one writer per transaction
+stream. Reuse completed work and report omitted checks as omitted, never PASS.
+The older requirements and frontiers below are historical wherever they conflict.
+
 Current short index: [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md).
 Decision confirmed 2026-09-07 UTC: on-chain validator evidence hashes with full
 signed proof bytes served by the API and content-addressed MinIO. Implement the

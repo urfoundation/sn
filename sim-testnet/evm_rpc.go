@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -199,6 +201,30 @@ type publicEVMRPCResponse struct {
 	} `json:"error"`
 }
 
+// Distinguish an interrupted response body from permanent inspection errors.
+// The original cause remains available without classifying provider text as a
+// network failure or retrying oversized responses and malformed JSON.
+type publicEVMResponseBodyReadError struct{ cause error }
+
+func (err *publicEVMResponseBodyReadError) Error() string {
+	return fmt.Sprintf("read public EVM RPC response: %v", err.cause)
+}
+
+func (err *publicEVMResponseBodyReadError) Unwrap() error { return err.cause }
+
+func publicEVMResponseBodyReadIsTransient(err error) bool {
+	var bodyError *publicEVMResponseBodyReadError
+	if !errors.As(err, &bodyError) || errors.Is(bodyError.cause, context.Canceled) {
+		return false
+	}
+	cause := bodyError.cause
+	if errors.Is(cause, io.EOF) || errors.Is(cause, io.ErrUnexpectedEOF) || errors.Is(cause, net.ErrClosed) || errors.Is(cause, syscall.ECONNRESET) || errors.Is(cause, syscall.EPIPE) {
+		return true
+	}
+	var networkError net.Error
+	return errors.As(cause, &networkError) && (networkError.Timeout() || networkError.Temporary())
+}
+
 func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if request == nil {
 		return nil, errors.New("nil public EVM HTTP request")
@@ -238,6 +264,9 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 			if response != nil && response.Body != nil {
 				response.Body.Close()
 			}
+			if ctxErr := request.Context().Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			if !readOnly || attempt >= transport.maximumRetries {
 				return nil, err
 			}
@@ -250,7 +279,18 @@ func (transport *rateLimitedRetryTransport) RoundTrip(request *http.Request) (*h
 		}
 		retry, body, err := publicEVMResponseNeedsRetry(response, readOnly)
 		if err != nil {
-			return nil, err
+			if ctxErr := request.Context().Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			if !readOnly || attempt >= transport.maximumRetries || !publicEVMResponseBodyReadIsTransient(err) {
+				return nil, err
+			}
+			delay, delayErr := rpcRetryAfter(response.Header, nil, now(), transport.defaultRetryAfter, transport.maximumRetryAfter)
+			if delayErr != nil {
+				return nil, errors.Join(err, delayErr)
+			}
+			transport.gate.cooldown(now().Add(delay))
+			continue
 		}
 		if !retry {
 			return response, nil
@@ -327,13 +367,13 @@ func publicEVMResponseNeedsRetry(response *http.Response, readOnly bool) (bool, 
 	body, err := io.ReadAll(io.LimitReader(response.Body, publicEVMRPCResponseReadLimit+1))
 	response.Body.Close()
 	response.Body = io.NopCloser(bytes.NewReader(body))
-	if err != nil {
-		response.Body.Close()
-		return false, nil, fmt.Errorf("read public EVM RPC response: %w", err)
-	}
 	if len(body) > publicEVMRPCResponseReadLimit {
 		response.Body.Close()
 		return false, nil, errors.New("public EVM RPC response exceeds replay limit")
+	}
+	if err != nil {
+		response.Body.Close()
+		return false, nil, &publicEVMResponseBodyReadError{cause: err}
 	}
 	if retryStatus {
 		return true, body, nil

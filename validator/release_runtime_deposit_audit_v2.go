@@ -48,7 +48,7 @@ func (self *releaseRuntimeV2) buildDepositAuditPublicationV2(ctx context.Context
 	if len(payloads) == 0 || len(payloads) != len(options.Activations) {
 		return nil, errors.New("deposit audit canonical source census is incomplete")
 	}
-	limit := min(options.Bounds.MaxTransitionBytes, max(options.Bounds.Cut.Records.MaxManifestBytes, options.Bounds.Cut.Records.MaxPageBytes, options.Bounds.Cut.Proofs.MaxManifestBytes, options.Bounds.Cut.Proofs.MaxPageBytes))
+	limit := options.Bounds.MaxTransitionBytes
 	publication := &ValidatorEvidenceCensusV2Publication{Origins: options.Origins, Members: make([]ValidatorEvidenceMemberV2Publication, len(payloads))}
 	census := ValidatorEvidenceDepositAuditV2Census{Schema: ValidatorEvidenceDepositAuditV2CensusSchema, Epoch: options.Window.Epoch, Subject: options.Window.Subject, Decision: payloads[0].Decision, Hotkey: self.hotkey.PublicKey(), Members: make([]ValidatorEvidenceDepositAuditV2Member, len(payloads))}
 	keys := make([]ed25519.PrivateKey, len(payloads))
@@ -291,7 +291,7 @@ func (self *releaseRuntimeV2) publishDepositAuditV2WithReadHooks(ctx context.Con
 		return err
 	}
 	for index, member := range prepared.Publication.Members {
-		publisher, err := newAttemptCutV2Replicas(options.Bounds.Cut, replicas[member.Evidence.Header.NoID])
+		publisher, err := newAttemptCutV2ReplicasWithMetadataLimit(options.Bounds.Cut, replicas[member.Evidence.Header.NoID], max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes))
 		if err != nil {
 			return err
 		}

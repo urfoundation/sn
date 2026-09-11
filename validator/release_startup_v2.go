@@ -213,7 +213,7 @@ func (self *releaseEvidenceV2StartupHistory) reconcileOrdinary(ctx context.Conte
 	if err != nil {
 		return err
 	}
-	options := releaseStatsV2Options{Activation: operator.Expected.Activation, Policy: operator.Policy, Bounds: operator.Bounds, Stats: AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay}}
+	options := releaseStatsV2Options{Activation: operator.Expected.Activation, Policy: operator.Policy, Bounds: operator.Bounds, Stats: AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay}, retainedStartup: self.retainedStartup}
 	guard := func(phase string) error {
 		if phase == "before-save" {
 			return owner.check()

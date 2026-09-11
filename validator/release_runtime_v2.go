@@ -24,20 +24,21 @@ import (
 // were reconstructed before Stats attachment; no snapshot/header supplies them.
 // The root still owns every runtime and ledger Close after all workers join.
 type releaseRuntimeV2 struct {
-	ctx                 context.Context
-	cfg                 ReleaseConfig
-	chain               *ChainClient
-	native              *crv4.Chain
-	hotkey              *crv4.Keypair
-	disk                *releaseEvidenceV2DiskState
-	history             *releaseEvidenceV2StartupHistory
-	origins             [2]string
-	runtimes            []*releaseOperatorRuntime
-	sources             map[uint64]*releaseAttemptUploadSourceV2
-	gate                chan struct{}
-	publications        map[uint64]*AttemptSettlementClosureV2
-	publicationContexts map[uint64]map[uint64]AttemptCutV2Context
-	publishEpoch        func(uint64)
+	ctx                  context.Context
+	cfg                  ReleaseConfig
+	chain                *ChainClient
+	native               *crv4.Chain
+	hotkey               *crv4.Keypair
+	disk                 *releaseEvidenceV2DiskState
+	history              *releaseEvidenceV2StartupHistory
+	origins              [2]string
+	runtimes             []*releaseOperatorRuntime
+	sources              map[uint64]*releaseAttemptUploadSourceV2
+	gate                 chan struct{}
+	publications         map[uint64]*AttemptSettlementClosureV2
+	publicationContexts  map[uint64]map[uint64]AttemptCutV2Context
+	retainedStartupEpoch uint64
+	publishEpoch         func(uint64)
 }
 
 // Semantic startup is called while the complete disk census is still dormant.
@@ -85,6 +86,9 @@ func newReleaseRuntimeV2WithRuntime(ctx context.Context, cfg *ReleaseConfig, cha
 	}
 	self := &releaseRuntimeV2{ctx: ctx, cfg: history.cfg, chain: chain, native: native, hotkey: ownHotkey, disk: disk, history: history, origins: origins, sources: sources,
 		gate: make(chan struct{}, 1), publications: maps.Clone(history.terminals), publicationContexts: maps.Clone(history.terminalContexts)}
+	if history.retainedStartup {
+		self.retainedStartupEpoch = history.current[history.participants[0].NoID].epoch
+	}
 	if self.publicationContexts == nil {
 		self.publicationContexts = make(map[uint64]map[uint64]AttemptCutV2Context)
 	}
@@ -265,6 +269,17 @@ func (self *releaseRuntimeV2) publishWithReadHooks(ctx context.Context, snapshot
 	slices.Sort(epochs)
 	for _, epoch := range epochs {
 		closure := self.publications[epoch]
+		if self.history.retainedStartup && epoch < self.retainedStartupEpoch {
+			retained, err := self.resumeProvisionalRetainedPublication(ctx, epoch, closure, hooks)
+			if err != nil {
+				return err
+			}
+			if retained {
+				delete(self.publications, epoch)
+				delete(self.publicationContexts, epoch)
+				continue
+			}
+		}
 		window, boundary, err := self.window(ctx, snapshot, epoch)
 		if err != nil {
 			return err
@@ -426,7 +441,7 @@ func (self *releaseRuntimeV2) closureForDecision(ctx context.Context, epoch uint
 // Real native detach owns drain, signed streams, immutable input publication
 // and durable egress rotation. Head selection and prepared native intent are
 // separate actual consumers, supplied independent contexts rather than verdicts.
-func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteerer, snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string, hotkeys map[[32]byte]uint16) ([]ReleaseMeasurementInput, ReleaseMeasurementV2Options, error) {
+func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteerer, current *SteeringIntent, snapshot *ReleaseSnapshot, subnetEpoch, nativeBlock uint64, nativeHash string, hotkeys map[[32]byte]uint16) ([]ReleaseMeasurementInput, ReleaseMeasurementV2Options, error) {
 	var zero ReleaseMeasurementV2Options
 	release, err := self.acquire(ctx)
 	if err != nil {
@@ -437,6 +452,9 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		return nil, zero, errors.New("release V2 native collector owner differs")
 	}
 	if err := self.advanceOwned(ctx, snapshot); err != nil {
+		return nil, zero, err
+	}
+	if err := self.history.provisionalClosedInputDeferral(ctx, current, subnetEpoch, nativeBlock, nativeHash, snapshot); err != nil {
 		return nil, zero, err
 	}
 	if err := self.refreshServerKeys(ctx); err != nil {

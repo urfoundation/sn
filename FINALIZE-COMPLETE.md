@@ -1,10 +1,120 @@
 # Release 1.0 testnet completion handoff
 
+## Execution override — 2026-09-11 07:48 UTC
+
+The user has directed us to stop preparation tests and run the actual testnet
+simulation, fixing issues from that run. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md)
+is now the controlling, shortened execution plan. Full producer/aggregate gates,
+repeated confirmation tests, duplicate plan comparisons and separate pre-launch
+smoke rehearsals are no longer launch or testnet-completion prerequisites.
+Retain spending limits, custody, saved progress and one writer per transaction
+stream. Reuse completed work and report omitted checks as omitted, never PASS.
+The older requirements and frontiers below are historical wherever they conflict.
+
 Start with [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) for the concise current
 work/ownership index. The detailed records below retain historical evidence;
 do not reload the whole history for routine test status.
 
-## Current frontier — 2026-09-09 20:24 UTC
+## Current frontier — 2026-09-11 06:23 UTC
+
+**INCOMPLETE; final acceptance is false.** The typed-metadata correction is
+published at source `6b442d1a7a3266f340652167466fd8a91c3de2f9` (06:17:36 UTC).
+Clean CLI5 built with actual exit 0 and SHA-256
+`13e38cb59aad6a7fd2acc0a434ad57db4ecac2edfa4c1008bd1cd60149a04284`.
+[Publication](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/source-publication/sn-typed-metadata/result.json),
+[build identity](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-cli-5/executable.json).
+
+R33 replaced both managed validator images at 06:20:26.267245 UTC; rollout and
+caller joined actual exit 0. Both old cgroups emptied before replacement,
+and all five protected plan/journal/supervisor/configuration inputs plus the
+original stop timer remained unchanged. New PIDs are 1610835 and 1610836.
+This proves image replacement; application warmup and fresh proof production
+remain pending. The 1,000-provider fleet was not stopped. Only six historical
+proof records have been locally signature-verified.
+[Actual rollout](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/provisional-r33/caller/verified-result.json).
+
+Native lock apply3 used CLI5 and joined actual exit 0 at 06:21:01.623604 UTC.
+The new lock SHA-256 is
+`f0156a59bf64d9f8693e9900d2b78e40e88b7d55518c28872145ffce00e83cb1`.
+Only the protocol and SN Go source digest bindings changed for the reviewed
+source updates; runtime, contracts, configuration, custody and allowances are
+unchanged. Publish this lock/handoff checkpoint, then build the final-revision
+CLI and start both second native gates in parallel. Neither second gate has
+run at this timestamp. Formal admission and acceptance remain pending.
+[Native lock result](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/release-lock-apply-3/result.json).
+
+Focused qualification is closed: the first normal run preserves 39 unaffected
+passes and two new fixture failures. Only the new fixture file then changed;
+both corrected roots passed three sequential normal confirmations on one
+retained binary, and all 41 focused race roots passed. The owner joined actual
+exit 0 at 06:12:36.814585 UTC with all 17 source hashes unchanged. These results
+and the reviewed production changes remain valid; no whole-gate PASS is implied.
+[Tests, binaries and exits](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/metadata-transport-corrected/HANDOFF.md),
+[review addendum](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/typed-metadata-review/FIXTURE-CORRECTION-REVIEW.md).
+
+The repaired bug clipped the approved 4MiB typed transition allowance to a
+64KiB stream page limit. Retained epoch-281 transitions were 84,896/86,743 bytes
+for validator 1 and 68,229/63,185 for validator 2. Page/header bounds and the
+separate server 2MiB limit are unchanged. This deterministic source failure is
+distinct from the earlier RPC timeouts and the user's reported transient outage.
+[Diagnosis](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-terminal-metadata-blocker/REPORT.md).
+Formal RC, three production epochs, public replay and shutdown remain pending.
+
+## Historical frontier — 2026-09-11 05:33 UTC
+
+**INCOMPLETE; final acceptance is false.** The provisional fleet is retained;
+the formal release-candidate campaign has not launched. Both managed R32
+validators automatically restarted after startup RPC timeouts and had restart
+count 4. At 05:25:08.896735 UTC both replacement processes were alive, but
+neither current invocation had an application-running marker or new completed
+trail. Retained record counts were 92 + 89 and 42 + 40; only six records have
+been locally signature-verified. The earlier 04:21 healthy sample is historical.
+[Exact restart/readiness evidence](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/validator-restarts-20260911T0521/README.md).
+The user's reported brief internet outage has no established interval or causal
+link to these failures.
+
+Source/lock checkpoint `909c8c6d90d8f62986734e130e9243d2d963837e` was published
+at 04:48:54. Its clean-VCS CLI3 built successfully, SHA-256
+`590c4ffce0199bb2ab384f2aff3657ceb6553729a98e48d8573755edfdf701ef`.
+The applied lock remains `4535892c082d575077db6acfd822888bc966ba688dec558c6f956eb46c4d9d4a`.
+Both native gates passed all five preflights. Producer `sim-seed` normal passed
+in 156.364s; aggregate `sn-go` normal passed in 154.815s. Their race packages
+then reached the 180s package alarm. The active operator-path root had run only
+about 1s/4s respectively; this establishes package timeouts, not assertion
+failures attributed to that root. Remaining gate work was cancelled at
+05:26:23; native and outer exits were 143, joined at 05:26:24, with source
+unchanged. Completed phases remain recorded under their original identities;
+neither full gate passed. [Producer](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/gates/producer-1/result.json),
+[aggregate](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/gates/aggregate-1/result.json).
+
+Both script race package budgets are now 10m instead of 3m; the same 33-root
+selection, normal 3m command, fixture deadlines, assertions and workloads remain.
+One focused race measurement passed all 33 roots in 210.890683s
+(05:26:41.101763–05:30:11.992446), with native/outer exits 0 and joined ownership.
+Its binary SHA-256 is `01bf49ce7eeb48d57332cf6b83d7bc0ad4476863b293542a4396aa8757f88870`;
+source `909c8c6…` stayed unchanged during the measurement. `WARP_TEST_ENV_FAIL_FAST`
+was unset; there were no retries or fixture changes. This is a timing
+measurement, not a native gate certificate. [Measurement](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/sim-seed-deadline-correction/result.json).
+All nine existing custody-selection guards then passed normally and with race;
+actual exits and joins, shell syntax and diff checks were 0 by 05:33:29. The
+initial wrapper syntax failure occurred before any test and is retained.
+[Guard receipts](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/sim-seed-deadline-guards/RESULT.json). Replacement source/lock/CLI identities remain
+pending. Preserve both package timeout attempts and earlier failures. The nine
+previous model and five carry assertion-root confirmation sequences remain
+closed; active/queued roots at a package alarm do not prove an assertion failure.
+
+Pre-maintenance doctor3 joined actual 0 at 05:10:22.463522, preserving the plan,
+journal and supervisor hashes. It is read-only pre-maintenance evidence, not
+formal admission. [Doctor receipt](/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/pre-maintenance-doctor-3/result.json).
+The stopped/joined DB bridge, original-server-path cutover, final runtime
+checks, paired reviewed plans and formal campaign remain pending. Retain
+attempt-4, original used activations/custody and all journals; the 6,000-alpha
+repair tranche, 31,250-alpha lifetime cap, 180 EVM within 200 total TAO, and
+262-registration ceiling remain binding. Both complete gates, full RC and
+three production epochs, independent public replay and actual shutdown remain
+required. See [FINAL.md](FINAL.md) for scoped prior passes and evidence.
+
+## Historical frontier — 2026-09-09 20:24 UTC
 
 The user renewed the one-hour launch objective at20:12:49UTC (deadline21:12:49)
 and explicitly raised the reserve repair allowance to6,000testnet alpha.

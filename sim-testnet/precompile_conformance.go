@@ -819,7 +819,16 @@ func (self *Executor) verifySubstrateTransactionEvidenceAtHead(ctx context.Conte
 	if err != nil {
 		return err
 	}
-	return verifyReleaseHistoryFinalizedExtrinsicContext(ctx, self.substrate.chain, self.cfg, blockHash, txHash)
+	// The finalized head and canonical block check above are always fresh. Only
+	// the immutable inclusion/success proof inside that exact block is reusable.
+	_, err = self.withHistoricalAuditCache(ctx, "finalized-native-extrinsic", struct {
+		Recorded    ChainHead `json:"recorded"`
+		Transaction string    `json:"transaction"`
+		Observer    string    `json:"observer"`
+	}{Recorded: recorded, Transaction: txHash.Hex(), Observer: self.substrate.chain.API.Client.URL()}, func(auditCtx context.Context) error {
+		return verifyReleaseHistoryFinalizedExtrinsicContext(auditCtx, self.substrate.chain, self.cfg, blockHash, txHash)
+	})
+	return err
 }
 
 func batteryTupleCompatible(evidence *PrecompileConformanceEvidence, tuple *precompileBatteryTuple, nominatorMinimum uint64) bool {

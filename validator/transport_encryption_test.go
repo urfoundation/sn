@@ -5,7 +5,10 @@ package validator
 import (
 	"context"
 	"crypto/ed25519"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/urnetwork/connect"
 )
@@ -21,19 +24,34 @@ func TestTunnelClientSettingsEnableProviderReplyEncryption(t *testing.T) {
 	if clientSettings.EncryptionSettings.Mode != connect.EncryptionModeOpportunistic {
 		t.Fatalf("tunnel encryption mode = %v, want opportunistic", clientSettings.EncryptionSettings.Mode)
 	}
+	if !clientSettings.ClientKeyRegistrationRequired {
+		t.Fatal("tunnel client does not require processed identity-key registration")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"pack":"","error":null}`))
+	}))
+	strategy := connect.NewClientStrategyWithDefaults(ctx)
+	control := connect.NewApiOutOfBandControl(ctx, strategy, "synthetic-tunnel-token", endpoint.URL)
 	client := connect.NewClient(
 		ctx,
 		connect.NewId(),
-		connect.NewNoContractClientOob(),
+		control,
 		clientSettings,
 	)
 	t.Cleanup(func() {
 		cancel()
-		if err := client.CloseAndWait(context.Background()); err != nil {
+		joinCtx, joinCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer joinCancel()
+		if err := client.CloseAndWait(joinCtx); err != nil {
 			t.Errorf("close tunnel capability client: %v", err)
 		}
+		if err := control.CloseAndWait(joinCtx); err != nil {
+			t.Errorf("close tunnel capability control: %v", err)
+		}
+		strategy.Close()
+		endpoint.Close()
 	})
 
 	encryptionManager := client.EncryptionSessionManager()
@@ -43,8 +61,13 @@ func TestTunnelClientSettingsEnableProviderReplyEncryption(t *testing.T) {
 	if len(encryptionManager.ProvideTlsCertificatePem()) == 0 {
 		t.Fatal("opportunistic tunnel client has no TLS responder certificate")
 	}
-	if len(client.ClientKeyManager().PublicKey()) != ed25519.PublicKeySize {
+	if client.ClientKeyManager() == nil || len(client.ClientKeyManager().PublicKey()) != ed25519.PublicKeySize {
 		t.Fatal("opportunistic tunnel client has no identity key for its TLS proof")
+	}
+	registrationCtx, registrationCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer registrationCancel()
+	if err := client.ClientKeyManager().WaitForRegistration(registrationCtx); err != nil {
+		t.Fatalf("tunnel key did not receive processed registration: %v", err)
 	}
 }
 

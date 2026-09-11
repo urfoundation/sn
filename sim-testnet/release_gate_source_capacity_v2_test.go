@@ -11,9 +11,9 @@ func TestProducerGateStateSelectionCoversActualSourceCapacityV2(t *testing.T) {
 }
 
 // Full campaign configuration and its genuine pre-Prepare refusal join the
-// same actual phase as the funded runtime they depend on.
+// same actual simulator phase as the funded runtime they depend on.
 func TestProducerGateStateSelectionCoversCampaignSourceCapacityV2(t *testing.T) {
-	assertProducerStateRegressionCoverage(t, "validator_evidence_tests", "./protocol ./stabi ./sim-testnet/gencontracts ./sim-testnet", "campaign-source-capacity", []string{
+	assertProducerStateRegressionCoverage(t, "simulator_evidence_tests", "./sim-testnet", "campaign-source-capacity", []string{
 		"runtime_evidence_source_capacity_test.go",
 	})
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -122,6 +123,17 @@ func TestWorkloadPollSecondsFitOperationalRPCMode(t *testing.T) {
 }
 
 func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders(t *testing.T) {
+	t.Parallel()
+	testRuntimeConfigsAcceptedByReleaseLoaders(t, false)
+}
+
+func TestProvisionalRuntimeConfigsAllowUnsignedTestnetWallet(t *testing.T) {
+	t.Parallel()
+	testRuntimeConfigsAcceptedByReleaseLoaders(t, true)
+}
+
+func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) {
+	t.Helper()
 	cfg := testResolvedConfig(t)
 	// Explicit owned test capacity, never a fallback for the live profile.
 	budget, err := requiredRuntimeClientKeyUploadBudget(cfg)
@@ -182,6 +194,9 @@ func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoader
 	}
 	reserved := prepareRuntimeReservedRenderTest(t, cfg, stateDir, roles)
 	deployment := reserved.deployment
+	if provisional {
+		cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true, PlanHash: reserved.plan.PlanHash}}
+	}
 	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
 		t.Fatal(err)
 	}
@@ -301,6 +316,9 @@ func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoader
 				t.Fatalf("provider swarm %d member id = %q", swarm, member.ID)
 			}
 			operator := operatorForMiner(cfg, miner)
+			if member.WalletSeedFile != minerPayoutSeedPath(stateDir, miner) || member.Wallet != roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58 {
+				t.Fatalf("provider %s changed its provisioned payout seed or wallet", member.ID)
+			}
 			if member.APIURL != cfg.OperatorAPIOrigins[operator-1] {
 				t.Fatalf("provider %s changed its approved API origin", member.ID)
 			}
@@ -370,8 +388,8 @@ func TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoader
 	if st["testnet-public-rpc-url"] != cfg.Public.Chain.EVMPublicReadEndpoint {
 		t.Fatalf("operator public testnet RPC = %v, want %q", st["testnet-public-rpc-url"], cfg.Public.Chain.EVMPublicReadEndpoint)
 	}
-	if unsigned, ok := st["testnet-wallet-allow-unsigned"]; !ok || unsigned != false {
-		t.Fatalf("operator unsigned testnet wallet policy = %v, present=%t", unsigned, ok)
+	if unsigned, ok := st["testnet-wallet-allow-unsigned"]; !ok || unsigned != provisional {
+		t.Fatalf("operator unsigned testnet wallet policy = %v, present=%t, provisional=%t", unsigned, ok, provisional)
 	}
 	for _, key := range []string{"public_rpc_url", "wallet_allow_unsigned"} {
 		if _, ok := st[key]; ok {

@@ -20,6 +20,12 @@ import (
 // terminal additionally needs the actual rolled exclusive epoch-end boundary,
 // not merely an old snapshot whose block happened to be finalized.
 func (self *ChainClient) authenticateReleaseStartupBoundaryV2Context(ctx context.Context, domain protocol.ValidatorEvidenceDomain, noID uint64, boundary AttemptBoundary, terminal bool) (resultErr error) {
+	return self.authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx, domain, noID, boundary, terminal, false)
+}
+
+// Only startup's complete validated provisional handoff waives repeated
+// external history comparisons; all runtime callers retain the strict wrapper.
+func (self *ChainClient) authenticateReleaseStartupBoundaryV2ContextWithRetainedHistory(ctx context.Context, domain protocol.ValidatorEvidenceDomain, noID uint64, boundary AttemptBoundary, terminal, retained bool) (resultErr error) {
 	if ctx == nil || self == nil || self.client == nil || self.coordinator == nil || self.chainId == nil {
 		return errors.New("startup history EVM owner is absent")
 	}
@@ -39,6 +45,9 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2Context(ctx context
 	hash, err := canonicalAttemptHex32("startup history EVM hash", boundary.EVMBlockHash, false)
 	if err != nil {
 		return err
+	}
+	if retained {
+		return ctx.Err()
 	}
 	finalized, finalizedHash, err := self.FinalizedBlockContext(ctx)
 	if err != nil {
@@ -106,6 +115,10 @@ func (self *ChainClient) authenticateReleaseStartupBoundaryV2Context(ctx context
 // metagraph response supplies calculated stake, while the exact historical
 // metadata supplies SubnetEpochIndex without modifying current Chain.Meta.
 func authenticateReleaseStartupNativeV2Context(ctx context.Context, native *crv4.Chain, initial ReleaseEvidenceV2ActivationContext, journal *releaseMeasurementInputJournal, runtime crv4.RuntimeArtifactIdentity, legacy bool) error {
+	return authenticateReleaseStartupNativeV2ContextWithRetainedHistory(ctx, native, initial, journal, runtime, legacy, false)
+}
+
+func authenticateReleaseStartupNativeV2ContextWithRetainedHistory(ctx context.Context, native *crv4.Chain, initial ReleaseEvidenceV2ActivationContext, journal *releaseMeasurementInputJournal, runtime crv4.RuntimeArtifactIdentity, legacy, retained bool) error {
 	if ctx == nil || journal == nil {
 		return errors.New("startup ordinary native context is absent")
 	}
@@ -116,6 +129,9 @@ func authenticateReleaseStartupNativeV2Context(ctx context.Context, native *crv4
 	}
 	if !legacy && !releaseBlockAtOrBefore(initial.Activation.NativeBlock, attemptHex32(initial.Activation.NativeHash), input.CutNativeBlock, input.CutNativeBlockHash) {
 		return errors.New("startup ordinary native observation precedes authenticated activation")
+	}
+	if retained {
+		return ctx.Err()
 	}
 	observed, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{
 		GenesisHash: types.Hash(initial.Activation.Domain.GenesisHash), BlockHash: types.Hash(hash), BlockNumber: input.CutNativeBlock,

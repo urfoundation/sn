@@ -373,6 +373,9 @@ func lockFinalSemanticSupplement(ctx context.Context, lock *os.File) error {
 }
 
 func finalSemanticSupplementRoots(ctx context.Context, cfg *ResolvedConfig, roles *RoleSecrets, stateDir, runDir string, result *ScenarioResult) (string, string, error) {
+	if provisionalResumeEnabled(cfg) || (result != nil && result.Provisional) {
+		return "", "", errors.New("provisional testnet scenario cannot receive final release acceptance")
+	}
 	if ctx == nil || cfg == nil || cfg.Config == nil || roles == nil || result == nil || strings.TrimSpace(stateDir) == "" || strings.TrimSpace(runDir) == "" {
 		return "", "", errors.New("semantic supplement context is incomplete")
 	}

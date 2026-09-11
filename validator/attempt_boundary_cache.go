@@ -39,6 +39,11 @@ type attemptBoundaryLoad struct {
 type cachedAttemptBoundaryResolver struct {
 	rpc          attemptBoundaryRPC
 	stateLock    sync.Mutex
+	owner        context.Context
+	cancel       context.CancelFunc
+	prepareLimit time.Duration
+	preparations sync.WaitGroup
+	closed       bool
 	blocks       map[uint64]*attemptBoundaryBlock
 	blockOrder   []uint64
 	blockLoads   map[uint64]*attemptBoundaryLoad
@@ -56,10 +61,29 @@ func newCachedAttemptBoundaryResolver(rpc attemptBoundaryRPC) *cachedAttemptBoun
 }
 
 func newCachedAttemptBoundaryResolverWithClock(rpc attemptBoundaryRPC, refreshDelay time.Duration, now func() time.Time) *cachedAttemptBoundaryResolver {
+	resolver := newCachedAttemptBoundaryResolverWithLifecycle(context.Background(), rpc, releaseNativeEndpointTimeout(nil))
+	resolver.refreshDelay, resolver.now = refreshDelay, now
+	return resolver
+}
+
+// A trail's step deadline bounds its wait, not the shared immutable census.
+// The validator owns and joins preparation, including work whose first waiter
+// timed out before the source-wide RPC queue reached its final batch.
+func newCachedAttemptBoundaryResolverWithLifecycle(ctx context.Context, rpc attemptBoundaryRPC, prepareLimit time.Duration) *cachedAttemptBoundaryResolver {
+	owner, cancel := context.WithCancel(ctx)
 	return &cachedAttemptBoundaryResolver{
-		rpc: rpc, blocks: map[uint64]*attemptBoundaryBlock{}, blockLoads: map[uint64]*attemptBoundaryLoad{},
-		bindingLoads: map[string]*attemptBoundaryLoad{}, now: now, refreshDelay: refreshDelay,
+		rpc: rpc, owner: owner, cancel: cancel, prepareLimit: prepareLimit,
+		blocks: map[uint64]*attemptBoundaryBlock{}, blockLoads: map[uint64]*attemptBoundaryLoad{},
+		bindingLoads: map[string]*attemptBoundaryLoad{}, now: time.Now, refreshDelay: attemptBoundaryRefreshDelay,
 	}
+}
+
+func (self *cachedAttemptBoundaryResolver) close() {
+	self.stateLock.Lock()
+	self.closed = true
+	self.cancel()
+	self.stateLock.Unlock()
+	self.preparations.Wait()
 }
 
 func waitAttemptBoundaryLoad(ctx context.Context, load *attemptBoundaryLoad) error {
@@ -67,6 +91,9 @@ func waitAttemptBoundaryLoad(ctx context.Context, load *attemptBoundaryLoad) err
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-load.done:
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		return load.err
 	}
 }
@@ -80,8 +107,19 @@ func (self *cachedAttemptBoundaryResolver) invalidateLatest() {
 }
 
 func (self *cachedAttemptBoundaryResolver) block(ctx context.Context, boundary AttemptBoundary, trusted bool) (*attemptBoundaryBlock, error) {
+	return self.blockWithOwner(ctx, self.owner, boundary, trusted)
+}
+
+func (self *cachedAttemptBoundaryResolver) blockWithOwner(ctx, owner context.Context, boundary AttemptBoundary, trusted bool) (*attemptBoundaryBlock, error) {
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		self.stateLock.Lock()
+		if self.closed || self.owner.Err() != nil {
+			self.stateLock.Unlock()
+			return nil, context.Canceled
+		}
 		if block := self.blocks[boundary.EVMBlock]; block != nil {
 			self.stateLock.Unlock()
 			if block.boundary != boundary {
@@ -98,36 +136,44 @@ func (self *cachedAttemptBoundaryResolver) block(ctx context.Context, boundary A
 		}
 		load := &attemptBoundaryLoad{done: make(chan struct{})}
 		self.blockLoads[boundary.EVMBlock] = load
+		self.preparations.Add(1)
 		self.stateLock.Unlock()
-
-		var err error
-		if !trusted {
-			err = self.rpc.Validate(ctx, boundary)
-		}
-		var hotkeys map[[32]byte]uint16
-		if err == nil {
-			hotkeys, err = self.rpc.Hotkeys(ctx, boundary)
-		}
-		self.stateLock.Lock()
-		delete(self.blockLoads, boundary.EVMBlock)
-		load.err = err
-		if err == nil {
-			self.blocks[boundary.EVMBlock] = &attemptBoundaryBlock{boundary: boundary, hotkeys: hotkeys, bindings: map[connect.Id]AttemptBinding{}}
-			self.blockOrder = append(self.blockOrder, boundary.EVMBlock)
-			if len(self.blockOrder) > attemptBoundaryCacheBlocks {
-				oldest := self.blockOrder[0]
-				self.blockOrder = self.blockOrder[1:]
-				delete(self.blocks, oldest)
-			}
-		}
-		close(load.done)
-		block := self.blocks[boundary.EVMBlock]
-		self.stateLock.Unlock()
-		if err != nil {
+		go self.prepareBlock(owner, boundary, trusted, load)
+		if err := waitAttemptBoundaryLoad(ctx, load); err != nil {
 			return nil, err
 		}
-		return block, nil
 	}
+}
+
+func (self *cachedAttemptBoundaryResolver) prepareBlock(owner context.Context, boundary AttemptBoundary, trusted bool, load *attemptBoundaryLoad) {
+	defer self.preparations.Done()
+	ctx, cancel := context.WithTimeout(owner, self.prepareLimit)
+	defer cancel()
+	var err error
+	if !trusted {
+		err = self.rpc.Validate(ctx, boundary)
+	}
+	var hotkeys map[[32]byte]uint16
+	if err == nil {
+		hotkeys, err = self.rpc.Hotkeys(ctx, boundary)
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	delete(self.blockLoads, boundary.EVMBlock)
+	load.err = err
+	if err == nil {
+		self.blocks[boundary.EVMBlock] = &attemptBoundaryBlock{boundary: boundary, hotkeys: hotkeys, bindings: map[connect.Id]AttemptBinding{}}
+		self.blockOrder = append(self.blockOrder, boundary.EVMBlock)
+		if len(self.blockOrder) > attemptBoundaryCacheBlocks {
+			oldest := self.blockOrder[0]
+			self.blockOrder = self.blockOrder[1:]
+			delete(self.blocks, oldest)
+		}
+	}
+	close(load.done)
 }
 
 func attemptBindingLoadKey(block uint64, clientID connect.Id) string {
@@ -136,7 +182,14 @@ func attemptBindingLoadKey(block uint64, clientID connect.Id) string {
 
 func (self *cachedAttemptBoundaryResolver) latestBoundary(ctx context.Context) (AttemptBoundary, error) {
 	for {
+		if err := ctx.Err(); err != nil {
+			return AttemptBoundary{}, err
+		}
 		self.stateLock.Lock()
+		if self.closed || self.owner.Err() != nil {
+			self.stateLock.Unlock()
+			return AttemptBoundary{}, context.Canceled
+		}
 		now := self.now()
 		if self.latest != (AttemptBoundary{}) && now.Before(self.refreshAt) {
 			boundary := self.latest
@@ -154,27 +207,41 @@ func (self *cachedAttemptBoundaryResolver) latestBoundary(ctx context.Context) (
 		load := &attemptBoundaryLoad{done: make(chan struct{})}
 		self.snapshotLoad = load
 		snapshotAge := self.snapshotAge
+		self.preparations.Add(1)
 		self.stateLock.Unlock()
-
-		boundary, err := self.rpc.Snapshot(ctx)
-		if err == nil {
-			err = validateAttemptBoundary(boundary)
+		go self.prepareLatest(load, snapshotAge)
+		if err := waitAttemptBoundaryLoad(ctx, load); err != nil {
+			return AttemptBoundary{}, err
 		}
-		self.stateLock.Lock()
-		self.snapshotLoad = nil
-		load.err = err
-		invalidated := err == nil && snapshotAge != self.snapshotAge
-		if err == nil && !invalidated {
-			self.latest = boundary
-			self.refreshAt = self.now().Add(self.refreshDelay)
-		}
-		close(load.done)
-		self.stateLock.Unlock()
-		if invalidated {
-			continue
-		}
-		return boundary, err
 	}
+}
+
+func (self *cachedAttemptBoundaryResolver) prepareLatest(load *attemptBoundaryLoad, snapshotAge uint64) {
+	defer self.preparations.Done()
+	ctx, cancel := context.WithTimeout(self.owner, self.prepareLimit)
+	defer cancel()
+	boundary, err := self.rpc.Snapshot(ctx)
+	if err == nil {
+		err = validateAttemptBoundary(boundary)
+	}
+	self.stateLock.Lock()
+	invalidated := snapshotAge != self.snapshotAge
+	self.stateLock.Unlock()
+	if err == nil && !invalidated {
+		_, err = self.blockWithOwner(ctx, ctx, boundary, true)
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	self.snapshotLoad = nil
+	load.err = err
+	if err == nil && snapshotAge == self.snapshotAge {
+		self.latest = boundary
+		self.refreshAt = self.now().Add(self.refreshDelay)
+	}
+	close(load.done)
 }
 
 func (self *cachedAttemptBoundaryResolver) binding(ctx context.Context, block *attemptBoundaryBlock, clientID connect.Id) (AttemptBinding, error) {

@@ -1,6 +1,7 @@
 package crv4
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -91,6 +92,19 @@ func LoadOrCreateSeedFile(path string) (seed [32]byte, created bool, err error) 
 func LoadSeedFile(path string) ([32]byte, error) {
 	seed, _, err := loadSeedFileOwned(path, false, false, seedFileHooks{})
 	return seed, err
+}
+
+// EnsureSeedFile durably publishes an already owned seed when the path is
+// absent. An occupied file must contain that exact seed and is never replaced.
+func EnsureSeedFile(path string, expected [32]byte) error {
+	seed, _, err := loadSeedFileOwned(path, true, false, seedFileHooks{random: bytes.NewReader(expected[:])})
+	if err != nil {
+		return err
+	}
+	if seed != expected {
+		return errors.New("seed file differs from the provisioned identity")
+	}
+	return nil
 }
 
 // Raw-only seed custody is shared with the validator's Ed25519 identity. The

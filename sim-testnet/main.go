@@ -27,7 +27,7 @@ var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
-	Apply, Detach                                                                                                                   bool
+	Apply, Detach, ProvisionalResume                                                                                                bool
 }
 
 func usage() {
@@ -60,6 +60,7 @@ Common options:
   --platform-config-repo PATH  platform config repository override
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
+  --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -93,6 +94,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RunID, "run-id", "", "")
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
+	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return "", o, err
 	}
@@ -107,6 +109,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	}
 	if cmd == "analyze" && o.Manifest != "" && (o.RunID == "" || o.RunID != strings.TrimSpace(o.RunID) || strings.ContainsAny(o.RunID, "/\\\r\n\x00")) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
+	}
+	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return "", o, err
 	}
 	return cmd, o, nil
 }
@@ -203,12 +208,20 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		component := args[0]
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var configPath string
+		var provisionalSetupPath, provisionalSetupSHA256 string
 		fs.StringVar(&configPath, "config", "", "")
+		fs.StringVar(&provisionalSetupPath, "provisional-activation-setup", "", "")
+		fs.StringVar(&provisionalSetupSHA256, "provisional-activation-setup-sha256", "", "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if configPath == "" || fs.NArg() != 0 {
 			return fmt.Errorf("invalid internal %s invocation", component)
+		}
+		if provisionalSetupPath != "" || provisionalSetupSHA256 != "" {
+			if component != "__validator" || provisionalSetupPath == "" || provisionalSetupSHA256 == "" {
+				return errors.New("provisional activation handoff requires its validator path and hash")
+			}
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -217,6 +230,13 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 		if component == "__claim_swarm" {
 			return minercomponent.RunClaimSwarm(ctx, configPath)
+		}
+		if provisionalSetupPath != "" {
+			raw, err := readProvisionalActivationSetup(configPath, provisionalSetupPath)
+			if err != nil {
+				return err
+			}
+			return validatorcomponent.RunReleaseWithProvisionalActivationSetup(ctx, configPath, raw, provisionalSetupSHA256)
 		}
 		return validatorcomponent.RunRelease(ctx, configPath)
 	}

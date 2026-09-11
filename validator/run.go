@@ -497,6 +497,10 @@ func run(opts docopt.Opts) {
 
 	fmt.Printf("validator %s running (concurrency %d, M %d)\n", RequireVersion(), concurrency, m)
 	<-ctx.Done()
+	if err := transport.CloseAndWait(context.Background()); err != nil {
+		fmt.Printf("tunnel transport shutdown: %v\n", err)
+		os.Exit(1)
+	}
 	if err := stats.Save(identity.StateDir); err != nil {
 		fmt.Printf("stats save: %v\n", err)
 	}

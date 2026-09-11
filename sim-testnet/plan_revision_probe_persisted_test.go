@@ -74,6 +74,7 @@ func appendPersistedV4ReplacementJournalEntry(t *testing.T, journal *Journal, pl
 // Covers each persisted V4 CREATE checkpoint and mutations that must fail
 // after plan/journal serialization, before a replacement revision is allowed.
 func TestPersistedV4ReplacementPlanAndJournalReplayRejectsBoundaryDrift(t *testing.T) {
+	t.Parallel()
 	cfg, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
 	secrets, err := BuildRoleSecrets(cfg)
 	if err != nil {

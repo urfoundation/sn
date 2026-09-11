@@ -770,8 +770,104 @@ func (self *Executor) verifyFleetInstallAliasPostcondition(action Action) (*Acti
 	}, nil
 }
 
-// Rechecks every standard member artifact, native commitment, EVM mirror and
-// binding record at the postcondition's canonical finalized head.
+type fleetInstallPinnedMember struct {
+	Evidence FleetBindingEvidence  `json:"evidence"`
+	Binding  protocol.FleetBinding `json:"binding"`
+}
+
+// Export every decoder input into the cache preimage. FleetManifest's default
+// JSON omits its hotkey/member arrays, so those identities are explicit here.
+type fleetInstallPinnedSnapshot struct {
+	Fleet              int                        `json:"fleet"`
+	Hotkey             [32]byte                   `json:"hotkey"`
+	CommitmentHash     [32]byte                   `json:"commitment_hash"`
+	CommitmentEvidence *FleetCommitmentEvidence   `json:"commitment_evidence"`
+	FinalizedBlockHash [32]byte                   `json:"finalized_block_hash"`
+	Members            []fleetInstallPinnedMember `json:"members"`
+}
+
+// Reuse only the pinned mirror/binding comparison. Native/current commitment
+// checks and local member authentication happen before this boundary; receipt
+// and event verification happens afterwards. A later receipt failure therefore
+// preserves these successful reads without marking the whole install valid.
+func (self *Executor) verifyFleetInstallPinnedState(ctx context.Context, action Action, evmHead ChainHead, evidence FleetInstallBatchEvidence, snapshots []fleetInstallPinnedSnapshot) error {
+	if ctx == nil || self == nil || self.cfg == nil || self.cfg.Public == nil || self.oracle == nil || self.oracle.client == nil || self.payloads == nil || len(snapshots) == 0 {
+		return errors.New("fleet install pinned proof context is unavailable")
+	}
+	reader := ethEVMBlockReader{client: self.oracle.client}
+	// actionPostState binds its historical head in ctx. Bypass that binding
+	// deliberately so a warm proof still requires this observer's fresh head.
+	finalized, err := finalizedEVMHeadFromReader(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("fleet install finalized checkpoint: %w", err)
+	}
+	if err := verifyEVMCheckpointFromReader(ctx, reader, finalized, evmHead); err != nil {
+		return fmt.Errorf("fleet install pinned checkpoint: %w", err)
+	}
+	coordinator := stabi.NewSTCoordinator()
+	calls := make([][]byte, 0)
+	for _, snapshot := range snapshots {
+		if snapshot.CommitmentEvidence == nil || len(snapshot.Members) == 0 {
+			return errors.New("fleet install pinned decoder evidence is incomplete")
+		}
+		calls = append(calls, coordinator.PackMirroredCommitments(snapshot.Hotkey))
+		for _, member := range snapshot.Members {
+			calls = append(calls,
+				coordinator.PackBindingVersionCount(member.Binding.ClientID),
+				coordinator.PackBindingVersionAt(member.Binding.ClientID, new(big.Int)),
+			)
+		}
+	}
+	observer, endpoint := "operational", self.cfg.OperationalEVM
+	if self.independentEVM != nil && self.oracle.client == self.independentEVM {
+		observer, endpoint = "independent", self.cfg.Public.Chain.EVMPublicReadEndpoint
+	}
+	_, err = self.withHistoricalAuditCache(ctx, "fleet-install-pinned-state-v1", struct {
+		Action     Action                       `json:"action"`
+		Evidence   FleetInstallBatchEvidence    `json:"evidence"`
+		Checkpoint ChainHead                    `json:"checkpoint"`
+		HashDomain string                       `json:"hash_domain"`
+		Observer   string                       `json:"observer"`
+		Endpoint   string                       `json:"endpoint"`
+		Target     common.Address               `json:"target"`
+		Calls      [][]byte                     `json:"calls"`
+		Snapshots  []fleetInstallPinnedSnapshot `json:"snapshots"`
+	}{
+		Action: action, Evidence: evidence, Checkpoint: evmHead, HashDomain: "evm-rpc",
+		Observer: observer, Endpoint: endpoint, Target: self.payloads.Manifest.CoordinatorProxy,
+		Calls: calls, Snapshots: snapshots,
+	}, func(auditCtx context.Context) error {
+		outputs, err := rawCoordinatorBatchCallAt(auditCtx, self.oracle, self.payloads.Manifest.CoordinatorProxy, calls, evmHead.Number)
+		if err != nil {
+			return err
+		}
+		outputIndex := 0
+		for _, snapshot := range snapshots {
+			mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
+			outputIndex++
+			if err != nil || !fleetMirrorMatches(mirror, snapshot.CommitmentHash, snapshot.CommitmentEvidence.FinalizedBlock, snapshot.FinalizedBlockHash) {
+				return stateMismatchError(err, "fleet %d install postcondition mirror mismatch", snapshot.Fleet)
+			}
+			for memberIndex, member := range snapshot.Members {
+				count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
+				outputIndex++
+				if err != nil {
+					return err
+				}
+				record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
+				outputIndex++
+				if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, member.Binding, member.Binding.ValidToEpoch, member.Evidence.UID) {
+					return stateMismatchError(err, "fleet %d member %d install postcondition mismatch", snapshot.Fleet, memberIndex+1)
+				}
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+// Rechecks every standard member artifact and native/current commitment.
+// Only exact canonical finalized EVM mirror/binding comparisons may be reused.
 func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, action Action, evmHead ChainHead, state map[string]any) (map[string]any, error) {
 	if err := self.ensurePayloads(ctx); err != nil {
 		return nil, err
@@ -795,60 +891,27 @@ func (self *Executor) verifyFleetInstallBatchPostState(ctx context.Context, acti
 	if err := validateFleetInstallPartitions(evidence); err != nil {
 		return nil, err
 	}
-	coordinator := stabi.NewSTCoordinator()
-	type postconditionSnapshot struct {
-		fleetIndex         int
-		manifest           protocol.FleetManifest
-		commitmentHash     [32]byte
-		commitmentEvidence *FleetCommitmentEvidence
-		finalizedBlockHash [32]byte
-	}
-	snapshots := make([]postconditionSnapshot, 0, lastFleet-firstFleet+1)
-	calls := make([][]byte, 0, (lastFleet-firstFleet+1)*(1+2*self.cfg.Config.Topology.ClientsPerHeadFleet))
+	snapshots := make([]fleetInstallPinnedSnapshot, 0, lastFleet-firstFleet+1)
 	for fleetIndex := firstFleet; fleetIndex <= lastFleet; fleetIndex++ {
 		manifest, commitmentHash, commitmentEvidence, finalizedBlockHash, err := self.validatedFleetCommitmentGeneration(fleetIndex, 1)
 		if err != nil {
 			return nil, err
 		}
-		snapshots = append(snapshots, postconditionSnapshot{
-			fleetIndex: fleetIndex, manifest: manifest, commitmentHash: commitmentHash,
-			commitmentEvidence: commitmentEvidence, finalizedBlockHash: finalizedBlockHash,
-		})
-		calls = append(calls, coordinator.PackMirroredCommitments(manifest.Hotkey))
-		for _, member := range manifest.Members {
-			calls = append(calls,
-				coordinator.PackBindingVersionCount(member.ClientID),
-				coordinator.PackBindingVersionAt(member.ClientID, new(big.Int)),
-			)
+		snapshot := fleetInstallPinnedSnapshot{
+			Fleet: fleetIndex, Hotkey: manifest.Hotkey, CommitmentHash: commitmentHash,
+			CommitmentEvidence: commitmentEvidence, FinalizedBlockHash: finalizedBlockHash,
 		}
+		for memberIndex := 1; memberIndex <= len(manifest.Members); memberIndex++ {
+			memberEvidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, manifest, fleetIndex, memberIndex)
+			if err != nil {
+				return nil, err
+			}
+			snapshot.Members = append(snapshot.Members, fleetInstallPinnedMember{Evidence: memberEvidence, Binding: binding})
+		}
+		snapshots = append(snapshots, snapshot)
 	}
-	outputs, err := rawCoordinatorBatchCallAt(ctx, self.oracle, self.payloads.Manifest.CoordinatorProxy, calls, evmHead.Number)
-	if err != nil {
+	if err := self.verifyFleetInstallPinnedState(ctx, action, evmHead, evidence, snapshots); err != nil {
 		return nil, err
-	}
-	outputIndex := 0
-	for _, snapshot := range snapshots {
-		mirror, err := coordinator.UnpackMirroredCommitments(outputs[outputIndex])
-		outputIndex++
-		if err != nil || !fleetMirrorMatches(mirror, snapshot.commitmentHash, snapshot.commitmentEvidence.FinalizedBlock, snapshot.finalizedBlockHash) {
-			return nil, stateMismatchError(err, "fleet %d install postcondition mirror mismatch", snapshot.fleetIndex)
-		}
-		for memberIndex := 1; memberIndex <= len(snapshot.manifest.Members); memberIndex++ {
-			memberEvidence, binding, err := loadVerifiedPriorFleetBinding(self.stateDir, snapshot.manifest, snapshot.fleetIndex, memberIndex)
-			if err != nil {
-				return nil, err
-			}
-			count, err := coordinator.UnpackBindingVersionCount(outputs[outputIndex])
-			outputIndex++
-			if err != nil {
-				return nil, err
-			}
-			record, err := coordinator.UnpackBindingVersionAt(outputs[outputIndex])
-			outputIndex++
-			if err != nil || !count.IsUint64() || count.Uint64() != 1 || !fleetBindingRecordMatches(record, binding, binding.ValidToEpoch, memberEvidence.UID) {
-				return nil, stateMismatchError(err, "fleet %d member %d install postcondition mismatch", snapshot.fleetIndex, memberIndex)
-			}
-		}
 	}
 	wantMemberEvidence := (lastFleet - firstFleet + 1) * self.cfg.Config.Topology.ClientsPerHeadFleet
 	if len(evidence.MemberEvidence) != wantMemberEvidence {

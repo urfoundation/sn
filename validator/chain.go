@@ -50,6 +50,19 @@ const (
 	chainBlockIdentityCacheCapacity = 256
 )
 
+// Only validated provisional boundary preparation receives this marker.
+// Its existing producer deadline still bounds each longer canonical read.
+type provisionalBoundaryReadBudgetKey struct{}
+
+func chainReadCallTimeout(ctx context.Context) time.Duration {
+	if ctx != nil {
+		if enabled, _ := ctx.Value(provisionalBoundaryReadBudgetKey{}).(bool); enabled {
+			return 120 * time.Second
+		}
+	}
+	return chainCallTimeout
+}
+
 // Preserves the hash reported by the EVM RPC. Subtensor's synthetic block
 // identity cannot be reconstructed with the standard Ethereum header hash.
 type chainRPCBlock struct {
@@ -191,7 +204,7 @@ func (self *ChainClient) FinalizedBlockContext(ctx context.Context) (uint64, [32
 	if self == nil || self.client == nil {
 		return 0, [32]byte{}, errors.New("finalized EVM head client is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 	defer cancel()
 	var header *chainRPCBlock
 	err := self.client.Client().CallContext(ctx, &header, "eth_getBlockByNumber", "finalized", false)
@@ -273,7 +286,7 @@ func (self *ChainClient) validateBlockIdentityContext(ctx context.Context, block
 		}
 		return nil
 	}
-	callCtx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 	var header *chainRPCBlock
 	err := self.client.Client().CallContext(callCtx, &header, "eth_getBlockByHash", common.Hash(blockHash), false)
 	err = errors.Join(err, callCtx.Err())
@@ -340,7 +353,7 @@ func (self *ChainClient) ethCallAtHashContext(ctx context.Context, to common.Add
 		return nil, err
 	}
 	var output hexutil.Bytes
-	callCtx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 	err = self.client.Client().CallContext(callCtx, &output, "eth_call", map[string]any{
 		"to":    to,
 		"input": hexutil.Bytes(calldata),
@@ -416,7 +429,7 @@ func (self *ChainClient) batchCallsAtHashContext(ctx context.Context, block uint
 				Result: &raw[index-start],
 			}
 		}
-		callCtx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+		callCtx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 		err := self.client.Client().BatchCallContext(callCtx, batch)
 		err = errors.Join(err, callCtx.Err())
 		cancel()
@@ -859,7 +872,7 @@ func (self *ChainClient) BlockHashContext(ctx context.Context, number uint64) ([
 	if self == nil || self.client == nil {
 		return [32]byte{}, errors.New("block hash client or number is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(ctx, chainCallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, chainReadCallTimeout(ctx))
 	defer cancel()
 	var header *chainRPCBlock
 	err := self.client.Client().CallContext(ctx, &header, "eth_getBlockByNumber", hexutil.EncodeUint64(number), false)

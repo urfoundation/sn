@@ -958,30 +958,39 @@ const releaseSteeringFailureLimit = ReleaseSteeringFailureLimit
 // Repeated failures become process-visible, and advancing past an incomplete
 // epoch fails closed instead of silently creating a gap in public lineage.
 func runReleaseSteeringLoop(ctx context.Context, poll time.Duration, epoch func() (uint64, error), submit func() error) error {
+	return runReleaseSteeringLoopWithDeferral(ctx, poll, epoch, submit, false)
+}
+
+func runReleaseSteeringLoopWithDeferral(ctx context.Context, poll time.Duration, epoch func() (uint64, error), submit func() error, allowDeferral bool) error {
 	if ctx == nil || poll <= 0 || epoch == nil || submit == nil {
 		return errors.New("release steering loop configuration is incomplete")
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
-	return runReleaseSteeringLoopWithWait(ctx, epoch, submit, func() bool {
+	return runReleaseSteeringLoopWithWaitAndDeferral(ctx, epoch, submit, func() bool {
 		select {
 		case <-ctx.Done():
 			return false
 		case <-ticker.C:
 			return true
 		}
-	})
+	}, allowDeferral)
 }
 
 // Injects only the existing poll decision so tests can force a ready tick
 // alongside cancellation without depending on the select scheduler.
 func runReleaseSteeringLoopWithWait(ctx context.Context, epoch func() (uint64, error), submit func() error, wait func() bool) error {
+	return runReleaseSteeringLoopWithWaitAndDeferral(ctx, epoch, submit, wait, false)
+}
+
+func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func() (uint64, error), submit func() error, wait func() bool, allowDeferral bool) error {
 	if ctx == nil || epoch == nil || submit == nil || wait == nil {
 		return errors.New("release steering loop configuration is incomplete")
 	}
 	var targetEpoch uint64
 	targetKnown := false
 	completed := false
+	deferred := false
 	failures := 0
 	// At most the existing failure budget is retained. Expected drain polls
 	// keep prior causes; a completed retry clears the recovered failures.
@@ -1001,17 +1010,22 @@ func runReleaseSteeringLoopWithWait(ctx context.Context, epoch func() (uint64, e
 				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr)
 			}
 			if !targetKnown || currentEpoch > targetEpoch {
-				if targetKnown && !completed {
+				if targetKnown && !completed && !deferred {
 					return errors.Join(fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch), pendingErr)
 				}
 				targetEpoch, targetKnown, completed, failures = currentEpoch, true, false, 0
+				deferred = false
 				pendingErr = nil
 			}
-			if !completed {
+			if !completed && !deferred {
 				err = submit()
+				var closedInput *provisionalClosedNativeInput
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
 					pendingErr = nil
+				} else if allowDeferral && errors.As(err, &closedInput) && closedInput.nativeEpoch == targetEpoch && releaseOnlyErrors(err, errProvisionalClosedNativeInput) {
+					deferred, failures, pendingErr = true, 0, nil
+					fmt.Printf("release steer: %v; waiting for next native epoch\n", closedInput)
 				} else if releaseOnlyErrors(err, errAttemptCutPending) {
 					// Admitted trails drain under their existing contexts. Waiting
 					// neither spends nor resets the real native-failure budget;
@@ -1040,7 +1054,7 @@ func runReleaseSteeringLoopWithWait(ctx context.Context, epoch func() (uint64, e
 // error. The caller must propagate a non-nil result to its service supervisor.
 func (s *ReleaseSteerer) Run(ctx context.Context) error {
 	poll := time.Duration(s.cfg.PollSeconds) * time.Second
-	return runReleaseSteeringLoop(ctx, poll, func() (uint64, error) {
+	return runReleaseSteeringLoopWithDeferral(ctx, poll, func() (uint64, error) {
 		finalized, err := authenticatePinnedNativeRuntimeContext(ctx, s.native, s.cfg)
 		if err != nil {
 			return 0, err
@@ -1052,5 +1066,5 @@ func (s *ReleaseSteerer) Run(ctx context.Context) error {
 		return state.SubnetEpochIndex, nil
 	}, func() error {
 		return s.SubmitOnce(ctx)
-	})
+	}, provisionalClosedNativeInputEnabled(s.cfg))
 }

@@ -42,6 +42,7 @@ type Executor struct {
 	roles                   *RoleSecrets
 	substrate               *SubstrateManager
 	independentSubstrate    *SubstrateManager
+	nativeOwner             *Executor
 	independentEVM          *ethclient.Client
 	deployer, owner         *EvmTxManager
 	guardian                *EvmTxManager
@@ -51,22 +52,29 @@ type Executor struct {
 	releaseGate             *ReleaseCampaignGate
 	carriedVerificationKeys map[string]bool
 	carriedFleetHistoryKeys map[string]bool
+	auditAuthorizedConfig   *ResolvedConfig
 }
 
 // NewExecutor opens transaction managers only against the canonical endpoint
 // selection which was validated and hashed into the approved plan.
 func NewExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
-	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles)
+	return newExecutorWithTransport(ctx, cfg, cfg, stateDir, p, j, roles, nil)
 }
 
 // NewCampaignExecutor retains the canonical endpoint authorization check but
 // sends live-topology EVM traffic through the simulator-owned aggregate gate.
 func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, *ResolvedConfig, error) {
+	return newCampaignExecutorWithNativeOwner(ctx, cfg, stateDir, p, j, roles, nil)
+}
+
+// The calling executor outlives the nested campaign and remains the sole owner
+// of its already authenticated native connections, including on setup failure.
+func newCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, *ResolvedConfig, error) {
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles)
+	executor, err := newExecutorWithTransport(ctx, cfg, runtimeCfg, stateDir, p, j, roles, nativeOwner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,38 +83,52 @@ func NewCampaignExecutor(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 
 // newExecutorWithTransport separates immutable route authorization from the
 // local transport hop used during a supervised campaign.
-func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets) (*Executor, error) {
+func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, error) {
 	if err := validateExecutionRPCConfiguration(authorizedCfg); err != nil {
 		return nil, fmt.Errorf("execution RPC configuration: %w", err)
 	}
 	if err := validateCampaignRPCTransport(authorizedCfg, runtimeCfg); err != nil {
 		return nil, err
 	}
-	s, err := DialSubstrateManager(runtimeCfg, stateDir, j)
-	if err != nil {
-		return nil, err
+	var s *SubstrateManager
+	if nativeOwner != nil {
+		if nativeOwner.cfg == nil || nativeOwner.cfg.Public == nil || nativeOwner.substrate == nil || nativeOwner.stateDir != stateDir || nativeOwner.plan != p || nativeOwner.journal != j || nativeOwner.cfg.ConfigHash != authorizedCfg.ConfigHash || nativeOwner.cfg.PolicyHash != authorizedCfg.PolicyHash || nativeOwner.cfg.ChainID != runtimeCfg.ChainID || nativeOwner.cfg.Netuid != runtimeCfg.Netuid || nativeOwner.cfg.OperationalRPCMode != runtimeCfg.OperationalRPCMode || nativeOwner.cfg.OperationalSubstrate != runtimeCfg.OperationalSubstrate || nativeOwner.cfg.Public.Chain.SubstratePublicReadEndpoint != runtimeCfg.Public.Chain.SubstratePublicReadEndpoint || (independentRPCRequired(runtimeCfg) && nativeOwner.independentSubstrate == nil) {
+			return nil, errors.New("campaign native owner differs from the approved executor")
+		}
+		s = nativeOwner.substrate
+	} else {
+		var err error
+		s, err = DialSubstrateManager(runtimeCfg, stateDir, j)
+		if err != nil {
+			return nil, err
+		}
+	}
+	closeSubstrate := func() {
+		if nativeOwner == nil {
+			s.Close()
+		}
 	}
 	d, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "deployer")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		return nil, err
 	}
 	o, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "testnet-owner")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		return nil, err
 	}
 	guardian, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "guardian")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		return nil, err
 	}
 	oracle, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "commitment-oracle")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		guardian.Close()
@@ -114,7 +136,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 	}
 	keeper, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, j, roles, "keeper")
 	if err != nil {
-		s.Close()
+		closeSubstrate()
 		d.Close()
 		o.Close()
 		guardian.Close()
@@ -128,7 +150,7 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 			for _, opened := range deposits {
 				opened.Close()
 			}
-			s.Close()
+			closeSubstrate()
 			d.Close()
 			o.Close()
 			guardian.Close()
@@ -138,7 +160,13 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		deposits[i] = manager
 	}
-	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits}
+	e := &Executor{cfg: runtimeCfg, stateDir: stateDir, plan: p, journal: j, roles: roles, substrate: s, nativeOwner: nativeOwner, deployer: d, owner: o, guardian: guardian, oracle: oracle, keeper: keeper, deposits: deposits, auditAuthorizedConfig: authorizedCfg}
+	if nativeOwner != nil && provisionalResumeEnabled(runtimeCfg) && nativeOwner.payloads != nil {
+		// The exact parent guard above binds this already authenticated result
+		// to the same plan, configuration and journal for provisional continuation.
+		e.payloads = nativeOwner.payloads
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional campaign reuses authenticated parent deployment payloads; final_acceptance=false")
+	}
 	if !independentRPCRequired(runtimeCfg) {
 		if err := e.ensurePayloads(ctx); err != nil {
 			e.Close()
@@ -146,10 +174,14 @@ func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *Re
 		}
 		return e, nil
 	}
-	e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
-	if err != nil {
-		e.Close()
-		return nil, fmt.Errorf("independent Substrate RPC: %w", err)
+	if nativeOwner != nil {
+		e.independentSubstrate = nativeOwner.independentSubstrate
+	} else {
+		e.independentSubstrate, err = DialIndependentSubstrateManager(runtimeCfg)
+		if err != nil {
+			e.Close()
+			return nil, fmt.Errorf("independent Substrate RPC: %w", err)
+		}
 	}
 	e.independentEVM, err = dialConfiguredEVMClient(ctx, runtimeCfg, runtimeCfg.Public.Chain.EVMPublicReadEndpoint)
 	if err != nil {
@@ -190,10 +222,10 @@ func (e *Executor) Close() {
 	if e.deployer != nil {
 		e.deployer.Close()
 	}
-	if e.substrate != nil {
+	if e.nativeOwner == nil && e.substrate != nil {
 		e.substrate.Close()
 	}
-	if e.independentSubstrate != nil {
+	if e.nativeOwner == nil && e.independentSubstrate != nil {
 		e.independentSubstrate.Close()
 	}
 	if e.independentEVM != nil {
@@ -434,6 +466,9 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return err
+	}
 	if cmd == "retire" {
 		return runRetirement(ctx, cfg, stateDir, o)
 	}
@@ -456,6 +491,16 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	p, planErr := loadPersistedPlan(cfg, stateDir)
+	if o.ProvisionalResume {
+		// A provisional successor adopts this exact used plan. It may not
+		// generate a replacement approval or alter activation/prepared inputs.
+		if planErr != nil {
+			return fmt.Errorf("provisional resume requires the unchanged persisted plan: %w", planErr)
+		}
+		if err := prepareProvisionalResume(ctx, cfg, stateDir, cmd, o, p); err != nil {
+			return err
+		}
+	}
 	if !o.Apply {
 		if planErr != nil {
 			p, planErr = BuildPlanForState(ctx, cfg, stateDir)
@@ -474,7 +519,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	}
 	defer j.Close()
 	entries := j.Entries()
-	if mayRefreshPersistedPlan(planErr, entries) {
+	if o.ProvisionalResume {
+		// Exact persisted identity and approval were checked before opening the
+		// journal. Keep all unfinished actions on their original recovery keys.
+	} else if mayRefreshPersistedPlan(planErr, entries) {
 		p, planErr = BuildPlan(ctx, cfg)
 	} else if errors.Is(planErr, errPersistedPlanIdentityMismatch) {
 		prior, priorErr := readPersistedPlan(stateDir)
@@ -501,25 +549,55 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 	if err != nil {
 		return err
 	}
-	// Approval is necessary but not sufficient: every apply re-runs all live
-	// safety checks against the exact unverified spend so a persisted plan
-	// cannot bypass changed RPCs, services, facts, repository locks, or host
-	// readiness, while an honest partial deployment remains resumable.
-	doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
-	if err := doctor.Error(); err != nil {
-		return fmt.Errorf("doctor must pass immediately before apply: %w", err)
-	}
-	roles, err := LoadOrWriteRoleSecrets(cfg, stateDir)
+	liveAdoption, err := prepareProvisionalLiveTopology(cfg, stateDir, cmd)
 	if err != nil {
 		return err
 	}
-	if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
+	// A live provisional adoption can finish without another transaction.
+	// Authenticate its receipts before deciding whether any apply-time spend
+	// checks remain; campaign and retirement reserves keep their full budgets.
+	needsDoctor, provisionalHistoryChecked := true, false
+	if liveAdoption != nil {
+		local := &Executor{cfg: cfg, stateDir: stateDir, plan: p, journal: j}
+		if err := local.verifyProvisionalActionHistory(ctx); err != nil {
+			return fmt.Errorf("carried plan history preflight: %w", err)
+		}
+		provisionalHistoryChecked = true
+		needsDoctor, err = provisionalLiveResumeNeedsDoctor(local)
+		if err != nil {
+			return err
+		}
+	}
+	if needsDoctor {
+		doctor := runDoctor(ctx, cfg, &doctorPlanBudget{Plan: p, Remaining: remaining, StateDir: stateDir})
+		if err := doctor.Error(); err != nil {
+			return fmt.Errorf("doctor must pass immediately before apply: %w", err)
+		}
+	} else {
+		liveAdoption.FullDoctorSkipped = true
+		if err := writeProvisionalLiveTopologyRecord(liveAdoption); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "sim-testnet: provisional live resume has no pending transaction or spend; full doctor skipped; authenticated receipts and fresh topology readiness remain required")
+	}
+	var roles *RoleSecrets
+	if liveAdoption != nil {
+		roles, err = loadExistingProvisionalRoles(cfg, stateDir)
+	} else {
+		roles, err = LoadOrWriteRoleSecrets(cfg, stateDir)
+	}
+	if err != nil {
 		return err
+	}
+	if !o.ProvisionalResume {
+		if err := writeRunInputs(cfg, stateDir, p, roles); err != nil {
+			return err
+		}
 	}
 	// Finish all reversible host preflight before opening a transaction-capable
 	// executor. In particular, a missing Docker daemon or a broken build must
 	// never be discovered after contracts or registrations have been written.
-	if requiresManagedDependencies(cmd) {
+	if liveAdoption == nil && requiresManagedDependencies(cmd) {
 		if err := ensureOperatorConfigOverlays(cfg, stateDir); err != nil {
 			return fmt.Errorf("prepare operator config overlays: %w", err)
 		}
@@ -528,13 +606,13 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	var bins map[string]string
-	if requiresReleaseBinaries(cmd) {
+	if liveAdoption == nil && requiresReleaseBinaries(cmd) {
 		bins, err = buildReleaseBinaries(ctx, cfg, stateDir)
 		if err != nil {
 			return err
 		}
 	}
-	if cmd == "launch" || cmd == "resume" {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
 		if err := preflightReleaseHost(ctx, stateDir, cfg, bins); err != nil {
 			return fmt.Errorf("release host preflight: %w", err)
 		}
@@ -544,8 +622,10 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		return err
 	}
 	defer ex.Close()
-	if err := ex.verifyCarriedActionHistory(ctx); err != nil {
-		return fmt.Errorf("carried plan history preflight: %w", err)
+	if !provisionalHistoryChecked {
+		if err := ex.verifyCarriedActionHistory(ctx); err != nil {
+			return fmt.Errorf("carried plan history preflight: %w", err)
+		}
 	}
 	// Chain/environment setup always stops at the disabled configuration
 	// boundary. LaunchDeployment then starts temporary operator APIs, provisions
@@ -558,10 +638,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 		return RunScenario(ctx, cfg, stateDir, o.Name, j, ex)
 	}
-	if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
+	if liveAdoption != nil {
+		if err := adoptProvisionalLiveTopology(ctx, cfg, stateDir, p, roles, ex, liveAdoption); err != nil {
+			return err
+		}
+	} else if err := executeSetupActions(ctx, ex, p.Actions, limitID); err != nil {
 		return err
 	}
-	if cmd == "launch" || cmd == "resume" {
+	if liveAdoption == nil && (cmd == "launch" || cmd == "resume") {
 		if err := LaunchDeployment(ctx, cfg, stateDir, p, roles, ex, bins, o.Detach); err != nil {
 			return err
 		}
@@ -578,6 +662,11 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir)}
+	if provisionalResumeEnabled(cfg) {
+		result["provisional"] = true
+		result["final_acceptance"] = false
+		result["provisional_resume_record"] = cfg.provisionalResume.RecordPath
+	}
 	return printResult(o.Format, result, nil)
 }
 
@@ -1335,6 +1424,11 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
 	if prior, ok := e.verifiedActionEntry(a); ok {
+		if provisionalResumeEnabled(e.cfg) && a.ID != "topology.launch" {
+			// Never fall through to dispatch when a verified receipt fails local
+			// authentication: that could spend again under a fresh nonce.
+			return e.authenticateProvisionalReceipt(a, prior)
+		}
 		if prior.PlanHash != e.plan.PlanHash && e.carriedVerificationKeys[carriedVerificationKey(prior)] {
 			return nil
 		}
@@ -3936,6 +4030,9 @@ func (e *Executor) verifyCarriedActionHistory(ctx context.Context) error {
 	if e == nil || e.plan == nil || e.journal == nil {
 		return errors.New("plan/journal is unavailable")
 	}
+	if provisionalResumeEnabled(e.cfg) {
+		return e.verifyProvisionalActionHistory(ctx)
+	}
 	if e.plan.ValidatorEvidenceCarry != nil {
 		if _, err := e.authenticateValidatorEvidenceCarry(ctx); err != nil {
 			return fmt.Errorf("validator evidence immutable source history: %w", err)
@@ -4335,11 +4432,13 @@ func RenderRuntimeConfigs(cfg *ResolvedConfig, stateDir string, roles *RoleSecre
 		// values. The server loader must never be able to fall through to a
 		// mainnet signer or address when URNETWORK_ST_PROFILE=testnet.
 		st := map[string]any{
-			"profile":                                    "testnet",
-			"testnet-enabled":                            true,
-			"testnet-attempt-upload":                     uploadBudget,
-			"testnet-reserved-attempt-upload":            reservedUploads[i-1],
-			"testnet-wallet-allow-unsigned":              false,
+			"profile":                         "testnet",
+			"testnet-enabled":                 true,
+			"testnet-attempt-upload":          uploadBudget,
+			"testnet-reserved-attempt-upload": reservedUploads[i-1],
+			// Swarms sign with their existing payout roles. Retain unsigned
+			// compatibility only for explicitly admitted provisional runs.
+			"testnet-wallet-allow-unsigned":              provisionalResumeEnabled(cfg),
 			"testnet-public-rpc-url":                     publicRPCURL,
 			"testnet-authority":                          workloadRPCAuthority(),
 			"testnet-rpc-urls":                           []string{evmHTTP(workloadRPCAuthority())},
@@ -4611,6 +4710,9 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	}
 	for i := 1; i <= cfg.Config.Topology.Miners; i++ {
 		v := cloneMap(base)
+		if err := ensureMinerPayoutSeed(stateDir, i, roles.Substrate[fmt.Sprintf("miner-%d-payout", i)]); err != nil {
+			return err
+		}
 		v["miner_id"] = i
 		v["operator_no_id"] = operatorForMiner(cfg, i)
 		v["state_dir"] = filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state")
@@ -4654,6 +4756,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 				DNSPumpHost: operatorConnectHostIP(operator),
 				StateDir:    filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", miner), "state"),
 				Wallet:      roles.Substrate[fmt.Sprintf("miner-%d-payout", miner)].SS58, SourceIP: minerTestEgressSourceIP(miner),
+				WalletSeedFile: minerPayoutSeedPath(stateDir, miner),
 			})
 		}
 		b, err := json.MarshalIndent(config, "", "  ")

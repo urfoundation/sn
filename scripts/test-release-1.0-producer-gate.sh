@@ -73,6 +73,9 @@ echo "[release-1.0 producer] compile complete simulator and validator graph"
 release_phase_compile() {
   cd "$sn_repo"
   go test ./validator ./sim-testnet -run '^$' -count=1
+  startup_readiness_tests='^Test(SupervisorStartup|ReleaseTopologyReadiness)'
+  go test ./sim-testnet -run "$startup_readiness_tests" -count=1 -timeout 3m
+  go test -race ./sim-testnet -run "$startup_readiness_tests" -count=1 -timeout 3m
 }
 release_gate_start compile release_phase_compile
 
@@ -109,6 +112,9 @@ release_phase_seed() {
   seed_custody_tests='^Test(Keypair|LoadOrCreateSeedFile|SeedFileFormats|SeedCustody|VpkSeed|EvmKeyLoadingAndMirror|HotkeyLoadOrCreate|IdentityCustody|ReleaseClientSeed)'
   go test ./crv4 ./validator -run "$seed_custody_tests" -count=1
   go test -race ./crv4 ./validator -run "$seed_custody_tests" -count=1
+  swarm_wallet_tests='^Test(SetSwarmMemberWallet|SwarmMemberWallet)'
+  go test ./miner -run "$swarm_wallet_tests" -count=1
+  go test -race ./miner -run "$swarm_wallet_tests" -count=1
 }
 release_gate_start seed release_phase_seed
 
@@ -117,7 +123,9 @@ release_phase_sim_seed() {
   cd "$sn_repo"
   simulator_seed_custody_tests='^Test(SimulatorClientSeedCustody|SimulatorOperatorPath|InspectValidatorPathProofsRequiresEveryOperatorDomain$|FinalSettlementClosureWaitHonorsPublicationAndCancellation$|FinalLifecycleIntentRequirementsKeepSettlementAndNativeClocksDistinct$)'
   go test ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
-  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 3m
+  # The complete serial census measured 211s with race instrumentation. Keep
+  # its selection and fixture deadlines; allow headroom for the package clock.
+  go test -race ./sim-testnet -run "$simulator_seed_custody_tests" -count=1 -parallel=4 -timeout 10m
 }
 release_gate_start sim-seed release_phase_sim_seed
 
@@ -156,7 +164,7 @@ release_phase_settlement() {
   cd "$sn_repo"
   # This near-complete validator census exceeds the implicit ten-minute budget.
   # Scope its aggregate allowance here; individual stress deadlines stay fixed.
-  producer_tests='^Test(Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsSnapshotWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|ReleaseHeadV2|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh|ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ReleaseStartupOwnerV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2)'
+  producer_tests='^Test(Tunnel|Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsSnapshotWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|ReleaseHeadV2|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh|ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ReleaseStartupOwnerV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2)'
   go test ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m
   go test -race ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m
 }
@@ -269,13 +277,33 @@ release_phase_solidity() {
   go run ./sim-testnet/gencontracts --check "$FOUNDRY_OUT" sim-testnet/contracts_gen.go
   ./stabi/generate.sh --check --artifacts "$FOUNDRY_OUT"
 
-  # The companion's Go wire/signature, generated ABI, installation/carry and
-  # rendered-runtime controls are distinct from the real Solidity behavior.
+  # The companion's Go wire/signature and generated ABI controls are distinct
+  # from the real Solidity behavior. Simulator owners are admitted below.
   validator_evidence_tests='^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory)'
-  go test ./protocol ./stabi ./sim-testnet/gencontracts ./sim-testnet -run "$validator_evidence_tests" -count=1
-  go test -race ./protocol ./stabi ./sim-testnet/gencontracts ./sim-testnet -run "$validator_evidence_tests" -count=1
+  go test ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1
+  go test -race ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1
 }
 release_gate_start solidity release_phase_solidity
+
+# The retained 177-root race selection exhausted its ten-minute package clock.
+# Its two unresolved roots passed together in 277.37 seconds. Give that exact
+# pair a separate owner; every other original match keeps both executable modes
+# and the same ten-minute bound. Prefixes continue admitting adjacent roots.
+release_phase_evidence_simulator() {
+  cd "$sn_repo"
+  simulator_evidence_tests='^Test(ValidatorEvidence|RuntimeEvidenceV2|RuntimeEvidence|EvidenceRelay|EvmTxManager|ClientKeyHistory)'
+  go test ./sim-testnet -run "$simulator_evidence_tests" -count=1 -skip '^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads)$' -timeout 10m
+  go test -race ./sim-testnet -run "$simulator_evidence_tests" -count=1 -skip '^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads)$' -timeout 10m
+}
+release_gate_start evidence-simulator release_phase_evidence_simulator
+
+release_phase_evidence_simulator_slow() {
+  cd "$sn_repo"
+  simulator_evidence_slow_tests='^(TestRuntimeEvidenceLaunchV2TemplateReachesGeneratedSetupAndRender|TestValidatorEvidenceCarryPublicOverrideRequiresCompleteClonedHeads)$'
+  go test ./sim-testnet -run "$simulator_evidence_slow_tests" -count=1 -timeout 10m
+  go test -race ./sim-testnet -run "$simulator_evidence_slow_tests" -count=1 -timeout 10m
+}
+release_gate_start evidence-simulator-slow release_phase_evidence_simulator_slow
 
 echo "[release-1.0 producer] operator proof and artifact APIs"
 release_phase_server_unit() {

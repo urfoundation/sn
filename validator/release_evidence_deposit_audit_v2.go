@@ -101,7 +101,7 @@ func admitValidatorEvidenceDepositAuditV2(manifest *ValidatorEvidenceDepositAudi
 	if options.Bounds.MaxArtifactBytes == 0 || options.Bounds.MaxControlBytes/8 == 0 {
 		return 0, errors.New("deposit audit public byte ownership has no finite aggregate allowance")
 	}
-	limit := max(options.Bounds.Cut.Records.MaxManifestBytes, options.Bounds.Cut.Records.MaxPageBytes, options.Bounds.Cut.Proofs.MaxManifestBytes, options.Bounds.Cut.Proofs.MaxPageBytes)
+	limit := max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes)
 	if manifest.CensusBytes > min(limit, options.Bounds.MaxClosureBytes) {
 		return 0, errors.New("deposit audit census exceeds public metadata capacity")
 	}
@@ -214,7 +214,7 @@ func ReadValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *
 	}
 	manifest := *suppliedManifest
 	manifest.Members = slices.Clone(suppliedManifest.Members)
-	readers, err := newReleaseEvidenceV2StartupReaders(options.Origins, options.Bounds.Cut)
+	readers, err := newReleaseEvidenceV2ReadersWithMetadataLimit(options.Origins, options.Bounds.Cut, max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes))
 	if err != nil {
 		return nil, err
 	}

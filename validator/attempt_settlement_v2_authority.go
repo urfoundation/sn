@@ -241,7 +241,7 @@ func validateAttemptSettlementTransactionV2(ctx context.Context, transaction *at
 		}
 		return nil, nil
 	}
-	closure, _, err := DecodeAttemptSettlementClosureV2(ctx, transaction.ClosureJSON, authority)
+	closure, err := decodeAttemptSettlementV2RecoveryClosure(ctx, transaction.ClosureJSON, authority)
 	if err != nil {
 		return nil, err
 	}

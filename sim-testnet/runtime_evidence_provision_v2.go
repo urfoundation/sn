@@ -520,11 +520,6 @@ func (self *Executor) runtimeEvidenceActivationBoundaryV2(ctx context.Context, c
 // Actual postconditions reauthenticate the retained preparation and the named
 // public slot at the caller's finalized checkpoint. They never create files.
 func (self *Executor) runtimeEvidenceActivationPostStateV2(ctx context.Context, action Action, head ChainHead, state map[string]any) (map[string]any, error) {
-	chain, err := self.runtimeEvidenceActivationChainV2(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer chain.Close()
 	limit, err := runtimeEvidenceProvisionLimit(self.cfg)
 	if err != nil {
 		return nil, err
@@ -534,6 +529,29 @@ func (self *Executor) runtimeEvidenceActivationPostStateV2(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if prepared.PlanHash != self.plan.PlanHash {
+		var completed runtimeEvidenceActivationCompletedV2
+		if _, err := readRuntimeEvidenceSetupV2(ctx, filepath.Join(self.stateDir, "evidence-v2-setup", "completed.json"), limit, &completed); err != nil {
+			return nil, err
+		}
+		if self.journal == nil {
+			return nil, errors.New("activation setup carry journal is absent")
+		}
+		source, err := runtimeEvidenceSetupSourcePlanV2(self.cfg, self.plan, self.stateDir, self.roles, &prepared, encoded, &completed, self.journal.Entries())
+		if err != nil {
+			return nil, err
+		}
+		// Only this read-only verifier sees the original owner. Mutation paths
+		// retain exact current-plan admission and cannot republish an ancestor.
+		verifier := *self
+		verifier.plan = source
+		self = &verifier
+	}
+	chain, err := self.runtimeEvidenceActivationChainV2(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer chain.Close()
 	if err := self.authenticateRuntimeEvidencePreparedV2(ctx, chain, &prepared); err != nil {
 		return nil, err
 	}

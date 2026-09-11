@@ -68,6 +68,8 @@ type ReleaseConfig struct {
 	Policy              protocol.Policy         `yaml:"policy" json:"policy"`
 	Operators           []OperatorConfig        `yaml:"operators" json:"operators"`
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
+
+	ProvisionalDeferClosedNativeInput bool `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
@@ -217,6 +219,9 @@ func (c ReleaseConfig) Validate() error {
 	}
 	if !c.Production {
 		return errors.New("release config must explicitly set production: true")
+	}
+	if c.ProvisionalDeferClosedNativeInput && !provisionalClosedNativeInputEnabled(&c) {
+		return errors.New("provisional closed native input deferral requires chain 945 and testnet policy")
 	}
 	if strings.TrimSpace(c.DeploymentID) == "" || strings.ContainsAny(c.DeploymentID, "/\\.") {
 		return errors.New("deployment_id must be one nonempty safe segment")
