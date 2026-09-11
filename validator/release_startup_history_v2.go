@@ -42,6 +42,7 @@ type releaseEvidenceV2StartupCursor struct {
 // image is checked and the real all-operator mutation owner has completed.
 type releaseEvidenceV2StartupHistory struct {
 	cfg                ReleaseConfig
+	retainedStartup    bool
 	initial            map[uint64]ReleaseEvidenceV2ActivationContext
 	keys               map[uint64]map[byte]ed25519.PublicKey
 	participants       []AttemptSettlementRuntimeV2Participant
@@ -165,7 +166,7 @@ func (self *releaseEvidenceV2StartupHistory) operator(ctx context.Context, noID 
 // populated from candidate snapshots or a caller-selected history prefix.
 func (self *releaseEvidenceV2StartupHistory) authority(ctx context.Context, cursors map[uint64]releaseEvidenceV2StartupCursor, boundary AttemptBoundary, replica int, purpose string) (AttemptSettlementV2Options, error) {
 	bounds := self.cfg.EvidenceV2.Bounds
-	options := AttemptSettlementV2Options{Operators: make(map[uint64]AttemptSettlementV2OperatorOptions, len(self.participants)), MaxParticipants: bounds.MaxParticipants, MaxTransitionBytes: bounds.MaxTransitionBytes, MaxClosureBytes: bounds.MaxClosureBytes}
+	options := AttemptSettlementV2Options{Operators: make(map[uint64]AttemptSettlementV2OperatorOptions, len(self.participants)), MaxParticipants: bounds.MaxParticipants, MaxTransitionBytes: bounds.MaxTransitionBytes, MaxClosureBytes: bounds.MaxClosureBytes, retainedStartup: self.retainedStartup}
 	if len(cursors) != len(self.participants) {
 		return options, errors.New("startup authority cursor census is incomplete")
 	}
@@ -248,12 +249,21 @@ func (self *releaseEvidenceV2StartupHistory) replayOrdinary(ctx context.Context,
 	if err := matchReleaseEvidenceV2StartupPrior(input.Stats, cursor.prior); err != nil {
 		return err
 	}
-	for replica := range self.readers {
+	replicas := len(self.readers)
+	if self.retainedStartup {
+		replicas = 1
+	}
+	for replica := 0; replica < replicas; replica++ {
 		operator, err := self.operator(ctx, input.NoID, cursor, cut.Context.Boundary, replica, "ordinary")
 		if err != nil {
 			return err
 		}
-		if _, _, err := VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay}); err != nil {
+		if self.retainedStartup {
+			err = admitProvisionalRetainedStatsV2(ctx, input.Stats, *cut, operator)
+		} else {
+			_, _, err = VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay})
+		}
+		if err != nil {
 			return fmt.Errorf("startup no_id %d origin %d ordinary replay: %w", input.NoID, replica, err)
 		}
 		if replica == 0 {
@@ -300,12 +310,21 @@ func (self *releaseEvidenceV2StartupHistory) replayTerminal(ctx context.Context,
 		}
 	}
 	var contexts map[uint64]AttemptCutV2Context
-	for replica := range self.readers {
+	replicas := len(self.readers)
+	if self.retainedStartup {
+		replicas = 1
+	}
+	for replica := 0; replica < replicas; replica++ {
 		options, err := self.authority(ctx, self.current, boundary, replica, "terminal")
 		if err != nil {
 			return err
 		}
-		if _, err := VerifyAttemptSettlementClosureV2(ctx, closure, options); err != nil {
+		if self.retainedStartup {
+			_, err = admitProvisionalRetainedSettlementV2(ctx, closure, options)
+		} else {
+			_, err = VerifyAttemptSettlementClosureV2(ctx, closure, options)
+		}
+		if err != nil {
 			return fmt.Errorf("startup origin %d complete terminal replay: %w", replica, err)
 		}
 		if replica == 0 {
@@ -426,6 +445,7 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 			return nil, errors.New("startup history server-key census contains an unconfigured operator")
 		}
 	}
+	owned.retainedStartup = provisionalRetainedStartupHistory(inputs)
 	var err error
 	owned.images, err = newAttemptSettlementV2StartupImages(ctx, owned.cfg.StateDir, owned.participants, disk.snapshotBytes, disk.snapshotPresent, disk.journalBytes, disk.journalPresent, owned.cfg.EvidenceV2.Bounds.Persistence)
 	if err != nil {

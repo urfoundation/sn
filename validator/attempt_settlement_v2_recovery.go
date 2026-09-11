@@ -187,7 +187,7 @@ func validateAttemptSettlementV2Carried(ctx context.Context, coordinator string,
 		if !exists {
 			return errors.New("compact recovery immutable terminal is missing")
 		}
-		closure, _, err := DecodeAttemptSettlementClosureV2(ctx, encoded, authority)
+		closure, err := decodeAttemptSettlementV2RecoveryClosure(ctx, encoded, authority)
 		if err != nil {
 			return err
 		}

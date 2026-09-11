@@ -209,8 +209,10 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 				return nil, err
 			}
 		}
-		if err := self.authenticateIntentChainReferenceWithKeyCustody(ctx, chain, native, runtime, intent, artifact, owned); err != nil {
-			return nil, err
+		if !self.retainedStartup {
+			if err := self.authenticateIntentChainReferenceWithKeyCustody(ctx, chain, native, runtime, intent, artifact, owned); err != nil {
+				return nil, err
+			}
 		}
 		previous, priorArtifact = intent, artifact
 	}

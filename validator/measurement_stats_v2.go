@@ -22,11 +22,12 @@ import (
 // and statistics replay needs independent fresh scratch; callers must not
 // mutate options or their callback/key ownership while an operation runs.
 type releaseStatsV2Options struct {
-	Activation AttemptCutV2Activation
-	Policy     protocol.Policy
-	Bounds     AttemptCutV2Bounds
-	Seal       AttemptCutV2SealOptions
-	Stats      AttemptCutV2StatsOptions
+	Activation      AttemptCutV2Activation
+	Policy          protocol.Policy
+	Bounds          AttemptCutV2Bounds
+	Seal            AttemptCutV2SealOptions
+	Stats           AttemptCutV2StatsOptions
+	retainedStartup bool
 }
 
 // Admits the existing live census before copying any provider/hash collection.
@@ -399,8 +400,14 @@ func (self *StatsEngine) reconcileReleaseStatsCutV2OwnedWithJournalGuard(owner *
 	if err != nil || root != cut.Root {
 		return errors.Join(errors.New("compact native journal is not the owned ledger prefix"), err)
 	}
-	if _, _, err := VerifyReleaseStatsMeasurementWithAttemptCutV2(owner.ctx, measurement, cut, expected, options.Policy, options.Bounds, options.Stats); err != nil {
-		return err
+	if options.retainedStartup {
+		if _, err := newAttemptCutV2StatsProjection(owner.ctx, measurement, expected, options.Policy, options.Stats, nil); err != nil {
+			return err
+		}
+	} else {
+		if _, _, err := VerifyReleaseStatsMeasurementWithAttemptCutV2(owner.ctx, measurement, cut, expected, options.Policy, options.Bounds, options.Stats); err != nil {
+			return err
+		}
 	}
 	currentHead, err := self.releaseStatsV2OwnedHead(dir)
 	if err != nil || currentHead != head {
