@@ -579,8 +579,11 @@ func (e *Executor) readPersistedPostcondition(entry JournalEntry) (*ActionPostco
 	if err != nil {
 		return nil, err
 	}
-	if (record.Schema != "urnetwork-sim-action-postcondition-v1" && record.Schema != "urnetwork-sim-action-postcondition-v2" && record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != e.cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(e.cfg) {
+	if (record.Schema != "urnetwork-sim-action-postcondition-v1" && record.Schema != "urnetwork-sim-action-postcondition-v2" && record.Schema != "urnetwork-sim-action-postcondition-v3" && record.Schema != "urnetwork-sim-action-postcondition-v4") || record.DeploymentID != e.cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !e.plan.allowedPlanHashes()[entry.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
 		return nil, errors.New("persisted action postcondition identity mismatch")
+	}
+	if err := historicalPostconditionRPCIdentity(e.stateDir, e.cfg, e.plan, record); err != nil {
+		return nil, err
 	}
 	if record.Schema == "urnetwork-sim-action-postcondition-v2" && (record.EVMHashDomain != "ethereum" || record.IndependentEVMHashDomain != "ethereum") {
 		return nil, errors.New("persisted legacy action postcondition has an invalid EVM hash domain")

@@ -983,18 +983,33 @@ func (e *Executor) verifyConsumedEVMFundingPostcondition(ctx context.Context, ac
 func (e *Executor) verifyConsumedActionHistory(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedNativeHead *ChainHead) error {
 	transaction, err := e.consumedActionTransaction(action, verified)
 	if err == nil {
+		upgradeAssurance := ownedRPCUpgradesHistoricalAssurance(e.cfg, record)
+		if upgradeAssurance && (e.independentSubstrate == nil || e.independentSubstrate == e.substrate) {
+			return errors.New("owned historical native replay requires its independent Substrate reader")
+		}
 		if sharedNativeHead != nil {
-			return e.verifySubstrateTransactionEvidenceAtHead(
+			err = e.verifySubstrateTransactionEvidenceAtHead(
 				ctx,
 				ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
 				transaction.TransactionHash,
 				*sharedNativeHead,
 			)
+		} else {
+			err = e.verifySubstrateTransactionEvidence(ctx,
+				ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
+				transaction.TransactionHash,
+			)
 		}
-		return e.verifySubstrateTransactionEvidence(ctx,
-			ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash},
-			transaction.TransactionHash,
-		)
+		if err != nil || !upgradeAssurance {
+			return err
+		}
+		// The original public receipt remains public. A strict continuation
+		// proves the same finalized inclusion/success independently now.
+		if err := e.independentReadExecutor().verifySubstrateTransactionEvidence(ctx,
+			ChainHead{Number: transaction.BlockNumber, Hash: transaction.BlockHash}, transaction.TransactionHash); err != nil {
+			return fmt.Errorf("independent historical native replay: %w", err)
+		}
+		return nil
 	}
 	transactionErr := err
 	if action.Kind == "substrate-extrinsic" && strings.HasPrefix(action.ID, "evm.fund-") {

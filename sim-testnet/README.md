@@ -72,6 +72,13 @@ Independent public comparison endpoints remain separate, retain their public
 quota, and remain required by strict admission. This option cannot be combined
 with provisional continuation.
 
+Retained public-RPC receipts keep their original assurance labels and bytes.
+Strict owned continuation authenticates their source plan and recomputes the
+source's resolved-input hash before reading them. Fresh EVM replay still uses
+both current readers; consumed native transfers also prove their finalized
+inclusion and success through the independent native reader. A missing source,
+changed historical endpoint identity, or conflicting comparison is an error.
+
 After locking the tested release, retain the original configuration and use
 the owned route with `doctor`, then `setup --format json` to emit the current
 plan revision. Review its exact action diff and limits, and apply that revision

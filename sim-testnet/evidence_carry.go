@@ -306,8 +306,11 @@ func readValidatorEvidenceSourcePostcondition(stateDir string, cfg *ResolvedConf
 	if err := validateActionPostconditionV4(record); err != nil {
 		return nil, err
 	}
-	if cfg == nil || plan == nil || record.DeploymentID != plan.DeploymentID || record.DeploymentID != cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !plan.allowedPlanHashes()[record.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash || record.OperationalRPCMode != cfg.OperationalRPCMode || record.IndependentRPC != independentRPCRequired(cfg) {
+	if cfg == nil || plan == nil || record.DeploymentID != plan.DeploymentID || record.DeploymentID != cfg.Config.Deployment.DeploymentID || record.PlanHash != entry.PlanHash || !plan.allowedPlanHashes()[record.PlanHash] || record.ActionID != entry.ActionID || record.IntentHash != entry.IntentHash {
 		return nil, errors.New("validator evidence source postcondition differs from original approved identity")
+	}
+	if err := historicalPostconditionRPCIdentity(stateDir, cfg, plan, record); err != nil {
+		return nil, err
 	}
 	hash, err := canonicalHashHex(record)
 	if err != nil {
