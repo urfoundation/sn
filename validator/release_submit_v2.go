@@ -128,6 +128,7 @@ func newReleaseSteererV2(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Ch
 	if err != nil {
 		return nil, err
 	}
+	ema.v2.provisionalEpochGaps = runtime.history != nil && runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&ownedCfg)
 	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime}
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err

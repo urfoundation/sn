@@ -379,6 +379,13 @@ func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey
 // The exact fold is shared with bounded compact admission while the same
 // state lock remains held; admission must not race a concurrent EMA commit.
 func (self *HeadEMAStore) previewForEpochWithLock(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
+	return self.previewForEpochWithGapPolicy(subnetEpoch, raw, alpha, self.allowsHeadEMAEpochGaps())
+}
+
+// Skipped provisional native attempts contribute no manufactured samples.
+// Match FoldForEpoch's single next-observation fold, keeping exact same-epoch
+// replay and regression checks. The caller owns the state mutex.
+func (self *HeadEMAStore) previewForEpochWithGapPolicy(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational, allowGap bool) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
 	if self.lastSubnetEpoch != nil {
 		if subnetEpoch < *self.lastSubnetEpoch {
 			return nil, nil, fmt.Errorf("head EMA epoch regressed from %d to %d", *self.lastSubnetEpoch, subnetEpoch)
@@ -403,7 +410,7 @@ func (self *HeadEMAStore) previewForEpochWithLock(subnetEpoch uint64, raw map[Fl
 			out, err := headEMAOutput(self.lastFold)
 			return out, append([]HeadEMAMeasurement(nil), self.lastFold...), err
 		}
-		if *self.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *self.lastSubnetEpoch+1 {
+		if !allowGap && (*self.lastSubnetEpoch == ^uint64(0) || subnetEpoch != *self.lastSubnetEpoch+1) {
 			return nil, nil, fmt.Errorf("head EMA epoch jumped from %d to %d", *self.lastSubnetEpoch, subnetEpoch)
 		}
 	}
