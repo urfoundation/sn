@@ -109,12 +109,18 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 	if err := validateEvidenceRelayContinuationSource(fixture.stateDir, plan, executor.journal.Entries()); err != nil {
 		t.Fatal(err)
 	}
-	old := evidenceRelayLaunchRequestTest(t, fixture, fixture.prepared.Members[0], fixture.prepared.Epoch, false, 0)
 	path := filepath.Join(fixture.stateDir, "evidence-relay", stringsTrimRelayPrefix(c.Debits[0].ActionID)+".json")
 	original, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Sr25519 signing uses a fresh nonce. Signing this same header again is
+	// a different consent artifact, not a retry of the retained request.
+	var originalRequest evidenceRelayRequestRecord
+	if err := decodeStrictJSONBytes(original, &originalRequest); err != nil {
+		t.Fatal(err)
+	}
+	old := originalRequest.Evidence
 	count := len(executor.journal.Entries())
 	action, owner, err := executor.admitOwnedEvidenceRelayAction(t.Context(), old)
 	if err != nil || owner != before.PlanHash || action.Spend.EVMGasWei != c.Debits[0].AllowanceWei || len(executor.journal.Entries()) != count {
@@ -123,6 +129,12 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(original, after) {
 		t.Fatal("original signed request bytes changed", err)
+	}
+	changed := old
+	changed.Evidence.HotkeySignature = append([]byte(nil), old.Evidence.HotkeySignature...)
+	changed.Evidence.HotkeySignature[0] ^= 1
+	if _, _, err := executor.admitOwnedEvidenceRelayAction(t.Context(), changed); err == nil || len(executor.journal.Entries()) != count {
+		t.Fatal("changed signature reused the original retry authority or changed its debit", err)
 	}
 	next := evidenceRelayLaunchRequestTest(t, fixture, fixture.prepared.Members[0], fixture.prepared.Epoch+1, false, 0)
 	newAction, newOwner, err := executor.admitOwnedEvidenceRelayAction(t.Context(), next)
