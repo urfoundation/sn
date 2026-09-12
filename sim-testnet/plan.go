@@ -64,47 +64,47 @@ const (
 )
 
 type SetupPlan struct {
-	Schema                       string                       `json:"schema"`
-	Release                      string                       `json:"release"`
-	ReleaseLockHash              string                       `json:"release_lock_hash"`
-	DeploymentID                 string                       `json:"deployment_id"`
-	ChainID                      uint64                       `json:"chain_id"`
-	GenesisHash                  string                       `json:"genesis_hash"`
-	Netuid                       uint16                       `json:"netuid"`
-	Owner                        string                       `json:"owner"`
-	LiveFacts                    SetupFacts                   `json:"live_facts"`
-	RegistrationBurnLimitRao     uint64                       `json:"registration_burn_limit_rao"`
-	NativeTransactionFeeLimitRao uint64                       `json:"native_transaction_fee_limit_rao,omitempty"`
-	MaximumEVMFeePerGasWei       uint64                       `json:"maximum_evm_fee_per_gas_wei,omitempty"`
-	AlphaTransferMarginBPS       uint16                       `json:"alpha_transfer_margin_bps,omitempty"`
-	MinimumSourceRemainingRao    uint64                       `json:"minimum_source_remaining_alpha_rao,omitempty"`
-	BootstrapBurnHalfLifeBlocks  uint16                       `json:"bootstrap_burn_half_life_blocks,omitempty"`
-	ProductionBurnHalfLifeBlocks uint16                       `json:"production_burn_half_life_blocks,omitempty"`
-	PriorPlanHashes              []string                     `json:"prior_plan_hashes,omitempty"`
-	ConfigHash                   string                       `json:"config_hash"`
-	ResolvedInputsHash           string                       `json:"resolved_inputs_hash"`
-	OwnedRPCAuthority            string                       `json:"owned_rpc_authority,omitempty"`
-	PolicyHash                   string                       `json:"policy_hash"`
-	Roles                        PublicRoles                  `json:"roles"`
-	Deployment                   ContractDeployment           `json:"deployment"`
-	CoordinatorUpgrade           CoordinatorUpgrade           `json:"coordinator_upgrade"`
-	CoordinatorUpgradeBaseline   CoordinatorUpgradeBaseline   `json:"coordinator_upgrade_baseline,omitempty"`
-	CoordinatorRepairCarry       *CoordinatorRepairCarry      `json:"coordinator_repair_carry,omitempty"`
+	Schema                       string                     `json:"schema"`
+	Release                      string                     `json:"release"`
+	ReleaseLockHash              string                     `json:"release_lock_hash"`
+	DeploymentID                 string                     `json:"deployment_id"`
+	ChainID                      uint64                     `json:"chain_id"`
+	GenesisHash                  string                     `json:"genesis_hash"`
+	Netuid                       uint16                     `json:"netuid"`
+	Owner                        string                     `json:"owner"`
+	LiveFacts                    SetupFacts                 `json:"live_facts"`
+	RegistrationBurnLimitRao     uint64                     `json:"registration_burn_limit_rao"`
+	NativeTransactionFeeLimitRao uint64                     `json:"native_transaction_fee_limit_rao,omitempty"`
+	MaximumEVMFeePerGasWei       uint64                     `json:"maximum_evm_fee_per_gas_wei,omitempty"`
+	AlphaTransferMarginBPS       uint16                     `json:"alpha_transfer_margin_bps,omitempty"`
+	MinimumSourceRemainingRao    uint64                     `json:"minimum_source_remaining_alpha_rao,omitempty"`
+	BootstrapBurnHalfLifeBlocks  uint16                     `json:"bootstrap_burn_half_life_blocks,omitempty"`
+	ProductionBurnHalfLifeBlocks uint16                     `json:"production_burn_half_life_blocks,omitempty"`
+	PriorPlanHashes              []string                   `json:"prior_plan_hashes,omitempty"`
+	ConfigHash                   string                     `json:"config_hash"`
+	ResolvedInputsHash           string                     `json:"resolved_inputs_hash"`
+	OwnedRPCAuthority            string                     `json:"owned_rpc_authority,omitempty"`
+	PolicyHash                   string                     `json:"policy_hash"`
+	Roles                        PublicRoles                `json:"roles"`
+	Deployment                   ContractDeployment         `json:"deployment"`
+	CoordinatorUpgrade           CoordinatorUpgrade         `json:"coordinator_upgrade"`
+	CoordinatorUpgradeBaseline   CoordinatorUpgradeBaseline `json:"coordinator_upgrade_baseline,omitempty"`
+	CoordinatorRepairCarry       *CoordinatorRepairCarry    `json:"coordinator_repair_carry,omitempty"`
 	coordinatorRepairObserved    *coordinatorRepairCarryObservation
 	ValidatorEvidence            *ValidatorEvidenceDeployment `json:"validator_evidence,omitempty"`
 	ValidatorEvidenceSource      *ValidatorEvidenceSource     `json:"validator_evidence_source,omitempty"`
 	ValidatorEvidenceCarry       *ValidatorEvidenceCarry      `json:"validator_evidence_carry,omitempty"`
 	validatorEvidenceHistorical  bool
 	validatorEvidenceObserved    *validatorEvidenceCarryObservation
-	SupersededDeployments        []ContractDeployment `json:"superseded_deployments,omitempty"`
-	Actions                      []Action             `json:"actions"`
-	FleetRenewals                []FleetRenewal       `json:"fleet_renewals,omitempty"`
+	SupersededDeployments        []ContractDeployment   `json:"superseded_deployments,omitempty"`
+	Actions                      []Action               `json:"actions"`
+	FleetRenewals                []FleetRenewal         `json:"fleet_renewals,omitempty"`
 	FleetLifecycleRenewal        *FleetLifecycleRenewal `json:"fleet_lifecycle_renewal,omitempty"`
-	MaximumSpend                 Spend                `json:"maximum_spend"`
-	SupersededSpend              Spend                `json:"superseded_spend,omitempty"`
-	Limits                       Spend                `json:"limits"`
-	PlanHash                     string               `json:"plan_hash"`
-	GeneratedAt                  string               `json:"generated_at,omitempty"`
+	MaximumSpend                 Spend                  `json:"maximum_spend"`
+	SupersededSpend              Spend                  `json:"superseded_spend,omitempty"`
+	Limits                       Spend                  `json:"limits"`
+	PlanHash                     string                 `json:"plan_hash"`
+	GeneratedAt                  string                 `json:"generated_at,omitempty"`
 }
 
 // orderedJSONField retains the field order emitted by encoding/json. Plan

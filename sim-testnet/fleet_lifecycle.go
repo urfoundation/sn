@@ -599,10 +599,18 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 		return nil, errors.New("fleet lifecycle evidence descriptor configuration is unavailable")
 	}
 	plan, err := readPersistedPlan(stateDir)
-	if errors.Is(err, os.ErrNotExist) { plan = nil } else if err != nil { return nil, err }
+	if errors.Is(err, os.ErrNotExist) {
+		plan = nil
+	} else if err != nil {
+		return nil, err
+	}
 	var lifecycle *FleetLifecycleEvidence
 	loaded, err := loadFleetLifecycleEvidence(stateDir)
-	if err == nil { lifecycle = loaded } else if !errors.Is(err, os.ErrNotExist) { return nil, err }
+	if err == nil {
+		lifecycle = loaded
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	if lifecycle != nil && plan != nil && (lifecycle.PlanHash != plan.PlanHash || !fleetLifecycleCanonicalEqual(lifecycle.Renewal, plan.FleetLifecycleRenewal)) {
 		return nil, errors.New("lifecycle observation differs from its current approved renewal plan")
 	}
@@ -614,24 +622,39 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 	// then select their own exact plan-bound files without being overwritten by
 	// the older renewal descriptors.
 	descriptors, err = fleetRenewalEvidenceDescriptors(cfg, stateDir, epoch, descriptors)
-	if err != nil { return nil, err }
-	if lifecycle == nil { return descriptors, nil }
+	if err != nil {
+		return nil, err
+	}
+	if lifecycle == nil {
+		return descriptors, nil
+	}
 	fallbackActive := lifecycle.FallbackEffectiveEpoch != 0 && epoch >= lifecycle.FallbackEffectiveEpoch
 	providerActive := lifecycle.ProviderEffectiveEpoch != 0 && epoch >= lifecycle.ProviderEffectiveEpoch
 	terminalActive := lifecycle.TerminalEffectiveEpoch != 0 && epoch >= lifecycle.TerminalEffectiveEpoch
 	for _, fleet := range []int{fleetLifecycleTargetFleet, fleetLifecycleCompanionFleet} {
 		name := fleetLifecycleVariantTargetTakeover
-		if fleet == fleetLifecycleCompanionFleet { name = fleetLifecycleVariantCompanionTakeover }
+		if fleet == fleetLifecycleCompanionFleet {
+			name = fleetLifecycleVariantCompanionTakeover
+		}
 		switch {
-		case terminalActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantProvider
-		case terminalActive && fleet == fleetLifecycleCompanionFleet: name = fleetLifecycleVariantTerminal
-		case providerActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantProvider
-		case providerActive && fleet == fleetLifecycleCompanionFleet: name = fleetLifecycleVariantFallback
-		case fallbackActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantFallback
+		case terminalActive && fleet == fleetLifecycleTargetFleet:
+			name = fleetLifecycleVariantProvider
+		case terminalActive && fleet == fleetLifecycleCompanionFleet:
+			name = fleetLifecycleVariantTerminal
+		case providerActive && fleet == fleetLifecycleTargetFleet:
+			name = fleetLifecycleVariantProvider
+		case providerActive && fleet == fleetLifecycleCompanionFleet:
+			name = fleetLifecycleVariantFallback
+		case fallbackActive && fleet == fleetLifecycleTargetFleet:
+			name = fleetLifecycleVariantFallback
 		}
 		descriptor, err := fleetLifecycleVariantDescriptorForPlan(cfg, plan, name)
-		if err != nil { return nil, err }
-		if fleet > len(descriptors) { return nil, errors.New("lifecycle observation candidate census is incomplete") }
+		if err != nil {
+			return nil, err
+		}
+		if fleet > len(descriptors) {
+			return nil, errors.New("lifecycle observation candidate census is incomplete")
+		}
 		descriptors[fleet-1] = descriptor
 	}
 	return descriptors, nil
@@ -1886,7 +1909,9 @@ func loadFleetLifecycleBindingEvidence(stateDir, variantName string, member int)
 
 func loadFleetLifecycleBindingEvidenceForPlan(plan *SetupPlan, stateDir, variantName string, member int) (*FleetBindingEvidence, error) {
 	variant, err := fleetLifecycleVariantForPlan(plan, variantName)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	var evidence FleetBindingEvidence
 	if err := readJSONFile(filepath.Join(stateDir, "public", variant.BindingName(member)), &evidence); err != nil {
 		return nil, err

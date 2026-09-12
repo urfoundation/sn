@@ -631,8 +631,12 @@ func (self *liveFleetLifecycle) validatePersistedStateForPhase(phase, runID stri
 	if evidence == nil || self.cfg == nil || self.cfg.Config == nil || self.executor == nil || self.executor.plan == nil {
 		return errors.New("fleet lifecycle persisted-state dependencies are incomplete")
 	}
-	if err := validateFleetLifecycleRenewalPlan(self.executor.plan); err != nil { return err }
-	if !fleetLifecycleCanonicalEqual(evidence.Renewal, self.executor.plan.FleetLifecycleRenewal) { return errors.New("fleet lifecycle state changed its approved renewal") }
+	if err := validateFleetLifecycleRenewalPlan(self.executor.plan); err != nil {
+		return err
+	}
+	if !fleetLifecycleCanonicalEqual(evidence.Renewal, self.executor.plan.FleetLifecycleRenewal) {
+		return errors.New("fleet lifecycle state changed its approved renewal")
+	}
 	rank, ok := fleetLifecycleStageRank(evidence.Stage)
 	identityMatches := phase == "release-1.0" && evidence.RunID == runID || phase == "production-soak" && evidence.ProductionRunID == runID
 	if !ok || !identityMatches || evidence.Schema != fleetLifecycleEvidenceSchema || evidence.DeploymentID != self.cfg.Config.Deployment.DeploymentID || evidence.PlanHash != self.executor.plan.PlanHash || evidence.RunID == "" || evidence.LaunchPrune == nil || evidence.TakeoverEffectiveEpoch == 0 {
@@ -666,7 +670,9 @@ func (self *liveFleetLifecycle) validatePersistedStateForPhase(phase, runID stri
 	if err := validateFleetLifecycleWindow(evidence.AcceptanceStartBlock, evidence.AcceptanceEndBlock, evidence.AcceptanceTerminalBlock, 5, 300, 150); err != nil {
 		return err
 	}
-	if err := validateFleetLifecycleTakeoverWindow(self.executor.plan, evidence, evidence.FirstAcceptedEpoch, 5); err != nil { return err }
+	if err := validateFleetLifecycleTakeoverWindow(self.executor.plan, evidence, evidence.FirstAcceptedEpoch, 5); err != nil {
+		return err
+	}
 	if evidence.ReleaseHandoffSchedule != nil {
 		if err := validateFleetLifecycleNativeSchedule(evidence.ReleaseHandoffSchedule, "release-1.0", evidence.AcceptanceStartBlock, evidence.AcceptanceTerminalBlock); err != nil {
 			return err
@@ -823,7 +829,9 @@ func fleetLifecycleCanonicalEqual(left, right any) bool {
 }
 
 func (self *liveFleetLifecycle) validateVariantLineage(ctx context.Context, variantName string, expectedEffectiveEpoch, blockStart, nativeEnd, evmEnd uint64) error {
-	if fleetLifecycleRenewedTakeover(self.executor.plan, variantName) { return self.validateRenewedTakeoverLineage(ctx, variantName, expectedEffectiveEpoch, blockStart, nativeEnd, evmEnd) }
+	if fleetLifecycleRenewedTakeover(self.executor.plan, variantName) {
+		return self.validateRenewedTakeoverLineage(ctx, variantName, expectedEffectiveEpoch, blockStart, nativeEnd, evmEnd)
+	}
 	manifest, commitmentHash, commitment, err := self.executor.fleetLifecycleManifestAndCommitment(variantName)
 	if err != nil {
 		return fmt.Errorf("fleet lifecycle %s commitment artifact: %w", variantName, err)
@@ -1022,16 +1030,22 @@ func (self *liveFleetLifecycle) BindAcceptanceWindowForPhase(phase string, windo
 		return errors.New("fleet lifecycle acceptance window phase differs from its initialized phase")
 	}
 	var plan *SetupPlan
-	if self.executor != nil { plan = self.executor.plan }
+	if self.executor != nil {
+		plan = self.executor.plan
+	}
 	if plan != nil && plan.FleetLifecycleRenewal != nil {
-		if err := validateFleetLifecycleTakeoverWindow(plan, self.evidence, window.FirstEpoch, window.EpochCount); err != nil { return err }
+		if err := validateFleetLifecycleTakeoverWindow(plan, self.evidence, window.FirstEpoch, window.EpochCount); err != nil {
+			return err
+		}
 	}
 	switch phase {
 	case "release-1.0":
 		if window.EpochCount != 5 || window.EpochBlocks != 300 || window.FinalizeOffsetBlocks != 150 || self.cfg.Config.Scenarios.ShortEpochs != 5 || self.cfg.Policy.Settlement.EpochBlocks != 300 || self.cfg.Policy.Settlement.FinalizeOffsetBlocks != 150 {
 			return fmt.Errorf("fleet lifecycle requires exact release settlement geometry 5x300+150, got %dx%d+%d", window.EpochCount, window.EpochBlocks, window.FinalizeOffsetBlocks)
 		}
-		if err := validateFleetLifecycleTakeoverWindow(plan, self.evidence, window.FirstEpoch, window.EpochCount); err != nil { return err }
+		if err := validateFleetLifecycleTakeoverWindow(plan, self.evidence, window.FirstEpoch, window.EpochCount); err != nil {
+			return err
+		}
 		if self.evidence.FirstAcceptedEpoch != 0 && (self.evidence.FirstAcceptedEpoch != window.FirstEpoch || self.evidence.AcceptanceStartBlock != window.StartBlock || self.evidence.AcceptanceEndBlock != window.EndBlock || self.evidence.AcceptanceTerminalBlock != window.TerminalBlock) {
 			return errors.New("fleet lifecycle persisted release settlement window changed")
 		}

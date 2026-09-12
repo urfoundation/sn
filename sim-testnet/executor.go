@@ -4792,11 +4792,11 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 		operator := v["operator_no_id"].(int)
 		claimKeyPath := filepath.Join(stateDir, "secrets", fmt.Sprintf("operator-%d-claim-relayer.key", operator))
 		claim := map[string]any{
-			"schema_version":  1,
-			"release":         "1.0",
-			"api_url":         cfg.OperatorAPIOrigins[operator-1],
-			"rpc":             []string{evmHTTP(workloadRPCAuthority())},
-			"key_file":        claimKeyPath,
+			"schema_version": 1,
+			"release":        "1.0",
+			"api_url":        cfg.OperatorAPIOrigins[operator-1],
+			"rpc":            []string{evmHTTP(workloadRPCAuthority())},
+			"key_file":       claimKeyPath,
 			// Claims resolve the provider's frozen epoch identity. The shared
 			// operator network JWT resolves only its last configured wallet.
 			"jwt_file":        filepath.Join(stateDir, "runtime", fmt.Sprintf("miner-%d", i), "state", ".provider.jwt"),

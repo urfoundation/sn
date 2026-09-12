@@ -29,8 +29,8 @@ type cliOptions struct {
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
-	StrictHistoryAdoption, StrictHistoryAdoptionSHA256 string
-	FirstNativeEpoch uint64
+	StrictHistoryAdoption, StrictHistoryAdoptionSHA256                                                                              string
+	FirstNativeEpoch                                                                                                                uint64
 	RepairArtifact, RepairArtifactSHA256, RepairBudget, RepairBudgetSHA256                                                          string
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
@@ -319,7 +319,9 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		if strictHistoryPath != "" {
 			stateDir := filepath.Dir(filepath.Dir(filepath.Dir(configPath)))
 			raw, err := readStrictHistoryAdoptionFile(stateDir, strictHistoryPath, validatorcomponent.ReleaseHistoryAdoptionV2MaximumBytes)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			return validatorcomponent.RunReleaseWithHistoryAdoptionV2(ctx, configPath, raw, strictHistorySHA256)
 		}
 		return validatorcomponent.RunRelease(ctx, configPath)
@@ -438,7 +440,9 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return runFleetRenewal(ctx, resolved, stateDir, o)
 	case "history-adoption":
 		bundle, err := captureStrictHistoryAdoption(ctx, resolved, stateDir, o.FirstNativeEpoch)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		return printResult(o.Format, bundle, nil)
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
