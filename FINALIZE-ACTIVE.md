@@ -26,6 +26,21 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
+Current checkpoint, 2026-09-12 18:00 UTC: the full fleet is stopped. Both
+operator APIs and temporary payout-recovery proxies were also stopped after
+all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
+alpha-rao of accounted rounding residue. The [peer-review report](sim-latency/peerreview/FINAL.md)
+contains the receipts and pinned state; the historical 15/17 scenario remains
+`final_acceptance=false`.
+
+Terra has passed the strict V2 history-adoption core and corrected EMA bridge
+normally and under race, including three fresh confirmations in each failed
+mode. Those fixes are integrated. Renewal testing, strict owned-LAN routing,
+current-plan admission, and renewed lifecycle-window handling remain on the
+launch path. Full producer/aggregate qualification and both complete live
+acceptance phases remain outstanding. Public V2 semantic replay and appended
+renewal lineage also require completion; component passes do not close them.
+
 ## Historical shortened execution — 2026-09-11 17:33 UTC
 
 The user directed us to stop preparation tests, run the actual simulation on the

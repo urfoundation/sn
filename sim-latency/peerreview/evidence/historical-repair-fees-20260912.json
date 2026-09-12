@@ -1,0 +1,59 @@
+{
+  "schema": "urnetwork-historical-repair-fee-reconciliation-v1",
+  "chain_id": 945,
+  "netuid": 521,
+  "rpc_endpoint": "http://192.168.1.162:9944",
+  "receipt_source": "onchain-receipts-20260912.json",
+  "block_source": "historical-repair-fee-blocks-20260912.json",
+  "finalized_checkpoint": {
+    "number": 7991132,
+    "hash": "0xce63cafdcad0acf6cd305324e1df42f943c8df146151dd7e6c3abfce47dc2b77"
+  },
+  "calculation": "Exact integer gasUsed * effectiveGasPrice per receipt; allocation ceilings are not paid fees.",
+  "fees": {
+    "expired303_op1_cancel": {
+      "transaction_hash": "0xfacbbdbafb2bbd42a22df6f6fd3eb800203b9218180688869c76c771fea1873d",
+      "block_number": 7986880,
+      "block_hash": "0x81497be7dda80822563fe8834cdda6fc7d6dab5ab2935b57261578f02bc76c52",
+      "gas_used": "21000",
+      "effective_gas_price_wei": "20134283587",
+      "actual_fee_wei": "422819955327000",
+      "status": "0x1",
+      "canonical_block_contains_transaction": true
+    },
+    "expired303_op2_cancel": {
+      "transaction_hash": "0xb525d616f4aff2108ef8669e1073cf1ada1c68991369b73293d38f0315f0c72a",
+      "block_number": 7986881,
+      "block_hash": "0x06cdaed4178d4924b342a03e2f893b63f0d4a7a32ba3de38bd06169d5d0d8095",
+      "gas_used": "21000",
+      "effective_gas_price_wei": "20134283587",
+      "actual_fee_wei": "422819955327000",
+      "status": "0x1",
+      "canonical_block_contains_transaction": true
+    },
+    "repair_activate": {
+      "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+      "block_number": 7986580,
+      "block_hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9",
+      "gas_used": "37826",
+      "effective_gas_price_wei": "20134283587",
+      "actual_fee_wei": "761599410961862",
+      "status": "0x1",
+      "canonical_block_contains_transaction": true
+    },
+    "repair_deploy": {
+      "transaction_hash": "0x7459e328f865d14a7818757a57edd41655b35ba6a1fff0d06c0cfb0dd74c22ca",
+      "block_number": 7986577,
+      "block_hash": "0x6a4a4dfafa4792e294c14f3b0545e8dc920917798be3291b574e1aa10ab6dda8",
+      "gas_used": "5391305",
+      "effective_gas_price_wei": "20134283587",
+      "actual_fee_wei": "108550063774011035",
+      "status": "0x1",
+      "canonical_block_contains_transaction": true
+    }
+  },
+  "repair_fee_wei": "109311663184972897",
+  "two_expired303_cancellation_fee_wei": "845639910654000",
+  "four_receipt_fee_wei": "110157303095626897",
+  "full_lifetime_fee_accounting": false
+}
