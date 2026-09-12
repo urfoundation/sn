@@ -28,6 +28,13 @@ type ValidatorEvidencePublicationV2ReadOptions struct {
 	Bounds      ReleaseEvidenceV2Bounds
 }
 
+// Both the concrete HTTP reader and closed archive adapter use this exact
+// typed decoder. The adapter supplies bytes only; it cannot replace consent,
+// complete-census, canonical encoding or payload validation.
+type validatorEvidenceV2MetadataReader interface {
+	ReadMetadata(context.Context, string, uint64) ([]byte, error)
+}
+
 // The real publisher uses compact JSON with one final newline. Exact
 // re-encoding rejects duplicate fields, aliases and trailing documents even
 // where encoding/json's ordinary decoder would otherwise accept them.
@@ -162,7 +169,7 @@ func ReadValidatorEvidencePublicationV2(ctx context.Context, suppliedManifest *V
 // One bounded view includes the shared unsigned census, every public consent
 // object and every referenced terminal payload. Missing final members fail the
 // whole result; payload hashes alone are not a substitute for fetching bytes.
-func readValidatorEvidencePublicationV2Origin(ctx context.Context, reader *HTTPAttemptStreamV2Reader, manifest *ValidatorEvidencePublicationV2Manifest, options ValidatorEvidencePublicationV2ReadOptions, metadataLimit uint64) (*ValidatorEvidenceCensusV2Publication, error) {
+func readValidatorEvidencePublicationV2Origin(ctx context.Context, reader validatorEvidenceV2MetadataReader, manifest *ValidatorEvidencePublicationV2Manifest, options ValidatorEvidencePublicationV2ReadOptions, metadataLimit uint64) (*ValidatorEvidenceCensusV2Publication, error) {
 	censusBytes, err := reader.ReadMetadata(ctx, fmt.Sprintf("0x%x", manifest.CensusHash), manifest.CensusBytes)
 	if err != nil {
 		return nil, err

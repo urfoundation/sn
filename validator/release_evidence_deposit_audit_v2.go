@@ -255,7 +255,8 @@ func ReadValidatorEvidenceDepositAuditV2(ctx context.Context, suppliedManifest *
 
 // Header size is admitted before its payload is fetched, and the final shared
 // decoder checks every reference and consent before returning any calldata.
-func readValidatorEvidenceDepositAuditV2Origin(ctx context.Context, reader *HTTPAttemptStreamV2Reader, manifest *ValidatorEvidenceDepositAuditV2Manifest, options ValidatorEvidencePublicationV2ReadOptions) (*ValidatorEvidenceCensusV2Publication, error) {
+func readValidatorEvidenceDepositAuditV2Origin(ctx context.Context, reader validatorEvidenceV2MetadataReader, manifest *ValidatorEvidenceDepositAuditV2Manifest, options ValidatorEvidencePublicationV2ReadOptions) (*ValidatorEvidenceCensusV2Publication, error) {
+	metadataLimit := max(attemptStreamV2MetadataBytes(options.Bounds.Cut), options.Bounds.MaxTransitionBytes)
 	remaining := min(options.Bounds.MaxArtifactBytes, options.Bounds.MaxControlBytes/8)
 	if manifest.CensusBytes > remaining {
 		return nil, errors.New("deposit audit shared census exceeds aggregate public bytes")
@@ -279,7 +280,7 @@ func readValidatorEvidenceDepositAuditV2Origin(ctx context.Context, reader *HTTP
 		if err := decodeValidatorEvidencePublicationV2Json(ctx, raw, options.Bounds.Cut.MaxHeaderBytes, &signed); err != nil {
 			return nil, err
 		}
-		if signed.Header.PayloadBytes == 0 || signed.Header.PayloadBytes > min(options.Bounds.MaxTransitionBytes, reader.metadataBytes) {
+		if signed.Header.PayloadBytes == 0 || signed.Header.PayloadBytes > min(options.Bounds.MaxTransitionBytes, metadataLimit) {
 			return nil, errors.New("deposit audit public payload exceeds its admitted metadata bound")
 		}
 		if signed.Header.PayloadBytes > remaining {
