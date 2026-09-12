@@ -23,6 +23,8 @@ import (
 
 const coordinatorRepairMaximumWei = "800000000000000000"
 const coordinatorRepairDirectory = "provisional-coordinator-repair"
+const coordinatorRepairOwnerRole = "testnet-owner"
+const coordinatorRepairDeployerRole = "deployer"
 
 func validCoordinatorRepairSHA256(value string) bool {
 	return releaseSHA256.MatchString("sha256:" + value)
@@ -319,6 +321,19 @@ func validateCoordinatorRepairRequest(plan *SetupPlan, record *signedCoordinator
 	return verifyCoordinatorRepairSignature(r, record.Hash, record.Signature, r.Owner)
 }
 
+func validateCoordinatorRepairSigningRoles(plan *SetupPlan, roles *RoleSecrets) error {
+	if plan == nil || roles == nil || roles.Schema != "urnetwork-sim-role-secrets-v1" || roles.DeploymentID != plan.DeploymentID {
+		return errors.New("retained signing roles belong to another deployment or schema")
+	}
+	for label, expected := range map[string]string{coordinatorRepairOwnerRole: plan.Roles.Owner, coordinatorRepairDeployerRole: plan.Roles.Deployer} {
+		address, err := roles.EVMAddress(label)
+		if err != nil || address != common.HexToAddress(expected) {
+			return errors.New("retained corrective signing role differs")
+		}
+	}
+	return nil
+}
+
 func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
 	if err := validateCoordinatorRepairOptions("coordinator-repair", o); err != nil {
 		return err
@@ -357,25 +372,19 @@ func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir str
 	if err := readJSONFile(filepath.Join(stateDir, "secrets", "roles.json"), &roles); err != nil {
 		return err
 	}
-	if roles.DeploymentID != plan.DeploymentID {
-		return errors.New("retained signing roles belong to another deployment")
-	}
-	for label, expected := range map[string]string{"owner": plan.Roles.Owner, "deployer": plan.Roles.Deployer} {
-		address, err := roles.EVMAddress(label)
-		if err != nil || address != common.HexToAddress(expected) {
-			return errors.New("retained corrective signing role differs")
-		}
+	if err := validateCoordinatorRepairSigningRoles(plan, &roles); err != nil {
+		return err
 	}
 	runtimeCfg, err := campaignRPCConfig(cfg)
 	if err != nil {
 		return err
 	}
-	deployer, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, journal, &roles, "deployer")
+	deployer, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, journal, &roles, coordinatorRepairDeployerRole)
 	if err != nil {
 		return err
 	}
 	defer deployer.Close()
-	owner, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, journal, &roles, "owner")
+	owner, err := DialEvmTxManager(ctx, runtimeCfg, stateDir, journal, &roles, coordinatorRepairOwnerRole)
 	if err != nil {
 		return err
 	}

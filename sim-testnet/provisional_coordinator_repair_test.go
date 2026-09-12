@@ -181,3 +181,25 @@ func TestCoordinatorRepairFinalizedResultSignatureBindsBothActions(t *testing.T)
 		})
 	}
 }
+
+func TestCoordinatorRepairUsesRetainedCanonicalSigningRoles(t *testing.T) {
+	plan, _ := coordinatorRepairFixture(t)
+	roles := RoleSecrets{Schema: "urnetwork-sim-role-secrets-v1", DeploymentID: plan.DeploymentID, EVM: map[string]EVMRoleSecret{
+		"testnet-owner": {Label: "testnet-owner", Address: plan.Roles.Owner},
+		"deployer":      {Label: "deployer", Address: plan.Roles.Deployer},
+	}}
+	if err := validateCoordinatorRepairSigningRoles(plan, &roles); err != nil {
+		t.Fatal(err)
+	}
+	// The actual retained schema has no "owner" alias. Do not silently pick a
+	// different signer when that canonical role is absent or has changed.
+	roles.EVM["owner"] = roles.EVM["testnet-owner"]
+	delete(roles.EVM, "testnet-owner")
+	if err := validateCoordinatorRepairSigningRoles(plan, &roles); err == nil {
+		t.Fatal("noncanonical owner alias admitted")
+	}
+	roles.EVM["testnet-owner"] = EVMRoleSecret{Address: plan.Roles.Deployer}
+	if err := validateCoordinatorRepairSigningRoles(plan, &roles); err == nil {
+		t.Fatal("changed owner address admitted")
+	}
+}
