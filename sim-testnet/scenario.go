@@ -640,16 +640,37 @@ func inspectVoluntaryConviction(ctx context.Context, cfg *ResolvedConfig, stateD
 	if err != nil || len(roles.OperatorDepositSigners) == 0 {
 		return nil, false, "planned operator-1 deposit signer is unavailable"
 	}
-	return inspectVoluntaryConvictionBytes(ctx, cfg, b, contracts, cfg.OperationalEVM, roles.OperatorDepositSigners[0])
+	var evidence VoluntaryConvictionEvidence
+	if err := decodeStrictJSONBytes(b, &evidence); err != nil {
+		return nil, false, "voluntary conviction evidence is not valid JSON"
+	}
+	plan, err := readPersistedPlan(stateDir)
+	if err != nil {
+		return &evidence, false, fmt.Sprintf("voluntary conviction approved plan: %v", err)
+	}
+	entries, err := readJournalEntries(stateDir)
+	if err != nil {
+		return &evidence, false, fmt.Sprintf("voluntary conviction journal: %v", err)
+	}
+	source, err := voluntaryConvictionObservationSourcePlan(cfg, plan, entries, evidence, func(hash string) (*SetupPlan, error) {
+		return loadVoluntaryConvictionLineagePlan(stateDir, plan, hash)
+	})
+	if err != nil {
+		return &evidence, false, err.Error()
+	}
+	if contracts == nil || contracts.Deployment == nil || contracts.Deployment.CoordinatorProxy != source.Deployment.CoordinatorProxy {
+		return &evidence, false, "voluntary conviction coordinator differs from its approved source"
+	}
+	return inspectVoluntaryConvictionBytes(ctx, cfg, b, contracts, cfg.OperationalEVM, roles.OperatorDepositSigners[0], source.PolicyHash)
 }
 
-func inspectVoluntaryConvictionBytes(ctx context.Context, cfg *ResolvedConfig, b []byte, contracts *ContractView, endpoint, expectedFunder string) (*VoluntaryConvictionEvidence, bool, string) {
+func inspectVoluntaryConvictionBytes(ctx context.Context, cfg *ResolvedConfig, b []byte, contracts *ContractView, endpoint, expectedFunder, expectedPolicyHash string) (*VoluntaryConvictionEvidence, bool, string) {
 	var evidence VoluntaryConvictionEvidence
 	if json.Unmarshal(b, &evidence) != nil {
 		return nil, false, "voluntary conviction evidence is not valid JSON"
 	}
 	txBytes, txErr := hex.DecodeString(strings.TrimPrefix(evidence.TransactionHash, "0x"))
-	if evidence.Schema != "urnetwork-voluntary-conviction-evidence-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.NoID != 1 || evidence.AmountRao != fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao) || evidence.BeforeConvictionRao != "0" || evidence.AfterConvictionRao != evidence.AmountRao || !strings.EqualFold(evidence.PolicyHash, cfg.PolicyHash) || txErr != nil || len(txBytes) != 32 {
+	if evidence.Schema != "urnetwork-voluntary-conviction-evidence-v1" || evidence.DeploymentID != cfg.Config.Deployment.DeploymentID || evidence.NoID != 1 || evidence.AmountRao != fmt.Sprint(cfg.Config.Scenarios.VoluntaryConvictionRao) || evidence.BeforeConvictionRao != "0" || evidence.AfterConvictionRao != evidence.AmountRao || !strings.EqualFold(evidence.PolicyHash, expectedPolicyHash) || txErr != nil || len(txBytes) != 32 {
 		return &evidence, false, "voluntary conviction evidence identity is invalid"
 	}
 	if contracts == nil || contracts.Deployment == nil {
@@ -663,13 +684,13 @@ func inspectVoluntaryConvictionBytes(ctx context.Context, cfg *ResolvedConfig, b
 		return &evidence, false, err.Error()
 	}
 	defer client.Close()
-	receipt, err := client.TransactionReceipt(ctx, common.HexToHash(evidence.TransactionHash))
-	if err != nil || receipt.Status != 1 || receipt.BlockNumber == nil || receipt.BlockNumber.Uint64() != evidence.FinalizedBlock || !strings.EqualFold(receipt.BlockHash.Hex(), evidence.FinalizedHash) {
-		return &evidence, false, fmt.Sprintf("voluntary conviction receipt mismatch: %v", err)
-	}
 	head, err := finalizedEVMHead(ctx, client)
 	if err != nil || head.Number < evidence.FinalizedBlock {
 		return &evidence, false, fmt.Sprintf("voluntary conviction is not finalized: %v", err)
+	}
+	receipt, err := verifyFinalizedEVMReceipt(ctx, client, head, evidence.TransactionHash, evidence.FinalizedBlock, evidence.FinalizedHash)
+	if err != nil {
+		return &evidence, false, fmt.Sprintf("voluntary conviction receipt mismatch: %v", err)
 	}
 	parsed, err := abi.JSON(strings.NewReader(CoordinatorABI))
 	if err != nil {
