@@ -21,6 +21,10 @@ import (
 // The same explicit control bound applies before reading or decoding. All
 // response bodies close before return, including refusal, cancellation and EOF.
 func readReleaseServerKeysV2(ctx context.Context, cfg *ReleaseConfig) (result map[uint64]map[byte]ed25519.PublicKey, resultErr error) {
+	return readReleaseServerKeysV2WithCapture(ctx, cfg, nil)
+}
+
+func readReleaseServerKeysV2WithCapture(ctx context.Context, cfg *ReleaseConfig, retain func(ReleaseEvidenceV2CaptureSource, []byte) error) (result map[uint64]map[byte]ed25519.PublicKey, resultErr error) {
 	if ctx == nil || cfg == nil || len(cfg.Operators) == 0 || uint64(len(cfg.Operators)) > cfg.EvidenceV2.Bounds.MaxOperators {
 		return nil, errors.New("release server-key census is incomplete")
 	}
@@ -77,21 +81,34 @@ func readReleaseServerKeysV2(ctx context.Context, cfg *ReleaseConfig) (result ma
 		if err != nil {
 			return nil, err
 		}
-		var value sdk.VerifyKeysResult
-		if err := decodeAttemptStreamV2JSON(encoded, limit, &value); err != nil {
+		keys, err := decodeReleaseServerKeysV2(encoded, limit)
+		if err != nil {
 			return nil, err
 		}
-		if len(value.Keys) == 0 || len(value.Keys) > 256 {
-			return nil, errors.New("release server-key response has an invalid version census")
-		}
-		keys := make(map[byte]ed25519.PublicKey, len(value.Keys))
-		for _, key := range value.Keys {
-			if key == nil || key.ServerKeyId < 0 || key.ServerKeyId > 255 || len(key.PublicKey) != ed25519.PublicKeySize || keys[byte(key.ServerKeyId)] != nil {
-				return nil, errors.New("release server-key version is duplicated or has invalid width")
+		if retain != nil {
+			if err := retain(ReleaseEvidenceV2CaptureSource{Kind: "server-keys", Name: fmt.Sprintf("no-%d", operator.NoID), Origin: operator.APIURL}, encoded); err != nil {
+				return nil, err
 			}
-			keys[byte(key.ServerKeyId)] = bytes.Clone(key.PublicKey)
 		}
 		result[operator.NoID] = keys
 	}
 	return result, nil
+}
+
+func decodeReleaseServerKeysV2(encoded []byte, limit uint64) (map[byte]ed25519.PublicKey, error) {
+	var value sdk.VerifyKeysResult
+	if err := decodeAttemptStreamV2JSON(encoded, limit, &value); err != nil {
+		return nil, err
+	}
+	if len(value.Keys) == 0 || len(value.Keys) > 256 {
+		return nil, errors.New("release server-key response has an invalid version census")
+	}
+	keys := make(map[byte]ed25519.PublicKey, len(value.Keys))
+	for _, key := range value.Keys {
+		if key == nil || key.ServerKeyId < 0 || key.ServerKeyId > 255 || len(key.PublicKey) != ed25519.PublicKeySize || keys[byte(key.ServerKeyId)] != nil {
+			return nil, errors.New("release server-key version is duplicated or has invalid width")
+		}
+		keys[byte(key.ServerKeyId)] = bytes.Clone(key.PublicKey)
+	}
+	return keys, nil
 }

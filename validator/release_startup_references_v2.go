@@ -24,6 +24,9 @@ type releaseEvidenceV2StartupReferences struct {
 	remaining uint64
 	closed    bool
 	closeErr  error
+	// The separate public replay owner resolves only an authenticated closed
+	// source census. Runtime startup always retains descriptor ownership above.
+	archive *releaseEvidenceV2ArchiveOwner
 }
 
 // Path policy is fixed by the caller below. The existing descriptor reader
@@ -35,6 +38,17 @@ func (self *releaseEvidenceV2StartupReferences) read(ctx context.Context, path s
 	readLimit := min(limit, self.remaining)
 	if readLimit == 0 {
 		readLimit = limit
+	}
+	if self.archive != nil {
+		encoded, err := self.archive.readPrivate(ctx, path, readLimit, absent)
+		if err != nil {
+			return nil, err
+		}
+		if uint64(len(encoded)) > self.remaining {
+			return nil, errors.New("archive reference history exceeds its finite allowance")
+		}
+		self.remaining -= uint64(len(encoded))
+		return encoded, self.archive.check(ctx)
 	}
 	owner, err := acquireReleaseMeasurementInputV2Owner(ctx, path, readLimit, releaseMeasurementInputV2ReadHooks{}, false)
 	self.owners = append(self.owners, owner)
@@ -67,6 +81,9 @@ func (self *releaseEvidenceV2StartupReferences) read(ctx context.Context, path s
 func (self *releaseEvidenceV2StartupReferences) check() error {
 	if self == nil || self.closed {
 		return errors.New("startup reference owner is closed")
+	}
+	if self.archive != nil {
+		return self.archive.check(self.archive.ctx)
 	}
 	var err error
 	for _, owner := range self.owners {

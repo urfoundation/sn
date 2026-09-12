@@ -328,9 +328,6 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 		if err := emit(ReleaseEvidenceV2CaptureSource{Kind: "private", Name: filepath.ToSlash(filepath.Join("settlement-closures-v2", member.name))}, member.encoded); err != nil {
 			return nil, err
 		}
-		if member.epoch > options.ThroughEpoch {
-			continue
-		}
 		closure, err := decodeAttemptSettlementClosureV2Bytes(ctx, member.encoded, bounds.MaxClosureBytes, bounds.MaxParticipants)
 		if err != nil {
 			return nil, err
@@ -343,6 +340,12 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 				return nil, errors.New("compact capture closure member order differs")
 			}
 			cuts = append(cuts, &transition.Cut)
+		}
+		// All retained controls need their signed chunks for complete history
+		// replay, including a producer append beyond the accepted window. Only
+		// accepted-window publication selection stops at ThroughEpoch.
+		if member.epoch > options.ThroughEpoch {
+			continue
 		}
 		path, err := ValidatorEvidencePublicationV2ManifestPath(cfg.StateDir, member.epoch)
 		if err != nil {
@@ -405,6 +408,9 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 		}); err != nil {
 			return nil, err
 		}
+	}
+	if _, err := readReleaseServerKeysV2WithCapture(ctx, cfg, emit); err != nil {
+		return nil, err
 	}
 	for _, check := range observationChecks {
 		if err := check(); err != nil {

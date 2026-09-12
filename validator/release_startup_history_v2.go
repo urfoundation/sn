@@ -69,6 +69,10 @@ type releaseEvidenceV2StartupHistory struct {
 	journalPostimages    []*StatsEngine
 	inputByEpoch         map[uint64]map[uint64]*releaseMeasurementInputJournal
 	scratchPaths         []string
+	// A public archive has no mutable ledger. Its separate owner reconstructs
+	// the same cumulative prefixes and lifetime trail state from fully replayed
+	// signed records in fresh bounded scratch. Runtime startup never sets this.
+	archive *releaseEvidenceV2ArchiveOwner
 }
 
 // Owns independent HTTP origins without installing publication callbacks in a
@@ -111,6 +115,9 @@ func newReleaseEvidenceV2ReadersWithMetadataLimit(origins [2]string, bounds Atte
 // Native private parent acquisition refuses aliases and joins actual closes.
 // Successful/failed scratch remains root-owned evidence for explicit cleanup.
 func (self *releaseEvidenceV2StartupHistory) scratch(ctx context.Context, noID uint64, purpose string) (string, error) {
+	if self.archive != nil {
+		return self.archive.scratch(ctx, noID, purpose)
+	}
 	var path string
 	for _, operator := range self.cfg.EvidenceV2.Operators {
 		if operator.NoID == noID {
@@ -154,11 +161,18 @@ func (self *releaseEvidenceV2StartupHistory) operator(ctx context.Context, noID 
 	expected.Boundary = boundary
 	expected.FirstSequence, expected.EgressFirstSequence, expected.EgressGeneration, expected.PriorRoot = cursor.first, cursor.egressFirst, cursor.generation, cursor.priorRoot
 	bounds := self.cfg.EvidenceV2.Bounds
-	reader := self.readers[replica]
+	var readMetadata AttemptStreamV2MetadataReader
+	var openData AttemptStreamV2DataOpener
+	if self.archive != nil {
+		readMetadata, openData = self.archive.reader(replica)
+	} else {
+		reader := self.readers[replica]
+		readMetadata, openData = reader.ReadMetadata, reader.OpenData
+	}
 	return AttemptSettlementV2OperatorOptions{Expected: expected, Policy: self.cfg.Policy, Bounds: bounds.Cut, Measurement: AttemptCutV2MeasurementOptions{
 		ExpectedConfig: ReleaseStatsConfig{AMin: self.cfg.Policy.Verify.ReliabilityAMin, AlphaNumerator: releasePoolAlphaNumerator, AlphaDenominator: releasePoolAlphaDenominator, LatRefMillis: releasePoolLatRefMillis},
 		MaxProviders:   bounds.MaxProviders, MaxEgressHashes: bounds.MaxEgressHashes, MaxFleetPrefixes: bounds.MaxFleetPrefixes,
-		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.keys[noID], ReadMetadata: reader.ReadMetadata, OpenData: reader.OpenData},
+		Replay: AttemptCutV2ReplayOptions{Bounds: bounds.Replay, ScratchDirectory: path, ServerKeys: self.keys[noID], ReadMetadata: readMetadata, OpenData: openData},
 	}}, nil
 }
 
@@ -212,6 +226,9 @@ func matchReleaseEvidenceV2StartupPrior(measurement ReleaseStatsMeasurement, pri
 // cut and terminal to the same globally lifecycle-checked ledger. No map grows
 // with historical trail IDs and no later cut may replace an earlier hash chain.
 func (self *releaseEvidenceV2StartupHistory) matchLedgerCut(ctx context.Context, noID, last uint64, root string) error {
+	if self.archive != nil {
+		return self.archive.matchPrefix(ctx, noID, last, root)
+	}
 	for _, participant := range self.participants {
 		if participant.NoID != noID {
 			continue
@@ -259,7 +276,16 @@ func (self *releaseEvidenceV2StartupHistory) replayOrdinary(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		if self.retainedStartup {
+		if self.archive != nil {
+			var visitor *releaseEvidenceV2ArchiveCut
+			visitor, err = self.archive.beginCut(ctx, input.NoID, *cut)
+			if err == nil {
+				_, err = verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, operator.Measurement, visitor.visit)
+			}
+			if err == nil {
+				err = visitor.finish(ctx)
+			}
+		} else if self.retainedStartup {
 			err = admitProvisionalRetainedStatsV2(ctx, input.Stats, *cut, operator)
 		} else {
 			_, _, err = VerifyReleaseStatsMeasurementWithAttemptCutV2(ctx, input.Stats, *cut, operator.Expected, operator.Policy, operator.Bounds, AttemptCutV2StatsOptions{ExpectedConfig: operator.Measurement.ExpectedConfig, MaxProviders: operator.Measurement.MaxProviders, MaxEgressHashes: operator.Measurement.MaxEgressHashes, Replay: operator.Measurement.Replay})
@@ -320,7 +346,30 @@ func (self *releaseEvidenceV2StartupHistory) replayTerminal(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		if self.retainedStartup {
+		if self.archive != nil {
+			visitors := make(map[uint64]*releaseEvidenceV2ArchiveCut, len(closure.Transitions))
+			for _, transition := range closure.Transitions {
+				visitor, beginErr := self.archive.beginCut(ctx, transition.Identity.NoID, transition.Cut)
+				if beginErr != nil {
+					return beginErr
+				}
+				visitors[transition.Identity.NoID] = visitor
+			}
+			_, err = verifyAttemptSettlementClosureV2(ctx, closure, options, func(noID uint64, record AttemptRecord) error {
+				visitor := visitors[noID]
+				if visitor == nil {
+					return errors.New("archive terminal visitor omits an operator")
+				}
+				return visitor.visit(record)
+			})
+			if err == nil {
+				for _, transition := range closure.Transitions {
+					if err = visitors[transition.Identity.NoID].finish(ctx); err != nil {
+						break
+					}
+				}
+			}
+		} else if self.retainedStartup {
 			_, err = admitProvisionalRetainedSettlementV2(ctx, closure, options)
 		} else {
 			_, err = VerifyAttemptSettlementClosureV2(ctx, closure, options)
