@@ -137,6 +137,12 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 	seen := map[string]bool{}
 	var previous *SteeringIntent
 	var priorArtifact *ReleaseMeasurementArtifact
+	// A retained provisional testnet startup may legitimately omit native
+	// submissions from epochs that were closed before this process resumed.
+	// The live runtime still authenticates every terminal around the gap; this
+	// flag only prevents the read-only startup reference pass from rejecting
+	// that already authenticated retained history too early.
+	allowProvisionalGaps := self.retainedStartup && provisionalClosedNativeInputEnabled(&self.cfg)
 	for index, intent := range all {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -152,7 +158,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 		}
 		seen[intent.VectorHash] = true
 		if previous != nil {
-			if err := validateSteeringIntentSuccessor(previous, intent); err != nil {
+			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, allowProvisionalGaps); err != nil {
 				return nil, err
 			}
 		}
@@ -202,7 +208,11 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 			if artifact.PreviousArtifactHash != previous.MeasurementArtifactHash {
 				return nil, errors.New("startup intent artifact predecessor differs")
 			}
-			if priorArtifact.Schema == ReleaseMeasurementSchemaV2 && artifact.Schema != ReleaseMeasurementSchemaV2 || artifact.SettlementEpoch < priorArtifact.SettlementEpoch || priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 || !releaseBlockAtOrBefore(priorArtifact.NativeSnapshotBlock, priorArtifact.NativeSnapshotHash, artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash) || !releaseBlockAtOrBefore(priorArtifact.EVMSnapshotBlock, priorArtifact.EVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
+			if priorArtifact.Schema == ReleaseMeasurementSchemaV2 && artifact.Schema != ReleaseMeasurementSchemaV2 ||
+				artifact.SettlementEpoch < priorArtifact.SettlementEpoch ||
+				!allowProvisionalGaps && priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 ||
+				!releaseBlockAtOrBefore(priorArtifact.NativeSnapshotBlock, priorArtifact.NativeSnapshotHash, artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash) ||
+				!releaseBlockAtOrBefore(priorArtifact.EVMSnapshotBlock, priorArtifact.EVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
 				return nil, errors.New("startup signed artifact lineage regresses or skips a boundary")
 			}
 			if err := verifyReleaseMeasurementHeadLineage(priorArtifact, artifact); err != nil {
