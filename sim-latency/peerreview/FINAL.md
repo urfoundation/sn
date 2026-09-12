@@ -2,7 +2,11 @@
 
 This report records the actual shortened testnet exercise and its later evidence corrections. The shortened [retained plan](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/workspace/sn/FINALIZE-ACTIVE.md) governed that exercise. The current [full finalization request](../../FINALIZE-ACTIVE.md) supersedes its waivers for future completion. **final_acceptance=false**: full release qualification and the full campaign remain incomplete. Failed and partial attempts remain evidence for independent peer review.
 
-**Corrected evidence checkpoint, 2026-09-12 16:34 UTC.** Finalized chain state at block **7,990,697** records **103.320655354 alpha captured**, **0 paid**, **0 pending funding**, and **103.320655354 alpha outstanding liability and accounted escrow**. Epoch308 captured positive emission from both pools; epoch309 committed and finalized two funded entitlement roots. Each operator database contains eight epoch309 leaves. The previous report incorrectly generalized epoch310’s zero result to the whole run and missed these transactions. The [correction bundle](evidence/short-run-corrections-20260912.json) (`sha256:e6372f5bd2bb5de16d4e911f8a1b2a254e8ac3c237c0ef3b7eb3c98f1f98e5f7`) contains the raw receipts, logs, finalized header and pinned state calls.
+**Payment recovery completed, 2026-09-12 17:12 UTC.** All **16 epoch309 claims** finalized on chain before their expiry block, paying **103.320655346 alpha** across both pools. At finalized block **7,990,906**, `totalCaptured=103320655354`, `totalPaid=103320655346`, `pendingFunding=0`, `outstandingLiability=8`, `escrowAccounted=8`, and `conservationHolds=true`. The remaining **8 alpha-rao** are integer rounding residue (5 / 3 per operator). Actual gas was **0.049882627183941739 TAO**, within the reviewed 0.4550417 TAO projection, using existing relayer funds. [Canonical receipts and pinned vault calls](evidence/epoch309-paid-claims-20260912.json) (`sha256:2aa27bfb3efa15bb87f93fc9fbe6adbd8d64a1e57e5ff68fab6d5a1a2deb18ec`).
+
+The payout failure was an identity configuration defect: every daemon used its operator’s shared network JWT, which resolved the last shared wallet. The committed leaves belonged to individual provider clients. Recovery used the existing single-epoch claim command with each entitled client’s credential; original queues and signed artifacts were retained. The renderer now selects each miner’s `.provider.jwt`. Only two operator APIs and two RPC proxies were started for recovery; all four stopped at **17:13:50 UTC** with no remaining processes. [Recovery shutdown](../../../temp/sn-full-finalization-20260912/epoch309-claim-recovery/services/stop-result.json). The full fleet and soak remain stopped while the full-finalization repairs and gates proceed.
+
+**Earlier corrected evidence checkpoint, 2026-09-12 16:34 UTC.** Finalized chain state at block **7,990,697** records **103.320655354 alpha captured**, **0 paid**, **0 pending funding**, and **103.320655354 alpha outstanding liability and accounted escrow**. Epoch308 captured positive emission from both pools; epoch309 committed and finalized two funded entitlement roots. Each operator database contains eight epoch309 leaves. The previous report incorrectly generalized epoch310’s zero result to the whole run and missed these transactions. The [correction bundle](evidence/short-run-corrections-20260912.json) (`sha256:e6372f5bd2bb5de16d4e911f8a1b2a254e8ac3c237c0ef3b7eb3c98f1f98e5f7`) contains the raw receipts, logs, finalized header and pinned state calls.
 
 **Runtime checkpoint, 16:16 UTC.** Both validators had exhausted five restarts before shutdown. The retained fleet was stopped at 16:14 UTC for repairs and qualification; all 32 recorded kernel processes were absent at follow-up and the systemd cgroup was removed. Old executable-path identity checks prevented graceful child cleanup, so systemd used forced termination. This is a preserved cleanup failure, with [stop evidence](../../../temp/sn-full-finalization-20260912/runtime-stop/result.json); it is not a graceful-shutdown pass. No fleet or soak is running at this checkpoint.
 
@@ -25,7 +29,7 @@ This report records the actual shortened testnet exercise and its later evidence
 | Real traffic and advancing validator/operator proofs | Source309 completed 256 GiB per operator and epoch309 has eight leaves per operator; the separate epoch310 artifact has zero usage | [Source309 launcher](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source309-consumer/epoch-309-once/launcher-result.json), [epoch310 artifact](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source309-consumer/epoch-309-once/epoch310-artifact-response.json) |
 | Nonempty payout roots and valid demand deposits | Source304/source305 roots and deposit305/deposit306 finalized; epoch309 also has two committed and finalized funded roots | [Six finalized transactions](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source304-outcome/close-root-deposit305-complete-observation.json) |
 | Positive captured emission | Achieved later: epoch308 captured 51.653232130 / 51.667423224 alpha; total 103.320655354 | [Finalized correction evidence](evidence/short-run-corrections-20260912.json) |
-| Funded positive ClaimPaid | Not achieved as of finalized block7,990,697; totalPaid remains0 | [Pinned vault state](evidence/short-run-corrections-20260912.json); positive entitlement alone is not payment |
+| Funded positive ClaimPaid | Achieved by recovery: all16 claims finalized; 103.320655346 alpha paid across both pools | [Canonical payment receipts and final vault state](evidence/epoch309-paid-claims-20260912.json) |
 | Final run accounting and final report | Terminal actual outcome recorded; final acceptance false | [Completion evidence map](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/actual-run-completion-map.json) |
 
 **Deployment and limits.** This is actual testnet chain 945, netuid 521. EVM and native RPC use the owned LAN node `192.168.1.162:9944` with request quotas 0. Existing keys, accounts, plan, configuration, journals and fleet identities remain retained.
@@ -76,7 +80,7 @@ All six source305 close/root/deposit306 transactions are now canonically finaliz
 
 The original deposit303 deadline was missed. The later small-traffic deposit304 failed the native transfer minimum before nonce reservation. Earlier CLI45/46 controller admission attempts failed before signing; canonical owner-role lookup and reuse of verified historical deployment completion corrected those failures. CLI47 repair and resume completed successfully. Earlier validator restart, admission, stream, replay and settlement failures remain in their original records and in the [preserved report history](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-native1403-watch/report-history-through-20260912T0354.md). The user-reported transient internet outage has no established exact interval and is not used to explain unrelated errors.
 
-**Coverage limits.** The shortened exercise did not complete the full producer/aggregate release gates, public replay, fresh admission/proof certification, pruning or fault campaign. Those obligations are active again under the full finalization request. The pruning mismatch, interrupted intervals, proof errors and partial traffic runs remain failures or incomplete evidence. Positive capture is now established, while funded payment, both-validator completion, complete accounting and strict campaign certification remain outstanding.
+**Coverage limits.** The shortened exercise did not complete the full producer/aggregate release gates, public replay, fresh admission/proof certification, pruning or fault campaign. Those obligations are active again under the full finalization request. The pruning mismatch, interrupted intervals, proof errors and partial traffic runs remain failures or incomplete evidence. Positive capture and funded payment are now established. Both-validator completion, complete lifetime accounting and strict campaign certification remain outstanding.
 
 The earlier report closed its observation at 2026-09-12T10:17:00Z; that was not the fleet shutdown time. The corrected checkpoints above include later chain events and the actual 16:14 UTC stop. Strict certification and final acceptance remain unachieved.
 
@@ -104,7 +108,7 @@ The coordinator rounding repair was actually deployed and activated. Both transa
 | `repair.coordinator-rounding.deploy` | `0x7459e328f865d14a7818757a57edd41655b35ba6a1fff0d06c0cfb0dd74c22ca` | 7,986,577 | `0x6a4a4dfafa4792e294c14f3b0545e8dc920917798be3291b574e1aa10ab6dda8` |
 | `repair.coordinator-rounding.activate` | `0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2` | 7,986,580 | `0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9` |
 
-The checkpoint records implementation `0x40e5abde2bc4ba84d966842cbab98c0c88894aaf` and runtime code hash `0xc8837dcf6ebb607277f140677c73ad91f3359ef25bfda17e578ad52e2d4f5179`. This is the repair that made the later successful deposits possible; it did not make the final run a positive-payout run.
+The checkpoint records implementation `0x40e5abde2bc4ba84d966842cbab98c0c88894aaf` and runtime code hash `0xc8837dcf6ebb607277f140677c73ad91f3359ef25bfda17e578ad52e2d4f5179`. This repair enabled the later successful deposits. Positive payment was completed through the separate client-identity recovery recorded above.
 
 ### Epoch 304 traffic, roots, and epoch 305 deposits
 
@@ -156,7 +160,7 @@ The corresponding EVM block hashes are `0x1dcd02a11b09acb82db3754bbce56f9f725ce5
 | 1 | `sha256:c5fe8a8e28157016987ed64171d62a63f98bf4007a55065a9f0f6f02204fecef` | `0x9bbab5462796712a3af4dafc5b32086842d7a72eca97b263154c8dbc8f32262b` | 8 |
 | 2 | `sha256:e55d709f29f57ef75e4880e3e358f180720f8f4f58706e8aa5f6de676170e707` | `0xdc36a9982c1d53e90fdf5bb431fe92610a505dc92da07096bd3126d3748a6376` | 8 |
 
-These leaf counts and artifact metadata are read-only database observations; independent replay of the complete signed artifact bytes remains outstanding. At finalized EVM block7,990,697, hash `0x8f6ad48eb003878747eea7fb4050070d20fb84ecfc304e7541282c41ceae5178`, the pinned vault calls return `totalCaptured=103320655354`, `totalPaid=0`, `pendingFunding=0`, `outstandingLiability=103320655354`, and `escrowAccounted=103320655354`. This proves positive capture and funded liability, while payment is still missing at that checkpoint.
+The complete signed epoch309 artifacts were subsequently retrieved through each operator’s unauthenticated public API and are included as [operator1 artifact](evidence/epoch309-operator-1-artifact.json) and [operator2 artifact](evidence/epoch309-operator-2-artifact.json). Their signed usage totals are275,079,276,039 /275,079,276,042 bytes; each contains8 providers and8 leaves. Terra verified both exact responses with `payoutartifact.Decode`, including canonical bytes, signatures, content hashes, deployment identity, deterministic provider/leaf/usage reconstruction and the committed payout roots. The recovered signers are `0xd255a91442f8c4f72513bcf6a211dd7d4ae3bcdc` and `0xbe37b9d50617dd03082df18700b2d8ca7bed95a9`. This verifies the signatures against the declared signers; historical signer authorization remains part of the outstanding full evidence-graph replay. At finalized EVM block7,990,697, hash `0x8f6ad48eb003878747eea7fb4050070d20fb84ecfc304e7541282c41ceae5178`, the pinned vault calls return `totalCaptured=103320655354`, `totalPaid=0`, `pendingFunding=0`, `outstandingLiability=103320655354`, and `escrowAccounted=103320655354`. This earlier checkpoint proves positive capture and funded liability before the later payment recovery.
 
 ### Epoch 310 staged deposits and terminal finalization
 
@@ -177,14 +181,39 @@ A direct `eth_getLogs` query over the settlement vault from blocks 7,988,674 thr
 
 The native weight transaction is a Substrate extrinsic and therefore is not expected in `eth_getTransactionReceipt`. Validator2’s native 1401 extrinsic is `0xd8e13d9efb88d5a7b82abf67bae05a0923803c19b3ce6fa4dea52c6645a0fe43`; the retained evidence records finality at block **7,986,181**, application at block **7,986,499**, and a direct finalized-state check at block **7,986,519** showing UID255 row `[7:65534,8:65535]`: [direct-native-applied-row.json](../../../temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-cli44-native-application-watch/direct-native-applied-row.json). That vector is head-weight evidence only and does not establish positive pool emission. Validator2 later exhausted its five restart attempts; the terminal supervisor state is [here](../../sim-testnet/runs/ur-subnet-testnet-v1-attempt-4/supervisor.state.json).
 
-Later V2 receipts were also omitted from the earlier report. The correction bundle independently matches both extrinsic hashes to their canonical native blocks using BLAKE2b-256 of the encoded extrinsic. The application rows below are retained validator records; direct historical storage replay remains to be completed.
+Later V2 receipts were also omitted from the earlier report. The correction bundle independently matches both extrinsic hashes to their canonical native blocks using BLAKE2b-256 of the encoded extrinsic. Terra independently read the exact application-block headers and historical weights from the owned node; both rows match the retained validator records. [Historical storage verification](evidence/native1404-1405-historical-weights.json) (`sha256:6373f2a7d8b2d6c8c1dcedcf28d0dba5ee6bb9d339d8fdcd9d66d7faaf102592`).
 
-| Native epoch | Extrinsic | Finalized inclusion | Recorded application | Recorded UID/value row |
+| Native epoch | Extrinsic | Finalized inclusion | Verified application block | Verified UID/value row |
 | --- | --- | ---: | ---: | --- |
 | 1404 | `0xe58e4563e7a965baae577136a39933dafc3b67e2d29d7cab81b724772977526f` | 7,987,311 | 7,987,601 | `[3:65517,4:65535,7:24071,8:32094]` |
 | 1405 | `0x5e0da9793f3d430ab32d8e202ca0c3c0e1b6c10d82a81d716fd3728b384d66fb` | 7,987,774 | 7,988,052 | `[7:65534,8:65535]` |
 
 Native inclusion hashes are `0xaecc6a2ca7c93415923622512d2407c11aedbc098fc3007c2b37551de3bda78f` and `0xb30e815261b9f719e299aaf2b9ec75b022730462ed33cf992f037dc0d0384fab`; recorded application hashes are `0xde5db784894d846de13bc8ada9fe76fc5e58cc31574e24fdd8adca2610e83f1a` and `0x188cb56a3ba368c81137941fb561c372b9f591b221e4dab3de76c39813b42de2`, respectively. Native and EVM block hashes are distinct and must be queried through the corresponding API.
+
+### Epoch309 paid claims
+
+All16 receipts in the [payment evidence bundle](evidence/epoch309-paid-claims-20260912.json) have `status=0x1`, successful `Claimed` and positive `ClaimPaid` events, matching canonical EVM block hashes, and inclusion before expiry block7,991,073. Relayer nonces2 through9 were used sequentially for each operator. No new funding, wallet reassignment, queue reset or full-fleet restart was needed.
+
+| Operator | Miner | Alpha-rao paid | Finalized block | Transaction |
+| --- | --- | ---: | ---: | --- |
+| 1 | miner-108 | 6,492,811,278 | 7,990,845 | `0xa4c7c71e07d342927e65415e4ee52ab87cd7860ebd685c617bb6456d300e1b01` |
+| 2 | miner-15 | 6,463,594,645 | 7,990,855 | `0x7f1c3bc2b613a0f861a0b9d8501a862682470b6abc9e7288e405954189db4ea2` |
+| 1 | miner-153 | 6,270,702,380 | 7,990,858 | `0xc3946bd6da75d006f9f14553dff8304568a470dd6279da56ea56ad8d609f9752` |
+| 2 | miner-173 | 6,484,261,614 | 7,990,861 | `0xebdef59c41ff2d5bc0d966ffda8081d039fa23ff8c1f1a9c2e647ee5428f4c4e` |
+| 1 | miner-242 | 6,544,464,510 | 7,990,864 | `0x50ae812cf312373f8da7a90da632371141cec38480477e183baf05db0556bcd3` |
+| 2 | miner-262 | 6,396,426,995 | 7,990,867 | `0x8c7ca43fe4c8cd7b340eea16d7d7f6753286632d2f8979aa8ee97819924640ae` |
+| 1 | miner-441 | 6,513,472,571 | 7,990,870 | `0x70b39656ef3e140ab3b9d659861df704a79cb5d542c2bfcb6f309ac2403a3c50` |
+| 2 | miner-350 | 6,396,426,995 | 7,990,873 | `0xc4247c1d16c815549fc6656d89155503182a728a25c6fe3f2095d855045c3237` |
+| 1 | miner-467 | 6,477,315,309 | 7,990,876 | `0x0adddac416007e09922d9ee7cc56583ce5c767a88554b55a25794050dba1b2f2` |
+| 2 | miner-399 | 6,572,096,234 | 7,990,879 | `0xe1d5e0c564b37b649ca995ab9dd42222def0d7f295d045c84b6f0edbbdb6c9fe` |
+| 1 | miner-489 | 6,487,645,955 | 7,990,882 | `0xe2076806e1a5fc997a136bbf475d4e7e2a1cb384bce59ef089864adcf70d8d22` |
+| 2 | miner-432 | 6,546,262,522 | 7,990,885 | `0xe4beca7f56be327575410b49d14f32b5b3e55761435bbe5f911090a2274442c4` |
+| 1 | miner-779 | 6,446,323,369 | 7,990,888 | `0x51cc2a5d20a71c16338611f242711287a05ddc7f597d60d4b02d62c749bfddfb` |
+| 2 | miner-902 | 6,463,594,645 | 7,990,891 | `0xa4a0f09b0ec33ac349d715c84d030568f28a7371819b8ebbd17a43f31f1f1a9e` |
+| 1 | miner-817 | 6,420,496,753 | 7,990,894 | `0xb2b30aa8e1cc97ffd00a0337b1702f9cb8d49ddd139d2db6dea8160ea468b173` |
+| 2 | miner-930 | 6,344,759,571 | 7,990,897 | `0x078d894339066e170b8ed8d35b26be196e58bd126a4a4a9e72900842a3001fa7` |
+
+The pinned post-payment checkpoint is block7,990,906, hash `0xf11d60fc8e9c13fc7b51f0b848e7e98df51bd492a6cb8ee2d53e1ee369f46607`. Its8 alpha-rao liability equals its accounted escrow; there is no pending funding, and the contract reports conservation holding. The 16 claim fees total49,882,627,183,941,739 wei, computed from each receipt’s `gasUsed * effectiveGasPrice`. These payment results do not convert the earlier15/17 scenario result or unrun full release gates into passes.
 
 ## Peer-review conclusions
 
@@ -193,7 +222,7 @@ The evidence supports the following conclusions:
 1. Real traffic ran and produced valid nonempty source304/source305 artifacts, and their close/root/deposit transactions succeeded on chain.
 2. The coordinator repair was deployed and activated on chain and the repaired deposit path was exercised.
 3. The terminal epoch310 boundary was finalized on chain, but its authoritative artifact had no eligible usage, no leaves, an all-zero root, and no commit.
-4. Epoch308 captured **103.320655354 alpha**, and epoch309 committed and finalized two funded entitlement roots. `totalPaid` remained **0** at finalized block7,990,697.
-5. Both-validator native completion, funded claim payment, and strict release certification were not achieved at that checkpoint. The correct peer-review verdict is **provisional/incomplete**, with `final_acceptance=false`.
+4. Epoch308 captured **103.320655354 alpha**. All16 funded epoch309 claims subsequently finalized and paid **103.320655346 alpha**;8 alpha-rao of rounding residue remains accounted for, and conservation holds.
+5. Both-validator native completion and strict release certification remain incomplete. The correct peer-review verdict is **provisional/incomplete**, with `final_acceptance=false`.
 
 The report does not treat successful transaction inclusion, off-chain artifact creation, or fixture-credit traffic as proof of a paid production settlement. The preserved run artifacts and the raw RPC snapshot are the review record.
