@@ -135,7 +135,15 @@ func newCoordinatorRepairCarryFixture(t *testing.T) coordinatorRepairCarryFixtur
 	e := original.executor
 	source := e.plan
 	artifact := artifactByName("Coordinator")
-	artifactRaw, err := json.Marshal(map[string]any{"abi": json.RawMessage(artifact.ABI), "bytecode": map[string]any{"object": artifact.CreationBytecode}, "deployedBytecode": map[string]any{"object": artifact.RuntimeBytecode, "immutableReferences": artifact.ImmutableReferences}})
+	// Generated Go artifacts store only word offsets. The repair input is a
+	// Foundry artifact, whose immutable references carry explicit word lengths.
+	immutableReferences := map[string][]map[string]int{}
+	for name, offsets := range artifact.ImmutableReferences {
+		for _, offset := range offsets {
+			immutableReferences[name] = append(immutableReferences[name], map[string]int{"start": offset, "length": 32})
+		}
+	}
+	artifactRaw, err := json.Marshal(map[string]any{"abi": json.RawMessage(artifact.ABI), "bytecode": map[string]any{"object": artifact.CreationBytecode}, "deployedBytecode": map[string]any{"object": artifact.RuntimeBytecode, "immutableReferences": immutableReferences}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,13 +349,22 @@ func TestCoordinatorRepairCarryRejectsChangedSourceAndIncompleteHistory(t *testi
 
 func TestCoordinatorRepairCarryKeepsOriginalProbeAndNextNonceSeparate(t *testing.T) {
 	_, payloads, retained, baseline, _ := replacementPrecompileProbeFixture(t)
+	original := *payloads
 	oldUpgrade := payloads.CoordinatorUpgrade
 	if err := configureCoordinatorUpgradeNonce(payloads, oldUpgrade.DeployerNonce+3); err != nil {
 		t.Fatal(err)
 	}
-	if err := configureFleetBatcherNonce(payloads, oldUpgrade.DeployerNonce+1); err != nil {
-		t.Fatal(err)
+	fresh := *payloads
+	if err := configureFleetBatcherNonce(&fresh, original.FleetBatcherNonce); err == nil {
+		t.Fatal("fresh companion construction admitted a nonadjacent historical batcher")
 	}
+	// This baseline-only fixture represents the already retained helper and
+	// companion. Preserve their exact original payloads; constructing a fresh
+	// companion at the repaired implementation's old nonce is invalid. The
+	// adjacent carry tests authenticate historical source ownership separately.
+	payloads.FleetBatcherNonce, payloads.FleetBatcherAddress = original.FleetBatcherNonce, original.FleetBatcherAddress
+	payloads.FleetBatcher, payloads.FleetBatcherRuntime = original.FleetBatcher, original.FleetBatcherRuntime
+	payloads.ValidatorEvidence = original.ValidatorEvidence
 	carry := &CoordinatorRepairCarry{Request: signedCoordinatorRepairRequest{Request: coordinatorRepairRequest{OldUpgrade: oldUpgrade, Upgrade: payloads.CoordinatorUpgrade}}}
 	if err := validateCoordinatorUpgradePayloadBaseline(baseline, retained, coordinatorRepairBaselinePayloads(payloads, carry)); err != nil {
 		t.Fatalf("original probe/batcher proof lost: %v", err)
