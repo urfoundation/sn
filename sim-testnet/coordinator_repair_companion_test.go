@@ -130,7 +130,7 @@ func TestCoordinatorRepairCarryBindsOriginalCompanionThroughRepeatedUpgrade(t *t
 		t.Fatalf("completed correction changed the campaign allowance: %v", err)
 	}
 	for _, test := range []struct {
-		name string
+		name   string
 		change func(*SetupPlan)
 	}{
 		{"old-upgrade", func(plan *SetupPlan) { plan.CoordinatorRepairCarry.Request.Request.OldUpgrade.DeployerNonce++ }},
