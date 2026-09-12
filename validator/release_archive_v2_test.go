@@ -24,6 +24,11 @@ type releaseArchiveV2TestFixture struct {
 	last    *AttemptSettlementClosureV2
 }
 
+// The public archive includes original proof/record objects as well as local
+// journals. MaxHistoryBytes bounds the latter and each lifetime replay; it is
+// not the allowance for their combined detached public source inventory.
+const releaseArchiveV2TestMaximumBytes = uint64(32 * 1024 * 1024)
+
 // The actual producer creates M8 signed trails, ordinary cuts and two complete
 // consecutive terminals. Public replay reads detached bytes after production;
 // it has no private key or access to the original ledger/snapshot paths.
@@ -103,7 +108,7 @@ func newReleaseArchiveV2TestFixtureWithTrails(t *testing.T, trails int) releaseA
 			fixture.files[ReleaseEvidenceV2CaptureSource{Kind: parts[0], Name: parts[1], Origin: startup.replicas[index].Origin}] = raw
 		}
 	}
-	fixture.options = ReleaseEvidenceV2ArchiveOptions{Config: &cfg, Hotkey: startup.inputs[0].Context.Activation.Hotkey, Origins: [2]string{cfg.Operators[0].APIURL, cfg.Operators[1].APIURL}, ScratchRoot: newAttemptSettlementRuntimeV2TestStateDir(t), MaximumBytes: cfg.EvidenceV2.Bounds.MaxHistoryBytes, MaximumObjects: 4096}
+	fixture.options = ReleaseEvidenceV2ArchiveOptions{Config: &cfg, Hotkey: startup.inputs[0].Context.Activation.Hotkey, Origins: [2]string{cfg.Operators[0].APIURL, cfg.Operators[1].APIURL}, ScratchRoot: newAttemptSettlementRuntimeV2TestStateDir(t), MaximumBytes: releaseArchiveV2TestMaximumBytes, MaximumObjects: 4096}
 	fixture.options.ReadSource = func(ctx context.Context, source ReleaseEvidenceV2CaptureSource) ([]byte, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -263,6 +268,9 @@ func TestReleaseArchiveV2RejectsMissingReplicaAndOriginalPinMutation(t *testing.
 			if err == nil || archive != nil {
 				t.Fatalf("accepted changed complete source %s: %v", kind, err)
 			}
+			if strings.Contains(err.Error(), "source bytes exceed their independent allowance") {
+				t.Fatalf("source mutation did not reach semantic replay: %v", err)
+			}
 		})
 	}
 }
@@ -304,7 +312,27 @@ func TestReleaseArchiveV2RejectsSelfDeclaredEMAAndChangedSourceBytes(t *testing.
 			if err == nil || archive != nil {
 				t.Fatalf("accepted fabricated archive result %s: %v", kind, err)
 			}
+			if strings.Contains(err.Error(), "source bytes exceed their independent allowance") {
+				t.Fatalf("source mutation did not reach semantic replay: %v", err)
+			}
 		})
+	}
+}
+
+func TestReleaseArchiveV2RejectsArchiveByteBudgetBeforeReads(t *testing.T) {
+	fixture := newReleaseArchiveV2TestFixtureWithTrails(t, 1)
+	fixture.options.MaximumBytes = 1
+	read := false
+	fixture.options.ReadSource = func(context.Context, ReleaseEvidenceV2CaptureSource) ([]byte, error) {
+		read = true
+		return nil, errors.New("unexpected source read")
+	}
+	archive, err := openReleaseEvidenceV2ArchiveHistory(t.Context(), fixture.options)
+	if archive != nil {
+		_ = archive.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "source bytes exceed their independent allowance") || read || archive != nil {
+		t.Fatalf("bounded archive census escaped admission: read=%t, err=%v", read, err)
 	}
 }
 
