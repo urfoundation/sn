@@ -190,6 +190,7 @@ type attemptCutV2ReplayScratch struct {
 	disk      *attemptRecordStoreStorage
 	trails    uint64
 	pending   uint64
+	lastKey   []byte
 }
 
 // Reuses the qualified descriptor-relative, private, bounded storage adapter.
@@ -313,6 +314,25 @@ func (self *attemptCutV2ReplayScratch) close() error {
 	return errors.Join(err, self.disk.Close(), self.check())
 }
 
+// Scratch is never resumed after interruption. Keep record writes buffered,
+// then exercise the real bounded WAL/directory sync before accepting a replay.
+// An empty LevelDB batch does not sync; rewriting the last existing entry is
+// a nonempty barrier without adding a marker that could imply durable custody.
+func (self *attemptCutV2ReplayScratch) sync(ctx context.Context) error {
+	if err := errors.Join(ctx.Err(), self.check()); err != nil {
+		return err
+	}
+	if len(self.lastKey) == 0 {
+		return errors.New("compact attempt scratch sync has no completed record")
+	}
+	value, err := self.db.Get(self.lastKey, &opt.ReadOptions{Strict: opt.StrictAll, DontFillCache: true})
+	if err := errors.Join(err, ctx.Err()); err != nil {
+		return err
+	}
+	err = self.db.Put(self.lastKey, value, &opt.WriteOptions{Sync: true})
+	return errors.Join(err, self.check(), ctx.Err())
+}
+
 // Ordinal proof keys are independent of gapped original ledger sequences.
 func attemptCutV2ProofIndexKey(ordinal uint64) []byte {
 	key := make([]byte, len("proof/")+8)
@@ -386,9 +406,10 @@ func (self *attemptCutV2ReplayScratch) append(ctx context.Context, record Attemp
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := self.db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
+	if err := self.db.Write(batch, &opt.WriteOptions{Sync: false}); err != nil {
 		return err
 	}
+	self.lastKey = key
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -607,6 +628,9 @@ func replayAttemptCutV2Contents(ctx context.Context, cut AttemptCutV2, expected 
 	}
 	if proofCount != result.CompleteCount || !bytes.Equal(expectedProofHash.Sum(nil), actualProofHash.Sum(nil)) {
 		return result, errors.New("compact attempt complete proof projection differs")
+	}
+	if err := scratch.sync(ctx); err != nil {
+		return result, err
 	}
 	result.TrailCount = scratch.trails
 	result.ProofProjectionHash = attemptHex32(*(*[32]byte)(actualProofHash.Sum(nil)))
