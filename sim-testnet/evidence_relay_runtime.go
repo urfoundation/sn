@@ -59,10 +59,12 @@ type evidenceRelayRuntime struct {
 // Construction authenticates fixed inputs and opens an owned chain client
 // before starting the worker; it never creates missing activation files.
 func newEvidenceRelayRuntime(ctx context.Context, approved *ResolvedConfig, executor *Executor, phase string, prepared bool, fail func(error)) (*evidenceRelayRuntime, error) {
-	self,err:=openEvidenceRelayRuntime(ctx,approved,executor,phase,prepared,fail)
-	if err!=nil { return nil,err }
+	self, err := openEvidenceRelayRuntime(ctx, approved, executor, phase, prepared, fail)
+	if err != nil {
+		return nil, err
+	}
 	go self.run()
-	return self,nil
+	return self, nil
 }
 
 // Read-only capture owns the same authenticating readers, with no worker,
@@ -98,9 +100,11 @@ func openEvidenceRelayRuntime(ctx context.Context, approved *ResolvedConfig, exe
 	}
 	for _, configured := range cfg.Config.ValidatorEvidenceV2 {
 		source := evidenceRelaySource{validatorId: configured.ValidatorID, stateDir: filepath.Join(executor.stateDir, "runtime", fmt.Sprintf("validator-%d", configured.ValidatorID), "state"), bounds: configured.Evidence.Bounds}
-		if executor.plan.EvidenceRelayContinuation!=nil {
-			source.stateDir=filepath.Join(executor.stateDir,"runtime",fmt.Sprintf("validator-%d",configured.ValidatorID),"coordinator-state-v2")
-			if err:=validateEvidenceRelayContinuationNamespace(executor.plan,source.validatorId,source.stateDir);err!=nil { return nil,err }
+		if executor.plan.EvidenceRelayContinuation != nil {
+			source.stateDir = filepath.Join(executor.stateDir, "runtime", fmt.Sprintf("validator-%d", configured.ValidatorID), "coordinator-state-v2")
+			if err := validateEvidenceRelayContinuationNamespace(executor.plan, source.validatorId, source.stateDir); err != nil {
+				return nil, err
+			}
 		}
 		for _, operator := range configured.Evidence.Operators {
 			raw, err := validatorcomponent.ReadReleaseEvidenceV2File(ctx, operator.Activation, uint64(protocol.ValidatorEvidenceActivationPayloadSize))
@@ -282,7 +286,7 @@ func (self *evidenceRelayRuntime) advance() error {
 			if result == nil || result.Winner == nil {
 				return errors.New("evidence relay returned no canonical winner")
 			}
-			if err := self.retainOwnedResult(ownerPlanHash,action, result); err != nil {
+			if err := self.retainOwnedResult(ownerPlanHash, action, result); err != nil {
 				return err
 			}
 		}
@@ -304,10 +308,10 @@ func (self *evidenceRelayRuntime) advance() error {
 // Retain immutable inclusion facts, not the moving finalized observation head.
 // On restart the sender reauthenticates the original winning transaction.
 func (self *evidenceRelayRuntime) retainResult(action Action, result *evidenceRelayTransactionResult) error {
-	return self.retainOwnedResult(self.executor.plan.PlanHash,action,result)
+	return self.retainOwnedResult(self.executor.plan.PlanHash, action, result)
 }
 
-func (self *evidenceRelayRuntime) retainOwnedResult(ownerPlanHash string,action Action, result *evidenceRelayTransactionResult) error {
+func (self *evidenceRelayRuntime) retainOwnedResult(ownerPlanHash string, action Action, result *evidenceRelayTransactionResult) error {
 	value := struct {
 		Schema              string                                          `json:"schema"`
 		PlanHash            string                                          `json:"plan_hash"`

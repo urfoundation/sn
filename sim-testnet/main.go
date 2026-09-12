@@ -27,8 +27,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
-	RelayContinuationPlan string
-	RelayEndBlock uint64
+	RelayContinuationPlan                                                                                                           string
+	RelayEndBlock                                                                                                                   uint64
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
@@ -180,7 +180,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
 		return "", o, err
 	}
-	if err := validateEvidenceRelayContinuationOptions(cmd, o); err != nil { return "",o,err }
+	if err := validateEvidenceRelayContinuationOptions(cmd, o); err != nil {
+		return "", o, err
+	}
 	if err := validateOwnedRPCOptions(cmd, o); err != nil {
 		return "", o, err
 	}
@@ -446,7 +448,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	}
 	switch cmd {
 	case "relay-continuation":
-		return runEvidenceRelayContinuation(ctx,resolved,stateDir,o)
+		return runEvidenceRelayContinuation(ctx, resolved, stateDir, o)
 	case "fleet-renew":
 		return runFleetRenewal(ctx, resolved, stateDir, o)
 	case "history-adoption":

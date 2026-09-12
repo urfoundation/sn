@@ -174,7 +174,9 @@ func TestFleetLifecycleRenewalDescriptorsKeepLaterWaves(t *testing.T) {
 	if err := writeJSONResult(&wrapped, map[string]any{"dry_run": true, "plan": plan}); err != nil {
 		t.Fatal(err)
 	}
-	var envelope struct { Plan json.RawMessage `json:"plan"` }
+	var envelope struct {
+		Plan json.RawMessage `json:"plan"`
+	}
 	if err := json.Unmarshal(wrapped.Bytes(), &envelope); err != nil || !bytes.Equal(envelope.Plan, bytes.TrimSuffix(printed.Bytes(), []byte{'\n'})) {
 		t.Fatalf("setup dry-run wrapper rewrote the exact plan: %v", err)
 	}

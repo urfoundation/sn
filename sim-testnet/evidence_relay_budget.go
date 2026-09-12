@@ -134,11 +134,15 @@ func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied val
 	if actual == nil {
 		return Action{}, errors.New("evidence relay reserve is absent from the approved plan")
 	}
-	if self.plan.EvidenceRelayContinuation!=nil {
-		if err:=validateEvidenceRelayContinuationBudget(self.plan);err!=nil { return Action{},err }
-		if self.cfg.ConfigHash!=self.plan.EvidenceRelayContinuation.ConfigHash || reserve.Spend!=actual.Spend { return Action{},errors.New("relay continuation changed the original configured monetary reserve") }
-		reserve=*actual
-		reserve.Parameters=maps.Clone(actual.Parameters)
+	if self.plan.EvidenceRelayContinuation != nil {
+		if err := validateEvidenceRelayContinuationBudget(self.plan); err != nil {
+			return Action{}, err
+		}
+		if self.cfg.ConfigHash != self.plan.EvidenceRelayContinuation.ConfigHash || reserve.Spend != actual.Spend {
+			return Action{}, errors.New("relay continuation changed the original configured monetary reserve")
+		}
+		reserve = *actual
+		reserve.Parameters = maps.Clone(actual.Parameters)
 	}
 	reserve.DependsOn = append([]string(nil), actual.DependsOn...)
 	deploymentHash, err := contractDeploymentIdentityHash(self.plan.Deployment)
@@ -158,8 +162,10 @@ func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied val
 	if err != nil {
 		return Action{}, err
 	}
-	entries,maximum,err:=self.evidenceRelayAdmissionEntries()
-	if err!=nil { return Action{},err }
+	entries, maximum, err := self.evidenceRelayAdmissionEntries()
+	if err != nil {
+		return Action{}, err
+	}
 	_, admitted, err := evidenceRelayAdmissionCount(entries, self.plan.PlanHash, action, maximum)
 	if err != nil {
 		return Action{}, err
@@ -169,8 +175,10 @@ func (self *Executor) admitEvidenceRelayAction(ctx context.Context, supplied val
 	record := evidenceRelayRequestRecord{Schema: evidenceRelayRequestSchema, PlanHash: self.plan.PlanHash, Action: action, Evidence: supplied}
 	record.Evidence.SignedTransaction = nil
 	record.Evidence.Relayer = common.Address{}
-	record.Evidence.MaxGas, record.Evidence.MaxFeePerGas, _,err = evidenceRelayPlanAllowance(self.plan,reserve)
-	if err!=nil { return Action{},err }
+	record.Evidence.MaxGas, record.Evidence.MaxFeePerGas, _, err = evidenceRelayPlanAllowance(self.plan, reserve)
+	if err != nil {
+		return Action{}, err
+	}
 	raw, err := json.Marshal(record)
 	if err != nil {
 		return Action{}, err

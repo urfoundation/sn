@@ -80,7 +80,7 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				if result == nil || result.Winner == nil {
 					return errors.New("evidence audit relay returned no canonical winner")
 				}
-				if err := self.retainOwnedResult(ownerPlanHash,action, result); err != nil {
+				if err := self.retainOwnedResult(ownerPlanHash, action, result); err != nil {
 					return err
 				}
 			}

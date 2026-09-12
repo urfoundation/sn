@@ -380,9 +380,11 @@ func (self *evidenceRelayHorizon) ceilings(candidate *protocol.ValidatorEvidence
 		return 0, 0, 0, errors.New("evidence relay horizon is absent")
 	}
 	if self.continuation != nil {
-		required,err:=self.continuation.requiredSubjects(self.headerKVs,candidate)
-		if err!=nil || required>self.maximum { return 0,0,0,errors.Join(errors.New("relay continuation exhausted its retained plus future subject allowance"),err) }
-		return self.continuation.EndBlock,self.continuation.EndSettlementEpoch,self.continuation.EndNativeEpoch,nil
+		required, err := self.continuation.requiredSubjects(self.headerKVs, candidate)
+		if err != nil || required > self.maximum {
+			return 0, 0, 0, errors.Join(errors.New("relay continuation exhausted its retained plus future subject allowance"), err)
+		}
+		return self.continuation.EndBlock, self.continuation.EndSettlementEpoch, self.continuation.EndNativeEpoch, nil
 	}
 	extra, err := self.extraSubjects(candidate)
 	if err != nil {
