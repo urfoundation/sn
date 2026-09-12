@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {ReleaseBase} from "./utils/ReleaseBase.sol";
+import {Test} from "forge-std/Test.sol";
 import {STCoordinator} from "../src/STCoordinator.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -312,13 +313,22 @@ contract ReleaseBindingPolicyTest is ReleaseBase {
         coordinator.schedulePolicy(next);
     }
 
-    function test_fleetRevokeDigestRejectsChainIDDowncastOverflow() public {
-        uint256 overflowingChainId = uint256(type(uint64).max) + 1;
-        vm.chainId(overflowingChainId);
-        vm.expectRevert(
-            abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintDowncast.selector, 64, overflowingChainId)
+    function test_fleetRevokeDigestAcceptsMaximumChainID() public {
+        vm.chainId(type(uint64).max);
+        assertEq(
+            coordinator.fleetRevokeDigest(bytes16(uint128(1)), 1, 2),
+            keccak256(
+                abi.encodePacked(
+                    bytes(coordinator.FLEET_REVOKE_DOMAIN()),
+                    type(uint64).max,
+                    NETUID,
+                    address(coordinator),
+                    bytes16(uint128(1)),
+                    uint64(1),
+                    uint64(2)
+                )
+            )
         );
-        coordinator.fleetRevokeDigest(bytes16(uint128(1)), 1, 2);
     }
 
     function test_releaseProductionCadenceIsExactAndFutureEffective() public {
@@ -384,5 +394,24 @@ contract ReleaseBindingPolicyTest is ReleaseBase {
         vm.prank(nextGuardian);
         coordinator.setPaused(true);
         assertTrue(coordinator.paused());
+    }
+}
+
+// Exercise the actual inherited production helper in a test contract. Foundry
+// limits vm.chainId to uint64, so the overflow input cannot be installed in the
+// block environment. Keeping the seam here avoids a second deployable copy of
+// the coordinator whose only extra method exceeds the production size limit.
+contract ReleaseChainIDPolicyTest is Test, STCoordinator {
+    function checkedChainId(uint256 chainId_) external pure returns (uint64) {
+        return _checkedChainId(chainId_);
+    }
+
+    function test_fleetRevokeDigestRejectsChainIDDowncastOverflow() public {
+        assertEq(this.checkedChainId(type(uint64).max), type(uint64).max);
+        uint256 overflowingChainId = uint256(type(uint64).max) + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintDowncast.selector, 64, overflowingChainId)
+        );
+        this.checkedChainId(overflowingChainId);
     }
 }
