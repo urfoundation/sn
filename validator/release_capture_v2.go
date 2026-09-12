@@ -412,6 +412,9 @@ func CaptureReleaseEvidenceV2(ctx context.Context, cfg *ReleaseConfig, chain *Ch
 	if _, err := readReleaseServerKeysV2WithCapture(ctx, cfg, emit); err != nil {
 		return nil, err
 	}
+	if err := captureReleaseDecisionObservationsV2(ctx, cfg, chain, native, initials, history, result.Intents, emit); err != nil {
+		return nil, err
+	}
 	for _, check := range observationChecks {
 		if err := check(); err != nil {
 			return nil, err

@@ -83,6 +83,17 @@ func TestFinalCaptureV2ReadsActualRenderedSetupAndRejectsChangedSource(t *testin
 	if err := renderValidatorMinerConfigs(fixture.cfg, fixture.stateDir, fixture.roles, &deployment); err != nil {
 		t.Fatal(err)
 	}
+	supervisor := SupervisorFile{Schema: "urnetwork-sim-supervisor-v1", DeploymentID: fixture.plan.DeploymentID}
+	for id := 1; id <= 2; id++ {
+		supervisor.Specs = append(supervisor.Specs, ProcessSpec{ID: fmt.Sprintf("validator-%d", id), Role: "validator"})
+	}
+	supervisorBytes, err := json.Marshal(supervisor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.stateDir, "supervisor.json"), supervisorBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for validatorId := uint64(1); validatorId <= 2; validatorId++ {
 		release, raw, err := finalReleaseCaptureConfigV2(t.Context(), fixture.cfg, fixture.stateDir, validatorId)
 		if err != nil || release == nil || release.ValidatorID != validatorId {

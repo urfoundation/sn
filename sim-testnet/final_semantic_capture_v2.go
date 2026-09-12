@@ -54,9 +54,14 @@ func finalUsesEvidenceV2(cfg *ResolvedConfig) bool {
 // Reads the exact private rendered config and compares its source references
 // to the independently reconstructed plan-owned setup. No seed is archived.
 func finalReleaseCaptureConfigV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string, validatorId uint64) (*validatorpkg.ReleaseConfig, []byte, error) {
+	release, raw, _, err := finalReleaseCaptureConfigWithAdoptionV2(ctx, cfg, stateRoot, validatorId)
+	return release, raw, err
+}
+
+func finalReleaseCaptureConfigWithAdoptionV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string, validatorId uint64) (*validatorpkg.ReleaseConfig, []byte, []byte, error) {
 	resolved, err := runtimeEvidenceV2ResolvedConfig(cfg, stateRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var expected *validatorpkg.ReleaseEvidenceV2Config
 	for index := range resolved.Config.ValidatorEvidenceV2 {
@@ -66,43 +71,50 @@ func finalReleaseCaptureConfigV2(ctx context.Context, cfg *ResolvedConfig, state
 		}
 	}
 	if expected == nil {
-		return nil, nil, errors.New("compact capture configured validator is absent")
+		return nil, nil, nil, errors.New("compact capture configured validator is absent")
 	}
 	path := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "validator.yml")
 	encoded, err := validatorpkg.ReadReleaseEvidenceV2SetupFile(ctx, path, min(expected.Bounds.MaxControlBytes, uint64(maximumCampaignEvidenceRawFileBytes)))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := validatorpkg.ValidateReleaseEvidenceV2ConfigYAML(encoded); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var release validatorpkg.ReleaseConfig
 	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&release); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return nil, nil, errors.New("compact runtime config has trailing YAML")
+		return nil, nil, nil, errors.New("compact runtime config has trailing YAML")
 	}
 	if err := release.Validate(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	deployment, err := loadContractDeployment(stateRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	wantState := filepath.Join(stateRoot, "runtime", fmt.Sprintf("validator-%d", validatorId), "state")
 	if release.ValidatorID != validatorId || release.StateDir != wantState || release.DeploymentID != cfg.Config.Deployment.DeploymentID || release.ChainID != cfg.ChainID || release.Netuid != cfg.Netuid || !strings.EqualFold(release.GenesisHash, cfg.Public.Chain.GenesisHash) || !strings.EqualFold(release.PolicyHash, cfg.PolicyHash) || common.HexToAddress(release.Coordinator) != deployment.CoordinatorProxy || common.HexToAddress(release.SettlementVault) != deployment.SettlementVault || !reflect.DeepEqual(release.EvidenceV2, *expected) || len(release.Operators) != len(cfg.OperatorAPIOrigins) {
-		return nil, nil, errors.New("compact capture runtime config differs from original setup/deployment")
+		return nil, nil, nil, errors.New("compact capture runtime config differs from original setup/deployment")
 	}
 	for index, operator := range release.Operators {
 		if operator.NoID != uint64(index+1) || operator.APIURL != cfg.OperatorAPIOrigins[index] {
-			return nil, nil, errors.New("compact capture runtime origins differ")
+			return nil, nil, nil, errors.New("compact capture runtime origins differ")
 		}
 	}
-	return &release, encoded, ctx.Err()
+	adoption, adoptionBytes, err := finalCaptureHistoryAdoptionV2(ctx, cfg, stateRoot, &release, encoded)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if adoption != nil {
+		release.StateDir = adoption.CoordinatorStateDir
+	}
+	return &release, encoded, adoptionBytes, ctx.Err()
 }
 
 // One collector owns actual read clients and all exact source files. The
@@ -130,7 +142,7 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 	remainingSourceBytes := archiveLimits.maximumBytes
 	contentLocators := map[string]FinalArtifactLocator{}
 	for validatorId := uint64(1); validatorId <= uint64(cfg.Config.Topology.Validators); validatorId++ {
-		release, configBytes, err := finalReleaseCaptureConfigV2(ctx, cfg, stateRoot, validatorId)
+		release, configBytes, adoptionBytes, err := finalReleaseCaptureConfigWithAdoptionV2(ctx, cfg, stateRoot, validatorId)
 		if err != nil {
 			return nil, err
 		}
@@ -191,6 +203,11 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 		}
 		if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "runtime-config"}, configBytes); err != nil {
 			return nil, err
+		}
+		if len(adoptionBytes) != 0 {
+			if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "strict-history-adoption"}, adoptionBytes); err != nil {
+				return nil, err
+			}
 		}
 		chain, err := validatorpkg.DialReleaseChainContext(ctx, []string{cfg.OperationalEVM}, common.HexToAddress(release.Coordinator))
 		if err != nil {
