@@ -17,6 +17,8 @@ type FinalNativeCheckpointV2 struct {
 	Identity           crv4.ValidatorScheduleObservation `json:"identity"`
 	Schedule           crv4.EpochScheduleState           `json:"schedule"`
 	RevealPeriodEpochs uint64                            `json:"reveal_period_epochs"`
+	PayoutHead         ChainHead                         `json:"payout_head"`
+	PayoutParent       ChainHead                         `json:"payout_parent"`
 	Weights            FinalNativeWeightState            `json:"weights"`
 }
 

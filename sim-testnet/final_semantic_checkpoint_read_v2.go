@@ -57,6 +57,25 @@ func readFinalNativeCheckpointV2(ctx context.Context, native *crv4.Chain, evm Ch
 		return result, err
 	}
 	result.Schedule = *state
+	if state.LastEpochBlock <= 1 || state.LastEpochBlock > result.Mapping.Query.NativeNumber {
+		return result, errors.New("native coverage latest payout boundary is incomplete")
+	}
+	var payoutHash, parentHash gsrpctypes.Hash
+	if err := own.API.Client.CallContext(ctx, &payoutHash, "chain_getBlockHash", state.LastEpochBlock); err != nil {
+		return result, err
+	}
+	header, err := own.HeaderAtContext(ctx, payoutHash)
+	if err != nil || uint64(header.Number) != state.LastEpochBlock {
+		return result, errors.Join(errors.New("native coverage payout header differs"), err)
+	}
+	if err := own.API.Client.CallContext(ctx, &parentHash, "chain_getBlockHash", state.LastEpochBlock-1); err != nil {
+		return result, err
+	}
+	if payoutHash == (gsrpctypes.Hash{}) || parentHash == (gsrpctypes.Hash{}) || header.ParentHash != parentHash {
+		return result, errors.New("native coverage payout parent differs")
+	}
+	result.PayoutHead = ChainHead{Number: state.LastEpochBlock, Hash: payoutHash.Hex()}
+	result.PayoutParent = ChainHead{Number: state.LastEpochBlock - 1, Hash: parentHash.Hex()}
 	result.RevealPeriodEpochs, err = own.RevealPeriodEpochsAtContext(ctx, netuid, nativeHash)
 	if err != nil {
 		return result, err
