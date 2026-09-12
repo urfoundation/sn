@@ -67,6 +67,12 @@ func collectCadenceReplayObjectsV2(t *testing.T, artifact *ReleaseMeasurementArt
 func TestReleaseMeasurementV2CadenceReplaysTwoSettlementsForOneNativeSuccessor(t *testing.T) {
 	t.Parallel()
 	previous := newReleaseMeasurementV2TestFixture(t, 15)
+	// The shared fixture's observations cover one successor settlement. This
+	// case observes the same binding through both real successor settlements;
+	// pin that window before hashing or verifying any of the three artifacts.
+	for index := range previous.artifact.Bindings {
+		previous.artifact.Bindings[index].ValidToEpoch = previous.artifact.SettlementEpoch + 2
+	}
 	previousBytes, err := canonicalReleaseMeasurementBytes(previous.artifact)
 	if err != nil {
 		t.Fatal(err)
