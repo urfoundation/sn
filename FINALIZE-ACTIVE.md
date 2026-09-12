@@ -26,12 +26,22 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 19:54 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 20:49 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
 contains the receipts and pinned state; the historical 15/17 scenario remains
 `final_acceptance=false`.
+
+Actual read-only doctor on local source `02dfe50` passed 63 of 64 checks. Its
+sole failure was systemd's degraded state from 43 stopped simulator units.
+Their metadata and all 621 available journal entries were preserved before
+resetting only those historical failure flags; the manager now reports running,
+without restarting any process. Actual read-only setup then refused the full
+retained repair audit budget's `observed_at` field. Astra's separate typed audit
+document fix preserves the original signed projection and complete budget hash;
+Terra is qualifying it independently of the remaining public replay work.
+The original plan and journal remain byte-identical. [Actual admission captures](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup.stderr).
 
 Terra has passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
@@ -55,12 +65,16 @@ tests normally and under race pass. The coordinator creation and runtime bytes
 exactly match the retained deployed repair; runtime size is 24,564 bytes.
 The original oversized test harness and first overflow-fixture failure remain
 retained. [Exact artifact comparison](../temp/sn-contract-generation-20260912T1841Z/runtime/generation-20260912T1845Z/full-build-revised-coordinator-compare.stdout).
-The generated payload and corrected renewal fixtures are entering the next
-frozen candidate. Astra is correcting the remaining simulator failures while
-Terra independently qualifies relay continuation. Public V2 replay core and
-capture changes are frozen; complete archive consumption and authenticated
-native interval coverage remain in progress. Neither full gate nor either
-complete live acceptance phase has passed.
+The generated payload is integrated. Both corrected renewal-evidence roots
+have three fresh normal and three fresh race passes on `73ad855`.
+[Renewal evidence confirmations](../temp/sn-semantic-renewal-generation-validation-20260912/runtime/RESULT.md).
+Composed `bcb1ce0` passes the selected native/EVM checkpoint, capture, history-read
+and startup populations in both modes. Its three simulator fixture failures and
+two archive fixture failures are preserved; their corrections and the frozen
+public publication/consumer/recorder code are composed in successor `e06f055`
+for Terra qualification. [Composed results](../temp/sn-finalization-integration-20260912/runtime/RESULT.md).
+Authenticated native interval and reward/application coverage remain in progress.
+Neither full gate nor either complete live acceptance phase has passed.
 The unrelated calibration prerequisites were removed from SN qualification;
 Terra passed all 12 affected guard roots normally and under race. The existing
 runtime dependency census and full SN gates remain required. [Scope validation](../temp/sn-scope-validation-20260912T1830Z/runtime/scope-guard-20260912T1831Z/RESULT.md).
