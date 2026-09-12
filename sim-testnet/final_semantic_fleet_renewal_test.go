@@ -170,7 +170,7 @@ func TestFinalFleetRenewalCaptureOwnsExactSignedEnvelope(t *testing.T) {
 	chain := big.NewInt(964)
 	target := common.HexToAddress(finalFleetGenerationTestCoordinator)
 	data := []byte{1, 2, 3, 4}
-	action := Action{ID: "fleet.renew.1.1.bind.1", Kind: "evm-transaction", Target: target.Hex(), Parameters: map[string]string{"renewal_expected_nonce": "7", "renewal_expected_signer": crypto.PubkeyToAddress(key.PublicKey).Hex(), "renewal_calldata": "0x01020304", "operation": "bind", evmMaximumGasUnitsParameter: "400000", evmMaximumFeePerGasParameter: "25000000000"}}
+	action := Action{ID: "fleet.renew.1.1.bind.1", Kind: "evm-transaction", Target: target.Hex(), Parameters: map[string]string{"renewal_expected_nonce": "7", "renewal_expected_signer": crypto.PubkeyToAddress(key.PublicKey).Hex(), "renewal_calldata": "0x01020304", "operation": "bind", evmMaximumGasUnitsParameter: "400000", evmMaximumFeePerGasParameter: "25000000000"}, Spend: Spend{EVMGasWei: "10000000000000000"}}
 	action.IntentHash, err = actionIntentHash(action)
 	if err != nil {
 		t.Fatal(err)
@@ -240,6 +240,19 @@ func finalFleetRenewalLineageFixture(t *testing.T) (*FinalSemanticEvidence, *Fin
 	t.Helper()
 	evidence, lineage := finalFleetGenerationTestFixture(t)
 	evidence.Deployment = finalFleetGenerationEventFixture(t).Deployment
+	// The older structural fixture deliberately uses local counter ranges;
+	// generation-two counters overlap historical per-member counters. A full
+	// receipt archive needs globally distinct transaction identities.
+	for index := range lineage.Batches {
+		batch := &lineage.Batches[index]
+		if batch.BatchWrite == nil {
+			continue
+		}
+		write := finalFleetGenerationTestWrite(40_000+batch.Generation*100+batch.Batch, batch.Action, finalFleetGenerationTestBatcher, batch.BatcherRuntimeHash)
+		write.Postcondition = batch.Postcondition
+		batch.BatchWrite = &write
+		batch.CalldataHash, batch.EventHash, batch.CoordinatorRuntimeHash = write.CalldataHash, write.EventHash, write.CoordinatorRuntimeHash
+	}
 	latest := map[uint64]FinalFleetGenerationVersionEvidence{}
 	fixMembers := func(version *FinalFleetGenerationVersionEvidence, fleet uint64) {
 		for i := range version.Members {
