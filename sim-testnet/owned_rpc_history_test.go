@@ -30,7 +30,11 @@ func newOwnedRPCHistoryTest(t *testing.T, nativeTransaction bool) ownedRPCHistor
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := buildPlan(sourceCfg, testSetupFacts(), roles.Public(), time.Unix(1, 0))
+	public, err := derivePublicRoles(sourceCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := buildPlan(sourceCfg, testSetupFacts(), public, time.Unix(1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
