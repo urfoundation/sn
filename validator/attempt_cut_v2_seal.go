@@ -19,6 +19,11 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
+// A finalized snapshot may predate an admitted trail while settlement work
+// drains. The Stats owner retains its cut reservation; a fresh snapshot can
+// seal that unchanged prefix. This never admits a cut beyond its boundary.
+var errAttemptCutSnapshotStale = errors.New("attempt ledger cut is waiting for a fresh finalized snapshot")
+
 // Callbacks stage durable immutable objects and fetch those exact objects
 // back; they never receive a signed header. Inputs must remain unchanged for
 // the call. Callbacks may append to the ledger but must not close it or start
@@ -231,8 +236,11 @@ func walkAttemptCutV2SealPrefix(ctx context.Context, ledger *AttemptLedger, head
 		if record.Identity != expected.Identity || record.Sequence != expected.FirstSequence+count || record.PreviousHash != previous || record.M != depth {
 			return fmt.Errorf("compact attempt record %d differs from the expected identity, sequence, prior root or policy depth", record.Sequence)
 		}
-		if record.Boundary.SettlementEpoch != expected.Boundary.SettlementEpoch || record.Boundary.EVMBlock > expected.Boundary.EVMBlock || record.Boundary.EVMBlock == expected.Boundary.EVMBlock && record.Boundary.EVMBlockHash != expected.Boundary.EVMBlockHash {
+		if record.Boundary.SettlementEpoch != expected.Boundary.SettlementEpoch || record.Boundary.EVMBlock == expected.Boundary.EVMBlock && record.Boundary.EVMBlockHash != expected.Boundary.EVMBlockHash {
 			return fmt.Errorf("compact attempt record %d differs from the expected cut boundary", record.Sequence)
+		}
+		if record.Boundary.EVMBlock > expected.Boundary.EVMBlock {
+			return fmt.Errorf("%w: compact attempt record %d EVM block %d exceeds cut block %d", errAttemptCutSnapshotStale, record.Sequence, record.Boundary.EVMBlock, expected.Boundary.EVMBlock)
 		}
 		if err := visit(record); err != nil {
 			return err
