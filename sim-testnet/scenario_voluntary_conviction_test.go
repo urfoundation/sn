@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -54,6 +55,11 @@ func scenarioVoluntaryConvictionFixture(t *testing.T) (*ResolvedConfig, *SetupPl
 func TestScenarioVoluntaryConvictionUsesFinalizedAncestorPolicy(t *testing.T) {
 	cfg, source, current, evidence, entries := scenarioVoluntaryConvictionFixture(t)
 	root := t.TempDir()
+	// Journal ownership requires an explicitly private fixture directory,
+	// independently of the capture owner's inherited umask.
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	writeJSON := func(path string, value any) {
 		t.Helper()
 		raw, err := json.MarshalIndent(value, "", "  ")
