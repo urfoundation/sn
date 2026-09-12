@@ -1,0 +1,97 @@
+{
+  "request": {
+    "schema": "urnetwork-provisional-coordinator-repair-v1",
+    "provisional": true,
+    "final_acceptance": false,
+    "retained_plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+    "config_hash": "0xddacd7f502ca598ffb7cd73b1ac0e4ee9e10a5476b2e3c29da16c4881751cc4c",
+    "deployment_id": "ur-subnet-testnet-v1",
+    "artifact_sha256": "7f7b7c9d1ecefe0c7244e6948b257d13c2fb125e8b6d8c16798ae683b87b473b",
+    "budget_sha256": "b9416587bef1ebb051b49d44c28c8bd0e4837580b77acb8ff6e80fa4d696c16a",
+    "budget": {
+      "schema": "urnetwork-provisional-coordinator-repair-budget-v1",
+      "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+      "journal_hash": "0x1a590637b9acb9b21a0bf9ca3b545443d9ea412db0ab80dfdc40c1737b355ef0",
+      "campaign_reserve_wei": "12726750000000000000",
+      "committed_or_pending_max_wei": "1047421069877763664",
+      "available_wei": "11679328930122236336",
+      "repair_max_wei": "800000000000000000",
+      "verified": true,
+      "evidence": [
+        "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/budget-allocation-scope.json",
+        "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/operator-1.json",
+        "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/operator-2.json",
+        "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/query.sql"
+      ]
+    },
+    "proxy": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+    "settlement_vault": "0x09d5d7a5c3e94b6ae42b09889a1cee50f970fc5e",
+    "reserve_sink": "0x376f98bd7c6b334f7f1cb2685e0970a18bfe7d28",
+    "owner": "0x415b7508f93e9fef6989010dbd41db95f4563d95",
+    "deployer": "0x782c9f3e4d8cff39ef3029c523849b167c780d2f",
+    "retained_upgrade": {
+      "schema": "urnetwork-coordinator-upgrade-v2",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "implementation": "0x7a169b125f01183957f7d34d17cfcfd9178b6796",
+      "deployer_nonce": 30,
+      "runtime_code_hash": "0xad53ae36adfd83ee4d3f61f4c15dd72debec77bad0c61017ffc4786d96330b05"
+    },
+    "corrective_upgrade": {
+      "schema": "urnetwork-coordinator-upgrade-v2",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "implementation": "0x40e5abde2bc4ba84d966842cbab98c0c88894aaf",
+      "deployer_nonce": 33,
+      "runtime_code_hash": "0xc8837dcf6ebb607277f140677c73ad91f3359ef25bfda17e578ad52e2d4f5179"
+    },
+    "custody_identity_hash": "0x140201fde913b4e4288631f0f3cd9359404fc6cc4604ffc711417a44bbed542a",
+    "deploy": {
+      "id": "repair.coordinator-rounding.deploy",
+      "kind": "evm-transaction",
+      "target": "create",
+      "description": "actual provisional coordinator runtime correction; final_acceptance=false",
+      "parameters": {
+        "expected_created_address": "0x40E5ABde2bC4BA84D966842CbaB98c0C88894AAF",
+        "expected_data_keccak256": "0x6a3bd2034752cb21f1f0e193dc070a98ad24c3a3c559b3a74b4bc8282a586c5e",
+        "expected_nonce": "33",
+        "expected_signer": "0x782c9F3E4D8CFf39Ef3029C523849B167c780D2F",
+        "expected_transaction_to": "create",
+        "expected_value_wei": "0",
+        "maximum_fee_per_gas_wei": "100000000000",
+        "maximum_gas_units": "7500000"
+      },
+      "maximum_spend": {
+        "tao_rao": 0,
+        "alpha_rao": 0,
+        "evm_gas_wei": 750000000000000000,
+        "registrations": 0,
+        "subnet_creations": 0
+      },
+      "intent_hash": "0x9012ed127fcbea06c136e90f84875a7e60b75accb8179b1acaa2d2bec8da01ca"
+    },
+    "activate": {
+      "id": "repair.coordinator-rounding.activate",
+      "kind": "evm-transaction",
+      "target": "0x8e7d2F9A77feC95C7e4875b0Bd858D5DE2B6def8",
+      "description": "actual provisional coordinator runtime correction; final_acceptance=false",
+      "parameters": {
+        "expected_data_keccak256": "0x0a1c7632c163b1a2419262b49e6bb69a9c2b1e2f393657451f3c4247fd64859f",
+        "expected_nonce": "19",
+        "expected_signer": "0x415B7508f93E9fEF6989010dBd41DB95F4563D95",
+        "expected_transaction_to": "0x8e7d2F9A77feC95C7e4875b0Bd858D5DE2B6def8",
+        "expected_value_wei": "0",
+        "maximum_fee_per_gas_wei": "100000000000",
+        "maximum_gas_units": "500000"
+      },
+      "maximum_spend": {
+        "tao_rao": 0,
+        "alpha_rao": 0,
+        "evm_gas_wei": 50000000000000000,
+        "registrations": 0,
+        "subnet_creations": 0
+      },
+      "intent_hash": "0x53ed3ed053673110c56ec0fc185362f49a9deb28fa1cd6bdffbd2af021ed24c1"
+    }
+  },
+  "hash": "0xbe7e0ce23fe9abf6445abecc78ea5f0bbe037b9068745c501fb6764ec86d425f",
+  "owner_signature": "facc050923f8904c967ab8db4c0efed4d18ec61952435e56462ee1d46fc8c35b5f1d93eef35b63cc1ade6856d525738a300f1eb86bd39d3e81232c0ec003b4eb00"
+}

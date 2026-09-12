@@ -1,0 +1,97 @@
+{
+  "schema": "urnetwork-provisional-coordinator-repair-budget-v1",
+  "observed_at": "2026-09-12T02:17:25.751430+00:00",
+  "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+  "journal_hash": "0x1a590637b9acb9b21a0bf9ca3b545443d9ea412db0ab80dfdc40c1737b355ef0",
+  "journal_sequence": 10250,
+  "campaign_reserve_wei": "12726750000000000000",
+  "committed_or_pending_max_wei": "1047421069877763664",
+  "available_wei": "11679328930122236336",
+  "repair_max_wei": "800000000000000000",
+  "available_after_repair_max_wei": "10879328930122236336",
+  "verified": true,
+  "verification_scope": "Two successful read-only operator DB aggregates; every durable signed attempt has a complete gas limit and fee cap/price. Charge every attempt at gas_limit times maximum_fee_per_gas, including replacements and canceled attempts and every status, to the existing live campaign reserve. This conservatively bounds recorded spent and signed pending fees without claiming actual receipt gas usage.",
+  "actual_paid_fee_total_wei": null,
+  "actual_paid_fee_total_status": "not separately stored in transaction attempt rows; conservative signed maximum used instead",
+  "operator_signed_max_wei": {
+    "1": "535549513822358756",
+    "2": "511871556055404908"
+  },
+  "unsigned_prepared_intents": [
+    {
+      "operator": 1,
+      "intent_id": "01a0934b-a426-13c8-26df-19e735b2a5e0",
+      "from_address": "0x2ec9c5d23e81ea1f287b9fcdd2dc209a2e2355dc",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 6,
+      "status": "prepared",
+      "attempt_count": 0,
+      "current_tx_hash": null,
+      "create_time": "2026-09-12T01:46:43.110446",
+      "update_time": "2026-09-12T01:46:43.110446",
+      "has_signed_attempt": false,
+      "fee_bound_wei": null,
+      "fee_bound_status": "not yet prepared or signed; not included as a signed transaction liability"
+    },
+    {
+      "operator": 1,
+      "intent_id": "01a061e8-a061-14af-56fe-462cebbf3e47",
+      "from_address": "0xd6f9165c4cc35ce380ea1eff3c518407173af60a",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 0,
+      "status": "prepared",
+      "attempt_count": 0,
+      "current_tx_hash": null,
+      "create_time": "2026-09-02T11:37:10.497141",
+      "update_time": "2026-09-02T11:37:10.497141",
+      "has_signed_attempt": false,
+      "fee_bound_wei": null,
+      "fee_bound_status": "not yet prepared or signed; not included as a signed transaction liability"
+    },
+    {
+      "operator": 2,
+      "intent_id": "01a06189-9ffe-26ca-3886-980a659c3223",
+      "from_address": "0x5c278cf6693ce582adea0241034d810d8933b3eb",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 0,
+      "status": "prepared",
+      "attempt_count": 0,
+      "current_tx_hash": null,
+      "create_time": "2026-09-02T09:53:24.478751",
+      "update_time": "2026-09-02T09:53:24.478751",
+      "has_signed_attempt": false,
+      "fee_bound_wei": null,
+      "fee_bound_status": "not yet prepared or signed; not included as a signed transaction liability"
+    },
+    {
+      "operator": 2,
+      "intent_id": "01a0934b-d701-799a-10dd-8340095bc003",
+      "from_address": "0xbdf57da6b8f73cd67f38e76d0d8471e9f9998ac0",
+      "to_address": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+      "nonce": 4,
+      "status": "prepared",
+      "attempt_count": 0,
+      "current_tx_hash": null,
+      "create_time": "2026-09-12T01:46:56.129239",
+      "update_time": "2026-09-12T01:46:56.129239",
+      "has_signed_attempt": false,
+      "fee_bound_wei": null,
+      "fee_bound_status": "not yet prepared or signed; not included as a signed transaction liability"
+    }
+  ],
+  "future_transaction_scope": "Unsigned intents and future production work remain chargeable to the remaining campaign reserve when signed; this snapshot is not a promise that future transactions are free. No additional controller campaign actions observed after journal sequence10250.",
+  "retirement_reserve_wei": "4486750000000000000",
+  "retirement_debited_wei": "0",
+  "new_funding_wei": "0",
+  "evidence": [
+    "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/budget-allocation-scope.json",
+    "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/operator-1.json",
+    "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/operator-2.json",
+    "/home/by/urnetwork/temp/sn-soak-deadline-20260909T221044Z/finalization-20260911T0215/run-first-20260911T0743/actual-source302-outcome/deposit303-runtime-rounding-fix/operator-campaign-budget-aggregate/query.sql"
+  ],
+  "evidence_sha256": {
+    "operator-campaign-budget-aggregate/operator-1.json": "1f75ce9617c9c6a7751fdf0914983728ee62c610f6f02a4625fe04c7df480d11",
+    "operator-campaign-budget-aggregate/operator-2.json": "a538d63563992a4214d497117c73dab5f19e0418eef84538dcef24169deed293",
+    "operator-campaign-budget-aggregate/query.sql": "797db98a8f3b7040f6bef7bbaa3ca75137e3891ff18837e0141e23f11fc01180"
+  }
+}

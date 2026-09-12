@@ -148,7 +148,9 @@ func newCoordinatorRepairCarryFixture(t *testing.T) coordinatorRepairCarryFixtur
 	reserve := actionByID(t, source, "campaign.evm-gas-reserve")
 	entries := e.journal.Entries()
 	budget := coordinatorRepairBudget{Schema: "urnetwork-provisional-coordinator-repair-budget-v1", PlanHash: source.PlanHash, JournalHash: entries[len(entries)-1].EntryHash, CampaignReserveWei: string(reserve.Spend.EVMGasWei), CommittedOrPendingMaxWei: "0", AvailableWei: string(reserve.Spend.EVMGasWei), RepairMaxWei: coordinatorRepairMaximumWei, Verified: true}
-	budgetRaw, err := json.Marshal(budget)
+	// The actual command retains audit context outside its signed executable
+	// budget projection. Exercise the complete typed reader on the live path.
+	budgetRaw, err := json.Marshal(coordinatorRepairBudgetDocument{coordinatorRepairBudget: budget, ObservedAt: "2026-09-12T02:17:25.751430+00:00", JournalSequence: entries[len(entries)-1].Sequence, NewFundingWei: "0"})
 	if err != nil {
 		t.Fatal(err)
 	}

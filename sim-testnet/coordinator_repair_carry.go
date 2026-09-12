@@ -164,12 +164,8 @@ func readCoordinatorRepairCarry(stateDir string, plan *SetupPlan, entries []Jour
 	if bytesSHA256(artifact) != "sha256:"+r.ArtifactSHA256 || bytesSHA256(budgetRaw) != "sha256:"+r.BudgetSHA256 {
 		return nil, errors.New("coordinator repair artifact or budget bytes changed")
 	}
-	var budget coordinatorRepairBudget
-	if err := decodeExactCoordinatorRepairJSON(budgetRaw, &budget); err != nil {
+	if err := validateCoordinatorRepairBudgetDocument(budgetRaw, r); err != nil {
 		return nil, err
-	}
-	if !reflect.DeepEqual(budget, r.Budget) {
-		return nil, errors.New("coordinator repair budget differs from signed request")
 	}
 	creation, runtime, err := coordinatorRepairArtifact(artifact, r.Upgrade.Implementation)
 	if err != nil {

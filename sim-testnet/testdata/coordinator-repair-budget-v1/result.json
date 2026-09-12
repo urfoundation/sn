@@ -1,0 +1,50 @@
+{
+  "result": {
+    "schema": "urnetwork-provisional-coordinator-repair-result-v1",
+    "provisional": true,
+    "final_acceptance": false,
+    "request_hash": "0xbe7e0ce23fe9abf6445abecc78ea5f0bbe037b9068745c501fb6764ec86d425f",
+    "deploy_finalization": {
+      "schema": "urnetwork-sim-journal-v1",
+      "sequence": 10254,
+      "time": "2026-09-12T02:46:40.236265262Z",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+      "action_id": "repair.coordinator-rounding.deploy",
+      "intent_hash": "0x9012ed127fcbea06c136e90f84875a7e60b75accb8179b1acaa2d2bec8da01ca",
+      "stage": "finalized",
+      "transaction_hash": "0x7459e328f865d14a7818757a57edd41655b35ba6a1fff0d06c0cfb0dd74c22ca",
+      "block_number": 7986577,
+      "block_hash": "0x6a4a4dfafa4792e294c14f3b0545e8dc920917798be3291b574e1aa10ab6dda8",
+      "recovery_block": 7986574,
+      "recovery_block_hash": "0x0ef0ae99ad55adf34aeba6d3f775358fc578a4aff0df03439071263157d6e621",
+      "previous_hash": "0xdd0482153616a4b48f21226777f6d0ace911e8d8e9e69472c49432fd8a7001c7",
+      "entry_hash": "0xf760997f783b6c6820523ac71f5b6b72bea5eab62b66b0f96393f8dcc8dfd62f"
+    },
+    "activate_finalization": {
+      "schema": "urnetwork-sim-journal-v1",
+      "sequence": 10258,
+      "time": "2026-09-12T02:47:16.531009354Z",
+      "deployment_id": "ur-subnet-testnet-v1",
+      "plan_hash": "0x6f3d21b4a3881a23da05148a0bb4d21a24990f2955eb073544b9194b080b1d9c",
+      "action_id": "repair.coordinator-rounding.activate",
+      "intent_hash": "0x53ed3ed053673110c56ec0fc185362f49a9deb28fa1cd6bdffbd2af021ed24c1",
+      "stage": "finalized",
+      "transaction_hash": "0x4255f99d94abecfb2a48804090890059d070ca8e66821038667e873fb20fc7b2",
+      "block_number": 7986580,
+      "block_hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9",
+      "recovery_block": 7986577,
+      "recovery_block_hash": "0x6a4a4dfafa4792e294c14f3b0545e8dc920917798be3291b574e1aa10ab6dda8",
+      "previous_hash": "0x938318bb14850ccfc73ea8a79182ec59e1eb786c0d57a9789d89a550b1057896",
+      "entry_hash": "0x88bfeb505f25531f3d0df1a3ffe7d806663089ff56739e60caba812b6b2fa211"
+    },
+    "observed_at": "2026-09-12T02:47:16.604730042Z",
+    "observed_head": {
+      "number": 7986580,
+      "hash": "0xeb101aeb317fee5b3f27c44540b63c4f4eeb46882ead59654e36b37dd57f22f9"
+    },
+    "custody_identity_hash": "0x140201fde913b4e4288631f0f3cd9359404fc6cc4604ffc711417a44bbed542a"
+  },
+  "hash": "0xcc1b7810b36c7ed6e7a9c58599b904d6a428f8bab1dfeeab9a15ffd6fab5ada3",
+  "owner_signature": "22d92c55325f7193db97c543d22b066e0998902290915d9f975401379cd9f07a58b7a4610b1ca03b1ba108f5c851ead2369f31adfec84ebad657c179b461500c01"
+}
