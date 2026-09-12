@@ -114,7 +114,7 @@ func TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority(t *testing.
 	}
 	f.reader.evidence.ExitCriteria[0].Assertions[0].Observed = 90
 	target.ExitCriteria[0].Assertions[0].Observed = 91
-	if owned.evidence.ExitCriteria[0].Assertions[0].Observed != 4 || target.EvidenceHash != common.Hash{0x33}.Hex() || target.PublicVerification == nil {
+	if owned.evidence.ExitCriteria[0].Assertions[0].Observed != 4 || target.EvidenceHash != (common.Hash{0x33}).Hex() || target.PublicVerification == nil {
 		t.Fatal("factory/caller mutation changed the invocation or admission rewrote sealing fields")
 	}
 	recorder := newFinalV2RPCRecorder(t.Context(), owned, 64*1024, 1024*1024)
