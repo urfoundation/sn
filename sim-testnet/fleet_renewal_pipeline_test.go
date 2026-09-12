@@ -189,7 +189,7 @@ func TestFleetRenewalPipelineJoinsCanceledWorkers(t *testing.T) {
 }
 
 func TestFleetRenewalFeeQuoteUsesExactApprovedCeiling(t *testing.T) {
-	action := Action{ID: "fleet.renew.1.1.mirror", Parameters: map[string]string{evmMaximumGasUnitsParameter: "200000", evmMaximumFeePerGasParameter: "25000000000"}, Spend: Spend{EVMGasWei: "5000000000000000"}}
+	action := Action{ID: "fleet.renew.1.1.mirror", Kind: "evm-transaction", Parameters: map[string]string{evmMaximumGasUnitsParameter: "200000", evmMaximumFeePerGasParameter: "25000000000"}, Spend: Spend{EVMGasWei: "5000000000000000"}}
 	fee, err := fleetRenewalQuotedFeeCap(action, big.NewInt(20_134_283_587), new(big.Int))
 	if err != nil || fee.Uint64() != 25_000_000_000 {
 		t.Fatalf("usable approved quote rejected: %v", err)

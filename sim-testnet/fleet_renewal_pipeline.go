@@ -38,7 +38,10 @@ func orderFleetRenewalActions(actions []Action, renewal FleetRenewal) ([]Action,
 				member, _ := strconv.Atoi(a.Parameters["member"])
 				switch operation {
 				case "commitment":
-					a.DependsOn = append([]string{}, previous...)
+					// Action's wire format omits an empty dependency list. Its
+					// intent must therefore use nil before hashing, just as the
+					// exact imported approval will after decoding.
+					a.DependsOn = append([]string(nil), previous...)
 				case "mirror":
 					a.DependsOn = []string{fleetRenewalActionID(renewal.Round, fleet, "commitment", 0)}
 					a.Parameters["renewal_expected_nonce"] = strconv.FormatUint(oracleNonce, 10)

@@ -217,6 +217,21 @@ func TestFleetRenewalPlansExpiredAndLiveMixedGenerations(t *testing.T) {
 	if _, err := decodePersistedPlanBytes(raw); err != nil {
 		t.Fatalf("renewal wire approval does not round trip: %v", err)
 	}
+	// Approval import must reproduce every executable intent, including the
+	// independent first native wave whose omitted dependency list decodes nil.
+	for _, action := range actions {
+		wire, err := json.Marshal(action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var imported Action
+		if err := json.Unmarshal(wire, &imported); err != nil {
+			t.Fatal(err)
+		}
+		if hash, err := actionIntentHash(imported); err != nil || hash != action.IntentHash {
+			t.Fatalf("exact approval import changed %s intent: %v", action.ID, err)
+		}
+	}
 	for _, fault := range []string{"missing-revoke", "unnecessary-revoke", "fee", "generation", "uid", "calldata", "budget"} {
 		t.Run(fault, func(t *testing.T) {
 			renewal := cloneFleetRenewalForTest(t, fixture.renewal)
