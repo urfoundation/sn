@@ -116,6 +116,10 @@ func TestScenarioNativeWarmupV2WaitsBeforeChoosingAcceptanceAndPreservesHistory(
 		calls++
 		return &ScenarioNativeWarmupV2{Schema: "urnetwork-sim-native-warmup-v2", Phase: "release-1.0", Ready: calls == 2, Detail: "controlled readiness state"}, ctx.Err()
 	}, NativeWarmupCompleteV2: func(context.Context) error { completed = true; return nil }}
+	options.NativeWarmupBudgetV2, err = newScenarioNativeWarmupBudgetV2(cfg, definition.Name, false, first.Status.Contracts.FinalizedHead, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	current, err := waitScenarioNativeWarmupV2(t.Context(), cfg, definition.Name, baseline, first, probe, options, func(observation *ScenarioObservation) error { retained = append(retained, observation); return nil })
 	if err != nil || !completed || calls != 2 || len(retained) != 2 || retained[0].NativeWarmupV2.Ready || !retained[1].NativeWarmupV2.Ready {
 		t.Fatal("readiness skipped real waiting or lost its retained history", err)
@@ -140,6 +144,11 @@ func TestScenarioNativeWarmupV2CancellationCannotCommitAcceptance(t *testing.T) 
 		cancel()
 		return &ScenarioNativeWarmupV2{Schema: "urnetwork-sim-native-warmup-v2", Phase: "release-1.0", Detail: "awaiting both actual applications"}, nil
 	}, NativeWarmupCompleteV2: func(context.Context) error { completed = true; return nil }}
+	var err error
+	options.NativeWarmupBudgetV2, err = newScenarioNativeWarmupBudgetV2(cfg, "release-1.0", false, observation.Status.Contracts.FinalizedHead, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	current, err := waitScenarioNativeWarmupV2(ctx, cfg, "release-1.0", observation, observation, &staticScenarioProbe{}, options, func(*ScenarioObservation) error { return nil })
 	if !errors.Is(err, context.Canceled) || completed || current.NativeWarmupV2.Ready {
 		t.Fatal("cancelled warm-up admitted acceptance or lost cancellation", err)
@@ -155,7 +164,7 @@ func TestScenarioNativeWarmupV2ChargesBothPhaseAndResumedPreparationWork(t *test
 	for _, entry := range []struct {
 		phase         string
 		warmup, after uint64
-	}{{"release-1.0", 1530, 7209}, {"production-soak", 1620, 1640}} {
+	}{{"release-1.0", 1530, 6040}, {"production-soak", 1620, 1640}} {
 		span, err := scenarioNativeWarmupBlocksV2(cfg, entry.phase)
 		if err != nil || span != entry.warmup {
 			t.Fatal("actual warm-up cadence differs", span, err)
@@ -172,5 +181,69 @@ func TestScenarioNativeWarmupV2ChargesBothPhaseAndResumedPreparationWork(t *test
 	cfg.Hyperparameters.OwnerControlled["commit_reveal_period"] = ^uint64(0)
 	if _, err := scenarioNativeWarmupBlocksV2(cfg, "release-1.0"); err == nil {
 		t.Fatal("overflowed warm-up became a finite forecast")
+	}
+}
+
+func TestScenarioNativeWarmupV2SharesPreparationDeadlineWithoutBorrowingAcceptance(t *testing.T) {
+	cfg := runtimeEvidenceLaunchConfigTest(t)
+	work, err := evidenceRelayConfiguredWork(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	head := ChainHead{Number: 9000, Hash: finalTestHex(0x29)}
+	for _, phase := range []string{"release-1.0", "production-soak"} {
+		t.Run(phase, func(t *testing.T) {
+			budget, err := newScenarioNativeWarmupBudgetV2(cfg, phase, false, head, started)
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial, err := work.remaining(phase, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparedAt := head.Number + work.releasePreparation
+			if phase == "production-soak" {
+				preparedAt = head.Number + work.productionPreparation
+			}
+			remaining, err := work.duringNativePreparation(phase, budget, preparedAt, started.Add(time.Second))
+			if err != nil || preparedAt+remaining != head.Number+initial {
+				t.Fatal("completed preparation restarted a full native wait", preparedAt, remaining, initial, err)
+			}
+			after, err := work.afterWarmup(phase)
+			if err != nil {
+				t.Fatal(err)
+			}
+			last, err := work.duringNativePreparation(phase, budget, budget.EndBlock, started.Add(time.Second))
+			if err != nil || last != after {
+				t.Fatal("readiness consumed a required acceptance block", last, after, err)
+			}
+			if _, err := work.duringNativePreparation(phase, budget, budget.EndBlock+1, started.Add(time.Second)); err == nil {
+				t.Fatal("slow preparation borrowed from later accepted epochs")
+			}
+			if _, err := work.duringNativePreparation(phase, budget, preparedAt, budget.Deadline); err == nil {
+				t.Fatal("stalled chain restarted the wall watchdog")
+			}
+			resumed, err := newScenarioNativeWarmupBudgetV2(cfg, phase, true, head, started)
+			if err != nil || resumed.EndBlock != budget.EndBlock {
+				t.Fatal("already completed preparation bypassed actual native readiness", resumed, err)
+			}
+		})
+	}
+
+	// Even a source callback that would return ready cannot publish readiness
+	// after preparation consumed the original deadline. No timing sleep is used.
+	observation := testScenarioObservation(cfg, 10)
+	budget, err := newScenarioNativeWarmupBudgetV2(cfg, "release-1.0", false, observation.Status.Contracts.FinalizedHead, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	called, completed, retained := false, false, false
+	options := scenarioRunOptions{NativeWarmupBudgetV2: budget, NativeWarmupV2: func(context.Context, *ScenarioObservation, *ScenarioObservation) (*ScenarioNativeWarmupV2, error) {
+		called = true
+		return &ScenarioNativeWarmupV2{Schema: "urnetwork-sim-native-warmup-v2", Phase: "release-1.0", Ready: true}, nil
+	}, NativeWarmupCompleteV2: func(context.Context) error { completed = true; return nil }}
+	if _, err := waitScenarioNativeWarmupV2(t.Context(), cfg, "release-1.0", observation, observation, &staticScenarioProbe{}, options, func(*ScenarioObservation) error { retained = true; return nil }); !errors.Is(err, context.DeadlineExceeded) || called || completed || retained {
+		t.Fatal("expired preparation created a new readiness or acceptance window", err, called, completed, retained)
 	}
 }

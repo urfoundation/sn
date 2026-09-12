@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/urfoundation/sn/crv4"
@@ -165,11 +166,16 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
+	started := time.Now()
 	work, err := evidenceRelayConfiguredWork(self.executor.cfg)
 	if err != nil {
 		return err
 	}
 	remaining, err := work.remaining(self.phase, self.prepared)
+	if err != nil {
+		return err
+	}
+	budget, err := newScenarioNativeWarmupBudgetV2(self.executor.cfg, self.phase, self.prepared, ChainHead{Number: block, Hash: fmt.Sprintf("0x%x", hash)}, started)
 	if err != nil {
 		return err
 	}
@@ -306,10 +312,17 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err != nil {
 		return err
 	}
+	if budget != nil {
+		remaining, err = work.duringNativePreparation(self.phase, budget, block, time.Now())
+		if err != nil {
+			return err
+		}
+	}
 	if err := self.requireHorizonRemaining(horizon, block, currentNative, remaining); err != nil {
 		return err
 	}
 	self.horizon = horizon
+	self.nativeWarmupBudget = budget
 	return self.ctx.Err()
 }
 
@@ -380,10 +393,16 @@ func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 	if block < self.horizon.anchorBlock || block > maximum {
 		return fmt.Errorf("evidence relay reached its funded activation horizon: block=%d maximum=%d", block, maximum)
 	}
-	if !self.prepared {
+	if self.nativeWarmupBudget != nil && !self.nativeWarmupComplete || !self.prepared {
 		remaining, err := self.work.remaining(self.phase, true)
 		if err != nil {
 			return err
+		}
+		if self.nativeWarmupBudget != nil {
+			remaining, err = self.work.duringNativePreparation(self.phase, self.nativeWarmupBudget, block, time.Now())
+			if err != nil {
+				return err
+			}
 		}
 		remaining, err = self.phaseHorizonRemaining(self.horizon, block, remaining)
 		if err != nil {
@@ -401,9 +420,10 @@ func (self *evidenceRelayRuntime) checkHorizonBlock(block uint64) error {
 // One bounded request asks the existing worker to retain the new remaining
 // work floor; no caller may race its slot census or hold a lock across Rpc.
 type evidenceRelayRemainingRequest struct {
-	ctx       context.Context
-	remaining uint64
-	result    chan error
+	ctx                  context.Context
+	remaining            uint64
+	completeNativeWarmup bool
+	result               chan error
 }
 
 // Called by the worker only, at a real phase transition after preparation.
@@ -419,10 +439,28 @@ func (self *evidenceRelayRuntime) checkRemaining(request evidenceRelayRemainingR
 	if err != nil {
 		return err
 	}
-	if err := self.requireHorizonRemaining(self.horizon, block, native, request.remaining); err != nil {
+	remaining := request.remaining
+	if self.nativeWarmupBudget != nil {
+		if !self.nativeWarmupComplete {
+			remaining, err = self.work.duringNativePreparation(self.phase, self.nativeWarmupBudget, block, time.Now())
+			if err != nil {
+				return err
+			}
+		}
+		if request.completeNativeWarmup || self.nativeWarmupComplete {
+			remaining, err = self.work.afterWarmup(self.phase)
+			if err != nil {
+				return err
+			}
+		}
+	} else if request.completeNativeWarmup {
+		return errors.New("native readiness completion has no original funded deadline")
+	}
+	if err := self.requireHorizonRemaining(self.horizon, block, native, remaining); err != nil {
 		return err
 	}
 	self.prepared = true
+	self.nativeWarmupComplete = self.nativeWarmupComplete || request.completeNativeWarmup
 	return nil
 }
 
@@ -467,7 +505,7 @@ func (self *evidenceRelayRuntime) RequirePrepared(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return self.requireRemainingWork(ctx, remaining)
+	return self.requireRemainingWork(ctx, remaining, false)
 }
 
 func (self *evidenceRelayRuntime) RequireNativeWarmup(ctx context.Context) error {
@@ -478,14 +516,14 @@ func (self *evidenceRelayRuntime) RequireNativeWarmup(ctx context.Context) error
 	if err != nil {
 		return err
 	}
-	return self.requireRemainingWork(ctx, remaining)
+	return self.requireRemainingWork(ctx, remaining, true)
 }
 
-func (self *evidenceRelayRuntime) requireRemainingWork(ctx context.Context, remaining uint64) error {
+func (self *evidenceRelayRuntime) requireRemainingWork(ctx context.Context, remaining uint64, completeNativeWarmup bool) error {
 	if err := self.WaitReady(ctx); err != nil {
 		return err
 	}
-	request := evidenceRelayRemainingRequest{ctx: ctx, remaining: remaining, result: make(chan error, 1)}
+	request := evidenceRelayRemainingRequest{ctx: ctx, remaining: remaining, completeNativeWarmup: completeNativeWarmup, result: make(chan error, 1)}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

@@ -211,27 +211,45 @@ func evidenceRelayWatchdogDuration(cfg *ResolvedConfig, definition scenarioDefin
 	return duration, nil
 }
 
+// Validators and traffic remain active during preparation. Both actual
+// preparation and native readiness must finish inside one absolute watchdog;
+// neither completion starts a second allowance for the other operation.
+func (self evidenceRelayWork) preparation(phase string, prepared bool) (uint64, error) {
+	var preparation, warmup uint64
+	switch phase {
+	case "release-1.0":
+		preparation, warmup = self.releasePreparation, self.releaseWarmup
+	case "production-soak":
+		preparation, warmup = self.productionPreparation, self.productionWarmup
+	default:
+		return 0, errors.New("evidence relay preparation has no funded phase")
+	}
+	if prepared {
+		return warmup, nil
+	}
+	return max(preparation, warmup), nil
+}
+
 // Production cannot reset the original horizon. Release entry reserves the
-// later production work too; post-preparation only drops completed setup work.
+// complete later phase as well. The runtime subtracts elapsed preparation
+// only against its fixed readiness deadline, never from accepted epoch work.
 func (self evidenceRelayWork) remaining(phase string, prepared bool) (uint64, error) {
 	values := []uint64{self.productionObservation}
-	if self.productionWarmup != 0 {
-		values = append(values, self.productionWarmup)
+	preparation, err := self.preparation(phase, prepared)
+	if err != nil {
+		return 0, err
 	}
 	if phase == "release-1.0" {
-		values = append(values, self.releaseObservation, self.productionPreparation)
-		if self.releaseWarmup != 0 {
-			values = append(values, self.releaseWarmup)
+		production, err := self.preparation("production-soak", false)
+		if err != nil {
+			return 0, err
 		}
-		if !prepared {
-			values = append(values, self.releasePreparation)
-		}
-	} else if phase == "production-soak" {
-		if !prepared {
-			values = append(values, self.productionPreparation)
-		}
-	} else {
+		values = append(values, self.releaseObservation, production)
+	} else if phase != "production-soak" {
 		return 0, errors.New("evidence relay horizon has no complete campaign phase")
+	}
+	if preparation != 0 {
+		values = append(values, preparation)
 	}
 	var result uint64
 	for _, value := range values {
@@ -260,6 +278,28 @@ func (self evidenceRelayWork) afterWarmup(phase string) (uint64, error) {
 		return 0, errors.New("native warm-up exceeds its owned remaining work")
 	}
 	return remaining - warmup, nil
+}
+
+// Elapsed preparation consumes its original finite allowance. Actual native
+// readiness is still mandatory before the complete observation work can start;
+// a missed deadline is an error, not permission to borrow from later epochs.
+func (self evidenceRelayWork) duringNativePreparation(phase string, budget *ScenarioNativeWarmupBudgetV2, block uint64, now time.Time) (uint64, error) {
+	if budget == nil || budget.Phase != phase {
+		return 0, errors.New("native preparation forecast differs from its original phase")
+	}
+	preparation, err := budget.remaining(block, now)
+	if err != nil {
+		return 0, err
+	}
+	observation, err := self.afterWarmup(phase)
+	if err != nil {
+		return 0, err
+	}
+	remaining, ok := checkedAdd(preparation, observation)
+	if !ok || observation == 0 {
+		return 0, errors.New("native preparation remaining work is absent or overflows")
+	}
+	return remaining, nil
 }
 
 // One source is the exact original validator hotkey/operator activation.

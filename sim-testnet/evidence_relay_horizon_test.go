@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urfoundation/sn/protocol"
 	validatorcomponent "github.com/urfoundation/sn/validator"
@@ -87,7 +88,7 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		t.Fatalf("actual configured phase/preparation geometry changed: %+v", work)
 	}
 	remaining, err := work.remaining("release-1.0", false)
-	if err != nil || remaining != 10077 {
+	if err != nil || remaining != 7570 {
 		t.Fatal("release entry omitted remaining production/preparation work", remaining, err)
 	}
 	for _, entry := range []struct {
@@ -95,7 +96,7 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		prepared bool
 		want     uint64
 	}{
-		{phase: "release-1.0", prepared: true, want: 8739}, {phase: "production-soak", prepared: false, want: 4429}, {phase: "production-soak", prepared: true, want: 3260},
+		{phase: "release-1.0", prepared: true, want: 7570}, {phase: "production-soak", prepared: false, want: 3260}, {phase: "production-soak", prepared: true, want: 3260},
 	} {
 		value, err := work.remaining(entry.phase, entry.prepared)
 		if err != nil || value != entry.want {
@@ -103,11 +104,11 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		}
 	}
 	required, closed, native, err := evidenceRelayForecast(work, 4, remaining)
-	if err != nil || required != 256 || closed != 35 || native != 29 {
+	if err != nil || required != 200 || closed != 27 || native != 23 {
 		t.Fatal("required original-source forecast differs", required, closed, native, err)
 	}
 	span, closed, native, err := evidenceRelayConfiguredHorizon(cfg)
-	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 0 {
+	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 56 {
 		t.Fatal("finite delay/extra-subject headroom differs", span, closed, native, err)
 	}
 	if required > cfg.Config.ValidatorEvidenceRelay.MaxSlots {
@@ -397,5 +398,18 @@ func TestEvidenceRelayHorizonReservesNativeAndInFlightPreparationWork(t *testing
 	}
 	if err := runtime.checkHorizonBlock(block + 1); err == nil {
 		t.Fatal("completed preparation erased the original absolute horizon")
+	}
+	// The strict V2 path retains its readiness deadline after preparation is
+	// marked complete. Only actual readiness completion releases this guard.
+	runtime.nativeWarmupBudget, err = newScenarioNativeWarmupBudgetV2(fixture.cfg, runtime.phase, false, ChainHead{Number: horizon.anchorBlock, Hash: finalTestHex(0x38)}, time.Now())
+	if err != nil || runtime.nativeWarmupBudget == nil {
+		t.Fatal("strict native preparation window was not installed", err)
+	}
+	if err := runtime.checkHorizonBlock(runtime.nativeWarmupBudget.EndBlock + 1); err == nil || !strings.Contains(err.Error(), "shared preparation deadline") {
+		t.Fatal("completed preparation bypassed the original native readiness deadline", err)
+	}
+	runtime.nativeWarmupComplete = true
+	if err := runtime.checkHorizonBlock(block); err != nil {
+		t.Fatal("actual readiness retained a completed preparation guard", err)
 	}
 }

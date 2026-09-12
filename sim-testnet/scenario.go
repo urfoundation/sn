@@ -187,33 +187,33 @@ func headDecisionCandidateIdentities(artifact *validatorpkg.ReleaseMeasurementAr
 }
 
 type ValidatorObservation struct {
-	ValidatorID        int                         `json:"validator_id"`
-	CurrentStatus      string                      `json:"current_status,omitempty"`
-	CurrentEpoch       uint64                      `json:"current_epoch,omitempty"`
-	VectorHash         string                      `json:"vector_hash,omitempty"`
-	ValuesHash         string                      `json:"values_hash,omitempty"`
-	FinalizedIntents   int                         `json:"finalized_intents"`
-	AppliedIntents     int                         `json:"applied_intents"`
-	SelfUID            uint16                      `json:"self_uid"`
-	MaskedUIDs         []uint16                    `json:"masked_uids,omitempty"`
-	EligibleHeadUIDs   []uint16                    `json:"eligible_head_uids,omitempty"`
-	EligibleHeadScores []validatorpkg.RationalJSON `json:"eligible_head_scores,omitempty"`
-	SelectedHeadUIDs   []uint16                    `json:"selected_head_uids,omitempty"`
-	RejectedHeadUIDs   []uint16                    `json:"rejected_head_uids,omitempty"`
-	HeadDecisionEpochs int                         `json:"head_decision_epochs"`
-	HeadTransitions    int                         `json:"head_transitions"`
-	PromotedHeadUIDs   []uint16                    `json:"promoted_head_uids,omitempty"`
-	DemotedHeadUIDs    []uint16                    `json:"demoted_head_uids,omitempty"`
-	StaleHeadBindings  int                         `json:"stale_head_bindings"`
-	IntentHashes       []string                    `json:"intent_hashes,omitempty"`
-	AppliedWeights     []IntentWeightObservation   `json:"applied_weights,omitempty"`
-	HeadDecisions      []HeadDecisionObservation   `json:"head_decisions,omitempty"`
-	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
-	PathProofCounts    map[int]int                 `json:"path_proof_counts,omitempty"`
-	Error              string                      `json:"error,omitempty"`
-	NativeSourceScopeV2 string                     `json:"native_source_scope_v2,omitempty"`
-	NativeSourceStoreSHA256 string                 `json:"native_source_store_sha256,omitempty"`
-	NativeCommitsV2 []FinalNativeCoverageCommitV2   `json:"native_commits_v2,omitempty"`
+	ValidatorID             int                           `json:"validator_id"`
+	CurrentStatus           string                        `json:"current_status,omitempty"`
+	CurrentEpoch            uint64                        `json:"current_epoch,omitempty"`
+	VectorHash              string                        `json:"vector_hash,omitempty"`
+	ValuesHash              string                        `json:"values_hash,omitempty"`
+	FinalizedIntents        int                           `json:"finalized_intents"`
+	AppliedIntents          int                           `json:"applied_intents"`
+	SelfUID                 uint16                        `json:"self_uid"`
+	MaskedUIDs              []uint16                      `json:"masked_uids,omitempty"`
+	EligibleHeadUIDs        []uint16                      `json:"eligible_head_uids,omitempty"`
+	EligibleHeadScores      []validatorpkg.RationalJSON   `json:"eligible_head_scores,omitempty"`
+	SelectedHeadUIDs        []uint16                      `json:"selected_head_uids,omitempty"`
+	RejectedHeadUIDs        []uint16                      `json:"rejected_head_uids,omitempty"`
+	HeadDecisionEpochs      int                           `json:"head_decision_epochs"`
+	HeadTransitions         int                           `json:"head_transitions"`
+	PromotedHeadUIDs        []uint16                      `json:"promoted_head_uids,omitempty"`
+	DemotedHeadUIDs         []uint16                      `json:"demoted_head_uids,omitempty"`
+	StaleHeadBindings       int                           `json:"stale_head_bindings"`
+	IntentHashes            []string                      `json:"intent_hashes,omitempty"`
+	AppliedWeights          []IntentWeightObservation     `json:"applied_weights,omitempty"`
+	HeadDecisions           []HeadDecisionObservation     `json:"head_decisions,omitempty"`
+	DepositAudits           []validatorpkg.DepositAudit   `json:"deposit_audits,omitempty"`
+	PathProofCounts         map[int]int                   `json:"path_proof_counts,omitempty"`
+	Error                   string                        `json:"error,omitempty"`
+	NativeSourceScopeV2     string                        `json:"native_source_scope_v2,omitempty"`
+	NativeSourceStoreSHA256 string                        `json:"native_source_store_sha256,omitempty"`
+	NativeCommitsV2         []FinalNativeCoverageCommitV2 `json:"native_commits_v2,omitempty"`
 
 	LocalRuntimeIntents *validatorpkg.ProvisionalIntentObservationV2 `json:"local_runtime_intents,omitempty"`
 }
@@ -396,6 +396,7 @@ type scenarioRunOptions struct {
 	Prepare                     func(context.Context) error
 	NativeWarmupV2              scenarioNativeWarmupReadV2
 	NativeWarmupCompleteV2      func(context.Context) error
+	NativeWarmupBudgetV2        *ScenarioNativeWarmupBudgetV2
 	ProcessLogs                 scenarioProcessLogGate
 	CollectFinalSemantic        finalSemanticCampaignInputCollector
 	WaitFinalSettlementClosures func(context.Context, *ResolvedConfig, string, *ScenarioObservation, *ScenarioAcceptanceWindow, time.Time, time.Duration) error
@@ -3899,15 +3900,37 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		return initialFailure(start, fmt.Errorf("persist initial scenario observation: %w", err))
 	}
 	current = start
+	needsNativeWarmup := scenarioNeedsNativeWarmupV2(cfg, definition.Name)
+	preparationCtx := ctx
+	if needsNativeWarmup {
+		if options.NativeWarmupBudgetV2 == nil {
+			prepared := options.Attempt != nil && options.Attempt.payload.PreparationComplete
+			options.NativeWarmupBudgetV2, err = newScenarioNativeWarmupBudgetV2(cfg, definition.Name, prepared, start.Status.Contracts.FinalizedHead, options.Now())
+			if err != nil {
+				return initialFailure(start, err)
+			}
+		}
+		if options.NativeWarmupBudgetV2.Phase != definition.Name {
+			return initialFailure(start, errors.New("native readiness preparation window belongs to another phase"))
+		}
+		var preparationCancel context.CancelFunc
+		preparationCtx, preparationCancel = context.WithDeadline(ctx, options.NativeWarmupBudgetV2.Deadline)
+		defer preparationCancel()
+		if _, err := options.NativeWarmupBudgetV2.remaining(start.Status.Contracts.FinalizedHead.Number, time.Now()); err != nil {
+			return initialFailure(start, err)
+		}
+	}
 	// Public-RPC deployment can consume arbitrary epochs, while precompile,
 	// governance, key rotation, and dishonest-deposit preparation remain in
 	// the observed happy path before the exact acceptance baseline is signed.
 	if options.Prepare != nil || options.FleetLifecycle != nil || options.Attempt != nil {
-		if err := beginScenarioCampaignPreparation(ctx, definition.Name, runID, options); err != nil {
+		if err := beginScenarioCampaignPreparation(preparationCtx, definition.Name, runID, options); err != nil {
 			return initialFailure(start, err)
 		}
 	}
-	needsNativeWarmup := scenarioNeedsNativeWarmupV2(cfg, definition.Name)
+	if err := preparationCtx.Err(); err != nil {
+		return initialFailure(start, fmt.Errorf("scenario preparation exhausted native readiness deadline: %w", err))
+	}
 	if !needsNativeWarmup {
 		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
 		if err != nil {
@@ -3915,7 +3938,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		}
 	}
 	if options.Prepare != nil {
-		prepared, prepareErr := probe.Snapshot(ctx)
+		prepared, prepareErr := probe.Snapshot(preparationCtx)
 		if prepareErr != nil {
 			return initialFailure(start, fmt.Errorf("post-preparation scenario observation: %w", prepareErr))
 		}
@@ -3931,7 +3954,7 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			return initialFailure(current, fmt.Errorf("persist post-preparation scenario observation: %w", err))
 		}
 	}
-	current, err = waitScenarioNativeWarmupV2(ctx, cfg, definition.Name, campaignStart, current, probe, options, func(observed *ScenarioObservation) error {
+	current, err = waitScenarioNativeWarmupV2(preparationCtx, cfg, definition.Name, campaignStart, current, probe, options, func(observed *ScenarioObservation) error {
 		if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, observed, false); err != nil {
 			return fmt.Errorf("native warm-up process log gate: %w", err)
 		}

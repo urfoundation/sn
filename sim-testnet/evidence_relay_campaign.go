@@ -39,6 +39,11 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 		// caller cannot turn a ready boolean into a native source receipt.
 		options.NativeWarmupV2 = liveScenarioNativeWarmupV2(cfg, executor, relay.chain, definition.Name)
 		options.NativeWarmupCompleteV2 = relay.RequireNativeWarmup
+		if relay.nativeWarmupBudget == nil {
+			return nil, errors.New("funded native readiness has no original preparation window")
+		}
+		budget := *relay.nativeWarmupBudget
+		options.NativeWarmupBudgetV2 = &budget
 	}
 	// Resumed preparation retains its original completion; it cannot buy a
 	// new horizon. Fresh preparation rechecks actual clocks before observation.

@@ -17,13 +17,62 @@ import (
 // native state decide when the next complete settlement window may be chosen;
 // the final archive still replays every cut, decision and payout event.
 type ScenarioNativeWarmupV2 struct {
-	Schema     string                            `json:"schema"`
-	Phase      string                            `json:"phase"`
-	Ready      bool                              `json:"ready"`
-	Detail     string                            `json:"detail"`
-	Validators []ScenarioNativeWarmupValidatorV2 `json:"validators"`
-	Before     *NativeRewardObservation          `json:"payout_parent,omitempty"`
-	After      *NativeRewardObservation          `json:"payout,omitempty"`
+	Schema            string                            `json:"schema"`
+	Phase             string                            `json:"phase"`
+	Ready             bool                              `json:"ready"`
+	Detail            string                            `json:"detail"`
+	Validators        []ScenarioNativeWarmupValidatorV2 `json:"validators"`
+	Before            *NativeRewardObservation          `json:"payout_parent,omitempty"`
+	After             *NativeRewardObservation          `json:"payout,omitempty"`
+	PreparationWindow *ScenarioNativeWarmupBudgetV2     `json:"preparation_window,omitempty"`
+}
+
+// The funded relay creates this window before scenario preparation. Its EVM
+// block ceiling and wall deadline are fixed independently; passing either
+// ceiling without actual readiness ends the attempt, even if preparation has
+// just completed. The head is an EVM admission clock, not a native mapping.
+type ScenarioNativeWarmupBudgetV2 struct {
+	Phase     string    `json:"phase"`
+	StartHead ChainHead `json:"start_head"`
+	EndBlock  uint64    `json:"end_block"`
+	StartedAt time.Time `json:"started_at"`
+	Deadline  time.Time `json:"deadline"`
+}
+
+func newScenarioNativeWarmupBudgetV2(cfg *ResolvedConfig, phase string, prepared bool, head ChainHead, started time.Time) (*ScenarioNativeWarmupBudgetV2, error) {
+	if !scenarioNeedsNativeWarmupV2(cfg, phase) {
+		return nil, nil
+	}
+	if started.IsZero() || verifyFinalHead("native readiness preparation", head) != nil || cfg.Public == nil {
+		return nil, errors.New("native readiness preparation has no actual clock anchor")
+	}
+	work, err := evidenceRelayConfiguredWork(cfg)
+	if err != nil {
+		return nil, err
+	}
+	blocks, err := work.preparation(phase, prepared)
+	if err != nil {
+		return nil, err
+	}
+	end, ok := checkedAdd(head.Number, blocks)
+	if !ok {
+		return nil, errors.New("native readiness preparation block deadline overflows")
+	}
+	duration, err := scenarioNativeBlockDurationV2(cfg, blocks)
+	if err != nil {
+		return nil, err
+	}
+	return &ScenarioNativeWarmupBudgetV2{Phase: phase, StartHead: head, EndBlock: end, StartedAt: started.UTC(), Deadline: started.Add(duration).UTC()}, nil
+}
+
+func (self *ScenarioNativeWarmupBudgetV2) remaining(block uint64, now time.Time) (uint64, error) {
+	if self == nil || self.StartedAt.IsZero() || !self.Deadline.After(self.StartedAt) || self.EndBlock <= self.StartHead.Number || block < self.StartHead.Number {
+		return 0, errors.New("native readiness has no original preparation deadline")
+	}
+	if !now.Before(self.Deadline) || block > self.EndBlock {
+		return 0, fmt.Errorf("native readiness exhausted its shared preparation deadline: start=%d end=%d observed=%d deadline=%s", self.StartHead.Number, self.EndBlock, block, self.Deadline.Format(time.RFC3339Nano))
+	}
+	return self.EndBlock - block, nil
 }
 
 type ScenarioNativeWarmupValidatorV2 struct {
@@ -78,10 +127,9 @@ func scenarioNativeWarmupBlocksV2(cfg *ResolvedConfig, phase string) (uint64, er
 	return span, nil
 }
 
-func scenarioNativeWarmupDurationV2(cfg *ResolvedConfig, phase string) (time.Duration, error) {
-	blocks, err := scenarioNativeWarmupBlocksV2(cfg, phase)
-	if err != nil || blocks == 0 || cfg.Public == nil || cfg.Public.Chain.ExpectedBlockSeconds == 0 {
-		return 0, errors.Join(errors.New("native warm-up has no finite watchdog"), err)
+func scenarioNativeBlockDurationV2(cfg *ResolvedConfig, blocks uint64) (time.Duration, error) {
+	if cfg == nil || blocks == 0 || cfg.Public == nil || cfg.Public.Chain.ExpectedBlockSeconds == 0 {
+		return 0, errors.New("native warm-up has no finite watchdog")
 	}
 	seconds, ok := checkedMul(blocks, cfg.Public.Chain.ExpectedBlockSeconds)
 	if !ok {
@@ -300,16 +348,21 @@ func waitScenarioNativeWarmupV2(ctx context.Context, cfg *ResolvedConfig, phase 
 	if !scenarioNeedsNativeWarmupV2(cfg, phase) {
 		return current, nil
 	}
-	if options.NativeWarmupV2 == nil || retain == nil || probe == nil {
+	if options.NativeWarmupV2 == nil || options.NativeWarmupBudgetV2 == nil || options.NativeWarmupBudgetV2.Phase != phase || retain == nil || probe == nil {
 		return current, errors.New("strict V2 scenario lacks native readiness admission")
 	}
-	duration, err := scenarioNativeWarmupDurationV2(cfg, phase)
-	if err != nil {
-		return current, err
-	}
-	bounded, cancel := context.WithTimeout(ctx, duration)
+	bounded, cancel := context.WithDeadline(ctx, options.NativeWarmupBudgetV2.Deadline)
 	defer cancel()
 	for {
+		if err := bounded.Err(); err != nil {
+			return current, err
+		}
+		if current == nil || current.Status == nil || current.Status.Contracts == nil {
+			return current, errors.New("native readiness lost its actual preparation clock")
+		}
+		if _, err := options.NativeWarmupBudgetV2.remaining(current.Status.Contracts.FinalizedHead.Number, time.Now()); err != nil {
+			return current, err
+		}
 		warmup, err := options.NativeWarmupV2(bounded, baseline, current)
 		if err != nil {
 			return current, err
@@ -317,6 +370,8 @@ func waitScenarioNativeWarmupV2(ctx context.Context, cfg *ResolvedConfig, phase 
 		if warmup == nil || warmup.Schema != "urnetwork-sim-native-warmup-v2" || warmup.Phase != phase {
 			return current, errors.New("native warm-up response owner differs")
 		}
+		window := *options.NativeWarmupBudgetV2
+		warmup.PreparationWindow = &window
 		detached := *current
 		current = &detached
 		current.NativeWarmupV2 = warmup

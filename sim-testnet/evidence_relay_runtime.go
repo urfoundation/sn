@@ -45,6 +45,8 @@ type evidenceRelayRuntime struct {
 	prepared             bool
 	work                 evidenceRelayWork
 	horizon              *evidenceRelayHorizon
+	nativeWarmupBudget   *ScenarioNativeWarmupBudgetV2
+	nativeWarmupComplete bool
 	ready                chan struct{}
 	remainingRequests    chan evidenceRelayRemainingRequest
 	stateLock            sync.Mutex
