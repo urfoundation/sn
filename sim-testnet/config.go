@@ -355,6 +355,7 @@ type ResolvedConfig struct {
 	// Invocation-only provenance is excluded from every persisted configuration
 	// and plan hash. Value copies retain the explicit provisional mode.
 	provisionalResume       *provisionalResumeState
+	strictHistoryAdoption   *strictHistoryAdoptionState
 	provisionalRPCAuthority string
 	// This strict invocation route is separately bound into SetupPlan and
 	// ResolvedInputsHash, preserving the original activation ConfigHash.

@@ -805,6 +805,9 @@ func LaunchDeployment(ctx context.Context, cfg *ResolvedConfig, stateDir string,
 	if err := attachProvisionalActivationSetup(cfg, stateDir, p, roles, specs); err != nil {
 		return fmt.Errorf("provisional validator activation handoff: %w", err)
 	}
+	if err := attachStrictHistoryAdoption(cfg, stateDir, p, specs); err != nil {
+		return fmt.Errorf("strict validator history handoff: %w", err)
+	}
 	binaryHash, err := fileSHA256(bins["sim-testnet"])
 	if err != nil {
 		return err

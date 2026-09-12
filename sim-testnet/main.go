@@ -29,6 +29,8 @@ type cliOptions struct {
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
+	StrictHistoryAdoption, StrictHistoryAdoptionSHA256 string
+	FirstNativeEpoch uint64
 	RepairArtifact, RepairArtifactSHA256, RepairBudget, RepairBudgetSHA256                                                          string
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
@@ -46,6 +48,7 @@ Commands:
   doctor   read-only configuration, repository, tool, RPC, wallet, and subnet checks
   release-lock  render or atomically refresh observed release-lock fields from clean repositories
   plan     print the canonical setup diff, costs, actions, and plan hash; never writes
+  history-adoption  capture a source-pinned request for strict startup after retained V2 history
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
   resume   reconcile the journal and continue an interrupted approved action
@@ -70,6 +73,8 @@ Common options:
   --format human|json
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
+  --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
+  --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
   --owned-rpc-authority HOST:PORT  strict plan-bound owned private IPv4 route; owned RPC has no request ceiling
   --provisional-observation-timeout DURATION  scenario --name epoch --provisional-resume only; 0 keeps the default, maximum 6h
@@ -91,7 +96,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", cliOptions{}, errors.New("missing command")
 	}
 	cmd := args[0]
-	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "history-adoption": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -113,6 +118,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Apply, "apply", false, "")
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
+	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
+	fs.StringVar(&o.StrictHistoryAdoption, "strict-history-adoption", "", "")
+	fs.StringVar(&o.StrictHistoryAdoptionSHA256, "strict-history-adoption-sha256", "", "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
 	fs.StringVar(&o.OwnedRPCAuthority, "owned-rpc-authority", "", "")
 	fs.DurationVar(&o.ProvisionalObservationTimeout, "provisional-observation-timeout", 0, "")
@@ -153,6 +161,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, errors.New("public analyze requires a valid exact --run-id")
 	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if err := validateCoordinatorRepairOptions(cmd, o); err != nil {
@@ -268,9 +279,12 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		fs := flag.NewFlagSet(component, flag.ContinueOnError)
 		var configPath string
 		var provisionalSetupPath, provisionalSetupSHA256 string
+		var strictHistoryPath, strictHistorySHA256 string
 		fs.StringVar(&configPath, "config", "", "")
 		fs.StringVar(&provisionalSetupPath, "provisional-activation-setup", "", "")
 		fs.StringVar(&provisionalSetupSHA256, "provisional-activation-setup-sha256", "", "")
+		fs.StringVar(&strictHistoryPath, "strict-history-adoption", "", "")
+		fs.StringVar(&strictHistorySHA256, "strict-history-adoption-sha256", "", "")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -280,6 +294,11 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		if provisionalSetupPath != "" || provisionalSetupSHA256 != "" {
 			if component != "__validator" || provisionalSetupPath == "" || provisionalSetupSHA256 == "" {
 				return errors.New("provisional activation handoff requires its validator path and hash")
+			}
+		}
+		if strictHistoryPath != "" || strictHistorySHA256 != "" {
+			if component != "__validator" || strictHistoryPath == "" || strictHistorySHA256 == "" || provisionalSetupPath != "" {
+				return errors.New("strict history handoff requires its sole validator path and hash")
 			}
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -296,6 +315,12 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 				return err
 			}
 			return validatorcomponent.RunReleaseWithProvisionalActivationSetup(ctx, configPath, raw, provisionalSetupSHA256)
+		}
+		if strictHistoryPath != "" {
+			stateDir := filepath.Dir(filepath.Dir(filepath.Dir(configPath)))
+			raw, err := readStrictHistoryAdoptionFile(stateDir, strictHistoryPath, validatorcomponent.ReleaseHistoryAdoptionV2MaximumBytes)
+			if err != nil { return err }
+			return validatorcomponent.RunReleaseWithHistoryAdoptionV2(ctx, configPath, raw, strictHistorySHA256)
 		}
 		return validatorcomponent.RunRelease(ctx, configPath)
 	}
@@ -370,7 +395,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
+	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -411,6 +436,10 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	switch cmd {
 	case "fleet-renew":
 		return runFleetRenewal(ctx, resolved, stateDir, o)
+	case "history-adoption":
+		bundle, err := captureStrictHistoryAdoption(ctx, resolved, stateDir, o.FirstNativeEpoch)
+		if err != nil { return err }
+		return printResult(o.Format, bundle, nil)
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
 	case "doctor":

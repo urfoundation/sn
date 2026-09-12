@@ -23,6 +23,21 @@ Write the final report to [FINAL.md](FINAL.md), with its committed on-chain
 evidence in `peerreview/evidence/`. Qualification covers this simulator and its
 runtime dependencies; separate calibration exercises are outside this scope.
 
+An existing provisional V2 namespace can enter strict startup only through an
+explicit history adoption request after the current approved setup plan is
+finalized. With both validators stopped, `history-adoption --first-native-epoch
+N --format json` reads the original activation source and intent prefix and
+renders the expected validator config bytes without changing runtime state.
+Retain its exact JSON under the state root's private `history-adoptions/`
+directory. Choose `N` only after renewal and qualification timing are known.
+Strict `launch` or `resume` consumes that file with
+`--strict-history-adoption PATH --strict-history-adoption-sha256 sha256:HASH`
+and the ordinary `--apply --plan-hash CURRENT` approval. A changed source,
+changed config, missed first epoch or later native gap fails closed. This path
+preserves the coordinator namespace and original signed inputs; it performs
+normal native, EVM and complete terminal replay and provides no campaign
+acceptance or provisional audit shortcut.
+
 New qualification tooling, status/report processing and its tests are written
 in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and

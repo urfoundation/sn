@@ -476,6 +476,9 @@ func executeSetupActions(ctx context.Context, executor *Executor, actions []Acti
 }
 
 func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
+	if err := validateStrictHistoryAdoptionOptions(cmd, o); err != nil {
+		return err
+	}
 	if err := validateProvisionalResumeOptions(cmd, o); err != nil {
 		return err
 	}
@@ -501,6 +504,14 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		}
 	}
 	p, planErr := loadPersistedPlan(cfg, stateDir)
+	if o.StrictHistoryAdoption != "" {
+		if planErr != nil {
+			return fmt.Errorf("strict history adoption requires the finalized current plan: %w", planErr)
+		}
+		if err := prepareStrictHistoryAdoption(ctx, cfg, stateDir, o, p); err != nil {
+			return err
+		}
+	}
 	if o.ProvisionalResume {
 		// A provisional successor adopts this exact used plan. It may not
 		// generate a replacement approval or alter activation/prepared inputs.
@@ -4709,20 +4720,9 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 	if err != nil {
 		return err
 	}
-	base := map[string]any{"schema_version": 1, "production": true, "release": "1.0", "deployment_id": cfg.Config.Deployment.DeploymentID, "chain_id": testnetChainID, "genesis_hash": testnetGenesis, "runtime_spec": cfg.Public.Chain.ExpectedRuntimeSpec, "transaction_version": cfg.Public.Chain.ExpectedTransactionVersion, "state_version": cfg.Public.Chain.ExpectedStateVersion, "runtime_code_hash": cfg.Release.Runtime.CodeHash, "runtime_metadata_hash": cfg.Release.Runtime.MetadataHash, "netuid": cfg.Netuid, "coordinator": c.CoordinatorProxy.Hex(), "settlement_vault": c.SettlementVault.Hex(), "deploy_block": eventSyncBlock, "policy_hash": cfg.PolicyHash, "rpc": []string{evmHTTP(workloadRPCAuthority())}, "substrate": []string{substrateWS(workloadSubstrateRPCAuthority())}}
+	base := runtimeComponentConfigBase(cfg, c, eventSyncBlock)
 	for i := 1; i <= cfg.Config.Topology.Validators; i++ {
-		v := cloneMap(base)
-		v["validator_id"] = i
-		v["state_dir"] = filepath.Join(stateDir, "runtime", fmt.Sprintf("validator-%d", i), "state")
-		v["hotkey_seed_file"] = filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", i))
-		v["controlled_no_ids"] = controlledNOIDsForValidator(i)
-		v["trail_depth"] = cfg.Policy.Verify.TrailDepth
-		v["poll_seconds"] = validatorPollSeconds(cfg)
-		v["version_key"] = hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["weights_version_key"])
-		v["policy"] = cfg.Policy
-		v["operators"] = operatorDirectory(cfg, stateDir, roles, i)
-		v["evidence_v2"] = cfg.Config.ValidatorEvidenceV2[i-1].Evidence
-		b, err := yaml.Marshal(v)
+		b, err := marshalRuntimeValidatorConfig(cfg, stateDir, roles, base, i)
 		if err != nil {
 			return err
 		}
@@ -4731,7 +4731,7 @@ func renderValidatorMinerConfigs(cfg *ResolvedConfig, stateDir string, roles *Ro
 			return err
 		}
 		seed, _ := hex.DecodeString(roles.Substrate[validatorHotkeyLabel(i)].SeedHex)
-		if err := atomicWrite(v["hotkey_seed_file"].(string), append([]byte("0x"), []byte(hex.EncodeToString(seed))...), 0o600); err != nil {
+		if err := atomicWrite(filepath.Join(stateDir, "secrets", fmt.Sprintf("validator-%d-hotkey.seed", i)), append([]byte("0x"), []byte(hex.EncodeToString(seed))...), 0o600); err != nil {
 			return err
 		}
 		for op := 1; op <= cfg.Config.Topology.Operators; op++ {

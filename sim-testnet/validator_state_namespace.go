@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -66,6 +67,11 @@ func preflightSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string)
 	if cfg == nil || cfg.Config == nil || stateDir == "" || cfg.Config.Topology.Validators < 1 || cfg.Config.Topology.Operators < 1 {
 		return errors.New("validator attempt-state namespace inputs are incomplete")
 	}
+	if cfg.strictHistoryAdoption != nil {
+		// The exact stopped V2 namespace belongs to the source-pinned request;
+		// startup still performs all normal disk, native and remote replay.
+		return preflightStrictHistoryAdoption(context.Background(), cfg, stateDir)
+	}
 	if provisionalResumeEnabled(cfg) {
 		if !cfg.Config.ProvisionValidatorEvidenceV2 {
 			return errors.New("provisional namespace reuse requires the retained V2 activation setup")
@@ -90,7 +96,7 @@ func prepareSignedAttemptStateNamespaces(cfg *ResolvedConfig, stateDir string) e
 	if err := preflightSignedAttemptStateNamespaces(cfg, stateDir); err != nil {
 		return err
 	}
-	if provisionalResumeEnabled(cfg) {
+	if provisionalResumeEnabled(cfg) || cfg.strictHistoryAdoption != nil {
 		// A resume never migrates, archives or resets already activated state.
 		return nil
 	}
