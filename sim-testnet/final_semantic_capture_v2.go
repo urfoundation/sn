@@ -140,6 +140,10 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 		return nil, err
 	}
 	remainingSourceBytes := archiveLimits.maximumBytes
+	authorityBytes, err := captureFinalValidatorAuthorityV2(ctx, cfg, stateRoot)
+	if err != nil {
+		return nil, err
+	}
 	contentLocators := map[string]FinalArtifactLocator{}
 	for validatorId := uint64(1); validatorId <= uint64(cfg.Config.Topology.Validators); validatorId++ {
 		release, configBytes, adoptionBytes, err := finalReleaseCaptureConfigWithAdoptionV2(ctx, cfg, stateRoot, validatorId)
@@ -202,6 +206,9 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			return nil
 		}
 		if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "runtime-config"}, configBytes); err != nil {
+			return nil, err
+		}
+		if err := retain(ctx, validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "simulator-authority"}, authorityBytes); err != nil {
 			return nil, err
 		}
 		if len(adoptionBytes) != 0 {
@@ -509,8 +516,9 @@ func waitFinalValidatorPublicationsV2(ctx context.Context, cfg *ResolvedConfig, 
 	}, wait)
 }
 
-// Placeholder-free dispatch for downstream reconstruction: a captured source
-// must never enter the materialized-v1 builder or claim final verification.
+// Older raw captures lack the original public renderer authority required for
+// independent V2 replay. New captures enter only the complete archive consumer;
+// neither a compact-format flag nor a pending status is a semantic verdict.
 func requireFinalSemanticReplayV2(value *FinalSemanticCollectedInputs) error {
 	if value == nil {
 		return errors.New("final semantic source is absent")
@@ -520,7 +528,14 @@ func requireFinalSemanticReplayV2(value *FinalSemanticCollectedInputs) error {
 	}
 	for _, validator := range value.Validators {
 		if validator.EvidenceV2 != nil {
-			return &finalSemanticAnalysisPendingError{}
+			originalAuthority, decisions := false, false
+			for _, source := range validator.EvidenceV2.Sources {
+				originalAuthority = originalAuthority || source.Source == (validatorpkg.ReleaseEvidenceV2CaptureSource{Kind: "setup", Name: "simulator-authority"})
+				decisions = decisions || source.Source.Kind == "decision-observation"
+			}
+			if !originalAuthority || !decisions {
+				return &finalSemanticAnalysisPendingError{}
+			}
 		}
 	}
 	return nil

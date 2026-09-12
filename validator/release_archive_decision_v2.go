@@ -254,3 +254,22 @@ func (self *ReleaseEvidenceV2Archive) Measurement(hash string) (*ReleaseMeasurem
 	}
 	return artifact, cloneReleaseSubmissionResultV2(value.verified).Decision, self.owner.check(self.owner.ctx)
 }
+
+// TerminalClosure returns the original, fully replayed terminal control as an
+// owned value. Every interior cut and both replicas were verified by Open;
+// callers must still authenticate its canonical EVM boundary on chain.
+func (self *ReleaseEvidenceV2Archive) TerminalClosure(epoch uint64) (*AttemptSettlementClosureV2, error) {
+	if self == nil || self.closed || self.history == nil {
+		return nil, errors.New("archive terminal owner is absent")
+	}
+	closure := self.history.terminals[epoch]
+	if closure == nil {
+		return nil, errors.New("archive terminal epoch is missing")
+	}
+	bounds := self.owner.cfg.EvidenceV2.Bounds
+	raw, err := marshalAttemptSettlementV2JSON(self.owner.ctx, closure, bounds.MaxClosureBytes, false, false)
+	if err != nil {
+		return nil, err
+	}
+	return decodeAttemptSettlementClosureV2Bytes(self.owner.ctx, raw, bounds.MaxClosureBytes, bounds.MaxParticipants)
+}

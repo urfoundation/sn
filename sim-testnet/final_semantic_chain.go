@@ -476,6 +476,7 @@ func VerifyFinalSemanticEvidenceWithArtifactsOnChain(ctx context.Context, eviden
 	if ctx == nil || evidence == nil || loader == nil || newReader == nil {
 		return errors.New("final semantic combined verification inputs are incomplete")
 	}
+	ctx = finalValidatorReplayContextV2(ctx, loader)
 	snapshot, err := finalSemanticEvidenceDetachedCopy(evidence)
 	if err != nil {
 		return err
@@ -588,6 +589,9 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 
 	nativeHeads, evmHeads, err := finalSemanticHeads(evidence)
 	if err != nil {
+		return nil, err
+	}
+	if err := verifyFinalValidatorSourcesOnChainV2(ctx, evidence, reader, appendExchanges); err != nil {
 		return nil, err
 	}
 	for _, head := range nativeHeads {

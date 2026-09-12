@@ -37,6 +37,7 @@ func ProduceFinalSemanticOutputs(ctx context.Context, runDir string, source Fina
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	ctx = finalValidatorReplayContextV2(ctx, load)
 	runDir, err := filepath.Abs(runDir)
 	if err != nil || filepath.Clean(runDir) != runDir {
 		return nil, errors.New("final semantic run directory is invalid")

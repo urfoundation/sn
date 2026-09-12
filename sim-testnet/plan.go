@@ -675,25 +675,24 @@ func BuildPlan(ctx context.Context, cfg *ResolvedConfig) (*SetupPlan, error) {
 
 // Bind resolved non-secret authority, identity, origin, and budget values so a
 // vault edit invalidates approval even when its YAML reference stays constant.
-func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
-	if cfg == nil {
-		return "", errors.New("resolved configuration is unavailable")
-	}
-	return canonicalHashHex(struct {
-		ChainID              uint64
-		Netuid               uint16
-		PrivateAuthority     string
-		OperationalRPCMode   string
-		OperationalSubstrate string
-		OperationalEVM       string
-		ObjectStoreHost      string
-		OperatorAPIOrigins   []string
-		WalletPublic         string
-		WalletHotkeyPublic   string
-		MaximumTAORao        uint64
-		MaximumAlphaRao      uint64
-		MaximumEVMGasWei     DecimalUint
-	}{
+type resolvedPlanPublicInputs struct {
+	ChainID              uint64
+	Netuid               uint16
+	PrivateAuthority     string
+	OperationalRPCMode   string
+	OperationalSubstrate string
+	OperationalEVM       string
+	ObjectStoreHost      string
+	OperatorAPIOrigins   []string
+	WalletPublic         string
+	WalletHotkeyPublic   string
+	MaximumTAORao        uint64
+	MaximumAlphaRao      uint64
+	MaximumEVMGasWei     DecimalUint
+}
+
+func resolvedPlanInputs(cfg *ResolvedConfig) resolvedPlanPublicInputs {
+	return resolvedPlanPublicInputs{
 		ChainID: cfg.ChainID, Netuid: cfg.Netuid, PrivateAuthority: cfg.Authority,
 		OperationalRPCMode: cfg.OperationalRPCMode, OperationalSubstrate: cfg.OperationalSubstrate, OperationalEVM: cfg.OperationalEVM,
 		ObjectStoreHost:    cfg.ObjectStoreHost,
@@ -701,7 +700,14 @@ func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
 		WalletPublic:       cfg.WalletPublic, WalletHotkeyPublic: cfg.WalletHotkeyPublic,
 		MaximumTAORao: cfg.MaximumTAORao, MaximumAlphaRao: cfg.MaximumAlphaRao,
 		MaximumEVMGasWei: cfg.MaximumEVMGasWei,
-	})
+	}
+}
+
+func resolvedInputsHash(cfg *ResolvedConfig) (string, error) {
+	if cfg == nil {
+		return "", errors.New("resolved configuration is unavailable")
+	}
+	return canonicalHashHex(resolvedPlanInputs(cfg))
 }
 
 func validateFreshSubnetTopology(cfg *ResolvedConfig, facts *SetupFacts, generation uint64) error {

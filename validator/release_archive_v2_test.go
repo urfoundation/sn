@@ -187,6 +187,18 @@ func TestReleaseArchiveV2ReplaysCompleteSignedHistoryWithoutLiveState(t *testing
 			t.Fatal("archive cursor or exact post-fold EMA differs")
 		}
 	}
+	closure, err := archive.TerminalClosure(fixture.last.Epoch)
+	if err != nil || closure == nil {
+		t.Fatalf("fully replayed terminal projection: %v", err)
+	}
+	if !bytes.Equal(mustArchiveV2JSONTest(t, closure), mustArchiveV2JSONTest(t, fixture.last)) {
+		t.Fatal("terminal projection differs from original signed bytes")
+	}
+	closure.Transitions[0].PostFold = nil
+	unchanged, err := archive.TerminalClosure(fixture.last.Epoch)
+	if err != nil || unchanged == nil || !bytes.Equal(mustArchiveV2JSONTest(t, unchanged), mustArchiveV2JSONTest(t, fixture.last)) {
+		t.Fatal("caller changed archive terminal authority through a returned alias")
+	}
 	if _, _, err := archive.Measurement("sha256:" + strings.Repeat("1", 64)); err == nil {
 		t.Fatal("history-only replay invented a verified decision")
 	}
@@ -197,6 +209,15 @@ func TestReleaseArchiveV2ReplaysCompleteSignedHistoryWithoutLiveState(t *testing
 	if !releaseArchiveV2TestSameFiles(before, after) {
 		t.Fatal("public archive replay changed the original live state")
 	}
+}
+
+func mustArchiveV2JSONTest(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func releaseArchiveV2TestPrivateFiles(t *testing.T, root string) map[string]string {

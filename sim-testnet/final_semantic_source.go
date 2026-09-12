@@ -146,6 +146,7 @@ type finalSemanticArchive struct {
 	// replace the production plan authentication or share hooks across tests.
 	planDecoder       func([]byte) (*SetupPlan, error)
 	planPathSnapshots map[string]finalSemanticPlanSnapshot
+	validatorReplayV2 map[uint64]*finalValidatorReplayOwnerV2
 }
 
 // Supplies a content-addressed output to a closed-archive reconstruction.
@@ -176,10 +177,16 @@ func buildFinalSemanticSourceFromCampaign(ctx context.Context, cfg *ResolvedConf
 // already-opened immutable collection graph. The asynchronous producer calls
 // this after comparing the graph with the owner-authenticated closure, avoiding
 // a second manifest read and its accompanying TOCTOU window.
-func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfig, archive *finalSemanticArchive, result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation) (*FinalSemanticEvidence, error) {
+func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfig, archive *finalSemanticArchive, result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation) (finalResult *FinalSemanticEvidence, resultErr error) {
 	if ctx == nil || cfg == nil || archive == nil || archive.collected == nil || result == nil || terminal == nil || len(history) == 0 {
 		return nil, errors.New("final semantic closed archive inputs are incomplete")
 	}
+	defer func() {
+		resultErr = errors.Join(resultErr, closeFinalValidatorReplayOwnersV2(archive.validatorReplayV2))
+		if resultErr != nil {
+			finalResult = nil
+		}
+	}()
 	if err := requireFinalSemanticReplayV2(archive.collected); err != nil {
 		return nil, err
 	}
@@ -265,6 +272,9 @@ func buildFinalSemanticSourceFromArchive(ctx context.Context, cfg *ResolvedConfi
 		return nil, err
 	}
 	if err := archive.buildPools(&source, terminal, identities, chain, events); err != nil {
+		return nil, err
+	}
+	if err := archive.buildValidatorReplayV2(&source); err != nil {
 		return nil, err
 	}
 	if err := archive.buildFleetLifecycle(&source, result, terminal, identities, events); err != nil {
@@ -382,9 +392,11 @@ func openFinalSemanticArchive(ctx context.Context, cfg *ResolvedConfig, stateDir
 	for _, validator := range collected.Validators {
 		if validator.EvidenceV2 != nil {
 			for _, source := range validator.EvidenceV2.Sources {
-				if err := addDirect(source.Artifact); err != nil {
-					return nil, err
+				if previous, found := archive.locators[source.Artifact.URI]; found && previous != source.Artifact {
+					return nil, errors.New("V2 archive source locator conflicts")
 				}
+				// Retain locators, not all cumulative record/proof stream bytes.
+				archive.locators[source.Artifact.URI] = source.Artifact
 			}
 		}
 		if err := addDirect(validator.IntentStore); err != nil {
@@ -1903,7 +1915,7 @@ func (a *finalSemanticArchive) latestAppliedMeasurement() (*validatorpkg.Release
 		if err != nil {
 			return nil, nil, err
 		}
-		artifact, verified, err := validatorpkg.DecodeReleaseMeasurementArtifact(data)
+		artifact, verified, err := finalDecodeMeasurementWithReplayV2(data, a.validatorReplayV2)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2669,7 +2681,7 @@ func (a *finalSemanticArchive) buildValidatorCycle(source *FinalSemanticEvidence
 	if err != nil {
 		return FinalCRv4Cycle{}, nil, err
 	}
-	measurement, verified, err := validatorpkg.DecodeReleaseMeasurementArtifact(measurementData)
+	measurement, verified, err := finalDecodeMeasurementWithReplayV2(measurementData, a.validatorReplayV2)
 	if err != nil {
 		return FinalCRv4Cycle{}, nil, fmt.Errorf("decode collected release measurement: %w", err)
 	}
@@ -3835,6 +3847,9 @@ func (a *finalSemanticArchive) buildRewards(source *FinalSemanticEvidence, histo
 	return nil
 }
 func (a *finalSemanticArchive) buildPathProofs(source *FinalSemanticEvidence) error {
+	if source != nil && len(source.ValidatorReplayV2) != 0 {
+		return a.buildValidatorPathProofsV2(source)
+	}
 	if source == nil {
 		return errors.New("path-proof construction context is incomplete")
 	}

@@ -64,6 +64,24 @@ func runtimeEvidenceTemplateV2(values []validatorcomponent.ReleaseValidatorEvide
 // File metadata cannot change a source identity, prefix or signed domain.
 // Historical uid and checkpoint finality are separately authenticated online.
 func validateRuntimeEvidencePreparedInputsV2(cfg *ResolvedConfig, plan *SetupPlan, roles *RoleSecrets, prepared *runtimeEvidenceActivationPreparedV2) error {
+	return validateRuntimeEvidencePreparedPublicInputsV2(cfg, plan, prepared, runtimeEvidencePrivateSourceKeysV2(roles))
+}
+
+type runtimeEvidencePublicSourceKeysV2 func(uint64, uint64) ([32]byte, [32]byte, error)
+
+func runtimeEvidencePrivateSourceKeysV2(roles *RoleSecrets) runtimeEvidencePublicSourceKeysV2 {
+	return func(validatorID, noID uint64) ([32]byte, [32]byte, error) {
+		hotkey, key, err := runtimeEvidenceActivationKeysV2(roles, validatorID, noID)
+		if err != nil {
+			return [32]byte{}, [32]byte{}, err
+		}
+		return hotkey.PublicKey(), [32]byte(key[ed25519.SeedSize:]), nil
+	}
+}
+
+// Rendering and public replay share the same deterministic authority checks;
+// the public reader supplies original public identities and never opens seeds.
+func validateRuntimeEvidencePreparedPublicInputsV2(cfg *ResolvedConfig, plan *SetupPlan, prepared *runtimeEvidenceActivationPreparedV2, keys runtimeEvidencePublicSourceKeysV2) error {
 	if cfg == nil || cfg.Config == nil || plan == nil || plan.ValidatorEvidence == nil || prepared == nil {
 		return errors.New("evidence setup input owners are incomplete")
 	}
@@ -91,14 +109,17 @@ func validateRuntimeEvidencePreparedInputsV2(cfg *ResolvedConfig, plan *SetupPla
 		if member.ValidatorId != validatorId || member.NoId != noId {
 			return errors.New("evidence setup member order or census differs")
 		}
-		hotkey, key, err := runtimeEvidenceActivationKeysV2(roles, validatorId, noId)
+		if keys == nil {
+			return errors.New("evidence setup public identity source is absent")
+		}
+		hotkey, key, err := keys(validatorId, noId)
 		if err != nil {
 			return err
 		}
 		companion := plan.ValidatorEvidence
 		expected := protocol.ValidatorEvidenceActivation{Domain: protocol.ValidatorEvidenceActivationDomain{ChainID: testnetChainID, GenesisHash: [32]byte(companion.GenesisHash), Netuid: cfg.Netuid,
 			Coordinator: [20]byte(companion.Coordinator), SettlementVault: [20]byte(companion.SettlementVault), DeploymentIDHash: [32]byte(companion.DeploymentIDHash), PolicyHash: policy, Epoch: prepared.Epoch},
-			Hotkey: hotkey.PublicKey(), NoID: noId, VPK: [32]byte(key[ed25519.SeedSize:]), FirstSequence: 1,
+			Hotkey: hotkey, NoID: noId, VPK: key, FirstSequence: 1,
 			NativeBlock: prepared.Native.Number, NativeHash: nativeHash, EVMBlock: prepared.Evm.Number, EVMHash: evmHash}
 		if err := member.Activation.Verify(expected, member.VpkSignature, member.HotkeySignature); err != nil {
 			return err
@@ -110,7 +131,11 @@ func validateRuntimeEvidencePreparedInputsV2(cfg *ResolvedConfig, plan *SetupPla
 // Build the exact five files for every source without touching the filesystem.
 // An immutable completion locator stores only a deterministic public boundary.
 func runtimeEvidenceFixedInputsV2(cfg *ResolvedConfig, plan *SetupPlan, stateDir string, roles *RoleSecrets, prepared *runtimeEvidenceActivationPreparedV2, completed *runtimeEvidenceActivationCompletedV2) ([]validatorcomponent.ReleaseValidatorEvidenceV2Config, map[string][]byte, error) {
-	if err := validateRuntimeEvidencePreparedInputsV2(cfg, plan, roles, prepared); err != nil {
+	return runtimeEvidenceFixedPublicInputsV2(cfg, plan, stateDir, prepared, completed, runtimeEvidencePrivateSourceKeysV2(roles))
+}
+
+func runtimeEvidenceFixedPublicInputsV2(cfg *ResolvedConfig, plan *SetupPlan, stateDir string, prepared *runtimeEvidenceActivationPreparedV2, completed *runtimeEvidenceActivationCompletedV2, keys runtimeEvidencePublicSourceKeysV2) ([]validatorcomponent.ReleaseValidatorEvidenceV2Config, map[string][]byte, error) {
+	if err := validateRuntimeEvidencePreparedPublicInputsV2(cfg, plan, prepared, keys); err != nil {
 		return nil, nil, err
 	}
 	if completed == nil || completed.Schema != "urnetwork-sim-evidence-activation-completed-v2" || completed.PlanHash != plan.PlanHash || completed.Boundary.Number <= prepared.Evm.Number {

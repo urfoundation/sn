@@ -646,7 +646,7 @@ func (a *finalSemanticArchive) buildFleetLifecycleAppliedDecisions(source *Final
 			if err != nil {
 				return err
 			}
-			if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(source, &decision, &row, finalFleetLifecycleValidator(source, decision.ValidatorID), intentData, measurementData, envelopeData); err != nil {
+			if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(source, &decision, &row, finalFleetLifecycleValidator(source, decision.ValidatorID), intentData, measurementData, envelopeData, a.validatorReplayV2); err != nil {
 				return fmt.Errorf("fleet lifecycle census %d validator %d: %w", censusIndex, row.ValidatorID, err)
 			}
 			source.FleetLifecycle.AppliedDecisions = append(source.FleetLifecycle.AppliedDecisions, decision)
@@ -711,7 +711,7 @@ func verifyFinalFleetLifecycleCandidateVector(weights map[uint16]uint16, census 
 	return nil
 }
 
-func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEvidence, decision *FinalFleetLifecycleAppliedDecision, census *FleetLifecycleValidatorCensus, validator *FinalValidatorIdentityEvidence, intentData, measurementData, envelopeData []byte) error {
+func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEvidence, decision *FinalFleetLifecycleAppliedDecision, census *FleetLifecycleValidatorCensus, validator *FinalValidatorIdentityEvidence, intentData, measurementData, envelopeData []byte, replay ...map[uint64]*finalValidatorReplayOwnerV2) error {
 	if evidence == nil || decision == nil || census == nil || validator == nil {
 		return errors.New("fleet lifecycle signed-decision verification context is incomplete")
 	}
@@ -744,7 +744,11 @@ func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEv
 	if decision.Measurement.ContentHash != intent.MeasurementArtifactHash || decision.Measurement.SizeBytes != intent.MeasurementArtifactSize || validatorpkg.ReleaseMeasurementContentHash(measurementData) != intent.MeasurementArtifactHash || uint64(len(measurementData)) != intent.MeasurementArtifactSize {
 		return errors.New("fleet lifecycle measurement content address differs from its signed intent")
 	}
-	measurement, verified, err := validatorpkg.DecodeReleaseMeasurementArtifact(measurementData)
+	var owners map[uint64]*finalValidatorReplayOwnerV2
+	if len(replay) != 0 {
+		owners = replay[0]
+	}
+	measurement, verified, err := finalDecodeMeasurementWithReplayV2(measurementData, owners)
 	if err != nil {
 		return fmt.Errorf("decode fleet lifecycle release measurement: %w", err)
 	}
@@ -785,21 +789,33 @@ func verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence *FinalSemanticEv
 	if decision.Envelope.ContentHash != intent.MeasurementEnvelopeHash || decision.Envelope.SizeBytes != intent.MeasurementEnvelopeSize || validatorpkg.ReleaseMeasurementEnvelopeContentHash(envelopeData) != intent.MeasurementEnvelopeHash || uint64(len(envelopeData)) != intent.MeasurementEnvelopeSize {
 		return errors.New("fleet lifecycle measurement envelope content address differs from its signed intent")
 	}
-	envelope, err := validatorpkg.DecodeReleaseMeasurementEnvelope(envelopeData)
-	if err != nil {
-		return fmt.Errorf("decode fleet lifecycle measurement envelope: %w", err)
+	var signedAt time.Time
+	if owner := owners[validator.ValidatorID]; owner != nil {
+		_, _, signed, err := finalOriginalMeasurementV2(owner, &intent, measurementData, envelopeData)
+		if err != nil {
+			return err
+		}
+		signedAt, err = time.Parse(time.RFC3339Nano, signed)
+		if err != nil {
+			return err
+		}
+	} else {
+		envelope, err := validatorpkg.DecodeReleaseMeasurementEnvelope(envelopeData)
+		if err != nil {
+			return fmt.Errorf("decode fleet lifecycle measurement envelope: %w", err)
+		}
+		hotkeyBytes, err := hex.DecodeString(strings.TrimPrefix(envelope.ValidatorHotkey, "0x"))
+		if err != nil || len(hotkeyBytes) != 32 || finalAccountMatches(validator.Hotkey, hotkeyBytes) != nil || intent.Prepared.HotkeyHex != envelope.ValidatorHotkey {
+			return errors.New("fleet lifecycle measurement envelope signer differs from the pinned validator hotkey")
+		}
+		var hotkey [32]byte
+		copy(hotkey[:], hotkeyBytes)
+		sealedMeasurement, _, err := validatorpkg.VerifyReleaseMeasurementEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
+		if err != nil || !finalJSONEqual(sealedMeasurement, measurement) {
+			return stateMismatchError(err, "fleet lifecycle measurement envelope does not authenticate the exact measurement")
+		}
+		signedAt, err = time.Parse(time.RFC3339Nano, envelope.SignedAt)
 	}
-	hotkeyBytes, err := hex.DecodeString(strings.TrimPrefix(envelope.ValidatorHotkey, "0x"))
-	if err != nil || len(hotkeyBytes) != 32 || finalAccountMatches(validator.Hotkey, hotkeyBytes) != nil || intent.Prepared.HotkeyHex != envelope.ValidatorHotkey {
-		return errors.New("fleet lifecycle measurement envelope signer differs from the pinned validator hotkey")
-	}
-	var hotkey [32]byte
-	copy(hotkey[:], hotkeyBytes)
-	sealedMeasurement, _, err := validatorpkg.VerifyReleaseMeasurementEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
-	if err != nil || !finalJSONEqual(sealedMeasurement, measurement) {
-		return stateMismatchError(err, "fleet lifecycle measurement envelope does not authenticate the exact measurement")
-	}
-	signedAt, err := time.Parse(time.RFC3339Nano, envelope.SignedAt)
 	startedAt, startErr := time.Parse(time.RFC3339Nano, evidence.CampaignStartedAt)
 	completedAt, completeErr := time.Parse(time.RFC3339Nano, evidence.CampaignCompletedAt)
 	if err != nil || startErr != nil || completeErr != nil || signedAt.Before(startedAt) || signedAt.After(completedAt) {

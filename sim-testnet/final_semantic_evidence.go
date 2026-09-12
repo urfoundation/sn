@@ -766,6 +766,7 @@ type FinalSemanticEvidence struct {
 	SettlementAccounting                  FinalSettlementVaultAccounting                    `json:"settlement_vault_accounting"`
 	Reserve                               FinalReserveEvidence                              `json:"reserve"`
 	Pools                                 []FinalPoolUIDEvidence                            `json:"pool_uid_ownership"`
+	ValidatorReplayV2                     []FinalValidatorReplayV2                          `json:"validator_replay_v2,omitempty"`
 	Validators                            []FinalValidatorIdentityEvidence                  `json:"validators"`
 	DishonestDeposit                      *FinalDishonestDepositEvidence                    `json:"dishonest_deposit,omitempty"`
 	Epochs                                []FinalEpochOperatorEvidence                      `json:"pool_epochs"`
@@ -959,6 +960,9 @@ func verifyFinalSemanticEvidence(evidence *FinalSemanticEvidence, requireHash bo
 	}
 	poolByNO, err := verifyFinalPools(evidence)
 	if err != nil {
+		return err
+	}
+	if err := verifyFinalValidatorReplayShapeV2(evidence); err != nil {
 		return err
 	}
 	validatorByID, err := verifyFinalValidators(evidence, poolByNO)
@@ -2928,14 +2932,24 @@ func verifyFinalPathProofs(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 		if err := requireFinalSHA256("path proof content hash", proof.ProofsHash); err != nil {
 			return err
 		}
-		if err := verifyFinalArtifact("validator path proofs", proof.Artifact, "validator-path-proofs"); err != nil {
+		kind := "validator-path-proofs"
+		if len(evidence.ValidatorReplayV2) != 0 {
+			kind = "validator-path-proofs-v2"
+		}
+		if err := verifyFinalArtifact("validator path proofs", proof.Artifact, kind); err != nil {
 			return err
 		}
 		if proof.ProofsHash != proof.Artifact.ContentHash {
 			return fmt.Errorf("path proof %s locator hash mismatch", key)
 		}
-		if err := verifyFinalSettlementClosureLocators(proof.SettlementClosures, evidence.Window, true); err != nil {
-			return fmt.Errorf("path proof %s terminal authority: %w", key, err)
+		var closureErr error
+		if len(evidence.ValidatorReplayV2) != 0 {
+			closureErr = verifyFinalValidatorClosureLocatorsV2(proof.SettlementClosures, evidence.Window)
+		} else {
+			closureErr = verifyFinalSettlementClosureLocators(proof.SettlementClosures, evidence.Window, true)
+		}
+		if closureErr != nil {
+			return fmt.Errorf("path proof %s terminal authority: %w", key, closureErr)
 		}
 	}
 	return nil
@@ -3146,6 +3160,9 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 	var lifecyclePayoutExpectations []finalPayoutArtifactExpectation
 	add := func(locator FinalArtifactLocator) { uses = append(uses, finalSemanticArtifactUse{locator: locator}) }
 	add(evidence.PlanArtifact)
+	for _, entry := range evidence.ValidatorReplayV2 {
+		add(entry.Manifest)
+	}
 	add(evidence.ReleaseLockArtifact)
 	add(evidence.PolicyArtifact)
 	add(evidence.Adversaries.MatrixArtifact)
@@ -3401,7 +3418,7 @@ func loadFinalSemanticArtifactUsesWithHash(ctx context.Context, uses []finalSema
 
 // Proves every referenced immutable object by content, then performs the
 // semantic and cross-artifact replay over exactly those authenticated bytes.
-func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEvidence, load FinalArtifactLoader) error {
+func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEvidence, load FinalArtifactLoader) (resultErr error) {
 	if err := VerifyFinalSemanticEvidence(evidence); err != nil {
 		return err
 	}
@@ -3423,6 +3440,11 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	replayOwners, err := openFinalValidatorReplayOwnersV2(ctx, evidence, load)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, closeFinalValidatorReplayOwnersV2(replayOwners)) }()
 	if finalSemanticArtifactVerificationCacheHit(cacheKey) {
 		return nil
 	}
@@ -3452,8 +3474,10 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	if err != nil {
 		return err
 	}
-	if err := verifyFinalSettlementClosureArtifactsWithAuthority(evidence, cache, pathAuthority); err != nil {
-		return err
+	if len(replayOwners) == 0 {
+		if err := verifyFinalSettlementClosureArtifactsWithAuthority(evidence, cache, pathAuthority); err != nil {
+			return err
+		}
 	}
 	matrix, err := verifyFinalAdversarialMatrixArtifact(evidence.Adversaries, cache[evidence.Adversaries.MatrixArtifact.URI])
 	if err != nil {
@@ -3476,6 +3500,12 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	for _, item := range uses {
 		data := cache[item.locator.URI]
 		if item.pathProof != nil {
+			if owner := replayOwners[item.pathProof.ValidatorID]; owner != nil {
+				if err := verifyFinalValidatorPathProofV2(evidence, item.pathProof, data, owner); err != nil {
+					return err
+				}
+				continue
+			}
 			validator := finalValidatorByID(evidence, item.pathProof.ValidatorID)
 			pool := finalPoolByNO(evidence, item.pathProof.NoID)
 			if err := verifyFinalPathProofArtifactBound(item.pathProof, data, validator, pool, seenPathIDs, seenTrailIDs); err != nil {
@@ -3521,7 +3551,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 						row = &census.Validators[rowIndex]
 					}
 				}
-				if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence, decision, row, finalFleetLifecycleValidator(evidence, decision.ValidatorID), cache[decision.Intent.URI], cache[decision.Measurement.URI], cache[decision.Envelope.URI]); err != nil {
+				if err := verifyFinalFleetLifecycleAppliedDecisionArtifacts(evidence, decision, row, finalFleetLifecycleValidator(evidence, decision.ValidatorID), cache[decision.Intent.URI], cache[decision.Measurement.URI], cache[decision.Envelope.URI], replayOwners); err != nil {
 					return fmt.Errorf("fleet lifecycle signed decision %d: %w", index, err)
 				}
 				return nil
@@ -3569,7 +3599,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 			cycleTaskIndexes[validatorIndex][cycleIndex] = len(verificationTasks)
 			verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
 				var measurement *validatorpkg.ReleaseMeasurementArtifact
-				err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], cache[cycle.MeasurementArtifact.URI], cache[cycle.MeasurementEnvelope.URI], &measurement, measurementAudit, &cycleSnapshots[validatorIndex][cycleIndex])
+				err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], cache[cycle.MeasurementArtifact.URI], cache[cycle.MeasurementEnvelope.URI], &measurement, measurementAudit, &cycleSnapshots[validatorIndex][cycleIndex], replayOwners)
 				return measurement, err
 			})
 		}
@@ -3584,7 +3614,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				penaltyTaskIndexes[validatorIndex] = len(verificationTasks)
 				verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
 					var measurement *validatorpkg.ReleaseMeasurementArtifact
-					err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], cache[penalty.MeasurementArtifact.URI], cache[penalty.MeasurementEnvelope.URI], &measurement, measurementAudit, &penaltySnapshots[validatorIndex])
+					err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], cache[penalty.MeasurementArtifact.URI], cache[penalty.MeasurementEnvelope.URI], &measurement, measurementAudit, &penaltySnapshots[validatorIndex], replayOwners)
 					return measurement, err
 				})
 			}
@@ -3611,7 +3641,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				if previousResult.measurement == nil || currentResult.measurement == nil {
 					return nil, nil
 				}
-				err := measurementAudit.VerifyLineage(cycleSnapshots[validatorIndex][cycleIndex-1], cycleSnapshots[validatorIndex][cycleIndex])
+				err := verifyFinalMeasurementLineageWithReplayV2(replayOwners[validator.ValidatorID], validator.Cycles[cycleIndex-1].MeasurementArtifact.ContentHash, validator.Cycles[cycleIndex].MeasurementArtifact.ContentHash, func() error {
+					return measurementAudit.VerifyLineage(cycleSnapshots[validatorIndex][cycleIndex-1], cycleSnapshots[validatorIndex][cycleIndex])
+				})
 				return currentResult.measurement, err
 			})
 		}
@@ -3623,7 +3655,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				if penaltyResult.measurement == nil || firstResult.measurement == nil {
 					return nil, nil
 				}
-				err := measurementAudit.VerifyLineage(penaltySnapshots[validatorIndex], cycleSnapshots[validatorIndex][0])
+				err := verifyFinalMeasurementLineageWithReplayV2(replayOwners[validator.ValidatorID], penalty.MeasurementArtifact.ContentHash, validator.Cycles[0].MeasurementArtifact.ContentHash, func() error {
+					return measurementAudit.VerifyLineage(penaltySnapshots[validatorIndex], cycleSnapshots[validatorIndex][0])
+				})
 				return firstResult.measurement, err
 			})
 		}
@@ -4520,7 +4554,7 @@ func verifyFinalIntentArtifact(evidence *FinalSemanticEvidence, validatorID uint
 	return nil
 }
 
-func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, validator *FinalValidatorIdentityEvidence, cycle *FinalCRv4Cycle, intentData, measurementData, envelopeData []byte, decoded **validatorpkg.ReleaseMeasurementArtifact, audit *validatorpkg.ReleaseMeasurementAudit, snapshot **validatorpkg.ReleaseMeasurementSnapshot) error {
+func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, validator *FinalValidatorIdentityEvidence, cycle *FinalCRv4Cycle, intentData, measurementData, envelopeData []byte, decoded **validatorpkg.ReleaseMeasurementArtifact, audit *validatorpkg.ReleaseMeasurementAudit, snapshot **validatorpkg.ReleaseMeasurementSnapshot, replay ...map[uint64]*finalValidatorReplayOwnerV2) error {
 	if validator == nil {
 		return errors.New("validator identity is unavailable for measurement envelope")
 	}
@@ -4546,26 +4580,47 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 	if validatorpkg.ReleaseMeasurementEnvelopeContentHash(envelopeData) != intent.MeasurementEnvelopeHash || uint64(len(envelopeData)) != intent.MeasurementEnvelopeSize || cycle.MeasurementEnvelope.ContentHash != intent.MeasurementEnvelopeHash || cycle.MeasurementEnvelope.SizeBytes != intent.MeasurementEnvelopeSize {
 		return errors.New("measurement envelope content address does not match steering intent")
 	}
-	envelope, err := validatorpkg.DecodeReleaseMeasurementEnvelope(envelopeData)
-	if err != nil {
-		return fmt.Errorf("decode validator-signed measurement envelope: %w", err)
+	var artifact *validatorpkg.ReleaseMeasurementArtifact
+	var verified *validatorpkg.VerifiedReleaseMeasurement
+	var authenticated *validatorpkg.ReleaseMeasurementSnapshot
+	var signedAt time.Time
+	var err error
+	var owner *finalValidatorReplayOwnerV2
+	if len(replay) != 0 {
+		owner = replay[0][validatorID]
 	}
-	hotkeyBytes, err := hex.DecodeString(strings.TrimPrefix(envelope.ValidatorHotkey, "0x"))
-	if err != nil || len(hotkeyBytes) != 32 || finalAccountMatches(validator.Hotkey, hotkeyBytes) != nil {
-		return errors.New("measurement envelope signer is not the pinned validator hotkey")
-	}
-	var hotkey [32]byte
-	copy(hotkey[:], hotkeyBytes)
-	if intent.Prepared.HotkeyHex != envelope.ValidatorHotkey {
-		return errors.New("prepared submission hotkey differs from measurement envelope signer")
-	}
-	artifact, verified, authenticated, err := audit.VerifyEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
-	if err != nil {
-		return fmt.Errorf("validator-signed measurement envelope: %w", err)
-	}
-	signedAt, err := time.Parse(time.RFC3339Nano, envelope.SignedAt)
-	if err != nil {
-		return errors.New("measurement envelope signing time is invalid")
+	if owner != nil {
+		var signed string
+		artifact, verified, signed, err = finalOriginalMeasurementV2(owner, &intent, measurementData, envelopeData)
+		if err != nil {
+			return err
+		}
+		signedAt, err = time.Parse(time.RFC3339Nano, signed)
+		if err != nil {
+			return err
+		}
+	} else {
+		envelope, err := validatorpkg.DecodeReleaseMeasurementEnvelope(envelopeData)
+		if err != nil {
+			return fmt.Errorf("decode validator-signed measurement envelope: %w", err)
+		}
+		hotkeyBytes, err := hex.DecodeString(strings.TrimPrefix(envelope.ValidatorHotkey, "0x"))
+		if err != nil || len(hotkeyBytes) != 32 || finalAccountMatches(validator.Hotkey, hotkeyBytes) != nil {
+			return errors.New("measurement envelope signer is not the pinned validator hotkey")
+		}
+		var hotkey [32]byte
+		copy(hotkey[:], hotkeyBytes)
+		if intent.Prepared.HotkeyHex != envelope.ValidatorHotkey {
+			return errors.New("prepared submission hotkey differs from measurement envelope signer")
+		}
+		artifact, verified, authenticated, err = audit.VerifyEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
+		if err != nil {
+			return fmt.Errorf("validator-signed measurement envelope: %w", err)
+		}
+		signedAt, err = time.Parse(time.RFC3339Nano, envelope.SignedAt)
+		if err != nil {
+			return errors.New("measurement envelope signing time is invalid")
+		}
 	}
 	startedAt, _ := time.Parse(time.RFC3339Nano, evidence.CampaignStartedAt)
 	completedAt, _ := time.Parse(time.RFC3339Nano, evidence.CampaignCompletedAt)
