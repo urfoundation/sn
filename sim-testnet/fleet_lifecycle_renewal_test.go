@@ -62,8 +62,23 @@ func TestFleetLifecycleRenewalAdmitsOnlyApprovedSuccessor(t *testing.T) {
 	if err != nil || !bytes.Equal(sourceBytes, after) {
 		t.Fatal("renewal mutated source plan bytes")
 	}
-	if !finalJSONEqual(plan.Limits, fixture.base.Limits) || !finalJSONEqual(plan.MaximumSpend, fixture.base.MaximumSpend) {
-		t.Fatal("lifecycle successor increased the campaign approval")
+	// The renewed native commitments add one existing fee allowance per fleet.
+	// Their EVM calls consume the retained reserve; lifetime approval and every
+	// other spending dimension must remain unchanged.
+	if len(fixture.renewal.Fleets) != 202 {
+		t.Fatal("renewal fixture lost its complete fleet census")
+	}
+	nativeFees, ok := checkedMul(202, fixture.base.NativeTransactionFeeLimitRao)
+	if !ok {
+		t.Fatal("renewal fixture native fee allowance overflowed")
+	}
+	expectedSpend, err := addSpends(fixture.base.MaximumSpend, Spend{TAORao: nativeFees})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spendMatches, err := equalSpend(plan.MaximumSpend, expectedSpend)
+	if err != nil || !spendMatches || !finalJSONEqual(plan.Limits, fixture.base.Limits) {
+		t.Fatalf("lifecycle successor changed lifetime approval or exact renewal fees: expected=%+v actual=%+v error=%v", expectedSpend, plan.MaximumSpend, err)
 	}
 
 	for _, fault := range []string{"missing-reference", "source", "round", "generation", "window", "action-generation", "action-source", "missing-commitment"} {

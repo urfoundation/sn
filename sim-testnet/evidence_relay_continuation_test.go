@@ -91,7 +91,15 @@ func TestEvidenceRelayContinuationPreservesHigherFeeRetryAndRevisionOwnership(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.MaximumSpend != before.MaximumSpend || plan.SupersededSpend != before.SupersededSpend || plan.Limits != before.Limits || c.NewSlots != 510 || c.HistoricalLiabilityWei != "100000000000000000" || fixture.cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
+	// Appending clones the source through its public JSON representation,
+	// which canonicalizes an absent decimal zero without changing its value.
+	for _, pair := range [][2]Spend{{plan.MaximumSpend, before.MaximumSpend}, {plan.SupersededSpend, before.SupersededSpend}, {plan.Limits, before.Limits}} {
+		matches, err := equalSpend(pair[0], pair[1])
+		if err != nil || !matches {
+			t.Fatalf("continuation changed an approved spend vector: before=%+v after=%+v error=%v", pair[1], pair[0], err)
+		}
+	}
+	if c.NewSlots != 510 || c.HistoricalLiabilityWei != "100000000000000000" || fixture.cfg.Config.ValidatorEvidenceRelay.MaxSlots != 256 {
 		t.Fatal("continuation refunded the old failed debit or raised monetary/source allowances")
 	}
 	if err := writeRunInputs(fixture.cfg, fixture.stateDir, plan, fixture.roles); err != nil {

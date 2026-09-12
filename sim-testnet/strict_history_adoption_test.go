@@ -67,6 +67,15 @@ func TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch(t *testi
 	if err := atomicWrite(filepath.Join(fixture.stateDir, "secrets", "roles.json"), append(rolesBytes, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The direct activation-carry fixture does not materialize the deployment
+	// observations consumed by the real renderer. Keep its original deployment
+	// identity and an event boundary preceding the activation checkpoint.
+	deployment := fixture.plan.Deployment
+	deployment.DeployBlock, deployment.DeployBlockHash = fixture.prepared.Evm.Number, fixture.prepared.Evm.Hash
+	deployment.CoordinatorEventStartBlock, deployment.CoordinatorEventStartBlockHash = 1, fmt.Sprintf("0x%064x", 1)
+	if err := saveContractDeployment(fixture.stateDir, deployment); err != nil {
+		t.Fatal(err)
+	}
 	for id := 1; id <= 2; id++ {
 		if err := ensurePrivateDir(filepath.Join(fixture.stateDir, "runtime", fmt.Sprintf("validator-%d", id), "coordinator-state-v2")); err != nil {
 			t.Fatal(err)
