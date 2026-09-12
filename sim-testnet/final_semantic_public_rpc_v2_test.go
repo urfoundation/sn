@@ -81,6 +81,51 @@ func finalV2PublicReadFacade(t *testing.T, ctx context.Context, recorder *finalV
 	return client
 }
 
+func TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority(t *testing.T) {
+	t.Parallel()
+	f := newFinalV2PublicRPCFixture(t)
+	f.reader.evidence.PlanHash = common.Hash{0x31}.Hex()
+	f.reader.evidence.ConfigHash = common.Hash{0x32}.Hex()
+	f.reader.evidence.Window = ScenarioAcceptanceWindow{FirstEpoch: 300, EpochCount: 5}
+	f.reader.evidence.ExitCriteria = []FinalExitCriterionEvidence{{ID: "source", Assertions: []FinalMetricAssertion{{Metric: "count", Expected: 4, Observed: 4}}}}
+	target, err := finalSemanticEvidenceDetachedCopy(f.reader.evidence)
+	if err != nil { t.Fatal(err) }
+	target.EvidenceHash = common.Hash{0x33}.Hex()
+	target.PublicVerification = &FinalPublicChainVerification{Schema: finalPublicChainVerificationSchema}
+	owned, err := f.reader.finalV2InvocationReader(target)
+	if err != nil || owned == nil || owned.evidence == target || owned.evidence == f.reader.evidence || owned.evm != f.reader.evm {
+		t.Fatalf("detached producer/verifier source was refused or aliased: %v", err)
+	}
+	for _, fault := range []string{"plan", "config", "window", "terminal", "nested-source"} {
+		t.Run(fault, func(t *testing.T) {
+			changed, err := finalSemanticEvidenceDetachedCopy(target)
+			if err != nil { t.Fatal(err) }
+			switch fault {
+			case "plan": changed.PlanHash = common.Hash{0x44}.Hex()
+			case "config": changed.ConfigHash = common.Hash{0x44}.Hex()
+			case "window": changed.Window.FirstEpoch++
+			case "terminal": changed.NativeTerminalHead.Number++
+			case "nested-source": changed.ExitCriteria[0].Assertions[0].Observed++
+			}
+			if got, err := f.reader.finalV2InvocationReader(changed); err == nil || got != nil {
+				t.Fatal("different immutable evidence acquired reader authority")
+			}
+		})
+	}
+	f.reader.evidence.ExitCriteria[0].Assertions[0].Observed = 90
+	target.ExitCriteria[0].Assertions[0].Observed = 91
+	if owned.evidence.ExitCriteria[0].Assertions[0].Observed != 4 || target.EvidenceHash != common.Hash{0x33}.Hex() || target.PublicVerification == nil {
+		t.Fatal("factory/caller mutation changed the invocation or admission rewrote sealing fields")
+	}
+	recorder := newFinalV2RPCRecorder(t.Context(), owned, 64*1024, 1024*1024)
+	facade := finalV2PublicReadFacade(t, t.Context(), recorder)
+	var chainID string
+	if err := facade.CallContext(t.Context(), &chainID, "eth_chainId"); err != nil || chainID != hexutil.EncodeUint64(testnetChainID) {
+		t.Fatalf("detached owner did not perform the real admitted read: %v", err)
+	}
+	if _, err := recorder.finish(); err != nil { t.Fatal(err) }
+}
+
 func TestFinalPublicValidatorSourcesV2RetainsRealBatchesAndCanonicalHeads(t *testing.T) {
 	t.Parallel()
 	f := newFinalV2PublicRPCFixture(t)

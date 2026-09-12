@@ -26,9 +26,12 @@ import (
 // the existing quota/retry transport, while native capture wraps that reader's
 // existing client. Only the ordinary archive verifier creates observations.
 func (self *PublicFinalSemanticChainReader) ValidatorSourcesV2(ctx context.Context, evidence *FinalSemanticEvidence, archive *validatorpkg.ReleaseEvidenceV2Archive) (observations []validatorpkg.ReleaseEvidenceV2DecisionObservation, exchanges []FinalRPCExchange, resultErr error) {
-	if ctx == nil || self == nil || evidence == nil || self.evidence != evidence || self.evm == nil || self.native == nil || self.native.Client == nil || archive == nil {
+	if ctx == nil || self == nil || evidence == nil || self.evm == nil || self.native == nil || self.native.Client == nil || archive == nil {
 		return nil, nil, errors.New("public V2 historical reader owner differs")
 	}
+	ownedReader, err := self.finalV2InvocationReader(evidence)
+	if err != nil { return nil, nil, err }
+	self, evidence = ownedReader, ownedReader.evidence
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil {
@@ -65,6 +68,32 @@ func (self *PublicFinalSemanticChainReader) ValidatorSourcesV2(ctx context.Conte
 	}
 	exchanges, err = recorder.finish()
 	return observations, exchanges, err
+}
+
+// Production factories and verifiers deliberately hold detached evidence
+// snapshots. Bind their complete stable content, then detach the invocation
+// again so a retained factory argument cannot mutate ongoing reads. Only the
+// two fields populated by public sealing are excluded from source identity.
+func (self *PublicFinalSemanticChainReader) finalV2InvocationReader(evidence *FinalSemanticEvidence) (*PublicFinalSemanticChainReader, error) {
+	if self == nil || self.evidence == nil || evidence == nil {
+		return nil, errors.New("public V2 evidence source is unavailable")
+	}
+	source, err := finalSemanticEvidenceDetachedCopy(self.evidence)
+	if err != nil { return nil, err }
+	target, err := finalSemanticEvidenceDetachedCopy(evidence)
+	if err != nil { return nil, err }
+	source.PublicVerification, target.PublicVerification = nil, nil
+	source.EvidenceHash, target.EvidenceHash = "", ""
+	sourceHash, err := canonicalHashHex(source)
+	if err != nil { return nil, err }
+	targetHash, err := canonicalHashHex(target)
+	if err != nil { return nil, err }
+	if sourceHash != targetHash {
+		return nil, errors.New("public V2 immutable evidence source differs from the reader factory")
+	}
+	owned := *self
+	owned.evidence = target
+	return &owned, nil
 }
 
 // A single invocation owns all immutable snapshots. Equal request identities
