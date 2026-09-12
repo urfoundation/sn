@@ -35,3 +35,10 @@ func (self *ReleaseEvidenceV2Archive) ObserveSourcesWithNativeReadsV2(ctx contex
 	}
 	return self.ObserveSources(ctx, chain, owned)
 }
+
+// NewReleaseNativeReadRecorderV2 exposes the same bounded read-only transport
+// for exact historical checkpoint readers. It creates no source verdict, owns
+// no upstream connection, and captures each real response before decoding it.
+func NewReleaseNativeReadRecorderV2(ctx context.Context, native *crv4.Chain, maximum uint64, retain func(context.Context, ReleaseEvidenceV2NativeRead) error) (*crv4.Chain, error) {
+	return releaseNativeCaptureChainV2(ctx, native, maximum, retain)
+}
