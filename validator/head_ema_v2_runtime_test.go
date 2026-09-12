@@ -641,7 +641,7 @@ func TestHeadEMAStoreV2RuntimeFieldCensusPinsAdmissionOwners(t *testing.T) {
 		{value: reflect.TypeFor[headEMAEntry](), fields: "Key Numerator Denominator"},
 		{value: reflect.TypeFor[HeadEMAMeasurement](), fields: "Key HasRaw Raw HasPrior Prior Next"},
 		{value: reflect.TypeFor[FleetScoreKey](), fields: "FleetID Hotkey Generation UID"},
-		{value: reflect.TypeFor[headEMAStoreV2Owner](), fields: "limits namespace active fault"},
+		{value: reflect.TypeFor[headEMAStoreV2Owner](), fields: "limits namespace active fault provisionalEpochGaps"},
 	}
 	for _, candidate := range cases {
 		var fields []string

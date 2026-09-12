@@ -26,6 +26,8 @@ type releaseIntentV2Owner struct {
 	runtime *releaseRuntimeV2
 	active  atomic.Bool
 	fault   error
+	// Invocation authority comes only from the validated retained startup owner.
+	provisionalEpochGaps bool
 }
 
 type releaseIntentV2Read struct {
@@ -179,7 +181,7 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 				return result, errors.New("V2 intent history omits a predecessor")
 			}
 		} else {
-			if err := validateSteeringIntentSuccessor(previous, intent); err != nil {
+			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, self.v2.provisionalEpochGaps); err != nil {
 				return result, err
 			}
 			previousReplay, err := self.v2.runtime.measurementReplayOptionsV2(ctx, result.lastOptions, "history-lineage-previous")
@@ -190,7 +192,7 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 			if err != nil {
 				return result, err
 			}
-			if _, err := VerifyReleaseMeasurementLineageV2(ctx, result.lastBytes, previousReplay, artifact, currentReplay); err != nil {
+			if err := self.verifyMeasurementLineageV2(ctx, result.lastBytes, previousReplay, artifact, currentReplay); err != nil {
 				return result, err
 			}
 		}
@@ -404,7 +406,7 @@ func (self *IntentStore) beginV2(ctx context.Context, intent SteeringIntent) (re
 			return nil, errors.New("first V2 intent invents a predecessor")
 		}
 	} else {
-		if err := validateSteeringIntentSuccessor(current, &intent); err != nil {
+		if err := validateSteeringIntentSuccessorWithGapsV2(current, &intent, self.v2.provisionalEpochGaps); err != nil {
 			return nil, err
 		}
 		previousReplay, err := self.v2.runtime.measurementReplayOptionsV2(ctx, read.lastOptions, "begin-lineage-previous")
@@ -415,7 +417,7 @@ func (self *IntentStore) beginV2(ctx context.Context, intent SteeringIntent) (re
 		if err != nil {
 			return nil, err
 		}
-		if _, err := VerifyReleaseMeasurementLineageV2(ctx, read.lastBytes, previousReplay, artifact, currentReplay); err != nil {
+		if err := self.verifyMeasurementLineageV2(ctx, read.lastBytes, previousReplay, artifact, currentReplay); err != nil {
 			return nil, err
 		}
 		read.file.History = append(read.file.History, *current)
@@ -475,7 +477,8 @@ func newReleaseIntentStoreV2(runtime *releaseRuntimeV2) (*IntentStore, error) {
 	if !filepath.IsAbs(runtime.cfg.StateDir) {
 		return nil, errors.New("V2 intent state path is not absolute")
 	}
-	return &IntentStore{path: filepath.Join(runtime.cfg.StateDir, "steering-intents.json"), stateDir: runtime.cfg.StateDir, v2: &releaseIntentV2Owner{ctx: runtime.ctx, runtime: runtime}}, nil
+	return &IntentStore{path: filepath.Join(runtime.cfg.StateDir, "steering-intents.json"), stateDir: runtime.cfg.StateDir, v2: &releaseIntentV2Owner{ctx: runtime.ctx, runtime: runtime,
+		provisionalEpochGaps: runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&runtime.cfg)}}, nil
 }
 
 func (self *IntentStore) markFinalizedV2(ctx context.Context, vectorHash, extrinsicHash string, block uint64, blockHash string, revealBlock uint64, values []uint16) error {

@@ -34,6 +34,13 @@ type headEMAStoreV2Owner struct {
 	namespace headEMAStoreV2Namespace
 	active    atomic.Bool
 	fault     error
+	// Immutable after authenticated provisional runtime construction. Missing
+	// native attempts have no EMA observation; fold the next actual input once.
+	provisionalEpochGaps bool
+}
+
+func (self *HeadEMAStore) allowsHeadEMAEpochGaps() bool {
+	return self != nil && self.v2 != nil && self.v2.provisionalEpochGaps
 }
 
 // Hooks observe actual boundaries; none can replace bytes, syscalls or math.
@@ -83,8 +90,9 @@ func (self *HeadEMAStore) CommitForEpochV2(ctx context.Context, epoch uint64, re
 	return err
 }
 
-// Like the original FoldForEpoch, this API permits a forward epoch jump while
-// Preview/Commit require the immediate successor; it never repeats same-epoch math.
+// Like the original FoldForEpoch, this API permits a forward epoch jump.
+// Preview/Commit require the immediate successor unless the authenticated
+// provisional runtime selected the same gap semantics; retries never refold.
 func (self *HeadEMAStore) FoldForEpochV2(ctx context.Context, epoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
 	return self.runHeadEMAStoreV2(ctx, headEMAStoreV2FoldEpoch, epoch, raw, nil, alpha, headEMAStoreV2RuntimeHooks{})
 }
@@ -181,7 +189,9 @@ func (self *HeadEMAStore) runHeadEMAStoreV2(ctx context.Context, operation headE
 		}
 	}
 	if operation == headEMAStoreV2Preview || operation == headEMAStoreV2FoldEpoch && scratch.lastSubnetEpoch != nil && epoch == *scratch.lastSubnetEpoch {
-		out, transcript, err = scratch.PreviewForEpoch(epoch, ownedRaw, alpha)
+		scratch.mu.Lock()
+		out, transcript, err = scratch.previewForEpochWithGapPolicy(epoch, ownedRaw, alpha, owner.provisionalEpochGaps)
+		scratch.mu.Unlock()
 	} else {
 		out, transcript, err = func() (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
 			scratch.mu.Lock()
