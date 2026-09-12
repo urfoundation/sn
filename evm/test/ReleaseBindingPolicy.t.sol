@@ -6,12 +6,6 @@ import {STCoordinator} from "../src/STCoordinator.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-contract STCoordinatorChainIdHarness is STCoordinator {
-    function checkedChainId(uint256 chainId_) external pure returns (uint64) {
-        return _checkedChainId(chainId_);
-    }
-}
-
 contract ReleaseBindingPolicyTest is ReleaseBase {
     bytes32 internal constant FLEET = keccak256("fleet-one");
     bytes32 internal constant HEAD_HOTKEY = keccak256("fleet-hotkey");
@@ -319,12 +313,12 @@ contract ReleaseBindingPolicyTest is ReleaseBase {
     }
 
     function test_fleetRevokeDigestRejectsChainIDDowncastOverflow() public {
-        STCoordinatorChainIdHarness harness = new STCoordinatorChainIdHarness();
         uint256 overflowingChainId = uint256(type(uint64).max) + 1;
+        vm.chainId(overflowingChainId);
         vm.expectRevert(
             abi.encodeWithSelector(SafeCast.SafeCastOverflowedUintDowncast.selector, 64, overflowingChainId)
         );
-        harness.checkedChainId(overflowingChainId);
+        coordinator.fleetRevokeDigest(bytes16(uint128(1)), 1, 2);
     }
 
     function test_releaseProductionCadenceIsExactAndFutureEffective() public {
