@@ -961,7 +961,7 @@
     }
   },
   "rpc_endpoint": "http://192.168.1.162:9944",
-  "schema": "sim-latency-peerreview-onchain-evidence-v1",
+  "schema": "sim-testnet-peerreview-onchain-evidence-v1",
   "transactions": {
     "epoch310_finalize": "0xbe6ff669419f7896bbe5285c7e927eaef9c3a1533529c2d9294e69aa46b73487",
     "epoch310_op1_deposit": "0x148d1227bc74f99e50113ea484b4624233f2452b9c6cf5fb3aed85d208c55319",

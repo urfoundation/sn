@@ -18,6 +18,11 @@ and the exact `--plan-hash` are supplied.
 
 ## Agent execution policy
 
+This harness owns SN testnet finalization under [../FINALIZE.md](../FINALIZE.md).
+Write the final report to [FINAL.md](FINAL.md), with its committed on-chain
+evidence in `peerreview/evidence/`. Qualification covers this simulator and its
+runtime dependencies; separate calibration exercises are outside this scope.
+
 New qualification tooling, status/report processing and its tests are written
 in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and

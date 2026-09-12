@@ -2,7 +2,8 @@
 
 ## Current execution — full finalization, 2026-09-12
 
-The user has requested full finalization, including correction of previously
+The scope is SN `sim-testnet` finalization. The user has requested full
+finalization, including correction of previously
 ignored test failures and flakiness and the issues exposed by the shortened
 testnet run. The shortened-run waivers below no longer establish completion.
 Run the complete producer and aggregate gates on the final source, complete
@@ -3837,12 +3838,9 @@ require real-chain evidence and cannot be promoted to “proven” by local mock
    The aggregate gate now lists all twelve release workspace repositories for
    staged and unstaged patch hygiene and reruns
    `TestReleaseLockMatchesCheckout` after every other check. A deterministic
-   test fixes both the repository census and final ordering. The server's
-   manifest-locked 562-MB sim-latency baseline includes archived reference
-   `_test.go` inputs which compile only after their preserved candidate patches
-   are applied; the gate now authenticates all 2,705 baseline manifest entries,
-   excludes only that evidence subtree from `go list`, and compile-checks every
-   executable server package. Proxy ordinary/race, userwireguard ordinary/race,
+   test fixes both the repository census and final ordering. The gate excludes
+   archived non-executable reference inputs from the server package census.
+   Proxy ordinary/race, userwireguard ordinary/race,
    the full SDK suite, focused SDK race, all new connect transport tests and
    their race run, server monitoring, and the new server API/MCP/router/task/
    resident/model/proxy tests pass. A diagnostic unfiltered connect run reached
@@ -5112,7 +5110,7 @@ historical provenance and does not approve the 2026-09-04 candidate:
 | Slither deployable-contract gate | Pass with Slither 0.11.6 and **zero high/medium findings** for all four deployable testnet roots: coordinator (26 transitive contracts), fleet batcher (27), precompile probe (8), and governance adversary (24), each under 64 detectors; its target-only Foundry graphs are isolated from canonical release artifacts. |
 | `forge fmt --check` / clean `forge build --sizes` | Pass; the optimized Solidity 0.8.24 release compiles with `STCoordinator` at 24,299 bytes (277-byte EIP-170 margin), the storage-isolated testnet coordinator adversary at 2,536 bytes, `STFleetBatcher` at 4,003 bytes, and `STSubnetProbe` at 7,265 bytes. |
 | `forge test --summary` | **156 passed, 0 failed, 0 skipped**, including the epoch-end deposit-deadline boundary, maximum 10-by-4 atomic fleet batches, the live two-share-floor and malformed-absent-UID regressions, stable-v1 governance-drill compatibility, and 4,608 stateful reserve/vault invariant-handler calls with zero reverts. |
-| Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. The immutable sim-latency evidence baseline passed all 2,705 manifest entries separately. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
+| Operator/shared-client pure/unit/compile suites | Pass for `server/st`, `startifact`, subnet transaction/config/payout tests, verify/key-rotation tests, trusted-proxy/session tests, router tests, all executable server packages, all affected `connect` verify/subnet wire tests, all affected `sdk` subnet API tests, and compilation of every package in both shared repositories. A separate uncached Connect qualification passed all 2,248 tests in 618.786 seconds with no active leftovers; raw `go test ./...` exceeds Go's 600-second package-wide default rather than hanging in one test. |
 | Operator PostgreSQL/Redis integration suites | Pass inside the final aggregate for verify-trail, poisoning/failure, canonical batched event sync, account-wide nonce reconciliation, coordinator isolation, validator-local assignment filtering, fenced mutation, replay isolation, orphan cleanup, egress index, token locks, expiry and loaded-trail coverage. Controller completed in 139.371 seconds, model in 140.573 seconds, and all 75 proxy roots in 529.355 seconds. Focused race reruns completed in 151.097 and 155.491 seconds. The gate pins `WARP_ENV=local` and the dedicated `10.213.0.1` server/local hostnames before any test which creates or drops databases. Deterministic script regressions prevent those safety exports from being removed or database-backed tests from moving into the pure section. The rendered per-operator profile remains mandatory in M1. |
 | Subtensor infrastructure regressions | **35 passed**, covering the pinned playbook/archive/RPC, backup policy and resolved vulnerability assertions. |
 | Release-lock self-check and patch hygiene | Pass across all twelve release workspace repositories; the exact checkout lock is rechecked after every other gate. |
