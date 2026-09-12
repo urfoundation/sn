@@ -256,6 +256,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	native := *self.native
 	owned.native = &native
 	self = &owned
+	allowWeightRejection := self.runtimeV2.history.retainedStartup && provisionalClosedNativeInputEnabled(self.cfg)
 	nativeHash, err := authenticatePinnedNativeRuntimeContext(ctx, self.native, self.cfg)
 	if err != nil {
 		return fmt.Errorf("authenticate native runtime before steering snapshot: %w", err)
@@ -393,7 +394,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	}
 	measurementBytes, measurementHash, submissionReplay, err := self.runtimeV2.sealSubmissionArtifactV2(ctx, measurementArtifact, options)
 	if err != nil {
-		return err
+		return classifyProvisionalNativeWeights(ctx, allowWeightRejection, nativeState.SubnetEpochIndex, snapshot.Epoch.Uint64(), err)
 	}
 	defer submissionReplay.close()
 	measurementPath, measurementSize, err := persistReleaseMeasurementArtifact(self.cfg.StateDir, measurementBytes, measurementHash)
@@ -438,7 +439,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	submitOptions.SourceHash = releaseNativeSourceHashV2(measurementBytes)
 	prepared, err := crv4.PrepareWeightsCRv4ExactAtContext(ctx, self.native, self.hotkey, self.cfg.Netuid, uids, scores, submitOptions, preparedRuntimeHash)
 	if err != nil {
-		return err
+		return classifyProvisionalNativeWeights(ctx, allowWeightRejection, nativeState.SubnetEpochIndex, snapshot.Epoch.Uint64(), err)
 	}
 	preparedHash, err := types.NewHashFromHexString(prepared.PreparedAtBlockHash)
 	if err != nil {

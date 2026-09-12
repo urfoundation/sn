@@ -7,6 +7,17 @@ import (
 	"sort"
 )
 
+// InfeasibleWeightLimitError identifies a rejected weight vector before any
+// commit is prepared or signed. It does not imply that other vectors will fail.
+type InfeasibleWeightLimitError struct {
+	MaxWeightLimit  uint16
+	PositiveWeights int
+}
+
+func (err *InfeasibleWeightLimitError) Error() string {
+	return fmt.Sprintf("crv4: max weight limit %d is infeasible for %d positive weights", err.MaxWeightLimit, err.PositiveWeights)
+}
+
 // ApplyMaxWeightLimitRational is the exact integer/rational variant of the
 // SDK's water-filling cap. It never converts through float64, so independent
 // validators with the same inputs produce identical commit bytes.
@@ -39,7 +50,7 @@ func ApplyMaxWeightLimitRational(weights []*big.Rat, maxWeightLimit uint16) ([]*
 		return out, nil
 	}
 	if positive == 0 || new(big.Int).Mul(big.NewInt(int64(maxWeightLimit)), big.NewInt(int64(positive))).Cmp(big.NewInt(U16Max)) < 0 {
-		return nil, fmt.Errorf("crv4: max weight limit %d is infeasible for %d positive weights", maxWeightLimit, positive)
+		return nil, &InfeasibleWeightLimitError{MaxWeightLimit: maxWeightLimit, PositiveWeights: positive}
 	}
 
 	sorted := make([]*big.Rat, 0, positive)

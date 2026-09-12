@@ -991,6 +991,8 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 	targetKnown := false
 	completed := false
 	deferred := false
+	weightRejected := false
+	rejectedAttempts := 0
 	failures := 0
 	// At most the existing failure budget is retained. Expected drain polls
 	// keep prior causes; a completed retry clears the recovered failures.
@@ -1010,33 +1012,46 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 				return errors.Join(fmt.Errorf("release steering epoch regressed from %d to %d", targetEpoch, currentEpoch), pendingErr)
 			}
 			if !targetKnown || currentEpoch > targetEpoch {
-				if targetKnown && !completed && !deferred {
+				if targetKnown && !completed && !deferred && !weightRejected {
 					return errors.Join(fmt.Errorf("release steering advanced from incomplete epoch %d to %d", targetEpoch, currentEpoch), pendingErr)
 				}
 				targetEpoch, targetKnown, completed, failures = currentEpoch, true, false, 0
 				deferred = false
+				weightRejected, rejectedAttempts = false, 0
 				pendingErr = nil
 			}
 			if !completed && !deferred {
 				err = submit()
 				var closedInput *provisionalClosedNativeInput
+				var rejected *provisionalNativeWeightRejection
 				if err == nil || releaseOnlyErrors(err, ErrSteeringAlreadyFinal) {
 					completed, failures = true, 0
+					weightRejected = false
 					pendingErr = nil
 				} else if allowDeferral && errors.As(err, &closedInput) && closedInput.nativeEpoch == targetEpoch && releaseOnlyErrors(err, errProvisionalClosedNativeInput) {
 					deferred, failures, pendingErr = true, 0, nil
 					fmt.Printf("release steer: %v; waiting for next native epoch\n", closedInput)
+				} else if allowDeferral && errors.As(err, &rejected) && rejected.nativeEpoch == targetEpoch && releaseOnlyErrors(err, rejected) {
+					// Funding and eligibility can change before this native epoch
+					// ends. Keep the existing poll/retry, without killing independent
+					// proof workers or erasing an unrelated unresolved failure.
+					weightRejected = pendingErr == nil
+					rejectedAttempts++
+					fmt.Printf("release steer: %v; rejected attempt %d; retrying on next poll\n", rejected, rejectedAttempts)
 				} else if releaseOnlyErrors(err, errAttemptCutPending) {
+					weightRejected = false
 					// Admitted trails drain under their existing contexts. Waiting
 					// neither spends nor resets the real native-failure budget;
 					// the next scheduler read still enforces exact epoch continuity.
 				} else {
+					weightRejected = false
 					failures++
 					pendingErr = errors.Join(pendingErr, err)
 					fmt.Printf("release steer: subnet epoch %d attempt %d: %v\n", targetEpoch, failures, err)
 				}
 			}
 		} else {
+			weightRejected = false
 			failures++
 			pendingErr = errors.Join(pendingErr, err)
 			fmt.Printf("release steer: finalized scheduler attempt %d: %v\n", failures, err)

@@ -16,6 +16,8 @@ type ExactWeightInput struct {
 	Score *big.Rat
 }
 
+var errNoPositiveUnmaskedWeights = errors.New("no positive unmasked weights")
+
 // BuildWeightVectorExact combines head and pool channels with the canonical
 // rational theta. Empty channels cede their allocation and every explicit mask
 // is applied after aggregation, so duplicate UID inputs cannot bypass it.
@@ -35,7 +37,7 @@ func BuildWeightVectorExact(pools, head []ExactWeightInput, theta protocol.Ratio
 		return nil, nil, fmt.Errorf("head: %w", err)
 	}
 	if poolSum.Sign() == 0 && headSum.Sign() == 0 {
-		return nil, nil, errors.New("no positive unmasked weights")
+		return nil, nil, errNoPositiveUnmaskedWeights
 	}
 	headShare := new(big.Rat).SetFrac(new(big.Int).SetUint64(theta.Numerator), new(big.Int).SetUint64(theta.Denominator))
 	poolShare := new(big.Rat).Sub(big.NewRat(1, 1), headShare)
