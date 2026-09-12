@@ -14,7 +14,7 @@ Current work:
    candidate. Preserve the existing deployment, wallets, approvals and journals.
 2. Use Terra (`gpt-5.6-terra`, reasoning effort `max`) for all tests and gate
    execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
-   fix failures and flakiness, then return corrected source to Terra for reruns.
+fix failures and flakiness, then return corrected source to Terra for reruns.
 3. Correct the actual validator, native-receipt and scenario-anomaly failures.
    Complete both full gates on the final candidate with private test services;
    keep their original failed and interrupted results visible.
@@ -26,7 +26,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 18:00 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 18:44 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
@@ -40,6 +40,22 @@ current-plan admission, and renewed lifecycle-window handling remain on the
 launch path. Full producer/aggregate qualification and both complete live
 acceptance phases remain outstanding. Public V2 semantic replay and appended
 renewal lineage also require completion; component passes do not close them.
+Terra is regenerating stale contract outputs from the already repaired Solidity
+source, so the candidate can authenticate the completed coordinator repair.
+The unrelated calibration prerequisites were removed from SN qualification;
+Terra passed all 12 affected guard roots normally and under race. The existing
+runtime dependency census and full SN gates remain required. [Scope validation](../temp/sn-scope-validation-20260912T1830Z/runtime/scope-guard-20260912T1831Z/RESULT.md).
+
+Read-only copies of all four retained source ledgers were inspected without
+changing their file metadata. The largest source contains 134,673 records,
+16,958 trails and 698,568,804 raw record bytes, within the original limits of
+655,360 records, 81,920 trails and 10 GiB. This observation does not replay record
+signatures or certify the remaining campaign. All four activation contexts bind
+block 7,975,563; the existing 10,080-block relay allowance formula therefore ends
+at 7,985,643, before the observed finalized block 7,991,348. No `evidence.relay.*`
+entry exists in the retained journal. Strict continuation must resolve this
+elapsed-time admission conflict while preserving the activation, the complete
+pending-publication census, original 256-slot allowance and all spending limits.
 
 ## Historical shortened execution — 2026-09-11 17:33 UTC
 
