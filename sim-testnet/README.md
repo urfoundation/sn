@@ -78,6 +78,11 @@ binary/source identity, raw output, actual exit and cleanup result. A failure,
 timeout, skip, missing result or changed input resets the affected streak;
 results from different binaries or revisions cannot be combined. Independent
 roots may run concurrently, but each root's three confirmations are sequential.
+An input change resets an unfinished streak. A completed streak remains scoped
+evidence for its recorded source and dependencies. Later revisions run affected
+integration checks; a newly observed failure opens a new confirmation obligation.
+Do not relabel retained passes as executions on a later revision or automatically
+repeat every completed historical streak after an integration.
 Retain the original failure, add deterministic root-cause and adjacent controls,
 and rerun affected integration coverage. Three later passes do not retroactively
 pass a failed full gate: final acceptance still requires both complete gates
@@ -600,7 +605,8 @@ never the campaign allocation a second time.
 
 If later emissions dilute an already verified reserve below its 65% target, a
 revision preserves the bootstrap transfer and appends a fixed repair tranche.
-The tranche is capped at 3,000 alpha and by the cumulative vault alpha ceiling;
+The tranche is capped at the configured repair allowance (currently 6,000 alpha)
+and by the cumulative vault alpha ceiling;
 it is not resized from the moving emission snapshot between review and apply.
 Planning fails unless that fixed amount can restore 65%. Immediately before
 signing, the harness rechecks price, transferable source capacity, the retained
