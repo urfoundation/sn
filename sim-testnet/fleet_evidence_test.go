@@ -40,8 +40,11 @@ func TestFleetMirrorComparisonRequiresExactNativeFinalityAttestation(t *testing.
 	}
 }
 
-func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
+func oneFleetEvidenceTestFixture(t *testing.T) (*ResolvedConfig, common.Address, map[string]json.RawMessage, FleetBindingEvidence, FleetCommitmentEvidence) {
+	t.Helper()
 	cfg := testResolvedConfig(t)
+	cfg.Config.Topology.HeadFleets = 1
+	cfg.Config.Topology.ChallengerFleets = 0
 	cfg.Config.Topology.ClientsPerHeadFleet = 1
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
@@ -102,6 +105,46 @@ func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
 	}
 	setup := map[string]json.RawMessage{
 		"fleet_1_manifest": manifestBytes, "fleet_1_commitment": encode(commitment), "fleet_1_binding_1": encode(evidence),
+	}
+	return cfg, coordinator, setup, evidence, commitment
+}
+
+func TestInspectCurrentFleetEvidenceRejectsExpiredAndFutureBindings(t *testing.T) {
+	cfg, coordinator, setup, evidence, _ := oneFleetEvidenceTestFixture(t)
+	for _, epoch := range []uint64{evidence.ValidFromEpoch, evidence.ValidToEpoch} {
+		commitments, count, valid, uids := inspectCurrentFleetEvidenceBytes(cfg, setup, coordinator, epoch)
+		if !commitments || !valid || count != 1 || len(uids) != 1 || uids[0] != 7 {
+			t.Fatalf("current signed binding rejected at inclusive epoch %d", epoch)
+		}
+	}
+	for _, epoch := range []uint64{evidence.ValidFromEpoch - 1, evidence.ValidToEpoch + 1, 308} {
+		commitments, count, valid, _ := inspectCurrentFleetEvidenceBytes(cfg, setup, coordinator, epoch)
+		if !commitments || valid || count != 1 {
+			t.Fatalf("inactive signed binding reported current at epoch %d: commitment=%t valid=%t count=%d", epoch, commitments, valid, count)
+		}
+	}
+	if commitments, count, valid, _ := inspectFleetEvidenceBytes(cfg, setup, coordinator); !commitments || !valid || count != 1 {
+		t.Fatal("current-epoch rejection invalidated exact historical signatures")
+	}
+	evidence.ClientSignature = "0x" + strings.Repeat("00", 64)
+	var err error
+	setup["fleet_1_binding_1"], err = json.Marshal(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, valid, _ := inspectCurrentFleetEvidenceBytes(cfg, setup, coordinator, evidence.ValidFromEpoch); valid {
+		t.Fatal("active validity dates hid a bad binding signature")
+	}
+}
+
+func TestInspectFleetEvidenceCryptographicallyVerifiesBindings(t *testing.T) {
+	cfg, coordinator, setup, evidence, commitment := oneFleetEvidenceTestFixture(t)
+	encode := func(value any) json.RawMessage {
+		b, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
 	}
 	commitmentOK, count, bindingsOK, uid, _ := inspectOneFleetEvidenceBytes(cfg, setup, coordinator, 1)
 	if !commitmentOK || !bindingsOK || count != 1 || uid != 7 {

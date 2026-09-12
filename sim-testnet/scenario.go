@@ -990,7 +990,7 @@ func inspectFleetEvidence(cfg *ResolvedConfig, stateDir string, epoch uint64) (b
 	if err != nil {
 		return false, 0, false, nil, nil, nil
 	}
-	commitments, count, bindings, uids := inspectFleetEvidenceBytes(cfg, setup, deployment.CoordinatorProxy)
+	commitments, count, bindings, uids := inspectCurrentFleetEvidenceBytes(cfg, setup, deployment.CoordinatorProxy, epoch)
 	if !bindings || len(uids) != len(minerGroups) {
 		return commitments, count, false, uids, nil, nil
 	}
@@ -1008,6 +1008,25 @@ func inspectFleetEvidence(cfg *ResolvedConfig, stateDir string, epoch uint64) (b
 func evidenceFixedHex(value string, size int) ([]byte, bool) {
 	b, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
 	return b, err == nil && len(b) == size && value == "0x"+hex.EncodeToString(b)
+}
+
+// Historical signatures remain valid after expiry, but they do not establish
+// a current candidate fleet. Keep the historical verifier separate so replay
+// never substitutes today's epoch for the signed historical boundary.
+func inspectCurrentFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.RawMessage, expectedCoordinator common.Address, epoch uint64) (bool, int, bool, []uint16) {
+	commitments, count, bindings, uids := inspectFleetEvidenceBytes(cfg, setup, expectedCoordinator)
+	if !bindings {
+		return commitments, count, false, uids
+	}
+	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
+		for member := 1; member <= cfg.Config.Topology.ClientsPerHeadFleet; member++ {
+			var binding FleetBindingEvidence
+			if err := json.Unmarshal(setup[fmt.Sprintf("fleet_%d_binding_%d", fleet, member)], &binding); err != nil || epoch < binding.ValidFromEpoch || epoch > binding.ValidToEpoch {
+				return commitments, count, false, uids
+			}
+		}
+	}
+	return commitments, count, true, uids
 }
 
 func inspectFleetEvidenceBytes(cfg *ResolvedConfig, setup map[string]json.RawMessage, expectedCoordinator common.Address) (bool, int, bool, []uint16) {
