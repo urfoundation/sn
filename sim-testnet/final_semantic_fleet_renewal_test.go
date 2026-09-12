@@ -20,6 +20,7 @@ import (
 // Use real ABI bytes for every member, including the two retained active
 // lifecycle predecessors, while preserving the immutable original partition.
 func TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation(t *testing.T) {
+	t.Parallel()
 	evidence, lineage := finalFleetRenewalLineageFixture(t)
 	if err := verifyFinalFleetGenerationLineage(evidence, lineage); err != nil {
 		t.Fatalf("complete approved renewal: %v", err)
@@ -68,6 +69,7 @@ func TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation(t 
 // The additional scope is replayed against the same exact receipt/input path
 // as original fleet writes; an operation alias cannot expand the event set.
 func TestFinalFleetRenewalPublicReplayAndArchiveRejectSubstitutions(t *testing.T) {
+	t.Parallel()
 	evidence, lineage := finalFleetRenewalLineageFixture(t)
 	write := lineage.Renewals[0].Fleets[4].Members[0].Binding
 	reader := &finalFleetGenerationWriteTestReader{state: FinalFleetGenerationEVMWriteState{TransactionHash: write.Receipt.TransactionHash, To: write.CoordinatorProxy, Calldata: write.Calldata, Block: write.Receipt.Block, Status: "success", Logs: []finalCanonicalEVMLog{write.Events[0].Log}}}

@@ -6,6 +6,7 @@ import (
 )
 
 func TestFinalFleetRenewalLifecycleJoinsExactGenerationAndSource(t *testing.T) {
+	t.Parallel()
 	evidence, lineage := finalFleetRenewalLineageFixture(t)
 	round := lineage.Renewals[0]
 	evidence.FleetLifecycle = &FinalFleetLifecycleEvidence{State: FleetLifecycleEvidence{Renewal: &FleetLifecycleRenewal{Round: round.Round, SourcePlanHash: round.SourcePlanHash, ValidFromEpoch: round.ValidFromEpoch, ValidToEpoch: round.ValidToEpoch}}}
