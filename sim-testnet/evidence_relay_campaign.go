@@ -34,6 +34,12 @@ func runScenarioWithEvidenceRelay(ctx context.Context, cfg *ResolvedConfig, stat
 	if err := relay.WaitReady(phaseCtx); err != nil {
 		return nil, err
 	}
+	if scenarioNeedsNativeWarmupV2(cfg, definition.Name) {
+		// Production always installs the concrete actual-chain owner here; a
+		// caller cannot turn a ready boolean into a native source receipt.
+		options.NativeWarmupV2 = liveScenarioNativeWarmupV2(cfg, executor, relay.chain, definition.Name)
+		options.NativeWarmupCompleteV2 = relay.RequireNativeWarmup
+	}
 	// Resumed preparation retains its original completion; it cannot buy a
 	// new horizon. Fresh preparation rechecks actual clocks before observation.
 	if prepared {

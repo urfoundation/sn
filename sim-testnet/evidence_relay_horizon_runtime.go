@@ -460,11 +460,29 @@ func (self *evidenceRelayRuntime) stoppedHorizonError() error {
 // A completed preparation may have consumed delay headroom. Before the
 // observed phase starts, recheck its actual remaining watchdog/terminal work.
 func (self *evidenceRelayRuntime) RequirePrepared(ctx context.Context) error {
-	if err := self.WaitReady(ctx); err != nil {
-		return err
+	if self == nil {
+		return errors.New("evidence relay preparation owner is absent")
 	}
 	remaining, err := self.work.remaining(self.phase, true)
 	if err != nil {
+		return err
+	}
+	return self.requireRemainingWork(ctx, remaining)
+}
+
+func (self *evidenceRelayRuntime) RequireNativeWarmup(ctx context.Context) error {
+	if self == nil {
+		return errors.New("evidence relay native readiness owner is absent")
+	}
+	remaining, err := self.work.afterWarmup(self.phase)
+	if err != nil {
+		return err
+	}
+	return self.requireRemainingWork(ctx, remaining)
+}
+
+func (self *evidenceRelayRuntime) requireRemainingWork(ctx context.Context, remaining uint64) error {
+	if err := self.WaitReady(ctx); err != nil {
 		return err
 	}
 	request := evidenceRelayRemainingRequest{ctx: ctx, remaining: remaining, result: make(chan error, 1)}

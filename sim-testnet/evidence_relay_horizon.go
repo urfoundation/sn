@@ -20,6 +20,8 @@ type evidenceRelayWork struct {
 	releaseObservation    uint64
 	productionPreparation uint64
 	productionObservation uint64
+	releaseWarmup         uint64
+	productionWarmup      uint64
 	settlementCadence     uint64
 	nativeCadence         uint64
 }
@@ -59,6 +61,14 @@ func evidenceRelayConfiguredWork(cfg *ResolvedConfig) (evidenceRelayWork, error)
 		return evidenceRelayWork{}, err
 	}
 	work.productionObservation, err = watchdog("production-soak")
+	if err != nil {
+		return evidenceRelayWork{}, err
+	}
+	work.releaseWarmup, err = scenarioNativeWarmupBlocksV2(cfg, "release-1.0")
+	if err != nil {
+		return evidenceRelayWork{}, err
+	}
+	work.productionWarmup, err = scenarioNativeWarmupBlocksV2(cfg, "production-soak")
 	if err != nil {
 		return evidenceRelayWork{}, err
 	}
@@ -205,8 +215,14 @@ func evidenceRelayWatchdogDuration(cfg *ResolvedConfig, definition scenarioDefin
 // later production work too; post-preparation only drops completed setup work.
 func (self evidenceRelayWork) remaining(phase string, prepared bool) (uint64, error) {
 	values := []uint64{self.productionObservation}
+	if self.productionWarmup != 0 {
+		values = append(values, self.productionWarmup)
+	}
 	if phase == "release-1.0" {
 		values = append(values, self.releaseObservation, self.productionPreparation)
+		if self.releaseWarmup != 0 {
+			values = append(values, self.releaseWarmup)
+		}
 		if !prepared {
 			values = append(values, self.releasePreparation)
 		}
@@ -226,6 +242,24 @@ func (self evidenceRelayWork) remaining(phase string, prepared bool) (uint64, er
 		result = next
 	}
 	return result, nil
+}
+
+// Only the real readiness completion can release this phase's warm-up work
+// floor. Resumed preparation must reserve it again until fresh native state
+// is authenticated; the original funded end and all signed debits stay fixed.
+func (self evidenceRelayWork) afterWarmup(phase string) (uint64, error) {
+	remaining, err := self.remaining(phase, true)
+	if err != nil {
+		return 0, err
+	}
+	warmup := self.releaseWarmup
+	if phase == "production-soak" {
+		warmup = self.productionWarmup
+	}
+	if warmup > remaining {
+		return 0, errors.New("native warm-up exceeds its owned remaining work")
+	}
+	return remaining - warmup, nil
 }
 
 // One source is the exact original validator hotkey/operator activation.

@@ -256,6 +256,7 @@ type ScenarioObservation struct {
 	CandidateFleetMiners       [][]int                        `json:"candidate_fleet_miners"`
 	NativeRewards              *NativeRewardObservation       `json:"native_rewards,omitempty"`
 	NativeRewardsError         string                         `json:"native_rewards_error,omitempty"`
+	NativeWarmupV2             *ScenarioNativeWarmupV2        `json:"native_warmup_v2,omitempty"`
 	ReserveValidatorRegistered bool                           `json:"reserve_validator_registered"`
 	ReserveValidatorUID        uint16                         `json:"reserve_validator_uid"`
 	ReserveDelegateTake        *uint16                        `json:"reserve_delegate_take,omitempty"`
@@ -393,6 +394,8 @@ type scenarioRunOptions struct {
 	FaultDriver                 scenarioFaultDriver
 	Adversaries                 adversaryCampaign
 	Prepare                     func(context.Context) error
+	NativeWarmupV2              scenarioNativeWarmupReadV2
+	NativeWarmupCompleteV2      func(context.Context) error
 	ProcessLogs                 scenarioProcessLogGate
 	CollectFinalSemantic        finalSemanticCampaignInputCollector
 	WaitFinalSettlementClosures func(context.Context, *ResolvedConfig, string, *ScenarioObservation, *ScenarioAcceptanceWindow, time.Time, time.Duration) error
@@ -440,6 +443,9 @@ func buildScenarioAcceptanceWindow(cfg *ResolvedConfig, definition scenarioDefin
 	}
 	if cfg == nil || cfg.Config == nil || cfg.Policy == nil || baseline == nil || baseline.Status == nil || baseline.Status.Contracts == nil {
 		return nil, errors.New("scenario acceptance baseline is incomplete")
+	}
+	if scenarioNeedsNativeWarmupV2(cfg, definition.Name) && (baseline.NativeWarmupV2 == nil || !baseline.NativeWarmupV2.Ready || baseline.NativeWarmupV2.Phase != definition.Name) {
+		return nil, errors.New("strict V2 acceptance requires both fresh native applications and payout readiness")
 	}
 	contracts := baseline.Status.Contracts
 	policy := contracts.Policy
@@ -3901,9 +3907,12 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			return initialFailure(start, err)
 		}
 	}
-	prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
-	if err != nil {
-		return initialFailure(start, err)
+	needsNativeWarmup := scenarioNeedsNativeWarmupV2(cfg, definition.Name)
+	if !needsNativeWarmup {
+		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
+		if err != nil {
+			return initialFailure(start, err)
+		}
 	}
 	if options.Prepare != nil {
 		prepared, prepareErr := probe.Snapshot(ctx)
@@ -3920,6 +3929,42 @@ func runScenarioWithProbe(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		observationHistory = append(observationHistory, current)
 		if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
 			return initialFailure(current, fmt.Errorf("persist post-preparation scenario observation: %w", err))
+		}
+	}
+	current, err = waitScenarioNativeWarmupV2(ctx, cfg, definition.Name, campaignStart, current, probe, options, func(observed *ScenarioObservation) error {
+		if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, observed, false); err != nil {
+			return fmt.Errorf("native warm-up process log gate: %w", err)
+		}
+		observationHistory = append(observationHistory, observed)
+		return appendObservation(filepath.Join(runDir, "observations.jsonl"), observed)
+	})
+	if err != nil {
+		return initialFailure(current, fmt.Errorf("native readiness before acceptance: %w", err))
+	}
+	if needsNativeWarmup {
+		prearmedFaults, err = armPreAcceptanceFaults(ctx, definition.Faults, options.FaultDriver)
+		if err != nil {
+			return initialFailure(current, err)
+		}
+		if len(prearmedFaults) != 0 {
+			armed, readErr := probe.Snapshot(ctx)
+			if readErr != nil || armed == nil || armed.Status == nil || armed.Status.Contracts == nil {
+				return initialFailure(current, errors.Join(errors.New("post-warm-up armed baseline is unavailable"), readErr))
+			}
+			armed.NativeWarmupV2 = current.NativeWarmupV2
+			armed.ObservationHash = ""
+			armed.ObservationHash, err = canonicalHashHex(armed)
+			if err != nil {
+				return initialFailure(current, err)
+			}
+			current = armed
+			if err := scanScenarioProcessLogs(options.ProcessLogs, runDir, current, false); err != nil {
+				return initialFailure(current, err)
+			}
+			observationHistory = append(observationHistory, current)
+			if err := appendObservation(filepath.Join(runDir, "observations.jsonl"), current); err != nil {
+				return initialFailure(current, err)
+			}
 		}
 	}
 	// A release acceptance interval begins only at the next contract boundary

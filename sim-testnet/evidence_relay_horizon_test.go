@@ -83,11 +83,11 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if work.releasePreparation != 1338 || work.releaseObservation != 2780 || work.productionPreparation != 1169 || work.productionObservation != 1640 || work.settlementCadence != 300 || work.nativeCadence != 360 {
+	if work.releasePreparation != 1338 || work.releaseObservation != 2780 || work.productionPreparation != 1169 || work.productionObservation != 1640 || work.releaseWarmup != 1530 || work.productionWarmup != 1620 || work.settlementCadence != 300 || work.nativeCadence != 360 {
 		t.Fatalf("actual configured phase/preparation geometry changed: %+v", work)
 	}
 	remaining, err := work.remaining("release-1.0", false)
-	if err != nil || remaining != 6927 {
+	if err != nil || remaining != 10077 {
 		t.Fatal("release entry omitted remaining production/preparation work", remaining, err)
 	}
 	for _, entry := range []struct {
@@ -95,7 +95,7 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		prepared bool
 		want     uint64
 	}{
-		{phase: "release-1.0", prepared: true, want: 5589}, {phase: "production-soak", prepared: false, want: 2809}, {phase: "production-soak", prepared: true, want: 1640},
+		{phase: "release-1.0", prepared: true, want: 8739}, {phase: "production-soak", prepared: false, want: 4429}, {phase: "production-soak", prepared: true, want: 3260},
 	} {
 		value, err := work.remaining(entry.phase, entry.prepared)
 		if err != nil || value != entry.want {
@@ -103,11 +103,11 @@ func TestEvidenceRelayHorizonUsesActualFullPopulationPhaseClocks(t *testing.T) {
 		}
 	}
 	required, closed, native, err := evidenceRelayForecast(work, 4, remaining)
-	if err != nil || required != 184 || closed != 25 || native != 21 {
+	if err != nil || required != 256 || closed != 35 || native != 29 {
 		t.Fatal("required original-source forecast differs", required, closed, native, err)
 	}
 	span, closed, native, err := evidenceRelayConfiguredHorizon(cfg)
-	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 72 {
+	if err != nil || span != 10080 || closed != 35 || native != 29 || cfg.Config.ValidatorEvidenceRelay.MaxSlots-required != 0 {
 		t.Fatal("finite delay/extra-subject headroom differs", span, closed, native, err)
 	}
 	if required > cfg.Config.ValidatorEvidenceRelay.MaxSlots {
