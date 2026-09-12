@@ -26,6 +26,9 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	RenewalPlan, RenewalTransactionEvidence                                                                                         string
+	RenewalTransactions                                                                                                             []string
+	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
 	RepairArtifact, RepairArtifactSHA256, RepairBudget, RepairBudgetSHA256                                                          string
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
@@ -46,6 +49,7 @@ Commands:
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
   resume   reconcile the journal and continue an interrupted approved action
   coordinator-repair  apply one bounded provisional coordinator implementation correction
+  fleet-renew  plan or resume an exact next-generation renewal of existing fleets
   status   show process and finalized on-chain state
   inspect  emit the complete public live-state view
   analyze  reconstruct weights, roots, claims, reserve, and conservation evidence
@@ -69,6 +73,10 @@ Common options:
   --provisional-observation-timeout DURATION  scenario --name epoch --provisional-resume only; 0 keeps the default, maximum 6h
   --repair-artifact PATH --repair-artifact-sha256 HASH  exact reviewed Foundry coordinator artifact
   --repair-budget PATH --repair-budget-sha256 HASH  exact campaign allowance suballocation receipt
+  --renewal-valid-from-epoch N --renewal-valid-to-epoch N  exact common future binding window
+  --renewal-max-fee-per-gas-wei N  renewal ceiling bounded by the configured maximum
+  --renewal-plan PATH  exact JSON plan emitted by fleet-renew; required for apply/resume
+  --renewal-transaction-evidence PATH  JSON array of signed external EVM transaction hex strings
   --detach            persistent supervisor mode for launch
   --name NAME         scenario name
   --manifest PATH     public manifest for secretless inspect/analyze
@@ -81,7 +89,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", cliOptions{}, errors.New("missing command")
 	}
 	cmd := args[0]
-	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -109,6 +117,11 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.StringVar(&o.RepairArtifactSHA256, "repair-artifact-sha256", "", "")
 	fs.StringVar(&o.RepairBudget, "repair-budget", "", "")
 	fs.StringVar(&o.RepairBudgetSHA256, "repair-budget-sha256", "", "")
+	fs.StringVar(&o.RenewalPlan, "renewal-plan", "", "")
+	fs.StringVar(&o.RenewalTransactionEvidence, "renewal-transaction-evidence", "", "")
+	fs.Uint64Var(&o.RenewalValidFrom, "renewal-valid-from-epoch", 0, "")
+	fs.Uint64Var(&o.RenewalValidTo, "renewal-valid-to-epoch", 0, "")
+	fs.Uint64Var(&o.RenewalFeePerGas, "renewal-max-fee-per-gas-wei", 0, "")
 	if err := fs.Parse(args[1:]); err != nil {
 		return "", o, err
 	}
@@ -140,6 +153,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validateCoordinatorRepairOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateFleetRenewalOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if o.ProvisionalRPCAuthority != "" {
@@ -348,7 +364,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair"
+	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -383,6 +399,8 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 	}
 	switch cmd {
+	case "fleet-renew":
+		return runFleetRenewal(ctx, resolved, stateDir, o)
 	case "coordinator-repair":
 		return runCoordinatorRepair(ctx, resolved, stateDir, o)
 	case "doctor":

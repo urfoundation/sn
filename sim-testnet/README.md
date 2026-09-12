@@ -60,6 +60,40 @@ record and wait for the assigned model to become available or an explicit
 user-approved reassignment; an agent error does not authorize a silent model
 substitution, duplicate test process, or bypassed gate.
 
+`fleet-renew` appends a reviewed generation for every existing fleet. Planning
+is read-only and requires an admitted current setup plan, retained client keys,
+exact current UID/coldkey custody, and a future validity window. For example,
+pass `--renewal-valid-from-epoch N --renewal-valid-to-epoch M
+--renewal-max-fee-per-gas-wei 25000000000 --format json` and retain the JSON
+output. Set the start epoch to allow all journaled transactions to finalize.
+The direct path uses the retained original oracle. Batches of ten independent
+native signers run together; each EVM phase submits exact nonces in order and
+reconciles at most ten transactions concurrently. Every started worker joins
+before a dependent phase or the next batch starts, keeping native proofs fresh.
+Still
+active predecessor bindings receive exact client-authorized revocations at the
+new start epoch; expired predecessors are renewed directly.
+
+Use `--renewal-transaction-evidence /absolute/path/transactions.json` while
+planning when components or recovery tools have signed EVM transactions outside
+the harness journal. The input is a bounded JSON array of exact signed
+transaction hex strings, including replaced and canceled attempts. The planner
+also reads all retained miner claim queues. It verifies chain, recovered signer,
+nonce and journal hash, deduplicates exact transactions, and checks every
+deployment-derived EVM role for missing nonce history. Additional signed fee
+and value liabilities remain reserved before renewal takes any unused campaign
+gas allowance. An infeasible plan reports its exact shortfall. Existing alpha,
+registration and total EVM limits are preserved; no funding is performed.
+
+Apply or resume with `fleet-renew --renewal-plan /absolute/path/renewal.json
+--apply --plan-hash HASH` plus the ordinary config and state flags. Imported
+plans cannot override their window, fee ceiling or transaction evidence.
+Admission rechecks custody, nonce activity, prior canonical receipts, liabilities
+and balances before the first write. Interrupted actions recover their exact
+persisted signed bytes. The previous plan is archived, and every old signed
+manifest, binding, receipt and runtime queue is retained. Renewal alone does not
+launch or rerender a campaign; strict startup admission remains a separate step.
+
 For local qualification captures, freeze the runner before launch and invoke
 `bash scripts/run-qualification-capture.sh SOURCE_ROOT SOURCE_MANIFEST FROZEN_RUNNER`
 with three absolute paths. The wrapper checks relative source inventory entries

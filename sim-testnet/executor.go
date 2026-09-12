@@ -1199,6 +1199,11 @@ func (e *Executor) fleetInstallBatchSuperseded(action Action) (bool, error) {
 }
 
 func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, action Action, verified JournalEntry, record *ActionPostcondition, sharedEVMHead, sharedNativeHead *ChainHead) error {
+	if source, handled, err := e.fleetRenewalHistoricalSource(action, verified, record); err != nil {
+		return err
+	} else if handled {
+		return source.verifyHistoricalEVMPostcondition(ctx, action, record)
+	}
 	if e.carriedFleetHistoryKeys[carriedVerificationKey(verified)] {
 		if record == nil || action.ID != verified.ActionID || record.PlanHash != verified.PlanHash || record.ActionID != verified.ActionID || record.IntentHash != verified.IntentHash || !actionAcceptsIntent(action, verified.IntentHash) {
 			return errors.New("batched historical fleet receipt identity mismatch")
@@ -1434,6 +1439,12 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 		return fmt.Errorf("action %s dependencies: %w", a.ID, err)
 	}
 	if prior, ok := e.verifiedActionEntry(a); ok {
+		if isFleetRenewalAction(a) {
+			if _, err := e.readPersistedPostcondition(prior); err != nil {
+				return err
+			}
+			return e.verifyCurrentActionPostState(ctx, a, nil)
+		}
 		if provisionalResumeEnabled(e.cfg) && a.ID != "topology.launch" {
 			// Never fall through to dispatch when a verified receipt fails local
 			// authentication: that could spend again under a fresh nonce.
@@ -1518,6 +1529,8 @@ func (e *Executor) verifyActionDependencies(action Action) error {
 
 func (e *Executor) execute(ctx context.Context, a Action) error {
 	switch {
+	case isFleetRenewalAction(a):
+		return e.executeFleetRenewalAction(ctx, a)
 	case a.ID == "subnet.verify-owner":
 		err, _ := verifySubnetOwner(e.substrate.chain, e.cfg, e.cfg.WalletPublic)
 		return err

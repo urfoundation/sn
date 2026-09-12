@@ -1199,6 +1199,9 @@ func validateEVMTransactionEnvelope(action Action, estimatedGas uint64, feeCap, 
 // Verify optional exact transaction fields which are hash-bound into critical
 // deployment actions. Either the complete field set is present or none is.
 func validateApprovedEVMTransactionFields(action Action, signer common.Address, nonce uint64, to *common.Address, value *big.Int, data []byte) error {
+	if err := validateFleetRenewalEVMFields(action, signer, nonce, to, value, data); err != nil {
+		return err
+	}
 	if action.ID == validatorEvidenceAnchorActionID {
 		if err := validateValidatorEvidenceAnchorTransactionFields(action, signer, to, value, data); err != nil {
 			return err
@@ -1260,6 +1263,16 @@ func (m *EvmTxManager) Send(ctx context.Context, planHash string, a Action, to *
 // Called only by the account-turn owner, including the evidence relay which
 // binds its exact action nonce before entering this same durable sender.
 func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
+	signed, err := m.prepareOwnedEVMTransaction(ctx, planHash, a, to, value, data)
+	if err != nil {
+		return nil, err
+	}
+	return m.waitExactTransaction(ctx, planHash, a, signed)
+}
+
+// Preparation persists the exact signature and nonce before any broadcast.
+// The caller owns the account turn; ordinary sends retain it through finality.
+func (m *EvmTxManager) prepareOwnedEVMTransaction(ctx context.Context, planHash string, a Action, to *common.Address, value *big.Int, data []byte) (*types.Transaction, error) {
 	if prior, ok := m.journal.LatestTransaction(planHash, a.ID, a.IntentHash); ok {
 		rawPath := filepath.Join(m.stateDir, "transactions", stringsTrim0x(prior.TransactionHash)+".rlp")
 		raw, err := os.ReadFile(rawPath)
@@ -1273,6 +1286,12 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 		if !strings.EqualFold(tx.Hash().Hex(), prior.TransactionHash) {
 			return nil, fmt.Errorf("persisted EVM transaction hash mismatch: got %s want %s", tx.Hash(), prior.TransactionHash)
 		}
+		if isFleetRenewalAction(a) && (!bytes.Equal(tx.Data(), data) || tx.To() == nil || to == nil || *tx.To() != *to || tx.Value().Cmp(value) != 0) {
+			return nil, errors.New("persisted renewal transaction differs from approved current calldata")
+		}
+		if err := validateFleetRenewalSignedTransaction(a, &tx, m.chainID); err != nil {
+			return nil, err
+		}
 		if a.ID == validatorEvidenceAnchorActionID && (!tx.Protected() || m.chainID == nil || tx.ChainId().Cmp(m.chainID) != 0) {
 			return nil, errors.New("persisted validator evidence anchor transaction has another or unprotected chain")
 		}
@@ -1283,7 +1302,7 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 		if err := validateApprovedEVMTransactionFields(a, signer, tx.Nonce(), tx.To(), tx.Value(), tx.Data()); err != nil {
 			return nil, fmt.Errorf("persisted EVM transaction approval: %w", err)
 		}
-		return m.waitExactTransaction(ctx, planHash, a, &tx)
+		return &tx, nil
 	}
 	from := crypto.PubkeyToAddress(m.key.PublicKey)
 	nonce, err := m.client.PendingNonceAt(ctx, from)
@@ -1310,7 +1329,13 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 		return nil, err
 	}
 	if !feeCap.IsUint64() || feeCap.Uint64() > maximumFeePerGas {
-		return nil, fmt.Errorf("%s live fee cap %s exceeds approved fee-per-gas ceiling %d", a.ID, feeCap, maximumFeePerGas)
+		if !isFleetRenewalAction(a) {
+			return nil, fmt.Errorf("%s live fee cap %s exceeds approved fee-per-gas ceiling %d", a.ID, feeCap, maximumFeePerGas)
+		}
+		feeCap, err = fleetRenewalQuotedFeeCap(a, header.BaseFee, tip)
+		if err != nil {
+			return nil, err
+		}
 	}
 	msg := ethereum.CallMsg{From: from, To: to, Value: value, Data: data, GasTipCap: tip, GasFeeCap: feeCap}
 	estimatedGas, err := m.client.EstimateGas(ctx, msg)
@@ -1345,7 +1370,7 @@ func (m *EvmTxManager) sendOwnedNonce(ctx context.Context, planHash string, a Ac
 	if err := m.journal.Append(JournalEntry{DeploymentID: m.deploymentID, PlanHash: planHash, ActionID: a.ID, IntentHash: a.IntentHash, Stage: StageBroadcast, Signer: from.Hex(), Nonce: strconv.FormatUint(nonce, 10), TransactionHash: signed.Hash().Hex(), RecoveryBlock: recovery.Number, RecoveryBlockHash: recovery.Hash}); err != nil {
 		return nil, err
 	}
-	return m.waitExactTransaction(ctx, planHash, a, signed)
+	return signed, nil
 }
 
 func knownEVMTxError(err error) bool {

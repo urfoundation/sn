@@ -870,6 +870,8 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		state["finalized_block"] = snapshot.FinalizedBlock
 		state["finalized_block_hash"] = snapshot.FinalizedHash
 		return state, nil
+	case isFleetRenewalAction(a):
+		return e.verifyFleetRenewalPostState(ctx, a, evmHead, state)
 	case a.ID == "evm.reserve-sink" || a.ID == "evm.settlement-vault" || a.ID == "evm.coordinator-implementation" || a.ID == "evm.vault-register-escrow" || a.ID == "evm.coordinator-proxy" || a.ID == "evm.governance-drill-implementation" || a.ID == "evm.vault-fix-coordinator" || a.ID == "evm.sink-fix-recorder" || a.ID == "precompile.probe-deploy" || a.ID == "evm.coordinator-upgrade-implementation" || a.ID == "fleet.refresh.deploy-batcher":
 		return e.verifyDeploymentPostState(ctx, a, evmHead, state)
 	case a.ID == "fleet.refresh.oracle-activate" || a.ID == "fleet.refresh.oracle-await-active" || a.ID == "fleet.refresh.oracle-restore" || a.ID == "fleet.refresh.oracle-await-restored":

@@ -95,6 +95,7 @@ type SetupPlan struct {
 	validatorEvidenceObserved    *validatorEvidenceCarryObservation
 	SupersededDeployments        []ContractDeployment `json:"superseded_deployments,omitempty"`
 	Actions                      []Action             `json:"actions"`
+	FleetRenewals                []FleetRenewal       `json:"fleet_renewals,omitempty"`
 	MaximumSpend                 Spend                `json:"maximum_spend"`
 	SupersededSpend              Spend                `json:"superseded_spend,omitempty"`
 	Limits                       Spend                `json:"limits"`
@@ -1993,6 +1994,9 @@ func validatePlanBudget(p *SetupPlan) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
 	}
+	if err := validateFleetRenewalPlan(p); err != nil {
+		return err
+	}
 	if err := validateValidatorEvidencePlan(p); err != nil {
 		return err
 	}
@@ -2206,7 +2210,7 @@ func validatePlanBudget(p *SetupPlan) error {
 			if envelopeErr != nil {
 				return envelopeErr
 			}
-			if maximumFeePerGas != p.MaximumEVMFeePerGasWei {
+			if maximumFeePerGas != p.MaximumEVMFeePerGasWei && !(isFleetRenewalAction(action) && maximumFeePerGas < p.MaximumEVMFeePerGasWei) {
 				return fmt.Errorf("EVM action %s fee-per-gas limit %d differs from plan limit %d", action.ID, maximumFeePerGas, p.MaximumEVMFeePerGasWei)
 			}
 		}

@@ -644,7 +644,7 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 			descriptors = append(descriptors, standardFleetEvidenceDescriptor(cfg, fleet))
 		}
 	}
-	return descriptors, nil
+	return fleetRenewalEvidenceDescriptors(cfg, stateDir, epoch, descriptors)
 }
 
 func fleetLifecycleFallbackManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) (protocol.FleetManifest, []byte, [32]byte, error) {

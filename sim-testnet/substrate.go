@@ -1717,6 +1717,19 @@ func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, p
 		if !strings.EqualFold(hash.Hex(), prior.TransactionHash) {
 			return types.Hash{}, 0, fmt.Errorf("persisted substrate transaction hash mismatch: got %s want %s", hash.Hex(), prior.TransactionHash)
 		}
+		if isFleetRenewalAction(a) {
+			nonce, err := strconv.ParseUint(a.Parameters["renewal_expected_nonce"], 10, 32)
+			if err != nil || prior.Nonce != "" && prior.Nonce != strconv.FormatUint(nonce, 10) || prior.Signer != "" && prior.Signer != signer.Address {
+				return types.Hash{}, 0, errors.New("persisted renewal native signer or nonce differs from approval")
+			}
+			expected, err := encodeSignedSubstrateCall(m.chain, signer, call, uint32(nonce))
+			if err != nil {
+				return types.Hash{}, 0, err
+			}
+			if err := validateSignedSubstrateCallMatches(raw, expected); err != nil {
+				return types.Hash{}, 0, err
+			}
+		}
 		return m.watchRaw(ctx, planHash, a, raw, hash, prior.RecoveryBlock, prior.RecoveryBlockHash, false)
 	}
 	if _, _, err := m.finalizedHeadContext(ctx); err != nil {
@@ -1725,6 +1738,12 @@ func (m *SubstrateManager) SendAsWithRecoveryPrecondition(ctx context.Context, p
 	var nonce uint32
 	if err := m.chain.API.Client.CallContext(ctx, &nonce, "system_accountNextIndex", signer.Address); err != nil {
 		return types.Hash{}, 0, err
+	}
+	if isFleetRenewalAction(a) {
+		want, err := strconv.ParseUint(a.Parameters["renewal_expected_nonce"], 10, 32)
+		if err != nil || uint64(nonce) != want {
+			return types.Hash{}, 0, errors.New("renewal native nonce differs from exact approval")
+		}
 	}
 	raw, err := encodeSignedSubstrateCall(m.chain, signer, call, nonce)
 	if err != nil {
