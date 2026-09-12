@@ -29,7 +29,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 Current checkpoint, 2026-09-12 18:00 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
-alpha-rao of accounted rounding residue. The [peer-review report](sim-latency/peerreview/FINAL.md)
+alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
 contains the receipts and pinned state; the historical 15/17 scenario remains
 `final_acceptance=false`.
 

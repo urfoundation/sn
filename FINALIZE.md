@@ -14,7 +14,8 @@ Terra (`gpt-5.6-terra`, reasoning effort `max`) executes tests and reruns.
 Astra (`gpt-6-astra`, reasoning effort `max`) diagnoses and fixes failures
 and flakiness. The [harness execution policy](sim-testnet/README.md#agent-execution-policy)
 defines the handoff. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) tracks current
-work. Existing custody, approved spending limits and the unlimited owned LAN
+work. The canonical final report is [sim-testnet/FINAL.md](sim-testnet/FINAL.md).
+Existing custody, approved spending limits and the unlimited owned LAN
 RPC at `192.168.1.162:9944` remain in force. Full acceptance is not yet achieved.
 
 ## Historical shortened-run override — 2026-09-11 07:48 UTC
