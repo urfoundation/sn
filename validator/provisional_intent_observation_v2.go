@@ -131,6 +131,11 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		all = append(all, *file.Current)
 	}
 	seen := make(map[string]bool, len(all))
+	// Retained provisional testnet history can omit native submissions for
+	// closed epochs. The production V2 runtime independently authenticates the
+	// terminal records around such a gap; this observer should report that
+	// retained transcript instead of converting it into an observation error.
+	allowProvisionalGaps := provisionalClosedNativeInputEnabled(cfg)
 	for index := range all {
 		intent := &all[index]
 		if err := ctx.Err(); err != nil {
@@ -150,7 +155,7 @@ func ObserveProvisionalIntentsV2(ctx context.Context, options ProvisionalIntentO
 		}
 		seen[intent.VectorHash] = true
 		if index > 0 {
-			if err := validateSteeringIntentSuccessor(&all[index-1], intent); err != nil {
+			if err := validateSteeringIntentSuccessorWithGapsV2(&all[index-1], intent, allowProvisionalGaps); err != nil {
 				return result, err
 			}
 		}
