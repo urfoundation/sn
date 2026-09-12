@@ -267,7 +267,7 @@ func (self *ReleaseEvidenceV2Archive) TerminalClosure(epoch uint64) (*AttemptSet
 		return nil, errors.New("archive terminal epoch is missing")
 	}
 	bounds := self.owner.cfg.EvidenceV2.Bounds
-	raw, err := marshalAttemptSettlementV2JSON(self.owner.ctx, closure, bounds.MaxClosureBytes, false, false)
+	raw, err := marshalAttemptSettlementV2JSON(self.owner.ctx, closure, bounds.MaxClosureBytes, false, true)
 	if err != nil {
 		return nil, err
 	}
