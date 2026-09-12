@@ -1203,6 +1203,17 @@ func finalSemanticHeads(evidence *FinalSemanticEvidence) ([]ChainHead, []ChainHe
 				native = append(native, batch.BatchWrite.NativeHead)
 			}
 		}
+		for _, renewal := range lineage.Renewals {
+			for _, fleet := range renewal.Fleets {
+				for _, version := range finalFleetRenewalVersions(fleet) {
+					native = append(native, version.NativeHead)
+				}
+				for _, write := range finalFleetRenewalWrites(fleet) {
+					evm = append(evm, write.Receipt.Block, write.EVMHead)
+					native = append(native, write.NativeHead)
+				}
+			}
+		}
 	}
 	for _, checkpoint := range finalFleetRefreshOracleCheckpointRows(evidence.FleetRefreshOracleWindow.Checkpoints) {
 		evm = append(evm, checkpoint.value.Head)

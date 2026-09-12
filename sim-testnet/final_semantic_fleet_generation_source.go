@@ -396,6 +396,9 @@ func (self *finalSemanticArchive) buildFleetGeneration(source *FinalSemanticEvid
 		}
 		lineage.ChallengerFleets = append(lineage.ChallengerFleets, FinalFleetGenerationChallengerEvidence{FleetID: fleetID, Initial: initial, Registration: registration, Transition: transition})
 	}
+	if err := context.buildRenewalRounds(lineage); err != nil {
+		return err
+	}
 	files := make([]finalFleetGenerationLineageFile, 0, len(context.raw))
 	names := make([]string, 0, len(context.raw))
 	for name := range context.raw {

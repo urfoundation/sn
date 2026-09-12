@@ -87,6 +87,23 @@ func verifyFinalSemanticFleetGenerationOnChain(ctx context.Context, evidence *Fi
 			return fmt.Errorf("fleet generation batch %d/%d: %w", batch.Generation, batch.Batch, err)
 		}
 	}
+	for _, renewal := range evidence.FleetGeneration.Renewals {
+		for _, fleet := range renewal.Fleets {
+			for _, version := range finalFleetRenewalVersions(fleet) {
+				if err := verifyFinalFleetGenerationNativeCommitment(ctx, evidence, fleetReader, version, appendExchanges); err != nil {
+					return fmt.Errorf("renewal %d fleet %d generation %d: %w", renewal.Round, fleet.FleetID, version.Generation, err)
+				}
+			}
+			for _, write := range finalFleetRenewalWrites(fleet) {
+				if err := verifyFinalFleetGenerationEVMWrite(ctx, evidence, fleetReader, write, appendExchanges); err != nil {
+					return fmt.Errorf("renewal %d action %s: %w", renewal.Round, write.Action.ActionID, err)
+				}
+				if err := verifyFinalFleetGenerationRuntime(ctx, evidence, runtimeReader, write, appendExchanges); err != nil {
+					return fmt.Errorf("renewal %d action %s: %w", renewal.Round, write.Action.ActionID, err)
+				}
+			}
+		}
+	}
 	if err := verifyFinalFleetGenerationEventTopology(evidence, evidence.FleetGeneration); err != nil {
 		return fmt.Errorf("ordinary fleet generation event topology: %w", err)
 	}
@@ -151,7 +168,7 @@ func finalFleetGenerationWriteReleaseContractAddresses(write FinalFleetGeneratio
 	}
 	allowed := map[common.Address]bool{common.HexToAddress(write.CoordinatorProxy): true}
 	switch {
-	case strings.HasPrefix(write.Action.ActionID, "fleet.mirror."), strings.HasPrefix(write.Action.ActionID, "fleet.bind."):
+	case strings.HasPrefix(write.Action.ActionID, "fleet.mirror."), strings.HasPrefix(write.Action.ActionID, "fleet.bind."), finalFleetRenewalDirectOperation(write.Action.ActionID) != "":
 		if write.BatcherAddress != "" || write.BatcherRuntimeHash != "" {
 			return nil, errors.New("ordinary fleet generation carried write names a batcher emitter")
 		}
@@ -174,7 +191,7 @@ func finalFleetGenerationWriteTarget(evidence *FinalSemanticEvidence, write Fina
 		return "", errors.New("ordinary fleet generation target is unavailable")
 	}
 	switch {
-	case strings.HasPrefix(write.Action.ActionID, "fleet.mirror."), strings.HasPrefix(write.Action.ActionID, "fleet.bind."):
+	case strings.HasPrefix(write.Action.ActionID, "fleet.mirror."), strings.HasPrefix(write.Action.ActionID, "fleet.bind."), finalFleetRenewalDirectOperation(write.Action.ActionID) != "":
 		if !common.IsHexAddress(write.CoordinatorProxy) || common.HexToAddress(write.CoordinatorProxy) == (common.Address{}) {
 			return "", errors.New("ordinary fleet generation historical coordinator target is unavailable")
 		}

@@ -148,6 +148,10 @@ func canonicalizeFinalFleetLifecycleVariants(variants []FinalFleetLifecycleVaria
 }
 
 func finalFleetLifecycleExpectedPaths(clients int) ([]string, error) {
+	return finalFleetLifecycleExpectedPathsForPlan(nil, clients, nil)
+}
+
+func finalFleetLifecycleExpectedPathsForPlan(plan *SetupPlan, clients int, entries []JournalEntry) ([]string, error) {
 	if clients < 1 || clients > 64 {
 		return nil, fmt.Errorf("fleet lifecycle clients per head fleet=%d is invalid", clients)
 	}
@@ -158,15 +162,17 @@ func finalFleetLifecycleExpectedPaths(clients int) ([]string, error) {
 		"public/fleet-lifecycle.json",
 	}
 	for _, name := range finalFleetLifecycleVariantNames() {
-		variant, err := fleetLifecycleVariantFor(name)
+		variant, err := fleetLifecycleVariantForPlan(plan, name)
 		if err != nil {
 			return nil, err
 		}
 		paths = append(paths,
 			"public/"+variant.ManifestName,
 			"public/"+variant.CommitmentName,
-			"public/"+fleetLifecycleMirrorEvidenceName(name),
 		)
+		if !fleetLifecycleRenewedTakeover(plan, name) {
+			paths = append(paths, "public/"+fleetLifecycleMirrorEvidenceName(name))
+		}
 		for member := 1; member <= clients; member++ {
 			paths = append(paths, "public/"+variant.BindingName(member))
 		}
@@ -178,6 +184,32 @@ func finalFleetLifecycleExpectedPaths(clients int) ([]string, error) {
 	for _, name := range []string{fleetLifecycleVariantTargetTakeover, fleetLifecycleVariantCompanionTakeover, fleetLifecycleVariantFallback} {
 		for member := 1; member <= clients; member++ {
 			paths = append(paths, "public/"+fleetLifecycleCleanupEvidenceName(name, member))
+		}
+	}
+	if plan != nil && plan.FleetLifecycleRenewal != nil {
+		for _, hash := range plan.PriorPlanHashes {
+			paths = append(paths, "plan-history/"+stringsTrim0x(hash)+".json")
+		}
+		wanted := map[string]bool{}
+		for _, fleet := range []int{fleetLifecycleTargetFleet, fleetLifecycleCompanionFleet} {
+			wanted[fleetRenewalActionID(plan.FleetLifecycleRenewal.Round, fleet, "mirror", 0)] = true
+			for member := 1; member <= clients; member++ {
+				wanted[fleetRenewalActionID(plan.FleetLifecycleRenewal.Round, fleet, "bind", member)] = true
+			}
+		}
+		seen := map[string]bool{}
+		for _, entry := range entries {
+			if entry.Stage != StageFinalized || !plan.allowedPlanHashes()[entry.PlanHash] || !wanted[entry.ActionID] {
+				continue
+			}
+			if seen[entry.ActionID] || !validCanonicalHashHex(entry.TransactionHash) {
+				return nil, errors.New("renewed lifecycle capture has duplicate finalized transaction ownership")
+			}
+			seen[entry.ActionID] = true
+			paths = append(paths, "launch-foundation/transactions/"+stringsTrim0x(entry.TransactionHash)+".rlp")
+		}
+		if len(seen) != len(wanted) {
+			return nil, errors.New("renewed lifecycle capture is missing finalized transaction envelopes")
 		}
 	}
 	sort.Strings(paths)
@@ -422,7 +454,7 @@ func (a *finalSemanticArchive) buildFleetLifecycle(source *FinalSemanticEvidence
 			return errors.New("production fleet lifecycle differs from its owner-authenticated release handoff")
 		}
 	}
-	paths, err := finalFleetLifecycleExpectedPaths(a.cfg.Config.Topology.ClientsPerHeadFleet)
+	paths, err := finalFleetLifecycleExpectedPathsForPlan(plan, a.cfg.Config.Topology.ClientsPerHeadFleet, entries)
 	if err != nil {
 		return err
 	}
@@ -780,6 +812,13 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 	if evidence == nil || semantic == nil || plan == nil || identities == nil {
 		return nil, errors.New("fleet lifecycle lineage verification context is incomplete")
 	}
+	if !finalJSONEqual(semantic.State.Renewal, plan.FleetLifecycleRenewal) {
+		return nil, errors.New("lifecycle state differs from its approved renewal authority")
+	}
+	renewalPlan, err := finalFleetLifecycleRenewalApproval(plan, files)
+	if err != nil {
+		return nil, err
+	}
 	roles, err := finalFleetLifecycleRoleSecrets(identities)
 	if err != nil {
 		return nil, err
@@ -787,7 +826,10 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 	result := make([]FinalFleetLifecycleVariantEvidence, 0, 5)
 	manifests := map[string]*protocol.FleetManifest{}
 	for _, name := range finalFleetLifecycleVariantNames() {
-		variant, _ := fleetLifecycleVariantFor(name)
+		variant, err := fleetLifecycleVariantForPlan(plan, name)
+		if err != nil {
+			return nil, err
+		}
 		manifestBytes := files["public/"+variant.ManifestName]
 		manifest, err := protocol.ParseFleetManifest(manifestBytes)
 		if err != nil {
@@ -800,7 +842,7 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 		if err != nil || manifest.Hotkey != expectedHotkey {
 			return nil, stateMismatchError(err, "fleet lifecycle %s manifest uses another hotkey", name)
 		}
-		descriptor, err := fleetLifecycleVariantDescriptor(&ResolvedConfig{Config: &HarnessConfig{Topology: TopologyConfig{ClientsPerHeadFleet: semantic.ClientsPerHeadFleet, Operators: evidence.ExpectedOperators, Miners: evidence.ExpectedMiners, HeadFleets: evidence.ExpectedHeadSlots, ChallengerFleets: evidence.ExpectedCandidates - evidence.ExpectedHeadSlots}}}, name)
+		descriptor, err := fleetLifecycleVariantDescriptorForPlan(&ResolvedConfig{Config: &HarnessConfig{Topology: TopologyConfig{ClientsPerHeadFleet: semantic.ClientsPerHeadFleet, Operators: evidence.ExpectedOperators, Miners: evidence.ExpectedMiners, HeadFleets: evidence.ExpectedHeadSlots, ChallengerFleets: evidence.ExpectedCandidates - evidence.ExpectedHeadSlots}}}, plan, name)
 		if err != nil {
 			return nil, err
 		}
@@ -820,40 +862,56 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 		if err := decodeStrictJSONBytes(files["public/"+variant.CommitmentName], &commitment); err != nil {
 			return nil, fmt.Errorf("decode fleet lifecycle %s commitment: %w", name, err)
 		}
-		commitmentActionID, _ := fleetLifecycleCommitmentActionID(name)
-		commitmentAction, err := finalFleetLifecyclePlanAction(plan, commitmentActionID)
-		if err != nil {
-			return nil, err
-		}
-		commitmentTransaction, err := finalFleetLifecycleJournalTransaction(entries, plan.PlanHash, commitmentAction)
-		if err != nil {
-			return nil, err
-		}
 		if commitment.Schema != fleetCommitmentEvidenceSchemaV2 || commitment.ManifestURI != variant.ManifestName || !strings.EqualFold(commitment.CommitmentHash, fleetLifecycleHex(commitmentHash)) || !strings.EqualFold(commitment.Hotkey, fleetLifecycleHex(manifest.Hotkey)) {
 			return nil, fmt.Errorf("fleet lifecycle %s commitment differs from its canonical manifest", name)
 		}
-		if err := validateFleetLifecycleCommitmentLineage(commitment, commitmentAction, name, evidence.DeploymentID, evidence.PlanHash, commitmentTransaction); err != nil {
-			return nil, fmt.Errorf("fleet lifecycle %s commitment lineage: %w", name, err)
+		bindingPlan := plan
+		if fleetLifecycleRenewedTakeover(plan, name) {
+			bindingPlan = renewalPlan
+			if _, _, err := finalFleetLifecycleRenewedCommitment(renewalPlan, entries, variant, commitment, manifestBytes); err != nil {
+				return nil, err
+			}
+		} else {
+			commitmentActionID, _ := fleetLifecycleCommitmentActionID(name)
+			commitmentAction, err := finalFleetLifecyclePlanAction(plan, commitmentActionID)
+			if err != nil {
+				return nil, err
+			}
+			commitmentTransaction, err := finalFleetLifecycleJournalTransaction(entries, plan.PlanHash, commitmentAction)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateFleetLifecycleCommitmentLineageForPlan(plan, commitment, commitmentAction, name, evidence.DeploymentID, evidence.PlanHash, commitmentTransaction); err != nil {
+				return nil, fmt.Errorf("fleet lifecycle %s commitment lineage: %w", name, err)
+			}
 		}
 		start, nativeEnd, evmEnd, effectiveEpoch, err := finalFleetLifecycleVariantRange(&semantic.State, name)
 		if err != nil || !fleetLifecycleBlockInRange(commitment.FinalizedBlock, start, nativeEnd) {
 			return nil, stateMismatchError(err, "fleet lifecycle %s commitment is outside its exact action range", name)
 		}
 		var mirror FleetLifecycleMirrorEvidence
-		if err := decodeStrictJSONBytes(files["public/"+fleetLifecycleMirrorEvidenceName(name)], &mirror); err != nil {
-			return nil, fmt.Errorf("decode fleet lifecycle %s mirror: %w", name, err)
-		}
-		mirrorActionID, _ := fleetLifecycleMirrorActionID(name)
-		mirrorAction, err := finalFleetLifecyclePlanAction(plan, mirrorActionID)
-		if err != nil {
-			return nil, err
-		}
-		mirrorTransaction, err := finalFleetLifecycleJournalTransaction(entries, plan.PlanHash, mirrorAction)
-		if err != nil {
-			return nil, err
-		}
-		if err := validateFleetLifecycleMirrorLineage(mirror, mirrorAction, name, evidence.DeploymentID, evidence.PlanHash, mirrorTransaction); err != nil {
-			return nil, fmt.Errorf("fleet lifecycle %s mirror lineage: %w", name, err)
+		var mirrorAction Action
+		if fleetLifecycleRenewedTakeover(plan, name) {
+			mirror, mirrorAction, err = finalFleetLifecycleRenewedMirror(renewalPlan, entries, files, variant, *manifest, commitment)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			if err := decodeStrictJSONBytes(files["public/"+fleetLifecycleMirrorEvidenceName(name)], &mirror); err != nil {
+				return nil, fmt.Errorf("decode fleet lifecycle %s mirror: %w", name, err)
+			}
+			mirrorActionID, _ := fleetLifecycleMirrorActionID(name)
+			mirrorAction, err = finalFleetLifecyclePlanAction(plan, mirrorActionID)
+			if err != nil {
+				return nil, err
+			}
+			mirrorTransaction, err := finalFleetLifecycleJournalTransaction(entries, plan.PlanHash, mirrorAction)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateFleetLifecycleMirrorLineage(mirror, mirrorAction, name, evidence.DeploymentID, evidence.PlanHash, mirrorTransaction); err != nil {
+				return nil, err
+			}
 		}
 		if !strings.EqualFold(mirror.Hotkey, commitment.Hotkey) || !strings.EqualFold(mirror.CommitmentHash, commitment.CommitmentHash) || mirror.FinalizedBlock != commitment.FinalizedBlock || !strings.EqualFold(mirror.FinalizedBlockHash, commitment.FinalizedBlockHash) || !fleetLifecycleBlockInRange(mirror.BlockNumber, start, evmEnd) || !strings.EqualFold(mirrorAction.Target, evidence.Deployment.CoordinatorProxy) {
 			return nil, fmt.Errorf("fleet lifecycle %s mirror differs from its exact native commitment/action", name)
@@ -866,7 +924,7 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 			if err := decodeStrictJSONBytes(files["public/"+variant.BindingName(memberNumber)], &binding); err != nil {
 				return nil, fmt.Errorf("decode fleet lifecycle %s binding %d: %w", name, memberNumber, err)
 			}
-			if err := verifyFinalFleetLifecycleBinding(evidence, plan, entries, name, memberNumber, variant, *manifest, commitmentHash, member, binding, effectiveEpoch, wantUID, start, evmEnd); err != nil {
+			if err := verifyFinalFleetLifecycleBinding(evidence, bindingPlan, entries, name, memberNumber, variant, *manifest, commitmentHash, member, binding, effectiveEpoch, wantUID, start, evmEnd, files); err != nil {
 				return nil, err
 			}
 			indexed.Bindings = append(indexed.Bindings, binding)
@@ -929,7 +987,10 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 			return nil, fmt.Errorf("fleet lifecycle %s cleanup census is incomplete", item.name)
 		}
 		decoded := make([]FleetLifecycleCleanupEvidence, 0, semantic.ClientsPerHeadFleet)
-		variant, _ := fleetLifecycleVariantFor(item.name)
+		variant, err := fleetLifecycleVariantForPlan(plan, item.name)
+		if err != nil {
+			return nil, err
+		}
 		for memberIndex, member := range manifest.Members {
 			memberNumber := memberIndex + 1
 			var cleanup FleetLifecycleCleanupEvidence
@@ -972,8 +1033,12 @@ func verifyAndIndexFinalFleetLifecycle(evidence *FinalSemanticEvidence, semantic
 	return result, nil
 }
 
-func verifyFinalFleetLifecycleBinding(evidence *FinalSemanticEvidence, plan *SetupPlan, entries []JournalEntry, variantName string, memberNumber int, variant fleetLifecycleVariant, manifest protocol.FleetManifest, commitmentHash [32]byte, member protocol.FleetMember, binding FleetBindingEvidence, effectiveEpoch uint64, wantUID uint16, blockStart, blockEnd uint64) error {
-	if binding.Schema != "urnetwork-fleet-binding-evidence-v1" || binding.DeploymentID != evidence.DeploymentID || binding.PlanHash != evidence.PlanHash || binding.Generation != manifest.Generation || binding.ValidFromEpoch != effectiveEpoch || binding.ValidToEpoch < binding.ValidFromEpoch || binding.UID != wantUID || !fleetLifecycleBlockInRange(binding.BlockNumber, blockStart, blockEnd) {
+func verifyFinalFleetLifecycleBinding(evidence *FinalSemanticEvidence, plan *SetupPlan, entries []JournalEntry, variantName string, memberNumber int, variant fleetLifecycleVariant, manifest protocol.FleetManifest, commitmentHash [32]byte, member protocol.FleetMember, binding FleetBindingEvidence, effectiveEpoch uint64, wantUID uint16, blockStart, blockEnd uint64, sourceFiles ...map[string][]byte) error {
+	wantPlanHash := evidence.PlanHash
+	if fleetLifecycleRenewedTakeover(plan, variantName) {
+		wantPlanHash = plan.PlanHash
+	}
+	if binding.Schema != "urnetwork-fleet-binding-evidence-v1" || binding.DeploymentID != evidence.DeploymentID || binding.PlanHash != wantPlanHash || binding.Generation != manifest.Generation || binding.ValidFromEpoch != effectiveEpoch || binding.ValidToEpoch < binding.ValidFromEpoch || binding.UID != wantUID || !fleetLifecycleBlockInRange(binding.BlockNumber, blockStart, blockEnd) {
 		return fmt.Errorf("fleet lifecycle %s binding %d has invalid identity, epoch, UID, or block", variantName, memberNumber)
 	}
 	clientID, idOK := evidenceFixedHex(strings.ToLower(binding.ClientID), 16)
@@ -998,6 +1063,12 @@ func verifyFinalFleetLifecycleBinding(evidence *FinalSemanticEvidence, plan *Set
 	wantDigest, err := value.Digest()
 	if err != nil || value.ClientID != member.ClientID || value.ClientKey != member.ClientKey || value.FleetID != manifest.FleetID || value.Hotkey != manifest.Hotkey || value.CommitmentHash != commitmentHash || !bytes.Equal(wantDigest[:], digest) || !value.VerifyClient(clientSignature) || !value.VerifyHotkey(hotkeySignature) {
 		return stateMismatchError(err, "fleet lifecycle %s binding %d differs cryptographically from its manifest", variantName, memberNumber)
+	}
+	if fleetLifecycleRenewedTakeover(plan, variantName) {
+		if len(sourceFiles) != 1 {
+			return errors.New("renewed lifecycle binding has no closed source files")
+		}
+		return verifyFinalFleetLifecycleRenewedBinding(plan, entries, sourceFiles[0], variant, manifest, memberNumber, binding)
 	}
 	actionID, _ := fleetLifecycleBindingActionID(variantName, memberNumber)
 	action, err := finalFleetLifecyclePlanAction(plan, actionID)
@@ -1309,19 +1380,32 @@ func decodeFinalFleetLifecycleLineageFiles(evidence *FinalSemanticEvidence, data
 	if lineage.Schema != finalFleetLifecycleLineageSchema || lineage.DeploymentID != evidence.DeploymentID || lineage.PlanHash != evidence.PlanHash || lineage.RunID != evidence.RunID {
 		return nil, errors.New("fleet lifecycle lineage artifact identity differs from semantic evidence")
 	}
-	wantPaths, err := finalFleetLifecycleExpectedPaths(lifecycle.ClientsPerHeadFleet)
+	files := make(map[string][]byte, len(lineage.Files))
+	for index, item := range lineage.Files {
+		if item.Path == "" || index > 0 && lineage.Files[index-1].Path >= item.Path || files[item.Path] != nil || item.SizeBytes != uint64(len(item.Data)) || item.ContentHash != bytesSHA256(item.Data) {
+			return nil, fmt.Errorf("fleet lifecycle lineage file %d is unexpected, duplicate, or content-address mismatch", index)
+		}
+		files[item.Path] = append([]byte(nil), item.Data...)
+	}
+	plan, err := decodePersistedPlanBytes(files["launch-foundation/plan.json"])
+	if err != nil || plan.PlanHash != evidence.PlanHash {
+		return nil, stateMismatchError(err, "fleet lifecycle path authority plan differs")
+	}
+	entries, err := decodeFinalSemanticJournalBytes(files["launch-foundation/journal.jsonl"])
+	if err != nil {
+		return nil, err
+	}
+	wantPaths, err := finalFleetLifecycleExpectedPathsForPlan(plan, lifecycle.ClientsPerHeadFleet, entries)
 	if err != nil {
 		return nil, err
 	}
 	if len(lineage.Files) != len(wantPaths) {
 		return nil, fmt.Errorf("fleet lifecycle lineage artifact file count=%d, want %d", len(lineage.Files), len(wantPaths))
 	}
-	files := make(map[string][]byte, len(lineage.Files))
-	for index, item := range lineage.Files {
-		if index >= len(wantPaths) || item.Path != wantPaths[index] || files[item.Path] != nil || item.SizeBytes != uint64(len(item.Data)) || item.ContentHash != bytesSHA256(item.Data) {
-			return nil, fmt.Errorf("fleet lifecycle lineage file %d is unexpected, duplicate, or content-address mismatch", index)
+	for index, path := range wantPaths {
+		if lineage.Files[index].Path != path {
+			return nil, fmt.Errorf("fleet lifecycle lineage file %d is outside the approved namespace", index)
 		}
-		files[item.Path] = append([]byte(nil), item.Data...)
 	}
 	return files, nil
 }

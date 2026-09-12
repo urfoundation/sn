@@ -145,6 +145,11 @@ func captureFinalSemanticClosedInputsWithPriorLimitsV2(ctx context.Context, stat
 		return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, err
 	}
 	foundation = append(foundation, relayFoundation...)
+	renewalTransactions, err := captureFinalFleetRenewalTransactions(ctx, stateRoot, foundation)
+	if err != nil {
+		return nil, FinalArtifactLocator{}, FinalArtifactLocator{}, FinalArtifactLocator{}, err
+	}
+	foundation = append(foundation, renewalTransactions...)
 	sort.Slice(foundation, func(i, j int) bool { return foundation[i].Path < foundation[j].Path })
 	locators, err := persistFinalCollectedBundleChunksContext(ctx, runRoot, "launch-foundation", foundation)
 	if err != nil {

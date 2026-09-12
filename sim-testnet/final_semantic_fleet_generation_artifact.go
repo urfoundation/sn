@@ -149,6 +149,15 @@ func finalFleetGenerationArtifactEvents(lineage *FinalFleetGenerationLineageEvid
 			return nil, fmt.Errorf("ordinary fleet generation refresh batch %d has no receipt", batch.Batch)
 		}
 	}
+	for _, renewal := range lineage.Renewals {
+		for _, fleet := range renewal.Fleets {
+			for _, write := range finalFleetRenewalWrites(fleet) {
+				if err := add(write); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	return result, nil
 }
 

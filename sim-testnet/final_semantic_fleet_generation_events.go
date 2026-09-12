@@ -185,6 +185,11 @@ func finalFleetGenerationDecodeEvent(evidence *FinalSemanticEvidence, actionID s
 // an unrepresented one is rejected by exact receipt-log equality upstream.
 func finalFleetGenerationActionEventAllowed(actionID, contractClass, eventName string) error {
 	switch {
+	case finalFleetRenewalDirectOperation(actionID) != "":
+		operation := finalFleetRenewalDirectOperation(actionID)
+		if contractClass == "coordinator" && (operation == "mirror" && eventName == "CommitmentMirrored" || operation == "bind" && eventName == "FleetBound" || operation == "revoke" && eventName == "FleetBindingRevoked") {
+			return nil
+		}
 	case strings.HasPrefix(actionID, "fleet.mirror."):
 		if contractClass == "coordinator" && eventName == "CommitmentMirrored" {
 			return nil

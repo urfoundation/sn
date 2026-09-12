@@ -3218,6 +3218,20 @@ func finalSemanticArtifactUses(evidence *FinalSemanticEvidence) ([]finalSemantic
 			add(challenger.Registration.Proof)
 			add(challenger.Transition)
 		}
+		for _, renewal := range lineage.Renewals {
+			add(renewal.Approval)
+			for _, fleet := range renewal.Fleets {
+				for _, version := range finalFleetRenewalVersions(fleet) {
+					add(version.Manifest)
+					add(version.Commitment)
+					add(version.CommitmentPostcondition)
+				}
+				for _, write := range finalFleetRenewalWrites(fleet) {
+					add(write.Receipt.Proof)
+					add(write.Postcondition)
+				}
+			}
+		}
 	}
 	add(evidence.ContractCleanup.SupervisorStateArtifact)
 	for _, operator := range evidence.ContractCleanup.Operators {
@@ -5448,7 +5462,10 @@ func RenderFinalSemanticEvidenceMarkdown(evidence *FinalSemanticEvidence) ([]byt
 	fmt.Fprintf(&out, "The pinned public transcript independently replays %d ordinary terminal fleet generations across every %d distinct signed cycle snapshots (%d fleet/snapshot jobs; sealed scope `%s`): exact native commitment, coordinator mirror and canonical native mirror block, every member's `bindingAt`, and native UID ownership. Each sealed fleet projection is exact-bound to its canonical binding artifact, including fleet/client keys, hotkey, commitment, generation, validity interval, and UID.\n\n", len(ordinaryFleets), len(fleetAuditCycles), len(ordinaryFleets)*len(fleetAuditCycles), evidence.PublicVerification.FleetAudit.ProjectionHash)
 	if lineage := evidence.FleetGeneration; lineage != nil {
 		audit := evidence.PublicVerification.FleetGenerationAudit
-		fmt.Fprintf(&out, "The separate ordinary-fleet generation lineage proves all %d setup fleets moved exactly generation 1 → 2: %d predecessor mirror/member writes and %d approved atomic refresh batches, with exact signed manifests and commitments, action/intent/postcondition joins, ordered ABI-decoded receipt events, native/EVM boundary heads, and head-local proxy/runtime identities. Every installed generation-one fleet has exactly ten ordered raw logs: coordinator `CommitmentMirrored`, four coordinator `FleetBound` / batcher `FleetMemberBound` pairs, then batcher `FleetInstalled`; missing, duplicate, reordered, or wrong-emitter logs fail verification. The two challengers remain generation-one-only and are joined to their native registrations and tournament transitions. The complete replayable source graph is [%s](%s); public archive scope `%s` has %d setup fleets, %d generations, and %d carried writes.\n\n", len(lineage.SetupFleets), audit.CarriedWrites, audit.Batches/2, lineage.Artifact.ContentHash, finalMarkdown(lineage.Artifact.URI), audit.ProjectionHash, audit.SetupFleets, audit.Generations, audit.CarriedWrites)
+		fmt.Fprintf(&out, "The separate ordinary-fleet generation lineage proves all %d setup fleets moved exactly generation 1 → 2: %d predecessor mirror/member writes and %d approved atomic refresh batches, with exact signed manifests and commitments, action/intent/postcondition joins, ordered ABI-decoded receipt events, native/EVM boundary heads, and head-local proxy/runtime identities. Every installed generation-one fleet has exactly ten ordered raw logs: coordinator `CommitmentMirrored`, four coordinator `FleetBound` / batcher `FleetMemberBound` pairs, then batcher `FleetInstalled`; missing, duplicate, reordered, or wrong-emitter logs fail verification. The original generation-one challenger records are joined to their native registrations and tournament transitions. The complete replayable source graph is [%s](%s); public archive scope `%s` has %d setup fleets, %d generations, and %d carried writes.\n\n", len(lineage.SetupFleets), audit.CarriedWrites, audit.Batches/2, lineage.Artifact.ContentHash, finalMarkdown(lineage.Artifact.URI), audit.ProjectionHash, audit.SetupFleets, audit.Generations, audit.CarriedWrites)
+		if audit.RenewalRounds != 0 {
+			fmt.Fprintf(&out, "The same sealed graph extends those original records through %d exact approved renewal rounds: %d renewed fleet generations and %d historical lifecycle or renewal EVM writes. Each round retains its source and approved plan, signed manifests, current UID and client identities, exact native commitments, and every mirror, scoped predecessor revocation and new binding. Public replay proves each transaction input, complete receipt and historical runtime at its recorded block.\n\n", audit.RenewalRounds, audit.RenewedFleetVersions, audit.RenewalWrites)
+		}
 	}
 	nativePayoutAudit := evidence.PublicVerification.NativePayoutAudit
 	fmt.Fprintf(&out, "The pinned public transcript also replays %d exact native payout boundaries covering %d managed UID rows and %d immediate parent-to-reveal transitions. Projection `%s` binds each runtime-453 `IncentiveAlphaEmittedToMiners` event to the matching Emission, Incentive, Dividends, Keys, and aggregate-stake storage at the CRv4 reveal/coinbase block, rejects relevant manual stake mutations in that block, and retains rejected miners as explicit zero-emission rows.\n\n", nativePayoutAudit.Epochs, nativePayoutAudit.UIDRows, nativePayoutAudit.ParentTransitions, nativePayoutAudit.ProjectionHash)

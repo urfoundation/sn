@@ -30,13 +30,16 @@ const (
 // lineage independently of the raw RPC transcript. It makes an omitted batch
 // or predecessor history set structurally visible to an offline reviewer.
 type FinalPublicFleetGenerationAudit struct {
-	Schema           string `json:"schema"`
-	SetupFleets      uint64 `json:"setup_fleets"`
-	Generations      uint64 `json:"generations"`
-	Batches          uint64 `json:"batches"`
-	CarriedWrites    uint64 `json:"carried_writes"`
-	ChallengerFleets uint64 `json:"challenger_fleets"`
-	ProjectionHash   string `json:"projection_hash"`
+	Schema               string `json:"schema"`
+	SetupFleets          uint64 `json:"setup_fleets"`
+	Generations          uint64 `json:"generations"`
+	Batches              uint64 `json:"batches"`
+	CarriedWrites        uint64 `json:"carried_writes"`
+	ChallengerFleets     uint64 `json:"challenger_fleets"`
+	RenewalRounds        uint64 `json:"renewal_rounds,omitempty"`
+	RenewedFleetVersions uint64 `json:"renewed_fleet_versions,omitempty"`
+	RenewalWrites        uint64 `json:"renewal_writes,omitempty"`
+	ProjectionHash       string `json:"projection_hash"`
 }
 
 // finalFleetGenerationAuditProjection is the compact deterministic preimage
@@ -46,6 +49,7 @@ type finalFleetGenerationAuditProjection struct {
 	Batches          []FinalFleetGenerationBatchEvidence      `json:"batches"`
 	SetupFleets      []FinalFleetGenerationFleetEvidence      `json:"setup_fleets"`
 	ChallengerFleets []FinalFleetGenerationChallengerEvidence `json:"challenger_fleets"`
+	Renewals         []FinalFleetRenewalRoundEvidence         `json:"renewals,omitempty"`
 }
 
 // finalFleetGenerationLineageArtifact retains the exact immutable public
@@ -91,17 +95,26 @@ func finalPublicFleetGenerationAuditForEvidence(evidence *FinalSemanticEvidence)
 		Batches:          append([]FinalFleetGenerationBatchEvidence(nil), lineage.Batches...),
 		SetupFleets:      append([]FinalFleetGenerationFleetEvidence(nil), lineage.SetupFleets...),
 		ChallengerFleets: append([]FinalFleetGenerationChallengerEvidence(nil), lineage.ChallengerFleets...),
+		Renewals:         append([]FinalFleetRenewalRoundEvidence(nil), lineage.Renewals...),
 	}
 	projectionHash, err := canonicalHashHex(projection)
 	if err != nil {
 		return FinalPublicFleetGenerationAudit{}, err
 	}
-	return FinalPublicFleetGenerationAudit{
+	audit := FinalPublicFleetGenerationAudit{
 		Schema:      finalPublicFleetGenerationAuditSchema,
 		SetupFleets: uint64(len(lineage.SetupFleets)), Generations: uint64(len(lineage.SetupFleets) * 2),
 		Batches: uint64(len(lineage.Batches)), CarriedWrites: carriedWrites,
 		ChallengerFleets: uint64(len(lineage.ChallengerFleets)), ProjectionHash: projectionHash,
-	}, nil
+	}
+	audit.RenewalRounds = uint64(len(lineage.Renewals))
+	for _, renewal := range lineage.Renewals {
+		audit.RenewedFleetVersions += uint64(len(renewal.Fleets))
+		for _, fleet := range renewal.Fleets {
+			audit.RenewalWrites += uint64(len(finalFleetRenewalWrites(fleet)))
+		}
+	}
+	return audit, nil
 }
 
 // rejects an absent or arithmetic-inconsistent summary before recomputing its
@@ -109,6 +122,9 @@ func finalPublicFleetGenerationAuditForEvidence(evidence *FinalSemanticEvidence)
 func verifyFinalPublicFleetGenerationAuditShape(audit FinalPublicFleetGenerationAudit) error {
 	if audit.Schema != finalPublicFleetGenerationAuditSchema || audit.SetupFleets != finalFleetGenerationSetupFleetCount || audit.Generations != finalFleetGenerationSetupFleetCount*2 || audit.Batches != finalFleetGenerationBatchCount*2 || audit.ChallengerFleets != finalFleetGenerationChallengerFleetCount {
 		return errors.New("public ordinary fleet generation audit summary is incomplete")
+	}
+	if audit.RenewalRounds > ^uint64(0)/(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || audit.RenewedFleetVersions != audit.RenewalRounds*(finalFleetGenerationSetupFleetCount+finalFleetGenerationChallengerFleetCount) || audit.RenewalRounds == 0 && audit.RenewalWrites != 0 || audit.RenewalRounds > 0 && audit.RenewalWrites < audit.RenewedFleetVersions {
+		return errors.New("public fleet renewal audit summary is incomplete")
 	}
 	return requireFinalHex32("public ordinary fleet generation audit projection hash", audit.ProjectionHash)
 }
@@ -136,12 +152,13 @@ type FinalFleetGenerationLineageEvidence struct {
 	Batches          []FinalFleetGenerationBatchEvidence      `json:"batches"`
 	SetupFleets      []FinalFleetGenerationFleetEvidence      `json:"setup_fleets"`
 	ChallengerFleets []FinalFleetGenerationChallengerEvidence `json:"challenger_fleets"`
+	Renewals         []FinalFleetRenewalRoundEvidence         `json:"renewals,omitempty"`
 	Artifact         FinalArtifactLocator                     `json:"artifact"`
 }
 
 // FinalFleetGenerationFleetEvidence binds one setup fleet's exact generation
-// one to generation two replacement. There is deliberately no open-ended
-// generation slice: a terminal generation three is an invalid release shape.
+// one to generation two replacement. Later approved renewal rounds have their
+// own explicit lineage; they cannot replace either original generation here.
 type FinalFleetGenerationFleetEvidence struct {
 	FleetID uint64                              `json:"fleet_id"`
 	Initial FinalFleetGenerationVersionEvidence `json:"initial"`
@@ -305,7 +322,13 @@ func verifyFinalFleetGenerationLineage(evidence *FinalSemanticEvidence, lineage 
 	if err := verifyFinalFleetGenerationSetupFleets(evidence, lineage); err != nil {
 		return err
 	}
-	return verifyFinalFleetGenerationChallengers(evidence, lineage)
+	if err := verifyFinalFleetGenerationChallengers(evidence, lineage); err != nil {
+		return err
+	}
+	if err := verifyFinalFleetRenewalRounds(evidence, lineage); err != nil {
+		return err
+	}
+	return verifyFinalFleetLifecycleRenewalJoin(evidence, lineage)
 }
 
 // confirms that lineage retains the same fixed 202-candidate namespace as
@@ -628,6 +651,14 @@ func verifyFinalFleetGenerationSetupFleets(evidence *FinalSemanticEvidence, line
 // epochs are positive: epoch zero is valid contract state and must remain
 // representable in a historical proof.
 func verifyFinalFleetGenerationVersion(evidence *FinalSemanticEvidence, fleetID uint64, version FinalFleetGenerationVersionEvidence, wantGeneration uint64, requireBatch bool) error {
+	wantActionID := fmt.Sprintf("fleet.commitment.%d", fleetID)
+	if wantGeneration == 2 {
+		wantActionID = fmt.Sprintf("fleet.refresh.commitment.%d", fleetID)
+	}
+	return verifyFinalFleetGenerationVersionForAction(evidence, fleetID, version, wantGeneration, requireBatch, wantActionID)
+}
+
+func verifyFinalFleetGenerationVersionForAction(evidence *FinalSemanticEvidence, fleetID uint64, version FinalFleetGenerationVersionEvidence, wantGeneration uint64, requireBatch bool, wantActionID string) error {
 	if version.Generation != wantGeneration || version.Hotkey == "" || requireBatch && (version.Batch == 0 || version.Batch > finalFleetGenerationBatchCount) || !requireBatch && version.Batch != 0 {
 		return fmt.Errorf("ordinary fleet generation %d/%d identity is incomplete", fleetID, wantGeneration)
 	}
@@ -651,10 +682,6 @@ func verifyFinalFleetGenerationVersion(evidence *FinalSemanticEvidence, fleetID 
 	}
 	if err := verifyFinalArtifact("ordinary fleet generation commitment postcondition", version.CommitmentPostcondition, "fleet-generation-postcondition"); err != nil {
 		return err
-	}
-	wantActionID := fmt.Sprintf("fleet.commitment.%d", fleetID)
-	if wantGeneration == 2 {
-		wantActionID = fmt.Sprintf("fleet.refresh.commitment.%d", fleetID)
 	}
 	if version.CommitmentAction.ActionID != wantActionID {
 		return fmt.Errorf("ordinary fleet generation %d/%d commitment action is not canonical", fleetID, wantGeneration)
@@ -782,5 +809,22 @@ func canonicalizeFinalFleetGenerationLineage(lineage *FinalFleetGenerationLineag
 		sort.Slice(challenger.Initial.Members, func(left, right int) bool {
 			return challenger.Initial.Members[left].Member < challenger.Initial.Members[right].Member
 		})
+	}
+	sort.Slice(lineage.Renewals, func(left, right int) bool { return lineage.Renewals[left].Round < lineage.Renewals[right].Round })
+	for roundIndex := range lineage.Renewals {
+		renewal := &lineage.Renewals[roundIndex]
+		sort.Slice(renewal.Fleets, func(left, right int) bool { return renewal.Fleets[left].FleetID < renewal.Fleets[right].FleetID })
+		for fleetIndex := range renewal.Fleets {
+			fleet := &renewal.Fleets[fleetIndex]
+			sort.Slice(fleet.Members, func(left, right int) bool { return fleet.Members[left].Member < fleet.Members[right].Member })
+			sort.Slice(fleet.Version.Members, func(left, right int) bool {
+				return fleet.Version.Members[left].Member < fleet.Version.Members[right].Member
+			})
+			if fleet.Previous != nil {
+				sort.Slice(fleet.Previous.Members, func(left, right int) bool {
+					return fleet.Previous.Members[left].Member < fleet.Previous.Members[right].Member
+				})
+			}
+		}
 	}
 }

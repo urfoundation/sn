@@ -2100,6 +2100,14 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 	if source == nil || result == nil || terminal == nil || terminal.Status == nil || terminal.Status.Supervisor == nil || identities == nil || chain == nil {
 		return errors.New("topology construction context is incomplete")
 	}
+	planBytes, _, err := a.file("launch-foundation/plan.json")
+	if err != nil {
+		return err
+	}
+	plan, err := a.decodeSetupPlan("launch-foundation/plan.json", planBytes)
+	if err != nil || plan.PlanHash != source.PlanHash {
+		return stateMismatchError(err, "terminal fleet topology differs from approved source plan")
+	}
 	processRestarts, err := a.processRestartEvidence(source, result, terminal)
 	if err != nil {
 		return err
@@ -2143,7 +2151,7 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 		if fleetID == fleetLifecycleCompanionFleet {
 			name = fleetLifecycleVariantTerminal
 		}
-		variant, err := fleetLifecycleVariantFor(name)
+		variant, err := fleetLifecycleVariantForPlan(plan, name)
 		if err != nil {
 			return nil, fleetLifecycleVariant{}, false, err
 		}
@@ -2154,7 +2162,7 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 		return indexed, variant, true, nil
 	}
 	// The terminal generations reuse the original fleet-5/6 client sets after
-	// their old bindings were cleaned. Reconstruct those exact generation-four
+	// their old bindings were cleaned. Reconstruct those exact approved successor-generation
 	// records from the authenticated lifecycle index; a measurement from an
 	// earlier lifecycle milestone must never backdate terminal ownership.
 	for _, fleetID := range []int{fleetLifecycleTargetFleet, fleetLifecycleCompanionFleet} {
@@ -2188,6 +2196,18 @@ func (a *finalSemanticArchive) buildTopology(source *FinalSemanticEvidence, resu
 		var matched []capturedFleetManifest
 		paths := []string{fmt.Sprintf("public/fleet-%d.refresh.json", fleetID), fmt.Sprintf("public/fleet-%d.json", fleetID)}
 		expectedHotkey := identities.Substrate[fmt.Sprintf("fleet-%d-hotkey", fleetID)].PublicKey
+		if len(plan.FleetRenewals) != 0 {
+			renewal := plan.FleetRenewals[len(plan.FleetRenewals)-1]
+			if fleetID > len(renewal.Fleets) || renewal.Fleets[fleetID-1].Fleet != fleetID {
+				return errors.New("terminal fleet renewal does not cover the exact topology")
+			}
+			manifest, err := protocol.ParseFleetManifest(renewal.Fleets[fleetID-1].Manifest)
+			if err != nil {
+				return err
+			}
+			paths = []string{"public/" + fleetRenewalStem(renewal.Round, fleetID) + ".json"}
+			expectedHotkey = fleetLifecycleHex(manifest.Hotkey)
+		}
 		if indexed, variant, lifecycleFleet, lifecycleErr := lifecycleVariantForFleet(fleetID); lifecycleErr != nil {
 			return lifecycleErr
 		} else if lifecycleFleet {
