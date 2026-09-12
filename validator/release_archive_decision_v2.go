@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/urfoundation/sn/crv4"
 )
 
@@ -19,11 +20,61 @@ import (
 // decision; public verification must independently reproduce it using the
 // concrete chain readers through ObserveSources below.
 type ReleaseEvidenceV2DecisionObservation struct {
-	MeasurementHash string                       `json:"measurement_hash"`
-	Decision        ReleaseMeasurementV2Decision `json:"decision"`
-	Bindings        []ReleaseBindingMeasurement  `json:"bindings"`
-	Pools           []ReleasePoolMeasurement     `json:"pools"`
-	DepositAudits   []DepositAudit               `json:"deposit_audits"`
+	MeasurementHash        string                       `json:"measurement_hash"`
+	Decision               ReleaseMeasurementV2Decision `json:"decision"`
+	Bindings               []ReleaseBindingMeasurement  `json:"bindings"`
+	Pools                  []ReleasePoolMeasurement     `json:"pools"`
+	DepositAudits          []DepositAudit               `json:"deposit_audits"`
+	CommitNativeEpoch      uint64                       `json:"commit_native_epoch,omitempty"`
+	RevealNativeEpoch      uint64                       `json:"reveal_native_epoch,omitempty"`
+	ApplicationNativeEpoch uint64                       `json:"application_native_epoch,omitempty"`
+}
+
+// The prepared snapshot may precede an epoch boundary crossed by inclusion.
+// Read the actual canonical commit/application counters instead of guessing
+// that either is the prepared snapshot's native epoch or a settlement epoch.
+func observeReleaseDecisionLifecycleV2(ctx context.Context, native *crv4.Chain, cfg *ReleaseConfig, intent *SteeringIntent, observation *ReleaseEvidenceV2DecisionObservation) error {
+	if intent.FinalizedBlock == 0 {
+		return nil
+	}
+	if intent.Prepared == nil {
+		return errors.New("archive applied decision has no original preparation")
+	}
+	hotkey, err := canonicalAttemptHex32("archive applied lifecycle hotkey", intent.Prepared.HotkeyHex, false)
+	if err != nil {
+		return err
+	}
+	read := func(number uint64, hash string) (uint64, error) {
+		block, err := types.NewHashFromHexString(hash)
+		if err != nil {
+			return 0, err
+		}
+		actual, err := crv4.ReadValidatorScheduleAtContext(ctx, native, crv4.ValidatorScheduleQuery{GenesisHash: native.GenesisHash, BlockHash: block, BlockNumber: number, Netuid: cfg.Netuid, Hotkey: hotkey, MaximumSubnetUIDs: releaseNativeValidatorMaximumUIDs}, releaseRuntimeIdentityV2(cfg))
+		if err != nil {
+			return 0, err
+		}
+		if actual.Stake.Identity.UID != intent.SelfUID {
+			return 0, errors.New("archive applied lifecycle UID differs from its original signer")
+		}
+		return actual.SubnetEpochIndex, nil
+	}
+	observation.CommitNativeEpoch, err = read(intent.FinalizedBlock, intent.FinalizedBlockHash)
+	if err != nil {
+		return err
+	}
+	if intent.Status != "applied" {
+		return nil
+	}
+	var revealHash types.Hash
+	if err := native.API.Client.CallContext(ctx, &revealHash, "chain_getBlockHash", intent.RevealBlock); err != nil {
+		return err
+	}
+	observation.RevealNativeEpoch, err = read(intent.RevealBlock, revealHash.Hex())
+	if err != nil {
+		return err
+	}
+	observation.ApplicationNativeEpoch, err = read(intent.ApplicationBlock, intent.ApplicationBlockHash)
+	return err
 }
 
 type releaseEvidenceV2ArchiveMeasurement struct {
@@ -111,7 +162,11 @@ func (self *ReleaseEvidenceV2Archive) ObserveSources(ctx context.Context, chain 
 				return nil, err
 			}
 		}
-		result = append(result, ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits})
+		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits}
+		if err := observeReleaseDecisionLifecycleV2(ctx, native, &owner.cfg, &item.Intent, &observation); err != nil {
+			return nil, err
+		}
+		result = append(result, observation)
 	}
 	return result, owner.check(ctx)
 }

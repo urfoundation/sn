@@ -777,7 +777,11 @@ func executeFinalSemanticOnChain(ctx context.Context, evidence *FinalSemanticEvi
 			if cycle.Application.Call == nil {
 				return nil, fmt.Errorf("public validator %d application has no exact native call identity", validator.ValidatorID)
 			}
-			if err := verifyFinalNativeApplicationState(weights, *cycle.Application.Call, cycle.Application.Block, validator.UID, validator.Hotkey, uids, values); err != nil {
+			if finalCoverageForValidatorV2(evidence, validator.ValidatorID) != nil {
+				if err := verifyFinalNativeApplicationV2(evidence, validator.ValidatorID, cycle, weights); err != nil {
+					return nil, fmt.Errorf("public validator %d applied V2 vector/commit lineage: %w", validator.ValidatorID, err)
+				}
+			} else if err := verifyFinalNativeApplicationState(weights, *cycle.Application.Call, cycle.Application.Block, validator.UID, validator.Hotkey, uids, values); err != nil {
 				return nil, fmt.Errorf("public validator %d applied vector does not match fresh intent lineage: %w", validator.ValidatorID, err)
 			}
 			if err := verifyFinalSemanticCycleEpochDeposits(ctx, reader, *cycle, appendExchanges); err != nil {

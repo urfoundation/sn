@@ -37,12 +37,13 @@ type FinalCollectedValidatorSourceV2 struct {
 // Source-object counts are custody counts, never claimed trail/proof totals.
 // The pending status cannot satisfy independent final semantic acceptance.
 type FinalCollectedValidatorEvidenceV2 struct {
-	Schema         string                            `json:"schema"`
-	SemanticStatus string                            `json:"semantic_status"`
-	Hotkey         string                            `json:"hotkey"`
-	Origins        [2]string                         `json:"origins"`
-	Sources        []FinalCollectedValidatorSourceV2 `json:"sources"`
-	Closures       []FinalCollectedSettlementClosure `json:"closures"`
+	Schema            string                            `json:"schema"`
+	SemanticStatus    string                            `json:"semantic_status"`
+	Hotkey            string                            `json:"hotkey"`
+	Origins           [2]string                         `json:"origins"`
+	Sources           []FinalCollectedValidatorSourceV2 `json:"sources"`
+	Closures          []FinalCollectedSettlementClosure `json:"closures"`
+	NativeCheckpoints []FinalNativeCheckpointV2         `json:"native_checkpoints,omitempty"`
 }
 
 // Absence is legacy configuration, not permission to fall back after a V2
@@ -226,6 +227,9 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			return nil, err
 		}
 		captured, captureErr := validatorpkg.CaptureReleaseEvidenceV2(ctx, release, chain, native, validatorpkg.ReleaseEvidenceV2CaptureOptions{Hotkey: hotkey, Origins: collected.EvidenceV2.Origins, MaximumBytes: captureLimits.dataBytes + captureLimits.controlBytes, MaximumObjects: captureLimits.maximumObjects, MaximumDataBytes: captureLimits.dataBytes, MaximumControlBytes: captureLimits.controlBytes, ThroughEpoch: lastEpoch}, retain)
+		if captureErr == nil {
+			collected.EvidenceV2.NativeCheckpoints, captureErr = collectFinalNativeCoverageV2(ctx, release, chain, native, hotkey, captured, *window, retain)
+		}
 		native.API.Client.Close()
 		chain.Close()
 		if captureErr != nil {
@@ -238,12 +242,16 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 		if err != nil {
 			return nil, err
 		}
+		selected, err := selectFinalCoverageIntentsV2(captured.Intents, collected.EvidenceV2.NativeCheckpoints)
+		if err != nil {
+			return nil, err
+		}
 		applied := map[uint64]bool{}
 		matchedLifecycle := make([]bool, len(requirements[int(validatorId)]))
 		dishonestMatches := 0
 		for _, value := range captured.Intents {
 			intent := &value.Intent
-			inAcceptance := intent.SettlementEpoch >= window.FirstEpoch && intent.SettlementEpoch-window.FirstEpoch < window.EpochCount
+			inAcceptance := selected[value.Sequence]
 			lifecycleIndex := -1
 			for index, expected := range requirements[int(validatorId)] {
 				if finalLifecycleIntentMatches(intent, expected) {
@@ -275,7 +283,8 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 				return nil, err
 			}
 			signedAt, err := time.Parse(time.RFC3339Nano, envelope.SignedAt)
-			if err != nil || signedAt.Before(startedAt) || signedAt.After(completedAt) {
+			baseline := inAcceptance && intent.RevealBlock <= collected.EvidenceV2.NativeCheckpoints[0].Mapping.Query.NativeNumber
+			if err != nil || signedAt.Before(startedAt) && !baseline || signedAt.After(completedAt) {
 				return nil, errors.New("compact selected envelope is outside the original campaign time window")
 			}
 			item := FinalCollectedValidatorIntent{Sequence: value.Sequence, SettlementEpoch: intent.SettlementEpoch, SubnetEpoch: intent.SubnetEpoch, Status: intent.Status, VectorHash: intent.VectorHash}
@@ -293,10 +302,10 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 			}
 			if inAcceptance {
 				if intent.Status == "applied" {
-					if applied[intent.SettlementEpoch] {
-						return nil, errors.New("compact accepted epoch has duplicate applied intents")
+					if applied[intent.SubnetEpoch] {
+						return nil, errors.New("compact accepted native epoch has duplicate applied intents")
 					}
-					applied[intent.SettlementEpoch] = true
+					applied[intent.SubnetEpoch] = true
 				}
 				collected.Intents = append(collected.Intents, item)
 			}
@@ -308,10 +317,8 @@ func collectFinalValidatorInputsV2(ctx context.Context, cfg *ResolvedConfig, sta
 				collected.DishonestDepositIntent = &item
 			}
 		}
-		for offset := uint64(0); offset < window.EpochCount; offset++ {
-			if !applied[window.FirstEpoch+offset] {
-				return nil, errors.New("compact accepted epoch lacks its actual applied intent")
-			}
+		if len(applied) != len(selected) {
+			return nil, errors.New("compact native application interval census is incomplete")
 		}
 		for _, matched := range matchedLifecycle {
 			if !matched {
@@ -386,7 +393,8 @@ func verifyFinalCollectedValidatorEvidenceV2(cfg *ResolvedConfig, value *FinalSe
 	}
 	applied := map[uint64]bool{}
 	for index, intent := range collected.Intents {
-		if intent.Sequence == 0 || index > 0 && intent.Sequence <= collected.Intents[index-1].Sequence || intent.SettlementEpoch < value.Window.FirstEpoch || intent.SettlementEpoch-value.Window.FirstEpoch >= value.Window.EpochCount {
+		outside := intent.SettlementEpoch < value.Window.FirstEpoch || intent.SettlementEpoch-value.Window.FirstEpoch >= value.Window.EpochCount
+		if intent.Sequence == 0 || index > 0 && intent.Sequence <= collected.Intents[index-1].Sequence || outside && len(v2.NativeCheckpoints) == 0 {
 			return errors.New("compact captured intent routing differs")
 		}
 		if err := verifyFinalArtifact("compact intent", intent.Artifact, "steering-intent"); err != nil {
@@ -399,10 +407,14 @@ func verifyFinalCollectedValidatorEvidenceV2(cfg *ResolvedConfig, value *FinalSe
 			return err
 		}
 		if intent.Status == "applied" {
-			if applied[intent.SettlementEpoch] {
+			key := intent.SettlementEpoch
+			if len(v2.NativeCheckpoints) != 0 {
+				key = intent.SubnetEpoch
+			}
+			if applied[key] {
 				return errors.New("compact captured applied epoch is duplicated")
 			}
-			applied[intent.SettlementEpoch] = true
+			applied[key] = true
 		}
 	}
 	closed := map[uint64]bool{}
@@ -427,8 +439,19 @@ func verifyFinalCollectedValidatorEvidenceV2(cfg *ResolvedConfig, value *FinalSe
 	}
 	for offset := uint64(0); offset < value.Window.EpochCount; offset++ {
 		epoch := value.Window.FirstEpoch + offset
-		if !applied[epoch] || !closed[epoch] {
+		if len(v2.NativeCheckpoints) == 0 && !applied[epoch] || !closed[epoch] {
 			return errors.New("compact captured acceptance source coverage is incomplete")
+		}
+	}
+	if len(v2.NativeCheckpoints) != 0 {
+		blocks, err := finalNativeCoverageEVMBlocksV2(value.Window)
+		if err != nil || len(blocks) != len(v2.NativeCheckpoints) || len(applied) == 0 {
+			return errors.Join(errors.New("compact native coverage checkpoint census differs"), err)
+		}
+		for index, checkpoint := range v2.NativeCheckpoints {
+			if checkpoint.Mapping.Query.EVMNumber != blocks[index] || checkpoint.Mapping.Query.NativeNumber == 0 || checkpoint.Weights.Block.Number != checkpoint.Mapping.Query.NativeNumber {
+				return errors.New("compact native coverage checkpoint routing differs")
+			}
 		}
 	}
 	if value.Phase == "production-soak" && collected.DishonestDepositIntent == nil || value.Phase == "release-1.0" && collected.DishonestDepositIntent != nil {

@@ -215,6 +215,19 @@ func TestReleaseArchiveV2AuditJoinsOriginalPayoutObservation(t *testing.T) {
 	if err != nil || !sameReleaseArchivePublicationV2(observed.publication, publication) {
 		t.Fatalf("actual signed audit and original payout join: %v", err)
 	}
+	body, err := archive.payoutSourceForMeasurementV2(t.Context(), fixture.artifact, fixture.artifact.DepositAudits[0].NoID)
+	if err != nil || len(body) == 0 {
+		t.Fatalf("original signed payout body: %v", err)
+	}
+	saved := bytes.Clone(body)
+	body[0] ^= 1
+	again, err := archive.payoutSourceForMeasurementV2(t.Context(), fixture.artifact, fixture.artifact.DepositAudits[0].NoID)
+	if err != nil || !bytes.Equal(saved, again) {
+		t.Fatal("returned payout aliased original closed source")
+	}
+	if _, err := archive.payoutSourceForMeasurementV2(t.Context(), fixture.artifact, 9999); err == nil {
+		t.Fatal("absent payout subject escaped closed source authority")
+	}
 	changed := *fixture.artifact
 	changed.DepositAudits = append([]DepositAudit(nil), fixture.artifact.DepositAudits...)
 	changed.DepositAudits[0].RequiredDepositRao = "99999"

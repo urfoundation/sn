@@ -704,6 +704,7 @@ func verifyFinalSemanticNativeEpochPayouts(ctx context.Context, evidence *FinalS
 	if !ok {
 		return nil, errors.New("public semantic reader does not expose exact native epoch payouts")
 	}
+	seenPayouts := map[ChainHead]finalNativeEpochPayoutRead{}
 	seenParents := make(map[ChainHead]bool)
 	states := make([]FinalNativeEpochPayoutState, 0, evidence.Window.EpochCount)
 	for epoch := evidence.Window.FirstEpoch; epoch < evidence.Window.FirstEpoch+evidence.Window.EpochCount; epoch++ {
@@ -711,9 +712,15 @@ func verifyFinalSemanticNativeEpochPayouts(ctx context.Context, evidence *FinalS
 		if err != nil {
 			return nil, err
 		}
-		read, err := payoutReader.NativeEpochPayout(ctx, epoch, reveal)
-		if err != nil {
-			return nil, fmt.Errorf("public native payout epoch %d: %w", epoch, err)
+		read, reused := seenPayouts[reveal]
+		if reused {
+			read.State.SettlementEpoch = epoch
+		} else {
+			read, err = payoutReader.NativeEpochPayout(ctx, epoch, reveal)
+			if err != nil {
+				return nil, fmt.Errorf("public native payout epoch %d: %w", epoch, err)
+			}
+			seenPayouts[reveal] = read
 		}
 		if err := verifyFinalNativeEpochPayout(evidence, read.State); err != nil {
 			return nil, err
@@ -728,11 +735,13 @@ func verifyFinalSemanticNativeEpochPayouts(ctx context.Context, evidence *FinalS
 			}
 			seenParents[read.State.Parent] = true
 		}
-		if err := appendExchanges("substrate", read.State.Parent, read.ParentExchanges); err != nil {
-			return nil, err
-		}
-		if err := appendExchanges("substrate", read.State.Block, read.BlockExchanges); err != nil {
-			return nil, err
+		if !reused {
+			if err := appendExchanges("substrate", read.State.Parent, read.ParentExchanges); err != nil {
+				return nil, err
+			}
+			if err := appendExchanges("substrate", read.State.Block, read.BlockExchanges); err != nil {
+				return nil, err
+			}
 		}
 		states = append(states, read.State)
 	}

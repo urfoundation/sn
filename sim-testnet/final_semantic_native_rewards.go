@@ -66,11 +66,13 @@ func finalPublicNativePayoutAuditForEvidence(evidence *FinalSemanticEvidence) (F
 	}
 	projection := finalPublicNativePayoutProjection{Schema: finalPublicNativePayoutAuditSchema, Netuid: evidence.Netuid, Epochs: make([]finalPublicNativePayoutEpochProjection, 0, evidence.Window.EpochCount)}
 	var rowCount uint64
+	transitions := map[ChainHead]bool{}
 	for epoch := evidence.Window.FirstEpoch; epoch < evidence.Window.FirstEpoch+evidence.Window.EpochCount; epoch++ {
 		reveal, subnetEpoch, err := finalNativeEpochReveal(evidence, epoch)
 		if err != nil {
 			return FinalPublicNativePayoutAudit{}, err
 		}
+		transitions[reveal] = true
 		rows, err := finalNativeEpochRewardRows(evidence, epoch)
 		if err != nil {
 			return FinalPublicNativePayoutAudit{}, err
@@ -96,13 +98,13 @@ func finalPublicNativePayoutAuditForEvidence(evidence *FinalSemanticEvidence) (F
 	if err != nil {
 		return FinalPublicNativePayoutAudit{}, err
 	}
-	return FinalPublicNativePayoutAudit{Schema: finalPublicNativePayoutAuditSchema, Epochs: evidence.Window.EpochCount, UIDRows: rowCount, ParentTransitions: evidence.Window.EpochCount, ProjectionHash: hash}, nil
+	return FinalPublicNativePayoutAudit{Schema: finalPublicNativePayoutAuditSchema, Epochs: evidence.Window.EpochCount, UIDRows: rowCount, ParentTransitions: uint64(len(transitions)), ProjectionHash: hash}, nil
 }
 
 // Rejects structurally incomplete or internally inconsistent summaries before
 // evidence-specific comparison.
 func verifyFinalPublicNativePayoutAuditShape(audit FinalPublicNativePayoutAudit) error {
-	if audit.Schema != finalPublicNativePayoutAuditSchema || audit.Epochs == 0 || audit.UIDRows == 0 || audit.ParentTransitions != audit.Epochs {
+	if audit.Schema != finalPublicNativePayoutAuditSchema || audit.Epochs == 0 || audit.UIDRows == 0 || audit.ParentTransitions == 0 || audit.ParentTransitions > audit.Epochs {
 		return errors.New("public native payout audit summary is incomplete")
 	}
 	return requireFinalHex32("public native payout projection hash", audit.ProjectionHash)
@@ -133,6 +135,7 @@ func verifyFinalPublicNativePayoutObservationShape(audit FinalPublicNativePayout
 		return fmt.Errorf("public native payout observations=%d, want %d", len(states), audit.Epochs)
 	}
 	var rows uint64
+	transitions := map[ChainHead]FinalNativeEpochPayoutState{}
 	for index, state := range states {
 		if index > 0 && state.SettlementEpoch <= states[index-1].SettlementEpoch {
 			return errors.New("public native payout observations are not canonical")
@@ -146,12 +149,18 @@ func verifyFinalPublicNativePayoutObservationShape(audit FinalPublicNativePayout
 		if state.Parent.Number == ^uint64(0) || state.Parent.Number+1 != state.Block.Number || len(state.UIDs) == 0 {
 			return fmt.Errorf("public native payout epoch %d has an incomplete parent transition", state.SettlementEpoch)
 		}
+		immutable := state
+		immutable.SettlementEpoch = 0
+		if prior, ok := transitions[state.Block]; ok && !finalJSONEqual(prior, immutable) {
+			return errors.New("repeated settlement reference changes one immutable native payout transition")
+		}
+		transitions[state.Block] = immutable
 		if uint64(len(state.UIDs)) > ^uint64(0)-rows {
 			return errors.New("public native payout observation row count overflows uint64")
 		}
 		rows += uint64(len(state.UIDs))
 	}
-	if rows != audit.UIDRows || uint64(len(states)) != audit.ParentTransitions {
+	if rows != audit.UIDRows || uint64(len(transitions)) != audit.ParentTransitions {
 		return errors.New("public native payout observation counts differ from audit")
 	}
 	return nil
@@ -215,6 +224,9 @@ type FinalNativeEpochPayoutState struct {
 func finalNativeEpochReveal(evidence *FinalSemanticEvidence, epoch uint64) (ChainHead, uint64, error) {
 	if evidence == nil || len(evidence.Validators) == 0 {
 		return ChainHead{}, 0, errors.New("native epoch payout has no validator evidence")
+	}
+	if len(evidence.ValidatorReplayV2) != 0 {
+		return finalNativePayoutBoundaryV2(evidence, epoch)
 	}
 	var reveal ChainHead
 	var subnetEpoch uint64

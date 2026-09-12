@@ -1328,25 +1328,59 @@ func deriveFinalValidatorViewTransition(evidence *FinalSemanticEvidence) (finalV
 		return finalValidatorViewTransitionArtifact{}, errors.New("validator-local view requires exactly two validators")
 	}
 	affected, control := &evidence.Validators[0], &evidence.Validators[1]
-	if affected.ValidatorID >= control.ValidatorID || len(affected.Cycles) == 0 || len(affected.Cycles) != len(control.Cycles) {
+	if affected.ValidatorID >= control.ValidatorID || len(affected.Cycles) == 0 || len(control.Cycles) == 0 {
 		return finalValidatorViewTransitionArtifact{}, errors.New("validator-local view cycle sets are incomplete or non-canonical")
 	}
-	controlByEpoch := make(map[uint64]FinalCRv4Cycle, len(control.Cycles))
-	for _, cycle := range control.Cycles {
-		if _, duplicate := controlByEpoch[cycle.SettlementEpoch]; duplicate {
-			return finalValidatorViewTransitionArtifact{}, errors.New("control validator repeats a settlement epoch")
+	type viewPair struct {
+		epoch             uint64
+		affected, control FinalCRv4Cycle
+	}
+	var pairs []viewPair
+	if len(evidence.ValidatorReplayV2) != 0 {
+		for epoch := evidence.Window.FirstEpoch; epoch-evidence.Window.FirstEpoch < evidence.Window.EpochCount; epoch++ {
+			left, err := finalNativePayoutCheckpointV2(evidence, affected.ValidatorID, epoch)
+			if err != nil {
+				return finalValidatorViewTransitionArtifact{}, err
+			}
+			right, err := finalNativePayoutCheckpointV2(evidence, control.ValidatorID, epoch)
+			if err != nil || left.Mapping.Query != right.Mapping.Query {
+				return finalValidatorViewTransitionArtifact{}, errors.Join(errors.New("validator-local view has conflicting independent native checkpoints"), err)
+			}
+			first, err := finalCoverageCycleAtV2(evidence, affected.ValidatorID, left.Mapping.Query.NativeNumber)
+			if err != nil {
+				return finalValidatorViewTransitionArtifact{}, err
+			}
+			second, err := finalCoverageCycleAtV2(evidence, control.ValidatorID, right.Mapping.Query.NativeNumber)
+			if err != nil {
+				return finalValidatorViewTransitionArtifact{}, err
+			}
+			pairs = append(pairs, viewPair{epoch: epoch, affected: *first, control: *second})
 		}
-		controlByEpoch[cycle.SettlementEpoch] = cycle
+	} else {
+		if len(affected.Cycles) != len(control.Cycles) {
+			return finalValidatorViewTransitionArtifact{}, errors.New("validator-local view cycle sets differ")
+		}
+		controlByEpoch := make(map[uint64]FinalCRv4Cycle, len(control.Cycles))
+		for _, cycle := range control.Cycles {
+			if _, duplicate := controlByEpoch[cycle.SettlementEpoch]; duplicate {
+				return finalValidatorViewTransitionArtifact{}, errors.New("control validator repeats a settlement epoch")
+			}
+			controlByEpoch[cycle.SettlementEpoch] = cycle
+		}
+		for index, cycle := range affected.Cycles {
+			if index > 0 && cycle.SettlementEpoch <= affected.Cycles[index-1].SettlementEpoch {
+				return finalValidatorViewTransitionArtifact{}, errors.New("affected validator cycles are not canonical")
+			}
+			other, ok := controlByEpoch[cycle.SettlementEpoch]
+			if !ok {
+				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("control validator lacks settlement epoch %d", cycle.SettlementEpoch)
+			}
+			pairs = append(pairs, viewPair{epoch: cycle.SettlementEpoch, affected: cycle, control: other})
+		}
 	}
 	derived := finalValidatorViewTransitionArtifact{AffectedValidatorID: affected.ValidatorID, ControlValidatorID: control.ValidatorID}
-	for index, cycle := range affected.Cycles {
-		if index > 0 && cycle.SettlementEpoch <= affected.Cycles[index-1].SettlementEpoch {
-			return finalValidatorViewTransitionArtifact{}, errors.New("affected validator cycles are not canonical")
-		}
-		other, ok := controlByEpoch[cycle.SettlementEpoch]
-		if !ok {
-			return finalValidatorViewTransitionArtifact{}, fmt.Errorf("control validator lacks settlement epoch %d", cycle.SettlementEpoch)
-		}
+	for _, pair := range pairs {
+		cycle, other := pair.affected, pair.control
 		missing := finalSemanticSetDifference(finalSemanticSelectedFleets(other), finalSemanticSelectedFleets(cycle))
 		extra := finalSemanticSetDifference(finalSemanticSelectedFleets(cycle), finalSemanticSelectedFleets(other))
 		equal := len(missing) == 0 && len(extra) == 0
@@ -1355,23 +1389,23 @@ func deriveFinalValidatorViewTransition(evidence *FinalSemanticEvidence) (finalV
 				continue
 			}
 			if len(missing) != 1 || len(extra) != 1 {
-				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence at epoch %d is not one exact fleet substitution", cycle.SettlementEpoch)
+				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence at epoch %d is not one exact fleet substitution", pair.epoch)
 			}
-			derived.FaultEpoch, derived.WithheldFleetID, derived.ReplacementFleetID = cycle.SettlementEpoch, missing[0], extra[0]
+			derived.FaultEpoch, derived.WithheldFleetID, derived.ReplacementFleetID = pair.epoch, missing[0], extra[0]
 			continue
 		}
 		if derived.RestoredEpoch == 0 {
 			if equal {
-				derived.RestoredEpoch = cycle.SettlementEpoch
+				derived.RestoredEpoch = pair.epoch
 				continue
 			}
 			if len(missing) != 1 || len(extra) != 1 || missing[0] != derived.WithheldFleetID || extra[0] != derived.ReplacementFleetID {
-				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence changes before restoration at epoch %d", cycle.SettlementEpoch)
+				return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local divergence changes before restoration at epoch %d", pair.epoch)
 			}
 			continue
 		}
 		if !equal {
-			return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local view diverges again after restoration at epoch %d", cycle.SettlementEpoch)
+			return finalValidatorViewTransitionArtifact{}, fmt.Errorf("validator-local view diverges again after restoration at epoch %d", pair.epoch)
 		}
 	}
 	if derived.FaultEpoch == 0 || derived.RestoredEpoch == 0 {
@@ -1694,6 +1728,14 @@ func verifyFinalExitCriteria(evidence *FinalSemanticEvidence) error {
 		"theta-head-tail-realized":      {"verified_theta_weight_vectors": uint64(evidence.ExpectedValidators) * evidence.Window.EpochCount},
 		"unauthorized-upgrade-rejected": {"unauthorized_upgrade_attempts_rejected": 1},
 	}
+	if len(evidence.ValidatorReplayV2) != 0 {
+		var vectors uint64
+		for _, validator := range evidence.Validators {
+			vectors += uint64(len(validator.Cycles))
+		}
+		requiredAssertions["theta-head-tail-realized"]["verified_theta_weight_vectors"] = vectors
+		requiredAssertions["deposit-conviction-receipts"]["operator_epoch_deposit_audits"] = vectors * uint64(evidence.ExpectedOperators)
+	}
 	requestHashes := map[string]bool{}
 	if evidence.PublicVerification != nil {
 		for _, exchange := range evidence.PublicVerification.Exchanges {
@@ -1857,20 +1899,26 @@ func verifyFinalValidators(evidence *FinalSemanticEvidence, pools map[uint64]Fin
 		if err := verifyFinalValidatorIdentity(evidence, &validator, uids, vpks); err != nil {
 			return nil, err
 		}
-		if uint64(len(validator.Cycles)) != evidence.Window.EpochCount {
+		coverage := finalCoverageForValidatorV2(evidence, validator.ValidatorID)
+		if coverage == nil && uint64(len(validator.Cycles)) != evidence.Window.EpochCount {
 			return nil, fmt.Errorf("validator %d CRv4 cycles=%d, want %d", validator.ValidatorID, len(validator.Cycles), evidence.Window.EpochCount)
 		}
 		var previousSubnetEpoch uint64
 		for cycleIndex := range validator.Cycles {
 			cycle := &validator.Cycles[cycleIndex]
 			wantSettlement := evidence.Window.FirstEpoch + uint64(cycleIndex)
-			if cycle.SettlementEpoch != wantSettlement || (cycleIndex > 0 && cycle.SubnetEpoch <= previousSubnetEpoch) {
+			if coverage == nil && cycle.SettlementEpoch != wantSettlement || (cycleIndex > 0 && cycle.SubnetEpoch <= previousSubnetEpoch) {
 				return nil, fmt.Errorf("validator %d CRv4 cycle lineage is incomplete at settlement epoch %d", validator.ValidatorID, wantSettlement)
 			}
 			if err := verifyFinalCRv4Cycle(evidence, validator.ValidatorID, validator.UID, cycle, pools); err != nil {
 				return nil, fmt.Errorf("validator %d settlement epoch %d: %w", validator.ValidatorID, cycle.SettlementEpoch, err)
 			}
 			previousSubnetEpoch = cycle.SubnetEpoch
+		}
+		if coverage != nil {
+			if err := verifyFinalNativeCoverageV2(evidence, &validator, coverage); err != nil {
+				return nil, fmt.Errorf("validator %d native coverage: %w", validator.ValidatorID, err)
+			}
 		}
 		byID[validator.ValidatorID] = validator
 	}
@@ -2010,7 +2058,11 @@ func verifyFinalValidatorIdentity(evidence *FinalSemanticEvidence, validator *Fi
 }
 
 func verifyFinalCRv4Cycle(evidence *FinalSemanticEvidence, validatorID uint64, validatorUID uint16, cycle *FinalCRv4Cycle, pools map[uint64]FinalPoolUIDEvidence) error {
-	return verifyFinalCRv4CycleFrom(evidence, validatorID, validatorUID, cycle, pools, evidence.Window.StartBlock)
+	minimum := evidence.Window.StartBlock
+	if finalCoverageBaselineCycleV2(evidence, validatorID, cycle) {
+		minimum = cycle.EVMSnapshot.Number
+	}
+	return verifyFinalCRv4CycleFrom(evidence, validatorID, validatorUID, cycle, pools, minimum)
 }
 
 func verifyFinalCRv4CycleFrom(evidence *FinalSemanticEvidence, validatorID uint64, validatorUID uint16, cycle *FinalCRv4Cycle, pools map[uint64]FinalPoolUIDEvidence, minimumEVMBlock uint64) error {
@@ -2591,40 +2643,17 @@ func verifyFinalRewards(evidence *FinalSemanticEvidence, pools map[uint64]FinalP
 	expectedHeadReward := map[string]string{}
 	expectedPoolReward := map[string]string{}
 	for epoch := evidence.Window.FirstEpoch; epoch < evidence.Window.FirstEpoch+evidence.Window.EpochCount; epoch++ {
-		selected := map[uint64]int{}
-		poolEligible := map[uint64]bool{}
-		for _, validator := range evidence.Validators {
-			for _, cycle := range validator.Cycles {
-				if cycle.SettlementEpoch != epoch {
-					continue
-				}
-				for _, candidate := range cycle.Candidates {
-					if candidate.Selected {
-						selected[candidate.FleetID]++
-					}
-				}
-				for _, pool := range cycle.Pools {
-					poolEligible[pool.NoID] = poolEligible[pool.NoID] || pool.AuditCompliant
-				}
-			}
+		heads, poolExpectations := finalSemanticRewardExpectation(evidence, epoch)
+		if heads == nil || poolExpectations == nil {
+			return errors.New("native reward expectation lacks complete actual application coverage")
 		}
-		for fleetID := range headByFleet {
-			expectation := "observed"
-			switch selected[fleetID] {
-			case 0:
-				expectation = "zero"
-			case len(evidence.Validators):
-				expectation = "positive"
-			}
-			expectedHeadReward[fmt.Sprintf("%d/%d", epoch, fleetID)] = expectation
+		for fleetID, expected := range heads {
+			expectedHeadReward[fmt.Sprintf("%d/%d", epoch, fleetID)] = expected
 		}
-		for noID := range pools {
-			expectation := "zero"
-			if poolEligible[noID] {
-				expectation = "positive"
-			}
-			expectedPoolReward[fmt.Sprintf("%d/%d", epoch, noID)] = expectation
+		for noID, expected := range poolExpectations {
+			expectedPoolReward[fmt.Sprintf("%d/%d", epoch, noID)] = expected
 		}
+
 	}
 	type nativeCheckpointKey struct {
 		Head ChainHead
@@ -2729,6 +2758,12 @@ func verifyFinalRewards(evidence *FinalSemanticEvidence, pools map[uint64]FinalP
 		if reward.Epoch < evidence.Window.FirstEpoch || reward.Epoch >= evidence.Window.FirstEpoch+evidence.Window.EpochCount || reward.Before.Number < evidence.NativeStartHead.Number || reward.After.Number > evidence.NativeTerminalHead.Number || reward.Before.Number >= reward.After.Number {
 			return fmt.Errorf("reward %s is outside or does not span the native evidence window", key)
 		}
+		if len(evidence.ValidatorReplayV2) != 0 {
+			checkpoint, err := finalNativePayoutCheckpointV2(evidence, evidence.Validators[0].ValidatorID, reward.Epoch)
+			if err != nil || reward.Before != checkpoint.PayoutParent || reward.After != checkpoint.PayoutHead {
+				return errors.Join(errors.New("native reward does not use its exact runtime payout and parent"), err)
+			}
+		}
 		before, err := finalNonnegativeInteger("reward before emission", reward.BeforeRao)
 		if err != nil {
 			return err
@@ -2774,7 +2809,7 @@ func verifyFinalRewards(evidence *FinalSemanticEvidence, pools map[uint64]FinalP
 		if err := recordNativeCheckpoint(reward, reward.After, reward.AfterRao, reward.StakeAfterRao, reward.AfterIncentiveU16, reward.AfterDividendsU16); err != nil {
 			return err
 		}
-		if evidence.FleetLifecycle != nil && reward.Epoch == evidence.FleetLifecycle.State.ProviderEffectiveEpoch && reward.Before != evidence.FleetLifecycle.State.PostRegistrationRewardBaseline {
+		if evidence.FleetLifecycle != nil && reward.Epoch == evidence.FleetLifecycle.State.ProviderEffectiveEpoch && len(evidence.ValidatorReplayV2) == 0 && reward.Before != evidence.FleetLifecycle.State.PostRegistrationRewardBaseline {
 			return fmt.Errorf("reward %s predates or bypasses the authenticated post-registration baseline", key)
 		}
 		ownerBefore, err := finalNonnegativeInteger("reward owner stake before", reward.OwnerStakeBeforeRao)
@@ -2792,7 +2827,16 @@ func verifyFinalRewards(evidence *FinalSemanticEvidence, pools map[uint64]FinalP
 		if ownerDelta.Cmp(new(big.Int).Sub(ownerAfter, ownerBefore)) != 0 {
 			return fmt.Errorf("reward %s owner-pair stake change does not match snapshots", key)
 		}
-		if reward.OwnerStakeBeforeEVM.Number != reward.Before.Number || reward.OwnerStakeAfterEVM.Number != reward.After.Number {
+		if len(evidence.ValidatorReplayV2) != 0 {
+			before, err := finalNativeRewardEVMHeadV2(evidence, reward.Before)
+			if err != nil || before != reward.OwnerStakeBeforeEVM {
+				return errors.Join(errors.New("reward owner stake before differs from actual native/EVM execution mapping"), err)
+			}
+			after, err := finalNativeRewardEVMHeadV2(evidence, reward.After)
+			if err != nil || after != reward.OwnerStakeAfterEVM {
+				return errors.Join(errors.New("reward owner stake after differs from actual native/EVM execution mapping"), err)
+			}
+		} else if reward.OwnerStakeBeforeEVM.Number != reward.Before.Number || reward.OwnerStakeAfterEVM.Number != reward.After.Number {
 			return fmt.Errorf("reward %s owner-pair EVM checkpoints do not match native reward heights", key)
 		}
 		if err := verifyFinalHead("reward owner stake before EVM", reward.OwnerStakeBeforeEVM); err != nil {
@@ -4624,7 +4668,7 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 	}
 	startedAt, _ := time.Parse(time.RFC3339Nano, evidence.CampaignStartedAt)
 	completedAt, _ := time.Parse(time.RFC3339Nano, evidence.CampaignCompletedAt)
-	if signedAt.Before(startedAt) || signedAt.After(completedAt) {
+	if signedAt.Before(startedAt) && !(owner != nil && finalCoverageBaselineCycleV2(evidence, validatorID, cycle)) || signedAt.After(completedAt) {
 		return errors.New("measurement envelope signing time is outside the campaign")
 	}
 	if err := validatorpkg.VerifyReleaseMeasurementIntent(&intent, artifact, verified); err != nil {

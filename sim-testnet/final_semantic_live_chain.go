@@ -146,7 +146,7 @@ type FinalCollectedChainSnapshot struct {
 	RewardStakeSnapshots     []FinalCollectedRewardStakeSnapshot `json:"reward_stake_snapshots"`
 }
 
-func captureFinalSemanticLiveChain(ctx context.Context, cfg *ResolvedConfig, stateRoot, runRoot string, result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation) ([]FinalArtifactLocator, error) {
+func captureFinalSemanticLiveChain(ctx context.Context, cfg *ResolvedConfig, stateRoot, runRoot string, result *ScenarioResult, terminal *ScenarioObservation, history []*ScenarioObservation, exactRewards ...[]ChainHead) ([]FinalArtifactLocator, error) {
 	if ctx == nil || cfg == nil || cfg.Config == nil || result == nil || terminal == nil || terminal.Status == nil || terminal.Status.Contracts == nil || terminal.NativeRewards == nil {
 		return nil, errors.New("final live-chain capture context is incomplete")
 	}
@@ -182,7 +182,13 @@ func captureFinalSemanticLiveChain(ctx context.Context, cfg *ResolvedConfig, sta
 		return nil, err
 	}
 	nativeHead := terminal.NativeRewards.FinalizedHead
-	rewardHeads, err := finalCollectedRewardHeads(history, nativeHead)
+	rewardHistory := history
+	var additional []ChainHead
+	if len(exactRewards) != 0 && len(exactRewards[0]) != 0 {
+		rewardHistory = nil
+		additional = exactRewards[0]
+	}
+	rewardHeads, err := finalCollectedRewardHeads(rewardHistory, nativeHead, additional)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +229,7 @@ func captureFinalSemanticLiveChain(ctx context.Context, cfg *ResolvedConfig, sta
 	return persistFinalCollectedBundleChunks(runRoot, "live-chain", []FinalCollectedFileBundleEntry{entry})
 }
 
-func finalCollectedRewardHeads(history []*ScenarioObservation, terminal ChainHead) ([]ChainHead, error) {
+func finalCollectedRewardHeads(history []*ScenarioObservation, terminal ChainHead, exact ...[]ChainHead) ([]ChainHead, error) {
 	byNumber := make(map[uint64]ChainHead)
 	for _, observation := range history {
 		if observation == nil || observation.NativeRewards == nil || observation.NativeRewardsError != "" {
@@ -238,6 +244,17 @@ func finalCollectedRewardHeads(history []*ScenarioObservation, terminal ChainHea
 			return nil, fmt.Errorf("closed history has conflicting native reward checkpoint at %d", head.Number)
 		}
 		byNumber[head.Number] = head
+	}
+	for _, group := range exact {
+		for _, head := range group {
+			if head.Number == 0 || head.Number > terminal.Number || verifyFinalHead("exact native payout", head) != nil {
+				return nil, errors.New("exact native payout checkpoint is invalid")
+			}
+			if prior, found := byNumber[head.Number]; found && prior != head {
+				return nil, errors.New("exact native payout checkpoint conflicts")
+			}
+			byNumber[head.Number] = head
+		}
 	}
 	if terminal.Number == 0 || requireFinalHex32("terminal native reward checkpoint", strings.ToLower(terminal.Hash)) != nil {
 		return nil, errors.New("terminal native reward checkpoint is invalid")
@@ -688,14 +705,21 @@ func captureFinalNativeState(ctx context.Context, cfg *ResolvedConfig, stateRoot
 		rewardByNumber[rewardHead.Number] = rewardHead
 	}
 	for validatorID := 1; validatorID <= cfg.Config.Topology.Validators; validatorID++ {
-		intents, readErr := readValidatorIntentFile(stateRoot, validatorID)
+		intents, readErr := readFinalNativeIntentReferencesV2(ctx, cfg, stateRoot, validatorID)
 		if readErr != nil {
 			return nil, nil, fmt.Errorf("read validator %d native receipt references: %w", validatorID, readErr)
 		}
 		for _, intent := range intents {
-			for _, number := range []uint64{intent.FinalizedBlock, intent.RevealBlock, intent.ApplicationBlock} {
+			numbers := []uint64{intent.FinalizedBlock}
+			if !finalUsesEvidenceV2(cfg) || intent.Status == "applied" {
+				numbers = append(numbers, intent.RevealBlock, intent.ApplicationBlock)
+			}
+			for _, number := range numbers {
 				if number != 0 {
 					if number > head.Number {
+						if finalUsesEvidenceV2(cfg) && intent.Status != "applied" {
+							continue
+						}
 						return nil, nil, fmt.Errorf("validator %d references future native block %d beyond terminal %d", validatorID, number, head.Number)
 					}
 					blockNumbers[number] = true

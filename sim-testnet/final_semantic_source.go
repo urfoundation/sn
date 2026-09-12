@@ -647,7 +647,7 @@ func (a *finalSemanticArchive) nativeStartHead(chain *FinalCollectedChainSnapsho
 			items = append(items, *validator.DishonestDepositIntent)
 		}
 		for _, item := range items {
-			accepted := item.SettlementEpoch >= a.collected.Window.FirstEpoch && item.SettlementEpoch < lastEpoch
+			accepted := validator.EvidenceV2 != nil && len(validator.EvidenceV2.NativeCheckpoints) != 0 || item.SettlementEpoch >= a.collected.Window.FirstEpoch && item.SettlementEpoch < lastEpoch
 			penalty := a.collected.Phase == "production-soak" && item.SettlementEpoch+1 == a.collected.Window.FirstEpoch
 			if item.Status != "applied" || !accepted && !penalty {
 				continue
@@ -2610,12 +2610,28 @@ func (a *finalSemanticArchive) buildPoolWeight(cycle *FinalCRv4Cycle, epochDepos
 	}
 	audit := pool.Audit
 	payoutLocator, ok := finalSemanticPayout(a.collected, audit.SourceEpoch, audit.NoID)
+	var payoutData []byte
+	if !ok && a.validatorReplayV2[intent.ValidatorID] != nil {
+		raw, err := a.validatorReplayV2[intent.ValidatorID].archive.PayoutSourceV2(a.ctx, intent.MeasurementArtifactHash, audit.NoID)
+		if err != nil {
+			return FinalPoolWeightEvidence{}, err
+		}
+		payoutLocator, err = a.derivedBytes("payout-artifact", fmt.Sprintf("validator-%d-native-%d-no-%d-original-payout.json", intent.ValidatorID, intent.SubnetEpoch, audit.NoID), raw)
+		if err != nil {
+			return FinalPoolWeightEvidence{}, err
+		}
+		payoutData = raw
+		ok = true
+	}
 	if !ok {
 		return FinalPoolWeightEvidence{}, fmt.Errorf("operator %d source epoch %d payout artifact is absent", audit.NoID, audit.SourceEpoch)
 	}
-	payoutData, _, err := a.file(payoutLocator.URI)
-	if err != nil {
-		return FinalPoolWeightEvidence{}, err
+	if payoutData == nil {
+		var err error
+		payoutData, _, err = a.file(payoutLocator.URI)
+		if err != nil {
+			return FinalPoolWeightEvidence{}, err
+		}
 	}
 	payout, err := payoutartifact.Decode(payoutData)
 	if err != nil {
@@ -2870,7 +2886,7 @@ func (a *finalSemanticArchive) buildValidators(source *FinalSemanticEvidence, id
 		var selfUID uint16
 		haveSelfUID := false
 		for _, item := range collected.Intents {
-			if item.Status != "applied" || item.SettlementEpoch < source.Window.FirstEpoch || item.SettlementEpoch >= source.Window.FirstEpoch+source.Window.EpochCount {
+			if item.Status != "applied" || collected.EvidenceV2 == nil && (item.SettlementEpoch < source.Window.FirstEpoch || item.SettlementEpoch >= source.Window.FirstEpoch+source.Window.EpochCount) {
 				continue
 			}
 			cycle, intent, err := a.buildValidatorCycle(source, item, chain, events)
@@ -2883,7 +2899,7 @@ func (a *finalSemanticArchive) buildValidators(source *FinalSemanticEvidence, id
 			selfUID, haveSelfUID = intent.SelfUID, true
 			cycles = append(cycles, cycle)
 		}
-		sort.Slice(cycles, func(i, j int) bool { return cycles[i].SettlementEpoch < cycles[j].SettlementEpoch })
+		sort.Slice(cycles, func(i, j int) bool { return cycles[i].SubnetEpoch < cycles[j].SubnetEpoch })
 		state, ok := nativeByUID[selfUID]
 		if !haveSelfUID || !ok || state.StakeRao == "" || !state.ValidatorPermit || state.ValidatorTrustU16 == 0 {
 			return fmt.Errorf("validator %d terminal native identity is incomplete", collected.ValidatorID)
@@ -3431,19 +3447,18 @@ func (self *finalSemanticArchive) buildClaimPayments(source *FinalSemanticEviden
 func finalSemanticRewardExpectation(source *FinalSemanticEvidence, epoch uint64) (map[uint64]string, map[uint64]string) {
 	headSelections := make(map[uint64]int, len(source.HeadFleets))
 	poolEligible := make(map[uint64]bool, len(source.Pools))
-	for _, validator := range source.Validators {
-		for _, cycle := range validator.Cycles {
-			if cycle.SettlementEpoch != epoch {
-				continue
+	cycles, err := finalSemanticRewardCycles(source, epoch)
+	if err != nil {
+		return nil, nil
+	}
+	for _, cycle := range cycles {
+		for _, candidate := range cycle.Candidates {
+			if candidate.Selected {
+				headSelections[candidate.FleetID]++
 			}
-			for _, candidate := range cycle.Candidates {
-				if candidate.Selected {
-					headSelections[candidate.FleetID]++
-				}
-			}
-			for _, pool := range cycle.Pools {
-				poolEligible[pool.NoID] = poolEligible[pool.NoID] || pool.AuditCompliant
-			}
+		}
+		for _, pool := range cycle.Pools {
+			poolEligible[pool.NoID] = poolEligible[pool.NoID] || pool.AuditCompliant
 		}
 	}
 	heads := make(map[uint64]string, len(source.HeadFleets))
@@ -3472,6 +3487,9 @@ func finalSemanticRewardSnapshotValid(source *FinalSemanticEvidence, reward *Nat
 		return false
 	}
 	headExpected, poolExpected := finalSemanticRewardExpectation(source, epoch)
+	if headExpected == nil || poolExpected == nil {
+		return false
+	}
 	valid := func(uid uint16, role, expected string) bool {
 		emission, incentive, dividends, ok := nativeRewardAt(reward, uid)
 		if !ok {
@@ -3547,20 +3565,17 @@ func finalSemanticRewardSnapshots(history []*ScenarioObservation, source *FinalS
 }
 
 func finalSemanticApplicationBlock(source *FinalSemanticEvidence, epoch uint64) (uint64, error) {
+	cycles, err := finalSemanticRewardCycles(source, epoch)
+	if err != nil {
+		return 0, err
+	}
 	var maximum uint64
-	for _, validator := range source.Validators {
-		found := false
-		for _, cycle := range validator.Cycles {
-			if cycle.SettlementEpoch == epoch {
-				found = true
-				if cycle.Application.Block.Number > maximum {
-					maximum = cycle.Application.Block.Number
-				}
-			}
+	for _, cycle := range cycles {
+		block := cycle.Application.Block.Number
+		if len(source.ValidatorReplayV2) != 0 {
+			block = cycle.Reveal.Block.Number
 		}
-		if !found {
-			return 0, fmt.Errorf("validator %d lacks cycle for reward epoch %d", validator.ValidatorID, epoch)
-		}
+		maximum = max(maximum, block)
 	}
 	return maximum, nil
 }
@@ -3602,6 +3617,11 @@ func finalSemanticRewardOwnerPairAt(source *FinalSemanticEvidence, role string, 
 	if source == nil {
 		return [32]byte{}, [32]byte{}, errors.New("native reward owner evidence is unavailable")
 	}
+	ownershipEpoch, err := finalNativeRewardOwnershipEpochV2(source, epoch)
+	if err != nil {
+		return [32]byte{}, [32]byte{}, err
+	}
+	epoch = ownershipEpoch
 	switch role {
 	case "head":
 		for _, fleet := range source.HeadFleets {
@@ -3638,6 +3658,13 @@ func finalSemanticRewardOwnerPairAt(source *FinalSemanticEvidence, role string, 
 }
 
 func finalSemanticRewardUIDAt(source *FinalSemanticEvidence, fleetID, epoch uint64, terminalUID uint16) (uint16, error) {
+	if source != nil {
+		ownershipEpoch, err := finalNativeRewardOwnershipEpochV2(source, epoch)
+		if err != nil {
+			return 0, err
+		}
+		epoch = ownershipEpoch
+	}
 	if source != nil && source.FleetLifecycle != nil && (fleetID == fleetLifecycleTargetFleet || fleetID == fleetLifecycleCompanionFleet) {
 		uid, _, _, err := finalFleetLifecycleHeadAt(source.FleetLifecycle, fleetID, epoch)
 		return uid, err
@@ -3674,9 +3701,13 @@ func (a *finalSemanticArchive) buildRewards(source *FinalSemanticEvidence, histo
 	if source == nil || chain == nil || len(history) == 0 {
 		return errors.New("native reward construction context is incomplete")
 	}
-	snapshots, err := finalSemanticRewardSnapshots(history, source)
-	if err != nil {
-		return err
+	var snapshots []*NativeRewardObservation
+	if len(source.ValidatorReplayV2) == 0 {
+		var err error
+		snapshots, err = finalSemanticRewardSnapshots(history, source)
+		if err != nil {
+			return err
+		}
 	}
 	previousAfter := uint64(0)
 	for epoch := source.Window.FirstEpoch; epoch < source.Window.FirstEpoch+source.Window.EpochCount; epoch++ {
@@ -3685,38 +3716,45 @@ func (a *finalSemanticArchive) buildRewards(source *FinalSemanticEvidence, histo
 			return err
 		}
 		var before, after *NativeRewardObservation
-		for _, candidate := range snapshots {
-			if candidate.FinalizedHead.Number < applicationBlock || candidate.FinalizedHead.Number <= previousAfter || !finalSemanticRewardSnapshotValid(source, candidate, epoch) {
-				continue
-			}
-			after = candidate
-			break
-		}
-		if after == nil {
-			return fmt.Errorf("closed history has no post-application native reward snapshot for settlement epoch %d", epoch)
-		}
-		if source.FleetLifecycle != nil && epoch == source.FleetLifecycle.State.ProviderEffectiveEpoch {
-			baseline := source.FleetLifecycle.State.PostRegistrationRewardBaseline
-			for _, candidate := range snapshots {
-				if candidate.FinalizedHead == baseline {
-					before = candidate
-					break
-				}
-			}
-			if before == nil || before.FinalizedHead.Number < previousAfter || before.FinalizedHead.Number >= after.FinalizedHead.Number {
-				return fmt.Errorf("closed history lacks the exact post-registration reward baseline %d/%s for settlement epoch %d", baseline.Number, baseline.Hash, epoch)
+		if len(source.ValidatorReplayV2) != 0 {
+			before, after, err = a.finalNativeRewardPairV2(source, epoch)
+			if err != nil {
+				return err
 			}
 		} else {
-			for index := len(snapshots) - 1; index >= 0; index-- {
-				candidate := snapshots[index]
-				if candidate.FinalizedHead.Number < after.FinalizedHead.Number && (previousAfter == 0 || candidate.FinalizedHead.Number >= previousAfter) {
-					before = candidate
-					break
+			for _, candidate := range snapshots {
+				if candidate.FinalizedHead.Number < applicationBlock || candidate.FinalizedHead.Number <= previousAfter || !finalSemanticRewardSnapshotValid(source, candidate, epoch) {
+					continue
+				}
+				after = candidate
+				break
+			}
+			if after == nil {
+				return fmt.Errorf("closed history has no post-application native reward snapshot for settlement epoch %d", epoch)
+			}
+			if source.FleetLifecycle != nil && epoch == source.FleetLifecycle.State.ProviderEffectiveEpoch {
+				baseline := source.FleetLifecycle.State.PostRegistrationRewardBaseline
+				for _, candidate := range snapshots {
+					if candidate.FinalizedHead == baseline {
+						before = candidate
+						break
+					}
+				}
+				if before == nil || before.FinalizedHead.Number < previousAfter || before.FinalizedHead.Number >= after.FinalizedHead.Number {
+					return fmt.Errorf("closed history lacks the exact post-registration reward baseline %d/%s for settlement epoch %d", baseline.Number, baseline.Hash, epoch)
+				}
+			} else {
+				for index := len(snapshots) - 1; index >= 0; index-- {
+					candidate := snapshots[index]
+					if candidate.FinalizedHead.Number < after.FinalizedHead.Number && (previousAfter == 0 || candidate.FinalizedHead.Number >= previousAfter) {
+						before = candidate
+						break
+					}
 				}
 			}
-		}
-		if before == nil {
-			return fmt.Errorf("closed history has no pre-reward native snapshot for settlement epoch %d", epoch)
+			if before == nil {
+				return fmt.Errorf("closed history has no pre-reward native snapshot for settlement epoch %d", epoch)
+			}
 		}
 		beforeStakeSnapshot, err := finalSemanticStakeSnapshotAt(chain, before.FinalizedHead)
 		if err != nil {

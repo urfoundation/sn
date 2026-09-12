@@ -283,7 +283,14 @@ func CollectFinalSemanticInputs(ctx context.Context, cfg *ResolvedConfig, stateD
 	if err != nil {
 		return nil, err
 	}
-	liveChainBundles, err := captureFinalSemanticLiveChain(ctx, cfg, stateRoot, runRoot, result, terminal, history)
+	var nativeRewardHeads []ChainHead
+	if len(compactValidators) != 0 {
+		nativeRewardHeads, err = finalNativeRewardHeadsV2(compactValidators)
+		if err != nil {
+			return nil, err
+		}
+	}
+	liveChainBundles, err := captureFinalSemanticLiveChain(ctx, cfg, stateRoot, runRoot, result, terminal, history, nativeRewardHeads)
 	if err != nil {
 		return nil, err
 	}

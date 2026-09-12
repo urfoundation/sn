@@ -53,6 +53,9 @@ func captureReleaseDecisionObservationsV2(ctx context.Context, cfg *ReleaseConfi
 			return err
 		}
 		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits}
+		if err := observeReleaseDecisionLifecycleV2(ctx, native, &owned, &item.Intent, &observation); err != nil {
+			return err
+		}
 		raw, err := marshalAttemptSettlementV2JSON(ctx, observation, bounds.MaxControlBytes, false, true)
 		if err != nil {
 			return err

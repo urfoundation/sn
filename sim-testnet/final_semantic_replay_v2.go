@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/urfoundation/sn/crv4"
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
 
@@ -19,8 +20,9 @@ const finalValidatorReplayV2Schema = "urnetwork-final-validator-replay-v2"
 // The main final object contains only small manifest locators. Every source
 // object remains separately bounded and streamed through its exact provenance.
 type FinalValidatorReplayV2 struct {
-	ValidatorID uint64               `json:"validator_id"`
-	Manifest    FinalArtifactLocator `json:"manifest"`
+	ValidatorID uint64                 `json:"validator_id"`
+	Manifest    FinalArtifactLocator   `json:"manifest"`
+	Coverage    *FinalNativeCoverageV2 `json:"native_coverage"`
 }
 
 type finalValidatorReplayManifestV2 struct {
@@ -36,14 +38,16 @@ type finalValidatorReplayManifestV2 struct {
 }
 
 type finalValidatorReplayOwnerV2 struct {
-	ctx          context.Context
-	archive      *validatorpkg.ReleaseEvidenceV2Archive
-	config       *validatorpkg.ReleaseConfig
-	manifest     finalValidatorReplayManifestV2
-	observations []validatorpkg.ReleaseEvidenceV2DecisionObservation
-	intents      []validatorpkg.SteeringIntent
-	root         string
-	anchor       os.FileInfo
+	ctx           context.Context
+	archive       *validatorpkg.ReleaseEvidenceV2Archive
+	config        *validatorpkg.ReleaseConfig
+	manifest      finalValidatorReplayManifestV2
+	observations  []validatorpkg.ReleaseEvidenceV2DecisionObservation
+	intents       []validatorpkg.SteeringIntent
+	coverage      *FinalNativeCoverageV2
+	nativeRewards map[ChainHead]*NativeRewardObservation
+	root          string
+	anchor        os.FileInfo
 }
 
 func (self *finalValidatorReplayOwnerV2) Close() error {
@@ -86,7 +90,7 @@ func verifyFinalValidatorReplayShapeV2(evidence *FinalSemanticEvidence) error {
 		return errors.New("final V2 replay must cover every validator")
 	}
 	for index, entry := range evidence.ValidatorReplayV2 {
-		if entry.ValidatorID != uint64(index+1) {
+		if entry.ValidatorID != uint64(index+1) || entry.Coverage == nil {
 			return errors.New("final V2 replay validator census differs")
 		}
 		if err := verifyFinalArtifact("final validator replay", entry.Manifest, "validator-replay-v2"); err != nil {
@@ -293,6 +297,59 @@ func openFinalValidatorReplayV2(ctx context.Context, evidence *FinalSemanticEvid
 	if err := owner.archive.ReplayPublicationsV2(ctx, evidence.Window.FirstEpoch, evidence.Window.EpochCount, evidence.Window.StartBlock, evidence.Window.EpochBlocks, evidence.EVMTerminalHead.Number); err != nil {
 		return nil, err
 	}
+	for _, checkpoint := range manifest.Capture.NativeCheckpoints {
+		raw, err := readNamed("native-coverage", fmt.Sprintf("evm-%020d", checkpoint.Mapping.Query.EVMNumber), release.EvidenceV2.Bounds.MaxControlBytes)
+		if err != nil {
+			return nil, err
+		}
+		var original FinalNativeCheckpointV2
+		if err := decodeStrictJSONBytes(raw, &original); err != nil || !finalJSONEqual(original, checkpoint) {
+			return nil, errors.Join(errors.New("native coverage checkpoint differs from its original captured source"), err)
+		}
+	}
+	owner.nativeRewards = map[ChainHead]*NativeRewardObservation{}
+	if len(manifest.Capture.NativeCheckpoints) < 2 {
+		return nil, errors.New("native payout capture has no complete endpoints")
+	}
+	for _, checkpoint := range manifest.Capture.NativeCheckpoints[1:] {
+		for _, head := range []ChainHead{checkpoint.PayoutParent, checkpoint.PayoutHead} {
+			if owner.nativeRewards[head] != nil {
+				continue
+			}
+			raw, err := readNamed("native-reward", fmt.Sprintf("native-%020d", head.Number), release.EvidenceV2.Bounds.MaxControlBytes)
+			if err != nil {
+				return nil, err
+			}
+			var original NativeRewardObservation
+			if err := decodeStrictJSONBytes(raw, &original); err != nil || original.FinalizedHead != head {
+				return nil, errors.Join(errors.New("native payout observation differs from its exact source checkpoint"), err)
+			}
+			owner.nativeRewards[head] = &original
+		}
+	}
+	owner.coverage, err = deriveFinalNativeCoverageV2(owner.intents, owner.observations, manifest.Capture.NativeCheckpoints)
+	if err != nil {
+		return nil, err
+	}
+	var rewardHeads []ChainHead
+	for head := range owner.nativeRewards {
+		rewardHeads = append(rewardHeads, head)
+	}
+	sort.Slice(rewardHeads, func(i, j int) bool { return rewardHeads[i].Number < rewardHeads[j].Number })
+	for _, head := range rewardHeads {
+		raw, err := readNamed("native-reward-mapping", fmt.Sprintf("native-%020d", head.Number), release.EvidenceV2.Bounds.MaxControlBytes)
+		if err != nil {
+			return nil, err
+		}
+		var mapping crv4.EVMCheckpointObservation
+		if err := decodeStrictJSONBytes(raw, &mapping); err != nil || mapping.Query.NativeNumber != head.Number || mapping.Query.NativeHash.Hex() != head.Hash {
+			return nil, errors.Join(errors.New("native reward mapping differs from its original payout source"), err)
+		}
+		owner.coverage.RewardMappings = append(owner.coverage.RewardMappings, mapping)
+	}
+	if entry.Coverage != nil && !finalJSONEqual(entry.Coverage, owner.coverage) {
+		return nil, errors.New("final native coverage differs from complete original signed history")
+	}
 	// Retained source classes also contain relay/native request bytes that
 	// replay does not use as a verdict. Hash every original object before any
 	// successful artifact cache hit; stream one object at a time.
@@ -368,6 +425,7 @@ func (a *finalSemanticArchive) buildValidatorReplayV2(evidence *FinalSemanticEvi
 		if err != nil {
 			return err
 		}
+		entry.Coverage = owner.coverage
 		a.validatorReplayV2[collected.ValidatorID] = owner
 		evidence.ValidatorReplayV2 = append(evidence.ValidatorReplayV2, entry)
 	}

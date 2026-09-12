@@ -30,6 +30,10 @@ func verifyFinalValidatorSourcesOnChainV2(ctx context.Context, evidence *FinalSe
 	if !ok || load == nil {
 		return errors.New("public V2 verification requires the complete closed artifact loader")
 	}
+	checkpoints, ok := reader.(finalNativeCheckpointReaderV2)
+	if !ok {
+		return errors.New("public V2 reader lacks actual native checkpoint verification")
+	}
 	sources, ok := reader.(finalValidatorSourcesReaderV2)
 	if !ok {
 		return errors.New("public V2 reader lacks actual historical source and publication verification")
@@ -47,6 +51,31 @@ func verifyFinalValidatorSourcesOnChainV2(ctx context.Context, evidence *FinalSe
 		}
 		if !finalJSONEqual(observations, owner.observations) {
 			return fmt.Errorf("validator %d captured decision sources differ from independent historical reads", entry.ValidatorID)
+		}
+		for _, original := range owner.coverage.Checkpoints {
+			at := ChainHead{Number: original.Mapping.Query.EVMNumber, Hash: original.Mapping.Query.EVMHash.Hex()}
+			observed, reads, err := checkpoints.NativeCheckpointV2(ctx, evidence, at, original.Weights.ValidatorUID, owner.manifest.Capture.Hotkey)
+			if err != nil {
+				return fmt.Errorf("public validator %d native checkpoint: %w", entry.ValidatorID, err)
+			}
+			if !finalNativeCheckpointEqualV2(original, observed) {
+				return fmt.Errorf("validator %d captured native checkpoint differs from independent historical reads", entry.ValidatorID)
+			}
+			if len(reads) == 0 {
+				return errors.New("public native checkpoint has no original RPC transcript")
+			}
+			exchanges = append(exchanges, reads...)
+		}
+		for _, original := range owner.coverage.RewardMappings {
+			at := ChainHead{Number: original.Query.EVMNumber, Hash: original.Query.EVMHash.Hex()}
+			observed, reads, err := checkpoints.NativeCheckpointV2(ctx, evidence, at, owner.manifest.Capture.NativeCheckpoints[0].Weights.ValidatorUID, owner.manifest.Capture.Hotkey)
+			if err != nil || observed.Mapping != original {
+				return errors.Join(errors.New("native payout/owner-stake mapping differs from independent runtime proof"), err)
+			}
+			if len(reads) == 0 {
+				return errors.New("native payout mapping has no actual RPC transcript")
+			}
+			exchanges = append(exchanges, reads...)
 		}
 		if len(exchanges) == 0 {
 			return errors.New("public V2 source verifier returned no original historical transcript")

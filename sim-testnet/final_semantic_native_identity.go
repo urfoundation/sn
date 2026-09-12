@@ -457,6 +457,10 @@ func verifyFinalNativeEvidenceCycleUniqueness(evidence *FinalSemanticEvidence) e
 
 // Requires the exact fresh row and current UID owner at application.
 func verifyFinalNativeApplicationState(got FinalNativeWeightState, expected FinalNativeCallEvidence, application ChainHead, validatorUID uint16, validatorHotkey string, uids, values []uint16) error {
+	return verifyFinalNativeApplicationWithLatestCommit(got, expected, application, validatorUID, validatorHotkey, uids, values, expected.CommitBlock)
+}
+
+func verifyFinalNativeApplicationWithLatestCommit(got FinalNativeWeightState, expected FinalNativeCallEvidence, application ChainHead, validatorUID uint16, validatorHotkey string, uids, values []uint16, latestCommit uint64) error {
 	if err := verifyFinalNativeCallEvidenceShape(expected, finalNativeOperationApplication); err != nil {
 		return err
 	}
@@ -464,7 +468,7 @@ func verifyFinalNativeApplicationState(got FinalNativeWeightState, expected Fina
 	if err != nil {
 		return fmt.Errorf("native application validator hotkey: %w", err)
 	}
-	if expected.UID != validatorUID || expected.Signer != wantHotkey || expected.ApplicationBlock != application.Number || got.ValidatorUID != validatorUID || got.Block != application || got.ValidatorHotkey != wantHotkey || got.LastUpdate != expected.CommitBlock {
+	if expected.UID != validatorUID || expected.Signer != wantHotkey || expected.ApplicationBlock != application.Number || got.ValidatorUID != validatorUID || got.Block != application || got.ValidatorHotkey != wantHotkey || got.LastUpdate != latestCommit || latestCommit < expected.CommitBlock || latestCommit > application.Number {
 		return errors.New("native application UID, owner, checkpoint, or fresh LastUpdate lineage differs")
 	}
 	if len(got.UIDs) != len(got.Values) || len(uids) != len(values) || !slices.Equal(got.UIDs, uids) || !slices.Equal(got.Values, values) {
