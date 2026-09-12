@@ -28,14 +28,21 @@ func scenarioVoluntaryConvictionFixture(t *testing.T) (*ResolvedConfig, *SetupPl
 	if err != nil {
 		t.Fatal(err)
 	}
-	current := *source
+	// Rebuild policy-bound actions under the new approval. Changing only the
+	// top-level hash leaves the custody and runtime actions on the old policy.
+	cfg.PolicyHash = "0x" + strings.Repeat("ab", 32)
+	current, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
 	current.PriorPlanHashes = []string{source.PlanHash}
-	current.PolicyHash = "0x" + strings.Repeat("ab", 32)
 	current.PlanHash, err = current.hash()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.PolicyHash = current.PolicyHash
+	if err := validatePlanBudget(current); err != nil {
+		t.Fatalf("revised conviction fixture is not an admissible plan: %v", err)
+	}
 	evidence := VoluntaryConvictionEvidence{
 		Schema: "urnetwork-voluntary-conviction-evidence-v1", DeploymentID: cfg.Config.Deployment.DeploymentID,
 		NoID: 1, Epoch: 2, AmountRao: "1000000000", BeforeConvictionRao: "0", AfterConvictionRao: "1000000000", Nonce: "0",
@@ -43,11 +50,14 @@ func scenarioVoluntaryConvictionFixture(t *testing.T) (*ResolvedConfig, *SetupPl
 		TransactionHash: "0x" + strings.Repeat("11", 32), FinalizedBlock: 9, FinalizedHash: "0x" + strings.Repeat("22", 32),
 	}
 	action := actionByID(t, source, voluntaryConvictionActionID)
+	if actionByID(t, current, voluntaryConvictionActionID).IntentHash != action.IntentHash {
+		t.Fatal("policy revision changed the carried conviction intent")
+	}
 	entries := []JournalEntry{
 		{Sequence: 1, DeploymentID: source.DeploymentID, PlanHash: source.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageFinalized, TransactionHash: evidence.TransactionHash, BlockNumber: evidence.FinalizedBlock, BlockHash: evidence.FinalizedHash},
 		{Sequence: 2, DeploymentID: source.DeploymentID, PlanHash: source.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageVerified},
 	}
-	return cfg, source, &current, evidence, entries
+	return cfg, source, current, evidence, entries
 }
 
 // Exercise the actual scenario observer with hash-authenticated plan/journal
