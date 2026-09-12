@@ -28,7 +28,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 22:55 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 23:13 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
@@ -83,21 +83,28 @@ On `da27b85`, the corrected horizon root has three fresh normal passes, and its
 original three-root partition passes under race. The exact final semantic census
 contains 310 roots. Two of 27 gate guards failed in both modes: a stale direct-call
 assumption across the real startup delegation chain and three renewal consumers
-without the required parallel marker. Astra owns the corrections; Terra will
-qualify only those failed modes and the affected adjacent consumers. Completed
-historical streaks and the horizon checks will not restart.
+without the required parallel marker. Astra corrected those three test files;
+on `e8bceaaa62e6d1c3ad2f5a30535f7a7a3806661d`, Terra completed three fresh normal
+and three fresh race passes of both failed guards. The three affected renewal
+consumers also pass together normally and under race. Production source and
+the release lock remain unchanged. These confirmations are complete; historical
+streaks and horizon checks will not restart.
 [Exact partial qualification and stamped CLI](../temp/sn-final-execution-20260912/runtime-da27b85-20260912T2245Z/RESULT-PARTIAL.md).
+[Completed guard corrections and adjacent integration](../temp/sn-final-execution-20260912/runtime-e8bceaaa-20260912T230158Z/RESULT-E8-GUARD-CORRECTION-CORRECTED.md).
 
 Both full-gate launch commands are prepared with separate private mutable
 resources. The twelve-repository snapshot includes the vault budget. Therefore
 the pending spending decision and any approved vault edit, commit and push must
 precede the final source freeze and concurrent producer/aggregate launch. A
-mid-gate budget change would invalidate the final snapshot. Independent software
-correction and qualification continue while approval is pending. After both gates,
+mid-gate budget change would invalidate the final snapshot. Focused correction
+and qualification are complete; final publication and CLI preparation proceed
+while approval is pending. After both gates,
 proceed through fresh setup-plan admission, renewed fleet authorizations, bounded
 relay continuation, retained-history adoption and the actual full campaign.
 
-Terra has passed the strict V2 history-adoption core and corrected EMA bridge
+Earlier component checkpoints, superseded by the completed results above:
+
+Terra passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
 mode. Those fixes are integrated. The ten focused renewal roots also passed
 normally and under race on source `006c0c0`, including three fresh confirmations
@@ -141,8 +148,8 @@ signatures or certify the remaining campaign. All four activation contexts bind
 block 7,975,563; the existing 10,080-block relay allowance formula therefore ends
 at 7,985,643, before the observed finalized block 7,991,348. No `evidence.relay.*`
 entry exists in the retained journal. The retained locators contain 182 pending
-members; the corrected 7,570-block full-work forecast requires another 200. Locator counts
-still require complete signature and immutable-slot authentication. Astra has
+members; the corrected 7,570-block full-work forecast requires another 200.
+Locator counts still require complete signature and immutable-slot authentication. Astra has
 frozen an explicit plan-bound continuation at `a52758b` with up to 512 relay slots at
 50 gwei per 1,000,000-gas action, within the existing 25.6-TAO relay reserve.
 It must preserve original activation and liabilities, bind the actual pending
