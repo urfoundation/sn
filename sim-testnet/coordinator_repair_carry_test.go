@@ -62,7 +62,7 @@ func (self *coordinatorRepairCarryRPC) GetStorageAt(_ context.Context, address c
 	return abiWordAddress(active), nil
 }
 
-func (self *coordinatorRepairCarryRPC) Call(_ context.Context, message ValidatorEvidenceInstallRPCMessage, selector json.RawMessage) (hexutil.Bytes, error) {
+func (self *coordinatorRepairCarryRPC) Call(_ context.Context, message ValidatorEvidenceCarryUpgradeRPCMessage, selector json.RawMessage) (hexutil.Bytes, error) {
 	self.calls.Add(1)
 	var number string
 	if err := json.Unmarshal(selector, &number); err != nil {
@@ -71,8 +71,13 @@ func (self *coordinatorRepairCarryRPC) Call(_ context.Context, message Validator
 	if number != "0x65" && number != "0x6e" || message.To != self.plan.Deployment.CoordinatorProxy {
 		return nil, errors.New("repair identity used another checkpoint")
 	}
+	// The actual numbered ethclient.CallContract wire uses input. Reject a
+	// mixed/empty message instead of letting the fixture lose the calldata.
+	if len(message.Data) != 0 || len(message.Input) == 0 {
+		return nil, errors.New("repair identity calldata does not use its exact RPC wire")
+	}
 	for method, value := range self.identity {
-		if bytes.Equal(message.Data, crypto.Keccak256([]byte(method + "()"))[:4]) {
+		if bytes.Equal(message.Input, crypto.Keccak256([]byte(method + "()"))[:4]) {
 			result := bytes.Clone(value)
 			if self.problem == "custody" && method == "selfColdkey" {
 				result[0] ^= 1
@@ -235,6 +240,8 @@ func newCoordinatorRepairCarryFixture(t *testing.T) coordinatorRepairCarryFixtur
 			entry := JournalEntry{DeploymentID: source.DeploymentID, PlanHash: source.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: stage}
 			if stage == StageBroadcast {
 				entry.Signer, entry.Nonce, entry.TransactionHash = crypto.PubkeyToAddress(key.PublicKey).Hex(), strconv.FormatUint(txNonce, 10), transaction.Hash().Hex()
+				recovery := testEVMHead(99+uint64(index), byte(0xed+index))
+				entry.RecoveryBlock, entry.RecoveryBlockHash = recovery.Number, recovery.Hash
 			}
 			if stage == StageIncluded || stage == StageFinalized {
 				entry.TransactionHash, entry.BlockNumber, entry.BlockHash = transaction.Hash().Hex(), head.Number, head.Hash
