@@ -3,6 +3,8 @@
 Updated 2026-09-12. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
+The user explicitly confirmed SN testnet finalization under `sn/FINALIZE.md`;
+the absent `server/connect/FINALIZE.md` reference does not change that scope.
 The earlier shortened-run instructions below are retained as historical scope
 for those attempts, whose `final_acceptance=false` results remain unchanged.
 
