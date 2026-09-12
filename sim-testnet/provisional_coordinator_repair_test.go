@@ -203,3 +203,31 @@ func TestCoordinatorRepairUsesRetainedCanonicalSigningRoles(t *testing.T) {
 		t.Fatal("changed owner address admitted")
 	}
 }
+
+func TestCoordinatorRepairHistoricalVerifiedNonceIsConsumed(t *testing.T) {
+	hash := "0x" + strings.Repeat("12", 32)
+	broadcast := JournalEntry{Stage: StageBroadcast, Signer: "deployer", Nonce: "0", TransactionHash: hash, PlanHash: hash, ActionID: "evm.reserve-sink", IntentHash: hash}
+	included := broadcast
+	included.Stage = StageIncluded
+	included.BlockNumber = 7888433
+	verified := broadcast
+	verified.Stage = StageVerified
+	verified.TransactionHash = ""
+	verified.PostconditionHash = hash
+	verified.PostconditionPath = "receipts/old.json"
+	entries := []JournalEntry{broadcast, included, {Stage: StageFailed, Error: "context canceled"}, verified}
+	if err := coordinatorRepairJournalNonceClear(entries, "deployer", 33); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinatorRepairJournalNonceClear(entries, "deployer", 0); err == nil {
+		t.Fatal("unconsumed nonce admitted")
+	}
+	if err := coordinatorRepairJournalNonceClear(entries[:3], "deployer", 33); err == nil {
+		t.Fatal("unverified broadcast admitted")
+	}
+	verified.PlanHash = "0x" + strings.Repeat("34", 32)
+	entries[3] = verified
+	if err := coordinatorRepairJournalNonceClear(entries, "deployer", 33); err == nil {
+		t.Fatal("another plan's completion admitted")
+	}
+}

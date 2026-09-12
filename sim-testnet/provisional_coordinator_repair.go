@@ -334,6 +334,39 @@ func validateCoordinatorRepairSigningRoles(plan *SetupPlan, roles *RoleSecrets) 
 	return nil
 }
 
+// Early deployments sometimes completed their exact postcondition after a
+// canceled receipt wait without backfilling StageFinalized. Reuse that recorded
+// completion only when the existing current nonce read proves its slot consumed.
+func coordinatorRepairJournalNonceClear(entries []JournalEntry, signer string, finalizedNonce uint64) error {
+	pending := map[string]JournalEntry{}
+	included := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Stage == StageBroadcast && strings.EqualFold(entry.Signer, signer) {
+			pending[entry.TransactionHash] = entry
+		}
+		if entry.Stage == StageIncluded && entry.BlockNumber != 0 {
+			included[entry.TransactionHash] = true
+		}
+		if entry.Stage == StageFinalized {
+			delete(pending, entry.TransactionHash)
+		}
+		if entry.Stage == StageVerified && validCanonicalHashHex(entry.PostconditionHash) && entry.PostconditionPath != "" {
+			for hash, broadcast := range pending {
+				if included[hash] && entry.PlanHash == broadcast.PlanHash && entry.ActionID == broadcast.ActionID && entry.IntentHash == broadcast.IntentHash {
+					nonce, err := strconv.ParseUint(broadcast.Nonce, 10, 64)
+					if err == nil && nonce < finalizedNonce {
+						delete(pending, hash)
+					}
+				}
+			}
+		}
+	}
+	if len(pending) != 0 {
+		return errors.New("repair signer still owns an unresolved journal broadcast")
+	}
+	return nil
+}
+
 func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir string, o cliOptions) error {
 	if err := validateCoordinatorRepairOptions("coordinator-repair", o); err != nil {
 		return err
@@ -415,18 +448,6 @@ func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir str
 		if len(entries) == 0 || entries[len(entries)-1].EntryHash != budget.JournalHash {
 			return errors.New("repair budget journal anchor changed before exclusive admission")
 		}
-		pending := map[string]bool{}
-		for _, entry := range entries {
-			if entry.Stage == StageBroadcast && (strings.EqualFold(entry.Signer, plan.Roles.Owner) || strings.EqualFold(entry.Signer, plan.Roles.Deployer)) {
-				pending[entry.TransactionHash] = true
-			}
-			if entry.Stage == StageFinalized {
-				delete(pending, entry.TransactionHash)
-			}
-		}
-		if len(pending) != 0 {
-			return errors.New("repair owner/deployer still owns an unresolved journal broadcast")
-		}
 		active, err := implementationAt(ctx, owner, plan.Deployment.CoordinatorProxy, head)
 		if err != nil || active != plan.CoordinatorUpgrade.Implementation {
 			return stateMismatchError(err, "repair active implementation differs from the retained baseline")
@@ -447,6 +468,9 @@ func runCoordinatorRepair(ctx context.Context, cfg *ResolvedConfig, stateDir str
 			finalizedNonce, err := manager.client.NonceAt(ctx, crypto.PubkeyToAddress(manager.key.PublicKey), new(big.Int).SetUint64(head.Number))
 			if err != nil || finalizedNonce != nonce {
 				return stateMismatchError(err, "repair signer has an unresolved pending nonce")
+			}
+			if err := coordinatorRepairJournalNonceClear(entries, crypto.PubkeyToAddress(manager.key.PublicKey).Hex(), finalizedNonce); err != nil {
+				return err
 			}
 		}
 		implementation := crypto.CreateAddress(common.HexToAddress(plan.Roles.Deployer), deployNonce)
