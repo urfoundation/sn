@@ -943,7 +943,13 @@ func VerifyReleaseMeasurementLineage(previousEncoded []byte, current *ReleaseMea
 	if _, err := VerifyReleaseMeasurementArtifact(current); err != nil {
 		return fmt.Errorf("current release measurement: %w", err)
 	}
-	if current.PreviousArtifactHash != ReleaseMeasurementContentHash(previousEncoded) {
+	return verifyReleaseMeasurementLineage(previous, current, ReleaseMeasurementContentHash(previousEncoded))
+}
+
+// Both callers authenticate complete bodies first. The audit caller supplies
+// private, detached lineage projections instead of repeating that body work.
+func verifyReleaseMeasurementLineage(previous, current *ReleaseMeasurementArtifact, previousHash string) error {
+	if current.PreviousArtifactHash != previousHash {
 		return errors.New("release measurement previous content address differs")
 	}
 	if current.DeploymentID != previous.DeploymentID || current.ChainID != previous.ChainID || current.ValidatorID != previous.ValidatorID || current.Netuid != previous.Netuid || !strings.EqualFold(current.GenesisHash, previous.GenesisHash) || !strings.EqualFold(current.Coordinator, previous.Coordinator) || !strings.EqualFold(current.SettlementVault, previous.SettlementVault) {

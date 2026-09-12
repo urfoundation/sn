@@ -3537,6 +3537,9 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 		}
 	}
 	cycleTaskIndexes := make([][]int, len(evidence.Validators))
+	measurementAudit := validatorpkg.NewReleaseMeasurementAudit()
+	cycleSnapshots := make([][]*validatorpkg.ReleaseMeasurementSnapshot, len(evidence.Validators))
+	penaltySnapshots := make([]*validatorpkg.ReleaseMeasurementSnapshot, len(evidence.Validators))
 	penaltyTaskIndexes := make([]int, len(evidence.Validators))
 	penaltyCycles := make([]*FinalCRv4Cycle, len(evidence.Validators))
 	for index := range penaltyTaskIndexes {
@@ -3546,12 +3549,13 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 	for validatorIndex := range evidence.Validators {
 		validator := &evidence.Validators[validatorIndex]
 		cycleTaskIndexes[validatorIndex] = make([]int, len(validator.Cycles))
+		cycleSnapshots[validatorIndex] = make([]*validatorpkg.ReleaseMeasurementSnapshot, len(validator.Cycles))
 		for cycleIndex := range validator.Cycles {
 			cycle := &validator.Cycles[cycleIndex]
 			cycleTaskIndexes[validatorIndex][cycleIndex] = len(verificationTasks)
 			verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
 				var measurement *validatorpkg.ReleaseMeasurementArtifact
-				err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], cache[cycle.MeasurementArtifact.URI], cache[cycle.MeasurementEnvelope.URI], &measurement)
+				err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, cycle, cache[cycle.IntentArtifact.URI], cache[cycle.MeasurementArtifact.URI], cache[cycle.MeasurementEnvelope.URI], &measurement, measurementAudit, &cycleSnapshots[validatorIndex][cycleIndex])
 				return measurement, err
 			})
 		}
@@ -3566,7 +3570,7 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 				penaltyTaskIndexes[validatorIndex] = len(verificationTasks)
 				verificationTasks = append(verificationTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
 					var measurement *validatorpkg.ReleaseMeasurementArtifact
-					err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], cache[penalty.MeasurementArtifact.URI], cache[penalty.MeasurementEnvelope.URI], &measurement)
+					err := verifyFinalIntentAndMeasurementArtifacts(evidence, validator, penalty, cache[penalty.IntentArtifact.URI], cache[penalty.MeasurementArtifact.URI], cache[penalty.MeasurementEnvelope.URI], &measurement, measurementAudit, &penaltySnapshots[validatorIndex])
 					return measurement, err
 				})
 			}
@@ -3586,25 +3590,26 @@ func VerifyFinalSemanticArtifacts(ctx context.Context, evidence *FinalSemanticEv
 			lineageTaskIndexes[validatorIndex][index] = -1
 		}
 		for cycleIndex := 1; cycleIndex < len(validator.Cycles); cycleIndex++ {
-			previousCycle := &validator.Cycles[cycleIndex-1]
+			previousResult := verificationResults[cycleTaskIndexes[validatorIndex][cycleIndex-1]]
 			currentResult := verificationResults[cycleTaskIndexes[validatorIndex][cycleIndex]]
 			lineageTaskIndexes[validatorIndex][cycleIndex] = len(lineageTasks)
 			lineageTasks = append(lineageTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
-				if currentResult.measurement == nil {
+				if previousResult.measurement == nil || currentResult.measurement == nil {
 					return nil, nil
 				}
-				err := validatorpkg.VerifyReleaseMeasurementLineage(cache[previousCycle.MeasurementArtifact.URI], currentResult.measurement)
+				err := measurementAudit.VerifyLineage(cycleSnapshots[validatorIndex][cycleIndex-1], cycleSnapshots[validatorIndex][cycleIndex])
 				return currentResult.measurement, err
 			})
 		}
 		if penalty := penaltyCycles[validatorIndex]; penalty != nil && len(validator.Cycles) > 0 && penaltyTaskIndexes[validatorIndex] >= 0 {
+			penaltyResult := verificationResults[penaltyTaskIndexes[validatorIndex]]
 			firstResult := verificationResults[cycleTaskIndexes[validatorIndex][0]]
 			penaltyLineageTaskIndexes[validatorIndex] = len(lineageTasks)
 			lineageTasks = append(lineageTasks, func() (*validatorpkg.ReleaseMeasurementArtifact, error) {
-				if firstResult.measurement == nil {
+				if penaltyResult.measurement == nil || firstResult.measurement == nil {
 					return nil, nil
 				}
-				err := validatorpkg.VerifyReleaseMeasurementLineage(cache[penalty.MeasurementArtifact.URI], firstResult.measurement)
+				err := measurementAudit.VerifyLineage(penaltySnapshots[validatorIndex], cycleSnapshots[validatorIndex][0])
 				return firstResult.measurement, err
 			})
 		}
@@ -4501,7 +4506,7 @@ func verifyFinalIntentArtifact(evidence *FinalSemanticEvidence, validatorID uint
 	return nil
 }
 
-func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, validator *FinalValidatorIdentityEvidence, cycle *FinalCRv4Cycle, intentData, measurementData, envelopeData []byte, decoded **validatorpkg.ReleaseMeasurementArtifact) error {
+func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, validator *FinalValidatorIdentityEvidence, cycle *FinalCRv4Cycle, intentData, measurementData, envelopeData []byte, decoded **validatorpkg.ReleaseMeasurementArtifact, audit *validatorpkg.ReleaseMeasurementAudit, snapshot **validatorpkg.ReleaseMeasurementSnapshot) error {
 	if validator == nil {
 		return errors.New("validator identity is unavailable for measurement envelope")
 	}
@@ -4509,6 +4514,10 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 		return errors.New("decoded measurement output is unavailable")
 	}
 	*decoded = nil
+	if snapshot == nil {
+		return errors.New("measurement lineage snapshot output is unavailable")
+	}
+	*snapshot = nil
 	validatorID := validator.ValidatorID
 	if err := verifyFinalIntentArtifact(evidence, validatorID, cycle, intentData); err != nil {
 		return err
@@ -4536,7 +4545,7 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 	if intent.Prepared.HotkeyHex != envelope.ValidatorHotkey {
 		return errors.New("prepared submission hotkey differs from measurement envelope signer")
 	}
-	artifact, verified, err := validatorpkg.VerifyReleaseMeasurementEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
+	artifact, verified, authenticated, err := audit.VerifyEnvelope(envelope, measurementData, hotkey, validator.UID, intent.Prepared.ExtrinsicHash)
 	if err != nil {
 		return fmt.Errorf("validator-signed measurement envelope: %w", err)
 	}
@@ -4583,6 +4592,7 @@ func verifyFinalIntentAndMeasurementArtifacts(evidence *FinalSemanticEvidence, v
 		}
 	}
 	*decoded = artifact
+	*snapshot = authenticated
 	return nil
 }
 

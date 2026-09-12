@@ -4,16 +4,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	serverpkg "github.com/urnetwork/server"
 	servermodel "github.com/urnetwork/server/model"
 	"gopkg.in/yaml.v3"
 )
@@ -146,8 +150,8 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 	if err := yaml.Unmarshal(encoded, &settings); err != nil {
 		t.Fatal(err)
 	}
-	if len(settings.All.IpOverrides) != 2 {
-		t.Fatalf("ip override count = %d, want 2", len(settings.All.IpOverrides))
+	if len(settings.All.IpOverrides) != 4 {
+		t.Fatalf("ip override count = %d, want 4", len(settings.All.IpOverrides))
 	}
 	for index, expected := range []struct {
 		Prefix  string
@@ -156,6 +160,8 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 	}{
 		{Prefix: "192.0.2.0/24", Inside: "192.0.2.1", Outside: "198.51.100.1"},
 		{Prefix: "2001:db8::/32", Inside: "2001:db8::1", Outside: "::1"},
+		{Prefix: "127.0.0.0/8", Inside: "127.0.0.1", Outside: "128.0.0.1"},
+		{Prefix: "::1/128", Inside: "::1", Outside: "::2"},
 	} {
 		override := settings.All.IpOverrides[index]
 		prefix, err := netip.ParsePrefix(override.Subnet)
@@ -163,7 +169,7 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 			t.Fatal(err)
 		}
 		if prefix.String() != expected.Prefix || !prefix.Contains(netip.MustParseAddr(expected.Inside)) || prefix.Contains(netip.MustParseAddr(expected.Outside)) {
-			t.Fatalf("fixture override %d does not isolate the intended documentation subnet", index)
+			t.Fatalf("fixture override %d does not isolate the intended test subnet", index)
 		}
 		if override.CountryCode != "zz" || override.Country != "Fixture Country" || override.Region != "Fixture Region" || override.City != "Fixture City" {
 			t.Fatalf("fixture override %d lost its synthetic location fields", index)
@@ -171,6 +177,53 @@ func TestServerFixtureSuiteUsesDocumentationIpOverrideWithoutMmdb(t *testing.T) 
 	}
 	if _, err := os.Lstat(filepath.Join(report.Workspace, "config", "mmdb", "ip-ipinfo.mmdb")); !os.IsNotExist(err) {
 		t.Fatalf("portable fixture unexpectedly materialized the location database: %v", err)
+	}
+}
+
+// Real proxy providers connect over loopback. Exercise the same location and
+// ownership lookups in a fresh process so their once caches cannot borrow a
+// database or settings from a different fixture. No database service is needed.
+func TestServerFixtureSuiteLoopbackResolvesWithoutDatabases(t *testing.T) {
+	const childVariable = "RELEASE_GATE_FIXTURE_LOOPBACK_TEST_CHILD"
+	if os.Getenv(childVariable) == "1" {
+		for _, raw := range []string{"127.0.0.1", "127.255.255.254", "::1", "192.0.2.1", "2001:db8::1"} {
+			address := netip.MustParseAddr(raw)
+			location, err := serverpkg.GetIpInfo(address)
+			if err != nil || location == nil || location.CountryCode != "zz" || location.Country != "Fixture Country" || location.Region != "Fixture Region" || location.City != "Fixture City" {
+				t.Fatalf("portable transport address %s location: %v %+v", raw, err, location)
+			}
+			owner, err := serverpkg.GetArinInfo(address)
+			if err != nil || owner == nil || !slices.Equal(owner.OrgCountryCodes, []string{"zz"}) {
+				t.Fatalf("portable transport address %s ownership: %v %+v", raw, err, owner)
+			}
+		}
+		return
+	}
+	parent, source := suiteFixtureTestInputs(t)
+	report, err := createSuiteFixture(parent, source, "127.0.0.1:35431", "127.0.0.1:36371")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"mmdb/ip-ipinfo.mmdb", "arindb/arin.mmdb"} {
+		if _, err := os.Lstat(filepath.Join(report.Workspace, "config", name)); !os.IsNotExist(err) {
+			t.Fatalf("portable fixture unexpectedly has database %s: %v", name, err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestServerFixtureSuiteLoopbackResolvesWithoutDatabases$", "-test.count=1", "-test.v")
+	for _, value := range os.Environ() {
+		name, _, _ := strings.Cut(value, "=")
+		if !strings.HasPrefix(name, "WARP_") && !strings.HasPrefix(name, "BRINGYOUR_") && name != childVariable {
+			command.Env = append(command.Env, value)
+		}
+	}
+	command.Env = append(command.Env, childVariable+"=1", "WARP_HOME="+report.Workspace,
+		"WARP_CONFIG_HOME="+filepath.Join(report.Workspace, "config"), "WARP_VAULT_HOME="+filepath.Join(report.Workspace, "vault"),
+		"WARP_SITE_HOME="+filepath.Join(report.Workspace, "site"), "WARP_ENV=local", "WARP_SERVICE=test")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("portable loopback location consumer: %v\n%s", err, output)
 	}
 }
 

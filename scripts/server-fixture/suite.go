@@ -36,9 +36,9 @@ var suiteFixtureResourceKindNames = map[string][]string{
 	"config":     {"apple_roots.pem", "brevo.yml", "city-list.yml", "db.yml", "email.yml", "iso-country-list.yml", "pro.yml", "redis.yml", "settings.yml", "subsidy.yml", "tls.yml"},
 }
 
-// The portable suite resolves only its documentation subnets without importing
-// the production-sized location database; tests of the real database stay out
-// of this override and retain their separate resource contract.
+// The portable suite resolves its documentation and local transport subnets
+// without importing the production-sized location database. Public addresses
+// outside those fixtures retain their separate database resource contract.
 const suiteFixtureSettings = `all:
   ip_overrides:
     - subnet: "192.0.2.0/24"
@@ -47,6 +47,16 @@ const suiteFixtureSettings = `all:
       region: "Fixture Region"
       city: "Fixture City"
     - subnet: "2001:db8::/32"
+      country_code: "zz"
+      country: "Fixture Country"
+      region: "Fixture Region"
+      city: "Fixture City"
+    - subnet: "127.0.0.0/8"
+      country_code: "zz"
+      country: "Fixture Country"
+      region: "Fixture Region"
+      city: "Fixture City"
+    - subnet: "::1/128"
       country_code: "zz"
       country: "Fixture Country"
       region: "Fixture Region"
