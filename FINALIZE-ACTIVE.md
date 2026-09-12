@@ -14,7 +14,7 @@ Current work:
    candidate. Preserve the existing deployment, wallets, approvals and journals.
 2. Use Terra (`gpt-5.6-terra`, reasoning effort `max`) for all tests and gate
    execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
-fix failures and flakiness, then return corrected source to Terra for reruns.
+   fix failures and flakiness, then return corrected source to Terra for reruns.
 3. Correct the actual validator, native-receipt and scenario-anomaly failures.
    Complete both full gates on the final candidate with private test services;
    keep their original failed and interrupted results visible.
@@ -26,22 +26,55 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 18:44 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 20:49 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
 contains the receipts and pinned state; the historical 15/17 scenario remains
 `final_acceptance=false`.
 
+Actual read-only doctor on local source `02dfe50` passed 63 of 64 checks. Its
+sole failure was systemd's degraded state from 43 stopped simulator units.
+Their metadata and all 621 available journal entries were preserved before
+resetting only those historical failure flags; the manager now reports running,
+without restarting any process. Actual read-only setup then refused the full
+retained repair audit budget's `observed_at` field. Astra's separate typed audit
+document fix preserves the original signed projection and complete budget hash;
+Terra is qualifying it independently of the remaining public replay work.
+The original plan and journal remain byte-identical. [Actual admission captures](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup.stderr).
+
 Terra has passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
-mode. Those fixes are integrated. Renewal testing, strict owned-LAN routing,
-current-plan admission, and renewed lifecycle-window handling remain on the
-launch path. Full producer/aggregate qualification and both complete live
-acceptance phases remain outstanding. Public V2 semantic replay and appended
-renewal lineage also require completion; component passes do not close them.
-Terra is regenerating stale contract outputs from the already repaired Solidity
-source, so the candidate can authenticate the completed coordinator repair.
+mode. Those fixes are integrated. The ten focused renewal roots also passed
+normally and under race on source `006c0c0`, including three fresh confirmations
+in each failed mode for the two repaired roots. [Renewal validation](../temp/sn-renewal-006c-validation-20260912T1820Z/runtime/renewal-006c-20260912T1828Z/RESULT.md).
+The combined strict CLI, owned-LAN routing, repair carry, plan revision and
+renewed lifecycle code is assembled. On source `2984c9b`, all 71 selected
+validator roots pass normally and under race; the corrected cadence root also
+has three fresh passes per failed mode. The 98-root simulator matrix exposed
+renewal-evidence, lifecycle and history-adoption fixture failures. Its race
+process exhausted the shared ten-minute budget; the terminal lifecycle root
+had run for 53 seconds. Preserve that timeout and qualify the complete selected
+population in bounded partitions with unchanged deadlines. A mode-775 TMPDIR
+also caused one invalid launcher refusal, which is not a product diagnosis.
+[Combined validation and original failures](../temp/sn-strict-composed-fixes-validation-20260912/runtime/preflight-20260912T191953Z/RESULT.md).
+
+Contract generation is complete at `5c4c546`. The revised full Forge build,
+18 binding-policy tests, generator consistency checks, and generator/stabi
+tests normally and under race pass. The coordinator creation and runtime bytes
+exactly match the retained deployed repair; runtime size is 24,564 bytes.
+The original oversized test harness and first overflow-fixture failure remain
+retained. [Exact artifact comparison](../temp/sn-contract-generation-20260912T1841Z/runtime/generation-20260912T1845Z/full-build-revised-coordinator-compare.stdout).
+The generated payload is integrated. Both corrected renewal-evidence roots
+have three fresh normal and three fresh race passes on `73ad855`.
+[Renewal evidence confirmations](../temp/sn-semantic-renewal-generation-validation-20260912/runtime/RESULT.md).
+Composed `bcb1ce0` passes the selected native/EVM checkpoint, capture, history-read
+and startup populations in both modes. Its three simulator fixture failures and
+two archive fixture failures are preserved; their corrections and the frozen
+public publication/consumer/recorder code are composed in successor `e06f055`
+for Terra qualification. [Composed results](../temp/sn-finalization-integration-20260912/runtime/RESULT.md).
+Authenticated native interval and reward/application coverage remain in progress.
+Neither full gate nor either complete live acceptance phase has passed.
 The unrelated calibration prerequisites were removed from SN qualification;
 Terra passed all 12 affected guard roots normally and under race. The existing
 runtime dependency census and full SN gates remain required. [Scope validation](../temp/sn-scope-validation-20260912T1830Z/runtime/scope-guard-20260912T1831Z/RESULT.md).
@@ -53,9 +86,14 @@ changing their file metadata. The largest source contains 134,673 records,
 signatures or certify the remaining campaign. All four activation contexts bind
 block 7,975,563; the existing 10,080-block relay allowance formula therefore ends
 at 7,985,643, before the observed finalized block 7,991,348. No `evidence.relay.*`
-entry exists in the retained journal. Strict continuation must resolve this
-elapsed-time admission conflict while preserving the activation, the complete
-pending-publication census, original 256-slot allowance and all spending limits.
+entry exists in the retained journal. The retained locators contain 182 pending
+members; the existing full-work forecast requires another 184. Locator counts
+still require complete signature and immutable-slot authentication. Astra has
+frozen an explicit plan-bound continuation at `a52758b` with up to 512 relay slots at
+50 gwei per 1,000,000-gas action, within the existing 25.6-TAO relay reserve.
+It must preserve original activation and liabilities, bind the actual pending
+census and finite remaining run window, and retain every original source-storage
+and lifetime monetary limit. This candidate change is not yet qualified or applied.
 
 ## Historical shortened execution — 2026-09-11 17:33 UTC
 
