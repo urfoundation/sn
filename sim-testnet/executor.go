@@ -1240,6 +1240,9 @@ func (e *Executor) verifyVerifiedActionStateWithRecord(ctx context.Context, acti
 	} else if handled {
 		return source.verifyHistoricalEVMPostcondition(ctx, action, record)
 	}
+	if e.plan.CoordinatorRepairCarry != nil && coordinatorRepairOriginalAction(action.ID) {
+		return e.verifyCoordinatorRepairOriginalAction(ctx, action, verified, record)
+	}
 	if e.carriedFleetHistoryKeys[carriedVerificationKey(verified)] {
 		if record == nil || action.ID != verified.ActionID || record.PlanHash != verified.PlanHash || record.ActionID != verified.ActionID || record.IntentHash != verified.IntentHash || !actionAcceptsIntent(action, verified.IntentHash) {
 			return errors.New("batched historical fleet receipt identity mismatch")
@@ -1494,6 +1497,9 @@ func (e *Executor) Execute(ctx context.Context, a Action) error {
 		}
 		return nil
 	}
+	if e.plan.CoordinatorRepairCarry != nil && coordinatorRepairOriginalAction(a.ID) {
+		return errors.New("completed coordinator repair requires its original verified predecessor; no replacement write is permitted")
+	}
 	if a.Spend.Registrations > 0 {
 		if err := e.verifyInitialRegistrationPreState(ctx, a); err != nil {
 			return fmt.Errorf("action %s registration precondition: %w", a.ID, err)
@@ -1567,6 +1573,8 @@ func (e *Executor) execute(ctx context.Context, a Action) error {
 	switch {
 	case isFleetRenewalAction(a):
 		return e.executeFleetRenewalAction(ctx, a)
+	case a.ID == coordinatorRepairCarryActionID:
+		return e.verifyCoordinatorRepairCarryAction(ctx, a)
 	case a.ID == "subnet.verify-owner":
 		err, _ := verifySubnetOwner(e.substrate.chain, e.cfg, e.cfg.WalletPublic)
 		return err
@@ -2730,6 +2738,15 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 				return fmt.Errorf("build approved replacement probe payload: %w", err)
 			}
 		}
+		if e.plan.CoordinatorRepairCarry != nil {
+			observed, err := e.authenticateCoordinatorRepairCarry(ctx)
+			if err != nil {
+				return err
+			}
+			if err := bindCoordinatorRepairCarryPayloads(p, observed); err != nil {
+				return err
+			}
+		}
 		builtHash, err := contractDeploymentIdentityHash(p.Manifest)
 		if err != nil {
 			return err
@@ -2739,10 +2756,11 @@ func (e *Executor) ensurePayloads(ctx context.Context) error {
 			return err
 		}
 		if !e.plan.CoordinatorUpgradeBaseline.isZero() {
-			if err := validateCoordinatorUpgradeBaselineRelease(e.plan.CoordinatorUpgradeBaseline, planned, p.Manifest, p.CoordinatorUpgrade); err != nil {
+			baselinePayloads := coordinatorRepairBaselinePayloads(p, e.plan.CoordinatorRepairCarry)
+			if err := validateCoordinatorUpgradeBaselineRelease(e.plan.CoordinatorUpgradeBaseline, planned, p.Manifest, baselinePayloads.CoordinatorUpgrade); err != nil {
 				return fmt.Errorf("approved coordinator upgrade baseline: %w", err)
 			}
-			if err := validateCoordinatorUpgradePayloadBaseline(e.plan.CoordinatorUpgradeBaseline, planned, p); err != nil {
+			if err := validateCoordinatorUpgradePayloadBaseline(e.plan.CoordinatorUpgradeBaseline, planned, baselinePayloads); err != nil {
 				return fmt.Errorf("approved coordinator executable baseline: %w", err)
 			}
 		}

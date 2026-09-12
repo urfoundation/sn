@@ -56,6 +56,7 @@ type coordinatorUpgradeMigration struct {
 	Deployment ContractDeployment
 	Baseline   CoordinatorUpgradeBaseline
 	Upgrade    CoordinatorUpgrade
+	Repair     *coordinatorRepairCarryObservation
 }
 
 var abandonableDeploymentActions = []string{
@@ -171,6 +172,9 @@ func repeatedCoordinatorUpgradeBoundary(prior *SetupPlan, entries []JournalEntry
 func coordinatorUpgradeMigrationNonceMatches(prior *SetupPlan, migration *coordinatorUpgradeMigration, payloads *DeploymentPayloads, currentNonce uint64, entries []JournalEntry) (bool, error) {
 	if prior == nil || migration == nil || payloads == nil {
 		return false, errors.New("coordinator upgrade migration nonce context is unavailable")
+	}
+	if migration.Repair != nil {
+		return prior.coordinatorRepairObserved == migration.Repair && currentNonce == migration.Repair.deployerNonce && migration.Upgrade == migration.Repair.reference.Request.Request.Upgrade, nil
 	}
 	if migration.Baseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" && migration.Baseline.ProbeAddressEmpty && currentNonce == migration.Baseline.ReplacementPrecompileProbeNonce {
 		return true, nil
@@ -2138,6 +2142,9 @@ func observeCoordinatorUpgradeMigration(ctx context.Context, cfg *ResolvedConfig
 			return nil, err
 		}
 	}
+	if prior.coordinatorRepairObserved != nil {
+		return coordinatorRepairCarryMigration(prior, current, built, entries)
+	}
 	if prior.CoordinatorUpgradeBaseline.Schema == "urnetwork-coordinator-upgrade-baseline-v4" {
 		if err := configureCoordinatorUpgradeNonce(built, prior.CoordinatorUpgrade.DeployerNonce); err != nil {
 			return nil, fmt.Errorf("bind prior replacement coordinator: %w", err)
@@ -3941,6 +3948,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 				return nil, fmt.Errorf("bind revised precompile probe: %w", err)
 			}
 		}
+		if migration != nil && migration.Repair != nil {
+			if err := bindCoordinatorRepairCarryPayloads(currentPayloads, migration.Repair); err != nil {
+				return nil, err
+			}
+		}
 		if err := validateValidatorEvidenceRevision(prior, &currentPayloads.ValidatorEvidence.Manifest); err != nil {
 			return nil, err
 		}
@@ -3965,10 +3977,14 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			if !nonceMatches || !contractDeploymentAddressesEqual(*existingDeployment, migration.Deployment) || !contractDeploymentRuntimeHashesCompatible(*existingDeployment, migration.Deployment) {
 				return nil, errors.New("coordinator upgrade migration no longer matches finalized deployment facts")
 			}
-			if err := validateCoordinatorUpgradeBaselineRelease(migration.Baseline, migration.Deployment, currentPayloads.Manifest, currentPayloads.CoordinatorUpgrade); err != nil {
+			baselinePayloads := currentPayloads
+			if migration.Repair != nil {
+				baselinePayloads = coordinatorRepairBaselinePayloads(currentPayloads, &migration.Repair.reference)
+			}
+			if err := validateCoordinatorUpgradeBaselineRelease(migration.Baseline, migration.Deployment, currentPayloads.Manifest, baselinePayloads.CoordinatorUpgrade); err != nil {
 				return nil, err
 			}
-			if err := validateCoordinatorUpgradePayloadBaseline(migration.Baseline, migration.Deployment, currentPayloads); err != nil {
+			if err := validateCoordinatorUpgradePayloadBaseline(migration.Baseline, migration.Deployment, baselinePayloads); err != nil {
 				return nil, err
 			}
 			normalized.DeployerNonce = existingDeployment.InitialNonce
@@ -4084,6 +4100,11 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			if err := rebindPlanCoordinatorUpgrade(revised, currentPayloads); err != nil {
 				return nil, fmt.Errorf("bind repeated coordinator upgrade: %w", err)
 			}
+			if migration.Repair != nil {
+				if err := carryCoordinatorRepairPlan(revised, prior, migration.Repair, entries); err != nil {
+					return nil, fmt.Errorf("retain completed coordinator repair: %w", err)
+				}
+			}
 			if err := preserveVerifiedFleetBatchActions(cfg, stateDir, revised, prior, entries); err != nil {
 				return nil, fmt.Errorf("preserve verified fleet batches: %w", err)
 			}
@@ -4185,6 +4206,15 @@ func BuildPlanRevision(ctx context.Context, cfg *ResolvedConfig, stateDir string
 	if observed != nil {
 		owned := *prior
 		owned.validatorEvidenceObserved = observed
+		prior = &owned
+	}
+	repair, err := observeCoordinatorRepairCarry(ctx, cfg, stateDir, prior, entries)
+	if err != nil {
+		return nil, fmt.Errorf("coordinator repair completed source authority: %w", err)
+	}
+	if repair != nil {
+		owned := *prior
+		owned.coordinatorRepairObserved = repair
 		prior = &owned
 	}
 	remaining, err := remainingPlanSpend(prior, entries)

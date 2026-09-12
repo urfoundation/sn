@@ -978,6 +978,15 @@ func (e *Executor) actionPostState(ctx context.Context, a Action, evmHead ChainH
 		return e.verifyDishonestDepositPostState(ctx, a, evmHead, state)
 	case a.ID == "production.schedule-policy":
 		return e.verifyProductionPolicyPostState(ctx, evmHead, state)
+	case a.ID == coordinatorRepairCarryActionID:
+		if err := e.verifyCoordinatorRepairCarryAction(ctx, a); err != nil {
+			return nil, err
+		}
+		state["request_hash"] = e.plan.CoordinatorRepairCarry.Request.Hash
+		state["result_hash"] = e.plan.CoordinatorRepairCarry.Result.Hash
+		state["implementation"] = e.plan.CoordinatorUpgrade.Implementation.Hex()
+		state["runtime_hash"] = e.plan.CoordinatorUpgrade.RuntimeCodeHash
+		return state, nil
 	case a.Kind == "budget-reserve":
 		state["reserved"] = a.Spend
 		state["approved_limits"] = e.plan.Limits

@@ -89,6 +89,8 @@ type SetupPlan struct {
 	Deployment                   ContractDeployment           `json:"deployment"`
 	CoordinatorUpgrade           CoordinatorUpgrade           `json:"coordinator_upgrade"`
 	CoordinatorUpgradeBaseline   CoordinatorUpgradeBaseline   `json:"coordinator_upgrade_baseline,omitempty"`
+	CoordinatorRepairCarry       *CoordinatorRepairCarry      `json:"coordinator_repair_carry,omitempty"`
+	coordinatorRepairObserved    *coordinatorRepairCarryObservation
 	ValidatorEvidence            *ValidatorEvidenceDeployment `json:"validator_evidence,omitempty"`
 	ValidatorEvidenceSource      *ValidatorEvidenceSource     `json:"validator_evidence_source,omitempty"`
 	ValidatorEvidenceCarry       *ValidatorEvidenceCarry      `json:"validator_evidence_carry,omitempty"`
@@ -2093,7 +2095,11 @@ func validatePlanBudget(p *SetupPlan) error {
 			if err := validateCoordinatorUpgradeIdentity(p.CoordinatorUpgrade, deployer, p.Deployment); err != nil {
 				return err
 			}
-			if err := validateCoordinatorUpgradeBaseline(p.CoordinatorUpgradeBaseline, p.Deployment, p.CoordinatorUpgrade); err != nil {
+			if err := validateCoordinatorRepairCarryPlan(p); err != nil {
+				return err
+			}
+			baselineUpgrade := coordinatorRepairBaselineUpgrade(p)
+			if err := validateCoordinatorUpgradeBaseline(p.CoordinatorUpgradeBaseline, p.Deployment, baselineUpgrade); err != nil {
 				return err
 			}
 			if p.CoordinatorUpgrade.Schema == "urnetwork-coordinator-upgrade-v2" && !p.CoordinatorUpgradeBaseline.isRepeated() {
@@ -2102,7 +2108,7 @@ func validatePlanBudget(p *SetupPlan) error {
 			if !p.CoordinatorUpgradeBaseline.isZero() && len(p.PriorPlanHashes) == 0 {
 				return errors.New("coordinator upgrade baseline has no authenticated prior plan")
 			}
-			if err := validatePrecompileProbeReplacement(p.CoordinatorUpgradeBaseline, deployer, p.Deployment, p.CoordinatorUpgrade); err != nil {
+			if err := validatePrecompileProbeReplacement(p.CoordinatorUpgradeBaseline, deployer, p.Deployment, baselineUpgrade); err != nil {
 				return err
 			}
 		}
