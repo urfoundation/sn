@@ -399,7 +399,7 @@ func authenticateCoordinatorRepairCarry(ctx context.Context, cfg *ResolvedConfig
 // loading the signed files alone does not issue this authority.
 func coordinatorRepairRevisionScope(plan *SetupPlan, entries []JournalEntry) (string, error) {
 	return canonicalHashHex(struct {
-		Plan *SetupPlan
+		Plan    *SetupPlan
 		Entries []JournalEntry
 	}{plan, entries})
 }

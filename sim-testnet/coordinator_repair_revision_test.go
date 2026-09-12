@@ -22,20 +22,28 @@ func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactio
 	entries := e.journal.Entries()
 	journalPath := filepath.Join(e.stateDir, "journal.jsonl")
 	journalBefore, err := os.ReadFile(journalPath)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	pending, err := pendingPlanRevisionTransactions(e.plan, entries)
-	if err != nil || len(pending) != 2 { t.Fatalf("repair fixture does not retain its two unverified successes: %+v %v", pending, err) }
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("repair fixture does not retain its two unverified successes: %+v %v", pending, err)
+	}
 	if _, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, entries); !errors.Is(err, errPriorEVMTransactionSucceeded) {
 		t.Fatalf("unobserved successful repair bypassed the transaction gate: %v", err)
 	}
 	filesOnly, err := readCoordinatorRepairCarry(e.stateDir, e.plan, entries)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.plan.coordinatorRepairObserved = filesOnly
 	if _, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, entries); !errors.Is(err, errPriorEVMTransactionSucceeded) {
 		t.Fatalf("file-only repair issued chain postcondition authority: %v", err)
 	}
 	observed, err := authenticateCoordinatorRepairCarry(t.Context(), e.cfg, e.stateDir, e.plan, entries, e.deployer.client, e.independentEVM)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.plan.coordinatorRepairObserved = observed
 	independentReads := fixture.independent.calls.Load()
 	if got, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, entries); err != nil || !reflect.DeepEqual(got, planRevisionRecoveries{}) {
@@ -46,12 +54,16 @@ func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactio
 	}
 	transaction := pending[0]
 	index := 0
-	if transaction.ActionID == observed.reference.Result.Result.Activate.ActionID { index = 1 }
+	if transaction.ActionID == observed.reference.Result.Result.Activate.ActionID {
+		index = 1
+	}
 	signed := observed.transactions[index]
 	receipt, err := fixture.reader.GetTransactionReceipt(t.Context(), signed.Hash())
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
-		name string
+		name   string
 		mutate func(*planRevisionTransaction)
 	}{
 		{"source", func(value *planRevisionTransaction) { value.PlanHash = common.Hash{1}.Hex() }},
@@ -73,15 +85,23 @@ func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactio
 	}
 	changedPlan := *e.plan
 	changedPlan.GeneratedAt += " changed"
-	if err := validateCoordinatorRepairRevisionTransaction(&changedPlan, entries, signed, receipt, transaction); err == nil { t.Fatal("changed plan reused a prior source audit") }
+	if err := validateCoordinatorRepairRevisionTransaction(&changedPlan, entries, signed, receipt, transaction); err == nil {
+		t.Fatal("changed plan reused a prior source audit")
+	}
 	changedEntries := append([]JournalEntry(nil), entries...)
 	changedEntries[0].Error += " changed"
-	if err := validateCoordinatorRepairRevisionTransaction(e.plan, changedEntries, signed, receipt, transaction); err == nil { t.Fatal("changed journal reused a prior source audit") }
+	if err := validateCoordinatorRepairRevisionTransaction(e.plan, changedEntries, signed, receipt, transaction); err == nil {
+		t.Fatal("changed journal reused a prior source audit")
+	}
 	changedReceipt := *receipt
 	changedReceipt.Status = types.ReceiptStatusFailed
-	if err := validateCoordinatorRepairRevisionTransaction(e.plan, entries, signed, &changedReceipt, transaction); err == nil { t.Fatal("reverted receipt inherited successful repair authority") }
-	otherSigned := types.NewTx(&types.LegacyTx{Nonce: signed.Nonce()+1, Value: new(big.Int), Gas: signed.Gas(), GasPrice: signed.GasPrice()})
-	if err := validateCoordinatorRepairRevisionTransaction(e.plan, entries, otherSigned, receipt, transaction); err == nil { t.Fatal("different signed bytes inherited repair authority") }
+	if err := validateCoordinatorRepairRevisionTransaction(e.plan, entries, signed, &changedReceipt, transaction); err == nil {
+		t.Fatal("reverted receipt inherited successful repair authority")
+	}
+	otherSigned := types.NewTx(&types.LegacyTx{Nonce: signed.Nonce() + 1, Value: new(big.Int), Gas: signed.Gas(), GasPrice: signed.GasPrice()})
+	if err := validateCoordinatorRepairRevisionTransaction(e.plan, entries, otherSigned, receipt, transaction); err == nil {
+		t.Fatal("different signed bytes inherited repair authority")
+	}
 	// Authenticate the repair in a history that also contains an unrelated
 	// successful transaction. The default gate must still reject that intent.
 	extra := observed.reference.Result.Result.Activate
@@ -89,7 +109,9 @@ func TestCoordinatorRepairCarryRevisionAdmitsOnlyAuthenticatedOriginalTransactio
 	extra.Sequence = entries[len(entries)-1].Sequence + 1
 	extraEntries := append(append([]JournalEntry(nil), entries...), extra)
 	withExtra, err := authenticateCoordinatorRepairCarry(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries, e.deployer.client, e.independentEVM)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.plan.coordinatorRepairObserved = withExtra
 	if _, err := planRevisionTransactionRecoveries(t.Context(), e.cfg, e.stateDir, e.plan, extraEntries); !errors.Is(err, errPriorEVMTransactionSucceeded) {
 		t.Fatalf("repair carry accepted an unrelated successful intent: %v", err)
