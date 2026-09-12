@@ -37,6 +37,7 @@ type coordinatorRepairCarryObservation struct {
 	creation, runtime []byte
 	transactions      [2]*types.Transaction
 	deployerNonce     uint64
+	revisionScope     string
 }
 
 func coordinatorRepairOriginalAction(id string) bool {
@@ -386,7 +387,58 @@ func authenticateCoordinatorRepairCarry(ctx context.Context, cfg *ResolvedConfig
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	observation.revisionScope, err = coordinatorRepairRevisionScope(plan, entries)
+	if err != nil {
+		return nil, err
+	}
 	return observation, nil
+}
+
+// Only a completed two-reader authentication may satisfy the later generic
+// transaction gate. Bind that result to the same immutable planning inputs;
+// loading the signed files alone does not issue this authority.
+func coordinatorRepairRevisionScope(plan *SetupPlan, entries []JournalEntry) (string, error) {
+	return canonicalHashHex(struct {
+		Plan *SetupPlan
+		Entries []JournalEntry
+	}{plan, entries})
+}
+
+func validateCoordinatorRepairRevisionTransaction(prior *SetupPlan, entries []JournalEntry, signed *types.Transaction, receipt *types.Receipt, transaction planRevisionTransaction) error {
+	if prior == nil || prior.coordinatorRepairObserved == nil || signed == nil || receipt == nil {
+		return errors.New("coordinator repair transaction lacks completed source authentication")
+	}
+	observation := prior.coordinatorRepairObserved
+	scope, err := coordinatorRepairRevisionScope(prior, entries)
+	if err != nil || observation.revisionScope == "" || scope != observation.revisionScope {
+		return errors.Join(errors.New("coordinator repair transaction changed its authenticated plan or journal"), err)
+	}
+	r, result := observation.reference.Request.Request, observation.reference.Result.Result
+	for i, final := range []JournalEntry{result.Deploy, result.Activate} {
+		if transaction.ActionID != final.ActionID {
+			continue
+		}
+		if transaction.PlanHash != final.PlanHash || transaction.IntentHash != final.IntentHash || transaction.TransactionHash != final.TransactionHash || transaction.BlockNumber != final.BlockNumber || transaction.BlockHash != final.BlockHash || transaction.JournalSequence < final.Sequence || observation.transactions[i] == nil {
+			return errors.New("coordinator repair transaction differs from the original finalized intent")
+		}
+		want, err := observation.transactions[i].MarshalBinary()
+		if err != nil {
+			return err
+		}
+		got, err := signed.MarshalBinary()
+		if err != nil || !bytes.Equal(want, got) {
+			return errors.Join(errors.New("coordinator repair transaction changed its original signed bytes"), err)
+		}
+		signer, created := r.Owner, common.Address{}
+		if i == 0 {
+			signer, created = r.Deployer, r.Upgrade.Implementation
+		}
+		if !strings.EqualFold(transaction.Signer, signer.Hex()) || transaction.Nonce != strconv.FormatUint(signed.Nonce(), 10) || receipt.ContractAddress != created || !receiptMatchesEvidence(result.ObservedHead, receipt, final.TransactionHash, final.BlockNumber, final.BlockHash) {
+			return errors.New("coordinator repair transaction changed its original signer, nonce or successful receipt")
+		}
+		return nil
+	}
+	return errors.New("coordinator repair authentication does not cover this transaction")
 }
 
 func observeCoordinatorRepairCarry(ctx context.Context, cfg *ResolvedConfig, stateDir string, plan *SetupPlan, entries []JournalEntry) (*coordinatorRepairCarryObservation, error) {

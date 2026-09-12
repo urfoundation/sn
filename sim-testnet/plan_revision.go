@@ -1356,6 +1356,14 @@ func planRevisionTransactionRecoveries(ctx context.Context, cfg *ResolvedConfig,
 			return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: prior EVM transaction has unsupported receipt status %d", transaction.PlanHash, transaction.ActionID, receipt.Status)
 		}
 		switch {
+		case transaction.ActionID == "repair.coordinator-rounding.deploy" || transaction.ActionID == "repair.coordinator-rounding.activate":
+			// BuildPlanRevision already replayed the exact signed corrective
+			// request, receipts and postconditions through both chain readers.
+			// Consume that input-bound observation without adding a verified
+			// journal marker or scheduling either successful write again.
+			if err := validateCoordinatorRepairRevisionTransaction(prior, entries, &signed, receipt, transaction); err != nil {
+				return planRevisionRecoveries{}, fmt.Errorf("plan %s action %s: %w: %v", transaction.PlanHash, transaction.ActionID, errPriorEVMTransactionSucceeded, err)
+			}
 		case transaction.ActionID == voluntaryConvictionActionID:
 			recovery, recoveryErr := detectVoluntaryConvictionDuplicateRecovery(ctx, cfg, stateDir, prior, entries, evmClient, &signed, transaction)
 			if recoveryErr != nil {
