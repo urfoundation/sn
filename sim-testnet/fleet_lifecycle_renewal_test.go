@@ -51,10 +51,10 @@ func TestFleetLifecycleRenewalAdmitsOnlyApprovedSuccessor(t *testing.T) {
 	for index, original := range fixture.base.Actions {
 		current := plan.Actions[index]
 		if fleetLifecycleRenewalFutureAction(original.ID) {
-			if current.IntentHash == original.IntentHash || current.Spend != original.Spend || !reflect.DeepEqual(current.DependsOn, original.DependsOn) {
+			if current.IntentHash == original.IntentHash || !finalJSONEqual(current.Spend, original.Spend) || !reflect.DeepEqual(current.DependsOn, original.DependsOn) {
 				t.Fatalf("future lifecycle %s changed its budget/dependencies or retained a stale intent", original.ID)
 			}
-		} else if original.ID != "campaign.evm-gas-reserve" && !reflect.DeepEqual(current, original) {
+		} else if original.ID != "campaign.evm-gas-reserve" && !finalJSONEqual(current, original) {
 			t.Fatalf("renewal rewrote source action %s", original.ID)
 		}
 	}
@@ -62,7 +62,7 @@ func TestFleetLifecycleRenewalAdmitsOnlyApprovedSuccessor(t *testing.T) {
 	if err != nil || !bytes.Equal(sourceBytes, after) {
 		t.Fatal("renewal mutated source plan bytes")
 	}
-	if plan.Limits != fixture.base.Limits || plan.MaximumSpend != fixture.base.MaximumSpend {
+	if !finalJSONEqual(plan.Limits, fixture.base.Limits) || !finalJSONEqual(plan.MaximumSpend, fixture.base.MaximumSpend) {
 		t.Fatal("lifecycle successor increased the campaign approval")
 	}
 
@@ -164,8 +164,85 @@ func TestFleetLifecycleRenewalDescriptorsKeepLaterWaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writePublicJSON(filepath.Join(fixture.stateDir, "plan.json"), plan); err != nil {
+	// Exercise the actual CLI wire output and state writer: both must preserve
+	// each exact signed manifest rather than indent its RawMessage contents.
+	var printed bytes.Buffer
+	if err := writeJSONResult(&printed, plan); err != nil {
 		t.Fatal(err)
+	}
+	var wrapped bytes.Buffer
+	if err := writeJSONResult(&wrapped, map[string]any{"dry_run": true, "plan": plan}); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct { Plan json.RawMessage `json:"plan"` }
+	if err := json.Unmarshal(wrapped.Bytes(), &envelope); err != nil || !bytes.Equal(envelope.Plan, bytes.TrimSuffix(printed.Bytes(), []byte{'\n'})) {
+		t.Fatalf("setup dry-run wrapper rewrote the exact plan: %v", err)
+	}
+	approvalPath := filepath.Join(fixture.stateDir, "renewal-approval.json")
+	if err := atomicWrite(approvalPath, printed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := readFleetRenewalPlan(approvalPath)
+	if err != nil || approved.PlanHash != plan.PlanHash {
+		t.Fatalf("CLI renewal approval failed its exact import: %v", err)
+	}
+	originalBytes, err := json.MarshalIndent(fixture.base, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalBytes = append(originalBytes, '\n')
+	if err := atomicWrite(filepath.Join(fixture.stateDir, "plan.json"), originalBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRunInputs(fixture.cfg, fixture.stateDir, approved, fixture.roles); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := os.ReadFile(filepath.Join(fixture.stateDir, "plans", stringsTrim0x(fixture.base.PlanHash)+".json"))
+	if err != nil || !bytes.Equal(archived, originalBytes) {
+		t.Fatalf("renewal replaced the original approval bytes: %v", err)
+	}
+	stored, err := readPersistedPlan(fixture.stateDir)
+	if err != nil || stored.PlanHash != plan.PlanHash {
+		t.Fatalf("persisted renewal approval failed its exact reader: %v", err)
+	}
+	for index, fleet := range fixture.renewal.Fleets {
+		if !bytes.Equal(approved.FleetRenewals[0].Fleets[index].Manifest, fleet.Manifest) || !bytes.Equal(stored.FleetRenewals[0].Fleets[index].Manifest, fleet.Manifest) {
+			t.Fatalf("renewal wire path changed fleet %d canonical preimage", fleet.Fleet)
+		}
+	}
+	// Retain the original failure as a negative control: changing only nested
+	// whitespace must still fail the canonical manifest guard, not be repaired
+	// silently during import. A signed identity change must also be rejected.
+	indented, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(approvalPath, indented, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readFleetRenewalPlan(approvalPath); err == nil || !strings.Contains(err.Error(), "not canonical") {
+		t.Fatalf("noncanonical manifest formatting lost its strict rejection: %v", err)
+	}
+	changed := *approved
+	changed.FleetRenewals = append([]FleetRenewal(nil), approved.FleetRenewals...)
+	changed.FleetRenewals[0].Fleets = append([]FleetRenewalFleet(nil), approved.FleetRenewals[0].Fleets...)
+	changed.FleetRenewals[0].Fleets[0].Manifest = bytes.Replace(approved.FleetRenewals[0].Fleets[0].Manifest, []byte(`"generation":3`), []byte(`"generation":4`), 1)
+	if bytes.Equal(changed.FleetRenewals[0].Fleets[0].Manifest, approved.FleetRenewals[0].Fleets[0].Manifest) {
+		t.Fatal("identity counterexample did not change its manifest")
+	}
+	changed.PlanHash, err = changed.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	printed.Reset()
+	if err := writeJSONResult(&printed, &changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(approvalPath, printed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readFleetRenewalPlan(approvalPath); err == nil || !strings.Contains(err.Error(), "renewal member changes identity") {
+		t.Fatalf("rehashed manifest identity change lost its binding rejection: %v", err)
 	}
 	journal, err := OpenJournal(fixture.stateDir)
 	if err != nil {

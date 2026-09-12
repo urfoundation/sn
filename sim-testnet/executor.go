@@ -823,7 +823,9 @@ func decodePersistedPlanWire(b []byte) (*SetupPlan, error) {
 }
 
 func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *RoleSecrets) error {
-	b, err := json.MarshalIndent(p, "", "  ")
+	// Keep embedded fleet manifest preimages canonical. The original archived
+	// approval below is still retained byte-for-byte, including its formatting.
+	b, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}

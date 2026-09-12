@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate(t *testing.T) {
@@ -42,7 +43,23 @@ func TestStrictHistoryAdoptionOptionsKeepWritesAndProvisionalSeparate(t *testing
 func TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch(t *testing.T) {
 	t.Parallel()
 	fixture := newRuntimeEvidenceSetupOriginalCarryV2Test(t)
-	revised, _ := prepareRuntimeEvidenceSetupCarryV2Test(t, fixture)
+	_, entries := prepareRuntimeEvidenceSetupCarryV2Test(t, fixture)
+	// The carry helper deliberately constructs only a surrounding source lock
+	// revision for its direct-reader tests. Startup must use the real revision
+	// planner so the retained evidence source and current approval both bind.
+	current := fixture.plan.LiveFacts
+	current.DeployerNonce = fixture.plan.ValidatorEvidence.DeployerNonce + 1
+	revised, err := buildPlanRevisionFromFacts(fixture.cfg, fixture.stateDir, fixture.plan, &current, entries, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisedBytes, err := json.Marshal(revised)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(filepath.Join(fixture.stateDir, "plan.json"), append(revisedBytes, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	rolesBytes, err := json.MarshalIndent(fixture.roles, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -63,11 +80,11 @@ func TestStrictHistoryAdoptionCapturesOriginalSourceAndBindsExactLaunch(t *testi
 	if bundle.ApprovedPlanHash != revised.PlanHash || bundle.SourcePlanHash != fixture.plan.PlanHash || len(bundle.Validators) != 2 || !reflect.DeepEqual(before, validatorNamespaceTreeSnapshot(t, fixture.stateDir)) {
 		t.Fatal("read-only capture changed the original source or namespace")
 	}
-	raw, err := json.MarshalIndent(bundle, "", "  ")
-	if err != nil {
+	var output bytes.Buffer
+	if err := writeJSONResult(&output, bundle); err != nil {
 		t.Fatal(err)
 	}
-	raw = append(raw, '\n')
+	raw := bytes.Clone(output.Bytes())
 	path := filepath.Join(fixture.stateDir, "history-adoptions", "request.json")
 	if err := atomicWrite(path, raw, 0o600); err != nil {
 		t.Fatal(err)

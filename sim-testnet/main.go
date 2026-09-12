@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -545,13 +546,36 @@ func supervisedCampaignEgressActiveWithDial(ctx context.Context, stateDir string
 
 func printResult(format string, v any, resultErr error) error {
 	if format == "json" {
-		b, e := json.MarshalIndent(v, "", "  ")
-		if e != nil {
-			return e
+		if err := writeJSONResult(os.Stdout, v); err != nil {
+			return err
 		}
-		fmt.Println(string(b))
 	} else {
 		fmt.Print(renderHuman(v))
 	}
 	return resultErr
+}
+
+// Plans contain canonical fleet manifest preimages. Indenting the enclosing
+// document rewrites their RawMessage bytes and breaks the strict plan reader.
+// Other result schemas keep their existing canonical indented representation.
+func writeJSONResult(writer io.Writer, v any) error {
+	compact := false
+	switch value := v.(type) {
+	case *SetupPlan, SetupPlan, *fleetRenewalBudgetError:
+		compact = true
+	case map[string]any:
+		_, compact = value["plan"].(*SetupPlan)
+	}
+	var b []byte
+	var err error
+	if compact {
+		b, err = json.Marshal(v)
+	} else {
+		b, err = json.MarshalIndent(v, "", "  ")
+	}
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(writer, string(b))
+	return err
 }
