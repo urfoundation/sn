@@ -139,6 +139,9 @@ type HeadDecisionObservation struct {
 	SubnetEpoch             uint64                      `json:"subnet_epoch"`
 	ApplicationBlock        uint64                      `json:"application_block"`
 	ApplicationBlockHash    string                      `json:"application_block_hash"`
+	CommitNativeEpoch       uint64                      `json:"commit_native_epoch,omitempty"`
+	RevealNativeEpoch       uint64                      `json:"reveal_native_epoch,omitempty"`
+	ApplicationNativeEpoch  uint64                      `json:"application_native_epoch,omitempty"`
 	MeasurementArtifactHash string                      `json:"measurement_artifact_hash"`
 	CandidateFleetUIDs      []uint16                    `json:"candidate_fleet_uids"`
 	CandidateFleetHotkeys   []string                    `json:"candidate_fleet_hotkeys"`
@@ -208,6 +211,9 @@ type ValidatorObservation struct {
 	DepositAudits      []validatorpkg.DepositAudit `json:"deposit_audits,omitempty"`
 	PathProofCounts    map[int]int                 `json:"path_proof_counts,omitempty"`
 	Error              string                      `json:"error,omitempty"`
+	NativeSourceScopeV2 string                     `json:"native_source_scope_v2,omitempty"`
+	NativeSourceStoreSHA256 string                 `json:"native_source_store_sha256,omitempty"`
+	NativeCommitsV2 []FinalNativeCoverageCommitV2   `json:"native_commits_v2,omitempty"`
 
 	LocalRuntimeIntents *validatorpkg.ProvisionalIntentObservationV2 `json:"local_runtime_intents,omitempty"`
 }
@@ -610,6 +616,8 @@ func (p *liveScenarioProbe) Snapshot(ctx context.Context) (*ScenarioObservation,
 		var validator ValidatorObservation
 		if provisionalResumeEnabled(p.cfg) {
 			validator = inspectProvisionalValidatorIntent(ctx, p.cfg, p.stateDir, validatorID)
+		} else if finalUsesEvidenceV2(p.cfg) {
+			validator = inspectValidatorIntentV2(ctx, p.cfg, p.stateDir, validatorID)
 		} else {
 			validator = inspectValidatorIntent(p.stateDir, validatorID, p.cfg.Config.Topology.HeadSlots, p.cfg.Config.Topology.fleetCandidates())
 		}
