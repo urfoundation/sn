@@ -152,6 +152,7 @@ func (self *HeadEMAStore) runHeadEMAStoreV2(ctx context.Context, operation headE
 	var ownedRaw map[FleetScoreKey]*big.Rat
 	var ownedRecords []HeadEMAMeasurement
 	var budget headEMAStoreV2Budget
+	var allowGap bool
 	err := func() error {
 		self.mu.Lock()
 		defer self.mu.Unlock()
@@ -160,6 +161,9 @@ func (self *HeadEMAStore) runHeadEMAStoreV2(ctx context.Context, operation headE
 		if err != nil {
 			return err
 		}
+		// Bind the permitted edge to the same locked source state used by
+		// admission; the private arithmetic scratch owns no runtime authority.
+		allowGap = self.allowsHeadEMAEpochGapTo(epoch)
 		scratch = &HeadEMAStore{path: self.path, values: cloneHeadEMAEntries(self.values)}
 		if self.lastSubnetEpoch != nil {
 			value := *self.lastSubnetEpoch
@@ -204,7 +208,7 @@ func (self *HeadEMAStore) runHeadEMAStoreV2(ctx context.Context, operation headE
 	}
 	if operation == headEMAStoreV2Preview || operation == headEMAStoreV2FoldEpoch && scratch.lastSubnetEpoch != nil && epoch == *scratch.lastSubnetEpoch {
 		scratch.mu.Lock()
-		out, transcript, err = scratch.previewForEpochWithGapPolicy(epoch, ownedRaw, alpha, owner.provisionalEpochGaps)
+		out, transcript, err = scratch.previewForEpochWithGapPolicy(epoch, ownedRaw, alpha, allowGap)
 		scratch.mu.Unlock()
 	} else {
 		out, transcript, err = func() (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
