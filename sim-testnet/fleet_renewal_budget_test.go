@@ -63,6 +63,12 @@ func TestFleetRenewalBudgetAccountsAllSignedAttemptsAndNonceGaps(t *testing.T) {
 	if err := validateFleetRenewalNonceCoverage(roles, exposure, points); err != nil {
 		t.Fatal(err)
 	}
+	if err := validateFleetRenewalUnusedSignerNonce(exposure, address, 3); err == nil || !strings.Contains(err.Error(), "signed nonce 4") {
+		t.Fatalf("unbroadcast signed nonce was reused: %v", err)
+	}
+	if err := validateFleetRenewalUnusedSignerNonce(exposure, address, 5); err != nil {
+		t.Fatal(err)
+	}
 	points[0].Pending = 5
 	if err := validateFleetRenewalNonceCoverage(roles, exposure, points); err == nil || !strings.Contains(err.Error(), "role keeper nonce 3") {
 		t.Fatalf("missing owned nonce was not diagnosed exactly: %v", err)

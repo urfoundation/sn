@@ -312,6 +312,21 @@ func validateFleetRenewalNonceCoverage(roles *RoleSecrets, exposure fleetRenewal
 	return nil
 }
 
+// A stored signature is already an owned nonce reservation even when it has
+// not reached the node's pending pool. Renewal cannot replace it implicitly.
+func validateFleetRenewalUnusedSignerNonce(exposure fleetRenewalExposure, address common.Address, next uint64) error {
+	first, found := uint64(0), false
+	for nonce := range exposure.Nonces[address] {
+		if nonce >= next && (!found || nonce < first) {
+			first, found = nonce, true
+		}
+	}
+	if found {
+		return fmt.Errorf("renewal signer %s already owns retained signed nonce %d at or above next nonce %d", address, first, next)
+	}
+	return nil
+}
+
 func observeFleetRenewalNonces(ctx context.Context, manager *EvmTxManager, roles *RoleSecrets, block uint64) ([]FleetRenewalNonce, error) {
 	labels := make([]string, 0, len(roles.EVM))
 	for label := range roles.EVM {

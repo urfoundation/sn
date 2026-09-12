@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	nativeTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -353,6 +354,9 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 		if err != nil || finalized != pair.nonce {
 			return result, stateMismatchError(err, "renewal signer %s has unfinalized nonce activity", pair.address)
 		}
+		if err := validateFleetRenewalUnusedSignerNonce(exposure, pair.address, pair.nonce); err != nil {
+			return result, err
+		}
 	}
 	var clients [][16]byte
 	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
@@ -394,6 +398,22 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 			return result, err
 		}
 		result.Accounts[hotkeys[index]] = account
+		label, err := fleetRenewalRoleForHotkey(roles, hotkeys[index])
+		if err != nil {
+			return result, err
+		}
+		for _, entry := range entries {
+			if entry.TransactionHash == "" || entry.Signer != roles.Substrate[label].SS58 || entry.Nonce == "" {
+				continue
+			}
+			nonce, err := strconv.ParseUint(entry.Nonce, 10, 32)
+			if err != nil {
+				return result, err
+			}
+			if nonce >= uint64(account.Nonce) {
+				return result, fmt.Errorf("renewal native signer %s already owns retained signed nonce %d at or above current nonce %d", label, nonce, account.Nonce)
+			}
+		}
 	}
 	return result, nil
 }
