@@ -4,7 +4,9 @@ Updated 2026-09-12. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
 The user explicitly confirmed SN testnet finalization under `sn/FINALIZE.md`;
-the absent `server/connect/FINALIZE.md` reference does not change that scope.
+all qualification and the canonical report at `sn/sim-testnet/FINAL.md` concern
+this simulator and its runtime dependencies. Other simulation references were
+mistaken and do not add work to this goal.
 The earlier shortened-run instructions below are retained as historical scope
 for those attempts, whose `final_acceptance=false` results remain unchanged.
 
@@ -26,7 +28,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 21:55 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 22:55 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
@@ -46,24 +48,54 @@ CREATE while binding the later repaired coordinator. Source `cf3ccd6` corrected
 the combined carry path and reached reserve-majority planning. Its fourth actual
 attempt stopped at 21:48:11 UTC: the target needs another 2,855.249565922 alpha,
 but signed transfers already consume the 31,250-alpha lifetime allowance.
-Astra is checking the concrete cause and remedy. No revised plan or transaction
-was emitted; the original plan and journal remain byte-identical.
+The prior 5,999.806443325-alpha repair is already credited. The configured
+6,000-alpha allowance applies per repair and does not replenish the lifetime
+budget. User approval is pending to raise that lifetime cap to 35,000 alpha for
+one additional 3,750-alpha tranche. At pinned native block 7,992,355, that would
+raise the observed 61.449% reserve share to at least 66.113%; fresh planning
+must recheck stake and transferable source capacity. No revised plan or
+transaction was emitted; the original plan and journal remain byte-identical.
 [Latest actual admission error](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup-v4.stderr).
 
-The physical final workspace and pinned Solidity libraries are prepared at
-`temp/sn-final-release-20260912/workspace`; the existing unlocked vault is reused.
+The final execution workspace and pinned Solidity libraries are prepared at
+`temp/sn-final-execution-20260912/workspace`, with real Git directories for
+authentic executable VCS stamping. Every tracked source file was compared to
+the prior workspace for byte and mode equivalence. The existing unlocked vault
+is reused. No key or plaintext secret was copied.
 Candidate `9c444e4` is committed and pushed on its review branch, with a reviewed
 source lock and an independently built read-only CLI. Five repair-carry and four
 relay-continuation roots, the offline authority root and six archive roots each
 completed three fresh normal passes and a race pass. Public checkpoint, native
 capture and CRV4 checkpoint checks also passed in both modes.
 [Completed affected qualification](../temp/sn-final-release-20260912/runtime-9c444e4-20260912T2118Z/RESULT.md).
-Successor `eca9e19` is under affected qualification. Its native-coverage and
-companion-carry checks pass in both modes; a historical reward-reader cancellation
-test failed and is with Astra. Strict observation must use the adopted V2
-namespace, and the acceptance baseline must follow fresh native applications
-and payout observations from both validators. The automatic warm-up and its
-complete remaining capacity forecast are being completed in parallel.
+Successor `eca9e19` passed native coverage, companion carry, adjacent evidence,
+archive/payout and native consumers in both modes. Its reward-reader cancellation
+failure is corrected: all three reward roots passed three fresh normal runs and
+one race run on `94cb3dd`. Simulator and validator V2 observation also pass both
+modes. Automatic native readiness and preparation share one absolute deadline;
+the full remaining-work bound is 7,570 blocks, preserving both acceptance phases.
+The retained-ledger capacity checks pass, including the exact 8,065-block limit
+and refusal at 8,066. The 43-root matrix's outdated horizon fixture was its sole
+normal failure, with that three-root race partition initially unrun.
+[Exact completed matrix and retained failure](../temp/sn-final-release-20260912/runtime-94cb3dd-20260912T221700Z/RESULT-94-GO-MATRIX.md).
+
+On `da27b85`, the corrected horizon root has three fresh normal passes, and its
+original three-root partition passes under race. The exact final semantic census
+contains 310 roots. Two of 27 gate guards failed in both modes: a stale direct-call
+assumption across the real startup delegation chain and three renewal consumers
+without the required parallel marker. Astra owns the corrections; Terra will
+qualify only those failed modes and the affected adjacent consumers. Completed
+historical streaks and the horizon checks will not restart.
+[Exact partial qualification and stamped CLI](../temp/sn-final-execution-20260912/runtime-da27b85-20260912T2245Z/RESULT-PARTIAL.md).
+
+Both full-gate launch commands are prepared with separate private mutable
+resources. The twelve-repository snapshot includes the vault budget. Therefore
+the pending spending decision and any approved vault edit, commit and push must
+precede the final source freeze and concurrent producer/aggregate launch. A
+mid-gate budget change would invalidate the final snapshot. Independent software
+correction and qualification continue while approval is pending. After both gates,
+proceed through fresh setup-plan admission, renewed fleet authorizations, bounded
+relay continuation, retained-history adoption and the actual full campaign.
 
 Terra has passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
@@ -95,7 +127,7 @@ and startup populations in both modes. Its three simulator fixture failures and
 two archive fixture failures are preserved; their corrections and the frozen
 public publication/consumer/recorder code are composed in successor `e06f055`
 for Terra qualification. [Composed results](../temp/sn-finalization-integration-20260912/runtime/RESULT.md).
-Authenticated native interval and reward/application coverage remain in progress.
+The later native interval and reward/application coverage results are above.
 Neither full gate nor either complete live acceptance phase has passed.
 The unrelated calibration prerequisites were removed from SN qualification;
 Terra passed all 12 affected guard roots normally and under race. The existing
@@ -109,13 +141,16 @@ signatures or certify the remaining campaign. All four activation contexts bind
 block 7,975,563; the existing 10,080-block relay allowance formula therefore ends
 at 7,985,643, before the observed finalized block 7,991,348. No `evidence.relay.*`
 entry exists in the retained journal. The retained locators contain 182 pending
-members; the existing full-work forecast requires another 184. Locator counts
+members; the corrected 7,570-block full-work forecast requires another 200. Locator counts
 still require complete signature and immutable-slot authentication. Astra has
 frozen an explicit plan-bound continuation at `a52758b` with up to 512 relay slots at
 50 gwei per 1,000,000-gas action, within the existing 25.6-TAO relay reserve.
 It must preserve original activation and liabilities, bind the actual pending
 census and finite remaining run window, and retain every original source-storage
-and lifetime monetary limit. This candidate change is not yet qualified or applied.
+and lifetime monetary limit. The continuation and capacity code has passed its
+affected checks above; no continuation plan has been applied. Choose its fixed
+end only after gates and renewal so preparation does not consume the remaining
+source-capacity margin.
 
 ## Historical shortened execution — 2026-09-11 17:33 UTC
 
