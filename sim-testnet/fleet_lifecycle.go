@@ -165,6 +165,7 @@ type FleetLifecycleEvidence struct {
 	ProductionNativeSchedule           *FleetLifecycleNativeSchedule       `json:"production_native_schedule,omitempty"`
 	ProductionEVMEvidenceDeadlineBlock uint64                              `json:"production_evm_evidence_deadline_block,omitempty"`
 	TakeoverEffectiveEpoch             uint64                              `json:"takeover_effective_epoch,omitempty"`
+	Renewal                            *FleetLifecycleRenewal              `json:"renewal,omitempty"`
 	FallbackEffectiveEpoch             uint64                              `json:"fallback_effective_epoch,omitempty"`
 	ProviderEffectiveEpoch             uint64                              `json:"provider_effective_epoch,omitempty"`
 	TerminalEffectiveEpoch             uint64                              `json:"terminal_effective_epoch,omitempty"`
@@ -549,7 +550,11 @@ func fleetLifecycleVariantManifest(cfg *ResolvedConfig, stateDir string, roles *
 }
 
 func fleetLifecycleVariantDescriptor(cfg *ResolvedConfig, name string) (fleetLifecycleEvidenceDescriptor, error) {
-	variant, err := fleetLifecycleVariantFor(name)
+	return fleetLifecycleVariantDescriptorForPlan(cfg, nil, name)
+}
+
+func fleetLifecycleVariantDescriptorForPlan(cfg *ResolvedConfig, plan *SetupPlan, name string) (fleetLifecycleEvidenceDescriptor, error) {
+	variant, err := fleetLifecycleVariantForPlan(plan, name)
 	if err != nil {
 		return fleetLifecycleEvidenceDescriptor{}, err
 	}
@@ -593,58 +598,43 @@ func fleetLifecycleEvidenceDescriptors(cfg *ResolvedConfig, stateDir string, epo
 	if cfg == nil || cfg.Config == nil {
 		return nil, errors.New("fleet lifecycle evidence descriptor configuration is unavailable")
 	}
+	plan, err := readPersistedPlan(stateDir)
+	if errors.Is(err, os.ErrNotExist) { plan = nil } else if err != nil { return nil, err }
 	var lifecycle *FleetLifecycleEvidence
 	loaded, err := loadFleetLifecycleEvidence(stateDir)
-	if err == nil {
-		lifecycle = loaded
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	fallbackActive := lifecycle != nil && lifecycle.FallbackEffectiveEpoch != 0 && epoch >= lifecycle.FallbackEffectiveEpoch
-	providerActive := lifecycle != nil && lifecycle.ProviderEffectiveEpoch != 0 && epoch >= lifecycle.ProviderEffectiveEpoch
-	terminalActive := lifecycle != nil && lifecycle.TerminalEffectiveEpoch != 0 && epoch >= lifecycle.TerminalEffectiveEpoch
-	fallback, err := fallbackFleetEvidenceDescriptor(cfg)
-	if err != nil {
-		return nil, err
+	if err == nil { lifecycle = loaded } else if !errors.Is(err, os.ErrNotExist) { return nil, err }
+	if lifecycle != nil && plan != nil && (lifecycle.PlanHash != plan.PlanHash || !fleetLifecycleCanonicalEqual(lifecycle.Renewal, plan.FleetLifecycleRenewal)) {
+		return nil, errors.New("lifecycle observation differs from its current approved renewal plan")
 	}
 	descriptors := make([]fleetLifecycleEvidenceDescriptor, 0, cfg.Config.Topology.fleetCandidates())
 	for fleet := 1; fleet <= cfg.Config.Topology.fleetCandidates(); fleet++ {
-		switch {
-		case terminalActive && fleet == fleetLifecycleTargetFleet:
-			descriptor, descriptorErr := fleetLifecycleVariantDescriptor(cfg, fleetLifecycleVariantProvider)
-			if descriptorErr != nil {
-				return nil, descriptorErr
-			}
-			descriptors = append(descriptors, descriptor)
-		case terminalActive && fleet == fleetLifecycleCompanionFleet:
-			descriptor, descriptorErr := fleetLifecycleVariantDescriptor(cfg, fleetLifecycleVariantTerminal)
-			if descriptorErr != nil {
-				return nil, descriptorErr
-			}
-			descriptors = append(descriptors, descriptor)
-		case providerActive && fleet == fleetLifecycleTargetFleet:
-			descriptors = append(descriptors, providerFleetEvidenceDescriptor(cfg))
-		case providerActive && fleet == fleetLifecycleCompanionFleet:
-			descriptors = append(descriptors, fallback)
-		case fallbackActive && fleet == fleetLifecycleTargetFleet:
-			descriptors = append(descriptors, fallback)
-		case lifecycle != nil && fleet == fleetLifecycleTargetFleet:
-			descriptor, descriptorErr := fleetLifecycleVariantDescriptor(cfg, fleetLifecycleVariantTargetTakeover)
-			if descriptorErr != nil {
-				return nil, descriptorErr
-			}
-			descriptors = append(descriptors, descriptor)
-		case lifecycle != nil && fleet == fleetLifecycleCompanionFleet:
-			descriptor, descriptorErr := fleetLifecycleVariantDescriptor(cfg, fleetLifecycleVariantCompanionTakeover)
-			if descriptorErr != nil {
-				return nil, descriptorErr
-			}
-			descriptors = append(descriptors, descriptor)
-		default:
-			descriptors = append(descriptors, standardFleetEvidenceDescriptor(cfg, fleet))
-		}
+		descriptors = append(descriptors, standardFleetEvidenceDescriptor(cfg, fleet))
 	}
-	return fleetRenewalEvidenceDescriptors(cfg, stateDir, epoch, descriptors)
+	// Authenticate every renewal binding first. Subsequent lifecycle waves can
+	// then select their own exact plan-bound files without being overwritten by
+	// the older renewal descriptors.
+	descriptors, err = fleetRenewalEvidenceDescriptors(cfg, stateDir, epoch, descriptors)
+	if err != nil { return nil, err }
+	if lifecycle == nil { return descriptors, nil }
+	fallbackActive := lifecycle.FallbackEffectiveEpoch != 0 && epoch >= lifecycle.FallbackEffectiveEpoch
+	providerActive := lifecycle.ProviderEffectiveEpoch != 0 && epoch >= lifecycle.ProviderEffectiveEpoch
+	terminalActive := lifecycle.TerminalEffectiveEpoch != 0 && epoch >= lifecycle.TerminalEffectiveEpoch
+	for _, fleet := range []int{fleetLifecycleTargetFleet, fleetLifecycleCompanionFleet} {
+		name := fleetLifecycleVariantTargetTakeover
+		if fleet == fleetLifecycleCompanionFleet { name = fleetLifecycleVariantCompanionTakeover }
+		switch {
+		case terminalActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantProvider
+		case terminalActive && fleet == fleetLifecycleCompanionFleet: name = fleetLifecycleVariantTerminal
+		case providerActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantProvider
+		case providerActive && fleet == fleetLifecycleCompanionFleet: name = fleetLifecycleVariantFallback
+		case fallbackActive && fleet == fleetLifecycleTargetFleet: name = fleetLifecycleVariantFallback
+		}
+		descriptor, err := fleetLifecycleVariantDescriptorForPlan(cfg, plan, name)
+		if err != nil { return nil, err }
+		if fleet > len(descriptors) { return nil, errors.New("lifecycle observation candidate census is incomplete") }
+		descriptors[fleet-1] = descriptor
+	}
+	return descriptors, nil
 }
 
 func fleetLifecycleFallbackManifest(cfg *ResolvedConfig, stateDir string, roles *RoleSecrets) (protocol.FleetManifest, []byte, [32]byte, error) {
@@ -693,7 +683,11 @@ func loadFleetLifecycleCommitment(stateDir, manifestName, evidenceName string) (
 }
 
 func validateFleetLifecycleCommitmentLineage(evidence FleetCommitmentEvidence, action Action, variantName, deploymentID, planHash string, transaction JournalEntry) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	return validateFleetLifecycleCommitmentLineageForPlan(nil, evidence, action, variantName, deploymentID, planHash, transaction)
+}
+
+func validateFleetLifecycleCommitmentLineageForPlan(plan *SetupPlan, evidence FleetCommitmentEvidence, action Action, variantName, deploymentID, planHash string, transaction JournalEntry) error {
+	variant, err := fleetLifecycleVariantForPlan(plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -711,7 +705,7 @@ func validateFleetLifecycleCommitmentLineage(evidence FleetCommitmentEvidence, a
 }
 
 func (self *Executor) validateFleetLifecycleCommitmentAction(ctx context.Context, action Action, variantName string, manifest protocol.FleetManifest, commitmentHash [32]byte, evidence FleetCommitmentEvidence) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -719,7 +713,7 @@ func (self *Executor) validateFleetLifecycleCommitmentAction(ctx context.Context
 	if !found {
 		return errors.New("fleet lifecycle commitment journal lineage is absent")
 	}
-	if err := validateFleetLifecycleCommitmentLineage(evidence, action, variantName, self.cfg.Config.Deployment.DeploymentID, self.plan.PlanHash, transaction); err != nil {
+	if err := validateFleetLifecycleCommitmentLineageForPlan(self.plan, evidence, action, variantName, self.cfg.Config.Deployment.DeploymentID, self.plan.PlanHash, transaction); err != nil {
 		return err
 	}
 	if evidence.ManifestURI != variant.ManifestName || !strings.EqualFold(evidence.CommitmentHash, fleetLifecycleHex(commitmentHash)) || !strings.EqualFold(evidence.Hotkey, fleetLifecycleHex(manifest.Hotkey)) {
@@ -740,7 +734,7 @@ func (self *Executor) validateFleetLifecycleCommitmentAction(ctx context.Context
 }
 
 func (self *Executor) publishFleetLifecycleCommitment(ctx context.Context, action Action, variantName string) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -813,7 +807,7 @@ func (self *Executor) publishFleetLifecycleCommitment(ctx context.Context, actio
 }
 
 func (self *Executor) fleetLifecycleManifestAndCommitment(variantName string) (protocol.FleetManifest, [32]byte, *FleetCommitmentEvidence, error) {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return protocol.FleetManifest{}, [32]byte{}, nil, err
 	}
@@ -1031,7 +1025,7 @@ func buildFleetLifecycleBindingEvidenceFromReceipt(action Action, deploymentID, 
 }
 
 func (self *Executor) bindFleetLifecycleMember(ctx context.Context, action Action, variantName string, memberIndex int) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -1081,7 +1075,7 @@ func (self *Executor) bindFleetLifecycleMember(ctx context.Context, action Actio
 	if err := self.validateFleetLifecycleCommitmentAction(ctx, commitmentAction, variantName, manifest, commitmentHash, *commitmentEvidence); err != nil {
 		return err
 	}
-	evidencePath := filepath.Join(self.stateDir, "public", fleetLifecycleBindingEvidenceName(variantName, memberIndex))
+	evidencePath := filepath.Join(self.stateDir, "public", variant.BindingName(memberIndex))
 	if _, readErr := os.Stat(evidencePath); readErr == nil {
 		finalized, finalizedErr := finalizedEVMHead(ctx, self.keeper.client)
 		if finalizedErr != nil {
@@ -1631,7 +1625,7 @@ func validateFleetLifecycleCleanupLineage(evidence FleetLifecycleCleanupEvidence
 }
 
 func (self *Executor) validateFleetLifecycleCleanupAction(ctx context.Context, action Action, variantName string, memberIndex int, evidence FleetLifecycleCleanupEvidence) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -1723,7 +1717,7 @@ func (self *Executor) validateFleetLifecycleCleanupAction(ctx context.Context, a
 }
 
 func (self *Executor) cleanupFleetLifecycleMember(ctx context.Context, action Action, variantName string, memberIndex int) error {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return err
 	}
@@ -1887,8 +1881,14 @@ func (self *Executor) executeFleetLifecycleAction(ctx context.Context, action Ac
 }
 
 func loadFleetLifecycleBindingEvidence(stateDir, variantName string, member int) (*FleetBindingEvidence, error) {
+	return loadFleetLifecycleBindingEvidenceForPlan(nil, stateDir, variantName, member)
+}
+
+func loadFleetLifecycleBindingEvidenceForPlan(plan *SetupPlan, stateDir, variantName string, member int) (*FleetBindingEvidence, error) {
+	variant, err := fleetLifecycleVariantForPlan(plan, variantName)
+	if err != nil { return nil, err }
 	var evidence FleetBindingEvidence
-	if err := readJSONFile(filepath.Join(stateDir, "public", fleetLifecycleBindingEvidenceName(variantName, member)), &evidence); err != nil {
+	if err := readJSONFile(filepath.Join(stateDir, "public", variant.BindingName(member)), &evidence); err != nil {
 		return nil, err
 	}
 	if evidence.Schema != "urnetwork-fleet-binding-evidence-v1" || evidence.DeploymentID == "" || evidence.PlanHash == "" || evidence.ActionID == "" || evidence.IntentHash == "" || evidence.Generation == 0 || evidence.ValidFromEpoch == 0 || evidence.ValidToEpoch < evidence.ValidFromEpoch || evidence.BlockNumber == 0 {
@@ -1928,7 +1928,10 @@ func validateFleetLifecycleBindingLineage(evidence FleetBindingEvidence, action 
 }
 
 func (self *Executor) verifyFleetLifecycleBindingAt(ctx context.Context, variantName string, member int, evmHead ChainHead) (*FleetBindingEvidence, error) {
-	variant, err := fleetLifecycleVariantFor(variantName)
+	if fleetLifecycleRenewedTakeover(self.plan, variantName) {
+		return self.verifyFleetLifecycleRenewedBinding(ctx, variantName, member, evmHead)
+	}
+	variant, err := fleetLifecycleVariantForPlan(self.plan, variantName)
 	if err != nil {
 		return nil, err
 	}
@@ -1939,7 +1942,7 @@ func (self *Executor) verifyFleetLifecycleBindingAt(ctx context.Context, variant
 	if member < 1 || member > len(manifest.Members) || evmHead.Number == 0 {
 		return nil, errors.New("fleet lifecycle binding verification inputs are incomplete")
 	}
-	evidence, err := loadFleetLifecycleBindingEvidence(self.stateDir, variantName, member)
+	evidence, err := loadFleetLifecycleBindingEvidenceForPlan(self.plan, self.stateDir, variantName, member)
 	if err != nil {
 		return nil, err
 	}
@@ -2133,7 +2136,7 @@ func (self *Executor) verifyFleetLifecyclePostcondition(ctx context.Context, act
 			return nil, variantErr
 		}
 		memberIndex := suffixInt(action.ID)
-		variant, _ := fleetLifecycleVariantFor(variantName)
+		variant, _ := fleetLifecycleVariantForPlan(self.plan, variantName)
 		manifest, _, _, err := fleetLifecycleVariantManifest(self.cfg, self.stateDir, self.roles, variant)
 		if err != nil || memberIndex < 1 || memberIndex > len(manifest.Members) {
 			return nil, stateMismatchError(err, "fleet lifecycle cleanup member is invalid")

@@ -91,6 +91,9 @@ func validateFleetRenewalSource(base, approved *SetupPlan, entries []JournalEntr
 	if checkpoint < 0 {
 		return errors.New("renewal source journal checkpoint is absent")
 	}
+	if err := validateFleetLifecycleRenewalPending("", base, entries[:checkpoint+1]); err != nil {
+		return err
+	}
 	planned := map[string]string{}
 	for _, a := range approved.Actions {
 		if isFleetRenewalAction(a) {
@@ -151,6 +154,9 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 	}
 	defer journal.Close()
 	if err := validateFleetRenewalSource(base, plan, journal.Entries()); err != nil {
+		return err
+	}
+	if err := validateFleetLifecycleRenewalPending(stateDir, base, journal.Entries()); err != nil {
 		return err
 	}
 	// New renewal transactions are included in the fresh liability sum but

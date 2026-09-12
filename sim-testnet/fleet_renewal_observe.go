@@ -430,6 +430,9 @@ func buildFleetRenewalPlan(ctx context.Context, cfg *ResolvedConfig, stateDir st
 	if err != nil {
 		return nil, err
 	}
+	if err := validateFleetLifecycleRenewalPending(stateDir, base, entries); err != nil {
+		return nil, err
+	}
 	observation, err := observeFleetRenewal(ctx, cfg, stateDir, base, roles, entries, o)
 	if err != nil {
 		return nil, err

@@ -99,6 +99,7 @@ type SetupPlan struct {
 	SupersededDeployments        []ContractDeployment `json:"superseded_deployments,omitempty"`
 	Actions                      []Action             `json:"actions"`
 	FleetRenewals                []FleetRenewal       `json:"fleet_renewals,omitempty"`
+	FleetLifecycleRenewal        *FleetLifecycleRenewal `json:"fleet_lifecycle_renewal,omitempty"`
 	MaximumSpend                 Spend                `json:"maximum_spend"`
 	SupersededSpend              Spend                `json:"superseded_spend,omitempty"`
 	Limits                       Spend                `json:"limits"`

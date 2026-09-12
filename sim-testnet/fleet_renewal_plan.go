@@ -274,7 +274,7 @@ func validateFleetRenewalPlan(p *SetupPlan) error {
 	if len(generated) != 0 {
 		return errors.New("fleet renewal is missing executable actions")
 	}
-	return nil
+	return validateFleetLifecycleRenewalPlan(p)
 }
 
 func appendFleetRenewalPlan(base *SetupPlan, renewal FleetRenewal) (*SetupPlan, error) {
@@ -341,6 +341,9 @@ func appendFleetRenewalPlan(base *SetupPlan, renewal FleetRenewal) (*SetupPlan, 
 	plan.PriorPlanHashes = append(plan.PriorPlanHashes, base.PlanHash)
 	plan.FleetRenewals = append(plan.FleetRenewals, renewal)
 	plan.Actions = append(plan.Actions, actions...)
+	if err := rebindFleetLifecycleRenewalPlan(&plan, &renewal); err != nil {
+		return nil, err
+	}
 	plan.MaximumSpend, err = maximumActionSpend(plan.Actions)
 	if err != nil {
 		return nil, err
