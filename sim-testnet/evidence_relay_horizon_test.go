@@ -163,12 +163,18 @@ func TestEvidenceRelayHorizonCountsOutOfOrderAdditionalAuditSubjects(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The full 7,570-block campaign owns 200 of the original 256 slots.
+	// Four sources may each add 14 subjects beyond their first native audit.
+	required, _, _, err := horizon.forecast(remaining)
+	if err != nil || remaining != 7570 || required != 200 || horizon.maximum != 256 {
+		t.Fatal("extra-subject fixture changed the full remaining-work reservation", remaining, required, horizon.maximum, err)
+	}
 	if err := horizon.requireRemaining(horizon.anchorBlock, 77, remaining); err != nil {
 		t.Fatal(err)
 	}
 	var headers []protocol.ValidatorEvidenceHeader
 	for _, member := range fixture.prepared.Members {
-		for offset := uint64(1); offset <= 19; offset++ {
+		for offset := uint64(1); offset <= 15; offset++ {
 			headers = append(headers, evidenceRelayHorizonAuditTest(t, fixture, member, offset).Evidence.Header)
 		}
 	}
@@ -178,7 +184,7 @@ func TestEvidenceRelayHorizonCountsOutOfOrderAdditionalAuditSubjects(t *testing.
 		}
 	}
 	extra, err := horizon.extraSubjects(nil)
-	if err != nil || extra != 72 || len(horizon.headerKVs) != 76 {
+	if err != nil || extra != 56 || len(horizon.headerKVs) != 60 {
 		t.Fatal("same-native later observations were collapsed or uncharged", extra, err)
 	}
 	for _, header := range headers {
@@ -186,13 +192,17 @@ func TestEvidenceRelayHorizonCountsOutOfOrderAdditionalAuditSubjects(t *testing.
 			t.Fatal("exact retry changed original debit", err)
 		}
 	}
-	if len(horizon.headerKVs) != 76 {
+	if len(horizon.headerKVs) != 60 {
 		t.Fatal("retry or delivery order minted extra funded slots")
 	}
 	before := horizon.minimumEnd
-	oneOver := evidenceRelayHorizonAuditTest(t, fixture, fixture.prepared.Members[0], 20)
-	if err := horizon.admit(oneOver.Evidence.Header, 6300); err == nil || len(horizon.headerKVs) != 76 || horizon.minimumEnd != before {
-		t.Fatal("seventy-third extra subject consumed required remaining phase work", err)
+	oneOver := evidenceRelayHorizonAuditTest(t, fixture, fixture.prepared.Members[0], 16)
+	fundedEnd, _, _, err := horizon.ceilings(&oneOver.Evidence.Header)
+	if err != nil || fundedEnd != horizon.anchorBlock+7560 || before != horizon.anchorBlock+7570 {
+		t.Fatal("one-over subject did not cross the unchanged full-work horizon", fundedEnd, before, err)
+	}
+	if err := horizon.admit(oneOver.Evidence.Header, 6300); err == nil || !strings.Contains(err.Error(), "insufficient remaining horizon before spend") || len(horizon.headerKVs) != 60 || horizon.minimumEnd != before {
+		t.Fatal("fifty-seventh extra subject consumed required remaining phase work", err)
 	}
 	for _, header := range headers {
 		slot, err := header.SlotKey()
