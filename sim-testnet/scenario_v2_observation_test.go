@@ -36,7 +36,9 @@ func scenarioNativeSourceV2TestFixture() *validatorpkg.ReleaseNativeSourceObserv
 func TestScenarioNativeObservationV2PreservesAppliedRowAndLaterCommit(t *testing.T) {
 	source := scenarioNativeSourceV2TestFixture()
 	got, err := projectScenarioNativeSourcesV2(source, 1, 1, 2)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.NativeSourceScopeV2 != scenarioNativeSourceScopeV2 || got.NativeSourceStoreSHA256 != source.StoreSHA256 || got.LocalRuntimeIntents != nil || got.CurrentStatus != "finalized" || got.FinalizedIntents != 2 || got.AppliedIntents != 1 || len(got.HeadDecisions) != 1 || len(got.NativeCommitsV2) != 2 {
 		t.Fatalf("strict native observation lost its source/receipt scope: %+v", got)
 	}
@@ -53,7 +55,9 @@ func TestScenarioNativeObservationV2PreservesAppliedRowAndLaterCommit(t *testing
 	// failed. Its failure is retained, not dropped from the commit census.
 	source.References[1].Intent.Status, source.References[1].Intent.Error = "failed", "original failure"
 	got, err = projectScenarioNativeSourcesV2(source, 1, 1, 2)
-	if err != nil || len(got.NativeCommitsV2) != 2 || got.AppliedIntents != 1 { t.Fatal("failed later lifecycle hid a finalized native commit", err) }
+	if err != nil || len(got.NativeCommitsV2) != 2 || got.AppliedIntents != 1 {
+		t.Fatal("failed later lifecycle hid a finalized native commit", err)
+	}
 }
 
 func TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgress(t *testing.T) {
@@ -61,16 +65,25 @@ func TestScenarioNativeObservationV2RejectsIncompleteSourceWithoutPartialProgres
 		t.Run(problem, func(t *testing.T) {
 			source := scenarioNativeSourceV2TestFixture()
 			switch problem {
-			case "source": source.References[1].Lifecycle.MeasurementHash = bytesSHA256([]byte("other"))
-			case "validator": source.References[1].Intent.ValidatorID = 2
-			case "commit": source.References[1].Lifecycle.CommitNativeEpoch = 0
-			case "reveal": source.References[0].Lifecycle.RevealNativeEpoch = 0
-			case "application": source.References[0].Lifecycle.ApplicationNativeEpoch = 1404
-			case "binding": source.References[0].Artifact.Bindings[0].LiveUIDFound = false
-			case "vector": source.References[0].Intent.Values = nil
+			case "source":
+				source.References[1].Lifecycle.MeasurementHash = bytesSHA256([]byte("other"))
+			case "validator":
+				source.References[1].Intent.ValidatorID = 2
+			case "commit":
+				source.References[1].Lifecycle.CommitNativeEpoch = 0
+			case "reveal":
+				source.References[0].Lifecycle.RevealNativeEpoch = 0
+			case "application":
+				source.References[0].Lifecycle.ApplicationNativeEpoch = 1404
+			case "binding":
+				source.References[0].Artifact.Bindings[0].LiveUIDFound = false
+			case "vector":
+				source.References[0].Intent.Values = nil
 			}
 			got, err := projectScenarioNativeSourcesV2(source, 1, 1, 2)
-			if err == nil || !reflect.DeepEqual(got, ValidatorObservation{}) { t.Fatal("incomplete source retained partial progress", err) }
+			if err == nil || !reflect.DeepEqual(got, ValidatorObservation{}) {
+				t.Fatal("incomplete source retained partial progress", err)
+			}
 		})
 	}
 }

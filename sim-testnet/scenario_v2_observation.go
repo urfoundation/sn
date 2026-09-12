@@ -19,28 +19,44 @@ const scenarioNativeSourceScopeV2 = "signed-source-and-canonical-native-receipts
 // adopted namespace. Original V2 sources and native receipts are observed here;
 // complete archive/math/public replay remains the independent final gate.
 func inspectValidatorIntentV2(ctx context.Context, cfg *ResolvedConfig, stateRoot string, validatorID int) ValidatorObservation {
-	failure := func(err error) ValidatorObservation { return ValidatorObservation{ValidatorID: validatorID, Error: err.Error()} }
+	failure := func(err error) ValidatorObservation {
+		return ValidatorObservation{ValidatorID: validatorID, Error: err.Error()}
+	}
 	if ctx == nil || cfg == nil || !finalUsesEvidenceV2(cfg) || validatorID < 1 || validatorID > cfg.Config.Topology.Validators {
 		return failure(errors.New("V2 scenario validator owner is invalid"))
 	}
 	release, _, adoptionRaw, err := finalReleaseCaptureConfigWithAdoptionV2(ctx, cfg, stateRoot, uint64(validatorID))
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	var adoption *validatorpkg.ReleaseHistoryAdoptionV2
 	if len(adoptionRaw) != 0 {
 		adoption, err = validatorpkg.DecodeReleaseHistoryAdoptionV2(adoptionRaw, bytesSHA256(adoptionRaw))
-		if err != nil { return failure(err) }
+		if err != nil {
+			return failure(err)
+		}
 	}
 	authority, err := loadFinalOperatorPathAuthority(cfg, stateRoot, []uint64{uint64(validatorID)})
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	hotkey, err := decodeHex32("V2 scenario original validator hotkey", authority.identities.Substrate[validatorHotkeyLabel(validatorID)].PublicKey)
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	native, err := crv4.DialChainContext(ctx, cfg.OperationalSubstrate)
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	defer native.API.Client.Close()
 	source, err := validatorpkg.ObserveReleaseNativeSourcesV2(ctx, release, native, hotkey, adoption)
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	result, err := projectScenarioNativeSourcesV2(source, validatorID, cfg.Config.Topology.HeadSlots, cfg.Config.Topology.fleetCandidates())
-	if err != nil { return failure(err) }
+	if err != nil {
+		return failure(err)
+	}
 	return result
 }
 
@@ -72,7 +88,9 @@ func projectScenarioNativeSourcesV2(source *validatorpkg.ReleaseNativeSourceObse
 			}
 			result.NativeCommitsV2 = append(result.NativeCommitsV2, FinalNativeCoverageCommitV2{MeasurementHash: intent.MeasurementArtifactHash, Block: ChainHead{Number: intent.FinalizedBlock, Hash: strings.ToLower(intent.FinalizedBlockHash)}, NativeEpoch: lifecycle.CommitNativeEpoch})
 		}
-		if intent.Status != "applied" { continue }
+		if intent.Status != "applied" {
+			continue
+		}
 		if intent.ApplicationBlock == 0 || lifecycle.RevealNativeEpoch == 0 || lifecycle.ApplicationNativeEpoch < lifecycle.RevealNativeEpoch || len(intent.UIDs) != len(intent.Values) || len(intent.UIDs) != len(intent.Scores) {
 			return ValidatorObservation{}, errors.New("V2 scenario has an incomplete applied native observation")
 		}
@@ -85,14 +103,18 @@ func projectScenarioNativeSourcesV2(source *validatorpkg.ReleaseNativeSourceObse
 			SelectedHeadUIDs: append([]uint16(nil), intent.SelectedHeadUIDs...), RejectedHeadUIDs: append([]uint16(nil), intent.RejectedHeadUIDs...), StaleHeadBindings: len(intent.StaleHeadBindings)}
 		var err error
 		decision.CandidateFleetUIDs, decision.CandidateFleetHotkeys, err = headDecisionCandidateIdentities(reference.Artifact, intent.EligibleHeadUIDs)
-		if err != nil { return ValidatorObservation{}, err }
+		if err != nil {
+			return ValidatorObservation{}, err
+		}
 		for index, uid := range intent.UIDs {
 			decision.AppliedWeights = append(decision.AppliedWeights, IntentWeightObservation{UID: uid, Numerator: intent.Scores[index].Numerator, Denominator: intent.Scores[index].Denominator, Value: intent.Values[index]})
 		}
 		result.HeadDecisions = append(result.HeadDecisions, decision)
 		latest = &all[len(all)-1]
 		values, err := json.Marshal(intent.Values)
-		if err != nil { return ValidatorObservation{}, err }
+		if err != nil {
+			return ValidatorObservation{}, err
+		}
 		result.ValuesHash = bytesSHA256(values)
 	}
 	if latest != nil {

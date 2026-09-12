@@ -26,15 +26,21 @@ func TestReleaseNativeObservationV2PreservesAbsenceAndUnresolvedPublication(t *t
 	}
 	marker := filepath.Join(cfg.StateDir, releaseIntentV2Marker)
 	want := []byte("actual incomplete publication\n")
-	if err := os.WriteFile(marker, want, 0o600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(marker, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := readReleaseNativeSourceReferencesV2(t.Context(), &cfg, hotkey, nil); err == nil || got != nil {
 		t.Fatal("unresolved publication became a successful empty observation")
 	}
 	if got, err := os.ReadFile(marker); err != nil || !bytes.Equal(got, want) {
 		t.Fatal("source observation changed the unresolved publication", err)
 	}
-	if err := os.Remove(marker); err != nil { t.Fatal(err) }
-	if err := os.WriteFile(store.path, []byte(`{"schema":"legacy","current":null,"history":[]}`), 0o600); err != nil { t.Fatal(err) }
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path, []byte(`{"schema":"legacy","current":null,"history":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if got, err := readReleaseNativeSourceReferencesV2(t.Context(), &cfg, hotkey, nil); err == nil || got != nil {
 		t.Fatal("legacy bytes became strict V2 progress")
 	}
@@ -52,12 +58,16 @@ func TestReleaseNativeObservationV2BindsRealSignedSourceIdentity(t *testing.T) {
 	fixture := newReleaseMeasurementEnvelopeV2TestFixture(t, 1)
 	encoded, envelope := fixture.seal(t)
 	decoded, err := DecodeReleaseMeasurementEnvelopeV2(t.Context(), encoded, fixture.options().MaxControlBytes)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	a := fixture.artifact
 	cfg := ReleaseConfig{DeploymentID: a.DeploymentID, ChainID: a.ChainID, GenesisHash: a.GenesisHash, Coordinator: a.Coordinator, SettlementVault: a.SettlementVault, ValidatorID: a.ValidatorID, Netuid: a.Netuid, PolicyHash: a.PolicyHash}
 	intent := SteeringIntent{ValidatorID: a.ValidatorID, Netuid: a.Netuid, SubnetEpoch: a.SubnetEpoch, NativeSnapshotBlock: a.NativeSnapshotBlock, NativeSnapshotHash: a.NativeSnapshotHash, EVMSnapshotBlock: a.EVMSnapshotBlock, EVMSnapshotHash: a.EVMSnapshotHash, SettlementEpoch: a.SettlementEpoch, PolicyHash: a.PolicyHash, SelfUID: a.SelfUID, DepositAudits: a.DepositAudits, MeasurementArtifactHash: envelope.MeasurementArtifactHash, MeasurementArtifactSize: envelope.MeasurementArtifactSize,
 		Prepared: &crv4.PreparedSubmission{HotkeyHex: envelope.ValidatorHotkey, ExtrinsicHash: envelope.PreparedExtrinsicHash, Netuid: a.Netuid, SubnetEpoch: a.SubnetEpoch}}
-	if err := matchObservedNativeSourceV2(&cfg, fixture.hotkey.PublicKey(), &intent, a, decoded); err != nil { t.Fatal(err) }
+	if err := matchObservedNativeSourceV2(&cfg, fixture.hotkey.PublicKey(), &intent, a, decoded); err != nil {
+		t.Fatal(err)
+	}
 	for _, problem := range []string{"source-hash", "prepared-hash", "hotkey", "deployment", "snapshot", "values"} {
 		t.Run(problem, func(t *testing.T) {
 			changed, config := intent, cfg
@@ -65,21 +75,33 @@ func TestReleaseNativeObservationV2BindsRealSignedSourceIdentity(t *testing.T) {
 			changed.Prepared = &prepared
 			key := fixture.hotkey.PublicKey()
 			switch problem {
-			case "source-hash": changed.MeasurementArtifactHash = ReleaseMeasurementContentHash([]byte("other"))
-			case "prepared-hash": prepared.ExtrinsicHash = releaseHex32([32]byte{9})
-			case "hotkey": key[0] ^= 1
-			case "deployment": config.DeploymentID += "-other"
-			case "snapshot": changed.NativeSnapshotBlock++
-			case "values": changed.Status, changed.Values = "applied", []uint16{1}
+			case "source-hash":
+				changed.MeasurementArtifactHash = ReleaseMeasurementContentHash([]byte("other"))
+			case "prepared-hash":
+				prepared.ExtrinsicHash = releaseHex32([32]byte{9})
+			case "hotkey":
+				key[0] ^= 1
+			case "deployment":
+				config.DeploymentID += "-other"
+			case "snapshot":
+				changed.NativeSnapshotBlock++
+			case "values":
+				changed.Status, changed.Values = "applied", []uint16{1}
 			}
-			if err := matchObservedNativeSourceV2(&config, key, &changed, a, decoded); err == nil { t.Fatal("changed source identity was admitted") }
+			if err := matchObservedNativeSourceV2(&config, key, &changed, a, decoded); err == nil {
+				t.Fatal("changed source identity was admitted")
+			}
 		})
 	}
 	changed := bytes.Clone(encoded)
 	signatureAt := bytes.Index(changed, []byte(decoded.Signature))
-	if signatureAt < 0 || len(decoded.Signature) < 3 { t.Fatal("original signature is absent") }
+	if signatureAt < 0 || len(decoded.Signature) < 3 {
+		t.Fatal("original signature is absent")
+	}
 	changed[signatureAt+2] = '0'
-	if decoded.Signature[2] == '0' { changed[signatureAt+2] = '1' }
+	if decoded.Signature[2] == '0' {
+		changed[signatureAt+2] = '1'
+	}
 	if _, err := DecodeReleaseMeasurementEnvelopeV2(t.Context(), changed, fixture.options().MaxControlBytes); err == nil {
 		t.Fatal("changed original signature was accepted")
 	}
