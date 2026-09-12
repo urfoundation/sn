@@ -53,8 +53,8 @@ func validateProvisionalResumeOptions(command string, options cliOptions) error 
 	if !options.ProvisionalResume {
 		return nil
 	}
-	if command != "resume" && command != "scenario" {
-		return errors.New("--provisional-resume is valid only for resume or scenario")
+	if command != "resume" && command != "scenario" && command != "coordinator-repair" {
+		return errors.New("--provisional-resume is valid only for resume, scenario or coordinator-repair")
 	}
 	if !options.Apply || !validCanonicalHashHex(options.PlanHash) {
 		return errors.New("--provisional-resume requires --apply and the exact persisted --plan-hash")

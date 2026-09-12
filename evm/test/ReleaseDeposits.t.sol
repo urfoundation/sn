@@ -181,9 +181,30 @@ contract ReleaseDepositsTest is ReleaseBase {
         assertEq(sink.principal(), 0);
     }
 
-    function test_runtimeTransferSourceResidueRevertsAllState() public {
+    function test_runtimeTransferOneRaoSourceResidueLocksExactPrincipal() public {
         uint256 amount = 500;
+        // Observed runtime transition: staged amount + 2, moved amount + 1,
+        // full moved stake at the sink, and one rao left on the coordinator.
+        staking.setTransferStakeShortfall(0);
         staking.setTransferStakeSourceResidue(1);
+        _pushDeposit(NO1, amount);
+
+        vm.prank(depositSigner1);
+        coordinator.deposit(NO1, amount, 0, uint64(block.number + 1));
+
+        assertEq(staking.stakes(DEPOSIT1, COORD_COLDKEY), 0);
+        assertEq(staking.stakes(RESERVE_HOTKEY, COORD_COLDKEY), 1);
+        assertEq(staking.stakes(RESERVE_HOTKEY, SINK_COLDKEY), amount + 1);
+        assertEq(coordinator.nextDepositNonce(NO1), 1);
+        assertEq(coordinator.epochDeposits(0, NO1), amount);
+        assertEq(coordinator.campaignReserved(), amount);
+        assertEq(sink.principal(), amount);
+        assertEq(sink.operatorPrincipal(NO1), amount);
+    }
+
+    function test_runtimeTransferSourceResidueBeyondOneRaoRevertsAllState() public {
+        uint256 amount = 500;
+        staking.setTransferStakeSourceResidue(2);
         _pushDeposit(NO1, amount);
 
         vm.prank(depositSigner1);
@@ -196,6 +217,63 @@ contract ReleaseDepositsTest is ReleaseBase {
         assertEq(coordinator.nextDepositNonce(NO1), 0);
         assertEq(coordinator.campaignReserved(), 0);
         assertEq(sink.principal(), 0);
+    }
+
+    function test_runtimeTransferCoordinatorReserveDecreaseRevertsAllState() public {
+        uint256 amount = 500;
+        staking.setStake(RESERVE_HOTKEY, COORD_COLDKEY, 7);
+        staking.setTransferStakeSourceExtraDebit(1);
+        _pushDeposit(NO1, amount);
+
+        _assertReserveAccountingRevert(amount, 7, 0);
+    }
+
+    function test_runtimeTransferSinkReserveDecreaseRevertsAllState() public {
+        uint256 amount = 500;
+        staking.setStake(RESERVE_HOTKEY, SINK_COLDKEY, 7);
+        staking.setTransferStakeDestinationExtraDebit(amount + 1);
+        _pushDeposit(NO1, amount);
+
+        _assertReserveAccountingRevert(amount, 0, 7);
+    }
+
+    function test_runtimeTransferOneRaoResidueCannotCreditUnderfundedPrincipal() public {
+        uint256 amount = 500;
+        staking.setTransferStakeSourceResidue(1);
+        staking.setTransferStakeShortfall(2);
+        _pushDeposit(NO1, amount);
+
+        _assertReserveAccountingRevert(amount, 0, 0);
+    }
+
+    function test_runtimeTransferSinkAndResidueCannotExceedStagedAmount() public {
+        uint256 amount = 500;
+        staking.setMoveStakeShortfall(0);
+        staking.setTransferStakeShortfall(0);
+        staking.setTransferStakeSourceResidue(1);
+        _pushDeposit(NO1, amount);
+
+        _assertReserveAccountingRevert(amount, 0, 0);
+    }
+
+    function _assertReserveAccountingRevert(
+        uint256 amount,
+        uint256 coordinatorReserveBefore,
+        uint256 sinkReserveBefore
+    ) private {
+        vm.prank(depositSigner1);
+        vm.expectRevert(STCoordinator.RuntimeAccountingMismatch.selector);
+        coordinator.deposit(NO1, amount, 0, uint64(block.number + 1));
+
+        assertEq(staking.stakes(DEPOSIT1, COORD_COLDKEY), amount + 2);
+        assertEq(staking.stakes(RESERVE_HOTKEY, COORD_COLDKEY), coordinatorReserveBefore);
+        assertEq(staking.stakes(RESERVE_HOTKEY, SINK_COLDKEY), sinkReserveBefore);
+        assertEq(coordinator.nextDepositNonce(NO1), 0);
+        assertEq(coordinator.epochDeposits(0, NO1), 0);
+        assertEq(coordinator.campaignReserved(), 0);
+        assertEq(coordinator.cumulativeConviction(NO1), 0);
+        assertEq(sink.principal(), 0);
+        assertEq(sink.operatorPrincipal(NO1), 0);
     }
 
     function test_runtimeMinimumRejectsSubthresholdDepositAtomically() public {

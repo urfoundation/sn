@@ -72,32 +72,33 @@ func boundFinalizedEVMHead(ctx context.Context) (ChainHead, bool) {
 }
 
 type ContractView struct {
-	Deployment                 *ContractDeployment         `json:"deployment,omitempty"`
-	CoordinatorUpgrade         CoordinatorUpgrade          `json:"coordinator_upgrade"`
-	CoordinatorUpgradeBaseline *CoordinatorUpgradeBaseline `json:"coordinator_upgrade_baseline,omitempty"`
-	FinalizedHead              ChainHead                   `json:"finalized_head"`
-	CurrentEpoch               uint64                      `json:"current_epoch"`
-	CurrentEpochStart          uint64                      `json:"current_epoch_start_block"`
-	CurrentEpochEnd            uint64                      `json:"current_epoch_end_block"`
-	CoordinatorOwner           string                      `json:"coordinator_owner"`
-	OperatorCount              uint64                      `json:"operator_count"`
-	PolicyHash                 string                      `json:"policy_hash,omitempty"`
-	ConservationHolds          bool                        `json:"conservation_holds"`
-	MinimumTransferRao         uint64                      `json:"minimum_transfer_tao_rao"`
-	TotalCaptured              string                      `json:"total_captured_rao,omitempty"`
-	TotalPaid                  string                      `json:"total_paid_rao,omitempty"`
-	EscrowAccounted            string                      `json:"escrow_accounted_rao,omitempty"`
-	PendingFunding             string                      `json:"pending_funding_rao,omitempty"`
-	Outstanding                string                      `json:"outstanding_liability_rao,omitempty"`
-	LiveEscrowStake            string                      `json:"live_escrow_stake_rao,omitempty"`
-	ReservePrincipal           string                      `json:"reserve_principal_rao,omitempty"`
-	ReserveLiveStake           string                      `json:"reserve_live_stake_rao,omitempty"`
-	RuntimeCodeHashes          map[string]string           `json:"runtime_code_hashes,omitempty"`
-	RuntimeCodeMatches         bool                        `json:"runtime_code_matches"`
-	CustodyIdentity            ContractCustodyView         `json:"custody_identity"`
-	Policy                     PolicyView                  `json:"policy"`
-	Operators                  []OperatorView              `json:"operators"`
-	Epochs                     []EpochView                 `json:"epochs"`
+	ProvisionalCoordinatorRepairHash string                      `json:"provisional_coordinator_repair_hash,omitempty"`
+	Deployment                       *ContractDeployment         `json:"deployment,omitempty"`
+	CoordinatorUpgrade               CoordinatorUpgrade          `json:"coordinator_upgrade"`
+	CoordinatorUpgradeBaseline       *CoordinatorUpgradeBaseline `json:"coordinator_upgrade_baseline,omitempty"`
+	FinalizedHead                    ChainHead                   `json:"finalized_head"`
+	CurrentEpoch                     uint64                      `json:"current_epoch"`
+	CurrentEpochStart                uint64                      `json:"current_epoch_start_block"`
+	CurrentEpochEnd                  uint64                      `json:"current_epoch_end_block"`
+	CoordinatorOwner                 string                      `json:"coordinator_owner"`
+	OperatorCount                    uint64                      `json:"operator_count"`
+	PolicyHash                       string                      `json:"policy_hash,omitempty"`
+	ConservationHolds                bool                        `json:"conservation_holds"`
+	MinimumTransferRao               uint64                      `json:"minimum_transfer_tao_rao"`
+	TotalCaptured                    string                      `json:"total_captured_rao,omitempty"`
+	TotalPaid                        string                      `json:"total_paid_rao,omitempty"`
+	EscrowAccounted                  string                      `json:"escrow_accounted_rao,omitempty"`
+	PendingFunding                   string                      `json:"pending_funding_rao,omitempty"`
+	Outstanding                      string                      `json:"outstanding_liability_rao,omitempty"`
+	LiveEscrowStake                  string                      `json:"live_escrow_stake_rao,omitempty"`
+	ReservePrincipal                 string                      `json:"reserve_principal_rao,omitempty"`
+	ReserveLiveStake                 string                      `json:"reserve_live_stake_rao,omitempty"`
+	RuntimeCodeHashes                map[string]string           `json:"runtime_code_hashes,omitempty"`
+	RuntimeCodeMatches               bool                        `json:"runtime_code_matches"`
+	CustodyIdentity                  ContractCustodyView         `json:"custody_identity"`
+	Policy                           PolicyView                  `json:"policy"`
+	Operators                        []OperatorView              `json:"operators"`
+	Epochs                           []EpochView                 `json:"epochs"`
 }
 
 // ContractCustodyView records the complete immutable and one-shot-linked
@@ -2017,6 +2018,10 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		return nil, err
 	}
 	probe := effectivePrecompileProbe(*deployment, baseline)
+	upgrade, repairHash, err := loadProvisionalCoordinatorRepair(cfg, stateDir, upgrade, head)
+	if err != nil {
+		return nil, fmt.Errorf("provisional coordinator correction: %w", err)
+	}
 	addresses := []common.Address{deployment.ReserveSink, deployment.SettlementVault, deployment.CoordinatorImplementation, deployment.CoordinatorProxy, deployment.GovernanceDrillImplementation, deployment.PrecompileProbe}
 	if probe != (common.Address{}) && probe != deployment.PrecompileProbe {
 		addresses = append(addresses, probe)
@@ -2057,7 +2062,7 @@ func inspectContracts(ctx context.Context, cfg *ResolvedConfig, stateDir, manife
 		copy := baseline
 		baselineView = &copy
 	}
-	return &ContractView{Deployment: deployment, CoordinatorUpgrade: upgrade, CoordinatorUpgradeBaseline: baselineView, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, CoordinatorOwner: coordinatorOwner.Hex(), OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, CustodyIdentity: custodyIdentity, Policy: policy, Operators: operators, Epochs: epochs}, nil
+	return &ContractView{ProvisionalCoordinatorRepairHash: repairHash, Deployment: deployment, CoordinatorUpgrade: upgrade, CoordinatorUpgradeBaseline: baselineView, FinalizedHead: head, CurrentEpoch: currentEpoch, CurrentEpochStart: currentEpochStart, CurrentEpochEnd: currentEpochEnd, CoordinatorOwner: coordinatorOwner.Hex(), OperatorCount: operatorCount, PolicyHash: policyHash, ConservationHolds: conservation, MinimumTransferRao: minimumTransfer, TotalCaptured: totalCaptured, TotalPaid: totalPaid, EscrowAccounted: escrowAccounted, PendingFunding: pendingFunding, Outstanding: outstanding, LiveEscrowStake: liveEscrowStake, ReservePrincipal: principal, ReserveLiveStake: liveStake, RuntimeCodeHashes: hashes, RuntimeCodeMatches: matches, CustodyIdentity: custodyIdentity, Policy: policy, Operators: operators, Epochs: epochs}, nil
 }
 
 func decodeContractCustodyView(results map[string][]any, deployment *ContractDeployment, cfg *ResolvedConfig) (ContractCustodyView, error) {

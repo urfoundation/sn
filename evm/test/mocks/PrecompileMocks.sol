@@ -21,6 +21,8 @@ contract MockStakingV2 {
     uint256 public moveStakeSourceResidue;
     uint256 public transferStakeShortfall;
     uint256 public transferStakeSourceResidue;
+    uint256 public transferStakeSourceExtraDebit;
+    uint256 public transferStakeDestinationExtraDebit;
     uint256 public minimumMoveAmount;
     uint256 public minimumTransferAmount;
     address public reentryTarget;
@@ -63,6 +65,14 @@ contract MockStakingV2 {
 
     function setTransferStakeSourceResidue(uint256 amount) external {
         transferStakeSourceResidue = amount;
+    }
+
+    function setTransferStakeSourceExtraDebit(uint256 amount) external {
+        transferStakeSourceExtraDebit = amount;
+    }
+
+    function setTransferStakeDestinationExtraDebit(uint256 amount) external {
+        transferStakeDestinationExtraDebit = amount;
     }
 
     function setMinimumMoveAmount(uint256 amount) external {
@@ -148,7 +158,9 @@ contract MockStakingV2 {
         require(stakes[hotkey][ck] >= amount, "mock: insufficient");
         _attemptReentry();
         stakes[hotkey][ck] -= amount - transferStakeSourceResidue;
+        stakes[hotkey][ck] -= transferStakeSourceExtraDebit;
         stakes[hotkey][destinationColdkey] += amount - transferStakeShortfall;
+        stakes[hotkey][destinationColdkey] -= transferStakeDestinationExtraDebit;
     }
 }
 

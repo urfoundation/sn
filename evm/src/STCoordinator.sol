@@ -559,11 +559,21 @@ contract STCoordinator is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             staking.getStake(reserveSink.reserveHotkey(), selfColdkey, uint256(netuid));
         uint256 sinkReserveAfter =
             staking.getStake(reserveSink.reserveHotkey(), reserveSink.selfColdkey(), uint256(netuid));
-        if (coordinatorReserveAfter != coordinatorReserveBefore || sinkReserveAfter < sinkReserveBefore) {
+        if (coordinatorReserveAfter < coordinatorReserveBefore || sinkReserveAfter < sinkReserveBefore) {
             revert RuntimeAccountingMismatch();
         }
-        uint256 sinkMovedAmount = sinkReserveAfter - sinkReserveBefore;
-        if (sinkMovedAmount < amount || sinkMovedAmount > movedAmount) revert RuntimeAccountingMismatch();
+        // Runtime share conversion can leave one rao on the intermediate
+        // reserve. Both balance differences are nonnegative after the checks
+        // above. The residue bound also makes the staged subtraction safe:
+        // every accepted principal is nonzero, so stagedAmount is at least 3.
+        unchecked {
+            uint256 reserveResidue = coordinatorReserveAfter - coordinatorReserveBefore;
+            uint256 sinkMovedAmount = sinkReserveAfter - sinkReserveBefore;
+            if (
+                reserveResidue > RUNTIME_SHARE_ROUNDING_ALLOWANCE_RAO || sinkMovedAmount < amount
+                    || sinkMovedAmount > movedAmount || sinkMovedAmount > stagedAmount - reserveResidue
+            ) revert RuntimeAccountingMismatch();
+        }
         reserveSink.recordPrincipal(epoch_, noId, amount);
 
         if (demand) {
