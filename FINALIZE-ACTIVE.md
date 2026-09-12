@@ -26,7 +26,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 21:31 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 21:55 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
@@ -42,18 +42,28 @@ retained repair audit budget's `observed_at` field. Its corrected reader preserv
 the signed projection and complete document hash. The next attempt exposed the
 missing recovery case for the original finalized repair transactions. Candidate
 `9c444e4` passed that gate, then refused the original companion's predecessor
-CREATE while binding the later repaired coordinator. Astra is correcting that
-combined carry path. No revised plan or transaction was emitted; the original
-plan and journal remain byte-identical. [Latest actual admission error](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup-v3.stderr).
+CREATE while binding the later repaired coordinator. Source `cf3ccd6` corrected
+the combined carry path and reached reserve-majority planning. Its fourth actual
+attempt stopped at 21:48:11 UTC: the target needs another 2,855.249565922 alpha,
+but signed transfers already consume the 31,250-alpha lifetime allowance.
+Astra is checking the concrete cause and remedy. No revised plan or transaction
+was emitted; the original plan and journal remain byte-identical.
+[Latest actual admission error](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup-v4.stderr).
 
 The physical final workspace and pinned Solidity libraries are prepared at
 `temp/sn-final-release-20260912/workspace`; the existing unlocked vault is reused.
 Candidate `9c444e4` is committed and pushed on its review branch, with a reviewed
 source lock and an independently built read-only CLI. Five repair-carry and four
-relay-continuation roots each have three fresh normal passes; corrected archive
-and offline authority normal checks also pass. Remaining race/confirmation work
-continues. Native interval/reward collection is frozen for the next qualification;
-the acceptance baseline must follow fresh native applications from both validators.
+relay-continuation roots, the offline authority root and six archive roots each
+completed three fresh normal passes and a race pass. Public checkpoint, native
+capture and CRV4 checkpoint checks also passed in both modes.
+[Completed affected qualification](../temp/sn-final-release-20260912/runtime-9c444e4-20260912T2118Z/RESULT.md).
+Successor `eca9e19` is under affected qualification. Its native-coverage and
+companion-carry checks pass in both modes; a historical reward-reader cancellation
+test failed and is with Astra. Strict observation must use the adopted V2
+namespace, and the acceptance baseline must follow fresh native applications
+and payout observations from both validators. The automatic warm-up and its
+complete remaining capacity forecast are being completed in parallel.
 
 Terra has passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
