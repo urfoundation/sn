@@ -182,7 +182,7 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 		}
 		for _, fixture := range []struct{ name, contents string }{
 			{name: "jwt", contents: "fixture-network-jwt\n"},
-			{name: ".provider.jwt", contents: "fixture-provider-jwt\n"},
+			{name: ".provider.jwt", contents: fmt.Sprintf("fixture-provider-jwt-miner-%d\n", i)},
 			{name: ".provider.key", contents: strings.Repeat("01", 32) + "\n"},
 		} {
 			// These are immutable prerequisites, not the rendered outputs whose
@@ -339,6 +339,14 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 		}
 		if loaded.LookbackEpochs == 0 || len(loaded.RPC) != 1 || loaded.RPC[0] != "http://"+workloadRPCAuthority() || loaded.JWTFile == "" || loaded.PollSeconds != claimPollSeconds(cfg) {
 			t.Fatalf("miner %d claim config incomplete: %+v", i, loaded)
+		}
+		wantJWT := filepath.Join(stateDir, "runtime", "miner-"+strconv.Itoa(i), "state", ".provider.jwt")
+		if loaded.JWTFile != wantJWT {
+			t.Fatalf("miner %d claim selects %q instead of its own frozen provider identity %q", i, loaded.JWTFile, wantJWT)
+		}
+		jwtBytes, err := os.ReadFile(loaded.JWTFile)
+		if err != nil || string(jwtBytes) != fmt.Sprintf("fixture-provider-jwt-miner-%d\n", i) {
+			t.Fatalf("miner %d claim selected a shared network or another provider credential: %v", i, err)
 		}
 		operator := operatorForMiner(cfg, i)
 		if loaded.APIURL != cfg.OperatorAPIOrigins[operator-1] {
