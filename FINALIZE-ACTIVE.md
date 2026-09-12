@@ -26,7 +26,7 @@ Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 20:49 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-12 21:31 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
@@ -37,11 +37,23 @@ Actual read-only doctor on local source `02dfe50` passed 63 of 64 checks. Its
 sole failure was systemd's degraded state from 43 stopped simulator units.
 Their metadata and all 621 available journal entries were preserved before
 resetting only those historical failure flags; the manager now reports running,
-without restarting any process. Actual read-only setup then refused the full
-retained repair audit budget's `observed_at` field. Astra's separate typed audit
-document fix preserves the original signed projection and complete budget hash;
-Terra is qualifying it independently of the remaining public replay work.
-The original plan and journal remain byte-identical. [Actual admission captures](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup.stderr).
+without restarting any process. Actual read-only setup first refused the full
+retained repair audit budget's `observed_at` field. Its corrected reader preserves
+the signed projection and complete document hash. The next attempt exposed the
+missing recovery case for the original finalized repair transactions. Candidate
+`9c444e4` passed that gate, then refused the original companion's predecessor
+CREATE while binding the later repaired coordinator. Astra is correcting that
+combined carry path. No revised plan or transaction was emitted; the original
+plan and journal remain byte-identical. [Latest actual admission error](../temp/sn-full-finalization-20260912/readonly-admission-20260912/setup-v3.stderr).
+
+The physical final workspace and pinned Solidity libraries are prepared at
+`temp/sn-final-release-20260912/workspace`; the existing unlocked vault is reused.
+Candidate `9c444e4` is committed and pushed on its review branch, with a reviewed
+source lock and an independently built read-only CLI. Five repair-carry and four
+relay-continuation roots each have three fresh normal passes; corrected archive
+and offline authority normal checks also pass. Remaining race/confirmation work
+continues. Native interval/reward collection is frozen for the next qualification;
+the acceptance baseline must follow fresh native applications from both validators.
 
 Terra has passed the strict V2 history-adoption core and corrected EMA bridge
 normally and under race, including three fresh confirmations in each failed
