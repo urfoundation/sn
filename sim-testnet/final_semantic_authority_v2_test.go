@@ -41,7 +41,9 @@ func TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	identities, err := os.ReadFile(filepath.Join(fixture.stateDir, "public", "identities.json"))
+	// The provisioning fixture stops before writeRunInputs. Use the exact
+	// production public projection of its real keys at this boundary.
+	identities, err := json.Marshal(fixture.roles.Public())
 	if err != nil {
 		t.Fatal(err)
 	}
