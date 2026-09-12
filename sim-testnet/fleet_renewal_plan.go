@@ -37,6 +37,7 @@ type FleetRenewal struct {
 	OracleNonce              uint64              `json:"oracle_nonce"`
 	KeeperNonce              uint64              `json:"keeper_nonce"`
 	CampaignLiabilityWei     DecimalUint         `json:"campaign_committed_or_pending_max_wei"`
+	SupersededGasCoveredWei  DecimalUint         `json:"gas_already_covered_by_superseded_allowance_wei"`
 	CampaignReserveBeforeWei DecimalUint         `json:"campaign_reserve_before_wei"`
 	TransactionEvidence      []string            `json:"external_signed_transactions"`
 	EVMNonces                []FleetRenewalNonce `json:"evm_nonce_checkpoints"`

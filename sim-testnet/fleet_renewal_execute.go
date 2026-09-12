@@ -168,7 +168,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 	if err != nil {
 		return err
 	}
-	if exposure.Liability != renewal.CampaignLiabilityWei {
+	if exposure.Liability != renewal.CampaignLiabilityWei || exposure.SupersededCredit != renewal.SupersededGasCoveredWei {
 		return errors.New("renewal campaign liability differs from the reviewed signed transaction set")
 	}
 	if err := validateFleetRenewalNonceCoverage(roles, exposure, renewal.EVMNonces); err != nil {
@@ -225,7 +225,7 @@ func runFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir string, 
 // All fleets must still match the approved snapshot before the first write.
 // Resume reuses the exact persisted transaction envelopes for each action.
 func validateFleetRenewalFreshPrestate(renewal FleetRenewal, fresh fleetRenewalObservation) error {
-	if renewal.CampaignLiabilityWei != fresh.Renewal.CampaignLiabilityWei || !equalFleetRenewalTransactions(renewal.TransactionEvidence, fresh.Renewal.TransactionEvidence) {
+	if renewal.CampaignLiabilityWei != fresh.Renewal.CampaignLiabilityWei || renewal.SupersededGasCoveredWei != fresh.Renewal.SupersededGasCoveredWei || !equalFleetRenewalTransactions(renewal.TransactionEvidence, fresh.Renewal.TransactionEvidence) {
 		return errors.New("renewal signed transaction liabilities changed since approval")
 	}
 	if left, _ := canonicalHashHex(renewal.EVMNonces); left != "" {

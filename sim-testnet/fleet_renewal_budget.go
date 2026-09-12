@@ -26,9 +26,10 @@ type FleetRenewalNonce struct {
 }
 
 type fleetRenewalExposure struct {
-	Liability    DecimalUint
-	Transactions map[common.Hash]*ethTypes.Transaction
-	Nonces       map[common.Address]map[uint64]bool
+	Liability        DecimalUint
+	SupersededCredit DecimalUint
+	Transactions     map[common.Hash]*ethTypes.Transaction
+	Nonces           map[common.Address]map[uint64]bool
 }
 
 func readFleetRenewalTransactionInput(path string) ([]string, error) {
@@ -157,6 +158,9 @@ func fleetRenewalCampaignExposure(stateDir string, base *SetupPlan, entries []Jo
 	}
 	covered := map[string]bool{}
 	total := new(big.Int)
+	retired := new(big.Int)
+	retiredIntents := map[string]bool{}
+	history := map[string]*SetupPlan{}
 	chain := new(big.Int).SetUint64(base.ChainID)
 	add := func(raw []byte, entry *JournalEntry) error {
 		var tx ethTypes.Transaction
@@ -191,6 +195,33 @@ func fleetRenewalCampaignExposure(stateDir string, base *SetupPlan, entries []Jo
 		maximum := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasFeeCap())
 		maximum.Add(maximum, tx.Value())
 		total.Add(total, maximum)
+		if entry != nil && tx.Value().Sign() == 0 && entry.PlanHash != base.PlanHash && base.allowedPlanHashes()[entry.PlanHash] {
+			key := entry.ActionID + "\x00" + entry.IntentHash
+			if !retiredIntents[key] && fleetRenewalVerifiedTransaction(entries, *entry) {
+				source := history[entry.PlanHash]
+				if source == nil {
+					var err error
+					source, err = readValidatorEvidenceHistoricalPlan(stateDir, entry.PlanHash)
+					if err != nil {
+						return err
+					}
+					history[entry.PlanHash] = source
+				}
+				action, err := exactPlanActionByID(source, entry.ActionID)
+				if err != nil {
+					// Bounded runtime repairs may be journaled under the source
+					// identity without being an original setup action. Their
+					// complete envelope remains charged to campaign reserve.
+					return nil
+				}
+				ceiling, ok := new(big.Int).SetString(string(action.Spend.EVMGasWei), 10)
+				if action.Kind != "evm-transaction" || action.IntentHash != entry.IntentHash || !ok || maximum.Cmp(ceiling) > 0 {
+					return errors.New("renewal retired gas differs from its exact ancestor action ceiling")
+				}
+				retired.Add(retired, maximum)
+				retiredIntents[key] = true
+			}
+		}
 		return nil
 	}
 	for _, entry := range entries {
@@ -220,8 +251,39 @@ func fleetRenewalCampaignExposure(stateDir string, base *SetupPlan, entries []Jo
 			return result, err
 		}
 	}
+	reserved := new(big.Int)
+	if !base.SupersededSpend.EVMGasWei.IsZero() {
+		var ok bool
+		reserved, ok = new(big.Int).SetString(string(base.SupersededSpend.EVMGasWei), 10)
+		if !ok || reserved.Sign() < 0 {
+			return result, errors.New("renewal superseded gas allowance is malformed")
+		}
+	}
+	if retired.Cmp(reserved) > 0 {
+		retired.Set(reserved)
+	}
+	total.Sub(total, retired)
 	result.Liability = DecimalUint(total.String())
+	result.SupersededCredit = DecimalUint(retired.String())
 	return result, nil
+}
+
+// A retired ceiling covers the exact successfully finalized transaction whose
+// postcondition was verified, never a failed or still pending sibling attempt.
+func fleetRenewalVerifiedTransaction(entries []JournalEntry, transaction JournalEntry) bool {
+	latestHash := ""
+	for _, entry := range entries {
+		if entry.PlanHash != transaction.PlanHash || entry.ActionID != transaction.ActionID || entry.IntentHash != transaction.IntentHash {
+			continue
+		}
+		if entry.Stage == StageFinalized {
+			latestHash = entry.TransactionHash
+		}
+		if entry.Stage == StageVerified && latestHash == transaction.TransactionHash {
+			return true
+		}
+	}
+	return false
 }
 
 func validateFleetRenewalNonceCoverage(roles *RoleSecrets, exposure fleetRenewalExposure, checkpoints []FleetRenewalNonce) error {
@@ -295,7 +357,7 @@ func (e *Executor) verifyFleetRenewalLiveBudget(ctx context.Context, renewal Fle
 	if err != nil {
 		return err
 	}
-	if exposure.Liability != renewal.CampaignLiabilityWei {
+	if exposure.Liability != renewal.CampaignLiabilityWei || exposure.SupersededCredit != renewal.SupersededGasCoveredWei {
 		return errors.New("renewal resume found additional signed campaign liabilities; a new reviewed plan is required")
 	}
 	manager := e.oracle

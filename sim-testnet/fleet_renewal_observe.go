@@ -315,6 +315,7 @@ func observeFleetRenewal(ctx context.Context, cfg *ResolvedConfig, stateDir stri
 	result.Renewal = FleetRenewal{Round: uint64(len(base.FleetRenewals) + 1), SourcePlanHash: base.PlanHash, JournalHash: entries[len(entries)-1].EntryHash, NativeHead: ChainHead{Number: nativeNumber, Hash: nativeHash.Hex()}, EVMHead: head, ObservedEpoch: oracle.CurrentEpoch, ValidFromEpoch: o.RenewalValidFrom, ValidToEpoch: o.RenewalValidTo, MaximumFeePerGasWei: o.RenewalFeePerGas, Oracle: oracle.Active, Keeper: common.HexToAddress(keeperRole.Address), CampaignLiabilityWei: exposure.Liability, TransactionEvidence: external}
 	result.Renewal.EVMNonces, err = observeFleetRenewalNonces(ctx, manager, roles, head.Number)
 	result.Renewal.BatchSize = fleetRenewalBatchSize
+	result.Renewal.SupersededGasCoveredWei = exposure.SupersededCredit
 	result.Renewal.MaximumInFlight = fleetRenewalMaximumInFlight
 	if err != nil {
 		return result, err
