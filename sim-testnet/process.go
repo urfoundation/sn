@@ -1972,6 +1972,7 @@ type supervisedProcessIdentity struct {
 	ProcessGroupID  int
 	StartTimeTicks  uint64
 	Executable      string
+	ExecutableFile  supervisedExecutableFileIdentity
 	CommandLineHash string
 }
 
@@ -1979,8 +1980,9 @@ var errEmptySupervisedProcessCommandLine = errors.New("empty process command lin
 
 // Captures lightweight immutable kernel identity for frequent shutdown polls.
 // Hashing the full executable here would multiply large binary reads across
-// every process and poll; the proc executable link and argv hash distinguish
-// the recorded process while start ticks protect against PID reuse.
+// every process and poll. The mapped file identity and argv hash distinguish
+// the recorded image while start ticks protect against PID reuse. The link's
+// display path can change when that same image is renamed or unlinked.
 func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error) {
 	startTimeTicks, err := processStartTimeTicks(pid)
 	if err != nil {
@@ -1994,6 +1996,10 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 	if err != nil {
 		return supervisedProcessIdentity{}, err
 	}
+	executableFile, err := readSupervisedProcessExecutableFile(pid)
+	if err != nil {
+		return supervisedProcessIdentity{}, err
+	}
 	commandLine, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
 		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d command line is empty", pid)
@@ -2002,14 +2008,25 @@ func observeSupervisedProcessIdentity(pid int) (supervisedProcessIdentity, error
 		return supervisedProcessIdentity{}, fmt.Errorf("process %d command line is empty: %w", pid, errEmptySupervisedProcessCommandLine)
 	}
 	commandLineHash := sha256.Sum256(commandLine)
+	observedFile, fileErr := readSupervisedProcessExecutableFile(pid)
+	observedGroup, groupErr := syscall.Getpgid(pid)
 	observedStart, err := processStartTimeTicks(pid)
-	if err != nil || observedStart != startTimeTicks {
-		return supervisedProcessIdentity{}, stateMismatchError(err, "process %d changed during identity observation", pid)
+	if err != nil || fileErr != nil || groupErr != nil || observedStart != startTimeTicks || observedGroup != processGroupID || observedFile != executableFile {
+		return supervisedProcessIdentity{}, stateMismatchError(errors.Join(err, fileErr, groupErr), "process %d changed during identity observation", pid)
 	}
 	return supervisedProcessIdentity{
 		PID: pid, ProcessGroupID: processGroupID, StartTimeTicks: startTimeTicks,
-		Executable: executable, CommandLineHash: hex.EncodeToString(commandLineHash[:]),
+		Executable: executable, ExecutableFile: executableFile, CommandLineHash: hex.EncodeToString(commandLineHash[:]),
 	}, nil
+}
+
+// Executable is diagnostic text; Linux appends " (deleted)" after unlink or
+// atomic replacement without changing the process's mapped image. Only the
+// kernel file identity can authorize signalling that original image.
+func sameSupervisedProcessIdentity(recorded, observed supervisedProcessIdentity) bool {
+	return recorded.PID > 1 && recorded.ProcessGroupID > 1 && recorded.StartTimeTicks != 0 && recorded.ExecutableFile.Inode != 0 && recorded.CommandLineHash != "" &&
+		recorded.PID == observed.PID && recorded.ProcessGroupID == observed.ProcessGroupID && recorded.StartTimeTicks == observed.StartTimeTicks &&
+		recorded.ExecutableFile == observed.ExecutableFile && recorded.CommandLineHash == observed.CommandLineHash
 }
 
 // Startup alone may briefly retry an empty argv observation. Every retry is
@@ -2073,7 +2090,7 @@ func signalSupervisedCommandWithObserver(
 		return false
 	}
 	observed, err := observe(command.cmd.Process.Pid)
-	if err == nil && command.identity == observed && command.identity.ProcessGroupID == command.identity.PID {
+	if err == nil && command.identity.PID == command.cmd.Process.Pid && sameSupervisedProcessIdentity(command.identity, observed) && command.identity.ProcessGroupID == command.identity.PID {
 		return signalProcessGroup(-command.identity.ProcessGroupID, signal) == nil
 	}
 	return false
@@ -2091,7 +2108,7 @@ func supervisedCommandAliveWithObserver(command supervisedCommand, observe func(
 		return false
 	}
 	observed, err := observe(command.cmd.Process.Pid)
-	if err == nil && command.identity == observed {
+	if err == nil && command.identity.PID == command.cmd.Process.Pid && sameSupervisedProcessIdentity(command.identity, observed) {
 		return true
 	}
 	return false

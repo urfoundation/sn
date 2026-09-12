@@ -106,8 +106,16 @@ func TestConnectSupervisorInspection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("supervisor cannot identify restored child: %v", err)
 	}
-	if identity.Executable != executable || identity.ProcessGroupID != command.Process.Pid || identity.StartTimeTicks == 0 || identity.CommandLineHash == "" {
+	if identity.Executable != executable || identity.ExecutableFile.Inode == 0 || identity.ProcessGroupID != command.Process.Pid || identity.StartTimeTicks == 0 || identity.CommandLineHash == "" {
 		t.Fatalf("wrong child identity: %+v", identity)
+	}
+	image, err := os.Stat(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, ok := image.Sys().(*syscall.Stat_t)
+	if !ok || identity.ExecutableFile != (supervisedExecutableFileIdentity{Device: uint64(stat.Dev), Inode: stat.Ino}) {
+		t.Fatalf("wrong mapped executable identity: %+v stat=%+v", identity.ExecutableFile, image.Sys())
 	}
 	if _, err := fmt.Fprintln(input, "exit"); err != nil {
 		t.Fatal(err)

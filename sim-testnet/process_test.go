@@ -1127,6 +1127,7 @@ func TestSupervisorShutdownRejectsMismatchedLiveIdentity(t *testing.T) {
 	identity := supervisedProcessIdentity{
 		PID: 31337, ProcessGroupID: 31337, StartTimeTicks: 100,
 		Executable: "/test/process", CommandLineHash: "original",
+		ExecutableFile: supervisedExecutableFileIdentity{Device: 7, Inode: 11},
 	}
 	command := supervisedCommand{
 		spec:     ProcessSpec{ID: "reused-generation", Role: "validator"},
@@ -1161,6 +1162,7 @@ func TestSupervisorShutdownRejectsUnobservableLiveIdentity(t *testing.T) {
 	identity := supervisedProcessIdentity{
 		PID: 31337, ProcessGroupID: 31337, StartTimeTicks: 100,
 		Executable: "/test/process", CommandLineHash: "original",
+		ExecutableFile: supervisedExecutableFileIdentity{Device: 7, Inode: 11},
 	}
 	command := supervisedCommand{
 		cmd: &exec.Cmd{Process: &os.Process{Pid: identity.PID}}, identity: identity,
