@@ -15,6 +15,7 @@ import (
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/urfoundation/sn/crv4"
 	validatorpkg "github.com/urfoundation/sn/validator"
@@ -57,6 +58,9 @@ func (self *PublicFinalSemanticChainReader) ValidatorSourcesV2(ctx context.Conte
 	native := &crv4.Chain{API: &gsrpc.SubstrateAPI{Client: self.native.Client}, GenesisHash: genesis}
 	observations, err = archive.ObserveSourcesWithNativeReadsV2(ctx, chain, native, recorder.retainNative)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := archive.AuthenticatePublicationsV2(ctx, chain, evidence.Window.FirstEpoch, evidence.Window.EpochCount, evidence.EVMTerminalHead.Number, common.HexToHash(evidence.EVMTerminalHead.Hash)); err != nil {
 		return nil, nil, err
 	}
 	exchanges, err = recorder.finish()
