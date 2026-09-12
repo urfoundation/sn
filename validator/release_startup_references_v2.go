@@ -219,7 +219,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 			}
 			if priorArtifact.Schema == ReleaseMeasurementSchemaV2 && artifact.Schema != ReleaseMeasurementSchemaV2 ||
 				artifact.SettlementEpoch < priorArtifact.SettlementEpoch ||
-				!allowGap && priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 ||
+				!allowGap && !consecutiveNativeSettlementGapV2(priorArtifact, artifact) && priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 ||
 				!releaseBlockAtOrBefore(priorArtifact.NativeSnapshotBlock, priorArtifact.NativeSnapshotHash, artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash) ||
 				!releaseBlockAtOrBefore(priorArtifact.EVMSnapshotBlock, priorArtifact.EVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
 				return nil, errors.New("startup signed artifact lineage regresses or skips a boundary")

@@ -29,7 +29,7 @@ func validateSteeringIntentSuccessorWithGapsV2(previous, current *SteeringIntent
 // signed envelope, independent immutable input journal, scores and native source.
 // This private join returns no public verified token or final-acceptance claim.
 func (self *IntentStore) verifyMeasurementLineageV2(ctx context.Context, previousEncoded []byte, previousOptions ReleaseMeasurementV2Options, current *ReleaseMeasurementArtifact, currentOptions ReleaseMeasurementV2Options) error {
-	if self.v2.provisionalEpochGaps || self.v2.historyAdoption != nil {
+	if self.v2.provisionalEpochGaps || self.v2.historyAdoption != nil || self.v2.runtime != nil && self.v2.runtime.history != nil {
 		previous, err := decodeReleaseMeasurementV2Bytes(ctx, previousEncoded, previousOptions.MaxArtifactBytes, previousOptions.MaxOperators)
 		if err != nil {
 			return err
@@ -37,6 +37,12 @@ func (self *IntentStore) verifyMeasurementLineageV2(ctx context.Context, previou
 		if current != nil && (current.SubnetEpoch > previous.SubnetEpoch && current.SubnetEpoch-previous.SubnetEpoch > 1 || current.SettlementEpoch > previous.SettlementEpoch && current.SettlementEpoch-previous.SettlementEpoch > 1) {
 			if self.v2.provisionalEpochGaps {
 				return self.v2.runtime.verifyProvisionalMeasurementGapV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions)
+			}
+			if consecutiveNativeSettlementGapV2(previous, current) && self.v2.runtime.history != nil && !self.v2.runtime.history.retainedStartup && !provisionalClosedNativeInputEnabled(&self.v2.runtime.cfg) {
+				// Native and settlement clocks are independent. A real native
+				// successor may span two settlement windows; authenticate all
+				// intervening terminals without permitting a missed native epoch.
+				return self.v2.runtime.verifyMeasurementGapHistoryV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions, false)
 			}
 			if !self.v2.historyAdoption.allowsArtifactEdge(ReleaseMeasurementContentHash(previousEncoded), previous, current) || self.v2.runtime.history == nil || self.v2.runtime.history.retainedStartup || self.v2.runtime.history.historyAdoption != self.v2.historyAdoption {
 				return errors.New("strict measurement gap differs from its authenticated adoption edge")
@@ -46,6 +52,10 @@ func (self *IntentStore) verifyMeasurementLineageV2(ctx context.Context, previou
 	}
 	_, err := VerifyReleaseMeasurementLineageV2(ctx, previousEncoded, previousOptions, current, currentOptions)
 	return err
+}
+
+func consecutiveNativeSettlementGapV2(previous, current *ReleaseMeasurementArtifact) bool {
+	return previous != nil && current != nil && previous.Schema == ReleaseMeasurementSchemaV2 && current.Schema == ReleaseMeasurementSchemaV2 && previous.SubnetEpoch != ^uint64(0) && current.SubnetEpoch == previous.SubnetEpoch+1 && current.SettlementEpoch > previous.SettlementEpoch && current.SettlementEpoch-previous.SettlementEpoch > 1
 }
 
 // Reuse the real startup/live terminal census instead of inventing intervening
