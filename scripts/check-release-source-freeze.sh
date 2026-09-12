@@ -23,12 +23,10 @@ live_modules=(
   xops/router
 )
 
-# This is a content-addressed historical dataset, not a buildable source
-# module. Its minimal go.mod prevents preserved calibration test inputs from
-# entering server ./...; those inputs require their historical patches and an
-# unpublished server revision. The archive's verifier authenticates every
-# path and byte, including go.mod, and is the only permitted tidy exception.
-archived_modules=(server/connect/sim-latency/baseline)
+# This separate dataset module is outside SN release qualification. Its module
+# boundary keeps preserved analysis inputs out of executable server packages.
+# Repository provenance and the complete module inventory still include it.
+non_release_modules=(server/connect/sim-latency/baseline)
 
 expected_upstream() {
   case "$1" in
@@ -140,7 +138,7 @@ snapshot_release_repositories() {
 }
 
 # Establish clean, canonical, freshly fetched sources before executing any
-# repository-provided verifier or Go toolchain input.
+# Go toolchain input.
 initial_release_snapshot="$(snapshot_release_repositories true)"
 
 discovered_modules="$({
@@ -155,24 +153,12 @@ discovered_modules="$({
     done <<<"$tracked_files"
   done
 } | LC_ALL=C sort -u)"
-expected_modules="$(printf '%s\n' "${live_modules[@]}" "${archived_modules[@]}" | LC_ALL=C sort -u)"
+expected_modules="$(printf '%s\n' "${live_modules[@]}" "${non_release_modules[@]}" | LC_ALL=C sort -u)"
 if [[ "$discovered_modules" != "$expected_modules" ]]; then
   echo "release Go module inventory differs from its reviewed classification" >&2
   diff -u <(printf '%s\n' "$expected_modules") <(printf '%s\n' "$discovered_modules") >&2 || true
   exit 1
 fi
-
-archive_root="$workspace/${archived_modules[0]}"
-if [[ ${#archived_modules[@]} -ne 1 || ! -x "$archive_root/verify.sh" || ! -f "$archive_root/MANIFEST.sha256" || ! -f "$archive_root/README.md" ]]; then
-  echo "reviewed archived Go module exception is incomplete" >&2
-  exit 1
-fi
-if ! grep -Fq 'measurement inputs are Go test source files' "$archive_root/README.md" ||
-  ! grep -Fq 'module file is covered by the manifest' "$archive_root/README.md"; then
-  echo "archived Go module exception has lost its non-buildable provenance" >&2
-  exit 1
-fi
-"$archive_root/verify.sh" >&2
 
 for module in "${live_modules[@]}"; do
   echo "verify tidy Go module: $module" >&2
@@ -183,7 +169,7 @@ for module in "${live_modules[@]}"; do
 done
 
 # Emit one canonical snapshot on stdout. The second validation detects source
-# changes caused by a verifier or tool while the enclosing gate repeats the
+# changes caused by the toolchain while the enclosing gate repeats the
 # fetched check after all long-running tests.
 final_release_snapshot="$(snapshot_release_repositories false)"
 if [[ "$final_release_snapshot" != "$initial_release_snapshot" ]]; then

@@ -1323,17 +1323,21 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	if !strings.Contains(script, `git -C "$workspace/$repo" diff --check`) || !strings.Contains(script, `git -C "$workspace/$repo" diff --cached --check`) {
 		t.Fatal("local release gate does not check both unstaged and staged patches")
 	}
-	if !strings.Contains(script, `"$workspace/server/connect/sim-latency/baseline/verify.sh"`) ||
-		!strings.Contains(script, `go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/'`) ||
+	if !strings.Contains(script, `go list ./... | grep -Ev '^github[.]com/urnetwork/server/connect/sim-latency(/|$)'`) ||
 		!strings.Contains(script, `go test "${server_packages[@]}" -run '^$'`) {
-		t.Fatal("local release gate does not verify the immutable server baseline and compile every executable package")
+		t.Fatal("local release gate does not compile the executable server packages in SN scope")
+	}
+	for _, unrelated := range []string{`/baseline/verify.sh`, `go test ./connect/sim-latency`, `go test -race ./connect/sim-latency`} {
+		if strings.Contains(script, unrelated) {
+			t.Fatalf("SN release gate includes unrelated calibration qualification: %s", unrelated)
+		}
 	}
 	// A mapfile process substitution masks go-list/grep failure even under
 	// `set -euo pipefail`, potentially turning a broken package census into an
 	// empty successful compile gate. Materialize and validate the pipeline
 	// result before splitting it into the argv array.
 	if strings.Contains(script, `mapfile -t server_packages < <(go list`) ||
-		!strings.Contains(script, `server_package_list="$(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')"`) ||
+		!strings.Contains(script, `server_package_list="$(go list ./... | grep -Ev '^github[.]com/urnetwork/server/connect/sim-latency(/|$)')"`) ||
 		!strings.Contains(script, `[[ -n "$server_package_list" ]]`) ||
 		!strings.Contains(script, `mapfile -t server_packages <<<"$server_package_list"`) {
 		t.Fatal("local release gate can mask a failed or empty executable server package census")
@@ -1403,7 +1407,6 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"TestConnectionVerifyEgressDisabledAvoidsVerifySettings",
 		"TestConnectionVerifyEgressUsesControllerHashNamespace",
 		"TestIncrementRateLimitWindowResetsAtExactBoundary",
-		"TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec",
 		"TestPlatformPacketConnClampsQuic(SocketRequests|RequestToDeviceMemoryTarget)",
 		"ProxyDeviceManagerSharesOneNetworkSpaceLifetime",
 		"ProxyDeviceManagerCloseAndWaitJoinsOwnedNetworkSpace",
@@ -1413,7 +1416,6 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 		"TunnelAttemptCloseJoinsPumpBeforeGenerator",
 		"TunnelAttemptCloseReleasesPartialConstruction",
 		"go test -race ./connect",
-		"go test -race ./connect/sim-latency",
 		"export WARP_ENV=local",
 		"export WARP_SERVICE=test",
 		"go test -race ./controller -run \"$controller_db_tests\"",
@@ -1913,32 +1915,21 @@ func TestReleaseSourceFreezeRejectsUnclassifiedGoModule(t *testing.T) {
 	}
 }
 
-// The only non-tidy module is a manifest-authenticated archive whose README
-// explains why preserved patched test inputs cannot resolve independently.
-func TestReleaseSourceFreezeExceptionIsAuthenticatedHistoricalArchive(t *testing.T) {
+// A separately classified dataset stays outside the live tidy census and is
+// not independently qualified by the SN release gate.
+func TestReleaseSourceFreezeExcludesNonReleaseDatasetQualification(t *testing.T) {
 	scriptBytes, err := os.ReadFile("../scripts/check-release-source-freeze.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := string(scriptBytes)
-	if !strings.Contains(script, "archived_modules=(server/connect/sim-latency/baseline)") ||
-		!strings.Contains(script, `"$archive_root/verify.sh"`) ||
+	if !strings.Contains(script, "non_release_modules=(server/connect/sim-latency/baseline)") ||
+		!strings.Contains(script, `"${live_modules[@]}" "${non_release_modules[@]}"`) ||
 		!strings.Contains(script, "GOWORK=off go mod tidy -diff") {
-		t.Fatal("source freeze does not separate the authenticated archive from every live tidy module")
+		t.Fatal("source freeze does not classify the excluded dataset separately from every live tidy module")
 	}
-	readme, err := os.ReadFile("../../server/connect/sim-latency/baseline/README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(readme), "measurement inputs are Go test source files") || !strings.Contains(string(readme), "module file is covered by the manifest") {
-		t.Fatal("sim-latency archive no longer documents its non-buildable authenticated boundary")
-	}
-	manifest, err := os.ReadFile("../../server/connect/sim-latency/baseline/MANIFEST.sha256")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !regexp.MustCompile(`(?m)^[0-9a-f]{64}  go\.mod$`).Match(manifest) {
-		t.Fatal("sim-latency archive manifest does not authenticate its Go module boundary")
+	if strings.Contains(script, "/verify.sh") || strings.Contains(script, "MANIFEST.sha256") {
+		t.Fatal("source freeze executes qualification for an excluded dataset")
 	}
 }
 

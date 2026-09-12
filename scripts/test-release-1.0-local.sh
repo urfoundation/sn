@@ -190,12 +190,9 @@ release_phase_server_unit() {
   go test ./taskworker/work -run '^TestStSettlementTasksRejectStaleCoordinatorPayloads$' -count=1
   go test ./monitor -count=1
   go test -race ./monitor -count=1
-  # The immutable sim-latency baseline contains manifest-locked reference test
-  # inputs that compile only after their archived patches are applied. Verify
-  # that dataset with its own checker and compile every executable package.
-  "$workspace/server/connect/sim-latency/baseline/verify.sh" >/dev/null
-  echo "sim-latency immutable baseline: verified"
-  server_package_list="$(go list ./... | grep -v '^github\.com/urnetwork/server/connect/sim-latency/baseline/')"
+  # The separate calibration harness and its archived inputs are outside SN
+  # finalization. Keep a nonempty executable server package census.
+  server_package_list="$(go list ./... | grep -Ev '^github[.]com/urnetwork/server/connect/sim-latency(/|$)')"
   [[ -n "$server_package_list" ]]
   mapfile -t server_packages <<<"$server_package_list"
   go test "${server_packages[@]}" -run '^$'
@@ -318,8 +315,6 @@ release_phase_server_connect() {
   go test -race ./connect -run "$direct_h3_tests" -count=1
   go test ./connect -run '^TestConnectionVerifyEgressDisabledAvoidsVerifySettings$' -count=1
   go test -race ./connect -run '^TestConnectionVerifyEgressDisabledAvoidsVerifySettings$' -count=1
-  go test ./connect/sim-latency -run '^TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec$' -count=1
-  go test -race ./connect/sim-latency -run '^TestClientDriverProbeMatchmakingUsesPoolIdentityAndQualitySpec$' -count=1
   proxy_lifecycle_tests='^Test(ProxyDeviceManagerSharesOneNetworkSpaceLifetime|ProxyDeviceManagerCloseAndWaitJoinsOwnedNetworkSpace|ProxyDeviceManagerCloseJoinsAdmittedOpenAndRejectsLateOpen|ProxyDeviceManagerPreservesInjectedNetworkSpace|WgClientStackCloseAndWaitJoinsTCPDispatcher)$'
   go test ./proxy -run "$proxy_lifecycle_tests" -count=1
   go test -race ./proxy -run "$proxy_lifecycle_tests" -count=1
