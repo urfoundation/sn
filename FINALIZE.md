@@ -1,6 +1,23 @@
 # UR Subnet release 1.0 finalization plan
 
-## Execution override — 2026-09-11 07:48 UTC
+## Current execution — full finalization, 2026-09-12
+
+The user has requested full finalization, including correction of previously
+ignored test failures and flakiness and the issues exposed by the shortened
+testnet run. The shortened-run waivers below no longer establish completion.
+Run the complete producer and aggregate gates on the final source, complete
+the required live campaign and production soak, and retain their actual
+acceptance, replay, accounting and shutdown evidence. Reuse completed work
+within its verified source and evidence scope; preserve every failed attempt.
+
+Terra (`gpt-5.6-terra`, reasoning effort `max`) executes tests and reruns.
+Astra (`gpt-6-astra`, reasoning effort `max`) diagnoses and fixes failures
+and flakiness. The [harness execution policy](sim-testnet/README.md#agent-execution-policy)
+defines the handoff. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md) tracks current
+work. Existing custody, approved spending limits and the unlimited owned LAN
+RPC at `192.168.1.162:9944` remain in force. Full acceptance is not yet achieved.
+
+## Historical shortened-run override — 2026-09-11 07:48 UTC
 
 The user has directed us to stop preparation tests and run the actual testnet
 simulation, fixing issues from that run. [FINALIZE-ACTIVE.md](FINALIZE-ACTIVE.md)

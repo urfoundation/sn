@@ -1,7 +1,30 @@
 # Testnet execution plan
 
-Updated 2026-09-11 17:33 UTC. This is the active plan and supersedes conflicting
-preparation requirements in FINALIZE.md, FINALIZE-COMPLETE.md and older handoffs.
+Updated 2026-09-12. The user has requested full finalization and fixes for
+previously ignored failures, flakiness and issues exposed by the shortened run.
+The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
+The earlier shortened-run instructions below are retained as historical scope
+for those attempts, whose `final_acceptance=false` results remain unchanged.
+
+Current work:
+
+1. Compose the retained campaign fixes and current source in one isolated
+   candidate. Preserve the existing deployment, wallets, approvals and journals.
+2. Use Terra (`gpt-5.6-terra`, reasoning effort `max`) for all tests and gate
+   execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
+   fix failures and flakiness, then return corrected source to Terra for reruns.
+3. Correct the actual validator, native-receipt and scenario-anomaly failures.
+   Complete both full gates on the final candidate with private test services;
+   keep their original failed and interrupted results visible.
+4. Complete the required real release campaign and production soak, then
+   reconcile on-chain outcomes, public replay, the final report and shutdown.
+   Reuse valid completed evidence; unrun, failed and waived checks are not passes.
+
+Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
+180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
+`192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
+
+## Historical shortened execution — 2026-09-11 17:33 UTC
 
 The user directed us to stop preparation tests, run the actual simulation on the
 real testnet, and fix issues found by that run. The former producer and aggregate

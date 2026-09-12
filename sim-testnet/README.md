@@ -23,12 +23,15 @@ in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and
 ACK/join controls; language migration must not weaken lifecycle guarantees.
 
-Release qualification assigns test and gate execution to `gpt-5.6-terra` with
-reasoning effort `max`. If a test or gate fails, retain its exact output and
-assign root-cause diagnosis, adjacent-path review, implementation, and the
-deterministic regression to `gpt-6-astra` with reasoning effort `max`. Terra
-then reruns the affected test matrix. Run the two complete gate workloads
-concurrently with independent fixes, using immutable source and private mutable
+Release qualification assigns all test and gate execution to Terra
+(`gpt-5.6-terra`) with reasoning effort `max`, including preflight tests,
+normal and race suites, confirmation runs, and reruns. If a test or gate fails
+or shows suspected flakiness, retain its exact output and assign root-cause
+diagnosis, adjacent-path review, implementation, and the deterministic
+regression to Astra (`gpt-6-astra`) with reasoning effort `max`. Test execution
+stays with Terra while Astra owns debugging and fixes; preserve these roles
+across agent handoffs. Terra then reruns the affected test matrix. Run the two
+complete gate workloads concurrently with independent fixes, using immutable source and private mutable
 resources for each admitted job. A failed release preflight is retained as a
 refusal, not counted as executed tests or a release-qualified pass.
 
