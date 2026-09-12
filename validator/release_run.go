@@ -115,6 +115,17 @@ func transientReleaseSnapshotError(err error) bool {
 		}
 	}
 	message := strings.ToLower(err.Error())
+	// Immutable publication uses a deliberately narrow error type at the
+	// stream boundary. Preserve its exact-body and ETag failures as hard
+	// errors, while allowing a bounded startup retry for transient 5xx
+	// responses from either configured origin.
+	const uploadStatusMarker = "attempt upload response status is "
+	if index := strings.Index(message, uploadStatusMarker); index >= 0 {
+		var status int
+		if _, scanErr := fmt.Sscanf(message[index+len(uploadStatusMarker):], "%d", &status); scanErr == nil && status >= 500 && status <= 599 {
+			return true
+		}
+	}
 	for _, marker := range []string{
 		"connection refused", "connection reset", "broken pipe", "unexpected eof",
 		"upstream overloaded", "temporarily unavailable",
@@ -124,6 +135,54 @@ func transientReleaseSnapshotError(err error) bool {
 		}
 	}
 	return false
+}
+
+// Retries only the initial terminal publication. A failed stream leaves its
+// exact durable closure in releaseRuntimeV2, so the next advance can resume
+// the same publication without refolding measurements or changing signed
+// inputs. Each retry uses a newly finalized snapshot and remains bounded by
+// the same startup retry budget as the initial chain read.
+func advanceInitialReleaseWithRetry(ctx context.Context, initial *ReleaseSnapshot, load releaseSnapshotLoader, advance func(context.Context, *ReleaseSnapshot) error, wait releaseSnapshotRetryWait) error {
+	if ctx == nil || initial == nil || load == nil || advance == nil || wait == nil {
+		return errors.New("initial release publication retry dependencies are incomplete")
+	}
+	snapshot := initial
+	var lastErr error
+	for attempt := 1; attempt <= releaseSnapshotStartupAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := advance(ctx, snapshot); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if !transientReleaseSnapshotError(err) {
+				return err
+			}
+		}
+		if attempt == releaseSnapshotStartupAttempts {
+			break
+		}
+		if err := wait(ctx, releaseSnapshotStartupRetryDelay); err != nil {
+			return err
+		}
+		fresh, err := load(ctx)
+		if err != nil {
+			lastErr = err
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if !transientReleaseSnapshotError(err) {
+				return err
+			}
+			continue
+		}
+		snapshot = fresh
+	}
+	return fmt.Errorf("initial release publication failed after %d transient attempts: %w", releaseSnapshotStartupAttempts, lastErr)
 }
 
 // Waits between bounded startup attempts while remaining interruptible.
@@ -615,7 +674,7 @@ func runReleaseWithActivationSetup(ctx context.Context, configPath string, retai
 	if err != nil {
 		return fmt.Errorf("release V2 native startup: %w", err)
 	}
-	if err := runtimeV2.advance(ctx, snapshot); err != nil {
+	if err := advanceInitialReleaseWithRetry(ctx, snapshot, chain.ReleaseSnapshotContext, runtimeV2.advance, waitReleaseSnapshotRetry); err != nil {
 		return fmt.Errorf("release V2 initial terminal publication: %w", err)
 	}
 	workersOwnResources = true

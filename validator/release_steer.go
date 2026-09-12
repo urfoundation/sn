@@ -1043,6 +1043,12 @@ func runReleaseSteeringLoopWithWaitAndDeferral(ctx context.Context, epoch func()
 					// Admitted trails drain under their existing contexts. Waiting
 					// neither spends nor resets the real native-failure budget;
 					// the next scheduler read still enforces exact epoch continuity.
+				} else if releaseOnlyErrors(err, errAttemptCutSnapshotStale) {
+					weightRejected = false
+					// A cut keeps its reservation while the next submission reads
+					// a fresh canonical snapshot. Earlier signed operator inputs
+					// remain immutable and are reused by that same-epoch retry.
+					fmt.Printf("release steer: %v; retrying on next poll\n", err)
 				} else {
 					weightRejected = false
 					failures++

@@ -24,10 +24,61 @@ func TestTransientReleaseSnapshotErrorSeparatesCapacityFromContractFailure(t *te
 			t.Errorf("transient error was classified permanent: %v", err)
 		}
 	}
+	if !transientReleaseSnapshotError(errors.New(`attempt upload response status is 502: "upstream timeout"`)) {
+		t.Fatal("transient immutable upload 502 was classified permanent")
+	}
 	for _, err := range []error{context.Canceled, errors.New("execution reverted: InvalidPolicy"), errors.New("abi: cannot unmarshal tuple")} {
 		if transientReleaseSnapshotError(err) {
 			t.Errorf("permanent error was classified transient: %v", err)
 		}
+	}
+}
+
+func TestInitialReleasePublicationRetriesTransientUploadWithoutRefolding(t *testing.T) {
+	initial := &ReleaseSnapshot{}
+	fresh := &ReleaseSnapshot{}
+	advances := 0
+	loads := 0
+	waits := 0
+	gotSnapshots := make([]*ReleaseSnapshot, 0, 3)
+	err := advanceInitialReleaseWithRetry(context.Background(), initial, func(context.Context) (*ReleaseSnapshot, error) {
+		loads++
+		return fresh, nil
+	}, func(_ context.Context, snapshot *ReleaseSnapshot) error {
+		advances++
+		gotSnapshots = append(gotSnapshots, snapshot)
+		if advances < 3 {
+			return errors.New("attempt upload response status is 502: upstream timeout")
+		}
+		return nil
+	}, func(_ context.Context, delay time.Duration) error {
+		waits++
+		if delay != releaseSnapshotStartupRetryDelay {
+			t.Fatalf("retry delay=%s, want=%s", delay, releaseSnapshotStartupRetryDelay)
+		}
+		return nil
+	})
+	if err != nil || advances != 3 || loads != 2 || waits != 2 || gotSnapshots[0] != initial || gotSnapshots[1] != fresh || gotSnapshots[2] != fresh {
+		t.Fatalf("error=%v advances=%d loads=%d waits=%d snapshots=%p", err, advances, loads, waits, gotSnapshots)
+	}
+}
+
+func TestInitialReleasePublicationFailsPermanentUploadIntegrityError(t *testing.T) {
+	advances := 0
+	waits := 0
+	want := errors.New("attempt upload response status is 409: immutable object differs")
+	err := advanceInitialReleaseWithRetry(context.Background(), &ReleaseSnapshot{}, func(context.Context) (*ReleaseSnapshot, error) {
+		t.Fatal("permanent publication error loaded a replacement snapshot")
+		return nil, nil
+	}, func(context.Context, *ReleaseSnapshot) error {
+		advances++
+		return want
+	}, func(context.Context, time.Duration) error {
+		waits++
+		return nil
+	})
+	if !errors.Is(err, want) || advances != 1 || waits != 0 {
+		t.Fatalf("error=%v advances=%d waits=%d", err, advances, waits)
 	}
 }
 
