@@ -710,6 +710,13 @@ cannot write even when it is given `--apply`.
 
 ## Build and read-only preflight
 
+Isolated release preparation requires physical checkouts for the sibling
+repositories whose source is hashed; dependency symlinks can compile but are
+not valid release-hash roots. Keep their exact reviewed revisions. A fresh
+git-crypt vault clone contains ciphertext until unlocked. Use
+`--vault-repo /home/by/urnetwork/vault` when the existing unlocked checkout is
+the approved vault source, rather than copying secrets into a validation tree.
+
 From the `sn` repository:
 
 ```bash
