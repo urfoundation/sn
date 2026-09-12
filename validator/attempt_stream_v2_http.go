@@ -276,7 +276,7 @@ func (self *attemptStreamV2HTTPBody) Close() error {
 	defer self.cancel(nil)
 	var incomplete error
 	if !self.verified {
-		incomplete = errors.New("attempt stream HTTP body closed before complete authenticated EOF")
+		incomplete = &attemptStreamHTTPIncompleteError{cause: errors.Join(self.fault, context.Cause(self.ctx))}
 	}
 	self.closeErr = errors.Join(self.fault, incomplete, self.body.Close(), context.Cause(self.ctx))
 	return self.closeErr

@@ -96,22 +96,49 @@ func loadClientSeed(path string) ([]byte, error) {
 // Restricts startup retries to transport, provider-capacity, and timeout
 // failures. ABI, policy, and contract errors remain immediate hard failures.
 func transientReleaseSnapshotError(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) {
-		return false
+	retryable, transient := classifyReleaseSnapshotRetry(err, false)
+	return retryable && transient
+}
+
+// A joined timeout must not hide an integrity failure, and the replica owner's
+// sibling cancellation must not hide the timeout that caused it. Every branch
+// is checked; cancellation alone never authorizes a retry.
+func classifyReleaseSnapshotRetry(err error, siblingCancellation bool) (bool, bool) {
+	if err == nil {
+		return true, false
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return true
+	if _, fatal := err.(*TrailFatalError); fatal {
+		return false, false
+	}
+	if err == context.Canceled {
+		return siblingCancellation, false
+	}
+	if err == context.DeadlineExceeded || err == io.EOF || err == io.ErrUnexpectedEOF {
+		return true, true
+	}
+	if publication, ok := err.(*attemptReplicaPublicationError); ok {
+		return classifyReleaseSnapshotRetryCauses(publication.causes, true)
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		return classifyReleaseSnapshotRetryCauses(joined.Unwrap(), siblingCancellation)
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		cause := wrapped.Unwrap()
+		if cause == nil {
+			return false, false
+		}
+		return classifyReleaseSnapshotRetry(cause, siblingCancellation)
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
-		return true
+		return true, true
 	}
 	var httpErr gethrpc.HTTPError
 	if errors.As(err, &httpErr) {
 		switch httpErr.StatusCode {
 		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests,
 			http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-			return true
+			return true, true
 		}
 	}
 	message := strings.ToLower(err.Error())
@@ -123,7 +150,7 @@ func transientReleaseSnapshotError(err error) bool {
 	if index := strings.Index(message, uploadStatusMarker); index >= 0 {
 		var status int
 		if _, scanErr := fmt.Sscanf(message[index+len(uploadStatusMarker):], "%d", &status); scanErr == nil && status >= 500 && status <= 599 {
-			return true
+			return true, true
 		}
 	}
 	for _, marker := range []string{
@@ -131,10 +158,25 @@ func transientReleaseSnapshotError(err error) bool {
 		"upstream overloaded", "temporarily unavailable",
 	} {
 		if strings.Contains(message, marker) {
-			return true
+			return true, true
 		}
 	}
-	return false
+	return false, false
+}
+
+func classifyReleaseSnapshotRetryCauses(causes []error, siblingCancellation bool) (bool, bool) {
+	if len(causes) == 0 {
+		return false, false
+	}
+	transient := false
+	for _, cause := range causes {
+		retryable, actualTransient := classifyReleaseSnapshotRetry(cause, siblingCancellation)
+		if !retryable {
+			return false, false
+		}
+		transient = transient || actualTransient
+	}
+	return true, transient
 }
 
 // Retries only the initial terminal publication. A failed stream leaves its

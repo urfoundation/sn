@@ -223,7 +223,10 @@ func (self *attemptCutV2Replicas) writer(kind string) AttemptStreamV2ObjectWrite
 			}(index, write, data)
 		}
 		workers.Wait()
-		return errors.Join(results[0], results[1], ctx.Err())
+		if results[0] != nil || results[1] != nil {
+			return errors.Join(&attemptReplicaPublicationError{causes: results[:]}, ctx.Err())
+		}
+		return ctx.Err()
 	}
 }
 
