@@ -111,11 +111,11 @@ func TestReleaseGatesPinProviderAndTransportRegressions(t *testing.T) {
 
 const releaseAdversarialSelector = "^Test(Adversarial|Adversary|VerifyAdversary|RPCAdversary|ConsensusWeightComparison|Runtime454)"
 
-const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime455)"
+const releaseRuntimeClientSelector = "^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime455|EVMCheckpoint)"
 
 const releaseSyntheticEVMIdentitySelector = "^Test(WaitFinalized|EVMBlockIdentity|ClaimReceiptIdentity|FinalizedClaimReceipt|UncertainClaimRetryable|SyntheticEVM|EthEVMBlockReader|EVMFinality|FinalizedEVMHead|BoundFinalizedEVMHead|ReceiptRequiresCanonicalHashAndFinalizedHeight|ProducerGatePinsSyntheticEVMIdentityRegressions)"
 
-const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemantic(CampaignArtifactReferences|ReplicatedEnvelope)|FinalSemanticFixture|FinalSemanticOriginalClosure|FinalSemanticArtifactDeploymentAdmission|FinalAttemptFixtureLedgerMatchesDurableProductionWire|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifact|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|FinalCollectorIncludesCompletedSettlementTail|FinalSettlementClosure|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus)"
+const releaseSemanticIntegritySelector = "^Test(FinalNative|FinalPublicNative|FinalSemanticFleetAudit|FinalPublicFleetAudit|FinalSemanticVault|FinalSemanticCycleConviction|FinalSemanticCoordinatorRuntime|FinalSemanticCoordinatorUpgrade|FinalClaimPaymentLedger|FinalSemanticReceiptPayload|PublicFinalSemantic|FinalSemanticPoolOperatorVersion|FinalSemanticEpochDeposit|FinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript|FinalSemanticDishonestDepositReceiptPayload|FinalSemanticEvidenceBuildRenderAndArtifacts|FinalSemanticArtifactVerificationCache|FinalSemantic(CampaignArtifactReferences|ReplicatedEnvelope)|FinalSemanticFixture|FinalSemanticOriginalClosure|FinalSemanticArtifactDeploymentAdmission|FinalAttemptFixtureLedgerMatchesDurableProductionWire|FinalFleetLifecycle|FinalSemanticFleetByUIDAt|FinalPayoutAssignmentsAt|FinalPayoutArtifact|FinalSemanticDeployment|FinalSemanticBuilder|FinalSemanticPoolRegistration|FinalSemantic(Pool|Head|Validator)UIDZero|FinalFleetGeneration|FinalSemanticHistorical|FinalSemanticEvidenceFailsClosed|FinalSemanticPathProofArtifact|FinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery|FinalSemanticDishonestDepositDecisionsAndPublicReplay|FinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas|FinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors|FinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins|PublicScenarioBundle|SemanticMismatchBranches|StateMismatchError|FinalEVMLogQueryRanges|FinalCollectedCoordinatorBaselines|FinalCollectorIncludesCompletedSettlementTail|FinalSettlementClosure|ReleaseHistoryRuntimeArtifacts|ProducerGatePinsCompleteAdversarialRegressions|ProducerGatePinsSyntheticEVMIdentityRegressions|ProducerGatePinsSemanticIntegrityRegressions|ProducerGatePinsExactBlockRuntimeClientRegressions|ReleaseSemanticCensus|FinalFleetRenewal|FinalValidatorAuthorityV2|FinalPublicValidatorSourcesV2)"
 
 // Extracts the exact sorted top-level test declarations selected from source.
 func releaseSelectedTestDeclarations(selector string, sources []string) ([]string, error) {
@@ -322,7 +322,7 @@ func TestProducerGatePinsExactBlockRuntimeClientRegressions(t *testing.T) {
 		}
 	}
 	identitySources := []string{}
-	for _, path := range []string{"../crv4/validator_identity_test.go", "../crv4/validator_identity_replay_test.go"} {
+	for _, path := range []string{"../crv4/validator_identity_test.go", "../crv4/validator_identity_replay_test.go", "../crv4/evm_checkpoint_test.go"} {
 		source, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -1146,6 +1146,11 @@ func TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups(t *testing.T) {
 		{pattern: "final_semantic_public_chronology_test.go", required: "^Test"},
 		{pattern: "final_semantic_historical_capture_test.go", required: "^Test"},
 		{pattern: "final_semantic_fleet_generation*_test.go", required: "^Test"},
+		{pattern: "final_semantic_fleet_renewal_test.go", required: "^Test"},
+		{pattern: "final_semantic_lifecycle_renewal_test.go", required: "^Test"},
+		{pattern: "final_semantic_coverage_v2_test.go", required: "^Test"},
+		{pattern: "final_semantic_authority_v2_test.go", required: "^Test"},
+		{pattern: "final_semantic_public_*v2_test.go", required: "^Test"},
 		{pattern: "final_semantic_native*_test.go", required: "^Test"},
 		{pattern: "final_semantic_registration_test.go", required: "^Test"},
 		{pattern: "final_semantic_source_builder_test.go", required: "^TestFinalSemanticBuilder"},
@@ -2453,7 +2458,7 @@ func TestProducerGateSeparatesCaptureFromProductionAnalysis(t *testing.T) {
 // Alternative order is immaterial, but each reviewed group and every actual
 // selected validator root must survive additions to the producer selector.
 func verifyReleaseProducerSelection(script string, sources []string) error {
-	const required = "Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh"
+	const required = "Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh|ReleaseArchiveV2|ReleaseHistoryAdoptionV2|ReleaseNativeObservationV2"
 	selector, err := releaseConnectPolicySelectorAssignment(script, "producer_tests")
 	if err != nil {
 		return err
@@ -2521,7 +2526,7 @@ func TestReleaseProducerSelectionRejectsRequiredRootOmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	sources := []string{"func TestAttemptOwnedBoundary(t *testing.T) {}\nfunc TestStatsWriteAdjacentBoundary(t *testing.T) {}\n"}
-	for _, omitted := range []string{"|Deposited", "|StatsWrite", "|ReleaseSettlementRefresh"} {
+	for _, omitted := range []string{"|Deposited", "|StatsWrite", "|ReleaseSettlementRefresh", "|ReleaseArchiveV2", "|ReleaseHistoryAdoptionV2", "|ReleaseNativeObservationV2"} {
 		changed := strings.Replace(script, "producer_tests='"+selector+"'", "producer_tests='"+strings.Replace(selector, omitted, "", 1)+"'", 1)
 		if err := verifyReleaseProducerSelection(changed, sources); err == nil {
 			t.Errorf("producer guard admitted omitted %s", omitted)

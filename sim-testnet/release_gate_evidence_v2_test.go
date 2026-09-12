@@ -16,7 +16,7 @@ import (
 // Independent reviewed alternatives retain every preexisting producer family.
 // New adjacent roots are selected by prefix, not by a frozen hand-picked list.
 const releaseEvidenceV2OldProducerGroups = "Attempt|DiskAttempt|HTTPAttemptStreamV2|SealAttemptCutV2|TrailPolicyDepth|StatsWrite|StatsSnapshotWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|ReleaseHeadV2|IntentStore|SteeringIntent|MeasurementStats|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh"
-const releaseEvidenceV2NewProducerGroups = "ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2"
+const releaseEvidenceV2NewProducerGroups = "ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2|ReleaseArchiveV2|ReleaseHistoryAdoptionV2|ReleaseNativeObservationV2"
 
 type releaseEvidenceV2GateGroup struct {
 	phase            string
@@ -142,6 +142,8 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 		"../validator/release_runtime_v2*_test.go", "../validator/release_artifact_observation_v2*_test.go", "../validator/intent_v2*_test.go",
 		"../validator/release_capture_native_v2_test.go", "../validator/release_capture_v2_test.go",
 		"../validator/release_capture_budget_v2_test.go",
+		"../validator/release_archive*_v2_test.go", "../validator/release_history_adoption*_test.go",
+		"../validator/release_native_observation_v2_test.go",
 	})
 	groups := []releaseEvidenceV2GateGroup{
 		{phase: "settlement", variable: "producer_tests", alternatives: releaseEvidenceV2OldProducerGroups + "|" + releaseEvidenceV2NewProducerGroups, packages: []string{"./validator"}, sources: map[string][]string{"./validator": validator}, commands: []string{
@@ -156,7 +158,7 @@ func releaseEvidenceV2GateFixture(t *testing.T) (string, []releaseEvidenceV2Gate
 			`go test ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1`,
 			`go test -race ./protocol ./stabi ./sim-testnet/gencontracts -run "$validator_evidence_tests" -count=1`,
 		}},
-		{phase: "capture", variable: "capture_tests", packages: []string{"./sim-testnet"}, sources: map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_evidence_v2_test.go", "release_gate_simulator_evidence_test.go", "release_gate_capture_metadata_test.go", "release_gate_history_population_test.go", "release_gate_launch_source_test.go", "final_semantic_capture_v2_test.go", "final_semantic_pending_prior_v2_test.go", "evidence_streaming_test.go", "final_semantic_capture_capacity_test.go", "final_semantic_capture_streaming_v2_test.go", "evidence_limits_v2_test.go", "evidence_readback_v2_test.go", "evidence_public_file_v2_test.go", "evidence_population_v2_test.go", "evidence_metadata_row_size_v2_test.go", "evidence_metadata_census_v2_test.go", "evidence_metadata_v2_test.go", "evidence_publication_batch_test.go", "final_semantic_prior_carrier_v2_test.go", "final_semantic_prior_carrier_decode_v2_test.go", "final_semantic_prior_carrier_canonical_v2_test.go"})}, commands: []string{
+		{phase: "capture", variable: "capture_tests", packages: []string{"./sim-testnet"}, sources: map[string][]string{"./sim-testnet": releaseEvidenceV2GateSources(t, []string{"release_gate_evidence_v2_test.go", "release_gate_simulator_evidence_test.go", "release_gate_capture_metadata_test.go", "release_gate_history_population_test.go", "release_gate_launch_source_test.go", "final_semantic_capture_v2_test.go", "final_semantic_pending_prior_v2_test.go", "evidence_streaming_test.go", "final_semantic_capture_capacity_test.go", "final_semantic_capture_streaming_v2_test.go", "evidence_limits_v2_test.go", "evidence_readback_v2_test.go", "evidence_public_file_v2_test.go", "evidence_population_v2_test.go", "evidence_metadata_row_size_v2_test.go", "evidence_metadata_census_v2_test.go", "evidence_metadata_v2_test.go", "evidence_publication_batch_test.go", "final_semantic_prior_carrier_v2_test.go", "final_semantic_prior_carrier_decode_v2_test.go", "final_semantic_prior_carrier_canonical_v2_test.go", "final_semantic_adoption_v2_test.go", "scenario_native_warmup_v2_test.go", "scenario_v2_observation_test.go", "strict_history_adoption_test.go", "fleet_renewal*_test.go", "owned_rpc*_test.go", "coordinator_repair*_test.go"})}, commands: []string{
 			`go test ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 5m`,
 			`go test -race ./sim-testnet -run "$capture_tests" -count=1` + releaseGateCaptureOwnerSkip + ` -timeout 10m`,
 		}},
