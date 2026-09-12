@@ -33,6 +33,7 @@ func TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicSt
 	f.reader.runtimeVersion = crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1}
 	f.reader.runtimeCodeHash = common.Hash{0x61}.Hex()
 	parent, finalized := common.Hash{0x23}.Hex(), common.Hash{0x24}.Hex()
+	payout, payoutParent := common.Hash{0x29}.Hex(), common.Hash{0x28}.Hex()
 	hotkey, coldkey := [32]byte{11}, [32]byte{12}
 	metadata := gsrpctypes.NewMetadataV14()
 	metadata.MagicNumber = gsrpctypes.MagicNumber
@@ -103,10 +104,12 @@ func TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicSt
 		switch call.Method {
 		case "chain_getBlockHash":
 			number, err := finalV2RPCNumber(call.Params[0]); if err != nil { t.Error(err); return }
-			result = map[uint64]string{0: testnetGenesis, 99: parent, 100: f.nativeHead.Hash, 101: finalized}[number]
+			result = map[uint64]string{0: testnetGenesis, 89: payoutParent, 90: payout, 99: parent, 100: f.nativeHead.Hash, 101: finalized}[number]
 		case "chain_getHeader":
-			number := map[string]uint64{parent: 99, f.nativeHead.Hash: 100, finalized: 101}[lastHash]
+			number := map[string]uint64{payoutParent: 89, payout: 90, parent: 99, f.nativeHead.Hash: 100, finalized: 101}[lastHash]
 			parentHash := parent; if number == 99 { parentHash = common.Hash{0x25}.Hex() }; if number == 101 { parentHash = f.nativeHead.Hash }
+			if number == 90 { parentHash = payoutParent }
+			if number == 89 { parentHash = common.Hash{0x27}.Hex() }
 			result = map[string]any{"number": fmt.Sprintf("0x%x", number), "parentHash": parentHash, "stateRoot": common.Hash{}.Hex(), "extrinsicsRoot": common.Hash{}.Hex(), "digest": map[string]any{"logs": []string{}}}
 		case "chain_getFinalizedHead": result = finalized
 		case "state_getRuntimeVersion": result = f.reader.runtimeVersion
@@ -141,6 +144,9 @@ func TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicSt
 	if err != nil { t.Fatalf("actual public checkpoint failed: %v", err) }
 	if got.Mapping.Query.NativeHash.Hex() != f.nativeHead.Hash || got.Mapping.Query.EVMHash.Hex() != f.evmHead.Hash || got.Mapping.Query.NativeHash == got.Mapping.Query.EVMHash || got.Schedule.SubnetEpochIndex != 10 || got.Schedule.LastEpochBlock != 90 || got.RevealPeriodEpochs != 1 || got.Identity.Stake.TotalStakeRao != 150 || got.Weights.LastUpdate != 98 || !reflect.DeepEqual(got.Weights.Values, []uint16{65535, 100}) {
 		t.Fatalf("public checkpoint mixed clock/row/schedule authority: %+v", got)
+	}
+	if got.PayoutHead != (ChainHead{Number: 90, Hash: payout}) || got.PayoutParent != (ChainHead{Number: 89, Hash: payoutParent}) {
+		t.Fatalf("public checkpoint lost the actual latest native payout and parent: %+v", got)
 	}
 	seenEVM, seenNative, seenRuntime, seenAbsent := false, false, false, false
 	for _, exchange := range exchanges {
