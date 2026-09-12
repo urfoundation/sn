@@ -246,6 +246,10 @@ func releaseMeasurementEnvelopeV2Decision(envelope *ReleaseMeasurementEnvelope) 
 // Inputs are owned before callbacks; late errors or cancellation clear results.
 // Options still require independently authenticated history and activation.
 func SealReleaseMeasurementEnvelopeV2(ctx context.Context, measurement []byte, validatorUID uint16, hotkey *crv4.Keypair, preparedExtrinsicHash string, signedAt time.Time, options ReleaseMeasurementV2Options) (encoded []byte, contentHash string, envelope *ReleaseMeasurementEnvelope, resultErr error) {
+	return sealReleaseMeasurementEnvelopeV2(ctx, measurement, validatorUID, hotkey, preparedExtrinsicHash, signedAt, options, nil)
+}
+
+func sealReleaseMeasurementEnvelopeV2(ctx context.Context, measurement []byte, validatorUID uint16, hotkey *crv4.Keypair, preparedExtrinsicHash string, signedAt time.Time, options ReleaseMeasurementV2Options, reuse *releaseSubmissionReplayV2) (encoded []byte, contentHash string, envelope *ReleaseMeasurementEnvelope, resultErr error) {
 	if ctx == nil {
 		return nil, "", nil, errors.New("compact measurement envelope context is nil")
 	}
@@ -287,7 +291,12 @@ func SealReleaseMeasurementEnvelopeV2(ctx context.Context, measurement []byte, v
 	if err := admitReleaseMeasurementEnvelopeV2Storage(ctx, envelope, options.MaxControlBytes, true); err != nil {
 		return nil, "", nil, err
 	}
-	if _, err := VerifyReleaseMeasurementArtifactV2(ctx, artifact, options); err != nil {
+	if reuse == nil {
+		_, err = VerifyReleaseMeasurementArtifactV2(ctx, artifact, options)
+	} else {
+		_, err = reuse.verify(ctx, measurement)
+	}
+	if err != nil {
 		return nil, "", nil, fmt.Errorf("compact measurement envelope artifact: %w", err)
 	}
 	digest, err := releaseMeasurementEnvelopeSigningDigestWithDomain(envelope, ReleaseMeasurementEnvelopeSigningDomainV2)

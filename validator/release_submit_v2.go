@@ -391,19 +391,24 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	measurementBytes, measurementHash, err := SealReleaseMeasurementArtifactV2(ctx, measurementArtifact, options)
+	measurementBytes, measurementHash, submissionReplay, err := self.runtimeV2.sealSubmissionArtifactV2(ctx, measurementArtifact, options)
 	if err != nil {
 		return err
 	}
+	defer submissionReplay.close()
 	measurementPath, measurementSize, err := persistReleaseMeasurementArtifact(self.cfg.StateDir, measurementBytes, measurementHash)
 	if err != nil {
 		return err
 	}
-	options, err = self.runtimeV2.measurementReplayOptionsV2(ctx, options, "submit-decision")
-	if err != nil {
-		return err
+	var verified VerifiedReleaseMeasurementV2
+	if submissionReplay != nil {
+		verified, err = submissionReplay.verify(ctx, measurementBytes)
+	} else {
+		options, err = self.runtimeV2.measurementReplayOptionsV2(ctx, options, "submit-decision")
+		if err == nil {
+			_, verified, err = DecodeReleaseMeasurementArtifactV2(ctx, measurementBytes, options)
+		}
 	}
-	_, verified, err := DecodeReleaseMeasurementArtifactV2(ctx, measurementBytes, options)
 	if err != nil {
 		return err
 	}
@@ -445,11 +450,16 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	if prepared.SubnetEpoch != nativeState.SubnetEpochIndex {
 		return fmt.Errorf("native epoch crossed during steering snapshot: started %d prepared %d", nativeState.SubnetEpochIndex, prepared.SubnetEpoch)
 	}
-	options, err = self.runtimeV2.measurementReplayOptionsV2(ctx, options, "submit-envelope")
-	if err != nil {
-		return err
+	var envelopeBytes []byte
+	var envelopeHash string
+	if submissionReplay != nil {
+		envelopeBytes, envelopeHash, _, err = submissionReplay.sealEnvelope(ctx, measurementBytes, selfUid, self.hotkey, strings.ToLower(prepared.ExtrinsicHash), time.Now().UTC())
+	} else {
+		options, err = self.runtimeV2.measurementReplayOptionsV2(ctx, options, "submit-envelope")
+		if err == nil {
+			envelopeBytes, envelopeHash, _, err = SealReleaseMeasurementEnvelopeV2(ctx, measurementBytes, selfUid, self.hotkey, strings.ToLower(prepared.ExtrinsicHash), time.Now().UTC(), options)
+		}
 	}
-	envelopeBytes, envelopeHash, _, err := SealReleaseMeasurementEnvelopeV2(ctx, measurementBytes, selfUid, self.hotkey, strings.ToLower(prepared.ExtrinsicHash), time.Now().UTC(), options)
 	if err != nil {
 		return err
 	}
