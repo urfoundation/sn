@@ -129,6 +129,7 @@ func newReleaseSteererV2(cfg *ReleaseConfig, chain *ChainClient, native *crv4.Ch
 		return nil, err
 	}
 	ema.v2.provisionalEpochGaps = runtime.history != nil && runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&ownedCfg)
+	ema.v2.historyAdoption = runtime.history.historyAdoption
 	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime}
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err
@@ -287,6 +288,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) error {
 	}
 	current, err := self.intents.currentV2(ctx)
 	if err != nil {
+		return err
+	}
+	if err := self.intents.v2.historyAdoption.requireFirstEpoch(current, nativeState.SubnetEpochIndex); err != nil {
 		return err
 	}
 	if err := self.restoreHeadEmaV2(ctx, current); err != nil {

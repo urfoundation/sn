@@ -29,13 +29,19 @@ func validateSteeringIntentSuccessorWithGapsV2(previous, current *SteeringIntent
 // signed envelope, independent immutable input journal, scores and native source.
 // This private join returns no public verified token or final-acceptance claim.
 func (self *IntentStore) verifyMeasurementLineageV2(ctx context.Context, previousEncoded []byte, previousOptions ReleaseMeasurementV2Options, current *ReleaseMeasurementArtifact, currentOptions ReleaseMeasurementV2Options) error {
-	if self.v2.provisionalEpochGaps {
+	if self.v2.provisionalEpochGaps || self.v2.historyAdoption != nil {
 		previous, err := decodeReleaseMeasurementV2Bytes(ctx, previousEncoded, previousOptions.MaxArtifactBytes, previousOptions.MaxOperators)
 		if err != nil {
 			return err
 		}
 		if current != nil && (current.SubnetEpoch > previous.SubnetEpoch && current.SubnetEpoch-previous.SubnetEpoch > 1 || current.SettlementEpoch > previous.SettlementEpoch && current.SettlementEpoch-previous.SettlementEpoch > 1) {
-			return self.v2.runtime.verifyProvisionalMeasurementGapV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions)
+			if self.v2.provisionalEpochGaps {
+				return self.v2.runtime.verifyProvisionalMeasurementGapV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions)
+			}
+			if !self.v2.historyAdoption.allowsArtifactEdge(ReleaseMeasurementContentHash(previousEncoded), previous, current) || self.v2.runtime.history == nil || self.v2.runtime.history.retainedStartup || self.v2.runtime.history.historyAdoption != self.v2.historyAdoption {
+				return errors.New("strict measurement gap differs from its authenticated adoption edge")
+			}
+			return self.v2.runtime.verifyMeasurementGapHistoryV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions, false)
 		}
 	}
 	_, err := VerifyReleaseMeasurementLineageV2(ctx, previousEncoded, previousOptions, current, currentOptions)
@@ -48,6 +54,16 @@ func (self *IntentStore) verifyMeasurementLineageV2(ctx context.Context, previou
 func (self *releaseRuntimeV2) verifyProvisionalMeasurementGapV2(ctx context.Context, previousEncoded []byte, previous *ReleaseMeasurementArtifact, previousOptions ReleaseMeasurementV2Options, current *ReleaseMeasurementArtifact, currentOptions ReleaseMeasurementV2Options) (resultErr error) {
 	if self == nil || self.history == nil || !self.history.retainedStartup || !provisionalClosedNativeInputEnabled(&self.cfg) {
 		return errors.New("provisional measurement gap lacks validated retained startup authority")
+	}
+	return self.verifyMeasurementGapHistoryV2(ctx, previousEncoded, previous, previousOptions, current, currentOptions, true)
+}
+
+// Strict adoption uses the ordinary full terminal decoder at every interior
+// settlement. Only the separate existing provisional caller may reuse its
+// local startup comparisons. Both endpoints already passed full intent replay.
+func (self *releaseRuntimeV2) verifyMeasurementGapHistoryV2(ctx context.Context, previousEncoded []byte, previous *ReleaseMeasurementArtifact, previousOptions ReleaseMeasurementV2Options, current *ReleaseMeasurementArtifact, currentOptions ReleaseMeasurementV2Options, retained bool) (resultErr error) {
+	if self == nil || self.history == nil {
+		return errors.New("measurement gap has no independently replayed startup history")
 	}
 	release, err := self.acquire(ctx)
 	if err != nil {
@@ -111,7 +127,16 @@ func (self *releaseRuntimeV2) verifyProvisionalMeasurementGapV2(ctx context.Cont
 		if err != nil {
 			return err
 		}
-		terminal, err := admitProvisionalRetainedSettlementV2(ctx, known, authority)
+		var terminal *AttemptSettlementClosureV2
+		if retained {
+			terminal, err = admitProvisionalRetainedSettlementV2(ctx, known, authority)
+		} else {
+			var raw []byte
+			raw, err = marshalAttemptSettlementV2JSON(ctx, known, authority.MaxClosureBytes, false, true)
+			if err == nil {
+				terminal, _, err = DecodeAttemptSettlementClosureV2(ctx, raw, authority)
+			}
+		}
 		if err != nil {
 			return err
 		}

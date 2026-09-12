@@ -582,6 +582,10 @@ func RunRelease(ctx context.Context, configPath string) (returnErr error) {
 }
 
 func runReleaseWithActivationSetup(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2) (returnErr error) {
+	return runReleaseWithStartupV2(ctx, configPath, retainedSetup, nil)
+}
+
+func runReleaseWithStartupV2(ctx context.Context, configPath string, retainedSetup *ProvisionalActivationSetupV2, adoption *ReleaseHistoryAdoptionV2) (returnErr error) {
 	if ctx == nil {
 		return errors.New("release production lifecycle context is unavailable")
 	}
@@ -591,6 +595,14 @@ func runReleaseWithActivationSetup(ctx context.Context, configPath string, retai
 	cfg, err := LoadReleaseConfig(configPath)
 	if err != nil {
 		return err
+	}
+	if adoption != nil {
+		if retainedSetup != nil {
+			return errors.New("strict history adoption cannot select provisional startup")
+		}
+		if err := adoption.configure(cfg, configPath); err != nil {
+			return err
+		}
 	}
 	if retainedSetup != nil {
 		if err := retainedSetup.validate(cfg, configPath); err != nil {

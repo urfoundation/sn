@@ -283,7 +283,7 @@ func (self *HeadEMAStore) admitReleaseHeadV2KnownWithLock(ctx context.Context, e
 			if self.lastAlpha == nil || *self.lastAlpha != alpha {
 				return budget, errors.New("same-epoch head EMA policy changed")
 			}
-		} else if !self.allowsHeadEMAEpochGaps() && (*self.lastSubnetEpoch == ^uint64(0) || epoch != *self.lastSubnetEpoch+1) {
+		} else if !self.allowsHeadEMAEpochGapTo(epoch) && (*self.lastSubnetEpoch == ^uint64(0) || epoch != *self.lastSubnetEpoch+1) {
 			return budget, errors.New("compact head EMA epoch jumped")
 		}
 	}

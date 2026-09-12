@@ -28,6 +28,7 @@ type releaseIntentV2Owner struct {
 	fault   error
 	// Invocation authority comes only from the validated retained startup owner.
 	provisionalEpochGaps bool
+	historyAdoption *releaseHistoryAdoptionV2
 }
 
 type releaseIntentV2Read struct {
@@ -143,6 +144,11 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 	}
 	result.encoded = encoded
 	if encoded == nil {
+		if self.v2.historyAdoption != nil {
+			if _, err := self.v2.historyAdoption.request.matchPrefix(ctx, result.file, nil, bounds.IntentFileLimit()); err != nil {
+				return result, err
+			}
+		}
 		return result, result.custody.check()
 	}
 	if err := decodeAttemptStreamV2JSON(encoded, bounds.IntentFileLimit(), result.file); err != nil {
@@ -151,6 +157,11 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 	canonical, err := marshalAttemptSettlementV2JSON(ctx, result.file, bounds.IntentFileLimit(), true, true)
 	if err != nil || !bytes.Equal(encoded, canonical) || result.file.Schema != steeringIntentSchema || len(result.file.History) > 16384 {
 		return result, errors.Join(errors.New("V2 intent history bytes or finite census differ"), err)
+	}
+	if self.v2.historyAdoption != nil {
+		if _, err := self.v2.historyAdoption.request.matchPrefix(ctx, result.file, encoded, bounds.IntentFileLimit()); err != nil {
+			return result, err
+		}
 	}
 	all := make([]*SteeringIntent, 0, len(result.file.History)+1)
 	for index := range result.file.History {
@@ -181,7 +192,7 @@ func (self *IntentStore) readV2(ctx context.Context) (result *releaseIntentV2Rea
 				return result, errors.New("V2 intent history omits a predecessor")
 			}
 		} else {
-			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, self.v2.provisionalEpochGaps); err != nil {
+			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, self.v2.provisionalEpochGaps || self.v2.historyAdoption.allowsIntentEdge(previous, intent)); err != nil {
 				return result, err
 			}
 			previousReplay, err := self.v2.runtime.measurementReplayOptionsV2(ctx, result.lastOptions, "history-lineage-previous")
@@ -389,6 +400,9 @@ func (self *IntentStore) beginV2(ctx context.Context, intent SteeringIntent) (re
 		}
 	}()
 	current := read.file.Current
+	if err := self.v2.historyAdoption.requireFirstEpoch(current, intent.SubnetEpoch); err != nil {
+		return nil, err
+	}
 	if current != nil && current.SubnetEpoch == intent.SubnetEpoch {
 		if current.Status == "pending" {
 			return nil, ErrSteeringIntentPending
@@ -406,7 +420,7 @@ func (self *IntentStore) beginV2(ctx context.Context, intent SteeringIntent) (re
 			return nil, errors.New("first V2 intent invents a predecessor")
 		}
 	} else {
-		if err := validateSteeringIntentSuccessorWithGapsV2(current, &intent, self.v2.provisionalEpochGaps); err != nil {
+		if err := validateSteeringIntentSuccessorWithGapsV2(current, &intent, self.v2.provisionalEpochGaps || self.v2.historyAdoption.allowsIntentEdge(current, &intent)); err != nil {
 			return nil, err
 		}
 		previousReplay, err := self.v2.runtime.measurementReplayOptionsV2(ctx, read.lastOptions, "begin-lineage-previous")
@@ -478,7 +492,7 @@ func newReleaseIntentStoreV2(runtime *releaseRuntimeV2) (*IntentStore, error) {
 		return nil, errors.New("V2 intent state path is not absolute")
 	}
 	return &IntentStore{path: filepath.Join(runtime.cfg.StateDir, "steering-intents.json"), stateDir: runtime.cfg.StateDir, v2: &releaseIntentV2Owner{ctx: runtime.ctx, runtime: runtime,
-		provisionalEpochGaps: runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&runtime.cfg)}}, nil
+		provisionalEpochGaps: runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&runtime.cfg), historyAdoption: runtime.history.historyAdoption}}, nil
 }
 
 func (self *IntentStore) markFinalizedV2(ctx context.Context, vectorHash, extrinsicHash string, block uint64, blockHash string, revealBlock uint64, values []uint16) error {

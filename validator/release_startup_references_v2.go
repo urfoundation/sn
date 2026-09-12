@@ -117,6 +117,10 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 		return nil, err
 	}
 	if encoded == nil {
+		self.historyAdoption, err = self.cfg.historyAdoptionV2.matchPrefix(ctx, &steeringIntentFile{Schema: steeringIntentSchema}, nil, bounds.IntentFileLimit())
+		if err != nil {
+			return nil, err
+		}
 		return owned, owned.check()
 	}
 	var file steeringIntentFile
@@ -126,6 +130,10 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 	canonical, err := marshalAttemptSettlementV2JSON(ctx, &file, bounds.IntentFileLimit(), true, true)
 	if err != nil || file.Schema != steeringIntentSchema || !bytes.Equal(encoded, canonical) {
 		return nil, errors.Join(errors.New("startup intent reference file is not canonical"), err)
+	}
+	self.historyAdoption, err = self.cfg.historyAdoptionV2.matchPrefix(ctx, &file, encoded, bounds.IntentFileLimit())
+	if err != nil {
+		return nil, err
 	}
 	all := make([]*SteeringIntent, 0, len(file.History)+1)
 	for index := range file.History {
@@ -144,6 +152,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 	// that already authenticated retained history too early.
 	allowProvisionalGaps := self.retainedStartup && provisionalClosedNativeInputEnabled(&self.cfg)
 	for index, intent := range all {
+		allowGap := allowProvisionalGaps || self.historyAdoption.allowsIntentEdge(previous, intent)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -158,7 +167,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 		}
 		seen[intent.VectorHash] = true
 		if previous != nil {
-			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, allowProvisionalGaps); err != nil {
+			if err := validateSteeringIntentSuccessorWithGapsV2(previous, intent, allowGap); err != nil {
 				return nil, err
 			}
 		}
@@ -210,7 +219,7 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 			}
 			if priorArtifact.Schema == ReleaseMeasurementSchemaV2 && artifact.Schema != ReleaseMeasurementSchemaV2 ||
 				artifact.SettlementEpoch < priorArtifact.SettlementEpoch ||
-				!allowProvisionalGaps && priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 ||
+				!allowGap && priorArtifact.SettlementEpoch != ^uint64(0) && artifact.SettlementEpoch > priorArtifact.SettlementEpoch+1 ||
 				!releaseBlockAtOrBefore(priorArtifact.NativeSnapshotBlock, priorArtifact.NativeSnapshotHash, artifact.NativeSnapshotBlock, artifact.NativeSnapshotHash) ||
 				!releaseBlockAtOrBefore(priorArtifact.EVMSnapshotBlock, priorArtifact.EVMSnapshotHash, artifact.EVMSnapshotBlock, artifact.EVMSnapshotHash) {
 				return nil, errors.New("startup signed artifact lineage regresses or skips a boundary")
@@ -221,6 +230,14 @@ func (self *releaseEvidenceV2StartupHistory) readIntentReferences(ctx context.Co
 		}
 		if !self.retainedStartup {
 			if err := self.authenticateIntentChainReferenceWithKeyCustody(ctx, chain, native, runtime, intent, artifact, owned); err != nil {
+				return nil, err
+			}
+		}
+		if self.historyAdoption != nil && uint64(index) < self.historyAdoption.request.IntentPrefixCount {
+			if self.retainedStartup {
+				return nil, errors.New("strict history adoption cannot inherit provisional source authentication")
+			}
+			if err := authenticateAdoptedIntentApplicationV2(ctx, native, &self.cfg, intent); err != nil {
 				return nil, err
 			}
 		}

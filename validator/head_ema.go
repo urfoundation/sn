@@ -379,7 +379,7 @@ func (s *HeadEMAStore) PreviewForEpoch(subnetEpoch uint64, raw map[FleetScoreKey
 // The exact fold is shared with bounded compact admission while the same
 // state lock remains held; admission must not race a concurrent EMA commit.
 func (self *HeadEMAStore) previewForEpochWithLock(subnetEpoch uint64, raw map[FleetScoreKey]*big.Rat, alpha protocol.Rational) (map[uint16]*big.Rat, []HeadEMAMeasurement, error) {
-	return self.previewForEpochWithGapPolicy(subnetEpoch, raw, alpha, self.allowsHeadEMAEpochGaps())
+	return self.previewForEpochWithGapPolicy(subnetEpoch, raw, alpha, self.allowsHeadEMAEpochGapTo(subnetEpoch))
 }
 
 // Skipped provisional native attempts contribute no manufactured samples.

@@ -70,6 +70,7 @@ type ReleaseConfig struct {
 	EvidenceV2          ReleaseEvidenceV2Config `yaml:"evidence_v2" json:"evidence_v2"`
 
 	ProvisionalDeferClosedNativeInput bool `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
+	historyAdoptionV2 *ReleaseHistoryAdoptionV2
 }
 
 func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
@@ -84,6 +85,12 @@ func LoadReleaseConfig(path string) (*ReleaseConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeReleaseConfigBytes(abs, b)
+}
+
+// The adoption caller must parse the same immutable bytes that its request
+// pins, rather than pair a prior parse with a later pathname read.
+func decodeReleaseConfigBytes(abs string, b []byte) (*ReleaseConfig, error) {
 	var cfg ReleaseConfig
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)

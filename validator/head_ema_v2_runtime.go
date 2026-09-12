@@ -37,10 +37,24 @@ type headEMAStoreV2Owner struct {
 	// Immutable after authenticated provisional runtime construction. Missing
 	// native attempts have no EMA observation; fold the next actual input once.
 	provisionalEpochGaps bool
+	historyAdoption *releaseHistoryAdoptionV2
 }
 
 func (self *HeadEMAStore) allowsHeadEMAEpochGaps() bool {
 	return self != nil && self.v2 != nil && self.v2.provisionalEpochGaps
+}
+
+// Only the first approved fresh epoch can bridge the adopted terminal state.
+// Advancing the store consumes this edge naturally; later skips stay strict.
+func (self *HeadEMAStore) allowsHeadEMAEpochGapTo(epoch uint64) bool {
+	if self.allowsHeadEMAEpochGaps() {
+		return true
+	}
+	if self == nil || self.v2 == nil || self.v2.historyAdoption == nil || self.lastSubnetEpoch == nil {
+		return false
+	}
+	request := self.v2.historyAdoption.request
+	return *self.lastSubnetEpoch == request.LastNativeEpoch && epoch == request.FirstNativeEpoch
 }
 
 // Hooks observe actual boundaries; none can replace bytes, syscalls or math.

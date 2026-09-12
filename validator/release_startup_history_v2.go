@@ -43,6 +43,7 @@ type releaseEvidenceV2StartupCursor struct {
 type releaseEvidenceV2StartupHistory struct {
 	cfg                ReleaseConfig
 	retainedStartup    bool
+	historyAdoption    *releaseHistoryAdoptionV2
 	initial            map[uint64]ReleaseEvidenceV2ActivationContext
 	keys               map[uint64]map[byte]ed25519.PublicKey
 	participants       []AttemptSettlementRuntimeV2Participant
@@ -403,6 +404,10 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 	owned.cfg.EvidenceV2.Operators = slices.Clone(cfg.EvidenceV2.Operators)
 	owned.cfg.ControlledNOIDs = slices.Clone(cfg.ControlledNOIDs)
 	owned.cfg.RPC, owned.cfg.Substrate = slices.Clone(cfg.RPC), slices.Clone(cfg.Substrate)
+	if cfg.historyAdoptionV2 != nil {
+		request := *cfg.historyAdoptionV2
+		owned.cfg.historyAdoptionV2 = &request
+	}
 	owned.cfg.Policy.Deposit.Tiers = slices.Clone(cfg.Policy.Deposit.Tiers)
 	inputs = slices.Clone(inputs)
 	for index := range inputs {
@@ -446,6 +451,9 @@ func readReleaseEvidenceV2StartupHistoryWithRuntime(ctx context.Context, cfg *Re
 		}
 	}
 	owned.retainedStartup = provisionalRetainedStartupHistory(inputs)
+	if owned.cfg.historyAdoptionV2 != nil && (owned.retainedStartup || owned.cfg.ProvisionalDeferClosedNativeInput) {
+		return nil, errors.New("strict history adoption cannot reuse provisional activation or source audits")
+	}
 	var err error
 	owned.images, err = newAttemptSettlementV2StartupImages(ctx, owned.cfg.StateDir, owned.participants, disk.snapshotBytes, disk.snapshotPresent, disk.journalBytes, disk.journalPresent, owned.cfg.EvidenceV2.Bounds.Persistence)
 	if err != nil {
