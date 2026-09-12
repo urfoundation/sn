@@ -30,7 +30,9 @@ func (self *PublicFinalSemanticChainReader) ValidatorSourcesV2(ctx context.Conte
 		return nil, nil, errors.New("public V2 historical reader owner differs")
 	}
 	ownedReader, err := self.finalV2InvocationReader(evidence)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 	self, evidence = ownedReader, ownedReader.evidence
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
@@ -79,15 +81,23 @@ func (self *PublicFinalSemanticChainReader) finalV2InvocationReader(evidence *Fi
 		return nil, errors.New("public V2 evidence source is unavailable")
 	}
 	source, err := finalSemanticEvidenceDetachedCopy(self.evidence)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	target, err := finalSemanticEvidenceDetachedCopy(evidence)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	source.PublicVerification, target.PublicVerification = nil, nil
 	source.EvidenceHash, target.EvidenceHash = "", ""
 	sourceHash, err := canonicalHashHex(source)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	targetHash, err := canonicalHashHex(target)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	if sourceHash != targetHash {
 		return nil, errors.New("public V2 immutable evidence source differs from the reader factory")
 	}
@@ -100,15 +110,15 @@ func (self *PublicFinalSemanticChainReader) finalV2InvocationReader(evidence *Fi
 // must return equal JSON values; later callers never inherit this map. Sorting
 // removes scheduling differences between the ordinary concurrent chain reads.
 type finalV2RPCRecorder struct {
-	ctx context.Context
-	reader *PublicFinalSemanticChainReader
-	maximum, remaining uint64
-	mu sync.Mutex
-	exchanges map[string]FinalRPCExchange
-	nativeHeads, evmHeads map[string]ChainHead
+	ctx                       context.Context
+	reader                    *PublicFinalSemanticChainReader
+	maximum, remaining        uint64
+	mu                        sync.Mutex
+	exchanges                 map[string]FinalRPCExchange
+	nativeHeads, evmHeads     map[string]ChainHead
 	nativeNumbers, evmNumbers map[uint64]string
-	liveNativeHeads map[string]bool
-	err error
+	liveNativeHeads           map[string]bool
+	err                       error
 }
 
 func newFinalV2RPCRecorder(ctx context.Context, reader *PublicFinalSemanticChainReader, maximum, total uint64) *finalV2RPCRecorder {
@@ -116,10 +126,14 @@ func newFinalV2RPCRecorder(ctx context.Context, reader *PublicFinalSemanticChain
 }
 
 func (self *finalV2RPCRecorder) fail(err error) {
-	if err == nil { return }
+	if err == nil {
+		return
+	}
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if self.err == nil { self.err = err }
+	if self.err == nil {
+		self.err = err
+	}
 }
 
 func (self *finalV2RPCRecorder) retain(exchange FinalRPCExchange) error {
@@ -175,38 +189,55 @@ func (self *finalV2RPCRecorder) finish() ([]FinalRPCExchange, error) {
 	}
 	sort.Slice(result, func(i, j int) bool {
 		a, b := result[i], result[j]
-		if a.Chain != b.Chain { return a.Chain < b.Chain }
-		if a.PinnedHead.Number != b.PinnedHead.Number { return a.PinnedHead.Number < b.PinnedHead.Number }
-		if a.PinnedHead.Hash != b.PinnedHead.Hash { return a.PinnedHead.Hash < b.PinnedHead.Hash }
-		if a.Method != b.Method { return a.Method < b.Method }
+		if a.Chain != b.Chain {
+			return a.Chain < b.Chain
+		}
+		if a.PinnedHead.Number != b.PinnedHead.Number {
+			return a.PinnedHead.Number < b.PinnedHead.Number
+		}
+		if a.PinnedHead.Hash != b.PinnedHead.Hash {
+			return a.PinnedHead.Hash < b.PinnedHead.Hash
+		}
+		if a.Method != b.Method {
+			return a.Method < b.Method
+		}
 		return a.RequestHash < b.RequestHash
 	})
 	return result, nil
 }
 
-type finalV2EVMReadTransport struct { owner *finalV2RPCRecorder }
+type finalV2EVMReadTransport struct{ owner *finalV2RPCRecorder }
 
 type finalV2RPCRequest struct {
-	Version string `json:"jsonrpc"`
-	ID json.RawMessage `json:"id"`
-	Method string `json:"method"`
-	Params []json.RawMessage `json:"params"`
+	Version string            `json:"jsonrpc"`
+	ID      json.RawMessage   `json:"id"`
+	Method  string            `json:"method"`
+	Params  []json.RawMessage `json:"params"`
 }
 
 type finalV2RPCResponse struct {
-	Version string `json:"jsonrpc"`
-	ID json.RawMessage `json:"id"`
-	Result json.RawMessage `json:"result"`
+	Version string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  json.RawMessage `json:"result"`
 }
 
-type finalV2RPCResult struct { maximum uint64; raw []byte; budget *finalV2RPCDecodeBudget }
+type finalV2RPCResult struct {
+	maximum uint64
+	raw     []byte
+	budget  *finalV2RPCDecodeBudget
+}
 
-type finalV2RPCDecodeBudget struct { mu sync.Mutex; remaining uint64 }
+type finalV2RPCDecodeBudget struct {
+	mu        sync.Mutex
+	remaining uint64
+}
 
 func (self *finalV2RPCDecodeBudget) take(size uint64) error {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if size > self.remaining { return errors.New("public V2 RPC batch exceeds its source byte bound") }
+	if size > self.remaining {
+		return errors.New("public V2 RPC batch exceeds its source byte bound")
+	}
 	self.remaining -= size
 	return nil
 }
@@ -215,7 +246,11 @@ func (self *finalV2RPCResult) UnmarshalJSON(raw []byte) error {
 	if len(raw) == 0 || self.maximum == 0 || uint64(len(raw)) > self.maximum {
 		return errors.New("public V2 RPC result exceeds its source bound")
 	}
-	if self.budget != nil { if err := self.budget.take(uint64(len(raw))); err != nil { return err } }
+	if self.budget != nil {
+		if err := self.budget.take(uint64(len(raw))); err != nil {
+			return err
+		}
+	}
 	self.raw = bytes.Clone(raw)
 	return nil
 }
@@ -230,8 +265,15 @@ func (self *finalV2EVMReadTransport) RoundTrip(request *http.Request) (response 
 	ctx, cancel := context.WithCancel(request.Context())
 	joined := make(chan struct{})
 	stop := context.AfterFunc(owner.ctx, func() { defer close(joined); cancel() })
-	defer func() { if !stop() { <-joined }; cancel() }()
-	if err := errors.Join(ctx.Err(), owner.ctx.Err()); err != nil { return nil, err }
+	defer func() {
+		if !stop() {
+			<-joined
+		}
+		cancel()
+	}()
+	if err := errors.Join(ctx.Err(), owner.ctx.Err()); err != nil {
+		return nil, err
+	}
 	raw, err := io.ReadAll(io.LimitReader(request.Body, int64(owner.maximum)+1))
 	if err != nil || uint64(len(raw)) > owner.maximum {
 		return nil, errors.Join(errors.New("public V2 RPC request exceeds its source bound"), err)
@@ -255,9 +297,13 @@ func (self *finalV2EVMReadTransport) RoundTrip(request *http.Request) (response 
 			return nil, errors.New("public V2 RPC request identity is invalid")
 		}
 		ids[string(call.ID)] = true
-		if err := finalV2EVMReadMethod(call.Method, call.Params); err != nil { return nil, err }
+		if err := finalV2EVMReadMethod(call.Method, call.Params); err != nil {
+			return nil, err
+		}
 		args := make([]any, len(call.Params))
-		for i, param := range call.Params { args[i] = param }
+		for i, param := range call.Params {
+			args[i] = param
+		}
 		values[index] = &finalV2RPCResult{maximum: owner.maximum}
 		batch[index] = rpc.BatchElem{Method: call.Method, Args: args, Result: &values[index]}
 	}
@@ -270,26 +316,46 @@ func (self *finalV2EVMReadTransport) RoundTrip(request *http.Request) (response 
 			values[index] = &finalV2RPCResult{maximum: owner.maximum, budget: responseBudget}
 			batch[index].Error = nil
 		}
-		if batchMode { return owner.reader.evm.BatchCallContext(attempt, batch) }
+		if batchMode {
+			return owner.reader.evm.BatchCallContext(attempt, batch)
+		}
 		return owner.reader.evm.CallContext(attempt, &values[0], batch[0].Method, batch[0].Args...)
 	})
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	responses := make([]finalV2RPCResponse, len(requests))
 	for index, call := range requests {
-		if batch[index].Error != nil { return nil, fmt.Errorf("public V2 batch member %d: %w", index, batch[index].Error) }
+		if batch[index].Error != nil {
+			return nil, fmt.Errorf("public V2 batch member %d: %w", index, batch[index].Error)
+		}
 		value := values[index]
 		if value == nil {
-			if err := responseBudget.take(4); err != nil { return nil, err }
+			if err := responseBudget.take(4); err != nil {
+				return nil, err
+			}
 			value = &finalV2RPCResult{raw: []byte("null")}
 		}
-		if len(value.raw) == 0 { return nil, errors.New("public V2 RPC transport omitted its result") }
-		if err := owner.retainEVM(ctx, call.Method, call.Params, value.raw); err != nil { return nil, err }
+		if len(value.raw) == 0 {
+			return nil, errors.New("public V2 RPC transport omitted its result")
+		}
+		if err := owner.retainEVM(ctx, call.Method, call.Params, value.raw); err != nil {
+			return nil, err
+		}
 		responses[index] = finalV2RPCResponse{Version: "2.0", ID: call.ID, Result: value.raw}
 	}
-	if err := errors.Join(ctx.Err(), owner.ctx.Err()); err != nil { return nil, err }
+	if err := errors.Join(ctx.Err(), owner.ctx.Err()); err != nil {
+		return nil, err
+	}
 	var encoded []byte
-	if batchMode { encoded, err = json.Marshal(responses) } else { encoded, err = json.Marshal(responses[0]) }
-	if err != nil { return nil, err }
+	if batchMode {
+		encoded, err = json.Marshal(responses)
+	} else {
+		encoded, err = json.Marshal(responses[0])
+	}
+	if err != nil {
+		return nil, err
+	}
 	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(encoded)), Request: request}, nil
 }
 
@@ -297,7 +363,9 @@ func (self *finalV2EVMReadTransport) RoundTrip(request *http.Request) (response 
 // before allocation, and the already admitted public transport beneath it.
 func (self *finalV2RPCRecorder) sourceRaw(ctx context.Context, chain string, head ChainHead, method string, args ...any) (json.RawMessage, FinalRPCExchange, error) {
 	params, err := json.Marshal(args)
-	if err != nil || uint64(len(params)) > self.maximum { return nil, FinalRPCExchange{}, errors.Join(errors.New("public V2 header request exceeds its bound"), err) }
+	if err != nil || uint64(len(params)) > self.maximum {
+		return nil, FinalRPCExchange{}, errors.Join(errors.New("public V2 header request exceeds its bound"), err)
+	}
 	value := &finalV2RPCResult{maximum: self.maximum}
 	if chain == "substrate" {
 		err = self.reader.native.Client.CallContext(ctx, &value, method, args...)
@@ -307,8 +375,14 @@ func (self *finalV2RPCRecorder) sourceRaw(ctx context.Context, chain string, hea
 			return self.reader.evm.CallContext(attempt, &value, method, args...)
 		})
 	}
-	if err := errors.Join(err, ctx.Err(), self.ctx.Err()); err != nil { return nil, FinalRPCExchange{}, err }
-	if value == nil { value = &finalV2RPCResult{raw: []byte("null")} }
-	if len(value.raw) == 0 { return nil, FinalRPCExchange{}, errors.New("public V2 header transport omitted its result") }
+	if err := errors.Join(err, ctx.Err(), self.ctx.Err()); err != nil {
+		return nil, FinalRPCExchange{}, err
+	}
+	if value == nil {
+		value = &finalV2RPCResult{raw: []byte("null")}
+	}
+	if len(value.raw) == 0 {
+		return nil, FinalRPCExchange{}, errors.New("public V2 header transport omitted its result")
+	}
 	return value.raw, FinalRPCExchange{Chain: chain, Method: method, Params: params, PinnedHead: head, Result: value.raw}, nil
 }

@@ -26,7 +26,9 @@ func NewReleaseChainReadRPCContext(ctx context.Context, transport *rpc.Client, e
 	if err := errors.Join(err, probe.Err(), ctx.Err()); err != nil {
 		return nil, err
 	}
-	if chainID == nil || chainID.Sign() <= 0 { return nil, errors.New("release read RPC chain identity is absent") }
+	if chainID == nil || chainID.Sign() <= 0 {
+		return nil, errors.New("release read RPC chain identity is absent")
+	}
 	result := &ChainClient{client: client, rpcUrl: endpoint, chainId: chainID, coordinator: stabi.NewSTCoordinator(), contractAddr: coordinator, release: true}
 	result.contract = result.coordinator.Instance(client, coordinator)
 	return result, nil
