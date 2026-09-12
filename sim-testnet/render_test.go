@@ -135,6 +135,11 @@ func TestProvisionalRuntimeConfigsAllowUnsignedTestnetWallet(t *testing.T) {
 func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) {
 	t.Helper()
 	cfg := testResolvedConfig(t)
+	if provisional {
+		// Provisional namespace reuse requires the original V2 setup. Use
+		// the existing launch fixture's explicit provisioning template.
+		cfg = runtimeEvidenceLaunchConfigTest(t)
+	}
 	// Explicit owned test capacity, never a fallback for the live profile.
 	budget, err := requiredRuntimeClientKeyUploadBudget(cfg)
 	if err != nil {
@@ -166,7 +171,9 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 	cfg.OperationalRPCMode = rpcModePublicOverride
 	cfg.Public.Chain.EVMPublicReadEndpoint = "https://test.chain.opentensor.ai"
 	stateDir := t.TempDir()
-	configureRuntimeEvidenceV2Test(t, cfg, stateDir)
+	if !provisional {
+		configureRuntimeEvidenceV2Test(t, cfg, stateDir)
+	}
 	roles, err := BuildRoleSecrets(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +202,16 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 	reserved := prepareRuntimeReservedRenderTest(t, cfg, stateDir, roles)
 	deployment := reserved.deployment
 	if provisional {
+		retainRuntimeEvidenceLaunchInputsTest(t, cfg, stateDir, roles, reserved.plan)
 		cfg.provisionalResume = &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true, PlanHash: reserved.plan.PlanHash}}
+	}
+	expectedEvidence, err := runtimeEvidenceV2ResolvedConfig(cfg, stateDir)
+	if err != nil {
+		t.Fatalf("fixture has no retained activation inputs: %v", err)
+	}
+	expectedReservedUploads, err := runtimeReservedAttemptUploads(cfg, stateDir, &deployment)
+	if err != nil {
+		t.Fatalf("fixture has no retained upload authority: %v", err)
 	}
 	if err := RenderRuntimeConfigs(cfg, stateDir, roles); err != nil {
 		t.Fatal(err)
@@ -246,7 +262,7 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 		if coordinatorSettings.AttemptUpload == nil || *coordinatorSettings.AttemptUpload != *cfg.Config.Artifacts.AttemptUpload || coordinatorSettings.MainnetAttemptUpload != nil {
 			t.Fatalf("operator %d did not render its exact testnet-only attempt upload budget", operator)
 		}
-		expectedReserved := cfg.Config.Artifacts.ReservedAttemptUploads[operator-1]
+		expectedReserved := expectedReservedUploads[operator-1]
 		if coordinatorSettings.ReservedAttemptUpload == nil || !reflect.DeepEqual(*coordinatorSettings.ReservedAttemptUpload, expectedReserved) || coordinatorSettings.MainnetReservedAttemptUpload != nil {
 			t.Fatalf("operator %d did not render its exact approved protected staging capacity and authority", operator)
 		}
@@ -278,7 +294,7 @@ func testRuntimeConfigsAcceptedByReleaseLoaders(t *testing.T, provisional bool) 
 		if err != nil {
 			t.Fatalf("validator %d rendered config: %v", i, err)
 		}
-		if !reflect.DeepEqual(loaded.EvidenceV2, cfg.Config.ValidatorEvidenceV2[i-1].Evidence) {
+		if !reflect.DeepEqual(loaded.EvidenceV2, expectedEvidence.Config.ValidatorEvidenceV2[i-1].Evidence) {
 			t.Fatal("rendered validator changed explicit V2 bounds or references")
 		}
 		if len(loaded.Operators) != cfg.Config.Topology.Operators || loaded.PolicyHash != cfg.PolicyHash || loaded.Policy.ProductionCadence.EpochBlocks != 360 || loaded.Policy.Settlement.CloseGraceBlocks != 5 || loaded.PollSeconds != validatorPollSeconds(cfg) {
