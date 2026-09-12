@@ -50,7 +50,7 @@ func (self *PublicFinalSemanticChainReader) ValidatorSourcesV2(ctx context.Conte
 		return nil, nil, err
 	}
 	defer transport.Close()
-	chain, err := validatorpkg.NewReleaseChainReadRPCContext(ctx, transport, self.canonicalEVMRPC, evidence.Deployment.CoordinatorProxy)
+	chain, err := validatorpkg.NewReleaseChainReadRPCContext(ctx, transport, self.canonicalEVMRPC, common.HexToAddress(evidence.Deployment.CoordinatorProxy))
 	if err != nil {
 		return nil, nil, err
 	}
