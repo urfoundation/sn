@@ -27,17 +27,42 @@ type finalNativeRewardReadClientV2 struct {
 }
 
 func (self *finalNativeRewardReadClientV2) Call(result any, method string, args ...any) error {
+	if self == nil {
+		return errors.New("historical native reward read owner is absent")
+	}
+	return self.CallContext(self.ctx, result, method, args...)
+}
+
+// GSRPC's CallWithBlockHash invokes CallContext with context.Background, so
+// overriding Call alone does not bind its UID batch to the capture owner.
+// Every invocation must stop for either caller, and its cancellation callback
+// must join before this facade returns without closing the shared connection.
+func (self *finalNativeRewardReadClientV2) CallContext(caller context.Context, result any, method string, args ...any) error {
 	if self == nil || self.Client == nil || self.ctx == nil {
 		return errors.New("historical native reward read owner is absent")
 	}
-	if err := self.ctx.Err(); err != nil {
+	if caller == nil {
+		return errors.New("historical native reward RPC caller is absent")
+	}
+	if err := errors.Join(self.ctx.Err(), caller.Err()); err != nil {
 		return err
 	}
-	if method != "state_getStorage" && method != "state_queryStorageAt" {
-		return errors.New("historical native reward convenience reader requested another method")
+	switch method {
+	case "chain_getBlockHash", "chain_getHeader", "chain_getFinalizedHead", "state_getRuntimeVersion", "state_getStorageHash", "state_getMetadata", "state_getStorage", "state_queryStorageAt":
+	default:
+		return errors.New("historical native reward reader requested another method")
 	}
+	ctx, cancel := context.WithCancel(caller)
+	joined := make(chan struct{})
+	stop := context.AfterFunc(self.ctx, func() { defer close(joined); cancel() })
+	defer func() {
+		if !stop() {
+			<-joined
+		}
+		cancel()
+	}()
 	raw := &finalV2RPCResult{maximum: uint64(maximumCampaignEvidenceRawFileBytes), budget: &self.budget}
-	if err := self.Client.CallContext(self.ctx, &raw, method, args...); err != nil {
+	if err := self.Client.CallContext(ctx, &raw, method, args...); err != nil {
 		return err
 	}
 	if raw == nil {
@@ -46,7 +71,7 @@ func (self *finalNativeRewardReadClientV2) Call(result any, method string, args 
 			return err
 		}
 	}
-	if err := self.ctx.Err(); err != nil {
+	if err := errors.Join(ctx.Err(), self.ctx.Err()); err != nil {
 		return err
 	}
 	return json.Unmarshal(raw.raw, result)

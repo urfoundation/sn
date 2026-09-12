@@ -29,11 +29,12 @@ type finalNativeRewardHistoryFixtureV2 struct {
 	mode            atomic.Uint32
 	queries         atomic.Uint64
 	started, joined chan struct{}
+	cleanupRelease  chan struct{}
 }
 
 func newFinalNativeRewardHistoryFixtureV2(t *testing.T) *finalNativeRewardHistoryFixtureV2 {
 	t.Helper()
-	f := &finalNativeRewardHistoryFixtureV2{head: ChainHead{Number: 100, Hash: common.Hash{0x31}.Hex()}, started: make(chan struct{}), joined: make(chan struct{})}
+	f := &finalNativeRewardHistoryFixtureV2{head: ChainHead{Number: 100, Hash: common.Hash{0x31}.Hex()}, started: make(chan struct{}), joined: make(chan struct{}), cleanupRelease: make(chan struct{})}
 	finalized := common.Hash{0x32}.Hex()
 	metadata := types.NewMetadataV14()
 	metadata.MagicNumber = types.MagicNumber
@@ -146,8 +147,11 @@ func newFinalNativeRewardHistoryFixtureV2(t *testing.T) *finalNativeRewardHistor
 			f.queries.Add(1)
 			if mode == 8 {
 				close(f.started)
-				<-request.Context().Done()
-				close(f.joined)
+				defer close(f.joined)
+				select {
+				case <-request.Context().Done():
+				case <-f.cleanupRelease:
+				}
 				return
 			}
 			var keys []string
@@ -195,6 +199,9 @@ func newFinalNativeRewardHistoryFixtureV2(t *testing.T) *finalNativeRewardHistor
 		fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":%s,"result":%s}`, call.ID, raw)
 	}))
 	t.Cleanup(server.Close)
+	// Release a failed assertion's handler before server.Close. Successful
+	// cancellation tests must observe joined before cleanup can release it.
+	t.Cleanup(func() { close(f.cleanupRelease) })
 	client, err := gsrpcgeth.DialContext(t.Context(), server.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -262,5 +269,55 @@ func TestFinalNativeRewardV2CancellationJoinsHistoricalBatch(t *testing.T) {
 	case <-f.joined:
 	case <-time.After(10 * time.Second):
 		t.Fatal("historical HTTP batch remained live after cancellation")
+	}
+}
+
+func TestFinalNativeRewardV2HonorsRPCContextAndSharedConnectionOwnership(t *testing.T) {
+	t.Parallel()
+	f := newFinalNativeRewardHistoryFixtureV2(t)
+	f.mode.Store(8)
+	owner, stopOwner := context.WithCancel(t.Context())
+	defer stopOwner()
+	caller, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	client := &finalNativeRewardReadClientV2{Client: f.native.API.Client, ctx: owner, budget: finalV2RPCDecodeBudget{remaining: uint64(maximumCampaignEvidenceRawFileBytes)}}
+	done := make(chan error, 1)
+	go func() {
+		var result []types.StorageChangeSet
+		err := client.CallContext(caller, &result, "state_queryStorageAt", []string{"0x01"}, f.head.Hash)
+		if result != nil {
+			err = errors.New("canceled RPC returned partial storage")
+		}
+		done <- err
+	}()
+	select {
+	case <-f.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("historical RPC batch did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("RPC caller cancellation differs: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("historical reader ignored RPC caller cancellation")
+	}
+	select {
+	case <-f.joined:
+	case <-time.After(10 * time.Second):
+		t.Fatal("historical RPC handler did not join before cleanup")
+	}
+	if owner.Err() != nil {
+		t.Fatal("one canceled RPC canceled its capture owner")
+	}
+	f.mode.Store(0)
+	var genesis string
+	if err := client.CallContext(owner, &genesis, "chain_getBlockHash", uint64(0)); err != nil || genesis != testnetGenesis {
+		t.Fatalf("one canceled RPC closed or poisoned the shared connection: %s %v", genesis, err)
+	}
+	if err := client.CallContext(owner, &genesis, "author_submitExtrinsic", "0x01"); err == nil {
+		t.Fatal("historical reward facade admitted a write")
 	}
 }
