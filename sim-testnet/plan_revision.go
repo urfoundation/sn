@@ -4113,6 +4113,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 			return nil, fmt.Errorf("preserve verified deployment baseline: %w", err)
 		}
 	}
+	if err := carryFleetRenewalRevision(revised, prior); err != nil {
+		return nil, fmt.Errorf("retain approved fleet renewal: %w", err)
+	}
 	if err := validateValidatorEvidenceRevision(prior, revised.ValidatorEvidence); err != nil {
 		return nil, err
 	}
@@ -4175,6 +4178,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		return nil, fmt.Errorf("recover expiring fleet commitments: %w", err)
 	}
 	if err := trimLiveCampaignEVMReserveToLimit(revised); err != nil {
+		return nil, err
+	}
+	if err := validateFleetRenewalReservedLiability(revised); err != nil {
 		return nil, err
 	}
 	revised.PlanHash, err = revised.hash()
