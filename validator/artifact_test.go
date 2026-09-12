@@ -59,7 +59,7 @@ func TestHTTPArtifactReaderScopesHistoryAndVerifiesCanonicalContent(t *testing.T
 				http.Error(response, "wrong scope", http.StatusBadRequest)
 				return
 			}
-			_ = json.NewEncoder(response).Encode(map[string]any{"schema": "urnetwork-payout-artifact-history-v1", "objects": []map[string]any{{"key": "blob/operator-1/st/v1/history/test-deployment/521/4/1/" + hash + ".json", "size": len(value), "content_hash": artifact.ContentHash}}})
+			_ = json.NewEncoder(response).Encode(map[string]any{"schema": "urnetwork-payout-artifact-history-v1", "objects": []map[string]any{{"key": "blob/operator-1/st/v1/history/test-deployment/521/4/1/" + hash + ".json", "size": len(value), "content_hash": artifact.ContentHash}}, "more": false, "next_after": ""})
 		case "/sn/artifact":
 			if request.URL.Query().Get("hash") != artifact.ContentHash {
 				http.Error(response, "wrong hash", http.StatusBadRequest)
@@ -78,6 +78,48 @@ func TestHTTPArtifactReaderScopesHistoryAndVerifiesCanonicalContent(t *testing.T
 	got, err := reader.Read(context.Background(), 4, 1)
 	if err != nil || got.ContentHash != artifact.ContentHash || got.TotalUsageBytes != artifact.TotalUsageBytes {
 		t.Fatalf("artifact read = %+v, %v", got, err)
+	}
+}
+
+func TestHTTPArtifactReaderRejectsIncompleteHistoryBeforeFetchingContent(t *testing.T) {
+	artifact, value := validatorTestArtifact(t)
+	hash := strings.TrimPrefix(artifact.ContentHash, "sha256:")
+	key := "blob/operator-1/st/v1/history/test-deployment/521/4/1/" + hash + ".json"
+	for _, tc := range []struct {
+		name string
+		more bool
+		next string
+	}{
+		{"truncated", true, key},
+		{"missing_cursor", true, ""},
+		{"unexpected_cursor", false, key},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			contentFetches := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				if request.URL.Path == "/sn/artifact" {
+					contentFetches++
+					_, _ = response.Write(value)
+					return
+				}
+				_ = json.NewEncoder(response).Encode(map[string]any{
+					"schema": "urnetwork-payout-artifact-history-v1", "more": tc.more, "next_after": tc.next,
+					"objects": []map[string]any{{"key": key, "size": len(value), "content_hash": artifact.ContentHash}},
+				})
+			}))
+			defer server.Close()
+			reader, err := NewHTTPArtifactReader(server.URL, "test-deployment", 521)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reader.Read(context.Background(), 4, 1); err == nil || !strings.Contains(err.Error(), "incomplete") {
+				t.Fatalf("incomplete history error = %v", err)
+			}
+			if contentFetches != 0 {
+				t.Fatalf("incomplete history selected content %d times", contentFetches)
+			}
+		})
 	}
 }
 

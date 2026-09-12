@@ -118,8 +118,10 @@ type artifactHistoryObject struct {
 }
 
 type artifactHistoryResponse struct {
-	Schema  string                  `json:"schema"`
-	Objects []artifactHistoryObject `json:"objects"`
+	Schema    string                  `json:"schema"`
+	Objects   []artifactHistoryObject `json:"objects"`
+	More      bool                    `json:"more"`
+	NextAfter string                  `json:"next_after"`
 }
 
 func decodeArtifactHistory(value []byte) (*artifactHistoryResponse, error) {
@@ -138,6 +140,12 @@ func decodeArtifactHistory(value []byte) (*artifactHistoryResponse, error) {
 	}
 	if history.Schema != "urnetwork-payout-artifact-history-v1" {
 		return nil, fmt.Errorf("unsupported artifact history schema %q", history.Schema)
+	}
+	// A partial history cannot establish that the operator published only one
+	// content identity. Accept the server's pagination metadata, but never pick
+	// an artifact from an incomplete or inconsistently terminated listing.
+	if history.More || history.NextAfter != "" {
+		return nil, errors.New("artifact history is incomplete or has an unexpected continuation cursor")
 	}
 	return &history, nil
 }
