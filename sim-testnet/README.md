@@ -60,6 +60,27 @@ record and wait for the assigned model to become available or an explicit
 user-approved reassignment; an agent error does not authorize a silent model
 substitution, duplicate test process, or bypassed gate.
 
+Strict operation through an owned LAN node uses
+`--owned-rpc-authority 192.168.1.162:9944`. This invocation option preserves the
+original configuration/policy hashes and signed activation inputs. Its exact
+authority and resolved operational URLs are bound into the setup plan, so
+changing or omitting the route requires a reviewed plan revision. It admits
+only an explicit private IPv4 host and port. Planning and setup dial that node
+directly while the topology is stopped; the generated campaign proxies use
+the same node. Owned EVM clients, proxies and workers have no request ceiling.
+Independent public comparison endpoints remain separate, retain their public
+quota, and remain required by strict admission. This option cannot be combined
+with provisional continuation.
+
+After locking the tested release, retain the original configuration and use
+the owned route with `doctor`, then `setup --format json` to emit the current
+plan revision. Review its exact action diff and limits, and apply that revision
+with `setup --apply --plan-hash HASH` and the same config/state/owned-route
+options. Existing revision, receipt and custody checks still apply; a failed
+revision must be resolved before renewal. Once the current plan is admitted,
+use the same owned-route option for renewal planning, exact-plan apply and
+subsequent strict launch. This sequence requires no vault edit or state reset.
+
 `fleet-renew` appends a reviewed generation for every existing fleet. Planning
 is read-only and requires an admitted current setup plan, retained client keys,
 exact current UID/coldkey custody, and a future validity window. For example,
@@ -70,8 +91,7 @@ The direct path uses the retained original oracle. Batches of ten independent
 native signers run together; each EVM phase submits exact nonces in order and
 reconciles at most ten transactions concurrently. Every started worker joins
 before a dependent phase or the next batch starts, keeping native proofs fresh.
-Still
-active predecessor bindings receive exact client-authorized revocations at the
+Predecessor bindings that remain active receive exact client-authorized revocations at the
 new start epoch; expired predecessors are renewed directly.
 
 Use `--renewal-transaction-evidence /absolute/path/transactions.json` while

@@ -1268,6 +1268,9 @@ func validateExecutionRPCConfiguration(cfg *ResolvedConfig) error {
 // Recompute endpoint selection so an in-memory or deserialization mismatch
 // cannot route writes differently from the configuration bound into the plan.
 func validateOperationalRPCRouting(cfg *ResolvedConfig) error {
+	if cfg != nil && cfg.ownedRPCAuthority != "" {
+		return validateOwnedRPCRouting(cfg)
+	}
 	substrate, evm, mode, err := resolveOperationalRPCs(cfg.Authority, cfg.Config.LaunchInputs.PublicSubstrateRPCOverride, cfg.Config.LaunchInputs.PublicEVMRPCOverride)
 	if err != nil {
 		return err

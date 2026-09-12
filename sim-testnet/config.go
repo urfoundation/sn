@@ -356,34 +356,37 @@ type ResolvedConfig struct {
 	// and plan hash. Value copies retain the explicit provisional mode.
 	provisionalResume       *provisionalResumeState
 	provisionalRPCAuthority string
-	ConfigPath              string
-	Config                  *HarnessConfig
-	Public                  *PublicManifest
-	Policy                  *protocol.Policy
-	Release                 *ReleaseLock
-	Hyperparameters         *Hyperparameters
-	Repos                   RepoPaths
-	VaultPath               string
-	Vault                   map[string]any
-	Netuid                  uint16
-	ChainID                 uint64
-	Authority               string
-	OperationalRPCMode      string
-	OperationalSubstrate    string
-	OperationalEVM          string
-	ObjectStoreHost         string
-	OperatorAPIOrigins      []string
-	WalletSecret            string
-	WalletMaterial          string
-	WalletPasswordSecret    string
-	WalletPassword          string
-	WalletPublic            string
-	WalletHotkeyPublic      string
-	MaximumTAORao           uint64
-	MaximumAlphaRao         uint64
-	MaximumEVMGasWei        DecimalUint
-	PolicyHash              string
-	ConfigHash              string
+	// This strict invocation route is separately bound into SetupPlan and
+	// ResolvedInputsHash, preserving the original activation ConfigHash.
+	ownedRPCAuthority    string
+	ConfigPath           string
+	Config               *HarnessConfig
+	Public               *PublicManifest
+	Policy               *protocol.Policy
+	Release              *ReleaseLock
+	Hyperparameters      *Hyperparameters
+	Repos                RepoPaths
+	VaultPath            string
+	Vault                map[string]any
+	Netuid               uint16
+	ChainID              uint64
+	Authority            string
+	OperationalRPCMode   string
+	OperationalSubstrate string
+	OperationalEVM       string
+	ObjectStoreHost      string
+	OperatorAPIOrigins   []string
+	WalletSecret         string
+	WalletMaterial       string
+	WalletPasswordSecret string
+	WalletPassword       string
+	WalletPublic         string
+	WalletHotkeyPublic   string
+	MaximumTAORao        uint64
+	MaximumAlphaRao      uint64
+	MaximumEVMGasWei     DecimalUint
+	PolicyHash           string
+	ConfigHash           string
 }
 
 type LoadOptions struct {
@@ -1490,6 +1493,7 @@ func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 		OperationalRPCMode   string         `json:"operational_rpc_mode"`
 		OperationalSubstrate string         `json:"operational_substrate_rpc"`
 		OperationalEVM       string         `json:"operational_evm_rpc"`
+		OwnedRPCAuthority    string         `json:"owned_rpc_authority,omitempty"`
 		ObjectStore          string         `json:"object_store_hostname"`
 		WalletPublic         string         `json:"wallet_public"`
 		PolicyHash           string         `json:"policy_hash"`
@@ -1505,6 +1509,7 @@ func (r ResolvedConfig) MarshalJSON() ([]byte, error) {
 		ConfigPath: r.ConfigPath, Config: r.Config, Netuid: r.Netuid, ChainID: r.ChainID,
 		PrivateAuthority: authority, OperationalRPCMode: r.OperationalRPCMode,
 		OperationalSubstrate: redactURL(r.OperationalSubstrate), OperationalEVM: redactURL(r.OperationalEVM),
-		ObjectStore: r.ObjectStoreHost, WalletPublic: r.WalletPublic, PolicyHash: r.PolicyHash, ConfigHash: r.ConfigHash,
+		OwnedRPCAuthority: r.ownedRPCAuthority,
+		ObjectStore:       r.ObjectStoreHost, WalletPublic: r.WalletPublic, PolicyHash: r.PolicyHash, ConfigHash: r.ConfigHash,
 	})
 }

@@ -83,6 +83,7 @@ type SetupPlan struct {
 	PriorPlanHashes              []string                     `json:"prior_plan_hashes,omitempty"`
 	ConfigHash                   string                       `json:"config_hash"`
 	ResolvedInputsHash           string                       `json:"resolved_inputs_hash"`
+	OwnedRPCAuthority            string                       `json:"owned_rpc_authority,omitempty"`
 	PolicyHash                   string                       `json:"policy_hash"`
 	Roles                        PublicRoles                  `json:"roles"`
 	Deployment                   ContractDeployment           `json:"deployment"`
@@ -858,6 +859,7 @@ func buildPlanWithRegistrationGeneration(cfg *ResolvedConfig, facts *SetupFacts,
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
 	p := &SetupPlan{Schema: currentSetupPlanSchema, Release: "1.0", ReleaseLockHash: releaseLockHash, DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: testnetChainID, GenesisHash: testnetGenesis, Netuid: cfg.Netuid, Owner: cfg.WalletPublic, LiveFacts: *facts, RegistrationBurnLimitRao: registrationBurnLimit, NativeTransactionFeeLimitRao: nativeFeeLimit, MaximumEVMFeePerGasWei: cfg.Config.Budgets.MaximumEVMFeePerGasWei, AlphaTransferMarginBPS: cfg.Config.AlphaTransfers.MinimumTAOEquivalentMarginBPS, MinimumSourceRemainingRao: cfg.Config.ValidatorBootstrap.MinimumSourceRemainingAlphaRao, BootstrapBurnHalfLifeBlocks: bootstrapBurnHalfLife, ProductionBurnHalfLifeBlocks: productionBurnHalfLife, ConfigHash: cfg.ConfigHash, ResolvedInputsHash: resolvedHash, PolicyHash: cfg.PolicyHash, Roles: roles, Deployment: payloads.Manifest, CoordinatorUpgrade: payloads.CoordinatorUpgrade, ValidatorEvidence: &evidenceManifest, GeneratedAt: generatedAt.Format(time.RFC3339)}
+	p.OwnedRPCAuthority = cfg.ownedRPCAuthority
 	p.ValidatorEvidenceSource = evidenceSource
 	add := func(a Action) {
 		if actionUsesContractDeployment(a) {
@@ -1993,6 +1995,14 @@ func (p SetupPlan) hash() (string, error) {
 func validatePlanBudget(p *SetupPlan) error {
 	if p == nil {
 		return errors.New("setup plan is unavailable")
+	}
+	if p.OwnedRPCAuthority != "" {
+		if err := validateOwnedRPCAuthority(p.OwnedRPCAuthority); err != nil {
+			return err
+		}
+		if p.ChainID != testnetChainID || p.GenesisHash != testnetGenesis {
+			return errors.New("owned RPC plan is outside the authenticated testnet")
+		}
 	}
 	if err := validateFleetRenewalPlan(p); err != nil {
 		return err

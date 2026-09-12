@@ -32,6 +32,7 @@ type cliOptions struct {
 	RepairArtifact, RepairArtifactSHA256, RepairBudget, RepairBudgetSHA256                                                          string
 	ProvisionalObservationTimeout                                                                                                   time.Duration
 	ProvisionalRPCAuthority                                                                                                         string
+	OwnedRPCAuthority                                                                                                               string
 	Config, SNRepo, ServerRepo, OperatorProxyRepo, VaultRepo, PlatformConfigRepo, StateDir, PlanHash, Name, Manifest, RunID, Format string
 	Apply, Detach, ProvisionalResume                                                                                                bool
 }
@@ -70,6 +71,7 @@ Common options:
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
+  --owned-rpc-authority HOST:PORT  strict plan-bound owned private IPv4 route; owned RPC has no request ceiling
   --provisional-observation-timeout DURATION  scenario --name epoch --provisional-resume only; 0 keeps the default, maximum 6h
   --repair-artifact PATH --repair-artifact-sha256 HASH  exact reviewed Foundry coordinator artifact
   --repair-budget PATH --repair-budget-sha256 HASH  exact campaign allowance suballocation receipt
@@ -112,6 +114,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
+	fs.StringVar(&o.OwnedRPCAuthority, "owned-rpc-authority", "", "")
 	fs.DurationVar(&o.ProvisionalObservationTimeout, "provisional-observation-timeout", 0, "")
 	fs.StringVar(&o.RepairArtifact, "repair-artifact", "", "")
 	fs.StringVar(&o.RepairArtifactSHA256, "repair-artifact-sha256", "", "")
@@ -156,6 +159,9 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", o, err
 	}
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
+		return "", o, err
+	}
+	if err := validateOwnedRPCOptions(cmd, o); err != nil {
 		return "", o, err
 	}
 	if o.ProvisionalRPCAuthority != "" {
@@ -373,6 +379,10 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		return err
 	}
 	if err := authenticateCommandExecutable(ctx, resolved, cmd, o, authenticate); err != nil {
+		return err
+	}
+	resolved, err = prepareOwnedRPCConfiguration(resolved, o.OwnedRPCAuthority)
+	if err != nil {
 		return err
 	}
 	if cmd == "release-lock" {

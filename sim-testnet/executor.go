@@ -91,6 +91,9 @@ func newCampaignExecutorWithNativeOwner(ctx context.Context, cfg *ResolvedConfig
 // newExecutorWithTransport separates immutable route authorization from the
 // local transport hop used during a supervised campaign.
 func newExecutorWithTransport(ctx context.Context, authorizedCfg, runtimeCfg *ResolvedConfig, stateDir string, p *SetupPlan, j *Journal, roles *RoleSecrets, nativeOwner *Executor) (*Executor, error) {
+	if err := validateOwnedRPCPlan(authorizedCfg, p); err != nil {
+		return nil, err
+	}
 	if err := validateExecutionRPCConfiguration(authorizedCfg); err != nil {
 		return nil, fmt.Errorf("execution RPC configuration: %w", err)
 	}
@@ -518,7 +521,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 		if planErr != nil {
 			return planErr
 		}
-		return printResult(o.Format, map[string]any{"dry_run": true, "command": cmd, "plan": p, "apply_command": fmt.Sprintf("sim-testnet %s --config %s --apply --plan-hash %s", cmd, cfg.ConfigPath, p.PlanHash)}, nil)
+		return printResult(o.Format, map[string]any{"dry_run": true, "command": cmd, "plan": p, "apply_command": fmt.Sprintf("sim-testnet %s --config %s --apply --plan-hash %s", cmd, cfg.ConfigPath, p.PlanHash) + ownedRPCCommandOption(cfg)}, nil)
 	}
 	if err := ensurePrivateDir(stateDir); err != nil {
 		return err
@@ -671,7 +674,7 @@ func runMutation(ctx context.Context, cmd string, cfg *ResolvedConfig, stateDir 
 			}
 		}
 	}
-	result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir)}
+	result := map[string]any{"schema": "urnetwork-sim-command-result-v1", "command": cmd, "deployment_id": cfg.Config.Deployment.DeploymentID, "plan_hash": p.PlanHash, "state_dir": stateDir, "status_command": fmt.Sprintf("sim-testnet status --config %s --state-dir %s", cfg.ConfigPath, stateDir) + ownedRPCCommandOption(cfg)}
 	if provisionalResumeEnabled(cfg) {
 		result["provisional"] = true
 		result["final_acceptance"] = false
@@ -714,6 +717,9 @@ func loadPersistedPlan(cfg *ResolvedConfig, stateDir string) (*SetupPlan, error)
 	resolvedHash, err := resolvedInputsHash(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("hash current resolved launch inputs: %w", err)
+	}
+	if p.OwnedRPCAuthority != cfg.ownedRPCAuthority {
+		return nil, errPersistedPlanIdentityMismatch
 	}
 	bootstrapBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.OwnerControlled["burn_half_life"]))
 	productionBurnHalfLife := uint16(hyperparameterUint64(cfg.Hyperparameters.ProductionOwnerControlled["burn_half_life"]))
@@ -835,6 +841,10 @@ func writeRunInputs(cfg *ResolvedConfig, stateDir string, p *SetupPlan, roles *R
 		return err
 	}
 	redacted := map[string]any{"schema": "urnetwork-sim-effective-config-v1", "config": cfg.Config, "chain_id": cfg.ChainID, "netuid": cfg.Netuid, "private_authority": redactURL(cfg.Authority), "operational_rpc_mode": cfg.OperationalRPCMode, "operational_substrate_rpc": redactURL(cfg.OperationalSubstrate), "operational_evm_rpc": redactURL(cfg.OperationalEVM), "wallet_public": cfg.WalletPublic, "policy_hash": cfg.PolicyHash, "config_hash": cfg.ConfigHash, "resolved_inputs_hash": p.ResolvedInputsHash, "release_lock_hash": p.ReleaseLockHash}
+	if cfg.ownedRPCAuthority != "" {
+		redacted["owned_rpc_authority"] = cfg.ownedRPCAuthority
+		redacted["owned_rpc_maximum_requests_per_minute"] = 0
+	}
 	y, err := yaml.Marshal(redacted)
 	if err != nil {
 		return err

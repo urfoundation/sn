@@ -89,6 +89,9 @@ func validateCampaignRPCTransport(authorized, runtime *ResolvedConfig) error {
 	if err != nil {
 		return err
 	}
+	if runtime.ownedRPCAuthority != want.ownedRPCAuthority {
+		return errors.New("campaign RPC transport lost its approved owned authority")
+	}
 	if runtime.ConfigHash != want.ConfigHash || runtime.PolicyHash != want.PolicyHash || runtime.ChainID != want.ChainID || runtime.Netuid != want.Netuid || runtime.OperationalRPCMode != want.OperationalRPCMode || runtime.OperationalSubstrate != want.OperationalSubstrate || runtime.OperationalEVM != want.OperationalEVM || runtime.Public.Chain.SubstratePublicReadEndpoint != want.Public.Chain.SubstratePublicReadEndpoint || runtime.Public.Chain.EVMPublicReadEndpoint != want.Public.Chain.EVMPublicReadEndpoint || runtime.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute != want.Config.LaunchInputs.PublicEVMMaximumRequestsPerMinute {
 		return errors.New("campaign RPC transport is not the exact authorized egress derivative")
 	}
