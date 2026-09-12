@@ -135,8 +135,15 @@ type coordinatorRepairCarryFixture struct {
 }
 
 func newCoordinatorRepairCarryFixture(t *testing.T) coordinatorRepairCarryFixture {
+	return newCoordinatorRepairCarryPreparedFixture(t, nil)
+}
+
+func newCoordinatorRepairCarryPreparedFixture(t *testing.T, prepare func(validatorEvidenceCarryTestFixture)) coordinatorRepairCarryFixture {
 	t.Helper()
 	original := newValidatorEvidenceCarryModeTestFixture(t, false, true)
+	if prepare != nil {
+		prepare(original)
+	}
 	e := original.executor
 	source := e.plan
 	artifact := artifactByName("Coordinator")

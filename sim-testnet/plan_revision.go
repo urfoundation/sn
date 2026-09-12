@@ -2451,6 +2451,34 @@ func rebindPlanDeployment(plan *SetupPlan, deployment ContractDeployment) error 
 	return nil
 }
 
+// Install the already authenticated repair reference before the repeated
+// binder validates the companion's original predecessor. Restore the original
+// executed actions after binding the current implementation; neither CREATE
+// nor its paid action is synthesized as new work.
+func rebindPlanCoordinatorUpgradeWithCarry(revised, prior *SetupPlan, payloads *DeploymentPayloads, observed *coordinatorRepairCarryObservation, entries []JournalEntry) error {
+	if observed != nil {
+		if revised == nil || prior == nil || observed != prior.coordinatorRepairObserved {
+			return errors.New("coordinator repair binding lost its authenticated observation")
+		}
+		scope, err := coordinatorRepairRevisionScope(prior, entries)
+		if err != nil || observed.revisionScope == "" || scope != observed.revisionScope {
+			return errors.New("coordinator repair binding changed its authenticated source or journal")
+		}
+		reference := observed.reference
+		revised.CoordinatorRepairCarry = &reference
+	}
+	if err := rebindPlanCoordinatorUpgrade(revised, payloads); err != nil {
+		return err
+	}
+	if observed != nil {
+		if err := carryCoordinatorRepairPlan(revised, prior, observed, entries); err != nil {
+			return err
+		}
+		return validateValidatorEvidencePlan(revised)
+	}
+	return nil
+}
+
 func rebindPlanCoordinatorUpgrade(plan *SetupPlan, payloads *DeploymentPayloads) error {
 	if plan == nil || payloads == nil {
 		return errors.New("revised coordinator upgrade payload is unavailable")
@@ -4105,13 +4133,8 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 		}
 		if migration != nil {
 			revised.CoordinatorUpgradeBaseline = migration.Baseline
-			if err := rebindPlanCoordinatorUpgrade(revised, currentPayloads); err != nil {
+			if err := rebindPlanCoordinatorUpgradeWithCarry(revised, prior, currentPayloads, migration.Repair, entries); err != nil {
 				return nil, fmt.Errorf("bind repeated coordinator upgrade: %w", err)
-			}
-			if migration.Repair != nil {
-				if err := carryCoordinatorRepairPlan(revised, prior, migration.Repair, entries); err != nil {
-					return nil, fmt.Errorf("retain completed coordinator repair: %w", err)
-				}
 			}
 			if err := preserveVerifiedFleetBatchActions(cfg, stateDir, revised, prior, entries); err != nil {
 				return nil, fmt.Errorf("preserve verified fleet batches: %w", err)

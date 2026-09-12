@@ -244,6 +244,32 @@ func validatorEvidenceDeploymentGetters(manifest ValidatorEvidenceDeployment) []
 	}
 }
 
+// A completed correction keeps the original batcher CREATE. Its signed old
+// upgrade, together with the retained companion source, names that predecessor;
+// the corrected implementation and the next free nonce are separate identities.
+func validatorEvidencePredecessorNonce(plan *SetupPlan) (uint64, error) {
+	if plan == nil {
+		return 0, errors.New("validator evidence predecessor plan is unavailable")
+	}
+	upgrade := plan.CoordinatorUpgrade
+	if plan.CoordinatorRepairCarry != nil {
+		if plan.ValidatorEvidenceCarry == nil {
+			return 0, errors.New("coordinator repair predecessor has no retained companion authority")
+		}
+		if err := validateCoordinatorRepairCarryPlan(plan); err != nil {
+			return 0, err
+		}
+		upgrade = plan.CoordinatorRepairCarry.Request.Request.OldUpgrade
+		if err := validateCoordinatorUpgradeIdentity(upgrade, common.HexToAddress(plan.Roles.Deployer), plan.Deployment); err != nil {
+			return 0, err
+		}
+	}
+	if upgrade.DeployerNonce >= ^uint64(0)-1 {
+		return 0, errors.New("validator evidence plan nonce range overflows")
+	}
+	return upgrade.DeployerNonce + 1, nil
+}
+
 // Reconstructs from approved public authority, not from the companion's own
 // claimed fields. It does not read wallets, contact RPC or allocate nonces.
 func validatorEvidencePayloadsForPlan(plan *SetupPlan) (*validatorEvidenceDeploymentPayloads, error) {
@@ -258,14 +284,14 @@ func validatorEvidencePayloadsForPlan(plan *SetupPlan) (*validatorEvidenceDeploy
 	if err := validateCoordinatorUpgradeIdentity(plan.CoordinatorUpgrade, deployer, plan.Deployment); err != nil {
 		return nil, err
 	}
-	if plan.CoordinatorUpgrade.DeployerNonce >= ^uint64(0)-1 {
-		return nil, errors.New("validator evidence plan nonce range overflows")
+	fleetNonce, err := validatorEvidencePredecessorNonce(plan)
+	if err != nil {
+		return nil, err
 	}
 	genesis, err := decodeHex32("validator evidence plan genesis", plan.GenesisHash)
 	if err != nil {
 		return nil, err
 	}
-	fleetNonce := plan.CoordinatorUpgrade.DeployerNonce + 1
 	payloads := &DeploymentPayloads{
 		Deployer: deployer, Manifest: plan.Deployment, CoordinatorUpgrade: plan.CoordinatorUpgrade,
 		PrecompileProbeAddress: effectivePrecompileProbe(plan.Deployment, plan.CoordinatorUpgradeBaseline),
@@ -346,7 +372,10 @@ func validateValidatorEvidencePlan(plan *SetupPlan) error {
 		}
 	}
 	batcher, exists := actions["fleet.refresh.deploy-batcher"]
-	batcherNonce := plan.CoordinatorUpgrade.DeployerNonce + 1
+	batcherNonce, err := validatorEvidencePredecessorNonce(plan)
+	if err != nil {
+		return err
+	}
 	if !exists || batcher.Target != crypto.CreateAddress(expected.Manifest.Deployer, batcherNonce).Hex() ||
 		batcher.Parameters["expected_nonce"] != strconv.FormatUint(batcherNonce, 10) ||
 		batcher.Parameters["expected_signer"] != expected.Manifest.Deployer.Hex() || !slices.Contains(batcher.DependsOn, "evm.coordinator-upgrade-implementation") {
