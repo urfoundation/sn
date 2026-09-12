@@ -57,7 +57,7 @@ repositories:
     operator_proxy_go_source_hash: sha256:7c5f4292b09c87dd002a81ac572d477809510d298db8e12d8871a3ade724d8d8
     platform_config_shared_tree_hash: sha256:6852f0a67ab5e5cd5e61fbe3d53ac367da7d43c92f766c2de6cff43db40c5252
     platform_config_source_hash: sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a
-    protocol_source_hash: sha256:1fa689409ca6c34eaa3aabcd802566cb6b1c9358fe8dff6bf927d18d747d43a3
+    protocol_source_hash: sha256:3ac539afb412418472d3be0d64a499fba50fcfdbbd73d8d35fcf17ad807cb67a
     proxy_go_source_hash: sha256:5fcc678f092c40138c3875c8196fd9d8a313b239a9ebc3b46551e9bc793fa0e0
     sdk_go_source_hash: sha256:537d01321f5f89ed583602b9195432cf27305ab65283e643aff3e06885a1224d
     sdk_mobile_build_tree_hash: sha256:c2b3f6ad1f556f14a91702bf81b3312e0e7f05183d21239fa1d0f8df772cf069
