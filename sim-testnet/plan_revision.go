@@ -4116,6 +4116,9 @@ func buildPlanRevisionFromFactsWithAllRecoveries(cfg *ResolvedConfig, stateDir s
 	if err := carryFleetRenewalRevision(revised, prior); err != nil {
 		return nil, fmt.Errorf("retain approved fleet renewal: %w", err)
 	}
+	if err := carryEvidenceRelayContinuationRevision(revised, prior); err != nil {
+		return nil, fmt.Errorf("retain approved evidence relay continuation: %w", err)
+	}
 	if err := validateValidatorEvidenceRevision(prior, revised.ValidatorEvidence); err != nil {
 		return nil, err
 	}

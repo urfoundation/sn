@@ -189,10 +189,28 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 			horizon.sourceKVs[key] = activation
 		}
 	}
+	if c:=self.executor.plan.EvidenceRelayContinuation;c!=nil {
+		if provisionalResumeEnabled(self.executor.cfg) { return errors.New("relay continuation does not authorize provisional admission") }
+		if err:=validateEvidenceRelayContinuationPlan(self.executor.plan);err!=nil { return err }
+		if err:=validateEvidenceRelayContinuationSource(self.executor.stateDir,self.executor.plan,self.executor.journal.Entries());err!=nil { return err }
+		if err:=c.validateClocks(work);err!=nil { return err }
+		for _,source:=range c.Sources {
+			if horizon.sourceKVs[evidenceRelayHorizonSource{source.Activation.Hotkey,source.NoID}]!=source.Activation { return errors.New("relay continuation runtime source differs from its original activation") }
+		}
+		canonical,err:=self.chain.BlockHashContext(self.ctx,c.EVMHead.Number)
+		if err!=nil || fmt.Sprintf("0x%x",canonical)!=c.EVMHead.Hash || block<c.EVMHead.Number { return errors.Join(errors.New("relay continuation approved snapshot is not canonical"),err) }
+		nativeAnchor:=anchor
+		nativeAnchor.NativeBlock=c.NativeHead.Number
+		value,err:=decodeHex32("relay continuation native snapshot",c.NativeHead.Hash);if err!=nil { return err };nativeAnchor.NativeHash=value
+		nativeEpoch,err:=self.readHorizonNative(self.ctx,nativeAnchor,false)
+		if err!=nil || nativeEpoch!=c.NativeEpoch { return errors.Join(errors.New("relay continuation approved native snapshot changed"),err) }
+		horizon.continuation=c
+		horizon.maximum=uint64(len(c.Debits))+c.NewSlots
+	}
 	// Reject plainly insufficient profiles before historical/native/public
 	// source I/O. This does not authenticate or credit any private candidate.
-	if err := self.requireHorizonRemaining(horizon, block, 0, remaining); err != nil {
-		return err
+	if horizon.continuation==nil {
+		if err := self.requireHorizonRemaining(horizon, block, 0, remaining); err != nil { return err }
 	}
 	anchorNative, err := self.readHorizonNative(self.ctx, anchor, false)
 	if err != nil {
@@ -213,6 +231,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 	if err := self.readAdmittedHorizon(self.ctx, horizon, block); err != nil {
 		return err
 	}
+	var observed []validatorcomponent.ValidatorEvidenceTransactionV2Expected
 	for index := range self.sources {
 		if provisionalResumeEnabled(self.executor.cfg) {
 			fmt.Fprintln(os.Stderr, "sim-testnet: provisional evidence relay pending_public_census_preview_waived=true; actual publication authentication and slot admission remain required; final_acceptance=false")
@@ -229,6 +248,7 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 				return err
 			}
 			for _, request := range requests {
+				observed=append(observed,request)
 				if err := horizon.admit(request.Evidence.Header, block); err != nil {
 					return err
 				}
@@ -244,11 +264,15 @@ func (self *evidenceRelayRuntime) prepareHorizon() error {
 				return err
 			}
 			for _, request := range requests {
+				observed=append(observed,request)
 				if err := horizon.admit(request.Evidence.Header, block); err != nil {
 					return err
 				}
 			}
 		}
+	}
+	if horizon.continuation!=nil {
+		if err:=validateEvidenceRelayContinuationRetained(horizon.continuation,observed);err!=nil { return err }
 	}
 	// Discovery/public reads can take real time. Re-read both clocks before
 	// giving preparation permission, without turning elapsed time into credit.
@@ -278,11 +302,19 @@ func (self *evidenceRelayRuntime) readAdmittedHorizon(ctx context.Context, horiz
 	}
 	entries := self.executor.journal.Entries()
 	seenKVs := map[string]bool{}
+	owners:=map[string]*SetupPlan{}
 	for _, entry := range entries {
-		if entry.PlanHash != self.executor.plan.PlanHash || !strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) {
+		if !strings.HasPrefix(entry.ActionID, evidenceRelayActionPrefix) || entry.PlanHash != self.executor.plan.PlanHash && self.executor.plan.EvidenceRelayContinuation==nil {
 			continue
 		}
 		if seenKVs[entry.ActionID] {
+			continue
+		}
+		if self.executor.plan.EvidenceRelayContinuation!=nil {
+			_,record,_,err:=readOwnedEvidenceRelayRequest(ctx,self.executor.stateDir,self.executor.plan,entries,entry.ActionID,owners)
+			if err!=nil { return err }
+			if err:=horizon.admit(record.Evidence.Evidence.Header,block);err!=nil { return err }
+			seenKVs[entry.ActionID]=true
 			continue
 		}
 		if !validCanonicalHashHex("0x"+strings.TrimPrefix(entry.ActionID, evidenceRelayActionPrefix)) || uint64(len(seenKVs)) >= horizon.maximum {

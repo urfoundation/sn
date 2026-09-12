@@ -71,7 +71,7 @@ func stoppedAttemptFiles(root *os.Root, limits AttemptLedgerDiskLimits) ([]stopp
 // authenticated original activation identity, VPK and unchanged disk limits.
 // Missing stores, mutable path aliases and incomplete metadata fail; nothing
 // creates a database, migrates legacy files or writes a control checkpoint.
-func ReadStoppedAttemptLedgerCapacity(ctx context.Context,stateDir string,identity AttemptLedgerIdentity,coordinator string,vpk ed25519.PublicKey,limits AttemptLedgerDiskLimits) (result StoppedAttemptLedgerCapacity, resultErr error) {
+func ReadStoppedAttemptLedgerCapacity(ctx context.Context,stateDir string,identity AttemptLedgerIdentity,coordinator string,vpk ed25519.PublicKey,limits AttemptLedgerDiskLimits,prefix ...AttemptLedgerHead) (result StoppedAttemptLedgerCapacity, resultErr error) {
 	if ctx == nil || ctx.Err() != nil || !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || validateAttemptLedgerIdentity(identity,vpk) != nil { return result,errors.New("stopped ledger capacity owner is invalid") }
 	address, err := hex.DecodeString(strings.TrimPrefix(coordinator,"0x"))
 	if err != nil || len(address)!=20 || coordinator!="0x"+hex.EncodeToString(address) || bytes.Equal(address,make([]byte,20)) { return result,errors.New("stopped ledger coordinator is invalid") }
@@ -97,6 +97,18 @@ func ReadStoppedAttemptLedgerCapacity(ctx context.Context,stateDir string,identi
 	raw,err = db.Get([]byte("head"),nil)
 	if err != nil || attemptStoreDecode(raw,&store.head)!=nil { return result,errors.Join(errors.New("stopped ledger lifetime head is unavailable"),err) }
 	if err := store.verifyContents(ctx); err != nil { return result,fmt.Errorf("stopped ledger signed lifetime prefix: %w",err) }
+	if len(prefix)>1 { return result,errors.New("stopped ledger has more than one original lifetime checkpoint") }
+	if len(prefix)==1 {
+		prior:=prefix[0]
+		if prior.LastSequence>store.head.LastSequence || prior.RecordBytes>store.head.RecordBytes || prior.TrailCount>store.head.TrailCount { return result,errors.New("stopped ledger lost its original lifetime checkpoint") }
+		if prior.LastSequence==0 {
+			if prior.Root!=zeroAttemptHash() || prior.RecordBytes!=0 || prior.TrailCount!=0 { return result,errors.New("stopped ledger original empty checkpoint differs") }
+		} else {
+			record,err:=store.readRecord(prior.LastSequence)
+			if err!=nil || record.RecordHash!=prior.Root { return result,errors.Join(errors.New("stopped ledger changed its authenticated original record prefix"),err) }
+		}
+		if prior.LastSequence==store.head.LastSequence && prior!=store.head { return result,errors.New("stopped ledger changed unchanged-prefix lifetime counters") }
+	}
 	if err := db.Close(); err != nil { closed=true; return result,err }
 	closed=true
 	after,afterUsed,err := stoppedAttemptFiles(root,limits)

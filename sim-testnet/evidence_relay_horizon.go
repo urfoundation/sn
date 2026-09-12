@@ -247,6 +247,7 @@ type evidenceRelayHorizon struct {
 	minimumNativeEnd  uint64
 	sourceKVs         map[evidenceRelayHorizonSource]protocol.ValidatorEvidenceActivation
 	headerKVs         map[[32]byte]protocol.ValidatorEvidenceHeader
+	continuation      *EvidenceRelayContinuation
 }
 
 // Ceilings count a partial boundary on both clocks. The one/native term is
@@ -377,6 +378,11 @@ func (self *evidenceRelayHorizon) extraSubjects(candidate *protocol.ValidatorEvi
 func (self *evidenceRelayHorizon) ceilings(candidate *protocol.ValidatorEvidenceHeader) (uint64, uint64, uint64, error) {
 	if self == nil || self.maximum == 0 || self.anchorBlock == 0 {
 		return 0, 0, 0, errors.New("evidence relay horizon is absent")
+	}
+	if self.continuation != nil {
+		required,err:=self.continuation.requiredSubjects(self.headerKVs,candidate)
+		if err!=nil || required>self.maximum { return 0,0,0,errors.Join(errors.New("relay continuation exhausted its retained plus future subject allowance"),err) }
+		return self.continuation.EndBlock,self.continuation.EndSettlementEpoch,self.continuation.EndNativeEpoch,nil
 	}
 	extra, err := self.extraSubjects(candidate)
 	if err != nil {

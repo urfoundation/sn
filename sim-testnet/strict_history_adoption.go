@@ -256,6 +256,9 @@ func preflightStrictHistoryAdoption(ctx context.Context, cfg *ResolvedConfig, st
 			return err
 		}
 	}
+	if err := preflightEvidenceRelayContinuationHistory(ctx, cfg, stateDir, plan); err != nil {
+		return err
+	}
 	return preflightRuntimeEvidenceV2(resolved, stateDir)
 }
 

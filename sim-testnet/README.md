@@ -38,6 +38,22 @@ preserves the coordinator namespace and original signed inputs; it performs
 normal native, EVM and complete terminal replay and provides no campaign
 acceptance or provisional audit shortcut.
 
+If the original evidence relay horizon has elapsed, use the stopped
+`relay-continuation --relay-end-block BLOCK --format json` command after the
+approved renewal. It authenticates original activation, all pending public
+subjects, every retained debit and signed transaction, finalized nonces, and
+the complete signed ledger/index prefixes. One explicit plan repartitions the
+same 25.6 TAO allowance from 256 calls at 100 gwei to 512 at 50 gwei, each capped at
+one million gas. Original higher-fee liabilities reduce the new-slot count.
+It preserves all source storage limits and reserves missing historical closed
+censuses as well as future work. Choose the absolute end only when remaining
+qualification/launch timing is known; retries and later phases cannot move it.
+Apply the exact saved plan with `relay-continuation --relay-continuation-plan
+PATH --apply --plan-hash HASH`. This only archives/adopts setup inputs and sends
+no chain transaction. Then capture the strict history adoption against that
+new plan hash. Original activation files, coordinator history, queues and
+request/receipt bytes remain owned by their original sources.
+
 New qualification tooling, status/report processing and its tests are written
 in Go. Keep legacy process-ownership adapters only until their Go replacement
 passes the same deterministic cancellation, escaped-child, lost-completion and

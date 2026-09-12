@@ -81,3 +81,22 @@ func TestStoppedAttemptLedgerCapacityRejectsForgedHeadAndSignedRecord(t *testing
 		})
 	}
 }
+
+func TestStoppedAttemptLedgerCapacityPreservesOriginalRootAcrossRealAppend(t *testing.T) {
+	fixture:=newAttemptRecordStoreTestFixture(t,2)
+	stateDir:=t.TempDir();path:=filepath.Join(stateDir,attemptLedgerStoreName)
+	bounds:=attemptRecordStoreTestBounds()
+	store:=openAttemptRecordStoreTest(t,path,fixture,bounds,attemptRecordStoreHooks{})
+	appendAttemptRecordStoreTest(t,store,fixture.recordTs[:8])
+	prefix,err:=store.Head();if err!=nil { t.Fatal(err) }
+	appendAttemptRecordStoreTest(t,store,fixture.recordTs[8:])
+	if err:=store.Close();err!=nil { t.Fatal(err) }
+	limits:=AttemptLedgerDiskLimits{MaxRecordBytes:bounds.MaxRecordBytes,MaxRecordCount:bounds.MaxRecordCount,MaxTrailCount:bounds.MaxTrailCount,MaxRawRecordBytes:bounds.MaxRawRecordBytes,MaxStorageBytes:bounds.MaxStorageBytes,MaxStorageFiles:bounds.MaxStorageFiles}
+	read:=func(prior AttemptLedgerHead)(StoppedAttemptLedgerCapacity,error){return ReadStoppedAttemptLedgerCapacity(t.Context(),stateDir,fixture.identity,"0x1111111111111111111111111111111111111111",fixture.validatorKey.Public().(ed25519.PublicKey),limits,prior)}
+	value,err:=read(prefix)
+	if err!=nil || value.Head.LastSequence!=16 || value.Head.TrailCount!=2 || prefix.LastSequence!=8 { t.Fatal("real successor records lost original checkpoint",err) }
+	changed:=prefix;changed.Root=fixture.recordTs[8].RecordHash
+	if _,err:=read(changed);err==nil { t.Fatal("signed but different original root acquired continuation capacity") }
+	changed=prefix;changed.LastSequence=value.Head.LastSequence+1
+	if _,err:=read(changed);err==nil { t.Fatal("original lifetime checkpoint could move past the actual signed store") }
+}

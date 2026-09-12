@@ -58,7 +58,7 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				}
 				continue
 			}
-			if uint64(len(completed)) >= self.executor.cfg.Config.ValidatorEvidenceRelay.MaxSlots {
+			if uint64(len(completed)) >= self.horizon.maximum {
 				return errors.New("evidence audit completion owner exceeds its approved slot bound")
 			}
 			requests, err := self.readAuditPublication(self.ctx, source, &manifest, block, hash)
@@ -69,18 +69,18 @@ func (self *evidenceRelayRuntime) advanceDepositAudits(completed map[evidenceRel
 				if err := self.horizon.admit(expected.Evidence.Header, block); err != nil {
 					return err
 				}
-				action, err := self.executor.admitEvidenceRelayAction(self.ctx, expected)
+				action, ownerPlanHash, err := self.executor.admitOwnedEvidenceRelayAction(self.ctx, expected)
 				if err != nil {
 					return err
 				}
-				result, err := self.executor.keeper.relayValidatorEvidenceTransaction(self.ctx, self.chain, self.executor.plan.PlanHash, action, expected)
+				result, err := self.executor.keeper.relayValidatorEvidenceTransaction(self.ctx, self.chain, ownerPlanHash, action, expected)
 				if err != nil {
 					return err
 				}
 				if result == nil || result.Winner == nil {
 					return errors.New("evidence audit relay returned no canonical winner")
 				}
-				if err := self.retainResult(action, result); err != nil {
+				if err := self.retainOwnedResult(ownerPlanHash,action, result); err != nil {
 					return err
 				}
 			}

@@ -27,6 +27,8 @@ var version = "1.0"
 var defaultConfigPath = "sim-testnet/testnet.yml"
 
 type cliOptions struct {
+	RelayContinuationPlan string
+	RelayEndBlock uint64
 	RenewalPlan, RenewalTransactionEvidence                                                                                         string
 	RenewalTransactions                                                                                                             []string
 	RenewalValidFrom, RenewalValidTo, RenewalFeePerGas                                                                              uint64
@@ -50,6 +52,7 @@ Commands:
   release-lock  render or atomically refresh observed release-lock fields from clean repositories
   plan     print the canonical setup diff, costs, actions, and plan hash; never writes
   history-adoption  capture a source-pinned request for strict startup after retained V2 history
+  relay-continuation  capture or adopt one fixed continuation inside the original relay reserve
   setup    converge the existing subnet and install contracts (dry-run unless approved)
   launch   setup, start topology, readiness, and smoke scenario (dry-run unless approved)
   resume   reconcile the journal and continue an interrupted approved action
@@ -75,6 +78,8 @@ Common options:
   --apply --plan-hash HASH  mandatory pair for chain/process writes; release-lock uses --apply alone
   --provisional-resume  reuse authenticated verified receipts under the exact persisted testnet plan; no final release acceptance
   --first-native-epoch N  exact fresh native epoch for read-only history-adoption capture
+  --relay-end-block N  fixed absolute end for read-only relay continuation capture
+  --relay-continuation-plan PATH  exact saved continuation plan for adoption
   --strict-history-adoption PATH --strict-history-adoption-sha256 HASH  exact request for strict launch/resume
   --provisional-rpc-authority HOST:PORT  owned private IPv4 RPC route for provisional continuation only
   --owned-rpc-authority HOST:PORT  strict plan-bound owned private IPv4 route; owned RPC has no request ceiling
@@ -97,7 +102,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 		return "", cliOptions{}, errors.New("missing command")
 	}
 	cmd := args[0]
-	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "history-adoption": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
+	valid := map[string]bool{"doctor": true, "release-lock": true, "plan": true, "history-adoption": true, "relay-continuation": true, "setup": true, "launch": true, "resume": true, "coordinator-repair": true, "fleet-renew": true, "status": true, "inspect": true, "analyze": true, "scenario": true, "tail": true, "stop": true, "retire": true}
 	if !valid[cmd] {
 		return "", cliOptions{}, fmt.Errorf("unknown command %q", cmd)
 	}
@@ -120,6 +125,8 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	fs.BoolVar(&o.Detach, "detach", false, "")
 	fs.BoolVar(&o.ProvisionalResume, "provisional-resume", false, "")
 	fs.Uint64Var(&o.FirstNativeEpoch, "first-native-epoch", 0, "")
+	fs.StringVar(&o.RelayContinuationPlan, "relay-continuation-plan", "", "")
+	fs.Uint64Var(&o.RelayEndBlock, "relay-end-block", 0, "")
 	fs.StringVar(&o.StrictHistoryAdoption, "strict-history-adoption", "", "")
 	fs.StringVar(&o.StrictHistoryAdoptionSHA256, "strict-history-adoption-sha256", "", "")
 	fs.StringVar(&o.ProvisionalRPCAuthority, "provisional-rpc-authority", "", "")
@@ -173,6 +180,7 @@ func parseCLI(args []string) (string, cliOptions, error) {
 	if err := validateFleetRenewalOptions(cmd, o); err != nil {
 		return "", o, err
 	}
+	if err := validateEvidenceRelayContinuationOptions(cmd, o); err != nil { return "",o,err }
 	if err := validateOwnedRPCOptions(cmd, o); err != nil {
 		return "", o, err
 	}
@@ -398,7 +406,7 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
+	requireSecrets := cmd == "doctor" || cmd == "plan" || cmd == "history-adoption" || cmd == "relay-continuation" || cmd == "setup" || cmd == "launch" || cmd == "resume" || cmd == "scenario" || cmd == "retire" || cmd == "coordinator-repair" || cmd == "fleet-renew"
 	if loadResolved == nil {
 		return errors.New("resolved configuration loader is unavailable")
 	}
@@ -437,6 +445,8 @@ func runMainWithReleaseDependencies(args []string, loadResolved resolvedConfigLo
 		}
 	}
 	switch cmd {
+	case "relay-continuation":
+		return runEvidenceRelayContinuation(ctx,resolved,stateDir,o)
 	case "fleet-renew":
 		return runFleetRenewal(ctx, resolved, stateDir, o)
 	case "history-adoption":

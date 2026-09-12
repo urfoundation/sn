@@ -94,6 +94,7 @@ type SetupPlan struct {
 	ValidatorEvidence            *ValidatorEvidenceDeployment `json:"validator_evidence,omitempty"`
 	ValidatorEvidenceSource      *ValidatorEvidenceSource     `json:"validator_evidence_source,omitempty"`
 	ValidatorEvidenceCarry       *ValidatorEvidenceCarry      `json:"validator_evidence_carry,omitempty"`
+	EvidenceRelayContinuation    *EvidenceRelayContinuation   `json:"evidence_relay_continuation,omitempty"`
 	validatorEvidenceHistorical  bool
 	validatorEvidenceObserved    *validatorEvidenceCarryObservation
 	SupersededDeployments        []ContractDeployment   `json:"superseded_deployments,omitempty"`
@@ -2008,6 +2009,9 @@ func validatePlanBudget(p *SetupPlan) error {
 		}
 	}
 	if err := validateFleetRenewalPlan(p); err != nil {
+		return err
+	}
+	if err := validateEvidenceRelayContinuationPlan(p); err != nil {
 		return err
 	}
 	if err := validateValidatorEvidencePlan(p); err != nil {

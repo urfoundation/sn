@@ -30,7 +30,7 @@ func validateOwnedRPCOptions(command string, options cliOptions) error {
 		return errors.New("--owned-rpc-authority requires strict configured operation, without provisional or public-manifest overrides")
 	}
 	switch command {
-	case "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "scenario", "status", "inspect", "analyze":
+	case "doctor", "plan", "setup", "launch", "resume", "fleet-renew", "history-adoption", "relay-continuation", "scenario", "status", "inspect", "analyze":
 	default:
 		return fmt.Errorf("--owned-rpc-authority is not supported by %s", command)
 	}
