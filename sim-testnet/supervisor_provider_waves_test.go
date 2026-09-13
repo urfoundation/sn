@@ -114,7 +114,6 @@ func TestSupervisorStartupProviderWavesRespectRPCModeAndProvisionalAdmission(t *
 		{},
 		{OperationalRPCMode: rpcModePrivateAuthority},
 		{provisionalResume: &provisionalResumeState{}},
-		{provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{}}},
 	} {
 		if size := providerStartupWaveSize(cfg); size != 0 {
 			t.Fatalf("unadmitted invocation selected wave size %d", size)
@@ -124,7 +123,25 @@ func TestSupervisorStartupProviderWavesRespectRPCModeAndProvisionalAdmission(t *
 	if err != nil || strings.Contains(string(strictWire), "provider_startup_wave_size") || supervisorStartupReadinessTimeout(manifest) != 3*time.Minute {
 		t.Fatalf("strict startup manifest/deadline changed: %s %v", strictWire, err)
 	}
-	cfg := &ResolvedConfig{OperationalRPCMode: rpcModePrivateAuthority, provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true}}}
+	// Record is the private admission marker installed only after exact approval
+	// and durable provenance. Exercise that transition instead of fabricating an
+	// installed empty record, which already means admitted to the wave selector.
+	cfg, plan, stateDir, options := provisionalResumeTestContext(t)
+	cfg.OperationalRPCMode = rpcModePrivateAuthority
+	if provisionalResumeEnabled(cfg) || providerStartupWaveSize(cfg) != 0 {
+		t.Fatal("driver provenance enabled waves before invocation admission")
+	}
+	unapproved := options
+	unapproved.PlanHash = "0x" + strings.Repeat("90", 32)
+	if err := prepareProvisionalResume(t.Context(), cfg, stateDir, "resume", unapproved, plan); err == nil || provisionalResumeEnabled(cfg) || providerStartupWaveSize(cfg) != 0 {
+		t.Fatal("rejected provisional approval enabled provider waves")
+	}
+	if err := prepareProvisionalResume(t.Context(), cfg, stateDir, "resume", options, plan); err != nil {
+		t.Fatal(err)
+	}
+	if !provisionalResumeEnabled(cfg) || !cfg.provisionalResume.Record.Provisional || cfg.provisionalResume.Record.FinalAcceptance {
+		t.Fatal("provider wave admission lost its provisional scope")
+	}
 	manifest.ProviderStartupWaveSize = providerStartupWaveSize(cfg)
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
