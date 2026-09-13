@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
+	"time"
 
 	validatorpkg "github.com/urfoundation/sn/validator"
 )
@@ -68,16 +70,100 @@ func finalPathIdentityTestKeyVector(keys []ed25519.PrivateKey) []FinalOperatorPa
 	return paths
 }
 
-// Closure-only tests need the complete checked envelope and public identities,
-// not fabricated fleet proof validity. Their unrelated envelope files are
-// inert owned bytes; only full semantic fixtures execute deeper fleet replay.
+var finalPathIdentityTestPlans = struct {
+	sync.Mutex
+	bytes map[string][]byte
+}{bytes: map[string][]byte{}}
+
+// Retain only owned construction bytes, keyed by every resolved fixture
+// input and its signed domain. Each consumer still reopens the full plan;
+// unrelated provisioner tests need not repeatedly derive 1,000 wallet roles.
+func finalPathIdentityTestPlanBytes(t *testing.T, evidence *FinalSemanticEvidence) []byte {
+	t.Helper()
+	cfg := testResolvedConfig(t)
+	cfg.Config.Deployment.DeploymentID = evidence.DeploymentID
+	cfg.Netuid, cfg.ChainID = evidence.Netuid, evidence.ChainID
+	var err error
+	cfg.ConfigHash, err = releaseConfigHash(cfg.Config, cfg.Public, cfg.Hyperparameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := canonicalHashHex(struct {
+		Config  *ResolvedConfig
+		Genesis string
+	}{Config: cfg, Genesis: evidence.GenesisHash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalPathIdentityTestPlans.Lock()
+	defer finalPathIdentityTestPlans.Unlock()
+	if data, exists := finalPathIdentityTestPlans.bytes[key]; exists {
+		return append([]byte(nil), data...)
+	}
+	roles, err := derivePublicRoles(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildPlan(cfg, testSetupFacts(), roles, time.Unix(1_700_000_000, 0).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The compact signed-closure fixture owns a synthetic genesis. Rebind the
+	// companion and executable intents before hashing and reopening its plan.
+	plan.GenesisHash = evidence.GenesisHash
+	if err := rebindValidatorEvidencePlan(plan); err != nil {
+		t.Fatal(err)
+	}
+	plan.PlanHash, err = plan.hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	planBytes, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalPathIdentityTestPlans.bytes[key] = append([]byte(nil), planBytes...)
+	return planBytes
+}
+
+// Closure-only tests carry a real current plan, hash-chained setup intent and
+// public identities. Unconsumed fleet files remain inert owned bytes; only
+// full semantic fixtures claim and execute deeper fleet proof replay.
 func attachFinalPathIdentityTestLineage(t *testing.T, evidence *FinalSemanticEvidence, loaded map[string][]byte) {
 	t.Helper()
+	planBytes := finalPathIdentityTestPlanBytes(t, evidence)
+	plan, err := decodePersistedPlanBytes(planBytes)
+	if err != nil {
+		t.Fatalf("path authority fixture current plan: %v", err)
+	}
+	evidence.PlanHash = plan.PlanHash
+	stateDir := filepath.Join(t.TempDir(), "path-lineage")
+	journal, err := OpenJournal(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := journal.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	action := plan.Actions[0]
+	if err := journal.Append(JournalEntry{DeploymentID: plan.DeploymentID, PlanHash: plan.PlanHash, ActionID: action.ID, IntentHash: action.IntentHash, Stage: StageIntent}); err != nil {
+		t.Fatal(err)
+	}
+	journalBytes, err := os.ReadFile(filepath.Join(stateDir, "journal.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := decodeFinalSemanticJournalBytes(journalBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
 	public := map[uint64][]FinalOperatorPathIdentity{}
 	for _, validator := range evidence.Validators {
 		public[validator.ValidatorID] = validator.OperatorPaths
 	}
-	paths, err := finalFleetLifecycleExpectedPaths(1)
+	paths, err := finalFleetLifecycleExpectedPathsForPlan(plan, 1, entries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +172,12 @@ func attachFinalPathIdentityTestLineage(t *testing.T, evidence *FinalSemanticEvi
 	}
 	for _, path := range paths {
 		data := []byte("{}")
-		if path == "public/identities.json" {
+		switch path {
+		case "launch-foundation/plan.json":
+			data = planBytes
+		case "launch-foundation/journal.jsonl":
+			data = journalBytes
+		case "public/identities.json":
 			data = finalPathIdentityTestPublicBytes(t, evidence.DeploymentID, public)
 		}
 		lineage.Files = append(lineage.Files, finalFleetLifecycleLineageFile{Path: path, Data: data, ContentHash: bytesSHA256(data), SizeBytes: uint64(len(data))})

@@ -391,6 +391,32 @@ func TestSimulatorOperatorPathFinalReplayBindsPublicAuthority(t *testing.T) {
 			t.Fatalf("rehashing %s bypassed full lineage admission: %v", kind, err)
 		}
 	}
+	for _, test := range []struct{ path, want string }{
+		{path: "launch-foundation/plan.json", want: "path authority plan differs"},
+		{path: "launch-foundation/journal.jsonl", want: "captured journal line 1 failed hash-chain validation"},
+	} {
+		var lineage finalFleetLifecycleLineageArtifact
+		if err := json.Unmarshal(baselineBytes, &lineage); err != nil {
+			t.Fatal(err)
+		}
+		for index := range lineage.Files {
+			file := &lineage.Files[index]
+			if file.Path == test.path {
+				file.Data = []byte("{}")
+				file.ContentHash, file.SizeBytes = bytesSHA256(file.Data), uint64(len(file.Data))
+			}
+		}
+		data, err := json.Marshal(lineage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.loaded[baselineLocator.URI] = data
+		fixture.evidence.FleetLifecycle.LineageArtifact.ContentHash = bytesSHA256(data)
+		fixture.evidence.FleetLifecycle.LineageArtifact.SizeBytes = uint64(len(data))
+		if err := verifyFinalSettlementClosureArtifacts(fixture.evidence, fixture.loaded); err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("rehashing incomplete %s bypassed authenticated setup history: %v", test.path, err)
+		}
+	}
 	fixture.loaded[baselineLocator.URI] = baselineBytes
 	fixture.evidence.FleetLifecycle.LineageArtifact = baselineLocator
 	replaceOperatorPathReplayTestAuthority(t, fixture)
