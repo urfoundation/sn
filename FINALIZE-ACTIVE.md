@@ -57,9 +57,12 @@ regression roots normally and under race. Corrected CRV4 and server artifact
 test binaries subsequently exited 0 in both modes, but their captures failed
 because expected-outcome files omitted legitimate subtests. Existing offline
 replay can check those retained streams against corrected exact declarations;
-the original failed captures remain unchanged. PostgreSQL startup is being
-isolated separately before another full gate. Completed historical
-qualification remains reusable within its recorded scope.
+the original failed captures remain unchanged. The isolated PostgreSQL control
+reproduced `Permission denied` on the copied mode-0700 initialization directory.
+After restoring public fixture permissions, the actual PostgreSQL 18, Redis
+and fixture preflight passed with successful owned cleanup at 03:43:02 UTC.
+[Corrected service preflight exit](../temp/sn-private-services-qualification-20260913/runtime/preflight-0755/capture/outer.exit).
+Completed historical qualification remains reusable within its recorded scope.
 
 The fleet and soak remain stopped. There has been no new reserve transfer,
 renewal, relay continuation or live campaign during this preparation. The

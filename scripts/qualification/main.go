@@ -904,11 +904,11 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 	inputs[test2json.Path] = test2json.Proof
 	toolchainPath := filepath.Join(capture, "toolchain.json")
 	if err := writeJSON(toolchainPath, struct {
-		Values map[string]string    `json:"values"`
-		Tools  map[string]string    `json:"tools"`
-		Files  map[string]fileProof `json:"files"`
-		GoTools *goToolCensus       `json:"go_tools"`
-		Test2JSON resolvedGoTool    `json:"test2json"`
+		Values    map[string]string    `json:"values"`
+		Tools     map[string]string    `json:"tools"`
+		Files     map[string]fileProof `json:"files"`
+		GoTools   *goToolCensus        `json:"go_tools"`
+		Test2JSON resolvedGoTool       `json:"test2json"`
 	}{Values: toolchainValues, Tools: tools, Files: inputs, GoTools: goTools, Test2JSON: test2json}); err != nil {
 		return status, err
 	}

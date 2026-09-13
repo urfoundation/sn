@@ -815,6 +815,13 @@ git-crypt vault clone contains ciphertext until unlocked. Use
 `--vault-repo /home/by/urnetwork/vault` when the existing unlocked checkout is
 the approved vault source, rather than copying secrets into a validation tree.
 
+Preserve source permissions separately from private capture permissions.
+Check out public sources with `umask 022`; keep generated ABI and Go binding
+files at `0644`, and the mounted `server/local/postgres/initdb` directory and
+its executable initialization script at `0755`. A source checkout created
+under `umask 077` can prevent the container's PostgreSQL user from reading
+that mount. Private runtime, custody and capture directories remain `0700`.
+
 From the `sn` repository:
 
 ```bash
