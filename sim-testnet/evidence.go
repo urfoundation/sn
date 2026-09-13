@@ -310,7 +310,7 @@ func verifyDirectEvidencePublication(ctx context.Context, store server.BlobStore
 // Every configured replica owns both original immutable winner checks and
 // both additional direct readbacks before the next source is admitted.
 func publishCampaignEvidenceReplicas(ctx context.Context, stores map[int]server.BlobStore, envelope *ReleaseEvidenceEnvelope) error {
-	if ctx == nil || len(stores) == 0 {
+	if ctx == nil || len(stores) == 0 || len(stores) > 128 {
 		return errors.New("campaign evidence replica context is incomplete")
 	}
 	if err := ctx.Err(); err != nil {
@@ -320,20 +320,11 @@ func publishCampaignEvidenceReplicas(ctx context.Context, stores map[int]server.
 	if err != nil {
 		return fmt.Errorf("campaign evidence envelope: %w", err)
 	}
+	ordered := make([]server.BlobStore, len(stores))
 	for operator := 1; operator <= len(stores); operator++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		store := stores[operator]
-		published, err := prepared.Publish(ctx, store)
-		if err != nil {
-			return fmt.Errorf("operator %d direct campaign evidence publication: %w", operator, err)
-		}
-		if err := prepared.VerifyPublished(ctx, store, published); err != nil {
-			return fmt.Errorf("operator %d direct campaign evidence verification: %w", operator, err)
-		}
+		ordered[operator-1] = stores[operator]
 	}
-	return ctx.Err()
+	return prepared.PublishAndVerifyReplicas(ctx, ordered)
 }
 func validateCampaignEvidencePath(name string) error {
 	if name == "" || name != strings.TrimSpace(name) || strings.ContainsAny(name, "\\\x00") || path.Clean(name) != name || strings.HasPrefix(name, "/") || !filepath.IsLocal(filepath.FromSlash(name)) {

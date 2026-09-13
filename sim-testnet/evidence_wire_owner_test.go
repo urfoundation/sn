@@ -25,6 +25,7 @@ type campaignWireOwnerStoreTest struct {
 	puts          int
 	gets          int
 	closes        int
+	stagedPaths   []string
 }
 
 // Every route must receive the same canonical wire admitted before the hook.
@@ -33,6 +34,7 @@ func (self *campaignWireOwnerStoreTest) PutIfAbsent(ctx context.Context, key, lo
 	if err != nil || !bytes.Equal(exact, self.want) {
 		return false, errors.Join(errors.New("replica staged wire changed"), err)
 	}
+	self.stagedPaths = append(self.stagedPaths, localPath)
 	created, err := self.BlobStore.PutIfAbsent(ctx, key, localPath, contentType)
 	if err != nil {
 		return false, err
@@ -104,11 +106,23 @@ func TestCampaignEvidencePreparedWireOwnsBothReplicas(t *testing.T) {
 	if mutations != 1 {
 		t.Fatal("first native publication did not force the preparation boundary")
 	}
+	stagedPath := ""
 	for _, store := range stores {
 		observed := store.(*campaignWireOwnerStoreTest)
 		if observed.puts != 2 || observed.gets != 4 || observed.closes != 4 {
 			t.Fatal("actual replica publication omitted a route or one of eight readbacks")
 		}
+		for _, path := range observed.stagedPaths {
+			if stagedPath == "" {
+				stagedPath = path
+			}
+			if path != stagedPath {
+				t.Fatal("one authenticated object repeated its staging across routes or replicas")
+			}
+		}
+	}
+	if _, err := os.Stat(stagedPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("synchronous replica publication retained its staging file", err)
 	}
 	if err := publishCampaignEvidenceReplicas(t.Context(), stores, envelope); err == nil {
 		t.Fatal("a later object reused the earlier object's authentication")
