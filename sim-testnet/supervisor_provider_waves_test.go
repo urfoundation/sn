@@ -109,7 +109,13 @@ func TestSupervisorStartupProviderWavesDeferBackgroundRPCWorkers(t *testing.T) {
 
 func TestSupervisorStartupProviderWavesRespectRPCModeAndProvisionalAdmission(t *testing.T) {
 	manifest := SupervisorFile{Specs: providerWaveTestSpecs()}
-	for _, cfg := range []*ResolvedConfig{nil, {}, {provisionalResume: &provisionalResumeState{}}} {
+	for _, cfg := range []*ResolvedConfig{
+		nil,
+		{},
+		{OperationalRPCMode: rpcModePrivateAuthority},
+		{provisionalResume: &provisionalResumeState{}},
+		{provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{}}},
+	} {
 		if size := providerStartupWaveSize(cfg); size != 0 {
 			t.Fatalf("unadmitted invocation selected wave size %d", size)
 		}
@@ -118,27 +124,27 @@ func TestSupervisorStartupProviderWavesRespectRPCModeAndProvisionalAdmission(t *
 	if err != nil || strings.Contains(string(strictWire), "provider_startup_wave_size") || supervisorStartupReadinessTimeout(manifest) != 3*time.Minute {
 		t.Fatalf("strict startup manifest/deadline changed: %s %v", strictWire, err)
 	}
-	cfg := &ResolvedConfig{provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true}}}
+	cfg := &ResolvedConfig{OperationalRPCMode: rpcModePrivateAuthority, provisionalResume: &provisionalResumeState{Record: &provisionalResumeRecord{Provisional: true}}}
 	manifest.ProviderStartupWaveSize = providerStartupWaveSize(cfg)
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var reopened SupervisorFile
-	if err := json.Unmarshal(encoded, &reopened); err != nil || reopened.ProviderStartupWaveSize != 1 {
+	if err := json.Unmarshal(encoded, &reopened); err != nil || reopened.ProviderStartupWaveSize != 2 {
 		t.Fatalf("internal supervisor lost provisional waves: %v", err)
 	}
-	if got := supervisorStartupReadinessTimeout(reopened); got != 9*time.Minute {
-		t.Fatalf("outer timeout=%s, want three 2-minute waves + 2-minute prerequisites + 1-minute buffer", got)
+	if got := supervisorStartupReadinessTimeout(reopened); got != 7*time.Minute {
+		t.Fatalf("outer timeout=%s, want two 2-minute waves + 2-minute prerequisites + 1-minute buffer", got)
 	}
 	for i := 4; i <= 20; i++ {
 		reopened.Specs = append(reopened.Specs, ProcessSpec{ID: fmt.Sprintf("miner-%d", i), Role: "miner-swarm"})
 	}
-	if got := supervisorStartupReadinessTimeout(reopened); got != 43*time.Minute {
+	if got := supervisorStartupReadinessTimeout(reopened); got != 23*time.Minute {
 		t.Fatalf("20-swarm outer timeout=%s, want all bounded phases covered", got)
 	}
 	reopened.Specs = append(reopened.Specs, ProcessSpec{ID: "worker", Role: "operator-taskworker"})
-	if got := supervisorStartupReadinessTimeout(reopened); got != 45*time.Minute {
+	if got := supervisorStartupReadinessTimeout(reopened); got != 25*time.Minute {
 		t.Fatalf("outer timeout=%s, want deferred taskworker readiness covered too", got)
 	}
 }
