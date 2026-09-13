@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -51,8 +53,15 @@ func newNativeHistoryCacheFixture(t *testing.T) *nativeHistoryCacheFixture {
 		f.historyCalls.Add(1)
 		return errors.New("state already discarded")
 	}
+	stateDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	f.executor = &Executor{
-		cfg: cfg, auditAuthorizedConfig: cfg, stateDir: t.TempDir(),
+		cfg: cfg, auditAuthorizedConfig: cfg, stateDir: stateDir,
 		plan: &SetupPlan{
 			PlanHash: "0x" + strings.Repeat("78", 32), ReleaseLockHash: "0x" + strings.Repeat("90", 32),
 			DeploymentID: cfg.Config.Deployment.DeploymentID, ChainID: cfg.ChainID,

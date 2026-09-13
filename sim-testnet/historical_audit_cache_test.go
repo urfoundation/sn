@@ -22,8 +22,15 @@ func historicalAuditCacheTestExecutor(t *testing.T) *Executor {
 	cfg := testResolvedConfig(t)
 	cfg.Public.Chain.SubstratePublicReadEndpoint = "wss://independent-native.example"
 	cfg.Public.Chain.EVMPublicReadEndpoint = "https://independent-evm.example"
+	stateDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	return &Executor{
-		cfg: cfg, stateDir: t.TempDir(),
+		cfg: cfg, stateDir: stateDir,
 		plan: &SetupPlan{
 			Schema: "cache-test-plan", PlanHash: "0x" + strings.Repeat("1", 64),
 			DeploymentID: cfg.Config.Deployment.DeploymentID, ReleaseLockHash: "0x" + strings.Repeat("2", 64),

@@ -63,8 +63,23 @@ func TestProvisionalLiveAdoptionPreservesHistoryAndRejectsNewErrors(t *testing.T
 		t.Fatal("successor campaign did not retain adoption boundary")
 	}
 	appendProcessLog(t, fixture.stderrPath, "panic: new failure after provisional adoption\n")
-	if err := reloaded.RequireClean(false); err == nil {
-		t.Fatal("new runtime failure was waived")
+	observed, err := reloaded.Scan(false)
+	if err != nil || len(observed.Findings) != 1 || observed.Findings[0].Blocking || observed.Findings[0].Disposition != "provisional-observation" {
+		t.Fatalf("explicit provisional invocation lost its newly observed failure: %+v, %v", observed.Findings, err)
+	}
+	var retained processLogGateState
+	if err := readJSONFile(reloaded.path, &retained); err != nil {
+		t.Fatal(err)
+	}
+	if !retained.ProvisionalObservationOnly || len(retained.Findings) != 1 || retained.Findings[0].Class != "panic" || !retained.Findings[0].Blocking || retained.Findings[0].Disposition != "unexplained" || retained.Findings[0].Count != 1 || retained.Findings[0].FirstOffset != int64(len(originalLog)) || retained.Findings[0].LastLineSHA256 == "" {
+		t.Fatal("provisional observation relabeled or omitted the new release-blocking source finding")
+	}
+	// The persisted observation flag cannot authorize another invocation.
+	// Reopening the same adopted offsets without that explicit policy still
+	// rejects the new failure, even though older history was before the fence.
+	unadopted, err := loadProvisionalOrStrictProcessLogGateState(cfg, fixture.dir)
+	if err != nil || unadopted == nil || unadopted.provisionalObservationOnly || unadopted.RequireClean(false) == nil {
+		t.Fatalf("stored provisional metadata waived a new runtime failure: %v", err)
 	}
 	cfg.provisionalResume = nil
 	strict, err := loadProvisionalOrStrictProcessLogGate(cfg, fixture.dir)
