@@ -410,6 +410,8 @@ type stageOwner struct {
 	Capture     string
 	Environment map[string]string
 	Go          string
+	Test2JSON   string
+	GoTools     *goToolCensus
 	Bash        string
 	Inputs      map[string]fileProof
 	Tools       map[string]string
@@ -424,6 +426,9 @@ func (self *stageOwner) command(ctx context.Context, name string, argv []string,
 		return result, errors.New("an earlier owner did not prove cleanup")
 	}
 	if err := checkProofs(self.Inputs); err != nil {
+		return result, err
+	}
+	if err := checkGoToolCensus(self.GoTools); err != nil {
 		return result, err
 	}
 	for name, expected := range self.Tools {
@@ -665,7 +670,7 @@ func executeStage(ctx context.Context, name string, node stage, owner *stageOwne
 	if err != nil || !commandMatches(result, wanted) {
 		return failed(err, &result)
 	}
-	converted, err := owner.command(ctx, name+"-events", []string{owner.Go, "tool", "test2json", "-t", "-p", pkg.ImportPath}, pkg.Directory, plan.Limits.BuildSeconds, result.Stdout)
+	converted, err := owner.command(ctx, name+"-events", []string{owner.Test2JSON, "-t", "-p", pkg.ImportPath}, pkg.Directory, plan.Limits.BuildSeconds, result.Stdout)
 	if err != nil || !commandMatches(converted, 0) {
 		return failed(err, &converted)
 	}
@@ -856,16 +861,12 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 	if toolchainValues["GOVERSION"] == "" {
 		return status, errors.New("missing actual Go version")
 	}
-	toolDirectory := toolchainValues["GOTOOLDIR"]
-	if err := physicalPath(toolDirectory, true); err != nil {
+	goTools, err := captureGoToolCensus(toolchainValues["GOTOOLDIR"])
+	if err != nil {
 		return status, err
 	}
-	for _, name := range []string{"asm", "compile", "link", "cgo", "pack", "test2json"} {
-		path := filepath.Join(toolDirectory, name)
-		proof, err := regularProof(path)
-		if err != nil {
-			return status, err
-		}
+	owner.GoTools = goTools
+	for path, proof := range goTools.Files {
 		inputs[path] = proof
 	}
 	for _, key := range []string{"GOROOT", "GOOS", "GOARCH", "CGO_ENABLED", "CC", "CXX", "GOPATH", "GOCACHE", "GOMODCACHE"} {
@@ -891,12 +892,24 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 	} else if owner.Environment["CGO_ENABLED"] != "0" {
 		return status, errors.New("invalid actual cgo setting")
 	}
+	resolved, err := owner.command(ctx, "resolve-test2json", []string{owner.Go, "tool", "-n", "test2json"}, plan.SourceRoot, plan.Limits.BuildSeconds, "")
+	if err != nil || !commandMatches(resolved, 0) {
+		return status, errors.Join(err, errors.New("actual test2json resolution failed"))
+	}
+	test2json, err := retainResolvedGoTool(resolved.Stdout, filepath.Join(capture, "test2json"))
+	if err != nil {
+		return status, err
+	}
+	owner.Test2JSON = test2json.Path
+	inputs[test2json.Path] = test2json.Proof
 	toolchainPath := filepath.Join(capture, "toolchain.json")
 	if err := writeJSON(toolchainPath, struct {
 		Values map[string]string    `json:"values"`
 		Tools  map[string]string    `json:"tools"`
 		Files  map[string]fileProof `json:"files"`
-	}{Values: toolchainValues, Tools: tools, Files: inputs}); err != nil {
+		GoTools *goToolCensus       `json:"go_tools"`
+		Test2JSON resolvedGoTool    `json:"test2json"`
+	}{Values: toolchainValues, Tools: tools, Files: inputs, GoTools: goTools, Test2JSON: test2json}); err != nil {
 		return status, err
 	}
 	toolchainProof, err := regularProof(toolchainPath)
@@ -942,7 +955,7 @@ func runMatrix(ctx context.Context, planPath, capture string) (returnedStatus ma
 		for _, result := range results {
 			fenceErr = errors.Join(fenceErr, checkModuleSourceProofs(result.ModuleSources))
 		}
-		fenceErr = errors.Join(fenceErr, checkProofs(inputs), checkProofs(originalInputs))
+		fenceErr = errors.Join(fenceErr, checkProofs(inputs), checkProofs(originalInputs), checkGoToolCensus(owner.GoTools))
 	}
 	unchanged := fenceErr == nil
 	status.State, status.SourceUnchanged, status.Finished, status.Running, status.Pending = "failed", unchanged, len(results), nil, 0
