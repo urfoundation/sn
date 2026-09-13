@@ -418,7 +418,7 @@ release_phase_server_db() {
   test_env_validate_suite_resource_manifest "$TEST_ENV_SUITE_RESOURCE_MANIFEST" "$WARP_VAULT_HOME" "$WARP_CONFIG_HOME"
   # Real JWT/body ownership, signed key history and reserved Redis quotas use
   # this gate's private services; neither a compile nor Forge exercises them.
-  evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures)'
+  evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures)'
   go test ./api -run "$evidence_source_tests" -count=1
   go test -race ./api -run "$evidence_source_tests" -count=1
   go test ./api/handlers -run "$evidence_source_tests" -count=1

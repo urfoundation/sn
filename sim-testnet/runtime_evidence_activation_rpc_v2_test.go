@@ -85,6 +85,9 @@ func newRuntimeEvidenceActivationRpcV2TestFixture(t *testing.T) *runtimeEvidence
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	self := &runtimeEvidenceActivationRpcV2TestFixture{base: base, nativeHash: types.Hash{0x31}, nativeNumber: 100, genesis: types.Hash(base.plan.ValidatorEvidence.GenesisHash),
 		evmHash: common.Hash{0x32}, evmNumber: 200, finalizedEvmNumber: 200, finalizedEvmHash: common.Hash{0x32}, threshold: 100,
 		hotkeys: [3][32]byte{{0x71}}, permits: [3]bool{false, true, true}, totalStake: [3]uint64{0, 150, 170}, storageKeys: map[string]runtimeEvidenceNativeKeyV2{}, views: map[string]string{}, calls: map[string]uint64{}}

@@ -17,7 +17,7 @@ func releaseLaunchEvidenceServerGroup(t *testing.T) releaseEvidenceV2GateGroup {
 	t.Helper()
 	group := releaseEvidenceV2GateGroup{
 		phase: "server_db", job: "server-db", variable: "evidence_source_tests",
-		alternatives: "StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures",
+		alternatives: "StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures",
 		packages:     []string{"./api", "./api/handlers", "./controller", "./model", "."},
 		sources: map[string][]string{
 			".":     releaseEvidenceV2GateSources(t, []string{"../../server/db_client_key_history_migration_test.go"}),

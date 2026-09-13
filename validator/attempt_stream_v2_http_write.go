@@ -52,6 +52,10 @@ func newHttpAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, meta
 			return nil, errors.New("attempt upload credentials require TLS or literal loopback HTTP")
 		}
 	}
+	// Stream readers pause their I/O budget while replay owns CPU work. An
+	// upload instead owns one request and acknowledgement, both under the
+	// original finite HTTP budget even when its release context is long lived.
+	reader.client.Timeout = attemptStreamV2HTTPIOTimeout
 	return &HTTPAttemptStreamV2Writer{endpoint: reader.endpoint, metadataBytes: reader.metadataBytes, recordBytes: reader.recordBytes, proofBytes: reader.proofBytes, byJwt: byJwt, client: reader.client}, nil
 }
 

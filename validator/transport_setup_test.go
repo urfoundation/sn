@@ -17,9 +17,9 @@ import (
 	"github.com/urnetwork/connect/protocol"
 )
 
-// Cancel while the real generator awaits the server's processed ClientKey
-// response. No packet client exists yet, but the created identity, OOB request
-// and platform transport must still retire before PostVerify returns.
+// Stop the registration owner while the real generator awaits the server's
+// processed ClientKey response. The canceled step is only a waiter; transport
+// shutdown joins the identity and OOB request while API cleanup is still live.
 func TestTunnelTransportCancellationDuringProcessedRegistration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -101,13 +101,17 @@ func TestTunnelTransportCancellationDuringProcessedRegistration(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	stepCancel()
+	transport.Close()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("PostVerify error = %v, want caller cancellation", err)
 		}
 	case <-ctx.Done():
-		t.Fatal("PostVerify did not join partial setup")
+		t.Fatal("PostVerify did not observe caller cancellation")
+	}
+	if err := transport.CloseAndWait(ctx); err != nil {
+		t.Fatalf("transport stop did not join partial setup: %v", err)
 	}
 	for name, joined := range map[string]<-chan struct{}{"client-key request": keyJoined, "derived identity": identityRemoved} {
 		select {

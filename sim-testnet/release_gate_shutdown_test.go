@@ -15,10 +15,35 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, edge := range []struct{ from, to string }{
+		{from: "RunRelease", to: "runReleaseWithActivationSetup"},
+		{from: "runReleaseWithActivationSetup", to: "runReleaseWithStartupV2"},
+	} {
+		forwarded := false
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || function.Name.Name != edge.from || function.Body == nil || len(function.Body.List) != 1 {
+				continue
+			}
+			statement, ok := function.Body.List[0].(*ast.ReturnStmt)
+			if !ok || len(statement.Results) != 1 {
+				continue
+			}
+			call, ok := statement.Results[0].(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			target, ok := call.Fun.(*ast.Ident)
+			forwarded = ok && target.Name == edge.to
+		}
+		if !forwarded {
+			t.Fatalf("release entry %s does not return its owned startup result from %s", edge.from, edge.to)
+		}
+	}
 	matched, diskCloseJoined := false, false
 	for _, declaration := range parsed.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "RunRelease" || function.Body == nil {
+		if !ok || function.Name.Name != "runReleaseWithStartupV2" || function.Body == nil {
 			continue
 		}
 		ast.Inspect(function.Body, func(node ast.Node) bool {
@@ -98,7 +123,7 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoop", callee: "runReleaseSteeringLoopWithWait"},
 		{path: "../validator/release_steer.go", function: "SubmitOnce", callee: "recordReleasePendingError"},
 		{path: "../validator/release_steer.go", function: "reconcilePending", callee: "recordReleasePendingError"},
-		{path: "../validator/release_run.go", function: "RunRelease", callee: "openReleaseEvidenceV2DiskState"},
+		{path: "../validator/release_run.go", function: "runReleaseWithStartupV2", callee: "openReleaseEvidenceV2DiskState"},
 		{path: "../validator/release_state_v2.go", function: "openReleaseEvidenceV2DiskState", callee: "openReleaseEvidenceV2DiskStateWithObserver"},
 		{path: "../validator/release_state_v2.go", function: "openReleaseEvidenceV2DiskStateWithObserver", callee: "close"},
 		{path: "../validator/release_state_v2.go", function: "close", callee: "Close"},

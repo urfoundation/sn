@@ -191,7 +191,8 @@ func TestProducerGateCustodySelectionCoversSimulatorReaders(t *testing.T) {
 func TestProducerGateCustodySelectionCoversSimulatorCallEdges(t *testing.T) {
 	for _, check := range []struct{ path, function, callee string }{
 		{path: "scenario.go", function: "RunScenario", callee: "runScenarioCampaignAttempt"},
-		{path: "scenario.go", function: "runScenarioCampaignAttempt", callee: "runScenarioWithEvidenceRelay"},
+		{path: "scenario.go", function: "runScenarioCampaignAttempt", callee: "runScenarioCampaignAttemptWithTimeout"},
+		{path: "scenario.go", function: "runScenarioCampaignAttemptWithTimeout", callee: "runScenarioWithEvidenceRelay"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "runScenarioWithProbe"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "waitClosures"},
 		{path: "evidence_relay_campaign.go", function: "runScenarioWithEvidenceRelay", callee: "WaitThrough"},
@@ -348,11 +349,13 @@ func TestProducerGateCustodySelectionCoversAggregate(t *testing.T) {
 // admission, retaining the adjacent legacy loader checks as compatibility.
 func TestProducerGateCustodySelectionCoversReleaseStartup(t *testing.T) {
 	for _, check := range []struct{ path, function, callee string }{
-		{path: "../validator/release_run.go", function: "RunRelease", callee: "openReleaseEvidenceV2DiskState"},
+		{path: "../validator/release_run.go", function: "RunRelease", callee: "runReleaseWithActivationSetup"},
+		{path: "../validator/release_run.go", function: "runReleaseWithActivationSetup", callee: "runReleaseWithStartupV2"},
+		{path: "../validator/release_run.go", function: "runReleaseWithStartupV2", callee: "openReleaseEvidenceV2DiskState"},
 		{path: "../validator/release_state_v2.go", function: "openReleaseEvidenceV2DiskState", callee: "openReleaseEvidenceV2DiskStateWithObserver"},
 		{path: "../validator/release_state_v2.go", function: "openReleaseEvidenceV2DiskStateWithObserver", callee: "loadClientSeed"},
 		{path: "../validator/release_state_v2.go", function: "openReleaseEvidenceV2DiskStateWithObserver", callee: "NewDiskAttemptLedger"},
-		{path: "../validator/release_run.go", function: "RunRelease", callee: "startReleaseOperator"},
+		{path: "../validator/release_run.go", function: "runReleaseWithStartupV2", callee: "startReleaseOperator"},
 		{path: "../validator/release_run.go", function: "loadReleaseAttemptState", callee: "loadReleaseAttemptStateWithObserver"},
 		{path: "../validator/release_run.go", function: "loadReleaseAttemptStateWithObserver", callee: "loadClientSeed"},
 		{path: "../validator/release_run.go", function: "loadReleaseAttemptStateWithObserver", callee: "NewAttemptLedger"},

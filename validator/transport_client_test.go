@@ -293,23 +293,33 @@ func TestTunnelTransportEvictsFailedRegisteredClient(t *testing.T) {
 	}
 }
 
-// A successful factory response racing its expired setup caller cannot install
-// a reusable entry or emit the request's first packet.
+// A completed registration racing an expired step cannot emit that step's
+// packet. The transport retains it for the next waiter and retires it at stop.
 func TestTunnelTransportCanceledSetupCompletionIsRetired(t *testing.T) {
 	transport := newTestTunnelTransport(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	var uses, retired atomic.Int32
+	var creations, uses, retired atomic.Int32
 	client := &tunnelTestClient{ctx: t.Context(), post: func(context.Context, connect.Id, []byte) ([]byte, error) { uses.Add(1); return nil, nil }, close: func(context.Context) error { retired.Add(1); return nil }}
 	transport.newClient = func(context.Context, connect.Id) (tunnelTransportClient, error) {
+		creations.Add(1)
 		cancel()
 		return client, nil
 	}
 	if _, err := transport.PostVerify(ctx, connect.NewId(), nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if uses.Load() != 0 || retired.Load() != 1 {
+	if uses.Load() != 0 || retired.Load() != 0 {
 		t.Fatalf("expired setup uses=%d retired=%d", uses.Load(), retired.Load())
+	}
+	if _, err := transport.PostVerify(t.Context(), connect.NewId(), nil); err != nil {
+		t.Fatalf("next waiter could not use retained registration: %v", err)
+	}
+	if creations.Load() != 1 || uses.Load() != 1 || retired.Load() != 0 {
+		t.Fatalf("retained registration created=%d uses=%d retired=%d", creations.Load(), uses.Load(), retired.Load())
+	}
+	if err := transport.CloseAndWait(t.Context()); err != nil || retired.Load() != 1 {
+		t.Fatalf("transport stop did not retire registration exactly once: %v, retired=%d", err, retired.Load())
 	}
 }
 

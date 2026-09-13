@@ -254,7 +254,6 @@ func writeCampaignPopulationSourceV2(root string, source campaignPopulationSourc
 // The actual producer cannot preload the corpus: the next file does not exist
 // until both replicas have completed both immutable content/history checks.
 func TestCampaignEvidencePopulationV2StreamsPhaseCensusWithBoundedOwners(t *testing.T) {
-	t.Parallel()
 	cfg := runtimeEvidenceLaunchConfigTest(t)
 	sources := campaignPopulationSourcesV2(t, cfg)
 	limits, err := campaignEvidenceLimitsForConfig(cfg)

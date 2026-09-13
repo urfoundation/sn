@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // Independent existing fixture bounds do not authorize production capacity.
@@ -59,6 +60,16 @@ func TestAttemptStreamV2HTTPWriteExactTypesAndRefreshedSession(t *testing.T) {
 	}))
 	defer endpoint.Close()
 	writer := newAttemptStreamV2HTTPTestWriter(t, endpoint.URL, func() string { return credential.Load().(string) })
+	if writer.client.Timeout != attemptStreamV2HTTPIOTimeout {
+		t.Fatal("typed upload lost its finite I/O allowance")
+	}
+	writer.client.Transport = attemptStreamV2HTTPTestTransport(func(request *http.Request) (*http.Response, error) {
+		deadline, bounded := request.Context().Deadline()
+		if remaining := time.Until(deadline); !bounded || remaining <= 0 || remaining > attemptStreamV2HTTPIOTimeout {
+			return nil, errors.New("actual upload transport has no finite I/O owner")
+		}
+		return http.DefaultTransport.RoundTrip(request)
+	})
 	for _, kind := range []string{"metadata", "records", "proofs"} {
 		if err := writer.Write(t.Context(), kind, hash, data); err != nil {
 			t.Fatal(err)
