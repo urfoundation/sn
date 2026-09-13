@@ -56,12 +56,21 @@ actual failures. The Go 1.26 qualification launcher correction passed its four
 regression roots normally and under race. Corrected CRV4 and server artifact
 test binaries subsequently exited 0 in both modes, but their captures failed
 because expected-outcome files omitted legitimate subtests. Existing offline
-replay can check those retained streams against corrected exact declarations;
+replay has now checked both retained streams against corrected exact declarations;
 the original failed captures remain unchanged. The isolated PostgreSQL control
 reproduced `Permission denied` on the copied mode-0700 initialization directory.
 After restoring public fixture permissions, the actual PostgreSQL 18, Redis
 and fixture preflight passed with successful owned cleanup at 03:43:02 UTC.
 [Corrected service preflight exit](../temp/sn-private-services-qualification-20260913/runtime/preflight-0755/capture/outer.exit).
+Service18, monitor14 and cache/provisional23 integration checks passed normally
+and under race on SN `ebe70a3` and server `e2358826`. Their previously failed
+normal roots have three fresh passing confirmations on the recorded immutable
+binaries. [Sealed scoped qualification](../temp/sn-private-services-qualification-20260913/runtime/RESULT-service-monitor-cache-corrected.json)
+(`sha256:c98dbe1e98943cf2eb7087e362b4c0b17e08ec08006007d87c21ef2b39d493cf`).
+The reviewed release-lock refresh changes only protocol, SN and server source
+hashes; its complete YAML hash is
+`sha256:e392f2f1fd2c212a053cd24e6d0c461edf1f54ed7136e380e5561bb57126b5d2`.
+The stamped executable still needs rebuilding against the final published source.
 Completed historical qualification remains reusable within its recorded scope.
 
 The fleet and soak remain stopped. There has been no new reserve transfer,
