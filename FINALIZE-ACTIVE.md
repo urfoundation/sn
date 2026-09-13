@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-12. The user has requested full finalization and fixes for
+Updated 2026-09-13. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
 The user explicitly confirmed SN testnet finalization under `sn/FINALIZE.md`;
@@ -24,11 +24,53 @@ Current work:
    reconcile on-chain outcomes, public replay, the final report and shutdown.
    Reuse valid completed evidence; unrun, failed and waived checks are not passes.
 
-Retain the approved 6,000-alpha repair allowance, 31,250-alpha lifetime limit,
+Retain the approved 6,000-alpha repair allowance, 35,000-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Current checkpoint, 2026-09-12 23:13 UTC: the full fleet is stopped. Both
+Current checkpoint, 2026-09-13: the user explicitly approved raising the
+lifetime cap from 31,250 to 35,000 alpha for one additional 3,750-alpha reserve
+repair. The vault change is committed and pushed at
+`d4ea0cbdf49630d8e1afc3e2184858cb58940fd3`. No additional spending approval is
+pending for this repair. The per-repair maximum remains 6,000 alpha.
+
+Two actual read-only setup builds on SN `3af4251` completed successfully at
+01:48:04 and 01:58:00 UTC, both with plan hash
+`0x06116ddc5cdc6945c7d96c8920f2b4cfbaa9a6f04bfd211503cd51803286182a`.
+The reviewed revision adds the exact 3,750-alpha repair and authenticated
+zero-spend carry of the existing coordinator repair. It retains all prior
+positive-alpha actions. Neither plan was applied; the original plan, journal
+and signed transaction bytes remain retained. New production corrections
+require a refreshed release lock, stamped CLI and fresh bound plans before
+application. [Read-only plan review](../temp/sn-approved-alpha-repair-review-20260913/setup-v5-review.json).
+
+The original full producer gate ended with exit 1 at 02:50:47 UTC; the
+aggregate ended with exit 1 at 03:23:25 UTC. Their source snapshots remained
+clean. Both failed private-service startup, and their actual completed test
+failures are being corrected. Jobs joined with exit 143 during cleanup are
+recorded as interrupted, not completed test verdicts. [Producer receipt](../temp/sn-final-execution-20260912/runtime/producer-gate/capture/RESULT.json),
+[aggregate receipt](../temp/sn-final-execution-20260912/aggregate-gate-prepared-20260912T2254Z/capture/RESULT.json).
+
+Terra is qualifying the frozen corrections in parallel while Astra diagnoses
+actual failures. The Go 1.26 qualification launcher correction passed its four
+regression roots normally and under race. Corrected CRV4 and server artifact
+test binaries subsequently exited 0 in both modes, but their captures failed
+because expected-outcome files omitted legitimate subtests. Existing offline
+replay can check those retained streams against corrected exact declarations;
+the original failed captures remain unchanged. PostgreSQL startup is being
+isolated separately before another full gate. Completed historical
+qualification remains reusable within its recorded scope.
+
+The fleet and soak remain stopped. There has been no new reserve transfer,
+renewal, relay continuation or live campaign during this preparation. The
+critical path is to close the actual failures, publish the composed source and
+lock, obtain launch admission, apply the approved reserve repair, then perform
+renewal, relay continuation and retained-history adoption before the full run.
+Producer success can admit the live campaign while a clean aggregate is still
+running, as specified by the complete plan; any actual aggregate failure stops
+new mutations. Both full gates are required for final acceptance.
+
+Historical checkpoint, 2026-09-12 23:13 UTC: the full fleet is stopped. Both
 operator APIs and temporary payout-recovery proxies were also stopped after
 all 16 funded epoch309 claims finalized, paying 103.320655346 alpha with eight
 alpha-rao of accounted rounding residue. The [final peer-review report](sim-testnet/FINAL.md)
