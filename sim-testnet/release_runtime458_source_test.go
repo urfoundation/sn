@@ -19,19 +19,21 @@ import (
 func runtime458ArtifactShellFixture(t *testing.T, response string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, "bin"), 0o700); err != nil {
-		t.Fatal(err)
+	for _, child := range []string{"bin", "work"} {
+		if err := os.Mkdir(filepath.Join(dir, child), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	files := map[string]string{
-		"response.json": response,
+		"fixture-response.json": response,
 		"bin/curl": `#!/usr/bin/env bash
 set -euo pipefail
 printf 'call\n' >>"$RUNTIME_TEST_DIR/calls"
 printf '%s\n' "$@" >>"$RUNTIME_TEST_DIR/arguments"
 for argument in "$@"; do
-  case "$argument" in @*) cat -- "${argument#@}" >"$RUNTIME_TEST_DIR/request.json" ;; esac
+  case "$argument" in @*) cat -- "${argument#@}" >"$RUNTIME_TEST_DIR/captured-request.json" ;; esac
 done
-cat "$RUNTIME_TEST_DIR/response.json"
+cat "$RUNTIME_TEST_DIR/fixture-response.json"
 exit "$RUNTIME_TEST_STATUS"
 `,
 		"bin/cargo": `#!/usr/bin/env bash
@@ -121,23 +123,20 @@ func checkRuntime458ArtifactArguments(t *testing.T, dir string, endpoint string)
 	}
 }
 
-// Exact valid responses survive the real function without changing the request.
-func TestRuntime458ArtifactRpcPreservesExactResponse(t *testing.T) {
-	response := `{"jsonrpc":"2.0","id":1,"result":"synthetic-result"}`
-	dir := runtime458ArtifactShellFixture(t, response)
-	body := "set -euo pipefail\nwork_dir=\"$1\"\nrpc_url='http://192.0.2.42:19944'\nrpc_request_id=1\n" + runtime458ArtifactRpcFunction(t) + "\nrpc_call 'synthetic_method' '[7]' \"$work_dir/output.json\"\n"
-	output, err := runRuntime458ArtifactShell(t, dir, "0", "-c", body, "synthetic-rpc", dir)
-	if err != nil {
-		t.Fatalf("exact artifact response refused: %s %v", output, err)
-	}
-	checkRuntime458ArtifactArguments(t, dir, "http://192.0.2.42:19944")
-	raw, err := os.ReadFile(filepath.Join(dir, "output.json"))
+// Mock input and captured requests cannot alias the real function's scratch files.
+func checkRuntime458ArtifactFixture(t *testing.T, dir, response string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "fixture-response.json"))
 	if err != nil || string(raw) != response {
-		t.Fatalf("artifact response changed: %q %v", raw, err)
+		t.Fatalf("artifact scratch changed the immutable response fixture: %q %v", raw, err)
 	}
-	requestRaw, err := os.ReadFile(filepath.Join(dir, "request.json"))
+	requestRaw, err := os.ReadFile(filepath.Join(dir, "captured-request.json"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	writtenRequest, err := os.ReadFile(filepath.Join(dir, "work", "request.json"))
+	if err != nil || string(writtenRequest) != string(requestRaw) {
+		t.Fatalf("captured request differs from the real request bytes: %q %q %v", requestRaw, writtenRequest, err)
 	}
 	var request struct {
 		Jsonrpc string `json:"jsonrpc"`
@@ -150,24 +149,50 @@ func TestRuntime458ArtifactRpcPreservesExactResponse(t *testing.T) {
 	}
 }
 
+// Exact valid responses survive the real function without changing the request.
+func TestRuntime458ArtifactRpcPreservesExactResponse(t *testing.T) {
+	for _, response := range []string{
+		`{"jsonrpc":"2.0","id":1,"result":"synthetic-result"}`,
+		`{"jsonrpc":"2.0","id":1,"result":null}`,
+		`{"jsonrpc":"2.0","id":1,"result":{"synthetic":[7,false]}}`,
+	} {
+		dir := runtime458ArtifactShellFixture(t, response)
+		body := "set -euo pipefail\nwork_dir=\"$1/work\"\nrpc_url='http://192.0.2.42:19944'\nrpc_request_id=1\n" + runtime458ArtifactRpcFunction(t) + "\nrpc_call 'synthetic_method' '[7]' \"$work_dir/output.json\"\n"
+		output, err := runRuntime458ArtifactShell(t, dir, "0", "-c", body, "synthetic-rpc", dir)
+		if err != nil {
+			t.Fatalf("exact artifact response refused: %s %v", output, err)
+		}
+		checkRuntime458ArtifactArguments(t, dir, "http://192.0.2.42:19944")
+		checkRuntime458ArtifactFixture(t, dir, response)
+		raw, err := os.ReadFile(filepath.Join(dir, "work", "output.json"))
+		if err != nil || string(raw) != response {
+			t.Fatalf("artifact response changed: %q %v", raw, err)
+		}
+	}
+}
+
 // Transport and response refusals have no retry, pacing or published output.
 func TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses(t *testing.T) {
 	for _, testCase := range []struct{ name, response, status string }{
 		{name: "transport", response: `{"jsonrpc":"2.0","id":1,"result":null}`, status: "22"},
 		{name: "invalid json", response: "{", status: "0"},
+		{name: "non-object", response: `[]`, status: "0"},
 		{name: "wrong id", response: `{"jsonrpc":"2.0","id":2,"result":null}`, status: "0"},
+		{name: "string id", response: `{"jsonrpc":"2.0","id":"1","result":null}`, status: "0"},
+		{name: "missing id", response: `{"jsonrpc":"2.0","result":null}`, status: "0"},
 		{name: "wrong protocol", response: `{"jsonrpc":"1.0","id":1,"result":null}`, status: "0"},
 		{name: "rpc error", response: `{"jsonrpc":"2.0","id":1,"error":{"code":-1}}`, status: "0"},
 		{name: "result and error", response: `{"jsonrpc":"2.0","id":1,"result":null,"error":null}`, status: "0"},
 		{name: "missing result", response: `{"jsonrpc":"2.0","id":1}`, status: "0"},
 	} {
 		dir := runtime458ArtifactShellFixture(t, testCase.response)
-		body := "set -euo pipefail\nwork_dir=\"$1\"\nrpc_url='http://192.0.2.42:19944'\nrpc_request_id=1\n" + runtime458ArtifactRpcFunction(t) + "\nrpc_call 'synthetic_method' '[7]' \"$work_dir/output.json\"\n"
+		body := "set -euo pipefail\nwork_dir=\"$1/work\"\nrpc_url='http://192.0.2.42:19944'\nrpc_request_id=1\n" + runtime458ArtifactRpcFunction(t) + "\nrpc_call 'synthetic_method' '[7]' \"$work_dir/output.json\"\n"
 		if output, err := runRuntime458ArtifactShell(t, dir, testCase.status, "-c", body, "synthetic-rpc", dir); err == nil {
 			t.Fatalf("%s response was admitted: %s", testCase.name, output)
 		}
 		checkRuntime458ArtifactArguments(t, dir, "http://192.0.2.42:19944")
-		if _, err := os.Stat(filepath.Join(dir, "output.json")); !os.IsNotExist(err) {
+		checkRuntime458ArtifactFixture(t, dir, testCase.response)
+		if _, err := os.Stat(filepath.Join(dir, "work", "output.json")); !os.IsNotExist(err) {
 			t.Fatalf("%s published an unauthenticated response", testCase.name)
 		}
 	}

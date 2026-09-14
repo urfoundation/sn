@@ -861,7 +861,7 @@ func TestReleaseGateJobsRejectSimulatorPopulationPartitionDrift(t *testing.T) {
 }
 
 // The complete node module owns future Subtensor regressions too. The exact
-// shared gateway method adds its security assertions without making unrelated
+// shared gateway methods add their security assertions without making unrelated
 // Grafana/edge/backup repositories part of the SN release source inventory.
 func verifyReleaseGateSubtensorInfrastructureScope(script string) error {
 	const function = "release_phase_xops"
@@ -881,7 +881,8 @@ func verifyReleaseGateSubtensorInfrastructureScope(script string) error {
 		`cd "$workspace/xops"`,
 		`python3 -m unittest \`,
 		`main/ansible/tests/test_subtensor_playbook.py \`,
-		`main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render`,
+		`main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render \`,
+		`main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_unpaced_gateway_rejects_request_and_connection_quotas`,
 	}
 	if len(commands) != len(expected) {
 		return fmt.Errorf("SN infrastructure changed its complete node/gateway command")
@@ -920,6 +921,7 @@ func TestReleaseGateJobsRejectSubtensorInfrastructureScopeDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	const gateway = "main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render"
+	const unpaced = "main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_unpaced_gateway_rejects_request_and_connection_quotas"
 	const node = "main/ansible/tests/test_subtensor_playbook.py"
 	const start = "release_gate_start xops release_phase_xops"
 	for _, change := range []struct{ old, replacement string }{
@@ -927,6 +929,10 @@ func TestReleaseGateJobsRejectSubtensorInfrastructureScopeDrift(t *testing.T) {
 		{gateway, ""},
 		{gateway, gateway + " || true"},
 		{gateway, gateway + " main/ansible/tests/test_vulnscan2_resolved.py"},
+		{old: unpaced, replacement: ""},
+		{old: unpaced, replacement: unpaced + " " + unpaced},
+		{old: unpaced, replacement: unpaced + " || true"},
+		{old: unpaced, replacement: "main/ansible/tests/test_vulnscan2_resolved.py"},
 		{node, ""},
 		{node, "main.ansible.tests.test_subtensor_playbook.SubtensorPlaybookTests.test_gateway_binds_and_verifies_every_restricted_management_address"},
 		{"python3 -m unittest", "# python3 -m unittest"},

@@ -467,12 +467,13 @@ fi
 echo "[release-1.0] Subtensor infrastructure regressions"
 release_phase_xops() {
   cd "$workspace/xops"
-  # Keep the complete node/playbook suite and its gateway security regression.
+  # Keep the complete node/playbook suite and both gateway security regressions.
   # Grafana, edge deployment and Planetoid backup reviews are outside the SN
   # runtime inventory and keep their own infrastructure qualification.
   python3 -m unittest \
     main/ansible/tests/test_subtensor_playbook.py \
-    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render
+    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render \
+    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_unpaced_gateway_rejects_request_and_connection_quotas
 }
 release_gate_start xops release_phase_xops
 
