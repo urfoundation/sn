@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -250,18 +249,8 @@ func auth(opts docopt.Opts) {
 		os.Exit(1)
 	}
 
-	maxMemoryHumanReadable, err := opts.String("--max-memory")
-	var maxMemory connect.ByteCount
-	if err == nil {
-		maxMemory, err = connect.ParseByteCount(maxMemoryHumanReadable)
-		if err != nil {
-			panic(fmt.Errorf("Bad mem argument: %s", maxMemoryHumanReadable))
-		}
-	}
-	if 0 < maxMemory {
-		connect.ResizeMessagePools(maxMemory / 8)
-		debug.SetMemoryLimit(maxMemory)
-	}
+	// auth is short lived: only an explicit --max-memory sizes it
+	applyProviderProcessMemory(newProviderAuthMemoryPlan(parseProviderMaxMemory(opts)))
 
 	event := connect.NewEventWithContext(context.Background())
 	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
@@ -360,21 +349,19 @@ func testEgressDialContext(opts docopt.Opts) (*connect.DialContextSettings, erro
 	return settings, nil
 }
 
-// applyProviderMemoryTarget divides an explicitly configured process target
-// across its devices. An absent target deliberately preserves the SDK's
-// positive per-device default: replacing it with zero would make unrelated
-// SOCKS-backed providers share Connect's process-wide transport budget.
+// applyProviderMemoryTarget installs one provider's device target (see
+// newProviderMemoryPlan). A nonpositive target deliberately preserves the
+// SDK's positive per-device default: replacing it with zero would make
+// unrelated SOCKS-backed providers share Connect's process-wide transport
+// budget.
 func applyProviderMemoryTarget(
 	settings *sdk.DeviceLocalSettings,
-	maxMemory connect.ByteCount,
-	providerCount int,
+	deviceMemoryTargetByteCount connect.ByteCount,
 ) {
-	if maxMemory <= 0 {
+	if deviceMemoryTargetByteCount <= 0 {
 		return
 	}
-	settings.MemoryTargetByteCount = sdk.ByteCount(
-		maxMemory / connect.ByteCount(max(1, providerCount)),
-	)
+	settings.MemoryTargetByteCount = sdk.ByteCount(deviceMemoryTargetByteCount)
 }
 
 func provide(opts docopt.Opts) {
@@ -394,18 +381,6 @@ func provide(opts docopt.Opts) {
 	testEgressDialer, err := testEgressDialContext(opts)
 	if err != nil {
 		panic(err)
-	}
-
-	maxMemoryHumanReadable, err := opts.String("--max-memory")
-	var maxMemory connect.ByteCount
-	if err == nil {
-		maxMemory, err = connect.ParseByteCount(maxMemoryHumanReadable)
-		if err != nil {
-			panic(fmt.Errorf("Bad mem argument: %s", maxMemoryHumanReadable))
-		}
-	}
-	if 0 < maxMemory {
-		debug.SetMemoryLimit(maxMemory)
 	}
 
 	event := connect.NewEventWithContext(context.Background())
@@ -433,6 +408,15 @@ func provide(opts docopt.Opts) {
 	if providerCount == 0 {
 		providerCount = 1
 	}
+
+	// sized per provider (provider_memory.go); an absent --max-memory now
+	// defaults to a 64 MiB target each instead of the SDK's 20 MiB
+	memoryPlan := newProviderMemoryPlan(
+		parseProviderMaxMemory(opts),
+		hostMemoryByteCount(),
+		providerCount,
+	)
+	applyProviderProcessMemory(memoryPlan)
 
 	provideWithProxy := func(proxySettings *connect.ProxySettings) {
 		proxyCtx, proxyCancel := context.WithCancel(ctx)
@@ -508,7 +492,7 @@ func provide(opts docopt.Opts) {
 		// the role would activate under a new key every launch and the
 		// operator would revoke the old one as fast as it publishes it.
 		settings.KeyMaterial.SetExtenderKeySeed(extenderKeySeed)
-		applyProviderMemoryTarget(settings, maxMemory, providerCount)
+		applyProviderMemoryTarget(settings, memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = testEgressDialer
 		instanceId := sdk.NewId()
 		device, err := sdk.NewDeviceLocal(

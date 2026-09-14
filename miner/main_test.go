@@ -28,7 +28,7 @@ func TestProviderMemoryTargetPreservesPerDeviceDefaultWithoutFlag(t *testing.T) 
 	if want <= 0 {
 		t.Fatalf("SDK per-device memory target = %d, want positive", want)
 	}
-	applyProviderMemoryTarget(settings, 0, 200)
+	applyProviderMemoryTarget(settings, 0)
 	if settings.MemoryTargetByteCount != want {
 		t.Fatalf(
 			"unset process target changed per-device target from %d to %d",
@@ -42,7 +42,8 @@ func TestProviderMemoryTargetPreservesPerDeviceDefaultWithoutFlag(t *testing.T) 
 // process memory limit retains its established per-provider allocation.
 func TestProviderMemoryTargetDividesExplicitLimit(t *testing.T) {
 	settings := sdk.DefaultDeviceLocalSettings()
-	applyProviderMemoryTarget(settings, 64*1024*1024, 4)
+	plan := newProviderMemoryPlan(64*1024*1024, 0, 4)
+	applyProviderMemoryTarget(settings, plan.DeviceMemoryTargetByteCount)
 	if want := sdk.ByteCount(16 * 1024 * 1024); settings.MemoryTargetByteCount != want {
 		t.Fatalf("per-device target = %d, want %d", settings.MemoryTargetByteCount, want)
 	}
