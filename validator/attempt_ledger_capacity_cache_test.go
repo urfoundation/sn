@@ -41,6 +41,17 @@ func newStoppedAttemptCapacityCacheTest(t *testing.T, records int) (attemptRecor
 	return fixture, stateDir, limits, head
 }
 
+// Custom storage deliberately has a no-op logger. The two byte-mutation
+// controls explicitly own their diagnostic input before the first fingerprint.
+func writeStoppedAttemptCapacityDiagnosticTest(t *testing.T, stateDir string) string {
+	t.Helper()
+	path := filepath.Join(stateDir, attemptLedgerStoreName, "LOG")
+	if err := os.WriteFile(path, []byte("retained diagnostic fixture bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // Nine startup boundaries used to perform both signed record scans each time.
 // A fresh owner reproduces that cost; one invocation must perform it only once.
 func TestStoppedAttemptLedgerCapacityCacheReusesOneSignedReplay(t *testing.T) {
@@ -84,6 +95,7 @@ func TestStoppedAttemptLedgerCapacityCacheReusesOneSignedReplay(t *testing.T) {
 // an in-place edit restores its original length, mode, inode and timestamp.
 func TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes(t *testing.T) {
 	fixture, stateDir, limits, prefix := newStoppedAttemptCapacityCacheTest(t, 8)
+	logPath := writeStoppedAttemptCapacityDiagnosticTest(t, stateDir)
 	var decodes int
 	cache := &StoppedAttemptLedgerCapacityCache{hooks: attemptRecordStoreHooks{Step: func(operation, name string) error {
 		if operation == "decode-record" {
@@ -107,7 +119,6 @@ func TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	logPath := filepath.Join(stateDir, attemptLedgerStoreName, "LOG")
 	info, err := os.Stat(logPath)
 	if err != nil || info.Size() == 0 {
 		t.Fatal("fixture lacks nonempty diagnostic log", err)
@@ -207,13 +218,13 @@ func TestStoppedAttemptLedgerCapacityCacheRejectsChangedSignedRecord(t *testing.
 // either byte generation, even when ordinary metadata checks would pass.
 func TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay(t *testing.T) {
 	fixture, stateDir, limits, prefix := newStoppedAttemptCapacityCacheTest(t, 8)
+	path := writeStoppedAttemptCapacityDiagnosticTest(t, stateDir)
 	changed := false
 	cache := &StoppedAttemptLedgerCapacityCache{hooks: attemptRecordStoreHooks{Step: func(operation, name string) error {
 		if operation != "decode-record" || changed {
 			return nil
 		}
 		changed = true
-		path := filepath.Join(stateDir, attemptLedgerStoreName, "LOG")
 		info, err := os.Stat(path)
 		if err != nil {
 			return err
