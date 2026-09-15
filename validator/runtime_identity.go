@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	releaseRuntimeSpecVersion            = uint32(458)
+	releaseRuntimeSpecVersion            = uint32(459)
 	releaseRuntimeTransactionVersion     = uint32(1)
 	releaseRuntimeStateVersion           = uint8(1)
-	releaseRuntimeCodeHash               = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
-	releaseRuntimeMetadataHash           = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
+	releaseRuntimeCodeHash               = "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b"
+	releaseRuntimeMetadataHash           = "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef"
 	releaseHistoricalRuntimeCodeHash     = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
 	releaseHistoricalRuntimeMetadataHash = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
 )
@@ -32,36 +32,48 @@ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
 		cfg.StateVersion != releaseRuntimeStateVersion ||
 		!strings.EqualFold(cfg.RuntimeCodeHash, releaseRuntimeCodeHash) ||
 		!strings.EqualFold(cfg.RuntimeMetadataHash, releaseRuntimeMetadataHash) {
-		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/458/1/1 artifact")
+		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/459/1/1 artifact")
 	}
 	return nil
 }
 
-// Archive owners retain their original runtime fields. Only the two reviewed
+// Archive owners retain their original runtime fields. Only the three reviewed
 // artifacts belong to this historical reader; current admission stays separate.
 func validateReleaseHistoricalNativeRuntimeConfig(cfg *ReleaseConfig) error {
 	if cfg != nil && cfg.RuntimeSpec == 455 && cfg.TransactionVersion == 1 && cfg.StateVersion == 1 &&
 		strings.EqualFold(cfg.RuntimeCodeHash, releaseHistoricalRuntimeCodeHash) && strings.EqualFold(cfg.RuntimeMetadataHash, releaseHistoricalRuntimeMetadataHash) {
 		return nil
 	}
+	if cfg != nil && cfg.RuntimeSpec == 458 && cfg.TransactionVersion == 1 && cfg.StateVersion == 1 &&
+		strings.EqualFold(cfg.RuntimeCodeHash, "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a") && strings.EqualFold(cfg.RuntimeMetadataHash, "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d") {
+		return nil
+	}
 	return validateReleaseNativeRuntimeConfig(cfg)
 }
 
-// HistoricalReleaseRuntimeArtifacts is restricted to callers replaying an
-// authenticated original block, consent or receipt. The exact current release
-// may read its reviewed predecessor; a different supplied tuple gains no
-// additional authority. Current observations and signing keep their single pin.
+// Only exact reviewed release artifacts inherit their original replay domain.
+// Current observations and signing keep a single pin; old458 owners still read
+// their455 receipts without adopting459 or rewriting the original source.
 func HistoricalReleaseRuntimeArtifacts(current crv4.RuntimeArtifactIdentity) []crv4.RuntimeArtifactIdentity {
 	allowed := []crv4.RuntimeArtifactIdentity{current}
-	if current.Version != (crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: releaseRuntimeSpecVersion, TransactionVersion: releaseRuntimeTransactionVersion, StateVersion: releaseRuntimeStateVersion}) ||
-		!strings.EqualFold(current.CodeHash, releaseRuntimeCodeHash) || !strings.EqualFold(current.MetadataHash, releaseRuntimeMetadataHash) {
+	currentRelease := current.Version == (crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: releaseRuntimeSpecVersion, TransactionVersion: releaseRuntimeTransactionVersion, StateVersion: releaseRuntimeStateVersion}) &&
+		strings.EqualFold(current.CodeHash, releaseRuntimeCodeHash) && strings.EqualFold(current.MetadataHash, releaseRuntimeMetadataHash)
+	previousRelease := current.Version == (crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 458, TransactionVersion: 1, StateVersion: 1}) &&
+		strings.EqualFold(current.CodeHash, "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a") && strings.EqualFold(current.MetadataHash, "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d")
+	if !currentRelease && !previousRelease {
 		return allowed
 	}
-	return append(allowed, crv4.RuntimeArtifactIdentity{
-		Version:      crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1},
-		CodeHash:     releaseHistoricalRuntimeCodeHash,
-		MetadataHash: releaseHistoricalRuntimeMetadataHash,
+	allowed = append(allowed, crv4.RuntimeArtifactIdentity{
+		Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1},
+		CodeHash: releaseHistoricalRuntimeCodeHash, MetadataHash: releaseHistoricalRuntimeMetadataHash,
 	})
+	if currentRelease {
+		allowed = append(allowed, crv4.RuntimeArtifactIdentity{
+			Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 458, TransactionVersion: 1, StateVersion: 1},
+			CodeHash: "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a", MetadataHash: "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d",
+		})
+	}
+	return allowed
 }
 
 // authenticatePinnedNativeRuntimeAtContext binds a caller-selected finalized

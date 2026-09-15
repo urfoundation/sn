@@ -20,14 +20,28 @@ func validateValidatorEvidenceHistoricalReleaseLock(lock *ReleaseLock) error {
 		}
 	} else {
 		runtime := lock.Runtime
+		var commit, codeHash, metadataHash, compressedSha256 string
+		switch runtime.SpecVersion {
+		case 455:
+			commit = "67dcf7f791dc495064c293f080a0702cb433e51e"
+			codeHash = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
+			metadataHash = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
+			compressedSha256 = "0x232bfc0d65ec2dbe4280b152e23f13879df9692d2286dd08c6ba14483deee00f"
+		case 458:
+			commit = "a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7"
+			codeHash = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
+			metadataHash = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
+			compressedSha256 = "0xd763c0210bbd113c065a4e8d538cdd3f5e9b40ba259a5136b77e0a495c364241"
+		default:
+			return errors.New("validator evidence archived runtime version is not a reviewed companion release")
+		}
 		if runtime.SourceRepository != "https://github.com/RaoFoundation/subtensor" ||
 			runtime.SourceTag != "" || runtime.SourceRefKind != "commit" ||
-			runtime.SourceRefName != "67dcf7f791dc495064c293f080a0702cb433e51e" ||
-			runtime.SourceCommit != "67dcf7f791dc495064c293f080a0702cb433e51e" ||
-			runtime.SpecVersion != 455 || runtime.TransactionVersion != 1 || runtime.StateVersion != 1 ||
-			!strings.EqualFold(runtime.CodeHash, "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a") ||
-			!strings.EqualFold(runtime.MetadataHash, "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc") ||
-			!strings.EqualFold(runtime.CompressedWasmSHA256, "0x232bfc0d65ec2dbe4280b152e23f13879df9692d2286dd08c6ba14483deee00f") ||
+			runtime.SourceRefName != commit || runtime.SourceCommit != commit ||
+			runtime.TransactionVersion != 1 || runtime.StateVersion != 1 ||
+			!strings.EqualFold(runtime.CodeHash, codeHash) ||
+			!strings.EqualFold(runtime.MetadataHash, metadataHash) ||
+			!strings.EqualFold(runtime.CompressedWasmSHA256, compressedSha256) ||
 			runtime.UpstreamReleaseCallHash != "" || runtime.UpstreamReleaseTimepoint != "" {
 			return errors.New("validator evidence archived runtime identity is not a reviewed companion release")
 		}

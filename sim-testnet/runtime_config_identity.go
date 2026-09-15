@@ -4,7 +4,7 @@ package main
 
 import "errors"
 
-// Only the explicitly reviewed testnet455 to testnet458 transition separates
+// Only the explicitly reviewed testnet455 to testnet458/459 transitions separate
 // its configuration identity from the current runtime expectation.
 func validateRuntimeConfigIdentity(public *PublicManifest) error {
 	if public == nil {
@@ -15,9 +15,9 @@ func validateRuntimeConfigIdentity(public *PublicManifest) error {
 	}
 	if public.SchemaVersion != 1 || public.Profile != releaseProfile ||
 		public.Chain.ChainID != testnetChainID || public.Chain.GenesisHash != testnetGenesis ||
-		public.Chain.ConfigIdentityRuntimeSpec != 455 || public.Chain.ExpectedRuntimeSpec != 458 ||
+		public.Chain.ConfigIdentityRuntimeSpec != 455 || (public.Chain.ExpectedRuntimeSpec != 458 && public.Chain.ExpectedRuntimeSpec != 459) ||
 		public.Chain.ExpectedTransactionVersion != 1 || public.Chain.ExpectedStateVersion != 1 {
-		return errors.New("runtime configuration identity is not the explicit reviewed 455-to-458 transition")
+		return errors.New("runtime configuration identity is not the explicit reviewed 455-to-458/459 transitions")
 	}
 	return nil
 }
@@ -35,9 +35,10 @@ func validateRuntimeConfigIdentityPlan(cfg *ResolvedConfig, plan *SetupPlan) err
 		return errors.New("runtime configuration identity differs from the exact approved plan")
 	}
 	if plan.ConfigIdentityRuntimeSpec != 0 {
-		if cfg.Release == nil || cfg.Release.Runtime.SpecVersion != 458 ||
+		if cfg.Release == nil || cfg.Public.Chain.ExpectedRuntimeSpec != reviewedRuntimeSpecVersion ||
+			cfg.Release.Runtime.SpecVersion != reviewedRuntimeSpecVersion ||
 			cfg.Release.Runtime.TransactionVersion != 1 || cfg.Release.Runtime.StateVersion != 1 {
-			return errors.New("runtime configuration migration requires the exact current458 release")
+			return errors.New("runtime configuration migration requires the exact current459 release")
 		}
 		return validateReviewedRuntimeIdentity(cfg.Release)
 	}

@@ -30,10 +30,23 @@ func runtime458ReviewedTestLock() *ReleaseLock {
 	}}
 }
 
+// Pin459 independently while retaining the exact458 helper for archive controls.
+func runtime459ReviewedTestLock() *ReleaseLock {
+	return &ReleaseLock{SchemaVersion: 1, Release: "1.0", Runtime: ReleaseRuntimeLock{
+		SourceRepository: "https://github.com/RaoFoundation/subtensor",
+		SourceRefKind:    "commit", SourceRefName: "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
+		SourceCommit:         "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
+		CodeHash:             "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b",
+		MetadataHash:         "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef",
+		CompressedWasmSHA256: "0xc78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
+		SpecVersion:          459, TransactionVersion: 1, StateVersion: 1,
+	}}
+}
+
 // Exact commit provenance cannot be expressed as a mutable branch, invented
 // release tag or copied mainnet multisig proposal/timepoint.
-func TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
-	lock := runtime458ReviewedTestLock()
+func TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
+	lock := runtime459ReviewedTestLock()
 	if err := validateReviewedRuntimeIdentity(lock); err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +54,7 @@ func TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal(t *testing.T) {
 		func(value *ReleaseRuntimeLock) { value.SourceRefKind = "branch" },
 		func(value *ReleaseRuntimeLock) { value.SourceRefName = "testnet" },
 		func(value *ReleaseRuntimeLock) { value.SourceRefKind, value.SourceRefName = "", "" },
-		func(value *ReleaseRuntimeLock) { value.SourceTag = "v458" },
+		func(value *ReleaseRuntimeLock) { value.SourceTag = "v459" },
 		func(value *ReleaseRuntimeLock) { value.SourceCommit = "14cde6410fe8ec81a940e290c56f94a632a0988d" },
 		func(value *ReleaseRuntimeLock) {
 			value.UpstreamReleaseCallHash = "0xa555b212406469b24d3a370ac59675bad303e319274ebd7a7fd0804dede3315b"
@@ -100,14 +113,14 @@ func TestRuntime458CanonicalLockRetainsHistoricalProvenance(t *testing.T) {
 
 // Read-only public history admits each exact reviewed predecessor. The same
 // object cannot become the current launch identity, even with a mutated config.
-func TestRuntime458HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
+func TestRuntime459HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	artifacts, err := releaseHistoryRuntimeArtifacts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(artifacts) != 6 || artifacts[0].Version.SpecVersion != 458 {
-		t.Fatal("current458 plus complete451–455 history is absent")
+	if len(artifacts) != 7 || artifacts[0].Version.SpecVersion != 459 {
+		t.Fatal("current459 plus complete451–455/458 history is absent")
 	}
 	for _, artifact := range artifacts {
 		public := &PublicDeploymentManifest{RuntimeSpec: artifact.Version.SpecVersion, TransactionVersion: artifact.Version.TransactionVersion, StateVersion: artifact.Version.StateVersion, RuntimeCodeHash: artifact.CodeHash, RuntimeMetadataHash: artifact.MetadataHash}
@@ -115,7 +128,7 @@ func TestRuntime458HistoricalPublicationsRemainEvidenceOnly(t *testing.T) {
 			t.Fatalf("reviewed history%d refused: %v", artifact.Version.SpecVersion, err)
 		}
 		currentErr := validatePublishedRuntimeIdentity(public, cfg)
-		if artifact.Version.SpecVersion == 458 {
+		if artifact.Version.SpecVersion == 459 {
 			if currentErr != nil {
 				t.Fatal(currentErr)
 			}
@@ -170,8 +183,12 @@ func TestRuntime458PublicationsRejectCrossArtifactPairs(t *testing.T) {
 
 // The source-linked CI build has different compile-time seeds. Only the exact
 // LAN artifact is current authority; source similarity cannot normalize hashes.
-func TestRuntime458CurrentLockRejectsOfficialSeedVariant(t *testing.T) {
-	lock := runtime458ReviewedTestLock()
+func TestRuntime458HistoricalLockRejectsOfficialSeedVariant(t *testing.T) {
+	lock := testReleaseLockFixture(t)
+	runtimeImage := lock.Runtime.Image
+	lock.Runtime = runtime458ReviewedTestLock().Runtime
+	lock.Runtime.Image = runtimeImage
+	if err := validateValidatorEvidenceHistoricalReleaseLock(lock); err != nil { t.Fatal(err) }
 	for _, mutate := range []func(*ReleaseRuntimeLock){
 		func(value *ReleaseRuntimeLock) {
 			value.CodeHash = "0x3708442dc6aae2ea654d827d8b9985d36b6640b2447cfd48125a1a0205c8f1d3"
@@ -182,7 +199,7 @@ func TestRuntime458CurrentLockRejectsOfficialSeedVariant(t *testing.T) {
 	} {
 		changed := *lock
 		mutate(&changed.Runtime)
-		if validateReviewedRuntimeIdentity(&changed) == nil {
+		if validateValidatorEvidenceHistoricalReleaseLock(&changed) == nil {
 			t.Fatal("source-equivalent seed variant acquired exact current authority")
 		}
 	}
@@ -194,7 +211,7 @@ func TestRuntime458CurrentLockRejectsOfficialSeedVariant(t *testing.T) {
 }
 
 // The actual release-history constructor must reach the artifact reader with
-// all six authorities; a permanent synthetic read error stops before metadata.
+// all seven authorities; a permanent synthetic read error stops before metadata.
 func TestRuntime458HistoryAllowlistReachesArtifactReader(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	want := errors.New("synthetic exact runtime read boundary")

@@ -1,4 +1,4 @@
-// The complete release history remains usable at a finite six-artifact bound.
+// The complete release history remains usable at a finite seven-artifact bound.
 package crv4
 
 import (
@@ -11,12 +11,12 @@ import (
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 )
 
-// Six exact authorities reach the actual reader and retain hot metadata;
+// Seven exact authorities reach the actual reader and retain hot metadata;
 // oversized, duplicate and incomplete authorities fail before another read.
-func TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory(t *testing.T) {
+func TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory(t *testing.T) {
 	metadataHex, metadataHash := runtimeIdentityTestMetadata(t)
 	var identities []RuntimeArtifactIdentity
-	for _, spec := range []uint32{451, 452, 453, 454, 455, 458} {
+	for _, spec := range []uint32{451, 452, 453, 454, 455, 458, 459} {
 		identities = append(identities, RuntimeArtifactIdentity{
 			Version:  RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1},
 			CodeHash: fmt.Sprintf("0x%064x", spec), MetadataHash: metadataHash,
@@ -58,28 +58,28 @@ func TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory(t *testi
 			block := types.Hash{byte(index + 1)}
 			observed, err := AuthenticateRuntimeArtifactAtContext(context.Background(), chain, block, identities...)
 			if err != nil || observed.BlockHash != block || observed.Version != identity.Version || observed.CodeHash != identity.CodeHash || observed.MetadataHash != identity.MetadataHash || observed.Metadata == nil {
-				t.Fatalf("complete six-identity history failed at pass%d spec%d: %v", pass, identity.Version.SpecVersion, err)
+				t.Fatalf("complete seven-identity history failed at pass%d spec%d: %v", pass, identity.Version.SpecVersion, err)
 			}
 		}
 	}
-	if metadataCalls != 6 || calls != 30 {
-		t.Fatalf("full history did not retain six exact hot entries: metadata=%d calls=%d", metadataCalls, calls)
+	if metadataCalls != 7 || calls != 35 {
+		t.Fatalf("full history did not retain seven exact hot entries: metadata=%d calls=%d", metadataCalls, calls)
 	}
 	for _, change := range []func([]RuntimeArtifactIdentity) []RuntimeArtifactIdentity{
 		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
 			extra := values[0]
-			extra.Version.SpecVersion = 459
+			extra.Version.SpecVersion = 460
 			return append(values, extra)
 		},
-		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity { values[5] = values[0]; return values },
+		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity { values[6] = values[0]; return values },
 		func(values []RuntimeArtifactIdentity) []RuntimeArtifactIdentity {
-			values[5].MetadataHash = ""
+			values[6].MetadataHash = ""
 			return values
 		},
 	} {
 		changed := change(append([]RuntimeArtifactIdentity(nil), identities...))
 		before := calls
-		if _, err := AuthenticateRuntimeArtifactAtContext(context.Background(), chain, types.Hash{6}, changed...); err == nil || calls != before {
+		if _, err := AuthenticateRuntimeArtifactAtContext(context.Background(), chain, types.Hash{7}, changed...); err == nil || calls != before {
 			t.Fatal("invalid complete-history authority reached a provider")
 		}
 	}

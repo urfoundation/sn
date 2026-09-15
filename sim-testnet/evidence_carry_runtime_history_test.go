@@ -43,8 +43,14 @@ type validatorEvidenceHistoricalLockTestFixture struct {
 }
 
 // The ordinary planner creates each approval before the real carry renderer
-// retains the original two intents under the current runtime458 release.
+// retains the original two intents under the current runtime459 release.
 func newValidatorEvidenceHistoricalLockTestFixture(t *testing.T) validatorEvidenceHistoricalLockTestFixture {
+	t.Helper()
+	return newValidatorEvidenceRuntimeLockTestFixture(t, 455)
+}
+
+// Original455 and migrated458 approvals retain their own exact source lock.
+func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) validatorEvidenceHistoricalLockTestFixture {
 	t.Helper()
 	config := testResolvedConfig(t)
 	config.Public.Chain.ConfigIdentityRuntimeSpec = 455
@@ -59,17 +65,30 @@ func newValidatorEvidenceHistoricalLockTestFixture(t *testing.T) validatorEviden
 	}
 	originalConfig := *config
 	originalPublic := *config.Public
-	originalPublic.Chain.ExpectedRuntimeSpec = 455
+	originalPublic.Chain.ExpectedRuntimeSpec = spec
 	originalPublic.Chain.ConfigIdentityRuntimeSpec = 0
+	if spec == 458 { originalPublic.Chain.ConfigIdentityRuntimeSpec = 455 }
 	originalConfig.Public = &originalPublic
 	originalConfig.ConfigHash, err = releaseConfigHash(originalConfig.Config, originalConfig.Public, originalConfig.Hyperparameters)
 	if err != nil {
 		t.Fatal(err)
 	}
 	originalConfig.Release = validatorEvidenceRuntime455TestLock(t)
+	// Build the synthetic original with current planner checks, then bind its
+	// independently approved458 source before producing any persisted bytes.
+	if spec == 458 { originalConfig = *config }
 	original, err := buildPlan(&originalConfig, testSetupFacts(), roles, time.Unix(1, 0))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if spec == 458 {
+		lock := testReleaseLockFixture(t)
+		image := lock.Runtime.Image
+		lock.Runtime = runtime458ReviewedTestLock().Runtime
+		lock.Runtime.Image = image
+		rebindValidatorEvidenceReleaseLockTest(t, original, lock)
+		original.PlanHash, err = original.hash()
+		if err != nil { t.Fatal(err) }
 	}
 	current, err := buildPlan(config, testSetupFacts(), roles, time.Unix(2, 0))
 	if err != nil {
@@ -170,7 +189,7 @@ func TestValidatorEvidenceHistoricalLockRestartsCurrentCarry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan, err := loadPersistedPlan(fixture.config, fixture.stateDir); plan != nil || !errors.Is(err, errPersistedPlanIdentityMismatch) {
-		t.Fatalf("original455 approval became current458 execution authority: %v", err)
+		t.Fatalf("original455 approval became current459 execution authority: %v", err)
 	}
 }
 
@@ -300,13 +319,13 @@ func TestValidatorEvidenceHistoricalLockPreservesStaticControls(t *testing.T) {
 	}
 }
 
-// Fresh lock rendering remains current458-only. Closed anchors reproduce
+// Fresh lock rendering remains current459-only. Closed anchors reproduce
 // their original approval; historical runtime bytes do not replace a new lock.
 func TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority(t *testing.T) {
 	t.Parallel()
 	current, original := testReleaseLockFixture(t), validatorEvidenceRuntime455TestLock(t)
 	if err := validateValidatorEvidenceHistoricalReleaseLock(current); err != nil {
-		t.Fatalf("exact current458 archive was refused: %v", err)
+		t.Fatalf("exact current459 archive was refused: %v", err)
 	}
 	if err := validateReleaseLockStatic(current); err != nil {
 		t.Fatal(err)
@@ -322,10 +341,10 @@ func TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority(t *testing.
 		t.Fatalf("closed original455 anchor lost its exact approved lock: %v", err)
 	}
 	if roots, err := finalReleaseRuntimeRootsForPlan(fixture.current, current); err != nil || len(roots) == 0 {
-		t.Fatalf("current458 anchor lost its exact approved lock: %v", err)
+		t.Fatalf("current459 anchor lost its exact approved lock: %v", err)
 	}
 	if roots, err := finalReleaseRuntimeRootsForPlan(fixture.current, original); err == nil || roots != nil || !strings.Contains(err.Error(), "approved plan does not bind the canonical release lock") {
-		t.Fatalf("historical455 lock replaced current458 anchor authority: %v", err)
+		t.Fatalf("historical455 lock replaced current459 anchor authority: %v", err)
 	}
 	for _, version := range []uint32{451, 452, 453, 454, 455} {
 		if _, ok := reviewedHistoricalRuntimeArtifact(runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: version, TransactionVersion: 1, StateVersion: 1}); !ok {

@@ -104,7 +104,7 @@ func TestProducerGateStateSelectionCoversNativeSourceCommitmentJob(t *testing.T)
 	}
 	group := releaseEvidenceV2GateGroup{
 		phase: "evidence_native", job: "evidence-native", variable: "native_evidence_tests", packages: []string{"./crv4"},
-		sources:  map[string][]string{"./crv4": releaseEvidenceV2GateSources(t, []string{"../crv4/source_commitment_test.go", "../crv4/source_commitment_runtime455_test.go", "../crv4/source_commitment_runtime458_test.go"})},
+		sources:  map[string][]string{"./crv4": releaseEvidenceV2GateSources(t, []string{"../crv4/source_commitment_test.go", "../crv4/source_commitment_runtime455_test.go", "../crv4/source_commitment_runtime458_test.go", "../crv4/source_commitment_runtime459_test.go"})},
 		commands: []string{`go test ./crv4 -run "$native_evidence_tests" -count=1`, `go test -race ./crv4 -run "$native_evidence_tests" -count=1`},
 	}
 	script := string(encoded)

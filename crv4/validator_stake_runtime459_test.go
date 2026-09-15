@@ -1,4 +1,4 @@
-// Synthetic458 responses exercise the complete authenticated schedule path.
+// Synthetic459 responses exercise the complete authenticated schedule path.
 package crv4
 
 import (
@@ -11,7 +11,7 @@ import (
 
 // Weighted stake, exact threshold equality and registered-owner eligibility
 // retain their independent current-artifact and exact-block checks.
-func TestRuntimeArtifactMetadataValidatorScheduleRuntime458(t *testing.T) {
+func TestRuntimeArtifactMetadataValidatorScheduleRuntime459(t *testing.T) {
 	for _, example := range []struct {
 		name      string
 		threshold uint64
@@ -39,7 +39,7 @@ func TestRuntimeArtifactMetadataValidatorScheduleRuntime458(t *testing.T) {
 	} {
 		fixture, query := newValidatorScheduleTestFixture(t)
 		identity := fixture.identity
-		identity.version.SpecVersion = 458
+		identity.version.SpecVersion = 459
 		identity.allowed[0].Version = identity.version
 		identity.storage["StakeThreshold"] = validatorIdentityTestHex(binary.LittleEndian.AppendUint64(nil, example.threshold))
 		if example.change != nil {
@@ -52,16 +52,16 @@ func TestRuntimeArtifactMetadataValidatorScheduleRuntime458(t *testing.T) {
 			result.Stake.Identity.Hotkey != query.Hotkey || result.Stake.Identity.BlockHash != query.BlockHash ||
 			result.Stake.Identity.Runtime != identity.allowed[0] || result.Stake.TotalStakeRao != 150 ||
 			result.Stake.StakeThresholdRao != example.threshold || result.Stake.MeetsNonSelfStakeAndPermit() != example.eligible || fixture.runtimeCalls != 1 {
-			t.Fatalf("runtime458 %s lost authenticated schedule semantics: %+v error=%v", example.name, result, err)
+			t.Fatalf("runtime459 %s lost authenticated schedule semantics: %+v error=%v", example.name, result, err)
 		}
 		if identity.chain.Meta != metadata || identity.chain.Runtime != runtime {
-			t.Fatal("runtime458 schedule changed the signing binding")
+			t.Fatal("runtime459 schedule changed the signing binding")
 		}
 	}
 }
 
 // Layout compatibility does not authorize another artifact or unknown version.
-func TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity(t *testing.T) {
+func TestRuntimeArtifactMetadataValidatorStakeRuntime459RejectsForeignIdentity(t *testing.T) {
 	for _, example := range []struct {
 		name   string
 		change func(*validatorIdentityTestFixture)
@@ -83,12 +83,12 @@ func TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity(t
 		{name: "state", change: func(f *validatorIdentityTestFixture) { f.version.StateVersion = 2; f.allowed[0].Version = f.version }},
 	} {
 		fixture := newValidatorStakeTestFixture(t)
-		fixture.identity.version.SpecVersion = 458
+		fixture.identity.version.SpecVersion = 459
 		fixture.identity.allowed[0].Version = fixture.identity.version
 		example.change(fixture.identity)
 		result, err := fixture.read()
 		if err == nil || result != (ValidatorStakeObservation{}) || fixture.runtimeCalls != 0 {
-			t.Fatalf("%s reached the458 stake decoder: %+v error=%v calls=%d", example.name, result, err, fixture.runtimeCalls)
+			t.Fatalf("%s reached the459 stake decoder: %+v error=%v calls=%d", example.name, result, err, fixture.runtimeCalls)
 		}
 	}
 }

@@ -83,14 +83,14 @@ echo "[release-1.0 producer] exact runtime client and cancellation boundaries"
 release_phase_runtime() {
   cd "$sn_repo"
   # The simulator launches the real miner and validator modules. Certify the
-  # exact runtime-458 identity, historical metadata cache, per-endpoint
+  # exact runtime-459 identity, historical metadata cache, per-endpoint
   # failover budget, and caller cancellation paths before either module can
   # make a testnet write. Prefix selection deliberately admits adjacent
   # regressions added for the same boundary.
-  runtime_client_tests='^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|EVMCheckpoint)'
+  runtime_client_tests='^Test(DialChainContext|FinalizedHeadContext|FinalizedBlock|BlockHashContext|BlockIdentityCache|ExactBlockIdentity|AccountNonceContext|ReleaseStateReaders|ReleaseExactBlock|ReleaseSnapshot|ReleaseSteeringSource|VerifyFinalizedExtrinsicContext|LocateFinalizedExtrinsic|FleetCommitmentAtContext|FleetCommitmentInfoRuntime|RuntimeArtifactMetadata|RuntimeMetadataAtContext|FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext|ReleaseEpochStartBlockAtContext|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|AuthenticatePinnedNativeRuntime|ReleaseNativeEndpointTimeout|ReleaseRuntime458|ReleaseRuntime459|EVMCheckpoint)'
   go test ./crv4 ./miner ./validator -run "$runtime_client_tests" -count=1
   go test -race ./crv4 ./miner ./validator -run "$runtime_client_tests" -count=1
-  runtime455_tests='^Test(Runtime458|Runtime455|ReleaseGatesAttest.*Runtime|ProducerGatePinsRuntime458|ReviewedRuntimeIdentity|ReviewedHistoricalRuntimeArtifacts|ReleaseHistoryRuntimeArtifacts|RuntimeVersionIdentity|RuntimeCodeHashValidation|RuntimeMetadataHashValidation|ReleaseLockDecodesCanonicalRuntimeFields|ReleaseLockRejectsGeneratedRuntimeDrift|ResolvedConfigPinsReviewedRuntimeArtifactIdentity|PublishedManifestBindsCompleteRuntimeIdentity|ReleaseRuntimeRPCRetry|CurrentRuntimeAuthenticationCannotUseHistoricalCache|CarriedFleetHistory|HistoricalFleetGenerationOne|HistoricalFleetAlias|FinalSemanticRPC|FinalSemanticSubstrate|FinalSemanticCapturedReplay)'
+  runtime455_tests='^Test(Runtime459|Runtime458|Runtime455|ReleaseGatesAttest.*Runtime|ProducerGatePinsRuntime458|ReviewedRuntimeIdentity|ReviewedHistoricalRuntimeArtifacts|ReleaseHistoryRuntimeArtifacts|RuntimeVersionIdentity|RuntimeCodeHashValidation|RuntimeMetadataHashValidation|ReleaseLockDecodesCanonicalRuntimeFields|ReleaseLockRejectsGeneratedRuntimeDrift|ResolvedConfigPinsReviewedRuntimeArtifactIdentity|PublishedManifestBindsCompleteRuntimeIdentity|ReleaseRuntimeRPCRetry|CurrentRuntimeAuthenticationCannotUseHistoricalCache|CarriedFleetHistory|HistoricalFleetGenerationOne|HistoricalFleetAlias|FinalSemanticRPC|FinalSemanticSubstrate|FinalSemanticCapturedReplay)'
   go test ./sim-testnet -run "$runtime455_tests" -count=1
   go test -race ./sim-testnet -run "$runtime455_tests" -count=1
 }

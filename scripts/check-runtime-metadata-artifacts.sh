@@ -64,13 +64,14 @@ if ! jq -e '
   (.metadata_version == 14) and
   (.runtime_code_storage_key == "0x3a636f6465") and
   (.polkadot_sdk_revision == "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a") and
-  (.artifacts | type == "array" and length == 6 and map(.spec_version) == [451, 452, 453, 454, 455, 458]) and
+  (.artifacts | type == "array" and length == 7 and map(.spec_version) == [451, 452, 453, 454, 455, 458, 459]) and
   all(.artifacts[];
     (type == "object") and
     (keys == (["code_blake2b_256", "code_sha256", "code_size", "code_source", "code_url", "metadata_blake2b_256", "metadata_sha256", "metadata_size", "observation_block", "observation_block_hash", "source_commit", "source_ref_kind", "source_ref_name", "spec_version"] +
-      (if .spec_version == 458 then ["observation_rpc_url"] else [] end) | sort)) and
-    (if .spec_version == 458 then .observation_rpc_url == "http://192.168.1.162:9944" else (has("observation_rpc_url") | not) end) and
-    (.spec_version | type == "number" and floor == . and (. == 451 or . == 452 or . == 453 or . == 454 or . == 455 or . == 458)) and
+      (if .spec_version == 458 then ["observation_rpc_url"] elif .spec_version == 459 then ["independent_rpc", "observation_rpc_url"] else [] end) | sort)) and
+    (if (.spec_version == 458 or .spec_version == 459) then .observation_rpc_url == "http://192.168.1.162:9944" else (has("observation_rpc_url") | not) end) and
+    (if .spec_version == 459 then .independent_rpc == false else (has("independent_rpc") | not) end) and
+    (.spec_version | type == "number" and floor == . and (. == 451 or . == 452 or . == 453 or . == 454 or . == 455 or . == 458 or . == 459)) and
     (.source_ref_kind | type == "string") and
     (.source_ref_name | type == "string" and length > 0) and
     (.source_commit | git_commit) and
@@ -166,6 +167,7 @@ while IFS= read -r artifact_json; do
     "454:tag:v454:14cde6410fe8ec81a940e290c56f94a632a0988d:github-release:https://github.com/RaoFoundation/subtensor/releases/download/v454/subtensor.wasm") ;;
     "455:commit:67dcf7f791dc495064c293f080a0702cb433e51e:67dcf7f791dc495064c293f080a0702cb433e51e:substrate-storage:") ;;
     "458:commit:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7:substrate-storage:") ;;
+    "459:commit:70378404b56c12a85bc8cd163aca2f32cf4d1b80:70378404b56c12a85bc8cd163aca2f32cf4d1b80:substrate-storage:") ;;
     *)
       echo "runtime metadata artifact $spec_version has unreviewed source provenance" >&2
       exit 1
@@ -225,7 +227,7 @@ while IFS= read -r artifact_json; do
   probe_process_ids[$spec_version]=$!
 done < <(jq -c '.artifacts[]' "$manifest")
 
-# Runtime compilation/execution is CPU-bound. Run the six immutable probes
+# Runtime compilation/execution is CPU-bound. Run the seven immutable probes
 # concurrently, but consume their results in manifest order for stable output.
 for spec_version in "${probe_versions[@]}"; do
   probe_status=0

@@ -386,10 +386,10 @@ func TestRuntimeArtifactMetadataCacheIsHardBounded(t *testing.T) {
 }
 
 // Repeated one-item allowlists cannot evade the per-provider cache bound after
-// six independently authenticated artifacts have been admitted.
-func TestRuntimeArtifactMetadataCacheRejectsSeventhSequentialIdentity(t *testing.T) {
-	if maximumRuntimeMetadataArtifactsPerChain != 6 {
-		t.Fatal("reviewed current458 plus historical451–455 requires exactly six bounded artifacts")
+// seven independently authenticated artifacts have been admitted.
+func TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity(t *testing.T) {
+	if maximumRuntimeMetadataArtifactsPerChain != 7 {
+		t.Fatal("reviewed current459 plus historical451–455/458 requires exactly seven bounded artifacts")
 	}
 	metadataHex, metadataHash := runtimeIdentityTestMetadata(t)
 	var metadataCalls atomic.Int64
@@ -427,10 +427,10 @@ func TestRuntimeArtifactMetadataCacheRejectsSeventhSequentialIdentity(t *testing
 			t.Fatalf("artifact %d was rejected before the cache bound: %v", offset, err)
 		}
 		if offset > maximumRuntimeMetadataArtifactsPerChain && err == nil {
-			t.Fatal("seventh sequential runtime artifact bypassed the cache bound")
+			t.Fatal("eighth sequential runtime artifact bypassed the cache bound")
 		}
 	}
-	// Hot reads of all six admitted entries still succeed at the hard bound.
+	// Hot reads of all seven admitted entries still succeed at the hard bound.
 	for offset := byte(1); offset <= maximumRuntimeMetadataArtifactsPerChain; offset++ {
 		spec := uint32(450) + uint32(offset)
 		identity := RuntimeArtifactIdentity{Version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}, CodeHash: "0x" + fmt.Sprintf("%064x", spec), MetadataHash: metadataHash}

@@ -206,7 +206,7 @@ func TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute(t *test
 		t.Fatal(err)
 	}
 	var manifest releaseRuntimeMetadataArtifactManifest
-	if err := decodeStrictJSONBytes(raw, &manifest); err != nil || len(manifest.Artifacts) != 6 {
+	if err := decodeStrictJSONBytes(raw, &manifest); err != nil || len(manifest.Artifacts) != 7 {
 		t.Fatalf("artifact fixture manifest is incomplete: %v", err)
 	}
 	observation := manifest.Artifacts[5]
@@ -323,7 +323,7 @@ func TestRuntime458SourceAttestationIncludesExactCompatibilityDelta(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"for current_spec in 455 458", "runtime-v458-source.sha256", "current_commit=\"a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7\"", "expected_current_files=62", "SUBTENSOR_RUNTIME458_SOURCE", "expected_files=29", "expected_metadata_files=18"} {
+	for _, required := range []string{"for current_spec in 455 458", "runtime-v458-source.sha256", "current_commit=\"a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7\"", "expected_current_files=62", "SUBTENSOR_RUNTIME458_SOURCE", "expected_files=29", "expected_metadata_files=21"} {
 		if !strings.Contains(string(checker), required) {
 			t.Fatalf("runtime458 source checker omits %q", required)
 		}

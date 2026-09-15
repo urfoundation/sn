@@ -31,7 +31,7 @@ func runtimeConfigIdentityTestConfigs(t *testing.T) (*ResolvedConfig, *ResolvedC
 	}
 	current := *original
 	public := *original.Public
-	public.Chain.ExpectedRuntimeSpec = 458
+	public.Chain.ExpectedRuntimeSpec = 459
 	public.Chain.ConfigIdentityRuntimeSpec = 455
 	current.Public, current.Release = &public, testReleaseLockFixture(t)
 	current.ConfigHash, err = releaseConfigHash(current.Config, current.Public, current.Hyperparameters)
@@ -92,7 +92,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin(t *tes
 	}{
 		{name: "another predecessor", change: func(public *PublicManifest) { public.Chain.ConfigIdentityRuntimeSpec = 454 }},
 		{name: "current as predecessor", change: func(public *PublicManifest) { public.Chain.ConfigIdentityRuntimeSpec = 458 }},
-		{name: "future", change: func(public *PublicManifest) { public.Chain.ExpectedRuntimeSpec = 459 }},
+		{name: "future", change: func(public *PublicManifest) { public.Chain.ExpectedRuntimeSpec = 460 }},
 		{name: "historical", change: func(public *PublicManifest) { public.Chain.ExpectedRuntimeSpec = 455 }},
 		{name: "transaction", change: func(public *PublicManifest) { public.Chain.ExpectedTransactionVersion++ }},
 		{name: "state", change: func(public *PublicManifest) { public.Chain.ExpectedStateVersion++ }},
@@ -123,7 +123,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityPreservesHashAndInputOwnership(t *
 		t.Fatalf("explicit runtime migration changed signed configuration identity: %v", err)
 	}
 	after, err := json.Marshal(current.Public)
-	if err != nil || !bytes.Equal(before, after) || current.Public.Chain.ExpectedRuntimeSpec != 458 || !bytes.Contains(after, []byte(`"ConfigIdentityRuntimeSpec":455`)) {
+	if err != nil || !bytes.Equal(before, after) || current.Public.Chain.ExpectedRuntimeSpec != 459 || !bytes.Contains(after, []byte(`"ConfigIdentityRuntimeSpec":455`)) {
 		t.Fatalf("hashing mutated or omitted current runtime authority: %v", err)
 	}
 	publicWire, err := yaml.Marshal(current.Public)
@@ -208,7 +208,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityBindsPlanWithoutChangingActions(t 
 }
 
 // Current launch refuses an omitted or substituted pin before dialing, even
-// when a caller recomputes the outer plan hash. Runtime authority stays458.
+// when a caller recomputes the outer plan hash. Runtime authority stays459.
 func TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitution(t *testing.T) {
 	t.Parallel()
 	_, current := runtimeConfigIdentityTestConfigs(t)
@@ -261,7 +261,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitutio
 }
 
 // The actual completed-repair reader receives a genuine omitted-pin455
-// source and current458 configuration. No signed source bytes are rewritten.
+// source and current459 configuration. No signed source bytes are rewritten.
 func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *testing.T) {
 	var originalPublic PublicManifest
 	var originalInputs resolvedPlanPublicInputs
@@ -275,7 +275,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 	fixture := newCoordinatorRepairCarrySourceFixture(t, original, nil)
 	executor := fixture.executor
 	current, public := *executor.cfg, originalPublic
-	public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = 458, 455
+	public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = 459, 455
 	current.Public, current.Release = &public, testReleaseLockFixture(t)
 	// The HTTP fixtures inject clients after approval. Their transport address
 	// must not replace the immutable endpoint used by the original planner.
