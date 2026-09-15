@@ -1,0 +1,53 @@
+{
+  "reason": "Large raw bytes remain in the closed capture; committed protocol metadata fixture and upstream CI artifact provide portable byte locations.",
+  "artifacts": [
+    {
+      "retained_source": "lan-artifacts/code-response.json",
+      "size_bytes": 5050014,
+      "sha256": "8fec5117c57b23ee014bb462bbb59860900203ad0fee20e1d43556b0c199a4a8",
+      "included": false
+    },
+    {
+      "retained_source": "lan-artifacts/metadata-response.json",
+      "size_bytes": 672754,
+      "sha256": "b448ef3349766eea546a38e347b56752d9b025137cb4e42228d3f4570486d54d",
+      "included": false
+    },
+    {
+      "retained_source": "lan-artifacts/runtime459.code.wasm",
+      "size_bytes": 2524988,
+      "sha256": "c78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
+      "included": false
+    },
+    {
+      "retained_source": "lan-artifacts/runtime459.metadata.scale",
+      "size_bytes": 336358,
+      "sha256": "52256b0b4a5c682e94e1d68a7b7a5dc1ba4114cfde4fb39057be808a8443673d",
+      "included": false
+    },
+    {
+      "retained_source": "upstream-records/runtime-459-ci.zip",
+      "size_bytes": 2526042,
+      "sha256": "8c77e9d3d82384b85b0f2f21839207dd678c700966f500edeaae44821fd40024",
+      "included": false
+    },
+    {
+      "retained_source": "upstream-records/subtensor.wasm",
+      "size_bytes": 2524988,
+      "sha256": "c78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
+      "included": false
+    },
+    {
+      "retained_source": "upstream-records/458-to-459.json",
+      "size_bytes": 767751,
+      "sha256": "af2a6b2853ce1681d77631f5f46853d8e38dc9402c47e920032bd6e1be1cce95",
+      "included": false
+    },
+    {
+      "retained_source": "upstream-records/native-source-diff.patch",
+      "size_bytes": 80457,
+      "sha256": "97afd455e12e73bff7adea53a76c81f97d070d7f6858510fab27349cd9a28054",
+      "included": false
+    }
+  ]
+}

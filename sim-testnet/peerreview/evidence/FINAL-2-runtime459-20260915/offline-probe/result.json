@@ -1,0 +1,28 @@
+{
+  "scope": "existing offline exact-Wasm metadata reproduction only",
+  "probe_exit": 0,
+  "outer_exit": 0,
+  "started_at": "2026-09-15T21:35:37Z",
+  "finished_at": "2026-09-15T21:36:26Z",
+  "inputs_unchanged": true,
+  "sdk_revision": "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a",
+  "probe_binary_sha256": "cf9c6a08ba3e1a3b75b842f83553eb40cf84afa83bdb50747e477705d63845be",
+  "spec_name": "node-subtensor",
+  "spec_version": 459,
+  "transaction_version": 1,
+  "state_version": 1,
+  "metadata_version": 14,
+  "code": {
+    "size": 2524988,
+    "sha256": "c78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
+    "blake2b_256": "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b"
+  },
+  "metadata": {
+    "size": 336358,
+    "sha256": "52256b0b4a5c682e94e1d68a7b7a5dc1ba4114cfde4fb39057be808a8443673d",
+    "blake2b_256": "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef"
+  },
+  "new_probe_execution_during_packaging": false,
+  "new_rpc_during_packaging": false,
+  "live_campaign_completion": false
+}

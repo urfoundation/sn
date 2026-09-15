@@ -1,0 +1,51 @@
+{
+  "sn_authoring_commit": "15dbbe674bf5e5b0b048891ec35db0cbfc1372cb",
+  "path_base": "accompanying qualified SN source checkout",
+  "upstream_repository": "https://github.com/RaoFoundation/subtensor",
+  "upstream_source_commit": "70378404b56c12a85bc8cd163aca2f32cf4d1b80",
+  "upstream_artifact_api": "https://api.github.com/repos/RaoFoundation/subtensor/actions/artifacts/10418002729",
+  "upstream_workflow_url": "https://github.com/RaoFoundation/subtensor/actions/runs/35022000542",
+  "upstream_archive_sha256": "sha256:8c77e9d3d82384b85b0f2f21839207dd678c700966f500edeaae44821fd40024",
+  "committed_files": [
+    {
+      "path": "docs/spec/runtime-459-audit.md",
+      "size_bytes": 6552,
+      "sha256": "198c01eb6de965d2038282e02f1ee5e52519e758015ed86b3f4ae0f537f750d4"
+    },
+    {
+      "path": "docs/spec/runtime-metadata-artifacts.json",
+      "size_bytes": 6650,
+      "sha256": "0c5b713c27952ea207c7e853fcba4c0943bdb2ba8f08407ac165eb38230d5b45"
+    },
+    {
+      "path": "docs/spec/runtime-metadata-static-source.sha256",
+      "size_bytes": 3563,
+      "sha256": "3df089cafdc1fee3e7c70c2fbee3083477fb0d41e21334863d3c7ca2e0a4db2d"
+    },
+    {
+      "path": "docs/spec/runtime-v459-source.sha256",
+      "size_bytes": 7453,
+      "sha256": "e8a920ba20bd44204856b64f517f18f4e9b6e42abaca84531a449063cd6e1bcf"
+    },
+    {
+      "path": "miner/testdata/runtime459-metadata.scale.gz.base64",
+      "size_bytes": 138241,
+      "sha256": "f52ed04e2d57a09ce44926dcd6c8c6aa95a31254de3bfed3af87961e9f11162b"
+    },
+    {
+      "path": "miner/testdata/runtime459-metadata.scale.gz.base64.md",
+      "size_bytes": 733,
+      "sha256": "e81f805b4b1ad308a4b815765fbc910f148c4af67877e65017cfcb3433094728"
+    }
+  ],
+  "decoded_metadata": {
+    "size": 336358,
+    "sha256": "52256b0b4a5c682e94e1d68a7b7a5dc1ba4114cfde4fb39057be808a8443673d",
+    "blake2b_256": "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef"
+  },
+  "runtime_code": {
+    "size": 2524988,
+    "sha256": "c78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284",
+    "blake2b_256": "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b"
+  }
+}

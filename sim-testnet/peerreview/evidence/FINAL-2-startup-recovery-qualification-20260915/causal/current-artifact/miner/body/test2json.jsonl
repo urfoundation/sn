@@ -1,0 +1,22 @@
+{"Time":"2026-09-15T22:21:26.802211596Z","Action":"start"}
+{"Time":"2026-09-15T22:21:26.849365841Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T22:21:26.849674146Z","Action":"output","Output":"I0915 22:21:26.849375 2542305 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T22:21:26.849826576Z","Action":"output","Output":"I0915 22:21:26.849784 2542305 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T22:21:26.849938785Z","Action":"output","Output":"I0915 22:21:26.849904 2542305 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T22:21:26.849982111Z","Action":"output","Output":"I0915 22:21:26.849950 2542305 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T22:21:26.853447427Z","Action":"run","Test":"TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads"}
+{"Time":"2026-09-15T22:21:26.853485637Z","Action":"output","Test":"TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads","Output":"=== RUN   TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads\n"}
+{"Time":"2026-09-15T22:21:26.868903591Z","Action":"output","Test":"TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads","Output":"    fleet_runtime_458_test.go:260: real finalized runtime authentication failed: head=0x0000000000000000000000000000000000000000000000000000000000000000 error=fleet runtime at 0x0100000000000000000000000000000000000000000000000000000000000000 is not the reviewed node-subtensor/458/1/1 artifact: runtime at 0x0100000000000000000000000000000000000000000000000000000000000000 has unreviewed identity node-subtensor/459/1/1\n"}
+{"Time":"2026-09-15T22:21:26.86924549Z","Action":"output","Test":"TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads","Output":"--- FAIL: TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads (0.02s)\n"}
+{"Time":"2026-09-15T22:21:26.869278704Z","Action":"fail","Test":"TestFleetFinalizedRuntime459AuthenticatesIndependentExactHeads","Elapsed":0.02}
+{"Time":"2026-09-15T22:21:26.869314145Z","Action":"run","Test":"TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority"}
+{"Time":"2026-09-15T22:21:26.869323082Z","Action":"output","Test":"TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority","Output":"=== RUN   TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority\n"}
+{"Time":"2026-09-15T22:21:27.001013743Z","Action":"output","Test":"TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority","Output":"--- PASS: TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority (0.13s)\n"}
+{"Time":"2026-09-15T22:21:27.001119756Z","Action":"pass","Test":"TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority","Elapsed":0.13}
+{"Time":"2026-09-15T22:21:27.001138781Z","Action":"run","Test":"TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority"}
+{"Time":"2026-09-15T22:21:27.001148239Z","Action":"output","Test":"TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority","Output":"=== RUN   TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority\n"}
+{"Time":"2026-09-15T22:21:27.159400326Z","Action":"output","Test":"TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority","Output":"    fleet_runtime_458_test.go:371: historical458 artifact acquired current fleet authority\n"}
+{"Time":"2026-09-15T22:21:27.159486662Z","Action":"output","Test":"TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority","Output":"--- FAIL: TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority (0.16s)\n"}
+{"Time":"2026-09-15T22:21:27.159508881Z","Action":"fail","Test":"TestFleetRuntime459Retains458EvidenceWithoutCurrentAuthority","Elapsed":0.16}
+{"Time":"2026-09-15T22:21:27.159521335Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T22:21:27.163631Z","Action":"fail","Elapsed":0.361}

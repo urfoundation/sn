@@ -1,0 +1,8 @@
+{"Time":"2026-09-15T22:21:47.804772197Z","Action":"start"}
+{"Time":"2026-09-15T22:21:47.821232959Z","Action":"run","Test":"TestReleaseRuntime459RequiresExactReviewedArtifact"}
+{"Time":"2026-09-15T22:21:47.821282164Z","Action":"output","Test":"TestReleaseRuntime459RequiresExactReviewedArtifact","Output":"=== RUN   TestReleaseRuntime459RequiresExactReviewedArtifact\n"}
+{"Time":"2026-09-15T22:21:47.8213444Z","Action":"output","Test":"TestReleaseRuntime459RequiresExactReviewedArtifact","Output":"    runtime_identity_458_test.go:38: release 1.0 native runtime is not the reviewed node-subtensor/458/1/1 artifact\n"}
+{"Time":"2026-09-15T22:21:47.821356399Z","Action":"output","Test":"TestReleaseRuntime459RequiresExactReviewedArtifact","Output":"--- FAIL: TestReleaseRuntime459RequiresExactReviewedArtifact (0.00s)\n"}
+{"Time":"2026-09-15T22:21:47.821361692Z","Action":"fail","Test":"TestReleaseRuntime459RequiresExactReviewedArtifact","Elapsed":0}
+{"Time":"2026-09-15T22:21:47.821387971Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T22:21:47.824234525Z","Action":"fail","Elapsed":0.019}

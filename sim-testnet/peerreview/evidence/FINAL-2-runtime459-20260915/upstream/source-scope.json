@@ -1,0 +1,18 @@
+{
+  "prior_source_paths": 62,
+  "changed_upstream_paths": 198,
+  "changed_native_source_paths": 26,
+  "source_path_count": 71,
+  "source_manifest_sha256": "e8a920ba20bd44204856b64f517f18f4e9b6e42abaca84531a449063cd6e1bcf",
+  "added_source_paths": [
+    "Cargo.lock",
+    "pallets/subtensor/src/migrations/migrate_fix_root_pot_shortfall.rs",
+    "pallets/subtensor/src/migrations/mod.rs",
+    "pallets/subtensor/src/rpc_info/delegate_info.rs",
+    "pallets/subtensor/src/staking/move_stake.rs",
+    "pallets/subtensor/src/staking/remove_stake.rs",
+    "pallets/subtensor/src/staking/set_children.rs",
+    "pallets/subtensor/src/subnets/registration.rs",
+    "pallets/subtensor/src/tests/destroy_alpha_tests.rs"
+  ]
+}

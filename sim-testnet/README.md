@@ -181,6 +181,14 @@ invalidate unrelated results. If impact is uncertain, expand that affected
 scope. If a shared prerequisite or corrupted evidence affects every phase,
 rerun those phases; record that concrete reason for a full restart.
 
+Keep an admitted build or test running when a reviewer merely prefers another
+checkout, capture name or reporting layout. Review differences outside that
+job's consumed inputs and retain its result. Stop it only for an actual invalid
+input, required correction or resource conflict. Before compiler admission,
+check that replacement-module directories and private temporary directories
+exist; repair missing workspace links once without discarding valid source or
+completed checks from other packages.
+
 Every required producer and aggregate phase must have valid coverage on the
 release's effective inputs. Complete producer coverage permits the next
 already-authorized launch step; aggregate work can finish in parallel before

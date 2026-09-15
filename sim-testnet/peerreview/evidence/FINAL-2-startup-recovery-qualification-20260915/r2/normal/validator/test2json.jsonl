@@ -1,0 +1,11 @@
+{"Time":"2026-09-15T22:07:05.91450766Z","Action":"start"}
+{"Time":"2026-09-15T22:07:05.928897966Z","Action":"run","Test":"TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes"}
+{"Time":"2026-09-15T22:07:05.928949515Z","Action":"output","Test":"TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes","Output":"=== RUN   TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes\n"}
+{"Time":"2026-09-15T22:07:06.367668585Z","Action":"output","Test":"TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes","Output":"--- PASS: TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes (0.44s)\n"}
+{"Time":"2026-09-15T22:07:06.367736284Z","Action":"pass","Test":"TestStoppedAttemptLedgerCapacityCacheHashesRestoredMetadataBytes","Elapsed":0.44}
+{"Time":"2026-09-15T22:07:06.367747557Z","Action":"run","Test":"TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay"}
+{"Time":"2026-09-15T22:07:06.367752785Z","Action":"output","Test":"TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay","Output":"=== RUN   TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay\n"}
+{"Time":"2026-09-15T22:07:06.571579269Z","Action":"output","Test":"TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay","Output":"--- PASS: TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay (0.20s)\n"}
+{"Time":"2026-09-15T22:07:06.572124563Z","Action":"pass","Test":"TestStoppedAttemptLedgerCapacityCacheRejectsChangeDuringReplay","Elapsed":0.2}
+{"Time":"2026-09-15T22:07:06.572198084Z","Action":"output","Output":"PASS\n"}
+{"Time":"2026-09-15T22:07:06.581722629Z","Action":"pass","Elapsed":0.667}

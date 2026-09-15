@@ -1,0 +1,35 @@
+{"Time":"2026-09-15T22:17:39.403841269Z","Action":"start"}
+{"Time":"2026-09-15T22:17:39.409670509Z","Action":"run","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory"}
+{"Time":"2026-09-15T22:17:39.409742714Z","Action":"output","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory","Output":"=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory\n"}
+{"Time":"2026-09-15T22:17:39.409776403Z","Action":"output","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory","Output":"    runtime_identity_capacity_test.go:61: complete seven-identity history failed at pass0 spec451: runtime artifact allowlist has 7 identities, maximum 6\n"}
+{"Time":"2026-09-15T22:17:39.409809114Z","Action":"output","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory","Output":"--- FAIL: TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory (0.00s)\n"}
+{"Time":"2026-09-15T22:17:39.409815324Z","Action":"fail","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSevenIdentityHistory","Elapsed":0}
+{"Time":"2026-09-15T22:17:39.409826822Z","Action":"run","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded"}
+{"Time":"2026-09-15T22:17:39.40983634Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Output":"=== RUN   TestRuntimeArtifactMetadataCacheIsHardBounded\n"}
+{"Time":"2026-09-15T22:17:39.409849326Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Output":"--- PASS: TestRuntimeArtifactMetadataCacheIsHardBounded (0.00s)\n"}
+{"Time":"2026-09-15T22:17:39.409854588Z","Action":"pass","Test":"TestRuntimeArtifactMetadataCacheIsHardBounded","Elapsed":0}
+{"Time":"2026-09-15T22:17:39.409864766Z","Action":"run","Test":"TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity"}
+{"Time":"2026-09-15T22:17:39.409869238Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity","Output":"=== RUN   TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity\n"}
+{"Time":"2026-09-15T22:17:39.409879606Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity","Output":"    runtime_identity_test.go:392: reviewed current459 plus historical451–455/458 requires exactly seven bounded artifacts\n"}
+{"Time":"2026-09-15T22:17:39.409886076Z","Action":"output","Test":"TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity","Output":"--- FAIL: TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity (0.00s)\n"}
+{"Time":"2026-09-15T22:17:39.409892871Z","Action":"fail","Test":"TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity","Elapsed":0}
+{"Time":"2026-09-15T22:17:39.409897133Z","Action":"run","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain"}
+{"Time":"2026-09-15T22:17:39.409901086Z","Action":"output","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Output":"=== RUN   TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain\n"}
+{"Time":"2026-09-15T22:17:39.620147096Z","Action":"output","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Output":"--- PASS: TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain (0.21s)\n"}
+{"Time":"2026-09-15T22:17:39.620218619Z","Action":"pass","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Elapsed":0.21}
+{"Time":"2026-09-15T22:17:39.620234479Z","Action":"run","Test":"TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain"}
+{"Time":"2026-09-15T22:17:39.620242228Z","Action":"output","Test":"TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain","Output":"=== RUN   TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain\n"}
+{"Time":"2026-09-15T22:17:39.621646661Z","Action":"output","Test":"TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain","Output":"    source_commitment_runtime459_test.go:55: crv4: source runtime or CRv4 parameters are unsupported\n"}
+{"Time":"2026-09-15T22:17:39.621720296Z","Action":"output","Test":"TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain","Output":"--- FAIL: TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain (0.00s)\n"}
+{"Time":"2026-09-15T22:17:39.621739513Z","Action":"fail","Test":"TestSourceCommitmentRuntime459UsesActualMetadataAndDistinctSignedDomain","Elapsed":0}
+{"Time":"2026-09-15T22:17:39.621748796Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime458"}
+{"Time":"2026-09-15T22:17:39.621756172Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime458","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime458\n"}
+{"Time":"2026-09-15T22:17:39.62855154Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime458","Output":"--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime458 (0.01s)\n"}
+{"Time":"2026-09-15T22:17:39.628601661Z","Action":"pass","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime458","Elapsed":0.01}
+{"Time":"2026-09-15T22:17:39.628612534Z","Action":"run","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime459"}
+{"Time":"2026-09-15T22:17:39.628618788Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime459","Output":"=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime459\n"}
+{"Time":"2026-09-15T22:17:39.629596564Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime459","Output":"    validator_stake_runtime459_test.go:55: runtime459 threshold equality lost authenticated schedule semantics: {Stake:{Identity:{GenesisHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] BlockHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] BlockNumber:0 FinalizedHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] FinalizedNumber:0 Netuid:0 UID:0 SubnetUIDs:0 Hotkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] Coldkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] StakeAlphaRao:0 ValidatorPermit:false Runtime:{Version:{SpecName: SpecVersion:0 TransactionVersion:0 StateVersion:0} CodeHash: MetadataHash:}} TotalStakeRao:0 StakeThresholdRao:0 SubnetOwnerHotkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] SubnetOwnerPresent:false SubnetOwnerUID:0 SubnetOwnerRegistered:false} SubnetEpochIndex:0} error=validator stake runtime layout has not been reviewed\n"}
+{"Time":"2026-09-15T22:17:39.629650105Z","Action":"output","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime459","Output":"--- FAIL: TestRuntimeArtifactMetadataValidatorScheduleRuntime459 (0.00s)\n"}
+{"Time":"2026-09-15T22:17:39.629676644Z","Action":"fail","Test":"TestRuntimeArtifactMetadataValidatorScheduleRuntime459","Elapsed":0}
+{"Time":"2026-09-15T22:17:39.629703892Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T22:17:39.631657296Z","Action":"fail","Elapsed":0.228}

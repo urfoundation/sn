@@ -50,7 +50,23 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 21:36 UTC: the old strict resume is stopped and
+Latest checkpoint, 2026-09-15 22:23 UTC: the startup recovery batch is qualified
+on effective source `53b0e950` by composition: 154 affected roots normally and
+under race (21 CRV4, 13 miner, 45 validator, 75 simulator). Six compatibility
+control binaries reproduce exactly 12 expected failures and 6 passing controls.
+Preserve the original compiler, test-fixture and interrupted capture failures;
+only their affected replacements reran. Runtime459's exact CI/Wasm/metadata
+review is complete, with original451–455/458 history retained. The same batch
+shares stopped-ledger verification within startup, propagates cancellation,
+checks full-run runway and refreshes the cumulative continuation through v4.
+The stopped native deployment still needs the published release/lock, plan
+revision, fresh continuation window and history, then strict resume and the
+real release-candidate campaign. No completed funding or fleet action is reset.
+Keep native vaultfb1/configb5 and LAN-only RPC. Full acceptance remains false.
+[Runtime459 provenance](sim-testnet/peerreview/evidence/FINAL-2-runtime459-20260915/README.md).
+[Qualified composition and raw test receipts](sim-testnet/peerreview/evidence/FINAL-2-startup-recovery-qualification-20260915/README.md).
+
+Previous checkpoint, 2026-09-15 21:36 UTC: the old strict resume is stopped and
 joined with actual exit 137. It retained 12 verified setup postconditions,
 including one newly finalized native deployer funding transfer in block
 8,013,647, alongside the completed renewal. The plan, supervisor and watched

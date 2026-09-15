@@ -1,0 +1,31 @@
+{"Time":"2026-09-15T22:20:50.825588381Z","Action":"start"}
+{"Time":"2026-09-15T22:20:50.881421142Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T22:20:50.881533772Z","Action":"output","Output":"I0915 22:20:50.881353 2540907 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T22:20:50.88162886Z","Action":"output","Output":"I0915 22:20:50.881602 2540907 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T22:20:50.881700103Z","Action":"output","Output":"I0915 22:20:50.881675 2540907 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T22:20:50.881713352Z","Action":"output","Output":"I0915 22:20:50.881699 2540907 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T22:20:50.890670093Z","Action":"run","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T22:20:50.890720548Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== RUN   TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T22:20:50.890772797Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== PAUSE TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T22:20:50.890778932Z","Action":"pause","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T22:20:50.891427767Z","Action":"run","Test":"TestRuntime459HistoricalPublicationsRemainEvidenceOnly"}
+{"Time":"2026-09-15T22:20:50.891446993Z","Action":"output","Test":"TestRuntime459HistoricalPublicationsRemainEvidenceOnly","Output":"=== RUN   TestRuntime459HistoricalPublicationsRemainEvidenceOnly\n"}
+{"Time":"2026-09-15T22:20:50.898633224Z","Action":"output","Test":"TestRuntime459HistoricalPublicationsRemainEvidenceOnly","Output":"    runtime_identity_458_test.go:123: current459 plus complete451–455/458 history is absent\n"}
+{"Time":"2026-09-15T22:20:50.898735894Z","Action":"output","Test":"TestRuntime459HistoricalPublicationsRemainEvidenceOnly","Output":"--- FAIL: TestRuntime459HistoricalPublicationsRemainEvidenceOnly (0.01s)\n"}
+{"Time":"2026-09-15T22:20:50.898771676Z","Action":"fail","Test":"TestRuntime459HistoricalPublicationsRemainEvidenceOnly","Elapsed":0.01}
+{"Time":"2026-09-15T22:20:50.898788205Z","Action":"run","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval"}
+{"Time":"2026-09-15T22:20:50.898797682Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"=== RUN   TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval\n"}
+{"Time":"2026-09-15T22:20:51.915267952Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"    runtime_identity_459_test.go:64: current459 cannot reopen original458 companion: persisted active setup plan: validator evidence original release lock: validator evidence archived runtime identity is not a reviewed companion release\n"}
+{"Time":"2026-09-15T22:20:51.916183646Z","Action":"output","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Output":"--- FAIL: TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval (1.02s)\n"}
+{"Time":"2026-09-15T22:20:51.916240237Z","Action":"fail","Test":"TestRuntime459RestartsOriginal458CompanionWithoutRewritingApproval","Elapsed":1.02}
+{"Time":"2026-09-15T22:20:51.916253862Z","Action":"run","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift"}
+{"Time":"2026-09-15T22:20:51.916260022Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"=== RUN   TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift\n"}
+{"Time":"2026-09-15T22:20:51.918482078Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"    runtime_identity_459_test.go:115: validator evidence archived runtime identity is not a reviewed companion release\n"}
+{"Time":"2026-09-15T22:20:51.91857458Z","Action":"output","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Output":"--- FAIL: TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift (0.00s)\n"}
+{"Time":"2026-09-15T22:20:51.918591908Z","Action":"fail","Test":"TestRuntime459Archived458LockRejectsCrossArtifactAndProvenanceDrift","Elapsed":0}
+{"Time":"2026-09-15T22:20:51.918599341Z","Action":"cont","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry"}
+{"Time":"2026-09-15T22:20:51.918605486Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"=== CONT  TestValidatorEvidenceHistoricalLockRestartsCurrentCarry\n"}
+{"Time":"2026-09-15T22:20:52.647192176Z","Action":"output","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Output":"--- PASS: TestValidatorEvidenceHistoricalLockRestartsCurrentCarry (0.73s)\n"}
+{"Time":"2026-09-15T22:20:52.647271918Z","Action":"pass","Test":"TestValidatorEvidenceHistoricalLockRestartsCurrentCarry","Elapsed":0.73}
+{"Time":"2026-09-15T22:20:52.64728596Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T22:20:52.658706913Z","Action":"fail","Elapsed":1.833}

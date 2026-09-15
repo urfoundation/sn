@@ -1,0 +1,147 @@
+{
+  "retained_capture_name": "runtime459-20260915-r1",
+  "retained_capture_root": "/mnt/data/sn-testnet/qualification/runtime459-20260915-r1",
+  "independent_rpc": false,
+  "copied_bytes_unchanged": [
+    {
+      "file": "lan/genesis-request.json",
+      "retained_source": "lan-artifacts/genesis-request.json",
+      "sha256": "dff92ead3243b21556947f87744f74481786ce98020f5beb4fefe72e2b4046cf",
+      "size_bytes": 75
+    },
+    {
+      "file": "lan/genesis-response.json",
+      "retained_source": "lan-artifacts/genesis-response.json",
+      "sha256": "84532d34d7f3f73ac0d075801ac1fc4a7480d183b9be13c7bd709a345e175360",
+      "size_bytes": 102
+    },
+    {
+      "file": "lan/block-request.json",
+      "retained_source": "lan-artifacts/block-request.json",
+      "sha256": "b4d2ca6283a438a946d39adaa6c667a319956c04ac44f6f039d50ce7fb555ecd",
+      "size_bytes": 81
+    },
+    {
+      "file": "lan/block-response.json",
+      "retained_source": "lan-artifacts/block-response.json",
+      "sha256": "242427fc549a0ffbcb124c4bf2de87e09594ad94fd1711da849c3caa4ea9335b",
+      "size_bytes": 102
+    },
+    {
+      "file": "lan/runtime-request.json",
+      "retained_source": "lan-artifacts/runtime-request.json",
+      "sha256": "008a43415f1f704368d3d33f62dca0fd1d9742d6c6188a5cdfcd78e2521cb531",
+      "size_bytes": 147
+    },
+    {
+      "file": "lan/runtime-response.json",
+      "retained_source": "lan-artifacts/runtime-response.json",
+      "sha256": "151b1954a07391d47af2711128fbfa63b120c6a1365ee5719ed7f94a25fbd1ed",
+      "size_bytes": 838
+    },
+    {
+      "file": "lan/code-hash-request.json",
+      "retained_source": "lan-artifacts/code-hash-request.json",
+      "sha256": "1db47bbccfe10b6b84520acf64c6c79bd54a4ee15db285c198ca8c7051977b89",
+      "size_bytes": 160
+    },
+    {
+      "file": "lan/code-hash-response.json",
+      "retained_source": "lan-artifacts/code-hash-response.json",
+      "sha256": "65ba4b4d46c6c80f433a34e7706e76000f8c0131b2b3dd3fb8570d88aae77689",
+      "size_bytes": 102
+    },
+    {
+      "file": "lan/code-request.json",
+      "retained_source": "lan-artifacts/code-request.json",
+      "sha256": "56342e9b070e57c5ff29e7dd2ebc2ea3c2f4091d8e640f8031f571af46b62178",
+      "size_bytes": 156
+    },
+    {
+      "file": "lan/metadata-request.json",
+      "retained_source": "lan-artifacts/metadata-request.json",
+      "sha256": "ba08007def55748715cd510b67c84ad7a013b8eed36d480b9e1ba421e290d782",
+      "size_bytes": 141
+    },
+    {
+      "file": "lan/identity.json",
+      "retained_source": "lan-artifacts/identity.json",
+      "sha256": "1397687ae241118bcd55ae2741fb5461f753add78790f5139f0262bbdb53fbff",
+      "size_bytes": 2564
+    },
+    {
+      "file": "upstream/runtime459-artifact.json",
+      "retained_source": "upstream-records/runtime459-artifact.json",
+      "sha256": "7272711f78db00b4efbd50ff2d6ef8e958dd075a7f2b328cfd92904f253005b4",
+      "size_bytes": 767
+    },
+    {
+      "file": "upstream/subtensor-digest.json",
+      "retained_source": "upstream-records/subtensor-digest.json",
+      "sha256": "0c04733232b5da92fd2cf9502c52943c14108a917fd6805fa9708ba683c8e705",
+      "size_bytes": 4969
+    },
+    {
+      "file": "upstream/source-scope.json",
+      "retained_source": "upstream-records/source-scope.json",
+      "sha256": "9fb8eb24e305c084f4101af69070e171e74367da9d773d17bc745fc116719ffa",
+      "size_bytes": 716
+    },
+    {
+      "file": "offline-probe/command.txt",
+      "retained_source": "terra-offline-probe/command.txt",
+      "sha256": "1b9152b6c4424aca3807b1f6da3e97f9d6fe325301730ae7b5de33540b3e7cb1",
+      "size_bytes": 353
+    },
+    {
+      "file": "offline-probe/probe.stdout",
+      "retained_source": "terra-offline-probe/probe.stdout",
+      "sha256": "3229a6a0163426e6d87f325dcd6a5bd556dbde24c9b6285b937f210d291c33a2",
+      "size_bytes": 553
+    },
+    {
+      "file": "offline-probe/probe.stderr",
+      "retained_source": "terra-offline-probe/probe.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    {
+      "file": "offline-probe/probe.exit",
+      "retained_source": "terra-offline-probe/probe.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "size_bytes": 2
+    },
+    {
+      "file": "offline-probe/outer.exit",
+      "retained_source": "terra-offline-probe/outer.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "size_bytes": 2
+    },
+    {
+      "file": "offline-probe/outer.started-at",
+      "retained_source": "terra-offline-probe/outer.started-at",
+      "sha256": "c6c932bf1e28c2352b7c0c30bfaae14255871d11c4203e0f71b5e66b31f9d010",
+      "size_bytes": 21
+    },
+    {
+      "file": "offline-probe/outer.finished-at",
+      "retained_source": "terra-offline-probe/outer.finished-at",
+      "sha256": "a2b6c623a19c89c89f678925d10be9489bae5ac718577439c1967a9e739161bb",
+      "size_bytes": 21
+    },
+    {
+      "file": "offline-probe/inputs.unchanged",
+      "retained_source": "terra-offline-probe/inputs.unchanged",
+      "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+      "size_bytes": 5
+    }
+  ],
+  "derived_files": [
+    "README.md",
+    "source-links.json",
+    "omitted-artifacts.json",
+    "offline-probe/result.json"
+  ],
+  "packaging_only": true,
+  "published": false
+}

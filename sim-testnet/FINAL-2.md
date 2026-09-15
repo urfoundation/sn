@@ -8,6 +8,25 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
+**Runtime 459 source and artifact review is complete.** The pinned LAN code at
+block 8,013,770 is byte-identical to the upstream CI artifact built from commit
+`70378404b56c12a85bc8cd163aca2f32cf4d1b80`. The retained offline probe reproduced
+its runtime tuple and metadata, with both exits 0. Our native transaction
+formats and selective metagraph interface remain compatible; stake accounting,
+child eligibility, root backing and proxy behavior changed. The candidate signs
+with the new artifact while historical receipts retain their original runtime
+authority. The recovery batch also shares successful signed-ledger replay
+within startup, propagates cancellation, and refreshes a continuation without
+resetting cumulative spending or finalized actions. Qualification is accepted
+by composition: **154 affected roots per mode**, normally and under race,
+including 21 CRV4, 13 miner, 45 validator and 75 simulator roots. The six
+compatibility-control binaries produced their exact **12 expected failures
+and 6 passing controls**. The original failed runs remain failed; three
+test-only corrections required only their affected replacement checks.
+Release adoption is pending; this does not establish live acceptance.
+[Pinned runtime observations, upstream linkage and offline probe](peerreview/evidence/FINAL-2-runtime459-20260915/README.md).
+[Exact test composition, raw outcomes and preserved failures](peerreview/evidence/FINAL-2-startup-recovery-qualification-20260915/README.md).
+
 **Startup interrupted at 21:30:06 UTC on September 15.** The attempted strict
 resume verified 12 setup postconditions and finalized one native deployer
 funding transaction in block **8,013,647**, extrinsic index 7. Its hash is

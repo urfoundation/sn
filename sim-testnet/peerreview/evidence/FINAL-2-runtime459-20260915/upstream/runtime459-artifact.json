@@ -1,0 +1,20 @@
+{
+  "id": 10418002729,
+  "node_id": "MDg6QXJ0aWZhY3QxMDQxODAwMjcyOQ==",
+  "name": "runtime-459",
+  "size_in_bytes": 2526042,
+  "url": "https://api.github.com/repos/RaoFoundation/subtensor/actions/artifacts/10418002729",
+  "archive_download_url": "https://api.github.com/repos/RaoFoundation/subtensor/actions/artifacts/10418002729/zip",
+  "expired": false,
+  "digest": "sha256:8c77e9d3d82384b85b0f2f21839207dd678c700966f500edeaae44821fd40024",
+  "created_at": "2026-09-15T21:01:07Z",
+  "updated_at": "2026-09-15T21:01:07Z",
+  "expires_at": "2026-12-14T20:49:44Z",
+  "workflow_run": {
+    "id": 35022000542,
+    "repository_id": 608683796,
+    "head_repository_id": 608683796,
+    "head_branch": "main",
+    "head_sha": "70378404b56c12a85bc8cd163aca2f32cf4d1b80"
+  }
+}

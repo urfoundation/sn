@@ -1,0 +1,13 @@
+{"Time":"2026-09-15T22:23:48.000121888Z","Action":"start"}
+{"Time":"2026-09-15T22:23:48.056575541Z","Action":"output","Output":"[env]glog not configured from command line. Using default configuration.\n"}
+{"Time":"2026-09-15T22:23:48.056855689Z","Action":"output","Output":"I0915 22:23:48.056551 2547541 env.go:770] [env]try /home/by/urnetwork/config, [settings.yml]\n"}
+{"Time":"2026-09-15T22:23:48.056903709Z","Action":"output","Output":"I0915 22:23:48.056885 2547541 env.go:770] [env]try /home/by/urnetwork/config/all, [settings.yml]\n"}
+{"Time":"2026-09-15T22:23:48.057002805Z","Action":"output","Output":"I0915 22:23:48.056971 2547541 env.go:770] [env]try /home/by/urnetwork/site, [settings.yml]\n"}
+{"Time":"2026-09-15T22:23:48.057015885Z","Action":"output","Output":"I0915 22:23:48.056997 2547541 env.go:67] [env]settings = map[]\n"}
+{"Time":"2026-09-15T22:23:48.073382057Z","Action":"run","Test":"TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-15T22:23:48.073414487Z","Action":"output","Test":"TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-15T22:23:48.073471531Z","Action":"output","Test":"TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal","Output":"    runtime_identity_458_test.go:51: release lock runtime identity is not the reviewed testnet runtime 458 release\n"}
+{"Time":"2026-09-15T22:23:48.07349066Z","Action":"output","Test":"TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- FAIL: TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-15T22:23:48.07361256Z","Action":"fail","Test":"TestRuntime459CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-15T22:23:48.073627879Z","Action":"output","Output":"FAIL\n"}
+{"Time":"2026-09-15T22:23:48.077375501Z","Action":"fail","Elapsed":0.077}
