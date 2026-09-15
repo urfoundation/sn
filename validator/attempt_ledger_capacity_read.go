@@ -42,16 +42,16 @@ type StoppedAttemptLedgerCapacity struct {
 type StoppedAttemptLedgerCapacityCache struct {
 	stateLock sync.Mutex
 	sourceKVs map[string]stoppedAttemptCapacityVerification
-	hooks attemptRecordStoreHooks
+	hooks     attemptRecordStoreHooks
 }
 
 // A successful replay binds both caller authority and the complete physical
 // contents. File timestamps alone never authorize reuse.
 type stoppedAttemptCapacityVerification struct {
-	inputSha256 [32]byte
+	inputSha256    [32]byte
 	contentsSha256 [32]byte
-	directory os.FileInfo
-	capacity StoppedAttemptLedgerCapacity
+	directory      os.FileInfo
+	capacity       StoppedAttemptLedgerCapacity
 }
 
 // The zero value owns an empty invocation cache. Callers retain stopped-writer
@@ -181,12 +181,12 @@ func readStoppedAttemptLedgerCapacity(ctx context.Context, stateDir string, iden
 	hooks := attemptRecordStoreHooks{}
 	if reuse != nil {
 		input, err := json.Marshal(struct {
-			StateDir string
-			Identity AttemptLedgerIdentity
+			StateDir    string
+			Identity    AttemptLedgerIdentity
 			Coordinator string
-			Vpk ed25519.PublicKey
-			Limits AttemptLedgerDiskLimits
-			Prefix []AttemptLedgerHead
+			Vpk         ed25519.PublicKey
+			Limits      AttemptLedgerDiskLimits
+			Prefix      []AttemptLedgerHead
 		}{StateDir: stateDir, Identity: identity, Coordinator: coordinator, Vpk: vpk, Limits: limits, Prefix: prefix})
 		if err != nil {
 			return result, err
@@ -215,37 +215,37 @@ func readStoppedAttemptLedgerCapacity(ctx context.Context, stateDir string, iden
 		return result, errors.Join(errors.New("stopped ledger lifetime head is unavailable"), err)
 	}
 	if !reused {
-	if err := store.verifyContents(ctx); err != nil {
-		return result, fmt.Errorf("stopped ledger signed lifetime prefix: %w", err)
-	}
-	if len(prefix) > 1 {
-		return result, errors.New("stopped ledger has more than one original lifetime checkpoint")
-	}
-	if len(prefix) == 1 {
-		prior := prefix[0]
-		if prior.LastSequence > store.head.LastSequence || prior.RecordBytes > store.head.RecordBytes || prior.TrailCount > store.head.TrailCount {
-			return result, errors.New("stopped ledger lost its original lifetime checkpoint")
+		if err := store.verifyContents(ctx); err != nil {
+			return result, fmt.Errorf("stopped ledger signed lifetime prefix: %w", err)
 		}
-		if prior.LastSequence == 0 {
-			if prior.Root != zeroAttemptHash() || prior.RecordBytes != 0 || prior.TrailCount != 0 {
-				return result, errors.New("stopped ledger original empty checkpoint differs")
+		if len(prefix) > 1 {
+			return result, errors.New("stopped ledger has more than one original lifetime checkpoint")
+		}
+		if len(prefix) == 1 {
+			prior := prefix[0]
+			if prior.LastSequence > store.head.LastSequence || prior.RecordBytes > store.head.RecordBytes || prior.TrailCount > store.head.TrailCount {
+				return result, errors.New("stopped ledger lost its original lifetime checkpoint")
 			}
-		} else {
-			record, err := store.readRecord(prior.LastSequence)
-			if err != nil || record.RecordHash != prior.Root {
-				return result, errors.Join(errors.New("stopped ledger changed its authenticated original record prefix"), err)
+			if prior.LastSequence == 0 {
+				if prior.Root != zeroAttemptHash() || prior.RecordBytes != 0 || prior.TrailCount != 0 {
+					return result, errors.New("stopped ledger original empty checkpoint differs")
+				}
+			} else {
+				record, err := store.readRecord(prior.LastSequence)
+				if err != nil || record.RecordHash != prior.Root {
+					return result, errors.Join(errors.New("stopped ledger changed its authenticated original record prefix"), err)
+				}
+			}
+			if prior.LastSequence == store.head.LastSequence && prior != store.head {
+				return result, errors.New("stopped ledger changed unchanged-prefix lifetime counters")
 			}
 		}
-		if prior.LastSequence == store.head.LastSequence && prior != store.head {
-			return result, errors.New("stopped ledger changed unchanged-prefix lifetime counters")
+		if reuse != nil {
+			afterSha256, err := stoppedAttemptContentsSha256(ctx, root, before)
+			if err != nil || afterSha256 != contentsSha256 {
+				return result, errors.Join(errors.New("stopped ledger bytes changed during signed replay"), err)
+			}
 		}
-	}
-	if reuse != nil {
-		afterSha256, err := stoppedAttemptContentsSha256(ctx, root, before)
-		if err != nil || afterSha256 != contentsSha256 {
-			return result, errors.Join(errors.New("stopped ledger bytes changed during signed replay"), err)
-		}
-	}
 	} else if store.head != priorVerification.capacity.Head {
 		return result, errors.New("stopped ledger cached head differs from current storage")
 	}
@@ -282,7 +282,7 @@ func stoppedAttemptContentsSha256(ctx context.Context, root *os.Root, files []st
 	if err := json.NewEncoder(digest).Encode(files); err != nil {
 		return result, err
 	}
-	buffer := make([]byte, 64 * 1024)
+	buffer := make([]byte, 64*1024)
 	for _, entry := range files {
 		if err := ctx.Err(); err != nil {
 			return result, err

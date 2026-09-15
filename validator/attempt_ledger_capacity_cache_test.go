@@ -264,11 +264,11 @@ func TestStoppedAttemptLedgerCapacityCacheBindsEveryReadOperand(t *testing.T) {
 	tight.MaxRecordCount = prefix.LastSequence - 1
 	tight.MaxTrailCount = prefix.TrailCount
 	for _, args := range []struct {
-		identity AttemptLedgerIdentity
+		identity    AttemptLedgerIdentity
 		coordinator string
-		vpk ed25519.PublicKey
-		limits AttemptLedgerDiskLimits
-		prefix AttemptLedgerHead
+		vpk         ed25519.PublicKey
+		limits      AttemptLedgerDiskLimits
+		prefix      AttemptLedgerHead
 	}{
 		{identity: identity, coordinator: coordinator, vpk: vpk, limits: limits, prefix: prefix},
 		{identity: fixture.identity, coordinator: "0x2222222222222222222222222222222222222222", vpk: vpk, limits: limits, prefix: prefix},
