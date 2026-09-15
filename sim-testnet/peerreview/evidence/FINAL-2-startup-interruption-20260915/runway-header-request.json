@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "chain_getHeader",
+  "params": [
+    "0xab776262d2a5ac8ac3acf0fad5e33ac3be431628d386457f903d85eb4e8d9225"
+  ]
+}

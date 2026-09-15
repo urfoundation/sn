@@ -8,6 +8,24 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
+**Startup interrupted at 21:30:06 UTC on September 15.** The attempted strict
+resume verified 12 setup postconditions and finalized one native deployer
+funding transaction in block **8,013,647**, extrinsic index 7. Its hash is
+`0x800b72a73f4ce722a6d125541f2bcaf53593a218cfde7327a58171348a5f4279`;
+the owned node's canonical block and a separate BLAKE2b-256 calculation
+reproduce inclusion. Completed funding and earlier renewal actions are retained.
+The supervisor never started. At finalized block **8,013,770**, the adopted
+continuation had **7,472 blocks** left against the full run's **7,570-block**
+requirement, and a pinned runtime query returned **459** against this build's
+458 requirement. Repeated signed-ledger replay also delayed startup, and its
+background context ignored graceful cancellation. The local renderer was
+terminated after confirming its pending configuration-render intent and no
+children; the actual joined result is **137**, not a passing startup. The
+ledger cache, continuation refresh, cancellation and runtime migration are
+being fixed and qualified together. New evidence uses the LAN node and records
+`independent_rpc=false`.
+[Raw chain observations, funding inclusion and interruption receipts](peerreview/evidence/FINAL-2-startup-interruption-20260915/README.md).
+
 **Renewal 2 completed at 19:09:41 UTC on September 15.** The native command
 returned `postcondition_verified`; its body, wrapper and joined process all
 exited 0. The journal records all **1,212 new actions** broadcast and

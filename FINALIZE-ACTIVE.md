@@ -50,7 +50,23 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 21:23 UTC: strict resume remains active under
+Latest checkpoint, 2026-09-15 21:36 UTC: the old strict resume is stopped and
+joined with actual exit 137. It retained 12 verified setup postconditions,
+including one newly finalized native deployer funding transfer in block
+8,013,647, alongside the completed renewal. The plan, supervisor and watched
+configuration/identity files remain unchanged; the journal records progress.
+The LAN node now reports runtime459 at finalized block8,013,770, where the
+adopted continuation leaves only7,472 of the required7,570 full-run blocks.
+The current build cannot complete the full campaign. Two Astra lanes are
+fixing bounded continuation refresh/cancellation and runtime459 compatibility
+in parallel, preserving historical458 authority and all spent allowances.
+Terra's independent14 simulator checks pass normally; the cache's validator
+test exposed an incomplete callback-storage initialization, now included in
+the same correction batch. No full gate restart is required. The soak is
+stopped and final acceptance remains false.
+[Interruption and additional on-chain progress](sim-testnet/peerreview/evidence/FINAL-2-startup-interruption-20260915/README.md).
+
+Previous checkpoint, 2026-09-15 21:23 UTC: strict resume remains active under
 the same owner started at 20:14:29. It authenticated all 1,000 historical
 fleets and 4,660 carried actions, verified both campaign reserve actions, and
 entered `config.render`. The supervisor remains stopped. Source inspection

@@ -1,0 +1,11 @@
+{
+  "observed_at": "2026-09-15T21:30:41Z",
+  "root_session": 69177,
+  "joined_exit": 137,
+  "native_pid": 2336102,
+  "outer_pid": 2335990,
+  "both_processes_absent": true,
+  "status": "interrupted_during_local_config_render",
+  "final_acceptance": false,
+  "soak_started": false
+}

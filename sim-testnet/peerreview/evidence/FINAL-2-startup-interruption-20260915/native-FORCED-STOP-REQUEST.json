@@ -1,0 +1,12 @@
+{
+  "sent_at": "2026-09-15T21:30:06Z",
+  "graceful_term_sent_at": "2026-09-15T21:27:53Z",
+  "signal": "SIGKILL",
+  "target_pid": 2336102,
+  "outer_pid": 2335990,
+  "root_session": 69177,
+  "observed_action": "config.render",
+  "observed_stage": "intent",
+  "children": 0,
+  "reason": "Confirmed Background-context signed replay ignores graceful invocation cancellation; local renderer has not launched services. Retain interrupted result and all journal postconditions."
+}

@@ -1,0 +1,11 @@
+{
+  "observed_at": "2026-09-15T21:25:14Z",
+  "rpc": "http://192.168.1.162:9944",
+  "independent_rpc": false,
+  "finalized_native_height": 8013770,
+  "finalized_native_hash": "0xab776262d2a5ac8ac3acf0fad5e33ac3be431628d386457f903d85eb4e8d9225",
+  "adopted_end": 8021242,
+  "required_campaign_blocks": 7570,
+  "remaining_blocks": 7472,
+  "shortfall_blocks": 98
+}

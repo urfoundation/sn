@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","id":1,"method":"chain_getBlock","params":["0x561e87243fc6d205cceb5369bdb50a342744951ddae440cfbb42c62a1ee40226"]},{"jsonrpc":"2.0","id":2,"method":"chain_getBlockHash","params":[8013647]},{"jsonrpc":"2.0","id":3,"method":"state_getRuntimeVersion","params":["0x561e87243fc6d205cceb5369bdb50a342744951ddae440cfbb42c62a1ee40226"]}]

@@ -1,0 +1,11 @@
+{
+  "requested_at": "2026-09-15T21:27:53Z",
+  "signal": "SIGTERM",
+  "target_pid": 2336102,
+  "outer_pid": 2335990,
+  "root_session": 69177,
+  "observed_action": "config.render",
+  "observed_stage": "intent",
+  "reason": "Adopted continuation has 7472 blocks remaining versus 7570 required and finalized runtime459 is outside this build current458 admission. Preserve completed local postconditions and all prior finalized actions while qualifying the batch recovery.",
+  "request_is_completion": false
+}
