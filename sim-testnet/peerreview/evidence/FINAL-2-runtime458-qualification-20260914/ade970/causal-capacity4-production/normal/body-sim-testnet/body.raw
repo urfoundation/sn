@@ -1,0 +1,6 @@
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader
+    runtime_identity_458_test.go:212: complete release history did not reach its exact artifact reader: calls=0 error=runtime artifact allowlist has 6 identities, maximum 5
+--- FAIL: TestRuntime458HistoryAllowlistReachesArtifactReader (0.01s)
+FAIL

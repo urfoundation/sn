@@ -1,0 +1,2 @@
+TestProducerGatePinsSemanticIntegrityRegressions	semantic-integrity census entry 303 is "TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain", want "TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain"
+TestRuntime458ArtifactRpcPreservesExactResponse	exact artifact response refused: runtime metadata owned RPC synthetic_method returned a malformed or error response

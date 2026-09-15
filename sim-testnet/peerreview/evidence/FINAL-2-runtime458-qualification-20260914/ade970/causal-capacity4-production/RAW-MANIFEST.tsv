@@ -1,0 +1,4 @@
+path	sha256	bytes	purpose
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/normal/compile3-crv4/crv4.normal.test	8b32a34b25d5da6bf9c157f95b2612033af02ed5a17867d20fdafd0949c0f8a4	14688678	retained-binary-excluded-from-sums
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/normal/compile3-sim-testnet/sim-testnet.normal.test	e7be57fecebd5a5594c9b953f5040104d96c3ab7e8ac14a0f81352b3760dfca2	160491568	retained-binary-excluded-from-sums
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/worktree/sn	ade970aeba5a3b544609bc3074eb357b0c0cd40f	617	retained-disposable-source-excluded-from-sums

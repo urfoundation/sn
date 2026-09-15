@@ -1,0 +1,10 @@
+started_utc=2026-09-14T23:30:51Z
+cwd=/home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/terra-runtime/vulnerability-assertion-qualification-20260914T232905Z-r4/causal/old-quota-assertions/worktree
+candidate_head=42bfe0be2a7a7c51bbda87fb44886424604f509e
+mutant_head=42bfe0be2a7a7c51bbda87fb44886424604f509e
+mutant_status_bytes=49
+mutant_diff_check_bytes=0
+68def34b88c59dd1dd2c32559a32c6883357ffa433dbf3b870807d855db48e6b  /home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/terra-runtime/vulnerability-assertion-qualification-20260914T232905Z-r4/causal/old-quota-assertions/worktree/main/ansible/tests/test_vulnscan2_resolved.py
+ab79ccf58c8d38aea80de07e6c6e630be18241647958ffb0bc4a1e6c3172e775  /home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/terra-runtime/vulnerability-assertion-qualification-20260914T232905Z-r4/causal/old-quota-assertions/causal.command
+784f54577031b258e8282870504eb28fe1c0690ced4affaf2149beb164de4789  /home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/terra-runtime/vulnerability-assertion-qualification-20260914T232905Z-r4/meta/causal.patch
+Python 3.14.7

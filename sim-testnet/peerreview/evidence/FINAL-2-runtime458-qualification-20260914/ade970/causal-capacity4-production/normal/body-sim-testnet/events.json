@@ -1,0 +1,12 @@
+{"Time":"2026-09-14T23:51:42.641832501Z","Action":"start","Package":"github.com/urfoundation/sn/sim-testnet"}
+{"Time":"2026-09-14T23:51:42.642086595Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-14T23:51:42.642102813Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-14T23:51:42.642139155Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-14T23:51:42.642147655Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-14T23:51:42.642154514Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader"}
+{"Time":"2026-09-14T23:51:42.642159671Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader\n"}
+{"Time":"2026-09-14T23:51:42.64216604Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"    runtime_identity_458_test.go:212: complete release history did not reach its exact artifact reader: calls=0 error=runtime artifact allowlist has 6 identities, maximum 5\n"}
+{"Time":"2026-09-14T23:51:42.642181736Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"--- FAIL: TestRuntime458HistoryAllowlistReachesArtifactReader (0.01s)\n"}
+{"Time":"2026-09-14T23:51:42.642188121Z","Action":"fail","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Elapsed":0.01}
+{"Time":"2026-09-14T23:51:42.642196062Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Output":"FAIL\n"}
+{"Time":"2026-09-14T23:51:42.64220503Z","Action":"fail","Package":"github.com/urfoundation/sn/sim-testnet","Elapsed":0}

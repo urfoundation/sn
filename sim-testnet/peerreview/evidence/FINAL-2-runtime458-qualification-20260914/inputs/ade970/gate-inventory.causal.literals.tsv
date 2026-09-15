@@ -1,0 +1,2 @@
+TestProducerGatePinsSemanticIntegrityRegressions	semantic-integrity census entry 303 is "TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain", want "TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain"
+TestReleaseGateJobsRejectSubtensorInfrastructureScopeDrift	SN infrastructure changed its complete node/gateway command

@@ -1,0 +1,56 @@
+--- a/scripts/check-runtime-metadata-artifacts.sh
++++ b/scripts/check-runtime-metadata-artifacts.sh
+@@ -92,7 +92,7 @@
+ 
+ # The manifest URL records historical artifact provenance. Fresh verification
+ # always uses the approved owned archive, without redirects or proxy fallback.
+-rpc_url="http://192.168.1.162:9944"
++rpc_url="$(jq -r '.substrate_rpc_url' "$manifest")"
+ genesis_hash="$(jq -r '.genesis_hash' "$manifest")"
+ spec_name="$(jq -r '.runtime_spec_name' "$manifest")"
+ transaction_version="$(jq -r '.transaction_version' "$manifest")"
+@@ -109,20 +109,32 @@
+   local output="$3"
+   local request="$work_dir/request.json"
+   local candidate="$work_dir/response.json"
++  local attempt
++  local delay=2
+   jq -nc --arg method "$method" --argjson params "$params" --argjson id "$rpc_request_id" \
+     '{jsonrpc:"2.0", id:$id, method:$method, params:$params}' >"$request"
+-  if ! curl --disable --fail --silent --show-error --proto '=http' --noproxy '*' \
+-    --connect-timeout 10 --max-time 180 \
+-    --header 'content-type: application/json' --data-binary "@$request" "$rpc_url" >"$candidate"; then
+-    echo "runtime metadata owned RPC $method transport failed" >&2
+-    return 1
+-  fi
+-  if ! jq -e --argjson id "$rpc_request_id" \
+-    '.jsonrpc == "2.0" and .id == $id and has("result") and (has("error") | not)' "$candidate" >/dev/null; then
+-    echo "runtime metadata owned RPC $method returned a malformed or error response" >&2
+-    return 1
+-  fi
+-  mv "$candidate" "$output"
++  for attempt in 1 2 3 4; do
++    if curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
++      --connect-timeout 10 --max-time 180 --retry 2 --retry-all-errors \
++      --header 'content-type: application/json' --data-binary "@$request" "$rpc_url" >"$candidate"; then
++      if jq -e --argjson id "$rpc_request_id" \
++        '.jsonrpc == "2.0" and .id == $id and has("result") and (has("error") | not)' "$candidate" >/dev/null; then
++        mv "$candidate" "$output"
++        return 0
++      fi
++      if ! jq -er '(.error.message // "") | ascii_downcase | test("rate limit|too many requests|temporarily unavailable|timeout|overload|try again")' "$candidate" >/dev/null; then
++        echo "runtime metadata RPC $method returned a permanent or malformed error" >&2
++        jq -c '{jsonrpc, id, error}' "$candidate" >&2 || true
++        return 1
++      fi
++    fi
++    if [[ "$attempt" -eq 4 ]]; then
++      echo "runtime metadata RPC $method exhausted four attempts" >&2
++      return 1
++    fi
++    sleep "$delay"
++    delay=$((delay * 2))
++  done
+ }
+ 
+ genesis_response="$work_dir/genesis.json"

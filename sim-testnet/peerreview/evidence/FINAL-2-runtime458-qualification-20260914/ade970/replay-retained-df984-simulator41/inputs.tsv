@@ -1,0 +1,20 @@
+new_candidate_head	ade970aeba5a3b544609bc3074eb357b0c0cd40f
+old_candidate_head	df98472bd88dc8e29856c172fba4731d52a6308d
+old_capture	/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/events.json	b0d73aa29be5b8d4ed422a03faaabf613c0972b36ac0d45693c19e5e5f457af8	197748
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/body.raw	bb81470929b0219aa1b9c0f5399bedb7285bd1d52cbc807c853f2fc135b09890	51223
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/body.stderr	8d953c77906be39a6d0201018ee65d927c1c8495351bef0abf6c018f17cd7d0b	417
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/body.exit	4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865	2
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/converter.exit	9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa	2
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/outer.exit	4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865	2
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/expected.roots.txt	eac9b68a77ee9f66068f479e4bbd9d8896ca2be90bc1a5ebcbe4309962378ad8	2261
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/list.roots.sorted	eac9b68a77ee9f66068f479e4bbd9d8896ca2be90bc1a5ebcbe4309962378ad8	2261
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/list.diff	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	0
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/source.pre.fences	39ce9c327a88e9a6d6dd8b996222a600ac52d99c4c526067fbd791c9cee0b7b7	37
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/source.post.fences	39ce9c327a88e9a6d6dd8b996222a600ac52d99c4c526067fbd791c9cee0b7b7	37
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/binary.before.sha256	475ed662b819f60edd1b6e868424bbb89534998fa7432ccac6c475b3691270af	229
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/binary.after.sha256	475ed662b819f60edd1b6e868424bbb89534998fa7432ccac6c475b3691270af	229
+/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/terra-runtime/qualification-runtime458-df98472/normal/body-sim-testnet/cwd.fixture-guard.meta	499707dcdb5c132ddb524e833701a2dc524259351dde35dddb7361fb6af11943	190
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/handoff/original.outcomes.tsv	aefe57f7f8c7a2a99b65b1da90021d2721cb129d07fccc2032bf1f09ebef340f	2466
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/handoff/original.literals.tsv	d32cbdbb7b747ef1f3840d5dd86b35147c01a62fb6e4fdeabafe074c9b298ab3	385
+/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/sn/scripts/check-qualification-events.py	9120d1d0a443c5d625dc92b58a5b91cf0d9e4245c8a0ccbf16eac03f2908b54c	8152

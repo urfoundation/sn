@@ -1,0 +1,1 @@
+{"status":"matched","package":"github.com/urfoundation/sn/crv4","verification":{"roots":100,"passed":100,"expected_failures":0,"subtests":19,"subtests_passed":19,"expected_subtest_failures":0,"binary_exit":0,"events":775,"bytes":178329}}

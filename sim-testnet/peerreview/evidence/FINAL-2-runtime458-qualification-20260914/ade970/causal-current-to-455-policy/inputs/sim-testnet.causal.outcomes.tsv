@@ -1,0 +1,3 @@
+TestRuntime458CanonicalLockRetainsHistoricalProvenance	PASS
+TestRuntime458CurrentLockRejectsOfficialSeedVariant	PASS
+TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal	FAIL

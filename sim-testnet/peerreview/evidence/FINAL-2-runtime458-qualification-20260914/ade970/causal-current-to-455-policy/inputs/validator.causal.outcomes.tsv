@@ -1,0 +1,3 @@
+TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift	PASS
+TestReleaseRuntime458RejectsHistoricalConfigBeforeRpc	FAIL
+TestReleaseRuntime458RequiresExactReviewedArtifact	FAIL

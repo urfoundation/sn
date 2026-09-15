@@ -1,0 +1,23 @@
+{
+  "candidate": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "confirmation_roots": 5,
+  "handoff_sha256": "4dc9322605c613e07c6966c6e0c2c048d9dbd8a02351e5e9a6939ad465d903fa",
+  "inputs": {
+    "CAUSAL-current-to-stale-gate-inventory.patch": "3660f64f9b259a9db6ef7e0f1ac5d6ae014b843858c548797c984a8013223152",
+    "empty-literals.tsv": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-inventory.causal.literals.tsv": "184f13cc8ce2dacbb83553e18789764810261caa151f7a88d7f7ce147492a783",
+    "gate-inventory.causal.outcomes.tsv": "117d3d94744abd9efc1c60e5588ebd1999c1d4e2524cf7b560630a80f1673405",
+    "gate-inventory.causal.roots.txt": "f7b18ad76794646795a965e782fd3adfc8fe5b34641cab5d9813ed49e3471464",
+    "gate-inventory.causal.selector.txt": "ff4e21c95fdeb7ae0cf9656463968515e25b64e3f8c8697663b1586105327a1b",
+    "original.literals.tsv": "d32cbdbb7b747ef1f3840d5dd86b35147c01a62fb6e4fdeabafe074c9b298ab3",
+    "original.outcomes.tsv": "aefe57f7f8c7a2a99b65b1da90021d2721cb129d07fccc2032bf1f09ebef340f",
+    "sim-testnet.confirmation.outcomes.tsv": "de52d7d5dc053521e0d2f7e56b8efed5a995b10dbce8087afe6263790ed8c1fa",
+    "sim-testnet.confirmation.roots.txt": "7a55dd5cda2cd65c542b00847cb352870c9f493dfed93593736d0b04b8083c3e",
+    "sim-testnet.confirmation.selector.txt": "bce5edc20debec20623226eb26a890796c16f05c3b3cf756992948550e9ab8f1",
+    "sim-testnet.outcomes.tsv": "f487089b0e80613184297caa4f0faa7f0f0ca4a63647469c6f7504053e342e10",
+    "sim-testnet.roots.txt": "a0701cf9f2e82f138da440dece44b9a97e813cf220158ec2b6ca30dcd483d921",
+    "sim-testnet.selector.txt": "8a0527f8f0d33cab7cc92c6a8ecaebca1b7afba29a5c5d4e6d4eba2b6212b791",
+    "sim-testnet.sources.tsv": "dca9e7dd175118083490d3a2480267f877a774f976700980e18719f0a8baaf33"
+  },
+  "root_count": 47
+}

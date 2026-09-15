@@ -1,0 +1,57 @@
+=== RUN   TestReleaseConfigRequiresExactNativeRuntimeIdentity
+--- PASS: TestReleaseConfigRequiresExactNativeRuntimeIdentity (0.47s)
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeAccepts
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeAccepts
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInsufficient
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInsufficient
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsEquality
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsEquality
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsNoPermit
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsNoPermit
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsOwner
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsOwner
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsDifferentSigner
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsDifferentSigner
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeCancels
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeCancels
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInvalidInputs
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInvalidInputs
+=== RUN   TestAuthenticatePinnedNativeRuntimeValidatorStakeRequiresReleasePins
+=== PAUSE TestAuthenticatePinnedNativeRuntimeValidatorStakeRequiresReleasePins
+=== RUN   TestInitialReleaseSnapshotRetriesTransientFailureWithoutRestart
+--- PASS: TestInitialReleaseSnapshotRetriesTransientFailureWithoutRestart (0.00s)
+=== RUN   TestInitialReleaseSnapshotFailsPermanentErrorImmediately
+--- PASS: TestInitialReleaseSnapshotFailsPermanentErrorImmediately (0.00s)
+=== RUN   TestInitialReleaseSnapshotBoundsPersistentTransientFailure
+--- PASS: TestInitialReleaseSnapshotBoundsPersistentTransientFailure (0.00s)
+=== RUN   TestInitialReleaseSnapshotStopsOnParentCancellation
+--- PASS: TestInitialReleaseSnapshotStopsOnParentCancellation (0.00s)
+=== RUN   TestReleaseNativeEndpointTimeoutReservesMetadataHeadroom
+--- PASS: TestReleaseNativeEndpointTimeoutReservesMetadataHeadroom (0.00s)
+=== RUN   TestReleaseRuntime458RequiresExactReviewedArtifact
+--- PASS: TestReleaseRuntime458RequiresExactReviewedArtifact (0.00s)
+=== RUN   TestReleaseRuntime458RejectsHistoricalConfigBeforeRpc
+--- PASS: TestReleaseRuntime458RejectsHistoricalConfigBeforeRpc (0.00s)
+=== RUN   TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift
+--- PASS: TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift (0.00s)
+=== RUN   TestAuthenticatePinnedNativeRuntimeAtContextCancelsPublicRPC
+--- PASS: TestAuthenticatePinnedNativeRuntimeAtContextCancelsPublicRPC (0.00s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsNoPermit
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeRequiresReleasePins
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsOwner
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInvalidInputs
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeRequiresReleasePins (0.00s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsEquality
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsOwner (0.00s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsDifferentSigner
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsNoPermit (0.00s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInsufficient
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeAcceptsEquality (0.01s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeCancels
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsDifferentSigner (0.01s)
+=== CONT  TestAuthenticatePinnedNativeRuntimeValidatorStakeAccepts
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInsufficient (0.01s)
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeRejectsInvalidInputs (0.01s)
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeCancels (0.01s)
+--- PASS: TestAuthenticatePinnedNativeRuntimeValidatorStakeAccepts (0.01s)
+PASS

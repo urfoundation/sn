@@ -1,0 +1,387 @@
+=== RUN   TestEVMCheckpointBindsFirstInsertionAcrossIndependentClocks
+--- PASS: TestEVMCheckpointBindsFirstInsertionAcrossIndependentClocks (0.00s)
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/parent_already_present
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/wrong_current_hash
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/numeric_height_assumption
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/parent_reorg
+=== RUN   TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/cancellation
+--- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation (0.00s)
+    --- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/parent_already_present (0.00s)
+    --- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/wrong_current_hash (0.00s)
+    --- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/numeric_height_assumption (0.00s)
+    --- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/parent_reorg (0.00s)
+    --- PASS: TestEVMCheckpointRejectsHistoricalPresenceReorgAndCancellation/cancellation (0.00s)
+=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory
+--- PASS: TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory (0.00s)
+=== RUN   TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks
+--- PASS: TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks (0.00s)
+=== RUN   TestRuntimeArtifactMetadataFailureDoesNotPoisonCache
+--- PASS: TestRuntimeArtifactMetadataFailureDoesNotPoisonCache (0.00s)
+=== RUN   TestRuntimeArtifactMetadataCanceledFollowerLeavesSharedLoadIntact
+--- PASS: TestRuntimeArtifactMetadataCanceledFollowerLeavesSharedLoadIntact (0.00s)
+=== RUN   TestRuntimeMetadataAtContextCancelsProviderRead
+--- PASS: TestRuntimeMetadataAtContextCancelsProviderRead (0.00s)
+=== RUN   TestRuntimeArtifactMetadataCacheRejectsBlockIdentityDrift
+--- PASS: TestRuntimeArtifactMetadataCacheRejectsBlockIdentityDrift (0.00s)
+=== RUN   TestRuntimeArtifactMetadataCacheSeparatesChains
+--- PASS: TestRuntimeArtifactMetadataCacheSeparatesChains (0.00s)
+=== RUN   TestRuntimeArtifactMetadataCacheIsHardBounded
+--- PASS: TestRuntimeArtifactMetadataCacheIsHardBounded (0.00s)
+=== RUN   TestRuntimeArtifactMetadataCacheRejectsSeventhSequentialIdentity
+--- PASS: TestRuntimeArtifactMetadataCacheRejectsSeventhSequentialIdentity (0.00s)
+=== RUN   TestSourceCommitmentRuntime455PreservesReviewed454CallShape
+--- PASS: TestSourceCommitmentRuntime455PreservesReviewed454CallShape (0.00s)
+=== RUN   TestSourceCommitmentRuntime455RejectsCrossVersionSignatureReuse
+--- PASS: TestSourceCommitmentRuntime455RejectsCrossVersionSignatureReuse (0.00s)
+=== RUN   TestSourceCommitmentRuntime455RejectsUnreviewedVersionDomains
+--- PASS: TestSourceCommitmentRuntime455RejectsUnreviewedVersionDomains (0.00s)
+=== RUN   TestSourceCommitmentRuntime455RejectsMetadataCallIndexDrift
+--- PASS: TestSourceCommitmentRuntime455RejectsMetadataCallIndexDrift (0.00s)
+=== RUN   TestSourceCommitmentRuntime455RejectsMetadataSignedExtensionDrift
+--- PASS: TestSourceCommitmentRuntime455RejectsMetadataSignedExtensionDrift (0.00s)
+=== RUN   TestSourceCommitmentRuntime455RejectsIndependentChainDomainDrift
+--- PASS: TestSourceCommitmentRuntime455RejectsIndependentChainDomainDrift (0.00s)
+=== RUN   TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain
+--- PASS: TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain (0.25s)
+=== RUN   TestSourceCommitmentRuntime458RejectsRetainedSignatureRelabeling
+--- PASS: TestSourceCommitmentRuntime458RejectsRetainedSignatureRelabeling (0.01s)
+=== RUN   TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains
+--- PASS: TestSourceCommitmentRuntime458RejectsAdjacentUnreviewedDomains (1.04s)
+=== RUN   TestSourceCommitmentExactSignedBatchAndCiphertext
+--- PASS: TestSourceCommitmentExactSignedBatchAndCiphertext (0.00s)
+=== RUN   TestSourceCommitmentSignedNonAtomicBatchIsRejected
+--- PASS: TestSourceCommitmentSignedNonAtomicBatchIsRejected (0.01s)
+=== RUN   TestSourceCommitmentEveryDurableIdentityIsBound
+--- PASS: TestSourceCommitmentEveryDurableIdentityIsBound (0.00s)
+=== RUN   TestSourceCommitmentEventsRequireExactCipherIdentityAndOrder
+--- PASS: TestSourceCommitmentEventsRequireExactCipherIdentityAndOrder (0.00s)
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsSameHeightDifferentHash
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsSameHeightDifferentHash
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsUnchanged
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsUnchanged
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsNewerFinality
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsNewerFinality
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsRegressingFinality
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsRegressingFinality
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsZeroFinalizedHash
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsZeroFinalizedHash
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsIdentityChange
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsIdentityChange
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityBindsHistoricalState
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityBindsHistoricalState
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidQueriesBeforeRPC
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidQueriesBeforeRPC
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidAuthorityBeforeRPC
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidAuthorityBeforeRPC
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityExactAuthorityBound
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityExactAuthorityBound
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsNativeLineageMismatch
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsNativeLineageMismatch
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsUnauthenticatedRuntime
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsUnauthenticatedRuntime
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRechecksCanonicalityBeforePublish
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRechecksCanonicalityBeforePublish
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsMissingHistoricalStorage
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsMissingHistoricalStorage
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidCensus
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidCensus
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsReusedUID
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsReusedUID
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedAccounts
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedAccounts
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityPreservesExactStake
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityPreservesExactStake
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedStake
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedStake
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityPreservesFalsePermit
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityPreservesFalsePermit
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedPermits
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedPermits
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityPermitCompactBoundaries
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityPermitCompactBoundaries
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityHexRejectsMalformedOrUnbounded
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityHexRejectsMalformedOrUnbounded
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityHexOwnsExactBytes
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityHexOwnsExactBytes
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityPreservesEveryRPCFailure
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityPreservesEveryRPCFailure
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityCancelsOutstandingRead
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityCancelsOutstandingRead
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityCancelsBeforePublish
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityCancelsBeforePublish
+=== RUN   TestRuntimeArtifactMetadataValidatorIdentityRejectsCanceledCallerBeforeRPC
+=== PAUSE TestRuntimeArtifactMetadataValidatorIdentityRejectsCanceledCallerBeforeRPC
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleResolvesActualHotkey
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleResolvesActualHotkey
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRejectsInvalidIndependentPins
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRejectsInvalidIndependentPins
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedRegistration
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedRegistration
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedEpoch
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedEpoch
+=== RUN   TestRuntimeArtifactMetadataValidatorSchedulePreservesIneligibleObservation
+=== PAUSE TestRuntimeArtifactMetadataValidatorSchedulePreservesIneligibleObservation
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRejectsLateCanonicalChange
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRejectsLateCanonicalChange
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRejectsLateRegistrationChange
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRejectsLateRegistrationChange
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleOwnsRuntimeAllowlist
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleOwnsRuntimeAllowlist
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleJoinsCancellation
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleJoinsCancellation
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455
+=== PAUSE TestRuntimeArtifactMetadataValidatorScheduleRuntime455
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime458
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime458 (0.01s)
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity (0.00s)
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeReadsCalculatedStake
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeReadsCalculatedStake
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeAcceptsThresholdEquality
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeAcceptsThresholdEquality
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsBelowThreshold
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsBelowThreshold
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsMissingPermit
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsMissingPermit
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeAcceptsRegisteredSubnetOwner
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeAcceptsRegisteredSubnetOwner
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeDoesNotUseCandidateColdkeyAsOwner
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeDoesNotUseCandidateColdkeyAsOwner
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeUnregisteredOwnerDoesNotBypass
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeUnregisteredOwnerDoesNotBypass
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeUsesExactMissingDefaults
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeUsesExactMissingDefaults
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsConflictingOwnerRegistration
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsConflictingOwnerRegistration
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedStorage
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedStorage
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsPreCanceledContext
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsPreCanceledContext
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsLateCancellation
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsLateCancellation
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsUnreviewedLayout
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsUnreviewedLayout
+=== RUN   TestRuntimeArtifactMetadataValidatorStakePreservesRuntimeCallFailure
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakePreservesRuntimeCallFailure
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsLateCanonicalChange
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsLateCanonicalChange
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsEveryCensusMismatch
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsEveryCensusMismatch
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsUnselectedFields
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsUnselectedFields
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedPeer
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedPeer
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsIdentityDisagreement
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsIdentityDisagreement
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsTruncationAndTrailingData
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsTruncationAndTrailingData
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedEnvelope
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedEnvelope
+=== RUN   TestRuntimeArtifactMetadataValidatorStakePreservesIntegerBoundary
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakePreservesIntegerBoundary
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeCompactBoundaries
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeCompactBoundaries
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeCompactRejectsNoncanonical
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeCompactRejectsNoncanonical
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeDecodesCapturedRuntime454
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeDecodesCapturedRuntime454
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRejectsMissingSelectedField
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeRejectsMissingSelectedField
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeDecodesMaximumCensus
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeDecodesMaximumCensus
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportNullDefaultAndOwnerAbsence
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportNullDefaultAndOwnerAbsence
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportNullAlphaDefault
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportNullAlphaDefault
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportOwnerRegistrationNullAndZero
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportOwnerRegistrationNullAndZero
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportSelectedOwnerUIDZero
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportSelectedOwnerUIDZero
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportRejectsMissingAndMalformedOptional
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportRejectsMissingAndMalformedOptional
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportRejectsRequiredNull
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportRejectsRequiredNull
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportFreshDefaultsAndReusedResult
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportFreshDefaultsAndReusedResult
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeTransportCancellationBeforeNullResponse
+=== PAUSE TestRuntimeArtifactMetadataValidatorStakeTransportCancellationBeforeNullResponse
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsSameHeightDifferentHash
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRuntime455
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityPreservesFalsePermit
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/threshold-equality
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedPeer
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsSameHeightDifferentHash (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportCancellationBeforeNullResponse
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityPreservesFalsePermit (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportFreshDefaultsAndReusedResult
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/below-threshold
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/missing-permit
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedPeer (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportRejectsRequiredNull
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/registered-owner
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/unregistered-owner
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime455/absent-threshold-default
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455 (0.01s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/threshold-equality (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/below-threshold (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/missing-permit (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/registered-owner (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/unregistered-owner (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorScheduleRuntime455/absent-threshold-default (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportRejectsMissingAndMalformedOptional
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportCancellationBeforeNullResponse (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportSelectedOwnerUIDZero
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportFreshDefaultsAndReusedResult (0.03s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportOwnerRegistrationNullAndZero
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportSelectedOwnerUIDZero (0.03s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportNullAlphaDefault
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportNullAlphaDefault (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeTransportNullDefaultAndOwnerAbsence
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportRejectsRequiredNull (0.06s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeDecodesMaximumCensus
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportOwnerRegistrationNullAndZero (0.03s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsMissingSelectedField
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsMissingSelectedField (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeDecodesCapturedRuntime454
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeDecodesCapturedRuntime454 (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeCompactRejectsNoncanonical
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeCompactRejectsNoncanonical (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeCompactBoundaries
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeCompactBoundaries (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakePreservesIntegerBoundary
+--- PASS: TestRuntimeArtifactMetadataValidatorStakePreservesIntegerBoundary (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedEnvelope
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedEnvelope (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsTruncationAndTrailingData
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportNullDefaultAndOwnerAbsence (0.02s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsIdentityDisagreement
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsTruncationAndTrailingData (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleResolvesActualHotkey
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleResolvesActualHotkey (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleJoinsCancellation
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleJoinsCancellation (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleOwnsRuntimeAllowlist
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsIdentityDisagreement (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRejectsLateRegistrationChange
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleOwnsRuntimeAllowlist (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRejectsLateCanonicalChange
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRejectsLateRegistrationChange (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorSchedulePreservesIneligibleObservation
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRejectsLateCanonicalChange (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedEpoch
+--- PASS: TestRuntimeArtifactMetadataValidatorSchedulePreservesIneligibleObservation (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedRegistration
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedEpoch (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorScheduleRejectsInvalidIndependentPins
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRejectsInvalidIndependentPins (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsConflictingOwnerRegistration
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsConflictingOwnerRegistration (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsUnselectedFields
+--- PASS: TestRuntimeArtifactMetadataValidatorScheduleRejectsMalformedRegistration (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsEveryCensusMismatch
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsUnselectedFields (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsLateCanonicalChange
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsLateCanonicalChange (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakePreservesRuntimeCallFailure
+--- PASS: TestRuntimeArtifactMetadataValidatorStakePreservesRuntimeCallFailure (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsUnreviewedLayout
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsUnreviewedLayout (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsLateCancellation
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsLateCancellation (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsPreCanceledContext
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsPreCanceledContext (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedStorage
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsMalformedStorage (0.02s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsNativeLineageMismatch
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsEveryCensusMismatch (0.03s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedStake
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsNativeLineageMismatch (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityPreservesExactStake
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityPreservesExactStake (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedAccounts
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedStake (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsReusedUID
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsReusedUID (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidCensus
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedAccounts (0.01s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsMissingHistoricalStorage
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsMissingHistoricalStorage (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRechecksCanonicalityBeforePublish
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRechecksCanonicalityBeforePublish (0.00s)
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidCensus (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsMissingPermit
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsUnauthenticatedRuntime
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsMissingPermit (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeUsesExactMissingDefaults
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeUsesExactMissingDefaults (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeUnregisteredOwnerDoesNotBypass
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsUnauthenticatedRuntime (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeDoesNotUseCandidateColdkeyAsOwner
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeDoesNotUseCandidateColdkeyAsOwner (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeAcceptsRegisteredSubnetOwner
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeUnregisteredOwnerDoesNotBypass (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsIdentityChange
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsIdentityChange (0.00s)
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeAcceptsRegisteredSubnetOwner (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityExactAuthorityBound
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidAuthorityBeforeRPC
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityExactAuthorityBound (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidQueriesBeforeRPC
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidAuthorityBeforeRPC (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityBindsHistoricalState
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityBindsHistoricalState (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeAcceptsThresholdEquality
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeAcceptsThresholdEquality (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRejectsBelowThreshold
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeDecodesMaximumCensus (0.08s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeReadsCalculatedStake
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsInvalidQueriesBeforeRPC (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/prior-artifact-authority
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRejectsBelowThreshold (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsRegressingFinality
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/code-hash
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeReadsCalculatedStake (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsZeroFinalizedHash
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsRegressingFinality (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityPreservesEveryRPCFailure
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/metadata-hash
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayRejectsZeroFinalizedHash (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsCanceledCallerBeforeRPC
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsCanceledCallerBeforeRPC (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityCancelsBeforePublish
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/unreviewed-453
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityCancelsBeforePublish (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityCancelsOutstandingRead
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityCancelsOutstandingRead (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsNewerFinality
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/future-456
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsNewerFinality (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsUnchanged
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/spec-name
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityReplayAcceptsUnchanged (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityHexRejectsMalformedOrUnbounded
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityHexRejectsMalformedOrUnbounded (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityHexOwnsExactBytes
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityHexOwnsExactBytes (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityPermitCompactBoundaries
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityPermitCompactBoundaries (0.00s)
+=== CONT  TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedPermits
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/transaction-version
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/state-version
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityPreservesEveryRPCFailure (0.00s)
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity (0.01s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/prior-artifact-authority (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/code-hash (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/metadata-hash (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/unreviewed-453 (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/future-456 (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/spec-name (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/transaction-version (0.00s)
+    --- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime455RejectsForeignIdentity/state-version (0.00s)
+--- PASS: TestRuntimeArtifactMetadataValidatorIdentityRejectsMalformedPermits (0.00s)
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeTransportRejectsMissingAndMalformedOptional (0.39s)
+PASS

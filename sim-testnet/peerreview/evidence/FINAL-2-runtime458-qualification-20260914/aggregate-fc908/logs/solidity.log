@@ -1,0 +1,424 @@
+Compiling 85 files with Solc 0.8.24
+Solc 0.8.24 finished in 766.42s
+Compiler run successful!
+
+╭-------------------------------------------------+------------------+-------------------+--------------------+---------------------╮
+| Contract                                        | Runtime Size (B) | Initcode Size (B) | Runtime Margin (B) | Initcode Margin (B) |
++===================================================================================================================================+
+| Address                                         | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Blake2b                                         | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ERC1967Proxy                                    | 130              | 709               | 24,446             | 48,443              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ERC1967Utils                                    | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Errors                                          | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| EvidenceUnexpectedPrecompile                    | 145              | 170               | 24,431             | 48,982              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Hashes                                          | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| LowLevelCall                                    | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MaliciousCoordinatorV2                          | 2,819            | 3,028             | 21,757             | 46,124              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Math                                            | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MerkleBuilder                                   | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MerkleProof                                     | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MissingSafeInterface                            | 57               | 81                | 24,519             | 49,071              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockAddressMapping                              | 1,005            | 1,032             | 23,571             | 48,120              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockAlpha                                       | 452              | 479               | 24,124             | 48,673              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockEd25519                                     | 482              | 509               | 24,094             | 48,643              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockMetagraph                                   | 569              | 596               | 24,007             | 48,556              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockNeuron                                      | 1,532            | 1,559             | 23,044             | 47,593              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockSr25519                                     | 482              | 509               | 24,094             | 48,643              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| MockStakingV2                                   | 4,676            | 4,709             | 19,900             | 44,443              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| NativeBalance                                   | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| NativeBalanceHarness                            | 174              | 199               | 24,402             | 48,953              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Panic                                           | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| Runtime453FrameHarness                          | 521              | 548               | 24,055             | 48,604              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STCoordinator                                   | 24,564           | 24,778            | 12                 | 24,374              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STCoordinatorAdversary                          | 2,536            | 2,745             | 22,040             | 46,407              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STFleetBatcher                                  | 4,003            | 4,293             | 20,573             | 44,859              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STReserveSink                                   | 1,558            | 1,884             | 23,018             | 47,268              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STSettlementVault                               | 9,797            | 10,366            | 14,779             | 38,786              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STSubnet                                        | 14,155           | 14,369            | 10,421             | 34,783              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STSubnetProbe                                   | 6,755            | 7,005             | 17,821             | 42,147              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STSubnetV2Mock                                  | 13,698           | 13,912            | 10,878             | 35,240              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| STValidatorEvidence                             | 12,192           | 12,924            | 12,384             | 36,228              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| SafeCast                                        | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| SafeShapeMock                                   | 400              | 775               | 24,176             | 48,377              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| StorageSlot                                     | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidence                               | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidenceActivation                     | 57               | 85                | 24,519             | 49,067              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidenceActivationHarness              | 3,678            | 3,705             | 20,898             | 45,447              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidenceActivationUnexpectedPrecompile | 147              | 172               | 24,429             | 48,980              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidenceHarness                        | 4,307            | 4,334             | 20,269             | 44,818              |
+|-------------------------------------------------+------------------+-------------------+--------------------+---------------------|
+| ValidatorEvidenceUnexpectedPrecompile           | 145              | 170               | 24,431             | 48,982              |
+╰-------------------------------------------------+------------------+-------------------+--------------------+---------------------╯
+
+No files changed, compilation skipped
+
+Ran 17 tests for test/ReleaseBindingPolicy.t.sol:ReleaseBindingPolicyTest
+[PASS] test_bindingAtFailsClosedWhenRuntimeIdentityIsPrunedOrReassigned() (gas: 408515)
+[PASS] test_bindingDigestMatchesGoGoldenVector() (gas: 13280)
+[PASS] test_bindingRejectsReplayWrongCommitmentStaleUidAndBadSignature() (gas: 624516)
+[PASS] test_cleanupAtEpochZeroUsesExplicitMarkerAndUidGeneration() (gas: 381495)
+[PASS] test_clientSignedRevocationIsNextEpochOnly() (gas: 396673)
+[PASS] test_commitmentMirrorIsMonotonicAndRejectsSameHeightEquivocation() (gas: 118430)
+[PASS] test_fleetRevokeDigestAcceptsMaximumChainID() (gas: 19630)
+[PASS] test_futureRotationPreservesPriorGenerationUntilBoundary() (gas: 577785)
+[PASS] test_guardianPauseCannotUnpauseAndRotationIsFutureEpoch() (gas: 88367)
+[PASS] test_initialPolicyRejectsDeploymentBlockDowncastOverflow() (gas: 5252295)
+[PASS] test_manyClientsCanBindOneFleetAndBecomeActiveAtBoundary() (gas: 784542)
+[PASS] test_operatorRetirementIsFutureEffectiveAndPreservesPriorEpoch() (gas: 553841)
+[PASS] test_policySchedulePreservesCurrentEpochAndChangesFutureCadence() (gas: 214575)
+[PASS] test_policyScheduleRejectsClaimWindowBelowImmutableVaultMinimum() (gas: 46525)
+[PASS] test_policyScheduleRejectsEffectiveBlockDowncastOverflow() (gas: 39753)
+[PASS] test_releaseProductionCadenceIsExactAndFutureEffective() (gas: 199222)
+[PASS] test_rootCommitRejectsBlockNumberDowncastOverflow() (gas: 57860)
+Suite result: ok. 17 passed; 0 failed; 0 skipped; finished in 13.89ms (7.33ms CPU time)
+
+Ran 1 test for test/ReleaseBindingPolicy.t.sol:ReleaseChainIDPolicyTest
+[PASS] test_fleetRevokeDigestRejectsChainIDDowncastOverflow() (gas: 5733)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 562.13µs (64.97µs CPU time)
+
+Ran 13 tests for test/HeadBinding.t.sol:HeadBindingTest
+[PASS] test_bindHead_badClientSig_reverts() (gas: 135610)
+[PASS] test_bindHead_cannotStealAnotherProvidersClientId() (gas: 275196)
+[PASS] test_bindHead_happy_setsBothMapsAndEmits() (gas: 170023)
+[PASS] test_bindHead_idempotentSamePair() (gas: 191475)
+[PASS] test_bindHead_inputGuards() (gas: 95389)
+[PASS] test_bindHead_nonLiveUid_failsClosed() (gas: 62379)
+[PASS] test_bindHead_repointHotkeyToNewClientId() (gas: 201450)
+[PASS] test_bindHead_rotateClientIdToNewHotkey() (gas: 251753)
+[PASS] test_bindHead_wrongColdkeyMirror_reverts() (gas: 130526)
+[PASS] test_headBindDigest_exactBytes() (gas: 12972)
+[PASS] test_unbindHead_happy_clearsBothMapsAndEmits() (gas: 181260)
+[PASS] test_unbindHead_notBound_reverts() (gas: 41504)
+[PASS] test_unbindHead_wrongController_reverts() (gas: 208263)
+Suite result: ok. 13 passed; 0 failed; 0 skipped; finished in 17.51ms (9.99ms CPU time)
+
+Ran 7 tests for test/Registration.t.sol:RegistrationTest
+[PASS] test_initialize_explicitSelfColdkeyOverride() (gas: 3196327)
+[PASS] test_initialize_onlyOnce_andImplLockedDown() (gas: 2918226)
+[PASS] test_initialize_paramValidation() (gas: 3549043)
+[PASS] test_receive_acceptsNativeTao() (gas: 22585)
+[PASS] test_registerOperator_burnedRegistersAndScansUid() (gas: 294700)
+[PASS] test_registerOperator_guards() (gas: 329617)
+[PASS] test_registrySetters_unknownIds_revert() (gas: 34914)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 12.30ms (5.12ms CPU time)
+
+Ran 19 tests for test/ReleaseDeposits.t.sol:ReleaseDepositsTest
+[PASS] test_atomicDepositCannotBeCreditedAcrossOperators() (gas: 374520)
+[PASS] test_depositReplayDeadlineAndAuthorizationFailClosed() (gas: 390087)
+[PASS] test_eitherSingleRuntimeFloorDonatesOnlyOneRao() (gas: 456438)
+[PASS] test_epochAndCampaignCapsAreEnforcedBeforeTransfer() (gas: 122157)
+[PASS] test_epochEndDeadlineCannotCreditFollowingEpoch() (gas: 354905)
+[PASS] test_exactRuntimeTransitionsDonateOnlyTheBoundedAllowance() (gas: 293164)
+[PASS] test_runtime453TwoSharePoolFloorsStillLockExactPrincipal() (gas: 297476)
+[PASS] test_runtimeMinimumRejectsSubthresholdDepositAtomically() (gas: 255098)
+[PASS] test_runtimeShortfallBeyondAllowanceRevertsAllState() (gas: 278208)
+[PASS] test_runtimeTransferCoordinatorReserveDecreaseRevertsAllState() (gas: 347546)
+[PASS] test_runtimeTransferFloorBeyondOneRaoRevertsAllState() (gas: 319605)
+[PASS] test_runtimeTransferMinimumRejectsSubthresholdReserveAtomically() (gas: 300824)
+[PASS] test_runtimeTransferOneRaoResidueCannotCreditUnderfundedPrincipal() (gas: 352412)
+[PASS] test_runtimeTransferOneRaoSourceResidueLocksExactPrincipal() (gas: 341053)
+[PASS] test_runtimeTransferSinkAndResidueCannotExceedStagedAmount() (gas: 347323)
+[PASS] test_runtimeTransferSinkReserveDecreaseRevertsAllState() (gas: 347441)
+[PASS] test_runtimeTransferSourceResidueBeyondOneRaoRevertsAllState() (gas: 337446)
+[PASS] test_sinkInitializationIsOneShotAndHasNoOutboundSelector() (gas: 14163)
+[PASS] test_voluntaryConvictionIsNotCurrentEpochDemand() (gas: 298899)
+Suite result: ok. 19 passed; 0 failed; 0 skipped; finished in 18.13ms (13.48ms CPU time)
+
+Ran 5 tests for test/DeploymentPolicy.t.sol:DeploymentPolicyTest
+[PASS] test_deploymentConfigBoundsAllNarrowValues() (gas: 210818)
+[PASS] test_mainnetRejectsEOAAndMissingSafeInterface() (gas: 56479)
+[PASS] test_mainnetRejectsWrongThresholdOrOwnerCount() (gas: 400594)
+[PASS] test_mainnetRejectsZeroOrDuplicateOwner() (gas: 404500)
+[PASS] test_mainnetRequiresExactTwoOfThreeSafeShape() (gas: 213647)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 6.33ms (3.93ms CPU time)
+
+Ran 21 tests for test/EpochLifecycle.t.sol:EpochLifecycleTest
+[PASS] test_commitOperator_afterFinalize_reverts() (gas: 190547)
+[PASS] test_commitOperator_guards() (gas: 261455)
+[PASS] test_commitOperator_insideWindow_andRecommit() (gas: 194032)
+[PASS] test_commitOperator_openOrFutureEpoch_reverts() (gas: 149852)
+[PASS] test_commitOperator_outsideWindow_reverts() (gas: 127798)
+[PASS] test_deposit_doubleAttribution_reverts() (gas: 146849)
+[PASS] test_deposit_guards() (gas: 295447)
+[PASS] test_deposit_ledgerAndEvents() (gas: 130961)
+[PASS] test_deposit_pushThenCredit_partialAttribution() (gas: 178409)
+[PASS] test_deposit_reserveMoveFailure_revertsWholeCredit() (gas: 151894)
+[PASS] test_deposit_unattributedPush_attributableByOtherAuthorizedNO() (gas: 396524)
+[PASS] test_emission_stakeDelta_incrementalAndMidEpochSweep() (gas: 353416)
+[PASS] test_emission_sweepFailure_baselineMakesRetryExact() (gas: 341583)
+[PASS] test_finalize_paused_reverts() (gas: 203993)
+[PASS] test_finalize_permissionless_inOrder_appendOnly() (gas: 541361)
+[PASS] test_missedCommit_carryCompoundsAcrossEpochs() (gas: 724167)
+[PASS] test_multiEpoch_e2e_exactConservation() (gas: 1095830)
+[PASS] test_pendingEpoch_tracksChainTime() (gas: 131152)
+[PASS] test_rollEpochs_maxRollsPerCall_backlogGating() (gas: 5849127)
+[PASS] test_rollEpochs_multiRoll_attributesToFirstUnrolledEpoch() (gas: 405880)
+[PASS] test_sweepPool_unknownOperator_reverts() (gas: 38867)
+Suite result: ok. 21 passed; 0 failed; 0 skipped; finished in 31.12ms (23.78ms CPU time)
+
+Ran 10 tests for test/Governance.t.sol:GovernanceTest
+[PASS] test_guardian_hasNoOwnerPowers() (gas: 66363)
+[PASS] test_ownerCannotClawBackFinalizedFundsOrReserve() (gas: 545135)
+[PASS] test_pause_blocksExactlyTheDocumentedSurface() (gas: 718855)
+[PASS] test_setEpochParams_bounds() (gas: 65266)
+[PASS] test_setGuardian_rotatesPausePower() (gas: 35303)
+[PASS] test_setPaused_access() (gas: 43048)
+[PASS] test_setSelfColdkey_bounds() (gas: 35753)
+[PASS] test_upgradeUnderFire_changedLogic_claimsPayOldSnapshot() (gas: 3401958)
+[PASS] test_upgrade_onlyOwner() (gas: 2834403)
+[PASS] test_upgrade_storagePreservedExactly() (gas: 3256110)
+Suite result: ok. 10 passed; 0 failed; 0 skipped; finished in 11.64ms (7.03ms CPU time)
+
+Ran 13 tests for test/STFleetBatcher.t.sol:STFleetBatcherTest
+[PASS] test_constructorRejectsMissingCoordinatorCodeAndOracle() (gas: 115962)
+[PASS] test_fleetRevokeDigestUsesEveryPackedDomainCoordinate() (gas: 17017)
+[PASS] test_installAtomicallyMirrorsAndDualSignsGenerationOne() (gas: 636023)
+[PASS] test_installEnforcesAuthorizationAndHardBatchBounds() (gas: 180596)
+[PASS] test_installRejectsDuplicateFleetAndMemberIdentitiesAtomically() (gas: 1796471)
+[PASS] test_installRejectsRefreshFieldsAndNonGenerationOneBindings() (gas: 300813)
+[PASS] test_installRollsBackEveryFleetMemberOnOneBadSignature() (gas: 512897)
+[PASS] test_maximumTenByFourInstallAndRefreshRemainWithinApprovedGasCaps() (gas: 18159653)
+[PASS] test_refreshAtomicallyMirrorsRevokesAndDualSignsSuccessors() (gas: 997610)
+[PASS] test_refreshEnforcesHardFleetAndMemberBatchBounds() (gas: 106005)
+[PASS] test_refreshRejectsAnyoneExceptTheImmutableOracle() (gas: 606561)
+[PASS] test_refreshRejectsCrossFleetOrCrossCommitmentMembers() (gas: 985989)
+[PASS] test_refreshRollsBackMirrorAndEveryMemberOnOneBadSignature() (gas: 880075)
+Suite result: ok. 13 passed; 0 failed; 0 skipped; finished in 46.43ms (42.95ms CPU time)
+
+Ran 8 tests for test/STSubnet.t.sol:STSubnetTest
+[PASS] test_blake2b_vectors() (gas: 77116)
+[PASS] test_deposit_movesFullAmountToReserve() (gas: 131046)
+[PASS] test_deposit_revertsWhenReserveMoveFails() (gas: 151340)
+[PASS] test_happyPath_fullEpoch() (gas: 591220)
+[PASS] test_initialize_guards_reserveHotkey() (gas: 3116213)
+[PASS] test_initialize_state() (gas: 69242)
+[PASS] test_missedCommit_carriesPoolTotal() (gas: 497316)
+[PASS] test_pauseAndUpgrade_cannotBlockFinalizedClaims() (gas: 3418381)
+Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 5.03ms (3.13ms CPU time)
+
+Ran 13 tests for test/ValidatorEvidence.t.sol:ValidatorEvidenceTest
+[PASS] testActivationAndMaximumWidths() (gas: 49713)
+[PASS] testAuditUsesExactDigestChecks() (gas: 32241)
+[PASS] testClosedWindowAndAuditBounds() (gas: 77894)
+[PASS] testCompleteExpectedDomainBeforePrecompiles() (gas: 186411)
+[PASS] testEveryFieldBindsDigestAndSlotRules() (gas: 823951)
+[PASS] testGoldenAuditVector() (gas: 48512)
+[PASS] testGoldenClosedVector() (gas: 43617)
+[PASS] testHotkeyFailureRejects() (gas: 31098)
+[PASS] testIncompleteFieldsRejectedBeforePrecompiles() (gas: 331563)
+[PASS] testIndependentRelayUsesExactlyTwoDigestChecks() (gas: 31300)
+[PASS] testSignatureLengthsRejectedBeforePrecompiles() (gas: 1358093)
+[PASS] testTypedABIRejectsIntegerOverflow() (gas: 24151)
+[PASS] testVPKFailureStillChecksHotkey() (gas: 31071)
+Suite result: ok. 13 passed; 0 failed; 0 skipped; finished in 24.64ms (24.14ms CPU time)
+
+Ran 11 tests for test/ReleaseSettlementMinimums.t.sol:ReleaseSettlementMinimumsTest
+[PASS] test_captureDefersBelowMinimumAndCapturesCumulativeExactBoundary() (gas: 2611928)
+[PASS] test_capturePriceOutageLeavesEpochAndStakeRetryable() (gas: 2512363)
+[PASS] test_captureRejectsDestinationAndSourceRuntimeDriftAtomically() (gas: 2698028)
+[PASS] test_captureUsesConservativeLivePriceFloorAtBoundary() (gas: 2530257)
+[PASS] test_claimCreditsAggregateAcrossEpochsAndAutoPayAtExactMinimum() (gas: 2921352)
+[PASS] test_claimPriceAndRuntimeOutagesPreserveAcceptedCreditForRetry() (gas: 2768275)
+[PASS] test_claimRejectsDestinationAndSourceRuntimeDriftAtomically() (gas: 2906708)
+[PASS] test_claimRuntimeFailureAtAcceptanceDefersWithoutLosingLeaf() (gas: 2733282)
+[PASS] test_hostileRuntimeCannotReenterCaptureOrClaimSettlement() (gas: 2863264)
+[PASS] test_subthresholdClaimCreditSurvivesEntitlementExpiry() (gas: 2709655)
+[PASS] test_withdrawBelowMinimumAndVaultSelfClaimFailClosed() (gas: 2836073)
+Suite result: ok. 11 passed; 0 failed; 0 skipped; finished in 11.15ms (7.84ms CPU time)
+
+Ran 19 tests for test/SP1Probe.t.sol:SP1ProbeTest
+[PASS] test_dividendTwoStep_detectsCompounding() (gas: 126258)
+[PASS] test_mirrorExt_rejectsMalformedMappingResponses() (gas: 24845)
+[PASS] test_moveRoundTrip_slippageFreeAndAttributed() (gas: 107599)
+[PASS] test_readBattery_allAssumptionsHold() (gas: 109526)
+[PASS] test_readBattery_failedSelfMappingRetainsOtherChecks() (gas: 96581)
+[PASS] test_readBattery_missingMappingRetainsOtherChecks() (gas: 62721)
+[PASS] test_readBattery_missingPrecompile_failsClosedNotReverts() (gas: 1040455318)
+[PASS] test_readBattery_rejectsMalformedAbsentUidResponse() (gas: 104192)
+[PASS] test_readBattery_runtime455RejectsLegacyBlake2f() (gas: 98739)
+[PASS] test_readBattery_wrongMappingFailsKnownAnswer() (gas: 74389)
+[PASS] test_readBattery_zeroSelfMappingCannotQueryZeroCustody() (gas: 97206)
+[PASS] test_referenceBlake2fRejectsChangedKnownAnswer() (gas: 23869)
+[PASS] test_referenceBlake2fRejectsLongOutput() (gas: 31391)
+[PASS] test_referenceBlake2fRejectsShortOutput() (gas: 32552)
+[PASS] test_runtime455MappingPreservesValueCustody() (gas: 191784)
+[PASS] test_seedFromTao_custodyIsContractColdkey() (gas: 80072)
+[PASS] test_snapshotRejectsBlockNumberDowncastOverflow() (gas: 30973)
+[PASS] test_transferOut_recoversDustFromContract() (gas: 125295)
+[PASS] test_valueBearingChecks_areOwnerGated() (gas: 15900)
+Suite result: ok. 19 passed; 0 failed; 0 skipped; finished in 6.65ms (5.33ms CPU time)
+
+Ran 15 tests for test/ValidatorEvidenceActivation.t.sol:ValidatorEvidenceActivationTest
+[PASS] testActivationBothSignatureFailuresRefuse() (gas: 31465)
+[PASS] testActivationCompleteExpectedContextBeforePrecompiles() (gas: 645183)
+[PASS] testActivationDerivedDomainMatchesEveryFieldAndIsDetached() (gas: 33333)
+[PASS] testActivationEmptyPrefixAndEpochZero() (gas: 27758)
+[PASS] testActivationEveryFixedFieldBindsDigest() (gas: 230004)
+[PASS] testActivationFullWidthsDoNotCompareCrossChainHeights() (gas: 34498)
+[PASS] testActivationGoldenPackedVector() (gas: 34828)
+[PASS] testActivationHotkeyFailureRefuses() (gas: 31426)
+[PASS] testActivationIncompleteFieldsBeforePrecompiles() (gas: 495254)
+[PASS] testActivationIndependentRelayChecksBothExactTuples() (gas: 31707)
+[PASS] testActivationInvalidShapeEmitsNoPayloadDigestOrDomain() (gas: 378871)
+[PASS] testActivationLaterHeaderHasNoSelfReference() (gas: 54067)
+[PASS] testActivationSignatureLengthsBeforePrecompiles() (gas: 1580284)
+[PASS] testActivationTypedABIRejectsIntegerAndAddressTruncation() (gas: 33971)
+[PASS] testActivationVPKFailureStillChecksHotkey() (gas: 31049)
+Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 27.37ms (26.87ms CPU time)
+
+Ran 17 tests for test/ReleaseSettlement.t.sol:ReleaseSettlementTest
+[PASS] test_captureFinalizeClaimAndConservation() (gas: 581102)
+[PASS] test_coordinatorCannotInitializeAgainstAnUnregisteredEscrow() (gas: 7085463)
+[PASS] test_escrowIsRegisteredExactlyOnceByTheImmutableVault() (gas: 74600)
+[PASS] test_failedSweepCannotCreateUnderfundedFinalization() (gas: 474486)
+[PASS] test_lateFinalizerPreservesMinimumClaimWindowWithoutStrandingRoot() (gas: 446428)
+[PASS] test_lateKeeperNeverAttributesMultiEpochDeltaToFirstMissedEpoch() (gas: 320363)
+[PASS] test_missedRootCarriesOnlyItsOperator() (gas: 358556)
+[PASS] test_operatorRegistrationForwardsReviewedBurnLimit() (gas: 16746)
+[PASS] test_partialClaimExpiryCarriesExactRemainderToSameOperator() (gas: 626712)
+[PASS] test_pauseAndMaliciousUpgradeCannotRewriteOrBlockFinalizedClaim() (gas: 1193806)
+[PASS] test_registrationRejectsZeroBurnLimit() (gas: 2026398)
+[PASS] test_registrationSurplusReturnsThroughVaultAndCoordinator() (gas: 2539582)
+[PASS] test_runtime453ExistentialDepositCannotUnderflowFirstRegistration() (gas: 68007)
+[PASS] test_runtime453RegistrationPreservesExistingReducibleBalance() (gas: 68456)
+[PASS] test_runtime453RetainsV452ForeignFramePolicy() (gas: 156253)
+[PASS] test_standardEVMRegistrationPreservesExistingBalance() (gas: 68522)
+[PASS] test_testnetAdversaryProbesEveryImmutableCustodyBoundary() (gas: 6162965)
+Suite result: ok. 17 passed; 0 failed; 0 skipped; finished in 10.85ms (7.51ms CPU time)
+
+Ran 15 tests for test/ValidatorEvidenceStorage.t.sol:ValidatorEvidenceStorageTest
+[PASS] testEvidenceActivationCannotBackdateOrObserveItsPublicationBlock() (gas: 104800)
+[PASS] testEvidenceActivationExactConsentAndReadback() (gas: 511678)
+[PASS] testEvidenceActivationRequiresBothKeyConsents() (gas: 262249)
+[PASS] testEvidenceActivationWrongContractDomainBeforePrecompiles() (gas: 197756)
+[PASS] testEvidenceAnchorConsumesOnlyTheFirstReservedStorageSlot() (gas: 350072)
+[PASS] testEvidenceAnchorOwnerOnlyAndWriteOnce() (gas: 75536)
+[PASS] testEvidenceClosedCensusNeedsNoPayoutRootOrOperatorPermission() (gas: 967306)
+[PASS] testEvidenceClosedCensusRefusesOpenOrWrongBoundaryWindow() (gas: 538837)
+[PASS] testEvidenceDuplicateAndEquivocationCannotRewriteSlot() (gas: 1051837)
+[PASS] testEvidenceIndependentOperatorActivationsKeepDistinctSlots() (gas: 1799796)
+[PASS] testEvidenceLaterAuditUsesSeparateDeterministicSlot() (gas: 1460230)
+[PASS] testEvidenceLookalikeIsNotAnchored() (gas: 3027909)
+[PASS] testEvidencePublicationDoesNotChangeFinalizedPayments() (gas: 1393504)
+[PASS] testEvidenceRemainsAvailableAfterPauseAndMissedRootDeadline() (gas: 1070346)
+[PASS] testEvidenceUnknownActivationCannotOccupySlot() (gas: 143821)
+Suite result: ok. 15 passed; 0 failed; 0 skipped; finished in 21.07ms (17.40ms CPU time)
+
+Ran 9 tests for test/Claims.t.sol:ClaimsTest
+[PASS] test_claimMiner_dedupIsPerNoIdColdkey() (gas: 836987)
+[PASS] test_claimMiner_guards() (gas: 803756)
+[PASS] test_claimMiner_sharesSumExactly10000_floorDustRemains() (gas: 566520)
+[PASS] test_claimMiner_zeroPoolTotal_claimsZero() (gas: 573902)
+[PASS] test_epochConservation_paidPlusCarryPlusCustodyPlusReserve() (gas: 929193)
+[PASS] test_vectors_payout1_sharesUnder10000_remainderStaysCustodied() (gas: 6605209)
+[PASS] test_vectors_payout33_everyLeaf_capEnforced() (gas: 111768820)
+[PASS] test_vectors_payout5_dedupEnforced() (gas: 16080121)
+[PASS] test_vectors_payout5_everyLeaf_capEnforced() (gas: 16318991)
+Suite result: ok. 9 passed; 0 failed; 0 skipped; finished in 382.41ms (485.45ms CPU time)
+
+Ran 2 tests for test/ReleaseInvariant.t.sol:ReleaseInvariantTest
+[PASS] invariant_reserveIsOneWayAndExactlyAccounted() (runs: 48, calls: 2304, reverts: 0)
+
+╭-------------------------+---------------------+-------+---------+----------╮
+| Contract                | Selector            | Calls | Reverts | Discards |
++============================================================================+
+| ReleaseInvariantHandler | reserveForOperator1 | 1104  | 0       | 0        |
+|-------------------------+---------------------+-------+---------+----------|
+| ReleaseInvariantHandler | reserveForOperator2 | 1200  | 0       | 0        |
+╰-------------------------+---------------------+-------+---------+----------╯
+
+[PASS] invariant_vaultConservationAlwaysHolds() (runs: 48, calls: 2304, reverts: 0)
+
+╭-------------------------+---------------------+-------+---------+----------╮
+| Contract                | Selector            | Calls | Reverts | Discards |
++============================================================================+
+| ReleaseInvariantHandler | reserveForOperator1 | 1104  | 0       | 0        |
+|-------------------------+---------------------+-------+---------+----------|
+| ReleaseInvariantHandler | reserveForOperator2 | 1200  | 0       | 0        |
+╰-------------------------+---------------------+-------+---------+----------╯
+
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 5.19s (9.59s CPU time)
+
+╭---------------------------------+--------+--------+---------╮
+| Test Suite                      | Passed | Failed | Skipped |
++=============================================================+
+| ClaimsTest                      | 9      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| DeploymentPolicyTest            | 5      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| EpochLifecycleTest              | 21     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| GovernanceTest                  | 10     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| HeadBindingTest                 | 13     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| RegistrationTest                | 7      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseBindingPolicyTest        | 17     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseChainIDPolicyTest        | 1      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseDepositsTest             | 19     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseInvariantTest            | 2      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseSettlementTest           | 17     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ReleaseSettlementMinimumsTest   | 11     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| SP1ProbeTest                    | 19     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| STFleetBatcherTest              | 13     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| STSubnetTest                    | 8      | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ValidatorEvidenceTest           | 13     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ValidatorEvidenceActivationTest | 15     | 0      | 0       |
+|---------------------------------+--------+--------+---------|
+| ValidatorEvidenceStorageTest    | 15     | 0      | 0       |
+╰---------------------------------+--------+--------+---------╯
+
+[release-1.0] generated contract payload and storage-layout lock
+generated contract payload is semantically current; graph-sensitive Solidity metadata differs and the locked deployment bytes are preserved
+[release-1.0] generated ABI and Go binding freshness

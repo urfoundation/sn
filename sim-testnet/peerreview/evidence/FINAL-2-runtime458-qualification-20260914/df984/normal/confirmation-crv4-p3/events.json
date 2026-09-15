@@ -1,0 +1,11 @@
+{"Time":"2026-09-14T23:25:00.168088718Z","Action":"start","Package":"github.com/urfoundation/sn/crv4"}
+{"Time":"2026-09-14T23:25:00.168305479Z","Action":"run","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory"}
+{"Time":"2026-09-14T23:25:00.168324455Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Output":"=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory\n"}
+{"Time":"2026-09-14T23:25:00.168360287Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Output":"--- PASS: TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory (0.00s)\n"}
+{"Time":"2026-09-14T23:25:00.168368065Z","Action":"pass","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Elapsed":0}
+{"Time":"2026-09-14T23:25:00.16837481Z","Action":"run","Package":"github.com/urfoundation/sn/crv4","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain"}
+{"Time":"2026-09-14T23:25:00.168379626Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Output":"=== RUN   TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain\n"}
+{"Time":"2026-09-14T23:25:00.168386584Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Output":"--- PASS: TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain (0.24s)\n"}
+{"Time":"2026-09-14T23:25:00.168392007Z","Action":"pass","Package":"github.com/urfoundation/sn/crv4","Test":"TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain","Elapsed":0.24}
+{"Time":"2026-09-14T23:25:00.16840646Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Output":"PASS\n"}
+{"Time":"2026-09-14T23:25:00.168415504Z","Action":"pass","Package":"github.com/urfoundation/sn/crv4","Elapsed":0}

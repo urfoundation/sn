@@ -1,0 +1,11 @@
+=== RUN   TestSourceCommitmentRuntime455PreservesReviewed454CallShape
+--- PASS: TestSourceCommitmentRuntime455PreservesReviewed454CallShape (0.00s)
+=== RUN   TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain
+    source_commitment_runtime458_test.go:55: crv4: source runtime or CRv4 parameters are unsupported
+--- FAIL: TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain (0.00s)
+=== RUN   TestRuntimeArtifactMetadataValidatorScheduleRuntime458
+    validator_stake_runtime458_test.go:55: runtime458 threshold equality lost authenticated schedule semantics: {Stake:{Identity:{GenesisHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] BlockHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] BlockNumber:0 FinalizedHash:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] FinalizedNumber:0 Netuid:0 UID:0 SubnetUIDs:0 Hotkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] Coldkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] StakeAlphaRao:0 ValidatorPermit:false Runtime:{Version:{SpecName: SpecVersion:0 TransactionVersion:0 StateVersion:0} CodeHash: MetadataHash:}} TotalStakeRao:0 StakeThresholdRao:0 SubnetOwnerHotkey:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] SubnetOwnerPresent:false SubnetOwnerUID:0 SubnetOwnerRegistered:false} SubnetEpochIndex:0} error=validator stake runtime layout has not been reviewed
+--- FAIL: TestRuntimeArtifactMetadataValidatorScheduleRuntime458 (0.00s)
+=== RUN   TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity
+--- PASS: TestRuntimeArtifactMetadataValidatorStakeRuntime458RejectsForeignIdentity (0.00s)
+FAIL

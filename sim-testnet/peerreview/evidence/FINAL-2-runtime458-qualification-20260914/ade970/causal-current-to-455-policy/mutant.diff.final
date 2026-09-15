@@ -1,0 +1,216 @@
+diff --git a/crv4/source_commitment.go b/crv4/source_commitment.go
+index 4f0caa7..63716d0 100644
+--- a/crv4/source_commitment.go
++++ b/crv4/source_commitment.go
+@@ -1,6 +1,6 @@
+ package crv4
+ 
+-// Reviewed runtimes 454, 455 and 458 use Utility.batch_all for exactly two calls
++// Reviewed runtimes 454 and 455 use Utility.batch_all for exactly two calls
+ // under the original signer: one SHA256 metadata commitment and the actual
+ // timelock-encrypted CRv4 write. No plaintext weights or recursive source hash
+ // is published. A commitment authenticates bytes, not measurement truth.
+@@ -52,14 +52,14 @@ func canonicalSourceHex(value string, size int) ([]byte, error) {
+ 	return raw, nil
+ }
+ 
+-// The reviewed artifacts use the same call and signed-extension layout.
++// Both reviewed artifacts use the same call and signed-extension layout.
+ // This is encoding admission, not artifact authority: live release callers
+ // must authenticate their exact version, code and metadata at the chosen block.
+ func reviewedSourceEncodingVersion(spec, transaction uint32) bool {
+-	return (spec == 454 || spec == 455 || spec == 458) && transaction == 1
++	return (spec == 454 || spec == 455) && transaction == 1
+ }
+ 
+-// This strict offline encoding is the audited 454/455/458 shape. Live metadata
++// This strict offline encoding is the audited 454/455 shape. The live metadata
+ // builder below must independently reproduce it; changed call indices,
+ // argument order or signed extensions fail closed before any broadcast.
+ func preparedSourceEncoding(prepared *PreparedSubmission) (call, fields, payload []byte, resultErr error) {
+diff --git a/crv4/validator_stake.go b/crv4/validator_stake.go
+index f210cc0..90851d1 100644
+--- a/crv4/validator_stake.go
++++ b/crv4/validator_stake.go
+@@ -43,10 +43,11 @@ func (self ValidatorStakeObservation) MeetsNonSelfStakeAndPermit() bool {
+ 	return self.Identity.ValidatorPermit && self.TotalStakeRao >= self.StakeThresholdRao
+ }
+ 
+-// Executes only caller-cancellable reads. Runtime454/455/458's frozen selective
++// Executes only caller-cancellable reads. Runtime454/455's frozen selective
+ // metagraph layout bb7420226d39c0eb is decoded as a complete bounded census.
+-// The pinned458 source retains this API, weighted stake and admission layout.
+-// Exact block/version/code/metadata authentication remains mandatory.
++// The pinned 455 source leaves the API, stake calculation and admission rules
++// byte-identical to 454; exact block/version/code/metadata authentication below
++// remains mandatory for either reviewed layout identity.
+ // Its integer floor preserves comparison with the integer StakeThreshold:
+ // floor(nonnegative fixed stake) >= threshold iff fixed stake >= threshold.
+ // The API's Validators field is deliberately unused: it applies strict >
+@@ -58,8 +59,7 @@ func ReadValidatorStakeAtContext(ctx context.Context, chain *Chain, query Valida
+ 		return empty, err
+ 	}
+ 	if identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}) &&
+-		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1}) &&
+-		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 458, TransactionVersion: 1, StateVersion: 1}) {
++		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1}) {
+ 		return empty, errors.New("validator stake runtime layout has not been reviewed")
+ 	}
+ 	artifact, err := AuthenticateRuntimeArtifactAtContext(ctx, chain, query.BlockHash, allowed...)
+diff --git a/miner/fleet_runtime.go b/miner/fleet_runtime.go
+index 64e5df1..999e68d 100644
+--- a/miner/fleet_runtime.go
++++ b/miner/fleet_runtime.go
+@@ -1,7 +1,7 @@
+ package miner
+ 
+ // fleet_runtime.go binds every release fleet publish and status read to the
+-// exact node-subtensor v458 artifact. The fleet CLI has no release-lock input,
++// exact node-subtensor v455 artifact. The fleet CLI has no release-lock input,
+ // so this immutable tuple is deliberately local and covered against that lock
+ // by fleet_runtime_test.go.
+ 
+@@ -19,11 +19,11 @@ import (
+ 
+ const (
+ 	fleetReleaseRuntimeSpecName           = "node-subtensor"
+-	fleetReleaseRuntimeSpecVersion        = uint32(458)
++	fleetReleaseRuntimeSpecVersion        = uint32(455)
+ 	fleetReleaseRuntimeTransactionVersion = uint32(1)
+ 	fleetReleaseRuntimeStateVersion       = uint8(1)
+-	fleetReleaseRuntimeCodeHash           = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
+-	fleetReleaseRuntimeMetadataHash       = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
++	fleetReleaseRuntimeCodeHash           = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
++	fleetReleaseRuntimeMetadataHash       = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
+ 	fleetReleaseExpectedBlockSeconds      = 12
+ 	fleetNativeAuthenticationBlockBudget  = 10
+ 	fleetNativeEndpointTimeout            = time.Duration(fleetReleaseExpectedBlockSeconds*fleetNativeAuthenticationBlockBudget) * time.Second
+diff --git a/sim-testnet/release_lock.go b/sim-testnet/release_lock.go
+index 6ea321f..126b848 100644
+--- a/sim-testnet/release_lock.go
++++ b/sim-testnet/release_lock.go
+@@ -30,14 +30,14 @@ const (
+ 	reviewedRuntimeSourceRepository         = "https://github.com/RaoFoundation/subtensor"
+ 	reviewedRuntimeSourceTag                = ""
+ 	reviewedRuntimeSourceRefKind            = "commit"
+-	reviewedRuntimeSourceRefName            = "a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7"
+-	reviewedRuntimeSourceCommit             = "a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7"
+-	reviewedRuntimeCodeHash                 = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
+-	reviewedRuntimeMetadataHash             = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
+-	reviewedRuntimeCompressedWasmSHA256     = "0xd763c0210bbd113c065a4e8d538cdd3f5e9b40ba259a5136b77e0a495c364241"
++	reviewedRuntimeSourceRefName            = "67dcf7f791dc495064c293f080a0702cb433e51e"
++	reviewedRuntimeSourceCommit             = "67dcf7f791dc495064c293f080a0702cb433e51e"
++	reviewedRuntimeCodeHash                 = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
++	reviewedRuntimeMetadataHash             = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
++	reviewedRuntimeCompressedWasmSHA256     = "0x232bfc0d65ec2dbe4280b152e23f13879df9692d2286dd08c6ba14483deee00f"
+ 	reviewedRuntimeUpstreamReleaseCallHash  = ""
+ 	reviewedRuntimeUpstreamReleaseTimepoint = ""
+-	reviewedRuntimeSpecVersion              = uint32(458)
++	reviewedRuntimeSpecVersion              = uint32(455)
+ 	reviewedRuntimeTransactionVersion       = uint32(1)
+ 	reviewedRuntimeStateVersion             = uint8(1)
+ )
+@@ -1009,13 +1009,13 @@ func validateReleaseRepositorySchema(repositories map[string]any) error {
+ }
+ 
+ // Bind the operational testnet profile to the source and finalized Wasm
+-// independently reviewed for runtime 458. Exact-commit testnet provenance is
++// independently reviewed for runtime 455. Exact-commit testnet provenance is
+ // distinct from a tagged mainnet proposal; no such proposal is asserted here.
+ // The node image is pinned separately:
+ // an older compatible binary may execute this on-chain Wasm while it syncs.
+ func validateReviewedRuntimeIdentity(lock *ReleaseLock) error {
+ 	if lock == nil || lock.Runtime.SourceRepository != reviewedRuntimeSourceRepository || lock.Runtime.SourceTag != reviewedRuntimeSourceTag || lock.Runtime.SourceRefKind != reviewedRuntimeSourceRefKind || lock.Runtime.SourceRefName != reviewedRuntimeSourceRefName || lock.Runtime.SourceCommit != reviewedRuntimeSourceCommit || lock.Runtime.SpecVersion != reviewedRuntimeSpecVersion || lock.Runtime.TransactionVersion != reviewedRuntimeTransactionVersion || lock.Runtime.StateVersion != reviewedRuntimeStateVersion || !strings.EqualFold(lock.Runtime.CodeHash, reviewedRuntimeCodeHash) || !strings.EqualFold(lock.Runtime.MetadataHash, reviewedRuntimeMetadataHash) || !strings.EqualFold(lock.Runtime.CompressedWasmSHA256, reviewedRuntimeCompressedWasmSHA256) || lock.Runtime.UpstreamReleaseCallHash != reviewedRuntimeUpstreamReleaseCallHash || lock.Runtime.UpstreamReleaseTimepoint != reviewedRuntimeUpstreamReleaseTimepoint {
+-		return errors.New("release lock runtime identity is not the reviewed testnet runtime 458 release")
++		return errors.New("release lock runtime identity is not the reviewed testnet runtime 455 release")
+ 	}
+ 	return nil
+ }
+diff --git a/sim-testnet/runtime_identity.go b/sim-testnet/runtime_identity.go
+index b761eba..dd9f69e 100644
+--- a/sim-testnet/runtime_identity.go
++++ b/sim-testnet/runtime_identity.go
+@@ -37,8 +37,10 @@ type historicalRuntimeArtifactIdentity struct {
+ 	MetadataHash string
+ }
+ 
+-// Carried setup evidence uses five exact predecessor artifacts. They may
+-// reconcile finalized receipts; current reads and signing require v458.
++// Carried setup evidence was finalized across the four runtimes immediately
++// preceding v455. These are evidence-only compatibility identities: they may
++// reconcile an already-finalized receipt, but current reads, signing and every
++// broadcast continue to require v455 exactly.
+ func reviewedHistoricalRuntimeArtifact(version runtimeVersionIdentity) (historicalRuntimeArtifactIdentity, bool) {
+ 	if version.SpecName != "node-subtensor" || version.TransactionVersion != 1 || version.StateVersion != 1 {
+ 		return historicalRuntimeArtifactIdentity{}, false
+@@ -64,11 +66,6 @@ func reviewedHistoricalRuntimeArtifact(version runtimeVersionIdentity) (historic
+ 			CodeHash:     "0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef",
+ 			MetadataHash: "0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702",
+ 		}, true
+-	case 455:
+-		return historicalRuntimeArtifactIdentity{
+-			CodeHash:     "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a",
+-			MetadataHash: "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc",
+-		}, true
+ 	default:
+ 		return historicalRuntimeArtifactIdentity{}, false
+ 	}
+@@ -148,7 +145,7 @@ func validatePublishedRuntimeIdentityShape(public *PublicDeploymentManifest) err
+ 		public.RuntimeSpec != reviewedRuntimeSpecVersion ||
+ 		public.TransactionVersion != reviewedRuntimeTransactionVersion ||
+ 		public.StateVersion != reviewedRuntimeStateVersion {
+-		return errors.New("published runtime version identity is not the reviewed node-subtensor/458/1/1 release")
++		return errors.New("published runtime version identity is not the reviewed node-subtensor/455/1/1 release")
+ 	}
+ 	if err := validateRuntimeCodeHash(public.RuntimeCodeHash, reviewedRuntimeCodeHash); err != nil {
+ 		return fmt.Errorf("published runtime identity: %w", err)
+@@ -217,10 +214,10 @@ func currentReleaseRuntimeArtifact(cfg *ResolvedConfig) crv4.RuntimeArtifactIden
+ 	}, cfg.Release.Runtime.CodeHash, cfg.Release.Runtime.MetadataHash)
+ }
+ 
+-// Builds the current artifact plus the five evidence-only predecessor tuples.
++// Builds the current artifact plus the three evidence-only predecessor tuples.
+ func releaseHistoryRuntimeArtifacts(cfg *ResolvedConfig) ([]crv4.RuntimeArtifactIdentity, error) {
+ 	result := []crv4.RuntimeArtifactIdentity{currentReleaseRuntimeArtifact(cfg)}
+-	for _, spec := range []uint32{451, 452, 453, 454, 455} {
++	for _, spec := range []uint32{451, 452, 453, 454} {
+ 		version := runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: spec, TransactionVersion: 1, StateVersion: 1}
+ 		artifact, ok := reviewedHistoricalRuntimeArtifact(version)
+ 		if !ok {
+@@ -325,7 +322,7 @@ func readAuthenticatedRuntimeMetadataAt(chain *crv4.Chain, cfg *ResolvedConfig,
+ }
+ 
+ // Authenticate metadata-driven reads of immutable carried setup evidence.
+-// Current v458 is always accepted through the release lock. Only the five exact
++// Current v455 is always accepted through the release lock. Only the four exact
+ // historical artifact identities present in the persisted campaign history are
+ // admitted as compatibility inputs; this helper must never guard a write.
+ func readReleaseHistoryRuntimeMetadataAtContext(ctx context.Context, chain *crv4.Chain, cfg *ResolvedConfig, finalized types.Hash) (authenticatedRuntimeMetadata, error) {
+diff --git a/validator/runtime_identity.go b/validator/runtime_identity.go
+index 8281e50..d6a65df 100644
+--- a/validator/runtime_identity.go
++++ b/validator/runtime_identity.go
+@@ -16,11 +16,11 @@ import (
+ )
+ 
+ const (
+-	releaseRuntimeSpecVersion        = uint32(458)
++	releaseRuntimeSpecVersion        = uint32(455)
+ 	releaseRuntimeTransactionVersion = uint32(1)
+ 	releaseRuntimeStateVersion       = uint8(1)
+-	releaseRuntimeCodeHash           = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
+-	releaseRuntimeMetadataHash       = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
++	releaseRuntimeCodeHash           = "0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a"
++	releaseRuntimeMetadataHash       = "0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc"
+ )
+ 
+ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
+@@ -30,7 +30,7 @@ func validateReleaseNativeRuntimeConfig(cfg *ReleaseConfig) error {
+ 		cfg.StateVersion != releaseRuntimeStateVersion ||
+ 		!strings.EqualFold(cfg.RuntimeCodeHash, releaseRuntimeCodeHash) ||
+ 		!strings.EqualFold(cfg.RuntimeMetadataHash, releaseRuntimeMetadataHash) {
+-		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/458/1/1 artifact")
++		return errors.New("release 1.0 native runtime is not the reviewed node-subtensor/455/1/1 artifact")
+ 	}
+ 	return nil
+ }

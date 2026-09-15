@@ -1,0 +1,18 @@
+{
+  "crv4": {
+    "selector": "^Test(SourceCommitment|RuntimeArtifactMetadata|RuntimeMetadataAtContext|EVMCheckpoint)",
+    "source_root_count": 100
+  },
+  "miner": {
+    "selector": "^Test(FleetRuntime|FleetFinalizedRuntime|BindFleetRuntime|DialFleetNativeContext)",
+    "source_root_count": 15
+  },
+  "validator": {
+    "selector": "^Test(ReleaseRuntime458|AuthenticatePinnedNativeRuntime|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|ReleaseNativeEndpointTimeout)",
+    "source_root_count": 19
+  },
+  "sim-testnet": {
+    "selector": "^Test(Runtime458|ReviewedRuntimeIdentity|ReviewedHistoricalRuntimeArtifacts|ReleaseHistoryRuntimeArtifacts|RuntimeVersionIdentity|RuntimeCodeHashValidation|RuntimeMetadataHashValidation|ReleaseLock(DecodesCanonicalRuntimeFields|FixtureRetainsRuntimeAndBuildDriftRejection|FixtureUsesReviewedCurrentRuntimeWithoutRewritingLock|ObservationFencesAdmissionOnlyWarp|ObservationRejectsMissingAndAdditionalFields|RejectsGeneratedRuntimeDrift|RejectsUnknownRuntimeField|RenderingReplacesStaleObservedValuesWithoutSelfReference)|CanonicalReleaseLockRendering|ResolvedConfig(PinsReviewedRuntimeArtifactIdentity|BindsAllRuntimeVersions)|PublishedManifestBindsCompleteRuntimeIdentity|CurrentRuntimeAuthenticationCannotUseHistoricalCache|ReleaseGatesAttest.*Runtime|ProducerGatePins(Runtime458|ExactBlockRuntimeClientRegressions|SemanticIntegrityRegressions)|ProducerGateStateSelectionCoversNativeSourceCommitmentJob)",
+    "source_root_count": 41
+  }
+}

@@ -1,0 +1,16 @@
+finished_utc=2026-09-14T23:29:19Z
+body_exit=0
+source_head=42bfe0be2a7a7c51bbda87fb44886424604f509e
+source_status_bytes=0
+source_diff_check_bytes=0
+d03dbbe9dd399bdc2964d95654663472658acdc10e49c1e4c7252dcdb71ac5ce  /home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/xops/main/ansible/tests/test_vulnscan2_resolved.py
+warp_alias=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/warp
+warp_head=7498864c7cd3605aad3c43eabfab9008ed7f7228
+warp_status_bytes=0
+vault_alias=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/vault
+vault_head=8b2f481dbe87092d0c1742274712a6f805c1c375
+vault_status_bytes=0
+config_alias=/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/config
+config_head=268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc
+config_status_bytes=0
+5f4016bc51761a8b135d601ed5714a58ce3e74831aea2838d0d72f1be5bd6e6c  /home/by/urnetwork/.virtualenv/brien/bin/python3

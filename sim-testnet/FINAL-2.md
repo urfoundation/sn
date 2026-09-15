@@ -1,5 +1,76 @@
 # Sim-testnet finalization report 2
 
+**Current status: in progress; `final_acceptance=false`.** At **00:09 UTC on
+2026-09-15**, the soak remains stopped and the approved **6,000-alpha reserve
+repair remains unsubmitted**. All **1,212 finalized renewals**, **3,521 action
+identities**, generation3 custody and the original signed probe anchor with
+nonce34 are preserved. The approvals remain **37,250 alpha lifetime** and
+**180 EVM TAO within 200 total TAO**. No new campaign transaction was submitted
+during this qualification.
+
+The fresh owned-node check at **00:03:15 UTC** returned HTTP 200 for both
+direct-LAN batches, **16 peers**, `isSyncing=false`, runtime **458/1/1** and
+chain **945**. Finalized block **8,007,358**, hash
+`0xb6cd48185f3b1587ad9d9a071b6712763d4b50150a7c7f17782d8e6b008c60a9`,
+is later than the previous observation at block 8,006,843. Subtensor is serving
+requests and advancing finality. The stale deployment expectation of runtime
+455 was corrected in xops; **the corrected deployment assertion has not been
+rerun on the node**. These observations use `192.168.1.162:9944`, without
+pacing, retry, proxy, redirect or public fallback; `independent_rpc=false`.
+[Exact requests and raw replies](peerreview/evidence/FINAL-2-runtime458-qualification-20260914/lan-health-20260915T0003Z/).
+
+The composed runtime correction now has **181 selected top-level tests passing
+normally and under race detection**: 100 CRV4, 15 miner and 19 validator tests
+on `df98472`, plus 47 simulator tests on `ade970a`. The relevant client
+source is unchanged between those revisions. Required fresh-process
+confirmations are complete. An earlier simulator run actually failed two of
+41 tests: its semantic inventory still named the five-version test, and its
+RPC mock response/request files overlapped the helper's scratch outputs.
+Correction `ade970a` separates those fixture paths, updates the inventory and
+retains stricter malformed-response and infrastructure-scope controls. The
+original **39 PASS / 2 FAIL** output remains preserved; replaying its events
+does not turn that run into a pass.
+[Qualification scope, raw outcomes and retained failures](peerreview/evidence/FINAL-2-runtime458-qualification-20260914/README.md).
+
+The causal checks for the old five-identity capacity, stale gate inventory and
+public/paced artifact route all produced their expected failures with passing
+adjacent controls. The 13-test production-policy causal also completed with
+exactly **seven expected failures and six passing controls**, across CRV4,
+miner, validator and simulator. Restoring the old current-runtime assumptions
+reproduces rejection of runtime458 while the unaffected controls still pass.
+All four compiled binaries, the exact six-file mutation and dependency
+observations remained stable. The earlier setup and shell-parse refusals are
+preserved separately; neither started a test body.
+
+Both original FC908 full gates have now closed with exit **1**. The producer
+passed **36 of 37 phases**; its typed-prior scheduling correction remains
+qualified as recorded below. The aggregate closed at **23:33:25 UTC on
+September 14**, passing **24 of 25 phases** and its final source/release-lock
+checks. Its single failure came from four obsolete positive nginx quota
+assertions in the xops vulnerability test. Correction
+[`42bfe0b`](https://github.com/urnetwork/xops/commit/42bfe0be2a7a7c51bbda87fb44886424604f509e)
+is pushed to xops main: its complete **17-test module**, two additional
+**seven-test** confirmation processes, and the old-assertion causal control
+completed with the expected results. Earlier projection errors remain in the
+evidence. The aggregate now explicitly retains both gateway regression tests.
+**Neither failed full gate establishes release acceptance.**
+[Closed aggregate and xops correction](peerreview/evidence/FINAL-2-runtime458-qualification-20260914/README.md).
+
+The reviewed final release-lock YAML has SHA-256
+`d11b2a41ca6e836f9267088f8899c4fb0faf53b78b3b9ca8804bab589cd63e7b`
+and is committed in the idle integration checkout at `2b907a4`. Relative to
+the earlier runtime-458 lock, only `repositories.protocol_source_hash` changes,
+binding the aggregate's added gateway regression. All contract, runtime,
+production Go, node/gateway and other dependency fields remain unchanged.
+The existing readonly CLI rendered this lock with matching before/after
+observations; it was not rebuilt. This lock has not been applied to the
+retained campaign. Publication, a canonical stamped CLI, both replacement full
+gates, the retained-state setup transition and the actual RC/production soak
+remain required.
+[Exact final lock and render receipts](peerreview/evidence/FINAL-2-runtime458-qualification-20260914/final-lock/).
+
+## Historical checkpoint: September 14, 22:57 UTC
+
 **Status: in progress; `final_acceptance=false`.** This report covers the next
 full finalization of testnet chain **945**, subnet **521**, under
 [FINALIZE.md](../FINALIZE.md). At the **22:57 UTC on 2026-09-14** observation

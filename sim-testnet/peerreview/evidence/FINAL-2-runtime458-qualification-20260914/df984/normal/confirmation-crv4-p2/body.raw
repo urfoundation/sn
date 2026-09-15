@@ -1,0 +1,5 @@
+=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory
+--- PASS: TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory (0.00s)
+=== RUN   TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain
+--- PASS: TestSourceCommitmentRuntime458UsesActualMetadataAndDistinctSignedDomain (0.24s)
+PASS

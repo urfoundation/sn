@@ -1,0 +1,4 @@
+cwd=/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/sn/sim-testnet
+fixture=testnet.yml
+fixture=../deploy/testnet/policy-v1.yml
+package=github.com/urfoundation/sn/sim-testnet

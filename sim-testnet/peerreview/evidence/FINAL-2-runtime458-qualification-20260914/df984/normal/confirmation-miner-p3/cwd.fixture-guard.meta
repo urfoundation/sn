@@ -1,0 +1,7 @@
+cwd=/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/sn/miner
+fixture=testdata/runtime455-metadata.scale.gz.base64
+fixture=testdata/runtime458-metadata.scale.gz.base64
+fixture=../docs/spec/runtime-metadata-artifacts.json
+fixture=../deploy/testnet/public.yml
+fixture=../deploy/testnet/release.lock.yml
+package=github.com/urfoundation/sn/miner

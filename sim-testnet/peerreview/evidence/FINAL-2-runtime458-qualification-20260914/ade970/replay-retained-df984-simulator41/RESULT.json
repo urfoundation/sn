@@ -1,0 +1,24 @@
+{
+  "status": "MATCHED_RETAINED_FAILURE",
+  "kind": "offline qualification replay; no test binary executed",
+  "old_candidate": "df98472bd88dc8e29856c172fba4731d52a6308d",
+  "new_candidate_context": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "retained_body": {
+    "roots": 41,
+    "passes": 39,
+    "expected_failures": 2,
+    "body_exit": 1,
+    "converter_exit": 0,
+    "events": 805,
+    "event_bytes": 197748,
+    "source_fences_clean": true,
+    "binary_fence_equal": true
+  },
+  "replay": {"exit": 0, "event_checker": "unchanged between df984 and ade", "outcome": "matched"},
+  "failure_literals": {
+    "TestProducerGatePinsSemanticIntegrityRegressions": "semantic-integrity census entry 303 is \"TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain\", want \"TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain\"",
+    "TestRuntime458ArtifactRpcPreservesExactResponse": "exact artifact response refused: runtime metadata owned RPC synthetic_method returned a malformed or error response"
+  },
+  "retained_observer_refusal": "A post-check initially assumed 209 rather than the actual 805 streamed events; the checker had already exited 0. The refusal is retained separately; no replay or test body was rerun.",
+  "qualification_claim": "This causal attribution replay is not a qualification pass or a new test execution."
+}

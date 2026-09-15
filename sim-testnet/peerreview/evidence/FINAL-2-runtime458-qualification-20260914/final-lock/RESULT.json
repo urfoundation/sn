@@ -1,0 +1,31 @@
+{
+  "status": "rendered_and_reviewed_not_installed",
+  "body_exit": 0,
+  "outer_exit": 0,
+  "started_at": "2026-09-14T23:32:06Z",
+  "finished_at": "2026-09-14T23:32:10Z",
+  "source": "846b3b4749767da72c155f824986998e305757fa",
+  "source_repair": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "xops_source": "42bfe0be2a7a7c51bbda87fb44886424604f509e",
+  "candidate_sha256": "d11b2a41ca6e836f9267088f8899c4fb0faf53b78b3b9ca8804bab589cd63e7b",
+  "renderer_sha256": "2b8e0e0695e75d996e29991fd81f15c43c95dc4d6561523235e8311a6d64c0e5",
+  "renderer_source": "df98472bd88dc8e29856c172fba4731d52a6308d",
+  "renderer_reused_without_build": true,
+  "repository_observations": 19,
+  "repository_before_after_equal": true,
+  "repository_pair_sha256": "66f9f7134e397a6fedf797b778db3985152c92b7a60e79502918de8c72fde8e3",
+  "input_lock_before_after_equal": true,
+  "old_lock_sha256": "e72b2146a1cbbd59a54b0424a30478aa9a475f8d82369c028c4fe22e8f2d71c2",
+  "apply": false,
+  "rpc_calls": 0,
+  "native_state_used": false,
+  "builds": 0,
+  "tests": 0,
+  "changed_fields": [
+    "repositories.protocol_source_hash"
+  ],
+  "protocol_source_hash": "sha256:6b9af982e2d8145d53f8e999cecb3495e058cf9cbb26ec1f9caf93ab4240b1fd",
+  "all_other_lock_fields_unchanged": true,
+  "cause": "The aggregate infrastructure selection now includes the quota-refusal regression. Simulator test/census and xops test-only changes do not alter production Go, runtime, contract, node or gateway hash fields.",
+  "qualification": "134 client roots pass each mode on df984; simulator47 successor pending. Terra reports xops17 and confirmations/causal closed, final sealed review pending."
+}

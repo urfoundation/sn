@@ -1,0 +1,27 @@
+{
+  "status": "EXPECTED_CAUSAL_OUTCOMES_MATCHED",
+  "case": "public-paced RPC route",
+  "candidate_head": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "binary": {
+    "path": "normal/compile3-sim-testnet/sim-testnet.normal.test",
+    "sha256_before_after": "cde4109875980dab03a6ce9e41d99e915efc32cdf5929cadd4a8285f91cbabec",
+    "recompiled": false
+  },
+  "mutation": {
+    "patch": "CAUSAL-current-to-public-paced-rpc.patch",
+    "paths": ["scripts/check-runtime-metadata-artifacts.sh"],
+    "applied_in_disposable_detached_worktree": true,
+    "apply_check": true,
+    "reverse_apply_check": true,
+    "mutant_diff_stable_before_after": true
+  },
+  "inventory": {"compiled_roots": 4, "expected_roots": 4, "list_exit": 0, "exact_match": true},
+  "body": {"outer_exit": 0, "body_exit": 1, "converter_exit": 0, "checker_exit": 0, "events": 40, "event_bytes": 8737},
+  "outcomes": {
+    "TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute": "FAIL: artifact rpc selected an unapproved endpoint",
+    "TestRuntime458ArtifactRpcPreservesExactResponse": "FAIL: artifact rpc route lacks",
+    "TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses": "FAIL: artifact rpc did not make exactly one request",
+    "TestRuntime458SourceAttestationIncludesExactCompatibilityDelta": "PASS"
+  },
+  "fences": {"candidate_13_repos_equal_pre_post": true, "candidate_clean_after": true, "binary_equal": true, "transport": "all curl and sleep behavior was mocked by the test fixture"}
+}

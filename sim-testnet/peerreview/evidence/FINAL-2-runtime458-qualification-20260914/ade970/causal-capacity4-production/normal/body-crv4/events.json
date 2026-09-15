@@ -1,0 +1,12 @@
+{"Time":"2026-09-14T23:50:33.687755394Z","Action":"start","Package":"github.com/urfoundation/sn/crv4"}
+{"Time":"2026-09-14T23:50:33.687987995Z","Action":"run","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory"}
+{"Time":"2026-09-14T23:50:33.688012793Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Output":"=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory\n"}
+{"Time":"2026-09-14T23:50:33.688056342Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Output":"    runtime_identity_capacity_test.go:61: complete six-identity history failed at pass0 spec451: runtime artifact allowlist has 6 identities, maximum 5\n"}
+{"Time":"2026-09-14T23:50:33.688067294Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Output":"--- FAIL: TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory (0.00s)\n"}
+{"Time":"2026-09-14T23:50:33.688072853Z","Action":"fail","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory","Elapsed":0}
+{"Time":"2026-09-14T23:50:33.688079149Z","Action":"run","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks"}
+{"Time":"2026-09-14T23:50:33.688083264Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks","Output":"=== RUN   TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks\n"}
+{"Time":"2026-09-14T23:50:33.688088983Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks","Output":"--- PASS: TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks (0.00s)\n"}
+{"Time":"2026-09-14T23:50:33.688093532Z","Action":"pass","Package":"github.com/urfoundation/sn/crv4","Test":"TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks","Elapsed":0}
+{"Time":"2026-09-14T23:50:33.688097911Z","Action":"output","Package":"github.com/urfoundation/sn/crv4","Output":"FAIL\n"}
+{"Time":"2026-09-14T23:50:33.688104978Z","Action":"fail","Package":"github.com/urfoundation/sn/crv4","Elapsed":0}

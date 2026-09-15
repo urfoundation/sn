@@ -1,0 +1,6 @@
+=== RUN   TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory
+    runtime_identity_capacity_test.go:61: complete six-identity history failed at pass0 spec451: runtime artifact allowlist has 6 identities, maximum 5
+--- FAIL: TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory (0.00s)
+=== RUN   TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks
+--- PASS: TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks (0.00s)
+FAIL

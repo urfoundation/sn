@@ -1,0 +1,106 @@
+[release gate] private state /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013; ready jobs=2; CPUs/job=4
+[release-1.0] source-freeze preflight
+sn	fc9086852125227d4e497f4d54b6590a527032ba	origin/main	github.com/urfoundation/sn
+server	0f095a639e111f71d231cd6f792a191cbc6b0a69	origin/main	github.com/urnetwork/server
+operator-proxy	448369740c70eb2e642bde9d36f3708fe9ad4b5d	origin/main	github.com/urnetwork/operator-proxy
+connect	2a0f603e8076224fdab4d9f56e5a0a557ed513d9	origin/main	github.com/urnetwork/connect
+sdk	0dc2fb0f6f8a7e484e96bbdde09a690ae108dc8b	origin/main	github.com/urnetwork/sdk
+glog	892ade4a6be396b32ea82a550f243190b5992180	origin/master	github.com/urnetwork/glog
+goidenticons	325750b38314313dc5f44c880ab6f12f6c1ecb3c	origin/main	github.com/urnetwork/goidenticons
+proxy	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f	origin/main	github.com/urnetwork/proxy
+userwireguard	85fb1ca4086fa5dbfcda526bec7a17a894e691b9	origin/master	github.com/urnetwork/userwireguard
+warp	7498864c7cd3605aad3c43eabfab9008ed7f7228	origin/main	github.com/urnetwork/warp
+vault	8b2f481dbe87092d0c1742274712a6f805c1c375	origin/main	github.com/urnetwork/vault
+xops	d33d4173767ad9dab2f301bc0b0e040579bee896	origin/main	github.com/urnetwork/xops
+config	268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc	origin/main	github.com/urnetwork/config
+[release-1.0] simulator source-integrity preflight
+ok  	github.com/urfoundation/sn/sim-testnet/sourceguard	0.008s
+[release-1.0] generated binding toolchain preflight
+abigen version 1.17.0-stable
+[release-1.0] runtime 454 source attestation
+runtime source verified tag=v454 commit=14cde6410fe8ec81a940e290c56f94a632a0988d files=29 metadata_files=15
+runtime source verified ref_kind=commit commit=67dcf7f791dc495064c293f080a0702cb433e51e files=33
+[release-1.0] exact runtime metadata artifact attestation
+runtime metadata verified sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a spec_name=node-subtensor spec_version=451 transaction_version=1 state_version=1 metadata_version=14 code_size=2514870 metadata_size=334487 code_sha256=0x7a16d39f2c1f7c9984834a7cede18baf1d08306707bc8aeb0e2409324b2ec56f code_blake2b_256=0xf3554a22dfcefa9b42b3a0a5e58c1e6c871795ecc9ea9da78bf0900e23e57c08 metadata_sha256=0x39787898474fa5d27ce07097c30f1c7ba1472abdcb2c88b7957039eba1144ba7 metadata_blake2b_256=0xeecd7e7c00377caec23c3dc754fd621963cc456fa5d02a4f66ff267b0494bd9d
+runtime metadata verified sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a spec_name=node-subtensor spec_version=452 transaction_version=1 state_version=1 metadata_version=14 code_size=2515476 metadata_size=334487 code_sha256=0x05616e9ddf330e4c0f880fff1fb155162b7837bb4171b7ffc779680379eb9d8b code_blake2b_256=0x40a8c3c99a47d6739b086236308535fab26d5fd4cc5c88eb83f6a3c8b928f7cc metadata_sha256=0x79fc9235a87651a0cd5b93856d4b5696ffb8a0bd26c6f30a1f1402ac8aaad195 metadata_blake2b_256=0x2e1d4f992a978fdd58652c8cf434c26bb8f89170e6a0fdbc9362b29e8fe8a835
+runtime metadata verified sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a spec_name=node-subtensor spec_version=453 transaction_version=1 state_version=1 metadata_version=14 code_size=2515038 metadata_size=334667 code_sha256=0x9e51859faf28a69365005e7dd7f152f239a305c468869b2f54303aba938d840e code_blake2b_256=0xabe169cc148e2a63068772788c191fa6566f02aa2ea9afb80cdeb28217bab4d4 metadata_sha256=0x99380e7d01eccc41ffa1304e782658c86b38ba9986acefa371e79ad367f76658 metadata_blake2b_256=0xb00e7e0188d537136a973df4d5c5f2c86ef903ffff49c1cf8d129dabc98b07ce
+runtime metadata verified sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a spec_name=node-subtensor spec_version=454 transaction_version=1 state_version=1 metadata_version=14 code_size=2515968 metadata_size=334642 code_sha256=0xa55e76b4f4620bcdb4c787e499c87a35abb9913ba4cde001b08a00d1945ac4db code_blake2b_256=0x725e3d1eca8d5c29c1f0fa6476d5360661b852f52aebad979d6636e227a431ef metadata_sha256=0xb592bafacd0f3cce1340a91f237f82a531968bd833cbd27339328c80ce92b1cf metadata_blake2b_256=0x4d17516b694ef8d18f8a565dcb2df0117e7a0018a3ffa40812c91a1621225702
+runtime metadata verified sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a spec_name=node-subtensor spec_version=455 transaction_version=1 state_version=1 metadata_version=14 code_size=2516332 metadata_size=334642 code_sha256=0x232bfc0d65ec2dbe4280b152e23f13879df9692d2286dd08c6ba14483deee00f code_blake2b_256=0xbca85925668cabb2880164610d64eda2e4d9bf2777994f9cdfdb9d36253ce74a metadata_sha256=0x74c4067de4bf2eba95156e8a46c793b52fcd9862dfeb28502632e46416979ec7 metadata_blake2b_256=0x16da562c347a354c55eb1ad5cd5094343afe7acdc12e5b526bf6c8cb12e866bc
+runtime metadata artifacts verified versions=451,452,453,454,455 sdk_revision=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a
+[release gate] started isolation-regressions (pid 3508067)
+[release-1.0] sn Go tests
+[release gate] started sn-go (pid 3508134)
+[release gate] joined isolation-regressions (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/isolation-regressions.log
+[release gate] started sn-all-normal (pid 3555915)
+[release gate] joined sn-go (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-go.log
+[release gate] started sn-core-race (pid 3556528)
+[release gate] joined sn-core-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-core-race.log
+[release gate] started sn-validator-race (pid 3562399)
+[release gate] joined sn-validator-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-validator-race.log
+[release gate] started sn-simulator-race (pid 3636766)
+[release gate] joined sn-all-normal (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-all-normal.log
+[release gate] started sn-simulator-populations-race (pid 3636837)
+[release gate] joined sn-simulator-populations-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-simulator-populations-race.log
+[release gate] started sn-simulator-supplements-race (pid 3713364)
+[release gate] joined sn-simulator-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-simulator-race.log
+[release gate] started sn-simulator-final-race (pid 3787417)
+[release gate] joined sn-simulator-final-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-simulator-final-race.log
+[release gate] started sn-simulator-history-race (pid 3859047)
+[release-1.0] deployable Solidity static analysis
+[release gate] joined sn-simulator-supplements-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-simulator-supplements-race.log
+[release gate] started solidity-static (pid 3865736)
+[release-1.0] Solidity format, build, and tests
+[release gate] joined solidity-static (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/solidity-static.log
+[release gate] started solidity (pid 3869294)
+[release-1.0] operator pure/unit suites
+[release gate] joined solidity (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/solidity.log
+[release gate] started server-unit (pid 3890559)
+[release-1.0] shared verify wire and public SDK suites
+[release gate] joined server-unit (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/server-unit.log
+[release gate] started connect (pid 3912889)
+[release gate] joined connect (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/connect.log
+[release gate] started connect-all-normal (pid 3918226)
+[release gate] joined sn-simulator-history-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sn-simulator-history-race.log
+[release gate] started connect-all-race (pid 3927177)
+[release gate] joined connect-all-normal (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/connect-all-normal.log
+[release gate] started connect-all-shuffle (pid 3939704)
+[release gate] joined connect-all-race (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/connect-all-race.log
+[release gate] started sdk (pid 3992295)
+[release gate] joined sdk (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sdk.log
+[release gate] started sdk-build (pid 3994923)
+[release-1.0] operator-proxy module
+[release gate] joined sdk-build (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/sdk-build.log
+[release gate] started operator-proxy (pid 3995251)
+[release-1.0] operator Connect ingress and owned-session lifecycle regressions
+[release gate] joined operator-proxy (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/operator-proxy.log
+[release gate] started server-connect (pid 3997446)
+[release-1.0] operator PostgreSQL/Redis integration suites
+[release gate] joined server-connect (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/server-connect.log
+[release gate] started server-db (pid 4001475)
+[release gate] joined connect-all-shuffle (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/connect-all-shuffle.log
+[release gate] started server-history-shared (pid 4011576)
+[release gate] joined server-history-shared (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/server-history-shared.log
+[release gate] started server-history-distinct (pid 4023334)
+[release-1.0] Subtensor infrastructure regressions
+[release gate] joined server-history-distinct (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/server-history-distinct.log
+[release gate] started xops (pid 4036310)
+[release gate] joined xops (exit 1); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/xops.log
+[release gate] joined server-db (exit 0); log /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013/logs/server-db.log
+[release-1.0] patch hygiene
+[release-1.0] final release-lock checkout
+ok  	github.com/urfoundation/sn/sim-testnet	1.766s
+[release-1.0] final source-freeze checkout
+sn	fc9086852125227d4e497f4d54b6590a527032ba	origin/main	github.com/urfoundation/sn
+server	0f095a639e111f71d231cd6f792a191cbc6b0a69	origin/main	github.com/urnetwork/server
+operator-proxy	448369740c70eb2e642bde9d36f3708fe9ad4b5d	origin/main	github.com/urnetwork/operator-proxy
+connect	2a0f603e8076224fdab4d9f56e5a0a557ed513d9	origin/main	github.com/urnetwork/connect
+sdk	0dc2fb0f6f8a7e484e96bbdde09a690ae108dc8b	origin/main	github.com/urnetwork/sdk
+glog	892ade4a6be396b32ea82a550f243190b5992180	origin/master	github.com/urnetwork/glog
+goidenticons	325750b38314313dc5f44c880ab6f12f6c1ecb3c	origin/main	github.com/urnetwork/goidenticons
+proxy	6204ae7df2a9868bbb3a7b61231917a36e4f5c9f	origin/main	github.com/urnetwork/proxy
+userwireguard	85fb1ca4086fa5dbfcda526bec7a17a894e691b9	origin/master	github.com/urnetwork/userwireguard
+warp	7498864c7cd3605aad3c43eabfab9008ed7f7228	origin/main	github.com/urnetwork/warp
+vault	8b2f481dbe87092d0c1742274712a6f805c1c375	origin/main	github.com/urnetwork/vault
+xops	d33d4173767ad9dab2f301bc0b0e040579bee896	origin/main	github.com/urnetwork/xops
+config	268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc	origin/main	github.com/urnetwork/config
+[release gate] retained private logs/state: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/terra-runtime/aggregate-final37-standalone-fc908685-r1/tmp/urnetwork-release-gate.74wZV013

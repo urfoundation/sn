@@ -1,0 +1,62 @@
+ok  	github.com/urnetwork/server	3.421s
+ok  	github.com/urnetwork/server	13.435s
+ok  	github.com/urnetwork/server	0.081s
+ok  	github.com/urnetwork/server/st	0.015s
+ok  	github.com/urnetwork/server/startifact	13.173s
+ok  	github.com/urnetwork/server/controller	0.169s
+ok  	github.com/urnetwork/server/controller	0.064s
+ok  	github.com/urnetwork/server/controller	1.351s
+ok  	github.com/urnetwork/server/controller	0.107s
+ok  	github.com/urnetwork/server/controller	1.587s
+ok  	github.com/urnetwork/server/model	0.049s
+ok  	github.com/urnetwork/server/model	1.224s
+ok  	github.com/urnetwork/server/controller	0.287s
+ok  	github.com/urnetwork/server/controller	2.069s
+ok  	github.com/urnetwork/server/session	0.041s
+ok  	github.com/urnetwork/server/router	0.972s
+ok  	github.com/urnetwork/server/model	0.035s
+ok  	github.com/urnetwork/server/taskworker/work	0.067s
+ok  	github.com/urnetwork/server/monitor	14.298s
+ok  	github.com/urnetwork/server/monitor	69.511s
+ok  	github.com/urnetwork/server	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/alt	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/api	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/api/handlers	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/apikey	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/bringyourctl	(cached) [no tests to run]
+?   	github.com/urnetwork/server/cli/alt	[no test files]
+?   	github.com/urnetwork/server/cli/api	[no test files]
+?   	github.com/urnetwork/server/cli/competitiondbinit	[no test files]
+ok  	github.com/urnetwork/server/cli/competitionpatch	(cached) [no tests to run]
+?   	github.com/urnetwork/server/cli/competitionworker	[no test files]
+?   	github.com/urnetwork/server/cli/connect	[no test files]
+?   	github.com/urnetwork/server/cli/gossip	[no test files]
+?   	github.com/urnetwork/server/cli/mcp	[no test files]
+ok  	github.com/urnetwork/server/cli/monitor	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/cli/proxy	(cached) [no tests to run]
+?   	github.com/urnetwork/server/cli/taskworker	[no test files]
+ok  	github.com/urnetwork/server/connect	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/connect/perfvar	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/controller	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/gossip	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/grafana	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/jwt	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/mcp	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/model	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/monitor	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/oauth	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/onboarding	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/probeverdict	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/proxy	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/proxy/acceptance	(cached) [no tests to run]
+?   	github.com/urnetwork/server/proxy/cmd/acceptance-main	[no test files]
+ok  	github.com/urnetwork/server/router	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/search	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/session	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/st	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/startifact	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/stats	(cached) [no tests to run]
+?   	github.com/urnetwork/server/stats/sample	[no test files]
+ok  	github.com/urnetwork/server/task	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/taskworker	(cached) [no tests to run]
+ok  	github.com/urnetwork/server/taskworker/work	(cached) [no tests to run]

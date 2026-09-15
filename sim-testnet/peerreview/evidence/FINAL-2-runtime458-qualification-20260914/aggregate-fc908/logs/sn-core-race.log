@@ -1,0 +1,4 @@
+ok  	github.com/urfoundation/sn/crv4	194.172s
+ok  	github.com/urfoundation/sn/miner	9.593s
+ok  	github.com/urfoundation/sn/miner/onchain	1.421s
+ok  	github.com/urfoundation/sn/protocol	2.437s

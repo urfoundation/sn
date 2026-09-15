@@ -1,0 +1,3 @@
+cwd=/home/by/urnetwork/temp/sn-runtime458-history-capacity-20260914/sn/validator
+fixture=../deploy/testnet/policy-v1.yml
+package=github.com/urfoundation/sn/validator

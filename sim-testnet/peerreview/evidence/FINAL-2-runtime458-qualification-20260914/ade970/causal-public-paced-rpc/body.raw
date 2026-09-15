@@ -1,0 +1,30 @@
+=== RUN   TestRuntime458ArtifactRpcPreservesExactResponse
+    release_runtime458_source_test.go:165: artifact rpc route lacks "--disable\n": --fail
+        --silent
+        --show-error
+        --location
+        --proto
+        =https
+        --tlsv1.2
+        --connect-timeout
+        10
+        --max-time
+        180
+        --retry
+        2
+        --retry-all-errors
+        --header
+        content-type: application/json
+        --data-binary
+        @/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-public-paced-rpc/gotmp/TestRuntime458ArtifactRpcPreservesExactResponse1886755987/001/work/request.json
+        http://192.0.2.42:19944
+--- FAIL: TestRuntime458ArtifactRpcPreservesExactResponse (0.03s)
+=== RUN   TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses
+    release_runtime458_source_test.go:193: artifact rpc did not make exactly one request: "call\ncall\ncall\ncall\n" <nil>
+--- FAIL: TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses (0.07s)
+=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute
+    release_runtime458_source_test.go:247: artifact rpc selected an unapproved endpoint: "https://test.finney.opentensor.ai:443"
+--- FAIL: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.11s)
+=== RUN   TestRuntime458SourceAttestationIncludesExactCompatibilityDelta
+--- PASS: TestRuntime458SourceAttestationIncludesExactCompatibilityDelta (0.00s)
+FAIL

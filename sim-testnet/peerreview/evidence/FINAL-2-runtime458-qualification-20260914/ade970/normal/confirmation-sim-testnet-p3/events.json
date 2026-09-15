@@ -1,0 +1,23 @@
+{"Time":"2026-09-14T23:44:10.195146897Z","Action":"start","Package":"github.com/urfoundation/sn/sim-testnet"}
+{"Time":"2026-09-14T23:44:10.195390133Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestProducerGatePinsSemanticIntegrityRegressions"}
+{"Time":"2026-09-14T23:44:10.195409165Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"=== RUN   TestProducerGatePinsSemanticIntegrityRegressions\n"}
+{"Time":"2026-09-14T23:44:10.195439093Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Output":"--- PASS: TestProducerGatePinsSemanticIntegrityRegressions (4.20s)\n"}
+{"Time":"2026-09-14T23:44:10.195445922Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestProducerGatePinsSemanticIntegrityRegressions","Elapsed":4.2}
+{"Time":"2026-09-14T23:44:10.195454156Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactRpcPreservesExactResponse"}
+{"Time":"2026-09-14T23:44:10.195458267Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Output":"=== RUN   TestRuntime458ArtifactRpcPreservesExactResponse\n"}
+{"Time":"2026-09-14T23:44:10.195463925Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Output":"--- PASS: TestRuntime458ArtifactRpcPreservesExactResponse (0.11s)\n"}
+{"Time":"2026-09-14T23:44:10.195475158Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactRpcPreservesExactResponse","Elapsed":0.11}
+{"Time":"2026-09-14T23:44:10.195480582Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute"}
+{"Time":"2026-09-14T23:44:10.195484743Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute\n"}
+{"Time":"2026-09-14T23:44:10.19549955Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Output":"--- PASS: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.12s)\n"}
+{"Time":"2026-09-14T23:44:10.195504996Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute","Elapsed":0.12}
+{"Time":"2026-09-14T23:44:10.195515384Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal"}
+{"Time":"2026-09-14T23:44:10.195519989Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Output":"=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal\n"}
+{"Time":"2026-09-14T23:44:10.195525915Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Output":"--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)\n"}
+{"Time":"2026-09-14T23:44:10.195530912Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal","Elapsed":0}
+{"Time":"2026-09-14T23:44:10.195535069Z","Action":"run","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader"}
+{"Time":"2026-09-14T23:44:10.195539007Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader\n"}
+{"Time":"2026-09-14T23:44:10.195544318Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Output":"--- PASS: TestRuntime458HistoryAllowlistReachesArtifactReader (0.00s)\n"}
+{"Time":"2026-09-14T23:44:10.195556645Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Test":"TestRuntime458HistoryAllowlistReachesArtifactReader","Elapsed":0}
+{"Time":"2026-09-14T23:44:10.195561726Z","Action":"output","Package":"github.com/urfoundation/sn/sim-testnet","Output":"PASS\n"}
+{"Time":"2026-09-14T23:44:10.195569142Z","Action":"pass","Package":"github.com/urfoundation/sn/sim-testnet","Elapsed":0}

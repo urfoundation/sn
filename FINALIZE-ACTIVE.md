@@ -1,6 +1,6 @@
 # Testnet execution plan
 
-Updated 2026-09-14. The user has requested full finalization and fixes for
+Updated 2026-09-15. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
 The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
 The user explicitly confirmed SN testnet finalization under `sn/FINALIZE.md`;
@@ -46,7 +46,34 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 180 EVM within 200 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-14 23:01 UTC: the soak remains stopped and the approved
+Latest checkpoint, 2026-09-15 00:09 UTC: the soak remains stopped and the
+6,000-alpha repair remains unsubmitted. Fresh LAN observations at 00:03:15 UTC
+show a synced node, 16 peers, runtime 458/1/1 and finalized block8,007,358.
+Xops main includes both the runtime-pin correction and qualified quota-test
+correction at `42bfe0b`; the corrected deployment assertion has not been rerun
+on the node. No further rollout confirmation is needed for simulator work.
+
+The composed runtime correction passes 181 selected top-level tests normally
+and under race, with required fresh-process confirmations complete. The old
+capacity, stale gate inventory and public/paced route causal checks closed with
+their expected failures and passing controls. The 13-test production-policy
+causal also closed with exactly seven expected failures and six passing
+controls. The original simulator41 failure remains recorded
+as39PASS/2FAIL; the repaired simulator47 passes both modes. All unchanged client
+and typed-prior qualification is reused within its recorded scope.
+
+Both FC908 gates are closed failed: producer36/37 and aggregate24/25. Their
+known failures are corrected and qualified; replacement complete gates are
+still required. The final exact release-lock SHA-256 is
+`d11b2a41ca6e836f9267088f8899c4fb0faf53b78b3b9ca8804bab589cd63e7b`,
+committed only in the idle integration at `2b907a4`. Publish the coherent
+candidate and report, build one canonical stamped
+CLI, and run producer38 with16CPU alongside the aggregate with4CPU. Producer
+success gates campaign writes. Preserve all3,521 action identities,1,212
+renewals, generation3, original probe anchor and nonce34 in the single successor
+setup preview. The repair and real RC/production soak remain outstanding.
+
+Historical checkpoint, 2026-09-14 23:01 UTC: the soak remains stopped and the approved
 6,000-alpha repair remains unsubmitted. The operator verified removal of the
 nginx limits at 21:01:55 UTC. Fresh direct-LAN observations found a synced node
 with 16 peers, runtime 458/1/1 and advancing finalized blocks; the separate

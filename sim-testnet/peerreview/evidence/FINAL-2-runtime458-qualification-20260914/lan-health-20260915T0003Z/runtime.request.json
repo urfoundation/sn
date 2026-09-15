@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","id":5,"method":"state_getRuntimeVersion","params":["0xb6cd48185f3b1587ad9d9a071b6712763d4b50150a7c7f17782d8e6b008c60a9"]},{"jsonrpc":"2.0","id":6,"method":"chain_getHeader","params":["0xb6cd48185f3b1587ad9d9a071b6712763d4b50150a7c7f17782d8e6b008c60a9"]}]

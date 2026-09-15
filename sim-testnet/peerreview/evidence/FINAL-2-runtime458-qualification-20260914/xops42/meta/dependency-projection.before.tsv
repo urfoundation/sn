@@ -1,0 +1,4 @@
+warp	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/warp	7498864c7cd3605aad3c43eabfab9008ed7f7228
+vault	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/vault	8b2f481dbe87092d0c1742274712a6f805c1c375
+config	/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/config	268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc
+static_fixture_siblings	config,vault,warp

@@ -1,0 +1,31 @@
+=== RUN   TestFleetRuntimeArtifactMatchesReviewedMetadataManifest
+--- PASS: TestFleetRuntimeArtifactMatchesReviewedMetadataManifest (0.02s)
+=== RUN   TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads
+--- PASS: TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads (0.19s)
+=== RUN   TestFleetFinalizedRuntime458RejectsPrecedingSpecWithReviewedBytes
+--- PASS: TestFleetFinalizedRuntime458RejectsPrecedingSpecWithReviewedBytes (0.02s)
+=== RUN   TestFleetRuntime458RejectsReceiptRuntimeDriftAfterCurrentAuthentication
+--- PASS: TestFleetRuntime458RejectsReceiptRuntimeDriftAfterCurrentAuthentication (0.17s)
+=== RUN   TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift
+--- PASS: TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift (0.08s)
+=== RUN   TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority
+--- PASS: TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority (0.19s)
+=== RUN   TestFleetRuntimeArtifactMatchesReleaseManifests
+--- PASS: TestFleetRuntimeArtifactMatchesReleaseManifests (0.00s)
+=== RUN   TestFleetRuntimeAuthenticationRejectsAdjacentArtifactDrift
+--- PASS: TestFleetRuntimeAuthenticationRejectsAdjacentArtifactDrift (0.00s)
+=== RUN   TestFleetFinalizedRuntimeGateRejectsFormerSpecOnlyPin
+--- PASS: TestFleetFinalizedRuntimeGateRejectsFormerSpecOnlyPin (0.00s)
+=== RUN   TestBindFleetRuntimeUsesAuthenticatedCurrentArtifact
+--- PASS: TestBindFleetRuntimeUsesAuthenticatedCurrentArtifact (0.00s)
+=== RUN   TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation
+--- PASS: TestBindFleetRuntimeRejectsUnreviewedArtifactWithoutMutation (0.00s)
+=== RUN   TestFleetRuntimeArtifactAuthenticationSharesMetadataAcrossConcurrentHeads
+--- PASS: TestFleetRuntimeArtifactAuthenticationSharesMetadataAcrossConcurrentHeads (0.00s)
+=== RUN   TestDialFleetNativeContextBindsDeadlineThroughRuntimeAuthentication
+--- PASS: TestDialFleetNativeContextBindsDeadlineThroughRuntimeAuthentication (0.00s)
+=== RUN   TestDialFleetNativeContextFailsOverAfterSlowEndpointDeadline
+--- PASS: TestDialFleetNativeContextFailsOverAfterSlowEndpointDeadline (0.00s)
+=== RUN   TestDialFleetNativeContextClampsEndpointDeadlineToParent
+--- PASS: TestDialFleetNativeContextClampsEndpointDeadlineToParent (0.00s)
+PASS

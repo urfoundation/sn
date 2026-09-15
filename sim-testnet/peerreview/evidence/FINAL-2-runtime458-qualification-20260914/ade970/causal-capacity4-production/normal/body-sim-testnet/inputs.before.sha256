@@ -1,0 +1,6 @@
+e7be57fecebd5a5594c9b953f5040104d96c3ab7e8ac14a0f81352b3760dfca2  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/normal/compile3-sim-testnet/sim-testnet.normal.test
+0a2424103ec7c419ee1b306314b34dfcec0abe75ba6d7fa2b850df9a6395326c  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/patch.diff
+151f37e02fa8c7577e453b755acb5f65a03fb467aebee0b47b2eeeb10cfe10b0  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/sim-testnet.selector.txt
+4232abd88ff466c7b92c56cc13b30609002d47e1e725a8e52a1f152021d141af  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/sim-testnet.outcomes.tsv
+df321a6201e61e069e44d36bf84e1195962051615932e02b61cc23678436627b  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/sim-testnet.literals.tsv
+9120d1d0a443c5d625dc92b58a5b91cf0d9e4245c8a0ccbf16eac03f2908b54c  /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/sn/scripts/check-qualification-events.py

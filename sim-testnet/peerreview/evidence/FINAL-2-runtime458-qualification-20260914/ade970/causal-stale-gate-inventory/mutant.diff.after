@@ -1,0 +1,33 @@
+diff --git a/scripts/test-release-1.0-local.sh b/scripts/test-release-1.0-local.sh
+index 3f4b314..eb52b77 100755
+--- a/scripts/test-release-1.0-local.sh
++++ b/scripts/test-release-1.0-local.sh
+@@ -467,13 +467,12 @@ fi
+ echo "[release-1.0] Subtensor infrastructure regressions"
+ release_phase_xops() {
+   cd "$workspace/xops"
+-  # Keep the complete node/playbook suite and both gateway security regressions.
++  # Keep the complete node/playbook suite and its gateway security regression.
+   # Grafana, edge deployment and Planetoid backup reviews are outside the SN
+   # runtime inventory and keep their own infrastructure qualification.
+   python3 -m unittest \
+     main/ansible/tests/test_subtensor_playbook.py \
+-    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render \
+-    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_unpaced_gateway_rejects_request_and_connection_quotas
++    main.ansible.tests.test_vulnscan2_resolved.Vulnscan2ResolvedInfrastructureTests.test_vs2_011_subtensor_local_rpc_and_restricted_gateway_render
+ }
+ release_gate_start xops release_phase_xops
+ 
+diff --git a/sim-testnet/semantic-integrity-tests.txt b/sim-testnet/semantic-integrity-tests.txt
+index a72953b..05c73fb 100644
+--- a/sim-testnet/semantic-integrity-tests.txt
++++ b/sim-testnet/semantic-integrity-tests.txt
+@@ -301,7 +301,7 @@ TestPublicFinalSemanticSettlementVaultStateIsCompleteAndPinned
+ TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter
+ TestPublicFinalSemanticVaultClaimAndCreditArePinned
+ TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit
+-TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain
++TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain
+ TestReleaseSemanticCensusAcceptsExactSortedSelection
+ TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups
+ TestReleaseSemanticCensusPinsSettlementClosureRegressions

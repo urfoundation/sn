@@ -1,0 +1,37 @@
+{
+  "status": "EXPECTED_CAUSAL_OUTCOMES_MATCHED",
+  "case": "runtime metadata capacity four-root production causal",
+  "candidate_head": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "mutation": {
+    "patch": "CAUSAL-current-to-five-artifact-bound.patch",
+    "path": "crv4/runtime_identity.go",
+    "change": "maximumRuntimeMetadataArtifactsPerChain: 6 -> 5",
+    "applied_in_disposable_detached_worktree": true,
+    "forward_apply_check": true,
+    "reverse_apply_check": true,
+    "mutant_diff_stable_before_after": true
+  },
+  "compilation": {
+    "mode": "normal",
+    "flags": "GOMAXPROCS=4, go test -c -p=4, GOPROXY=off, GOSUMDB=off, GOWORK=off, GOENV=off, GOTOOLCHAIN=local",
+    "crv4": {"outer_exit": 0, "binary_sha256": "8b32a34b25d5da6bf9c157f95b2612033af02ed5a17867d20fdafd0949c0f8a4"},
+    "sim_testnet": {"outer_exit": 0, "binary_sha256": "e7be57fecebd5a5594c9b953f5040104d96c3ab7e8ac14a0f81352b3760dfca2"}
+  },
+  "root_outcomes": {
+    "TestRuntimeArtifactMetadataAuthenticatesCompleteSixIdentityHistory": "FAIL: complete six-identity history failed",
+    "TestRuntimeArtifactMetadataIsSingleflightedAcrossExactBlocks": "PASS",
+    "TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal": "PASS",
+    "TestRuntime458HistoryAllowlistReachesArtifactReader": "FAIL: complete release history did not reach its exact artifact reader"
+  },
+  "bodies": {
+    "crv4": {"outer_exit": 0, "body_exit": 1, "converter_exit": 0, "checker_exit": 0, "roots": 2, "events": 12, "event_bytes": 2478},
+    "sim_testnet": {"outer_exit": 0, "body_exit": 1, "converter_exit": 0, "checker_exit": 0, "roots": 2, "events": 12, "event_bytes": 2473}
+  },
+  "fences": {
+    "candidate_13_repo_projection_equal_pre_post": true,
+    "candidate_clean_after": true,
+    "both_binary_before_after_equal": true,
+    "no_network_or_native_action": true,
+    "dependency_projection_rows": 12
+  }
+}

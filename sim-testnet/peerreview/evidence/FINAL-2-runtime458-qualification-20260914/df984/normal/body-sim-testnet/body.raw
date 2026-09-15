@@ -1,0 +1,719 @@
+=== RUN   TestReleaseLockDecodesCanonicalRuntimeFields
+--- PASS: TestReleaseLockDecodesCanonicalRuntimeFields (0.00s)
+=== RUN   TestReleaseLockRejectsUnknownRuntimeField
+--- PASS: TestReleaseLockRejectsUnknownRuntimeField (0.00s)
+=== RUN   TestResolvedConfigBindsAllRuntimeVersions
+--- PASS: TestResolvedConfigBindsAllRuntimeVersions (0.01s)
+=== RUN   TestResolvedConfigPinsReviewedRuntimeArtifactIdentity
+--- PASS: TestResolvedConfigPinsReviewedRuntimeArtifactIdentity (0.01s)
+=== RUN   TestPublishedManifestBindsCompleteRuntimeIdentity
+--- PASS: TestPublishedManifestBindsCompleteRuntimeIdentity (0.00s)
+=== RUN   TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding
+--- PASS: TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding (0.00s)
+=== RUN   TestRuntimeVersionIdentityRejectsAdjacentDrift
+--- PASS: TestRuntimeVersionIdentityRejectsAdjacentDrift (0.00s)
+=== RUN   TestRuntimeVersionIdentityRejectsMissingRequiredFields
+--- PASS: TestRuntimeVersionIdentityRejectsMissingRequiredFields (0.00s)
+=== RUN   TestRuntimeVersionIdentityRejectsAmbiguousEncoding
+--- PASS: TestRuntimeVersionIdentityRejectsAmbiguousEncoding (0.00s)
+=== RUN   TestRuntimeCodeHashValidationIsExact
+--- PASS: TestRuntimeCodeHashValidationIsExact (0.00s)
+=== RUN   TestRuntimeMetadataHashValidationIsExact
+--- PASS: TestRuntimeMetadataHashValidationIsExact (0.00s)
+=== RUN   TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly
+--- PASS: TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly (0.00s)
+=== RUN   TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain
+--- PASS: TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain (0.00s)
+=== RUN   TestProducerGateStateSelectionCoversNativeSourceCommitmentJob
+=== PAUSE TestProducerGateStateSelectionCoversNativeSourceCommitmentJob
+=== RUN   TestProducerGatePinsExactBlockRuntimeClientRegressions
+--- PASS: TestProducerGatePinsExactBlockRuntimeClientRegressions (0.02s)
+=== RUN   TestProducerGatePinsSemanticIntegrityRegressions
+    release_gate_test.go:561: semantic-integrity census entry 303 is "TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain", want "TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain"
+    release_gate_test.go:562: semantic-integrity census differs from the exact selected declarations
+        recorded:
+        TestFinalAttemptFixtureLedgerMatchesDurableProductionWire
+        TestFinalClaimPaymentLedgerRejectsDuplicateReceipt
+        TestFinalClaimPaymentLedgerRejectsMissingPayment
+        TestFinalCollectedCoordinatorBaselinesRequireInitializerLog
+        TestFinalCollectorIncludesCompletedSettlementTail
+        TestFinalEVMLogQueryRangesRespectOfficialInclusiveLimit
+        TestFinalFleetGenerationAcceptsExactTwoGenerationTopology
+        TestFinalFleetGenerationAcceptsHistoricalRuntimeAndRequiresCurrentRefreshRoots
+        TestFinalFleetGenerationAllCarriedArtifactsSkipEmptyBatchPostcondition
+        TestFinalFleetGenerationArtifactDeriverRejectsAbsentOrSubstitutedBytes
+        TestFinalFleetGenerationArtifactEventsRejectsReceiptSubstitution
+        TestFinalFleetGenerationArtifactFilesRejectsUnsafeOrUnorderedSources
+        TestFinalFleetGenerationDecodesExactReceiptEventFields
+        TestFinalFleetGenerationInitialPartitionRejectsOmissionDuplicateAndUnexplainedMixed
+        TestFinalFleetGenerationInstalledPublicWriteRejectsWrongTargetCalldataOrEmitter
+        TestFinalFleetGenerationInstalledReceiptTopologyRejectsOmissionDuplicateAndWrongEmitter
+        TestFinalFleetGenerationRejectsCurrentBatchTargetSubstitution
+        TestFinalFleetGenerationRejectsInstalledBatchReceiptCalldataOrPostconditionSubstitution
+        TestFinalFleetGenerationRejectsMissingOrCorruptGenerationOne
+        TestFinalFleetGenerationRejectsPartialOrSubstitutedPublicWrite
+        TestFinalFleetGenerationRejectsReceiptEventFieldOrTopicSubstitution
+        TestFinalFleetGenerationRejectsReorderedBatchPartition
+        TestFinalFleetGenerationRejectsSubstitutedBatchReceiptCalldataEventOrPostcondition
+        TestFinalFleetGenerationRejectsTerminalGenerationThree
+        TestFinalFleetGenerationRejectsWriteHeadRuntimeSubstitution
+        TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes
+        TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors
+        TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges
+        TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries
+        TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay
+        TestFinalFleetGenerationWriteEmitterGraphUsesDistinctHistoricalBatcher
+        TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions
+        TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution
+        TestFinalFleetLifecycleSchedulesBindIndependentEVMDeadline
+        TestFinalFleetRenewalCaptureOwnsExactSignedEnvelope
+        TestFinalFleetRenewalLifecycleJoinsExactGenerationAndSource
+        TestFinalFleetRenewalLifecyclePathsUseApprovedTakeoverAndSuccessor
+        TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation
+        TestFinalFleetRenewalPublicReplayAndArchiveRejectSubstitutions
+        TestFinalFleetRenewalSourceRequiresExactArchivedApprovalAndSignatures
+        TestFinalNativeApplicationRejectsOldStateAndUIDReassignment
+        TestFinalNativeApplicationRejectsReusedCycleLineage
+        TestFinalNativeCallEvidenceDerivesReviewedWireIdentity
+        TestFinalNativeCommitRejectsSuccessfulRemarkContainingCiphertext
+        TestFinalNativeCoverageV2ApplicationSeparatesNewerCommitFromAppliedRow
+        TestFinalNativeCoverageV2CountsSharedPayoutOnceAndRetainsEverySettlement
+        TestFinalNativeCoverageV2RejectsMissingStaleAndConflictingHistory
+        TestFinalNativeCoverageV2ReproducesOnlyImmutableCheckpointState
+        TestFinalNativeCoverageV2RetryNeedsActualTargetCommit
+        TestFinalNativeCoverageV2UsesActualIntervalsAcrossIndependentClocks
+        TestFinalNativeEpochEventsBindEmissionAndRelevantStakeMutations
+        TestFinalNativeEpochEventsCoverAdjacentStakeMutationClasses
+        TestFinalNativeEpochEventsRejectAmbiguityAndRedirectedAutoStake
+        TestFinalNativeEpochPayoutProvesExactRuntimeCausality
+        TestFinalNativeEpochPayoutPublicReplayRejectsTampering
+        TestFinalNativeEpochPayoutRejectsDivergentValidatorBoundary
+        TestFinalNativeEpochPayoutRejectsIncompleteOrAmbiguousUIDSet
+        TestFinalNativeEpochPayoutRejectsManualStakeInflation
+        TestFinalNativeEpochPayoutRejectsPollingApplicationAsPayoutBoundary
+        TestFinalNativeEpochPayoutRejectsServerVectorSubstitution
+        TestFinalNativeEpochPayoutRejectsStaleStorageChannels
+        TestFinalNativeEpochPayoutRejectsZeroWeightStakeInflation
+        TestFinalNativeEvidenceCycleAliasesMustKeepOneIdentity
+        TestFinalNativeExtrinsicIdentityRejectsCallAndSignerSubstitution
+        TestFinalNativeIntentSourceBindsPreparedLifecycle
+        TestFinalNativeOperationEventsRejectSubstitutionAndAmbiguity
+        TestFinalNativeParentHeadRejectsSubstitution
+        TestFinalNativeRegistrationSourceBindsPlanJournalAndPostcondition
+        TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs
+        TestFinalNativeRewardRejectsHotkeySubstitution
+        TestFinalNativeRewardRequiresExplicitWellFormedStake
+        TestFinalNativeRewardV2CancellationJoinsHistoricalBatch
+        TestFinalNativeRewardV2HonorsRPCContextAndSharedConnectionOwnership
+        TestFinalNativeRewardV2ReadsExactHistoricalVectorsAndUIDStake
+        TestFinalNativeSourceDecodesEachPlanOnce
+        TestFinalNativeSourcePlanReuseAuthenticatesChangedValidBytes
+        TestFinalNativeSourcePlanReuseDoesNotCacheFailure
+        TestFinalNativeSourcePlanReuseIsArchiveLocal
+        TestFinalNativeSourcePlanReuseRejectsChangedBytes
+        TestFinalNativeSourcePlanReuseRejectsRehashedBudget
+        TestFinalPayoutArtifactAcceptsAuthenticatedProviderDomain
+        TestFinalPayoutArtifactAllowsPayoutColdkeyReuseAcrossOperators
+        TestFinalPayoutArtifactCollectorUsesRetainedSigner
+        TestFinalPayoutArtifactConfiguredRoleCensusRejectsSubstitutions
+        TestFinalPayoutArtifactFixtureUsesCanonicalPayoutIdentities
+        TestFinalPayoutArtifactRejectsAuthenticatedProviderOmission
+        TestFinalPayoutArtifactRejectsDuplicatePayoutColdkey
+        TestFinalPayoutArtifactRejectsInvalidTopologyPayoutIdentities
+        TestFinalPayoutArtifactRejectsMalformedAndExtraRows
+        TestFinalPayoutArtifactRejectsOperatorSnapshotDomainSwap
+        TestFinalPayoutArtifactRejectsPayeeSwap
+        TestFinalPayoutArtifactRejectsProviderCensusCommitmentSwap
+        TestFinalPayoutArtifactRejectsReliabilityAMinSwap
+        TestFinalPayoutArtifactRejectsResignedCrossOperatorProvider
+        TestFinalPayoutArtifactRejectsResignedProviderOmissionAgainstSignedMeasurement
+        TestFinalPayoutArtifactRejectsSignedBoundarySwap
+        TestFinalPayoutArtifactSeparatesProvenanceFromRootAuthorization
+        TestFinalPayoutArtifactSignedAuditProvenanceBindsAllDecisionSources
+        TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership
+        TestFinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript
+        TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins
+        TestFinalPublicFleetAuditFailsClosedOnMissingOrTamperedSummary
+        TestFinalPublicFleetAuditSealsExactReplayScope
+        TestFinalPublicNativePayoutAuditSealsExactScope
+        TestFinalPublicValidatorSourcesV2BoundsRejectPartialReadResults
+        TestFinalPublicValidatorSourcesV2CancelsAndJoinsActiveTransport
+        TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority
+        TestFinalPublicValidatorSourcesV2KeepsNativeClockAndNullStorage
+        TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicState
+        TestFinalPublicValidatorSourcesV2RefusesWritesUnpinnedAndConflictingReads
+        TestFinalPublicValidatorSourcesV2RetainsRealBatchesAndCanonicalHeads
+        TestFinalSemanticArtifactDeploymentAdmissionPrecedesSignedReplay
+        TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent
+        TestFinalSemanticBuilderArchiveRetentionRejectsHistoricalFloorAsCurrentRelease
+        TestFinalSemanticBuilderAttributesPriorCurrentAndVerifyKeyRestarts
+        TestFinalSemanticBuilderBindsCompleteClosedCallInputs
+        TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery
+        TestFinalSemanticBuilderChecksEveryRecoveryObservationHead
+        TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration
+        TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead
+        TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts
+        TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent
+        TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix
+        TestFinalSemanticBuilderDerivesNativeStartFromSealedAppliedIntents
+        TestFinalSemanticBuilderFailureCreatesNoLooseOutputs
+        TestFinalSemanticBuilderProjectsDeterministicNativeRewardSnapshots
+        TestFinalSemanticBuilderRecoversPriorNativeTerminalFromBoundClosedBundle
+        TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions
+        TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus
+        TestFinalSemanticBuilderRejectsMissingTamperedAndDuplicateRestartEvidence
+        TestFinalSemanticBuilderRejectsOwnerStakeSubstitutionAndExternalDelegation
+        TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt
+        TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt
+        TestFinalSemanticBuilderUsesCleanAnomalyLedgerStatus
+        TestFinalSemanticBuilderUsesSelfContainedCopiedPriorLiveChain
+        TestFinalSemanticCampaignArtifactReferencesDecodeEachByteOnce
+        TestFinalSemanticCampaignArtifactReferencesJoinEveryRecord
+        TestFinalSemanticCampaignArtifactReferencesKeepDocumentAndDepthBounds
+        TestFinalSemanticCampaignArtifactReferencesOwnDecodedInput
+        TestFinalSemanticCampaignArtifactReferencesPreserveJSONValues
+        TestFinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors
+        TestFinalSemanticCoordinatorRuntimeAuditRejectsHistoricalUpgradeBack
+        TestFinalSemanticCoordinatorUpgradeChunkBindsTransactionIndex
+        TestFinalSemanticCoordinatorUpgradeRangeChunksCoverOfficialLimit
+        TestFinalSemanticCoordinatorUpgradeTranscriptRejectsIncompleteChunks
+        TestFinalSemanticCycleConvictionAuditIncludesEpochIncrement
+        TestFinalSemanticCycleConvictionAuditRejectsSwappedEpochIncrement
+        TestFinalSemanticDeploymentArtifactRejectsIgnoredRuntimeMap
+        TestFinalSemanticDeploymentBoundaryExecutorPersistsCrashRecovery
+        TestFinalSemanticDeploymentBoundaryMigratesLegacyStateIdempotently
+        TestFinalSemanticDeploymentBoundaryRecoversCrashWithoutSavedObservation
+        TestFinalSemanticDeploymentBoundaryRejectsForeignSignedCreateEnvelopes
+        TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery
+        TestFinalSemanticDeploymentBoundaryRejectsMissingForeignAndConflictingEvidence
+        TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders
+        TestFinalSemanticDeploymentBoundarySeparatesProxyHistoryFromReleaseGraph
+        TestFinalSemanticDeploymentRejectsLegacySchemaAndPlanLockSubstitution
+        TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact
+        TestFinalSemanticDeploymentRejectsMutuallyConsistentSubstitutedRuntime
+        TestFinalSemanticDeploymentRejectsRootCardinalityAndAliasMutations
+        TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash
+        TestFinalSemanticDeploymentRejectsWrongUpgradeAddressAndHash
+        TestFinalSemanticDishonestDepositDecisionsAndPublicReplay
+        TestFinalSemanticDishonestDepositReceiptPayloadIsMandatoryAndOrdered
+        TestFinalSemanticEpochDepositUsesSettlementEpochNotSourceEpoch
+        TestFinalSemanticEvidenceBuildRenderAndArtifacts
+        TestFinalSemanticEvidenceFailsClosed
+        TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation
+        TestFinalSemanticFixtureChainCasesJoinAllFailuresAndCancellation
+        TestFinalSemanticFixtureChainCasesKeepExactCensusAndPrivateReaders
+        TestFinalSemanticFixtureClosedProofsReuseExactSuccessorWithoutResigning
+        TestFinalSemanticFixtureGenerationLookupDoesNotAllocateCensus
+        TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection
+        TestFinalSemanticFixtureHeadManifestAdmissionRequiresAuthenticatedIdentity
+        TestFinalSemanticFixtureHeadProjectionAdmissionPrecedesSignedReplay
+        TestFinalSemanticFixtureHotkeyDecodeJoinsConcurrentReaders
+        TestFinalSemanticFixtureHotkeyDecodeTracksExactBytes
+        TestFinalSemanticFixtureHotkeyDecodeWorkIsBounded
+        TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations
+        TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary
+        TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire
+        TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule
+        TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap
+        TestFinalSemanticFixtureRetainedTransitionsRejectChangedSource
+        TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles
+        TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity
+        TestFinalSemanticFixtureSnapshotsAreDetached
+        TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement
+        TestFinalSemanticFixtureValidatorChainsAreIndependentAndJoined
+        TestFinalSemanticFixtureValidatorChainsJoinAfterGoexit
+        TestFinalSemanticFixtureValidatorChainsRejectAliasedOrSkippedEpochs
+        TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency
+        TestFinalSemanticFixtureWorkersRejectNonReturningCases
+        TestFinalSemanticFleetAuditDeduplicatesCyclesAndCachedReads
+        TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact
+        TestFinalSemanticFleetAuditRejectsIdentityAndValidityDrift
+        TestFinalSemanticFleetAuditRejectsMissingWorkerResult
+        TestFinalSemanticFleetAuditReplaysEveryOrdinaryGeneration
+        TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity
+        TestFinalSemanticHeadUIDZeroIsValidAndStillUnique
+        TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration
+        TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs
+        TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof
+        TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments
+        TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs
+        TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary
+        TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection
+        TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation
+        TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions
+        TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock
+        TestFinalSemanticHistoricalCommitmentOracleScheduleBindsCalldataEventAndPostcondition
+        TestFinalSemanticHistoricalConvictionRejectsReserveAndCalldataMutations
+        TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization
+        TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision
+        TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead
+        TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions
+        TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions
+        TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState
+        TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges
+        TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline
+        TestFinalSemanticHistoricalCoordinatorUpgradeReaderReplaysSealedRanges
+        TestFinalSemanticHistoricalDepositRejectsReserveAndCalldataMutations
+        TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations
+        TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection
+        TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy
+        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets
+        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets
+        TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations
+        TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace
+        TestFinalSemanticHistoricalPolicyScheduleBindsPostStateAndCalldata
+        TestFinalSemanticHistoricalReaderFactorySnapshotCannotMutateVerifiedCopy
+        TestFinalSemanticHistoricalReceiptArtifactRejectsEnvelopeAndLogMutations
+        TestFinalSemanticHistoricalReceiptCensusSkipsFailedNonMutations
+        TestFinalSemanticHistoricalReceiptProofBindsRawLogs
+        TestFinalSemanticHistoricalRegistrationBindsFullEventTuples
+        TestFinalSemanticHistoricalRegistrationRejectsTransactionAndEmitterMutations
+        TestFinalSemanticHistoricalUpgradeBindsTransactionAndEvent
+        TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker
+        TestFinalSemanticPathProofArtifactCount
+        TestFinalSemanticPathProofArtifactRejectsMalformedTrailingJSON
+        TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery
+        TestFinalSemanticPoolOperatorVersionRejectsTerminalAuthoritySubstitution
+        TestFinalSemanticPoolRegistrationRequiresSuccessfulEVMReceipt
+        TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot
+        TestFinalSemanticPoolUIDZeroIsValidAndStillUnique
+        TestFinalSemanticReceiptPayloadBindsConvictionAdded
+        TestFinalSemanticReceiptPayloadBindsDeferredCapture
+        TestFinalSemanticReceiptPayloadBindsDeferredClaim
+        TestFinalSemanticReceiptPayloadBindsDishonestDepositNonceOrder
+        TestFinalSemanticReceiptPayloadBindsHistoricScheduleBeforeTerminalRotation
+        TestFinalSemanticReceiptPayloadBindsReleaseEconomicEvents
+        TestFinalSemanticReceiptPayloadBindsRootMissed
+        TestFinalSemanticReceiptPayloadBindsWithdrawalOnlyClaimPaid
+        TestFinalSemanticReceiptPayloadRejectsClaimPaidColdkeySubstitution
+        TestFinalSemanticReceiptPayloadRejectsCorruptAndNoncanonicalLogs
+        TestFinalSemanticReceiptPayloadRejectsDepositPolicyAndSignerSubstitution
+        TestFinalSemanticReceiptPayloadRejectsFutureHistoricSchedule
+        TestFinalSemanticReceiptPayloadRejectsUnrepresentedClaimPaid
+        TestFinalSemanticReplicatedEnvelopeHonorsCancellationAfterRead
+        TestFinalSemanticReplicatedEnvelopePreservesEveryRejection
+        TestFinalSemanticReplicatedEnvelopeRechecksCurrentIdentity
+        TestFinalSemanticReplicatedEnvelopeVerifiesOwnedBytesOnce
+        TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas
+        TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique
+        TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration
+        TestFinalSemanticVaultCarryAuditRejectsOperatorCarrySubstitution
+        TestFinalSemanticVaultClaimAuditReconcilesPriorCreditAndWithdrawal
+        TestFinalSemanticVaultClaimAuditRejectsClaimCreditUnderflow
+        TestFinalSemanticVaultClaimAuditRejectsClaimKeySubstitution
+        TestFinalSemanticVaultClaimAuditRejectsPayoutLeafSubstitution
+        TestFinalSemanticVaultClaimAuditRejectsTerminalCreditSubstitution
+        TestFinalSemanticVaultClaimKeySeparatesOperatorAndPayoutLeaf
+        TestFinalSettlementClosureCollectedGraphRejectsAttemptOmission
+        TestFinalSettlementClosureLastWindowNeedsNoNextIntent
+        TestFinalSettlementClosureProofProjectionUsesExactEpochBounds
+        TestFinalSettlementClosureRejectsConflictingSuccessorTransition
+        TestFinalSettlementClosureRejectsDomainCensusAndBoundaryChanges
+        TestFinalSettlementClosureRejectsRehashedProofOmission
+        TestFinalSettlementClosureWaitAuthenticatesLastWindow
+        TestFinalSettlementClosureWaitHonorsPublicationAndCancellation
+        TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys
+        TestProducerGatePinsCompleteAdversarialRegressions
+        TestProducerGatePinsExactBlockRuntimeClientRegressions
+        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage
+        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup
+        TestProducerGatePinsSemanticIntegrityRegressions
+        TestProducerGatePinsSyntheticEVMIdentityRegressions
+        TestPublicFinalSemanticContractDeploymentRejectsAdjacentSubstitution
+        TestPublicFinalSemanticContractDeploymentRejectsMalformedGetter
+        TestPublicFinalSemanticContractDeploymentReturnsCompletePinnedCustodyState
+        TestPublicFinalSemanticEpochZeroCoordinatorReadersArePinned
+        TestPublicFinalSemanticNativeOwnerStakeRejectsAdjacentAndMalformedInputs
+        TestPublicFinalSemanticNativeOwnerStakeUsesPinnedStakingPrecompile
+        TestPublicFinalSemanticOperatorVersionRejectsMalformedHistoricalState
+        TestPublicFinalSemanticPerOperatorEVMAuditsArePinned
+        TestPublicFinalSemanticReceiptReplaysCanonicalABIPayload
+        TestPublicFinalSemanticSettlementVaultStateIsCompleteAndPinned
+        TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter
+        TestPublicFinalSemanticVaultClaimAndCreditArePinned
+        TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit
+        TestReleaseHistoryRuntimeArtifactsCoverExactFiveVersionDomain
+        TestReleaseSemanticCensusAcceptsExactSortedSelection
+        TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups
+        TestReleaseSemanticCensusPinsSettlementClosureRegressions
+        TestReleaseSemanticCensusRejectsDeclarationDrift
+        TestReleaseSemanticCensusRejectsIncompleteSettlementClosureOwners
+        TestReleaseSemanticCensusRejectsSourceSelectorOmissions
+        TestReleaseSemanticCensusRejectsZeroSelection
+        TestReleaseSemanticCensusRequiresCompleteSettlementClosureOwners
+        TestSemanticMismatchBranchesNeverWrapPotentiallyNilErrors
+        TestStateMismatchErrorPreservesCausesWithoutFormattingNilWraps
+        selected:
+        TestFinalAttemptFixtureLedgerMatchesDurableProductionWire
+        TestFinalClaimPaymentLedgerRejectsDuplicateReceipt
+        TestFinalClaimPaymentLedgerRejectsMissingPayment
+        TestFinalCollectedCoordinatorBaselinesRequireInitializerLog
+        TestFinalCollectorIncludesCompletedSettlementTail
+        TestFinalEVMLogQueryRangesRespectOfficialInclusiveLimit
+        TestFinalFleetGenerationAcceptsExactTwoGenerationTopology
+        TestFinalFleetGenerationAcceptsHistoricalRuntimeAndRequiresCurrentRefreshRoots
+        TestFinalFleetGenerationAllCarriedArtifactsSkipEmptyBatchPostcondition
+        TestFinalFleetGenerationArtifactDeriverRejectsAbsentOrSubstitutedBytes
+        TestFinalFleetGenerationArtifactEventsRejectsReceiptSubstitution
+        TestFinalFleetGenerationArtifactFilesRejectsUnsafeOrUnorderedSources
+        TestFinalFleetGenerationDecodesExactReceiptEventFields
+        TestFinalFleetGenerationInitialPartitionRejectsOmissionDuplicateAndUnexplainedMixed
+        TestFinalFleetGenerationInstalledPublicWriteRejectsWrongTargetCalldataOrEmitter
+        TestFinalFleetGenerationInstalledReceiptTopologyRejectsOmissionDuplicateAndWrongEmitter
+        TestFinalFleetGenerationRejectsCurrentBatchTargetSubstitution
+        TestFinalFleetGenerationRejectsInstalledBatchReceiptCalldataOrPostconditionSubstitution
+        TestFinalFleetGenerationRejectsMissingOrCorruptGenerationOne
+        TestFinalFleetGenerationRejectsPartialOrSubstitutedPublicWrite
+        TestFinalFleetGenerationRejectsReceiptEventFieldOrTopicSubstitution
+        TestFinalFleetGenerationRejectsReorderedBatchPartition
+        TestFinalFleetGenerationRejectsSubstitutedBatchReceiptCalldataEventOrPostcondition
+        TestFinalFleetGenerationRejectsTerminalGenerationThree
+        TestFinalFleetGenerationRejectsWriteHeadRuntimeSubstitution
+        TestFinalFleetGenerationSourcePlanIndexDoesNotRecopyUnchangedBytes
+        TestFinalFleetGenerationSourceRecordKeepsPathLookupAndMissingErrors
+        TestFinalFleetGenerationSourceRecordRetainsOwnedBytesAndDetectsChanges
+        TestFinalFleetGenerationSourceRejectsUnapprovedPlanHistoryEntries
+        TestFinalFleetGenerationSourceRetainsBothChallengerPostconditionsForReplay
+        TestFinalFleetGenerationWriteEmitterGraphUsesDistinctHistoricalBatcher
+        TestFinalFleetLifecycleHeadAtUsesExactSettlementTransitions
+        TestFinalFleetLifecyclePublicReplayRejectsEventAndVectorSubstitution
+        TestFinalFleetLifecycleSchedulesBindIndependentEVMDeadline
+        TestFinalFleetRenewalCaptureOwnsExactSignedEnvelope
+        TestFinalFleetRenewalLifecycleJoinsExactGenerationAndSource
+        TestFinalFleetRenewalLifecyclePathsUseApprovedTakeoverAndSuccessor
+        TestFinalFleetRenewalLineageRequiresEveryApprovedGenerationAndRevocation
+        TestFinalFleetRenewalPublicReplayAndArchiveRejectSubstitutions
+        TestFinalFleetRenewalSourceRequiresExactArchivedApprovalAndSignatures
+        TestFinalNativeApplicationRejectsOldStateAndUIDReassignment
+        TestFinalNativeApplicationRejectsReusedCycleLineage
+        TestFinalNativeCallEvidenceDerivesReviewedWireIdentity
+        TestFinalNativeCommitRejectsSuccessfulRemarkContainingCiphertext
+        TestFinalNativeCoverageV2ApplicationSeparatesNewerCommitFromAppliedRow
+        TestFinalNativeCoverageV2CountsSharedPayoutOnceAndRetainsEverySettlement
+        TestFinalNativeCoverageV2RejectsMissingStaleAndConflictingHistory
+        TestFinalNativeCoverageV2ReproducesOnlyImmutableCheckpointState
+        TestFinalNativeCoverageV2RetryNeedsActualTargetCommit
+        TestFinalNativeCoverageV2UsesActualIntervalsAcrossIndependentClocks
+        TestFinalNativeEpochEventsBindEmissionAndRelevantStakeMutations
+        TestFinalNativeEpochEventsCoverAdjacentStakeMutationClasses
+        TestFinalNativeEpochEventsRejectAmbiguityAndRedirectedAutoStake
+        TestFinalNativeEpochPayoutProvesExactRuntimeCausality
+        TestFinalNativeEpochPayoutPublicReplayRejectsTampering
+        TestFinalNativeEpochPayoutRejectsDivergentValidatorBoundary
+        TestFinalNativeEpochPayoutRejectsIncompleteOrAmbiguousUIDSet
+        TestFinalNativeEpochPayoutRejectsManualStakeInflation
+        TestFinalNativeEpochPayoutRejectsPollingApplicationAsPayoutBoundary
+        TestFinalNativeEpochPayoutRejectsServerVectorSubstitution
+        TestFinalNativeEpochPayoutRejectsStaleStorageChannels
+        TestFinalNativeEpochPayoutRejectsZeroWeightStakeInflation
+        TestFinalNativeEvidenceCycleAliasesMustKeepOneIdentity
+        TestFinalNativeExtrinsicIdentityRejectsCallAndSignerSubstitution
+        TestFinalNativeIntentSourceBindsPreparedLifecycle
+        TestFinalNativeOperationEventsRejectSubstitutionAndAmbiguity
+        TestFinalNativeParentHeadRejectsSubstitution
+        TestFinalNativeRegistrationSourceBindsPlanJournalAndPostcondition
+        TestFinalNativeRewardEmissionCanDecreaseAcrossEpochs
+        TestFinalNativeRewardRejectsHotkeySubstitution
+        TestFinalNativeRewardRequiresExplicitWellFormedStake
+        TestFinalNativeRewardV2CancellationJoinsHistoricalBatch
+        TestFinalNativeRewardV2HonorsRPCContextAndSharedConnectionOwnership
+        TestFinalNativeRewardV2ReadsExactHistoricalVectorsAndUIDStake
+        TestFinalNativeSourceDecodesEachPlanOnce
+        TestFinalNativeSourcePlanReuseAuthenticatesChangedValidBytes
+        TestFinalNativeSourcePlanReuseDoesNotCacheFailure
+        TestFinalNativeSourcePlanReuseIsArchiveLocal
+        TestFinalNativeSourcePlanReuseRejectsChangedBytes
+        TestFinalNativeSourcePlanReuseRejectsRehashedBudget
+        TestFinalPayoutArtifactAcceptsAuthenticatedProviderDomain
+        TestFinalPayoutArtifactAllowsPayoutColdkeyReuseAcrossOperators
+        TestFinalPayoutArtifactCollectorUsesRetainedSigner
+        TestFinalPayoutArtifactConfiguredRoleCensusRejectsSubstitutions
+        TestFinalPayoutArtifactFixtureUsesCanonicalPayoutIdentities
+        TestFinalPayoutArtifactRejectsAuthenticatedProviderOmission
+        TestFinalPayoutArtifactRejectsDuplicatePayoutColdkey
+        TestFinalPayoutArtifactRejectsInvalidTopologyPayoutIdentities
+        TestFinalPayoutArtifactRejectsMalformedAndExtraRows
+        TestFinalPayoutArtifactRejectsOperatorSnapshotDomainSwap
+        TestFinalPayoutArtifactRejectsPayeeSwap
+        TestFinalPayoutArtifactRejectsProviderCensusCommitmentSwap
+        TestFinalPayoutArtifactRejectsReliabilityAMinSwap
+        TestFinalPayoutArtifactRejectsResignedCrossOperatorProvider
+        TestFinalPayoutArtifactRejectsResignedProviderOmissionAgainstSignedMeasurement
+        TestFinalPayoutArtifactRejectsSignedBoundarySwap
+        TestFinalPayoutArtifactSeparatesProvenanceFromRootAuthorization
+        TestFinalPayoutArtifactSignedAuditProvenanceBindsAllDecisionSources
+        TestFinalPayoutAssignmentsAtUsesExactLifecycleEpochMembership
+        TestFinalPublicChainVerificationRejectsV2ReceiptOnlyTranscript
+        TestFinalPublicChainVerificationRequiresTwoCanonicalOperatorOrigins
+        TestFinalPublicFleetAuditFailsClosedOnMissingOrTamperedSummary
+        TestFinalPublicFleetAuditSealsExactReplayScope
+        TestFinalPublicNativePayoutAuditSealsExactScope
+        TestFinalPublicValidatorSourcesV2BoundsRejectPartialReadResults
+        TestFinalPublicValidatorSourcesV2CancelsAndJoinsActiveTransport
+        TestFinalPublicValidatorSourcesV2KeepsDetachedEvidenceAuthority
+        TestFinalPublicValidatorSourcesV2KeepsNativeClockAndNullStorage
+        TestFinalPublicValidatorSourcesV2NativeCheckpointAuthenticatesExactPublicState
+        TestFinalPublicValidatorSourcesV2RefusesWritesUnpinnedAndConflictingReads
+        TestFinalPublicValidatorSourcesV2RetainsRealBatchesAndCanonicalHeads
+        TestFinalSemanticArtifactDeploymentAdmissionPrecedesSignedReplay
+        TestFinalSemanticArtifactVerificationCacheBindsExactBytesAndIsConcurrent
+        TestFinalSemanticBuilderArchiveRetentionRejectsHistoricalFloorAsCurrentRelease
+        TestFinalSemanticBuilderAttributesPriorCurrentAndVerifyKeyRestarts
+        TestFinalSemanticBuilderBindsCompleteClosedCallInputs
+        TestFinalSemanticBuilderBindsDishonestUnderpaymentToValidatorRecovery
+        TestFinalSemanticBuilderChecksEveryRecoveryObservationHead
+        TestFinalSemanticBuilderDepositReceiptExcludesHistoricalEmitterAndGeneration
+        TestFinalSemanticBuilderDepositReceiptRejectsLaterDepositsWithinObservedHead
+        TestFinalSemanticBuilderDepositReceiptRejectsNonCanonicalAuditAmounts
+        TestFinalSemanticBuilderDepositReceiptRejectsNonpositiveDepositEvent
+        TestFinalSemanticBuilderDepositReceiptSelectsExactCumulativePrefix
+        TestFinalSemanticBuilderDerivesNativeStartFromSealedAppliedIntents
+        TestFinalSemanticBuilderFailureCreatesNoLooseOutputs
+        TestFinalSemanticBuilderProjectsDeterministicNativeRewardSnapshots
+        TestFinalSemanticBuilderRecoversPriorNativeTerminalFromBoundClosedBundle
+        TestFinalSemanticBuilderRejectsDishonestDepositSemanticSubstitutions
+        TestFinalSemanticBuilderRejectsIncompleteRecoveryValidatorCensus
+        TestFinalSemanticBuilderRejectsMissingTamperedAndDuplicateRestartEvidence
+        TestFinalSemanticBuilderRejectsOwnerStakeSubstitutionAndExternalDelegation
+        TestFinalSemanticBuilderRejectsUnboundOrStaleArchiveRetentionReceipt
+        TestFinalSemanticBuilderSelectsLatestFreshArchiveRetentionReceipt
+        TestFinalSemanticBuilderUsesCleanAnomalyLedgerStatus
+        TestFinalSemanticBuilderUsesSelfContainedCopiedPriorLiveChain
+        TestFinalSemanticCampaignArtifactReferencesDecodeEachByteOnce
+        TestFinalSemanticCampaignArtifactReferencesJoinEveryRecord
+        TestFinalSemanticCampaignArtifactReferencesKeepDocumentAndDepthBounds
+        TestFinalSemanticCampaignArtifactReferencesOwnDecodedInput
+        TestFinalSemanticCampaignArtifactReferencesPreserveJSONValues
+        TestFinalSemanticCarryModelFailsClosedOnAdjacentAccountingErrors
+        TestFinalSemanticCoordinatorRuntimeAuditRejectsHistoricalUpgradeBack
+        TestFinalSemanticCoordinatorUpgradeChunkBindsTransactionIndex
+        TestFinalSemanticCoordinatorUpgradeRangeChunksCoverOfficialLimit
+        TestFinalSemanticCoordinatorUpgradeTranscriptRejectsIncompleteChunks
+        TestFinalSemanticCycleConvictionAuditIncludesEpochIncrement
+        TestFinalSemanticCycleConvictionAuditRejectsSwappedEpochIncrement
+        TestFinalSemanticDeploymentArtifactRejectsIgnoredRuntimeMap
+        TestFinalSemanticDeploymentBoundaryExecutorPersistsCrashRecovery
+        TestFinalSemanticDeploymentBoundaryMigratesLegacyStateIdempotently
+        TestFinalSemanticDeploymentBoundaryRecoversCrashWithoutSavedObservation
+        TestFinalSemanticDeploymentBoundaryRejectsForeignSignedCreateEnvelopes
+        TestFinalSemanticDeploymentBoundaryRejectsLaterMutationBeforeRecovery
+        TestFinalSemanticDeploymentBoundaryRejectsMissingForeignAndConflictingEvidence
+        TestFinalSemanticDeploymentBoundaryRuntimeConfigsAreAcceptedByReleaseLoaders
+        TestFinalSemanticDeploymentBoundarySeparatesProxyHistoryFromReleaseGraph
+        TestFinalSemanticDeploymentRejectsLegacySchemaAndPlanLockSubstitution
+        TestFinalSemanticDeploymentRejectsMissingReleaseLockArtifact
+        TestFinalSemanticDeploymentRejectsMutuallyConsistentSubstitutedRuntime
+        TestFinalSemanticDeploymentRejectsRootCardinalityAndAliasMutations
+        TestFinalSemanticDeploymentRejectsUnreviewedReleaseRuntimeHash
+        TestFinalSemanticDeploymentRejectsWrongUpgradeAddressAndHash
+        TestFinalSemanticDishonestDepositDecisionsAndPublicReplay
+        TestFinalSemanticDishonestDepositReceiptPayloadIsMandatoryAndOrdered
+        TestFinalSemanticEpochDepositUsesSettlementEpochNotSourceEpoch
+        TestFinalSemanticEvidenceBuildRenderAndArtifacts
+        TestFinalSemanticEvidenceFailsClosed
+        TestFinalSemanticFixtureAttemptGroupingPreservesEveryValidPopulation
+        TestFinalSemanticFixtureChainCasesJoinAllFailuresAndCancellation
+        TestFinalSemanticFixtureChainCasesKeepExactCensusAndPrivateReaders
+        TestFinalSemanticFixtureClosedProofsReuseExactSuccessorWithoutResigning
+        TestFinalSemanticFixtureGenerationLookupDoesNotAllocateCensus
+        TestFinalSemanticFixtureHeadEgressFollowsRawScoreNotSelection
+        TestFinalSemanticFixtureHeadManifestAdmissionRequiresAuthenticatedIdentity
+        TestFinalSemanticFixtureHeadProjectionAdmissionPrecedesSignedReplay
+        TestFinalSemanticFixtureHotkeyDecodeJoinsConcurrentReaders
+        TestFinalSemanticFixtureHotkeyDecodeTracksExactBytes
+        TestFinalSemanticFixtureHotkeyDecodeWorkIsBounded
+        TestFinalSemanticFixtureJournalBindingCoversSelectedRejectedAndCarriedRegistrations
+        TestFinalSemanticFixtureLifecycleCensusPreservesVerifiedTop200Boundary
+        TestFinalSemanticFixturePolicyUsesCanonicalArtifactWire
+        TestFinalSemanticFixtureReleasePolicyPreservesMonotoneExactDepositSchedule
+        TestFinalSemanticFixtureReleasePolicyUsesDerivedCampaignCap
+        TestFinalSemanticFixtureRetainedTransitionsRejectChangedSource
+        TestFinalSemanticFixtureRewardDecisionsFollowAllVerifiedCycles
+        TestFinalSemanticFixtureSetupPlanCarriesCanonicalBudgetIdentity
+        TestFinalSemanticFixtureSnapshotsAreDetached
+        TestFinalSemanticFixtureTerminalTransitionMatchesSuccessorMeasurement
+        TestFinalSemanticFixtureValidatorChainsAreIndependentAndJoined
+        TestFinalSemanticFixtureValidatorChainsJoinAfterGoexit
+        TestFinalSemanticFixtureValidatorChainsRejectAliasedOrSkippedEpochs
+        TestFinalSemanticFixtureWorkersJoinAllCasesWithBoundedConcurrency
+        TestFinalSemanticFixtureWorkersRejectNonReturningCases
+        TestFinalSemanticFleetAuditDeduplicatesCyclesAndCachedReads
+        TestFinalSemanticFleetAuditProjectionBindsTheExistingArtifact
+        TestFinalSemanticFleetAuditRejectsIdentityAndValidityDrift
+        TestFinalSemanticFleetAuditRejectsMissingWorkerResult
+        TestFinalSemanticFleetAuditReplaysEveryOrdinaryGeneration
+        TestFinalSemanticFleetByUIDAtRejectsTerminalBackdatingAndAmbiguity
+        TestFinalSemanticHeadUIDZeroIsValidAndStillUnique
+        TestFinalSemanticHeadUIDZeroRejectsMismatchedRegistration
+        TestFinalSemanticHistoricalArtifactCensusIncludesCarriedFleetProofs
+        TestFinalSemanticHistoricalArtifactCensusLoadsEveryCapturedReceiptProof
+        TestFinalSemanticHistoricalArtifactCensusLoadsWithdrawalOnlyPayments
+        TestFinalSemanticHistoricalArtifactCensusRejectsMissingTamperedAndAliasedProofs
+        TestFinalSemanticHistoricalCaptureCensusBindsAllowedLineageAndBoundary
+        TestFinalSemanticHistoricalCaptureCensusRejectsOmissionAndUnknownPlanInjection
+        TestFinalSemanticHistoricalCaptureRejectsSnapshotCensusMutation
+        TestFinalSemanticHistoricalCaptureScopesCurrentAndPredecessorEventCollisions
+        TestFinalSemanticHistoricalCaptureUsesLiveDeploymentForZeroPlanBlock
+        TestFinalSemanticHistoricalCommitmentOracleScheduleBindsCalldataEventAndPostcondition
+        TestFinalSemanticHistoricalConvictionRejectsReserveAndCalldataMutations
+        TestFinalSemanticHistoricalCoordinatorBaselinesReplayEveryInitialization
+        TestFinalSemanticHistoricalCoordinatorPositionRejectsCoordinateCollision
+        TestFinalSemanticHistoricalCoordinatorReceiptTranscriptPinsExecutionHead
+        TestFinalSemanticHistoricalCoordinatorTargetCensusIncludesAllFinalizedActions
+        TestFinalSemanticHistoricalCoordinatorTimelineArtifactRebuildsTransitions
+        TestFinalSemanticHistoricalCoordinatorTimelineBindsExecutionAndPostState
+        TestFinalSemanticHistoricalCoordinatorTimelineBuildsCompleteArchiveRanges
+        TestFinalSemanticHistoricalCoordinatorTimelineCarriesLaterPlanCallAcrossOldUpgrade
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsBrokenTransitionChain
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsMixedUpgradeBlock
+        TestFinalSemanticHistoricalCoordinatorTimelineRejectsSubstitutedBaseline
+        TestFinalSemanticHistoricalCoordinatorUpgradeReaderReplaysSealedRanges
+        TestFinalSemanticHistoricalDepositRejectsReserveAndCalldataMutations
+        TestFinalSemanticHistoricalOracleWindowArtifactRejectsBoundMutations
+        TestFinalSemanticHistoricalOracleWindowDigestBindsPublicChronologyProjection
+        TestFinalSemanticHistoricalOracleWindowOnChainBindsCoordinatorProxy
+        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPlanTargets
+        TestFinalSemanticHistoricalOracleWindowPreservesChecksummedPredecessorTargets
+        TestFinalSemanticHistoricalOracleWindowTranscriptRejectsMutations
+        TestFinalSemanticHistoricalPlanHistoryRejectsBareNamespace
+        TestFinalSemanticHistoricalPolicyScheduleBindsPostStateAndCalldata
+        TestFinalSemanticHistoricalReaderFactorySnapshotCannotMutateVerifiedCopy
+        TestFinalSemanticHistoricalReceiptArtifactRejectsEnvelopeAndLogMutations
+        TestFinalSemanticHistoricalReceiptCensusSkipsFailedNonMutations
+        TestFinalSemanticHistoricalReceiptProofBindsRawLogs
+        TestFinalSemanticHistoricalRegistrationBindsFullEventTuples
+        TestFinalSemanticHistoricalRegistrationRejectsTransactionAndEmitterMutations
+        TestFinalSemanticHistoricalUpgradeBindsTransactionAndEvent
+        TestFinalSemanticOriginalClosureRequiresExactCampaignStartMarker
+        TestFinalSemanticPathProofArtifactCount
+        TestFinalSemanticPathProofArtifactRejectsMalformedTrailingJSON
+        TestFinalSemanticPoolAuditDistinguishesUnderpaymentFromRecovery
+        TestFinalSemanticPoolOperatorVersionRejectsTerminalAuthoritySubstitution
+        TestFinalSemanticPoolRegistrationRequiresSuccessfulEVMReceipt
+        TestFinalSemanticPoolRegistrationUsesEVMReceiptAndNativeSnapshot
+        TestFinalSemanticPoolUIDZeroIsValidAndStillUnique
+        TestFinalSemanticReceiptPayloadBindsConvictionAdded
+        TestFinalSemanticReceiptPayloadBindsDeferredCapture
+        TestFinalSemanticReceiptPayloadBindsDeferredClaim
+        TestFinalSemanticReceiptPayloadBindsDishonestDepositNonceOrder
+        TestFinalSemanticReceiptPayloadBindsHistoricScheduleBeforeTerminalRotation
+        TestFinalSemanticReceiptPayloadBindsReleaseEconomicEvents
+        TestFinalSemanticReceiptPayloadBindsRootMissed
+        TestFinalSemanticReceiptPayloadBindsWithdrawalOnlyClaimPaid
+        TestFinalSemanticReceiptPayloadRejectsClaimPaidColdkeySubstitution
+        TestFinalSemanticReceiptPayloadRejectsCorruptAndNoncanonicalLogs
+        TestFinalSemanticReceiptPayloadRejectsDepositPolicyAndSignerSubstitution
+        TestFinalSemanticReceiptPayloadRejectsFutureHistoricSchedule
+        TestFinalSemanticReceiptPayloadRejectsUnrepresentedClaimPaid
+        TestFinalSemanticReplicatedEnvelopeHonorsCancellationAfterRead
+        TestFinalSemanticReplicatedEnvelopePreservesEveryRejection
+        TestFinalSemanticReplicatedEnvelopeRechecksCurrentIdentity
+        TestFinalSemanticReplicatedEnvelopeVerifiesOwnedBytesOnce
+        TestFinalSemanticSettlementAccountingBindsBothHeadsAndEventDeltas
+        TestFinalSemanticValidatorUIDZeroIsValidAndStillUnique
+        TestFinalSemanticValidatorUIDZeroRejectsMismatchedRegistration
+        TestFinalSemanticVaultCarryAuditRejectsOperatorCarrySubstitution
+        TestFinalSemanticVaultClaimAuditReconcilesPriorCreditAndWithdrawal
+        TestFinalSemanticVaultClaimAuditRejectsClaimCreditUnderflow
+        TestFinalSemanticVaultClaimAuditRejectsClaimKeySubstitution
+        TestFinalSemanticVaultClaimAuditRejectsPayoutLeafSubstitution
+        TestFinalSemanticVaultClaimAuditRejectsTerminalCreditSubstitution
+        TestFinalSemanticVaultClaimKeySeparatesOperatorAndPayoutLeaf
+        TestFinalSettlementClosureCollectedGraphRejectsAttemptOmission
+        TestFinalSettlementClosureLastWindowNeedsNoNextIntent
+        TestFinalSettlementClosureProofProjectionUsesExactEpochBounds
+        TestFinalSettlementClosureRejectsConflictingSuccessorTransition
+        TestFinalSettlementClosureRejectsDomainCensusAndBoundaryChanges
+        TestFinalSettlementClosureRejectsRehashedProofOmission
+        TestFinalSettlementClosureWaitAuthenticatesLastWindow
+        TestFinalSettlementClosureWaitHonorsPublicationAndCancellation
+        TestFinalValidatorAuthorityV2ReconstructsOriginalRendererWithoutLiveKeys
+        TestProducerGatePinsCompleteAdversarialRegressions
+        TestProducerGatePinsExactBlockRuntimeClientRegressions
+        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage
+        TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup
+        TestProducerGatePinsSemanticIntegrityRegressions
+        TestProducerGatePinsSyntheticEVMIdentityRegressions
+        TestPublicFinalSemanticContractDeploymentRejectsAdjacentSubstitution
+        TestPublicFinalSemanticContractDeploymentRejectsMalformedGetter
+        TestPublicFinalSemanticContractDeploymentReturnsCompletePinnedCustodyState
+        TestPublicFinalSemanticEpochZeroCoordinatorReadersArePinned
+        TestPublicFinalSemanticNativeOwnerStakeRejectsAdjacentAndMalformedInputs
+        TestPublicFinalSemanticNativeOwnerStakeUsesPinnedStakingPrecompile
+        TestPublicFinalSemanticOperatorVersionRejectsMalformedHistoricalState
+        TestPublicFinalSemanticPerOperatorEVMAuditsArePinned
+        TestPublicFinalSemanticReceiptReplaysCanonicalABIPayload
+        TestPublicFinalSemanticSettlementVaultStateIsCompleteAndPinned
+        TestPublicFinalSemanticSettlementVaultStateRejectsMalformedGetter
+        TestPublicFinalSemanticVaultClaimAndCreditArePinned
+        TestPublicScenarioBundleRequiresReplicatedOwnerCompletionCommit
+        TestReleaseHistoryRuntimeArtifactsCoverExactSixVersionDomain
+        TestReleaseSemanticCensusAcceptsExactSortedSelection
+        TestReleaseSemanticCensusPinsCompleteRegressionSourceGroups
+        TestReleaseSemanticCensusPinsSettlementClosureRegressions
+        TestReleaseSemanticCensusRejectsDeclarationDrift
+        TestReleaseSemanticCensusRejectsIncompleteSettlementClosureOwners
+        TestReleaseSemanticCensusRejectsSourceSelectorOmissions
+        TestReleaseSemanticCensusRejectsZeroSelection
+        TestReleaseSemanticCensusRequiresCompleteSettlementClosureOwners
+        TestSemanticMismatchBranchesNeverWrapPotentiallyNilErrors
+        TestStateMismatchErrorPreservesCausesWithoutFormattingNilWraps
+--- FAIL: TestProducerGatePinsSemanticIntegrityRegressions (4.66s)
+=== RUN   TestReleaseGatesAttestPinnedRuntime454RustSource
+--- PASS: TestReleaseGatesAttestPinnedRuntime454RustSource (0.01s)
+=== RUN   TestReleaseGatesAttestRuntime455SourceCompatibility
+--- PASS: TestReleaseGatesAttestRuntime455SourceCompatibility (0.00s)
+=== RUN   TestReleaseGatesAttestRuntimeSourceCensusRejectsDrift
+--- PASS: TestReleaseGatesAttestRuntimeSourceCensusRejectsDrift (0.00s)
+=== RUN   TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions
+--- PASS: TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions (0.12s)
+=== RUN   TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage
+--- PASS: TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeCoverage (0.01s)
+=== RUN   TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup
+--- PASS: TestProducerGatePinsExactBlockRuntimeClientRegressionsNativeStakeStartup (0.00s)
+=== RUN   TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock
+--- PASS: TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock (0.00s)
+=== RUN   TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection
+--- PASS: TestReleaseLockFixtureRetainsRuntimeAndBuildDriftRejection (0.01s)
+=== RUN   TestReleaseLockObservationRejectsMissingAndAdditionalFields
+--- PASS: TestReleaseLockObservationRejectsMissingAndAdditionalFields (0.00s)
+=== RUN   TestCanonicalReleaseLockRenderingIsStableAndRoundTrips
+--- PASS: TestCanonicalReleaseLockRenderingIsStableAndRoundTrips (0.01s)
+=== RUN   TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference
+--- PASS: TestReleaseLockRenderingReplacesStaleObservedValuesWithoutSelfReference (0.01s)
+=== RUN   TestReleaseLockObservationFencesAdmissionOnlyWarp
+--- PASS: TestReleaseLockObservationFencesAdmissionOnlyWarp (1.01s)
+=== RUN   TestReviewedRuntimeIdentityRejectsEachAdjacentFieldDrift
+--- PASS: TestReviewedRuntimeIdentityRejectsEachAdjacentFieldDrift (0.00s)
+=== RUN   TestReleaseLockRejectsGeneratedRuntimeDrift
+--- PASS: TestReleaseLockRejectsGeneratedRuntimeDrift (0.00s)
+=== RUN   TestRuntime458ArtifactRpcPreservesExactResponse
+    release_runtime458_source_test.go:131: exact artifact response refused: runtime metadata owned RPC synthetic_method returned a malformed or error response
+         exit status 1
+--- FAIL: TestRuntime458ArtifactRpcPreservesExactResponse (0.02s)
+=== RUN   TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses
+--- PASS: TestRuntime458ArtifactRpcRejectsMalformedAndFailedResponses (0.18s)
+=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute
+--- PASS: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.11s)
+=== RUN   TestRuntime458SourceAttestationIncludesExactCompatibilityDelta
+--- PASS: TestRuntime458SourceAttestationIncludesExactCompatibilityDelta (0.00s)
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance
+--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.00s)
+=== RUN   TestRuntime458HistoricalPublicationsRemainEvidenceOnly
+--- PASS: TestRuntime458HistoricalPublicationsRemainEvidenceOnly (0.01s)
+=== RUN   TestRuntime458PublicationsRejectCrossArtifactPairs
+--- PASS: TestRuntime458PublicationsRejectCrossArtifactPairs (0.00s)
+=== RUN   TestRuntime458CurrentLockRejectsOfficialSeedVariant
+--- PASS: TestRuntime458CurrentLockRejectsOfficialSeedVariant (0.00s)
+=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader
+--- PASS: TestRuntime458HistoryAllowlistReachesArtifactReader (0.00s)
+=== RUN   TestCurrentRuntimeAuthenticationCannotUseHistoricalCache
+--- PASS: TestCurrentRuntimeAuthenticationCannotUseHistoricalCache (0.00s)
+=== CONT  TestProducerGateStateSelectionCoversNativeSourceCommitmentJob
+--- PASS: TestProducerGateStateSelectionCoversNativeSourceCommitmentJob (0.03s)
+FAIL

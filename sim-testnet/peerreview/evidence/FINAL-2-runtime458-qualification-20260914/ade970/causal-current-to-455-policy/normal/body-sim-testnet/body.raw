@@ -1,0 +1,8 @@
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+    runtime_identity_458_test.go:38: release lock runtime identity is not the reviewed testnet runtime 455 release
+--- FAIL: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458CanonicalLockRetainsHistoricalProvenance
+--- PASS: TestRuntime458CanonicalLockRetainsHistoricalProvenance (0.00s)
+=== RUN   TestRuntime458CurrentLockRejectsOfficialSeedVariant
+--- PASS: TestRuntime458CurrentLockRejectsOfficialSeedVariant (0.00s)
+FAIL

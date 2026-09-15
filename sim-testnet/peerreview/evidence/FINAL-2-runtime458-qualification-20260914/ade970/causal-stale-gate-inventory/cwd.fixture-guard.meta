@@ -1,0 +1,4 @@
+cwd=/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-stale-gate-inventory/worktree/sim-testnet
+fixture=testnet.yml
+fixture=../deploy/testnet/policy-v1.yml
+package=github.com/urfoundation/sn/sim-testnet

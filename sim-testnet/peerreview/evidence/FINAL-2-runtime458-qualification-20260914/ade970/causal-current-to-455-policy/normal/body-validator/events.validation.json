@@ -1,0 +1,1 @@
+{"binary_exit": 1, "bytes": 3555, "events": 17, "expected_failures": 2, "package": "github.com/urfoundation/sn/validator", "passed": 1, "roots": 3, "status": "matched"}

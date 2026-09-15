@@ -1,0 +1,8 @@
+case=stale-gate-inventory
+body_exit=1
+converter_exit=0
+validation_exit=0
+candidate_repos_equal=true
+binary_equal=true
+mutant_diff_equal=true
+reverse_apply_check=true

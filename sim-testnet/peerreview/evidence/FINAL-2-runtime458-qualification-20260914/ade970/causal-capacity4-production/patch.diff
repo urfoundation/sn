@@ -1,0 +1,11 @@
+--- a/crv4/runtime_identity.go
++++ b/crv4/runtime_identity.go
+@@ -64,7 +64,7 @@
+ 
+ // Covers the active runtime plus the five exact historical identities carried
+ // by one release attempt while retaining a small fail-closed memory bound.
+-const maximumRuntimeMetadataArtifactsPerChain = 6
++const maximumRuntimeMetadataArtifactsPerChain = 5
+ 
+ // Creates an empty, hard-bounded per-provider artifact store.
+ func newRuntimeMetadataArtifactCache() *runtimeMetadataArtifactCache {

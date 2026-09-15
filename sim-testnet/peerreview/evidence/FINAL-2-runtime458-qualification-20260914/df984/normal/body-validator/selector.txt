@@ -1,0 +1,1 @@
+^Test(ReleaseRuntime458|AuthenticatePinnedNativeRuntime|ReleaseConfigRequiresExactNativeRuntimeIdentity|InitialReleaseSnapshot|ReleaseNativeEndpointTimeout)

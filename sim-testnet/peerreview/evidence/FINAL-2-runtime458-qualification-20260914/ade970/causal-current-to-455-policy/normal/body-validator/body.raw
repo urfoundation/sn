@@ -1,0 +1,9 @@
+=== RUN   TestReleaseRuntime458RequiresExactReviewedArtifact
+    runtime_identity_458_test.go:29: release 1.0 native runtime is not the reviewed node-subtensor/455/1/1 artifact
+--- FAIL: TestReleaseRuntime458RequiresExactReviewedArtifact (0.00s)
+=== RUN   TestReleaseRuntime458RejectsHistoricalConfigBeforeRpc
+    runtime_identity_458_test.go:78: refused historical config changed chain state or made a public read
+--- FAIL: TestReleaseRuntime458RejectsHistoricalConfigBeforeRpc (0.00s)
+=== RUN   TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift
+--- PASS: TestAuthenticatePinnedNativeRuntimeRejectsAdjacentArtifactDrift (0.00s)
+FAIL

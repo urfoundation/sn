@@ -1,0 +1,11 @@
+=== RUN   TestProducerGatePinsSemanticIntegrityRegressions
+--- PASS: TestProducerGatePinsSemanticIntegrityRegressions (4.49s)
+=== RUN   TestRuntime458ArtifactRpcPreservesExactResponse
+--- PASS: TestRuntime458ArtifactRpcPreservesExactResponse (0.11s)
+=== RUN   TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute
+--- PASS: TestRuntime458ArtifactCheckerKeepsHistoricalProvenanceOffFreshRoute (0.12s)
+=== RUN   TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal
+--- PASS: TestRuntime458CurrentLockSeparatesCommitFromMainnetProposal (0.00s)
+=== RUN   TestRuntime458HistoryAllowlistReachesArtifactReader
+--- PASS: TestRuntime458HistoryAllowlistReachesArtifactReader (0.01s)
+PASS

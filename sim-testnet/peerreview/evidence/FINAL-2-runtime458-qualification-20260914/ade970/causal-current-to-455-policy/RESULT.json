@@ -1,0 +1,146 @@
+{
+  "binaries": {
+    "crv4": {
+      "compile_outer_exit": 0,
+      "path": "/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-current-to-455-policy/normal/compile3-crv4/crv4.normal.test",
+      "sha256": "ebabdf98623af1c01720accba753d63e2ccdc4cf7b35521bebd3169d8db55de6"
+    },
+    "miner": {
+      "compile_outer_exit": 0,
+      "path": "/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-current-to-455-policy/normal/compile3-miner/miner.normal.test",
+      "sha256": "633a3cc9175c2d2fca0f1e19fe1775199c1efc14e00a5d5c62e79bb8874d0d9f"
+    },
+    "sim-testnet": {
+      "compile_outer_exit": 0,
+      "path": "/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-current-to-455-policy/normal/compile3-sim-testnet/sim-testnet.normal.test",
+      "sha256": "e23ffb7e383b44a9209ddd4ce7cb5f9de1f99f9535b67083bb0dadff43179256"
+    },
+    "validator": {
+      "compile_outer_exit": 0,
+      "path": "/home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-current-to-455-policy/normal/compile3-validator/validator.normal.test",
+      "sha256": "2589b248ddafef13abbccba002d9f28a462194e8e146129b05afa7df773e11f9"
+    }
+  },
+  "candidate_clean_before_after": true,
+  "candidate_head": "ade970aeba5a3b544609bc3074eb357b0c0cd40f",
+  "case": "restore current runtime458 policy to historic455 assumptions",
+  "expected_outcomes": {
+    "failures": 7,
+    "passes": 6
+  },
+  "fences": {
+    "all_binaries_equal_pre_post": true,
+    "candidate_13_repositories_equal_pre_final": true,
+    "candidate_clean": true,
+    "mutant_diff_stable": true,
+    "mutant_paths_exact": true
+  },
+  "mutation": {
+    "applied_in_disposable_worktree": true,
+    "forward_and_reverse_apply_checks": true,
+    "full_mutant_source_manifest_before_after": true,
+    "patch": "CAUSAL-current-to-455-policy.patch",
+    "patch_sha256": "b8ca8be1ebe51e2d435159bc3e9cd956caa1ac4b52f541b67fe2a29095a0be5d",
+    "paths": [
+      "crv4/source_commitment.go",
+      "crv4/validator_stake.go",
+      "miner/fleet_runtime.go",
+      "sim-testnet/release_lock.go",
+      "sim-testnet/runtime_identity.go",
+      "validator/runtime_identity.go"
+    ],
+    "stable_diff_before_after": true,
+    "unchanged_dependency_manifests_checked_before_after": true
+  },
+  "observed": {
+    "crv4": {
+      "body_exit": 1,
+      "body_raw_sha256": "273b13577800482ed5eb07c42b2986e037dc9ec9d25e960a9fd5d93b9e44e646",
+      "checker_exit": 0,
+      "converter_exit": 0,
+      "events_validation": {
+        "binary_exit": 1,
+        "bytes": 5419,
+        "events": 21,
+        "expected_failures": 2,
+        "package": "github.com/urfoundation/sn/crv4",
+        "passed": 2,
+        "roots": 4,
+        "status": "matched"
+      },
+      "list": {
+        "compiled": 4,
+        "expected": 4
+      },
+      "outer_exit": 0
+    },
+    "miner": {
+      "body_exit": 1,
+      "body_raw_sha256": "1209b37726cadd0606003582c6caf25c54432bcb19e5b054589af02df4f11066",
+      "checker_exit": 0,
+      "converter_exit": 0,
+      "events_validation": {
+        "binary_exit": 1,
+        "bytes": 3925,
+        "events": 17,
+        "expected_failures": 2,
+        "package": "github.com/urfoundation/sn/miner",
+        "passed": 1,
+        "roots": 3,
+        "status": "matched"
+      },
+      "list": {
+        "compiled": 3,
+        "expected": 3
+      },
+      "outer_exit": 0
+    },
+    "sim-testnet": {
+      "body_exit": 1,
+      "body_raw_sha256": "6090e9bf1ccd442dac1b8aed49157ecf5019eab39eda8aa2ae11685be25e6ba8",
+      "checker_exit": 0,
+      "converter_exit": 0,
+      "events_validation": {
+        "binary_exit": 1,
+        "bytes": 3291,
+        "events": 16,
+        "expected_failures": 1,
+        "package": "github.com/urfoundation/sn/sim-testnet",
+        "passed": 2,
+        "roots": 3,
+        "status": "matched"
+      },
+      "list": {
+        "compiled": 3,
+        "expected": 3
+      },
+      "outer_exit": 0
+    },
+    "validator": {
+      "body_exit": 1,
+      "body_raw_sha256": "34ac98bcece187379a983e2c480f3b7022be44e7ca25f425c50f951cf81b1779",
+      "checker_exit": 0,
+      "converter_exit": 0,
+      "events_validation": {
+        "binary_exit": 1,
+        "bytes": 3555,
+        "events": 17,
+        "expected_failures": 2,
+        "package": "github.com/urfoundation/sn/validator",
+        "passed": 1,
+        "roots": 3,
+        "status": "matched"
+      },
+      "list": {
+        "compiled": 3,
+        "expected": 3
+      },
+      "outer_exit": 0
+    }
+  },
+  "prebody_refusals": [
+    "setup-v1-prebody-refusal.status: invalid byte comparison of a minimal patch to generated git diff; no compiler/list/body",
+    "launch-refusals/validator-sim-quoted-command.status: shell parse failure before either owner; no binary/list/body"
+  ],
+  "status": "EXPECTED_CAUSAL_OUTCOMES_MATCHED"
+}

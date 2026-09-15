@@ -1,0 +1,7 @@
+{"Time":"2026-09-14T23:29:51.647534647Z","Action":"start","Package":"github.com/urfoundation/sn/validator"}
+{"Time":"2026-09-14T23:29:51.647778966Z","Action":"run","Package":"github.com/urfoundation/sn/validator","Test":"TestReleaseRuntime458RequiresExactReviewedArtifact"}
+{"Time":"2026-09-14T23:29:51.647800158Z","Action":"output","Package":"github.com/urfoundation/sn/validator","Test":"TestReleaseRuntime458RequiresExactReviewedArtifact","Output":"=== RUN   TestReleaseRuntime458RequiresExactReviewedArtifact\n"}
+{"Time":"2026-09-14T23:29:51.647820655Z","Action":"output","Package":"github.com/urfoundation/sn/validator","Test":"TestReleaseRuntime458RequiresExactReviewedArtifact","Output":"--- PASS: TestReleaseRuntime458RequiresExactReviewedArtifact (0.00s)\n"}
+{"Time":"2026-09-14T23:29:51.647826996Z","Action":"pass","Package":"github.com/urfoundation/sn/validator","Test":"TestReleaseRuntime458RequiresExactReviewedArtifact","Elapsed":0}
+{"Time":"2026-09-14T23:29:51.647833425Z","Action":"output","Package":"github.com/urfoundation/sn/validator","Output":"PASS\n"}
+{"Time":"2026-09-14T23:29:51.64784204Z","Action":"pass","Package":"github.com/urfoundation/sn/validator","Elapsed":0}

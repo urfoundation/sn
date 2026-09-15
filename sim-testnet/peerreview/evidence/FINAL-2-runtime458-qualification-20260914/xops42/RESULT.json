@@ -1,0 +1,66 @@
+{
+  "status": "PASS",
+  "scope": "xops RPC vulnerability assertion correction",
+  "candidate": {
+    "head": "42bfe0be2a7a7c51bbda87fb44886424604f509e",
+    "parent": "446cbdb56e0dc5004b66d7e0cbf05a4d9c49224c",
+    "changed_path": "main/ansible/tests/test_vulnscan2_resolved.py",
+    "changed_path_sha256": "d03dbbe9dd399bdc2964d95654663472658acdc10e49c1e4c7252dcdb71ac5ce",
+    "clean_before_after": true
+  },
+  "execution": {
+    "cwd": "/home/by/urnetwork/temp/xops-rpc-vulnerability-assertion-correction-20260914/xops",
+    "python": "/home/by/urnetwork/.virtualenv/brien/bin/python3",
+    "python_sha256": "5f4016bc51761a8b135d601ed5714a58ce3e74831aea2838d0d72f1be5bd6e6c",
+    "python_version": "3.14.7",
+    "python_dont_write_bytecode": true,
+    "network_or_deployment": "none"
+  },
+  "fixture_aliases": {
+    "warp": {"path": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/warp", "head": "7498864c7cd3605aad3c43eabfab9008ed7f7228", "clean": true},
+    "vault": {"path": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/vault", "head": "8b2f481dbe87092d0c1742274712a6f805c1c375", "clean": true},
+    "config": {"path": "/home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/config", "head": "268f11b7e7d9c43eda3fd6f34447d26c2f0c21dc", "clean": true}
+  },
+  "module_census": {"expected": 17, "actual": 17, "matches": true},
+  "full_module_p1": {
+    "outer_exit": 0,
+    "body_exit": 0,
+    "tests": 17,
+    "outcome": "PASS",
+    "started_utc": "2026-09-14T23:29:12Z",
+    "finished_utc": "2026-09-14T23:29:19Z"
+  },
+  "fresh_confirmation_p2": {
+    "outer_exit": 0,
+    "body_exit": 0,
+    "tests": 7,
+    "outcome": "PASS",
+    "started_utc": "2026-09-14T23:29:35Z",
+    "finished_utc": "2026-09-14T23:29:40Z"
+  },
+  "fresh_confirmation_p3": {
+    "outer_exit": 0,
+    "body_exit": 0,
+    "tests": 7,
+    "outcome": "PASS",
+    "started_utc": "2026-09-14T23:29:47Z",
+    "finished_utc": "2026-09-14T23:29:52Z"
+  },
+  "causal_old_quota_assertions": {
+    "outer_exit": 1,
+    "body_exit": 1,
+    "expected_outcomes": {"old_gateway_render": "FAIL", "new_synthetic_quota_guard": "PASS"},
+    "observed": {"failures": 1, "passes": 1},
+    "required_failure_literal": "limit_req zone=subtensor_rpc_rate burst=200 nodelay;",
+    "mutation_limited_to": "main/ansible/tests/test_vulnscan2_resolved.py in disposable causal worktree",
+    "candidate_source_clean_after": true,
+    "started_utc": "2026-09-14T23:30:51Z",
+    "finished_utc": "2026-09-14T23:30:52Z"
+  },
+  "retained_nonqualifying_attempts": [
+    {"capture": "vulnerability-assertion-qualification-20260914T232151Z", "outcome": "pre-body admission refusal", "detail": "AST definition order differed from lexical handoff order; same 17 names; no test body admitted"},
+    {"capture": "vulnerability-assertion-qualification-20260914T232328Z-r2", "outer_exit": 1, "outcome": "12 PASS / 5 ERROR", "detail": "isolated parent missing Warp and Vault fixture aliases"},
+    {"capture": "vulnerability-assertion-qualification-20260914T232632Z-r3", "outer_exit": 1, "outcome": "16 PASS / 1 ERROR", "detail": "isolated parent missing Config fixture alias"}
+  ],
+  "conclusion": "The corrected 17-method vulnerability module, two fresh affected confirmations, and the old-quota causal all produced the required outcomes with clean candidate and dependency fences."
+}

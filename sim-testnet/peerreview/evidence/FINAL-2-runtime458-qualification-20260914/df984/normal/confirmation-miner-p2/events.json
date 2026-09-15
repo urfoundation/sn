@@ -1,0 +1,7 @@
+{"Time":"2026-09-14T23:23:56.757241655Z","Action":"start","Package":"github.com/urfoundation/sn/miner"}
+{"Time":"2026-09-14T23:23:56.757515582Z","Action":"run","Package":"github.com/urfoundation/sn/miner","Test":"TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads"}
+{"Time":"2026-09-14T23:23:56.757544523Z","Action":"output","Package":"github.com/urfoundation/sn/miner","Test":"TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads","Output":"=== RUN   TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads\n"}
+{"Time":"2026-09-14T23:23:56.757591323Z","Action":"output","Package":"github.com/urfoundation/sn/miner","Test":"TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads","Output":"--- PASS: TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads (0.16s)\n"}
+{"Time":"2026-09-14T23:23:56.757602117Z","Action":"pass","Package":"github.com/urfoundation/sn/miner","Test":"TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads","Elapsed":0.16}
+{"Time":"2026-09-14T23:23:56.757614617Z","Action":"output","Package":"github.com/urfoundation/sn/miner","Output":"PASS\n"}
+{"Time":"2026-09-14T23:23:56.75762636Z","Action":"pass","Package":"github.com/urfoundation/sn/miner","Elapsed":0}

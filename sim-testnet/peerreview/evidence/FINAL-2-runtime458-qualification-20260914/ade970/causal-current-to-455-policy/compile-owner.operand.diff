@@ -1,0 +1,11 @@
+--- /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-capacity4-production/compile-mutant-package.sh	2026-09-14 23:48:35.441030325 +0000
++++ /home/by/urnetwork/temp/sn-runtime458-gate-fixture-correction-20260914/terra-runtime/qualification-runtime458-ade970a/causal-current-to-455-policy/compile-mutant-package.sh	2026-09-14 23:52:31.446654550 +0000
+@@ -5,6 +5,8 @@
+ config=$1; package_name=$2; source "$config"
+ case "$package_name" in
+   crv4) package=./crv4; binary="$stage/normal/compile3-crv4/crv4.normal.test";;
++  miner) package=./miner; binary="$stage/normal/compile3-miner/miner.normal.test";;
++  validator) package=./validator; binary="$stage/normal/compile3-validator/validator.normal.test";;
+   sim-testnet) package=./sim-testnet; binary="$stage/normal/compile3-sim-testnet/sim-testnet.normal.test";;
+   *) exit 64;;
+ esac

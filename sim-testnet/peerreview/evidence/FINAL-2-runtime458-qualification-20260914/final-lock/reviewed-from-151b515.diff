@@ -1,0 +1,13 @@
+diff --git a/deploy/testnet/release.lock.yml b/../lock-preview-runtime458-ade970a/candidate.yml
+index fb2e103..fae53e6 100644
+--- a/deploy/testnet/release.lock.yml
++++ b/../lock-preview-runtime458-ade970a/candidate.yml
+@@ -57,7 +57,7 @@ repositories:
+     operator_proxy_go_source_hash: sha256:3abc595cf0bb9f2d2b701020a8aa573b87a263e3169063a55a5998ddeefa5414
+     platform_config_shared_tree_hash: sha256:6852f0a67ab5e5cd5e61fbe3d53ac367da7d43c92f766c2de6cff43db40c5252
+     platform_config_source_hash: sha256:c69caf2830a1ab8cf9b5f884b2351913bbba19620947176d78fd7eb6b676974a
+-    protocol_source_hash: sha256:ea6b47c21d3414180c6a9cf23fceed1f39c4a4fa7781af703c6bf0184279285d
++    protocol_source_hash: sha256:6b9af982e2d8145d53f8e999cecb3495e058cf9cbb26ec1f9caf93ab4240b1fd
+     proxy_go_source_hash: sha256:e8be796d7c683556b155e6993018f61b62c4278d052d28060f11ec78c5f13ab8
+     sdk_go_source_hash: sha256:5cbe111d703ab888d704d2d08950bb3aef0abd0336b99ce3026414bb115c6575
+     sdk_mobile_build_tree_hash: sha256:62d09e3553d744f681f4e0bd0fa640a4e7019367a73dae0ea616b45b27f27aa4

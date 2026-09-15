@@ -1,0 +1,4 @@
+exit=1
+phase=prebody-input-comparison
+compiler_started=false
+body_started=false

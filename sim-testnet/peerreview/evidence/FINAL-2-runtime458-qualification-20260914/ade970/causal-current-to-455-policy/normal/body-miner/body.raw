@@ -1,0 +1,9 @@
+=== RUN   TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads
+    fleet_runtime_458_test.go:254: real finalized runtime authentication failed: head=0x0000000000000000000000000000000000000000000000000000000000000000 error=fleet runtime at 0x0100000000000000000000000000000000000000000000000000000000000000 is not the reviewed node-subtensor/455/1/1 artifact: runtime at 0x0100000000000000000000000000000000000000000000000000000000000000 has unreviewed identity node-subtensor/458/1/1
+--- FAIL: TestFleetFinalizedRuntime458AuthenticatesIndependentExactHeads (0.01s)
+=== RUN   TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift
+--- PASS: TestFleetRuntimeMetadataFixtureRejectsBoundFramingAndDigestDrift (0.05s)
+=== RUN   TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority
+    fleet_runtime_458_test.go:346: historical455 artifact acquired current fleet authority
+--- FAIL: TestFleetRuntime458Retains455EvidenceWithoutCurrentAuthority (0.16s)
+FAIL

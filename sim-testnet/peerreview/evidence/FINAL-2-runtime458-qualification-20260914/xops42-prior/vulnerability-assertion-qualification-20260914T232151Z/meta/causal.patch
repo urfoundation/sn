@@ -1,0 +1,14 @@
+--- a/main/ansible/tests/test_vulnscan2_resolved.py
++++ b/main/ansible/tests/test_vulnscan2_resolved.py
+@@ -287,7 +287,10 @@
+             self.assertEqual(nginx.count(f"allow {allowed_cidr};"), 2)
+         self.assertEqual(nginx.count("deny all;"), 4)
+         self.assertIn("client_max_body_size 4m;", nginx)
+-        assert_unpaced_subtensor_gateway(self, nginx)
++        self.assertIn("limit_req zone=subtensor_rpc_rate burst=200 nodelay;", nginx)
++        self.assertIn("limit_conn subtensor_rpc_connections 128;", nginx)
++        self.assertIn("limit_req zone=subtensor_lightnode_rpc_rate burst=200 nodelay;", nginx)
++        self.assertIn("limit_conn subtensor_lightnode_rpc_connections 128;", nginx)
+         self.assertIn("proxy_read_timeout  900s;", nginx)
+ 
+         for path in ANSIBLE_ROOT.rglob("*"):

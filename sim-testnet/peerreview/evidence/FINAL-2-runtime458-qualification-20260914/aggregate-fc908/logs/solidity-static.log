@@ -1,0 +1,26 @@
+src/STCoordinator.sol analyzed (26 contracts with 64 detectors), 0 result(s) found
+Multiple frameworks detected: Foundry, solc, Solc-json. Using Foundry (highest priority). Use --compile-force-framework to override.
+'forge clean' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+'forge config --json' running
+'forge build --build-info --deny never src/STCoordinator.sol' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+src/STFleetBatcher.sol analyzed (27 contracts with 64 detectors), 0 result(s) found
+Multiple frameworks detected: Foundry, solc, Solc-json. Using Foundry (highest priority). Use --compile-force-framework to override.
+'forge clean' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+'forge config --json' running
+'forge build --build-info --deny never src/STFleetBatcher.sol' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+src/STValidatorEvidence.sol analyzed (29 contracts with 64 detectors), 0 result(s) found
+Multiple frameworks detected: Foundry, solc, Solc-json. Using Foundry (highest priority). Use --compile-force-framework to override.
+'forge clean' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+'forge config --json' running
+'forge build --build-info --deny never src/STValidatorEvidence.sol' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+src/probe/STSubnetProbe.sol analyzed (8 contracts with 64 detectors), 0 result(s) found
+Multiple frameworks detected: Foundry, solc, Solc-json. Using Foundry (highest priority). Use --compile-force-framework to override.
+'forge clean' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+'forge config --json' running
+'forge build --build-info --deny never src/probe/STSubnetProbe.sol' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+src/testnet/STCoordinatorAdversary.sol analyzed (24 contracts with 64 detectors), 0 result(s) found
+Multiple frameworks detected: Foundry, solc, Solc-json. Using Foundry (highest priority). Use --compile-force-framework to override.
+'forge clean' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+'forge config --json' running
+'forge build --build-info --deny never src/testnet/STCoordinatorAdversary.sol' running (wd: /home/by/urnetwork/temp/sn-warp-admission-integration-20260913/workspace-physical/sn/evm)
+release Solidity static gate passed for all 5 deployable roots (Slither 0.11.6; no high/medium findings)
