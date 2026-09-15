@@ -1,0 +1,35 @@
+{
+  "scope": "First native commitment and EVM mirror sampled from the active second fleet renewal; this does not establish whole-renewal or final-campaign acceptance.",
+  "plan_hash": "0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1",
+  "rpc_url": "http://192.168.1.162:9944",
+  "independent_rpc": false,
+  "genesis_hash": "0x8f9cf856bf558a14440e75569c9e58594757048d7b3a84b5d25f6bd978263105",
+  "evm_chain_id": 945,
+  "native": {
+    "action_id": "fleet.renew.2.5.commitment",
+    "journal_sequence": 16367,
+    "transaction_hash": "0x0765b51047adebbb53d91a74bcca26ad21423025b2ba099ae4d100bad7dc44f0",
+    "block_number": 8012725,
+    "block_hash": "0xb60dd5f11cd3dbda3294ad76dbfc2c9815ffb56772d518edf9f062f4a20412de",
+    "extrinsic_index": 14,
+    "extrinsic_count": 17,
+    "extrinsic_hash_reproduced_with": "b2sum -l 256 over the complete decoded hex extrinsic returned by chain_getBlock",
+    "canonical_height_hash_matches": true
+  },
+  "evm": {
+    "action_id": "fleet.renew.2.10.mirror",
+    "journal_sequence": 16417,
+    "transaction_hash": "0x1a845bceaec25bed3ee3a7197e1b39f10afe6f6c1dbc91fc8181391a5b45dc0f",
+    "block_number": 8012728,
+    "block_hash": "0xeed0240f6c12bd39df88013773e7b08d276e4d4a51df225ec5955c3091ffdba7",
+    "receipt_status": "0x1",
+    "to": "0x8e7d2f9a77fec95c7e4875b0bd858d5de2b6def8",
+    "canonical_block_hash_and_transaction_match": true
+  },
+  "observed_finalized_native_head": {
+    "number": 8012747,
+    "hash": "0x53fb30a2f580420f7d4021574a0ccda4963e2a7b077856439f36ccf04a3a0c09"
+  },
+  "raw_rpc_errors": 0,
+  "writes_by_this_observation": 0
+}

@@ -1,0 +1,7 @@
+[
+  {"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[0]},
+  {"jsonrpc":"2.0","id":2,"method":"eth_chainId","params":[]},
+  {"jsonrpc":"2.0","id":3,"method":"chain_getBlock","params":["0xb60dd5f11cd3dbda3294ad76dbfc2c9815ffb56772d518edf9f062f4a20412de"]},
+  {"jsonrpc":"2.0","id":4,"method":"eth_getTransactionReceipt","params":["0x1a845bceaec25bed3ee3a7197e1b39f10afe6f6c1dbc91fc8181391a5b45dc0f"]},
+  {"jsonrpc":"2.0","id":5,"method":"chain_getFinalizedHead","params":[]}
+]

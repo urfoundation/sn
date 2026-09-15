@@ -8,6 +8,16 @@ renewal; the 37,250-alpha lifetime limit and 6,000-alpha per-repair limit remain
 unchanged. Earlier checkpoints below retain their historical approvals and
 failures; they do not describe the current repair or allowance status.
 
+**Renewal 2 is now executing on-chain.** Its exact approved plan
+`0x09ac683bae8bf99362bfc427776987fce951db58b71b3f01966236abbf7c91f1`
+is adopted. The first sampled native commitment is included in block
+**8,012,725**, and the sampled EVM mirror has a successful receipt in block
+**8,012,728**. Canonical block lookups match both; the observed native
+finalized head is **8,012,747**. The full native extrinsic hash also reproduces
+using `b2sum`, separately from the project's implementation. These are two
+verified transactions from the active renewal, not its completion certificate.
+[Raw chain evidence, transaction hashes and reproduction inputs](peerreview/evidence/FINAL-2-renewal-2-first-onchain-20260915/README.md).
+
 The repair transaction is
 `0xb6468a8c03886ef4d3c207ba08348b3219267b90d7e569b82d9a81b9da96ebed`,
 included at extrinsic index 6 in native block **8,009,634**, hash

@@ -1,0 +1,5 @@
+[
+  {"jsonrpc":"2.0","id":6,"method":"chain_getHeader","params":["0x53fb30a2f580420f7d4021574a0ccda4963e2a7b077856439f36ccf04a3a0c09"]},
+  {"jsonrpc":"2.0","id":7,"method":"chain_getBlockHash","params":[8012725]},
+  {"jsonrpc":"2.0","id":8,"method":"eth_getBlockByNumber","params":["0x7a43b8",false]}
+]
