@@ -127,6 +127,18 @@ adjacent prepared commands, and retry the affected command with the retained
 binary, plan and history. This operational correction does not require a
 rebuild or a repeated qualification suite.
 
+On this execution host, the added USB data volume is mounted at `/mnt/data`.
+Use `/mnt/data/sn-testnet/qualification/<run-id>` for new qualification captures
+and each run's private `tmp` and `gotmp` directories. The reusable Go build
+cache location is `/mnt/data/sn-testnet/gocache`; set `TMPDIR`, `GOTMPDIR`
+and `GOCACHE` explicitly for the new command owner. Confirm `/mnt/data` is
+actually mounted before creating a run so an absent drive cannot silently
+send test data back to the root filesystem. The prepared directories are
+owned by `by` with mode `0700`. Keep active campaign state, admitted binaries
+and running command captures at their existing paths until their owners join.
+Changing the location of future scratch data does not invalidate completed
+qualification or require rebuilding an already admitted executable.
+
 ### Incremental recovery and acceptance
 
 Resume at the first incomplete or invalidated checkpoint. A failed attempt
