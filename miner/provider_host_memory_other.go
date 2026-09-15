@@ -6,8 +6,9 @@ import (
 	"github.com/urnetwork/connect"
 )
 
-// hostMemoryByteCount is unknown on this platform. Zero keeps the default
-// 64 MiB per-provider target unbounded by host memory.
+// hostMemoryByteCount is unknown on this platform. Zero keeps the unknown-host
+// 64 MiB per-provider target (providerUnknownHostDeviceMemoryTargetByteCount)
+// since there is no host memory to derive from.
 func hostMemoryByteCount() connect.ByteCount {
 	return 0
 }

@@ -12,28 +12,40 @@ import (
 
 // Provider process memory.
 //
-// Two surfaces are sized here:
+// The default provider has no memory ceiling. Three surfaces are sized here:
 //
 //   - the per-provider DeviceLocal target (DeviceLocalSettings.
 //     MemoryTargetByteCount). Its carrier, NAT and transfer budgets derive
-//     from it. connect's window scale tops out at the 64 MiB reference, so a
-//     target above 64 MiB buys no larger H3 windows.
+//     from it, and they keep scaling with it: the H3 stream window is 3T/32
+//     of the target (6 MiB at 64 MiB, 24 MiB at 256 MiB, 96 MiB at 1 GiB),
+//     the connection window T/8, and the provider client's transfer pair is a
+//     fraction of the provider share. There is no reference above which a
+//     larger target buys nothing.
+//   - the connect process budget (connect.SetMemoryBudget). It sizes the
+//     transfer share (an eighth of the budget) of every send sequence the
+//     device wiring does not give its own pool, and the process-scaled
+//     defaults. It used to be left unset because a positive budget switched on
+//     the phone's flow caps in connect's provider NAT profile; those caps are
+//     now the memory target's alone, so the budget costs the provider nothing.
 //   - the Go runtime soft limit (debug.SetMemoryLimit). The runtime holds
 //     roughly three bytes per live byte, so a soft limit equal to the summed
 //     targets makes GC run continuously once live memory reaches a third of
 //     it. The default soft limit is therefore three times the summed targets.
 //
-// connect.SetMemoryBudget is deliberately not set. At 64 MiB it changes no
-// scaled constant and no process carrier budget (both identical to an unset
-// budget), and its only effect would be to switch on the per-process flow
-// caps in connect's generic UDP/TCP/ICMP buffer settings.
+// The budget is the soft limit. That keeps the two constraints the default
+// plan encodes: the budget is at least three times one target (the runtime
+// amplification above), and one target is at most 20/34 of the budget (the
+// SDK's split of a process budget into 12 packet pool : 2 large object pool :
+// 20 device target parts, see sdk.SetMemoryLimit).
 //
-// --max-memory keeps its existing meaning exactly: the process soft limit,
-// divided evenly into the per-provider targets. Only its absence changes.
+// --max-memory keeps its existing meaning: the process soft limit, divided
+// evenly into the per-provider targets, whatever the host; the deployment
+// that passes it owns that split. It is now also the process budget.
 
-// providerDefaultDeviceMemoryTargetByteCount is connect's scaling reference:
-// the smallest target that reaches the unscaled windows.
-const providerDefaultDeviceMemoryTargetByteCount = connect.ByteCount(64 * 1024 * 1024)
+// providerUnknownHostDeviceMemoryTargetByteCount is the per-provider target
+// when the usable host memory cannot be read (no /proc/meminfo, no sysctl):
+// there is nothing to derive from, so the plan keeps the previous default.
+const providerUnknownHostDeviceMemoryTargetByteCount = connect.ByteCount(64 * 1024 * 1024)
 
 // providerMinDeviceMemoryTargetByteCount is the SDK's desktop/server default,
 // which every provider got before. A small host never goes below it.
@@ -48,6 +60,8 @@ type providerMemoryPlan struct {
 	DeviceMemoryTargetByteCount connect.ByteCount
 	// Go soft limit; 0 leaves it unset
 	SoftLimitByteCount connect.ByteCount
+	// connect process budget; 0 leaves it unset
+	MemoryBudgetByteCount connect.ByteCount
 	// one-argument ResizeMessagePools cap; 0 leaves the pools unchanged
 	MessagePoolByteCount connect.ByteCount
 }
@@ -67,11 +81,13 @@ func newProviderAuthMemoryPlan(explicitMaxMemory connect.ByteCount) providerMemo
 // newProviderMemoryPlan sizes the provide command. The provide path never
 // resized the message pools and still does not.
 //
-// Explicit --max-memory: soft limit = max-memory, target = max-memory / count.
+// Explicit --max-memory: soft limit = budget = max-memory, target =
+// max-memory / count.
 //
-// Absent: target = 64 MiB per provider, bounded when the usable host memory is
-// known so the default soft limit fits it (host / (3 x count)), but never
-// below the previous 20 MiB default; soft limit = 3 x count x target.
+// Absent: no ceiling. target = host / (3 x count) when the usable host memory
+// is known, so the default soft limit (3 x count x target) is the host memory
+// itself and never exceeds it; never below the previous 20 MiB default. An
+// unknown host keeps the previous 64 MiB target. budget = soft limit.
 func newProviderMemoryPlan(
 	explicitMaxMemory connect.ByteCount,
 	hostByteCount connect.ByteCount,
@@ -83,16 +99,21 @@ func newProviderMemoryPlan(
 		return providerMemoryPlan{
 			DeviceMemoryTargetByteCount: explicitMaxMemory / count,
 			SoftLimitByteCount:          explicitMaxMemory,
+			MemoryBudgetByteCount:       explicitMaxMemory,
 		}
 	}
-	target := providerDefaultDeviceMemoryTargetByteCount
+	target := providerUnknownHostDeviceMemoryTargetByteCount
 	if 0 < hostByteCount {
-		target = min(target, hostByteCount/(providerRuntimeBytesPerLiveByte*count))
-		target = max(target, providerMinDeviceMemoryTargetByteCount)
+		target = max(
+			hostByteCount/(providerRuntimeBytesPerLiveByte*count),
+			providerMinDeviceMemoryTargetByteCount,
+		)
 	}
+	softLimit := providerRuntimeBytesPerLiveByte * count * target
 	return providerMemoryPlan{
 		DeviceMemoryTargetByteCount: target,
-		SoftLimitByteCount:          providerRuntimeBytesPerLiveByte * count * target,
+		SoftLimitByteCount:          softLimit,
+		MemoryBudgetByteCount:       softLimit,
 	}
 }
 
@@ -100,6 +121,11 @@ func newProviderMemoryPlan(
 func applyProviderProcessMemory(plan providerMemoryPlan) {
 	if 0 < plan.MessagePoolByteCount {
 		connect.ResizeMessagePools(plan.MessagePoolByteCount)
+	}
+	if 0 < plan.MemoryBudgetByteCount {
+		// before any device exists: the budget is sampled when connect's
+		// default settings are constructed
+		connect.SetMemoryBudget(plan.MemoryBudgetByteCount)
 	}
 	if 0 < plan.SoftLimitByteCount {
 		debug.SetMemoryLimit(plan.SoftLimitByteCount)

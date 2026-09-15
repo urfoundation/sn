@@ -409,8 +409,8 @@ func provide(opts docopt.Opts) {
 		providerCount = 1
 	}
 
-	// sized per provider (provider_memory.go); an absent --max-memory now
-	// defaults to a 64 MiB target each instead of the SDK's 20 MiB
+	// sized per provider (provider_memory.go); an absent --max-memory has no
+	// ceiling: the target is derived from the host memory
 	memoryPlan := newProviderMemoryPlan(
 		parseProviderMaxMemory(opts),
 		hostMemoryByteCount(),
