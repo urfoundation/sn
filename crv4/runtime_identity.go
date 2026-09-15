@@ -62,9 +62,9 @@ type runtimeMetadataArtifactCache struct {
 	identityEntries map[RuntimeArtifactIdentity]*runtimeMetadataArtifactCacheEntry
 }
 
-// Covers the active runtime plus the six exact historical identities carried
-// by one release attempt while retaining a small fail-closed memory bound.
-const maximumRuntimeMetadataArtifactsPerChain = 7
+// The exact reviewed catalog bounds retained metadata without a separate
+// version-count constant that can omit a newly admitted predecessor.
+const maximumRuntimeMetadataArtifactsPerChain = len(reviewedRuntimeArtifacts)
 
 // Creates an empty, hard-bounded per-provider artifact store.
 func newRuntimeMetadataArtifactCache() *runtimeMetadataArtifactCache {

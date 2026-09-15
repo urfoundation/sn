@@ -57,7 +57,7 @@ func releaseHistoricalTestArtifact() crv4.RuntimeArtifactIdentity {
 }
 
 func releaseHistoricalTestCurrentArtifact() crv4.RuntimeArtifactIdentity {
-	cfg := runtime459ValidatorTestConfig()
+	cfg := runtime460ValidatorTestConfig()
 	return crv4.RuntimeArtifactIdentity{Version: crv4.RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: cfg.RuntimeSpec, TransactionVersion: cfg.TransactionVersion, StateVersion: cfg.StateVersion}, CodeHash: cfg.RuntimeCodeHash, MetadataHash: cfg.RuntimeMetadataHash}
 }
 
@@ -107,7 +107,7 @@ func installReleaseHistoricalTestNative(t *testing.T, native *releaseNativeValid
 }
 
 // Both independent signatures and actual pinned native/Evm readers must pass
-// when the source is455 and the currently approved release is459.
+// when the source is455 and the currently approved release is460.
 func TestReleaseEvidenceV2HistoricalRuntimeActivationAuthenticatesOriginalConsent(t *testing.T) {
 	fixture := newReleaseActivationV2TestFixture(t, "")
 	installReleaseHistoricalTestNative(t, fixture.native)
@@ -149,7 +149,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeActivationRejectsChangedAuthority(t *
 
 func TestReleaseEvidenceV2HistoricalRuntimeSelectionPreservesExplicitAuthority(t *testing.T) {
 	current := releaseHistoricalTestCurrentArtifact()
-	want := []crv4.RuntimeArtifactIdentity{current, releaseHistoricalTestArtifact(), releaseHistorical458TestArtifact()}
+	want := []crv4.RuntimeArtifactIdentity{current, releaseHistoricalTestArtifact(), releaseHistorical458TestArtifact(), releaseHistorical459TestArtifact()}
 	if got := HistoricalReleaseRuntimeArtifacts(current); !reflect.DeepEqual(got, want) {
 		t.Fatalf("reviewed history selection differs: %+v", got)
 	}
@@ -181,7 +181,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeSelectionPreservesExplicitAuthority(t
 func TestReleaseEvidenceV2HistoricalRuntimeKeepsFreshSigningCurrent(t *testing.T) {
 	native := newReleaseNativeValidatorTestFixture(t)
 	installReleaseHistoricalTestNative(t, native)
-	cfg := runtime459ValidatorTestConfig()
+	cfg := runtime460ValidatorTestConfig()
 	metadata, runtime := native.chain.Meta, native.chain.Runtime
 	if err := authenticatePinnedNativeRuntimeAtContext(t.Context(), native.chain, &cfg, native.block); err == nil {
 		t.Fatal("fresh signing admitted455")
@@ -225,7 +225,7 @@ func releaseHistoricalTestPendingReplay(t *testing.T, versionTwo bool) {
 	if _, err := prepared.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	cfg := runtime459ValidatorTestConfig()
+	cfg := runtime460ValidatorTestConfig()
 	steerer := &ReleaseSteerer{cfg: &cfg, native: native.chain}
 	intent := &SteeringIntent{Status: "pending", Prepared: prepared, SubnetEpoch: 1}
 	metadata, runtime := native.chain.Meta, native.chain.Runtime
@@ -254,9 +254,9 @@ func TestReleaseEvidenceV2HistoricalRuntimeDecisionRetainsOriginalSources(t *tes
 	fixture := newReleaseDecisionV2EligibilityTestFixture(t, nil)
 	installReleaseHistoricalTestNative(t, fixture.native)
 	current := releaseHistoricalTestCurrentArtifact()
-	fixture.history.cfg.RuntimeSpec, fixture.history.cfg.RuntimeCodeHash, fixture.history.cfg.RuntimeMetadataHash = 459, current.CodeHash, current.MetadataHash
+	fixture.history.cfg.RuntimeSpec, fixture.history.cfg.RuntimeCodeHash, fixture.history.cfg.RuntimeMetadataHash = 460, current.CodeHash, current.MetadataHash
 	if err := fixture.history.authenticateIntentChainReference(t.Context(), fixture.decision.chain, fixture.native.chain, current, fixture.intent, fixture.artifact); err != nil {
-		t.Fatalf("original455 decision replay under459: %v", err)
+		t.Fatalf("original455 decision replay under460: %v", err)
 	}
 	fixture.artifact.NativeSnapshotHash = types.Hash{98}.Hex()
 	if err := fixture.history.authenticateIntentChainReference(t.Context(), fixture.decision.chain, fixture.native.chain, current, fixture.intent, fixture.artifact); err == nil {
@@ -305,7 +305,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeAdoptionChecksExactAppliedRow(t *test
 		}
 		return original.CallContext(ctx, result, method, args...)
 	}}
-	cfg := runtime459ValidatorTestConfig()
+	cfg := runtime460ValidatorTestConfig()
 	cfg.Netuid = 521
 	intent := &SteeringIntent{Status: "applied", Prepared: &crv4.PreparedSubmission{HotkeyHex: hexutil.Encode(native.hotkey[:])}, SelfUID: native.uid, ApplicationBlock: native.blockNumber, ApplicationBlockHash: native.block.Hex(), RevealBlock: native.blockNumber, UIDs: []uint16{1, 2}, Values: []uint16{9, 11}}
 	if err := authenticateAdoptedIntentApplicationV2(t.Context(), native.chain, &cfg, intent); err != nil {

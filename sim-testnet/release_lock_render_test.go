@@ -24,7 +24,7 @@ func testReleaseLockFixture(t *testing.T) *ReleaseLock {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := runtime459ReviewedTestLock().Runtime
+	runtime := runtime460ReviewedTestLock().Runtime
 	runtime.Image = lock.Runtime.Image
 	lock.Runtime = runtime
 	for _, item := range []struct {
@@ -67,7 +67,7 @@ func TestReleaseLockFixtureUsesReviewedCurrentRuntimeWithoutRewritingLock(t *tes
 		t.Fatal(err)
 	}
 	fixture := testReleaseLockFixture(t)
-	expected := runtime459ReviewedTestLock().Runtime
+	expected := runtime460ReviewedTestLock().Runtime
 	expected.Image = original.Runtime.Image
 	if fixture.Runtime != expected || fixture.Runtime.SourceTag != "" || fixture.Runtime.UpstreamReleaseCallHash != "" || fixture.Runtime.UpstreamReleaseTimepoint != "" {
 		t.Fatalf("owned fixture inherited stale or incomplete runtime provenance: %+v", fixture.Runtime)

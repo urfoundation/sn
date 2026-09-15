@@ -67,7 +67,7 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalPublic := *config.Public
 	originalPublic.Chain.ExpectedRuntimeSpec = spec
 	originalPublic.Chain.ConfigIdentityRuntimeSpec = 0
-	if spec == 458 {
+	if spec == 458 || spec == 459 {
 		originalPublic.Chain.ConfigIdentityRuntimeSpec = 455
 	}
 	originalConfig.Public = &originalPublic
@@ -78,17 +78,20 @@ func newValidatorEvidenceRuntimeLockTestFixture(t *testing.T, spec uint32) valid
 	originalConfig.Release = validatorEvidenceRuntime455TestLock(t)
 	// Build the synthetic original with current planner checks, then bind its
 	// independently approved458 source before producing any persisted bytes.
-	if spec == 458 {
+	if spec == 458 || spec == 459 {
 		originalConfig = *config
 	}
 	original, err := buildPlan(&originalConfig, testSetupFacts(), roles, time.Unix(1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spec == 458 {
+	if spec == 458 || spec == 459 {
 		lock := testReleaseLockFixture(t)
 		image := lock.Runtime.Image
 		lock.Runtime = runtime458ReviewedTestLock().Runtime
+		if spec == 459 {
+			lock.Runtime = runtime459ReviewedTestLock().Runtime
+		}
 		lock.Runtime.Image = image
 		rebindValidatorEvidenceReleaseLockTest(t, original, lock)
 		original.PlanHash, err = original.hash()
@@ -195,7 +198,7 @@ func TestValidatorEvidenceHistoricalLockRestartsCurrentCarry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan, err := loadPersistedPlan(fixture.config, fixture.stateDir); plan != nil || !errors.Is(err, errPersistedPlanIdentityMismatch) {
-		t.Fatalf("original455 approval became current459 execution authority: %v", err)
+		t.Fatalf("original455 approval became current460 execution authority: %v", err)
 	}
 }
 
@@ -325,13 +328,13 @@ func TestValidatorEvidenceHistoricalLockPreservesStaticControls(t *testing.T) {
 	}
 }
 
-// Fresh lock rendering remains current459-only. Closed anchors reproduce
+// Fresh lock rendering remains current460-only. Closed anchors reproduce
 // their original approval; historical runtime bytes do not replace a new lock.
 func TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority(t *testing.T) {
 	t.Parallel()
 	current, original := testReleaseLockFixture(t), validatorEvidenceRuntime455TestLock(t)
 	if err := validateValidatorEvidenceHistoricalReleaseLock(current); err != nil {
-		t.Fatalf("exact current459 archive was refused: %v", err)
+		t.Fatalf("exact current460 archive was refused: %v", err)
 	}
 	if err := validateReleaseLockStatic(current); err != nil {
 		t.Fatal(err)
@@ -347,10 +350,10 @@ func TestValidatorEvidenceHistoricalLockKeepsCurrentReleaseAuthority(t *testing.
 		t.Fatalf("closed original455 anchor lost its exact approved lock: %v", err)
 	}
 	if roots, err := finalReleaseRuntimeRootsForPlan(fixture.current, current); err != nil || len(roots) == 0 {
-		t.Fatalf("current459 anchor lost its exact approved lock: %v", err)
+		t.Fatalf("current460 anchor lost its exact approved lock: %v", err)
 	}
 	if roots, err := finalReleaseRuntimeRootsForPlan(fixture.current, original); err == nil || roots != nil || !strings.Contains(err.Error(), "approved plan does not bind the canonical release lock") {
-		t.Fatalf("historical455 lock replaced current459 anchor authority: %v", err)
+		t.Fatalf("historical455 lock replaced current460 anchor authority: %v", err)
 	}
 	for _, version := range []uint32{451, 452, 453, 454, 455} {
 		if _, ok := reviewedHistoricalRuntimeArtifact(runtimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: version, TransactionVersion: 1, StateVersion: 1}); !ok {

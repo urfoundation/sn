@@ -386,10 +386,10 @@ func TestRuntimeArtifactMetadataCacheIsHardBounded(t *testing.T) {
 }
 
 // Repeated one-item allowlists cannot evade the per-provider cache bound after
-// seven independently authenticated artifacts have been admitted.
-func TestRuntimeArtifactMetadataCacheRejectsEighthSequentialIdentity(t *testing.T) {
-	if maximumRuntimeMetadataArtifactsPerChain != 7 {
-		t.Fatal("reviewed current459 plus historical451–455/458 requires exactly seven bounded artifacts")
+// catalog-bounded independently authenticated artifacts have been admitted.
+func TestRuntimeArtifactMetadataCacheRejectsBeyondReviewedSequentialCapacity(t *testing.T) {
+	if maximumRuntimeMetadataArtifactsPerChain != len(ReviewedRuntimeArtifacts()) {
+		t.Fatal("reviewed history requires one bounded entry per exact catalog artifact")
 	}
 	metadataHex, metadataHash := runtimeIdentityTestMetadata(t)
 	var metadataCalls atomic.Int64

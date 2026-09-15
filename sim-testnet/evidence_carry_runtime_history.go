@@ -32,6 +32,11 @@ func validateValidatorEvidenceHistoricalReleaseLock(lock *ReleaseLock) error {
 			codeHash = "0x2fdb28e5c3fe4e79844b25dee09ed960e90004432ea2bd98079aba4c5530c51a"
 			metadataHash = "0x040088e73e34ed5561372aa51b07b56e41cf7f390312837b074434f30452593d"
 			compressedSha256 = "0xd763c0210bbd113c065a4e8d538cdd3f5e9b40ba259a5136b77e0a495c364241"
+		case 459:
+			commit = "70378404b56c12a85bc8cd163aca2f32cf4d1b80"
+			codeHash = "0x558275958401c026fa4a4159466d49eabd08c761f0c801390593fcba91dee69b"
+			metadataHash = "0xcf97fac54fee756137f42e53deeeca828959a74c6d87274898db2c36a33c4fef"
+			compressedSha256 = "0xc78bef5489149655254d5fb01a0e8c5c61846b0b322a54cb9ca2c86a14df8284"
 		default:
 			return errors.New("validator evidence archived runtime version is not a reviewed companion release")
 		}

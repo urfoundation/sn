@@ -94,7 +94,7 @@ func newReleaseHistoricalSourceTestFixture(t *testing.T) *releaseHistoricalSourc
 	if err := signer.ValidatePreparedSource(prepared); err != nil {
 		t.Fatalf("original455 SDK signed source: %v", err)
 	}
-	cfg := runtime459ValidatorTestConfig()
+	cfg := runtime460ValidatorTestConfig()
 	cfg.Netuid = 521
 	cfg.EvidenceV2.Bounds.MaxArtifactBytes, cfg.EvidenceV2.Bounds.MaxControlBytes, cfg.EvidenceV2.Bounds.MaxOperators = 1024*1024, 1024*1024, 1
 	return &releaseHistoricalSourceTestFixture{native: native, config: cfg, artifact: artifact, measurement: measurement, metadataHex: *metadataHex,
@@ -105,7 +105,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeSourceAuthenticatesOriginalSignedBatc
 	fixture := newReleaseHistoricalSourceTestFixture(t)
 	metadata, runtime := fixture.native.chain.Meta, fixture.native.chain.Runtime
 	if err := authenticateReleaseNativeSourceReferenceV2(t.Context(), fixture.native.chain, &fixture.config, fixture.intent, fixture.artifact); err != nil {
-		t.Fatalf("original455 signed source replay under459: %v", err)
+		t.Fatalf("original455 signed source replay under460: %v", err)
 	}
 	if fixture.native.chain.Meta != metadata || fixture.native.chain.Runtime != runtime {
 		t.Fatal("signed source replay changed current signing owner")
@@ -125,7 +125,7 @@ func TestReleaseEvidenceV2HistoricalRuntimeCaptureRetainsExactOriginalMetadata(t
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("original455 source capture under459: %v", err)
+		t.Fatalf("original455 source capture under460: %v", err)
 	}
 	if fixture.native.chain.Meta != metadata || fixture.native.chain.Runtime != runtime {
 		t.Fatal("historical capture changed current signing owner")

@@ -235,7 +235,7 @@ func TestApprovedDoctorFactsAcceptExactPartialPrefixAndRejectAdjacentDrift(t *te
 }
 
 func TestRuntimeVersionIdentityAcceptsAuthoritativeNormalEncoding(t *testing.T) {
-	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":459,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
+	raw := json.RawMessage(`{"specName":"node-subtensor","implName":"node-subtensor","authoringVersion":1,"specVersion":460,"implVersion":0,"apis":[["0xdf6acb689907609b",4]],"transactionVersion":1,"stateVersion":1}`)
 	version, err := decodeRuntimeVersionIdentity(raw)
 	if err != nil {
 		t.Fatalf("authoritative runtime version was not decoded: %v", err)
@@ -653,13 +653,13 @@ func TestReviewedHistoricalRuntimeArtifactsAreExactEvidenceOnly(t *testing.T) {
 
 // The release-history reader needs one bounded provider cache entry for the
 // active runtime and each exact predecessor carried by the attempt journal.
-func TestReleaseHistoryRuntimeArtifactsCoverExactSevenVersionDomain(t *testing.T) {
+func TestReleaseHistoryRuntimeArtifactsCoverExactReviewedVersionDomain(t *testing.T) {
 	cfg := testResolvedConfig(t)
 	artifacts, err := releaseHistoryRuntimeArtifacts(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSpecs := []uint32{459, 451, 452, 453, 454, 455, 458}
+	wantSpecs := []uint32{460, 451, 452, 453, 454, 455, 458, 459}
 	if len(artifacts) != len(wantSpecs) {
 		t.Fatalf("history artifacts=%d, want %d", len(artifacts), len(wantSpecs))
 	}
@@ -682,7 +682,7 @@ func TestReleaseHistoryRuntimeArtifactsCoverExactSevenVersionDomain(t *testing.T
 		}
 	}
 	if artifacts[0].CodeHash != reviewedRuntimeCodeHash || artifacts[0].MetadataHash != reviewedRuntimeMetadataHash {
-		t.Fatalf("active history artifact does not match reviewed v459: %+v", artifacts[0])
+		t.Fatalf("active history artifact does not match reviewed v460: %+v", artifacts[0])
 	}
 }
 

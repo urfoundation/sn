@@ -735,7 +735,7 @@ func TestResolvedConfigPinsReviewedRuntimeArtifactIdentity(t *testing.T) {
 		cfg := testResolvedConfig(t)
 		cfg.Hyperparameters.ObservedCompatibilityGates = validCompatibilityGates()
 		test.mutate(&cfg.Release.Runtime)
-		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 459") {
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "reviewed testnet runtime 460") {
 			t.Errorf("%s runtime artifact drift was accepted: %v", test.name, err)
 		}
 	}

@@ -10,7 +10,7 @@ raw_repository="https://raw.githubusercontent.com/RaoFoundation/subtensor"
 tag="v454"
 commit="14cde6410fe8ec81a940e290c56f94a632a0988d"
 expected_files=29
-expected_metadata_files=21
+expected_metadata_files=24
 current_commit="67dcf7f791dc495064c293f080a0702cb433e51e"
 expected_current_files=33
 
@@ -94,7 +94,7 @@ fi
 
 # Retain both historical attestations and the reviewed458/459 sources. Exact commit
 # references are independent of mutable network branches and release proposals.
-for current_spec in 455 458 459; do
+for current_spec in 455 458 459 460; do
   case "$current_spec" in
     455)
       current_manifest="$sn_repo/docs/spec/runtime-v455-source.sha256"
@@ -113,6 +113,12 @@ for current_spec in 455 458 459; do
       current_commit="70378404b56c12a85bc8cd163aca2f32cf4d1b80"
       expected_current_files=71
       current_source_checkout="${SUBTENSOR_RUNTIME459_SOURCE:-}"
+      ;;
+    460)
+      current_manifest="$sn_repo/docs/spec/runtime-v460-source.sha256"
+      current_commit="8d5f20ec1a5e5d90295d43046dacdefc54aaed06"
+      expected_current_files=71
+      current_source_checkout="${SUBTENSOR_RUNTIME460_SOURCE:-}"
       ;;
   esac
   [[ -f "$current_manifest" ]] || {
@@ -165,7 +171,7 @@ for current_spec in 455 458 459; do
   echo "runtime source verified ref_kind=commit commit=$current_commit files=$current_count"
 done
 
-# Pin corroborating source and upstream integration tests for all seven
+# Pin corroborating source and upstream integration tests for all eight
 # reviewed artifacts. The separate exact-Wasm checker is the authoritative
 # state-independence and byte-identity gate for metadata reuse.
 declare -A resolved_metadata_refs=()
@@ -178,7 +184,7 @@ while read -r metadata_ref_kind metadata_ref_name metadata_commit expected path 
   }
   metadata_ref="$metadata_ref_kind:$metadata_ref_name"
   case "$metadata_ref:$metadata_commit" in
-    head:release-v451:d78d9cc6a6ee4d805f74a35414baaef8be025a5f|tag:v452:da06f033663896ef2fdbbfc3ecc68ca908fba0f5|tag:v453:823bdcbc58a29f60b243be4737a7c72b34ac7d93|tag:v454:14cde6410fe8ec81a940e290c56f94a632a0988d|commit:67dcf7f791dc495064c293f080a0702cb433e51e:67dcf7f791dc495064c293f080a0702cb433e51e|commit:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7|commit:70378404b56c12a85bc8cd163aca2f32cf4d1b80:70378404b56c12a85bc8cd163aca2f32cf4d1b80) ;;
+    head:release-v451:d78d9cc6a6ee4d805f74a35414baaef8be025a5f|tag:v452:da06f033663896ef2fdbbfc3ecc68ca908fba0f5|tag:v453:823bdcbc58a29f60b243be4737a7c72b34ac7d93|tag:v454:14cde6410fe8ec81a940e290c56f94a632a0988d|commit:67dcf7f791dc495064c293f080a0702cb433e51e:67dcf7f791dc495064c293f080a0702cb433e51e|commit:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7:a7ae07e5dd37b552f27aa8e4d7716c522eef9aa7|commit:70378404b56c12a85bc8cd163aca2f32cf4d1b80:70378404b56c12a85bc8cd163aca2f32cf4d1b80|commit:8d5f20ec1a5e5d90295d43046dacdefc54aaed06:8d5f20ec1a5e5d90295d43046dacdefc54aaed06) ;;
     *)
       echo "unreviewed runtime metadata source identity: $metadata_ref_kind $metadata_ref_name $metadata_commit" >&2
       exit 1

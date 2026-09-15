@@ -43,9 +43,9 @@ func (self ValidatorStakeObservation) MeetsNonSelfStakeAndPermit() bool {
 	return self.Identity.ValidatorPermit && self.TotalStakeRao >= self.StakeThresholdRao
 }
 
-// Executes only caller-cancellable reads. Runtime454/455/458/459's frozen selective
+// Executes only caller-cancellable reads. Runtime454/455/458/459/460's frozen selective
 // metagraph layout bb7420226d39c0eb is decoded as a complete bounded census.
-// The pinned459 source retains this API, weighted stake and admission layout.
+// The pinned460 source retains this API, weighted stake and admission layout.
 // Exact block/version/code/metadata authentication remains mandatory.
 // Its integer floor preserves comparison with the integer StakeThreshold:
 // floor(nonnegative fixed stake) >= threshold iff fixed stake >= threshold.
@@ -60,7 +60,8 @@ func ReadValidatorStakeAtContext(ctx context.Context, chain *Chain, query Valida
 	if identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 454, TransactionVersion: 1, StateVersion: 1}) &&
 		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 455, TransactionVersion: 1, StateVersion: 1}) &&
 		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 458, TransactionVersion: 1, StateVersion: 1}) &&
-		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 459, TransactionVersion: 1, StateVersion: 1}) {
+		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 459, TransactionVersion: 1, StateVersion: 1}) &&
+		identity.Runtime.Version != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 460, TransactionVersion: 1, StateVersion: 1}) {
 		return empty, errors.New("validator stake runtime layout has not been reviewed")
 	}
 	artifact, err := AuthenticateRuntimeArtifactAtContext(ctx, chain, query.BlockHash, allowed...)
