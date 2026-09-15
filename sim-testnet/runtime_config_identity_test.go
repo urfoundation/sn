@@ -264,17 +264,22 @@ func TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitutio
 // source and current458 configuration. No signed source bytes are rewritten.
 func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *testing.T) {
 	var originalPublic PublicManifest
+	var originalInputs resolvedPlanPublicInputs
 	original := newValidatorEvidenceCarryConfiguredTestFixture(t, false, true, false, func(cfg *ResolvedConfig) {
 		cfg.Public.Chain.ExpectedRuntimeSpec = 455
 		cfg.Public.Chain.ConfigIdentityRuntimeSpec = 0
 		cfg.Release.Runtime = validatorEvidenceRuntime455TestLock(t).Runtime
 		originalPublic = *cfg.Public
+		originalInputs = resolvedPlanInputs(cfg)
 	})
 	fixture := newCoordinatorRepairCarrySourceFixture(t, original, nil)
 	executor := fixture.executor
 	current, public := *executor.cfg, originalPublic
 	public.Chain.ExpectedRuntimeSpec, public.Chain.ConfigIdentityRuntimeSpec = 458, 455
 	current.Public, current.Release = &public, testReleaseLockFixture(t)
+	// The HTTP fixtures inject clients after approval. Their transport address
+	// must not replace the immutable endpoint used by the original planner.
+	current.OperationalEVM = originalInputs.OperationalEVM
 	var err error
 	current.ConfigHash, err = releaseConfigHash(current.Config, current.Public, current.Hyperparameters)
 	if err != nil {
@@ -297,6 +302,10 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 	prior, err := readPersistedPlan(executor.stateDir)
 	if err != nil || prior.PlanHash != executor.plan.PlanHash || prior.ValidatorEvidenceSource.ReleaseLock.Runtime.SpecVersion != 455 {
 		t.Fatalf("actual setup predecessor reader lost original455 approval: %v", err)
+	}
+	originalInputsHash, err := canonicalHashHex(originalInputs)
+	if err != nil || originalInputsHash != prior.ResolvedInputsHash {
+		t.Fatalf("fixture snapshot does not reproduce original resolved inputs: got=%s want=%s error=%v", originalInputsHash, prior.ResolvedInputsHash, err)
 	}
 	if got, err := loadPersistedPlan(&current, executor.stateDir); got != nil || !errors.Is(err, errPersistedPlanIdentityMismatch) {
 		t.Fatalf("unmigrated predecessor became current launch authority: %v", err)
@@ -326,8 +335,55 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 		t.Fatal(err)
 	}
 	plan, err := buildPlan(&current, &prior.LiveFacts, roles, time.Unix(2, 0))
-	if err != nil || plan.ConfigIdentityRuntimeSpec != 455 || plan.ConfigHash != prior.ConfigHash || !reflect.DeepEqual(plan.Actions, executor.plan.Actions) || plan.MaximumSpend != prior.MaximumSpend || plan.Limits != prior.Limits {
-		t.Fatalf("setup migration changed original action or budget authority: %v", err)
+	if err != nil {
+		t.Fatalf("build current migration approval: %v", err)
+	}
+	if plan.ConfigIdentityRuntimeSpec != 455 || plan.ConfigHash != prior.ConfigHash {
+		t.Fatalf("setup migration changed activation identity: pin=%d config=%s want=%s", plan.ConfigIdentityRuntimeSpec, plan.ConfigHash, prior.ConfigHash)
+	}
+	if plan.ResolvedInputsHash != prior.ResolvedInputsHash {
+		t.Fatalf("setup migration changed approved resolved inputs: got=%s want=%s", plan.ResolvedInputsHash, prior.ResolvedInputsHash)
+	}
+	if len(plan.Actions) != len(executor.plan.Actions) {
+		t.Fatalf("setup migration changed action count: got=%d want=%d", len(plan.Actions), len(executor.plan.Actions))
+	}
+	for index, action := range plan.Actions {
+		if !reflect.DeepEqual(action, executor.plan.Actions[index]) {
+			t.Fatalf("setup migration changed original action %s at index %d", action.ID, index)
+		}
+	}
+	if plan.MaximumSpend != prior.MaximumSpend || plan.Limits != prior.Limits {
+		t.Fatalf("setup migration changed budget authority: maximum=%+v want=%+v limits=%+v want=%+v", plan.MaximumSpend, prior.MaximumSpend, plan.Limits, prior.Limits)
+	}
+	changedRoute := current
+	changedRoute.OperationalEVM = "http://changed-rpc.example"
+	rerender, err := buildPlan(&changedRoute, &prior.LiveFacts, roles, time.Unix(2, 0))
+	if err != nil {
+		t.Fatalf("build synthetic changed-route approval: %v", err)
+	}
+	if rerender.ResolvedInputsHash == plan.ResolvedInputsHash {
+		t.Fatal("changed transport reused the original resolved launch inputs")
+	}
+	if rerender.ConfigHash != plan.ConfigHash {
+		t.Fatalf("changed transport changed activation identity: got=%s want=%s", rerender.ConfigHash, plan.ConfigHash)
+	}
+	if len(rerender.Actions) != len(plan.Actions) {
+		t.Fatalf("changed transport changed action count: got=%d want=%d", len(rerender.Actions), len(plan.Actions))
+	}
+	renderCount := 0
+	for index, action := range rerender.Actions {
+		originalAction := plan.Actions[index]
+		if action.ID == "config.render" {
+			renderCount++
+			if action.IntentHash == originalAction.IntentHash || action.Parameters["resolved_inputs_hash"] != rerender.ResolvedInputsHash {
+				t.Fatal("changed transport reused the original config.render approval")
+			}
+		} else if !reflect.DeepEqual(action, originalAction) {
+			t.Fatalf("changed transport altered unrelated action %s", action.ID)
+		}
+	}
+	if renderCount != 1 {
+		t.Fatalf("changed transport has %d config.render actions, want 1", renderCount)
 	}
 	for name, before := range retained {
 		after, err := os.ReadFile(filepath.Join(executor.stateDir, name))
