@@ -35,6 +35,12 @@ the difference explicitly.
 Qualification covers this simulator and its
 runtime dependencies; separate calibration exercises are outside this scope.
 
+The user's 2026-09-15 direction is to patch failures and retain incremental
+progress. The [incremental recovery policy](#incremental-recovery-and-acceptance)
+below supersedes older requirements to restart both complete gates on every
+revision or obtain three passes for every correction. Full functional coverage
+and the required live acceptance epochs remain completion requirements.
+
 An existing provisional V2 namespace can enter strict startup only through an
 explicit history adoption request after the current approved setup plan is
 finalized. With both validators stopped, `history-adoption --first-native-epoch
@@ -88,10 +94,12 @@ deterministically reproduce the pre-fix failure, verify the corrected behavior
 at the failing layer, and inspect surrounding code, sibling call sites and
 similar patterns. Record the adjacent paths checked. Use synthetic fixtures
 and top-level tests; ordinary case variations use plain table loops.
-Terra then reruns the affected test matrix. Run the two
-complete gate workloads concurrently with independent fixes, using immutable source and private mutable
-resources for each admitted job. A failed release preflight is retained as a
-refusal, not counted as executed tests or a release-qualified pass.
+Terra then runs the affected test matrix. Collect independent preparation and
+gate failures in one batch, fix them in parallel, and continue unaffected live
+jobs. Mark work blocked by a failed prerequisite as pending and resume it when
+that prerequisite is repaired. Each admitted job keeps immutable source and
+private mutable resources. A failed release preflight is retained as a refusal,
+not counted as executed tests or a release-qualified pass.
 
 When executing a compiled Go test binary, set its working directory to the
 package directory and check required relative fixtures before starting it.
@@ -100,29 +108,80 @@ Retain `-test.v` in every body and confirmation command passed through
 qualify those tests. If the command needs correction, preserve the original
 result and reuse the unchanged binary and source for a fresh execution.
 
-After diagnosis and correction, each failed test must pass three consecutive
-uncached executions on the same source/dependency snapshot in every mode that
-failed. Use a fresh process for each execution and retain its exact root, mode,
-binary/source identity, raw output, actual exit and cleanup result. A failure,
-timeout, skip, missing result or changed input resets the affected streak;
-results from different binaries or revisions cannot be combined. Independent
-roots may run concurrently, but each root's three confirmations are sequential.
-An input change resets an unfinished streak. A completed streak remains scoped
-evidence for its recorded source and dependencies. Later revisions run affected
-integration checks; a newly observed failure opens a new confirmation obligation.
-Do not relabel retained passes as executions on a later revision or automatically
-repeat every completed historical streak after an integration.
-Release gates record the exact clean commits of all thirteen repositories.
-SN must match freshly observed canonical `main`; dependencies may retain a
-reviewed commit that remains reachable from freshly fetched canonical
-`main`/`master`. The same recorded checkout snapshot must survive the whole
-gate. Later upstream development does not require importing unrelated changes
-into the candidate or repeating completed qualification on unchanged inputs.
-Retain the original failure, add deterministic root-cause and adjacent controls,
-and rerun affected integration coverage. Three later passes do not retroactively
-pass a failed full gate: final acceptance still requires both complete gates
-on the final candidate. This division does not authorize a simulator write;
-the normal plan-hash and `--apply` boundaries still control testnet mutations.
+### Incremental recovery and acceptance
+
+Resume at the first incomplete or invalidated checkpoint. A failed attempt
+does not erase its completed independent phases, finalized transactions,
+adopted approvals, migrations, artifacts or valid preparation results.
+
+For each patch, record its changed files, affected consumers and the checks
+needed to close the observed failure. Default to one uncached passing execution
+of the affected tests in each relevant mode, including every mode that failed,
+with deterministic root-cause and adjacent regressions. Include the failed
+integration phase when the failure involves cumulative work, shared state or
+cross-component behavior. A timeout correction needs representative workload
+and resource conditions; a small focused pass alone cannot close it. Add
+repetitions only for a stated unresolved timing, race or flakiness concern,
+with a bounded selection and stopping rule. Three confirmations are no longer
+automatic. Reuse already completed controls and compile once per changed
+package/mode. A new failure reopens its affected scope, not the whole campaign.
+
+| Change or interruption | Recovery and revalidation |
+| --- | --- |
+| Documentation, report, Git packaging or unrelated upstream change | Review the diff; retain unchanged tests, preparation and admitted runtime build. |
+| Test or fixture correction | Run changed tests and affected shared-fixture consumers; rerun the failed integration phase when relevant. Retain other phase receipts. |
+| Launcher, selector, capture path or result-checker correction | Repair the refused stage; reuse unchanged builds and completed bodies. Replay retained raw results when they suffice, and verify membership if selection changed. |
+| Production code or dependency change | Build affected executables; test changed behavior and affected integrations. Reuse phases whose code, inputs and assumptions are unchanged. |
+| Expired epoch, fee observation or other time-sensitive prerequisite | Refresh that observation and its dependent plan/window through the supported revision path. Retain immutable history and completed actions. |
+| Interrupted submission or lost RPC response | Reconcile the persisted intent, signed bytes, nonce and canonical receipt before retrying. An unknown outcome is pending, never a new action. |
+| Failed live scenario or service | Recover the affected process or phase from its journal. Retain other valid phase markers and prior finalized work. |
+
+Acceptance may combine completed phase receipts from earlier candidates with
+affected replacement runs on the patched candidate. Use an existing report or
+a short coverage table: required phase/mode, original source and receipt,
+reused or newly executed, patch impact, and unresolved work. Check the actual
+code, test/helper dependencies, configuration, toolchain and execution mode
+that the phase consumes. A changed Git commit or rebuilt binary alone does not
+invalidate unrelated results. If impact is uncertain, expand that affected
+scope. If a shared prerequisite or corrupted evidence affects every phase,
+rerun those phases; record that concrete reason for a full restart.
+
+Every required producer and aggregate phase must have valid coverage on the
+release's effective inputs. Complete producer coverage permits the next
+already-authorized launch step; aggregate work can finish in parallel before
+final acceptance. Record combined coverage as **accepted by composition**, with
+links to the retained receipts. Preserve every original failure and exit;
+never rewrite a failed full invocation as a passing invocation or count pending,
+skipped or interrupted work as PASS. A passing child of a timed-out process is
+not automatically an independent completed phase. Keep its cleanup and shared
+state obligations explicit. No new cache service, checker framework or repeated
+whole-repository audit is required to maintain this coverage table.
+
+Freeze source per live job. The existing full gate commands still execute their
+complete workloads and require the recorded clean thirteen-repository snapshot;
+SN matches observed canonical `main`, while dependencies may retain reviewed
+reachable commits. Keep those checkouts and runners untouched until their
+owners join. Prepare patches separately and reuse their reviewed results by
+scope. Do not move canonical `main` while an active gate's final check requires
+it to remain unchanged. Reuse an already admitted runtime executable with its
+matching source checkout when only tests or docs changed; recheck affected
+executable admission if production inputs change. The coverage table is an
+execution-policy decision, not a new resume flag in the full gate scripts.
+
+For live recovery, keep one writer per transaction stream and resume the saved
+plan and signed transaction bytes. Preserve cumulative spend and original
+approval limits across attempts. Use supported plan/history adoption for an
+incompatible patch; migrate only affected state. Reuse fully observed accepted
+phases and immutable artifacts. When a failure interrupts a required continuous
+epoch window, repeat that window and its dependent observations, retaining
+earlier valid phases and financial history. The required five accelerated and
+three consecutive complete production epochs, custody, authorization, finality
+and accounting checks still establish the final claim. A patch does not make
+an incomplete epoch complete. Existing plan-hash and `--apply` boundaries remain.
+
+Choose the next command from the unresolved coverage or runtime checkpoint;
+do not restart setup, re-fund, redeploy contracts or reset the reserve solely
+because a test, observer, process, network connection or agent failed.
 
 If an assigned agent loses execution capacity, inspect any already-started
 host process through its PID and output before deciding it stopped. A missing
@@ -329,9 +388,9 @@ long hash inventories or the full historical handoff to an agent. Retain all
 raw evidence on disk and expand any failed or suspicious result for Astra max;
 compact reporting never means ignoring an anomaly or capping its investigation.
 Do not retry a failure blindly or declare a timeout an expected assertion
-failure. After its root cause is resolved, perform the required three-pass
-confirmation above; any recurrence returns to diagnosis and resets that
-root's streak. Keep a short active-work index linking to detailed history.
+failure. After its root cause is resolved, use the affected checks and any
+specifically justified repetitions in the incremental recovery policy above.
+Keep a short active-work index linking to detailed history.
 
 Validate the exact filenames and invocation consumed by the frozen body, not
 only a staging convention: a package-prefixed `sim-testnet.expected.txt` does
@@ -407,8 +466,9 @@ one worker must not reserve the whole host while preparing a later command.
 For development qualification, measured heavy independent roots may run in
 separate exact-membership shards. Prove the disjoint union equals the original
 selection, preserve every assertion and per-process limit, and label the
-result as a selected union. This never replaces either complete final release
-gate. Prepare evidence locators and the final-report checklist concurrently;
+result as a selected union. Such results may close affected phase coverage
+under the incremental recovery policy; preserve any remaining shared-state or
+whole-process obligation. Prepare evidence locators and the final-report checklist concurrently;
 independent analysis of closed captures may overlap later live windows, but
 only the completed verification can support `FINAL.md` success claims.
 
@@ -454,9 +514,9 @@ profiles and separate full-build/static-analysis Foundry outputs and caches.
 Keep that isolation when running them concurrently, and enable the complete
 database profile with `RUN_SERVER_DB_TESTS=1`. Strict release qualification
 requires the clean, pinned source checks; a diagnostic workload run must retain
-any failed attestation and cannot grant release approval. Producer-gate success
-still precedes a live campaign write. Partial parallel prequalification is not
-a full gate certificate.
+any failed attestation. Complete producer coverage, including valid reused
+phases and affected replacements, precedes a live campaign write. Record its
+composed acceptance separately from each full command's actual result.
 
 The producer's ordinary capture, private fixtures, reopened prior replay,
 complete publication population and metadata census use independent admitted
@@ -499,11 +559,11 @@ The original failed package stays recorded. Source guards and the actual compile
 list must agree on complete, non-overlapping ownership; no root is omitted.
 
 The original full-metadata ten-minute race timeout remains a failure. Its
-profiled 90-minute diagnostic completion is not qualification. Require three
-fresh sequential unprofiled confirmations on the same source/binary under the
-corrected 45-minute limit, plus affected normal/race coverage and both strict
-gates; the diagnostic does not count toward that streak. The partition omits
-neither stress root and does not replace a complete gate certificate.
+profiled 90-minute diagnostic completion is not qualification. Retain completed
+unprofiled confirmations under the corrected 45-minute limit and affected
+normal/race coverage. Do not reopen them solely for an unrelated patch. The
+partition omits neither stress root; future corrections use the incremental
+recovery policy and preserve their actual execution limits.
 
 Both gates also run the shared-boundary and distinct-boundary full client-key
 history populations as separate jobs. Their combined measured race runtime

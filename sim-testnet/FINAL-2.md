@@ -46,7 +46,24 @@ this is disclosed as a capture correction. The original producer remains a
 failed attempt.
 
 The correction changes no production code, scripts, release lock or approved
-native plan identity. Its final candidate gates, actual renewal, complete
+native plan identity. The published `c5db71a` producer subsequently completed
+normal capture in 120.920 seconds but its race capture timed out again at
+600.377 seconds on September 15 at 16:14 UTC. The active test was
+`TestScenarioCampaignAttemptSuccessionReopenRejectsChangedAndMissingSources/another-plan`.
+The seven-case parent had run for 90 seconds; the last child was still opening
+its initial fixture. Investigation identifies repeated full-plan fixture work,
+not a demonstrated chain or historical-decoder defect. A test-only correction
+is in progress; neither its qualification nor a repaired capture pass is claimed.
+Both original gates continue collecting independent results.
+
+The user's September 15 instruction permits incremental recovery and composed
+acceptance. Under the [harness recovery policy](README.md#incremental-recovery-and-acceptance),
+retain unaffected completed phases, native preparation and finalized actions,
+then replace only failed or affected coverage after a patch. Original failed
+gate results remain failed. No blanket three-run confirmation or complete gate
+restart is required solely for a test or documentation change. Accepted
+composition, when complete, will name each original and replacement receipt.
+Current producer coverage remains incomplete. Actual renewal, complete
 RC/production campaign, final accounting and shutdown remain outstanding.
 These preparation and qualification claims are local artifact evidence; all
 new chain observations use the owned LAN node and record

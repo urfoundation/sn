@@ -6,10 +6,17 @@ The scope is SN `sim-testnet` finalization. The user has requested full
 finalization, including correction of previously
 ignored test failures and flakiness and the issues exposed by the shortened
 testnet run. The shortened-run waivers below no longer establish completion.
-Run the complete producer and aggregate gates on the final source, complete
-the required live campaign and production soak, and retain their actual
-acceptance, replay, accounting and shutdown evidence. Reuse completed work
-within its verified source and evidence scope; preserve every failed attempt.
+Complete producer and aggregate coverage, the required live campaign and
+production soak, and retain actual acceptance, replay, accounting and shutdown
+evidence. The user's 2026-09-15 recovery instruction permits composed acceptance:
+reuse unaffected completed phase receipts and run only failed, missing or
+patch-affected scopes. A new revision does not require restarting both gates or
+repeating all preparation. Blanket three-pass confirmations are replaced by
+deterministic affected checks and specifically justified repetition. The
+[incremental recovery policy](sim-testnet/README.md#incremental-recovery-and-acceptance)
+controls execution wherever older entries below require a complete restart.
+Preserve original failures, approved limits, finalized actions and the required
+fully observed live epochs; report reused and new evidence distinctly.
 
 Terra (`gpt-5.6-terra`, reasoning effort `max`) executes tests and reruns.
 Astra (`gpt-6-astra`, reasoning effort `max`) diagnoses and fixes failures

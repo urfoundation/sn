@@ -2,7 +2,10 @@
 
 Updated 2026-09-15. The user has requested full finalization and fixes for
 previously ignored failures, flakiness and issues exposed by the shortened run.
-The full requirements in [FINALIZE.md](FINALIZE.md) govern completion again.
+The full functional requirements in [FINALIZE.md](FINALIZE.md) govern completion.
+The user's 2026-09-15 instruction requires recovery by patching and retaining
+incremental progress. The [harness recovery policy](sim-testnet/README.md#incremental-recovery-and-acceptance)
+supersedes historical full-restart and blanket three-confirmation requirements.
 The user explicitly confirmed SN testnet finalization under `sn/FINALIZE.md`;
 all qualification and the current report at `sn/sim-testnet/FINAL-2.md` concern
 this simulator and its runtime dependencies. Other simulation references were
@@ -34,10 +37,11 @@ Current work:
 2. Use Terra (`gpt-5.6-terra`, reasoning effort `max`) for all tests and gate
    execution. Use Astra (`gpt-6-astra`, reasoning effort `max`) to diagnose and
    fix failures and flakiness, then return corrected source to Terra for reruns.
-3. Complete both full gates on the candidate with the refreshed release lock
-   and private test services. The earlier validator, native-receipt and scenario
-   failures have completed their scoped confirmations. Keep the original failed
-   and interrupted results visible; focused passes do not replace full gates.
+3. Complete producer and aggregate coverage using valid retained phase results
+   plus failed, missing or patch-affected checks. Keep both active full gates
+   collecting errors; do not restart them automatically after the fixture fix.
+   Retain earlier confirmations and every failed or interrupted result. Record
+   accepted composition separately from each gate invocation's actual exit.
 4. Complete the required real release campaign and production soak, then
    reconcile on-chain outcomes, LAN-node replay, the final report and shutdown.
    Reuse valid completed evidence; unrun, failed and waived checks are not passes.
@@ -46,7 +50,19 @@ Retain the approved 6,000-alpha repair allowance, 37,250-alpha lifetime limit,
 205 EVM within 225 total TAO, 262 registrations and zero new subnets. Use
 `192.168.1.162:9944` without RPC rate limits. Full acceptance remains pending.
 
-Latest checkpoint, 2026-09-15 15:05 UTC: the user approved the lifetime
+Latest checkpoint, 2026-09-15 16:15 UTC: the published `c5db71a` producer's
+capture phase passed normally in 120.920 seconds and timed out under race at
+600.377 seconds. The active succession test repeatedly builds and authenticates
+a full 1,000-provider plan; Astra is correcting that test fixture while Terra
+keeps both full gates collecting their remaining results. The fix is not yet
+qualified. Retain unaffected completed phases, the 18 passing native preparation
+checks, adopted plan and finalized reserve repair. The next qualification is
+the corrected capture scope and affected consumers, not two restarted full
+gates. Renewal is unsubmitted; the soak remains stopped. Publish patches after
+live source owners release their checkouts, and reuse the admitted runtime
+build if its production inputs remain unchanged.
+
+Previous checkpoint, 2026-09-15 15:05 UTC: the user approved the lifetime
 increase to 205 EVM within 225 total TAO for one fleet renewal capped at
 13.13 EVM plus 0.606 native TAO. Alpha limits remain unchanged. The vault
 setting is published at `9651a13062af2fd25dcd9e98db8c8871d148d114`.
