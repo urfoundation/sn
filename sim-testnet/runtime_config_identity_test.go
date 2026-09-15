@@ -60,8 +60,8 @@ func TestCoordinatorRepairCarryRuntimeIdentityRetainsLegacyWire(t *testing.T) {
 	}
 	config, hyper := &HarnessConfig{}, &Hyperparameters{}
 	want, err := canonicalHashHex(struct {
-		Config *HarnessConfig `json:"config"`
-		Public json.RawMessage `json:"public"`
+		Config          *HarnessConfig   `json:"config"`
+		Public          json.RawMessage  `json:"public"`
 		Hyperparameters *Hyperparameters `json:"hyperparameters"`
 	}{Config: config, Public: wire, Hyperparameters: hyper})
 	if err != nil {
@@ -87,7 +87,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityRequiresExplicitReviewedPin(t *tes
 		}
 	}
 	for _, item := range []struct {
-		name string
+		name   string
 		change func(*PublicManifest)
 	}{
 		{name: "another predecessor", change: func(public *PublicManifest) { public.Chain.ConfigIdentityRuntimeSpec = 454 }},
@@ -243,7 +243,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityRejectsCurrentAuthoritySubstitutio
 		}
 	}
 	for _, item := range []struct {
-		name string
+		name   string
 		change func(*ReleaseRuntimeLock)
 	}{
 		{name: "historical runtime", change: func(runtime *ReleaseRuntimeLock) { *runtime = validatorEvidenceRuntime455TestLock(t).Runtime }},
@@ -287,7 +287,7 @@ func TestCoordinatorRepairCarryRuntimeIdentityAuthenticatesOriginalRepair(t *tes
 			t.Fatal(err)
 		}
 	}
-	planWire := retained["plans/" + stringsTrim0x(executor.plan.PlanHash) + ".json"]
+	planWire := retained["plans/"+stringsTrim0x(executor.plan.PlanHash)+".json"]
 	if bytes.Contains(planWire, []byte(`"config_identity_runtime_spec"`)) {
 		t.Fatal("synthetic predecessor unexpectedly contains a later migration pin")
 	}
