@@ -80,7 +80,7 @@ func fleetRuntime458TestArtifactInputs(t *testing.T) (crv4.RuntimeArtifactIdenti
 }
 
 // Current artifact selection remains independent from production constants.
-func fleetRuntime459TestArtifactInputs(t *testing.T) (crv4.RuntimeArtifactIdentity, fleetRuntime459TestArtifact, []byte, []byte) {
+func fleetRuntime459TestArtifactInputs(t *testing.T) (crv4.RuntimeArtifactIdentity, fleetRuntime458TestArtifact, []byte, []byte) {
 	t.Helper()
 	return fleetRuntimeTestArtifactInputs(t, 459, "70378404b56c12a85bc8cd163aca2f32cf4d1b80")
 }
